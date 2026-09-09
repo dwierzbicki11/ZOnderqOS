@@ -9,8 +9,6 @@ qemu-system-x86_64 \
 -drive file="/mnt/CosmosKernel/ZonderqOS/output-x64/ZonderqOS.iso",if=none,id=cosmoscd,format=raw,readonly=on \
 -device ide-cd,drive=cosmoscd,bootindex=0 \
 -boot d \
--no-reboot \
--no-shutdown \
 -display gtk,zoom-to-fit=on \
 -full-screen \
 -serial stdio \
