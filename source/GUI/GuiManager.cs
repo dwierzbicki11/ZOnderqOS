@@ -21,15 +21,12 @@ namespace ZonderqOS.GUI
             try
             {
                 Console.WriteLine("[GUI] Inicjalizacja trybu graficznego...");
-
                 canvas = Canvas.GetFullScreen();
-
                 Console.WriteLine($"[GUI] Rzeczywista rozdzielczość Canvas: {canvas.Width}x{canvas.Height}");
                 Console.WriteLine("[GUI] Uruchamiam pulpit...");
 
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
                 int taskbarHeight = 30;
-
                 Window.ConfigureDesktop((int)canvas.Width, (int)canvas.Height - taskbarHeight);
                 applicationManager = new ApplicationManager();
 
@@ -41,6 +38,7 @@ namespace ZonderqOS.GUI
                 {
                     int offset = 25;
                     var terminal = new TerminalApp(100 + offset, 80 + offset, null);
+                    terminal.SetNanoLauncher(path => applicationManager.Launch(new NanoApp(path, null)));
                     applicationManager.Launch(terminal);
                 });
 
@@ -54,7 +52,6 @@ namespace ZonderqOS.GUI
                 });
 
                 bool previousLeftButtonState = false;
-
                 while (isRunning)
                 {
                     while (KeyboardManager.TryReadKey(out KeyEvent? key))
@@ -75,7 +72,6 @@ namespace ZonderqOS.GUI
                     applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
-
                     previousLeftButtonState = currentLeftButtonState;
                     applicationManager.Update();
 
@@ -84,7 +80,6 @@ namespace ZonderqOS.GUI
                     taskbar.Render(canvas);
                     startMenu.Render(canvas);
                     Cursor.Draw(canvas, mouseX, mouseY);
-
                     canvas.Display();
                     Thread.Sleep(15);
                 }
