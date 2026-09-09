@@ -24,7 +24,6 @@ namespace ZonderqOS.GUI
                 canvas = Canvas.GetFullScreen();
                 Console.WriteLine($"[GUI] Rzeczywista rozdzielczość Canvas: {canvas.Width}x{canvas.Height}");
                 Console.WriteLine("[GUI] Uruchamiam pulpit...");
-
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
                 int taskbarHeight = 30;
                 Window.ConfigureDesktop((int)canvas.Width, (int)canvas.Height - taskbarHeight);
