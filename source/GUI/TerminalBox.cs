@@ -36,18 +36,35 @@ namespace ZonderqOS.GUI
             if (maxChars <= 0)
                 return;
 
-            // Długie komunikaty są dzielone na linie, żeby nigdy nie wyjechały
-            // poza szerokość terminala.
             if (line.Length == 0)
             {
                 OutputLines.Add("");
                 return;
             }
 
-            for (int start = 0; start < line.Length; start += maxChars)
+            // Zawijaj po słowach, a bardzo długie słowa dziel na części.
+            int position = 0;
+            while (position < line.Length)
             {
-                int count = Math.Min(maxChars, line.Length - start);
-                OutputLines.Add(line.Substring(start, count));
+                int remaining = line.Length - position;
+                int take = Math.Min(maxChars, remaining);
+
+                if (take < remaining)
+                {
+                    int lastSpace = line.LastIndexOf(' ', position + take - 1, take);
+                    if (lastSpace >= position)
+                        take = lastSpace - position;
+                }
+
+                if (take <= 0)
+                    take = Math.Min(maxChars, remaining);
+
+                string chunk = line.Substring(position, take).TrimEnd();
+                OutputLines.Add(chunk);
+
+                position += take;
+                while (position < line.Length && line[position] == ' ')
+                    position++;
             }
         }
 
@@ -73,8 +90,6 @@ namespace ZonderqOS.GUI
                 int maxChars = GetMaxChars();
                 int promptChars = Prompt == null ? 0 : Prompt.Length;
 
-                // Zostaw miejsce na prompt. Sam tekst wejściowy nie może
-                // przekroczyć prawej krawędzi TerminalBox.
                 if (promptChars + Text.Length < maxChars)
                     Text += key.KeyChar;
             }
@@ -103,19 +118,23 @@ namespace ZonderqOS.GUI
 
             for (int i = startLine; i < OutputLines.Count; i++)
             {
-                canvas.DrawString(OutputLines[i], Font, TextColor, X + 8, currentY);
+                string line = OutputLines[i] ?? "";
+                int maxChars = GetMaxChars();
+                if (line.Length > maxChars)
+                    line = line.Substring(0, maxChars);
+
+                canvas.DrawString(line, Font, TextColor, X + 8, currentY);
                 currentY += lineHeight;
             }
 
-            // Linia wejściowa zawsze mieści się w szerokości terminala.
             string prompt = Prompt ?? "> ";
-            int maxChars = GetMaxChars();
+            int maxInputChars = GetMaxChars();
             string displayLine = prompt + Text;
 
-            if (displayLine.Length > maxChars)
-                displayLine = displayLine.Substring(0, maxChars);
+            if (displayLine.Length > maxInputChars)
+                displayLine = displayLine.Substring(0, maxInputChars);
 
-            if (IsFocused && displayLine.Length < maxChars)
+            if (IsFocused && displayLine.Length < maxInputChars)
                 displayLine += "_";
 
             canvas.DrawString(displayLine, Font, TextColor, X + 8, currentY);
