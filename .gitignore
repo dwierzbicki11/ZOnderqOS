@@ -1,0 +1,6 @@
+bin/
+obj/
+*.img
+*.iso
+*.vmdk
+.vs/

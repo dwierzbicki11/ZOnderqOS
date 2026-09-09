@@ -1,0 +1,16 @@
+{
+  "qemu": {
+    "memory": "4G",
+    "machineType": "q35",
+    "cpuModel": "max",
+    "serialMode": "stdio",
+    "networkCard": "virtio-net-pci",
+    "keyboard": "ps2",
+    "mouse": "ps2",
+    "enableNetwork": false,
+    "networkPorts": "5555",
+    "extraArgs": "",
+    "disks": []
+  },
+  "targetArch": "x64"
+}
