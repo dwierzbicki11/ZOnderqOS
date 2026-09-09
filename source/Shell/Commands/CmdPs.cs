@@ -1,5 +1,5 @@
 using System;
-using ZonderqOS.SystemCore; // Dopasuj przestrzeń nazw
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
@@ -12,22 +12,22 @@ namespace ZonderqOS.Commands
         {
             try
             {
-                // Odpytanie menedżera
                 var processes = ProcessManager.GetActiveProcesses();
 
-                Console.WriteLine("PID    STATE      NAME");
-                Console.WriteLine("----------------------------------------");
+                CommandIO.WriteLine("PID    STATE      NAME");
+                CommandIO.WriteLine("----------------------------------------");
 
                 foreach (var p in processes)
                 {
                     string state = p.IsRunning ? "RUNNING" : "ZOMBIE";
-                    // Używamy formatowania interpolowanego do wyrównania kolumn (-6 oznacza 6 znaków w lewo)
-                    Console.WriteLine($"{p.PID,-6} {state,-10} {p.Name}");
+                    CommandIO.WriteLine($"{p.PID,-6} {state,-10} {p.Name}");
                 }
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[ERROR] Process manager failure: {ex.Message}");
+                CommandIO.WriteLine($"[ERROR] Process manager failure: {ex.Message}");
+                CommandIO.LastCommandSuccess = false;
             }
         }
     }
