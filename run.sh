@@ -11,7 +11,8 @@ qemu-system-x86_64 \
 -boot d \
 -no-reboot \
 -no-shutdown \
--display gtk,fullscreen=on,zoom-to-fit=on \
+-display gtk,zoom-to-fit=on \
+-full-screen \
 -serial stdio \
 -device ich9-ahci,id=ahci0 \
 -drive file="zonder_disk.img",if=none,id=ahcidisk0,format=raw \
