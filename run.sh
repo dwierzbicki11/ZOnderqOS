@@ -11,6 +11,7 @@ qemu-system-x86_64 \
 -boot d \
 -no-reboot \
 -no-shutdown \
+-display gtk,zoom-to-fit=on \
 -vga std \
 -serial stdio \
 -device ich9-ahci,id=ahci0 \
