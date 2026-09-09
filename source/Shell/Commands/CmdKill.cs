@@ -12,7 +12,8 @@ namespace ZonderqOS.Commands
         {
             if (args.Length < 2)
             {
-                Console.WriteLine("Użycie: kill <PID>");
+                CommandIO.WriteLine("Użycie: kill <PID>");
+                CommandIO.LastCommandSuccess = false;
                 return;
             }
 
@@ -21,16 +22,19 @@ namespace ZonderqOS.Commands
                 bool success = ProcessManager.Kill(pid);
                 if (success)
                 {
-                    Console.WriteLine($"[OK] Wysłano sygnał zamknięcia do procesu PID {pid}.");
+                    CommandIO.WriteLine($"[OK] Wysłano sygnał zamknięcia do procesu PID {pid}.");
+                    CommandIO.LastCommandSuccess = true;
                 }
                 else
                 {
-                    Console.WriteLine($"[ERROR] Nie znaleziono aktywnego procesu o PID {pid}.");
+                    CommandIO.WriteLine($"[ERROR] Nie znaleziono aktywnego procesu o PID {pid}.");
+                    CommandIO.LastCommandSuccess = false;
                 }
             }
             else
             {
-                Console.WriteLine("[ERROR] Nieprawidłowy format PID.");
+                CommandIO.WriteLine("[ERROR] Nieprawidłowy format PID.");
+                CommandIO.LastCommandSuccess = false;
             }
         }
     }
