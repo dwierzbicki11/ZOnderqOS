@@ -16,7 +16,6 @@ namespace ZonderqOS.GUI.Apps
             closeCallback = onClose;
             Window = new Window(x, y, 800, 500, "ZonderqOS Terminal");
             Window.CloseAction = Close;
-
             terminalBox = new TerminalBox(10, 40, 780, 410);
             terminalBox.IsFocused = true;
             UpdatePrompt();
@@ -24,7 +23,6 @@ namespace ZonderqOS.GUI.Apps
             terminalBox.PrintLine("Type 'help' to see available commands.");
             terminalBox.PrintLine("----------------------------------------");
             Window.AddChild(terminalBox);
-
             sessionButton = new Button(340, 460, 120, 30, "Zakończ sesję", Close);
             Window.AddChild(sessionButton);
             UpdateLayout();
@@ -34,21 +32,16 @@ namespace ZonderqOS.GUI.Apps
         {
             int contentWidth = Math.Max(200, Window.Width - 20);
             int contentHeight = Math.Max(120, Window.Height - 90);
-
             terminalBox.X = Window.X + 10;
             terminalBox.Y = Window.Y + 40;
             terminalBox.Width = contentWidth;
             terminalBox.Height = contentHeight;
             terminalBox.FontScale = Window.IsMaximized ? 1.0f : 0.8125f;
-
             sessionButton.X = Window.X + (Window.Width - sessionButton.Width) / 2;
             sessionButton.Y = Window.Y + Window.Height - 40;
         }
 
-        public override void Update()
-        {
-            UpdateLayout();
-        }
+        public override void Update() { UpdateLayout(); }
 
         private void UpdatePrompt()
         {
@@ -59,42 +52,31 @@ namespace ZonderqOS.GUI.Apps
 
         private void PrintCommandOutput(string output)
         {
-            if (string.IsNullOrEmpty(output))
-                return;
-
+            if (string.IsNullOrEmpty(output)) return;
             string[] lines = output.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
             foreach (string line in lines)
             {
-                if (line.Length > 0)
-                    terminalBox.PrintLine(line);
+                if (line == "\u0001GUI_CLEAR\u0001")
+                {
+                    terminalBox.ClearOutput();
+                    continue;
+                }
+                if (line.Length > 0) terminalBox.PrintLine(line);
             }
         }
 
         public override void HandleKeyboard(KeyEvent key)
         {
             terminalBox.HandleKey(key);
-
-            if (key.Key != ConsoleKeyEx.Enter)
-                return;
+            if (key.Key != ConsoleKeyEx.Enter) return;
 
             string command = terminalBox.Text.Trim();
             terminalBox.PrintLine(terminalBox.Prompt + command);
             terminalBox.ClearInput();
-
-            if (string.IsNullOrEmpty(command))
-                return;
+            if (string.IsNullOrEmpty(command)) return;
 
             try
             {
-                // 'clear' musi czyścić bufor GUI TerminalBox, a nie tylko
-                // konsolę tekstową niewidoczną za framebufferem.
-                string commandName = command.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)[0].ToLower();
-                if (commandName == "clear")
-                    terminalBox.ClearOutput();
-
-                // GUI Terminal korzysta z dokładnie tego samego Command.Run,
-                // którego używa systemowy shell. Dzięki temu parser obsługuje
-                // również ;, &&, |, > i >> oraz wspólny currentPath.
                 CommandIO.StartRedirection();
                 Command.Run(command, ref currentPath);
                 string output = CommandIO.EndRedirection();
