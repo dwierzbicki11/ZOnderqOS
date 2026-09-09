@@ -12,12 +12,10 @@ namespace ZonderqOS.Commands
         {
             try
             {
-                Console.WriteLine("[GUI] Uruchamianie menedżera okien...");
-                
+                CommandIO.WriteLine("[GUI] Uruchamianie menedżera okien...");
                 GuiManager manager = new GuiManager();
                 manager.Run();
-
-                Console.WriteLine("[GUI] Powrót do powłoki tekstowej.");
+                CommandIO.WriteLine("[GUI] Powrót do powłoki tekstowej.");
                 CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
