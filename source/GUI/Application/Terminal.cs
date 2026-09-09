@@ -13,9 +13,9 @@ namespace ZonderqOS.GUI.Apps
         public TerminalApp(int x, int y, Action onClose) : base("Terminal CLI")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 540, 380, "ZonderqOS Terminal");
+            Window = new Window(x, y, 800, 500, "ZonderqOS Terminal");
 
-            terminalBox = new TerminalBox(10, 40, 520, 290);
+            terminalBox = new TerminalBox(10, 40, 780, 410);
             terminalBox.IsFocused = true;
             UpdatePrompt();
             terminalBox.PrintLine("ZonderqOS GUI Terminal v0.3");
@@ -23,7 +23,7 @@ namespace ZonderqOS.GUI.Apps
             terminalBox.PrintLine("----------------------------------------");
             Window.AddChild(terminalBox);
 
-            var closeBtn = new Button(210, 340, 120, 30, "Zakończ sesję", () =>
+            var closeBtn = new Button(340, 460, 120, 30, "Zakończ sesję", () =>
             {
                 Close();
             });
