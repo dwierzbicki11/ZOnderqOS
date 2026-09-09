@@ -14,8 +14,6 @@ namespace ZonderqOS.GUI
         public bool IsFocused { get; set; } = false;
         public Font Font { get; set; }
 
-        // Keep the normal terminal slightly smaller. Maximized mode can use
-        // the native font size without recreating bitmaps every frame.
         private float fontScale = 0.875f;
         public float FontScale
         {
@@ -36,10 +34,6 @@ namespace ZonderqOS.GUI
         public Color BackgroundColor { get; set; } = Color.FromArgb(15, 15, 15);
         public Color TextColor { get; set; } = Color.GreenYellow;
 
-        // The old implementation created a Canvas + Bitmap for every line on
-        // every frame. A maximized window has many more visible pixels, making
-        // that allocation pattern extremely expensive and able to lock up the
-        // GUI. Cache rendered strings and reuse them between frames.
         private readonly Dictionary<string, Bitmap> renderCache = new Dictionary<string, Bitmap>();
         private float cachedScale;
         private int cachedFontWidth;
@@ -102,6 +96,12 @@ namespace ZonderqOS.GUI
             ClearRenderCache();
         }
 
+        public void ClearOutput()
+        {
+            OutputLines.Clear();
+            ClearRenderCache();
+        }
+
         private int GetScaledCharWidth()
         {
             if (Font == null || Font.Width <= 0)
@@ -156,9 +156,6 @@ namespace ZonderqOS.GUI
 
         private void ClearRenderCache()
         {
-            // Keep the dictionary bounded. Cosmos graphics bitmaps can be
-            // expensive, so stale cached strings are discarded before a new
-            // font size/scale is rendered.
             renderCache.Clear();
             cachedScale = FontScale;
             cachedFontWidth = Font == null ? 0 : Font.Width;
