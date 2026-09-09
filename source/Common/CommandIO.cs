@@ -14,6 +14,10 @@ namespace ZonderqOS
         private static string _inBuffer = null;
         public static bool LastCommandSuccess { get; set; } = true;
 
+        // GUI applications can provide native interactive handlers for commands
+        // that historically owned the Console (for example nano).
+        public static Action<string> NanoLauncher { get; set; }
+
         public static void SetInput(string input)
         {
             _inBuffer = input;
@@ -31,9 +35,6 @@ namespace ZonderqOS
             _outBuffer.Clear();
             _isOutRedirected = true;
 
-            // A number of legacy commands in Shell/Commands still use Console.Write/
-            // Console.WriteLine directly. Capture those writes as well so every
-            // command can be displayed in the GUI terminal and used in pipelines.
             TextWriter previous = Console.Out;
             StringWriter capture = new StringWriter();
             _consoleWriters.Push(previous);
@@ -45,14 +46,10 @@ namespace ZonderqOS
         {
             string consoleOutput = "";
             if (_captureWriters.Count > 0)
-            {
                 consoleOutput = _captureWriters.Pop().ToString();
-            }
 
             if (_consoleWriters.Count > 0)
-            {
                 Console.SetOut(_consoleWriters.Pop());
-            }
 
             _isOutRedirected = false;
 
@@ -61,20 +58,15 @@ namespace ZonderqOS
                 commandOutput += "\n";
 
             _outBuffer.Clear();
-
             return commandOutput + consoleOutput;
         }
 
         public static void WriteLine(string text)
         {
             if (_isOutRedirected)
-            {
                 _outBuffer.Add(text ?? "");
-            }
             else
-            {
                 Console.WriteLine(text);
-            }
         }
 
         public static void Write(string text)
@@ -87,9 +79,7 @@ namespace ZonderqOS
                     _outBuffer[_outBuffer.Count - 1] += text ?? "";
             }
             else
-            {
                 Console.Write(text);
-            }
         }
     }
 }
