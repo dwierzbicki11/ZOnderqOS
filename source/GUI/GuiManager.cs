@@ -29,8 +29,8 @@ namespace ZonderqOS.GUI
                 Window.ConfigureDesktop((int)canvas.Width, (int)canvas.Height - taskbarHeight);
                 applicationManager = new ApplicationManager();
 
-                int menuWidth = 200;
-                int menuHeight = 160;
+                int menuWidth = 240;
+                int menuHeight = 300;
                 startMenu = new StartMenu(0, (int)canvas.Height - taskbarHeight - menuHeight, menuWidth, menuHeight);
 
                 startMenu.AddItem("Terminal CLI", () =>
@@ -51,6 +51,17 @@ namespace ZonderqOS.GUI
                     applicationManager.Launch(new AboutApp(170, 130, null));
                 });
 
+                startMenu.AddItem("Pomoc", () =>
+                {
+                    applicationManager.Launch(new AboutApp(200, 150, null));
+                });
+
+                startMenu.AddItem("Odśwież pulpit", () => { });
+                startMenu.AddItem("Sesja GUI", () => { });
+                startMenu.AddItem("Informacje systemowe", () =>
+                {
+                    applicationManager.Launch(new DiagnosticsApp(180, 120, null));
+                });
                 startMenu.AddItem("Wyjdź z GUI", () => isRunning = false);
 
                 taskbar = new Taskbar((int)canvas.Width, (int)canvas.Height, taskbarHeight, () =>
@@ -76,8 +87,6 @@ namespace ZonderqOS.GUI
                     int mouseY = (int)MouseManager.Y;
                     bool currentLeftButtonState = MouseManager.LeftButton;
 
-                    // Start/taskbar are desktop controls; application windows are handled
-                    // by ApplicationManager first so their buttons receive the click.
                     applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
