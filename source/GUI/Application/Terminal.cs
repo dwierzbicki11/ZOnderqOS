@@ -86,6 +86,15 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
+                // 'clear' musi czyścić bufor GUI TerminalBox, a nie tylko
+                // konsolę tekstową niewidoczną za framebufferem.
+                string commandName = command.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)[0].ToLower();
+                if (commandName == "clear")
+                    terminalBox.ClearOutput();
+
+                // GUI Terminal korzysta z dokładnie tego samego Command.Run,
+                // którego używa systemowy shell. Dzięki temu parser obsługuje
+                // również ;, &&, |, > i >> oraz wspólny currentPath.
                 CommandIO.StartRedirection();
                 Command.Run(command, ref currentPath);
                 string output = CommandIO.EndRedirection();
