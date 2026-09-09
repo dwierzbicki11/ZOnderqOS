@@ -1,6 +1,7 @@
 using System;
 using System.Drawing;
 using System.Threading;
+using Cosmos.Kernel.HAL.Pci;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Keyboard;
 using Cosmos.Kernel.System.Mouse;
@@ -23,8 +24,18 @@ namespace ZonderqOS.GUI
         {
             try
             {
-                canvas = Canvas.GetFullScreen();
-                canvas.Mode = new Mode(FullHdWidth, FullHdHeight, ColorDepth.ColorDepth32);
+                // QEMU is configured with a VMware SVGA II adapter. Select the
+                // SVGA II canvas explicitly instead of relying on Canvas.GetFullScreen().
+                PciDevice? svgaDevice = PciManager.GetDevice(VendorId.VmWare, DeviceId.SvgaiiAdapter);
+
+                if (svgaDevice == null)
+                {
+                    throw new Exception("VMware SVGA II adapter not found. Start QEMU with -vga vmware.");
+                }
+
+                canvas = new SVGAII3DCanvas(
+                    svgaDevice,
+                    new Mode(FullHdWidth, FullHdHeight, ColorDepth.ColorDepth32));
 
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
                 int taskbarHeight = 30;
