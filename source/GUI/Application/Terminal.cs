@@ -45,6 +45,11 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Update() { UpdateLayout(); }
 
+        public override void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
+        {
+            terminalBox.HandleMouse(mouseX, mouseY, isClicked, wasClicked);
+        }
+
         private void UpdatePrompt()
         {
             string user = EnvironmentManager.Get("USER") ?? "root";
