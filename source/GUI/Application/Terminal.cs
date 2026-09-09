@@ -10,6 +10,7 @@ namespace ZonderqOS.GUI.Apps
         private readonly TerminalBox terminalBox;
         private readonly Button sessionButton;
         private string currentPath = "/root";
+        private Action<string> nanoLauncher;
 
         public TerminalApp(int x, int y, Action onClose) : base("Terminal CLI")
         {
@@ -26,6 +27,12 @@ namespace ZonderqOS.GUI.Apps
             sessionButton = new Button(340, 460, 120, 30, "Zakończ sesję", Close);
             Window.AddChild(sessionButton);
             UpdateLayout();
+        }
+
+        public void SetNanoLauncher(Action<string> launcher)
+        {
+            nanoLauncher = launcher;
+            CommandIO.NanoLauncher = launcher;
         }
 
         private void UpdateLayout()
@@ -94,6 +101,8 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            if (CommandIO.NanoLauncher == nanoLauncher)
+                CommandIO.NanoLauncher = null;
             base.Close();
             closeCallback?.Invoke();
         }
