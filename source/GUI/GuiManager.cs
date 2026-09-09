@@ -22,8 +22,6 @@ namespace ZonderqOS.GUI
             {
                 Console.WriteLine("[GUI] Inicjalizacja trybu graficznego...");
 
-                // Gen3 uses the framebuffer provided by Limine/UEFI.
-                // The actual resolution is selected by the bootloader.
                 canvas = Canvas.GetFullScreen();
 
                 Console.WriteLine($"[GUI] Rzeczywista rozdzielczość Canvas: {canvas.Width}x{canvas.Height}");
@@ -32,6 +30,7 @@ namespace ZonderqOS.GUI
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
                 int taskbarHeight = 30;
 
+                Window.ConfigureDesktop((int)canvas.Width, (int)canvas.Height - taskbarHeight);
                 applicationManager = new ApplicationManager();
 
                 int menuWidth = 200;
@@ -73,6 +72,7 @@ namespace ZonderqOS.GUI
                     int mouseY = (int)MouseManager.Y;
                     bool currentLeftButtonState = MouseManager.LeftButton;
 
+                    applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
 
