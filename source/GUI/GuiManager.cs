@@ -14,6 +14,10 @@ namespace ZonderqOS.GUI
         private const int FullHdWidth = 1920;
         private const int FullHdHeight = 1080;
 
+        // VMware SVGA II PCI identifiers used by QEMU's -vga vmware adapter.
+        private const ushort VmwareVendorId = 0x15AD;
+        private const ushort SvgaIiDeviceId = 0x0405;
+
         private Canvas canvas;
         private Taskbar taskbar;
         private StartMenu startMenu;
@@ -26,7 +30,7 @@ namespace ZonderqOS.GUI
             {
                 // QEMU is configured with a VMware SVGA II adapter. Select the
                 // SVGA II canvas explicitly instead of relying on Canvas.GetFullScreen().
-                PciDevice? svgaDevice = PciManager.GetDevice(VendorId.VmWare, DeviceId.SvgaiiAdapter);
+                PciDevice? svgaDevice = PciManager.GetDevice(VmwareVendorId, SvgaIiDeviceId);
 
                 if (svgaDevice == null)
                 {
