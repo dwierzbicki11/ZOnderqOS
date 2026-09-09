@@ -10,15 +10,15 @@ namespace ZonderqOS.GUI
     public class TerminalBox : Widget
     {
         private const int MaxOutputLines = 3000;
+        private readonly ScrollBar scrollBar;
+        private int scrollOffset;
+        private bool userScrolled;
 
         public string Text { get; private set; } = "";
         public string Prompt { get; set; } = "> ";
         public bool IsFocused { get; set; } = false;
         public Font Font { get; set; }
 
-        // PCScreenFont.DefaultFont is rendered directly. Do not create Canvas/Bitmap
-        // objects while drawing the terminal: those native graphics allocations are
-        // expensive and can accumulate in a long-running GUI process.
         private float fontScale = 1.0f;
         public float FontScale
         {
@@ -27,33 +27,33 @@ namespace ZonderqOS.GUI
         }
 
         public List<string> OutputLines { get; } = new List<string>();
-
         public Color BackgroundColor { get; set; } = Color.FromArgb(15, 15, 15);
         public Color TextColor { get; set; } = Color.GreenYellow;
 
         public TerminalBox(int x, int y, int width, int height) : base(x, y, width, height)
         {
             Font = PCScreenFont.DefaultFont;
+            scrollBar = new ScrollBar(X + Width - 14, Y + 2, 12, Math.Max(20, Height - 4));
+            scrollBar.ValueChanged = value => scrollOffset = value;
         }
 
         private void AddOutputLine(string line)
         {
             OutputLines.Add(line ?? "");
-
-            // Terminal history must remain bounded. Otherwise commands producing lots
-            // of output eventually consume all managed memory even without graphics.
             while (OutputLines.Count > MaxOutputLines)
                 OutputLines.RemoveAt(0);
+
+            if (!userScrolled)
+                ScrollToBottom();
+            else
+                UpdateScrollBar();
         }
 
         public void PrintLine(string line)
         {
-            if (line == null)
-                line = "";
-
+            if (line == null) line = "";
             int maxChars = GetMaxChars();
-            if (maxChars <= 0)
-                return;
+            if (maxChars <= 0) return;
 
             if (line.Length == 0)
             {
@@ -74,9 +74,7 @@ namespace ZonderqOS.GUI
                         take = lastSpace - position;
                 }
 
-                if (take <= 0)
-                    take = Math.Min(maxChars, remaining);
-
+                if (take <= 0) take = Math.Min(maxChars, remaining);
                 AddOutputLine(line.Substring(position, take).TrimEnd());
                 position += take;
                 while (position < line.Length && line[position] == ' ')
@@ -87,35 +85,105 @@ namespace ZonderqOS.GUI
         public void ClearOutput()
         {
             OutputLines.Clear();
+            userScrolled = false;
+            scrollOffset = 0;
+            UpdateScrollBar();
         }
 
         private int GetCharWidth()
         {
-            if (Font == null || Font.Width <= 0)
-                return 1;
+            if (Font == null || Font.Width <= 0) return 1;
             return Font.Width;
         }
 
         private int GetLineHeight()
         {
-            if (Font == null || Font.Height <= 0)
-                return 1;
+            if (Font == null || Font.Height <= 0) return 1;
             return Font.Height;
         }
 
         private int GetMaxChars()
         {
-            return Math.Max(1, (Width - 16) / GetCharWidth());
+            return Math.Max(1, (Width - 28) / GetCharWidth());
+        }
+
+        private int GetVisibleLines()
+        {
+            return Math.Max(1, (Height - 16) / GetLineHeight());
+        }
+
+        private int GetMaxScroll()
+        {
+            return Math.Max(0, OutputLines.Count - Math.Max(1, GetVisibleLines() - 1));
+        }
+
+        private void UpdateScrollBar()
+        {
+            int visible = Math.Max(1, GetVisibleLines() - 1);
+            scrollBar.X = X + Math.Max(1, Width - 14);
+            scrollBar.Y = Y + 2;
+            scrollBar.Width = 12;
+            scrollBar.Height = Math.Max(20, Height - 4);
+            scrollBar.SetRange(OutputLines.Count + 1, visible);
+            scrollBar.Value = Math.Max(0, Math.Min(scrollOffset, GetMaxScroll()));
+        }
+
+        private void ScrollToBottom()
+        {
+            scrollOffset = GetMaxScroll();
+            userScrolled = false;
+            UpdateScrollBar();
+        }
+
+        public bool HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
+        {
+            if (!Visible) return false;
+
+            UpdateScrollBar();
+            if (scrollBar.HandleMouse(mouseX, mouseY, isClicked, wasClicked))
+            {
+                userScrolled = scrollOffset < GetMaxScroll();
+                return true;
+            }
+
+            if (isClicked && !wasClicked && Contains(mouseX, mouseY))
+            {
+                IsFocused = true;
+                return true;
+            }
+
+            return false;
         }
 
         public void HandleKey(KeyEvent key)
         {
             if (!IsFocused || !Visible) return;
 
+            if (key.Key == ConsoleKeyEx.PageUp)
+            {
+                scrollOffset = Math.Max(0, scrollOffset - Math.Max(1, GetVisibleLines() - 2));
+                userScrolled = true;
+                UpdateScrollBar();
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.PageDown)
+            {
+                scrollOffset = Math.Min(GetMaxScroll(), scrollOffset + Math.Max(1, GetVisibleLines() - 2));
+                userScrolled = scrollOffset < GetMaxScroll();
+                UpdateScrollBar();
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.End)
+            {
+                ScrollToBottom();
+                return;
+            }
+
             if (key.Key == ConsoleKeyEx.Backspace)
             {
-                if (Text.Length > 0)
-                    Text = Text.Substring(0, Text.Length - 1);
+                if (Text.Length > 0) Text = Text.Substring(0, Text.Length - 1);
             }
             else if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar))
             {
@@ -126,20 +194,11 @@ namespace ZonderqOS.GUI
             }
         }
 
-        public void ClearInput()
-        {
-            Text = "";
-        }
+        public void ClearInput() { Text = ""; }
 
         private void DrawTerminalString(Canvas canvas, string text, int x, int y)
         {
-            if (string.IsNullOrEmpty(text) || Font == null)
-                return;
-
-            // IMPORTANT: draw directly to the framebuffer-backed Canvas.
-            // Never use GetImage()/DrawImage() here. GetImage creates a native Bitmap
-            // and doing that once per line/frame caused the terminal's RAM usage to
-            // grow continuously during normal GUI operation.
+            if (string.IsNullOrEmpty(text) || Font == null) return;
             canvas.DrawString(text, Font, TextColor, x, y);
         }
 
@@ -147,39 +206,41 @@ namespace ZonderqOS.GUI
         {
             if (!Visible) return;
 
+            UpdateScrollBar();
             canvas.DrawFilledRectangle(BackgroundColor, X, Y, Width, Height);
             canvas.DrawRectangle(IsFocused ? Color.DeepSkyBlue : Color.DimGray, X, Y, Width, Height);
 
             int lineHeight = GetLineHeight();
-            int maxVisibleLines = Math.Max(1, (Height - 16) / lineHeight);
-            int startLine = Math.Max(0, OutputLines.Count - (maxVisibleLines - 1));
+            int visibleLines = GetVisibleLines();
+            int maxScroll = GetMaxScroll();
+            int startLine = Math.Max(0, Math.Min(scrollOffset, maxScroll));
+            int endLine = Math.Min(OutputLines.Count, startLine + Math.Max(0, visibleLines - 1));
             int currentY = Y + 8;
             int maxChars = GetMaxChars();
 
-            for (int i = startLine; i < OutputLines.Count; i++)
+            for (int i = startLine; i < endLine; i++)
             {
                 string line = OutputLines[i] ?? "";
-                if (line.Length > maxChars)
-                    line = line.Substring(0, maxChars);
-
+                if (line.Length > maxChars) line = line.Substring(0, maxChars);
                 DrawTerminalString(canvas, line, X + 8, currentY);
                 currentY += lineHeight;
             }
 
-            string prompt = Prompt ?? "> ";
-            string displayLine = prompt + Text;
-            if (displayLine.Length > maxChars)
-                displayLine = displayLine.Substring(0, maxChars);
-            if (IsFocused && displayLine.Length < maxChars)
-                displayLine += "_";
+            if (startLine >= maxScroll)
+            {
+                string prompt = Prompt ?? "> ";
+                string displayLine = prompt + Text;
+                if (displayLine.Length > maxChars) displayLine = displayLine.Substring(0, maxChars);
+                if (IsFocused && displayLine.Length < maxChars) displayLine += "_";
+                DrawTerminalString(canvas, displayLine, X + 8, currentY);
+            }
 
-            DrawTerminalString(canvas, displayLine, X + 8, currentY);
+            scrollBar.Render(canvas);
         }
 
         public bool Contains(int mouseX, int mouseY)
         {
-            return mouseX >= X && mouseX <= X + Width &&
-                   mouseY >= Y && mouseY <= Y + Height;
+            return mouseX >= X && mouseX <= X + Width && mouseY >= Y && mouseY <= Y + Height;
         }
     }
 }
