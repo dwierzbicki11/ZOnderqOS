@@ -1,3 +1,5 @@
+using Cosmos.Kernel.System.Graphics;
+
 namespace ZonderqOS.GUI.Apps
 {
     public abstract class Application
@@ -14,6 +16,12 @@ namespace ZonderqOS.GUI.Apps
         public virtual void Update() { }
 
         public virtual void HandleKeyboard(Cosmos.Kernel.System.Keyboard.KeyEvent key) { }
+
+        public virtual void Render(Canvas canvas)
+        {
+            if (Window != null)
+                Window.Render(canvas);
+        }
 
         public virtual void Close()
         {
