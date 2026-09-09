@@ -53,6 +53,12 @@ namespace ZonderqOS
             _commands.Add(new CmdSysmond());
             _commands.Add(new CmdNetwork());
             _commands.Add(new CmdKill());
+
+            // Komendy obecne w source/Shell/Commands, które wcześniej nie były
+            // rejestrowane i dlatego nie działały w żadnej sesji przez Command.Run.
+            _commands.Add(new CmdEnv());
+            _commands.Add(new CmdExport());
+            _commands.Add(new CmdDns());
         }
 
         public static void Run(string fullInput, ref string currentPath)
