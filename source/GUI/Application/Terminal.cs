@@ -8,7 +8,6 @@ namespace ZonderqOS.GUI.Apps
     {
         private readonly Action closeCallback;
         private readonly TerminalBox terminalBox;
-        private readonly Button sessionButton;
         private string currentPath = "/root";
         private Action<string> nanoLauncher;
 
@@ -24,8 +23,6 @@ namespace ZonderqOS.GUI.Apps
             terminalBox.PrintLine("Type 'help' to see available commands.");
             terminalBox.PrintLine("----------------------------------------");
             Window.AddChild(terminalBox);
-            sessionButton = new Button(340, 460, 120, 30, "Zakończ sesję", Close);
-            Window.AddChild(sessionButton);
             UpdateLayout();
         }
 
@@ -38,14 +35,12 @@ namespace ZonderqOS.GUI.Apps
         private void UpdateLayout()
         {
             int contentWidth = Math.Max(200, Window.Width - 20);
-            int contentHeight = Math.Max(120, Window.Height - 90);
+            int contentHeight = Math.Max(120, Window.Height - 55);
             terminalBox.X = Window.X + 10;
             terminalBox.Y = Window.Y + 40;
             terminalBox.Width = contentWidth;
             terminalBox.Height = contentHeight;
             terminalBox.FontScale = Window.IsMaximized ? 1.0f : 0.8125f;
-            sessionButton.X = Window.X + (Window.Width - sessionButton.Width) / 2;
-            sessionButton.Y = Window.Y + Window.Height - 40;
         }
 
         public override void Update() { UpdateLayout(); }
