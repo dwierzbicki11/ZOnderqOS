@@ -9,12 +9,17 @@ namespace ZonderqOS.GUI
 {
     public class TerminalBox : Widget
     {
+        private const int MaxOutputLines = 3000;
+
         public string Text { get; private set; } = "";
         public string Prompt { get; set; } = "> ";
         public bool IsFocused { get; set; } = false;
         public Font Font { get; set; }
 
-        private float fontScale = 0.875f;
+        // PCScreenFont.DefaultFont is rendered directly. Do not create Canvas/Bitmap
+        // objects while drawing the terminal: those native graphics allocations are
+        // expensive and can accumulate in a long-running GUI process.
+        private float fontScale = 1.0f;
         public float FontScale
         {
             get { return fontScale; }
@@ -26,23 +31,19 @@ namespace ZonderqOS.GUI
         public Color BackgroundColor { get; set; } = Color.FromArgb(15, 15, 15);
         public Color TextColor { get; set; } = Color.GreenYellow;
 
-        // Keep only one reusable source canvas. The previous implementation created
-        // a Canvas + Bitmap for every new output string and kept every Bitmap forever.
-        // In a long-running GUI terminal this caused unbounded native framebuffer/GDI
-        // memory growth. Rendering is now bounded to the current frame.
-        private Canvas textCanvas;
-        private int textCanvasWidth;
-        private int textCanvasHeight;
-        private string cachedText;
-        private float cachedScale;
-        private int cachedFontWidth;
-        private int cachedFontHeight;
-        private Color cachedTextColor;
-
         public TerminalBox(int x, int y, int width, int height) : base(x, y, width, height)
         {
             Font = PCScreenFont.DefaultFont;
-            cachedScale = -1f;
+        }
+
+        private void AddOutputLine(string line)
+        {
+            OutputLines.Add(line ?? "");
+
+            // Terminal history must remain bounded. Otherwise commands producing lots
+            // of output eventually consume all managed memory even without graphics.
+            while (OutputLines.Count > MaxOutputLines)
+                OutputLines.RemoveAt(0);
         }
 
         public void PrintLine(string line)
@@ -56,7 +57,7 @@ namespace ZonderqOS.GUI
 
             if (line.Length == 0)
             {
-                OutputLines.Add("");
+                AddOutputLine("");
                 return;
             }
 
@@ -76,7 +77,7 @@ namespace ZonderqOS.GUI
                 if (take <= 0)
                     take = Math.Min(maxChars, remaining);
 
-                OutputLines.Add(line.Substring(position, take).TrimEnd());
+                AddOutputLine(line.Substring(position, take).TrimEnd());
                 position += take;
                 while (position < line.Length && line[position] == ' ')
                     position++;
@@ -86,26 +87,25 @@ namespace ZonderqOS.GUI
         public void ClearOutput()
         {
             OutputLines.Clear();
-            cachedText = null;
         }
 
-        private int GetScaledCharWidth()
+        private int GetCharWidth()
         {
             if (Font == null || Font.Width <= 0)
                 return 1;
-            return Math.Max(1, (int)(Font.Width * FontScale));
+            return Font.Width;
         }
 
-        private int GetScaledLineHeight()
+        private int GetLineHeight()
         {
             if (Font == null || Font.Height <= 0)
                 return 1;
-            return Math.Max(1, (int)(Font.Height * FontScale));
+            return Font.Height;
         }
 
         private int GetMaxChars()
         {
-            return Math.Max(1, (Width - 16) / GetScaledCharWidth());
+            return Math.Max(1, (Width - 16) / GetCharWidth());
         }
 
         public void HandleKey(KeyEvent key)
@@ -131,56 +131,16 @@ namespace ZonderqOS.GUI
             Text = "";
         }
 
-        private void EnsureTextCanvas(int width, int height)
-        {
-            width = Math.Max(1, width);
-            height = Math.Max(1, height);
-
-            if (textCanvas != null && textCanvasWidth >= width && textCanvasHeight >= height)
-                return;
-
-            textCanvasWidth = Math.Max(width, textCanvasWidth);
-            textCanvasHeight = Math.Max(height, textCanvasHeight);
-            textCanvas = new Canvas(textCanvasWidth, textCanvasHeight);
-        }
-
-        private void DrawScaledString(Canvas canvas, string text, int x, int y)
+        private void DrawTerminalString(Canvas canvas, string text, int x, int y)
         {
             if (string.IsNullOrEmpty(text) || Font == null)
                 return;
 
-            int currentFontWidth = Font.Width;
-            int currentFontHeight = Font.Height;
-            if (cachedText == text &&
-                Math.Abs(cachedScale - FontScale) < 0.001f &&
-                cachedFontWidth == currentFontWidth &&
-                cachedFontHeight == currentFontHeight &&
-                cachedTextColor == TextColor)
-            {
-                // The source canvas still contains the exact same text. Reuse it.
-            }
-            else
-            {
-                int sourceWidth = Math.Max(1, text.Length * currentFontWidth + 2);
-                int sourceHeight = Math.Max(1, currentFontHeight + 2);
-                EnsureTextCanvas(sourceWidth, sourceHeight);
-                textCanvas.Clear(Color.Transparent);
-                textCanvas.DrawString(text, Font, TextColor, 0, 0);
-                cachedText = text;
-                cachedScale = FontScale;
-                cachedFontWidth = currentFontWidth;
-                cachedFontHeight = currentFontHeight;
-                cachedTextColor = TextColor;
-                textCanvasWidth = Math.Max(textCanvasWidth, sourceWidth);
-                textCanvasHeight = Math.Max(textCanvasHeight, sourceHeight);
-            }
-
-            int sourceWidthForText = Math.Max(1, text.Length * currentFontWidth + 2);
-            int sourceHeightForText = Math.Max(1, currentFontHeight + 2);
-            int targetWidth = Math.Max(1, (int)(sourceWidthForText * FontScale));
-            int targetHeight = Math.Max(1, (int)(sourceHeightForText * FontScale));
-            Bitmap image = textCanvas.GetImage(0, 0, sourceWidthForText, sourceHeightForText);
-            canvas.DrawImage(image, x, y, targetWidth, targetHeight);
+            // IMPORTANT: draw directly to the framebuffer-backed Canvas.
+            // Never use GetImage()/DrawImage() here. GetImage creates a native Bitmap
+            // and doing that once per line/frame caused the terminal's RAM usage to
+            // grow continuously during normal GUI operation.
+            canvas.DrawString(text, Font, TextColor, x, y);
         }
 
         public override void Render(Canvas canvas)
@@ -190,7 +150,7 @@ namespace ZonderqOS.GUI
             canvas.DrawFilledRectangle(BackgroundColor, X, Y, Width, Height);
             canvas.DrawRectangle(IsFocused ? Color.DeepSkyBlue : Color.DimGray, X, Y, Width, Height);
 
-            int lineHeight = GetScaledLineHeight();
+            int lineHeight = GetLineHeight();
             int maxVisibleLines = Math.Max(1, (Height - 16) / lineHeight);
             int startLine = Math.Max(0, OutputLines.Count - (maxVisibleLines - 1));
             int currentY = Y + 8;
@@ -201,7 +161,8 @@ namespace ZonderqOS.GUI
                 string line = OutputLines[i] ?? "";
                 if (line.Length > maxChars)
                     line = line.Substring(0, maxChars);
-                DrawScaledString(canvas, line, X + 8, currentY);
+
+                DrawTerminalString(canvas, line, X + 8, currentY);
                 currentY += lineHeight;
             }
 
@@ -211,7 +172,8 @@ namespace ZonderqOS.GUI
                 displayLine = displayLine.Substring(0, maxChars);
             if (IsFocused && displayLine.Length < maxChars)
                 displayLine += "_";
-            DrawScaledString(canvas, displayLine, X + 8, currentY);
+
+            DrawTerminalString(canvas, displayLine, X + 8, currentY);
         }
 
         public bool Contains(int mouseX, int mouseY)
