@@ -14,6 +14,10 @@ namespace ZonderqOS.GUI
         public bool IsFocused { get; set; } = false;
         public Font Font { get; set; }
 
+        // The built-in Gen3 font is 16x32. Render it at roughly 13px normally,
+        // and return to the native size when the terminal is maximized.
+        public float FontScale { get; set; } = 0.8125f;
+
         public List<string> OutputLines { get; } = new List<string>();
 
         public Color BackgroundColor { get; set; } = Color.FromArgb(15, 15, 15);
@@ -42,7 +46,6 @@ namespace ZonderqOS.GUI
                 return;
             }
 
-            // Zawijaj po słowach, a bardzo długie słowa dziel na części.
             int position = 0;
             while (position < line.Length)
             {
@@ -68,12 +71,25 @@ namespace ZonderqOS.GUI
             }
         }
 
-        private int GetMaxChars()
+        private int GetScaledCharWidth()
         {
             if (Font == null || Font.Width <= 0)
                 return 1;
 
-            return Math.Max(1, (Width - 16) / Font.Width);
+            return Math.Max(1, (int)(Font.Width * FontScale));
+        }
+
+        private int GetScaledLineHeight()
+        {
+            if (Font == null || Font.Height <= 0)
+                return 1;
+
+            return Math.Max(1, (int)(Font.Height * FontScale));
+        }
+
+        private int GetMaxChars()
+        {
+            return Math.Max(1, (Width - 16) / GetScaledCharWidth());
         }
 
         public void HandleKey(KeyEvent key)
@@ -100,6 +116,23 @@ namespace ZonderqOS.GUI
             Text = "";
         }
 
+        private void DrawScaledString(Canvas canvas, string text, int x, int y)
+        {
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            int sourceWidth = Math.Max(1, text.Length * Font.Width + 2);
+            int sourceHeight = Math.Max(1, Font.Height + 2);
+            Canvas textCanvas = new Canvas(sourceWidth, sourceHeight);
+            textCanvas.Clear(Color.Transparent);
+            textCanvas.DrawString(text, Font, TextColor, 0, 0);
+
+            Bitmap image = textCanvas.GetImage(0, 0, sourceWidth, sourceHeight);
+            int targetWidth = Math.Max(1, (int)(sourceWidth * FontScale));
+            int targetHeight = Math.Max(1, (int)(sourceHeight * FontScale));
+            canvas.DrawImage(image, x, y, targetWidth, targetHeight);
+        }
+
         public override void Render(Canvas canvas)
         {
             if (!Visible) return;
@@ -107,7 +140,7 @@ namespace ZonderqOS.GUI
             canvas.DrawFilledRectangle(BackgroundColor, X, Y, Width, Height);
             canvas.DrawRectangle(IsFocused ? Color.DeepSkyBlue : Color.DimGray, X, Y, Width, Height);
 
-            int lineHeight = Font.Height;
+            int lineHeight = GetScaledLineHeight();
             int maxVisibleLines = Math.Max(1, (Height - 16) / lineHeight);
 
             int startLine = 0;
@@ -123,7 +156,7 @@ namespace ZonderqOS.GUI
                 if (line.Length > maxChars)
                     line = line.Substring(0, maxChars);
 
-                canvas.DrawString(line, Font, TextColor, X + 8, currentY);
+                DrawScaledString(canvas, line, X + 8, currentY);
                 currentY += lineHeight;
             }
 
@@ -137,7 +170,7 @@ namespace ZonderqOS.GUI
             if (IsFocused && displayLine.Length < maxInputChars)
                 displayLine += "_";
 
-            canvas.DrawString(displayLine, Font, TextColor, X + 8, currentY);
+            DrawScaledString(canvas, displayLine, X + 8, currentY);
         }
 
         public bool Contains(int mouseX, int mouseY)
