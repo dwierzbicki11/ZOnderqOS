@@ -1,5 +1,27 @@
 #!/bin/bash
-cosmos build
+
+# Run the build normally. Git recovery is performed ONLY when the build
+# fails and its output explicitly contains a GitHub-related error.
+build_output=$(mktemp)
+trap 'rm -f "$build_output"' EXIT
+
+set +e
+cosmos build 2>&1 | tee "$build_output"
+build_status=${PIPESTATUS[0]}
+set -e
+
+if [ "$build_status" -ne 0 ] && grep -qiE 'github(\.com)?|githubusercontent\.com' "$build_output"; then
+    echo "[ZonderqOS] Wykryto błąd związany z GitHub. Synchronizuję repozytorium..."
+    git stash
+    git pull
+    git stash pop
+
+    echo "[ZonderqOS] Ponawiam build po synchronizacji z GitHub..."
+    cosmos build
+elif [ "$build_status" -ne 0 ]; then
+    echo "[ZonderqOS] Build zakończył się błędem niezwiązanym z GitHub — bez git stash/pull/pop."
+    exit "$build_status"
+fi
 
 qemu-system-x86_64 \
 -L "/home/zonderq/.cosmos/tools/share/qemu" \
