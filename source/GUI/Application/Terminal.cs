@@ -37,6 +37,19 @@ namespace ZonderqOS.GUI.Apps
             terminalBox.Prompt = $"{user}@{host}:{currentPath}$ ";
         }
 
+        private void PrintCommandOutput(string output)
+        {
+            if (string.IsNullOrEmpty(output))
+                return;
+
+            string[] lines = output.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+            foreach (string line in lines)
+            {
+                if (line.Length > 0)
+                    terminalBox.PrintLine(line);
+            }
+        }
+
         public override void HandleKeyboard(KeyEvent key)
         {
             terminalBox.HandleKey(key);
@@ -53,12 +66,20 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
+                // Przechwytujemy cały output Command.Run zamiast wypisywać go do konsoli QEMU.
+                CommandIO.StartRedirection();
                 Command.Run(command, ref currentPath);
+                string output = CommandIO.EndRedirection();
+                PrintCommandOutput(output);
                 UpdatePrompt();
             }
             catch (Exception ex)
             {
+                // Nawet po błędzie kończymy przekierowanie, żeby kolejne komendy nadal działały.
+                string output = CommandIO.EndRedirection();
+                PrintCommandOutput(output);
                 terminalBox.PrintLine($"Błąd jądra: {ex.Message}");
+                UpdatePrompt();
             }
         }
 
