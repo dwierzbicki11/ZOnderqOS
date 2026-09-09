@@ -8,7 +8,7 @@ namespace ZonderqOS.Commands
         public string Description => "Clear console screen";
         public void Execute(string[] args, ref string currentPath)
         {
-            Console.Clear();
+            CommandIO.WriteLine("\u0001GUI_CLEAR\u0001");
             CommandIO.LastCommandSuccess = true;
         }
     }
