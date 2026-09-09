@@ -41,8 +41,16 @@ namespace ZonderqOS.GUI
                     applicationManager.Launch(terminal);
                 });
 
-                startMenu.AddItem("Diagnostyka", () => Console.WriteLine("[ZonderqOS] Diagnostyka sprzętu..."));
-                startMenu.AddItem("O Systemie", () => Console.WriteLine("[ZonderqOS] v0.3 Cosmos Gen3"));
+                startMenu.AddItem("Diagnostyka", () =>
+                {
+                    applicationManager.Launch(new DiagnosticsApp(140, 110, null));
+                });
+
+                startMenu.AddItem("O Systemie", () =>
+                {
+                    applicationManager.Launch(new AboutApp(170, 130, null));
+                });
+
                 startMenu.AddItem("Wyjdź z GUI", () => isRunning = false);
 
                 taskbar = new Taskbar((int)canvas.Width, (int)canvas.Height, taskbarHeight, () =>
@@ -68,6 +76,8 @@ namespace ZonderqOS.GUI
                     int mouseY = (int)MouseManager.Y;
                     bool currentLeftButtonState = MouseManager.LeftButton;
 
+                    // Start/taskbar are desktop controls; application windows are handled
+                    // by ApplicationManager first so their buttons receive the click.
                     applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
