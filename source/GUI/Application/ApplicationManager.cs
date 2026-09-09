@@ -34,6 +34,11 @@ namespace ZonderqOS.GUI.Apps
             ActiveApplication?.HandleKeyboard(key);
         }
 
+        public void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
+        {
+            ActiveApplication?.Window?.HandleMouse(mouseX, mouseY, isClicked, wasClicked);
+        }
+
         public void Update()
         {
             for (int i = applications.Count - 1; i >= 0; i--)
