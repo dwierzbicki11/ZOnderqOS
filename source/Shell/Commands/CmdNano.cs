@@ -19,31 +19,45 @@ namespace ZonderqOS.Commands
             }
 
             string filePath = PathResolver.GetAbsolutePath(currentPath, args[1]);
+
+            // When the GUI terminal is active, never call Console.ReadKey/SetCursorPosition.
+            // Those APIs steal input from GuiManager and freeze the desktop. Open the
+            // native GUI editor instead; CLI keeps the original editor below.
+            if (CommandIO.NanoLauncher != null)
+            {
+                try
+                {
+                    CommandIO.NanoLauncher(filePath);
+                    CommandIO.LastCommandSuccess = true;
+                }
+                catch (Exception ex)
+                {
+                    WriteMessage.WriteError($"Could not open GUI editor: {ex.Message}", "NANO");
+                    CommandIO.LastCommandSuccess = false;
+                }
+                return;
+            }
+
             List<string> lines = new List<string>();
 
-            // Wczytywanie istniejącego pliku
             if (File.Exists(filePath))
             {
                 try
                 {
                     string content = File.ReadAllText(filePath);
                     lines = new List<string>(content.Split(new[] { '\n' }));
-                    for (int i = 0; i < lines.Count; i++) 
-                    {
-                        lines[i] = lines[i].Replace("\r", ""); // Czyszczenie znaków powrotu karetki z Windowsa
-                    }
+                    for (int i = 0; i < lines.Count; i++)
+                        lines[i] = lines[i].Replace("\r", "");
                 }
                 catch (Exception ex)
                 {
                     WriteMessage.WriteError($"Could not read file: {ex.Message}", "FS");
+                    CommandIO.LastCommandSuccess = false;
                     return;
                 }
             }
-            
-            // Pusty plik musi mieć co najmniej jedną linię, by było po czym pisać
-            if (lines.Count == 0) lines.Add("");
 
-            // Uruchomienie pętli edytora
+            if (lines.Count == 0) lines.Add("");
             RunEditor(filePath, lines);
             CommandIO.LastCommandSuccess = true;
         }
@@ -56,7 +70,6 @@ namespace ZonderqOS.Commands
             bool running = true;
             string statusMessage = "";
 
-            // Twardy reset kolorów przed wejściem w tryb pełnoekranowy
             Console.BackgroundColor = ConsoleColor.Black;
             Console.ForegroundColor = ConsoleColor.White;
             Console.Clear();
@@ -64,8 +77,7 @@ namespace ZonderqOS.Commands
             while (running)
             {
                 DrawScreen(path, lines, cursorX, cursorY, scrollY, statusMessage);
-                statusMessage = ""; // Czyść wiadomość statusową
-
+                statusMessage = "";
                 var key = Console.ReadKey(true);
 
                 if ((key.Modifiers.HasFlag(ConsoleModifiers.Control) && key.Key == ConsoleKey.O) || key.Key == ConsoleKey.F2)
@@ -73,7 +85,7 @@ namespace ZonderqOS.Commands
                     SaveFile(path, lines, out statusMessage);
                     continue;
                 }
-                
+
                 if ((key.Modifiers.HasFlag(ConsoleModifiers.Control) && key.Key == ConsoleKey.X) || key.Key == ConsoleKey.F3 || key.Key == ConsoleKey.Escape)
                 {
                     running = false;
@@ -90,59 +102,33 @@ namespace ZonderqOS.Commands
                         break;
                     case ConsoleKey.LeftArrow:
                         if (cursorX > 0) cursorX--;
-                        else if (cursorY > 0)
-                        {
-                            cursorY--;
-                            cursorX = lines[cursorY].Length;
-                        }
+                        else if (cursorY > 0) { cursorY--; cursorX = lines[cursorY].Length; }
                         break;
                     case ConsoleKey.RightArrow:
                         if (cursorX < lines[cursorY].Length) cursorX++;
-                        else if (cursorY < lines.Count - 1)
-                        {
-                            cursorY++;
-                            cursorX = 0;
-                        }
+                        else if (cursorY < lines.Count - 1) { cursorY++; cursorX = 0; }
                         break;
                     case ConsoleKey.Backspace:
-                        if (cursorX > 0)
-                        {
-                            lines[cursorY] = lines[cursorY].Remove(cursorX - 1, 1);
-                            cursorX--;
-                        }
-                        else if (cursorY > 0)
-                        {
-                            int oldLen = lines[cursorY - 1].Length;
-                            lines[cursorY - 1] += lines[cursorY];
-                            lines.RemoveAt(cursorY);
-                            cursorY--;
-                            cursorX = oldLen;
-                        }
+                        if (cursorX > 0) { lines[cursorY] = lines[cursorY].Remove(cursorX - 1, 1); cursorX--; }
+                        else if (cursorY > 0) { int oldLen = lines[cursorY - 1].Length; lines[cursorY - 1] += lines[cursorY]; lines.RemoveAt(cursorY); cursorY--; cursorX = oldLen; }
                         break;
                     case ConsoleKey.Enter:
                         string remainder = lines[cursorY].Substring(cursorX);
                         lines[cursorY] = lines[cursorY].Substring(0, cursorX);
                         lines.Insert(cursorY + 1, remainder);
-                        cursorY++;
-                        cursorX = 0;
+                        cursorY++; cursorX = 0;
                         break;
                     default:
-                        if (key.KeyChar >= 32 && key.KeyChar <= 126)
-                        {
-                            lines[cursorY] = lines[cursorY].Insert(cursorX, key.KeyChar.ToString());
-                            cursorX++;
-                        }
+                        if (key.KeyChar >= 32 && key.KeyChar <= 126) { lines[cursorY] = lines[cursorY].Insert(cursorX, key.KeyChar.ToString()); cursorX++; }
                         break;
                 }
 
                 if (cursorX > lines[cursorY].Length) cursorX = lines[cursorY].Length;
-
-                int screenHeight = 23; 
+                int screenHeight = 23;
                 if (cursorY < scrollY) scrollY = cursorY;
                 if (cursorY >= scrollY + screenHeight) scrollY = cursorY - screenHeight + 1;
             }
 
-            // Czyszczenie i powrót do normalnego trybu po wyjściu
             Console.BackgroundColor = ConsoleColor.Black;
             Console.ForegroundColor = ConsoleColor.White;
             Console.Clear();
@@ -150,56 +136,37 @@ namespace ZonderqOS.Commands
 
         private void DrawScreen(string path, List<string> lines, int cx, int cy, int scrollY, string status)
         {
-            // Resetujemy ewentualne wycieki kolorów
             Console.BackgroundColor = ConsoleColor.Black;
             Console.ForegroundColor = ConsoleColor.White;
-
-            // GÓRNY PASEK (Header)
             Console.SetCursorPosition(0, 0);
             Console.BackgroundColor = ConsoleColor.White;
             Console.ForegroundColor = ConsoleColor.Black;
-            string header = $"  ZonderqOS Nano Editor  -  {path}";
-            
-            // PadRight(79) zamiast 80 zapobiega błędom Cosmos OS przy przechodzeniu do nowej linii
-            Console.Write(header.PadRight(79)); 
+            Console.Write(("  ZonderqOS Nano Editor  -  " + path).PadRight(79));
             Console.BackgroundColor = ConsoleColor.Black;
             Console.ForegroundColor = ConsoleColor.White;
 
-            // OBSZAR TEKSTU
-            int displayLines = 23; 
+            int displayLines = 23;
             for (int i = 0; i < displayLines; i++)
             {
                 int lineIdx = scrollY + i;
                 Console.SetCursorPosition(0, i + 1);
-                
                 if (lineIdx < lines.Count)
                 {
                     string lineToPrint = lines[lineIdx];
                     if (lineToPrint.Length > 79) lineToPrint = lineToPrint.Substring(0, 79);
-                    Console.Write(lineToPrint.PadRight(79)); 
+                    Console.Write(lineToPrint.PadRight(79));
                 }
-                else
-                {
-                    Console.Write(new string(' ', 79)); 
-                }
+                else Console.Write(new string(' ', 79));
             }
 
-            // DOLNY PASEK (Footer)
             Console.SetCursorPosition(0, 24);
             Console.BackgroundColor = ConsoleColor.White;
             Console.ForegroundColor = ConsoleColor.Black;
-            string footer = string.IsNullOrEmpty(status) 
-                ? " ^O/F2 Save   ^X/F3 Exit" 
-                : " " + status;
-            
-            // Zapis na krawędzi (X=79, Y=24) w Cosmos zepsułby układ ekranu, więc piszemy 79 znaków
+            string footer = string.IsNullOrEmpty(status) ? " ^O/F2 Save   ^X/F3 Exit" : " " + status;
             Console.Write(footer.PadRight(79));
             Console.BackgroundColor = ConsoleColor.Black;
             Console.ForegroundColor = ConsoleColor.White;
-
-            // USTAW KURSOR NA WŁAŚCIWYM MIEJSCU (maksymalnie pozycja 78)
-            int screenX = cx;
-            if (screenX > 78) screenX = 78;
+            int screenX = Math.Min(cx, 78);
             int screenY = (cy - scrollY) + 1;
             Console.SetCursorPosition(screenX, screenY);
         }
@@ -208,17 +175,11 @@ namespace ZonderqOS.Commands
         {
             try
             {
-                string content = string.Join("\n", lines);
-                Disk.CreateFile(path, content);
+                Disk.CreateFile(path, string.Join("\n", lines));
                 message = $"[Wrote {lines.Count} lines to {path}]";
-                
-                // Dodajemy log dla audytu
                 SecurityLogger.LogEvent("INFO", $"File edited via nano: {path}");
             }
-            catch (Exception ex)
-            {
-                message = $"[Error saving: {ex.Message}]";
-            }
+            catch (Exception ex) { message = $"[Error saving: {ex.Message}]"; }
         }
     }
 }
