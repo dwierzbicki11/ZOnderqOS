@@ -36,6 +36,7 @@ namespace ZonderqOS.GUI.Apps
 
         public void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
         {
+            ActiveApplication?.HandleMouse(mouseX, mouseY, isClicked, wasClicked);
             ActiveApplication?.Window?.HandleMouse(mouseX, mouseY, isClicked, wasClicked);
         }
 
