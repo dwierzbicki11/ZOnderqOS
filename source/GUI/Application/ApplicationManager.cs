@@ -54,8 +54,8 @@ namespace ZonderqOS.GUI.Apps
         {
             foreach (var application in applications)
             {
-                if (application.Window != null)
-                    application.Window.Render(canvas);
+                if (application.IsRunning)
+                    application.Render(canvas);
             }
         }
     }
