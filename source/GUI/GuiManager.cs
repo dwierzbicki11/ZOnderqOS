@@ -1,8 +1,6 @@
 using System;
 using System.Drawing;
 using System.Threading;
-using Cosmos.Kernel.HAL.Pci;
-using Cosmos.Kernel.HAL.Pci.Enums;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Keyboard;
 using Cosmos.Kernel.System.Mouse;
@@ -12,9 +10,6 @@ namespace ZonderqOS.GUI
 {
     public class GuiManager
     {
-        private const int FullHdWidth = 1920;
-        private const int FullHdHeight = 1080;
-
         private Canvas canvas;
         private Taskbar taskbar;
         private StartMenu startMenu;
@@ -26,19 +21,10 @@ namespace ZonderqOS.GUI
             try
             {
                 Console.WriteLine("[GUI] Inicjalizacja trybu graficznego...");
-                Console.WriteLine($"[GUI] Żądana rozdzielczość: {FullHdWidth}x{FullHdHeight}");
 
-                // QEMU is configured with a VMware SVGA II adapter.
-                PciDevice? svgaDevice = PciManager.GetDevice(VendorId.VmWare, DeviceId.SvgaiiAdapter);
-
-                if (svgaDevice == null)
-                {
-                    throw new Exception("VMware SVGA II adapter not found. Start QEMU with -vga vmware.");
-                }
-
-                canvas = new SVGAII3DCanvas(
-                    svgaDevice,
-                    new Mode(FullHdWidth, FullHdHeight, ColorDepth.ColorDepth32));
+                // Gen3 uses the framebuffer provided by Limine/UEFI.
+                // The actual resolution is selected by the bootloader.
+                canvas = Canvas.GetFullScreen();
 
                 Console.WriteLine($"[GUI] Rzeczywista rozdzielczość Canvas: {canvas.Width}x{canvas.Height}");
                 Console.WriteLine("[GUI] Uruchamiam pulpit...");
