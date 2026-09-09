@@ -17,6 +17,8 @@ namespace ZonderqOS.GUI.Apps
 
         public virtual void HandleKeyboard(Cosmos.Kernel.System.Keyboard.KeyEvent key) { }
 
+        public virtual void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked) { }
+
         public virtual void Render(Canvas canvas)
         {
             if (Window != null)
