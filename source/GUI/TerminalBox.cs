@@ -13,8 +13,7 @@ namespace ZonderqOS.GUI
         public string Prompt { get; set; } = "> ";
         public bool IsFocused { get; set; } = false;
         public Font Font { get; set; }
-        
-        // Bufor historii (to co terminal wypisuje wyżej)
+
         public List<string> OutputLines { get; } = new List<string>();
 
         public Color BackgroundColor { get; set; } = Color.FromArgb(15, 15, 15);
@@ -25,10 +24,39 @@ namespace ZonderqOS.GUI
             Font = PCScreenFont.DefaultFont;
         }
 
-        // Dodawanie nowej linii do historii widocznej w oknie
         public void PrintLine(string line)
         {
-            OutputLines.Add(line);
+            if (line == null)
+            {
+                OutputLines.Add("");
+                return;
+            }
+
+            int maxChars = GetMaxChars();
+            if (maxChars <= 0)
+                return;
+
+            // Długie komunikaty są dzielone na linie, żeby nigdy nie wyjechały
+            // poza szerokość terminala.
+            if (line.Length == 0)
+            {
+                OutputLines.Add("");
+                return;
+            }
+
+            for (int start = 0; start < line.Length; start += maxChars)
+            {
+                int count = Math.Min(maxChars, line.Length - start);
+                OutputLines.Add(line.Substring(start, count));
+            }
+        }
+
+        private int GetMaxChars()
+        {
+            if (Font == null || Font.Width <= 0)
+                return 1;
+
+            return Math.Max(1, (Width - 16) / Font.Width);
         }
 
         public void HandleKey(KeyEvent key)
@@ -42,12 +70,13 @@ namespace ZonderqOS.GUI
             }
             else if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar))
             {
-                // Zabezpieczenie szerokości
-                int maxChars = (Width - 24) / Font.Width;
-                if ((Prompt.Length + Text.Length) < maxChars)
-                {
+                int maxChars = GetMaxChars();
+                int promptChars = Prompt == null ? 0 : Prompt.Length;
+
+                // Zostaw miejsce na prompt. Sam tekst wejściowy nie może
+                // przekroczyć prawej krawędzi TerminalBox.
+                if (promptChars + Text.Length < maxChars)
                     Text += key.KeyChar;
-                }
             }
         }
 
@@ -60,40 +89,42 @@ namespace ZonderqOS.GUI
         {
             if (!Visible) return;
 
-            // 1. Tło
             canvas.DrawFilledRectangle(BackgroundColor, X, Y, Width, Height);
             canvas.DrawRectangle(IsFocused ? Color.DeepSkyBlue : Color.DimGray, X, Y, Width, Height);
 
-            // 2. Obliczanie pojemności (ile linijek zmieści się w pionie)
             int lineHeight = Font.Height;
-            int maxVisibleLines = (Height - 16) / lineHeight; // 16px marginesu
+            int maxVisibleLines = Math.Max(1, (Height - 16) / lineHeight);
 
-            // 3. Ustalenie, od którego wiersza w historii zacząć rysować (przewijanie)
             int startLine = 0;
-            // Zostawiamy 1 linię na wpisywany tekst (Prompt + Text)
             if (OutputLines.Count > maxVisibleLines - 1)
-            {
                 startLine = OutputLines.Count - (maxVisibleLines - 1);
-            }
 
-            int currentY = Y + 8; // Margines górny
+            int currentY = Y + 8;
 
-            // 4. Rysowanie linijek z historii
             for (int i = startLine; i < OutputLines.Count; i++)
             {
                 canvas.DrawString(OutputLines[i], Font, TextColor, X + 8, currentY);
                 currentY += lineHeight;
             }
 
-            // 5. Rysowanie aktualnego paska wejścia na samym dole
-            string cursorChar = IsFocused ? "_" : "";
-            string displayLine = Prompt + Text + cursorChar;
+            // Linia wejściowa zawsze mieści się w szerokości terminala.
+            string prompt = Prompt ?? "> ";
+            int maxChars = GetMaxChars();
+            string displayLine = prompt + Text;
+
+            if (displayLine.Length > maxChars)
+                displayLine = displayLine.Substring(0, maxChars);
+
+            if (IsFocused && displayLine.Length < maxChars)
+                displayLine += "_";
+
             canvas.DrawString(displayLine, Font, TextColor, X + 8, currentY);
         }
 
         public bool Contains(int mouseX, int mouseY)
         {
-            return mouseX >= X && mouseX <= (X + Width) && mouseY >= Y && mouseY <= (Y + Height);
+            return mouseX >= X && mouseX <= (X + Width) &&
+                   mouseY >= Y && mouseY <= (Y + Height);
         }
     }
 }
