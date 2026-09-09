@@ -25,6 +25,9 @@ namespace ZonderqOS.GUI
         {
             try
             {
+                Console.WriteLine("[GUI] Inicjalizacja trybu graficznego...");
+                Console.WriteLine($"[GUI] Żądana rozdzielczość: {FullHdWidth}x{FullHdHeight}");
+
                 // QEMU is configured with a VMware SVGA II adapter.
                 PciDevice? svgaDevice = PciManager.GetDevice(VendorId.VmWare, DeviceId.SvgaiiAdapter);
 
@@ -36,6 +39,9 @@ namespace ZonderqOS.GUI
                 canvas = new SVGAII3DCanvas(
                     svgaDevice,
                     new Mode(FullHdWidth, FullHdHeight, ColorDepth.ColorDepth32));
+
+                Console.WriteLine($"[GUI] Rzeczywista rozdzielczość Canvas: {canvas.Width}x{canvas.Height}");
+                Console.WriteLine("[GUI] Uruchamiam pulpit...");
 
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
                 int taskbarHeight = 30;
