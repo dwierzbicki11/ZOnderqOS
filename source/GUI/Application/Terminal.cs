@@ -8,12 +8,14 @@ namespace ZonderqOS.GUI.Apps
     {
         private readonly Action closeCallback;
         private readonly TerminalBox terminalBox;
+        private readonly Button sessionButton;
         private string currentPath = "/root";
 
         public TerminalApp(int x, int y, Action onClose) : base("Terminal CLI")
         {
             closeCallback = onClose;
             Window = new Window(x, y, 800, 500, "ZonderqOS Terminal");
+            Window.CloseAction = Close;
 
             terminalBox = new TerminalBox(10, 40, 780, 410);
             terminalBox.IsFocused = true;
@@ -23,11 +25,29 @@ namespace ZonderqOS.GUI.Apps
             terminalBox.PrintLine("----------------------------------------");
             Window.AddChild(terminalBox);
 
-            var closeBtn = new Button(340, 460, 120, 30, "Zakończ sesję", () =>
-            {
-                Close();
-            });
-            Window.AddChild(closeBtn);
+            sessionButton = new Button(340, 460, 120, 30, "Zakończ sesję", Close);
+            Window.AddChild(sessionButton);
+            UpdateLayout();
+        }
+
+        private void UpdateLayout()
+        {
+            int contentWidth = Math.Max(200, Window.Width - 20);
+            int contentHeight = Math.Max(120, Window.Height - 90);
+
+            terminalBox.X = Window.X + 10;
+            terminalBox.Y = Window.Y + 40;
+            terminalBox.Width = contentWidth;
+            terminalBox.Height = contentHeight;
+            terminalBox.FontScale = Window.IsMaximized ? 1.0f : 0.8125f;
+
+            sessionButton.X = Window.X + (Window.Width - sessionButton.Width) / 2;
+            sessionButton.Y = Window.Y + Window.Height - 40;
+        }
+
+        public override void Update()
+        {
+            UpdateLayout();
         }
 
         private void UpdatePrompt()
@@ -66,7 +86,6 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
-                // Przechwytujemy cały output Command.Run zamiast wypisywać go do konsoli QEMU.
                 CommandIO.StartRedirection();
                 Command.Run(command, ref currentPath);
                 string output = CommandIO.EndRedirection();
@@ -75,7 +94,6 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                // Nawet po błędzie kończymy przekierowanie, żeby kolejne komendy nadal działały.
                 string output = CommandIO.EndRedirection();
                 PrintCommandOutput(output);
                 terminalBox.PrintLine($"Błąd jądra: {ex.Message}");
