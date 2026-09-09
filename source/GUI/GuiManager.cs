@@ -10,6 +10,9 @@ namespace ZonderqOS.GUI
 {
     public class GuiManager
     {
+        private const int FullHdWidth = 1920;
+        private const int FullHdHeight = 1080;
+
         private Canvas canvas;
         private Taskbar taskbar;
         private StartMenu startMenu;
@@ -21,6 +24,8 @@ namespace ZonderqOS.GUI
             try
             {
                 canvas = Canvas.GetFullScreen();
+                canvas.Mode = new Mode(FullHdWidth, FullHdHeight, ColorDepth.ColorDepth32);
+
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
                 int taskbarHeight = 30;
 
