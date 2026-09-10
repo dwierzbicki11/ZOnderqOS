@@ -46,19 +46,19 @@ namespace ZonderqOS.GUI
                 LoadWallpaper((int)canvas.Width, desktopHeight);
                 InitializeDesktopShortcuts();
 
-                int menuWidth = 280;
-                int menuHeight = 360;
-                startMenu = new StartMenu(0, (int)canvas.Height - TaskbarHeight - menuHeight, menuWidth, menuHeight);
+                int menuWidth = 340;
+                int menuHeight = 430;
+                startMenu = new StartMenu(8, (int)canvas.Height - TaskbarHeight - menuHeight - 8, menuWidth, menuHeight);
 
-                startMenu.AddItem("Terminal CLI", () => LaunchTerminal(125, 90));
-                startMenu.AddItem("File Manager", () => LaunchFileManager(105, 75));
-                startMenu.AddItem("Diagnostyka", () => LaunchDiagnostics(150, 120));
-                startMenu.AddItem("O Systemie", () => LaunchAbout(180, 140));
-                startMenu.AddItem("Pomoc", () => LaunchAbout(210, 160));
-                startMenu.AddItem("Odśwież pulpit", () => selectedShortcut = -1);
-                startMenu.AddItem("Sesja GUI", () => { });
-                startMenu.AddItem("Informacje systemowe", () => LaunchDiagnostics(200, 130));
-                startMenu.AddItem("Wyjdź z GUI", () => isRunning = false);
+                startMenu.AddItem("Terminal CLI", IconType.Terminal, () => LaunchTerminal(125, 90));
+                startMenu.AddItem("File Manager", IconType.Folder, () => LaunchFileManager(105, 75));
+                startMenu.AddItem("Diagnostyka", IconType.Settings, () => LaunchDiagnostics(150, 120));
+                startMenu.AddItem("O Systemie", IconType.About, () => LaunchAbout(180, 140));
+                startMenu.AddItem("Pomoc", IconType.About, () => LaunchAbout(210, 160));
+                startMenu.AddItem("Odśwież pulpit", IconType.Refresh, () => selectedShortcut = -1);
+                startMenu.AddItem("Sesja GUI", IconType.Start, () => { });
+                startMenu.AddItem("Informacje systemowe", IconType.Settings, () => LaunchDiagnostics(200, 130));
+                startMenu.AddItem("Wyjdź z GUI", IconType.Close, () => isRunning = false);
 
                 taskbar = new Taskbar((int)canvas.Width, (int)canvas.Height, TaskbarHeight, () =>
                 {
