@@ -46,8 +46,8 @@ namespace ZonderqOS.GUI.Apps
                 inputMode == 1 || inputMode == 2 ? "WPROWADZANIE" : "UTWORZ",
                 global::ZonderqOS.SecurityContext.CurrentUser == "root" ? Good : Muted);
             DrawRow(canvas, 4, IconType.Start,
-                "PRZELACZ SESJE", "Uwierzytelnij wybrane konto i ustaw USER/HOME",
-                inputMode == 3 ? "HASLO..." : "ZALOGUJ", Warning);
+                "ZMIEN UZYTKOWNIKA", "Potwierdz haslo konta; biezaca sesja zostanie bezpiecznie zakonczona",
+                inputMode == 3 ? "HASLO..." : "PRZELACZ", Warning);
             DrawRow(canvas, 5, IconType.Settings,
                 "ZMIEN HASLO", "Wlasne konto lub reset przez root po potwierdzeniu hasla sesji",
                 inputMode >= 4 ? "WPROWADZANIE" : CanChangeSelectedPassword() ? "ZMIEN" : "NIEDOSTEPNE",
@@ -57,7 +57,7 @@ namespace ZonderqOS.GUI.Apps
                 global::ZonderqOS.SystemSettings.AutoLockName,
                 global::ZonderqOS.SystemSettings.AutoLockMinutes > 0 ? Good : Warning);
             DrawNumericRow(canvas, 7, IconType.About,
-                "CZAS SESJI", "Minuty od ostatniego pomyslnego logowania lub przelaczenia konta",
+                "CZAS SESJI", "Minuty od ostatniego pomyslnego logowania",
                 global::ZonderqOS.SessionManager.ElapsedSeconds / 60UL, " MIN");
 
             if (inputMode != 0)
@@ -188,7 +188,7 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 ClearInputState();
                 inputMode = 3;
-                SetStatus("WPISZ HASLO WYBRANEGO KONTA", Warning);
+                SetStatus("POTWIERDZ HASLO KONTA DO KTOREGO CHCESZ PRZEJSC", Warning);
                 return;
             }
 
@@ -303,28 +303,43 @@ namespace ZonderqOS.GUI.Apps
             if (inputMode == 3)
             {
                 string user = userCount > 0 ? users[selectedUser] : null;
-                bool ok = !string.IsNullOrEmpty(user) &&
-                          global::ZonderqOS.UserManager.ValidateCredentials(user, inputText);
-                inputText = string.Empty;
-                inputMode = 0;
-                if (!ok)
+                if (string.IsNullOrEmpty(user))
                 {
-                    SetStatus("NIEPRAWIDLOWE HASLO", Danger);
+                    ClearInputState();
+                    SetStatus("BRAK WYBRANEGO KONTA", Danger);
                     return;
                 }
 
-                string oldUser = global::ZonderqOS.SecurityContext.CurrentUser;
-                ok = global::ZonderqOS.UserManager.ActivateSession(user);
-                if (ok)
+                int retryAfter;
+                if (!global::ZonderqOS.AuthenticationGuard.CanAttempt(user, out retryAfter))
                 {
-                    global::ZonderqOS.SecurityLogger.LogEvent("INFO",
-                        "Session switched from '" + oldUser + "' to '" + user + "' from Settings GUI.");
-                    SetStatus("SESJA UZYTKOWNIKA PRZELACZONA", Good);
+                    inputText = string.Empty;
+                    SetStatus("ZA DUZO PROB - ODCZEKAJ " + retryAfter + " S", Danger);
+                    return;
                 }
-                else
+
+                bool ok = global::ZonderqOS.UserManager.ValidateCredentials(user, inputText);
+                inputText = string.Empty;
+                if (!ok)
                 {
-                    SetStatus("NIE UDALO SIE PRZELACZYC SESJI", Danger);
+                    global::ZonderqOS.AuthenticationGuard.RecordFailure(user);
+                    retryAfter = global::ZonderqOS.AuthenticationGuard.GetRetryAfterSeconds(user);
+                    SetStatus(retryAfter > 0
+                        ? "NIEPRAWIDLOWE HASLO - BLOKADA " + retryAfter + " S"
+                        : "NIEPRAWIDLOWE HASLO", Danger);
+                    return;
                 }
+
+                global::ZonderqOS.AuthenticationGuard.RecordSuccess(user);
+                global::ZonderqOS.UserProfileManager.RememberLastUser(user);
+                global::ZonderqOS.SecurityLogger.LogEvent("INFO",
+                    "Secure GUI account switch requested to '" + user + "'.");
+
+                // End the old session instead of changing UID under already-open windows.
+                // GuiManager sees the unauthenticated state on the next loop and closes all
+                // applications before the login screen is shown again.
+                ClearInputState();
+                global::ZonderqOS.UserManager.EndSession();
                 return;
             }
 
@@ -376,6 +391,8 @@ namespace ZonderqOS.GUI.Apps
                 bool ok = !string.IsNullOrEmpty(user) &&
                           global::ZonderqOS.UserManager.ChangePassword(
                               user, pendingAuthorizationPassword, pendingNewPassword);
+                if (ok)
+                    global::ZonderqOS.AuthenticationGuard.Reset(user);
                 ClearInputState();
                 SetStatus(ok ? "HASLO ZOSTALO ZMIENIONE" : "NIE UDALO SIE ZMIENIC HASLA",
                     ok ? Good : Danger);
