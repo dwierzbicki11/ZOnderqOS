@@ -188,7 +188,7 @@ namespace ZonderqOS.GUI
             canvas.DrawRectangle(border, x, Y + 6, width, Height - 12);
             IconManager.DrawScaled(canvas, icon, x + 6, Y + 13, 14, 14);
             SmallTextRenderer.DrawClipped(canvas, label, x + 25, Y + 18,
-                Math.Max(8, width - 32), Color.FromArgb(207, 216, 224));
+                System.Math.Max(8, width - 32), Color.FromArgb(207, 216, 224));
             canvas.DrawFilledRectangle(indicator, x + width - 7, Y + 10, 3, 3);
         }
 
