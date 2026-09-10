@@ -23,6 +23,12 @@ namespace ZonderqOS.GUI.Apps
         private int frameCounter;
         private string status = "";
 
+        private bool contextMenuVisible;
+        private int contextMenuX;
+        private int contextMenuY;
+        private int dialogMode;
+        private string dialogName = "";
+
         public FileManagerApp(int x, int y, Action<string> openFile) : base("File Manager")
         {
             nanoLauncher = openFile;
@@ -49,14 +55,47 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
         {
-            Window.HandleMouse(mouseX, mouseY, isClicked, wasClicked);
-            if (!isClicked || wasClicked || !Window.Visible)
+            HandleMouse(mouseX, mouseY, isClicked, wasClicked, false, false);
+        }
+
+        public override void HandleMouse(int mouseX, int mouseY, bool leftClicked, bool leftWasClicked,
+            bool rightClicked, bool rightWasClicked)
+        {
+            Window.HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked);
+            if (!Window.Visible)
                 return;
 
             int localX = mouseX - view.X;
             int localY = mouseY - view.Y;
             if (localX < 0 || localY < 0 || localX >= view.Width || localY >= view.Height)
                 return;
+
+            if (rightClicked && !rightWasClicked)
+            {
+                if (dialogMode == 0)
+                {
+                    contextMenuX = Math.Max(6, Math.Min(localX, view.Width - 226));
+                    contextMenuY = Math.Max(42, Math.Min(localY, view.Height - 126));
+                    contextMenuVisible = true;
+                    status = "Quick menu";
+                }
+                return;
+            }
+
+            if (!leftClicked || leftWasClicked)
+                return;
+
+            if (dialogMode != 0)
+            {
+                return;
+            }
+
+            if (contextMenuVisible)
+            {
+                if (HandleContextMenuClick(localX, localY))
+                    return;
+                contextMenuVisible = false;
+            }
 
             if (localY >= 4 && localY < 38)
             {
@@ -83,12 +122,111 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
+        private bool HandleContextMenuClick(int x, int y)
+        {
+            if (x < contextMenuX || x >= contextMenuX + 220 ||
+                y < contextMenuY || y >= contextMenuY + 116)
+                return false;
+
+            int item = (y - contextMenuY) / 29;
+            contextMenuVisible = false;
+
+            if (item == 0)
+            {
+                BeginCreate(1);
+                return true;
+            }
+
+            if (item == 1)
+            {
+                BeginCreate(2);
+                return true;
+            }
+
+            if (item == 2)
+            {
+                Refresh();
+                return true;
+            }
+
+            if (item == 3)
+            {
+                GoUp();
+                return true;
+            }
+
+            return true;
+        }
+
+        private void BeginCreate(int mode)
+        {
+            dialogMode = mode;
+            dialogName = "";
+            status = mode == 1 ? "New file: type a name" : "New folder: type a name";
+        }
+
+        private void FinishCreate()
+        {
+            string name = (dialogName ?? "").Trim();
+            if (string.IsNullOrEmpty(name))
+            {
+                status = "Name cannot be empty";
+                return;
+            }
+
+            if (name == "." || name == ".." || name.IndexOf('/') >= 0 || name.IndexOf('\\') >= 0)
+            {
+                status = "Invalid name";
+                return;
+            }
+
+            string path = Path.Combine(currentPath, name).Replace('\\', '/');
+            try
+            {
+                if (dialogMode == 1)
+                {
+                    if (File.Exists(path) || Directory.Exists(path))
+                    {
+                        status = "Already exists";
+                        return;
+                    }
+                    File.WriteAllText(path, "");
+                    status = "Created file: " + name;
+                }
+                else
+                {
+                    if (Directory.Exists(path) || File.Exists(path))
+                    {
+                        status = "Already exists";
+                        return;
+                    }
+                    Directory.CreateDirectory(path);
+                    status = "Created folder: " + name;
+                }
+
+                dialogMode = 0;
+                dialogName = "";
+                RefreshPreserveStatus();
+            }
+            catch (Exception ex)
+            {
+                status = "Create error: " + ex.Message;
+                dialogMode = 0;
+                dialogName = "";
+            }
+        }
+
+        private void CancelCreate()
+        {
+            dialogMode = 0;
+            dialogName = "";
+            status = "Cancelled";
+        }
+
         private void HandleToolbar(int x)
         {
             if (x < 42)
-            {
                 GoUp();
-            }
             else if (x < 84)
             {
                 currentPath = "/root";
@@ -96,21 +234,50 @@ namespace ZonderqOS.GUI.Apps
                 Refresh();
             }
             else if (x < 126)
-            {
                 Refresh();
-            }
             else if (x < 168)
             {
                 searchText = "";
                 status = "Search cleared";
-                Refresh();
+                RefreshPreserveStatus();
             }
         }
 
         public override void HandleKeyboard(KeyEvent key)
         {
+            if (dialogMode != 0)
+            {
+                if (key.Key == ConsoleKeyEx.Escape)
+                {
+                    CancelCreate();
+                    return;
+                }
+
+                if (key.Key == ConsoleKeyEx.Enter)
+                {
+                    FinishCreate();
+                    return;
+                }
+
+                if (key.Key == ConsoleKeyEx.Backspace)
+                {
+                    if (dialogName.Length > 0)
+                        dialogName = dialogName.Substring(0, dialogName.Length - 1);
+                    return;
+                }
+
+                if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar) && dialogName.Length < 64)
+                    dialogName += key.KeyChar;
+                return;
+            }
+
             if (key.Key == ConsoleKeyEx.Escape)
             {
+                if (contextMenuVisible)
+                {
+                    contextMenuVisible = false;
+                    return;
+                }
                 Close();
                 return;
             }
@@ -188,13 +355,20 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            string parent = Directory.GetParent(currentPath)?.FullName;
-            if (string.IsNullOrEmpty(parent))
-                parent = "/";
+            try
+            {
+                string parent = Directory.GetParent(currentPath)?.FullName;
+                if (string.IsNullOrEmpty(parent))
+                    parent = "/";
 
-            currentPath = parent.Replace('\\', '/');
-            searchText = "";
-            Refresh();
+                currentPath = parent.Replace('\\', '/');
+                searchText = "";
+                Refresh();
+            }
+            catch (Exception ex)
+            {
+                status = "Parent error: " + ex.Message;
+            }
         }
 
         private void OpenEntry(int index)
@@ -217,17 +391,26 @@ namespace ZonderqOS.GUI.Apps
                 status = "Opened " + entry.Name;
             }
             else
-            {
                 status = "No editor available";
-            }
         }
 
         private void Refresh()
         {
+            RefreshInternal("");
+        }
+
+        private void RefreshPreserveStatus()
+        {
+            string oldStatus = status;
+            RefreshInternal(oldStatus);
+        }
+
+        private void RefreshInternal(string statusAfter)
+        {
             entries.Clear();
             selectedIndex = -1;
             scrollIndex = 0;
-            status = "";
+            contextMenuVisible = false;
 
             try
             {
@@ -251,7 +434,9 @@ namespace ZonderqOS.GUI.Apps
                 if (!string.IsNullOrEmpty(searchText))
                     FilterEntries();
 
-                status = entries.Count + " item(s)";
+                status = string.IsNullOrEmpty(statusAfter)
+                    ? entries.Count + " item(s)"
+                    : statusAfter;
             }
             catch (Exception ex)
             {
@@ -309,6 +494,11 @@ namespace ZonderqOS.GUI.Apps
         public int SelectedIndex { get { return selectedIndex; } }
         public int ScrollIndex { get { return scrollIndex; } }
         public List<FileEntry> Entries { get { return entries; } }
+        public bool ContextMenuVisible { get { return contextMenuVisible; } }
+        public int ContextMenuX { get { return contextMenuX; } }
+        public int ContextMenuY { get { return contextMenuY; } }
+        public int DialogMode { get { return dialogMode; } }
+        public string DialogName { get { return dialogName; } }
     }
 
     public sealed class FileEntry
@@ -344,17 +534,22 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawRectangle(Color.Gray, X, Y, Width, Height);
 
             canvas.DrawFilledRectangle(Color.FromArgb(225, 230, 235), X + 4, Y + 4, Width - 8, 34);
-            DrawButton(canvas, IconType.ArrowUp, 8, "Up");
-            DrawButton(canvas, IconType.Start, 50, "Home");
-            DrawButton(canvas, IconType.Refresh, 92, "Refresh");
-            DrawButton(canvas, IconType.Search, 134, "Search");
+            DrawButton(canvas, IconType.ArrowUp, 8);
+            DrawButton(canvas, IconType.Start, 50);
+            DrawButton(canvas, IconType.Refresh, 92);
+            DrawButton(canvas, IconType.Search, 134);
 
             int pathX = X + 180;
-            canvas.DrawFilledRectangle(Color.White, pathX, Y + 8, Math.Max(120, Width - 190), 26);
-            canvas.DrawRectangle(Color.Silver, pathX, Y + 8, Math.Max(120, Width - 190), 26);
+            int pathWidth = Math.Max(120, Width - 190);
+            canvas.DrawFilledRectangle(Color.White, pathX, Y + 8, pathWidth, 26);
+            canvas.DrawRectangle(Color.Silver, pathX, Y + 8, pathWidth, 26);
+
             string pathText = app.CurrentPath;
             if (!string.IsNullOrEmpty(app.SearchText))
-                pathText += "   [search: " + app.SearchText + "]";
+                pathText += " [" + app.SearchText + "]";
+            int maxPathChars = Math.Max(8, (pathWidth - 14) / 16);
+            if (pathText.Length > maxPathChars)
+                pathText = "..." + pathText.Substring(pathText.Length - maxPathChars + 3);
             canvas.DrawString(pathText, font, Color.Black, pathX + 7, Y + 11);
 
             int listY = Y + 46;
@@ -378,26 +573,96 @@ namespace ZonderqOS.GUI.Apps
                     X + 4, rowY, Width - 8, rowHeight);
                 canvas.DrawLine(Color.Gainsboro, X + 4, rowY + rowHeight - 1, X + Width - 4, rowY + rowHeight - 1);
 
-                IconManager.Draw(canvas,
-                    entry.IsDirectory ? IconType.Folder : IconType.File,
+                IconManager.Draw(canvas, entry.IsDirectory ? IconType.Folder : IconType.File,
                     X + 10, rowY + 5, Color.White);
-                canvas.DrawString(entry.Name, font, Color.Black, X + 34, rowY + 4);
+
+                string displayName = entry.Name;
+                int maxNameChars = Math.Max(8, (Width - 205) / 16);
+                if (displayName.Length > maxNameChars)
+                    displayName = displayName.Substring(0, maxNameChars - 3) + "...";
+
+                canvas.DrawString(displayName, font, Color.Black, X + 34, rowY + 4);
                 canvas.DrawString(entry.IsDirectory ? "Folder" : "File", font, Color.DimGray, X + Width - 150, rowY + 4);
             }
 
             int footerY = Y + Height - 34;
             canvas.DrawFilledRectangle(Color.FromArgb(225, 230, 235), X + 4, footerY, Width - 8, 28);
-            canvas.DrawString(app.Status, font, Color.DimGray, X + 10, footerY + 3);
-            canvas.DrawString("Enter: open    Backspace: parent    F5: refresh", font, Color.DimGray,
-                X + Math.Max(10, Width - 410), footerY + 3);
+
+            string statusText = app.Status ?? "";
+            int maxStatusChars = Math.Max(8, (Width / 2 - 16) / 16);
+            if (statusText.Length > maxStatusChars)
+                statusText = statusText.Substring(0, maxStatusChars - 3) + "...";
+            canvas.DrawString(statusText, font, Color.DimGray, X + 10, footerY + 3);
+
+            string help = "Enter open | Backspace parent | F5 refresh";
+            int helpX = Math.Max(X + Width / 2, X + 220);
+            int maxHelpChars = Math.Max(8, (Width - (helpX - X) - 12) / 16);
+            if (help.Length > maxHelpChars)
+                help = help.Substring(0, maxHelpChars - 3) + "...";
+            canvas.DrawString(help, font, Color.DimGray, helpX, footerY + 3);
+
+            if (app.ContextMenuVisible)
+                RenderContextMenu(canvas);
+
+            if (app.DialogMode != 0)
+                RenderDialog(canvas);
         }
 
-        private void DrawButton(Canvas canvas, IconType type, int offset, string label)
+        private void DrawButton(Canvas canvas, IconType type, int offset)
         {
             int bx = X + offset;
             canvas.DrawFilledRectangle(Color.White, bx, Y + 7, 36, 28);
             canvas.DrawRectangle(Color.Silver, bx, Y + 7, 36, 28);
             IconManager.Draw(canvas, type, bx + 9, Y + 12, Color.Black);
+        }
+
+        private void RenderContextMenu(Canvas canvas)
+        {
+            int menuX = X + app.ContextMenuX;
+            int menuY = Y + app.ContextMenuY;
+            canvas.DrawFilledRectangle(Color.FromArgb(245, 245, 245), menuX + 3, menuY + 3, 220, 116);
+            canvas.DrawFilledRectangle(Color.White, menuX, menuY, 220, 116);
+            canvas.DrawRectangle(Color.DimGray, menuX, menuY, 220, 116);
+
+            DrawMenuItem(canvas, menuX, menuY, 0, "Nowy plik");
+            DrawMenuItem(canvas, menuX, menuY, 1, "Nowy folder");
+            DrawMenuItem(canvas, menuX, menuY, 2, "Odśwież");
+            DrawMenuItem(canvas, menuX, menuY, 3, "Przejdź wyżej");
+        }
+
+        private void DrawMenuItem(Canvas canvas, int x, int y, int index, string text)
+        {
+            int itemY = y + 4 + index * 29;
+            canvas.DrawFilledRectangle(Color.White, x + 4, itemY, 212, 25);
+            canvas.DrawString(text, font, Color.Black, x + 12, itemY + 2);
+        }
+
+        private void RenderDialog(Canvas canvas)
+        {
+            int dialogWidth = 500;
+            int dialogHeight = 150;
+            int dx = X + (Width - dialogWidth) / 2;
+            int dy = Y + (Height - dialogHeight) / 2;
+
+            canvas.DrawFilledRectangle(Color.FromArgb(40, 40, 40), dx + 4, dy + 4, dialogWidth, dialogHeight);
+            canvas.DrawFilledRectangle(Color.WhiteSmoke, dx, dy, dialogWidth, dialogHeight);
+            canvas.DrawRectangle(Color.DimGray, dx, dy, dialogWidth, dialogHeight);
+            canvas.DrawFilledRectangle(Color.FromArgb(35, 55, 75), dx, dy, dialogWidth, 32);
+
+            string title = app.DialogMode == 1 ? "Utwórz nowy plik" : "Utwórz nowy folder";
+            canvas.DrawString(title, font, Color.White, dx + 12, dy + 4);
+            canvas.DrawString("Nazwa:", font, Color.Black, dx + 16, dy + 52);
+
+            canvas.DrawFilledRectangle(Color.White, dx + 100, dy + 45, 380, 30);
+            canvas.DrawRectangle(Color.Silver, dx + 100, dy + 45, 380, 30);
+
+            string name = app.DialogName ?? "";
+            int maxChars = 22;
+            if (name.Length > maxChars)
+                name = name.Substring(name.Length - maxChars);
+            canvas.DrawString(name + "_", font, Color.Black, dx + 108, dy + 49);
+
+            canvas.DrawString("Enter = utwórz    Esc = anuluj", font, Color.DimGray, dx + 16, dy + 105);
         }
     }
 }
