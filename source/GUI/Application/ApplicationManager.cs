@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Keyboard;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -132,6 +133,11 @@ namespace ZonderqOS.GUI.Apps
 
             if (removed)
                 SetActiveStates(ActiveApplication);
+
+            // Safe GC point: all GUI applications finished Update() for this pass and
+            // rendering has not started yet. GcMaintenance only performs a collection
+            // when the managed heap has grown meaningfully or memory pressure is high.
+            GcMaintenance.Pump();
         }
 
         public void Render(Canvas canvas)
