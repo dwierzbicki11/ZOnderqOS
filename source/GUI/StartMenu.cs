@@ -23,6 +23,7 @@ namespace ZonderqOS.GUI
         private readonly List<string> toolLabels = new List<string>(6);
         private readonly List<IconType> toolIcons = new List<IconType>(6);
 
+        private Button lockButton;
         private Button exitButton;
         private Button rebootButton;
         private Button shutdownButton;
@@ -93,6 +94,12 @@ namespace ZonderqOS.GUI
             rebootButton = CreatePowerButton(reboot);
             shutdownButton = CreatePowerButton(shutdown);
             exitButton = CreatePowerButton(logout);
+            UpdateLayout();
+        }
+
+        public void SetLockAction(Action lockAction)
+        {
+            lockButton = CreatePowerButton(lockAction);
             UpdateLayout();
         }
 
@@ -181,28 +188,39 @@ namespace ZonderqOS.GUI
                 toolIndex++;
             }
 
-            int footerY = Y + Height - FooterHeight;
-            int powerY = footerY + 16;
+            // Four compact session/power controls fit beside the footer identity block.
+            const int powerWidth = 82;
+            const int powerGap = 8;
+            int powerY = Y + Height - FooterHeight + 16;
+            int powerRight = X + Width - Padding;
+
             if (shutdownButton != null)
             {
-                shutdownButton.X = X + Width - Padding - 92;
+                shutdownButton.X = powerRight - powerWidth;
                 shutdownButton.Y = powerY;
-                shutdownButton.Width = 92;
+                shutdownButton.Width = powerWidth;
                 shutdownButton.Height = 44;
             }
             if (rebootButton != null)
             {
-                rebootButton.X = X + Width - Padding - 192;
+                rebootButton.X = powerRight - powerWidth * 2 - powerGap;
                 rebootButton.Y = powerY;
-                rebootButton.Width = 92;
+                rebootButton.Width = powerWidth;
                 rebootButton.Height = 44;
             }
             if (exitButton != null)
             {
-                exitButton.X = X + Width - Padding - 292;
+                exitButton.X = powerRight - powerWidth * 3 - powerGap * 2;
                 exitButton.Y = powerY;
-                exitButton.Width = 92;
+                exitButton.Width = powerWidth;
                 exitButton.Height = 44;
+            }
+            if (lockButton != null)
+            {
+                lockButton.X = powerRight - powerWidth * 4 - powerGap * 3;
+                lockButton.Y = powerY;
+                lockButton.Width = powerWidth;
+                lockButton.Height = 44;
             }
         }
 
@@ -315,6 +333,8 @@ namespace ZonderqOS.GUI
             SmallTextRenderer.Draw(canvas, "ZONDERQOS", X + Padding + 34, footerY + 23, Text);
             SmallTextRenderer.Draw(canvas, "GEN3", X + Padding + 34, footerY + 38, Muted);
 
+            if (lockButton != null)
+                RenderPowerButton(canvas, lockButton, IconType.Settings, "BLOKUJ", false);
             if (exitButton != null)
                 RenderPowerButton(canvas, exitButton, IconType.Close, "WYLOGUJ", false);
             if (rebootButton != null)
@@ -392,6 +412,7 @@ namespace ZonderqOS.GUI
             UpdateLayout();
             UpdateButtonInteractions(pinnedButtons, mouseX, mouseY, isClicked, wasClicked);
             UpdateButtonInteractions(toolButtons, mouseX, mouseY, isClicked, wasClicked);
+            UpdatePowerInteraction(lockButton, mouseX, mouseY, isClicked, wasClicked);
             UpdatePowerInteraction(exitButton, mouseX, mouseY, isClicked, wasClicked);
             UpdatePowerInteraction(rebootButton, mouseX, mouseY, isClicked, wasClicked);
             UpdatePowerInteraction(shutdownButton, mouseX, mouseY, isClicked, wasClicked);
