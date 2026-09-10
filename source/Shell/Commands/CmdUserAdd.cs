@@ -3,39 +3,37 @@ namespace ZonderqOS.Commands
     public class CmdUserAdd : ICommand
     {
         public string Name => "useradd";
-        public string Description => "Create a new user (useradd <username> <password>)";
+        public string Description => "Create a new local user (root only)";
 
         public void Execute(string[] args, ref string currentPath)
         {
-            if (SecurityContext.CurrentUser != "root")
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUser != "root")
             {
-                WriteMessage.WriteError("Permission denied. Only root can create users.", "AUTH");
-                SecurityLogger.LogEvent("CRIT", $"Unauthorized attempt to create user '{args[1]}'.");
+                WriteMessage.WriteError("Permission denied. Only authenticated root can create users.", "AUTH");
+                SecurityLogger.LogEvent("CRIT", "Unauthorized useradd attempt.");
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
 
-            if (args.Length > 2)
+            if (args.Length <= 2)
             {
-                string username = args[1];
-                string password = args[2];
+                WriteMessage.WriteError("Usage: useradd <username> <password>", "CMD");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
 
-                if (UserManager.CreateUser(username, password))
-                {
-                    WriteMessage.WriteOK($"User '{username}' created successfully. Home directory: /home/{username}", "AUTH");
-                    SecurityLogger.LogEvent("INFO", $"Created new user account '{username}'.");
-                    CommandIO.LastCommandSuccess = true;
-                }
-                else
-                {
-                    WriteMessage.WriteError($"Failed to create user '{username}' (User may already exist).", "AUTH");
-                    SecurityLogger.LogEvent("WARN", $"Failed to create user '{username}' (conflict or error).");
-                    CommandIO.LastCommandSuccess = false;
-                }
+            string username = args[1];
+            string password = args[2];
+
+            if (UserManager.CreateUser(username, password))
+            {
+                string home = UserManager.GetHomeDirectory(username);
+                WriteMessage.WriteOK("User '" + username + "' created successfully. Home directory: " + home, "AUTH");
+                CommandIO.LastCommandSuccess = true;
             }
             else
             {
-                WriteMessage.WriteError("Usage: useradd <username> <password>", "CMD");
+                WriteMessage.WriteError("Failed to create user '" + username + "' (invalid name or account already exists).", "AUTH");
                 CommandIO.LastCommandSuccess = false;
             }
         }
