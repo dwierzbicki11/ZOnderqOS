@@ -28,13 +28,15 @@ namespace ZonderqOS.GUI
         private const int Padding = 6;
         private const int ItemHeight = 36;
 
-        public DesktopContextMenu(Action openTerminal, Action openFileManager, Action refreshDesktop,
-            Action openSystemInfo) : base(0, 0, MenuWidth, Padding * 2 + ItemHeight * 4)
+        public DesktopContextMenu(Action openTerminal, Action openFileManager, Action openNotepad,
+            Action refreshDesktop, Action openSystemInfo)
+            : base(0, 0, MenuWidth, Padding * 2 + ItemHeight * 5)
         {
             entries = new[]
             {
                 new MenuEntry("Open Terminal", IconType.Terminal, openTerminal),
                 new MenuEntry("Open File Manager", IconType.Folder, openFileManager),
+                new MenuEntry("Open Notepad", IconType.File, openNotepad),
                 new MenuEntry("Refresh Desktop", IconType.Refresh, refreshDesktop),
                 new MenuEntry("System Info", IconType.Settings, openSystemInfo)
             };
