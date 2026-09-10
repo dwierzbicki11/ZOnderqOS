@@ -73,19 +73,33 @@ namespace ZonderqOS.GUI.Apps
         public override void HandleMouse(int mouseX, int mouseY, bool left, bool oldLeft)
         {
             Window.HandleMouse(mouseX, mouseY, left, oldLeft);
-            if (!Window.Visible || !IsRunning || !left || oldLeft)
+            if (!Window.Visible || !IsRunning)
+                return;
+
+            if (dialogMode == 1)
+            {
+                // The open-file scrollbar needs continuous mouse state while dragging,
+                // not only the first click frame.
+                if (view.HandleOpenDialogScrollMouse(mouseX, mouseY, left, oldLeft))
+                    return;
+
+                if (!left || oldLeft)
+                    return;
+
+                int openX = mouseX - view.X;
+                int openY = mouseY - view.Y;
+                if (openX >= 0 && openY >= 0 && openX < view.Width && openY < view.Height)
+                    HandleOpenDialogMouse(openX, openY);
+                return;
+            }
+
+            if (!left || oldLeft)
                 return;
 
             int x = mouseX - view.X;
             int y = mouseY - view.Y;
             if (x < 0 || y < 0 || x >= view.Width || y >= view.Height)
                 return;
-
-            if (dialogMode == 1)
-            {
-                HandleOpenDialogMouse(x, y);
-                return;
-            }
 
             if (dialogMode != 0)
                 return;
@@ -472,9 +486,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             if (key.Key == ConsoleKeyEx.Enter || key.Key == ConsoleKeyEx.RightArrow)
-            {
                 OpenSelectedPickerEntry();
-            }
         }
 
         private void HandleOpenDialogMouse(int x, int y)
@@ -498,7 +510,8 @@ namespace ZonderqOS.GUI.Apps
             int listY = dialogY + 92;
             int listW = dialogWidth - 28;
             int listH = dialogHeight - 150;
-            if (x >= listX && x < listX + listW && y >= listY && y < listY + listH)
+            int listContentRight = listX + listW - NotepadView.OpenScrollBarReserve;
+            if (x >= listX && x < listContentRight && y >= listY && y < listY + listH)
             {
                 int row = (y - listY) / NotepadView.OpenRowHeight;
                 int index = openScrollIndex + row;
@@ -639,7 +652,19 @@ namespace ZonderqOS.GUI.Apps
             else if (openSelectedIndex >= openScrollIndex + visible)
                 openScrollIndex = openSelectedIndex - visible + 1;
 
+            ClampOpenScroll(visible);
+        }
+
+        internal void SetOpenScrollIndex(int value)
+        {
+            int visible = Math.Max(1, view.OpenVisibleRows);
             int maxScroll = Math.Max(0, openEntries.Count - visible);
+            openScrollIndex = Math.Max(0, Math.Min(value, maxScroll));
+        }
+
+        private void ClampOpenScroll(int visible)
+        {
+            int maxScroll = Math.Max(0, openEntries.Count - Math.Max(1, visible));
             if (openScrollIndex > maxScroll)
                 openScrollIndex = maxScroll;
             if (openScrollIndex < 0)
@@ -816,6 +841,7 @@ namespace ZonderqOS.GUI.Apps
     {
         private readonly NotepadApp app;
         private readonly Font font = PCScreenFont.DefaultFont;
+        private readonly ScrollBar openDialogScrollBar;
 
         private const int ToolbarHeight = 42;
         private const int EditorTop = 48;
@@ -824,6 +850,7 @@ namespace ZonderqOS.GUI.Apps
         private const int CharWidth = 16;
         private const int LineHeight = 32;
         internal const int OpenRowHeight = 30;
+        internal const int OpenScrollBarReserve = 16;
 
         private static readonly Color Chrome = Color.FromArgb(31, 37, 44);
         private static readonly Color ChromeRaised = Color.FromArgb(40, 47, 55);
@@ -845,6 +872,11 @@ namespace ZonderqOS.GUI.Apps
             : base(x, y, width, height)
         {
             app = owner;
+            openDialogScrollBar = new ScrollBar(0, 0, 10, 100);
+            openDialogScrollBar.ValueChanged = delegate(int value)
+            {
+                app.SetOpenScrollIndex(value);
+            };
         }
 
         public int VisibleRows
@@ -917,6 +949,36 @@ namespace ZonderqOS.GUI.Apps
             height = Math.Min(460, Math.Max(310, Height - 70));
             x = (Width - width) / 2;
             y = (Height - height) / 2;
+        }
+
+        public bool HandleOpenDialogScrollMouse(int mouseX, int mouseY, bool left, bool oldLeft)
+        {
+            if (app.DialogMode != 1)
+                return false;
+
+            UpdateOpenDialogScrollBar();
+            return openDialogScrollBar.HandleMouse(mouseX, mouseY, left, oldLeft);
+        }
+
+        private void UpdateOpenDialogScrollBar()
+        {
+            int localX;
+            int localY;
+            int width;
+            int height;
+            GetOpenDialogBounds(out localX, out localY, out width, out height);
+
+            int listX = X + localX + 14;
+            int listY = Y + localY + 92;
+            int listW = width - 28;
+            int listH = height - 150;
+
+            openDialogScrollBar.X = listX + listW - 13;
+            openDialogScrollBar.Y = listY + 3;
+            openDialogScrollBar.Width = 10;
+            openDialogScrollBar.Height = Math.Max(24, listH - 6);
+            openDialogScrollBar.SetRange(app.OpenEntries.Count, OpenVisibleRows);
+            openDialogScrollBar.Value = app.OpenScrollIndex;
         }
 
         public override void Render(Canvas canvas)
@@ -1012,7 +1074,8 @@ namespace ZonderqOS.GUI.Apps
             }
 
             if (app.ScrollX > 0)
-                SmallTextRenderer.Draw(canvas, "<", editorX + GutterWidth + 3, editorY + 7, Color.FromArgb(116, 166, 204));
+                SmallTextRenderer.Draw(canvas, "<", editorX + GutterWidth + 3, editorY + 7,
+                    Color.FromArgb(116, 166, 204));
         }
 
         private void EnsureVisibleTextCache()
@@ -1064,7 +1127,8 @@ namespace ZonderqOS.GUI.Apps
             int rightX = X + Width - 12 - rightWidth;
             SmallTextRenderer.DrawClipped(canvas, app.Status ?? "", X + 12, statusY + 8,
                 Math.Max(20, rightX - X - 28), Color.FromArgb(184, 195, 205));
-            SmallTextRenderer.Draw(canvas, app.PositionText, rightX, statusY + 8, Color.FromArgb(137, 174, 202));
+            SmallTextRenderer.Draw(canvas, app.PositionText, rightX, statusY + 8,
+                Color.FromArgb(137, 174, 202));
         }
 
         private void RenderDialog(Canvas canvas)
@@ -1150,6 +1214,7 @@ namespace ZonderqOS.GUI.Apps
             int listY = y + 92;
             int listW = width - 28;
             int listH = height - 150;
+            int contentW = Math.Max(40, listW - OpenScrollBarReserve);
             canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), listX, listY, listW, listH);
             canvas.DrawRectangle(Color.FromArgb(59, 70, 81), listX, listY, listW, listH);
 
@@ -1166,18 +1231,23 @@ namespace ZonderqOS.GUI.Apps
                 if (selected)
                 {
                     canvas.DrawFilledRectangle(Color.FromArgb(39, 66, 88), listX + 2, rowY + 1,
-                        listW - 4, OpenRowHeight - 2);
+                        contentW - 3, OpenRowHeight - 2);
                     canvas.DrawFilledRectangle(Accent, listX + 2, rowY + 1, 3, OpenRowHeight - 2);
                 }
 
                 IconManager.DrawScaled(canvas, entry.IsDirectory ? IconType.Folder : IconType.File,
                     listX + 10, rowY + 6, 18, 18);
                 SmallTextRenderer.DrawClipped(canvas, entry.Name, listX + 38, rowY + 11,
-                    listW - 50, selected ? Color.WhiteSmoke : MainText);
+                    Math.Max(20, contentW - 48), selected ? Color.WhiteSmoke : MainText);
             }
 
             if (app.OpenEntries.Count == 0)
                 SmallTextRenderer.Draw(canvas, "TEN KATALOG JEST PUSTY", listX + 16, listY + 16, SecondaryText);
+
+            // Reuse the system ScrollBar widget so the picker behaves consistently with
+            // Terminal and other modern ZOnderqOS views.
+            UpdateOpenDialogScrollBar();
+            openDialogScrollBar.Render(canvas);
 
             int buttonY = y + height - 44;
             int openX = x + width - 174;
@@ -1190,7 +1260,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawRectangle(Color.FromArgb(82, 96, 110), cancelX, buttonY, 74, 30);
             SmallTextRenderer.DrawCentered(canvas, "CANCEL", cancelX, buttonY + 11, 74, Color.WhiteSmoke);
 
-            SmallTextRenderer.DrawClipped(canvas, "ENTER OPEN   BACKSPACE UP   ESC CANCEL",
+            SmallTextRenderer.DrawClipped(canvas, "SCROLL LIST   ENTER OPEN   BACKSPACE UP   ESC CANCEL",
                 x + 14, y + height - 12, Math.Max(20, width - 210), SecondaryText);
         }
     }
