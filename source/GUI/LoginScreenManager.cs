@@ -11,9 +11,9 @@ using ZonderqOS.GUI.Icons;
 namespace ZonderqOS.GUI
 {
     /// <summary>
-    /// Full-screen authentication gate used before the desktop is exposed. User data is
-    /// loaded once when the screen starts (or on F5); the render loop itself reuses fixed
-    /// arrays and cached strings so an idle login screen does not continuously allocate.
+    /// Full-screen authentication gate used before the desktop is exposed. Account data
+    /// is loaded only on entry/F5. Password input uses a fixed character buffer and the
+    /// shared AuthenticationGuard provides throttling across graphical authentication.
     /// </summary>
     public static class LoginScreenManager
     {
@@ -26,15 +26,13 @@ namespace ZonderqOS.GUI
                 IconManager.Preload();
 
                 LoginScreen screen = new LoginScreen((int)canvas.Width, (int)canvas.Height);
-                bool previousLeft = false;
-                int previousMouseX = -1;
-                int previousMouseY = -1;
+                bool previousLeft = MouseManager.LeftButton;
+                int previousMouseX = (int)MouseManager.X;
+                int previousMouseY = (int)MouseManager.Y;
                 int frame = 0;
 
-                int mouseX = (int)MouseManager.X;
-                int mouseY = (int)MouseManager.Y;
                 screen.Render(canvas);
-                Cursor.Draw(canvas, mouseX, mouseY);
+                Cursor.Draw(canvas, previousMouseX, previousMouseY);
                 canvas.Display();
 
                 while (!SecurityContext.IsAuthenticated)
@@ -53,8 +51,8 @@ namespace ZonderqOS.GUI
                             break;
                     }
 
-                    mouseX = (int)MouseManager.X;
-                    mouseY = (int)MouseManager.Y;
+                    int mouseX = (int)MouseManager.X;
+                    int mouseY = (int)MouseManager.Y;
                     bool currentLeft = MouseManager.LeftButton;
                     bool pointerMoved = mouseX != previousMouseX || mouseY != previousMouseY;
                     bool buttonChanged = currentLeft != previousLeft;
@@ -66,8 +64,6 @@ namespace ZonderqOS.GUI
                     previousMouseX = mouseX;
                     previousMouseY = mouseY;
 
-                    // Rare heartbeat keeps the cursor/status visually healthy without
-                    // forcing a permanent 60 FPS full-frame redraw at 1920x1080.
                     bool heartbeat = frame % 134 == 0;
                     if (!SecurityContext.IsAuthenticated &&
                         (keyboardActivity || pointerMoved || buttonChanged || heartbeat))
@@ -80,6 +76,7 @@ namespace ZonderqOS.GUI
                     Thread.Sleep(15);
                 }
 
+                screen.ClearSensitiveData();
                 return true;
             }
             catch (Exception ex)
@@ -91,7 +88,8 @@ namespace ZonderqOS.GUI
 
         private sealed class LoginScreen
         {
-            private const int MaxUsers = 8;
+            private const int MaxUsers = 16;
+            private const int VisibleUsers = 6;
             private const int MaxUsernameLength = 32;
             private const int MaxPasswordLength = 128;
             private const string PasswordMask =
@@ -105,18 +103,21 @@ namespace ZonderqOS.GUI
             private static readonly Color Text = Color.FromArgb(232, 237, 242);
             private static readonly Color Muted = Color.FromArgb(134, 150, 165);
             private static readonly Color Good = Color.FromArgb(78, 185, 126);
+            private static readonly Color Warning = Color.FromArgb(224, 174, 76);
             private static readonly Color Danger = Color.FromArgb(215, 86, 91);
 
             private readonly int screenWidth;
             private readonly int screenHeight;
             private readonly string[] users = new string[MaxUsers];
+            private readonly char[] password = new char[MaxPasswordLength];
 
             private int userCount;
             private int selectedUser;
+            private int userOffset;
+            private int passwordLength;
             private bool passwordField;
-            private int failedAttempts;
+            private bool defaultRootPassword;
             private string username = string.Empty;
-            private string password = string.Empty;
             private string status = "WYBIERZ KONTO LUB WPISZ LOGIN";
             private Color statusColor = Muted;
 
@@ -127,8 +128,16 @@ namespace ZonderqOS.GUI
                 LoadUsers();
             }
 
+            public void ClearSensitiveData()
+            {
+                ClearPassword();
+            }
+
             public void HandleKeyboard(KeyEvent key)
             {
+                if (key == null)
+                    return;
+
                 if (key.Key == ConsoleKeyEx.F5)
                 {
                     LoadUsers();
@@ -152,7 +161,7 @@ namespace ZonderqOS.GUI
                 {
                     if (passwordField)
                     {
-                        password = string.Empty;
+                        ClearPassword();
                         passwordField = false;
                         SetStatus("LOGIN", Muted);
                     }
@@ -168,8 +177,11 @@ namespace ZonderqOS.GUI
                 {
                     if (passwordField)
                     {
-                        if (password.Length > 0)
-                            password = password.Substring(0, password.Length - 1);
+                        if (passwordLength > 0)
+                        {
+                            passwordLength--;
+                            password[passwordLength] = '\0';
+                        }
                     }
                     else if (username.Length > 0)
                     {
@@ -181,7 +193,7 @@ namespace ZonderqOS.GUI
                 if (key.Key == ConsoleKeyEx.Delete)
                 {
                     if (passwordField)
-                        password = string.Empty;
+                        ClearPassword();
                     else
                         username = string.Empty;
                     return;
@@ -194,6 +206,7 @@ namespace ZonderqOS.GUI
                         if (!string.IsNullOrEmpty(username))
                         {
                             passwordField = true;
+                            ClearPassword();
                             SetStatus("WPISZ HASLO I NACISNIJ ENTER", Muted);
                         }
                     }
@@ -210,8 +223,8 @@ namespace ZonderqOS.GUI
 
                 if (passwordField)
                 {
-                    if (password.Length < MaxPasswordLength)
-                        password += ch;
+                    if (passwordLength < MaxPasswordLength)
+                        password[passwordLength++] = ch;
                 }
                 else if (username.Length < MaxUsernameLength && IsUsernameChar(ch))
                 {
@@ -228,16 +241,21 @@ namespace ZonderqOS.GUI
                 int cardY = (screenHeight - 500) / 2;
                 int rightX = cardX + 242;
 
-                for (int i = 0; i < userCount && i < 6; i++)
+                for (int row = 0; row < VisibleUsers; row++)
                 {
-                    int rowY = cardY + 142 + i * 48;
+                    int index = userOffset + row;
+                    if (index >= userCount)
+                        break;
+
+                    int rowY = cardY + 142 + row * 48;
                     if (Hit(mouseX, mouseY, cardX + 24, rowY, 190, 40))
                     {
-                        selectedUser = i;
-                        username = users[i] ?? string.Empty;
-                        password = string.Empty;
+                        selectedUser = index;
+                        username = users[index] ?? string.Empty;
+                        ClearPassword();
                         passwordField = true;
-                        SetStatus("WPISZ HASLO", Muted);
+                        KeepSelectedVisible();
+                        ShowAccountStatus();
                         return;
                     }
                 }
@@ -245,6 +263,7 @@ namespace ZonderqOS.GUI
                 if (Hit(mouseX, mouseY, rightX + 28, cardY + 148, 350, 48))
                 {
                     passwordField = false;
+                    ClearPassword();
                     return;
                 }
 
@@ -259,6 +278,7 @@ namespace ZonderqOS.GUI
                     if (!passwordField && !string.IsNullOrEmpty(username))
                     {
                         passwordField = true;
+                        ClearPassword();
                         SetStatus("WPISZ HASLO", Muted);
                     }
                     else if (passwordField)
@@ -300,6 +320,13 @@ namespace ZonderqOS.GUI
                 canvas.DrawFilledRectangle(SystemTheme.Accent, cardX, cardY, 5, cardHeight);
 
                 SmallTextRenderer.Draw(canvas, "KONTA", cardX + 24, cardY + 34, Muted);
+                if (userCount > VisibleUsers)
+                {
+                    SmallTextRenderer.DrawUInt(canvas, (ulong)(selectedUser + 1), cardX + 144, cardY + 34, Text);
+                    SmallTextRenderer.Draw(canvas, "/", cardX + 164, cardY + 34, Muted);
+                    SmallTextRenderer.DrawUInt(canvas, (ulong)userCount, cardX + 176, cardY + 34, Text);
+                }
+
                 canvas.DrawString("Logowanie", PCScreenFont.DefaultFont, Text, rightX + 28, cardY + 27);
                 SmallTextRenderer.Draw(canvas, "AUTORYZACJA WYMAGANA PRZED URUCHOMIENIEM PULPITU",
                     rightX + 30, cardY + 68, Muted);
@@ -329,6 +356,12 @@ namespace ZonderqOS.GUI
                 SmallTextRenderer.Draw(canvas, "F5 KONTA  |  GORA/DOL WYBOR  |  ESC WSTECZ",
                     rightX + 43, cardY + 417, Muted);
 
+                if (defaultRootPassword)
+                {
+                    SmallTextRenderer.Draw(canvas,
+                        "UWAGA: konto root nadal uzywa domyslnego hasla. Zmien je po zalogowaniu.",
+                        28, screenHeight - 58, Warning);
+                }
                 SmallTextRenderer.Draw(canvas, "ZOnderqOS chroni pulpit przed dostepem bez uwierzytelnienia.",
                     28, screenHeight - 38, Muted);
                 RenderPowerButton(canvas, screenWidth - 226, screenHeight - 66, 92, "REBOOT", IconType.Reboot, false);
@@ -344,17 +377,20 @@ namespace ZonderqOS.GUI
                     return;
                 }
 
-                int shown = System.Math.Min(6, userCount);
-                for (int i = 0; i < shown; i++)
+                for (int row = 0; row < VisibleUsers; row++)
                 {
-                    int rowY = cardY + 142 + i * 48;
-                    bool selected = i == selectedUser;
+                    int index = userOffset + row;
+                    if (index >= userCount)
+                        break;
+
+                    int rowY = cardY + 142 + row * 48;
+                    bool selected = index == selectedUser;
                     canvas.DrawFilledRectangle(selected ? SystemTheme.AccentSoft : CardAlt,
                         cardX + 24, rowY, 190, 40);
                     canvas.DrawRectangle(selected ? SystemTheme.AccentBorder : Border,
                         cardX + 24, rowY, 190, 40);
                     IconManager.DrawScaled(canvas, IconType.Start, cardX + 35, rowY + 9, 22, 22);
-                    SmallTextRenderer.DrawClipped(canvas, users[i], cardX + 68, rowY + 17, 132,
+                    SmallTextRenderer.DrawClipped(canvas, users[index], cardX + 68, rowY + 17, 132,
                         selected ? Text : Muted);
                 }
             }
@@ -374,17 +410,14 @@ namespace ZonderqOS.GUI
                     else
                         SmallTextRenderer.DrawClipped(canvas, username, x + 15, y + 21, width - 30, Text);
                 }
+                else if (passwordLength == 0)
+                {
+                    SmallTextRenderer.Draw(canvas, "haslo", x + 15, y + 21, Muted);
+                }
                 else
                 {
-                    if (password.Length == 0)
-                    {
-                        SmallTextRenderer.Draw(canvas, "haslo", x + 15, y + 21, Muted);
-                    }
-                    else
-                    {
-                        int visible = System.Math.Min(password.Length, 48);
-                        SmallTextRenderer.DrawRange(canvas, PasswordMask, 0, visible, x + 15, y + 21, Text);
-                    }
+                    int visible = System.Math.Min(passwordLength, 48);
+                    SmallTextRenderer.DrawRange(canvas, PasswordMask, 0, visible, x + 15, y + 21, Text);
                 }
             }
 
@@ -434,13 +467,40 @@ namespace ZonderqOS.GUI
                 }
 
                 selectedUser = 0;
+                userOffset = 0;
+                string lastUser = UserProfileManager.GetLastUser();
+                if (!string.IsNullOrEmpty(lastUser))
+                {
+                    for (int i = 0; i < userCount; i++)
+                    {
+                        if (users[i] == lastUser)
+                        {
+                            selectedUser = i;
+                            break;
+                        }
+                    }
+                }
+
                 if (userCount > 0)
-                    username = users[0] ?? string.Empty;
+                    username = users[selectedUser] ?? string.Empty;
                 else
                     username = string.Empty;
 
-                password = string.Empty;
+                ClearPassword();
                 passwordField = userCount > 0;
+                KeepSelectedVisible();
+
+                try
+                {
+                    defaultRootPassword = UserManager.UserExists("root") &&
+                                          UserManager.ValidateCredentials("root", "root");
+                }
+                catch
+                {
+                    defaultRootPassword = false;
+                }
+
+                ShowAccountStatus();
             }
 
             private void SelectUser(int delta)
@@ -455,9 +515,32 @@ namespace ZonderqOS.GUI
                     selectedUser = 0;
 
                 username = users[selectedUser] ?? string.Empty;
-                password = string.Empty;
+                ClearPassword();
                 passwordField = true;
-                SetStatus("WYBRANO KONTO - WPISZ HASLO", Muted);
+                KeepSelectedVisible();
+                ShowAccountStatus();
+            }
+
+            private void KeepSelectedVisible()
+            {
+                if (selectedUser < userOffset)
+                    userOffset = selectedUser;
+                else if (selectedUser >= userOffset + VisibleUsers)
+                    userOffset = selectedUser - VisibleUsers + 1;
+
+                int maxOffset = System.Math.Max(0, userCount - VisibleUsers);
+                if (userOffset > maxOffset)
+                    userOffset = maxOffset;
+                if (userOffset < 0)
+                    userOffset = 0;
+            }
+
+            private void ShowAccountStatus()
+            {
+                if (defaultRootPassword && username == "root")
+                    SetStatus("ROOT: ZMIEN DOMYSLNE HASLO PO LOGOWANIU", Warning);
+                else
+                    SetStatus("WYBRANO KONTO - WPISZ HASLO", Muted);
             }
 
             private void Authenticate()
@@ -465,28 +548,44 @@ namespace ZonderqOS.GUI
                 if (string.IsNullOrEmpty(username))
                 {
                     passwordField = false;
+                    ClearPassword();
                     SetStatus("BRAK NAZWY UZYTKOWNIKA", Danger);
                     return;
                 }
 
-                if (UserManager.TryStartSession(username, password))
+                int retryAfter;
+                if (!AuthenticationGuard.CanAttempt(username, out retryAfter))
                 {
-                    failedAttempts = 0;
-                    password = string.Empty;
+                    ClearPassword();
+                    SetStatus("ZA DUZO PROB - ODCZEKAJ " + retryAfter + " S", Danger);
+                    return;
+                }
+
+                string enteredPassword = new string(password, 0, passwordLength);
+                ClearPassword();
+                bool ok = UserManager.TryStartSession(username, enteredPassword);
+                enteredPassword = null;
+
+                if (ok)
+                {
+                    AuthenticationGuard.RecordSuccess(username);
                     SetStatus("ZALOGOWANO", Good);
                     return;
                 }
 
-                failedAttempts++;
-                password = string.Empty;
-                passwordField = true;
-                SetStatus("NIEPRAWIDLOWY LOGIN LUB HASLO", Danger);
+                AuthenticationGuard.RecordFailure(username);
+                retryAfter = AuthenticationGuard.GetRetryAfterSeconds(username);
+                if (retryAfter > 0)
+                    SetStatus("NIEPRAWIDLOWE DANE - BLOKADA " + retryAfter + " S", Danger);
+                else
+                    SetStatus("NIEPRAWIDLOWY LOGIN LUB HASLO", Danger);
+            }
 
-                // A short escalating delay slows trivial brute-force attempts while
-                // avoiding a persistent lockout that could make the OS unrecoverable.
-                Thread.Sleep(failedAttempts >= 3 ? 1800 : 650);
-                if (failedAttempts >= 3)
-                    failedAttempts = 0;
+            private void ClearPassword()
+            {
+                for (int i = 0; i < passwordLength; i++)
+                    password[i] = '\0';
+                passwordLength = 0;
             }
 
             private void SetStatus(string message, Color color)
