@@ -54,24 +54,24 @@ namespace ZonderqOS.GUI.Icons
             switch (type)
             {
                 case IconType.Terminal:
-                    return IconResources.Terminal;
+                    return IconResources.Get("Icons.terminal-2.png");
                 case IconType.FileManager:
                 case IconType.Folder:
-                    return IconResources.Folder;
+                    return IconResources.Get("Icons.folder.png");
                 case IconType.File:
-                    return IconResources.File;
+                    return IconResources.Get("Icons.file.png");
                 case IconType.Settings:
-                    return IconResources.Settings;
+                    return IconResources.Get("Icons.settings-2.png");
                 case IconType.About:
-                    return IconResources.About;
+                    return IconResources.Get("Icons.info-circle.png");
                 case IconType.Close:
-                    return IconResources.Close;
+                    return IconResources.Get("Icons.square-rounded-x.png");
                 case IconType.Maximize:
-                    return IconResources.Maximize;
+                    return IconResources.Get("Icons.arrows-maximize.png");
                 case IconType.Restore:
-                    return IconResources.Restore;
+                    return IconResources.Get("Icons.restore.png");
                 case IconType.Start:
-                    return IconResources.Start;
+                    return IconResources.Get("Icons.home.png");
                 default:
                     return null;
             }
