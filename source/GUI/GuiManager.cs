@@ -28,16 +28,6 @@ namespace ZonderqOS.GUI
 
         private const int TaskbarHeight = 44;
 
-        // Normal desktop/app windows are fully event-driven: if nothing changes,
-        // there is no reason to repaint the 1920x1080 framebuffer. A very slow
-        // heartbeat remains only so the taskbar clock can advance while completely idle.
-        private const int IdleClockHeartbeatFrames = 4000; // ~60 s at 15 ms loop sleep
-
-        // Task Manager is the one window that intentionally shows changing telemetry.
-        // One refresh per ~1 s is enough for graphs/counters and avoids turning an
-        // otherwise idle desktop into a continuous renderer.
-        private const int TelemetryRenderHeartbeatFrames = 67; // ~1 s
-
         private const string WallpaperCacheDirectory = "/root/.zonderq-wallpapers";
         private const string WallpaperCachePath = WallpaperCacheDirectory + "/wallpaper.png";
         private const string WallpaperResourceName = "Wallpapers.wallpaper.png";
@@ -51,6 +41,10 @@ namespace ZonderqOS.GUI
                 Console.WriteLine($"[GUI] Rzeczywista rozdzielczość Canvas: {canvas.Width}x{canvas.Height}");
                 Console.WriteLine("[GUI] Uruchamiam pulpit...");
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
+
+                // Settings are read once. Later GUI decisions use only primitive fields,
+                // so no configuration-file IO happens in the render loop.
+                global::ZonderqOS.SystemSettings.Load();
 
                 // Decode embedded PNG assets exactly once before the first GUI frame.
                 // Later renders only reuse persistent raw pixel buffers.
@@ -66,24 +60,25 @@ namespace ZonderqOS.GUI
                     () => LaunchFileManager(120, 78),
                     () => LaunchNotepad(150, 105, null),
                     RefreshDesktop,
-                    () => LaunchDiagnostics(170, 120));
+                    () => LaunchSettings(145, 92));
 
                 int menuWidth = 480;
                 int menuHeight = 560;
                 startMenu = new StartMenu(8, (int)canvas.Height - TaskbarHeight - menuHeight - 8, menuWidth, menuHeight);
 
-                // Six primary apps form the fixed pinned grid. These entries and their
-                // callbacks are allocated once during GUI startup, not while rendering.
+                // Six primary apps form the fixed pinned grid. System settings replace
+                // the old diagnostics shortcut as the main control-center entry.
                 startMenu.AddPinned("Terminal", IconType.Terminal, () => LaunchTerminal(125, 90));
                 startMenu.AddPinned("File Manager", IconType.Folder, () => LaunchFileManager(105, 75));
                 startMenu.AddPinned("Notatnik", IconType.File, () => LaunchNotepad(145, 100, null));
                 startMenu.AddPinned("Manager zadan", IconType.Settings, () => LaunchTaskManager(165, 110));
-                startMenu.AddPinned("Diagnostyka", IconType.Settings, () => LaunchDiagnostics(150, 120));
+                startMenu.AddPinned("Ustawienia", IconType.Settings, () => LaunchSettings(125, 82));
                 startMenu.AddPinned("O Systemie", IconType.About, () => LaunchAbout(180, 140));
 
+                startMenu.AddTool("Diagnostyka", IconType.About, () => LaunchDiagnostics(150, 120));
                 startMenu.AddTool("Pomoc", IconType.About, () => LaunchAbout(210, 160));
                 startMenu.AddTool("Odswiez pulpit", IconType.Refresh, RefreshDesktop);
-                startMenu.AddTool("System", IconType.Settings, () => LaunchDiagnostics(200, 130));
+                startMenu.AddTool("System", IconType.Settings, () => LaunchSettings(145, 92));
 
                 // Cosmos Gen3 3.0.82 exposes user-facing power operations through
                 // Cosmos.Kernel.System.Power. Reboot/Shutdown do not return on success.
@@ -108,9 +103,6 @@ namespace ZonderqOS.GUI
                 int previousMouseX = -1;
                 int previousMouseY = -1;
 
-                // First frame is always drawn. Later frames are caused by input or by
-                // a deliberately low-rate heartbeat. An idle normal application no
-                // longer causes periodic full-screen redraws every few hundred ms.
                 int firstMouseX = (int)MouseManager.X;
                 int firstMouseY = (int)MouseManager.Y;
                 RenderFrame(firstMouseX, firstMouseY);
@@ -167,11 +159,15 @@ namespace ZonderqOS.GUI
 
                     applicationManager.Update();
 
-                    bool heartbeat;
-                    if (applicationManager.HasLiveTelemetryWindow)
-                        heartbeat = frameCounter % TelemetryRenderHeartbeatFrames == 0;
-                    else
-                        heartbeat = frameCounter % IdleClockHeartbeatFrames == 0;
+                    // The selected performance profile is a live setting. It changes
+                    // repaint cadence without restarting the GUI and without allocating
+                    // timers/delegates in the frame loop.
+                    int heartbeatFrames = applicationManager.HasLiveTelemetryWindow
+                        ? global::ZonderqOS.SystemSettings.TelemetryHeartbeatFrames
+                        : global::ZonderqOS.SystemSettings.IdleHeartbeatFrames;
+                    if (heartbeatFrames < 1)
+                        heartbeatFrames = 1;
+                    bool heartbeat = frameCounter % heartbeatFrames == 0;
 
                     if (keyboardActivity || pointerMoved || buttonChanged || heartbeat)
                         RenderFrame(mouseX, mouseY);
@@ -207,7 +203,7 @@ namespace ZonderqOS.GUI
                 new DesktopShortcut(20, 22, "File Manager", IconType.Folder, () => LaunchFileManager(110, 72)),
                 new DesktopShortcut(20, 116, "Terminal", IconType.Terminal, () => LaunchTerminal(135, 92)),
                 new DesktopShortcut(20, 210, "Notatnik", IconType.File, () => LaunchNotepad(150, 105, null)),
-                new DesktopShortcut(20, 304, "System", IconType.Settings, () => LaunchDiagnostics(155, 116)),
+                new DesktopShortcut(20, 304, "Ustawienia", IconType.Settings, () => LaunchSettings(130, 82)),
                 new DesktopShortcut(20, 398, "About", IconType.About, () => LaunchAbout(180, 138))
             };
         }
@@ -246,6 +242,14 @@ namespace ZonderqOS.GUI
             applicationManager.Launch(new TaskManagerModernApp(x, y, applicationManager, null));
         }
 
+        private void LaunchSettings(int x, int y)
+        {
+            applicationManager.Launch(new SettingsApp(x, y,
+                () => LaunchTaskManager(170, 110),
+                () => LaunchDiagnostics(180, 125),
+                null));
+        }
+
         private void LaunchDiagnostics(int x, int y)
         {
             applicationManager.Launch(new DiagnosticsApp(x, y, null));
@@ -261,6 +265,25 @@ namespace ZonderqOS.GUI
         {
             if (desktopShortcuts == null)
                 return;
+
+            if (!global::ZonderqOS.SystemSettings.ShowDesktopIcons)
+            {
+                selectedShortcut = -1;
+                for (int i = 0; i < desktopShortcuts.Length; i++)
+                {
+                    desktopShortcuts[i].IsHovered = false;
+                    desktopShortcuts[i].IsSelected = false;
+                }
+
+                // A hidden desktop still keeps the context menu available on empty space.
+                if (rightClicked && !wasRightClicked && !IsPointOverWindow(mouseX, mouseY) && !startMenu.Visible &&
+                    mouseY >= 0 && mouseY < (int)canvas.Height - TaskbarHeight && desktopContextMenu != null)
+                {
+                    desktopContextMenu.ShowAt(mouseX, mouseY, (int)canvas.Width,
+                        (int)canvas.Height - TaskbarHeight);
+                }
+                return;
+            }
 
             if (desktopContextMenu != null && desktopContextMenu.Visible)
             {
@@ -354,7 +377,7 @@ namespace ZonderqOS.GUI
 
         private void RenderDesktopShortcuts()
         {
-            if (desktopShortcuts == null)
+            if (desktopShortcuts == null || !global::ZonderqOS.SystemSettings.ShowDesktopIcons)
                 return;
 
             for (int i = 0; i < desktopShortcuts.Length; i++)
