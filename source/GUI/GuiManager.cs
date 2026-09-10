@@ -68,25 +68,36 @@ namespace ZonderqOS.GUI
                     RefreshDesktop,
                     () => LaunchDiagnostics(170, 120));
 
-                int menuWidth = 340;
-                int menuHeight = 430;
+                int menuWidth = 480;
+                int menuHeight = 560;
                 startMenu = new StartMenu(8, (int)canvas.Height - TaskbarHeight - menuHeight - 8, menuWidth, menuHeight);
 
-                startMenu.AddItem("Terminal CLI", IconType.Terminal, () => LaunchTerminal(125, 90));
-                startMenu.AddItem("File Manager", IconType.Folder, () => LaunchFileManager(105, 75));
-                startMenu.AddItem("Notatnik", IconType.File, () => LaunchNotepad(145, 100, null));
-                startMenu.AddItem("Manager zadan", IconType.Settings, () => LaunchTaskManager(165, 110));
-                startMenu.AddItem("Diagnostyka", IconType.Settings, () => LaunchDiagnostics(150, 120));
-                startMenu.AddItem("O Systemie", IconType.About, () => LaunchAbout(180, 140));
-                startMenu.AddItem("Pomoc", IconType.About, () => LaunchAbout(210, 160));
-                startMenu.AddItem("Odśwież pulpit", IconType.Refresh, RefreshDesktop);
-                startMenu.AddItem("Sesja GUI", IconType.Start, () => { });
-                startMenu.AddItem("Informacje systemowe", IconType.Settings, () => LaunchDiagnostics(200, 130));
-                startMenu.AddItem("Wyjdź z GUI", IconType.Close, () => isRunning = false);
+                // Six primary apps form the fixed pinned grid. These entries and their
+                // callbacks are allocated once during GUI startup, not while rendering.
+                startMenu.AddPinned("Terminal", IconType.Terminal, () => LaunchTerminal(125, 90));
+                startMenu.AddPinned("File Manager", IconType.Folder, () => LaunchFileManager(105, 75));
+                startMenu.AddPinned("Notatnik", IconType.File, () => LaunchNotepad(145, 100, null));
+                startMenu.AddPinned("Manager zadan", IconType.Settings, () => LaunchTaskManager(165, 110));
+                startMenu.AddPinned("Diagnostyka", IconType.Settings, () => LaunchDiagnostics(150, 120));
+                startMenu.AddPinned("O Systemie", IconType.About, () => LaunchAbout(180, 140));
+
+                startMenu.AddTool("Pomoc", IconType.About, () => LaunchAbout(210, 160));
+                startMenu.AddTool("Odswiez pulpit", IconType.Refresh, RefreshDesktop);
+                startMenu.AddTool("System", IconType.Settings, () => LaunchDiagnostics(200, 130));
+
+                // Cosmos Gen3 3.0.82 exposes user-facing power operations through
+                // Cosmos.Kernel.System.Power. Reboot/Shutdown do not return on success.
+                startMenu.SetPowerActions(
+                    () => Cosmos.Kernel.System.Power.Reboot(),
+                    () => Cosmos.Kernel.System.Power.Shutdown(),
+                    () => isRunning = false);
 
                 taskbar = new Taskbar((int)canvas.Width, (int)canvas.Height, TaskbarHeight, () =>
                 {
-                    startMenu.Visible = !startMenu.Visible;
+                    bool opening = !startMenu.Visible;
+                    startMenu.Visible = opening;
+                    if (opening)
+                        startMenu.ResetSearch();
                     if (desktopContextMenu != null)
                         desktopContextMenu.Visible = false;
                     selectedShortcut = -1;
@@ -126,6 +137,9 @@ namespace ZonderqOS.GUI
                             desktopContextMenu.Visible = false;
                             continue;
                         }
+
+                        if (startMenu.Visible && startMenu.HandleKeyboard(key))
+                            continue;
 
                         applicationManager.HandleKeyboard(key);
                     }
