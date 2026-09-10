@@ -1,8 +1,4 @@
 #!/bin/bash
-
-
-git pull origin main
-
 cosmos build
 
 qemu-system-x86_64 \
