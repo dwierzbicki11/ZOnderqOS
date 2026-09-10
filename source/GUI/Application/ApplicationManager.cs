@@ -42,6 +42,7 @@ namespace ZonderqOS.GUI.Apps
             application.Window.RestoreFromMinimized();
             applications.Remove(application);
             applications.Add(application);
+            SetActiveStates(application);
         }
 
         public void ToggleMinimize(Application application)
@@ -53,10 +54,13 @@ namespace ZonderqOS.GUI.Apps
             {
                 application.Window.RestoreFromMinimized();
                 Activate(application);
+                return;
             }
-            else if (ActiveApplication == application)
+
+            if (ActiveApplication == application)
             {
                 application.Window.Minimize();
+                SetActiveStates(ActiveApplication);
             }
             else
             {
@@ -71,6 +75,7 @@ namespace ZonderqOS.GUI.Apps
 
             application.Close();
             applications.Remove(application);
+            SetActiveStates(ActiveApplication);
         }
 
         public void HandleKeyboard(KeyEvent key)
@@ -95,6 +100,7 @@ namespace ZonderqOS.GUI.Apps
                     Application application = applications[i];
                     if (application == null || !application.IsRunning || application.Window == null)
                         continue;
+
                     if (application.Window.ContainsPoint(mouseX, mouseY))
                     {
                         target = application;
@@ -109,14 +115,23 @@ namespace ZonderqOS.GUI.Apps
 
         public void Update()
         {
+            bool removed = false;
             for (int i = applications.Count - 1; i >= 0; i--)
             {
                 Application application = applications[i];
                 if (application == null || !application.IsRunning || application.Window == null)
+                {
                     applications.RemoveAt(i);
+                    removed = true;
+                }
                 else
+                {
                     application.Update();
+                }
             }
+
+            if (removed)
+                SetActiveStates(ActiveApplication);
         }
 
         public void Render(Canvas canvas)
@@ -127,6 +142,19 @@ namespace ZonderqOS.GUI.Apps
                 if (application != null && application.IsRunning && application.Window != null &&
                     application.Window.Visible && !application.Window.IsMinimized)
                     application.Render(canvas);
+            }
+        }
+
+        private void SetActiveStates(Application active)
+        {
+            for (int i = 0; i < applications.Count; i++)
+            {
+                Application application = applications[i];
+                if (application == null || application.Window == null)
+                    continue;
+
+                application.Window.IsActive = application == active && application.IsRunning &&
+                    application.Window.Visible && !application.Window.IsMinimized;
             }
         }
     }
