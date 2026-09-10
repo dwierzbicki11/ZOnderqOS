@@ -47,9 +47,13 @@ namespace ZonderqOS.GUI
         private static readonly Color Panel = Color.FromArgb(31, 38, 46);
         private static readonly Color PanelHover = Color.FromArgb(40, 55, 68);
         private static readonly Color Border = Color.FromArgb(59, 72, 84);
-        private static readonly Color Accent = Color.FromArgb(64, 143, 204);
         private static readonly Color Text = Color.FromArgb(232, 237, 242);
         private static readonly Color Muted = Color.FromArgb(132, 149, 164);
+
+        private static Color Accent
+        {
+            get { return SystemTheme.Accent; }
+        }
 
         public StartMenu(int x, int y, int width, int height) : base(x, y, width, height)
         {
@@ -74,7 +78,6 @@ namespace ZonderqOS.GUI
             UpdateLayout();
         }
 
-        // Compatibility with the older Start-menu setup API.
         public void AddItem(string text, Action onClick)
         {
             AddPinned(text, IconType.File, onClick);
@@ -268,7 +271,7 @@ namespace ZonderqOS.GUI
                     continue;
 
                 Color background = button.IsHovered ? PanelHover : Panel;
-                Color border = button.IsHovered ? Color.FromArgb(72, 132, 177) : Border;
+                Color border = button.IsHovered ? SystemTheme.AccentBorder : Border;
                 canvas.DrawFilledRectangle(background, button.X, button.Y, button.Width, button.Height);
                 canvas.DrawRectangle(border, button.X, button.Y, button.Width, button.Height);
                 if (button.IsHovered)
@@ -296,7 +299,7 @@ namespace ZonderqOS.GUI
 
                 canvas.DrawFilledRectangle(button.IsHovered ? PanelHover : Panel,
                     button.X, button.Y, button.Width, button.Height);
-                canvas.DrawRectangle(button.IsHovered ? Color.FromArgb(72, 132, 177) : Border,
+                canvas.DrawRectangle(button.IsHovered ? SystemTheme.AccentBorder : Border,
                     button.X, button.Y, button.Width, button.Height);
                 IconManager.DrawScaled(canvas, toolIcons[i], button.X + 9, button.Y + 10, 20, 20);
                 SmallTextRenderer.DrawClipped(canvas, toolLabels[i], button.X + 36, button.Y + 17,
@@ -325,7 +328,7 @@ namespace ZonderqOS.GUI
         private static void RenderPowerButton(Canvas canvas, Button button, IconType icon, string label, bool danger)
         {
             Color normal = danger ? Color.FromArgb(57, 38, 43) : Color.FromArgb(31, 39, 47);
-            Color hover = danger ? Color.FromArgb(86, 45, 52) : Color.FromArgb(42, 57, 70);
+            Color hover = danger ? Color.FromArgb(86, 45, 52) : SystemTheme.AccentSoft;
             Color border = danger ? Color.FromArgb(112, 61, 69) : Color.FromArgb(61, 80, 96);
             canvas.DrawFilledRectangle(button.IsHovered ? hover : normal, button.X, button.Y, button.Width, button.Height);
             canvas.DrawRectangle(button.IsHovered ? Accent : border, button.X, button.Y, button.Width, button.Height);
