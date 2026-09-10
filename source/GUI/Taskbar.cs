@@ -104,10 +104,10 @@ namespace ZonderqOS.GUI
                     bool hovered = visibleIndex == hoveredAppIndex;
 
                     Color bg = active
-                        ? Color.FromArgb(43, 66, 88)
+                        ? SystemTheme.AccentSoft
                         : hovered ? Color.FromArgb(35, 45, 55) : Color.FromArgb(25, 31, 38);
                     Color border = active
-                        ? Color.FromArgb(67, 135, 191)
+                        ? SystemTheme.AccentBorder
                         : hovered ? Color.FromArgb(61, 76, 90) : Color.FromArgb(38, 47, 56);
 
                     canvas.DrawFilledRectangle(bg, appX, Y + 3, AppButtonSize, Height - 6);
@@ -115,7 +115,7 @@ namespace ZonderqOS.GUI
                     IconManager.DrawScaled(canvas, GetApplicationIcon(app), appX + 9, Y + 9, 22, 22);
 
                     if (active && !minimized)
-                        canvas.DrawFilledRectangle(Color.FromArgb(69, 153, 218), appX + 10, Y + Height - 4, 20, 3);
+                        canvas.DrawFilledRectangle(SystemTheme.Accent, appX + 10, Y + Height - 4, 20, 3);
                     else if (minimized)
                         canvas.DrawFilledRectangle(Color.FromArgb(98, 107, 116), appX + 14, Y + Height - 4, 12, 2);
                     else
@@ -210,7 +210,7 @@ namespace ZonderqOS.GUI
         private void DrawTrayTile(Canvas canvas, int x, int width, IconType icon, string label, bool ready)
         {
             Color background = ready ? Color.FromArgb(31, 48, 60) : Color.FromArgb(30, 35, 41);
-            Color border = ready ? Color.FromArgb(55, 93, 119) : Color.FromArgb(49, 58, 67);
+            Color border = ready ? SystemTheme.AccentBorder : Color.FromArgb(49, 58, 67);
             Color indicator = ready ? Color.FromArgb(72, 173, 118) : Color.FromArgb(111, 119, 127);
 
             canvas.DrawFilledRectangle(background, x, Y + 6, width, Height - 12);
