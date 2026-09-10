@@ -16,6 +16,7 @@ namespace ZonderqOS.SystemCore
         // establish a new baseline. This avoids collecting every frame while
         // preventing small render-time allocations from accumulating forever.
         private const ulong ManagedDriftCollectionPages = 2048;
+        private const int LogMaintenanceCycles = 15; // 15 * 4s ~= once per minute
         private static readonly TimeSpan RamAlertInterval = TimeSpan.FromMinutes(1);
         private static readonly TimeSpan MinimumGcInterval = TimeSpan.FromSeconds(15);
 
@@ -26,6 +27,7 @@ namespace ZonderqOS.SystemCore
                 DateTime lastRamAlert = DateTime.MinValue;
                 DateTime lastManagedCollection = DateTime.MinValue;
                 ulong stableFreePages = 0;
+                int logMaintenanceCounter = 0;
 
                 while (!token.IsCancellationRequested)
                 {
@@ -64,17 +66,24 @@ namespace ZonderqOS.SystemCore
                             }
                         }
 
-                        string logPath = "/sysmon.log";
-                        if (File.Exists(logPath))
+                        // FileInfo is a managed object, so do not create it every four
+                        // seconds just to police the log size. Once per minute is enough.
+                        logMaintenanceCounter++;
+                        if (logMaintenanceCounter >= LogMaintenanceCycles)
                         {
-                            try
+                            logMaintenanceCounter = 0;
+                            const string logPath = "/sysmon.log";
+                            if (File.Exists(logPath))
                             {
-                                FileInfo logInfo = new FileInfo(logPath);
-                                if (logInfo.Length > MaxLogByteLength)
-                                    Disk.CreateFile(logPath, "[GUARDIAN] Log file truncated due to size limits.\n");
-                            }
-                            catch
-                            {
+                                try
+                                {
+                                    FileInfo logInfo = new FileInfo(logPath);
+                                    if (logInfo.Length > MaxLogByteLength)
+                                        Disk.CreateFile(logPath, "[GUARDIAN] Log file truncated due to size limits.\n");
+                                }
+                                catch
+                                {
+                                }
                             }
                         }
                     }
