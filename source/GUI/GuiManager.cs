@@ -1,5 +1,7 @@
 using System;
 using System.Drawing;
+using System.IO;
+using System.Reflection;
 using System.Threading;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Keyboard;
@@ -15,9 +17,12 @@ namespace ZonderqOS.GUI
         private StartMenu startMenu;
         private ApplicationManager applicationManager;
         private bool isRunning = true;
+        private Png wallpaper;
 
-        private static readonly Color DesktopFallback = Color.FromArgb(12, 18, 27);
-        private static readonly Color DesktopGlow = Color.FromArgb(18, 34, 52);
+        private const int TaskbarHeight = 44;
+        private const string WallpaperCacheDirectory = "/root/.zonderq-wallpapers";
+        private const string WallpaperCachePath = WallpaperCacheDirectory + "/wallpaper.png";
+        private const string WallpaperResourceName = "Wallpapers.wallpaper.png";
 
         public void Run()
         {
@@ -29,13 +34,13 @@ namespace ZonderqOS.GUI
                 Console.WriteLine("[GUI] Uruchamiam pulpit...");
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
 
-                int taskbarHeight = 44;
-                Window.ConfigureDesktop((int)canvas.Width, (int)canvas.Height - taskbarHeight);
+                Window.ConfigureDesktop((int)canvas.Width, (int)canvas.Height - TaskbarHeight);
                 applicationManager = new ApplicationManager();
+                LoadWallpaper();
 
                 int menuWidth = 280;
                 int menuHeight = 360;
-                startMenu = new StartMenu(0, (int)canvas.Height - taskbarHeight - menuHeight, menuWidth, menuHeight);
+                startMenu = new StartMenu(0, (int)canvas.Height - TaskbarHeight - menuHeight, menuWidth, menuHeight);
 
                 startMenu.AddItem("Terminal CLI", () =>
                 {
@@ -56,7 +61,7 @@ namespace ZonderqOS.GUI
                 startMenu.AddItem("Informacje systemowe", () => applicationManager.Launch(new DiagnosticsApp(200, 130, null)));
                 startMenu.AddItem("Wyjdź z GUI", () => isRunning = false);
 
-                taskbar = new Taskbar((int)canvas.Width, (int)canvas.Height, taskbarHeight, () =>
+                taskbar = new Taskbar((int)canvas.Width, (int)canvas.Height, TaskbarHeight, () =>
                 {
                     startMenu.Visible = !startMenu.Visible;
                 }, applicationManager);
@@ -107,12 +112,48 @@ namespace ZonderqOS.GUI
             }
         }
 
+        private void LoadWallpaper()
+        {
+            try
+            {
+                Assembly assembly = typeof(GuiManager).Assembly;
+                using (Stream stream = assembly.GetManifestResourceStream(WallpaperResourceName))
+                {
+                    if (stream == null)
+                    {
+                        Console.WriteLine("[GUI] Nie znaleziono zasobu tapety PNG.");
+                        return;
+                    }
+
+                    Directory.CreateDirectory(WallpaperCacheDirectory);
+                    if (!File.Exists(WallpaperCachePath))
+                    {
+                        using (FileStream output = File.Create(WallpaperCachePath))
+                            stream.CopyTo(output);
+                    }
+                }
+
+                wallpaper = new Png(WallpaperCachePath);
+                Console.WriteLine("[GUI] Załadowano tapetę: source/Wallpapers/wallpaper.png");
+            }
+            catch (Exception ex)
+            {
+                wallpaper = null;
+                Console.WriteLine($"[GUI] Nie udało się załadować tapety: {ex.Message}");
+            }
+        }
+
         private void RenderDesktop()
         {
-            // Warstwa przygotowana pod tapetę PNG/JPG. Do czasu dodania pliku zachowujemy
-            // spokojne tło zastępcze, bez zmiany API Canvas ani tworzenia bitmap co klatkę.
-            canvas.Clear(DesktopFallback);
-            canvas.DrawFilledRectangle(DesktopGlow, 0, 0, (int)canvas.Width, (int)canvas.Height - 44);
+            int desktopHeight = (int)canvas.Height - TaskbarHeight;
+            if (wallpaper != null)
+            {
+                canvas.DrawImage(wallpaper, 0, 0, (int)canvas.Width, desktopHeight);
+                return;
+            }
+
+            canvas.Clear(Color.FromArgb(12, 18, 27));
+            canvas.DrawFilledRectangle(Color.FromArgb(18, 34, 52), 0, 0, (int)canvas.Width, desktopHeight);
         }
     }
 }
