@@ -17,6 +17,27 @@ namespace ZonderqOS.GUI.Icons
         Search,
         Trash,
         Reboot,
-        Shutdown
+        Shutdown,
+
+        ImageViewer,
+        Calculator,
+        Paint,
+        Network,
+        DiskManager,
+        HexViewer,
+        Calendar,
+        AppCenter,
+
+        Open,
+        Save,
+        ZoomIn,
+        ZoomOut,
+        Rotate,
+        Pencil,
+        Eraser,
+        Wifi,
+        Ethernet,
+        Install,
+        Play
     }
 }
