@@ -266,7 +266,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "LOKALNY KATALOG WBUDOWANYCH APLIKACJI ZONDERQOS", x + 55, y + 32, Muted);
 
             SmallTextRenderer.Draw(canvas, "ZAINSTALOWANE", x + width - 190, y + 14, Muted);
-            SmallTextRenderer.DrawUInt(canvas, AppCount, x + width - 70, y + 14, Text);
+            SmallTextRenderer.DrawUInt(canvas, (ulong)AppCount, x + width - 70, y + 14, Text);
         }
 
         private void RenderTabs(Canvas canvas)
