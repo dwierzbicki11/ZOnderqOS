@@ -16,6 +16,7 @@ namespace ZonderqOS.GUI.Icons
             DrawScaled(canvas, type, x, y, IconSize, IconSize);
         }
 
+        // Draw directly from the single cached Png. No resized bitmap/cache is created per frame.
         public static void DrawScaled(Canvas canvas, IconType type, int x, int y, int width, int height)
         {
             Png image = GetImage(type);
