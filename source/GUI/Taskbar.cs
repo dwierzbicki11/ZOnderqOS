@@ -48,6 +48,9 @@ namespace ZonderqOS.GUI
             if (name.IndexOf("terminal", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 name.IndexOf("shell", StringComparison.OrdinalIgnoreCase) >= 0)
                 return IconType.Terminal;
+            if (name.IndexOf("task", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("zadan", StringComparison.OrdinalIgnoreCase) >= 0)
+                return IconType.Settings;
             if (name.IndexOf("file", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 name.IndexOf("manager", StringComparison.OrdinalIgnoreCase) >= 0)
                 return IconType.Folder;
