@@ -14,11 +14,19 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
+            if (ProcessManager.IsRunning("sysmond"))
+            {
+                CommandIO.WriteLine("[INFO] Demon sysmond już działa.");
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
             CommandIO.WriteLine("[INFO] Inicjalizacja sysmond w tle...");
 
-            ProcessManager.Start("sysmond", (token) =>
+            int pid = ProcessManager.Start("sysmond", token =>
             {
-                string logFile = @"/sysmon.log";
+                const string logFile = "/sysmon.log";
+
                 while (!token.IsCancellationRequested)
                 {
                     ulong freePages = PageAllocator.FreePageCount;
@@ -29,9 +37,7 @@ namespace ZonderqOS.Commands
                     try
                     {
                         if (File.Exists(logFile) && new FileInfo(logFile).Length >= MaxLogBytes)
-                        {
                             File.WriteAllText(logFile, "=== sysmond log rotated ===\n");
-                        }
 
                         File.AppendAllText(logFile, logEntry);
                     }
@@ -40,11 +46,12 @@ namespace ZonderqOS.Commands
                         // Telemetria nie może zatrzymać procesu sysmond.
                     }
 
-                    if (token.WaitHandle.WaitOne(10000)) break;
+                    if (token.WaitHandle.WaitOne(10000))
+                        break;
                 }
             });
 
-            CommandIO.WriteLine("[OK] Demon sysmond uruchomiony pomyślnie.");
+            CommandIO.WriteLine($"[OK] Demon sysmond uruchomiony pomyślnie (PID {pid}).");
             CommandIO.LastCommandSuccess = true;
         }
     }
