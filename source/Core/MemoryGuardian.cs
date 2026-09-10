@@ -31,24 +31,21 @@ namespace ZonderqOS.SystemCore
                             ulong freePercent = (freePages * 100) / totalPages;
                             DateTime now = DateTime.UtcNow;
 
-                            if (freePercent <= RamCriticalThresholdPercent)
+                            if (freePercent <= RamCriticalThresholdPercent &&
+                                now - lastRamAlert >= RamAlertInterval)
                             {
-                                // Do not run OrionGC from this background thread. Ask the
-                                // GUI/main execution path to collect at its controlled safe
-                                // point after application updates and before rendering.
-                                GcMaintenance.RequestCollection();
-
-                                if (now - lastRamAlert >= RamAlertInterval)
-                                {
-                                    string ramAlert = $"[CRITICAL][RAM] Niski stan pamięci! Wolne: {freePercent}% ({freePages}/{totalPages} stron)\n";
-                                    Disk.AppendFile("/sysmon.log", ramAlert);
-                                    lastRamAlert = now;
-                                }
+                                string ramAlert = $"[CRITICAL][RAM] Niski stan pamięci! Wolne: {freePercent}% ({freePages}/{totalPages} stron)\n";
+                                Disk.AppendFile("/sysmon.log", ramAlert);
+                                lastRamAlert = now;
                             }
                         }
 
-                        // FileInfo is a managed object, so do not create it every four
-                        // seconds just to police the log size. Once per minute is enough.
+                        // OrionGC performs its own collection from the allocator slow path.
+                        // Do not call or request a manual collection from a scheduled thread:
+                        // forcing a full mark/sweep outside the allocator path has caused
+                        // #PF/#GP crashes in the GUI/input workload. Memory stability here is
+                        // maintained by bounded buffers and reusable render/snapshot objects.
+
                         logMaintenanceCounter++;
                         if (logMaintenanceCounter >= LogMaintenanceCycles)
                         {
