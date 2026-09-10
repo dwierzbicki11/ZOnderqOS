@@ -43,11 +43,15 @@ namespace ZonderqOS.GUI.Apps
             terminalBox.FontScale = Window.IsMaximized ? 1.0f : 0.8125f;
         }
 
-        public override void Update() { UpdateLayout(); }
+        public override void Update()
+        {
+            UpdateLayout();
+        }
 
         public override void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
         {
             terminalBox.HandleMouse(mouseX, mouseY, isClicked, wasClicked);
+            base.HandleMouse(mouseX, mouseY, isClicked, wasClicked);
         }
 
         private void UpdatePrompt()
@@ -59,8 +63,11 @@ namespace ZonderqOS.GUI.Apps
 
         private void PrintCommandOutput(string output)
         {
-            if (string.IsNullOrEmpty(output)) return;
-            string[] lines = output.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
+            if (string.IsNullOrEmpty(output))
+                return;
+
+            string normalized = output.Replace("\r\n", "\n").Replace("\r", "\n");
+            string[] lines = normalized.Split('\n');
             foreach (string line in lines)
             {
                 if (line == "\u0001GUI_CLEAR\u0001")
@@ -68,33 +75,37 @@ namespace ZonderqOS.GUI.Apps
                     terminalBox.ClearOutput();
                     continue;
                 }
-                if (line.Length > 0) terminalBox.PrintLine(line);
+
+                if (line.Length > 0)
+                    terminalBox.PrintLine(line);
             }
         }
 
         public override void HandleKeyboard(KeyEvent key)
         {
             terminalBox.HandleKey(key);
-            if (key.Key != ConsoleKeyEx.Enter) return;
+            if (key.Key != ConsoleKeyEx.Enter)
+                return;
 
             string command = terminalBox.Text.Trim();
             terminalBox.PrintLine(terminalBox.Prompt + command);
             terminalBox.ClearInput();
-            if (string.IsNullOrEmpty(command)) return;
+            if (string.IsNullOrEmpty(command))
+                return;
 
+            CommandIO.StartRedirection();
             try
             {
-                CommandIO.StartRedirection();
                 Command.Run(command, ref currentPath);
-                string output = CommandIO.EndRedirection();
-                PrintCommandOutput(output);
-                UpdatePrompt();
             }
             catch (Exception ex)
             {
+                terminalBox.PrintLine($"Błąd jądra: {ex.Message}");
+            }
+            finally
+            {
                 string output = CommandIO.EndRedirection();
                 PrintCommandOutput(output);
-                terminalBox.PrintLine($"Błąd jądra: {ex.Message}");
                 UpdatePrompt();
             }
         }
@@ -103,6 +114,7 @@ namespace ZonderqOS.GUI.Apps
         {
             if (CommandIO.NanoLauncher == nanoLauncher)
                 CommandIO.NanoLauncher = null;
+
             base.Close();
             closeCallback?.Invoke();
         }
