@@ -16,4 +16,10 @@
     <PackageReference Include="Cosmos.Kernel.System" Version="3.0.82" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="source/GUI/Icons/Assets/*.png">
+      <LogicalName>Icons.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>
