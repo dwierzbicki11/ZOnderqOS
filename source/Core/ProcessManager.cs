@@ -24,6 +24,7 @@ namespace ZonderqOS.SystemCore
     public static class ProcessManager
     {
         private static readonly Dictionary<int, KernelProcess> _processes = new Dictionary<int, KernelProcess>();
+        private static readonly List<int> _deadPidScratch = new List<int>(16);
         private static int _nextPid = 1;
         private static readonly object _registryLock = new object();
 
@@ -88,27 +89,33 @@ namespace ZonderqOS.SystemCore
             }
         }
 
-        public static List<KernelProcess> GetActiveProcesses()
+        /// <summary>
+        /// Fills a caller-owned list with the active process registry without allocating
+        /// a new snapshot list on every refresh. This is intended for GUI monitors that
+        /// poll frequently. The destination list is cleared and reused.
+        /// </summary>
+        public static int FillActiveProcesses(List<KernelProcess> destination)
         {
+            if (destination == null)
+                throw new ArgumentNullException(nameof(destination));
+
             lock (_registryLock)
             {
-                var activeList = new List<KernelProcess>();
-                var deadPids = new List<int>();
+                destination.Clear();
+                _deadPidScratch.Clear();
 
                 foreach (var kvp in _processes)
                 {
-                    if (kvp.Value.IsRunning)
-                    {
-                        activeList.Add(kvp.Value);
-                    }
+                    KernelProcess process = kvp.Value;
+                    if (process != null && process.IsRunning)
+                        destination.Add(process);
                     else
-                    {
-                        deadPids.Add(kvp.Key);
-                    }
+                        _deadPidScratch.Add(kvp.Key);
                 }
 
-                foreach (int pid in deadPids)
+                for (int i = 0; i < _deadPidScratch.Count; i++)
                 {
+                    int pid = _deadPidScratch[i];
                     if (_processes.TryGetValue(pid, out var process))
                     {
                         _processes.Remove(pid);
@@ -116,8 +123,16 @@ namespace ZonderqOS.SystemCore
                     }
                 }
 
-                return activeList;
+                _deadPidScratch.Clear();
+                return destination.Count;
             }
+        }
+
+        public static List<KernelProcess> GetActiveProcesses()
+        {
+            var activeList = new List<KernelProcess>();
+            FillActiveProcesses(activeList);
+            return activeList;
         }
     }
 }
