@@ -25,6 +25,27 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
+        /// <summary>
+        /// Only windows that display changing telemetry need an idle redraw. Normal
+        /// desktop/application windows are purely event driven and should not force
+        /// the whole 1920x1080 GUI to render while the user is doing nothing.
+        /// </summary>
+        public bool HasLiveTelemetryWindow
+        {
+            get
+            {
+                for (int i = 0; i < applications.Count; i++)
+                {
+                    Application application = applications[i];
+                    if (application is TaskManagerModernApp && application.IsRunning &&
+                        application.Window != null && application.Window.Visible &&
+                        !application.Window.IsMinimized)
+                        return true;
+                }
+                return false;
+            }
+        }
+
         public void Launch(Application application)
         {
             if (application == null || !application.IsRunning)
