@@ -5,6 +5,7 @@ using System.IO;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Graphics.Fonts;
 using Cosmos.Kernel.System.Keyboard;
+using Cosmos.Kernel.System.Storage;
 using ZonderqOS.GUI.Icons;
 using Font = Cosmos.Kernel.System.Graphics.Fonts.Font;
 
@@ -15,19 +16,32 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action<string> nanoLauncher;
         private readonly FileManagerView view;
         private readonly List<FileEntry> entries = new List<FileEntry>();
-        private string currentPath = "/root", searchText = "", status = "";
-        private int selectedIndex = -1, scrollIndex, lastClickIndex = -1, clickFrame = -1000, frameCounter;
+        private readonly List<SidebarEntry> sidebarEntries = new List<SidebarEntry>();
+
+        private string currentPath = "/root";
+        private string searchText = "";
+        private string status = "";
+        private int selectedIndex = -1;
+        private int scrollIndex;
+        private int lastClickIndex = -1;
+        private int clickFrame = -1000;
+        private int frameCounter;
         private bool contextMenuVisible;
-        private int contextMenuX, contextMenuY, dialogMode;
+        private int contextMenuX;
+        private int contextMenuY;
+        private int dialogMode;
         private string dialogName = "";
 
-        private const int ToolbarTop = 4;
-        private const int ToolbarHeight = 40;
-        private const int ContentTop = 50;
-        private const int FooterHeight = 24;
-        private const int TileWidth = 112;
-        private const int TileHeight = 94;
-        private const int TileGap = 6;
+        internal const int ToolbarTop = 4;
+        internal const int ToolbarHeight = 40;
+        internal const int ContentTop = 50;
+        internal const int FooterHeight = 24;
+        internal const int SidebarWidth = 176;
+        internal const int TileWidth = 112;
+        internal const int TileHeight = 94;
+        internal const int TileGap = 6;
+        internal const int SidebarSectionHeight = 22;
+        internal const int SidebarItemHeight = 36;
 
         public FileManagerApp(int x, int y, Action<string> openFile) : base("File Manager")
         {
@@ -36,6 +50,7 @@ namespace ZonderqOS.GUI.Apps
             Window.CloseAction = Close;
             view = new FileManagerView(10, 40, 800, 465, this);
             Window.AddChild(view);
+            RebuildSidebar();
             Refresh();
         }
 
@@ -44,8 +59,8 @@ namespace ZonderqOS.GUI.Apps
             frameCounter++;
             view.X = Window.X + 10;
             view.Y = Window.Y + 40;
-            view.Width = Math.Max(360, Window.Width - 20);
-            view.Height = Math.Max(220, Window.Height - 50);
+            view.Width = Math.Max(480, Window.Width - 20);
+            view.Height = Math.Max(260, Window.Height - 50);
         }
 
         public override void HandleMouse(int x, int y, bool clicked, bool wasClicked)
@@ -53,22 +68,24 @@ namespace ZonderqOS.GUI.Apps
             HandleMouse(x, y, clicked, wasClicked, false, false);
         }
 
-        public override void HandleMouse(int mx, int my, bool left, bool oldLeft, bool right, bool oldRight)
+        public override void HandleMouse(int mouseX, int mouseY, bool left, bool oldLeft, bool right, bool oldRight)
         {
-            Window.HandleMouse(mx, my, left, oldLeft);
+            Window.HandleMouse(mouseX, mouseY, left, oldLeft);
             if (!Window.Visible)
                 return;
 
-            int x = mx - view.X;
-            int y = my - view.Y;
+            int x = mouseX - view.X;
+            int y = mouseY - view.Y;
             if (x < 0 || y < 0 || x >= view.Width || y >= view.Height)
                 return;
 
+            int contentBottom = view.Height - FooterHeight - 8;
+
             if (right && !oldRight)
             {
-                if (dialogMode == 0)
+                if (dialogMode == 0 && x >= SidebarWidth + 6 && y >= ContentTop && y < contentBottom)
                 {
-                    contextMenuX = Math.Max(6, Math.Min(x, view.Width - 226));
+                    contextMenuX = Math.Max(SidebarWidth + 8, Math.Min(x, view.Width - 226));
                     contextMenuY = Math.Max(ContentTop, Math.Min(y, view.Height - 126));
                     contextMenuVisible = true;
                 }
@@ -91,12 +108,18 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            int contentBottom = view.Height - FooterHeight - 8;
-            if (y < ContentTop || y >= contentBottom || x < 4)
+            if (y < ContentTop || y >= contentBottom)
                 return;
 
+            if (x < SidebarWidth + 4)
+            {
+                SidebarClick(y);
+                return;
+            }
+
+            int gridLeft = SidebarWidth + 8;
             int columns = Columns();
-            int col = (x - 4) / (TileWidth + TileGap);
+            int col = (x - gridLeft) / (TileWidth + TileGap);
             int row = (y - ContentTop) / (TileHeight + TileGap);
             if (col < 0 || col >= columns || row < 0)
                 return;
@@ -128,7 +151,7 @@ namespace ZonderqOS.GUI.Apps
             else if (item == 1)
                 BeginCreate(2);
             else if (item == 2)
-                Refresh();
+                RefreshAll();
             else if (item == 3)
                 GoUp();
 
@@ -138,20 +161,71 @@ namespace ZonderqOS.GUI.Apps
         private void Toolbar(int x)
         {
             if (x < 42)
+            {
                 GoUp();
+            }
             else if (x < 84)
             {
-                currentPath = "/root";
-                searchText = "";
-                Refresh();
+                NavigateTo("/root");
             }
             else if (x < 126)
-                Refresh();
+            {
+                RefreshAll();
+            }
             else if (x < 168)
             {
                 searchText = "";
                 status = "Search cleared";
                 RefreshKeepStatus();
+            }
+        }
+
+        private void SidebarClick(int y)
+        {
+            int itemY = ContentTop + 8;
+            for (int i = 0; i < sidebarEntries.Count; i++)
+            {
+                SidebarEntry entry = sidebarEntries[i];
+                int height = entry.IsSection ? SidebarSectionHeight : SidebarItemHeight;
+
+                if (!entry.IsSection && y >= itemY && y < itemY + height)
+                {
+                    if (entry.Navigable && !string.IsNullOrEmpty(entry.Path))
+                    {
+                        NavigateTo(entry.Path);
+                    }
+                    else
+                    {
+                        status = string.IsNullOrEmpty(entry.Detail)
+                            ? entry.Label
+                            : entry.Label + ": " + entry.Detail;
+                    }
+                    return;
+                }
+
+                itemY += height;
+                if (itemY >= view.Height - FooterHeight - 10)
+                    break;
+            }
+        }
+
+        private void NavigateTo(string path)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
+                {
+                    status = "Location unavailable";
+                    return;
+                }
+
+                currentPath = path.Replace('\\', '/');
+                searchText = "";
+                Refresh();
+            }
+            catch (Exception ex)
+            {
+                status = "Navigation error: " + ex.Message;
             }
         }
 
@@ -236,7 +310,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (key.Key == ConsoleKeyEx.F5)
             {
-                Refresh();
+                RefreshAll();
                 return;
             }
 
@@ -250,7 +324,8 @@ namespace ZonderqOS.GUI.Apps
 
         private int Columns()
         {
-            return Math.Max(1, (view.Width - 8 + TileGap) / (TileWidth + TileGap));
+            int gridWidth = Math.Max(TileWidth, view.Width - SidebarWidth - 14);
+            return Math.Max(1, (gridWidth + TileGap) / (TileWidth + TileGap));
         }
 
         private void Select(int delta)
@@ -297,10 +372,8 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
-                string p = Directory.GetParent(currentPath)?.FullName;
-                currentPath = string.IsNullOrEmpty(p) ? "/" : p.Replace('\\', '/');
-                searchText = "";
-                Refresh();
+                string parent = Directory.GetParent(currentPath)?.FullName;
+                NavigateTo(string.IsNullOrEmpty(parent) ? "/" : parent);
             }
             catch (Exception ex)
             {
@@ -316,9 +389,7 @@ namespace ZonderqOS.GUI.Apps
             FileEntry entry = entries[index];
             if (entry.IsDirectory)
             {
-                currentPath = entry.FullPath;
-                searchText = "";
-                Refresh();
+                NavigateTo(entry.FullPath);
             }
             else if (nanoLauncher != null)
             {
@@ -381,6 +452,12 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
+        private void RefreshAll()
+        {
+            RebuildSidebar();
+            Refresh();
+        }
+
         private void Refresh()
         {
             RefreshInternal("");
@@ -418,7 +495,84 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
-        private void Add(string[] paths, bool dir)
+        private void RebuildSidebar()
+        {
+            sidebarEntries.Clear();
+            sidebarEntries.Add(SidebarEntry.Section("PLACES"));
+            sidebarEntries.Add(SidebarEntry.Location("Home", "/root", IconType.Start, "USER FILES"));
+            sidebarEntries.Add(SidebarEntry.Location("Root", "/", IconType.Folder, "FILESYSTEM"));
+
+            if (Directory.Exists("/home"))
+                sidebarEntries.Add(SidebarEntry.Location("Users", "/home", IconType.Folder, "/HOME"));
+            if (Directory.Exists("/mnt"))
+                sidebarEntries.Add(SidebarEntry.Location("Mounts", "/mnt", IconType.Folder, "/MNT"));
+
+            sidebarEntries.Add(SidebarEntry.Section("VOLUMES"));
+
+            try
+            {
+                int partitionCount = StorageManager.Partitions.Count;
+                if (partitionCount > 0)
+                {
+                    var rootPartition = StorageManager.Partitions[0];
+                    ulong rootBytes = (ulong)rootPartition.BlockCount * (ulong)rootPartition.BlockSize;
+                    sidebarEntries.Add(SidebarEntry.Location("System", "/", IconType.FileManager,
+                        FormatCapacity(rootBytes) + "  MOUNTED"));
+
+                    for (int i = 1; i < partitionCount && i < 5; i++)
+                    {
+                        var partition = StorageManager.Partitions[i];
+                        ulong bytes = (ulong)partition.BlockCount * (ulong)partition.BlockSize;
+                        sidebarEntries.Add(SidebarEntry.Device("Partition " + i, IconType.FileManager,
+                            FormatCapacity(bytes) + "  NOT MOUNTED"));
+                    }
+                }
+                else
+                {
+                    sidebarEntries.Add(SidebarEntry.Device("No volumes", IconType.FileManager, "NONE DETECTED"));
+                }
+            }
+            catch
+            {
+                sidebarEntries.Add(SidebarEntry.Device("System", IconType.FileManager, "STORAGE READY"));
+            }
+
+            sidebarEntries.Add(SidebarEntry.Section("DEVICES"));
+
+            try
+            {
+                int deviceCount = StorageManager.DeviceCount;
+                for (int i = 0; i < deviceCount && i < 5; i++)
+                {
+                    var device = StorageManager.GetDevice(i);
+                    ulong bytes = (ulong)device.BlockCount * (ulong)device.BlockSize;
+                    sidebarEntries.Add(SidebarEntry.Device("Disk " + i, IconType.Settings,
+                        FormatCapacity(bytes) + "  DEVICE"));
+                }
+
+                if (deviceCount == 0)
+                    sidebarEntries.Add(SidebarEntry.Device("No disks", IconType.Settings, "NONE DETECTED"));
+            }
+            catch
+            {
+                sidebarEntries.Add(SidebarEntry.Device("Storage", IconType.Settings, "UNAVAILABLE"));
+            }
+        }
+
+        private static string FormatCapacity(ulong bytes)
+        {
+            ulong megabytes = bytes / (1024UL * 1024UL);
+            if (megabytes >= 1024)
+            {
+                ulong wholeGb = megabytes / 1024;
+                ulong tenths = (megabytes % 1024) * 10 / 1024;
+                return wholeGb + "." + tenths + " GB";
+            }
+
+            return megabytes + " MB";
+        }
+
+        private void Add(string[] paths, bool directory)
         {
             if (paths == null)
                 return;
@@ -430,7 +584,7 @@ namespace ZonderqOS.GUI.Apps
                 if (string.IsNullOrEmpty(name))
                     name = path;
 
-                entries.Add(new FileEntry(name, path.Replace('\\', '/'), dir));
+                entries.Add(new FileEntry(name, path.Replace('\\', '/'), directory));
             }
         }
 
@@ -474,6 +628,7 @@ namespace ZonderqOS.GUI.Apps
         public int SelectedIndex { get { return selectedIndex; } }
         public int ScrollIndex { get { return scrollIndex; } }
         public List<FileEntry> Entries { get { return entries; } }
+        public List<SidebarEntry> SidebarEntries { get { return sidebarEntries; } }
         public bool ContextMenuVisible { get { return contextMenuVisible; } }
         public int ContextMenuX { get { return contextMenuX; } }
         public int ContextMenuY { get { return contextMenuY; } }
@@ -495,32 +650,55 @@ namespace ZonderqOS.GUI.Apps
         }
     }
 
+    public sealed class SidebarEntry
+    {
+        public readonly string Label;
+        public readonly string Path;
+        public readonly string Detail;
+        public readonly IconType Icon;
+        public readonly bool Navigable;
+        public readonly bool IsSection;
+
+        private SidebarEntry(string label, string path, IconType icon, string detail, bool navigable, bool isSection)
+        {
+            Label = label;
+            Path = path;
+            Icon = icon;
+            Detail = detail;
+            Navigable = navigable;
+            IsSection = isSection;
+        }
+
+        public static SidebarEntry Section(string label)
+        {
+            return new SidebarEntry(label, null, IconType.Folder, "", false, true);
+        }
+
+        public static SidebarEntry Location(string label, string path, IconType icon, string detail)
+        {
+            return new SidebarEntry(label, path, icon, detail, true, false);
+        }
+
+        public static SidebarEntry Device(string label, IconType icon, string detail)
+        {
+            return new SidebarEntry(label, null, icon, detail, false, false);
+        }
+    }
+
     internal sealed class FileManagerView : Widget
     {
         private readonly FileManagerApp app;
         private readonly Font font = PCScreenFont.DefaultFont;
-        private static readonly string[] CharCache = BuildCharCache();
 
-        private const int ContentTop = 50;
-        private const int FooterHeight = 24;
-        private const int TileWidth = 112;
-        private const int TileHeight = 94;
-        private const int TileGap = 6;
-
-        private static readonly Color Chrome = Color.FromArgb(32, 38, 45);
-        private static readonly Color ChromeRaised = Color.FromArgb(43, 50, 58);
+        private static readonly Color Chrome = Color.FromArgb(30, 35, 41);
+        private static readonly Color ChromeRaised = Color.FromArgb(40, 47, 55);
         private static readonly Color ChromeBorder = Color.FromArgb(68, 78, 90);
         private static readonly Color Accent = Color.FromArgb(65, 140, 200);
-        private static readonly Color ContentBackground = Color.FromArgb(245, 247, 249);
+        private static readonly Color ContentBackground = Color.FromArgb(28, 33, 39);
+        private static readonly Color SidebarBackground = Color.FromArgb(24, 29, 35);
         private static readonly Color FooterText = Color.FromArgb(190, 199, 208);
-
-        private static string[] BuildCharCache()
-        {
-            string[] cache = new string[256];
-            for (int i = 0; i < cache.Length; i++)
-                cache[i] = ((char)i).ToString();
-            return cache;
-        }
+        private static readonly Color MainText = Color.FromArgb(224, 230, 236);
+        private static readonly Color SecondaryText = Color.FromArgb(142, 156, 170);
 
         public FileManagerView(int x, int y, int width, int height, FileManagerApp owner) : base(x, y, width, height)
         {
@@ -535,26 +713,23 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Chrome, X, Y, Width, Height);
             canvas.DrawRectangle(ChromeBorder, X, Y, Width, Height);
 
-            canvas.DrawFilledRectangle(ChromeRaised, X + 4, Y + 4, Width - 8, 40);
-            ToolbarButton(canvas, IconType.ArrowUp, 8);
-            ToolbarButton(canvas, IconType.Start, 50);
-            ToolbarButton(canvas, IconType.Refresh, 92);
-            ToolbarButton(canvas, IconType.Search, 134);
+            RenderToolbar(canvas);
 
-            int pathX = X + 180;
-            int pathW = Math.Max(120, Width - 188);
-            canvas.DrawFilledRectangle(Color.FromArgb(25, 30, 36), pathX, Y + 9, pathW, 30);
-            canvas.DrawRectangle(Color.FromArgb(82, 94, 108), pathX, Y + 9, pathW, 30);
-            DrawPath(canvas, pathX + 7, Y + 10, pathW - 14);
+            int footerY = Y + Height - FileManagerApp.FooterHeight - 4;
+            int contentY = Y + FileManagerApp.ContentTop;
+            int contentH = Math.Max(40, footerY - contentY - 4);
+            int sidebarX = X + 4;
+            int sidebarW = FileManagerApp.SidebarWidth;
+            int gridX = X + FileManagerApp.SidebarWidth + 8;
+            int gridW = Math.Max(FileManagerApp.TileWidth, Width - FileManagerApp.SidebarWidth - 12);
 
-            int footerY = Y + Height - FooterHeight - 4;
-            int listX = X + 4;
-            int listY = Y + ContentTop;
-            int listW = Width - 8;
-            int listH = Math.Max(40, footerY - listY - 4);
-            canvas.DrawFilledRectangle(ContentBackground, listX, listY, listW, listH);
-            canvas.DrawRectangle(Color.FromArgb(199, 205, 212), listX, listY, listW, listH);
-            Grid(canvas, listX, listY, listW, listH);
+            canvas.DrawFilledRectangle(SidebarBackground, sidebarX, contentY, sidebarW, contentH);
+            canvas.DrawRectangle(Color.FromArgb(53, 62, 72), sidebarX, contentY, sidebarW, contentH);
+            RenderSidebar(canvas, sidebarX, contentY, sidebarW, contentH);
+
+            canvas.DrawFilledRectangle(ContentBackground, gridX, contentY, gridW, contentH);
+            canvas.DrawRectangle(Color.FromArgb(53, 62, 72), gridX, contentY, gridW, contentH);
+            Grid(canvas, gridX, contentY, gridW, contentH);
 
             RenderFooter(canvas, footerY);
 
@@ -564,86 +739,106 @@ namespace ZonderqOS.GUI.Apps
                 Dialog(canvas);
         }
 
+        private void RenderToolbar(Canvas canvas)
+        {
+            canvas.DrawFilledRectangle(ChromeRaised, X + 4, Y + 4, Width - 8, 40);
+            ToolbarButton(canvas, IconType.ArrowUp, 8);
+            ToolbarButton(canvas, IconType.Start, 50);
+            ToolbarButton(canvas, IconType.Refresh, 92);
+            ToolbarButton(canvas, IconType.Search, 134);
+
+            int pathX = X + 180;
+            int pathW = Math.Max(120, Width - 188);
+            canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), pathX, Y + 9, pathW, 30);
+            canvas.DrawRectangle(Color.FromArgb(82, 94, 108), pathX, Y + 9, pathW, 30);
+            canvas.DrawFilledRectangle(Accent, pathX, Y + 9, 3, 30);
+
+            SmallTextRenderer.DrawClipped(canvas, app.CurrentPath, pathX + 10, Y + 20,
+                Math.Max(20, pathW - 20), MainText);
+
+            if (!string.IsNullOrEmpty(app.SearchText) && pathW >= 250)
+            {
+                int searchWidth = Math.Min(170, pathW / 3);
+                int searchX = pathX + pathW - searchWidth - 8;
+                canvas.DrawFilledRectangle(Color.FromArgb(35, 47, 58), searchX, Y + 14, searchWidth, 20);
+                IconManager.DrawScaled(canvas, IconType.Search, searchX + 4, Y + 16, 14, 14);
+                SmallTextRenderer.DrawClipped(canvas, app.SearchText, searchX + 22, Y + 21,
+                    searchWidth - 27, Color.FromArgb(166, 202, 231));
+            }
+        }
+
+        private void RenderSidebar(Canvas canvas, int x, int y, int width, int height)
+        {
+            int itemY = y + 8;
+            List<SidebarEntry> items = app.SidebarEntries;
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                SidebarEntry entry = items[i];
+                int rowHeight = entry.IsSection ? FileManagerApp.SidebarSectionHeight : FileManagerApp.SidebarItemHeight;
+                if (itemY + rowHeight > y + height)
+                    break;
+
+                if (entry.IsSection)
+                {
+                    SmallTextRenderer.DrawClipped(canvas, entry.Label, x + 10, itemY + 7,
+                        width - 20, Color.FromArgb(104, 130, 151));
+                    itemY += rowHeight;
+                    continue;
+                }
+
+                bool active = entry.Navigable && entry.Path == app.CurrentPath;
+                if (active)
+                {
+                    canvas.DrawFilledRectangle(Color.FromArgb(37, 62, 83), x + 4, itemY + 1, width - 8, rowHeight - 2);
+                    canvas.DrawFilledRectangle(Accent, x + 4, itemY + 1, 3, rowHeight - 2);
+                }
+
+                int iconY = itemY + 8;
+                canvas.DrawFilledRectangle(Color.FromArgb(31, 38, 45), x + 10, iconY - 3, 26, 26);
+                IconManager.DrawScaled(canvas, entry.Icon, x + 14, iconY + 1, 18, 18);
+
+                SmallTextRenderer.DrawClipped(canvas, entry.Label, x + 44, itemY + 8,
+                    width - 52, active ? Color.WhiteSmoke : MainText);
+                SmallTextRenderer.DrawClipped(canvas, entry.Detail, x + 44, itemY + 21,
+                    width - 52, active ? Color.FromArgb(143, 190, 226) : SecondaryText);
+
+                itemY += rowHeight;
+            }
+        }
+
         private void RenderFooter(Canvas canvas, int footerY)
         {
             int footerX = X + 4;
             int footerW = Width - 8;
 
-            canvas.DrawFilledRectangle(Color.FromArgb(27, 32, 38), footerX, footerY, footerW, FooterHeight);
+            canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), footerX, footerY, footerW, FileManagerApp.FooterHeight);
             canvas.DrawLine(Color.FromArgb(72, 84, 96), footerX, footerY, footerX + footerW, footerY);
 
-            string hint = Width >= 620
+            string hint = Width >= 700
                 ? "ENTER OPEN   F5 REFRESH   BACKSPACE UP"
                 : "ENTER OPEN   F5 REFRESH";
 
-            int hintWidth = TinyTextWidth(hint);
+            int hintWidth = SmallTextRenderer.Width(hint);
             int hintX = Math.Max(X + Width / 2, X + Width - 10 - hintWidth);
             int hintMaxWidth = Math.Max(0, X + Width - 10 - hintX);
             int statusX = X + 10;
             int statusMaxWidth = Math.Max(18, hintX - statusX - 12);
             int textY = footerY + 8;
 
-            DrawTinyTextClipped(canvas, app.Status ?? "", statusX, textY, statusMaxWidth, FooterText);
-            DrawTinyTextClipped(canvas, hint, hintX, textY, hintMaxWidth, Color.FromArgb(155, 168, 181));
+            SmallTextRenderer.DrawClipped(canvas, app.Status ?? "", statusX, textY, statusMaxWidth, FooterText);
+            SmallTextRenderer.DrawClipped(canvas, hint, hintX, textY, hintMaxWidth, SecondaryText);
         }
 
-        private void DrawPath(Canvas canvas, int x, int y, int width)
+        private void Grid(Canvas canvas, int x, int y, int width, int height)
         {
-            string path = app.CurrentPath;
-            int maxChars = Math.Max(8, width / 16);
-            int searchExtra = string.IsNullOrEmpty(app.SearchText) ? 0 : app.SearchText.Length + 3;
-            int total = path.Length + searchExtra;
-            int start = total > maxChars ? total - maxChars + 3 : 0;
-
-            if (start > 0)
-                canvas.DrawString("...", font, Color.FromArgb(226, 232, 238), x, y);
-
-            int px = x + (start > 0 ? 3 * 16 : 0);
-            if (start < path.Length)
-            {
-                int take = path.Length - start;
-                if (take > maxChars)
-                    take = maxChars;
-
-                DrawStringRange(canvas, path, start, take, px, y, Color.FromArgb(226, 232, 238));
-                px += take * 16;
-            }
-
-            if (!string.IsNullOrEmpty(app.SearchText) && px - x < width)
-            {
-                canvas.DrawString(" [", font, Color.FromArgb(155, 190, 220), px, y);
-                px += 2 * 16;
-
-                int remaining = Math.Max(0, width - (px - x));
-                int takeSearch = Math.Min(app.SearchText.Length, remaining / 16);
-                DrawStringRange(canvas, app.SearchText, 0, takeSearch, px, y, Color.FromArgb(155, 190, 220));
-                px += takeSearch * 16;
-
-                if (takeSearch < app.SearchText.Length && px - x + 3 * 16 <= width)
-                    canvas.DrawString("...", font, Color.FromArgb(155, 190, 220), px, y);
-            }
-        }
-
-        private void DrawStringRange(Canvas canvas, string text, int start, int count, int x, int y, Color color)
-        {
-            if (text == null || count <= 0 || start < 0 || start >= text.Length)
-                return;
-
-            int end = Math.Min(text.Length, start + count);
-            for (int i = start; i < end; i++)
-            {
-                char ch = text[i];
-                canvas.DrawString(ch < 256 ? CharCache[ch] : ch.ToString(), font, color, x + (i - start) * 16, y);
-            }
-        }
-
-        private void Grid(Canvas canvas, int x, int y, int w, int h)
-        {
-            int iconSize = 40;
-            int labelWidth = 84;
+            int iconSize = 42;
+            int labelWidth = 88;
             int labelHeight = 18;
-            int cols = Math.Max(1, (w + TileGap) / (TileWidth + TileGap));
-            int rows = Math.Max(1, (h + TileGap) / (TileHeight + TileGap));
+            int cols = Math.Max(1, (width + FileManagerApp.TileGap) /
+                (FileManagerApp.TileWidth + FileManagerApp.TileGap));
+            int rows = Math.Max(1, (height + FileManagerApp.TileGap) /
+                (FileManagerApp.TileHeight + FileManagerApp.TileGap));
             int count = cols * rows;
 
             for (int i = 0; i < count; i++)
@@ -653,33 +848,29 @@ namespace ZonderqOS.GUI.Apps
                     break;
 
                 FileEntry entry = app.Entries[index];
-                int tileX = x + i % cols * (TileWidth + TileGap);
-                int tileY = y + i / cols * (TileHeight + TileGap);
+                int tileX = x + i % cols * (FileManagerApp.TileWidth + FileManagerApp.TileGap);
+                int tileY = y + i / cols * (FileManagerApp.TileHeight + FileManagerApp.TileGap);
 
                 if (index == app.SelectedIndex)
                 {
-                    canvas.DrawFilledRectangle(Color.FromArgb(218, 234, 248), tileX, tileY, TileWidth, TileHeight);
-                    canvas.DrawRectangle(Accent, tileX, tileY, TileWidth, TileHeight);
-                    canvas.DrawFilledRectangle(Accent, tileX, tileY, 3, TileHeight);
+                    canvas.DrawFilledRectangle(Color.FromArgb(41, 66, 87), tileX, tileY,
+                        FileManagerApp.TileWidth, FileManagerApp.TileHeight);
+                    canvas.DrawRectangle(Accent, tileX, tileY,
+                        FileManagerApp.TileWidth, FileManagerApp.TileHeight);
+                    canvas.DrawFilledRectangle(Accent, tileX, tileY, 3, FileManagerApp.TileHeight);
                 }
 
-                int iconX = tileX + (TileWidth - iconSize) / 2;
-                IconManager.DrawScaled(
-                    canvas,
-                    entry.IsDirectory ? IconType.Folder : IconType.File,
-                    iconX,
-                    tileY + 5,
-                    iconSize,
-                    iconSize);
+                int iconX = tileX + (FileManagerApp.TileWidth - iconSize) / 2;
+                canvas.DrawFilledRectangle(Color.FromArgb(34, 40, 47), iconX - 5, tileY + 3, iconSize + 10, iconSize + 8);
+                IconManager.DrawScaled(canvas, entry.IsDirectory ? IconType.Folder : IconType.File,
+                    iconX, tileY + 7, iconSize, iconSize);
 
-                DrawWrappedName(
-                    canvas,
-                    entry.Name ?? "",
-                    tileX + (TileWidth - labelWidth) / 2,
-                    tileY + iconSize + 9,
+                DrawWrappedName(canvas, entry.Name ?? "",
+                    tileX + (FileManagerApp.TileWidth - labelWidth) / 2,
+                    tileY + iconSize + 15,
                     labelWidth,
                     labelHeight,
-                    Color.FromArgb(35, 40, 46));
+                    index == app.SelectedIndex ? Color.WhiteSmoke : MainText);
             }
         }
 
@@ -693,173 +884,45 @@ namespace ZonderqOS.GUI.Apps
             if (string.IsNullOrEmpty(name))
                 return;
 
-            int pos = 0;
+            int position = 0;
             int maxLines = Math.Max(1, height / lineHeight);
 
-            for (int line = 0; line < maxLines && pos < name.Length; line++)
+            for (int line = 0; line < maxLines && position < name.Length; line++)
             {
-                int take = Math.Min(maxChars, name.Length - pos);
-                if (pos + take < name.Length)
+                int take = Math.Min(maxChars, name.Length - position);
+                if (position + take < name.Length)
                 {
-                    int breakAt = name.LastIndexOf(' ', pos + take - 1, take);
-                    if (breakAt >= pos)
-                        take = breakAt - pos;
+                    int breakAt = name.LastIndexOf(' ', position + take - 1, take);
+                    if (breakAt >= position)
+                        take = breakAt - position;
                 }
 
                 if (take <= 0)
-                    take = Math.Min(maxChars, name.Length - pos);
+                    take = Math.Min(maxChars, name.Length - position);
 
-                bool truncated = pos + take < name.Length && line == maxLines - 1;
+                bool truncated = position + take < name.Length && line == maxLines - 1;
                 int drawTake = truncated && take >= 3 ? take - 3 : take;
-                int textWidth = drawTake * (glyphWidth + spacing) - (drawTake > 0 ? spacing : 0);
-
+                int textWidth = drawTake * 6 - (drawTake > 0 ? 1 : 0);
                 if (truncated)
-                    textWidth += 3 * (glyphWidth + spacing);
+                    textWidth += 18;
 
-                int px = x + Math.Max(0, (width - textWidth) / 2);
-                DrawTinyTextRange(canvas, name, pos, drawTake, px, y + line * lineHeight, color);
-
+                int textX = x + Math.Max(0, (width - textWidth) / 2);
+                SmallTextRenderer.DrawRange(canvas, name, position, drawTake, textX, y + line * lineHeight, color);
                 if (truncated)
-                    DrawTinyText(canvas, "...", px + drawTake * (glyphWidth + spacing), y + line * lineHeight, color);
+                    SmallTextRenderer.Draw(canvas, "...", textX + drawTake * 6, y + line * lineHeight, color);
 
-                pos += take;
-                while (pos < name.Length && name[pos] == ' ')
-                    pos++;
+                position += take;
+                while (position < name.Length && name[position] == ' ')
+                    position++;
             }
-        }
-
-        private int TinyTextWidth(string text)
-        {
-            if (string.IsNullOrEmpty(text))
-                return 0;
-            return text.Length * 6 - 1;
-        }
-
-        private void DrawTinyTextClipped(Canvas canvas, string text, int x, int y, int maxWidth, Color color)
-        {
-            if (string.IsNullOrEmpty(text) || maxWidth < 5)
-                return;
-
-            int maxChars = Math.Max(1, (maxWidth + 1) / 6);
-            bool truncated = text.Length > maxChars;
-            int drawChars = Math.Min(text.Length, maxChars);
-
-            if (truncated && maxChars >= 4)
-            {
-                drawChars = maxChars - 3;
-                DrawTinyTextRange(canvas, text, 0, drawChars, x, y, color);
-                DrawTinyText(canvas, "...", x + drawChars * 6, y, color);
-                return;
-            }
-
-            DrawTinyTextRange(canvas, text, 0, drawChars, x, y, color);
-        }
-
-        private void DrawTinyTextRange(Canvas canvas, string text, int start, int count, int x, int y, Color color)
-        {
-            if (text == null || count <= 0 || start < 0 || start >= text.Length)
-                return;
-
-            int end = Math.Min(text.Length, start + count);
-            for (int i = start; i < end; i++)
-                DrawTinyChar(canvas, text[i], x + (i - start) * 6, y, color);
-        }
-
-        private void DrawTinyText(Canvas canvas, string text, int x, int y, Color color)
-        {
-            if (string.IsNullOrEmpty(text))
-                return;
-
-            for (int i = 0; i < text.Length; i++)
-                DrawTinyChar(canvas, text[i], x + i * 6, y, color);
-        }
-
-        private void DrawTinyChar(Canvas canvas, char ch, int x, int y, Color color)
-        {
-            const int glyphWidth = 5;
-            for (int row = 0; row < 7; row++)
-            {
-                int bits = TinyGlyph(ch, row);
-                for (int col = 0; col < glyphWidth; col++)
-                {
-                    if ((bits & (1 << (glyphWidth - 1 - col))) != 0)
-                        canvas.DrawFilledRectangle(color, x + col, y + row, 1, 1);
-                }
-            }
-        }
-
-        private int TinyGlyph(char ch, int row)
-        {
-            string pattern;
-            switch (char.ToUpperInvariant(ch))
-            {
-                case 'A': pattern = "011101000110001111111000110001"; break;
-                case 'B': pattern = "111101000110001111101000111101"; break;
-                case 'C': pattern = "011101000010000100001000001110"; break;
-                case 'D': pattern = "111101000110001100011000111101"; break;
-                case 'E': pattern = "111111000010000111101000011111"; break;
-                case 'F': pattern = "111111000010000111101000010000"; break;
-                case 'G': pattern = "011101000010000101111000101111"; break;
-                case 'H': pattern = "100011000110001111111000110001"; break;
-                case 'I': pattern = "111110010000100001000010011111"; break;
-                case 'J': pattern = "001110001000100001001001001110"; break;
-                case 'K': pattern = "100011001010100110001010010001"; break;
-                case 'L': pattern = "100001000010000100001000011111"; break;
-                case 'M': pattern = "100011101110101101011000110001"; break;
-                case 'N': pattern = "100011100110101100111000110001"; break;
-                case 'O': pattern = "011101000110001100011000101110"; break;
-                case 'P': pattern = "111101000110001111101000010000"; break;
-                case 'Q': pattern = "011101000110001100011010010101"; break;
-                case 'R': pattern = "111101000110001111101010010001"; break;
-                case 'S': pattern = "011111000010000011000000111110"; break;
-                case 'T': pattern = "111110010000100001000010000100"; break;
-                case 'U': pattern = "100011000110001100011000101110"; break;
-                case 'V': pattern = "100011000110001100011010000100"; break;
-                case 'W': pattern = "100011000110001101011010101010"; break;
-                case 'X': pattern = "100011000101010001000101010001"; break;
-                case 'Y': pattern = "100011000101010001000010000100"; break;
-                case 'Z': pattern = "111110000100010001000100011111"; break;
-                case '0': pattern = "011101000110011101011000101110"; break;
-                case '1': pattern = "001000110000100001000010011111"; break;
-                case '2': pattern = "011101000100001000100100011111"; break;
-                case '3': pattern = "111100000100001001110000111110"; break;
-                case '4': pattern = "000100011001010111110001000010"; break;
-                case '5': pattern = "111111000011110000010000111110"; break;
-                case '6': pattern = "011101000010000111101000101110"; break;
-                case '7': pattern = "111110000100010001000010000100"; break;
-                case '8': pattern = "011101000110001011101000110111"; break;
-                case '9': pattern = "011101000110001011110000101110"; break;
-                case '.': pattern = "000000000000000000000000000001"; break;
-                case '-': pattern = "000000000000000011100000000000"; break;
-                case '_': pattern = "000000000000000000000000011111"; break;
-                case '/': pattern = "000010001000100010001000000000"; break;
-                case ':': pattern = "000000010000000001000000000000"; break;
-                case '|': pattern = "001000010000100001000010000100"; break;
-                case '=': pattern = "000001111100000111110000000000"; break;
-                case ' ': pattern = "000000000000000000000000000000"; break;
-                default: pattern = "011101000100010001000000010000"; break;
-            }
-
-            int offset = row * 5;
-            if (offset + 5 > pattern.Length)
-                return 0;
-
-            int bits = 0;
-            for (int i = 0; i < 5; i++)
-            {
-                if (pattern[offset + i] == '1')
-                    bits |= 1 << (4 - i);
-            }
-
-            return bits;
         }
 
         private void ToolbarButton(Canvas canvas, IconType type, int offset)
         {
             int buttonX = X + offset;
-            canvas.DrawFilledRectangle(Color.FromArgb(235, 239, 243), buttonX, Y + 7, 36, 30);
-            canvas.DrawRectangle(Color.FromArgb(112, 124, 136), buttonX, Y + 7, 36, 30);
-            IconManager.Draw(canvas, type, buttonX + 9, Y + 11, Color.Black);
+            canvas.DrawFilledRectangle(Color.FromArgb(51, 59, 68), buttonX, Y + 7, 36, 30);
+            canvas.DrawRectangle(Color.FromArgb(83, 96, 110), buttonX, Y + 7, 36, 30);
+            IconManager.Draw(canvas, type, buttonX + 9, Y + 11, Color.WhiteSmoke);
         }
 
         private void Menu(Canvas canvas)
@@ -867,8 +930,8 @@ namespace ZonderqOS.GUI.Apps
             int x = X + app.ContextMenuX;
             int y = Y + app.ContextMenuY;
 
-            canvas.DrawFilledRectangle(Color.FromArgb(34, 40, 47), x + 3, y + 3, 220, 116);
-            canvas.DrawFilledRectangle(Color.FromArgb(43, 50, 58), x, y, 220, 116);
+            canvas.DrawFilledRectangle(Color.FromArgb(20, 24, 29), x + 3, y + 3, 220, 116);
+            canvas.DrawFilledRectangle(Color.FromArgb(40, 47, 55), x, y, 220, 116);
             canvas.DrawRectangle(Color.FromArgb(85, 102, 118), x, y, 220, 116);
 
             DrawMenuItem(canvas, "New file", x, y + 3);
@@ -879,28 +942,29 @@ namespace ZonderqOS.GUI.Apps
 
         private void DrawMenuItem(Canvas canvas, string text, int x, int y)
         {
-            DrawTinyText(canvas, text, x + 10, y + 10, Color.FromArgb(226, 232, 238));
+            SmallTextRenderer.Draw(canvas, text, x + 10, y + 10, MainText);
         }
 
         private void Dialog(Canvas canvas)
         {
-            int width = 430;
+            int width = Math.Min(430, Math.Max(280, Width - 40));
             int height = 126;
             int x = X + (Width - width) / 2;
             int y = Y + (Height - height) / 2;
 
-            canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), x + 4, y + 4, width, height);
+            canvas.DrawFilledRectangle(Color.FromArgb(20, 24, 29), x + 4, y + 4, width, height);
             canvas.DrawFilledRectangle(Color.FromArgb(38, 44, 51), x, y, width, height);
             canvas.DrawRectangle(Accent, x, y, width, height);
 
             string title = app.DialogMode == 1 ? "New file" : "New folder";
             canvas.DrawString(title, font, Color.FromArgb(235, 239, 243), x + 12, y + 10);
 
-            canvas.DrawFilledRectangle(Color.FromArgb(247, 248, 250), x + 12, y + 42, width - 24, 30);
-            canvas.DrawRectangle(Color.FromArgb(112, 124, 136), x + 12, y + 42, width - 24, 30);
-            canvas.DrawString(app.DialogName + "_", font, Color.FromArgb(35, 40, 46), x + 18, y + 43);
+            canvas.DrawFilledRectangle(Color.FromArgb(26, 31, 37), x + 12, y + 42, width - 24, 30);
+            canvas.DrawRectangle(Color.FromArgb(83, 96, 110), x + 12, y + 42, width - 24, 30);
+            SmallTextRenderer.DrawClipped(canvas, app.DialogName + "_", x + 18, y + 54,
+                width - 36, Color.FromArgb(226, 232, 238));
 
-            DrawTinyText(canvas, "ENTER CREATE   ESC CANCEL", x + 12, y + 92, Color.FromArgb(170, 181, 192));
+            SmallTextRenderer.Draw(canvas, "ENTER CREATE   ESC CANCEL", x + 12, y + 94, SecondaryText);
         }
     }
 }
