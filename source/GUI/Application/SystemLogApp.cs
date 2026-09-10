@@ -17,6 +17,7 @@ namespace ZonderqOS.GUI.Apps
         private int sourceMode; // 0 auth.log, 1 sysmon.log
         private long fileBytes;
         private long clearArmedAt;
+        private bool accessDenied;
 
         public SystemLogApp(int x, int y)
             : base("Dzienniki systemowe", "Logi i audyt - ZOnderqOS", x, y, 980, 660)
@@ -53,6 +54,12 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "STRZALKI GORA/DOL: PRZEWIJANIE  |  DELETE: WYCZYSC (2X)", x + 12, y + 27, Muted);
             canvas.DrawLine(Border, x + 10, y + 42, x + width - 10, y + 42);
 
+            if (accessDenied)
+            {
+                SmallTextRenderer.Draw(canvas, "BRAK UPRAWNIEN DO ODCZYTU TEGO LOGU", x + 12, y + 56, Danger);
+                return;
+            }
+
             int visible = System.Math.Max(1, (height - 54) / 14);
             int start = scrollOffset;
             if (start < 0) start = 0;
@@ -77,7 +84,9 @@ namespace ZonderqOS.GUI.Apps
             for (int i = 0; i < cachedLines.Length; i++)
                 cachedLines[i] = null;
             lineCount = 0;
+            scrollOffset = 0;
             fileBytes = 0;
+            accessDenied = false;
 
             try
             {
@@ -85,17 +94,37 @@ namespace ZonderqOS.GUI.Apps
                 if (!File.Exists(path))
                     return;
 
+                if (!global::ZonderqOS.PermissionManager.CanRead(path, global::ZonderqOS.SecurityContext.CurrentUser))
+                {
+                    accessDenied = true;
+                    return;
+                }
+
                 fileBytes = new FileInfo(path).Length;
-                string[] all = File.ReadAllLines(path);
-                int start = System.Math.Max(0, all.Length - MaxCachedLines);
-                for (int i = start; i < all.Length && lineCount < MaxCachedLines; i++)
-                    cachedLines[lineCount++] = all[i];
+                string[] ring = new string[MaxCachedLines];
+                int totalLines = 0;
+
+                using (var reader = new StreamReader(path))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        ring[totalLines % MaxCachedLines] = line;
+                        totalLines++;
+                    }
+                }
+
+                int keep = System.Math.Min(totalLines, MaxCachedLines);
+                int start = totalLines > MaxCachedLines ? totalLines % MaxCachedLines : 0;
+                for (int i = 0; i < keep; i++)
+                    cachedLines[lineCount++] = ring[(start + i) % MaxCachedLines];
 
                 scrollOffset = System.Math.Max(0, lineCount - 20);
             }
             catch
             {
                 lineCount = 0;
+                scrollOffset = 0;
                 fileBytes = 0;
             }
         }
@@ -113,7 +142,7 @@ namespace ZonderqOS.GUI.Apps
             else if (row == 1)
             {
                 RefreshData();
-                SetStatus("LOG ODSWIEZONY", Good);
+                SetStatus(accessDenied ? "BRAK UPRAWNIEN DO LOGU" : "LOG ODSWIEZONY", accessDenied ? Danger : Good);
             }
         }
 
