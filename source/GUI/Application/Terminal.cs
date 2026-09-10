@@ -8,7 +8,7 @@ namespace ZonderqOS.GUI.Apps
     {
         private readonly Action closeCallback;
         private readonly TerminalBox terminalBox;
-        private string currentPath = "/root";
+        private string currentPath;
         private Action<string> nanoLauncher;
 
         public TerminalApp(int x, int y, Action onClose) : base("Terminal CLI")
@@ -16,6 +16,10 @@ namespace ZonderqOS.GUI.Apps
             closeCallback = onClose;
             Window = new Window(x, y, 900, 560, "ZOnderqOS Terminal");
             Window.CloseAction = Close;
+
+            currentPath = global::ZonderqOS.UserProfileManager.CurrentHome;
+            if (string.IsNullOrEmpty(currentPath))
+                currentPath = "/";
 
             terminalBox = new TerminalBox(8, 42, 884, 508);
             terminalBox.IsFocused = true;
