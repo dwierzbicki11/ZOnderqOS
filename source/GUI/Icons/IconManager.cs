@@ -12,17 +12,17 @@ namespace ZonderqOS.GUI.Icons
         private const int MaxScaledCacheEntries = 192;
         private const string CacheDirectory = "/root/.zonderq-icons";
 
+        // Direct reference arrays are intentional. OrionGC Gen3 is still young and
+        // keeping managed image references inside an array of structs can make those
+        // references harder for the collector to preserve correctly. Plain reference
+        // arrays give the collector an unambiguous root and stop cached icons from
+        // disappearing after a collection.
         private static readonly Png[] imageCache = new Png[14];
-        private static readonly ScaledIconCacheEntry[] scaledImageCache = new ScaledIconCacheEntry[MaxScaledCacheEntries];
+        private static readonly CosmosBitmap[] scaledImages = new CosmosBitmap[MaxScaledCacheEntries];
+        private static readonly IconType[] scaledTypes = new IconType[MaxScaledCacheEntries];
+        private static readonly int[] scaledWidths = new int[MaxScaledCacheEntries];
+        private static readonly int[] scaledHeights = new int[MaxScaledCacheEntries];
         private static int scaledImageCacheCount;
-
-        private struct ScaledIconCacheEntry
-        {
-            public IconType Type;
-            public int Width;
-            public int Height;
-            public CosmosBitmap Image;
-        }
 
         public static void Draw(Canvas canvas, IconType type, int x, int y, Color color)
         {
@@ -30,22 +30,19 @@ namespace ZonderqOS.GUI.Icons
         }
 
         /// <summary>
-        /// Draws an icon without allocating a temporary scaling buffer on every frame.
+        /// Draw an icon with zero per-frame scaling allocations.
         ///
-        /// Cosmos Gen3 Canvas.DrawImage(image, x, y, width, height) calls ScaleImage(),
-        /// which creates a fresh int[] for every invocation. A task-manager frame draws
-        /// many icons, so that old path continuously expanded the GC heap while the
-        /// window was simply left open.
-        ///
-        /// We scale each icon/size combination once into a bounded Bitmap cache and then
-        /// use the non-scaling DrawImage overload. That overload reuses RawData directly.
-        /// The cache is intentionally fixed-size so it can never become another leak.
+        /// Cosmos Gen3 Canvas.DrawImage(image, x, y, width, height) allocates a new
+        /// int[] every call through ScaleImage(). We never use that overload here.
+        /// Every icon/size pair is scaled once, stored strongly in a fixed cache, and
+        /// every later frame only blits the already-scaled bitmap.
         /// </summary>
         public static void DrawScaled(Canvas canvas, IconType type, int x, int y, int width, int height)
         {
             if (canvas == null || width <= 0 || height <= 0)
                 return;
 
+            type = CanonicalizeType(type);
             Png image = GetImage(type);
             if (image == null)
                 return;
@@ -59,25 +56,24 @@ namespace ZonderqOS.GUI.Icons
             CosmosBitmap scaled = GetScaledImage(type, image, width, height);
             if (scaled != null)
             {
+                // Non-scaling overload: reuses RawData and does not allocate a new
+                // pixel buffer. Alpha is still handled by Canvas.DrawPoint(Color,...).
                 canvas.DrawImage(scaled, x, y);
                 return;
             }
 
-            // Never fall back to the scaling overload here: it allocates a new int[]
-            // every frame. If the bounded cache is ever exhausted, drawing the original
-            // PNG is preferable to turning a cosmetic icon into a RAM leak.
+            // The cache is deliberately bounded. If it were ever full, draw the
+            // original image instead of calling the allocating scaling overload.
+            // This keeps icons visible without turning rendering into a heap leak.
             canvas.DrawImage(image, x, y);
         }
 
         private static CosmosBitmap GetScaledImage(IconType type, Png source, int width, int height)
         {
-            IconType cacheType = CanonicalizeType(type);
-
             for (int i = 0; i < scaledImageCacheCount; i++)
             {
-                ScaledIconCacheEntry entry = scaledImageCache[i];
-                if (entry.Type == cacheType && entry.Width == width && entry.Height == height)
-                    return entry.Image;
+                if (scaledTypes[i] == type && scaledWidths[i] == width && scaledHeights[i] == height)
+                    return scaledImages[i];
             }
 
             if (scaledImageCacheCount >= MaxScaledCacheEntries)
@@ -89,14 +85,12 @@ namespace ZonderqOS.GUI.Icons
                 if (scaled == null)
                     return null;
 
-                scaledImageCache[scaledImageCacheCount] = new ScaledIconCacheEntry
-                {
-                    Type = cacheType,
-                    Width = width,
-                    Height = height,
-                    Image = scaled
-                };
-                scaledImageCacheCount++;
+                int slot = scaledImageCacheCount;
+                scaledTypes[slot] = type;
+                scaledWidths[slot] = width;
+                scaledHeights[slot] = height;
+                scaledImages[slot] = scaled; // strong GC root
+                scaledImageCacheCount = slot + 1;
                 return scaled;
             }
             catch
@@ -106,10 +100,9 @@ namespace ZonderqOS.GUI.Icons
         }
 
         /// <summary>
-        /// Allocation happens only on a cache miss. Pixel scaling itself writes directly
-        /// into the destination Bitmap.RawData and creates no temporary ScaleImage array.
-        /// Alpha is preserved, so the normal DrawImage overload can blend PNG icons over
-        /// the current window background exactly as before.
+        /// Scale exactly once on a cache miss. The only pixel allocation is the
+        /// destination Bitmap.RawData that remains cached for the lifetime of the GUI.
+        /// There is no temporary ScaleImage buffer.
         /// </summary>
         private static CosmosBitmap ScaleOnce(Png source, int width, int height)
         {
@@ -122,18 +115,25 @@ namespace ZonderqOS.GUI.Icons
             if (sourcePixels == null || sourcePixels.Length == 0)
                 return null;
 
-            var destination = new CosmosBitmap((uint)width, (uint)height, ColorDepth.ColorDepth32);
+            CosmosBitmap destination = new CosmosBitmap((uint)width, (uint)height, ColorDepth.ColorDepth32);
             int[] destinationPixels = destination.RawData;
+
+            // Match Cosmos' nearest-neighbour scaling layout, but write straight into
+            // the persistent destination buffer instead of allocating a temporary one.
+            int xRatio = ((sourceWidth << 16) / width) + 1;
+            int yRatio = ((sourceHeight << 16) / height) + 1;
 
             for (int dy = 0; dy < height; dy++)
             {
-                int sy = (dy * sourceHeight) / height;
+                int sy = (dy * yRatio) >> 16;
+                if (sy >= sourceHeight) sy = sourceHeight - 1;
                 int sourceRow = sy * sourceWidth;
                 int destinationRow = dy * width;
 
                 for (int dx = 0; dx < width; dx++)
                 {
-                    int sx = (dx * sourceWidth) / width;
+                    int sx = (dx * xRatio) >> 16;
+                    if (sx >= sourceWidth) sx = sourceWidth - 1;
                     destinationPixels[destinationRow + dx] = sourcePixels[sourceRow + sx];
                 }
             }
@@ -143,11 +143,14 @@ namespace ZonderqOS.GUI.Icons
 
         private static IconType CanonicalizeType(IconType type)
         {
+            // FileManager and Folder use the same PNG. Keep a single decoded source
+            // and a single family of scaled copies instead of duplicating both.
             return type == IconType.FileManager ? IconType.Folder : type;
         }
 
         private static Png GetImage(IconType type)
         {
+            type = CanonicalizeType(type);
             int index = (int)type;
             if (index < 0 || index >= imageCache.Length)
                 return null;
@@ -167,8 +170,9 @@ namespace ZonderqOS.GUI.Icons
                 if (!File.Exists(path))
                     File.WriteAllBytes(path, data);
 
-                imageCache[index] = new Png(path);
-                return imageCache[index];
+                Png decoded = new Png(path);
+                imageCache[index] = decoded; // strong GC root
+                return decoded;
             }
             catch
             {
