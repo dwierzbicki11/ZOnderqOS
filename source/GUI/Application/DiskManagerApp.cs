@@ -38,14 +38,18 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action closeCallback;
 
         private readonly int[] deviceSourceIndex = new int[MaxDevices];
+        private readonly string[] deviceIndexText = new string[MaxDevices];
         private readonly string[] deviceNames = new string[MaxDevices];
         private readonly string[] deviceDetails = new string[MaxDevices];
+        private readonly string[] deviceSizeText = new string[MaxDevices];
         private readonly ulong[] deviceSizeMb = new ulong[MaxDevices];
 
         private readonly int[] partitionSourceIndex = new int[MaxPartitions];
+        private readonly string[] partitionIndexText = new string[MaxPartitions];
         private readonly string[] partitionNames = new string[MaxPartitions];
         private readonly string[] partitionDetails = new string[MaxPartitions];
         private readonly string[] partitionMounts = new string[MaxPartitions];
+        private readonly string[] partitionSizeText = new string[MaxPartitions];
         private readonly ulong[] partitionSizeMb = new ulong[MaxPartitions];
 
         private readonly string[] mountNames = new string[MaxMounts];
@@ -61,8 +65,6 @@ namespace ZonderqOS.GUI.Apps
         private int hoveredRow = -1;
         private int hoveredTab = -1;
         private int hoveredAction = -1;
-        private int lastMouseX = -1;
-        private int lastMouseY = -1;
         private string statusMessage = "GOTOWE";
         private Color statusColor = Good;
 
@@ -149,8 +151,6 @@ namespace ZonderqOS.GUI.Apps
         public override void HandleMouse(int mouseX, int mouseY, bool leftClicked, bool leftWasClicked,
             bool rightClicked, bool rightWasClicked)
         {
-            lastMouseX = mouseX;
-            lastMouseY = mouseY;
             Window.HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked);
 
             if (!Window.Visible || Window.IsMinimized)
@@ -364,8 +364,8 @@ namespace ZonderqOS.GUI.Apps
         {
             int index = selection;
             DrawDetailLine(canvas, x, y + 58, width, "NAZWA", deviceNames[index], Text);
-            DrawDetailLine(canvas, x, y + 88, width, "INDEKS", deviceSourceIndex[index].ToString(), Text);
-            DrawDetailLine(canvas, x, y + 118, width, "ROZMIAR", deviceSizeMb[index].ToString() + " MB", Text);
+            DrawDetailLine(canvas, x, y + 88, width, "INDEKS", deviceIndexText[index], Text);
+            DrawDetailLine(canvas, x, y + 118, width, "ROZMIAR", deviceSizeText[index], Text);
             DrawDetailLine(canvas, x, y + 148, width, "PARAMETRY", deviceDetails[index], Muted);
             DrawInfoBox(canvas, x + 14, y + 205, width - 28,
                 "R ponownie odczytuje tablice partycji wybranego dysku. Operacja nie formatuje nosnika.", Warning);
@@ -377,8 +377,8 @@ namespace ZonderqOS.GUI.Apps
             int source = partitionSourceIndex[index];
             string mount = partitionMounts[index];
             DrawDetailLine(canvas, x, y + 58, width, "PARTYCJA", partitionNames[index], Text);
-            DrawDetailLine(canvas, x, y + 88, width, "INDEKS", source.ToString(), Text);
-            DrawDetailLine(canvas, x, y + 118, width, "ROZMIAR", partitionSizeMb[index].ToString() + " MB", Text);
+            DrawDetailLine(canvas, x, y + 88, width, "INDEKS", partitionIndexText[index], Text);
+            DrawDetailLine(canvas, x, y + 118, width, "ROZMIAR", partitionSizeText[index], Text);
             DrawDetailLine(canvas, x, y + 148, width, "MOUNT", string.IsNullOrEmpty(mount) ? "NIEZAMONTOWANA" : mount,
                 string.IsNullOrEmpty(mount) ? Muted : Good);
             DrawInfoBox(canvas, x + 14, y + 205, width - 28,
@@ -534,16 +534,20 @@ namespace ZonderqOS.GUI.Apps
             for (int i = 0; i < MaxDevices; i++)
             {
                 deviceSourceIndex[i] = -1;
+                deviceIndexText[i] = null;
                 deviceNames[i] = null;
                 deviceDetails[i] = null;
+                deviceSizeText[i] = null;
                 deviceSizeMb[i] = 0;
             }
             for (int i = 0; i < MaxPartitions; i++)
             {
                 partitionSourceIndex[i] = -1;
+                partitionIndexText[i] = null;
                 partitionNames[i] = null;
                 partitionDetails[i] = null;
                 partitionMounts[i] = null;
+                partitionSizeText[i] = null;
                 partitionSizeMb[i] = 0;
             }
             for (int i = 0; i < MaxMounts; i++)
@@ -566,10 +570,13 @@ namespace ZonderqOS.GUI.Apps
                         continue;
 
                     int slot = deviceCount++;
+                    ulong sizeMb = ToMegabytes(device.BlockCount, device.BlockSize);
                     deviceSourceIndex[slot] = source;
+                    deviceIndexText[slot] = source.ToString();
                     deviceNames[slot] = string.IsNullOrEmpty(device.Name) ? "DYSK " + source : device.Name;
                     deviceDetails[slot] = "BLOCK " + device.BlockSize + " B  |  " + device.BlockCount + " BLOKOW";
-                    deviceSizeMb[slot] = ToMegabytes(device.BlockCount, device.BlockSize);
+                    deviceSizeMb[slot] = sizeMb;
+                    deviceSizeText[slot] = sizeMb + " MB";
                 }
             }
             catch
@@ -586,15 +593,15 @@ namespace ZonderqOS.GUI.Apps
                 for (int source = 0; source < count && partitionCount < MaxPartitions; source++)
                 {
                     Partition part = StorageManager.Partitions[source];
-                    if (part == null)
-                        continue;
-
                     int slot = partitionCount++;
+                    ulong sizeMb = ToMegabytes(part.BlockCount, part.BlockSize);
                     partitionSourceIndex[slot] = source;
+                    partitionIndexText[slot] = source.ToString();
                     partitionNames[slot] = string.IsNullOrEmpty(part.Name) ? "PARTYCJA " + source : part.Name;
                     string host = part.Host != null && !string.IsNullOrEmpty(part.Host.Name) ? part.Host.Name : "?";
                     partitionDetails[slot] = "HOST " + host + "  |  LBA " + part.StartSector + "  |  BLOCK " + part.BlockSize;
-                    partitionSizeMb[slot] = ToMegabytes(part.BlockCount, part.BlockSize);
+                    partitionSizeMb[slot] = sizeMb;
+                    partitionSizeText[slot] = sizeMb + " MB";
                     partitionMounts[slot] = global::ZonderqOS.GUI.StorageMountManager.GetMountPoint(source);
                 }
             }
