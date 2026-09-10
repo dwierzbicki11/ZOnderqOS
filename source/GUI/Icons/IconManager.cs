@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.IO;
 using Cosmos.Kernel.System.Graphics;
 
 namespace ZonderqOS.GUI.Icons
@@ -6,58 +7,101 @@ namespace ZonderqOS.GUI.Icons
     public static class IconManager
     {
         private const int IconSize = 18;
+        private const string CacheDirectory = "/root/.zonderq-icons";
+        private static readonly Png[] imageCache = new Png[10];
 
         public static void Draw(Canvas canvas, IconType type, int x, int y, Color color)
+        {
+            Png image = GetImage(type);
+            if (image == null)
+                return;
+
+            canvas.DrawImage(image, x, y, IconSize, IconSize);
+        }
+
+        private static Png GetImage(IconType type)
+        {
+            int index = (int)type;
+            if (index < 0 || index >= imageCache.Length)
+                return null;
+
+            if (imageCache[index] != null)
+                return imageCache[index];
+
+            byte[] data = GetResource(type);
+            if (data == null || data.Length == 0)
+                return null;
+
+            try
+            {
+                Directory.CreateDirectory(CacheDirectory);
+                string path = Path.Combine(CacheDirectory, GetFileName(type));
+
+                if (!File.Exists(path))
+                    File.WriteAllBytes(path, data);
+
+                imageCache[index] = new Png(path);
+                return imageCache[index];
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static byte[] GetResource(IconType type)
         {
             switch (type)
             {
                 case IconType.Terminal:
-                    canvas.DrawRectangle(color, x + 2, y + 3, 14, 12);
-                    canvas.DrawLine(color, x + 5, y + 7, x + 8, y + 9);
-                    canvas.DrawLine(color, x + 8, y + 9, x + 5, y + 11);
-                    canvas.DrawLine(color, x + 10, y + 12, x + 14, y + 12);
-                    break;
-
-                case IconType.Folder:
-                    canvas.DrawFilledRectangle(color, x + 2, y + 5, 15, 11);
-                    canvas.DrawFilledRectangle(color, x + 4, y + 3, 7, 3);
-                    break;
-
-                case IconType.File:
-                    canvas.DrawRectangle(color, x + 4, y + 2, 10, 14);
-                    canvas.DrawLine(color, x + 10, y + 2, x + 14, y + 6);
-                    canvas.DrawLine(color, x + 10, y + 2, x + 10, y + 6);
-                    canvas.DrawLine(color, x + 10, y + 6, x + 14, y + 6);
-                    break;
-
-                case IconType.Close:
-                    canvas.DrawLine(color, x + 4, y + 4, x + 14, y + 14);
-                    canvas.DrawLine(color, x + 14, y + 4, x + 4, y + 14);
-                    break;
-
-                case IconType.Maximize:
-                    canvas.DrawRectangle(color, x + 3, y + 3, 12, 12);
-                    break;
-
-                case IconType.Restore:
-                    canvas.DrawRectangle(color, x + 5, y + 5, 10, 10);
-                    canvas.DrawLine(color, x + 3, y + 5, x + 3, y + 13);
-                    canvas.DrawLine(color, x + 3, y + 5, x + 11, y + 5);
-                    break;
-
-                case IconType.Start:
-                    canvas.DrawFilledRectangle(color, x + 3, y + 3, 5, 5);
-                    canvas.DrawFilledRectangle(color, x + 10, y + 3, 5, 5);
-                    canvas.DrawFilledRectangle(color, x + 3, y + 10, 5, 5);
-                    canvas.DrawFilledRectangle(color, x + 10, y + 10, 5, 5);
-                    break;
-
-                case IconType.Settings:
-                case IconType.About:
+                    return IconResources.Terminal;
                 case IconType.FileManager:
-                    canvas.DrawRectangle(color, x + 3, y + 3, 12, 12);
-                    canvas.DrawFilledRectangle(color, x + 6, y + 6, 6, 6);
-                    break;
+                case IconType.Folder:
+                    return IconResources.Folder;
+                case IconType.File:
+                    return IconResources.File;
+                case IconType.Settings:
+                    return IconResources.Settings;
+                case IconType.About:
+                    return IconResources.About;
+                case IconType.Close:
+                    return IconResources.Close;
+                case IconType.Maximize:
+                    return IconResources.Maximize;
+                case IconType.Restore:
+                    return IconResources.Restore;
+                case IconType.Start:
+                    return IconResources.Start;
+                default:
+                    return null;
+            }
+        }
+
+        private static string GetFileName(IconType type)
+        {
+            switch (type)
+            {
+                case IconType.Terminal:
+                    return "terminal-2.png";
+                case IconType.FileManager:
+                case IconType.Folder:
+                    return "folder.png";
+                case IconType.File:
+                    return "file.png";
+                case IconType.Settings:
+                    return "settings-2.png";
+                case IconType.About:
+                    return "info-circle.png";
+                case IconType.Close:
+                    return "square-rounded-x.png";
+                case IconType.Maximize:
+                    return "arrows-maximize.png";
+                case IconType.Restore:
+                    return "restore.png";
+                case IconType.Start:
+                    return "home.png";
+                default:
+                    return "icon.png";
             }
         }
 
