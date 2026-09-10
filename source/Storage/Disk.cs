@@ -19,13 +19,10 @@ namespace ZonderqOS
                 fat = new FatFilesystemType();
                 VfsManager.RegisterFilesystem("fat", fat);
 
-                // Montujemy główną partycję bezpośrednio w root '/'
                 if (VfsManager.TryMount("fat", "0", MountFlags.None, "/", out var mount))
                 {
                     _currentMount = mount;
                     WriteMessage.WriteOK($"Mounted root filesystem at '/' (Source: {mount.Source})", "VFS");
-                    
-                    // Automatyczne tworzenie standardowej hierarchii uniksowej (FHS)
                     CreateStandardHierarchy();
                 }
                 else
@@ -43,37 +40,16 @@ namespace ZonderqOS
         {
             string[] fhsDirectories = new string[]
             {
-                "/bin",
-                "/boot",
-                "/cdrom",
-                "/dev",
-                "/etc",
-                "/home",
-                "/lib",
-                "/lib64",
-                "/media",
-                "/mnt",
-                "/opt",
-                "/proc",
-                "/root",
-                "/run",
-                "/sbin",
-                "/srv",
-                "/sys",
-                "/tmp",
-                "/usr",
-                "/var",
-                "/lost+found"
+                "/bin", "/boot", "/cdrom", "/dev", "/etc", "/home", "/lib", "/lib64",
+                "/media", "/mnt", "/opt", "/proc", "/root", "/run", "/sbin", "/srv",
+                "/sys", "/tmp", "/usr", "/var", "/lost+found"
             };
 
             foreach (string dir in fhsDirectories)
             {
                 try
                 {
-                    if (!Directory.Exists(dir))
-                    {
-                        Directory.CreateDirectory(dir);
-                    }
+                    if (!Directory.Exists(dir)) Directory.CreateDirectory(dir);
                 }
                 catch (Exception ex)
                 {
@@ -81,14 +57,13 @@ namespace ZonderqOS
                 }
             }
 
-            // Inicjalizacja pliku dziennika błędów w /var
             string logPath = @"/var/error_log.txt";
             if (!File.Exists(logPath))
             {
-                try 
-                { 
-                    File.WriteAllText(logPath, "=== ZonderqOS System Log Initialized ===\n"); 
-                } 
+                try
+                {
+                    File.WriteAllText(logPath, "=== ZonderqOS System Log Initialized ===\n");
+                }
                 catch { }
             }
         }
@@ -99,15 +74,13 @@ namespace ZonderqOS
             {
                 string[] files = Directory.GetFiles(path);
                 foreach (string file in files)
-                {
                     CommandIO.WriteLine($"{indent}--- {Path.GetFileName(file)}");
-                }
 
                 string[] directories = Directory.GetDirectories(path);
                 foreach (string dir in directories)
                 {
                     CommandIO.WriteLine($"{indent}+-- {Path.GetFileName(dir)}");
-                    Tree(dir, indent + "    "); 
+                    Tree(dir, indent + "    ");
                 }
             }
             catch (Exception ex)
@@ -118,98 +91,115 @@ namespace ZonderqOS
 
         public static void CreateFile(string path, string content)
         {
-            // --- BLOKADA ACL ---
             if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
             {
                 WriteMessage.WriteError($"Permission denied: Cannot modify {path}", "SEC");
                 SecurityLogger.LogEvent("WARN", $"Unauthorized write attempt on {path} by {SecurityContext.CurrentUser}");
                 return;
             }
-            // -------------------
 
-            try 
-            { 
-                File.WriteAllText(path, content); 
-                
-                // Automatyczna rejestracja uprawnień 644 dla nowo stworzonego pliku, przypisana do autora
+            try
+            {
+                File.WriteAllText(path, content);
                 if (!PermissionManager.GetPermission(path).Owner.Equals(SecurityContext.CurrentUser))
-                {
                     PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
-                }
-
-                WriteMessage.WriteOK($"File saved: {path}", "FS"); 
+                WriteMessage.WriteOK($"File saved: {path}", "FS");
             }
-            catch (Exception ex) 
-            { 
-                WriteMessage.WriteError($"Write error: {ex.Message}", "FS"); 
+            catch (Exception ex)
+            {
+                WriteMessage.WriteError($"Write error: {ex.Message}", "FS");
             }
         }
 
         public static void AppendFile(string path, string content)
         {
-            // --- BLOKADA ACL ---
             if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
             {
                 WriteMessage.WriteError($"Permission denied: Cannot modify {path}", "SEC");
                 SecurityLogger.LogEvent("WARN", $"Unauthorized append attempt on {path} by {SecurityContext.CurrentUser}");
                 return;
             }
-            // -------------------
 
-            try 
-            { 
-                File.AppendAllText(path, content + "\n"); 
-                WriteMessage.WriteOK($"Appended to file: {path}", "FS"); 
+            try
+            {
+                File.AppendAllText(path, content + "\n");
+                WriteMessage.WriteOK($"Appended to file: {path}", "FS");
             }
-            catch (Exception ex) 
-            { 
-                WriteMessage.WriteError($"Append error: {ex.Message}", "FS"); 
+            catch (Exception ex)
+            {
+                WriteMessage.WriteError($"Append error: {ex.Message}", "FS");
             }
         }
 
         public static void CopyFile(string sourcePath, string destinationPath)
         {
-            try 
-            { 
-                File.Copy(sourcePath, destinationPath); 
-                WriteMessage.WriteOK($"Copied file from {sourcePath} to {destinationPath}", "FS"); 
+            if (!File.Exists(sourcePath))
+            {
+                WriteMessage.WriteError($"Copy source does not exist: {sourcePath}", "FS");
+                return;
             }
-            catch (Exception ex) 
-            { 
-                WriteMessage.WriteError($"Copy error: {ex.Message}", "FS"); 
+
+            if (!PermissionManager.CanRead(sourcePath, SecurityContext.CurrentUser) ||
+                (File.Exists(destinationPath) && !PermissionManager.CanWrite(destinationPath, SecurityContext.CurrentUser)))
+            {
+                WriteMessage.WriteError($"Permission denied: Cannot copy {sourcePath} to {destinationPath}", "SEC");
+                SecurityLogger.LogEvent("WARN", $"Unauthorized copy attempt by {SecurityContext.CurrentUser}: {sourcePath} -> {destinationPath}");
+                return;
+            }
+
+            try
+            {
+                File.Copy(sourcePath, destinationPath);
+                WriteMessage.WriteOK($"Copied file from {sourcePath} to {destinationPath}", "FS");
+            }
+            catch (Exception ex)
+            {
+                WriteMessage.WriteError($"Copy error: {ex.Message}", "FS");
             }
         }
 
         public static void MoveFile(string sourcePath, string destinationPath)
         {
-            try 
-            { 
-                File.Move(sourcePath, destinationPath); 
-                WriteMessage.WriteOK($"Moved file from {sourcePath} to {destinationPath}", "FS"); 
+            if (!File.Exists(sourcePath))
+            {
+                WriteMessage.WriteError($"Move source does not exist: {sourcePath}", "FS");
+                return;
             }
-            catch (Exception ex) 
-            { 
-                WriteMessage.WriteError($"Move error: {ex.Message}", "FS"); 
+
+            if (!PermissionManager.CanWrite(sourcePath, SecurityContext.CurrentUser) ||
+                (File.Exists(destinationPath) && !PermissionManager.CanWrite(destinationPath, SecurityContext.CurrentUser)))
+            {
+                WriteMessage.WriteError($"Permission denied: Cannot move {sourcePath} to {destinationPath}", "SEC");
+                SecurityLogger.LogEvent("WARN", $"Unauthorized move attempt by {SecurityContext.CurrentUser}: {sourcePath} -> {destinationPath}");
+                return;
+            }
+
+            try
+            {
+                File.Move(sourcePath, destinationPath);
+                WriteMessage.WriteOK($"Moved file from {sourcePath} to {destinationPath}", "FS");
+            }
+            catch (Exception ex)
+            {
+                WriteMessage.WriteError($"Move error: {ex.Message}", "FS");
             }
         }
 
         public static string ReadFile(string path)
         {
-            // --- BLOKADA ACL ---
             if (!PermissionManager.CanRead(path, SecurityContext.CurrentUser))
             {
                 WriteMessage.WriteError($"Permission denied: Cannot read {path}", "SEC");
                 SecurityLogger.LogEvent("WARN", $"Unauthorized read attempt on {path} by {SecurityContext.CurrentUser}");
                 return string.Empty;
             }
-            // -------------------
 
-            try 
-            { 
-                return File.ReadAllText(path); 
+            try
+            {
+                return File.ReadAllText(path);
             }
-            catch (Exception ex) 
-            { 
+            catch (Exception ex)
+            {
                 WriteMessage.WriteError($"Error reading file {path}: {ex.Message}", "FS");
                 return string.Empty;
             }
@@ -217,38 +207,52 @@ namespace ZonderqOS
 
         public static void DeleteFile(string path)
         {
-            try 
-            { 
-                File.Delete(path); 
-                WriteMessage.WriteOK($"File deleted: {path}", "FS"); 
+            if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
+            {
+                WriteMessage.WriteError($"Permission denied: Cannot delete {path}", "SEC");
+                SecurityLogger.LogEvent("WARN", $"Unauthorized delete attempt on {path} by {SecurityContext.CurrentUser}");
+                return;
             }
-            catch (Exception ex) 
-            { 
-                WriteMessage.WriteError($"Deletion error: {ex.Message}", "FS"); 
+
+            try
+            {
+                File.Delete(path);
+                WriteMessage.WriteOK($"File deleted: {path}", "FS");
+            }
+            catch (Exception ex)
+            {
+                WriteMessage.WriteError($"Deletion error: {ex.Message}", "FS");
             }
         }
 
         public static void CreateDir(string path)
         {
-            try 
-            { 
-                Directory.CreateDirectory(path); 
-                WriteMessage.WriteOK($"Directory created: {path}", "FS"); 
+            try
+            {
+                Directory.CreateDirectory(path);
+                WriteMessage.WriteOK($"Directory created: {path}", "FS");
             }
-            catch (Exception ex) 
-            { 
-                WriteMessage.WriteError($"Error creating directory: {ex.Message}", "FS"); 
+            catch (Exception ex)
+            {
+                WriteMessage.WriteError($"Error creating directory: {ex.Message}", "FS");
             }
         }
-        
+
         public static void DeleteDir(string path, bool recursive = true)
         {
+            if (Directory.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
+            {
+                WriteMessage.WriteError($"Permission denied: Cannot delete directory {path}", "SEC");
+                SecurityLogger.LogEvent("WARN", $"Unauthorized directory delete attempt on {path} by {SecurityContext.CurrentUser}");
+                return;
+            }
+
             try
             {
                 Directory.Delete(path, recursive);
                 WriteMessage.WriteOK($"Directory deleted: {path}", "FS");
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 WriteMessage.WriteError($"Error deleting directory: {ex.Message}", "FS");
             }
@@ -259,13 +263,11 @@ namespace ZonderqOS
             string[] units = { "B", "KB", "MB", "GB", "TB" };
             double size = bytes;
             int unitIndex = 0;
-
             while (size >= 1024 && unitIndex < units.Length - 1)
             {
                 size /= 1024;
                 unitIndex++;
             }
-
             return $"{size:0.##} {units[unitIndex]}";
         }
 
@@ -282,36 +284,26 @@ namespace ZonderqOS
                 }
 
                 CommandIO.WriteLine("=== Storage Space (All Partitions) ===");
-
                 for (int i = 0; i < partitions.Count; i++)
                 {
                     var partition = partitions[i];
                     ulong totalBytes = (ulong)partition.BlockCount * (ulong)partition.BlockSize;
-
                     ulong usedBytes = 0;
                     try
                     {
                         string targetPath = (i == 0) ? "/" : "/mnt";
-                        usedBytes = (ulong)CalculateDirectorySize(targetPath);
+                        long calculated = CalculateDirectorySize(targetPath, 0);
+                        usedBytes = calculated > 0 ? (ulong)calculated : 0;
                     }
-                    catch
-                    {
-                        usedBytes = 0;
-                    }
+                    catch { }
 
                     if (usedBytes > totalBytes) usedBytes = totalBytes;
                     ulong freeBytes = totalBytes - usedBytes;
-
                     double usagePercentage = totalBytes > 0 ? ((double)usedBytes / totalBytes) * 100 : 0;
                     if (usagePercentage > 100) usagePercentage = 100;
 
-                    string freeFormatted = FormatBytes(freeBytes);
-                    string totalFormatted = FormatBytes(totalBytes);
-                    string usedFormatted = FormatBytes(usedBytes);
-
-                    CommandIO.WriteLine($"Partition [{i}]: {freeFormatted} / {totalFormatted}  [Used: {usedFormatted} - {usagePercentage:0.#}%]");
+                    CommandIO.WriteLine($"Partition [{i}]: {FormatBytes(freeBytes)} / {FormatBytes(totalBytes)}  [Used: {FormatBytes(usedBytes)} - {usagePercentage:0.#}%]");
                 }
-
                 CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
@@ -326,17 +318,15 @@ namespace ZonderqOS
             try
             {
                 int id = int.Parse(targetId);
-                if (id >= Cosmos.Kernel.System.Storage.StorageManager.Partitions.Count)
+                int partitionCount = Cosmos.Kernel.System.Storage.StorageManager.Partitions.Count;
+                if (id < 0 || id >= partitionCount)
                 {
-                    WriteMessage.WriteError($"Partition index [{targetId}] out of range. Max index is {Cosmos.Kernel.System.Storage.StorageManager.Partitions.Count - 1}.", "FS");
+                    WriteMessage.WriteError($"Partition index [{targetId}] out of range. Max index is {partitionCount - 1}.", "FS");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
 
-                if (targetId == "0")
-                {
-                    VfsManager.TryUnmount("/");
-                }
+                if (targetId == "0") VfsManager.TryUnmount("/");
 
                 FatFormatOptions options = new()
                 {
@@ -355,14 +345,11 @@ namespace ZonderqOS
                     CommandIO.LastCommandSuccess = true;
                 }
 
-                if (targetId == "0")
+                if (targetId == "0" && VfsManager.TryMount("fat", "0", MountFlags.None, "/", out var mount))
                 {
-                    if (VfsManager.TryMount("fat", "0", MountFlags.None, "/", out var mount))
-                    {
-                        _currentMount = mount;
-                        WriteMessage.WriteOK($"Mounted root partition {mount.Name} at {mount.MountPoint}", "VFS");
-                        CreateStandardHierarchy();
-                    }
+                    _currentMount = mount;
+                    WriteMessage.WriteOK($"Mounted root partition {mount.Name} at {mount.MountPoint}", "VFS");
+                    CreateStandardHierarchy();
                 }
             }
             catch (Exception ex)
@@ -385,27 +372,36 @@ namespace ZonderqOS
                 }
 
                 var device = Cosmos.Kernel.System.Storage.StorageManager.GetDevice(diskId);
-                byte[] mbr = new byte[device.BlockSize]; 
+                const uint startLba = 2048;
+                if (device.BlockSize < 512 || device.BlockCount <= startLba)
+                {
+                    WriteMessage.WriteError("Disk is too small or has an unsupported block size for MBR partitioning.", "HW");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                ulong availableBlocks = device.BlockCount - startLba;
+                if (availableBlocks > uint.MaxValue)
+                {
+                    WriteMessage.WriteError("Disk is too large for the current MBR partition layout.", "HW");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                byte[] mbr = new byte[device.BlockSize];
                 Array.Clear(mbr, 0, mbr.Length);
-
                 int offset = 446;
-                mbr[offset + 0] = 0x80; 
-                mbr[offset + 1] = 0x00; 
-                mbr[offset + 2] = 0x02; 
-                mbr[offset + 3] = 0x00; 
-                
-                mbr[offset + 4] = 0x0B; 
-                
-                mbr[offset + 5] = 0xFF; 
-                mbr[offset + 6] = 0xFF; 
-                mbr[offset + 7] = 0xFF; 
+                mbr[offset + 0] = 0x80;
+                mbr[offset + 1] = 0x00;
+                mbr[offset + 2] = 0x02;
+                mbr[offset + 3] = 0x00;
+                mbr[offset + 4] = 0x0B;
+                mbr[offset + 5] = 0xFF;
+                mbr[offset + 6] = 0xFF;
+                mbr[offset + 7] = 0xFF;
 
-                uint startLba = 2048;
                 BitConverter.GetBytes(startLba).CopyTo(mbr, offset + 8);
-
-                uint sectorCount = (uint)(device.BlockCount - startLba);
-                BitConverter.GetBytes(sectorCount).CopyTo(mbr, offset + 12);
-
+                BitConverter.GetBytes((uint)availableBlocks).CopyTo(mbr, offset + 12);
                 mbr[510] = 0x55;
                 mbr[511] = 0xAA;
 
@@ -426,7 +422,6 @@ namespace ZonderqOS
             {
                 int deviceCount = Cosmos.Kernel.System.Storage.StorageManager.DeviceCount;
                 CommandIO.WriteLine($"--- Physical Block Devices: {deviceCount} ---");
-
                 for (int i = 0; i < deviceCount; i++)
                 {
                     var device = Cosmos.Kernel.System.Storage.StorageManager.GetDevice(i);
@@ -436,7 +431,6 @@ namespace ZonderqOS
 
                 var partitions = Cosmos.Kernel.System.Storage.StorageManager.Partitions;
                 CommandIO.WriteLine($"--- Logical Partitions: {partitions.Count} ---");
-
                 if (partitions.Count == 0)
                 {
                     CommandIO.WriteLine("  └─ No initialized partitions found.");
@@ -462,13 +456,9 @@ namespace ZonderqOS
             try
             {
                 if (VfsManager.TryMount("fat", partitionId, MountFlags.None, mountPoint, out var mount))
-                {
                     WriteMessage.WriteOK($"Partition '{partitionId}' mounted successfully at {mountPoint}", "VFS");
-                }
                 else
-                {
                     WriteMessage.WriteError($"Failed to mount partition '{partitionId}' at {mountPoint}.", "VFS");
-                }
             }
             catch (Exception ex)
             {
@@ -481,13 +471,9 @@ namespace ZonderqOS
             try
             {
                 if (VfsManager.TryUnmount(mountPoint))
-                {
-                     WriteMessage.WriteOK($"Node {mountPoint} successfully unmounted.", "VFS");
-                }
+                    WriteMessage.WriteOK($"Node {mountPoint} successfully unmounted.", "VFS");
                 else
-                {
-                     WriteMessage.WriteError($"Could not unmount {mountPoint}. Check if path exists.", "VFS");
-                }
+                    WriteMessage.WriteError($"Could not unmount {mountPoint}. Check if path exists.", "VFS");
             }
             catch (Exception ex)
             {
@@ -523,17 +509,22 @@ namespace ZonderqOS
         {
             try
             {
-                if (Cosmos.Kernel.System.Storage.StorageManager.DeviceCount <= diskId)
+                int deviceCount = Cosmos.Kernel.System.Storage.StorageManager.DeviceCount;
+                if (diskId < 0 || diskId >= deviceCount)
                 {
                     WriteMessage.WriteError($"Disk [{diskId}] does not exist.", "HW");
                     return;
                 }
 
                 var device = Cosmos.Kernel.System.Storage.StorageManager.GetDevice(diskId);
+                if (sector >= device.BlockCount)
+                {
+                    WriteMessage.WriteError($"Sector [{sector}] is outside disk [{diskId}].", "HW");
+                    return;
+                }
+
                 byte[] buffer = new byte[device.BlockSize];
-                
                 device.ReadBlock(sector, 1, buffer);
-                
                 CommandIO.WriteLine($"--- HexDump: Disk [{diskId}] | Sector: {sector} | Size: {device.BlockSize} B ---");
 
                 for (int i = 0; i < buffer.Length; i += 16)
@@ -541,20 +532,17 @@ namespace ZonderqOS
                     string hexPart = $"{i:X4}  ";
                     for (int j = 0; j < 16; j++)
                     {
-                        if (i + j < buffer.Length) hexPart += $"{buffer[i + j]:X2} ";
-                        else hexPart += "   ";
-                        
+                        hexPart += i + j < buffer.Length ? $"{buffer[i + j]:X2} " : "   ";
                         if (j == 7) hexPart += " ";
                     }
-                    
+
                     hexPart += " |";
                     for (int j = 0; j < 16; j++)
                     {
                         if (i + j < buffer.Length)
                         {
                             byte b = buffer[i + j];
-                            if (b >= 32 && b <= 126) hexPart += (char)b;
-                            else hexPart += ".";
+                            hexPart += b >= 32 && b <= 126 ? (char)b : '.';
                         }
                     }
                     hexPart += "|";
@@ -567,22 +555,27 @@ namespace ZonderqOS
             }
         }
 
-        private static long CalculateDirectorySize(string path)
+        private static long CalculateDirectorySize(string path, int depth)
         {
+            if (depth > 64) return 0;
+
             long size = 0;
             try
             {
                 string[] files = Directory.GetFiles(path);
                 foreach (string file in files)
                 {
-                    byte[] content = File.ReadAllBytes(file);
-                    if (content != null) size += content.Length;
+                    long fileSize = new FileInfo(file).Length;
+                    if (fileSize > 0 && size <= long.MaxValue - fileSize)
+                        size += fileSize;
                 }
 
                 string[] directories = Directory.GetDirectories(path);
                 foreach (string dir in directories)
                 {
-                    size += CalculateDirectorySize(dir);
+                    long childSize = CalculateDirectorySize(dir, depth + 1);
+                    if (childSize > 0 && size <= long.MaxValue - childSize)
+                        size += childSize;
                 }
             }
             catch { }
