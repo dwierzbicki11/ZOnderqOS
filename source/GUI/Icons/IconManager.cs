@@ -8,8 +8,8 @@ namespace ZonderqOS.GUI.Icons
     {
         private const int IconSize = 18;
         private const int LargeIconSize = 40;
-        private const int IconCount = 16;
-        private const int MaxScaledCacheEntries = 192;
+        private const int IconCount = (int)IconType.Play + 1;
+        private const int MaxScaledCacheEntries = 256;
         private const string CacheDirectory = "/root/.zonderq-icons";
 
         // Source PNGs are decoded once during GUI startup and held strongly for the
@@ -108,8 +108,8 @@ namespace ZonderqOS.GUI.Icons
                     return false;
 
                 // Path-based PNG decoding is the proven Cosmos Gen3 path used by the
-                // original GUI. The embedded bytes are written only once; no file I/O
-                // happens on normal rendering.
+                // original GUI. Embedded bytes are written once; normal rendering does
+                // not perform file IO or decode/scale allocations.
                 Directory.CreateDirectory(CacheDirectory);
                 string path = Path.Combine(CacheDirectory, GetFileName(type));
                 if (!File.Exists(path))
@@ -267,6 +267,25 @@ namespace ZonderqOS.GUI.Icons
                 case IconType.Trash: return IconResources.Trash;
                 case IconType.Reboot: return IconResources.Reboot;
                 case IconType.Shutdown: return IconResources.Shutdown;
+                case IconType.ImageViewer: return IconResources.ImageViewer;
+                case IconType.Calculator: return IconResources.Calculator;
+                case IconType.Paint: return IconResources.Paint;
+                case IconType.Network: return IconResources.Network;
+                case IconType.DiskManager: return IconResources.DiskManager;
+                case IconType.HexViewer: return IconResources.HexViewer;
+                case IconType.Calendar: return IconResources.Calendar;
+                case IconType.AppCenter: return IconResources.AppCenter;
+                case IconType.Open: return IconResources.Open;
+                case IconType.Save: return IconResources.Save;
+                case IconType.ZoomIn: return IconResources.ZoomIn;
+                case IconType.ZoomOut: return IconResources.ZoomOut;
+                case IconType.Rotate: return IconResources.Rotate;
+                case IconType.Pencil: return IconResources.Pencil;
+                case IconType.Eraser: return IconResources.Eraser;
+                case IconType.Wifi: return IconResources.Wifi;
+                case IconType.Ethernet: return IconResources.Ethernet;
+                case IconType.Install: return IconResources.Install;
+                case IconType.Play: return IconResources.Play;
                 default: return null;
             }
         }
@@ -291,6 +310,25 @@ namespace ZonderqOS.GUI.Icons
                 case IconType.Trash: return "trash.png";
                 case IconType.Reboot: return "reboot.png";
                 case IconType.Shutdown: return "shutdown.png";
+                case IconType.ImageViewer: return "image.png";
+                case IconType.Calculator: return "calc.png";
+                case IconType.Paint: return "Design-Paint-Palette-Tray--Streamline-Nova.png";
+                case IconType.Network: return "Network-Global--Streamline-Nova.png";
+                case IconType.DiskManager: return "disk_manager.png";
+                case IconType.HexViewer: return "hexviewer.png";
+                case IconType.Calendar: return "calendar.png";
+                case IconType.AppCenter: return "app.png";
+                case IconType.Open: return "open.png";
+                case IconType.Save: return "save.png";
+                case IconType.ZoomIn: return "zoom-in.png";
+                case IconType.ZoomOut: return "zoom-out.png";
+                case IconType.Rotate: return "rotate.png";
+                case IconType.Pencil: return "pencil.png";
+                case IconType.Eraser: return "eraser.png";
+                case IconType.Wifi: return "wifi.png";
+                case IconType.Ethernet: return "ethernet.png";
+                case IconType.Install: return "install.png";
+                case IconType.Play: return "play.png";
                 default: return "icon.png";
             }
         }
