@@ -6,6 +6,7 @@ using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Graphics.Fonts;
 using Cosmos.Kernel.System.Keyboard;
 using ZonderqOS.GUI.Icons;
+using Font = Cosmos.Kernel.System.Graphics.Fonts.Font;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -222,18 +223,58 @@ namespace ZonderqOS.GUI.Apps
             Button(canvas, IconType.ArrowUp, 8); Button(canvas, IconType.Start, 50); Button(canvas, IconType.Refresh, 92); Button(canvas, IconType.Search, 134);
             int pathX = X + 180, pathW = Math.Max(120, Width - 190);
             canvas.DrawFilledRectangle(Color.White, pathX, Y + 9, pathW, 26); canvas.DrawRectangle(Color.Silver, pathX, Y + 9, pathW, 26);
-            string path = app.CurrentPath + (string.IsNullOrEmpty(app.SearchText) ? "" : " [" + app.SearchText + "]");
-            int max = Math.Max(8, (pathW - 14) / 16); if (path.Length > max) path = "..." + path.Substring(path.Length - max + 3);
-            canvas.DrawString(path, font, Color.Black, pathX + 7, Y + 11);
+            DrawPath(canvas, pathX + 7, Y + 11, pathW - 14);
 
             int listX = X + 4, listY = Y + 48, listW = Width - 8, listH = Height - 84;
             canvas.DrawFilledRectangle(Color.White, listX, listY, listW, listH); Grid(canvas, listX, listY, listW, listH);
 
             int fy = Y + Height - 34; canvas.DrawFilledRectangle(Color.FromArgb(225, 230, 235), X + 4, fy, Width - 8, 28);
-            string s = app.Status ?? ""; int sm = Math.Max(8, (Width / 2 - 16) / 16); if (s.Length > sm) s = s.Substring(0, sm - 3) + "...";
-            canvas.DrawString(s, font, Color.DimGray, X + 10, fy + 3);
+            DrawStatus(canvas, X + 10, fy + 3, Math.Max(8, (Width / 2 - 16) / 16));
             canvas.DrawString("Double click open | Enter | F5 refresh", font, Color.DimGray, X + Width / 2, fy + 3);
             if (app.ContextMenuVisible) Menu(canvas); if (app.DialogMode != 0) Dialog(canvas);
+        }
+
+        private void DrawPath(Canvas canvas, int x, int y, int width)
+        {
+            string path = app.CurrentPath;
+            int maxChars = Math.Max(8, width / 16);
+            int searchExtra = string.IsNullOrEmpty(app.SearchText) ? 0 : app.SearchText.Length + 3;
+            int total = path.Length + searchExtra;
+            int start = total > maxChars ? total - maxChars + 3 : 0;
+            if (start > 0) canvas.DrawString("...", font, Color.Black, x, y);
+            int px = x + (start > 0 ? 3 * 16 : 0);
+            if (start < path.Length)
+            {
+                int take = path.Length - start;
+                if (take > maxChars) take = maxChars;
+                DrawStringRange(canvas, path, start, take, px, y, Color.Black);
+                px += take * 16;
+            }
+            if (!string.IsNullOrEmpty(app.SearchText) && px - x < width)
+            {
+                canvas.DrawString(" [", font, Color.Black, px, y); px += 2 * 16;
+                int remaining = Math.Max(0, width - (px - x));
+                int takeSearch = Math.Min(app.SearchText.Length, remaining / 16);
+                DrawStringRange(canvas, app.SearchText, 0, takeSearch, px, y, Color.Black);
+                px += takeSearch * 16;
+                if (takeSearch < app.SearchText.Length && px - x + 3 * 16 <= width) canvas.DrawString("...", font, Color.Black, px, y);
+            }
+        }
+
+        private void DrawStatus(Canvas canvas, int x, int y, int maxChars)
+        {
+            string s = app.Status ?? "";
+            int take = Math.Min(s.Length, maxChars);
+            DrawStringRange(canvas, s, 0, take, x, y, Color.DimGray);
+            if (take < s.Length && take >= 3) DrawStringRange(canvas, "...", 0, 3, x + (take - 3) * 16, y, Color.DimGray);
+        }
+
+        private void DrawStringRange(Canvas canvas, string text, int start, int count, int x, int y, Color color)
+        {
+            if (text == null || count <= 0 || start < 0 || start >= text.Length) return;
+            int end = Math.Min(text.Length, start + count);
+            for (int i = start; i < end; i++)
+                canvas.DrawString(text[i].ToString(), font, color, x + (i - start) * 16, y);
         }
 
         private void Grid(Canvas canvas, int x, int y, int w, int h)
@@ -254,7 +295,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void DrawWrappedName(Canvas canvas, string name, int x, int y, int width, int height)
         {
-            const int glyphWidth = 5, glyphHeight = 7, spacing = 1, lineHeight = 9, maxChars = 11;
+            const int glyphWidth = 5, spacing = 1, lineHeight = 9, maxChars = 11;
             if (string.IsNullOrEmpty(name)) return;
             int pos = 0;
             int maxLines = Math.Max(1, height / lineHeight);
@@ -267,30 +308,39 @@ namespace ZonderqOS.GUI.Apps
                     if (breakAt >= pos) take = breakAt - pos;
                 }
                 if (take <= 0) take = Math.Min(maxChars, name.Length - pos);
-                string part = name.Substring(pos, take);
-                if (pos + take < name.Length && line == maxLines - 1 && part.Length >= 3)
-                    part = part.Substring(0, part.Length - 3) + "...";
-                int textWidth = part.Length * (glyphWidth + spacing) - spacing;
+                bool truncated = pos + take < name.Length && line == maxLines - 1;
+                int drawTake = truncated && take >= 3 ? take - 3 : take;
+                int textWidth = drawTake * (glyphWidth + spacing) - (drawTake > 0 ? spacing : 0);
+                if (truncated) textWidth += 3 * (glyphWidth + spacing);
                 int px = x + Math.Max(0, (width - textWidth) / 2);
-                DrawTinyText(canvas, part, px, y + line * lineHeight);
+                DrawTinyTextRange(canvas, name, pos, drawTake, px, y + line * lineHeight);
+                if (truncated) DrawTinyText(canvas, "...", px + drawTake * (glyphWidth + spacing), y + line * lineHeight);
                 pos += take;
                 while (pos < name.Length && name[pos] == ' ') pos++;
             }
         }
 
+        private void DrawTinyTextRange(Canvas canvas, string text, int start, int count, int x, int y)
+        {
+            const int spacing = 1;
+            int end = Math.Min(text.Length, start + count);
+            for (int i = start; i < end; i++) DrawTinyChar(canvas, text[i], x + (i - start) * 6, y);
+        }
+
         private void DrawTinyText(Canvas canvas, string text, int x, int y)
         {
-            const int glyphWidth = 5, spacing = 1;
-            for (int i = 0; i < text.Length; i++)
+            for (int i = 0; i < text.Length; i++) DrawTinyChar(canvas, text[i], x + i * 6, y);
+        }
+
+        private void DrawTinyChar(Canvas canvas, char ch, int x, int y)
+        {
+            const int glyphWidth = 5;
+            for (int row = 0; row < 7; row++)
             {
-                char ch = text[i];
-                for (int row = 0; row < 7; row++)
-                {
-                    int bits = TinyGlyph(ch, row);
-                    for (int col = 0; col < glyphWidth; col++)
-                        if ((bits & (1 << (glyphWidth - 1 - col))) != 0)
-                            canvas.DrawFilledRectangle(Color.FromArgb(30, 30, 30), x + i * (glyphWidth + spacing) + col, y + row, 1, 1);
-                }
+                int bits = TinyGlyph(ch, row);
+                for (int col = 0; col < glyphWidth; col++)
+                    if ((bits & (1 << (glyphWidth - 1 - col))) != 0)
+                        canvas.DrawFilledRectangle(Color.FromArgb(30, 30, 30), x + col, y + row, 1, 1);
             }
         }
 
@@ -333,9 +383,9 @@ namespace ZonderqOS.GUI.Apps
                 case '5': p = "111111000011110000010000111110"; break;
                 case '6': p = "011101000010000111101000101110"; break;
                 case '7': p = "111110000100010001000010000100"; break;
-                case '8': p = "0111010001100010111010001101110"; break;
+                case '8': p = "011101000110001011101000110111"; break;
                 case '9': p = "011101000110001011110000101110"; break;
-                case '.': p = "0000000000000000000000000000004"; break;
+                case '.': p = "000000000000000000000000000001"; break;
                 case '-': p = "000000000000000011100000000000"; break;
                 case '_': p = "000000000000000000000000011111"; break;
                 case ' ': p = "000000000000000000000000000000"; break;
@@ -352,9 +402,9 @@ namespace ZonderqOS.GUI.Apps
         private void Menu(Canvas c)
         {
             int x = X + app.ContextMenuX, y = Y + app.ContextMenuY; c.DrawFilledRectangle(Color.White, x, y, 220, 116); c.DrawRectangle(Color.Gray, x, y, 220, 116);
-            string[] items = { "New file", "New folder", "Refresh", "Go up" };
-            for (int i = 0; i < items.Length; i++) c.DrawString(items[i], font, Color.Black, x + 10, y + 3 + i * 29);
+            DrawMenuItem(c, "New file", x, y + 3); DrawMenuItem(c, "New folder", x, y + 32); DrawMenuItem(c, "Refresh", x, y + 61); DrawMenuItem(c, "Go up", x, y + 90);
         }
+        private void DrawMenuItem(Canvas c, string text, int x, int y) { c.DrawString(text, font, Color.Black, x + 10, y); }
         private void Dialog(Canvas c)
         {
             int w = 430, h = 110, x = X + (Width - w) / 2, y = Y + (Height - h) / 2;
