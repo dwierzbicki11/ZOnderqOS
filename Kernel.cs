@@ -8,34 +8,23 @@ namespace ZonderqOS
 {
     public class Kernel : Sys.Kernel
     {
-        string path = "/root";
-        List<string> history = new List<string>();
+        private const int MaxHistoryEntries = 100;
+        private string path = "/root";
+        private readonly List<string> history = new List<string>();
 
         protected override void BeforeRun()
         {
             try
             {
                 Console.Clear();
-                
-                // 1. Inicjalizacja VFS i struktury FHS w root '/'
                 Disk.Initialize();
-
-                // 2. Inicjalizacja użytkowników i pliku /etc/passwd
                 UserManager.Initialize();
-
                 Command.Initialize();
-
-                // 3. Inicjalizacja zmiennych środowiskowych i /etc/profile
                 EnvironmentManager.Initialize();
-
                 SecurityLogger.Initialize();
-
                 PermissionManager.Initialize();
-
                 Network.Initialize();
-
                 SystemGuardian.Initialize();
-
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
             }
             catch (Exception ex)
@@ -48,50 +37,46 @@ namespace ZonderqOS
         {
             try
             {
-                // Dynamiczny uniksowy prompt: użytkownik@host:ścieżka$ 
                 string user = EnvironmentManager.Get("USER");
                 if (string.IsNullOrEmpty(user)) user = SecurityContext.CurrentUser;
-                
+
                 string host = EnvironmentManager.Get("HOSTNAME");
                 if (string.IsNullOrEmpty(host)) host = "ZonderqOS";
 
                 Console.Write($"{user}@{host}:{path}$ ");
-                
-                // Odczyt linii z obsługą historii, strzałek lewo/prawo i edycji w środku tekstu
                 string command = ReadLineWithHistory();
-                
+
                 if (!string.IsNullOrWhiteSpace(command))
                 {
                     Command.Run(command, ref path);
-                    
-                    // Zapisujemy w historii (ignorujemy duplikaty pod rząd)
+
                     if (history.Count == 0 || history[history.Count - 1] != command)
                     {
                         history.Add(command);
+                        while (history.Count > MaxHistoryEntries)
+                        {
+                            history.RemoveAt(0);
+                        }
                     }
                 }
             }
-            catch(Exception ex)
+            catch (Exception ex)
             {
                 WriteMessage.WriteError($"Wystąpił błąd jądra: {ex.Message}", "Kernel");
             }
         }
 
-        /// <summary>
-        /// Zaawansowany odczyt linii z obsługą kursora (lewo/prawo), historii (góra/dół) i edycji.
-        /// </summary>
         private string ReadLineWithHistory()
         {
             string currentInput = "";
             int cursorPosition = 0;
             int historyIndex = history.Count;
-
             int startLeft = Console.CursorLeft;
             int startTop = Console.CursorTop;
 
             while (true)
             {
-                var keyInfo = Console.ReadKey(true); // true = nie wypisuj znaku automatycznie
+                var keyInfo = Console.ReadKey(true);
 
                 if (keyInfo.Key == ConsoleKey.Enter)
                 {
@@ -158,7 +143,6 @@ namespace ZonderqOS
                         RefreshLine(startLeft, startTop, currentInput, cursorPosition);
                     }
                 }
-                // Wprowadzanie znaków w miejscu kursora
                 else if (keyInfo.KeyChar >= 32 && keyInfo.KeyChar <= 126)
                 {
                     currentInput = currentInput.Insert(cursorPosition, keyInfo.KeyChar.ToString());
@@ -170,43 +154,40 @@ namespace ZonderqOS
             return currentInput;
         }
 
-        /// <summary>
-        /// Odświeża całą linię na ekranie i ustawia fizyczny kursor w odpowiednim miejscu.
-        /// </summary>
         private void RefreshLine(int startLeft, int startTop, string currentInput, int cursorPosition)
         {
             try
             {
                 Console.SetCursorPosition(startLeft, startTop);
-                // Wypisz tekst + spację, aby wyczyścić ewentualne resztki po dłuższym napisie
                 Console.Write(currentInput + " ");
                 SetConsoleCursor(startLeft, startTop, cursorPosition);
             }
             catch
             {
-                // Zabezpieczenie przed wyjściem poza ekran
             }
         }
 
-        /// <summary>
-        /// Ustawia fizyczny kursor konsoli na podstawie pozycji w tekście.
-        /// </summary>
         private void SetConsoleCursor(int startLeft, int startTop, int cursorPosition)
         {
             try
             {
                 int targetLeft = startLeft + cursorPosition;
                 int windowWidth = 80;
-                try { windowWidth = Console.WindowWidth; } catch { }
+                try
+                {
+                    windowWidth = Console.WindowWidth;
+                }
+                catch
+                {
+                }
 
+                if (windowWidth <= 0) windowWidth = 80;
                 int targetTop = startTop + (targetLeft / windowWidth);
-                targetLeft = targetLeft % windowWidth;
-
+                targetLeft %= windowWidth;
                 Console.SetCursorPosition(targetLeft, targetTop);
             }
             catch
             {
-                // Zabezpieczenie przed błędem współrzędnych
             }
         }
     }
