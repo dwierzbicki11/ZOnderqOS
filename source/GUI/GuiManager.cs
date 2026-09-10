@@ -27,6 +27,10 @@ namespace ZonderqOS.GUI
         private int frameCounter;
 
         private const int TaskbarHeight = 44;
+        // When the desktop is idle there is no reason to redraw a 1920x1080
+        // backbuffer ~60 times per second. Input still redraws immediately;
+        // this heartbeat keeps clocks, task-manager graphs and background state fresh.
+        private const int IdleRenderHeartbeatFrames = 20;
         private const string WallpaperCacheDirectory = "/root/.zonderq-wallpapers";
         private const string WallpaperCachePath = WallpaperCacheDirectory + "/wallpaper.png";
         private const string WallpaperResourceName = "Wallpapers.wallpaper.png";
@@ -79,15 +83,25 @@ namespace ZonderqOS.GUI
 
                 bool previousLeftButtonState = false;
                 bool previousRightButtonState = false;
+                int previousMouseX = -1;
+                int previousMouseY = -1;
+
+                // First frame is always drawn. After that, the GUI is input-driven
+                // with a low-rate heartbeat instead of allocating/rendering at 60 FPS
+                // while absolutely nothing on screen changes.
+                RenderFrame(0, 0);
+
                 while (isRunning)
                 {
                     frameCounter++;
+                    bool keyboardActivity = false;
 
                     while (KeyboardManager.TryReadKey(out KeyEvent? key))
                     {
                         if (key == null)
                             continue;
 
+                        keyboardActivity = true;
                         if (key.Key == ConsoleKeyEx.Escape && startMenu.Visible)
                         {
                             startMenu.Visible = false;
@@ -108,6 +122,10 @@ namespace ZonderqOS.GUI
                     bool currentLeftButtonState = MouseManager.LeftButton;
                     bool currentRightButtonState = MouseManager.RightButton;
 
+                    bool pointerMoved = mouseX != previousMouseX || mouseY != previousMouseY;
+                    bool buttonChanged = currentLeftButtonState != previousLeftButtonState ||
+                                         currentRightButtonState != previousRightButtonState;
+
                     applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
                         currentRightButtonState, previousRightButtonState);
                     startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
@@ -117,16 +135,15 @@ namespace ZonderqOS.GUI
 
                     previousLeftButtonState = currentLeftButtonState;
                     previousRightButtonState = currentRightButtonState;
+                    previousMouseX = mouseX;
+                    previousMouseY = mouseY;
+
                     applicationManager.Update();
 
-                    RenderDesktop();
-                    RenderDesktopShortcuts();
-                    applicationManager.Render(canvas);
-                    taskbar.Render(canvas);
-                    startMenu.Render(canvas);
-                    desktopContextMenu?.Render(canvas);
-                    Cursor.Draw(canvas, mouseX, mouseY);
-                    canvas.Display();
+                    bool heartbeat = frameCounter % IdleRenderHeartbeatFrames == 0;
+                    if (keyboardActivity || pointerMoved || buttonChanged || heartbeat)
+                        RenderFrame(mouseX, mouseY);
+
                     Thread.Sleep(15);
                 }
 
@@ -137,6 +154,18 @@ namespace ZonderqOS.GUI
             {
                 WriteMessage.WriteError($"Błąd w pętli GUI: {ex.Message}", "GUI");
             }
+        }
+
+        private void RenderFrame(int mouseX, int mouseY)
+        {
+            RenderDesktop();
+            RenderDesktopShortcuts();
+            applicationManager.Render(canvas);
+            taskbar.Render(canvas);
+            startMenu.Render(canvas);
+            desktopContextMenu?.Render(canvas);
+            Cursor.Draw(canvas, mouseX, mouseY);
+            canvas.Display();
         }
 
         private void InitializeDesktopShortcuts()
