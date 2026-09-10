@@ -7,6 +7,7 @@ namespace ZonderqOS.GUI
     public class ScrollBar : Widget
     {
         private bool dragging;
+        private bool hovered;
         private int dragOffset;
         private int contentItems;
         private int visibleItems;
@@ -59,7 +60,7 @@ namespace ZonderqOS.GUI
                 return Height;
 
             int thumb = (Height * visibleItems) / contentItems;
-            return Math.Max(24, Math.Min(Height, thumb));
+            return Math.Max(22, Math.Min(Height, thumb));
         }
 
         private int GetThumbY()
@@ -72,6 +73,8 @@ namespace ZonderqOS.GUI
 
         public bool HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
         {
+            hovered = mouseX >= X && mouseX < X + Width && mouseY >= Y && mouseY < Y + Height;
+
             if (!Visible || MaxValue <= 0)
             {
                 dragging = false;
@@ -83,14 +86,14 @@ namespace ZonderqOS.GUI
 
             if (isClicked && !wasClicked)
             {
-                if (mouseX >= X && mouseX <= X + Width && mouseY >= thumbY && mouseY <= thumbY + thumbHeight)
+                if (mouseX >= X && mouseX < X + Width && mouseY >= thumbY && mouseY < thumbY + thumbHeight)
                 {
                     dragging = true;
                     dragOffset = mouseY - thumbY;
                     return true;
                 }
 
-                if (mouseX >= X && mouseX <= X + Width && mouseY >= Y && mouseY <= Y + Height)
+                if (hovered)
                 {
                     Value = mouseY < thumbY ? Value - visibleItems : Value + visibleItems;
                     return true;
@@ -119,12 +122,21 @@ namespace ZonderqOS.GUI
             if (!Visible || MaxValue <= 0)
                 return;
 
-            canvas.DrawFilledRectangle(Color.FromArgb(45, 45, 45), X, Y, Width, Height);
+            int trackX = X + Math.Max(0, Width / 2 - 1);
+            canvas.DrawFilledRectangle(Color.FromArgb(38, 45, 53), trackX, Y, 2, Height);
+
             int thumbHeight = GetThumbHeight();
             int thumbY = GetThumbY();
-            int thumbWidth = Math.Max(1, Width - 2);
-            canvas.DrawFilledRectangle(Color.FromArgb(100, 115, 130), X + 1, thumbY, thumbWidth, thumbHeight);
-            canvas.DrawRectangle(Color.FromArgb(150, 165, 180), X + 1, thumbY, thumbWidth, thumbHeight);
+            int thumbWidth = Math.Max(4, Width - 2);
+            int thumbX = X + (Width - thumbWidth) / 2;
+
+            Color thumb = dragging
+                ? Color.FromArgb(70, 155, 220)
+                : hovered
+                    ? Color.FromArgb(105, 132, 154)
+                    : Color.FromArgb(82, 99, 114);
+
+            canvas.DrawFilledRectangle(thumb, thumbX, thumbY, thumbWidth, thumbHeight);
         }
     }
 }
