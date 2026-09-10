@@ -41,6 +41,14 @@ namespace ZonderqOS.GUI
                     applicationManager.Launch(terminal);
                 });
 
+                startMenu.AddItem("File Manager", () =>
+                {
+                    int offset = 35;
+                    var fileManager = new FileManagerApp(70 + offset, 55 + offset,
+                        path => applicationManager.Launch(new NanoApp(path, null)));
+                    applicationManager.Launch(fileManager);
+                });
+
                 startMenu.AddItem("Diagnostyka", () =>
                 {
                     applicationManager.Launch(new DiagnosticsApp(140, 110, null));
