@@ -67,6 +67,7 @@ namespace ZonderqOS.GUI
 
             string source = Normalize(sourcePath);
             string destinationRoot = Normalize(destinationDirectory);
+            string user = SecurityContext.CurrentUser ?? "root";
 
             if (!Directory.Exists(destinationRoot))
             {
@@ -74,11 +75,36 @@ namespace ZonderqOS.GUI
                 return false;
             }
 
+            if (user != "root")
+            {
+                string home = Normalize(UserManager.GetHomeDirectory(user));
+                if (string.IsNullOrEmpty(home) || !IsInside(destinationRoot, home))
+                {
+                    error = "Permission denied: paste outside user home";
+                    SecurityLogger.LogEvent("WARN", $"Unauthorized clipboard destination by {user}: {destinationRoot}");
+                    return false;
+                }
+
+                if (cutMode && sourceIsDirectory && !IsInside(source, home))
+                {
+                    error = "Permission denied: cannot move system directory";
+                    SecurityLogger.LogEvent("WARN", $"Unauthorized directory move by {user}: {source}");
+                    return false;
+                }
+            }
+
             bool sourceExists = sourceIsDirectory ? Directory.Exists(source) : File.Exists(source);
             if (!sourceExists)
             {
                 Clear();
                 error = "Clipboard source no longer exists";
+                return false;
+            }
+
+            if (!HasSourceAccess(source, sourceIsDirectory, cutMode, user, out string deniedPath))
+            {
+                error = "Permission denied: " + deniedPath;
+                SecurityLogger.LogEvent("WARN", $"Unauthorized clipboard access by {user}: {deniedPath}");
                 return false;
             }
 
@@ -114,11 +140,13 @@ namespace ZonderqOS.GUI
                 if (cutMode)
                 {
                     MoveItem(source, destinationPath, sourceIsDirectory);
+                    PermissionManager.MovePermissionsUnder(source, destinationPath);
                     Clear();
                 }
                 else
                 {
                     CopyItem(source, destinationPath, sourceIsDirectory);
+                    PermissionManager.CopyPermissionsUnder(source, destinationPath, user);
                 }
 
                 return true;
@@ -128,6 +156,52 @@ namespace ZonderqOS.GUI
                 TryRemoveDestination(destinationPath, sourceIsDirectory);
                 destinationPath = null;
                 error = ex.Message;
+                return false;
+            }
+        }
+
+        private static bool HasSourceAccess(string source, bool directory, bool requireWrite, string user, out string deniedPath)
+        {
+            deniedPath = null;
+
+            if (!directory)
+            {
+                if (!PermissionManager.CanRead(source, user) ||
+                    (requireWrite && !PermissionManager.CanWrite(source, user)))
+                {
+                    deniedPath = source;
+                    return false;
+                }
+
+                return true;
+            }
+
+            try
+            {
+                string[] files = Directory.GetFiles(source);
+                for (int i = 0; i < files.Length; i++)
+                {
+                    string file = Normalize(files[i]);
+                    if (!PermissionManager.CanRead(file, user) ||
+                        (requireWrite && !PermissionManager.CanWrite(file, user)))
+                    {
+                        deniedPath = file;
+                        return false;
+                    }
+                }
+
+                string[] directories = Directory.GetDirectories(source);
+                for (int i = 0; i < directories.Length; i++)
+                {
+                    if (!HasSourceAccess(Normalize(directories[i]), true, requireWrite, user, out deniedPath))
+                        return false;
+                }
+
+                return true;
+            }
+            catch
+            {
+                deniedPath = source;
                 return false;
             }
         }
@@ -269,6 +343,8 @@ namespace ZonderqOS.GUI
             catch
             {
             }
+
+            PermissionManager.RemovePermissionsUnder(destination);
         }
     }
 }
