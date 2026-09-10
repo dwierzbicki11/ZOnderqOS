@@ -71,10 +71,10 @@ namespace ZonderqOS.GUI
                 startMenu.AddPinned("Notatnik", IconType.File, () => LaunchNotepad(145, 100, null));
                 startMenu.AddPinned("Manager zadan", IconType.Settings, () => LaunchTaskManager(165, 110));
                 startMenu.AddPinned("Ustawienia", IconType.Settings, () => LaunchSettings(125, 82));
-                startMenu.AddPinned("O Systemie", IconType.About, () => LaunchAbout(180, 140));
+                startMenu.AddPinned("Zdjecia", IconType.ImageViewer, () => LaunchImageViewer(155, 92, null));
 
                 startMenu.AddTool("Diagnostyka", IconType.About, () => LaunchDiagnostics(150, 120));
-                startMenu.AddTool("Pomoc", IconType.About, () => LaunchAbout(210, 160));
+                startMenu.AddTool("O Systemie", IconType.About, () => LaunchAbout(210, 160));
                 startMenu.AddTool("Odswiez pulpit", IconType.Refresh, RefreshDesktop);
                 startMenu.AddTool("System", IconType.Settings, () => LaunchSettings(145, 92));
 
@@ -197,7 +197,8 @@ namespace ZonderqOS.GUI
                 new DesktopShortcut(20, 116, "Terminal", IconType.Terminal, () => LaunchTerminal(135, 92)),
                 new DesktopShortcut(20, 210, "Notatnik", IconType.File, () => LaunchNotepad(150, 105, null)),
                 new DesktopShortcut(20, 304, "Ustawienia", IconType.Settings, () => LaunchSettings(130, 82)),
-                new DesktopShortcut(20, 398, "About", IconType.About, () => LaunchAbout(180, 138))
+                new DesktopShortcut(20, 398, "Zdjecia", IconType.ImageViewer, () => LaunchImageViewer(155, 92, null)),
+                new DesktopShortcut(20, 492, "About", IconType.About, () => LaunchAbout(180, 138))
             };
         }
 
@@ -221,8 +222,31 @@ namespace ZonderqOS.GUI
         private void LaunchFileManager(int x, int y)
         {
             var fileManager = new FileManagerApp(x, y,
-                path => LaunchNotepad(145, 95, path));
+                path => LaunchFileByType(path));
             applicationManager.Launch(fileManager);
+        }
+
+        private void LaunchFileByType(string path)
+        {
+            if (IsImagePath(path))
+            {
+                LaunchImageViewer(155, 92, path);
+                return;
+            }
+
+            LaunchNotepad(145, 95, path);
+        }
+
+        private static bool IsImagePath(string path)
+        {
+            return !string.IsNullOrEmpty(path) &&
+                   (path.EndsWith(".png", StringComparison.OrdinalIgnoreCase) ||
+                    path.EndsWith(".bmp", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private void LaunchImageViewer(int x, int y, string path)
+        {
+            applicationManager.Launch(new ImageViewerApp(x, y, path, null));
         }
 
         private void LaunchNotepad(int x, int y, string path)
