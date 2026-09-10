@@ -66,8 +66,6 @@ namespace ZonderqOS.GUI
                 int menuHeight = 560;
                 startMenu = new StartMenu(8, (int)canvas.Height - TaskbarHeight - menuHeight - 8, menuWidth, menuHeight);
 
-                // Six primary apps form the fixed pinned grid. System settings replace
-                // the old diagnostics shortcut as the main control-center entry.
                 startMenu.AddPinned("Terminal", IconType.Terminal, () => LaunchTerminal(125, 90));
                 startMenu.AddPinned("File Manager", IconType.Folder, () => LaunchFileManager(105, 75));
                 startMenu.AddPinned("Notatnik", IconType.File, () => LaunchNotepad(145, 100, null));
@@ -80,8 +78,6 @@ namespace ZonderqOS.GUI
                 startMenu.AddTool("Odswiez pulpit", IconType.Refresh, RefreshDesktop);
                 startMenu.AddTool("System", IconType.Settings, () => LaunchSettings(145, 92));
 
-                // Cosmos Gen3 3.0.82 exposes user-facing power operations through
-                // Cosmos.Kernel.System.Power. Reboot/Shutdown do not return on success.
                 startMenu.SetPowerActions(
                     () => Cosmos.Kernel.System.Power.Reboot(),
                     () => Cosmos.Kernel.System.Power.Shutdown(),
@@ -159,9 +155,6 @@ namespace ZonderqOS.GUI
 
                     applicationManager.Update();
 
-                    // The selected performance profile is a live setting. It changes
-                    // repaint cadence without restarting the GUI and without allocating
-                    // timers/delegates in the frame loop.
                     int heartbeatFrames = applicationManager.HasLiveTelemetryWindow
                         ? global::ZonderqOS.SystemSettings.TelemetryHeartbeatFrames
                         : global::ZonderqOS.SystemSettings.IdleHeartbeatFrames;
@@ -244,10 +237,7 @@ namespace ZonderqOS.GUI
 
         private void LaunchSettings(int x, int y)
         {
-            applicationManager.Launch(new SettingsApp(x, y,
-                () => LaunchTaskManager(170, 110),
-                () => LaunchDiagnostics(180, 125),
-                null));
+            applicationManager.Launch(new SettingsApp(x, y, applicationManager, null));
         }
 
         private void LaunchDiagnostics(int x, int y)
@@ -275,7 +265,6 @@ namespace ZonderqOS.GUI
                     desktopShortcuts[i].IsSelected = false;
                 }
 
-                // A hidden desktop still keeps the context menu available on empty space.
                 if (rightClicked && !wasRightClicked && !IsPointOverWindow(mouseX, mouseY) && !startMenu.Visible &&
                     mouseY >= 0 && mouseY < (int)canvas.Height - TaskbarHeight && desktopContextMenu != null)
                 {
@@ -423,14 +412,19 @@ namespace ZonderqOS.GUI
 
         private void RenderDesktop()
         {
-            if (wallpaperCanvas != null)
+            int mode = global::ZonderqOS.SystemSettings.DesktopBackgroundMode;
+            if (mode == 0 && wallpaperCanvas != null)
             {
                 canvas.DrawCanvas(wallpaperCanvas, 0, 0);
                 return;
             }
 
-            canvas.Clear(Color.FromArgb(12, 18, 27));
-            canvas.DrawFilledRectangle(Color.FromArgb(18, 34, 52), 0, 0, (int)canvas.Width, (int)canvas.Height - TaskbarHeight);
+            Color background = mode == 1
+                ? Color.FromArgb(25, 30, 36)
+                : Color.FromArgb(17, 31, 47);
+            canvas.Clear(background);
+            canvas.DrawFilledRectangle(background, 0, 0, (int)canvas.Width,
+                (int)canvas.Height - TaskbarHeight);
         }
     }
 }
