@@ -14,14 +14,17 @@ namespace ZonderqOS.GUI.Apps
         public TerminalApp(int x, int y, Action onClose) : base("Terminal CLI")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 800, 500, "ZonderqOS Terminal");
+            Window = new Window(x, y, 900, 560, "ZOnderqOS Terminal");
             Window.CloseAction = Close;
-            terminalBox = new TerminalBox(10, 40, 780, 410);
+
+            terminalBox = new TerminalBox(8, 42, 884, 508);
             terminalBox.IsFocused = true;
             UpdatePrompt();
-            terminalBox.PrintLine("ZonderqOS GUI Terminal v0.3");
-            terminalBox.PrintLine("Type 'help' to see available commands.");
-            terminalBox.PrintLine("----------------------------------------");
+
+            terminalBox.PrintLine("ZOnderqOS Terminal - Gen3");
+            terminalBox.PrintLine("Type 'help' to list available commands.");
+            terminalBox.PrintLine("");
+
             Window.AddChild(terminalBox);
             UpdateLayout();
         }
@@ -34,10 +37,11 @@ namespace ZonderqOS.GUI.Apps
 
         private void UpdateLayout()
         {
-            int contentWidth = Math.Max(200, Window.Width - 20);
-            int contentHeight = Math.Max(120, Window.Height - 55);
-            terminalBox.X = Window.X + 10;
-            terminalBox.Y = Window.Y + 40;
+            int contentWidth = Math.Max(260, Window.Width - 16);
+            int contentHeight = Math.Max(160, Window.Height - 50);
+
+            terminalBox.X = Window.X + 8;
+            terminalBox.Y = Window.Y + 42;
             terminalBox.Width = contentWidth;
             terminalBox.Height = contentHeight;
             terminalBox.FontScale = Window.IsMaximized ? 1.0f : 0.8125f;
@@ -57,7 +61,7 @@ namespace ZonderqOS.GUI.Apps
         private void UpdatePrompt()
         {
             string user = EnvironmentManager.Get("USER") ?? "root";
-            string host = EnvironmentManager.Get("HOSTNAME") ?? "ZonderqOS";
+            string host = EnvironmentManager.Get("HOSTNAME") ?? "ZOnderqOS";
             terminalBox.Prompt = $"{user}@{host}:{currentPath}$ ";
         }
 
@@ -90,6 +94,7 @@ namespace ZonderqOS.GUI.Apps
             string command = terminalBox.Text.Trim();
             terminalBox.PrintLine(terminalBox.Prompt + command);
             terminalBox.ClearInput();
+
             if (string.IsNullOrEmpty(command))
                 return;
 
@@ -100,7 +105,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                terminalBox.PrintLine($"Błąd jądra: {ex.Message}");
+                terminalBox.PrintLine($"Kernel error: {ex.Message}");
             }
             finally
             {
