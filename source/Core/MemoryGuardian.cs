@@ -7,63 +7,59 @@ namespace ZonderqOS.SystemCore
 {
     public static class SystemGuardian
     {
-        private const ulong RamCriticalThresholdPercent = 15; // Alarm, gdy wolny RAM spadnie poniżej 15%
-        private const int MaxLogByteLength = 1024 * 64;         // Maksymalny rozmiar pliku logu (64 KB)
+        private const ulong RamCriticalThresholdPercent = 15;
+        private const int MaxLogByteLength = 1024 * 64;
+        private static readonly TimeSpan RamAlertInterval = TimeSpan.FromMinutes(1);
 
         public static void Initialize()
         {
             ProcessManager.Start("sys_guardian", (token) =>
             {
+                DateTime lastRamAlert = DateTime.MinValue;
+
                 while (!token.IsCancellationRequested)
                 {
                     try
                     {
-                        // ==========================================
-                        // 1. MONITOROWANIE I OCHRONA PAMIĘCI RAM
-                        // ==========================================
                         ulong totalPages = PageAllocator.TotalPageCount;
                         ulong freePages = PageAllocator.FreePageCount;
 
                         if (totalPages > 0)
                         {
                             ulong freePercent = (freePages * 100) / totalPages;
-
-                            if (freePercent <= RamCriticalThresholdPercent)
+                            if (freePercent <= RamCriticalThresholdPercent &&
+                                DateTime.UtcNow - lastRamAlert >= RamAlertInterval)
                             {
                                 string ramAlert = $"[CRITICAL][RAM] Niski stan pamięci! Wolne: {freePercent}% ({freePages}/{totalPages} stron)\n";
-                                Disk.AppendFile("/sysmon.log", ramAlert); // Korzystamy z bezpiecznej metody Disk[cite: 6]
+                                Disk.AppendFile("/sysmon.log", ramAlert);
+                                lastRamAlert = DateTime.UtcNow;
                             }
                         }
 
-                        // ==========================================
-                        // 2. MONITOROWANIE I OCHRONA DYSKU / VFS (Logi)
-                        // ==========================================
                         string logPath = "/sysmon.log";
                         if (File.Exists(logPath))
                         {
                             try
                             {
-                                byte[] logBytes = File.ReadAllBytes(logPath);
-                                if (logBytes.Length > MaxLogByteLength)
+                                FileInfo logInfo = new FileInfo(logPath);
+                                if (logInfo.Length > MaxLogByteLength)
                                 {
-                                    string rotationNotice = "[GUARDIAN] Log file truncated due to size limits.\n";
-                                    // Używamy Disk.CreateFile zgodnie z definicją w klasie Disk[cite: 6]
-                                    Disk.CreateFile(logPath, rotationNotice);
+                                    Disk.CreateFile(logPath, "[GUARDIAN] Log file truncated due to size limits.\n");
                                 }
                             }
                             catch
                             {
-                                // Wyciszenie błędu I/O dla pojedynczego pliku
                             }
                         }
                     }
                     catch
                     {
-                        // Awaryjne wyciszenie wszelkich wyjątków pętli demona
                     }
 
-                    // Sprawdzanie stanu co 4 sekundy z natychmiastową reakcją na sygnał kill
-                    if (token.WaitHandle.WaitOne(4000)) break;
+                    if (token.WaitHandle.WaitOne(4000))
+                    {
+                        break;
+                    }
                 }
             });
         }
