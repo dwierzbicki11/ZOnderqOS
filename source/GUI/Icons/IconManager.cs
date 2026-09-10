@@ -63,9 +63,10 @@ namespace ZonderqOS.GUI.Icons
                 return;
             }
 
-            // This should only be reached if the bounded cache is exhausted or a
-            // one-time scale fails. Keep the icon visible, but do not retain anything.
-            canvas.DrawImage(image, x, y, width, height);
+            // Never fall back to the scaling overload here: it allocates a new int[]
+            // every frame. If the bounded cache is ever exhausted, drawing the original
+            // PNG is preferable to turning a cosmetic icon into a RAM leak.
+            canvas.DrawImage(image, x, y);
         }
 
         private static CosmosBitmap GetScaledImage(IconType type, Png source, int width, int height)
