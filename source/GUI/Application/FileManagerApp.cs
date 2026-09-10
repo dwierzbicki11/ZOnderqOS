@@ -75,7 +75,7 @@ namespace ZonderqOS.GUI.Apps
                 if (dialogMode == 0)
                 {
                     contextMenuX = Math.Max(6, Math.Min(localX, view.Width - 226));
-                    contextMenuY = Math.Max(42, Math.Min(localY, view.Height - 126));
+                    contextMenuY = Math.Max(72, Math.Min(localY, view.Height - 126));
                     contextMenuVisible = true;
                     status = "Quick menu";
                 }
@@ -86,9 +86,7 @@ namespace ZonderqOS.GUI.Apps
                 return;
 
             if (dialogMode != 0)
-            {
                 return;
-            }
 
             if (contextMenuVisible)
             {
@@ -97,17 +95,17 @@ namespace ZonderqOS.GUI.Apps
                 contextMenuVisible = false;
             }
 
-            if (localY >= 4 && localY < 38)
+            if (localY >= 4 && localY < 70)
             {
                 HandleToolbar(localX);
                 return;
             }
 
-            int listTop = 82;
+            int listTop = 114;
             int rowHeight = 28;
-            if (localY >= listTop)
+            if (localY >= listTop + 30)
             {
-                int index = scrollIndex + (localY - listTop) / rowHeight;
+                int index = scrollIndex + (localY - (listTop + 30)) / rowHeight;
                 if (index >= 0 && index < entries.Count)
                 {
                     if (selectedIndex == index && lastClickIndex == index && frameCounter - clickFrame <= 25)
@@ -225,17 +223,17 @@ namespace ZonderqOS.GUI.Apps
 
         private void HandleToolbar(int x)
         {
-            if (x < 42)
+            if (x < 68)
                 GoUp();
-            else if (x < 84)
+            else if (x < 136)
             {
                 currentPath = "/root";
                 searchText = "";
                 Refresh();
             }
-            else if (x < 126)
+            else if (x < 204)
                 Refresh();
-            else if (x < 168)
+            else if (x < 272)
             {
                 searchText = "";
                 status = "Search cleared";
@@ -336,7 +334,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void EnsureSelectionVisible()
         {
-            int visible = Math.Max(1, (view.Height - 112) / 28);
+            int visible = Math.Max(1, (view.Height - 180) / 28);
             if (selectedIndex < scrollIndex)
                 scrollIndex = selectedIndex;
             else if (selectedIndex >= scrollIndex + visible)
@@ -531,18 +529,20 @@ namespace ZonderqOS.GUI.Apps
             if (!Visible) return;
 
             canvas.DrawFilledRectangle(Color.WhiteSmoke, X, Y, Width, Height);
-            canvas.DrawRectangle(Color.Gray, X, Y, Width, Height);
+            canvas.DrawRectangle(Color.Silver, X, Y, Width, Height);
 
-            canvas.DrawFilledRectangle(Color.FromArgb(225, 230, 235), X + 4, Y + 4, Width - 8, 34);
-            DrawButton(canvas, IconType.ArrowUp, 8);
-            DrawButton(canvas, IconType.Start, 50);
-            DrawButton(canvas, IconType.Refresh, 92);
-            DrawButton(canvas, IconType.Search, 134);
+            // Modern toolbar: icon on top, compact caption underneath.
+            canvas.DrawFilledRectangle(Color.FromArgb(238, 241, 244), X + 4, Y + 4, Width - 8, 66);
+            DrawButton(canvas, IconType.ArrowUp, 8, "Up");
+            DrawButton(canvas, IconType.Start, 76, "Home");
+            DrawButton(canvas, IconType.Refresh, 144, "Refresh");
+            DrawButton(canvas, IconType.Search, 212, "Search");
 
-            int pathX = X + 180;
-            int pathWidth = Math.Max(120, Width - 190);
-            canvas.DrawFilledRectangle(Color.White, pathX, Y + 8, pathWidth, 26);
-            canvas.DrawRectangle(Color.Silver, pathX, Y + 8, pathWidth, 26);
+            int pathX = X + 10;
+            int pathY = Y + 78;
+            int pathWidth = Math.Max(120, Width - 20);
+            canvas.DrawFilledRectangle(Color.White, pathX, pathY, pathWidth, 30);
+            canvas.DrawRectangle(Color.Silver, pathX, pathY, pathWidth, 30);
 
             string pathText = app.CurrentPath;
             if (!string.IsNullOrEmpty(app.SearchText))
@@ -550,15 +550,15 @@ namespace ZonderqOS.GUI.Apps
             int maxPathChars = Math.Max(8, (pathWidth - 14) / 16);
             if (pathText.Length > maxPathChars)
                 pathText = "..." + pathText.Substring(pathText.Length - maxPathChars + 3);
-            canvas.DrawString(pathText, font, Color.Black, pathX + 7, Y + 11);
+            canvas.DrawString(pathText, font, Color.Black, pathX + 7, pathY + 2);
 
-            int listY = Y + 46;
-            canvas.DrawFilledRectangle(Color.FromArgb(35, 55, 75), X + 4, listY, Width - 8, 30);
-            canvas.DrawString("Name", font, Color.White, X + 34, listY + 4);
-            canvas.DrawString("Type", font, Color.White, X + Width - 150, listY + 4);
+            int listY = Y + 114;
+            canvas.DrawFilledRectangle(Color.FromArgb(225, 230, 235), X + 4, listY, Width - 8, 30);
+            canvas.DrawString("Name", font, Color.FromArgb(55, 65, 75), X + 34, listY + 4);
+            canvas.DrawString("Type", font, Color.FromArgb(55, 65, 75), X + Width - 150, listY + 4);
 
             int rowHeight = 28;
-            int visible = Math.Max(1, (Height - 112) / rowHeight);
+            int visible = Math.Max(1, (Height - 180) / rowHeight);
             int start = app.ScrollIndex;
             for (int i = 0; i < visible; i++)
             {
@@ -568,9 +568,11 @@ namespace ZonderqOS.GUI.Apps
                 FileEntry entry = app.Entries[index];
                 int rowY = listY + 30 + i * rowHeight;
                 bool selected = index == app.SelectedIndex;
+                Color rowColor = selected
+                    ? Color.FromArgb(210, 225, 242)
+                    : (i % 2 == 0 ? Color.White : Color.FromArgb(248, 249, 250));
 
-                canvas.DrawFilledRectangle(selected ? Color.LightSteelBlue : Color.White,
-                    X + 4, rowY, Width - 8, rowHeight);
+                canvas.DrawFilledRectangle(rowColor, X + 4, rowY, Width - 8, rowHeight);
                 canvas.DrawLine(Color.Gainsboro, X + 4, rowY + rowHeight - 1, X + Width - 4, rowY + rowHeight - 1);
 
                 IconManager.Draw(canvas, entry.IsDirectory ? IconType.Folder : IconType.File,
@@ -586,7 +588,7 @@ namespace ZonderqOS.GUI.Apps
             }
 
             int footerY = Y + Height - 34;
-            canvas.DrawFilledRectangle(Color.FromArgb(225, 230, 235), X + 4, footerY, Width - 8, 28);
+            canvas.DrawFilledRectangle(Color.FromArgb(238, 241, 244), X + 4, footerY, Width - 8, 28);
 
             string statusText = app.Status ?? "";
             int maxStatusChars = Math.Max(8, (Width / 2 - 16) / 16);
@@ -608,19 +610,64 @@ namespace ZonderqOS.GUI.Apps
                 RenderDialog(canvas);
         }
 
-        private void DrawButton(Canvas canvas, IconType type, int offset)
+        private void DrawButton(Canvas canvas, IconType type, int offset, string label)
         {
             int bx = X + offset;
-            canvas.DrawFilledRectangle(Color.White, bx, Y + 7, 36, 28);
-            canvas.DrawRectangle(Color.Silver, bx, Y + 7, 36, 28);
-            IconManager.Draw(canvas, type, bx + 9, Y + 12, Color.Black);
+            int by = Y + 7;
+            canvas.DrawFilledRectangle(Color.White, bx, by, 62, 60);
+            canvas.DrawRectangle(Color.FromArgb(205, 210, 215), bx, by, 62, 60);
+
+            IconManager.Draw(canvas, type, bx + 22, by + 7, Color.Black);
+            DrawMiniText(canvas, label.ToUpperInvariant(), bx + 31, by + 46, Color.FromArgb(65, 70, 75));
+        }
+
+        private void DrawMiniText(Canvas canvas, string text, int centerX, int y, Color color)
+        {
+            int scale = 2;
+            int charWidth = 6 * scale;
+            int width = text.Length * charWidth - scale;
+            int x = centerX - width / 2;
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                DrawMiniGlyph(canvas, text[i], x + i * charWidth, y, scale, color);
+            }
+        }
+
+        private void DrawMiniGlyph(Canvas canvas, char c, int x, int y, int scale, Color color)
+        {
+            string[] rows;
+            switch (c)
+            {
+                case 'A': rows = new[] { "01110", "10001", "10001", "11111", "10001", "10001", "10001" }; break;
+                case 'C': rows = new[] { "01111", "10000", "10000", "10000", "10000", "10000", "01111" }; break;
+                case 'E': rows = new[] { "11111", "10000", "10000", "11110", "10000", "10000", "11111" }; break;
+                case 'F': rows = new[] { "11111", "10000", "10000", "11110", "10000", "10000", "10000" }; break;
+                case 'H': rows = new[] { "10001", "10001", "10001", "11111", "10001", "10001", "10001" }; break;
+                case 'M': rows = new[] { "10001", "11011", "10101", "10101", "10001", "10001", "10001" }; break;
+                case 'O': rows = new[] { "01110", "10001", "10001", "10001", "10001", "10001", "01110" }; break;
+                case 'P': rows = new[] { "11110", "10001", "10001", "11110", "10000", "10000", "10000" }; break;
+                case 'R': rows = new[] { "11110", "10001", "10001", "11110", "10100", "10010", "10001" }; break;
+                case 'S': rows = new[] { "01111", "10000", "10000", "01110", "00001", "00001", "11110" }; break;
+                case 'U': rows = new[] { "10001", "10001", "10001", "10001", "10001", "10001", "01110" }; break;
+                default: rows = new[] { "00000", "00000", "00000", "00000", "00000", "00000", "00000" }; break;
+            }
+
+            for (int row = 0; row < rows.Length; row++)
+            {
+                for (int col = 0; col < rows[row].Length; col++)
+                {
+                    if (rows[row][col] == '1')
+                        canvas.DrawFilledRectangle(color, x + col * scale, y + row * scale, scale, scale);
+                }
+            }
         }
 
         private void RenderContextMenu(Canvas canvas)
         {
             int menuX = X + app.ContextMenuX;
             int menuY = Y + app.ContextMenuY;
-            canvas.DrawFilledRectangle(Color.FromArgb(245, 245, 245), menuX + 3, menuY + 3, 220, 116);
+            canvas.DrawFilledRectangle(Color.FromArgb(210, 210, 210), menuX + 3, menuY + 3, 220, 116);
             canvas.DrawFilledRectangle(Color.White, menuX, menuY, 220, 116);
             canvas.DrawRectangle(Color.DimGray, menuX, menuY, 220, 116);
 
