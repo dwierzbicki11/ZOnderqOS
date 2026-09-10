@@ -54,32 +54,32 @@ namespace ZonderqOS.GUI.Icons
             switch (type)
             {
                 case IconType.Terminal:
-                    return IconResources.Get("Icons.terminal-2.png");
+                    return IconResources.Terminal;
                 case IconType.FileManager:
                 case IconType.Folder:
-                    return IconResources.Get("Icons.folder.png");
+                    return IconResources.Folder;
                 case IconType.File:
-                    return IconResources.Get("Icons.file.png");
+                    return IconResources.File;
                 case IconType.Settings:
-                    return IconResources.Get("Icons.settings-2.png");
+                    return IconResources.Settings;
                 case IconType.About:
-                    return IconResources.Get("Icons.info-circle.png");
+                    return IconResources.About;
                 case IconType.Close:
-                    return IconResources.Get("Icons.square-rounded-x.png");
+                    return IconResources.Close;
                 case IconType.Maximize:
-                    return IconResources.Get("Icons.arrows-maximize.png");
+                    return IconResources.Maximize;
                 case IconType.Restore:
-                    return IconResources.Get("Icons.restore.png");
+                    return IconResources.Restore;
                 case IconType.Start:
-                    return IconResources.Get("Icons.home.png");
+                    return IconResources.Start;
                 case IconType.ArrowUp:
-                    return IconResources.Get("Icons.arrow-up.png");
+                    return IconResources.ArrowUp;
                 case IconType.Refresh:
-                    return IconResources.Get("Icons.refresh.png");
+                    return IconResources.Refresh;
                 case IconType.Search:
-                    return IconResources.Get("Icons.search.png");
+                    return IconResources.Search;
                 case IconType.Trash:
-                    return IconResources.Get("Icons.trash.png");
+                    return IconResources.Trash;
                 default:
                     return null;
             }
