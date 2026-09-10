@@ -15,10 +15,13 @@ namespace ZonderqOS.GUI.Apps
         private int userCount;
         private int selectedUser;
 
-        // 0 none, 1 new username, 2 new password, 3 switch password.
+        // 0 none, 1 new username, 2 new-user password, 3 switch password,
+        // 4 authorize password change, 5 new password, 6 confirm new password.
         private int inputMode;
         private string inputText = string.Empty;
         private string pendingUsername = string.Empty;
+        private string pendingAuthorizationPassword = string.Empty;
+        private string pendingNewPassword = string.Empty;
 
         public UserAccountsApp(int x, int y)
             : base("Konta lokalne", "Konta i sesje użytkowników - ZOnderqOS", x, y, 900, 600)
@@ -45,8 +48,10 @@ namespace ZonderqOS.GUI.Apps
             DrawRow(canvas, 4, IconType.Start,
                 "PRZELACZ SESJE", "Uwierzytelnij wybrane konto i ustaw USER/HOME",
                 inputMode == 3 ? "HASLO..." : "ZALOGUJ", Warning);
-            DrawRow(canvas, 5, IconType.Refresh,
-                "ODSWIEZ LISTE", "Ponownie odczytaj /etc/passwd", "ODSWIEZ", Good);
+            DrawRow(canvas, 5, IconType.Settings,
+                "ZMIEN HASLO", "Wlasne konto lub reset przez root po potwierdzeniu hasla sesji",
+                inputMode >= 4 ? "WPROWADZANIE" : CanChangeSelectedPassword() ? "ZMIEN" : "NIEDOSTEPNE",
+                CanChangeSelectedPassword() ? Good : Muted);
 
             if (inputMode != 0)
                 RenderInputOverlay(canvas);
@@ -61,9 +66,20 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Color.FromArgb(18, 23, 29), x, y, width, height);
             canvas.DrawRectangle(Accent, x, y, width, height);
 
-            string title = inputMode == 1 ? "NOWY UZYTKOWNIK - NAZWA" :
-                           inputMode == 2 ? "NOWY UZYTKOWNIK - HASLO" :
-                           "HASLO DLA WYBRANEGO KONTA";
+            string title;
+            if (inputMode == 1)
+                title = "NOWY UZYTKOWNIK - NAZWA";
+            else if (inputMode == 2)
+                title = "NOWY UZYTKOWNIK - HASLO";
+            else if (inputMode == 3)
+                title = "HASLO DLA WYBRANEGO KONTA";
+            else if (inputMode == 4)
+                title = "POTWIERDZ HASLO BIEZACEJ SESJI";
+            else if (inputMode == 5)
+                title = "NOWE HASLO";
+            else
+                title = "POWTORZ NOWE HASLO";
+
             SmallTextRenderer.Draw(canvas, title, x + 16, y + 16, Text);
             SmallTextRenderer.Draw(canvas, "ENTER DALEJ  |  ESC ANULUJ", x + 16, y + 36, Muted);
 
@@ -153,9 +169,8 @@ namespace ZonderqOS.GUI.Apps
                     SetStatus("TYLKO ROOT MOZE TWORZYC KONTA", Danger);
                     return;
                 }
+                ClearInputState();
                 inputMode = 1;
-                inputText = string.Empty;
-                pendingUsername = string.Empty;
                 SetStatus("WPISZ NAZWE NOWEGO UZYTKOWNIKA", Warning);
                 return;
             }
@@ -164,16 +179,23 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (userCount <= 0)
                     return;
+                ClearInputState();
                 inputMode = 3;
-                inputText = string.Empty;
                 SetStatus("WPISZ HASLO WYBRANEGO KONTA", Warning);
                 return;
             }
 
             if (row == 5)
             {
-                RefreshData();
-                SetStatus("LISTA KONT ODSWIEZONA", Good);
+                if (!CanChangeSelectedPassword())
+                {
+                    SetStatus("BRAK UPRAWNIEN DO ZMIANY HASLA TEGO KONTA", Danger);
+                    return;
+                }
+
+                ClearInputState();
+                inputMode = 4;
+                SetStatus("POTWIERDZ HASLO BIEZACEJ SESJI", Warning);
             }
         }
 
@@ -190,9 +212,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (key.Key == ConsoleKeyEx.Escape)
             {
-                inputMode = 0;
-                inputText = string.Empty;
-                pendingUsername = string.Empty;
+                ClearInputState();
                 SetStatus("ANULOWANO", Muted);
                 return;
             }
@@ -201,6 +221,12 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (inputText.Length > 0)
                     inputText = inputText.Substring(0, inputText.Length - 1);
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.Delete)
+            {
+                inputText = string.Empty;
                 return;
             }
 
@@ -218,7 +244,7 @@ namespace ZonderqOS.GUI.Apps
                 if (allowed && inputText.Length < 32)
                     inputText += ch;
             }
-            else if (ch >= 32 && ch <= 126 && inputText.Length < 64)
+            else if (ch >= 32 && ch <= 126 && inputText.Length < 128)
             {
                 inputText += ch;
             }
@@ -250,9 +276,7 @@ namespace ZonderqOS.GUI.Apps
                 }
 
                 bool ok = global::ZonderqOS.UserManager.CreateUser(pendingUsername, inputText);
-                inputMode = 0;
-                inputText = string.Empty;
-                pendingUsername = string.Empty;
+                ClearInputState();
                 RefreshData();
                 SetStatus(ok ? "UTWORZONO KONTO" : "NIE UDALO SIE UTWORZYC KONTA", ok ? Good : Danger);
                 return;
@@ -261,23 +285,103 @@ namespace ZonderqOS.GUI.Apps
             if (inputMode == 3)
             {
                 string user = userCount > 0 ? users[selectedUser] : null;
-                bool ok = !string.IsNullOrEmpty(user) && global::ZonderqOS.UserManager.ValidateCredentials(user, inputText);
-                inputMode = 0;
+                bool ok = !string.IsNullOrEmpty(user) &&
+                          global::ZonderqOS.UserManager.ValidateCredentials(user, inputText);
                 inputText = string.Empty;
+                inputMode = 0;
                 if (!ok)
                 {
                     SetStatus("NIEPRAWIDLOWE HASLO", Danger);
                     return;
                 }
 
-                global::ZonderqOS.SecurityContext.CurrentUser = user;
-                global::ZonderqOS.SecurityContext.CurrentHome = homes[selectedUser];
-                global::ZonderqOS.SecurityContext.CurrentUid = uids[selectedUser];
-                global::ZonderqOS.EnvironmentManager.Set("USER", user);
-                global::ZonderqOS.EnvironmentManager.Set("HOME", homes[selectedUser]);
-                global::ZonderqOS.SecurityLogger.LogEvent("INFO", "Session switched from Settings GUI.");
-                SetStatus("SESJA UZYTKOWNIKA PRZELACZONA", Good);
+                string oldUser = global::ZonderqOS.SecurityContext.CurrentUser;
+                ok = global::ZonderqOS.UserManager.ActivateSession(user);
+                if (ok)
+                {
+                    global::ZonderqOS.SecurityLogger.LogEvent("INFO",
+                        "Session switched from '" + oldUser + "' to '" + user + "' from Settings GUI.");
+                    SetStatus("SESJA UZYTKOWNIKA PRZELACZONA", Good);
+                }
+                else
+                {
+                    SetStatus("NIE UDALO SIE PRZELACZYC SESJI", Danger);
+                }
+                return;
             }
+
+            if (inputMode == 4)
+            {
+                string actor = global::ZonderqOS.SecurityContext.CurrentUser;
+                if (string.IsNullOrEmpty(inputText) ||
+                    !global::ZonderqOS.UserManager.ValidateCredentials(actor, inputText))
+                {
+                    inputText = string.Empty;
+                    SetStatus("NIEPRAWIDLOWE HASLO BIEZACEJ SESJI", Danger);
+                    return;
+                }
+
+                pendingAuthorizationPassword = inputText;
+                inputText = string.Empty;
+                inputMode = 5;
+                SetStatus("WPISZ NOWE HASLO", Warning);
+                return;
+            }
+
+            if (inputMode == 5)
+            {
+                if (inputText.Length == 0)
+                {
+                    SetStatus("NOWE HASLO NIE MOZE BYC PUSTE", Danger);
+                    return;
+                }
+
+                pendingNewPassword = inputText;
+                inputText = string.Empty;
+                inputMode = 6;
+                SetStatus("POWTORZ NOWE HASLO", Warning);
+                return;
+            }
+
+            if (inputMode == 6)
+            {
+                if (inputText != pendingNewPassword)
+                {
+                    inputText = string.Empty;
+                    pendingNewPassword = string.Empty;
+                    inputMode = 5;
+                    SetStatus("HASLA NIE SA IDENTYCZNE - WPISZ NOWE HASLO PONOWNIE", Danger);
+                    return;
+                }
+
+                string user = userCount > 0 ? users[selectedUser] : null;
+                bool ok = !string.IsNullOrEmpty(user) &&
+                          global::ZonderqOS.UserManager.ChangePassword(
+                              user, pendingAuthorizationPassword, pendingNewPassword);
+                ClearInputState();
+                SetStatus(ok ? "HASLO ZOSTALO ZMIENIONE" : "NIE UDALO SIE ZMIENIC HASLA",
+                    ok ? Good : Danger);
+            }
+        }
+
+        private bool CanChangeSelectedPassword()
+        {
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated || userCount <= 0)
+                return false;
+
+            string selected = users[selectedUser];
+            string current = global::ZonderqOS.SecurityContext.CurrentUser;
+            return !string.IsNullOrEmpty(selected) &&
+                   (current == "root" || current == selected);
+        }
+
+        private void ClearInputState()
+        {
+            inputMode = 0;
+            inputText = string.Empty;
+            pendingUsername = string.Empty;
+            pendingAuthorizationPassword = string.Empty;
+            pendingNewPassword = string.Empty;
         }
     }
 }
