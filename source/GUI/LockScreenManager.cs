@@ -167,7 +167,7 @@ namespace ZonderqOS.GUI
                 int cardX = (screenWidth - 520) / 2;
                 int cardY = (screenHeight - 390) / 2;
 
-                if (Hit(mouseX, mouseY, cardX + 48, cardY + 230, 424, 50))
+                if (Hit(mouseX, mouseY, cardX + 48, cardY + 286, 424, 50))
                 {
                     Authenticate();
                     return;
@@ -280,12 +280,12 @@ namespace ZonderqOS.GUI
                 {
                     Unlocked = true;
                     failedAttempts = 0;
-                    SecurityLogger.LogEvent("INFO", "Graphical session unlocked for user " + username + ".");
+                    LogSecurity("INFO", "Graphical session unlocked for user " + username + ".");
                     return;
                 }
 
                 failedAttempts++;
-                SecurityLogger.LogEvent("WARN", "Failed graphical unlock attempt for user " + username + ".");
+                LogSecurity("WARN", "Failed graphical unlock attempt for user " + username + ".");
                 SetStatus("NIEPRAWIDLOWE HASLO", Danger);
 
                 int delayMs = 250 + failedAttempts * 150;
@@ -305,6 +305,18 @@ namespace ZonderqOS.GUI
             {
                 status = message ?? string.Empty;
                 statusColor = color;
+            }
+
+            private static void LogSecurity(string level, string message)
+            {
+                try
+                {
+                    SecurityLogger.LogEvent(level, message);
+                }
+                catch
+                {
+                    // Locking/unlocking must not fail only because audit storage is unavailable.
+                }
             }
 
             private static void RenderPowerButton(Canvas canvas, int x, int y, int width,
