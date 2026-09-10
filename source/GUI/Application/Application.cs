@@ -23,6 +23,12 @@ namespace ZonderqOS.GUI.Apps
             Window?.HandleMouse(mouseX, mouseY, isClicked, wasClicked);
         }
 
+        public virtual void HandleMouse(int mouseX, int mouseY, bool leftClicked, bool leftWasClicked,
+            bool rightClicked, bool rightWasClicked)
+        {
+            HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked);
+        }
+
         public virtual void Render(Canvas canvas)
         {
             if (Window != null && Window.Visible && IsRunning)
