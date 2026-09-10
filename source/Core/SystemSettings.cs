@@ -30,6 +30,10 @@ namespace ZonderqOS
         // Shell accent: 0 = Cosmos blue, 1 = steel, 2 = emerald.
         public static int AccentTheme { get; private set; }
 
+        // Automatic desktop lock after inactivity. 0 disables the watchdog.
+        // Supported presets are 0, 1, 5, 15 and 30 minutes.
+        public static int AutoLockMinutes { get; private set; } = 5;
+
         // Persistent IPv4 profile. DHCP is the safe default.
         public static bool NetworkUseDhcp { get; private set; } = true;
         public static string StaticIpAddress { get; private set; } = "10.0.2.15";
@@ -101,6 +105,21 @@ namespace ZonderqOS
                     case 1: return "STEEL";
                     case 2: return "EMERALD";
                     default: return "COSMOS BLUE";
+                }
+            }
+        }
+
+        public static string AutoLockName
+        {
+            get
+            {
+                switch (AutoLockMinutes)
+                {
+                    case 0: return "WYLACZONA";
+                    case 1: return "1 MIN";
+                    case 15: return "15 MIN";
+                    case 30: return "30 MIN";
+                    default: return "5 MIN";
                 }
             }
         }
@@ -181,6 +200,7 @@ namespace ZonderqOS
                     "timezone=" + TimeZoneOffsetHours + "\n" +
                     "desktop_background=" + DesktopBackgroundMode + "\n" +
                     "accent_theme=" + AccentTheme + "\n" +
+                    "auto_lock_minutes=" + AutoLockMinutes + "\n" +
                     "network_dhcp=" + BoolValue(NetworkUseDhcp) + "\n" +
                     "static_ip=" + StaticIpAddress + "\n" +
                     "static_mask=" + StaticSubnetMask + "\n" +
@@ -247,6 +267,19 @@ namespace ZonderqOS
             Save();
         }
 
+        public static void CycleAutoLockTimeout()
+        {
+            switch (AutoLockMinutes)
+            {
+                case 0: AutoLockMinutes = 1; break;
+                case 1: AutoLockMinutes = 5; break;
+                case 5: AutoLockMinutes = 15; break;
+                case 15: AutoLockMinutes = 30; break;
+                default: AutoLockMinutes = 0; break;
+            }
+            Save();
+        }
+
         public static void ShiftTimeZone(int deltaHours)
         {
             int value = TimeZoneOffsetHours + deltaHours;
@@ -294,6 +327,7 @@ namespace ZonderqOS
             TimeZoneOffsetHours = 2;
             DesktopBackgroundMode = 0;
             AccentTheme = 0;
+            AutoLockMinutes = 5;
             NetworkUseDhcp = true;
             StaticIpAddress = "10.0.2.15";
             StaticSubnetMask = "255.255.255.0";
@@ -334,6 +368,10 @@ namespace ZonderqOS
                     if (int.TryParse(value, out number) && number >= 0 && number <= 2)
                         AccentTheme = number;
                     break;
+                case "auto_lock_minutes":
+                    if (int.TryParse(value, out number) && IsAutoLockPreset(number))
+                        AutoLockMinutes = number;
+                    break;
                 case "network_dhcp":
                     NetworkUseDhcp = ParseBool(value, NetworkUseDhcp);
                     break;
@@ -350,6 +388,11 @@ namespace ZonderqOS
                     if (IsValidIPv4(value)) DnsServer = value;
                     break;
             }
+        }
+
+        private static bool IsAutoLockPreset(int value)
+        {
+            return value == 0 || value == 1 || value == 5 || value == 15 || value == 30;
         }
 
         private static bool IsValidIPv4(string value)
