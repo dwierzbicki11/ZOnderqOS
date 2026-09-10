@@ -83,7 +83,16 @@ namespace ZonderqOS.GUI.Apps
 
             if (right && !oldRight)
             {
-                if (dialogMode == 0 && x >= SidebarWidth + 6 && y >= ContentTop && y < contentBottom)
+                if (dialogMode != 0)
+                    return;
+
+                if (x < SidebarWidth + 4 && y >= ContentTop && y < contentBottom)
+                {
+                    SidebarRightClick(x, y);
+                    return;
+                }
+
+                if (x >= SidebarWidth + 6 && y >= ContentTop && y < contentBottom)
                 {
                     contextMenuX = Math.Max(SidebarWidth + 8, Math.Min(x, view.Width - 226));
                     contextMenuY = Math.Max(ContentTop, Math.Min(y, view.Height - 126));
@@ -113,7 +122,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (x < SidebarWidth + 4)
             {
-                SidebarClick(y);
+                SidebarClick(x, y);
                 return;
             }
 
@@ -180,33 +189,136 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
-        private void SidebarClick(int y)
+        private void SidebarClick(int x, int y)
+        {
+            SidebarEntry entry = GetSidebarEntryAt(y);
+            if (entry == null || entry.IsSection)
+                return;
+
+            if (entry.IsVolume)
+            {
+                bool actionArea = x >= SidebarWidth - 28;
+                if (entry.PartitionIndex > 0 && actionArea)
+                {
+                    if (entry.IsMounted)
+                        UnmountVolume(entry);
+                    else
+                        MountVolume(entry, false);
+                    return;
+                }
+
+                if (entry.IsMounted && !string.IsNullOrEmpty(entry.Path))
+                {
+                    NavigateTo(entry.Path);
+                    return;
+                }
+
+                if (entry.PartitionIndex > 0)
+                {
+                    MountVolume(entry, true);
+                    return;
+                }
+            }
+
+            if (entry.Navigable && !string.IsNullOrEmpty(entry.Path))
+            {
+                NavigateTo(entry.Path);
+                return;
+            }
+
+            status = string.IsNullOrEmpty(entry.Detail)
+                ? entry.Label
+                : entry.Label + ": " + entry.Detail;
+        }
+
+        private void SidebarRightClick(int x, int y)
+        {
+            SidebarEntry entry = GetSidebarEntryAt(y);
+            if (entry == null || !entry.IsVolume || entry.PartitionIndex <= 0)
+                return;
+
+            if (entry.IsMounted)
+                UnmountVolume(entry);
+            else
+                MountVolume(entry, false);
+        }
+
+        private SidebarEntry GetSidebarEntryAt(int y)
         {
             int itemY = ContentTop + 8;
             for (int i = 0; i < sidebarEntries.Count; i++)
             {
                 SidebarEntry entry = sidebarEntries[i];
                 int height = entry.IsSection ? SidebarSectionHeight : SidebarItemHeight;
-
-                if (!entry.IsSection && y >= itemY && y < itemY + height)
-                {
-                    if (entry.Navigable && !string.IsNullOrEmpty(entry.Path))
-                    {
-                        NavigateTo(entry.Path);
-                    }
-                    else
-                    {
-                        status = string.IsNullOrEmpty(entry.Detail)
-                            ? entry.Label
-                            : entry.Label + ": " + entry.Detail;
-                    }
-                    return;
-                }
+                if (y >= itemY && y < itemY + height)
+                    return entry;
 
                 itemY += height;
                 if (itemY >= view.Height - FooterHeight - 10)
                     break;
             }
+
+            return null;
+        }
+
+        private void MountVolume(SidebarEntry entry, bool openAfterMount)
+        {
+            if (entry == null || !entry.IsVolume || entry.PartitionIndex <= 0)
+                return;
+
+            string mountPoint;
+            string error;
+            if (!StorageMountManager.TryMount(entry.PartitionIndex, out mountPoint, out error))
+            {
+                status = "Mount error: " + (string.IsNullOrEmpty(error) ? "unknown error" : error);
+                RebuildSidebar();
+                return;
+            }
+
+            status = "Mounted Partition " + entry.PartitionIndex + " at " + mountPoint;
+            RebuildSidebar();
+
+            if (openAfterMount)
+                NavigateTo(mountPoint);
+            else
+                RefreshKeepStatus();
+        }
+
+        private void UnmountVolume(SidebarEntry entry)
+        {
+            if (entry == null || !entry.IsVolume || entry.PartitionIndex <= 0)
+                return;
+
+            string mountPoint = StorageMountManager.GetMountPoint(entry.PartitionIndex);
+            if (!string.IsNullOrEmpty(mountPoint) && IsInsidePath(currentPath, mountPoint))
+            {
+                currentPath = "/root";
+                searchText = "";
+            }
+
+            string error;
+            if (!StorageMountManager.TryUnmount(entry.PartitionIndex, out error))
+            {
+                status = "Unmount error: " + (string.IsNullOrEmpty(error) ? "unknown error" : error);
+                RebuildSidebar();
+                RefreshKeepStatus();
+                return;
+            }
+
+            status = "Unmounted Partition " + entry.PartitionIndex;
+            RebuildSidebar();
+            RefreshKeepStatus();
+        }
+
+        private static bool IsInsidePath(string path, string root)
+        {
+            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(root))
+                return false;
+            if (path == root)
+                return true;
+            if (root == "/")
+                return false;
+            return path.StartsWith(root + "/", StringComparison.Ordinal);
         }
 
         private void NavigateTo(string path)
@@ -514,17 +626,16 @@ namespace ZonderqOS.GUI.Apps
                 int partitionCount = StorageManager.Partitions.Count;
                 if (partitionCount > 0)
                 {
-                    var rootPartition = StorageManager.Partitions[0];
-                    ulong rootBytes = (ulong)rootPartition.BlockCount * (ulong)rootPartition.BlockSize;
-                    sidebarEntries.Add(SidebarEntry.Location("System", "/", IconType.FileManager,
-                        FormatCapacity(rootBytes) + "  MOUNTED"));
-
-                    for (int i = 1; i < partitionCount && i < 5; i++)
+                    for (int i = 0; i < partitionCount && i < 5; i++)
                     {
                         var partition = StorageManager.Partitions[i];
                         ulong bytes = (ulong)partition.BlockCount * (ulong)partition.BlockSize;
-                        sidebarEntries.Add(SidebarEntry.Device("Partition " + i, IconType.FileManager,
-                            FormatCapacity(bytes) + "  NOT MOUNTED"));
+                        string mountPoint = StorageMountManager.GetMountPoint(i);
+                        bool mounted = i == 0 || !string.IsNullOrEmpty(mountPoint);
+                        string label = i == 0 ? "System" : "Partition " + i;
+                        string detail = FormatCapacity(bytes) + (mounted ? "  MOUNTED" : "  READY");
+
+                        sidebarEntries.Add(SidebarEntry.Volume(label, i, mountPoint, IconType.FileManager, detail, mounted));
                     }
                 }
                 else
@@ -658,8 +769,12 @@ namespace ZonderqOS.GUI.Apps
         public readonly IconType Icon;
         public readonly bool Navigable;
         public readonly bool IsSection;
+        public readonly bool IsVolume;
+        public readonly int PartitionIndex;
+        public readonly bool IsMounted;
 
-        private SidebarEntry(string label, string path, IconType icon, string detail, bool navigable, bool isSection)
+        private SidebarEntry(string label, string path, IconType icon, string detail, bool navigable,
+            bool isSection, bool isVolume, int partitionIndex, bool isMounted)
         {
             Label = label;
             Path = path;
@@ -667,21 +782,30 @@ namespace ZonderqOS.GUI.Apps
             Detail = detail;
             Navigable = navigable;
             IsSection = isSection;
+            IsVolume = isVolume;
+            PartitionIndex = partitionIndex;
+            IsMounted = isMounted;
         }
 
         public static SidebarEntry Section(string label)
         {
-            return new SidebarEntry(label, null, IconType.Folder, "", false, true);
+            return new SidebarEntry(label, null, IconType.Folder, "", false, true, false, -1, false);
         }
 
         public static SidebarEntry Location(string label, string path, IconType icon, string detail)
         {
-            return new SidebarEntry(label, path, icon, detail, true, false);
+            return new SidebarEntry(label, path, icon, detail, true, false, false, -1, false);
         }
 
         public static SidebarEntry Device(string label, IconType icon, string detail)
         {
-            return new SidebarEntry(label, null, icon, detail, false, false);
+            return new SidebarEntry(label, null, icon, detail, false, false, false, -1, false);
+        }
+
+        public static SidebarEntry Volume(string label, int partitionIndex, string path, IconType icon,
+            string detail, bool mounted)
+        {
+            return new SidebarEntry(label, path, icon, detail, mounted, false, true, partitionIndex, mounted);
         }
     }
 
@@ -787,7 +911,7 @@ namespace ZonderqOS.GUI.Apps
                     continue;
                 }
 
-                bool active = entry.Navigable && entry.Path == app.CurrentPath;
+                bool active = IsEntryActive(entry);
                 if (active)
                 {
                     canvas.DrawFilledRectangle(Color.FromArgb(37, 62, 83), x + 4, itemY + 1, width - 8, rowHeight - 2);
@@ -798,13 +922,40 @@ namespace ZonderqOS.GUI.Apps
                 canvas.DrawFilledRectangle(Color.FromArgb(31, 38, 45), x + 10, iconY - 3, 26, 26);
                 IconManager.DrawScaled(canvas, entry.Icon, x + 14, iconY + 1, 18, 18);
 
+                int actionReserve = entry.IsVolume && entry.PartitionIndex > 0 ? 30 : 0;
                 SmallTextRenderer.DrawClipped(canvas, entry.Label, x + 44, itemY + 8,
-                    width - 52, active ? Color.WhiteSmoke : MainText);
+                    Math.Max(20, width - 52 - actionReserve), active ? Color.WhiteSmoke : MainText);
                 SmallTextRenderer.DrawClipped(canvas, entry.Detail, x + 44, itemY + 21,
-                    width - 52, active ? Color.FromArgb(143, 190, 226) : SecondaryText);
+                    Math.Max(20, width - 52 - actionReserve), active ? Color.FromArgb(143, 190, 226) : SecondaryText);
+
+                if (entry.IsVolume && entry.PartitionIndex > 0)
+                {
+                    int actionX = x + width - 27;
+                    Color actionBackground = entry.IsMounted
+                        ? Color.FromArgb(69, 48, 52)
+                        : Color.FromArgb(35, 64, 87);
+                    Color actionBorder = entry.IsMounted
+                        ? Color.FromArgb(121, 70, 76)
+                        : Color.FromArgb(67, 126, 171);
+                    canvas.DrawFilledRectangle(actionBackground, actionX, itemY + 7, 20, 22);
+                    canvas.DrawRectangle(actionBorder, actionX, itemY + 7, 20, 22);
+                    SmallTextRenderer.DrawCentered(canvas, entry.IsMounted ? "U" : "M",
+                        actionX, itemY + 15, 20, Color.WhiteSmoke);
+                }
 
                 itemY += rowHeight;
             }
+        }
+
+        private bool IsEntryActive(SidebarEntry entry)
+        {
+            if (entry == null || string.IsNullOrEmpty(entry.Path))
+                return false;
+            if (entry.Path == "/")
+                return app.CurrentPath == "/";
+            if (app.CurrentPath == entry.Path)
+                return true;
+            return app.CurrentPath.StartsWith(entry.Path + "/", StringComparison.Ordinal);
         }
 
         private void RenderFooter(Canvas canvas, int footerY)
@@ -815,9 +966,9 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), footerX, footerY, footerW, FileManagerApp.FooterHeight);
             canvas.DrawLine(Color.FromArgb(72, 84, 96), footerX, footerY, footerX + footerW, footerY);
 
-            string hint = Width >= 700
-                ? "ENTER OPEN   F5 REFRESH   BACKSPACE UP"
-                : "ENTER OPEN   F5 REFRESH";
+            string hint = Width >= 760
+                ? "M MOUNT   U UNMOUNT   F5 REFRESH"
+                : "F5 REFRESH";
 
             int hintWidth = SmallTextRenderer.Width(hint);
             int hintX = Math.Max(X + Width / 2, X + Width - 10 - hintWidth);
