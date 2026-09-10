@@ -19,9 +19,9 @@ namespace ZonderqOS.GUI
         private readonly List<string> pinnedLabels = new List<string>(6);
         private readonly List<IconType> pinnedIcons = new List<IconType>(6);
 
-        private readonly List<Button> toolButtons = new List<Button>(4);
-        private readonly List<string> toolLabels = new List<string>(4);
-        private readonly List<IconType> toolIcons = new List<IconType>(4);
+        private readonly List<Button> toolButtons = new List<Button>(6);
+        private readonly List<string> toolLabels = new List<string>(6);
+        private readonly List<IconType> toolIcons = new List<IconType>(6);
 
         private Button exitButton;
         private Button rebootButton;
@@ -156,17 +156,13 @@ namespace ZonderqOS.GUI
                 visiblePinned++;
             }
 
-            int visibleTools = 0;
-            for (int i = 0; i < toolButtons.Count; i++)
-            {
-                if (Matches(toolLabels[i]))
-                    visibleTools++;
-            }
-
-            int toolGap = 8;
-            int toolWidth = visibleTools > 0
-                ? Math.Max(82, (Width - Padding * 2 - toolGap * Math.Max(0, visibleTools - 1)) / visibleTools)
-                : 82;
+            // Tools use a stable three-column, two-row grid. This keeps six system tools
+            // inside the menu instead of shrinking them until labels/icons overlap.
+            const int toolColumns = 3;
+            const int toolGap = 8;
+            const int toolRowGap = 8;
+            int toolWidth = Math.Max(100,
+                (Width - Padding * 2 - toolGap * (toolColumns - 1)) / toolColumns);
             int toolIndex = 0;
             for (int i = 0; i < toolButtons.Count; i++)
             {
@@ -176,8 +172,10 @@ namespace ZonderqOS.GUI
                 if (!matches)
                     continue;
 
-                button.X = X + Padding + toolIndex * (toolWidth + toolGap);
-                button.Y = Y + ToolsTop;
+                int row = toolIndex / toolColumns;
+                int column = toolIndex % toolColumns;
+                button.X = X + Padding + column * (toolWidth + toolGap);
+                button.Y = Y + ToolsTop + row * (ToolHeight + toolRowGap);
                 button.Width = toolWidth;
                 button.Height = ToolHeight;
                 toolIndex++;
