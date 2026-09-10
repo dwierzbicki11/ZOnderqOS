@@ -4,10 +4,10 @@ using System.Diagnostics;
 namespace ZonderqOS
 {
     /// <summary>
-    /// Shared in-memory authentication throttling used by graphical login, unlock and
-    /// account switching. Fixed arrays keep the hot path deterministic and avoid an
-    /// ever-growing dictionary. State intentionally resets on reboot so a local user can
-    /// always recover access without a persistent lockout file.
+    /// Shared in-memory authentication throttling used by graphical login, unlock,
+    /// console recovery and account switching. Fixed arrays prevent unbounded allocation.
+    /// A global limiter complements per-user limits so cycling fake usernames cannot evict
+    /// one account from the small tracking table and bypass throttling.
     /// </summary>
     public static class AuthenticationGuard
     {
@@ -18,30 +18,25 @@ namespace ZonderqOS
         private static readonly byte[] failures = new byte[MaxTrackedUsers];
         private static readonly long[] blockedUntil = new long[MaxTrackedUsers];
         private static int nextReplacement;
+        private static byte globalFailures;
+        private static long globalBlockedUntil;
 
         public static bool CanAttempt(string username, out int retryAfterSeconds)
         {
-            retryAfterSeconds = 0;
+            retryAfterSeconds = RemainingSeconds(globalBlockedUntil);
+            if (retryAfterSeconds > 0)
+                return false;
+
             int index = Find(username);
             if (index < 0)
                 return true;
 
-            long until = blockedUntil[index];
-            if (until <= 0 || Stopwatch.Frequency <= 0)
-                return true;
+            retryAfterSeconds = RemainingSeconds(blockedUntil[index]);
+            if (retryAfterSeconds > 0)
+                return false;
 
-            long now = Stopwatch.GetTimestamp();
-            if (now >= until)
-            {
-                blockedUntil[index] = 0;
-                return true;
-            }
-
-            long remaining = until - now;
-            retryAfterSeconds = (int)((remaining + Stopwatch.Frequency - 1) / Stopwatch.Frequency);
-            if (retryAfterSeconds < 1)
-                retryAfterSeconds = 1;
-            return false;
+            blockedUntil[index] = 0;
+            return true;
         }
 
         public static int GetRetryAfterSeconds(string username)
@@ -54,41 +49,82 @@ namespace ZonderqOS
         public static void RecordFailure(string username)
         {
             int index = FindOrCreate(username);
-            if (index < 0)
-                return;
+            if (index >= 0)
+            {
+                if (failures[index] < byte.MaxValue)
+                    failures[index]++;
+                ApplyDelay(failures[index], index);
+            }
 
-            if (failures[index] < byte.MaxValue)
-                failures[index]++;
+            if (globalFailures < byte.MaxValue)
+                globalFailures++;
 
-            int failureCount = failures[index];
-            if (failureCount < 3 || Stopwatch.Frequency <= 0)
+            // Global throttling starts later than per-account throttling so a typo on one
+            // account does not inconvenience every user, but sustained spraying is slowed.
+            if (globalFailures >= 8 && Stopwatch.Frequency > 0)
+            {
+                int extra = globalFailures - 8;
+                if (extra > 4)
+                    extra = 4;
+                int seconds = 2 << extra;
+                if (seconds > MaxDelaySeconds)
+                    seconds = MaxDelaySeconds;
+                globalBlockedUntil = Stopwatch.GetTimestamp() + Stopwatch.Frequency * seconds;
+            }
+        }
+
+        public static void RecordSuccess(string username)
+        {
+            int index = Find(username);
+            if (index >= 0)
+            {
+                failures[index] = 0;
+                blockedUntil[index] = 0;
+            }
+
+            // A valid local authentication proves the console is not in a blind spray loop.
+            globalFailures = 0;
+            globalBlockedUntil = 0;
+        }
+
+        public static void Reset(string username)
+        {
+            int index = Find(username);
+            if (index >= 0)
+            {
+                failures[index] = 0;
+                blockedUntil[index] = 0;
+            }
+        }
+
+        private static void ApplyDelay(int failureCount, int index)
+        {
+            if (failureCount < 3 || Stopwatch.Frequency <= 0 || index < 0)
                 return;
 
             int shift = failureCount - 3;
             if (shift > 4)
                 shift = 4;
 
-            int delaySeconds = 2 << shift; // 2, 4, 8, 16, 32 -> capped below.
+            int delaySeconds = 2 << shift;
             if (delaySeconds > MaxDelaySeconds)
                 delaySeconds = MaxDelaySeconds;
 
+            blockedUntil[index] = Stopwatch.GetTimestamp() + Stopwatch.Frequency * delaySeconds;
+        }
+
+        private static int RemainingSeconds(long until)
+        {
+            if (until <= 0 || Stopwatch.Frequency <= 0)
+                return 0;
+
             long now = Stopwatch.GetTimestamp();
-            blockedUntil[index] = now + Stopwatch.Frequency * delaySeconds;
-        }
+            if (now >= until)
+                return 0;
 
-        public static void RecordSuccess(string username)
-        {
-            int index = Find(username);
-            if (index < 0)
-                return;
-
-            failures[index] = 0;
-            blockedUntil[index] = 0;
-        }
-
-        public static void Reset(string username)
-        {
-            RecordSuccess(username);
+            long remaining = until - now;
+            int seconds = (int)((remaining + Stopwatch.Frequency - 1) / Stopwatch.Frequency);
+            return seconds < 1 ? 1 : seconds;
         }
 
         private static int Find(string username)
