@@ -9,6 +9,9 @@ namespace ZonderqOS.Commands
         public string Name => "nano";
         public string Description => "Interactive text editor (nano <file>)";
 
+        private const long MaxFileBytes = 1024 * 1024;
+        private const int MaxDocumentCharacters = 1024 * 1024;
+
         public void Execute(string[] args, ref string currentPath)
         {
             if (args.Length < 2)
@@ -42,8 +45,24 @@ namespace ZonderqOS.Commands
 
             if (File.Exists(filePath))
             {
+                if (!PermissionManager.CanRead(filePath, SecurityContext.CurrentUser))
+                {
+                    WriteMessage.WriteError($"Permission denied: Cannot read {filePath}", "SEC");
+                    SecurityLogger.LogEvent("WARN", $"Unauthorized nano read attempt on {filePath} by {SecurityContext.CurrentUser}");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
                 try
                 {
+                    FileInfo fileInfo = new FileInfo(filePath);
+                    if (fileInfo.Length > MaxFileBytes)
+                    {
+                        WriteMessage.WriteError($"File is too large. Limit: {MaxFileBytes / 1024} KB.", "NANO");
+                        CommandIO.LastCommandSuccess = false;
+                        return;
+                    }
+
                     string content = File.ReadAllText(filePath);
                     lines = new List<string>(content.Split(new[] { '\n' }));
                     for (int i = 0; i < lines.Count; i++)
@@ -57,7 +76,9 @@ namespace ZonderqOS.Commands
                 }
             }
 
-            if (lines.Count == 0) lines.Add("");
+            if (lines.Count == 0)
+                lines.Add("");
+
             RunEditor(filePath, lines);
             CommandIO.LastCommandSuccess = true;
         }
@@ -67,6 +88,7 @@ namespace ZonderqOS.Commands
             int cursorX = 0;
             int cursorY = 0;
             int scrollY = 0;
+            int documentCharacters = CountDocumentCharacters(lines);
             bool running = true;
             string statusMessage = "";
 
@@ -79,14 +101,15 @@ namespace ZonderqOS.Commands
                 DrawScreen(path, lines, cursorX, cursorY, scrollY, statusMessage);
                 statusMessage = "";
                 var key = Console.ReadKey(true);
+                bool control = (key.Modifiers & ConsoleModifiers.Control) != 0;
 
-                if ((key.Modifiers.HasFlag(ConsoleModifiers.Control) && key.Key == ConsoleKey.O) || key.Key == ConsoleKey.F2)
+                if ((control && key.Key == ConsoleKey.O) || key.Key == ConsoleKey.F2)
                 {
                     SaveFile(path, lines, out statusMessage);
                     continue;
                 }
 
-                if ((key.Modifiers.HasFlag(ConsoleModifiers.Control) && key.Key == ConsoleKey.X) || key.Key == ConsoleKey.F3 || key.Key == ConsoleKey.Escape)
+                if ((control && key.Key == ConsoleKey.X) || key.Key == ConsoleKey.F3 || key.Key == ConsoleKey.Escape)
                 {
                     running = false;
                     continue;
@@ -101,30 +124,78 @@ namespace ZonderqOS.Commands
                         if (cursorY < lines.Count - 1) cursorY++;
                         break;
                     case ConsoleKey.LeftArrow:
-                        if (cursorX > 0) cursorX--;
-                        else if (cursorY > 0) { cursorY--; cursorX = lines[cursorY].Length; }
+                        if (cursorX > 0)
+                        {
+                            cursorX--;
+                        }
+                        else if (cursorY > 0)
+                        {
+                            cursorY--;
+                            cursorX = lines[cursorY].Length;
+                        }
                         break;
                     case ConsoleKey.RightArrow:
-                        if (cursorX < lines[cursorY].Length) cursorX++;
-                        else if (cursorY < lines.Count - 1) { cursorY++; cursorX = 0; }
+                        if (cursorX < lines[cursorY].Length)
+                        {
+                            cursorX++;
+                        }
+                        else if (cursorY < lines.Count - 1)
+                        {
+                            cursorY++;
+                            cursorX = 0;
+                        }
                         break;
                     case ConsoleKey.Backspace:
-                        if (cursorX > 0) { lines[cursorY] = lines[cursorY].Remove(cursorX - 1, 1); cursorX--; }
-                        else if (cursorY > 0) { int oldLen = lines[cursorY - 1].Length; lines[cursorY - 1] += lines[cursorY]; lines.RemoveAt(cursorY); cursorY--; cursorX = oldLen; }
+                        if (cursorX > 0)
+                        {
+                            lines[cursorY] = lines[cursorY].Remove(cursorX - 1, 1);
+                            cursorX--;
+                            if (documentCharacters > 0) documentCharacters--;
+                        }
+                        else if (cursorY > 0)
+                        {
+                            int oldLen = lines[cursorY - 1].Length;
+                            lines[cursorY - 1] += lines[cursorY];
+                            lines.RemoveAt(cursorY);
+                            cursorY--;
+                            cursorX = oldLen;
+                            if (documentCharacters > 0) documentCharacters--;
+                        }
                         break;
                     case ConsoleKey.Enter:
+                        if (documentCharacters >= MaxDocumentCharacters)
+                        {
+                            statusMessage = $"[Document limit: {MaxDocumentCharacters} characters]";
+                            break;
+                        }
+
                         string remainder = lines[cursorY].Substring(cursorX);
                         lines[cursorY] = lines[cursorY].Substring(0, cursorX);
                         lines.Insert(cursorY + 1, remainder);
-                        cursorY++; cursorX = 0;
+                        cursorY++;
+                        cursorX = 0;
+                        documentCharacters++;
                         break;
                     default:
-                        if (key.KeyChar >= 32 && key.KeyChar <= 126) { lines[cursorY] = lines[cursorY].Insert(cursorX, key.KeyChar.ToString()); cursorX++; }
+                        if (key.KeyChar >= 32 && key.KeyChar <= 126)
+                        {
+                            if (documentCharacters >= MaxDocumentCharacters)
+                            {
+                                statusMessage = $"[Document limit: {MaxDocumentCharacters} characters]";
+                                break;
+                            }
+
+                            lines[cursorY] = lines[cursorY].Insert(cursorX, key.KeyChar.ToString());
+                            cursorX++;
+                            documentCharacters++;
+                        }
                         break;
                 }
 
-                if (cursorX > lines[cursorY].Length) cursorX = lines[cursorY].Length;
-                int screenHeight = 23;
+                if (cursorX > lines[cursorY].Length)
+                    cursorX = lines[cursorY].Length;
+
+                const int screenHeight = 23;
                 if (cursorY < scrollY) scrollY = cursorY;
                 if (cursorY >= scrollY + screenHeight) scrollY = cursorY - screenHeight + 1;
             }
@@ -132,6 +203,22 @@ namespace ZonderqOS.Commands
             Console.BackgroundColor = ConsoleColor.Black;
             Console.ForegroundColor = ConsoleColor.White;
             Console.Clear();
+        }
+
+        private static int CountDocumentCharacters(List<string> lines)
+        {
+            long total = lines.Count > 0 ? lines.Count - 1 : 0;
+            for (int i = 0; i < lines.Count; i++)
+            {
+                string line = lines[i];
+                if (line != null)
+                    total += line.Length;
+
+                if (total >= MaxDocumentCharacters)
+                    return MaxDocumentCharacters;
+            }
+
+            return (int)total;
         }
 
         private void DrawScreen(string path, List<string> lines, int cx, int cy, int scrollY, string status)
@@ -145,7 +232,7 @@ namespace ZonderqOS.Commands
             Console.BackgroundColor = ConsoleColor.Black;
             Console.ForegroundColor = ConsoleColor.White;
 
-            int displayLines = 23;
+            const int displayLines = 23;
             for (int i = 0; i < displayLines; i++)
             {
                 int lineIdx = scrollY + i;
@@ -156,7 +243,10 @@ namespace ZonderqOS.Commands
                     if (lineToPrint.Length > 79) lineToPrint = lineToPrint.Substring(0, 79);
                     Console.Write(lineToPrint.PadRight(79));
                 }
-                else Console.Write(new string(' ', 79));
+                else
+                {
+                    Console.Write(new string(' ', 79));
+                }
             }
 
             Console.SetCursorPosition(0, 24);
@@ -173,13 +263,23 @@ namespace ZonderqOS.Commands
 
         private void SaveFile(string path, List<string> lines, out string message)
         {
+            if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
+            {
+                message = "[Permission denied]";
+                SecurityLogger.LogEvent("WARN", $"Unauthorized nano write attempt on {path} by {SecurityContext.CurrentUser}");
+                return;
+            }
+
             try
             {
                 Disk.CreateFile(path, string.Join("\n", lines));
                 message = $"[Wrote {lines.Count} lines to {path}]";
                 SecurityLogger.LogEvent("INFO", $"File edited via nano: {path}");
             }
-            catch (Exception ex) { message = $"[Error saving: {ex.Message}]"; }
+            catch (Exception ex)
+            {
+                message = $"[Error saving: {ex.Message}]";
+            }
         }
     }
 }
