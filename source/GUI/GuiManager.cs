@@ -83,7 +83,7 @@ namespace ZonderqOS.GUI
                 startMenu.SetPowerActions(
                     () => Cosmos.Kernel.System.Power.Reboot(),
                     () => Cosmos.Kernel.System.Power.Shutdown(),
-                    () => isRunning = false);
+                    LogoutSession);
 
                 taskbar = new Taskbar((int)canvas.Width, (int)canvas.Height, TaskbarHeight, () =>
                 {
@@ -108,6 +108,16 @@ namespace ZonderqOS.GUI
                 while (isRunning)
                 {
                     frameCounter++;
+
+                    // A terminal command may end the session too. Never leave the old
+                    // desktop alive after SecurityContext switches back to login state.
+                    if (!SecurityContext.IsAuthenticated)
+                    {
+                        applicationManager.CloseAll();
+                        isRunning = false;
+                        break;
+                    }
+
                     bool keyboardActivity = false;
 
                     while (KeyboardManager.TryReadKey(out KeyEvent? key))
@@ -217,6 +227,30 @@ namespace ZonderqOS.GUI
 
             if (desktopContextMenu != null)
                 desktopContextMenu.Visible = false;
+        }
+
+        private void LogoutSession()
+        {
+            if (!SecurityContext.IsAuthenticated)
+            {
+                isRunning = false;
+                return;
+            }
+
+            if (startMenu != null)
+                startMenu.Visible = false;
+            if (desktopContextMenu != null)
+                desktopContextMenu.Visible = false;
+
+            selectedShortcut = -1;
+            lastShortcutClick = -1;
+            lastShortcutClickFrame = -1000;
+
+            if (applicationManager != null)
+                applicationManager.CloseAll();
+
+            UserManager.EndSession();
+            isRunning = false;
         }
 
         private void LaunchTerminal(int x, int y)
