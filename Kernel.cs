@@ -14,7 +14,6 @@ namespace ZonderqOS
         private string path = "/root";
         private readonly List<string> history = new List<string>();
         private string sessionUser;
-        private int failedLoginAttempts;
 
         protected override void BeforeRun()
         {
@@ -30,9 +29,9 @@ namespace ZonderqOS
                 Network.Initialize();
                 SystemGuardian.Initialize();
 
-                // All boot services initialize with the privileged boot context. From
-                // this point onward no interactive shell or desktop is exposed until
-                // credentials have been verified against /etc/shadow.
+                // Boot services initialize with the privileged boot context. From this
+                // point onward no interactive shell or desktop is exposed until credentials
+                // have been verified against /etc/shadow.
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
                 Console.WriteLine();
@@ -40,7 +39,7 @@ namespace ZonderqOS
             }
             catch (Exception ex)
             {
-                WriteMessage.WriteError($"Boot critical error: {ex.Message}", "SYS");
+                WriteMessage.WriteError("Boot critical error: " + ex.Message, "SYS");
             }
         }
 
@@ -62,7 +61,6 @@ namespace ZonderqOS
                         return;
                     }
 
-                    failedLoginAttempts = 0;
                     history.Clear();
                     SynchronizeSession();
 
@@ -74,12 +72,14 @@ namespace ZonderqOS
                 SynchronizeSession();
 
                 string user = EnvironmentManager.Get("USER");
-                if (string.IsNullOrEmpty(user)) user = SecurityContext.CurrentUser;
+                if (string.IsNullOrEmpty(user))
+                    user = SecurityContext.CurrentUser;
 
                 string host = EnvironmentManager.Get("HOSTNAME");
-                if (string.IsNullOrEmpty(host)) host = "ZonderqOS";
+                if (string.IsNullOrEmpty(host))
+                    host = "ZonderqOS";
 
-                Console.Write($"{user}@{host}:{path}$ ");
+                Console.Write(user + "@" + host + ":" + path + "$ ");
                 string command = ReadLineWithHistory();
 
                 if (!string.IsNullOrWhiteSpace(command))
@@ -100,7 +100,7 @@ namespace ZonderqOS
             }
             catch (Exception ex)
             {
-                WriteMessage.WriteError($"Wystąpił błąd jądra: {ex.Message}", "Kernel");
+                WriteMessage.WriteError("Wystąpił błąd jądra: " + ex.Message, "Kernel");
             }
         }
 
@@ -111,32 +111,42 @@ namespace ZonderqOS
             if (username != null)
                 username = username.Trim();
 
+            int retryAfter;
+            if (!AuthenticationGuard.CanAttempt(username, out retryAfter))
+            {
+                Console.WriteLine("Authentication temporarily blocked. Retry in " + retryAfter + " s.");
+                Thread.Sleep(System.Math.Min(2000, retryAfter * 250));
+                return;
+            }
+
             Console.Write("password: ");
             string password = ReadPassword();
 
             if (UserManager.TryStartSession(username, password))
             {
-                failedLoginAttempts = 0;
+                AuthenticationGuard.RecordSuccess(username);
+                password = null;
                 history.Clear();
                 sessionUser = SecurityContext.CurrentUser;
                 path = SecurityContext.CurrentHome;
                 if (string.IsNullOrEmpty(path))
                     path = "/";
 
-                Console.WriteLine($"Welcome, {SecurityContext.CurrentUser}.");
+                Console.WriteLine("Welcome, " + SecurityContext.CurrentUser + ".");
                 Console.WriteLine();
                 return;
             }
 
-            failedLoginAttempts++;
-            Console.WriteLine("Authentication failed.");
+            password = null;
+            AuthenticationGuard.RecordFailure(username);
+            retryAfter = AuthenticationGuard.GetRetryAfterSeconds(username);
+            Console.WriteLine(retryAfter > 0
+                ? "Authentication failed. Temporary delay: " + retryAfter + " s."
+                : "Authentication failed.");
 
-            // Small escalating delay slows trivial brute-force attempts without creating
-            // a permanent lockout that could make a hobby OS installation unrecoverable.
-            int delayMs = failedLoginAttempts >= 3 ? 2500 : 900;
-            Thread.Sleep(delayMs);
-            if (failedLoginAttempts >= 3)
-                failedLoginAttempts = 0;
+            // Small local delay plus the shared guard keeps the recovery console from being
+            // a bypass around the graphical login throttling.
+            Thread.Sleep(retryAfter > 0 ? System.Math.Min(2500, retryAfter * 300) : 600);
         }
 
         private void SynchronizeSession()
@@ -297,7 +307,8 @@ namespace ZonderqOS
                 {
                 }
 
-                if (windowWidth <= 0) windowWidth = 80;
+                if (windowWidth <= 0)
+                    windowWidth = 80;
                 int targetTop = startTop + (targetLeft / windowWidth);
                 targetLeft %= windowWidth;
                 Console.SetCursorPosition(targetLeft, targetTop);
