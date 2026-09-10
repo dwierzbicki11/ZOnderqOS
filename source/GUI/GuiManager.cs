@@ -52,6 +52,10 @@ namespace ZonderqOS.GUI
                 Console.WriteLine("[GUI] Uruchamiam pulpit...");
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
 
+                // Decode embedded PNG assets exactly once before the first GUI frame.
+                // Later renders only reuse persistent raw pixel buffers.
+                IconManager.Preload();
+
                 int desktopHeight = (int)canvas.Height - TaskbarHeight;
                 Window.ConfigureDesktop((int)canvas.Width, desktopHeight);
                 applicationManager = new ApplicationManager();
