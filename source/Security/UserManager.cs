@@ -203,7 +203,7 @@ namespace ZonderqOS
 
         public static bool CreateUser(string username, string password)
         {
-            if (!IsValidUsername(username) || password == null || password.Length == 0)
+            if (!IsValidUsername(username) || password == null || password.Length == 0 || password.Length > 128)
                 return false;
 
             try
@@ -225,6 +225,7 @@ namespace ZonderqOS
 
                     File.AppendAllText(PasswdPath, passwdEntry);
                     File.AppendAllText(ShadowPath, shadowEntry);
+                    SecurityLogger.LogEvent("INFO", $"Local user '{username}' created by '{SecurityContext.CurrentUser}'.");
                     return true;
                 }
             }
@@ -234,6 +235,76 @@ namespace ZonderqOS
             }
 
             return false;
+        }
+
+        /// <summary>
+        /// Changes a local account password only after authenticating the current session.
+        /// A normal user may change only their own password. Root may reset another account,
+        /// but must still confirm the root password before /etc/shadow is rewritten.
+        /// </summary>
+        public static bool ChangePassword(string username, string authorizationPassword, string newPassword)
+        {
+            if (!SecurityContext.IsAuthenticated || !IsValidUsername(username) ||
+                authorizationPassword == null || newPassword == null ||
+                newPassword.Length == 0 || newPassword.Length > 128)
+            {
+                return false;
+            }
+
+            string actor = SecurityContext.CurrentUser;
+            if (!IsValidUsername(actor))
+                return false;
+
+            bool ownAccount = actor == username;
+            bool rootReset = actor == "root";
+            if (!ownAccount && !rootReset)
+            {
+                SecurityLogger.LogEvent("WARN", $"User '{actor}' attempted to change password for '{username}'.");
+                return false;
+            }
+
+            if (!ValidateCredentials(actor, authorizationPassword))
+            {
+                SecurityLogger.LogEvent("WARN", $"Password change authorization failed for '{actor}'.");
+                return false;
+            }
+
+            try
+            {
+                if (!File.Exists(ShadowPath))
+                    return false;
+
+                string[] lines = File.ReadAllLines(ShadowPath);
+                int entryIndex = -1;
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string line = lines[i];
+                    int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
+                    if (separator <= 0)
+                        continue;
+
+                    if (line.Substring(0, separator) == username)
+                    {
+                        entryIndex = i;
+                        break;
+                    }
+                }
+
+                if (entryIndex < 0)
+                    return false;
+
+                string salt = Crypto.GenerateSalt();
+                string hash = Crypto.HashPassword(newPassword, salt);
+                lines[entryIndex] = username + ":" + salt + "$" + hash;
+                File.WriteAllLines(ShadowPath, lines);
+                SecurityLogger.LogEvent("INFO", $"Password changed for '{username}' by '{actor}'.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                SecurityLogger.LogEvent("ERR", $"Password change failed for '{username}': {ex.Message}");
+                return false;
+            }
         }
 
         public static string GetHomeDirectory(string username)
