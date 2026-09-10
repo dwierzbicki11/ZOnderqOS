@@ -78,6 +78,7 @@ namespace ZonderqOS.GUI
                 });
 
                 bool previousLeftButtonState = false;
+                bool previousRightButtonState = false;
                 while (isRunning)
                 {
                     while (KeyboardManager.TryReadKey(out KeyEvent? key))
@@ -94,11 +95,15 @@ namespace ZonderqOS.GUI
                     int mouseX = (int)MouseManager.X;
                     int mouseY = (int)MouseManager.Y;
                     bool currentLeftButtonState = MouseManager.LeftButton;
+                    bool currentRightButtonState = MouseManager.RightButton;
 
-                    applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
+                    applicationManager.HandleMouse(mouseX, mouseY,
+                        currentLeftButtonState, previousLeftButtonState,
+                        currentRightButtonState, previousRightButtonState);
                     startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     previousLeftButtonState = currentLeftButtonState;
+                    previousRightButtonState = currentRightButtonState;
                     applicationManager.Update();
 
                     canvas.Clear(Color.MidnightBlue);
