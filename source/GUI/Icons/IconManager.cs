@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.IO;
 using Cosmos.Kernel.System.Graphics;
 
 namespace ZonderqOS.GUI.Icons
@@ -7,30 +8,36 @@ namespace ZonderqOS.GUI.Icons
     {
         private const int IconSize = 18;
         private const int LargeIconSize = 40;
-        private const int IconCount = 14;
+        private const int IconCount = 16;
         private const int MaxScaledCacheEntries = 192;
+        private const string CacheDirectory = "/root/.zonderq-icons";
 
-        // Keep only raw pixel buffers as permanent roots. We do not depend on a cached
-        // Png/Bitmap object surviving OrionGC and we never call Canvas' scaling overload
-        // from the render path. Each PNG is decoded once and each requested size is
-        // scaled once. Later frames only read these persistent int[] buffers.
+        // Source PNGs are decoded once during GUI startup and held strongly for the
+        // whole GUI session. Raw pixel buffers are used by the hot render path.
+        private static readonly Png[] sourceImages = new Png[IconCount];
         private static readonly int[][] sourcePixels = new int[IconCount][];
         private static readonly int[] sourceWidths = new int[IconCount];
         private static readonly int[] sourceHeights = new int[IconCount];
         private static readonly bool[] sourceLoadAttempted = new bool[IconCount];
 
+        // Every requested icon/size pair is scaled once. Later frames only reuse the
+        // same persistent int[]; Canvas.DrawImage(image, x, y, w, h) is never used.
         private static readonly int[][] scaledPixels = new int[MaxScaledCacheEntries][];
         private static readonly IconType[] scaledTypes = new IconType[MaxScaledCacheEntries];
         private static readonly int[] scaledWidths = new int[MaxScaledCacheEntries];
         private static readonly int[] scaledHeights = new int[MaxScaledCacheEntries];
         private static int scaledCacheCount;
 
-        /// <summary>
-        /// Decode all embedded icon PNGs once while the GUI is starting. This avoids
-        /// filesystem access and PNG decoding during later desktop/window renders.
-        /// </summary>
         public static void Preload()
         {
+            try
+            {
+                Directory.CreateDirectory(CacheDirectory);
+            }
+            catch
+            {
+            }
+
             for (int i = 0; i < IconCount; i++)
                 EnsureSource((IconType)i);
         }
@@ -41,8 +48,8 @@ namespace ZonderqOS.GUI.Icons
         }
 
         /// <summary>
-        /// Allocation-free hot path. The first use of an icon/size pair creates one
-        /// persistent scaled pixel buffer. Every later call only blits that same buffer.
+        /// Allocation-free render path. The source PNG is decoded once and every
+        /// requested size is cached after its first use.
         /// </summary>
         public static void DrawScaled(Canvas canvas, IconType type, int x, int y, int width, int height)
         {
@@ -74,8 +81,8 @@ namespace ZonderqOS.GUI.Icons
                 return;
             }
 
-            // The fixed cache should never normally fill. If it does, keep the icon
-            // visible with direct nearest-neighbour sampling without allocating memory.
+            // Fixed cache exhausted: keep the icon visible with direct scaling, still
+            // without allocating a temporary frame buffer.
             BlitScaledDirect(canvas, source, sourceWidth, sourceHeight, x, y, width, height);
         }
 
@@ -100,9 +107,15 @@ namespace ZonderqOS.GUI.Icons
                 if (data == null || data.Length == 0)
                     return false;
 
-                // Decode directly from the embedded resource. No /root cache file is
-                // required, so icons cannot disappear because of a VFS/path problem.
-                Png decoded = new Png(data);
+                // Path-based PNG decoding is the proven Cosmos Gen3 path used by the
+                // original GUI. The embedded bytes are written only once; no file I/O
+                // happens on normal rendering.
+                Directory.CreateDirectory(CacheDirectory);
+                string path = Path.Combine(CacheDirectory, GetFileName(type));
+                if (!File.Exists(path))
+                    File.WriteAllBytes(path, data);
+
+                Png decoded = new Png(path);
                 int width = (int)decoded.Width;
                 int height = (int)decoded.Height;
                 int[] pixels = decoded.RawData;
@@ -110,8 +123,7 @@ namespace ZonderqOS.GUI.Icons
                 if (width <= 0 || height <= 0 || pixels == null || pixels.Length < width * height)
                     return false;
 
-                // RawData becomes the permanent cache object. The temporary Png wrapper
-                // itself is no longer needed after this one-time decode.
+                sourceImages[index] = decoded;
                 sourceWidths[index] = width;
                 sourceHeights[index] = height;
                 sourcePixels[index] = pixels;
@@ -172,11 +184,6 @@ namespace ZonderqOS.GUI.Icons
             return destination;
         }
 
-        /// <summary>
-        /// Draw persistent pixels directly. No Image wrapper, no ScaleImage() and no
-        /// temporary arrays are involved. Color is a value type, so this loop does not
-        /// create managed objects per pixel/frame. Transparent pixels are skipped.
-        /// </summary>
         private static void Blit(Canvas canvas, int[] pixels, int width, int height, int x, int y)
         {
             int startX = x < 0 ? -x : 0;
@@ -258,7 +265,33 @@ namespace ZonderqOS.GUI.Icons
                 case IconType.Refresh: return IconResources.Refresh;
                 case IconType.Search: return IconResources.Search;
                 case IconType.Trash: return IconResources.Trash;
+                case IconType.Reboot: return IconResources.Reboot;
+                case IconType.Shutdown: return IconResources.Shutdown;
                 default: return null;
+            }
+        }
+
+        private static string GetFileName(IconType type)
+        {
+            switch (type)
+            {
+                case IconType.Terminal: return "terminal-2.png";
+                case IconType.FileManager:
+                case IconType.Folder: return "folder.png";
+                case IconType.File: return "file.png";
+                case IconType.Settings: return "settings-2.png";
+                case IconType.About: return "info-circle.png";
+                case IconType.Close: return "square-rounded-x.png";
+                case IconType.Maximize: return "arrows-maximize.png";
+                case IconType.Restore: return "restore.png";
+                case IconType.Start: return "home.png";
+                case IconType.ArrowUp: return "arrow-up.png";
+                case IconType.Refresh: return "refresh.png";
+                case IconType.Search: return "search.png";
+                case IconType.Trash: return "trash.png";
+                case IconType.Reboot: return "reboot.png";
+                case IconType.Shutdown: return "shutdown.png";
+                default: return "icon.png";
             }
         }
 
