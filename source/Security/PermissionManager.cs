@@ -52,7 +52,7 @@ namespace ZonderqOS
                             int.TryParse(parts[2], out int perms) &&
                             IsValidPermissionMode(perms))
                         {
-                            _aclCache[parts[0]] = (parts[1], perms);
+                            _aclCache[NormalizePath(parts[0])] = (parts[1], perms);
                         }
                     }
                 }
@@ -81,7 +81,7 @@ namespace ZonderqOS
 
             lock (_aclLock)
             {
-                _aclCache[path] = (owner, perms);
+                _aclCache[NormalizePath(path)] = (owner, perms);
                 SaveAclLocked();
             }
         }
@@ -93,8 +93,98 @@ namespace ZonderqOS
 
             lock (_aclLock)
             {
-                if (_aclCache.Remove(path))
+                if (_aclCache.Remove(NormalizePath(path)))
                     SaveAclLocked();
+            }
+        }
+
+        public static void RemovePermissionsUnder(string rootPath)
+        {
+            if (string.IsNullOrEmpty(rootPath))
+                return;
+
+            string root = NormalizePath(rootPath);
+            lock (_aclLock)
+            {
+                var paths = new List<string>();
+                foreach (var kvp in _aclCache)
+                {
+                    if (IsSameOrChildPath(kvp.Key, root))
+                        paths.Add(kvp.Key);
+                }
+
+                if (paths.Count == 0)
+                    return;
+
+                for (int i = 0; i < paths.Count; i++)
+                    _aclCache.Remove(paths[i]);
+
+                SaveAclLocked();
+            }
+        }
+
+        public static void CopyPermissionsUnder(string sourcePath, string destinationPath, string newOwner)
+        {
+            if (string.IsNullOrEmpty(sourcePath) || string.IsNullOrEmpty(destinationPath) || string.IsNullOrEmpty(newOwner))
+                return;
+
+            string source = NormalizePath(sourcePath);
+            string destination = NormalizePath(destinationPath);
+
+            lock (_aclLock)
+            {
+                var entries = new List<(string Path, int Perms)>();
+                foreach (var kvp in _aclCache)
+                {
+                    if (IsSameOrChildPath(kvp.Key, source))
+                        entries.Add((MapPath(kvp.Key, source, destination), kvp.Value.Perms));
+                }
+
+                if (entries.Count == 0 && File.Exists(source))
+                    entries.Add((destination, 600));
+
+                if (entries.Count == 0)
+                    return;
+
+                for (int i = 0; i < entries.Count; i++)
+                    _aclCache[entries[i].Path] = (newOwner, entries[i].Perms);
+
+                SaveAclLocked();
+            }
+        }
+
+        public static void MovePermissionsUnder(string sourcePath, string destinationPath)
+        {
+            if (string.IsNullOrEmpty(sourcePath) || string.IsNullOrEmpty(destinationPath))
+                return;
+
+            string source = NormalizePath(sourcePath);
+            string destination = NormalizePath(destinationPath);
+
+            lock (_aclLock)
+            {
+                var entries = new List<(string OldPath, string NewPath, string Owner, int Perms)>();
+                foreach (var kvp in _aclCache)
+                {
+                    if (IsSameOrChildPath(kvp.Key, source))
+                    {
+                        entries.Add((
+                            kvp.Key,
+                            MapPath(kvp.Key, source, destination),
+                            kvp.Value.Owner,
+                            kvp.Value.Perms));
+                    }
+                }
+
+                if (entries.Count == 0)
+                    return;
+
+                for (int i = 0; i < entries.Count; i++)
+                    _aclCache.Remove(entries[i].OldPath);
+                for (int i = 0; i < entries.Count; i++)
+                    _aclCache[entries[i].NewPath] = (entries[i].Owner, entries[i].Perms);
+
+                SaveAclLocked();
             }
         }
 
@@ -102,12 +192,10 @@ namespace ZonderqOS
         {
             lock (_aclLock)
             {
-                if (!string.IsNullOrEmpty(path) && _aclCache.TryGetValue(path, out var acl))
+                if (!string.IsNullOrEmpty(path) && _aclCache.TryGetValue(NormalizePath(path), out var acl))
                     return acl;
             }
 
-            // Bezpieczny domyślny model: nieznany plik nie jest zapisywalny
-            // przez zwykłego użytkownika. Root nadal ma pełny dostęp.
             return ("root", 600);
         }
 
@@ -148,6 +236,36 @@ namespace ZonderqOS
             int group = (perms / 10) % 10;
             int others = perms % 10;
             return owner <= 7 && group <= 7 && others <= 7;
+        }
+
+        private static string NormalizePath(string path)
+        {
+            string value = (path ?? string.Empty).Replace('\\', '/');
+            while (value.Length > 1 && value.EndsWith("/", StringComparison.Ordinal))
+                value = value.Substring(0, value.Length - 1);
+            return value;
+        }
+
+        private static bool IsSameOrChildPath(string path, string root)
+        {
+            if (string.Equals(path, root, StringComparison.Ordinal))
+                return true;
+
+            if (root == "/")
+                return path.StartsWith("/", StringComparison.Ordinal);
+
+            return path.StartsWith(root + "/", StringComparison.Ordinal);
+        }
+
+        private static string MapPath(string path, string sourceRoot, string destinationRoot)
+        {
+            if (string.Equals(path, sourceRoot, StringComparison.Ordinal))
+                return destinationRoot;
+
+            string relative = path.Substring(sourceRoot.Length).TrimStart('/');
+            if (destinationRoot == "/")
+                return "/" + relative;
+            return destinationRoot + "/" + relative;
         }
 
         private static void SaveAclLocked()
