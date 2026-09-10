@@ -70,6 +70,7 @@ namespace ZonderqOS.GUI
 
         private static void DrawChar(Canvas canvas, char ch, int x, int y, Color color)
         {
+            ch = NormalizeGlyph(ch);
             for (int row = 0; row < 7; row++)
             {
                 int bits = Glyph(ch, row);
@@ -78,6 +79,26 @@ namespace ZonderqOS.GUI
                     if ((bits & (1 << (4 - col))) != 0)
                         canvas.DrawFilledRectangle(color, x + col, y + row, 1, 1);
                 }
+            }
+        }
+
+        private static char NormalizeGlyph(char ch)
+        {
+            switch (ch)
+            {
+                case 'ą': case 'Ą': return 'A';
+                case 'ć': case 'Ć': return 'C';
+                case 'ę': case 'Ę': return 'E';
+                case 'ł': case 'Ł': return 'L';
+                case 'ń': case 'Ń': return 'N';
+                case 'ó': case 'Ó': return 'O';
+                case 'ś': case 'Ś': return 'S';
+                case 'ź': case 'Ź': case 'ż': case 'Ż': return 'Z';
+                case '–': case '—': return '-';
+                case '‘': case '’': return '\'';
+                case '“': case '”': return '"';
+                case '\u00A0': return ' ';
+                default: return ch;
             }
         }
 
@@ -126,9 +147,25 @@ namespace ZonderqOS.GUI
                 case '-': pattern = "000000000000000011100000000000"; break;
                 case '_': pattern = "000000000000000000000000011111"; break;
                 case '/': pattern = "000010001000100010001000000000"; break;
+                case '\\': pattern = "10000010000010000010000010000000000"; break;
                 case ':': pattern = "000000010000000001000000000000"; break;
+                case ';': pattern = "00000001000000000000001000010001000"; break;
+                case ',': pattern = "00000000000000000000001000010001000"; break;
                 case '|': pattern = "001000010000100001000010000100"; break;
                 case '=': pattern = "000001111100000111110000000000"; break;
+                case '+': pattern = "00000001000010011111001000010000000"; break;
+                case '%': pattern = "11001110100010001000101100011000000"; break;
+                case '!': pattern = "00100001000010000100001000000000100"; break;
+                case '?': pattern = "01110100010001000100001000000000100"; break;
+                case '#': pattern = "01010111110101001010111110101000000"; break;
+                case '*': pattern = "00000101010111011111011101010100000"; break;
+                case '@': pattern = "01110100011011110101101111000001110"; break;
+                case '&': pattern = "01100100101010001000101011001001101"; break;
+                case '$': pattern = "00100011111010001110001011111000100"; break;
+                case '<': pattern = "00010001000100010000010000010000010"; break;
+                case '>': pattern = "01000001000001000001000100010001000"; break;
+                case '\'': pattern = "00100001000000000000000000000000000"; break;
+                case '"': pattern = "01010010100000000000000000000000000"; break;
                 case '(': pattern = "000100010000100001000010000010"; break;
                 case ')': pattern = "010000010000100001000010001000"; break;
                 case '[': pattern = "011100100001000010000100001110"; break;
