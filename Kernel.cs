@@ -29,9 +29,6 @@ namespace ZonderqOS
                 Network.Initialize();
                 SystemGuardian.Initialize();
 
-                // Boot services initialize with the privileged boot context. From this
-                // point onward no interactive shell or desktop is exposed until credentials
-                // have been verified against /etc/shadow.
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
                 Console.WriteLine();
@@ -51,9 +48,6 @@ namespace ZonderqOS
                 {
                     sessionUser = null;
 
-                    // Primary boot experience: graphical authentication followed by the
-                    // desktop. If graphics/login initialization fails, retain the console
-                    // prompt as a recovery path instead of locking the installation out.
                     bool graphicalLogin = LoginScreenManager.Run();
                     if (!graphicalLogin || !SecurityContext.IsAuthenticated)
                     {
@@ -86,10 +80,9 @@ namespace ZonderqOS
                 {
                     Command.Run(command, ref path);
 
-                    // Do not retain history across logout or user switches. Besides being
-                    // cleaner, this prevents a newly authenticated user from seeing commands
-                    // entered by the previous session.
-                    if (SecurityContext.IsAuthenticated &&
+                    // Password-bearing account commands are deliberately excluded from
+                    // history. History is also cleared whenever the authenticated user changes.
+                    if (SecurityContext.IsAuthenticated && !IsSensitiveCommand(command) &&
                         (history.Count == 0 || history[history.Count - 1] != command))
                     {
                         history.Add(command);
@@ -144,8 +137,6 @@ namespace ZonderqOS
                 ? "Authentication failed. Temporary delay: " + retryAfter + " s."
                 : "Authentication failed.");
 
-            // Small local delay plus the shared guard keeps the recovery console from being
-            // a bypass around the graphical login throttling.
             Thread.Sleep(retryAfter > 0 ? System.Math.Min(2500, retryAfter * 300) : 600);
         }
 
@@ -160,6 +151,23 @@ namespace ZonderqOS
             path = SecurityContext.CurrentHome;
             if (string.IsNullOrEmpty(path))
                 path = "/";
+        }
+
+        private static bool IsSensitiveCommand(string command)
+        {
+            if (string.IsNullOrWhiteSpace(command))
+                return false;
+
+            string trimmed = command.TrimStart();
+            return StartsWithCommand(trimmed, "su") || StartsWithCommand(trimmed, "useradd");
+        }
+
+        private static bool StartsWithCommand(string input, string commandName)
+        {
+            if (!input.StartsWith(commandName, StringComparison.OrdinalIgnoreCase))
+                return false;
+            return input.Length == commandName.Length ||
+                   (input.Length > commandName.Length && char.IsWhiteSpace(input[commandName.Length]));
         }
 
         private string ReadPassword()
