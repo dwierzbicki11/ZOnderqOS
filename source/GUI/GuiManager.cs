@@ -132,6 +132,34 @@ namespace ZonderqOS.GUI
 
                         keyboardActivity = true;
 
+                        if (IsSecureSessionShortcut(key))
+                        {
+                            if (startMenu != null)
+                                startMenu.Visible = false;
+                            if (desktopContextMenu != null)
+                                desktopContextMenu.Visible = false;
+
+                            SecureSessionAction action = SecureSessionScreenManager.Run(canvas);
+                            if (action == SecureSessionAction.Lock)
+                            {
+                                RequestLockSession();
+                            }
+                            else if (action == SecureSessionAction.Logout)
+                            {
+                                LogoutSession();
+                            }
+
+                            previousLeftButtonState = MouseManager.LeftButton;
+                            previousRightButtonState = MouseManager.RightButton;
+                            previousMouseX = (int)MouseManager.X;
+                            previousMouseY = (int)MouseManager.Y;
+                            ResetActivityTimer();
+
+                            if (isRunning && !lockRequested)
+                                RenderFrame(previousMouseX, previousMouseY);
+                            break;
+                        }
+
                         if (IsLockShortcut(key))
                         {
                             RequestLockSession();
@@ -155,6 +183,9 @@ namespace ZonderqOS.GUI
 
                         applicationManager.HandleKeyboard(key);
                     }
+
+                    if (!isRunning)
+                        break;
 
                     if (lockRequested)
                     {
@@ -356,6 +387,16 @@ namespace ZonderqOS.GUI
 
             long threshold = Stopwatch.Frequency * 60L * minutes;
             return elapsed >= threshold;
+        }
+
+        private static bool IsSecureSessionShortcut(KeyEvent key)
+        {
+            if (key == null || key.Key != ConsoleKeyEx.Delete)
+                return false;
+
+            bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+            bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+            return control && alt;
         }
 
         private static bool IsLockShortcut(KeyEvent key)
