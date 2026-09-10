@@ -132,6 +132,8 @@ namespace ZonderqOS
             SecurityContext.SetAuthenticated(username, home, uid);
             EnvironmentManager.Set("USER", username);
             EnvironmentManager.Set("HOME", home);
+            UserProfileManager.EnsureProfile(home);
+            UserProfileManager.RememberLastUser(username);
             SessionManager.BeginSession();
             SecurityLogger.LogEvent("INFO", $"User '{username}' logged in.");
             return true;
@@ -147,6 +149,8 @@ namespace ZonderqOS
             SecurityContext.SetAuthenticated(username, home, uid);
             EnvironmentManager.Set("USER", username);
             EnvironmentManager.Set("HOME", home);
+            UserProfileManager.EnsureProfile(home);
+            UserProfileManager.RememberLastUser(username);
             SessionManager.BeginSession();
             return true;
         }
@@ -228,6 +232,7 @@ namespace ZonderqOS
 
                     File.AppendAllText(PasswdPath, passwdEntry);
                     File.AppendAllText(ShadowPath, shadowEntry);
+                    UserProfileManager.EnsureProfile(homeDir);
                     SecurityLogger.LogEvent("INFO", $"Local user '{username}' created by '{SecurityContext.CurrentUser}'.");
                     return true;
                 }
