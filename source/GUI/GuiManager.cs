@@ -60,6 +60,7 @@ namespace ZonderqOS.GUI
                 startMenu.AddItem("Terminal CLI", IconType.Terminal, () => LaunchTerminal(125, 90));
                 startMenu.AddItem("File Manager", IconType.Folder, () => LaunchFileManager(105, 75));
                 startMenu.AddItem("Notatnik", IconType.File, () => LaunchNotepad(145, 100, null));
+                startMenu.AddItem("Manager zadan", IconType.Settings, () => LaunchTaskManager(165, 110));
                 startMenu.AddItem("Diagnostyka", IconType.Settings, () => LaunchDiagnostics(150, 120));
                 startMenu.AddItem("O Systemie", IconType.About, () => LaunchAbout(180, 140));
                 startMenu.AddItem("Pomoc", IconType.About, () => LaunchAbout(210, 160));
@@ -177,6 +178,11 @@ namespace ZonderqOS.GUI
         private void LaunchNotepad(int x, int y, string path)
         {
             applicationManager.Launch(new NotepadApp(x, y, path, null));
+        }
+
+        private void LaunchTaskManager(int x, int y)
+        {
+            applicationManager.Launch(new TaskManagerApp(x, y, applicationManager, null));
         }
 
         private void LaunchDiagnostics(int x, int y)
