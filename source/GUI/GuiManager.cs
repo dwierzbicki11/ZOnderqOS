@@ -76,7 +76,7 @@ namespace ZonderqOS.GUI
                 startMenu.AddTool("Kalkulator", IconType.Calculator, () => LaunchCalculator(185, 96));
                 startMenu.AddTool("Diagnostyka", IconType.About, () => LaunchDiagnostics(150, 120));
                 startMenu.AddTool("O Systemie", IconType.About, () => LaunchAbout(210, 160));
-                startMenu.AddTool("Odswiez pulpit", IconType.Refresh, RefreshDesktop);
+                startMenu.AddTool("Dyski", IconType.DiskManager, () => LaunchDiskManager(135, 78));
                 startMenu.AddTool("Siec", IconType.Network, () => LaunchNetworkCenter(150, 84));
 
                 startMenu.SetPowerActions(
@@ -201,7 +201,8 @@ namespace ZonderqOS.GUI
                 new DesktopShortcut(20, 398, "Zdjecia", IconType.ImageViewer, () => LaunchImageViewer(155, 92, null)),
                 new DesktopShortcut(20, 492, "Kalkulator", IconType.Calculator, () => LaunchCalculator(185, 96)),
                 new DesktopShortcut(20, 586, "Siec", IconType.Network, () => LaunchNetworkCenter(150, 84)),
-                new DesktopShortcut(20, 680, "About", IconType.About, () => LaunchAbout(180, 138))
+                new DesktopShortcut(20, 680, "Dyski", IconType.DiskManager, () => LaunchDiskManager(135, 78)),
+                new DesktopShortcut(20, 774, "About", IconType.About, () => LaunchAbout(180, 138))
             };
         }
 
@@ -260,6 +261,11 @@ namespace ZonderqOS.GUI
         private void LaunchNetworkCenter(int x, int y)
         {
             applicationManager.Launch(new NetworkCenterApp(x, y, applicationManager, null));
+        }
+
+        private void LaunchDiskManager(int x, int y)
+        {
+            applicationManager.Launch(new DiskManagerApp(x, y, null));
         }
 
         private void LaunchNotepad(int x, int y, string path)
