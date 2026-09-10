@@ -10,7 +10,7 @@ namespace ZonderqOS.GUI.Apps
     /// strings and cached snapshots; filesystem/hardware queries happen only on open,
     /// F5 or an explicit action.
     /// </summary>
-    internal abstract class SettingsToolWindow : Application
+    public abstract class SettingsToolWindow : Application
     {
         protected static readonly Color Surface = Color.FromArgb(24, 29, 35);
         protected static readonly Color Panel = Color.FromArgb(31, 38, 46);
