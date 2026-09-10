@@ -13,11 +13,11 @@ namespace ZonderqOS.GUI
     public class GuiManager
     {
         private Canvas canvas;
+        private Canvas wallpaperCanvas;
         private Taskbar taskbar;
         private StartMenu startMenu;
         private ApplicationManager applicationManager;
         private bool isRunning = true;
-        private Png wallpaper;
 
         private const int TaskbarHeight = 44;
         private const string WallpaperCacheDirectory = "/root/.zonderq-wallpapers";
@@ -34,9 +34,10 @@ namespace ZonderqOS.GUI
                 Console.WriteLine("[GUI] Uruchamiam pulpit...");
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
 
-                Window.ConfigureDesktop((int)canvas.Width, (int)canvas.Height - TaskbarHeight);
+                int desktopHeight = (int)canvas.Height - TaskbarHeight;
+                Window.ConfigureDesktop((int)canvas.Width, desktopHeight);
                 applicationManager = new ApplicationManager();
-                LoadWallpaper();
+                LoadWallpaper((int)canvas.Width, desktopHeight);
 
                 int menuWidth = 280;
                 int menuHeight = 360;
@@ -112,7 +113,7 @@ namespace ZonderqOS.GUI
             }
         }
 
-        private void LoadWallpaper()
+        private void LoadWallpaper(int width, int height)
         {
             try
             {
@@ -133,27 +134,29 @@ namespace ZonderqOS.GUI
                     }
                 }
 
-                wallpaper = new Png(WallpaperCachePath);
-                Console.WriteLine("[GUI] Załadowano tapetę: source/Wallpapers/wallpaper.png");
+                wallpaperCanvas = new Canvas(width, height);
+                wallpaperCanvas.Clear(Color.FromArgb(12, 18, 27));
+
+                Png wallpaper = new Png(WallpaperCachePath);
+                wallpaperCanvas.DrawImage(wallpaper, 0, 0, width, height);
             }
             catch (Exception ex)
             {
-                wallpaper = null;
-                Console.WriteLine($"[GUI] Nie udało się załadować tapety: {ex.Message}");
+                wallpaperCanvas = null;
+                Console.WriteLine($"[GUI] Nie udało się przygotować tapety: {ex.Message}");
             }
         }
 
         private void RenderDesktop()
         {
-            int desktopHeight = (int)canvas.Height - TaskbarHeight;
-            if (wallpaper != null)
+            if (wallpaperCanvas != null)
             {
-                canvas.DrawImage(wallpaper, 0, 0, (int)canvas.Width, desktopHeight);
+                canvas.DrawCanvas(wallpaperCanvas, 0, 0);
                 return;
             }
 
             canvas.Clear(Color.FromArgb(12, 18, 27));
-            canvas.DrawFilledRectangle(Color.FromArgb(18, 34, 52), 0, 0, (int)canvas.Width, desktopHeight);
+            canvas.DrawFilledRectangle(Color.FromArgb(18, 34, 52), 0, 0, (int)canvas.Width, (int)canvas.Height - TaskbarHeight);
         }
     }
 }
