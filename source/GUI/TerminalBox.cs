@@ -9,7 +9,8 @@ namespace ZonderqOS.GUI
 {
     public class TerminalBox : Widget
     {
-        private const int MaxOutputLines = 3000;
+        // Keep GUI terminal history bounded so repeated commands cannot grow RAM forever.
+        private const int MaxOutputLines = 400;
         private readonly ScrollBar scrollBar;
         private int scrollOffset;
         private bool userScrolled;
