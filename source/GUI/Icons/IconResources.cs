@@ -1,35 +1,113 @@
-using System;
+using System.Drawing;
 using System.IO;
-using System.Reflection;
+using Cosmos.Kernel.System.Graphics;
 
 namespace ZonderqOS.GUI.Icons
 {
-    internal static class IconResources
+    public static class IconManager
     {
-        private static readonly Assembly Assembly = typeof(IconResources).Assembly;
+        private const int IconSize = 18;
+        private const string CacheDirectory = "/root/.zonderq-icons";
+        private static readonly Png[] imageCache = new Png[10];
 
-        public static byte[] Get(string resourceName)
+        public static void Draw(Canvas canvas, IconType type, int x, int y, Color color)
         {
-            using (Stream stream = Assembly.GetManifestResourceStream(resourceName))
+            Png image = GetImage(type);
+            if (image == null)
+                return;
+
+            canvas.DrawImage(image, x, y, IconSize, IconSize);
+        }
+
+        private static Png GetImage(IconType type)
+        {
+            int index = (int)type;
+            if (index < 0 || index >= imageCache.Length)
+                return null;
+
+            if (imageCache[index] != null)
+                return imageCache[index];
+
+            byte[] data = GetResource(type);
+            if (data == null || data.Length == 0)
+                return null;
+
+            try
             {
-                if (stream == null)
-                    return null;
+                Directory.CreateDirectory(CacheDirectory);
+                string path = Path.Combine(CacheDirectory, GetFileName(type));
 
-                int length = (int)stream.Length;
-                byte[] data = new byte[length];
-                int offset = 0;
+                if (!File.Exists(path))
+                    File.WriteAllBytes(path, data);
 
-                while (offset < length)
-                {
-                    int read = stream.Read(data, offset, length - offset);
-                    if (read <= 0)
-                        return null;
-
-                    offset += read;
-                }
-
-                return data;
+                imageCache[index] = new Png(path);
+                return imageCache[index];
             }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static byte[] GetResource(IconType type)
+        {
+            switch (type)
+            {
+                case IconType.Terminal:
+                    return IconResources.Terminal;
+                case IconType.FileManager:
+                case IconType.Folder:
+                    return IconResources.Folder;
+                case IconType.File:
+                    return IconResources.File;
+                case IconType.Settings:
+                    return IconResources.Settings;
+                case IconType.About:
+                    return IconResources.About;
+                case IconType.Close:
+                    return IconResources.Close;
+                case IconType.Maximize:
+                    return IconResources.Maximize;
+                case IconType.Restore:
+                    return IconResources.Restore;
+                case IconType.Start:
+                    return IconResources.Start;
+                default:
+                    return null;
+            }
+        }
+
+        private static string GetFileName(IconType type)
+        {
+            switch (type)
+            {
+                case IconType.Terminal:
+                    return "terminal-2.png";
+                case IconType.FileManager:
+                case IconType.Folder:
+                    return "folder.png";
+                case IconType.File:
+                    return "file.png";
+                case IconType.Settings:
+                    return "settings-2.png";
+                case IconType.About:
+                    return "info-circle.png";
+                case IconType.Close:
+                    return "square-rounded-x.png";
+                case IconType.Maximize:
+                    return "arrows-maximize.png";
+                case IconType.Restore:
+                    return "restore.png";
+                case IconType.Start:
+                    return "home.png";
+                default:
+                    return "icon.png";
+            }
+        }
+
+        public static int Size
+        {
+            get { return IconSize; }
         }
     }
 }
