@@ -21,6 +21,8 @@ namespace ZonderqOS.GUI.Icons
         public static byte[] Refresh { get { return Load("refresh.png"); } }
         public static byte[] Search { get { return Load("search.png"); } }
         public static byte[] Trash { get { return Load("trash.png"); } }
+        public static byte[] Reboot { get { return Load("reboot.png"); } }
+        public static byte[] Shutdown { get { return Load("shutdown.png"); } }
 
         private static byte[] Load(string fileName)
         {
