@@ -10,10 +10,9 @@ using ZonderqOS.GUI.Icons;
 namespace ZonderqOS.GUI
 {
     /// <summary>
-    /// Full-screen session lock for the graphical desktop. The authenticated session and
-    /// its applications stay alive behind this gate; only the current user's password can
-    /// unlock it. The idle loop is event-driven and uses a rare heartbeat, matching the
-    /// rest of the ZOnderqOS GUI instead of continuously redrawing the framebuffer.
+    /// Full-screen session lock. Open applications stay alive only while the same user
+    /// unlocks the session. Choosing another user ends the session first, preventing the
+    /// next account from inheriting windows or data from the previous desktop.
     /// </summary>
     public static class LockScreenManager
     {
@@ -79,6 +78,7 @@ namespace ZonderqOS.GUI
                     Thread.Sleep(15);
                 }
 
+                screen.ClearSensitiveData();
                 return screen.Unlocked && SecurityContext.IsAuthenticated;
             }
             catch (Exception ex)
@@ -102,6 +102,7 @@ namespace ZonderqOS.GUI
             private static readonly Color Text = Color.FromArgb(232, 237, 242);
             private static readonly Color Muted = Color.FromArgb(134, 150, 165);
             private static readonly Color Good = Color.FromArgb(78, 185, 126);
+            private static readonly Color Warning = Color.FromArgb(224, 174, 76);
             private static readonly Color Danger = Color.FromArgb(215, 86, 91);
 
             private readonly int screenWidth;
@@ -110,7 +111,6 @@ namespace ZonderqOS.GUI
             private readonly char[] password = new char[MaxPasswordLength];
 
             private int passwordLength;
-            private int failedAttempts;
             private string status = "SESJA ZABLOKOWANA";
             private Color statusColor = Muted;
 
@@ -121,6 +121,11 @@ namespace ZonderqOS.GUI
                 screenWidth = width;
                 screenHeight = height;
                 username = currentUser ?? string.Empty;
+            }
+
+            public void ClearSensitiveData()
+            {
+                ClearPassword();
             }
 
             public void HandleKeyboard(KeyEvent key)
@@ -165,11 +170,20 @@ namespace ZonderqOS.GUI
                     return;
 
                 int cardX = (screenWidth - 520) / 2;
-                int cardY = (screenHeight - 390) / 2;
+                int cardY = (screenHeight - 420) / 2;
 
                 if (Hit(mouseX, mouseY, cardX + 48, cardY + 286, 424, 50))
                 {
                     Authenticate();
+                    return;
+                }
+
+                if (Hit(mouseX, mouseY, cardX + 48, cardY + 344, 424, 42))
+                {
+                    ClearPassword();
+                    SecurityLogger.LogEvent("INFO", "Switch-user requested from lock screen by '" + username + "'.");
+                    UserProfileManager.RememberLastUser(username);
+                    UserManager.EndSession();
                     return;
                 }
 
@@ -194,9 +208,9 @@ namespace ZonderqOS.GUI
                 SmallTextRenderer.Draw(canvas, "SECURE SESSION  /  LOCKED", 86, 56, Muted);
 
                 int cardX = (screenWidth - 520) / 2;
-                int cardY = (screenHeight - 390) / 2;
+                int cardY = (screenHeight - 420) / 2;
                 const int cardWidth = 520;
-                const int cardHeight = 390;
+                const int cardHeight = 420;
 
                 canvas.DrawFilledRectangle(Color.FromArgb(5, 9, 14),
                     cardX + 8, cardY + 9, cardWidth, cardHeight);
@@ -240,10 +254,14 @@ namespace ZonderqOS.GUI
                 IconManager.DrawScaled(canvas, IconType.Play, cardX + 64, cardY + 300, 22, 22);
                 SmallTextRenderer.DrawCentered(canvas, "ODBLOKUJ", cardX + 98, cardY + 307, 354, Text);
 
-                canvas.DrawFilledRectangle(CardAlt, cardX + 48, cardY + 349, 424, 28);
-                canvas.DrawRectangle(Border, cardX + 48, cardY + 349, 424, 28);
-                canvas.DrawFilledRectangle(statusColor, cardX + 61, cardY + 360, 5, 5);
-                SmallTextRenderer.DrawClipped(canvas, status, cardX + 77, cardY + 360, 380, statusColor);
+                canvas.DrawFilledRectangle(CardAlt, cardX + 48, cardY + 344, 424, 42);
+                canvas.DrawRectangle(Border, cardX + 48, cardY + 344, 424, 42);
+                IconManager.DrawScaled(canvas, IconType.Start, cardX + 63, cardY + 354, 20, 20);
+                SmallTextRenderer.Draw(canvas, "ZMIEN UZYTKOWNIKA", cardX + 98, cardY + 361, Warning);
+
+                canvas.DrawFilledRectangle(CardAlt, cardX + 48, cardY + 393, 424, 22);
+                canvas.DrawFilledRectangle(statusColor, cardX + 61, cardY + 402, 5, 5);
+                SmallTextRenderer.DrawClipped(canvas, status, cardX + 77, cardY + 402, 380, statusColor);
 
                 SmallTextRenderer.Draw(canvas,
                     "Ctrl+Alt+L blokuje pulpit bez zamykania uruchomionych aplikacji.",
@@ -262,7 +280,17 @@ namespace ZonderqOS.GUI
                     return;
                 }
 
+                int retryAfter;
+                if (!AuthenticationGuard.CanAttempt(username, out retryAfter))
+                {
+                    ClearPassword();
+                    SetStatus("ZA DUZO PROB - ODCZEKAJ " + retryAfter + " S", Danger);
+                    return;
+                }
+
                 string enteredPassword = new string(password, 0, passwordLength);
+                ClearPassword();
+
                 bool ok;
                 try
                 {
@@ -272,26 +300,23 @@ namespace ZonderqOS.GUI
                 {
                     ok = false;
                 }
-
                 enteredPassword = null;
-                ClearPassword();
 
                 if (ok)
                 {
+                    AuthenticationGuard.RecordSuccess(username);
                     Unlocked = true;
-                    failedAttempts = 0;
-                    LogSecurity("INFO", "Graphical session unlocked for user " + username + ".");
+                    SetStatus("ODBLOKOWANO", Good);
                     return;
                 }
 
-                failedAttempts++;
-                LogSecurity("WARN", "Failed graphical unlock attempt for user " + username + ".");
-                SetStatus("NIEPRAWIDLOWE HASLO", Danger);
-
-                int delayMs = 250 + failedAttempts * 150;
-                if (delayMs > 1200)
-                    delayMs = 1200;
-                Thread.Sleep(delayMs);
+                AuthenticationGuard.RecordFailure(username);
+                retryAfter = AuthenticationGuard.GetRetryAfterSeconds(username);
+                SecurityLogger.LogEvent("WARN", "Failed graphical unlock attempt for user '" + username + "'.");
+                if (retryAfter > 0)
+                    SetStatus("NIEPRAWIDLOWE HASLO - BLOKADA " + retryAfter + " S", Danger);
+                else
+                    SetStatus("NIEPRAWIDLOWE HASLO", Danger);
             }
 
             private void ClearPassword()
@@ -305,18 +330,6 @@ namespace ZonderqOS.GUI
             {
                 status = message ?? string.Empty;
                 statusColor = color;
-            }
-
-            private static void LogSecurity(string level, string message)
-            {
-                try
-                {
-                    SecurityLogger.LogEvent(level, message);
-                }
-                catch
-                {
-                    // Locking/unlocking must not fail only because audit storage is unavailable.
-                }
             }
 
             private static void RenderPowerButton(Canvas canvas, int x, int y, int width,
