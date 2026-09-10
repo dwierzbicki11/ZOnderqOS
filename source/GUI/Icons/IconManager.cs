@@ -8,7 +8,7 @@ namespace ZonderqOS.GUI.Icons
     {
         private const int IconSize = 18;
         private const string CacheDirectory = "/root/.zonderq-icons";
-        private static readonly Png[] imageCache = new Png[10];
+        private static readonly Png[] imageCache = new Png[14];
 
         public static void Draw(Canvas canvas, IconType type, int x, int y, Color color)
         {
@@ -72,6 +72,14 @@ namespace ZonderqOS.GUI.Icons
                     return IconResources.Get("Icons.restore.png");
                 case IconType.Start:
                     return IconResources.Get("Icons.home.png");
+                case IconType.ArrowUp:
+                    return IconResources.Get("Icons.arrow-up.png");
+                case IconType.Refresh:
+                    return IconResources.Get("Icons.refresh.png");
+                case IconType.Search:
+                    return IconResources.Get("Icons.search.png");
+                case IconType.Trash:
+                    return IconResources.Get("Icons.trash.png");
                 default:
                     return null;
             }
@@ -100,6 +108,14 @@ namespace ZonderqOS.GUI.Icons
                     return "restore.png";
                 case IconType.Start:
                     return "home.png";
+                case IconType.ArrowUp:
+                    return "arrow-up.png";
+                case IconType.Refresh:
+                    return "refresh.png";
+                case IconType.Search:
+                    return "search.png";
+                case IconType.Trash:
+                    return "trash.png";
                 default:
                     return "icon.png";
             }
