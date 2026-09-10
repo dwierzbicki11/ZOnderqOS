@@ -11,6 +11,10 @@ namespace ZonderqOS.GUI.Icons
         Close,
         Maximize,
         Restore,
-        Start
+        Start,
+        ArrowUp,
+        Refresh,
+        Search,
+        Trash
     }
 }
