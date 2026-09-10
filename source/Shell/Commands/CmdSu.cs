@@ -15,20 +15,11 @@ namespace ZonderqOS.Commands
                 string username = args[1];
                 string password = args[2];
 
-                if (UserManager.ValidateCredentials(username, password))
+                if (UserManager.ValidateCredentials(username, password) && UserManager.ActivateSession(username))
                 {
-                    SecurityContext.CurrentUser = username;
-                    string home = UserManager.GetHomeDirectory(username);
-                    SecurityContext.CurrentHome = home;
-                    
-                    // Aktualizacja zmiennych środowiskowych sesji
-                    EnvironmentManager.Set("USER", username);
-                    EnvironmentManager.Set("HOME", home);
-
+                    string home = SecurityContext.CurrentHome;
                     if (Directory.Exists(home))
-                    {
                         currentPath = home;
-                    }
 
                     WriteMessage.WriteOK($"Switched session to user: {username}", "AUTH");
                     SecurityLogger.LogEvent("INFO", $"Successful session switch to '{username}'.");
