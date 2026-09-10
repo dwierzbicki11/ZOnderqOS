@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Threading;
 using Cosmos.Kernel.System.Network;
+using ZonderqOS.GUI;
 using ZonderqOS.SystemCore;
 using Sys = Cosmos.Kernel.System;
 
@@ -30,12 +31,12 @@ namespace ZonderqOS
                 SystemGuardian.Initialize();
 
                 // All boot services initialize with the privileged boot context. From
-                // this point onward no interactive shell is exposed until credentials
-                // have been verified against /etc/shadow.
+                // this point onward no interactive shell or desktop is exposed until
+                // credentials have been verified against /etc/shadow.
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
                 Console.WriteLine();
-                Console.WriteLine("ZOnderqOS secure login");
+                Console.WriteLine("Starting ZOnderqOS secure graphical login...");
             }
             catch (Exception ex)
             {
@@ -50,7 +51,23 @@ namespace ZonderqOS
                 if (!SecurityContext.IsAuthenticated)
                 {
                     sessionUser = null;
-                    RunLoginPrompt();
+
+                    // Primary boot experience: graphical authentication followed by the
+                    // desktop. If graphics/login initialization fails, retain the console
+                    // prompt as a recovery path instead of locking the installation out.
+                    bool graphicalLogin = LoginScreenManager.Run();
+                    if (!graphicalLogin || !SecurityContext.IsAuthenticated)
+                    {
+                        RunLoginPrompt();
+                        return;
+                    }
+
+                    failedLoginAttempts = 0;
+                    history.Clear();
+                    SynchronizeSession();
+
+                    GuiManager manager = new GuiManager();
+                    manager.Run();
                     return;
                 }
 
