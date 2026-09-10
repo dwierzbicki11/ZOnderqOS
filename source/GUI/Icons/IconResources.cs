@@ -24,6 +24,27 @@ namespace ZonderqOS.GUI.Icons
         public static byte[] Reboot { get { return Load("reboot.png"); } }
         public static byte[] Shutdown { get { return Load("shutdown.png"); } }
 
+        public static byte[] ImageViewer { get { return Load("image.png"); } }
+        public static byte[] Calculator { get { return Load("calc.png"); } }
+        public static byte[] Paint { get { return Load("Design-Paint-Palette-Tray--Streamline-Nova.png"); } }
+        public static byte[] Network { get { return Load("Network-Global--Streamline-Nova.png"); } }
+        public static byte[] DiskManager { get { return Load("disk_manager.png"); } }
+        public static byte[] HexViewer { get { return Load("hexviewer.png"); } }
+        public static byte[] Calendar { get { return Load("calendar.png"); } }
+        public static byte[] AppCenter { get { return Load("app.png"); } }
+
+        public static byte[] Open { get { return Load("open.png"); } }
+        public static byte[] Save { get { return Load("save.png"); } }
+        public static byte[] ZoomIn { get { return Load("zoom-in.png"); } }
+        public static byte[] ZoomOut { get { return Load("zoom-out.png"); } }
+        public static byte[] Rotate { get { return Load("rotate.png"); } }
+        public static byte[] Pencil { get { return Load("pencil.png"); } }
+        public static byte[] Eraser { get { return Load("eraser.png"); } }
+        public static byte[] Wifi { get { return Load("wifi.png"); } }
+        public static byte[] Ethernet { get { return Load("ethernet.png"); } }
+        public static byte[] Install { get { return Load("install.png"); } }
+        public static byte[] Play { get { return Load("play.png"); } }
+
         private static byte[] Load(string fileName)
         {
             Assembly assembly = typeof(IconResources).Assembly;
