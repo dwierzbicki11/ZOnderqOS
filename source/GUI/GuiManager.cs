@@ -16,6 +16,9 @@ namespace ZonderqOS.GUI
         private ApplicationManager applicationManager;
         private bool isRunning = true;
 
+        private static readonly Color DesktopFallback = Color.FromArgb(12, 18, 27);
+        private static readonly Color DesktopGlow = Color.FromArgb(18, 34, 52);
+
         public void Run()
         {
             try
@@ -25,51 +28,32 @@ namespace ZonderqOS.GUI
                 Console.WriteLine($"[GUI] Rzeczywista rozdzielczość Canvas: {canvas.Width}x{canvas.Height}");
                 Console.WriteLine("[GUI] Uruchamiam pulpit...");
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
-                int taskbarHeight = 30;
+
+                int taskbarHeight = 44;
                 Window.ConfigureDesktop((int)canvas.Width, (int)canvas.Height - taskbarHeight);
                 applicationManager = new ApplicationManager();
 
-                int menuWidth = 240;
-                int menuHeight = 300;
+                int menuWidth = 280;
+                int menuHeight = 360;
                 startMenu = new StartMenu(0, (int)canvas.Height - taskbarHeight - menuHeight, menuWidth, menuHeight);
 
                 startMenu.AddItem("Terminal CLI", () =>
                 {
-                    int offset = 25;
-                    var terminal = new TerminalApp(100 + offset, 80 + offset, null);
+                    var terminal = new TerminalApp(125, 90, null);
                     terminal.SetNanoLauncher(path => applicationManager.Launch(new NanoApp(path, null)));
                     applicationManager.Launch(terminal);
                 });
-
                 startMenu.AddItem("File Manager", () =>
                 {
-                    int offset = 35;
-                    var fileManager = new FileManagerApp(70 + offset, 55 + offset,
-                        path => applicationManager.Launch(new NanoApp(path, null)));
+                    var fileManager = new FileManagerApp(105, 75, path => applicationManager.Launch(new NanoApp(path, null)));
                     applicationManager.Launch(fileManager);
                 });
-
-                startMenu.AddItem("Diagnostyka", () =>
-                {
-                    applicationManager.Launch(new DiagnosticsApp(140, 110, null));
-                });
-
-                startMenu.AddItem("O Systemie", () =>
-                {
-                    applicationManager.Launch(new AboutApp(170, 130, null));
-                });
-
-                startMenu.AddItem("Pomoc", () =>
-                {
-                    applicationManager.Launch(new AboutApp(200, 150, null));
-                });
-
+                startMenu.AddItem("Diagnostyka", () => applicationManager.Launch(new DiagnosticsApp(150, 120, null)));
+                startMenu.AddItem("O Systemie", () => applicationManager.Launch(new AboutApp(180, 140, null)));
+                startMenu.AddItem("Pomoc", () => applicationManager.Launch(new AboutApp(210, 160, null)));
                 startMenu.AddItem("Odśwież pulpit", () => { });
                 startMenu.AddItem("Sesja GUI", () => { });
-                startMenu.AddItem("Informacje systemowe", () =>
-                {
-                    applicationManager.Launch(new DiagnosticsApp(180, 120, null));
-                });
+                startMenu.AddItem("Informacje systemowe", () => applicationManager.Launch(new DiagnosticsApp(200, 130, null)));
                 startMenu.AddItem("Wyjdź z GUI", () => isRunning = false);
 
                 taskbar = new Taskbar((int)canvas.Width, (int)canvas.Height, taskbarHeight, () =>
@@ -97,8 +81,7 @@ namespace ZonderqOS.GUI
                     bool currentLeftButtonState = MouseManager.LeftButton;
                     bool currentRightButtonState = MouseManager.RightButton;
 
-                    applicationManager.HandleMouse(mouseX, mouseY,
-                        currentLeftButtonState, previousLeftButtonState,
+                    applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
                         currentRightButtonState, previousRightButtonState);
                     startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
@@ -106,7 +89,7 @@ namespace ZonderqOS.GUI
                     previousRightButtonState = currentRightButtonState;
                     applicationManager.Update();
 
-                    canvas.Clear(Color.MidnightBlue);
+                    RenderDesktop();
                     applicationManager.Render(canvas);
                     taskbar.Render(canvas);
                     startMenu.Render(canvas);
@@ -122,6 +105,14 @@ namespace ZonderqOS.GUI
             {
                 WriteMessage.WriteError($"Błąd w pętli GUI: {ex.Message}", "GUI");
             }
+        }
+
+        private void RenderDesktop()
+        {
+            // Warstwa przygotowana pod tapetę PNG/JPG. Do czasu dodania pliku zachowujemy
+            // spokojne tło zastępcze, bez zmiany API Canvas ani tworzenia bitmap co klatkę.
+            canvas.Clear(DesktopFallback);
+            canvas.DrawFilledRectangle(DesktopGlow, 0, 0, (int)canvas.Width, (int)canvas.Height - 44);
         }
     }
 }
