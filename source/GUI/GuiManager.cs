@@ -75,7 +75,7 @@ namespace ZonderqOS.GUI
                 taskbar = new Taskbar((int)canvas.Width, (int)canvas.Height, taskbarHeight, () =>
                 {
                     startMenu.Visible = !startMenu.Visible;
-                });
+                }, applicationManager);
 
                 bool previousLeftButtonState = false;
                 bool previousRightButtonState = false;
