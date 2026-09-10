@@ -7,16 +7,21 @@ namespace ZonderqOS.GUI.Icons
     public static class IconManager
     {
         private const int IconSize = 18;
+        private const int LargeIconSize = 40;
         private const string CacheDirectory = "/root/.zonderq-icons";
         private static readonly Png[] imageCache = new Png[14];
 
         public static void Draw(Canvas canvas, IconType type, int x, int y, Color color)
         {
+            DrawScaled(canvas, type, x, y, IconSize, IconSize);
+        }
+
+        public static void DrawScaled(Canvas canvas, IconType type, int x, int y, int width, int height)
+        {
             Png image = GetImage(type);
             if (image == null)
                 return;
-
-            canvas.DrawImage(image, x, y, IconSize, IconSize);
+            canvas.DrawImage(image, x, y, width, height);
         }
 
         private static Png GetImage(IconType type)
@@ -53,35 +58,21 @@ namespace ZonderqOS.GUI.Icons
         {
             switch (type)
             {
-                case IconType.Terminal:
-                    return IconResources.Terminal;
+                case IconType.Terminal: return IconResources.Terminal;
                 case IconType.FileManager:
-                case IconType.Folder:
-                    return IconResources.Folder;
-                case IconType.File:
-                    return IconResources.File;
-                case IconType.Settings:
-                    return IconResources.Settings;
-                case IconType.About:
-                    return IconResources.About;
-                case IconType.Close:
-                    return IconResources.Close;
-                case IconType.Maximize:
-                    return IconResources.Maximize;
-                case IconType.Restore:
-                    return IconResources.Restore;
-                case IconType.Start:
-                    return IconResources.Start;
-                case IconType.ArrowUp:
-                    return IconResources.ArrowUp;
-                case IconType.Refresh:
-                    return IconResources.Refresh;
-                case IconType.Search:
-                    return IconResources.Search;
-                case IconType.Trash:
-                    return IconResources.Trash;
-                default:
-                    return null;
+                case IconType.Folder: return IconResources.Folder;
+                case IconType.File: return IconResources.File;
+                case IconType.Settings: return IconResources.Settings;
+                case IconType.About: return IconResources.About;
+                case IconType.Close: return IconResources.Close;
+                case IconType.Maximize: return IconResources.Maximize;
+                case IconType.Restore: return IconResources.Restore;
+                case IconType.Start: return IconResources.Start;
+                case IconType.ArrowUp: return IconResources.ArrowUp;
+                case IconType.Refresh: return IconResources.Refresh;
+                case IconType.Search: return IconResources.Search;
+                case IconType.Trash: return IconResources.Trash;
+                default: return null;
             }
         }
 
@@ -89,41 +80,25 @@ namespace ZonderqOS.GUI.Icons
         {
             switch (type)
             {
-                case IconType.Terminal:
-                    return "terminal-2.png";
+                case IconType.Terminal: return "terminal-2.png";
                 case IconType.FileManager:
-                case IconType.Folder:
-                    return "folder.png";
-                case IconType.File:
-                    return "file.png";
-                case IconType.Settings:
-                    return "settings-2.png";
-                case IconType.About:
-                    return "info-circle.png";
-                case IconType.Close:
-                    return "square-rounded-x.png";
-                case IconType.Maximize:
-                    return "arrows-maximize.png";
-                case IconType.Restore:
-                    return "restore.png";
-                case IconType.Start:
-                    return "home.png";
-                case IconType.ArrowUp:
-                    return "arrow-up.png";
-                case IconType.Refresh:
-                    return "refresh.png";
-                case IconType.Search:
-                    return "search.png";
-                case IconType.Trash:
-                    return "trash.png";
-                default:
-                    return "icon.png";
+                case IconType.Folder: return "folder.png";
+                case IconType.File: return "file.png";
+                case IconType.Settings: return "settings-2.png";
+                case IconType.About: return "info-circle.png";
+                case IconType.Close: return "square-rounded-x.png";
+                case IconType.Maximize: return "arrows-maximize.png";
+                case IconType.Restore: return "restore.png";
+                case IconType.Start: return "home.png";
+                case IconType.ArrowUp: return "arrow-up.png";
+                case IconType.Refresh: return "refresh.png";
+                case IconType.Search: return "search.png";
+                case IconType.Trash: return "trash.png";
+                default: return "icon.png";
             }
         }
 
-        public static int Size
-        {
-            get { return IconSize; }
-        }
+        public static int Size { get { return IconSize; } }
+        public static int LargeSize { get { return LargeIconSize; } }
     }
 }

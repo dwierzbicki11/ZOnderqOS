@@ -238,17 +238,114 @@ namespace ZonderqOS.GUI.Apps
 
         private void Grid(Canvas canvas, int x, int y, int w, int h)
         {
-            int tw = 112, th = 94, gap = 6, cols = Math.Max(1, (w + gap) / (tw + gap)), rows = Math.Max(1, h / (th + gap));
+            int tw = 112, th = 94, gap = 6, iconSize = 40, labelWidth = 72, labelHeight = 18;
+            int cols = Math.Max(1, (w + gap) / (tw + gap)), rows = Math.Max(1, h / (th + gap));
             int count = cols * rows;
             for (int i = 0; i < count; i++)
             {
                 int idx = app.ScrollIndex + i; if (idx >= app.Entries.Count) break; FileEntry e = app.Entries[idx];
                 int tx = x + i % cols * (tw + gap), ty = y + i / cols * (th + gap);
                 if (idx == app.SelectedIndex) { canvas.DrawFilledRectangle(Color.FromArgb(220, 232, 247), tx, ty, tw, th); canvas.DrawRectangle(Color.FromArgb(105, 150, 205), tx, ty, tw, th); }
-                IconManager.Draw(canvas, e.IsDirectory ? IconType.Folder : IconType.File, tx + 40, ty + 8, Color.White);
-                string n = e.Name ?? ""; if (n.Length > 11) n = n.Substring(0, 8) + "...";
-                int nx = tx + Math.Max(4, (tw - n.Length * 16) / 2); canvas.DrawString(n, font, Color.FromArgb(30, 30, 30), nx, ty + 58);
+                int ix = tx + (tw - iconSize) / 2;
+                IconManager.DrawScaled(canvas, e.IsDirectory ? IconType.Folder : IconType.File, ix, ty + 4, iconSize, iconSize);
+                DrawWrappedName(canvas, e.Name ?? "", tx + (tw - labelWidth) / 2, ty + iconSize + 7, labelWidth, labelHeight);
             }
+        }
+
+        private void DrawWrappedName(Canvas canvas, string name, int x, int y, int width, int height)
+        {
+            const int glyphWidth = 5, glyphHeight = 7, spacing = 1, lineHeight = 9, maxChars = 11;
+            if (string.IsNullOrEmpty(name)) return;
+            int pos = 0;
+            int maxLines = Math.Max(1, height / lineHeight);
+            for (int line = 0; line < maxLines && pos < name.Length; line++)
+            {
+                int take = Math.Min(maxChars, name.Length - pos);
+                if (pos + take < name.Length)
+                {
+                    int breakAt = name.LastIndexOf(' ', pos + take - 1, take);
+                    if (breakAt >= pos) take = breakAt - pos;
+                }
+                if (take <= 0) take = Math.Min(maxChars, name.Length - pos);
+                string part = name.Substring(pos, take);
+                if (pos + take < name.Length && line == maxLines - 1 && part.Length >= 3)
+                    part = part.Substring(0, part.Length - 3) + "...";
+                int textWidth = part.Length * (glyphWidth + spacing) - spacing;
+                int px = x + Math.Max(0, (width - textWidth) / 2);
+                DrawTinyText(canvas, part, px, y + line * lineHeight);
+                pos += take;
+                while (pos < name.Length && name[pos] == ' ') pos++;
+            }
+        }
+
+        private void DrawTinyText(Canvas canvas, string text, int x, int y)
+        {
+            const int glyphWidth = 5, spacing = 1;
+            for (int i = 0; i < text.Length; i++)
+            {
+                char ch = text[i];
+                for (int row = 0; row < 7; row++)
+                {
+                    int bits = TinyGlyph(ch, row);
+                    for (int col = 0; col < glyphWidth; col++)
+                        if ((bits & (1 << (glyphWidth - 1 - col))) != 0)
+                            canvas.DrawFilledRectangle(Color.FromArgb(30, 30, 30), x + i * (glyphWidth + spacing) + col, y + row, 1, 1);
+                }
+            }
+        }
+
+        private int TinyGlyph(char ch, int row)
+        {
+            string p;
+            switch (char.ToUpperInvariant(ch))
+            {
+                case 'A': p = "011101000110001111111000110001"; break;
+                case 'B': p = "111101000110001111101000111101"; break;
+                case 'C': p = "011101000010000100001000001110"; break;
+                case 'D': p = "111101000110001100011000111101"; break;
+                case 'E': p = "111111000010000111101000011111"; break;
+                case 'F': p = "111111000010000111101000010000"; break;
+                case 'G': p = "011101000010000101111000101111"; break;
+                case 'H': p = "100011000110001111111000110001"; break;
+                case 'I': p = "111110010000100001000010011111"; break;
+                case 'J': p = "001110001000100001001001001110"; break;
+                case 'K': p = "100011001010100110001010010001"; break;
+                case 'L': p = "100001000010000100001000011111"; break;
+                case 'M': p = "100011101110101101011000110001"; break;
+                case 'N': p = "100011100110101100111000110001"; break;
+                case 'O': p = "011101000110001100011000101110"; break;
+                case 'P': p = "111101000110001111101000010000"; break;
+                case 'Q': p = "011101000110001100011010010101"; break;
+                case 'R': p = "111101000110001111101010010001"; break;
+                case 'S': p = "011111000010000011000000111110"; break;
+                case 'T': p = "111110010000100001000010000100"; break;
+                case 'U': p = "100011000110001100011000101110"; break;
+                case 'V': p = "100011000110001100011010000100"; break;
+                case 'W': p = "100011000110001101011010101010"; break;
+                case 'X': p = "100011000101010001000101010001"; break;
+                case 'Y': p = "100011000101010001000010000100"; break;
+                case 'Z': p = "111110000100010001000100011111"; break;
+                case '0': p = "011101000110011101011000101110"; break;
+                case '1': p = "001000110000100001000010011111"; break;
+                case '2': p = "011101000100001000100100011111"; break;
+                case '3': p = "111100000100001001110000111110"; break;
+                case '4': p = "000100011001010111110001000010"; break;
+                case '5': p = "111111000011110000010000111110"; break;
+                case '6': p = "011101000010000111101000101110"; break;
+                case '7': p = "111110000100010001000010000100"; break;
+                case '8': p = "0111010001100010111010001101110"; break;
+                case '9': p = "011101000110001011110000101110"; break;
+                case '.': p = "0000000000000000000000000000004"; break;
+                case '-': p = "000000000000000011100000000000"; break;
+                case '_': p = "000000000000000000000000011111"; break;
+                case ' ': p = "000000000000000000000000000000"; break;
+                default: p = "011101000100010001000000010000"; break;
+            }
+            int offset = row * 5;
+            if (offset + 5 > p.Length) return 0;
+            int bits = 0;
+            for (int i = 0; i < 5; i++) if (p[offset + i] == '1') bits |= 1 << (4 - i);
+            return bits;
         }
 
         private void Button(Canvas c, IconType type, int off) { int bx = X + off; c.DrawFilledRectangle(Color.White, bx, Y + 7, 36, 30); c.DrawRectangle(Color.Silver, bx, Y + 7, 36, 30); IconManager.Draw(c, type, bx + 9, Y + 11, Color.Black); }
