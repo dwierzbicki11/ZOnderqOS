@@ -31,15 +31,28 @@ namespace ZonderqOS.SystemCore
         public static int Start(string name, Action<CancellationToken> startMethod)
         {
             if (startMethod == null)
-            {
                 throw new ArgumentNullException(nameof(startMethod));
-            }
+
+            string processName = string.IsNullOrEmpty(name) ? "process" : name;
+            int pid;
+            CancellationTokenSource cts;
+            Thread thread;
 
             lock (_registryLock)
             {
-                int pid = _nextPid++;
-                var cts = new CancellationTokenSource();
-                var thread = new Thread(() =>
+                if (_nextPid <= 0)
+                    _nextPid = 1;
+
+                while (_processes.ContainsKey(_nextPid))
+                {
+                    _nextPid++;
+                    if (_nextPid <= 0)
+                        _nextPid = 1;
+                }
+
+                pid = _nextPid++;
+                cts = new CancellationTokenSource();
+                thread = new Thread(() =>
                 {
                     try
                     {
@@ -47,23 +60,25 @@ namespace ZonderqOS.SystemCore
                     }
                     catch (Exception ex)
                     {
-                        WriteMessage.WriteError($"Proces {name} (PID {pid}) zakończył się błędem: {ex.Message}", "PROC");
+                        WriteMessage.WriteError($"Proces {processName} (PID {pid}) zakończył się błędem: {ex.Message}", "PROC");
+                    }
+                    finally
+                    {
+                        RemoveProcess(pid);
                     }
                 });
 
-                var process = new KernelProcess(pid, name ?? "process", thread, cts);
-                _processes.Add(pid, process);
+                _processes.Add(pid, new KernelProcess(pid, processName, thread, cts));
                 thread.Start();
-                return pid;
             }
+
+            return pid;
         }
 
         public static int Start(string name, Action startMethod)
         {
             if (startMethod == null)
-            {
                 throw new ArgumentNullException(nameof(startMethod));
-            }
 
             return Start(name, _ => startMethod());
         }
@@ -73,9 +88,7 @@ namespace ZonderqOS.SystemCore
             lock (_registryLock)
             {
                 if (!_processes.TryGetValue(pid, out var process))
-                {
                     return false;
-                }
 
                 if (!process.IsRunning)
                 {
@@ -86,6 +99,24 @@ namespace ZonderqOS.SystemCore
 
                 process.Cts.Cancel();
                 return true;
+            }
+        }
+
+        public static bool IsRunning(string name)
+        {
+            if (string.IsNullOrEmpty(name))
+                return false;
+
+            lock (_registryLock)
+            {
+                CleanupDeadProcessesLocked();
+                foreach (var process in _processes.Values)
+                {
+                    if (process.IsRunning && string.Equals(process.Name, name, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+
+                return false;
             }
         }
 
@@ -102,28 +133,11 @@ namespace ZonderqOS.SystemCore
             lock (_registryLock)
             {
                 destination.Clear();
-                _deadPidScratch.Clear();
+                CleanupDeadProcessesLocked();
 
-                foreach (var kvp in _processes)
-                {
-                    KernelProcess process = kvp.Value;
-                    if (process != null && process.IsRunning)
-                        destination.Add(process);
-                    else
-                        _deadPidScratch.Add(kvp.Key);
-                }
+                foreach (var process in _processes.Values)
+                    destination.Add(process);
 
-                for (int i = 0; i < _deadPidScratch.Count; i++)
-                {
-                    int pid = _deadPidScratch[i];
-                    if (_processes.TryGetValue(pid, out var process))
-                    {
-                        _processes.Remove(pid);
-                        process.Cts.Dispose();
-                    }
-                }
-
-                _deadPidScratch.Clear();
                 return destination.Count;
             }
         }
@@ -133,6 +147,41 @@ namespace ZonderqOS.SystemCore
             var activeList = new List<KernelProcess>();
             FillActiveProcesses(activeList);
             return activeList;
+        }
+
+        private static void RemoveProcess(int pid)
+        {
+            lock (_registryLock)
+            {
+                if (_processes.TryGetValue(pid, out var process))
+                {
+                    _processes.Remove(pid);
+                    process.Cts.Dispose();
+                }
+            }
+        }
+
+        private static void CleanupDeadProcessesLocked()
+        {
+            _deadPidScratch.Clear();
+
+            foreach (var kvp in _processes)
+            {
+                if (kvp.Value == null || !kvp.Value.IsRunning)
+                    _deadPidScratch.Add(kvp.Key);
+            }
+
+            for (int i = 0; i < _deadPidScratch.Count; i++)
+            {
+                int pid = _deadPidScratch[i];
+                if (_processes.TryGetValue(pid, out var process))
+                {
+                    _processes.Remove(pid);
+                    process.Cts.Dispose();
+                }
+            }
+
+            _deadPidScratch.Clear();
         }
     }
 }
