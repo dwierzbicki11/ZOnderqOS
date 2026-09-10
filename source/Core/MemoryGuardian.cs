@@ -31,22 +31,21 @@ namespace ZonderqOS.SystemCore
                             ulong freePercent = (freePages * 100) / totalPages;
                             DateTime now = DateTime.UtcNow;
 
-                            if (freePercent <= RamCriticalThresholdPercent &&
-                                now - lastRamAlert >= RamAlertInterval)
+                            if (freePercent <= RamCriticalThresholdPercent)
                             {
-                                string ramAlert = $"[CRITICAL][RAM] Niski stan pamięci! Wolne: {freePercent}% ({freePages}/{totalPages} stron)\n";
-                                Disk.AppendFile("/sysmon.log", ramAlert);
-                                lastRamAlert = now;
+                                // Do not run OrionGC from this background thread. Ask the
+                                // GUI/main execution path to collect at its controlled safe
+                                // point after application updates and before rendering.
+                                GcMaintenance.RequestCollection();
+
+                                if (now - lastRamAlert >= RamAlertInterval)
+                                {
+                                    string ramAlert = $"[CRITICAL][RAM] Niski stan pamięci! Wolne: {freePercent}% ({freePages}/{totalPages} stron)\n";
+                                    Disk.AppendFile("/sysmon.log", ramAlert);
+                                    lastRamAlert = now;
+                                }
                             }
                         }
-
-                        // IMPORTANT: never force OrionGC.Collect() from this background
-                        // guardian thread. Cosmos Gen3 performs a collection with CPU
-                        // interrupts disabled. Triggering a full collection concurrently
-                        // with the GUI/input loop can stall mouse/keyboard processing and
-                        // is not a safe memory-pressure mechanism for this OS. Memory
-                        // stability is achieved by bounded caches, reusable buffers and
-                        // low-allocation rendering instead.
 
                         // FileInfo is a managed object, so do not create it every four
                         // seconds just to police the log size. Once per minute is enough.
