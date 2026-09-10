@@ -14,7 +14,10 @@ namespace ZonderqOS.SystemCore
 
         public static void Initialize()
         {
-            ProcessManager.Start("sys_guardian", (token) =>
+            if (ProcessManager.IsRunning("sys_guardian"))
+                return;
+
+            ProcessManager.Start("sys_guardian", token =>
             {
                 DateTime lastRamAlert = DateTime.MinValue;
                 int logMaintenanceCounter = 0;
