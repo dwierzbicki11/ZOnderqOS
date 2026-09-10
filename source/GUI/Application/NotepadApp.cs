@@ -13,6 +13,7 @@ namespace ZonderqOS.GUI.Apps
     public sealed class NotepadApp : Application
     {
         private readonly List<string> lines = new List<string>();
+        private readonly List<OpenEntry> openEntries = new List<OpenEntry>();
         private readonly Action closeCallback;
         private readonly NotepadView view;
 
@@ -26,10 +27,14 @@ namespace ZonderqOS.GUI.Apps
         private int documentVersion;
         private bool dirty;
 
-        // 0 = none, 1 = open path, 2 = save as path, 3 = discard confirmation.
+        // 0 = none, 1 = graphical open picker, 2 = save-as path, 3 = discard confirmation.
         private int dialogMode;
         private string dialogText = "";
         private int pendingAction;
+
+        private string openDirectory = "/root";
+        private int openSelectedIndex = -1;
+        private int openScrollIndex;
 
         public NotepadApp(int x, int y, string path, Action onClose) : base("Notatnik")
         {
@@ -62,6 +67,7 @@ namespace ZonderqOS.GUI.Apps
             view.Width = Math.Max(300, Window.Width - 20);
             view.Height = Math.Max(180, Window.Height - 50);
             EnsureCursorVisible();
+            EnsureOpenSelectionVisible();
         }
 
         public override void HandleMouse(int mouseX, int mouseY, bool left, bool oldLeft)
@@ -74,6 +80,12 @@ namespace ZonderqOS.GUI.Apps
             int y = mouseY - view.Y;
             if (x < 0 || y < 0 || x >= view.Width || y >= view.Height)
                 return;
+
+            if (dialogMode == 1)
+            {
+                HandleOpenDialogMouse(x, y);
+                return;
+            }
 
             if (dialogMode != 0)
                 return;
@@ -92,7 +104,9 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            if (view.TrySetCursorFromPoint(x, y, out int line, out int column))
+            int line;
+            int column;
+            if (view.TrySetCursorFromPoint(x, y, out line, out column))
             {
                 cursorY = Math.Max(0, Math.Min(lines.Count - 1, line));
                 cursorX = Math.Max(0, Math.Min(lines[cursorY].Length, column));
@@ -318,9 +332,26 @@ namespace ZonderqOS.GUI.Apps
 
         private void BeginOpen()
         {
+            string start = "/root";
+            if (!string.IsNullOrEmpty(filePath))
+            {
+                try
+                {
+                    string parent = Path.GetDirectoryName(filePath);
+                    if (!string.IsNullOrEmpty(parent) && Directory.Exists(parent))
+                        start = parent.Replace('\\', '/');
+                }
+                catch
+                {
+                }
+            }
+
+            openDirectory = start;
+            openSelectedIndex = -1;
+            openScrollIndex = 0;
             dialogMode = 1;
-            dialogText = string.IsNullOrEmpty(filePath) ? "/root/" : filePath;
-            status = "Podaj sciezke pliku";
+            RefreshOpenEntries();
+            status = "Wybierz plik do otwarcia";
         }
 
         private void BeginSaveAs()
@@ -361,6 +392,12 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            if (dialogMode == 1)
+            {
+                HandleOpenDialogKeyboard(key);
+                return;
+            }
+
             if (key.Key == ConsoleKeyEx.Escape)
             {
                 dialogMode = 0;
@@ -379,28 +416,234 @@ namespace ZonderqOS.GUI.Apps
             if (key.Key == ConsoleKeyEx.Enter)
             {
                 string path = NormalizePath(dialogText);
-                if (dialogMode == 1)
+                if (SaveTo(path))
                 {
-                    if (LoadDocument(path))
-                    {
-                        dialogMode = 0;
-                        dialogText = "";
-                    }
-                }
-                else if (dialogMode == 2)
-                {
-                    if (SaveTo(path))
-                    {
-                        dialogMode = 0;
-                        dialogText = "";
-                    }
+                    dialogMode = 0;
+                    dialogText = "";
                 }
                 return;
             }
 
-            // No artificial character limit: path input grows with available memory.
+            // No artificial character limit for save path input.
             if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar))
                 dialogText += key.KeyChar;
+        }
+
+        private void HandleOpenDialogKeyboard(KeyEvent key)
+        {
+            if (key.Key == ConsoleKeyEx.Escape)
+            {
+                dialogMode = 0;
+                openSelectedIndex = -1;
+                status = "Anulowano";
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.Backspace || key.Key == ConsoleKeyEx.LeftArrow)
+            {
+                OpenParentDirectory();
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.UpArrow)
+            {
+                if (openEntries.Count > 0)
+                {
+                    if (openSelectedIndex < 0)
+                        openSelectedIndex = 0;
+                    else if (openSelectedIndex > 0)
+                        openSelectedIndex--;
+                    EnsureOpenSelectionVisible();
+                }
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.DownArrow)
+            {
+                if (openEntries.Count > 0)
+                {
+                    if (openSelectedIndex < 0)
+                        openSelectedIndex = 0;
+                    else if (openSelectedIndex < openEntries.Count - 1)
+                        openSelectedIndex++;
+                    EnsureOpenSelectionVisible();
+                }
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.Enter || key.Key == ConsoleKeyEx.RightArrow)
+            {
+                OpenSelectedPickerEntry();
+            }
+        }
+
+        private void HandleOpenDialogMouse(int x, int y)
+        {
+            int dialogX;
+            int dialogY;
+            int dialogWidth;
+            int dialogHeight;
+            view.GetOpenDialogBounds(out dialogX, out dialogY, out dialogWidth, out dialogHeight);
+
+            if (x < dialogX || x >= dialogX + dialogWidth || y < dialogY || y >= dialogY + dialogHeight)
+                return;
+
+            if (x >= dialogX + 14 && x < dialogX + 74 && y >= dialogY + 48 && y < dialogY + 78)
+            {
+                OpenParentDirectory();
+                return;
+            }
+
+            int listX = dialogX + 14;
+            int listY = dialogY + 92;
+            int listW = dialogWidth - 28;
+            int listH = dialogHeight - 150;
+            if (x >= listX && x < listX + listW && y >= listY && y < listY + listH)
+            {
+                int row = (y - listY) / NotepadView.OpenRowHeight;
+                int index = openScrollIndex + row;
+                if (index >= 0 && index < openEntries.Count)
+                {
+                    openSelectedIndex = index;
+                    EnsureOpenSelectionVisible();
+                }
+                return;
+            }
+
+            int buttonY = dialogY + dialogHeight - 44;
+            if (y >= buttonY && y < buttonY + 30)
+            {
+                if (x >= dialogX + dialogWidth - 174 && x < dialogX + dialogWidth - 94)
+                {
+                    OpenSelectedPickerEntry();
+                    return;
+                }
+
+                if (x >= dialogX + dialogWidth - 88 && x < dialogX + dialogWidth - 14)
+                {
+                    dialogMode = 0;
+                    openSelectedIndex = -1;
+                    status = "Anulowano";
+                }
+            }
+        }
+
+        private void RefreshOpenEntries()
+        {
+            openEntries.Clear();
+            openSelectedIndex = -1;
+            openScrollIndex = 0;
+
+            try
+            {
+                if (string.IsNullOrEmpty(openDirectory) || !Directory.Exists(openDirectory))
+                    openDirectory = "/root";
+                if (!Directory.Exists(openDirectory))
+                    openDirectory = "/";
+
+                string[] directories = Directory.GetDirectories(openDirectory);
+                string[] files = Directory.GetFiles(openDirectory);
+
+                for (int i = 0; i < directories.Length; i++)
+                    openEntries.Add(new OpenEntry(GetDisplayName(directories[i]), directories[i].Replace('\\', '/'), true));
+                for (int i = 0; i < files.Length; i++)
+                    openEntries.Add(new OpenEntry(GetDisplayName(files[i]), files[i].Replace('\\', '/'), false));
+
+                SortOpenEntries();
+                status = openEntries.Count + " elementow w " + openDirectory;
+            }
+            catch (Exception ex)
+            {
+                status = "Blad katalogu: " + ex.Message;
+            }
+        }
+
+        private static string GetDisplayName(string path)
+        {
+            string value = (path ?? "").TrimEnd('/', '\\');
+            string name = Path.GetFileName(value);
+            return string.IsNullOrEmpty(name) ? value : name;
+        }
+
+        private void SortOpenEntries()
+        {
+            for (int i = 1; i < openEntries.Count; i++)
+            {
+                OpenEntry value = openEntries[i];
+                int j = i - 1;
+                while (j >= 0 && CompareOpenEntries(openEntries[j], value) > 0)
+                {
+                    openEntries[j + 1] = openEntries[j];
+                    j--;
+                }
+                openEntries[j + 1] = value;
+            }
+        }
+
+        private static int CompareOpenEntries(OpenEntry a, OpenEntry b)
+        {
+            if (a.IsDirectory != b.IsDirectory)
+                return a.IsDirectory ? -1 : 1;
+            return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void OpenParentDirectory()
+        {
+            if (openDirectory == "/")
+                return;
+
+            try
+            {
+                DirectoryInfo parent = Directory.GetParent(openDirectory);
+                openDirectory = parent == null ? "/" : parent.FullName.Replace('\\', '/');
+                RefreshOpenEntries();
+            }
+            catch (Exception ex)
+            {
+                status = "Blad katalogu: " + ex.Message;
+            }
+        }
+
+        private void OpenSelectedPickerEntry()
+        {
+            if (openSelectedIndex < 0 || openSelectedIndex >= openEntries.Count)
+            {
+                status = "Wybierz plik lub folder";
+                return;
+            }
+
+            OpenEntry entry = openEntries[openSelectedIndex];
+            if (entry.IsDirectory)
+            {
+                openDirectory = entry.FullPath;
+                RefreshOpenEntries();
+                return;
+            }
+
+            if (LoadDocument(entry.FullPath))
+            {
+                dialogMode = 0;
+                openSelectedIndex = -1;
+                openScrollIndex = 0;
+            }
+        }
+
+        private void EnsureOpenSelectionVisible()
+        {
+            if (dialogMode != 1 || openSelectedIndex < 0)
+                return;
+
+            int visible = Math.Max(1, view.OpenVisibleRows);
+            if (openSelectedIndex < openScrollIndex)
+                openScrollIndex = openSelectedIndex;
+            else if (openSelectedIndex >= openScrollIndex + visible)
+                openScrollIndex = openSelectedIndex - visible + 1;
+
+            int maxScroll = Math.Max(0, openEntries.Count - visible);
+            if (openScrollIndex > maxScroll)
+                openScrollIndex = maxScroll;
+            if (openScrollIndex < 0)
+                openScrollIndex = 0;
         }
 
         private string NormalizePath(string path)
@@ -478,8 +721,7 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
-                // The document has no artificial size/character cap. string.Join allocates only
-                // when saving and is bounded by available RAM and the filesystem implementation.
+                // Document content has no artificial character/size cap.
                 File.WriteAllText(path, string.Join("\n", lines));
                 filePath = path;
                 dirty = false;
@@ -496,12 +738,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void UpdateWindowTitle()
         {
-            string name = string.IsNullOrEmpty(filePath)
-                ? "Bez nazwy"
-                : Path.GetFileName(filePath);
+            string name = string.IsNullOrEmpty(filePath) ? "Bez nazwy" : Path.GetFileName(filePath);
             if (string.IsNullOrEmpty(name))
                 name = filePath ?? "Bez nazwy";
-
             Window.Title = "Notatnik - " + name + (dirty ? " *" : "");
         }
 
@@ -532,7 +771,8 @@ namespace ZonderqOS.GUI.Apps
         private void CloseNow()
         {
             base.Close();
-            closeCallback?.Invoke();
+            if (closeCallback != null)
+                closeCallback();
         }
 
         public override void Close()
@@ -552,6 +792,24 @@ namespace ZonderqOS.GUI.Apps
         public bool Dirty { get { return dirty; } }
         public int DialogMode { get { return dialogMode; } }
         public string DialogText { get { return dialogText; } }
+        public string OpenDirectory { get { return openDirectory; } }
+        public int OpenSelectedIndex { get { return openSelectedIndex; } }
+        public int OpenScrollIndex { get { return openScrollIndex; } }
+        public List<OpenEntry> OpenEntries { get { return openEntries; } }
+    }
+
+    public sealed class OpenEntry
+    {
+        public readonly string Name;
+        public readonly string FullPath;
+        public readonly bool IsDirectory;
+
+        public OpenEntry(string name, string fullPath, bool isDirectory)
+        {
+            Name = name;
+            FullPath = fullPath;
+            IsDirectory = isDirectory;
+        }
     }
 
     internal sealed class NotepadView : Widget
@@ -565,6 +823,7 @@ namespace ZonderqOS.GUI.Apps
         private const int GutterWidth = 50;
         private const int CharWidth = 16;
         private const int LineHeight = 32;
+        internal const int OpenRowHeight = 30;
 
         private static readonly Color Chrome = Color.FromArgb(31, 37, 44);
         private static readonly Color ChromeRaised = Color.FromArgb(40, 47, 55);
@@ -606,6 +865,19 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
+        public int OpenVisibleRows
+        {
+            get
+            {
+                int x;
+                int y;
+                int w;
+                int h;
+                GetOpenDialogBounds(out x, out y, out w, out h);
+                return Math.Max(1, (h - 150) / OpenRowHeight);
+            }
+        }
+
         public int ToolbarActionAt(int x, int y)
         {
             if (y < 7 || y >= 36)
@@ -637,6 +909,14 @@ namespace ZonderqOS.GUI.Apps
             if (column > app.Lines[line].Length)
                 column = app.Lines[line].Length;
             return true;
+        }
+
+        public void GetOpenDialogBounds(out int x, out int y, out int width, out int height)
+        {
+            width = Math.Min(640, Math.Max(360, Width - 80));
+            height = Math.Min(460, Math.Max(310, Height - 70));
+            x = (Width - width) / 2;
+            y = (Height - height) / 2;
         }
 
         public override void Render(Canvas canvas)
@@ -710,15 +990,12 @@ namespace ZonderqOS.GUI.Apps
                 {
                     canvas.DrawFilledRectangle(Color.FromArgb(29, 39, 49), editorX + GutterWidth + 1,
                         rowY - 3, editorW - GutterWidth - 2, LineHeight);
-                    canvas.DrawFilledRectangle(Accent, editorX + GutterWidth + 1,
-                        rowY - 3, 2, LineHeight);
+                    canvas.DrawFilledRectangle(Accent, editorX + GutterWidth + 1, rowY - 3, 2, LineHeight);
                 }
 
                 string number = (lineIndex + 1).ToString();
                 int numberWidth = SmallTextRenderer.Width(number);
-                SmallTextRenderer.Draw(canvas, number,
-                    editorX + GutterWidth - 8 - numberWidth,
-                    rowY + 10,
+                SmallTextRenderer.Draw(canvas, number, editorX + GutterWidth - 8 - numberWidth, rowY + 10,
                     lineIndex == app.CursorY ? Color.FromArgb(137, 190, 229) : Color.FromArgb(103, 117, 130));
 
                 string text = visibleText[i];
@@ -728,21 +1005,14 @@ namespace ZonderqOS.GUI.Apps
 
             int cursorRow = app.CursorY - app.ScrollY;
             int cursorColumn = app.CursorX - app.ScrollX;
-            if (cursorRow >= 0 && cursorRow < VisibleRows &&
-                cursorColumn >= 0 && cursorColumn <= VisibleColumns)
+            if (cursorRow >= 0 && cursorRow < VisibleRows && cursorColumn >= 0 && cursorColumn <= VisibleColumns)
             {
                 canvas.DrawFilledRectangle(Color.FromArgb(105, 185, 239),
-                    textX + cursorColumn * CharWidth,
-                    textY + cursorRow * LineHeight,
-                    2,
-                    29);
+                    textX + cursorColumn * CharWidth, textY + cursorRow * LineHeight, 2, 29);
             }
 
             if (app.ScrollX > 0)
-            {
-                SmallTextRenderer.Draw(canvas, "<", editorX + GutterWidth + 3, editorY + 7,
-                    Color.FromArgb(116, 166, 204));
-            }
+                SmallTextRenderer.Draw(canvas, "<", editorX + GutterWidth + 3, editorY + 7, Color.FromArgb(116, 166, 204));
         }
 
         private void EnsureVisibleTextCache()
@@ -794,12 +1064,17 @@ namespace ZonderqOS.GUI.Apps
             int rightX = X + Width - 12 - rightWidth;
             SmallTextRenderer.DrawClipped(canvas, app.Status ?? "", X + 12, statusY + 8,
                 Math.Max(20, rightX - X - 28), Color.FromArgb(184, 195, 205));
-            SmallTextRenderer.Draw(canvas, app.PositionText, rightX, statusY + 8,
-                Color.FromArgb(137, 174, 202));
+            SmallTextRenderer.Draw(canvas, app.PositionText, rightX, statusY + 8, Color.FromArgb(137, 174, 202));
         }
 
         private void RenderDialog(Canvas canvas)
         {
+            if (app.DialogMode == 1)
+            {
+                RenderOpenDialog(canvas);
+                return;
+            }
+
             int width = Math.Min(520, Math.Max(280, Width - 70));
             int height = app.DialogMode == 3 ? 118 : 142;
             int x = X + (Width - width) / 2;
@@ -818,8 +1093,7 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            string title = app.DialogMode == 1 ? "Otworz plik" : "Zapisz jako";
-            canvas.DrawString(title, font, Color.WhiteSmoke, x + 14, y + 10);
+            canvas.DrawString("Zapisz jako", font, Color.WhiteSmoke, x + 14, y + 10);
 
             int fieldX = x + 14;
             int fieldY = y + 50;
@@ -839,6 +1113,85 @@ namespace ZonderqOS.GUI.Apps
 
             SmallTextRenderer.DrawClipped(canvas, "ENTER CONFIRM   ESC CANCEL", x + 14, y + 108,
                 width - 28, Color.FromArgb(170, 184, 197));
+        }
+
+        private void RenderOpenDialog(Canvas canvas)
+        {
+            int localX;
+            int localY;
+            int width;
+            int height;
+            GetOpenDialogBounds(out localX, out localY, out width, out height);
+            int x = X + localX;
+            int y = Y + localY;
+
+            canvas.DrawFilledRectangle(Color.FromArgb(11, 15, 19), x + 5, y + 5, width, height);
+            canvas.DrawFilledRectangle(Color.FromArgb(35, 42, 49), x, y, width, height);
+            canvas.DrawRectangle(Accent, x, y, width, height);
+            canvas.DrawFilledRectangle(Accent, x, y, 3, height);
+
+            canvas.DrawString("Otworz plik", font, Color.WhiteSmoke, x + 14, y + 10);
+
+            int upX = x + 14;
+            int upY = y + 48;
+            canvas.DrawFilledRectangle(Color.FromArgb(49, 58, 67), upX, upY, 60, 30);
+            canvas.DrawRectangle(Color.FromArgb(82, 96, 110), upX, upY, 60, 30);
+            IconManager.DrawScaled(canvas, IconType.ArrowUp, upX + 7, upY + 7, 16, 16);
+            SmallTextRenderer.Draw(canvas, "UP", upX + 30, upY + 11, MainText);
+
+            int pathX = x + 80;
+            int pathW = width - 94;
+            canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), pathX, upY, pathW, 30);
+            canvas.DrawRectangle(Color.FromArgb(70, 83, 96), pathX, upY, pathW, 30);
+            SmallTextRenderer.DrawClipped(canvas, app.OpenDirectory, pathX + 9, upY + 11,
+                pathW - 18, Color.FromArgb(185, 201, 214));
+
+            int listX = x + 14;
+            int listY = y + 92;
+            int listW = width - 28;
+            int listH = height - 150;
+            canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), listX, listY, listW, listH);
+            canvas.DrawRectangle(Color.FromArgb(59, 70, 81), listX, listY, listW, listH);
+
+            int visibleRows = Math.Max(1, listH / OpenRowHeight);
+            for (int row = 0; row < visibleRows; row++)
+            {
+                int index = app.OpenScrollIndex + row;
+                if (index >= app.OpenEntries.Count)
+                    break;
+
+                OpenEntry entry = app.OpenEntries[index];
+                int rowY = listY + row * OpenRowHeight;
+                bool selected = index == app.OpenSelectedIndex;
+                if (selected)
+                {
+                    canvas.DrawFilledRectangle(Color.FromArgb(39, 66, 88), listX + 2, rowY + 1,
+                        listW - 4, OpenRowHeight - 2);
+                    canvas.DrawFilledRectangle(Accent, listX + 2, rowY + 1, 3, OpenRowHeight - 2);
+                }
+
+                IconManager.DrawScaled(canvas, entry.IsDirectory ? IconType.Folder : IconType.File,
+                    listX + 10, rowY + 6, 18, 18);
+                SmallTextRenderer.DrawClipped(canvas, entry.Name, listX + 38, rowY + 11,
+                    listW - 50, selected ? Color.WhiteSmoke : MainText);
+            }
+
+            if (app.OpenEntries.Count == 0)
+                SmallTextRenderer.Draw(canvas, "TEN KATALOG JEST PUSTY", listX + 16, listY + 16, SecondaryText);
+
+            int buttonY = y + height - 44;
+            int openX = x + width - 174;
+            int cancelX = x + width - 88;
+            canvas.DrawFilledRectangle(Color.FromArgb(42, 78, 105), openX, buttonY, 80, 30);
+            canvas.DrawRectangle(Color.FromArgb(78, 147, 198), openX, buttonY, 80, 30);
+            SmallTextRenderer.DrawCentered(canvas, "OPEN", openX, buttonY + 11, 80, Color.WhiteSmoke);
+
+            canvas.DrawFilledRectangle(Color.FromArgb(49, 57, 66), cancelX, buttonY, 74, 30);
+            canvas.DrawRectangle(Color.FromArgb(82, 96, 110), cancelX, buttonY, 74, 30);
+            SmallTextRenderer.DrawCentered(canvas, "CANCEL", cancelX, buttonY + 11, 74, Color.WhiteSmoke);
+
+            SmallTextRenderer.DrawClipped(canvas, "ENTER OPEN   BACKSPACE UP   ESC CANCEL",
+                x + 14, y + height - 12, Math.Max(20, width - 210), SecondaryText);
         }
     }
 }
