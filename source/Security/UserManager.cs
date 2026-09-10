@@ -12,16 +12,18 @@ namespace ZonderqOS
         {
             try
             {
-                if (!Directory.Exists("/etc")) Directory.CreateDirectory("/etc");
+                if (!Directory.Exists("/etc"))
+                    Directory.CreateDirectory("/etc");
 
-                if (!File.Exists(PasswdPath) || !File.Exists(ShadowPath))
+                // Nie nadpisuj istniejącej bazy użytkowników tylko dlatego, że brakuje
+                // jednego z plików. Każdy plik inicjalizujemy niezależnie.
+                if (!File.Exists(PasswdPath))
+                    File.WriteAllText(PasswdPath, "root:x:0:/root\n");
+
+                if (!File.Exists(ShadowPath))
                 {
                     string salt = Crypto.GenerateSalt();
                     string hash = Crypto.HashPassword("root", salt);
-                    
-                    // Format: user:x:uid:home
-                    File.WriteAllText(PasswdPath, "root:x:0:/root\n");
-                    // Format: user:salt$hash
                     File.WriteAllText(ShadowPath, $"root:{salt}${hash}\n");
                 }
             }
@@ -31,35 +33,61 @@ namespace ZonderqOS
             }
         }
 
+        private static bool IsValidUsername(string username)
+        {
+            if (string.IsNullOrEmpty(username) || username.Length > 32)
+                return false;
+
+            for (int i = 0; i < username.Length; i++)
+            {
+                char c = username[i];
+                if (!((c >= 'a' && c <= 'z') ||
+                      (c >= 'A' && c <= 'Z') ||
+                      (c >= '0' && c <= '9') ||
+                      c == '_' || c == '-'))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         public static bool UserExists(string username)
         {
+            if (!IsValidUsername(username)) return false;
+
             try
             {
                 if (!File.Exists(PasswdPath)) return false;
                 string content = File.ReadAllText(PasswdPath);
                 string[] lines = content.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                
+
                 foreach (var line in lines)
                 {
                     string[] parts = line.Split(':');
-                    if (parts.Length > 0 && parts[0].Trim().ToLower() == username.ToLower()) 
-                    {
+                    if (parts.Length > 0 && parts[0] == username)
                         return true;
-                    }
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                SecurityLogger.LogEvent("ERR", $"Passwd file read error: {ex.Message}");
+            }
+
             return false;
         }
 
         public static bool ValidateCredentials(string username, string password)
         {
+            if (!IsValidUsername(username) || password == null) return false;
+
             try
             {
                 if (!File.Exists(ShadowPath)) return false;
                 string content = File.ReadAllText(ShadowPath);
                 string[] lines = content.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                
+
                 foreach (var line in lines)
                 {
                     string[] parts = line.Split(':');
@@ -71,7 +99,7 @@ namespace ZonderqOS
                             string salt = securityData[0];
                             string storedHash = securityData[1];
                             string computedHash = Crypto.HashPassword(password, salt);
-                            
+
                             return storedHash == computedHash;
                         }
                     }
@@ -81,43 +109,49 @@ namespace ZonderqOS
             {
                 SecurityLogger.LogEvent("ERR", $"Shadow file read error: {ex.Message}");
             }
+
             return false;
         }
 
         public static bool CreateUser(string username, string password)
         {
+            if (!IsValidUsername(username) || password == null || password.Length == 0)
+                return false;
+
             try
             {
-                if (UserExists(username)) return false;
+                if (!UserExists(username))
+                {
+                    string homeDir = $"/home/{username}";
+                    if (!Directory.Exists(homeDir)) Directory.CreateDirectory(homeDir);
 
-                string homeDir = $"/home/{username}";
-                if (!Directory.Exists(homeDir)) Directory.CreateDirectory(homeDir);
+                    string content = File.Exists(PasswdPath) ? File.ReadAllText(PasswdPath) : string.Empty;
+                    int lineCount = content.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length;
+                    int uid = 1000 + lineCount;
 
-                string content = File.ReadAllText(PasswdPath);
-                int lineCount = content.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length;
-                int uid = 1000 + lineCount;
-                
-                // Generowanie poświadczeń
-                string salt = Crypto.GenerateSalt();
-                string hash = Crypto.HashPassword(password, salt);
+                    string salt = Crypto.GenerateSalt();
+                    string hash = Crypto.HashPassword(password, salt);
 
-                string passwdEntry = $"{username}:x:{uid}:{homeDir}\n";
-                string shadowEntry = $"{username}:{salt}${hash}\n";
+                    string passwdEntry = $"{username}:x:{uid}:{homeDir}\n";
+                    string shadowEntry = $"{username}:{salt}${hash}\n";
 
-                File.AppendAllText(PasswdPath, passwdEntry);
-                File.AppendAllText(ShadowPath, shadowEntry);
-                
-                return true;
+                    File.AppendAllText(PasswdPath, passwdEntry);
+                    File.AppendAllText(ShadowPath, shadowEntry);
+                    return true;
+                }
             }
             catch (Exception ex)
             {
                 WriteMessage.WriteError($"CreateUser exception: {ex.Message}", "AUTH");
-                return false;
             }
+
+            return false;
         }
 
         public static string GetHomeDirectory(string username)
         {
+            if (!IsValidUsername(username)) return "/root";
+
             try
             {
                 if (!File.Exists(PasswdPath)) return "/root";
@@ -128,7 +162,11 @@ namespace ZonderqOS
                     if (parts.Length >= 4 && parts[0] == username) return parts[3];
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                SecurityLogger.LogEvent("ERR", $"Home directory lookup failed: {ex.Message}");
+            }
+
             return "/root";
         }
     }
