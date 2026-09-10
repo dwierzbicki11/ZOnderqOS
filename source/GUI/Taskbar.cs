@@ -14,7 +14,6 @@ namespace ZonderqOS.GUI
 
         private readonly string resolutionText;
         private readonly ApplicationManager applicationManager;
-        private readonly Action startAction;
         private readonly Font font = PCScreenFont.DefaultFont;
         private const int AppButtonWidth = 150;
         private const int AppButtonGap = 4;
@@ -24,7 +23,6 @@ namespace ZonderqOS.GUI
         {
             resolutionText = $"Render: {screenWidth}x{screenHeight}";
             applicationManager = manager;
-            startAction = onStartClick;
 
             var startButton = new Button(0, Y, 100, height, " Start ", onStartClick);
             startButton.BackgroundColor = Color.DarkSlateBlue;
@@ -50,15 +48,19 @@ namespace ZonderqOS.GUI
                 for (int i = 0; i < apps.Count; i++)
                 {
                     Application app = apps[i];
-                    if (app == null || !app.IsRunning || app.Window == null || app.Window.IsMinimized)
+                    if (app == null || !app.IsRunning || app.Window == null)
                         continue;
                     if (appX + AppButtonWidth > maxAppX)
                         break;
 
                     bool active = applicationManager.ActiveApplication == app;
+                    bool minimized = app.Window.IsMinimized;
                     Color bg = active ? Color.FromArgb(65, 95, 125) : Color.FromArgb(45, 45, 45);
+                    if (minimized)
+                        bg = Color.FromArgb(38, 38, 38);
                     canvas.DrawFilledRectangle(bg, appX, Y + 3, AppButtonWidth, Height - 6);
                     canvas.DrawRectangle(active ? Color.LightSteelBlue : Color.FromArgb(90, 90, 90), appX, Y + 3, AppButtonWidth, Height - 6);
+
                     string name = app.Name ?? "Application";
                     int textWidth = TextHelper.GetTextWidth(name, font);
                     if (textWidth > AppButtonWidth - 14)
@@ -67,7 +69,7 @@ namespace ZonderqOS.GUI
                         if (name.Length > maxChars)
                             name = name.Substring(0, maxChars) + "...";
                     }
-                    canvas.DrawString(name, font, Color.White, appX + 8, Y + 4);
+                    canvas.DrawString(name, font, minimized ? Color.LightGray : Color.White, appX + 8, Y + 4);
                     appX += AppButtonWidth + AppButtonGap;
                 }
             }
@@ -105,7 +107,7 @@ namespace ZonderqOS.GUI
             for (int i = 0; i < apps.Count; i++)
             {
                 Application app = apps[i];
-                if (app == null || !app.IsRunning || app.Window == null || app.Window.IsMinimized)
+                if (app == null || !app.IsRunning || app.Window == null)
                     continue;
                 if (appX + AppButtonWidth > maxAppX)
                     break;
