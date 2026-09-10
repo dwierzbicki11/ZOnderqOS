@@ -21,6 +21,7 @@ namespace ZonderqOS.GUI
         private ApplicationManager applicationManager;
         private DesktopShortcut[] desktopShortcuts;
         private bool isRunning = true;
+        private bool lockRequested;
         private int selectedShortcut = -1;
         private int lastShortcutClick = -1;
         private int lastShortcutClickFrame = -1000;
@@ -84,6 +85,7 @@ namespace ZonderqOS.GUI
                     () => Cosmos.Kernel.System.Power.Reboot(),
                     () => Cosmos.Kernel.System.Power.Shutdown(),
                     LogoutSession);
+                startMenu.SetLockAction(RequestLockSession);
 
                 taskbar = new Taskbar((int)canvas.Width, (int)canvas.Height, TaskbarHeight, () =>
                 {
@@ -126,6 +128,13 @@ namespace ZonderqOS.GUI
                             continue;
 
                         keyboardActivity = true;
+
+                        if (IsLockShortcut(key))
+                        {
+                            RequestLockSession();
+                            break;
+                        }
+
                         if (key.Key == ConsoleKeyEx.Escape && startMenu.Visible)
                         {
                             startMenu.Visible = false;
@@ -144,6 +153,23 @@ namespace ZonderqOS.GUI
                         applicationManager.HandleKeyboard(key);
                     }
 
+                    if (lockRequested)
+                    {
+                        lockRequested = false;
+                        if (!RunLockScreen())
+                        {
+                            LogoutSession();
+                            break;
+                        }
+
+                        previousLeftButtonState = MouseManager.LeftButton;
+                        previousRightButtonState = MouseManager.RightButton;
+                        previousMouseX = (int)MouseManager.X;
+                        previousMouseY = (int)MouseManager.Y;
+                        RenderFrame(previousMouseX, previousMouseY);
+                        continue;
+                    }
+
                     int mouseX = (int)MouseManager.X;
                     int mouseY = (int)MouseManager.Y;
                     bool currentLeftButtonState = MouseManager.LeftButton;
@@ -156,6 +182,26 @@ namespace ZonderqOS.GUI
                     applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
                         currentRightButtonState, previousRightButtonState);
                     startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
+
+                    // A lock requested from Start must take over before the taskbar or desktop
+                    // can process the same click. Open applications remain alive and untouched.
+                    if (lockRequested)
+                    {
+                        lockRequested = false;
+                        if (!RunLockScreen())
+                        {
+                            LogoutSession();
+                            break;
+                        }
+
+                        previousLeftButtonState = MouseManager.LeftButton;
+                        previousRightButtonState = MouseManager.RightButton;
+                        previousMouseX = (int)MouseManager.X;
+                        previousMouseY = (int)MouseManager.Y;
+                        RenderFrame(previousMouseX, previousMouseY);
+                        continue;
+                    }
+
                     taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     UpdateDesktopInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
                         currentRightButtonState, previousRightButtonState);
@@ -229,6 +275,42 @@ namespace ZonderqOS.GUI
                 desktopContextMenu.Visible = false;
         }
 
+        private void RequestLockSession()
+        {
+            if (!SecurityContext.IsAuthenticated)
+                return;
+
+            if (startMenu != null)
+                startMenu.Visible = false;
+            if (desktopContextMenu != null)
+                desktopContextMenu.Visible = false;
+
+            selectedShortcut = -1;
+            lastShortcutClick = -1;
+            lastShortcutClickFrame = -1000;
+            lockRequested = true;
+        }
+
+        private bool RunLockScreen()
+        {
+            if (!SecurityContext.IsAuthenticated || canvas == null)
+                return false;
+
+            SecurityLogger.LogEvent("INFO", "Graphical session locked for user " +
+                SecurityContext.CurrentUser + ".");
+            return LockScreenManager.Run(canvas);
+        }
+
+        private static bool IsLockShortcut(KeyEvent key)
+        {
+            if (key == null || key.Key != ConsoleKeyEx.L)
+                return false;
+
+            bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+            bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+            return control && alt;
+        }
+
         private void LogoutSession()
         {
             if (!SecurityContext.IsAuthenticated)
@@ -242,6 +324,7 @@ namespace ZonderqOS.GUI
             if (desktopContextMenu != null)
                 desktopContextMenu.Visible = false;
 
+            lockRequested = false;
             selectedShortcut = -1;
             lastShortcutClick = -1;
             lastShortcutClickFrame = -1000;
