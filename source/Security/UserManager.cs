@@ -113,6 +113,94 @@ namespace ZonderqOS
             return false;
         }
 
+        public static bool TryStartSession(string username, string password)
+        {
+            if (!ValidateCredentials(username, password))
+            {
+                SecurityLogger.LogEvent("WARN", $"Failed login attempt for '{username ?? "?"}'.");
+                return false;
+            }
+
+            int uid;
+            string home;
+            if (!TryGetUserInfo(username, out uid, out home))
+            {
+                SecurityLogger.LogEvent("ERR", $"Authenticated user '{username}' is missing from passwd database.");
+                return false;
+            }
+
+            SecurityContext.SetAuthenticated(username, home, uid);
+            EnvironmentManager.Set("USER", username);
+            EnvironmentManager.Set("HOME", home);
+            SecurityLogger.LogEvent("INFO", $"User '{username}' logged in.");
+            return true;
+        }
+
+        public static bool ActivateSession(string username)
+        {
+            int uid;
+            string home;
+            if (!TryGetUserInfo(username, out uid, out home))
+                return false;
+
+            SecurityContext.SetAuthenticated(username, home, uid);
+            EnvironmentManager.Set("USER", username);
+            EnvironmentManager.Set("HOME", home);
+            return true;
+        }
+
+        public static void PrepareLogin()
+        {
+            SecurityContext.EnterLoginState();
+            EnvironmentManager.Set("USER", string.Empty);
+            EnvironmentManager.Set("HOME", "/");
+        }
+
+        public static void EndSession()
+        {
+            string user = SecurityContext.CurrentUser;
+            if (SecurityContext.IsAuthenticated)
+                SecurityLogger.LogEvent("INFO", $"User '{user}' logged out.");
+
+            PrepareLogin();
+        }
+
+        public static bool TryGetUserInfo(string username, out int uid, out string home)
+        {
+            uid = -1;
+            home = "/";
+            if (!IsValidUsername(username))
+                return false;
+
+            try
+            {
+                if (!File.Exists(PasswdPath))
+                    return false;
+
+                string[] lines = File.ReadAllLines(PasswdPath);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string[] parts = lines[i].Split(':');
+                    if (parts.Length < 4 || parts[0] != username)
+                        continue;
+
+                    int parsedUid;
+                    if (!Int32.TryParse(parts[2], out parsedUid))
+                        return false;
+
+                    uid = parsedUid;
+                    home = string.IsNullOrEmpty(parts[3]) ? "/" : parts[3];
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                SecurityLogger.LogEvent("ERR", $"User info lookup failed: {ex.Message}");
+            }
+
+            return false;
+        }
+
         public static bool CreateUser(string username, string password)
         {
             if (!IsValidUsername(username) || password == null || password.Length == 0)
@@ -150,24 +238,9 @@ namespace ZonderqOS
 
         public static string GetHomeDirectory(string username)
         {
-            if (!IsValidUsername(username)) return "/root";
-
-            try
-            {
-                if (!File.Exists(PasswdPath)) return "/root";
-                string[] lines = File.ReadAllLines(PasswdPath);
-                foreach (var line in lines)
-                {
-                    string[] parts = line.Split(':');
-                    if (parts.Length >= 4 && parts[0] == username) return parts[3];
-                }
-            }
-            catch (Exception ex)
-            {
-                SecurityLogger.LogEvent("ERR", $"Home directory lookup failed: {ex.Message}");
-            }
-
-            return "/root";
+            int uid;
+            string home;
+            return TryGetUserInfo(username, out uid, out home) ? home : "/root";
         }
     }
 }
