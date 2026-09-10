@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Threading;
 using Cosmos.Kernel.System.Network;
 using ZonderqOS.SystemCore;
 using Sys = Cosmos.Kernel.System;
@@ -11,6 +12,8 @@ namespace ZonderqOS
         private const int MaxHistoryEntries = 100;
         private string path = "/root";
         private readonly List<string> history = new List<string>();
+        private string sessionUser;
+        private int failedLoginAttempts;
 
         protected override void BeforeRun()
         {
@@ -25,7 +28,14 @@ namespace ZonderqOS
                 PermissionManager.Initialize();
                 Network.Initialize();
                 SystemGuardian.Initialize();
+
+                // All boot services initialize with the privileged boot context. From
+                // this point onward no interactive shell is exposed until credentials
+                // have been verified against /etc/shadow.
+                UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
+                Console.WriteLine();
+                Console.WriteLine("ZOnderqOS secure login");
             }
             catch (Exception ex)
             {
@@ -37,6 +47,15 @@ namespace ZonderqOS
         {
             try
             {
+                if (!SecurityContext.IsAuthenticated)
+                {
+                    sessionUser = null;
+                    RunLoginPrompt();
+                    return;
+                }
+
+                SynchronizeSession();
+
                 string user = EnvironmentManager.Get("USER");
                 if (string.IsNullOrEmpty(user)) user = SecurityContext.CurrentUser;
 
@@ -50,19 +69,99 @@ namespace ZonderqOS
                 {
                     Command.Run(command, ref path);
 
-                    if (history.Count == 0 || history[history.Count - 1] != command)
+                    // Do not retain history across logout or user switches. Besides being
+                    // cleaner, this prevents a newly authenticated user from seeing commands
+                    // entered by the previous session.
+                    if (SecurityContext.IsAuthenticated &&
+                        (history.Count == 0 || history[history.Count - 1] != command))
                     {
                         history.Add(command);
                         while (history.Count > MaxHistoryEntries)
-                        {
                             history.RemoveAt(0);
-                        }
                     }
                 }
             }
             catch (Exception ex)
             {
                 WriteMessage.WriteError($"Wystąpił błąd jądra: {ex.Message}", "Kernel");
+            }
+        }
+
+        private void RunLoginPrompt()
+        {
+            Console.Write("login: ");
+            string username = Console.ReadLine();
+            if (username != null)
+                username = username.Trim();
+
+            Console.Write("password: ");
+            string password = ReadPassword();
+
+            if (UserManager.TryStartSession(username, password))
+            {
+                failedLoginAttempts = 0;
+                history.Clear();
+                sessionUser = SecurityContext.CurrentUser;
+                path = SecurityContext.CurrentHome;
+                if (string.IsNullOrEmpty(path))
+                    path = "/";
+
+                Console.WriteLine($"Welcome, {SecurityContext.CurrentUser}.");
+                Console.WriteLine();
+                return;
+            }
+
+            failedLoginAttempts++;
+            Console.WriteLine("Authentication failed.");
+
+            // Small escalating delay slows trivial brute-force attempts without creating
+            // a permanent lockout that could make a hobby OS installation unrecoverable.
+            int delayMs = failedLoginAttempts >= 3 ? 2500 : 900;
+            Thread.Sleep(delayMs);
+            if (failedLoginAttempts >= 3)
+                failedLoginAttempts = 0;
+        }
+
+        private void SynchronizeSession()
+        {
+            string currentUser = SecurityContext.CurrentUser ?? string.Empty;
+            if (sessionUser == currentUser)
+                return;
+
+            history.Clear();
+            sessionUser = currentUser;
+            path = SecurityContext.CurrentHome;
+            if (string.IsNullOrEmpty(path))
+                path = "/";
+        }
+
+        private string ReadPassword()
+        {
+            string password = string.Empty;
+            while (true)
+            {
+                ConsoleKeyInfo keyInfo = Console.ReadKey(true);
+                if (keyInfo.Key == ConsoleKey.Enter)
+                {
+                    Console.WriteLine();
+                    return password;
+                }
+
+                if (keyInfo.Key == ConsoleKey.Backspace)
+                {
+                    if (password.Length > 0)
+                    {
+                        password = password.Substring(0, password.Length - 1);
+                        Console.Write("\b \b");
+                    }
+                    continue;
+                }
+
+                if (keyInfo.KeyChar >= 32 && keyInfo.KeyChar <= 126 && password.Length < 128)
+                {
+                    password += keyInfo.KeyChar;
+                    Console.Write('*');
+                }
             }
         }
 
