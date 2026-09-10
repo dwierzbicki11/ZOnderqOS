@@ -24,7 +24,7 @@ namespace ZonderqOS.GUI.Apps
         private string pendingNewPassword = string.Empty;
 
         public UserAccountsApp(int x, int y)
-            : base("Konta lokalne", "Konta i sesje użytkowników - ZOnderqOS", x, y, 900, 600)
+            : base("Konta lokalne", "Konta i sesje użytkowników - ZOnderqOS", x, y, 900, 660)
         {
             RefreshData();
         }
@@ -52,6 +52,10 @@ namespace ZonderqOS.GUI.Apps
                 "ZMIEN HASLO", "Wlasne konto lub reset przez root po potwierdzeniu hasla sesji",
                 inputMode >= 4 ? "WPROWADZANIE" : CanChangeSelectedPassword() ? "ZMIEN" : "NIEDOSTEPNE",
                 CanChangeSelectedPassword() ? Good : Muted);
+            DrawRow(canvas, 6, IconType.Settings,
+                "AUTO BLOKADA", "Blokuj pulpit po okresie bezczynnosci; kliknij aby zmienic",
+                global::ZonderqOS.SystemSettings.AutoLockName,
+                global::ZonderqOS.SystemSettings.AutoLockMinutes > 0 ? Good : Warning);
 
             if (inputMode != 0)
                 RenderInputOverlay(canvas);
@@ -146,7 +150,7 @@ namespace ZonderqOS.GUI.Apps
             if (inputMode != 0)
                 return;
 
-            int row = HitRow(mouseX, mouseY, 6);
+            int row = HitRow(mouseX, mouseY, 7);
             if (row < 0)
                 return;
 
@@ -196,6 +200,13 @@ namespace ZonderqOS.GUI.Apps
                 ClearInputState();
                 inputMode = 4;
                 SetStatus("POTWIERDZ HASLO BIEZACEJ SESJI", Warning);
+                return;
+            }
+
+            if (row == 6)
+            {
+                global::ZonderqOS.SystemSettings.CycleAutoLockTimeout();
+                SetStatus("ZMIENIONO CZAS AUTOMATYCZNEJ BLOKADY", Good);
             }
         }
 
