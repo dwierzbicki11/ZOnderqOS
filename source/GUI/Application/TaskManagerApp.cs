@@ -1,11 +1,18 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
+using System.Runtime.Intrinsics.X86;
+using System.Text;
 using Cosmos.Kernel.Core.Memory;
+using Cosmos.Kernel.Core.Scheduler;
 using Cosmos.Kernel.System.Graphics;
+using Cosmos.Kernel.System.Graphics.Fonts;
 using Cosmos.Kernel.System.Keyboard;
 using ZonderqOS.GUI.Icons;
 using ZonderqOS.SystemCore;
+using Font = Cosmos.Kernel.System.Graphics.Fonts.Font;
+using SchedulerThread = Cosmos.Kernel.Core.Scheduler.Thread;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -20,13 +27,13 @@ namespace ZonderqOS.GUI.Apps
         private readonly TaskManagerView view;
         private readonly List<TaskManagerRow> allRows = new List<TaskManagerRow>();
         private readonly List<TaskManagerRow> rows = new List<TaskManagerRow>();
-        private readonly int[] memoryHistory = new int[60];
+        private readonly int[] cpuHistory = new int[120];
+        private readonly CpuHardwareInfo cpuInfo;
 
         private int activePage = PageProcesses;
         private int selectedIndex = -1;
         private int scrollIndex;
         private int refreshFrame;
-        private int memoryHistoryCount;
         private string status = "Gotowy";
         private string appsText = "APPS 0";
         private string kernelText = "KERNEL 0";
@@ -37,15 +44,30 @@ namespace ZonderqOS.GUI.Apps
         private ulong totalPages;
         private ulong freePages;
 
+        private int cpuUsagePercent;
+        private int cpuHistoryCount;
+        private int cpuHistoryWriteIndex;
+        private long lastCpuTimestamp;
+        private ulong lastBusyCpuNs;
+        private uint onlineCpuCount;
+        private int schedulerThreadCount;
+        private int readyThreadCount;
+        private int runningThreadCount;
+        private int blockedThreadCount;
+        private int sleepingThreadCount;
+        private string schedulerName = "N/A";
+
         public TaskManagerApp(int x, int y, ApplicationManager manager, Action onClose)
             : base("Manager zadan")
         {
             applicationManager = manager;
             closeCallback = onClose;
-            Window = new Window(x, y, 900, 610, "Manager zadan");
+            cpuInfo = CpuHardwareInfo.Detect();
+
+            Window = new Window(x, y, 940, 640, "Manager zadan");
             Window.CloseAction = Close;
 
-            view = new TaskManagerView(10, 40, 880, 555, this);
+            view = new TaskManagerView(10, 40, 920, 585, this);
             Window.AddChild(view);
             UpdateLayout();
             RefreshSnapshot();
@@ -66,8 +88,8 @@ namespace ZonderqOS.GUI.Apps
         {
             view.X = Window.X + 10;
             view.Y = Window.Y + 40;
-            view.Width = Math.Max(560, Window.Width - 20);
-            view.Height = Math.Max(330, Window.Height - 50);
+            view.Width = Math.Max(620, Window.Width - 20);
+            view.Height = Math.Max(360, Window.Height - 50);
             ClampScroll();
         }
 
@@ -177,7 +199,7 @@ namespace ZonderqOS.GUI.Apps
             if (page == PageProcesses)
                 status = "Procesy";
             else if (page == PagePerformance)
-                status = "Wydajnosc systemu";
+                status = "Wydajnosc - CPU";
             else
                 status = "Szczegoly procesow";
         }
@@ -289,6 +311,7 @@ namespace ZonderqOS.GUI.Apps
             appsText = "APPS " + appCount;
             kernelText = "KERNEL " + processes.Count;
             UpdateMemorySnapshot();
+            UpdateCpuSnapshot();
             RebuildVisibleRows(selectedApp, selectedPid);
         }
 
@@ -335,7 +358,6 @@ namespace ZonderqOS.GUI.Apps
                     freeMemoryPercent = 0;
                     ramText = "RAM --";
                     ramDetail = "NO PAGE DATA";
-                    RecordMemorySample(0);
                     return;
                 }
 
@@ -343,7 +365,6 @@ namespace ZonderqOS.GUI.Apps
                 usedMemoryPercent = 100UL - freeMemoryPercent;
                 ramText = "RAM " + usedMemoryPercent + "%";
                 ramDetail = "FREE " + freeMemoryPercent + "%";
-                RecordMemorySample((int)usedMemoryPercent);
             }
             catch
             {
@@ -353,22 +374,125 @@ namespace ZonderqOS.GUI.Apps
                 freeMemoryPercent = 0;
                 ramText = "RAM --";
                 ramDetail = "MEMORY UNAVAILABLE";
-                RecordMemorySample(0);
             }
         }
 
-        private void RecordMemorySample(int value)
+        private void UpdateCpuSnapshot()
         {
-            value = Math.Max(0, Math.Min(100, value));
-            if (memoryHistoryCount < memoryHistory.Length)
-            {
-                memoryHistory[memoryHistoryCount++] = value;
-                return;
-            }
+            UpdateSchedulerStats();
 
-            for (int i = 1; i < memoryHistory.Length; i++)
-                memoryHistory[i - 1] = memoryHistory[i];
-            memoryHistory[memoryHistory.Length - 1] = value;
+            if (!SchedulerManager.IsReady || Stopwatch.Frequency <= 0)
+                return;
+
+            try
+            {
+                long now = Stopwatch.GetTimestamp();
+                ulong busy = SchedulerManager.GetBusyCpuTimeNs();
+
+                if (lastCpuTimestamp == 0)
+                {
+                    lastCpuTimestamp = now;
+                    lastBusyCpuNs = busy;
+                    RecordCpuSample(0);
+                    return;
+                }
+
+                long elapsedTicksSigned = now - lastCpuTimestamp;
+                if (elapsedTicksSigned <= 0)
+                    return;
+
+                ulong elapsedNs = TicksToNanoseconds((ulong)elapsedTicksSigned, (ulong)Stopwatch.Frequency);
+                if (elapsedNs < 50_000_000UL)
+                    return;
+
+                int usage = cpuUsagePercent;
+                if (busy >= lastBusyCpuNs)
+                {
+                    ulong cpuCount = Math.Max(1UL, (ulong)onlineCpuCount);
+                    ulong capacityNs = elapsedNs * cpuCount;
+                    ulong busyDelta = busy - lastBusyCpuNs;
+                    if (capacityNs > 0)
+                    {
+                        ulong calculated = (busyDelta * 100UL) / capacityNs;
+                        usage = (int)Math.Min(100UL, calculated);
+                    }
+                }
+
+                cpuUsagePercent = Math.Max(0, Math.Min(100, usage));
+                lastCpuTimestamp = now;
+                lastBusyCpuNs = busy;
+                RecordCpuSample(cpuUsagePercent);
+            }
+            catch
+            {
+            }
+        }
+
+        private void UpdateSchedulerStats()
+        {
+            onlineCpuCount = 0;
+            schedulerThreadCount = 0;
+            readyThreadCount = 0;
+            runningThreadCount = 0;
+            blockedThreadCount = 0;
+            sleepingThreadCount = 0;
+            schedulerName = "N/A";
+
+            try
+            {
+                onlineCpuCount = SchedulerManager.CpuCount;
+                if (SchedulerManager.Current != null && !string.IsNullOrEmpty(SchedulerManager.Current.Name))
+                    schedulerName = SchedulerManager.Current.Name;
+
+                SchedulerThread[] threads = SchedulerManager.Threads;
+                if (threads == null)
+                    return;
+
+                for (int i = 0; i < threads.Length; i++)
+                {
+                    SchedulerThread thread = threads[i];
+                    if (thread == null)
+                        continue;
+
+                    schedulerThreadCount++;
+                    if (thread.State == ThreadState.Ready)
+                        readyThreadCount++;
+                    else if (thread.State == ThreadState.Running)
+                        runningThreadCount++;
+                    else if (thread.State == ThreadState.Blocked)
+                        blockedThreadCount++;
+                    else if (thread.State == ThreadState.Sleeping)
+                        sleepingThreadCount++;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        private static ulong TicksToNanoseconds(ulong ticks, ulong frequency)
+        {
+            if (frequency == 0)
+                return 0;
+            return (ticks / frequency) * 1_000_000_000UL +
+                   ((ticks % frequency) * 1_000_000_000UL) / frequency;
+        }
+
+        private void RecordCpuSample(int value)
+        {
+            cpuHistory[cpuHistoryWriteIndex] = Math.Max(0, Math.Min(100, value));
+            cpuHistoryWriteIndex = (cpuHistoryWriteIndex + 1) % cpuHistory.Length;
+            if (cpuHistoryCount < cpuHistory.Length)
+                cpuHistoryCount++;
+        }
+
+        public int GetCpuHistorySample(int chronologicalIndex)
+        {
+            if (chronologicalIndex < 0 || chronologicalIndex >= cpuHistoryCount)
+                return 0;
+
+            int start = cpuHistoryCount < cpuHistory.Length ? 0 : cpuHistoryWriteIndex;
+            return cpuHistory[(start + chronologicalIndex) % cpuHistory.Length];
         }
 
         private void EnsureSelectionVisible()
@@ -427,8 +551,354 @@ namespace ZonderqOS.GUI.Apps
         public ulong FreeMemoryPercent { get { return freeMemoryPercent; } }
         public ulong TotalPages { get { return totalPages; } }
         public ulong FreePages { get { return freePages; } }
-        public int[] MemoryHistory { get { return memoryHistory; } }
-        public int MemoryHistoryCount { get { return memoryHistoryCount; } }
+        public int CpuUsagePercent { get { return cpuUsagePercent; } }
+        public int CpuHistoryCount { get { return cpuHistoryCount; } }
+        public int CpuHistoryCapacity { get { return cpuHistory.Length; } }
+        public uint OnlineCpuCount { get { return onlineCpuCount; } }
+        public int SchedulerThreadCount { get { return schedulerThreadCount; } }
+        public int ReadyThreadCount { get { return readyThreadCount; } }
+        public int RunningThreadCount { get { return runningThreadCount; } }
+        public int BlockedThreadCount { get { return blockedThreadCount; } }
+        public int SleepingThreadCount { get { return sleepingThreadCount; } }
+        public string SchedulerName { get { return schedulerName; } }
+        public CpuHardwareInfo CpuInfo { get { return cpuInfo; } }
+    }
+
+    public sealed class CpuHardwareInfo
+    {
+        public string Architecture = "64-bit";
+        public string Vendor = "N/A";
+        public string Brand = "Processor";
+        public string Features = "N/A";
+        public int Family;
+        public int Model;
+        public int Stepping;
+        public int PhysicalCores;
+        public int LogicalProcessors;
+        public int ThreadsPerCore;
+        public int BaseMHz;
+        public int MaxMHz;
+        public int BusMHz;
+        public ulong L1Bytes;
+        public ulong L2Bytes;
+        public ulong L3Bytes;
+        public bool HypervisorPresent;
+        public bool VirtualizationSupported;
+        public bool CpuidAvailable;
+
+        public static CpuHardwareInfo Detect()
+        {
+            CpuHardwareInfo info = new CpuHardwareInfo();
+            try
+            {
+                if (!X86Base.IsSupported)
+                    return info;
+
+                info.CpuidAvailable = true;
+                info.Architecture = "x86-64";
+
+                int maxBasicSigned;
+                int vendorB;
+                int vendorC;
+                int vendorD;
+                (maxBasicSigned, vendorB, vendorC, vendorD) = X86Base.CpuId(0, 0);
+                uint maxBasic = (uint)maxBasicSigned;
+                info.Vendor = ReadAscii(vendorB, vendorD, vendorC);
+
+                uint maxExtended = 0;
+                try
+                {
+                    int extMax;
+                    int extB;
+                    int extC;
+                    int extD;
+                    (extMax, extB, extC, extD) = X86Base.CpuId(unchecked((int)0x80000000u), 0);
+                    maxExtended = (uint)extMax;
+                }
+                catch
+                {
+                    maxExtended = 0;
+                }
+
+                if (maxExtended >= 0x80000004u)
+                {
+                    StringBuilder brand = new StringBuilder(48);
+                    for (uint leaf = 0x80000002u; leaf <= 0x80000004u; leaf++)
+                    {
+                        int a;
+                        int b;
+                        int c;
+                        int d;
+                        (a, b, c, d) = X86Base.CpuId(unchecked((int)leaf), 0);
+                        AppendRegister(brand, a);
+                        AppendRegister(brand, b);
+                        AppendRegister(brand, c);
+                        AppendRegister(brand, d);
+                    }
+                    string detectedBrand = CollapseSpaces(brand.ToString());
+                    if (!string.IsNullOrEmpty(detectedBrand))
+                        info.Brand = detectedBrand;
+                }
+
+                if (maxBasic >= 1)
+                {
+                    int signature;
+                    int misc;
+                    int featureC;
+                    int featureD;
+                    (signature, misc, featureC, featureD) = X86Base.CpuId(1, 0);
+                    DecodeSignature((uint)signature, info);
+                    info.LogicalProcessors = (int)(((uint)misc >> 16) & 0xFFu);
+                    if (info.LogicalProcessors <= 0)
+                        info.LogicalProcessors = 1;
+
+                    uint ecx = (uint)featureC;
+                    uint edx = (uint)featureD;
+                    info.HypervisorPresent = (ecx & (1u << 31)) != 0;
+                    bool vmx = (ecx & (1u << 5)) != 0;
+                    bool svm = false;
+                    if (maxExtended >= 0x80000001u)
+                    {
+                        int ea;
+                        int eb;
+                        int ec;
+                        int ed;
+                        (ea, eb, ec, ed) = X86Base.CpuId(unchecked((int)0x80000001u), 0);
+                        svm = (((uint)ec) & (1u << 2)) != 0;
+                    }
+                    info.VirtualizationSupported = vmx || svm;
+                    info.Features = BuildFeatureList(maxBasic, ecx, edx, maxExtended);
+                }
+
+                if (maxBasic >= 4)
+                    DetectDeterministicCaches(info);
+
+                if (info.PhysicalCores <= 0 && maxExtended >= 0x80000008u)
+                {
+                    int a;
+                    int b;
+                    int c;
+                    int d;
+                    (a, b, c, d) = X86Base.CpuId(unchecked((int)0x80000008u), 0);
+                    info.PhysicalCores = (int)(((uint)c & 0xFFu) + 1u);
+                }
+
+                if ((info.L1Bytes == 0 || info.L2Bytes == 0) && maxExtended >= 0x80000006u)
+                    DetectLegacyExtendedCaches(info, maxExtended);
+
+                if (info.PhysicalCores <= 0)
+                    info.PhysicalCores = Math.Max(1, info.LogicalProcessors);
+                if (info.LogicalProcessors <= 0)
+                    info.LogicalProcessors = Math.Max(1, info.PhysicalCores);
+                info.ThreadsPerCore = Math.Max(1, info.LogicalProcessors / Math.Max(1, info.PhysicalCores));
+
+                if (maxBasic >= 0x16u)
+                {
+                    int speedA;
+                    int speedB;
+                    int speedC;
+                    int speedD;
+                    (speedA, speedB, speedC, speedD) = X86Base.CpuId(0x16, 0);
+                    info.BaseMHz = speedA & 0xFFFF;
+                    info.MaxMHz = speedB & 0xFFFF;
+                    info.BusMHz = speedC & 0xFFFF;
+                }
+            }
+            catch
+            {
+            }
+
+            return info;
+        }
+
+        private static void DecodeSignature(uint signature, CpuHardwareInfo info)
+        {
+            int stepping = (int)(signature & 0xFu);
+            int model = (int)((signature >> 4) & 0xFu);
+            int family = (int)((signature >> 8) & 0xFu);
+            int extendedModel = (int)((signature >> 16) & 0xFu);
+            int extendedFamily = (int)((signature >> 20) & 0xFFu);
+
+            if (family == 6 || family == 15)
+                model += extendedModel << 4;
+            if (family == 15)
+                family += extendedFamily;
+
+            info.Family = family;
+            info.Model = model;
+            info.Stepping = stepping;
+        }
+
+        private static void DetectDeterministicCaches(CpuHardwareInfo info)
+        {
+            for (int subleaf = 0; subleaf < 16; subleaf++)
+            {
+                int eax;
+                int ebx;
+                int ecx;
+                int edx;
+                (eax, ebx, ecx, edx) = X86Base.CpuId(4, subleaf);
+                uint a = (uint)eax;
+                uint b = (uint)ebx;
+                uint c = (uint)ecx;
+                int cacheType = (int)(a & 0x1Fu);
+                if (cacheType == 0)
+                    break;
+
+                int level = (int)((a >> 5) & 0x7u);
+                ulong lineSize = (b & 0xFFFu) + 1u;
+                ulong partitions = ((b >> 12) & 0x3FFu) + 1u;
+                ulong ways = ((b >> 22) & 0x3FFu) + 1u;
+                ulong sets = (ulong)c + 1UL;
+                ulong size = lineSize * partitions * ways * sets;
+
+                int sharing = (int)(((a >> 14) & 0xFFFu) + 1u);
+                int logical = Math.Max(1, info.LogicalProcessors);
+                int instances = Math.Max(1, logical / Math.Max(1, sharing));
+                size *= (ulong)instances;
+
+                if (level == 1)
+                    info.L1Bytes += size;
+                else if (level == 2)
+                    info.L2Bytes += size;
+                else if (level == 3)
+                    info.L3Bytes += size;
+
+                if (info.PhysicalCores <= 0)
+                    info.PhysicalCores = (int)(((a >> 26) & 0x3Fu) + 1u);
+            }
+        }
+
+        private static void DetectLegacyExtendedCaches(CpuHardwareInfo info, uint maxExtended)
+        {
+            if (maxExtended >= 0x80000005u && info.L1Bytes == 0)
+            {
+                int a;
+                int b;
+                int c;
+                int d;
+                (a, b, c, d) = X86Base.CpuId(unchecked((int)0x80000005u), 0);
+                ulong l1DataKb = ((uint)c >> 24) & 0xFFu;
+                ulong l1InstructionKb = ((uint)d >> 24) & 0xFFu;
+                info.L1Bytes = (l1DataKb + l1InstructionKb) * 1024UL;
+            }
+
+            if (maxExtended >= 0x80000006u)
+            {
+                int a;
+                int b;
+                int c;
+                int d;
+                (a, b, c, d) = X86Base.CpuId(unchecked((int)0x80000006u), 0);
+                if (info.L2Bytes == 0)
+                    info.L2Bytes = (((uint)c >> 16) & 0xFFFFu) * 1024UL;
+                if (info.L3Bytes == 0)
+                {
+                    ulong units = ((uint)d >> 18) & 0x3FFFu;
+                    info.L3Bytes = units * 512UL * 1024UL;
+                }
+            }
+        }
+
+        private static string BuildFeatureList(uint maxBasic, uint ecx, uint edx, uint maxExtended)
+        {
+            StringBuilder result = new StringBuilder(96);
+            AddFeature(result, (edx & (1u << 25)) != 0, "SSE");
+            AddFeature(result, (edx & (1u << 26)) != 0, "SSE2");
+            AddFeature(result, (ecx & (1u << 0)) != 0, "SSE3");
+            AddFeature(result, (ecx & (1u << 9)) != 0, "SSSE3");
+            AddFeature(result, (ecx & (1u << 19)) != 0, "SSE4.1");
+            AddFeature(result, (ecx & (1u << 20)) != 0, "SSE4.2");
+            AddFeature(result, (ecx & (1u << 25)) != 0, "AES");
+            AddFeature(result, (ecx & (1u << 28)) != 0, "AVX");
+
+            if (maxBasic >= 7)
+            {
+                int a;
+                int b;
+                int c;
+                int d;
+                (a, b, c, d) = X86Base.CpuId(7, 0);
+                uint ebx = (uint)b;
+                AddFeature(result, (ebx & (1u << 3)) != 0, "BMI1");
+                AddFeature(result, (ebx & (1u << 5)) != 0, "AVX2");
+                AddFeature(result, (ebx & (1u << 8)) != 0, "BMI2");
+                AddFeature(result, (ebx & (1u << 29)) != 0, "SHA");
+            }
+
+            if (maxExtended >= 0x80000001u)
+            {
+                int a;
+                int b;
+                int c;
+                int d;
+                (a, b, c, d) = X86Base.CpuId(unchecked((int)0x80000001u), 0);
+                AddFeature(result, (((uint)d) & (1u << 20)) != 0, "NX");
+            }
+
+            return result.Length == 0 ? "N/A" : result.ToString();
+        }
+
+        private static void AddFeature(StringBuilder builder, bool available, string name)
+        {
+            if (!available)
+                return;
+            if (builder.Length > 0)
+                builder.Append(' ');
+            builder.Append(name);
+        }
+
+        private static string ReadAscii(int first, int second, int third)
+        {
+            StringBuilder builder = new StringBuilder(12);
+            AppendRegister(builder, first);
+            AppendRegister(builder, second);
+            AppendRegister(builder, third);
+            return CollapseSpaces(builder.ToString());
+        }
+
+        private static void AppendRegister(StringBuilder builder, int value)
+        {
+            uint data = (uint)value;
+            for (int i = 0; i < 4; i++)
+            {
+                char ch = (char)((data >> (i * 8)) & 0xFFu);
+                if (ch == '\0')
+                    return;
+                if (ch >= 32 && ch <= 126)
+                    builder.Append(ch);
+                else
+                    builder.Append(' ');
+            }
+        }
+
+        private static string CollapseSpaces(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+                return "";
+
+            StringBuilder result = new StringBuilder(value.Length);
+            bool lastSpace = true;
+            for (int i = 0; i < value.Length; i++)
+            {
+                char ch = value[i];
+                bool space = ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
+                if (space)
+                {
+                    if (!lastSpace)
+                    {
+                        result.Append(' ');
+                        lastSpace = true;
+                    }
+                }
+                else if (ch >= 32 && ch <= 126)
+                {
+                    result.Append(ch);
+                    lastSpace = false;
+                }
+            }
+            return result.ToString().Trim();
+        }
     }
 
     public sealed class TaskManagerRow
@@ -470,6 +940,7 @@ namespace ZonderqOS.GUI.Apps
     {
         private readonly TaskManagerApp app;
         private readonly ScrollBar scrollBar;
+        private readonly Font font = PCScreenFont.DefaultFont;
 
         private const int SidebarWidth = 162;
         private const int HeaderHeight = 52;
@@ -683,9 +1154,8 @@ namespace ZonderqOS.GUI.Apps
             int cardW = Math.Max(86, (width - gap * 3) / 4);
             DrawMiniCard(canvas, x, app.AppsText, "APPLICATIONS", cardW, false);
             DrawMiniCard(canvas, x + cardW + gap, app.KernelText, "BACKGROUND", cardW, false);
-            DrawMiniCard(canvas, x + (cardW + gap) * 2, app.RamText, "MEMORY", cardW, true);
-            DrawMiniCard(canvas, x + (cardW + gap) * 3,
-                global::ZonderqOS.Network.IsReady ? "NET READY" : "NET OFF", "NETWORK", cardW, false);
+            DrawMiniCard(canvas, x + (cardW + gap) * 2, "CPU " + app.CpuUsagePercent + "%", "TOTAL USAGE", cardW, true);
+            DrawMiniCard(canvas, x + (cardW + gap) * 3, app.RamText, "MEMORY", cardW, false);
         }
 
         private void DrawMiniCard(Canvas canvas, int x, string title, string detail, int width, bool accent)
@@ -811,17 +1281,31 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderPerformance(Canvas canvas)
         {
-            int x = X + SidebarWidth + 16;
-            int y = Y + 68;
-            int width = Width - SidebarWidth - 28;
-            int graphHeight = Math.Max(130, Height - 260);
+            int contentX = X + SidebarWidth + 10;
+            int contentY = Y + 62;
+            int contentW = Width - SidebarWidth - 18;
+            int resourceW = 146;
 
-            SmallTextRenderer.Draw(canvas, "Memory", x, y, Color.WhiteSmoke);
-            SmallTextRenderer.Draw(canvas, app.UsedMemoryPercent + "% IN USE", x + width - 92, y, Accent);
+            RenderPerformanceResource(canvas, contentX, contentY, resourceW, 0,
+                "CPU", app.CpuUsagePercent + "%", FormatSpeed(app.CpuInfo.BaseMHz), true);
+            RenderPerformanceResource(canvas, contentX, contentY + 82, resourceW, 1,
+                "MEMORY", app.UsedMemoryPercent + "%", app.RamDetail, false);
+            RenderPerformanceResource(canvas, contentX, contentY + 164, resourceW, 2,
+                "THREADS", app.SchedulerThreadCount.ToString(), app.SchedulerName, false);
 
-            int graphY = y + 30;
+            int x = contentX + resourceW + 16;
+            int y = contentY;
+            int width = Math.Max(320, contentW - resourceW - 16);
+
+            SmallTextRenderer.Draw(canvas, "CPU", x, y + 4, Color.WhiteSmoke);
+            SmallTextRenderer.DrawClipped(canvas, app.CpuInfo.Brand, x + 44, y + 4,
+                Math.Max(50, width - 48), Color.FromArgb(190, 201, 211));
+            SmallTextRenderer.Draw(canvas, "% UTILIZATION", x, y + 24, Muted);
+
+            int graphY = y + 40;
+            int graphHeight = Math.Max(150, Height - 330);
             canvas.DrawFilledRectangle(Color.FromArgb(23, 29, 35), x, graphY, width, graphHeight);
-            canvas.DrawRectangle(Color.FromArgb(65, 105, 135), x, graphY, width, graphHeight);
+            canvas.DrawRectangle(Color.FromArgb(66, 111, 145), x, graphY, width, graphHeight);
 
             for (int i = 1; i < 4; i++)
             {
@@ -834,19 +1318,18 @@ namespace ZonderqOS.GUI.Apps
                 canvas.DrawLine(Color.FromArgb(35, 47, 58), gx, graphY + 1, gx, graphY + graphHeight - 1);
             }
 
-            int count = app.MemoryHistoryCount;
-            int[] history = app.MemoryHistory;
+            int count = app.CpuHistoryCount;
             if (count > 1)
             {
-                int denominator = Math.Max(1, history.Length - 1);
-                int start = Math.Max(0, count - history.Length);
-                int previousX = x;
-                int previousY = graphY + graphHeight - (history[start] * graphHeight / 100);
-                for (int i = start + 1; i < count; i++)
+                int denominator = Math.Max(1, app.CpuHistoryCapacity - 1);
+                int startOffset = app.CpuHistoryCapacity - count;
+                int previousX = x + (startOffset * width) / denominator;
+                int previousY = graphY + graphHeight - app.GetCpuHistorySample(0) * graphHeight / 100;
+
+                for (int i = 1; i < count; i++)
                 {
-                    int sampleIndex = i - start;
-                    int px = x + (sampleIndex * width) / denominator;
-                    int py = graphY + graphHeight - (history[i] * graphHeight / 100);
+                    int px = x + ((startOffset + i) * width) / denominator;
+                    int py = graphY + graphHeight - app.GetCpuHistorySample(i) * graphHeight / 100;
                     canvas.DrawLine(Accent, previousX, previousY, px, py);
                     previousX = px;
                     previousY = py;
@@ -855,26 +1338,110 @@ namespace ZonderqOS.GUI.Apps
 
             SmallTextRenderer.Draw(canvas, "100%", x + 6, graphY + 7, Color.FromArgb(102, 122, 139));
             SmallTextRenderer.Draw(canvas, "0%", x + 6, graphY + graphHeight - 12, Color.FromArgb(102, 122, 139));
+            SmallTextRenderer.Draw(canvas, "RECENT HISTORY", x + 8, graphY + graphHeight + 7, Muted);
 
-            int cardY = graphY + graphHeight + 14;
-            int gap = 8;
-            int cardW = Math.Max(96, (width - gap * 3) / 4);
-            DrawPerformanceCard(canvas, x, cardY, cardW, "IN USE", app.UsedMemoryPercent + "%");
-            DrawPerformanceCard(canvas, x + cardW + gap, cardY, cardW, "AVAILABLE", app.FreeMemoryPercent + "%");
-            DrawPerformanceCard(canvas, x + (cardW + gap) * 2, cardY, cardW, "GUI APPS", app.AppsText);
-            DrawPerformanceCard(canvas, x + (cardW + gap) * 3, cardY, cardW, "KERNEL", app.KernelText);
-
-            SmallTextRenderer.DrawClipped(canvas,
-                "PAGE ALLOCATOR  FREE " + app.FreePages + " / TOTAL " + app.TotalPages,
-                x, cardY + 66, width, Muted);
+            int statsY = graphY + graphHeight + 24;
+            RenderCpuStats(canvas, x, statsY, width);
         }
 
-        private void DrawPerformanceCard(Canvas canvas, int x, int y, int width, string label, string value)
+        private void RenderPerformanceResource(Canvas canvas, int x, int y, int width, int index,
+            string title, string value, string detail, bool selected)
         {
-            canvas.DrawFilledRectangle(Color.FromArgb(27, 33, 39), x, y, width, 54);
-            canvas.DrawRectangle(Color.FromArgb(54, 66, 77), x, y, width, 54);
-            SmallTextRenderer.DrawClipped(canvas, label, x + 10, y + 13, width - 20, Muted);
-            SmallTextRenderer.DrawClipped(canvas, value, x + 10, y + 32, width - 20, Text);
+            Color background = selected ? Color.FromArgb(35, 55, 71) : Color.FromArgb(26, 32, 38);
+            Color border = selected ? Color.FromArgb(65, 126, 169) : Color.FromArgb(52, 63, 74);
+            canvas.DrawFilledRectangle(background, x, y, width, 72);
+            canvas.DrawRectangle(border, x, y, width, 72);
+            if (selected)
+                canvas.DrawFilledRectangle(Accent, x, y, 3, 72);
+
+            SmallTextRenderer.Draw(canvas, title, x + 12, y + 13, selected ? Color.WhiteSmoke : Text);
+            SmallTextRenderer.Draw(canvas, value, x + 12, y + 31,
+                selected ? Color.FromArgb(126, 194, 238) : Color.FromArgb(190, 201, 211));
+            SmallTextRenderer.DrawClipped(canvas, detail, x + 12, y + 50, width - 22, Muted);
+        }
+
+        private void RenderCpuStats(Canvas canvas, int x, int y, int width)
+        {
+            CpuHardwareInfo info = app.CpuInfo;
+            int split = width / 2;
+            int leftX = x;
+            int rightX = x + split + 8;
+            int leftW = Math.Max(120, split - 8);
+            int rightW = Math.Max(120, width - split - 8);
+
+            canvas.DrawString(app.CpuUsagePercent + "%", font, Color.WhiteSmoke, leftX, y);
+            SmallTextRenderer.Draw(canvas, "UTILIZATION", leftX, y + 34, Muted);
+
+            SmallTextRenderer.Draw(canvas, "SPEED", leftX + 126, y + 4, Muted);
+            SmallTextRenderer.DrawClipped(canvas, FormatSpeed(info.BaseMHz), leftX + 126, y + 20,
+                Math.Max(50, leftW - 126), Text);
+
+            int lineY = y + 54;
+            DrawKeyValue(canvas, leftX, lineY, leftW, "THREADS", app.SchedulerThreadCount.ToString());
+            DrawKeyValue(canvas, leftX, lineY + 16, leftW, "RUNNING / READY",
+                app.RunningThreadCount + " / " + app.ReadyThreadCount);
+            DrawKeyValue(canvas, leftX, lineY + 32, leftW, "BLOCKED / SLEEP",
+                app.BlockedThreadCount + " / " + app.SleepingThreadCount);
+            DrawKeyValue(canvas, leftX, lineY + 48, leftW, "SCHEDULER",
+                app.SchedulerName + "  " + (SchedulerManager.DefaultQuantumNs / 1_000_000UL) + " MS");
+            DrawKeyValue(canvas, leftX, lineY + 64, leftW, "TIMER", FormatTimerFrequency());
+
+            DrawKeyValue(canvas, rightX, y + 4, rightW, "ARCHITECTURE", info.Architecture);
+            DrawKeyValue(canvas, rightX, y + 20, rightW, "VENDOR", info.Vendor);
+            DrawKeyValue(canvas, rightX, y + 36, rightW, "FAMILY / MODEL / STEP",
+                info.Family + " / " + info.Model + " / " + info.Stepping);
+            DrawKeyValue(canvas, rightX, y + 52, rightW, "CORES / LOGICAL",
+                info.PhysicalCores + " / " + info.LogicalProcessors);
+            DrawKeyValue(canvas, rightX, y + 68, rightW, "ONLINE CPU", app.OnlineCpuCount.ToString());
+            DrawKeyValue(canvas, rightX, y + 84, rightW, "VIRTUALIZATION",
+                info.VirtualizationSupported ? "SUPPORTED" : "NO");
+            DrawKeyValue(canvas, rightX, y + 100, rightW, "HYPERVISOR",
+                info.HypervisorPresent ? "PRESENT" : "NO");
+            DrawKeyValue(canvas, rightX, y + 116, rightW, "CACHE L1 / L2 / L3",
+                FormatCache(info.L1Bytes) + " / " + FormatCache(info.L2Bytes) + " / " + FormatCache(info.L3Bytes));
+
+            int featureY = y + 136;
+            SmallTextRenderer.Draw(canvas, "FEATURES", x, featureY, Muted);
+            SmallTextRenderer.DrawClipped(canvas, info.Features, x + 58, featureY,
+                Math.Max(40, width - 62), Color.FromArgb(185, 199, 211));
+        }
+
+        private void DrawKeyValue(Canvas canvas, int x, int y, int width, string key, string value)
+        {
+            int keyWidth = Math.Min(128, Math.Max(70, width / 2));
+            SmallTextRenderer.DrawClipped(canvas, key, x, y, keyWidth - 4, Muted);
+            SmallTextRenderer.DrawClipped(canvas, value, x + keyWidth, y,
+                Math.Max(20, width - keyWidth), Text);
+        }
+
+        private static string FormatSpeed(int mhz)
+        {
+            if (mhz <= 0)
+                return "N/A";
+            if (mhz >= 1000)
+                return (mhz / 1000) + "." + ((mhz % 1000) / 100) + " GHZ";
+            return mhz + " MHZ";
+        }
+
+        private static string FormatTimerFrequency()
+        {
+            long frequency = Stopwatch.Frequency;
+            if (frequency <= 0)
+                return "N/A";
+            long mhz10 = frequency / 100_000;
+            return (mhz10 / 10) + "." + (mhz10 % 10) + " MHZ";
+        }
+
+        private static string FormatCache(ulong bytes)
+        {
+            if (bytes == 0)
+                return "N/A";
+            if (bytes >= 1024UL * 1024UL)
+            {
+                ulong mb10 = (bytes * 10UL) / (1024UL * 1024UL);
+                return (mb10 / 10UL) + "." + (mb10 % 10UL) + " MB";
+            }
+            return (bytes / 1024UL) + " KB";
         }
 
         private IconType GetApplicationIcon(Application application)
