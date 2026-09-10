@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using System.Reflection;
@@ -22,6 +23,7 @@ namespace ZonderqOS.GUI
         private DesktopShortcut[] desktopShortcuts;
         private bool isRunning = true;
         private bool lockRequested;
+        private long lastActivityTimestamp;
         private int selectedShortcut = -1;
         private int lastShortcutClick = -1;
         private int lastShortcutClickFrame = -1000;
@@ -105,6 +107,7 @@ namespace ZonderqOS.GUI
 
                 int firstMouseX = (int)MouseManager.X;
                 int firstMouseY = (int)MouseManager.Y;
+                ResetActivityTimer();
                 RenderFrame(firstMouseX, firstMouseY);
 
                 while (isRunning)
@@ -166,6 +169,7 @@ namespace ZonderqOS.GUI
                         previousRightButtonState = MouseManager.RightButton;
                         previousMouseX = (int)MouseManager.X;
                         previousMouseY = (int)MouseManager.Y;
+                        ResetActivityTimer();
                         RenderFrame(previousMouseX, previousMouseY);
                         continue;
                     }
@@ -178,6 +182,31 @@ namespace ZonderqOS.GUI
                     bool pointerMoved = mouseX != previousMouseX || mouseY != previousMouseY;
                     bool buttonChanged = currentLeftButtonState != previousLeftButtonState ||
                                          currentRightButtonState != previousRightButtonState;
+
+                    if (keyboardActivity || pointerMoved || buttonChanged)
+                    {
+                        ResetActivityTimer();
+                    }
+                    else if (ShouldAutoLock())
+                    {
+                        SecurityLogger.LogEvent("INFO", "Automatic idle lock triggered for user " +
+                            SecurityContext.CurrentUser + ".");
+                        RequestLockSession();
+                        lockRequested = false;
+                        if (!RunLockScreen())
+                        {
+                            LogoutSession();
+                            break;
+                        }
+
+                        previousLeftButtonState = MouseManager.LeftButton;
+                        previousRightButtonState = MouseManager.RightButton;
+                        previousMouseX = (int)MouseManager.X;
+                        previousMouseY = (int)MouseManager.Y;
+                        ResetActivityTimer();
+                        RenderFrame(previousMouseX, previousMouseY);
+                        continue;
+                    }
 
                     applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
                         currentRightButtonState, previousRightButtonState);
@@ -198,6 +227,7 @@ namespace ZonderqOS.GUI
                         previousRightButtonState = MouseManager.RightButton;
                         previousMouseX = (int)MouseManager.X;
                         previousMouseY = (int)MouseManager.Y;
+                        ResetActivityTimer();
                         RenderFrame(previousMouseX, previousMouseY);
                         continue;
                     }
@@ -298,7 +328,34 @@ namespace ZonderqOS.GUI
 
             SecurityLogger.LogEvent("INFO", "Graphical session locked for user " +
                 SecurityContext.CurrentUser + ".");
-            return LockScreenManager.Run(canvas);
+            bool unlocked = LockScreenManager.Run(canvas);
+            if (unlocked)
+            {
+                SessionManager.MarkUnlock();
+                SecurityLogger.LogEvent("INFO", "Graphical session unlocked for user " +
+                    SecurityContext.CurrentUser + ".");
+            }
+            return unlocked;
+        }
+
+        private void ResetActivityTimer()
+        {
+            lastActivityTimestamp = Stopwatch.GetTimestamp();
+        }
+
+        private bool ShouldAutoLock()
+        {
+            int minutes = global::ZonderqOS.SystemSettings.AutoLockMinutes;
+            if (minutes <= 0 || lastActivityTimestamp <= 0 || Stopwatch.Frequency <= 0)
+                return false;
+
+            long now = Stopwatch.GetTimestamp();
+            long elapsed = now - lastActivityTimestamp;
+            if (elapsed <= 0)
+                return false;
+
+            long threshold = Stopwatch.Frequency * 60L * minutes;
+            return elapsed >= threshold;
         }
 
         private static bool IsLockShortcut(KeyEvent key)
