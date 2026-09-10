@@ -25,11 +25,6 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
-        /// <summary>
-        /// Only windows that display changing telemetry need an idle redraw. Normal
-        /// desktop/application windows are purely event driven and should not force
-        /// the whole 1920x1080 GUI to render while the user is doing nothing.
-        /// </summary>
         public bool HasLiveTelemetryWindow
         {
             get
@@ -49,6 +44,11 @@ namespace ZonderqOS.GUI.Apps
         public void Launch(Application application)
         {
             if (application == null || !application.IsRunning)
+                return;
+
+            // Never create a new interactive window after the authentication state has
+            // already been torn down by logout/account switching.
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
                 return;
 
             applications.Add(application);
@@ -100,9 +100,8 @@ namespace ZonderqOS.GUI.Apps
         }
 
         /// <summary>
-        /// Closes every window owned by the current desktop session. This is used on
-        /// logout so a newly authenticated user can never inherit another user's open
-        /// applications, paths or in-memory document state.
+        /// Closes every window owned by the current desktop session. Used on logout so
+        /// another authenticated user cannot inherit paths, documents or application state.
         /// </summary>
         public void CloseAll()
         {
@@ -119,6 +118,8 @@ namespace ZonderqOS.GUI.Apps
 
         public void HandleKeyboard(KeyEvent key)
         {
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+                return;
             ActiveApplication?.HandleKeyboard(key);
         }
 
@@ -130,6 +131,9 @@ namespace ZonderqOS.GUI.Apps
         public void HandleMouse(int mouseX, int mouseY, bool leftClicked, bool leftWasClicked,
             bool rightClicked, bool rightWasClicked)
         {
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+                return;
+
             Application target = ActiveApplication;
 
             if (leftClicked && !leftWasClicked)
@@ -154,6 +158,14 @@ namespace ZonderqOS.GUI.Apps
 
         public void Update()
         {
+            // This also catches a session ended from inside an application (for example the
+            // Accounts tool). Closing happens before any further app update can run.
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+            {
+                CloseAll();
+                return;
+            }
+
             bool removed = false;
             for (int i = applications.Count - 1; i >= 0; i--)
             {
@@ -175,6 +187,9 @@ namespace ZonderqOS.GUI.Apps
 
         public void Render(Canvas canvas)
         {
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+                return;
+
             for (int i = 0; i < applications.Count; i++)
             {
                 Application application = applications[i];
