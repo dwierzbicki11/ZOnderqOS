@@ -11,6 +11,7 @@ namespace ZonderqOS.GUI
         public string Title { get; set; }
         public List<Widget> Children { get; } = new List<Widget>();
         public bool IsMaximized { get; private set; }
+        public bool IsMinimized { get; private set; }
         public System.Action CloseAction { get; set; }
 
         private int restoreX;
@@ -60,8 +61,35 @@ namespace ZonderqOS.GUI
             }
         }
 
+        public void Minimize()
+        {
+            dragging = false;
+            IsMinimized = true;
+            Visible = false;
+        }
+
+        public void RestoreFromMinimized()
+        {
+            IsMinimized = false;
+            Visible = true;
+        }
+
+        public void ToggleMinimize()
+        {
+            if (IsMinimized)
+                RestoreFromMinimized();
+            else
+                Minimize();
+        }
+
         public void ToggleMaximize()
         {
+            if (IsMinimized)
+            {
+                RestoreFromMinimized();
+                return;
+            }
+
             dragging = false;
             if (!IsMaximized)
             {
@@ -83,12 +111,18 @@ namespace ZonderqOS.GUI
             }
         }
 
+        public bool ContainsPoint(int mouseX, int mouseY)
+        {
+            return Visible && !IsMinimized && mouseX >= X && mouseX < X + Width && mouseY >= Y && mouseY < Y + Height;
+        }
+
         public void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
         {
-            if (!Visible) return;
+            if (!Visible || IsMinimized) return;
 
             int closeX = X + Width - ButtonSize - 5;
             int maximizeX = closeX - ButtonGap - ButtonSize;
+            int minimizeX = maximizeX - ButtonGap - ButtonSize;
             bool inTitle = mouseY >= Y && mouseY < Y + TitleBarHeight && mouseX >= X && mouseX <= X + Width;
 
             if (!isClicked)
@@ -114,6 +148,12 @@ namespace ZonderqOS.GUI
 
             if (!wasClicked && inTitle)
             {
+                if (mouseX >= minimizeX && mouseX < minimizeX + ButtonSize && mouseY >= Y + 4 && mouseY < Y + 4 + ButtonSize)
+                {
+                    Minimize();
+                    return;
+                }
+
                 if (mouseX >= maximizeX && mouseX < maximizeX + ButtonSize && mouseY >= Y + 4 && mouseY < Y + 4 + ButtonSize)
                 {
                     ToggleMaximize();
@@ -126,7 +166,7 @@ namespace ZonderqOS.GUI
                     return;
                 }
 
-                if (!IsMaximized && mouseX < maximizeX)
+                if (!IsMaximized && mouseX < minimizeX)
                 {
                     dragging = true;
                     dragOffsetX = mouseX - X;
@@ -137,7 +177,7 @@ namespace ZonderqOS.GUI
 
         public override void Render(Canvas canvas)
         {
-            if (!Visible) return;
+            if (!Visible || IsMinimized) return;
 
             canvas.DrawFilledRectangle(Color.FromArgb(35, 35, 35), X + 3, Y + 3, Width, Height);
             canvas.DrawFilledRectangle(Color.WhiteSmoke, X, Y, Width, Height);
@@ -148,6 +188,11 @@ namespace ZonderqOS.GUI
 
             int closeX = X + Width - ButtonSize - 5;
             int maximizeX = closeX - ButtonGap - ButtonSize;
+            int minimizeX = maximizeX - ButtonGap - ButtonSize;
+
+            canvas.DrawFilledRectangle(Color.FromArgb(45, 75, 105), minimizeX, Y + 4, ButtonSize, ButtonSize);
+            canvas.DrawRectangle(Color.FromArgb(120, 150, 180), minimizeX, Y + 4, ButtonSize, ButtonSize);
+            canvas.DrawLine(Color.WhiteSmoke, minimizeX + 6, Y + 16, minimizeX + 18, Y + 16);
 
             canvas.DrawFilledRectangle(IsMaximized ? Color.FromArgb(55, 90, 125) : Color.FromArgb(45, 75, 105), maximizeX, Y + 4, ButtonSize, ButtonSize);
             canvas.DrawRectangle(Color.FromArgb(120, 150, 180), maximizeX, Y + 4, ButtonSize, ButtonSize);
