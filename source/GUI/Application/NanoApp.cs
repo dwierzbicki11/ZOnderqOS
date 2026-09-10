@@ -10,12 +10,16 @@ namespace ZonderqOS.GUI.Apps
 {
     public class NanoApp : Application
     {
+        private const long MaxFileBytes = 1024 * 1024;
+        private const int MaxDocumentCharacters = 1024 * 1024;
+
         private readonly string filePath;
         private readonly Action closeCallback;
         private readonly List<string> lines = new List<string>();
         private int cursorX;
         private int cursorY;
         private int scrollY;
+        private int documentCharacters;
         private string status = "";
         private readonly NanoView editor;
 
@@ -38,9 +42,26 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (File.Exists(filePath))
                 {
-                    string content = File.ReadAllText(filePath);
-                    string[] loaded = content.Replace("\r", "").Split('\n');
-                    lines.AddRange(loaded);
+                    if (!PermissionManager.CanRead(filePath, SecurityContext.CurrentUser))
+                    {
+                        status = "Permission denied";
+                        SecurityLogger.LogEvent("WARN", $"Unauthorized nano read attempt on {filePath} by {SecurityContext.CurrentUser}");
+                    }
+                    else
+                    {
+                        FileInfo fileInfo = new FileInfo(filePath);
+                        if (fileInfo.Length > MaxFileBytes)
+                        {
+                            status = $"File too large (limit {MaxFileBytes / 1024} KB)";
+                        }
+                        else
+                        {
+                            string content = File.ReadAllText(filePath);
+                            string[] loaded = content.Replace("\r", "").Split('\n');
+                            lines.AddRange(loaded);
+                            documentCharacters = content.Length;
+                        }
+                    }
                 }
             }
             catch (Exception ex)
@@ -68,6 +89,13 @@ namespace ZonderqOS.GUI.Apps
 
         private void Save()
         {
+            if (File.Exists(filePath) && !PermissionManager.CanWrite(filePath, SecurityContext.CurrentUser))
+            {
+                status = "Permission denied";
+                SecurityLogger.LogEvent("WARN", $"Unauthorized nano write attempt on {filePath} by {SecurityContext.CurrentUser}");
+                return;
+            }
+
             try
             {
                 Disk.CreateFile(filePath, string.Join("\n", lines));
@@ -127,6 +155,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     lines[cursorY] = lines[cursorY].Remove(cursorX - 1, 1);
                     cursorX--;
+                    if (documentCharacters > 0) documentCharacters--;
                 }
                 else if (cursorY > 0)
                 {
@@ -135,26 +164,45 @@ namespace ZonderqOS.GUI.Apps
                     lines.RemoveAt(cursorY);
                     cursorY--;
                     cursorX = previousLength;
+                    if (documentCharacters > 0) documentCharacters--;
                 }
             }
             else if (key.Key == ConsoleKeyEx.Enter)
             {
+                if (!CanGrowDocument()) return;
+
                 string remainder = lines[cursorY].Substring(cursorX);
                 lines[cursorY] = lines[cursorY].Substring(0, cursorX);
                 lines.Insert(cursorY + 1, remainder);
                 cursorY++;
                 cursorX = 0;
+                documentCharacters++;
             }
             else if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar))
             {
+                if (!CanGrowDocument()) return;
+
                 lines[cursorY] = lines[cursorY].Insert(cursorX, key.KeyChar.ToString());
                 cursorX++;
+                documentCharacters++;
             }
+
+            if (cursorX > lines[cursorY].Length)
+                cursorX = lines[cursorY].Length;
 
             if (cursorY < scrollY) scrollY = cursorY;
             int visible = Math.Max(1, (Window.Height - 105) / 32);
             if (cursorY >= scrollY + visible)
                 scrollY = cursorY - visible + 1;
+        }
+
+        private bool CanGrowDocument()
+        {
+            if (documentCharacters < MaxDocumentCharacters)
+                return true;
+
+            status = $"Document limit: {MaxDocumentCharacters} characters";
+            return false;
         }
 
         public override void Close()
