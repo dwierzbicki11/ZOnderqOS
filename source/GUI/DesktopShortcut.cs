@@ -42,21 +42,44 @@ namespace ZonderqOS.GUI
 
         public void Render(Canvas canvas)
         {
+            Color panel;
+            Color border;
+
             if (IsSelected)
             {
-                canvas.DrawFilledRectangle(Color.FromArgb(37, 70, 99), X + 2, Y + 2, WidthValue - 4, HeightValue - 4);
-                canvas.DrawRectangle(Color.FromArgb(79, 153, 211), X + 2, Y + 2, WidthValue - 4, HeightValue - 4);
+                panel = Color.FromArgb(34, 65, 91);
+                border = Color.FromArgb(78, 156, 218);
             }
             else if (IsHovered)
             {
-                canvas.DrawFilledRectangle(Color.FromArgb(31, 46, 59), X + 2, Y + 2, WidthValue - 4, HeightValue - 4);
-                canvas.DrawRectangle(Color.FromArgb(61, 92, 116), X + 2, Y + 2, WidthValue - 4, HeightValue - 4);
+                panel = Color.FromArgb(28, 42, 54);
+                border = Color.FromArgb(72, 108, 136);
+            }
+            else
+            {
+                // A permanent dark plate keeps PNG icons and captions readable on
+                // both bright and dark parts of the wallpaper.
+                panel = Color.FromArgb(19, 26, 33);
+                border = Color.FromArgb(48, 59, 70);
             }
 
-            int iconX = X + (WidthValue - IconSize) / 2;
-            IconManager.DrawScaled(canvas, Icon, iconX, Y + 7, IconSize, IconSize);
+            // Small offset shadow separates the shortcut from detailed wallpapers.
+            canvas.DrawFilledRectangle(Color.FromArgb(10, 14, 18), X + 4, Y + 4, WidthValue - 4, HeightValue - 4);
+            canvas.DrawFilledRectangle(panel, X + 2, Y + 2, WidthValue - 4, HeightValue - 4);
+            canvas.DrawRectangle(border, X + 2, Y + 2, WidthValue - 4, HeightValue - 4);
 
-            DrawCenteredLabel(canvas, Label, X + 5, Y + 61, WidthValue - 10);
+            int iconX = X + (WidthValue - IconSize) / 2;
+            int iconY = Y + 7;
+
+            // Dedicated icon well gives transparent PNGs a stable background.
+            canvas.DrawFilledRectangle(Color.FromArgb(24, 31, 39), iconX - 5, iconY - 3, IconSize + 10, IconSize + 8);
+            canvas.DrawRectangle(IsSelected ? Color.FromArgb(62, 128, 180) : Color.FromArgb(43, 54, 65),
+                iconX - 5, iconY - 3, IconSize + 10, IconSize + 8);
+            IconManager.DrawScaled(canvas, Icon, iconX, iconY, IconSize, IconSize);
+
+            // Caption strip stays readable regardless of wallpaper brightness.
+            canvas.DrawFilledRectangle(Color.FromArgb(13, 18, 24), X + 6, Y + 59, WidthValue - 12, 17);
+            DrawCenteredLabel(canvas, Label, X + 8, Y + 64, WidthValue - 16);
         }
 
         private static void DrawCenteredLabel(Canvas canvas, string text, int x, int y, int width)
@@ -75,13 +98,13 @@ namespace ZonderqOS.GUI
             int textWidth = totalChars * glyphStep - 1;
             int startX = x + Math.Max(0, (width - textWidth) / 2);
 
-            DrawTinyRange(canvas, text, 0, count, startX + 1, y + 1, Color.FromArgb(12, 17, 22));
+            DrawTinyRange(canvas, text, 0, count, startX + 1, y + 1, Color.FromArgb(8, 11, 15));
             if (clipped)
-                DrawTiny(canvas, "...", startX + count * glyphStep + 1, y + 1, Color.FromArgb(12, 17, 22));
+                DrawTiny(canvas, "...", startX + count * glyphStep + 1, y + 1, Color.FromArgb(8, 11, 15));
 
-            DrawTinyRange(canvas, text, 0, count, startX, y, Color.WhiteSmoke);
+            DrawTinyRange(canvas, text, 0, count, startX, y, Color.FromArgb(238, 243, 248));
             if (clipped)
-                DrawTiny(canvas, "...", startX + count * glyphStep, y, Color.WhiteSmoke);
+                DrawTiny(canvas, "...", startX + count * glyphStep, y, Color.FromArgb(238, 243, 248));
         }
 
         private static void DrawTinyRange(Canvas canvas, string text, int start, int count, int x, int y, Color color)
