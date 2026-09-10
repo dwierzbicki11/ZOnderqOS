@@ -124,11 +124,13 @@ namespace ZonderqOS.GUI.Apps
             if (string.IsNullOrEmpty(command))
                 return string.Empty;
 
-            // su currently accepts the password as its second argument. Do not persist that
-            // credential in the terminal scrollback after Enter is pressed.
-            if (command.StartsWith("su ", StringComparison.OrdinalIgnoreCase))
+            if (StartsWithCommand(command, "su") || StartsWithCommand(command, "useradd"))
             {
-                int usernameStart = 3;
+                int firstSpace = command.IndexOf(' ');
+                if (firstSpace < 0)
+                    return command;
+
+                int usernameStart = firstSpace + 1;
                 while (usernameStart < command.Length && command[usernameStart] == ' ')
                     usernameStart++;
 
@@ -138,6 +140,14 @@ namespace ZonderqOS.GUI.Apps
             }
 
             return command;
+        }
+
+        private static bool StartsWithCommand(string input, string commandName)
+        {
+            if (!input.StartsWith(commandName, StringComparison.OrdinalIgnoreCase))
+                return false;
+            return input.Length == commandName.Length ||
+                   (input.Length > commandName.Length && input[commandName.Length] == ' ');
         }
 
         public override void Close()
