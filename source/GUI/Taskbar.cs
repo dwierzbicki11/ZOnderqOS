@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using Cosmos.Kernel.System.Graphics;
-using Cosmos.Kernel.System.Graphics.Fonts;
+using Cosmos.Kernel.System.Storage;
 using ZonderqOS.GUI.Apps;
 using ZonderqOS.GUI.Icons;
 
@@ -14,13 +14,19 @@ namespace ZonderqOS.GUI
         public Color BackgroundColor { get; set; } = Color.FromArgb(22, 27, 33);
 
         private readonly ApplicationManager applicationManager;
-        private readonly Font font = PCScreenFont.DefaultFont;
         private int hoveredAppIndex = -1;
+        private int cachedMinute = -1;
+        private int cachedDay = -1;
+        private int cachedVolumeCount = -1;
+        private string cachedTime = "--:--";
+        private string cachedDate = "--.--";
+        private string cachedVolumeLabel = "VOL 0";
 
         private const int StartButtonWidth = 48;
         private const int AppButtonSize = 40;
         private const int AppButtonGap = 5;
         private const int SidePadding = 6;
+        private const int TrayWidth = 238;
 
         public Taskbar(int screenWidth, int screenHeight, int height, Action onStartClick, ApplicationManager manager)
             : base(0, screenHeight - height, screenWidth, height)
@@ -38,14 +44,17 @@ namespace ZonderqOS.GUI
             if (app == null || string.IsNullOrEmpty(app.Name))
                 return IconType.File;
 
-            string name = app.Name.ToLowerInvariant();
-            if (name.Contains("terminal") || name.Contains("shell"))
+            string name = app.Name;
+            if (name.IndexOf("terminal", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("shell", StringComparison.OrdinalIgnoreCase) >= 0)
                 return IconType.Terminal;
-            if (name.Contains("file") || name.Contains("manager"))
+            if (name.IndexOf("file", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("manager", StringComparison.OrdinalIgnoreCase) >= 0)
                 return IconType.Folder;
-            if (name.Contains("setting"))
+            if (name.IndexOf("setting", StringComparison.OrdinalIgnoreCase) >= 0)
                 return IconType.Settings;
-            if (name.Contains("about") || name.Contains("diagnostic"))
+            if (name.IndexOf("about", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("diagnostic", StringComparison.OrdinalIgnoreCase) >= 0)
                 return IconType.About;
             return IconType.File;
         }
@@ -54,6 +63,8 @@ namespace ZonderqOS.GUI
         {
             if (!Visible)
                 return;
+
+            UpdateTrayCache();
 
             canvas.DrawFilledRectangle(Color.FromArgb(13, 17, 22), X, Y, Width, Height);
             canvas.DrawFilledRectangle(BackgroundColor, X, Y + 1, Width, Height - 1);
@@ -67,9 +78,9 @@ namespace ZonderqOS.GUI
                 StartButtonWidth + 2, Y + Height - 8);
 
             int appX = StartButtonWidth + SidePadding + 6;
-            int rightReserved = 160;
-            int maxAppX = Width - rightReserved;
+            int maxAppX = Width - TrayWidth;
             List<Application> apps = applicationManager != null ? applicationManager.Applications : null;
+            Application activeApplication = applicationManager != null ? applicationManager.ActiveApplication : null;
             int visibleIndex = 0;
 
             if (apps != null)
@@ -82,7 +93,7 @@ namespace ZonderqOS.GUI
                     if (appX + AppButtonSize > maxAppX)
                         break;
 
-                    bool active = applicationManager.ActiveApplication == app;
+                    bool active = activeApplication == app;
                     bool minimized = app.Window.IsMinimized;
                     bool hovered = visibleIndex == hoveredAppIndex;
 
@@ -109,15 +120,73 @@ namespace ZonderqOS.GUI
                 }
             }
 
-            int clockY = Y + (Height - TextHelper.GetTextHeight(font)) / 2;
-            DateTime currentTime = DateTime.UtcNow.AddHours(2);
-            string timeString = currentTime.ToString("HH:mm");
-            int timeWidth = TextHelper.GetTextWidth(timeString, font);
-            int clockX = Width - timeWidth - 16;
+            RenderSystemTray(canvas);
+        }
 
-            canvas.DrawLine(Color.FromArgb(48, 59, 70), clockX - 12, Y + 8,
-                clockX - 12, Y + Height - 8);
-            canvas.DrawString(timeString, font, Color.FromArgb(225, 231, 237), clockX, clockY);
+        private void UpdateTrayCache()
+        {
+            DateTime currentTime = DateTime.UtcNow.AddHours(2);
+            int minute = currentTime.Hour * 60 + currentTime.Minute;
+            if (minute != cachedMinute)
+            {
+                cachedMinute = minute;
+                cachedTime = currentTime.ToString("HH:mm");
+            }
+
+            if (currentTime.DayOfYear != cachedDay)
+            {
+                cachedDay = currentTime.DayOfYear;
+                cachedDate = currentTime.ToString("dd.MM");
+            }
+
+            int volumeCount = 0;
+            try
+            {
+                volumeCount = StorageManager.Partitions.Count;
+            }
+            catch
+            {
+                volumeCount = 0;
+            }
+
+            if (volumeCount != cachedVolumeCount)
+            {
+                cachedVolumeCount = volumeCount;
+                cachedVolumeLabel = "VOL " + volumeCount;
+            }
+        }
+
+        private void RenderSystemTray(Canvas canvas)
+        {
+            int trayX = Width - TrayWidth;
+            canvas.DrawLine(Color.FromArgb(48, 59, 70), trayX, Y + 7, trayX, Y + Height - 7);
+
+            bool networkReady = global::ZonderqOS.Network.IsReady;
+            DrawTrayTile(canvas, trayX + 9, 58, IconType.Settings, "NET", networkReady);
+            DrawTrayTile(canvas, trayX + 73, 72, IconType.FileManager, cachedVolumeLabel, cachedVolumeCount > 0);
+
+            int clockX = Width - 78;
+            canvas.DrawLine(Color.FromArgb(48, 59, 70), clockX - 10, Y + 7,
+                clockX - 10, Y + Height - 7);
+
+            SmallTextRenderer.DrawCentered(canvas, cachedTime, clockX, Y + 12, 68,
+                Color.FromArgb(232, 237, 242));
+            SmallTextRenderer.DrawCentered(canvas, cachedDate, clockX, Y + 27, 68,
+                Color.FromArgb(132, 148, 162));
+        }
+
+        private void DrawTrayTile(Canvas canvas, int x, int width, IconType icon, string label, bool ready)
+        {
+            Color background = ready ? Color.FromArgb(31, 48, 60) : Color.FromArgb(30, 35, 41);
+            Color border = ready ? Color.FromArgb(55, 93, 119) : Color.FromArgb(49, 58, 67);
+            Color indicator = ready ? Color.FromArgb(72, 173, 118) : Color.FromArgb(111, 119, 127);
+
+            canvas.DrawFilledRectangle(background, x, Y + 6, width, Height - 12);
+            canvas.DrawRectangle(border, x, Y + 6, width, Height - 12);
+            IconManager.DrawScaled(canvas, icon, x + 6, Y + 13, 14, 14);
+            SmallTextRenderer.DrawClipped(canvas, label, x + 25, Y + 18,
+                Math.Max(8, width - 32), Color.FromArgb(207, 216, 224));
+            canvas.DrawFilledRectangle(indicator, x + width - 7, Y + 10, 3, 3);
         }
 
         public void UpdateInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked)
@@ -138,8 +207,7 @@ namespace ZonderqOS.GUI
                 return;
 
             int appX = StartButtonWidth + SidePadding + 6;
-            int rightReserved = 160;
-            int maxAppX = Width - rightReserved;
+            int maxAppX = Width - TrayWidth;
             List<Application> apps = applicationManager.Applications;
             int visibleIndex = 0;
 
