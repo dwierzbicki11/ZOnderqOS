@@ -8,6 +8,7 @@ namespace ZonderqOS.GUI
 {
     public static class StorageMountManager
     {
+        // This cache is only a fast fallback. The VFS mount table remains the source of truth.
         private static readonly Dictionary<int, string> mountedPartitions = new Dictionary<int, string>();
 
         static StorageMountManager()
@@ -17,19 +18,26 @@ namespace ZonderqOS.GUI
 
         public static bool IsMounted(int partitionIndex)
         {
-            if (partitionIndex == 0)
-                return true;
-
-            return mountedPartitions.ContainsKey(partitionIndex);
+            return !string.IsNullOrEmpty(GetMountPoint(partitionIndex));
         }
 
         public static string GetMountPoint(int partitionIndex)
         {
+            if (partitionIndex < 0)
+                return null;
+
+            string actualMountPoint = FindMountPointInVfs(partitionIndex);
+            if (!string.IsNullOrEmpty(actualMountPoint))
+            {
+                mountedPartitions[partitionIndex] = actualMountPoint;
+                return actualMountPoint;
+            }
+
             if (partitionIndex == 0)
                 return "/";
 
-            string mountPoint;
-            return mountedPartitions.TryGetValue(partitionIndex, out mountPoint) ? mountPoint : null;
+            mountedPartitions.Remove(partitionIndex);
+            return null;
         }
 
         public static bool TryMount(int partitionIndex, out string mountPoint, out string error)
@@ -39,34 +47,56 @@ namespace ZonderqOS.GUI
 
             try
             {
-                if (partitionIndex <= 0 || partitionIndex >= StorageManager.Partitions.Count)
+                int partitionCount = StorageManager.Partitions.Count;
+                if (partitionIndex < 0 || partitionIndex >= partitionCount)
                 {
-                    error = "Invalid partition";
+                    error = "Partition does not exist";
                     return false;
                 }
 
-                if (mountedPartitions.TryGetValue(partitionIndex, out mountPoint))
+                if (partitionIndex == 0)
+                {
+                    mountPoint = GetMountPoint(0) ?? "/";
                     return true;
+                }
 
-                Directory.CreateDirectory("/mnt");
-                mountPoint = "/mnt/volume" + partitionIndex;
-                if (!Directory.Exists(mountPoint))
-                    Directory.CreateDirectory(mountPoint);
+                string existingMountPoint = FindMountPointInVfs(partitionIndex);
+                if (!string.IsNullOrEmpty(existingMountPoint))
+                {
+                    mountPoint = existingMountPoint;
+                    mountedPartitions[partitionIndex] = existingMountPoint;
+                    return true;
+                }
 
-                if (!VfsManager.TryMount("fat", partitionIndex.ToString(), MountFlags.None, mountPoint, out var mount))
+                // /mnt is a normal directory on the system volume. The mount target itself,
+                // however, must not be pre-created. Cosmos Gen3 VFS creates/owns the mount point.
+                if (!Directory.Exists("/mnt"))
+                    Directory.CreateDirectory("/mnt");
+
+                string baseMountPoint = "/mnt/volume" + partitionIndex;
+                mountPoint = FindFreeMountPoint(baseMountPoint);
+                if (string.IsNullOrEmpty(mountPoint))
+                {
+                    error = "No free mount point under /mnt";
+                    return false;
+                }
+
+                VfsManager.VfsMount mount;
+                if (!VfsManager.TryMount("fat", partitionIndex.ToString(), MountFlags.None, mountPoint, out mount))
                 {
                     mountPoint = null;
-                    error = "Mount failed";
+                    error = "Mount failed: volume must contain a Cosmos FAT12/16/32 filesystem";
                     return false;
                 }
 
+                mountPoint = mount.MountPoint;
                 mountedPartitions[partitionIndex] = mountPoint;
                 return true;
             }
             catch (Exception ex)
             {
                 mountPoint = null;
-                error = ex.Message;
+                error = "Mount exception: " + ex.Message;
                 return false;
             }
         }
@@ -83,13 +113,16 @@ namespace ZonderqOS.GUI
                     return false;
                 }
 
-                string mountPoint;
-                if (!mountedPartitions.TryGetValue(partitionIndex, out mountPoint))
+                string mountPoint = GetMountPoint(partitionIndex);
+                if (string.IsNullOrEmpty(mountPoint))
+                {
+                    mountedPartitions.Remove(partitionIndex);
                     return true;
+                }
 
                 if (!VfsManager.TryUnmount(mountPoint))
                 {
-                    error = "Unmount failed";
+                    error = "Unmount failed: volume may still be in use";
                     return false;
                 }
 
@@ -98,9 +131,81 @@ namespace ZonderqOS.GUI
             }
             catch (Exception ex)
             {
-                error = ex.Message;
+                error = "Unmount exception: " + ex.Message;
                 return false;
             }
+        }
+
+        private static string FindMountPointInVfs(int partitionIndex)
+        {
+            string source = partitionIndex.ToString();
+
+            try
+            {
+                foreach (VfsManager.VfsMount mount in VfsManager.Mounts)
+                {
+                    if (mount.Source == source)
+                        return mount.MountPoint;
+                }
+            }
+            catch
+            {
+                // Keep the GUI usable even if mount-table inspection fails.
+            }
+
+            return null;
+        }
+
+        private static string FindFreeMountPoint(string baseMountPoint)
+        {
+            for (int suffix = 0; suffix < 32; suffix++)
+            {
+                string candidate = suffix == 0 ? baseMountPoint : baseMountPoint + "_" + (suffix + 1);
+
+                if (IsMountPointInUse(candidate))
+                    continue;
+
+                if (File.Exists(candidate))
+                    continue;
+
+                if (!Directory.Exists(candidate))
+                    return candidate;
+
+                // Older GUI builds created the mount directory before TryMount. Remove only
+                // an empty stale directory; never delete user data to make room for a mount.
+                try
+                {
+                    string[] files = Directory.GetFiles(candidate);
+                    string[] directories = Directory.GetDirectories(candidate);
+                    if (files.Length == 0 && directories.Length == 0)
+                    {
+                        Directory.Delete(candidate);
+                        return candidate;
+                    }
+                }
+                catch
+                {
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsMountPointInUse(string mountPoint)
+        {
+            try
+            {
+                foreach (VfsManager.VfsMount mount in VfsManager.Mounts)
+                {
+                    if (mount.MountPoint == mountPoint)
+                        return true;
+                }
+            }
+            catch
+            {
+            }
+
+            return false;
         }
     }
 }
