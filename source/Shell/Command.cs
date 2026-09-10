@@ -1,12 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using ZonderqOS.Commands;
 
 namespace ZonderqOS
 {
     public static class Command
     {
-        private static List<ICommand> _commands = new List<ICommand>();
+        private static readonly List<ICommand> _commands = new List<ICommand>();
 
         public static void Initialize()
         {
@@ -61,25 +62,26 @@ namespace ZonderqOS
 
         public static void Run(string fullInput, ref string currentPath)
         {
-            if (string.IsNullOrWhiteSpace(fullInput)) return;
+            if (string.IsNullOrWhiteSpace(fullInput))
+                return;
+
             fullInput = EnvironmentExpander.Expand(fullInput, currentPath);
+            List<string> semiCommands = SplitOutsideQuotes(fullInput, ";");
 
-            string[] semiCommands = fullInput.Split(';', StringSplitOptions.RemoveEmptyEntries);
-
-            foreach (string semiCmd in semiCommands)
+            for (int i = 0; i < semiCommands.Count; i++)
             {
-                string block = semiCmd.Trim();
-                if (string.IsNullOrEmpty(block)) continue;
+                string block = semiCommands[i].Trim();
+                if (string.IsNullOrEmpty(block))
+                    continue;
 
-                string[] andCommands = block.Split(new string[] { "&&" }, StringSplitOptions.RemoveEmptyEntries);
-
-                foreach (string andCmd in andCommands)
+                List<string> andCommands = SplitOutsideQuotes(block, "&&");
+                for (int j = 0; j < andCommands.Count; j++)
                 {
-                    string pipelineCmd = andCmd.Trim();
-                    if (string.IsNullOrEmpty(pipelineCmd)) continue;
+                    string pipelineCmd = andCommands[j].Trim();
+                    if (string.IsNullOrEmpty(pipelineCmd))
+                        continue;
 
                     ExecutePipeline(pipelineCmd, ref currentPath);
-
                     if (!CommandIO.LastCommandSuccess)
                         break;
                 }
@@ -88,18 +90,19 @@ namespace ZonderqOS
 
         private static void ExecutePipeline(string pipelineStr, ref string currentPath)
         {
-            string[] pipeParts = pipelineStr.Split('|');
+            List<string> pipeParts = SplitOutsideQuotes(pipelineStr, "|");
             string pipedInput = null;
 
             try
             {
-                for (int i = 0; i < pipeParts.Length; i++)
+                for (int i = 0; i < pipeParts.Count; i++)
                 {
                     string singleCmdStr = pipeParts[i].Trim();
-                    if (string.IsNullOrEmpty(singleCmdStr)) continue;
+                    if (string.IsNullOrEmpty(singleCmdStr))
+                        continue;
 
                     CommandIO.SetInput(pipedInput);
-                    bool isIntermediate = i < pipeParts.Length - 1;
+                    bool isIntermediate = i < pipeParts.Count - 1;
 
                     if (isIntermediate)
                     {
@@ -132,56 +135,31 @@ namespace ZonderqOS
         {
             string redirectPath = null;
             bool appendMode = false;
-
-            int appendIndex = -1;
-            int singleIndex = -1;
-            bool inQuotes = false;
-
-            for (int i = 0; i < commandLine.Length; i++)
-            {
-                char c = commandLine[i];
-                if (c == '"')
-                {
-                    inQuotes = !inQuotes;
-                }
-                else if (!inQuotes)
-                {
-                    if (i < commandLine.Length - 1 && commandLine[i] == '>' && commandLine[i + 1] == '>')
-                    {
-                        appendIndex = i;
-                        break;
-                    }
-                    else if (c == '>')
-                    {
-                        singleIndex = i;
-                        break;
-                    }
-                }
-            }
-
+            int redirectIndex = FindRedirection(commandLine, out appendMode);
             string commandPart = commandLine;
-            bool hasRedirection = appendIndex != -1 || singleIndex != -1;
 
-            if (appendIndex != -1)
+            if (redirectIndex >= 0)
             {
-                appendMode = true;
-                commandPart = commandLine.Substring(0, appendIndex);
-                redirectPath = commandLine.Substring(appendIndex + 2).Trim();
-            }
-            else if (singleIndex != -1)
-            {
-                commandPart = commandLine.Substring(0, singleIndex);
-                redirectPath = commandLine.Substring(singleIndex + 1).Trim();
+                commandPart = commandLine.Substring(0, redirectIndex);
+                redirectPath = commandLine.Substring(redirectIndex + (appendMode ? 2 : 1)).Trim();
+
+                if (string.IsNullOrEmpty(redirectPath))
+                {
+                    WriteMessage.WriteError("Missing redirection target path.", "CMD");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                redirectPath = UnquotePath(redirectPath);
+                if (string.IsNullOrEmpty(redirectPath))
+                {
+                    WriteMessage.WriteError("Invalid redirection target path.", "CMD");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
             }
 
-            if (hasRedirection && string.IsNullOrEmpty(redirectPath))
-            {
-                WriteMessage.WriteError("Missing redirection target path.", "CMD");
-                CommandIO.LastCommandSuccess = false;
-                return;
-            }
-
-            string[] words = commandPart.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            string[] words = Tokenize(commandPart);
             if (words.Length == 0)
             {
                 CommandIO.LastCommandSuccess = false;
@@ -189,13 +167,13 @@ namespace ZonderqOS
             }
 
             string cmdName = words[0].ToLower();
-
             ICommand targetCmd = null;
-            foreach (var cmd in _commands)
+
+            for (int i = 0; i < _commands.Count; i++)
             {
-                if (cmd.Name == cmdName)
+                if (_commands[i].Name == cmdName)
                 {
-                    targetCmd = cmd;
+                    targetCmd = _commands[i];
                     break;
                 }
             }
@@ -239,6 +217,202 @@ namespace ZonderqOS
                 WriteMessage.WriteError($"Command '{cmdName}' execution failed: {ex.Message}", "CMD");
                 CommandIO.LastCommandSuccess = false;
             }
+        }
+
+        private static int FindRedirection(string value, out bool appendMode)
+        {
+            appendMode = false;
+            bool inDoubleQuotes = false;
+            bool inSingleQuotes = false;
+            bool escaped = false;
+
+            for (int i = 0; i < value.Length; i++)
+            {
+                char c = value[i];
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+
+                if (c == '\\')
+                {
+                    escaped = true;
+                    continue;
+                }
+
+                if (c == '"' && !inSingleQuotes)
+                {
+                    inDoubleQuotes = !inDoubleQuotes;
+                    continue;
+                }
+
+                if (c == '\'' && !inDoubleQuotes)
+                {
+                    inSingleQuotes = !inSingleQuotes;
+                    continue;
+                }
+
+                if (!inDoubleQuotes && !inSingleQuotes && c == '>')
+                {
+                    appendMode = i + 1 < value.Length && value[i + 1] == '>';
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private static List<string> SplitOutsideQuotes(string input, string separator)
+        {
+            var result = new List<string>();
+            if (string.IsNullOrEmpty(input))
+                return result;
+
+            var current = new StringBuilder();
+            bool inDoubleQuotes = false;
+            bool inSingleQuotes = false;
+            bool escaped = false;
+
+            for (int i = 0; i < input.Length; i++)
+            {
+                char c = input[i];
+
+                if (escaped)
+                {
+                    current.Append(c);
+                    escaped = false;
+                    continue;
+                }
+
+                if (c == '\\')
+                {
+                    current.Append(c);
+                    escaped = true;
+                    continue;
+                }
+
+                if (c == '"' && !inSingleQuotes)
+                {
+                    inDoubleQuotes = !inDoubleQuotes;
+                    current.Append(c);
+                    continue;
+                }
+
+                if (c == '\'' && !inDoubleQuotes)
+                {
+                    inSingleQuotes = !inSingleQuotes;
+                    current.Append(c);
+                    continue;
+                }
+
+                if (!inDoubleQuotes && !inSingleQuotes && MatchesAt(input, separator, i))
+                {
+                    result.Add(current.ToString());
+                    current.Clear();
+                    i += separator.Length - 1;
+                    continue;
+                }
+
+                current.Append(c);
+            }
+
+            result.Add(current.ToString());
+            return result;
+        }
+
+        private static bool MatchesAt(string value, string separator, int index)
+        {
+            if (index + separator.Length > value.Length)
+                return false;
+
+            for (int i = 0; i < separator.Length; i++)
+            {
+                if (value[index + i] != separator[i])
+                    return false;
+            }
+
+            return true;
+        }
+
+        private static string[] Tokenize(string commandPart)
+        {
+            var tokens = new List<string>();
+            var current = new StringBuilder();
+            bool inDoubleQuotes = false;
+            bool inSingleQuotes = false;
+            bool escaped = false;
+            bool tokenStarted = false;
+
+            for (int i = 0; i < commandPart.Length; i++)
+            {
+                char c = commandPart[i];
+
+                if (escaped)
+                {
+                    current.Append(c);
+                    tokenStarted = true;
+                    escaped = false;
+                    continue;
+                }
+
+                if (c == '\\')
+                {
+                    escaped = true;
+                    tokenStarted = true;
+                    continue;
+                }
+
+                if (c == '"' && !inSingleQuotes)
+                {
+                    inDoubleQuotes = !inDoubleQuotes;
+                    tokenStarted = true;
+                    continue;
+                }
+
+                if (c == '\'' && !inDoubleQuotes)
+                {
+                    inSingleQuotes = !inSingleQuotes;
+                    tokenStarted = true;
+                    continue;
+                }
+
+                if (!inDoubleQuotes && !inSingleQuotes && char.IsWhiteSpace(c))
+                {
+                    if (tokenStarted)
+                    {
+                        tokens.Add(current.ToString());
+                        current.Clear();
+                        tokenStarted = false;
+                    }
+                    continue;
+                }
+
+                current.Append(c);
+                tokenStarted = true;
+            }
+
+            if (escaped)
+                current.Append('\\');
+
+            if (tokenStarted)
+                tokens.Add(current.ToString());
+
+            return tokens.ToArray();
+        }
+
+        private static string UnquotePath(string value)
+        {
+            string path = value.Trim();
+            if (path.Length >= 2)
+            {
+                char first = path[0];
+                char last = path[path.Length - 1];
+                if ((first == '"' && last == '"') || (first == '\'' && last == '\''))
+                    path = path.Substring(1, path.Length - 2);
+            }
+
+            return path.Replace("\\\"", "\"").Replace("\\'", "'");
         }
     }
 }
