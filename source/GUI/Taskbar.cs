@@ -15,9 +15,11 @@ namespace ZonderqOS.GUI
 
         private readonly ApplicationManager applicationManager;
         private int hoveredAppIndex = -1;
-        private int cachedMinute = -1;
+        private int cachedClockKey = -1;
         private int cachedDay = -1;
         private int cachedVolumeCount = -1;
+        private int cachedTimeZone = int.MinValue;
+        private bool cachedSecondsMode;
         private string cachedTime = "--:--";
         private string cachedDate = "--.--";
         private string cachedVolumeLabel = "VOL 0";
@@ -54,7 +56,8 @@ namespace ZonderqOS.GUI
             if (name.IndexOf("file", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 name.IndexOf("manager", StringComparison.OrdinalIgnoreCase) >= 0)
                 return IconType.Folder;
-            if (name.IndexOf("setting", StringComparison.OrdinalIgnoreCase) >= 0)
+            if (name.IndexOf("setting", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("ustaw", StringComparison.OrdinalIgnoreCase) >= 0)
                 return IconType.Settings;
             if (name.IndexOf("about", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 name.IndexOf("diagnostic", StringComparison.OrdinalIgnoreCase) >= 0)
@@ -128,12 +131,27 @@ namespace ZonderqOS.GUI
 
         private void UpdateTrayCache()
         {
-            DateTime currentTime = DateTime.UtcNow.AddHours(2);
-            int minute = currentTime.Hour * 60 + currentTime.Minute;
-            if (minute != cachedMinute)
+            int timeZone = global::ZonderqOS.SystemSettings.TimeZoneOffsetHours;
+            bool showSeconds = global::ZonderqOS.SystemSettings.ShowClockSeconds;
+            if (timeZone != cachedTimeZone || showSeconds != cachedSecondsMode)
             {
-                cachedMinute = minute;
-                cachedTime = currentTime.ToString("HH:mm");
+                cachedTimeZone = timeZone;
+                cachedSecondsMode = showSeconds;
+                cachedClockKey = -1;
+                cachedDay = -1;
+            }
+
+            DateTime currentTime = DateTime.UtcNow.AddHours(timeZone);
+            int clockKey = showSeconds
+                ? currentTime.Hour * 3600 + currentTime.Minute * 60 + currentTime.Second
+                : currentTime.Hour * 60 + currentTime.Minute;
+
+            if (clockKey != cachedClockKey)
+            {
+                cachedClockKey = clockKey;
+                cachedTime = showSeconds
+                    ? currentTime.ToString("HH:mm:ss")
+                    : currentTime.ToString("HH:mm");
             }
 
             if (currentTime.DayOfYear != cachedDay)
@@ -164,18 +182,29 @@ namespace ZonderqOS.GUI
             int trayX = Width - TrayWidth;
             canvas.DrawLine(Color.FromArgb(48, 59, 70), trayX, Y + 7, trayX, Y + Height - 7);
 
-            bool networkReady = global::ZonderqOS.Network.IsReady;
-            DrawTrayTile(canvas, trayX + 9, 58, IconType.Settings, "NET", networkReady);
-            DrawTrayTile(canvas, trayX + 73, 72, IconType.FileManager, cachedVolumeLabel, cachedVolumeCount > 0);
+            if (global::ZonderqOS.SystemSettings.ShowTrayStatus)
+            {
+                bool networkReady = global::ZonderqOS.Network.IsReady;
+                DrawTrayTile(canvas, trayX + 9, 58, IconType.Settings, "NET", networkReady);
+                DrawTrayTile(canvas, trayX + 73, 72, IconType.FileManager, cachedVolumeLabel, cachedVolumeCount > 0);
+            }
 
             int clockX = Width - 78;
             canvas.DrawLine(Color.FromArgb(48, 59, 70), clockX - 10, Y + 7,
                 clockX - 10, Y + Height - 7);
 
-            SmallTextRenderer.DrawCentered(canvas, cachedTime, clockX, Y + 12, 68,
-                Color.FromArgb(232, 237, 242));
-            SmallTextRenderer.DrawCentered(canvas, cachedDate, clockX, Y + 27, 68,
-                Color.FromArgb(132, 148, 162));
+            if (global::ZonderqOS.SystemSettings.ShowTaskbarDate)
+            {
+                SmallTextRenderer.DrawCentered(canvas, cachedTime, clockX, Y + 12, 68,
+                    Color.FromArgb(232, 237, 242));
+                SmallTextRenderer.DrawCentered(canvas, cachedDate, clockX, Y + 27, 68,
+                    Color.FromArgb(132, 148, 162));
+            }
+            else
+            {
+                SmallTextRenderer.DrawCentered(canvas, cachedTime, clockX, Y + 19, 68,
+                    Color.FromArgb(232, 237, 242));
+            }
         }
 
         private void DrawTrayTile(Canvas canvas, int x, int width, IconType icon, string label, bool ready)
