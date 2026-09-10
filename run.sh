@@ -9,7 +9,7 @@ qemu-system-x86_64 \
 -L "/home/zonderq/.cosmos/tools/share/qemu" \
 -M q35 \
 -cpu max \
--m 512M \
+-m 2G \
 -drive file="/mnt/CosmosKernel/ZonderqOS/output-x64/ZonderqOS.iso",if=none,id=cosmoscd,format=raw,readonly=on \
 -device ide-cd,drive=cosmoscd,bootindex=0 \
 -boot d \
