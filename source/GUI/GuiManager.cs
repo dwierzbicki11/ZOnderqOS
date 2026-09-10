@@ -17,6 +17,7 @@ namespace ZonderqOS.GUI
         private Canvas wallpaperCanvas;
         private Taskbar taskbar;
         private StartMenu startMenu;
+        private DesktopContextMenu desktopContextMenu;
         private ApplicationManager applicationManager;
         private DesktopShortcut[] desktopShortcuts;
         private bool isRunning = true;
@@ -45,6 +46,11 @@ namespace ZonderqOS.GUI
                 applicationManager = new ApplicationManager();
                 LoadWallpaper((int)canvas.Width, desktopHeight);
                 InitializeDesktopShortcuts();
+                desktopContextMenu = new DesktopContextMenu(
+                    () => LaunchTerminal(145, 96),
+                    () => LaunchFileManager(120, 78),
+                    RefreshDesktop,
+                    () => LaunchDiagnostics(170, 120));
 
                 int menuWidth = 340;
                 int menuHeight = 430;
@@ -55,7 +61,7 @@ namespace ZonderqOS.GUI
                 startMenu.AddItem("Diagnostyka", IconType.Settings, () => LaunchDiagnostics(150, 120));
                 startMenu.AddItem("O Systemie", IconType.About, () => LaunchAbout(180, 140));
                 startMenu.AddItem("Pomoc", IconType.About, () => LaunchAbout(210, 160));
-                startMenu.AddItem("Odśwież pulpit", IconType.Refresh, () => selectedShortcut = -1);
+                startMenu.AddItem("Odśwież pulpit", IconType.Refresh, RefreshDesktop);
                 startMenu.AddItem("Sesja GUI", IconType.Start, () => { });
                 startMenu.AddItem("Informacje systemowe", IconType.Settings, () => LaunchDiagnostics(200, 130));
                 startMenu.AddItem("Wyjdź z GUI", IconType.Close, () => isRunning = false);
@@ -63,6 +69,8 @@ namespace ZonderqOS.GUI
                 taskbar = new Taskbar((int)canvas.Width, (int)canvas.Height, TaskbarHeight, () =>
                 {
                     startMenu.Visible = !startMenu.Visible;
+                    if (desktopContextMenu != null)
+                        desktopContextMenu.Visible = false;
                     selectedShortcut = -1;
                 }, applicationManager);
 
@@ -83,6 +91,12 @@ namespace ZonderqOS.GUI
                             continue;
                         }
 
+                        if (key.Key == ConsoleKeyEx.Escape && desktopContextMenu != null && desktopContextMenu.Visible)
+                        {
+                            desktopContextMenu.Visible = false;
+                            continue;
+                        }
+
                         applicationManager.HandleKeyboard(key);
                     }
 
@@ -95,7 +109,8 @@ namespace ZonderqOS.GUI
                         currentRightButtonState, previousRightButtonState);
                     startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                     taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
-                    UpdateDesktopInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
+                    UpdateDesktopInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
+                        currentRightButtonState, previousRightButtonState);
 
                     previousLeftButtonState = currentLeftButtonState;
                     previousRightButtonState = currentRightButtonState;
@@ -106,6 +121,7 @@ namespace ZonderqOS.GUI
                     applicationManager.Render(canvas);
                     taskbar.Render(canvas);
                     startMenu.Render(canvas);
+                    desktopContextMenu?.Render(canvas);
                     Cursor.Draw(canvas, mouseX, mouseY);
                     canvas.Display();
                     Thread.Sleep(15);
@@ -131,6 +147,16 @@ namespace ZonderqOS.GUI
             };
         }
 
+        private void RefreshDesktop()
+        {
+            selectedShortcut = -1;
+            lastShortcutClick = -1;
+            lastShortcutClickFrame = -1000;
+
+            if (desktopContextMenu != null)
+                desktopContextMenu.Visible = false;
+        }
+
         private void LaunchTerminal(int x, int y)
         {
             var terminal = new TerminalApp(x, y, null);
@@ -154,10 +180,17 @@ namespace ZonderqOS.GUI
             applicationManager.Launch(new AboutApp(x, y, null));
         }
 
-        private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked)
+        private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
+            bool rightClicked, bool wasRightClicked)
         {
             if (desktopShortcuts == null)
                 return;
+
+            if (desktopContextMenu != null && desktopContextMenu.Visible)
+            {
+                if (desktopContextMenu.UpdateInteractions(mouseX, mouseY, isClicked, wasClicked))
+                    return;
+            }
 
             bool desktopAvailable = mouseY >= 0 && mouseY < (int)canvas.Height - TaskbarHeight &&
                                     !IsPointOverWindow(mouseX, mouseY) && !startMenu.Visible;
@@ -167,6 +200,18 @@ namespace ZonderqOS.GUI
                 DesktopShortcut shortcut = desktopShortcuts[i];
                 shortcut.IsHovered = desktopAvailable && shortcut.Contains(mouseX, mouseY);
                 shortcut.IsSelected = selectedShortcut == i;
+            }
+
+            if (rightClicked && !wasRightClicked)
+            {
+                if (desktopAvailable && desktopContextMenu != null)
+                {
+                    selectedShortcut = -1;
+                    lastShortcutClick = -1;
+                    desktopContextMenu.ShowAt(mouseX, mouseY, (int)canvas.Width,
+                        (int)canvas.Height - TaskbarHeight);
+                }
+                return;
             }
 
             if (!isClicked || wasClicked)
