@@ -74,6 +74,7 @@ namespace ZonderqOS.GUI
                 startMenu.AddPinned("Zdjecia", IconType.ImageViewer, () => LaunchImageViewer(155, 92, null));
 
                 startMenu.AddTool("Kalkulator", IconType.Calculator, () => LaunchCalculator(185, 96));
+                startMenu.AddTool("Kalendarz", IconType.Calendar, () => LaunchCalendar(170, 88));
                 startMenu.AddTool("Diagnostyka", IconType.About, () => LaunchDiagnostics(150, 120));
                 startMenu.AddTool("O Systemie", IconType.About, () => LaunchAbout(210, 160));
                 startMenu.AddTool("Dyski", IconType.DiskManager, () => LaunchDiskManager(135, 78));
@@ -202,7 +203,8 @@ namespace ZonderqOS.GUI
                 new DesktopShortcut(20, 492, "Kalkulator", IconType.Calculator, () => LaunchCalculator(185, 96)),
                 new DesktopShortcut(20, 586, "Siec", IconType.Network, () => LaunchNetworkCenter(150, 84)),
                 new DesktopShortcut(20, 680, "Dyski", IconType.DiskManager, () => LaunchDiskManager(135, 78)),
-                new DesktopShortcut(20, 774, "About", IconType.About, () => LaunchAbout(180, 138))
+                new DesktopShortcut(20, 774, "About", IconType.About, () => LaunchAbout(180, 138)),
+                new DesktopShortcut(120, 22, "Kalendarz", IconType.Calendar, () => LaunchCalendar(170, 88))
             };
         }
 
@@ -256,6 +258,11 @@ namespace ZonderqOS.GUI
         private void LaunchCalculator(int x, int y)
         {
             applicationManager.Launch(new CalculatorApp(x, y, null));
+        }
+
+        private void LaunchCalendar(int x, int y)
+        {
+            applicationManager.Launch(new CalendarApp(x, y, null));
         }
 
         private void LaunchNetworkCenter(int x, int y)
