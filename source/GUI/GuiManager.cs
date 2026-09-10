@@ -73,6 +73,7 @@ namespace ZonderqOS.GUI
                 startMenu.AddPinned("Ustawienia", IconType.Settings, () => LaunchSettings(125, 82));
                 startMenu.AddPinned("Zdjecia", IconType.ImageViewer, () => LaunchImageViewer(155, 92, null));
 
+                startMenu.AddTool("Kalkulator", IconType.Calculator, () => LaunchCalculator(185, 96));
                 startMenu.AddTool("Diagnostyka", IconType.About, () => LaunchDiagnostics(150, 120));
                 startMenu.AddTool("O Systemie", IconType.About, () => LaunchAbout(210, 160));
                 startMenu.AddTool("Odswiez pulpit", IconType.Refresh, RefreshDesktop);
@@ -198,7 +199,8 @@ namespace ZonderqOS.GUI
                 new DesktopShortcut(20, 210, "Notatnik", IconType.File, () => LaunchNotepad(150, 105, null)),
                 new DesktopShortcut(20, 304, "Ustawienia", IconType.Settings, () => LaunchSettings(130, 82)),
                 new DesktopShortcut(20, 398, "Zdjecia", IconType.ImageViewer, () => LaunchImageViewer(155, 92, null)),
-                new DesktopShortcut(20, 492, "About", IconType.About, () => LaunchAbout(180, 138))
+                new DesktopShortcut(20, 492, "Kalkulator", IconType.Calculator, () => LaunchCalculator(185, 96)),
+                new DesktopShortcut(20, 586, "About", IconType.About, () => LaunchAbout(180, 138))
             };
         }
 
@@ -247,6 +249,11 @@ namespace ZonderqOS.GUI
         private void LaunchImageViewer(int x, int y, string path)
         {
             applicationManager.Launch(new ImageViewerApp(x, y, path, null));
+        }
+
+        private void LaunchCalculator(int x, int y)
+        {
+            applicationManager.Launch(new CalculatorApp(x, y, null));
         }
 
         private void LaunchNotepad(int x, int y, string path)
