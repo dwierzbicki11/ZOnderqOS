@@ -76,7 +76,7 @@ namespace ZonderqOS.GUI
                 startMenu.AddTool("Kalkulator", IconType.Calculator, () => LaunchCalculator(185, 96));
                 startMenu.AddTool("Kalendarz", IconType.Calendar, () => LaunchCalendar(170, 88));
                 startMenu.AddTool("Diagnostyka", IconType.About, () => LaunchDiagnostics(150, 120));
-                startMenu.AddTool("O Systemie", IconType.About, () => LaunchAbout(210, 160));
+                startMenu.AddTool("App Center", IconType.AppCenter, () => LaunchAppCenter(145, 76));
                 startMenu.AddTool("Dyski", IconType.DiskManager, () => LaunchDiskManager(135, 78));
                 startMenu.AddTool("Siec", IconType.Network, () => LaunchNetworkCenter(150, 84));
 
@@ -204,7 +204,8 @@ namespace ZonderqOS.GUI
                 new DesktopShortcut(20, 586, "Siec", IconType.Network, () => LaunchNetworkCenter(150, 84)),
                 new DesktopShortcut(20, 680, "Dyski", IconType.DiskManager, () => LaunchDiskManager(135, 78)),
                 new DesktopShortcut(20, 774, "About", IconType.About, () => LaunchAbout(180, 138)),
-                new DesktopShortcut(120, 22, "Kalendarz", IconType.Calendar, () => LaunchCalendar(170, 88))
+                new DesktopShortcut(120, 22, "Kalendarz", IconType.Calendar, () => LaunchCalendar(170, 88)),
+                new DesktopShortcut(120, 116, "App Center", IconType.AppCenter, () => LaunchAppCenter(145, 76))
             };
         }
 
@@ -263,6 +264,27 @@ namespace ZonderqOS.GUI
         private void LaunchCalendar(int x, int y)
         {
             applicationManager.Launch(new CalendarApp(x, y, null));
+        }
+
+        private void LaunchAppCenter(int x, int y)
+        {
+            Action[] launchers =
+            {
+                () => LaunchTerminal(145, 96),
+                () => LaunchFileManager(120, 78),
+                () => LaunchNotepad(150, 105, null),
+                () => LaunchImageViewer(155, 92, null),
+                () => LaunchCalculator(185, 96),
+                () => LaunchCalendar(170, 88),
+                () => LaunchNetworkCenter(150, 84),
+                () => LaunchDiskManager(135, 78),
+                () => LaunchTaskManager(165, 110),
+                () => LaunchSettings(125, 82),
+                () => LaunchDiagnostics(150, 120),
+                () => LaunchAbout(210, 160)
+            };
+
+            applicationManager.Launch(new AppCenterApp(x, y, launchers, null));
         }
 
         private void LaunchNetworkCenter(int x, int y)
