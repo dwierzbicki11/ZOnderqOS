@@ -34,18 +34,14 @@ namespace ZonderqOS
                 {
                     var dev = NetworkManager.GetDevice(i);
                     if (dev != null)
-                    {
                         Devices.Add(dev);
-                    }
                 }
 
                 if (Devices.Count == 0)
                 {
                     var primary = NetworkManager.PrimaryDevice;
                     if (primary != null)
-                    {
                         Devices.Add(primary);
-                    }
                 }
 
                 if (Devices.Count == 0)
@@ -56,14 +52,18 @@ namespace ZonderqOS
 
                 ActiveDevice = Devices[0];
                 if (!ActiveDevice.Ready)
-                {
                     ActiveDevice.Initialize();
+
+                SystemSettings.Load();
+                bool configured = ApplySavedConfiguration();
+                if (!configured && !SystemSettings.NetworkUseDhcp)
+                {
+                    WriteMessage.WriteError("Statyczna konfiguracja IPv4 nie powiodła się. Próba DHCP...", "NET");
+                    configured = ConfigureDhcp();
                 }
 
-                if (!ConfigureDhcp())
-                {
+                if (!configured)
                     return;
-                }
 
                 IsReady = true;
                 WriteMessage.WriteOK(
@@ -87,17 +87,26 @@ namespace ZonderqOS
 
             ActiveDevice = Devices[index];
             if (!ActiveDevice.Ready)
-            {
                 ActiveDevice.Initialize();
-            }
 
-            bool configured = ConfigureDhcp();
+            bool configured = ApplySavedConfiguration();
             IsReady = configured;
             if (configured)
-            {
                 WriteMessage.WriteOK($"Przełączono aktywny interfejs na: {ActiveDevice.Name}", "NET");
-            }
             return configured;
+        }
+
+        public static bool ApplySavedConfiguration()
+        {
+            SystemSettings.Load();
+            if (SystemSettings.NetworkUseDhcp)
+                return ConfigureDhcp();
+
+            return ConfigureStatic(
+                SystemSettings.StaticIpAddress,
+                SystemSettings.StaticSubnetMask,
+                SystemSettings.StaticGateway,
+                SystemSettings.DnsServer);
         }
 
         public static bool ConfigureDhcp()
@@ -110,11 +119,14 @@ namespace ZonderqOS
                     return false;
                 }
 
+                // A renew must not leave stale static/DHCP entries in the global maps.
+                NetworkStack.RemoveAllConfigIP();
                 WriteMessage.WriteInfo($"Wysyłanie pakietu DHCP DISCOVER na karcie {ActiveDevice.Name}...", "NET");
                 using (var dhcpClient = new DHCPClient())
                 {
                     if (dhcpClient.SendDiscoverPacket() == -1)
                     {
+                        IsReady = false;
                         WriteMessage.WriteError("Przekroczono czas oczekiwania na DHCP (Timeout)", "NET");
                         return false;
                     }
@@ -123,10 +135,12 @@ namespace ZonderqOS
                 IPConfig config = NetworkConfigManager.Get(ActiveDevice);
                 if (config == null)
                 {
+                    IsReady = false;
                     WriteMessage.WriteError("DHCP zakończył się bez poprawnej konfiguracji IPv4.", "NET");
                     return false;
                 }
 
+                IsReady = true;
                 WriteMessage.WriteOK("DHCP skonfigurowane pomyślnie!", "NET");
                 WriteMessage.WriteInfo($"  Karta:   {ActiveDevice.Name}", "NET");
                 WriteMessage.WriteInfo($"  IP:      {config.IPAddress}", "NET");
@@ -136,7 +150,59 @@ namespace ZonderqOS
             }
             catch (Exception ex)
             {
+                IsReady = false;
                 WriteMessage.WriteError($"Błąd DHCP: {ex.Message}", "NET");
+                return false;
+            }
+        }
+
+        public static bool ConfigureStatic(string ip, string subnet, string gateway, string dns)
+        {
+            try
+            {
+                if (ActiveDevice == null)
+                {
+                    WriteMessage.WriteError("Brak aktywnego interfejsu sieciowego.", "NET");
+                    return false;
+                }
+
+                Address ipAddress = Address.Parse(ip);
+                Address subnetAddress = Address.Parse(subnet);
+                Address gatewayAddress = Address.Parse(gateway);
+                Address dnsAddress = Address.Parse(dns);
+                if (ipAddress == null || subnetAddress == null || gatewayAddress == null || dnsAddress == null)
+                {
+                    WriteMessage.WriteError("Nieprawidłowy adres w konfiguracji statycznej IPv4.", "NET");
+                    return false;
+                }
+
+                if (!ActiveDevice.Ready)
+                    ActiveDevice.Initialize();
+
+                NetworkStack.RemoveAllConfigIP();
+                bool enabled = IPConfig.Enable(ActiveDevice, ipAddress, subnetAddress, gatewayAddress);
+                if (!enabled)
+                {
+                    IsReady = false;
+                    return false;
+                }
+
+                DNSConfig.DNSNameservers.Clear();
+                DNSConfig.Add(dnsAddress);
+                dnsConfigured = true;
+                IsReady = true;
+
+                WriteMessage.WriteOK("Statyczne IPv4 skonfigurowane pomyślnie.", "NET");
+                WriteMessage.WriteInfo($"  IP:      {ipAddress}", "NET");
+                WriteMessage.WriteInfo($"  Subnet:  {subnetAddress}", "NET");
+                WriteMessage.WriteInfo($"  Gateway: {gatewayAddress}", "NET");
+                WriteMessage.WriteInfo($"  DNS:     {dnsAddress}", "NET");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                IsReady = false;
+                WriteMessage.WriteError($"Błąd statycznej konfiguracji IPv4: {ex.Message}", "NET");
                 return false;
             }
         }
@@ -163,12 +229,17 @@ namespace ZonderqOS
             {
                 if (!dnsConfigured)
                 {
-                    DNSConfig.Add(new Address(1, 1, 1, 1));
+                    if (DNSConfig.DNSNameservers.Count == 0)
+                        DNSConfig.Add(new Address(1, 1, 1, 1));
                     dnsConfigured = true;
                 }
 
+                Address dnsServer = DNSConfig.DNSNameservers.Count > 0
+                    ? DNSConfig.DNSNameservers[0]
+                    : new Address(1, 1, 1, 1);
+
                 using var dnsClient = new DnsClient();
-                dnsClient.Connect(new Address(1, 1, 1, 1));
+                dnsClient.Connect(dnsServer);
                 dnsClient.SendAsk(domain);
                 Address resolvedAddress = dnsClient.Receive(5000);
                 dnsClient.Close();
