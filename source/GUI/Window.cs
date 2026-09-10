@@ -19,6 +19,9 @@ namespace ZonderqOS.GUI
         private int restoreHeight;
         private static int desktopWidth;
         private static int desktopHeight;
+        private bool dragging;
+        private int dragOffsetX;
+        private int dragOffsetY;
 
         private const int TitleBarHeight = 32;
         private const int ButtonSize = 24;
@@ -42,24 +45,38 @@ namespace ZonderqOS.GUI
             Children.Add(widget);
         }
 
+        private void MoveTo(int newX, int newY)
+        {
+            int dx = newX - X;
+            int dy = newY - Y;
+            if (dx == 0 && dy == 0) return;
+
+            X = newX;
+            Y = newY;
+            for (int i = 0; i < Children.Count; i++)
+            {
+                Children[i].X += dx;
+                Children[i].Y += dy;
+            }
+        }
+
         public void ToggleMaximize()
         {
+            dragging = false;
             if (!IsMaximized)
             {
                 restoreX = X;
                 restoreY = Y;
                 restoreWidth = Width;
                 restoreHeight = Height;
-                X = 0;
-                Y = 0;
+                MoveTo(0, 0);
                 Width = desktopWidth;
                 Height = desktopHeight;
                 IsMaximized = true;
             }
             else
             {
-                X = restoreX;
-                Y = restoreY;
+                MoveTo(restoreX, restoreY);
                 Width = restoreWidth;
                 Height = restoreHeight;
                 IsMaximized = false;
@@ -68,20 +85,54 @@ namespace ZonderqOS.GUI
 
         public void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
         {
-            if (!Visible || !isClicked || wasClicked) return;
-            if (mouseY < Y || mouseY > Y + TitleBarHeight || mouseX < X || mouseX > X + Width) return;
+            if (!Visible) return;
 
             int closeX = X + Width - ButtonSize - 5;
             int maximizeX = closeX - ButtonGap - ButtonSize;
+            bool inTitle = mouseY >= Y && mouseY < Y + TitleBarHeight && mouseX >= X && mouseX <= X + Width;
 
-            if (mouseX >= maximizeX && mouseX < maximizeX + ButtonSize && mouseY >= Y + 4 && mouseY < Y + 4 + ButtonSize)
+            if (!isClicked)
             {
-                ToggleMaximize();
+                dragging = false;
                 return;
             }
 
-            if (mouseX >= closeX && mouseX < closeX + ButtonSize && mouseY >= Y + 4 && mouseY < Y + 4 + ButtonSize)
-                CloseAction?.Invoke();
+            if (dragging)
+            {
+                if (!IsMaximized)
+                {
+                    int newX = mouseX - dragOffsetX;
+                    int newY = mouseY - dragOffsetY;
+                    int maxX = desktopWidth > Width ? desktopWidth - Width : 0;
+                    int maxY = desktopHeight > Height ? desktopHeight - Height : 0;
+                    newX = System.Math.Max(0, System.Math.Min(newX, maxX));
+                    newY = System.Math.Max(0, System.Math.Min(newY, maxY));
+                    MoveTo(newX, newY);
+                }
+                return;
+            }
+
+            if (!wasClicked && inTitle)
+            {
+                if (mouseX >= maximizeX && mouseX < maximizeX + ButtonSize && mouseY >= Y + 4 && mouseY < Y + 4 + ButtonSize)
+                {
+                    ToggleMaximize();
+                    return;
+                }
+
+                if (mouseX >= closeX && mouseX < closeX + ButtonSize && mouseY >= Y + 4 && mouseY < Y + 4 + ButtonSize)
+                {
+                    CloseAction?.Invoke();
+                    return;
+                }
+
+                if (!IsMaximized && mouseX < maximizeX)
+                {
+                    dragging = true;
+                    dragOffsetX = mouseX - X;
+                    dragOffsetY = mouseY - Y;
+                }
+            }
         }
 
         public override void Render(Canvas canvas)
@@ -106,8 +157,8 @@ namespace ZonderqOS.GUI
             canvas.DrawRectangle(Color.FromArgb(230, 120, 120), closeX, Y + 4, ButtonSize, ButtonSize);
             IconManager.Draw(canvas, IconType.Close, closeX + 3, Y + 7, Color.White);
 
-            foreach (var child in Children)
-                child.Render(canvas);
+            for (int i = 0; i < Children.Count; i++)
+                Children[i].Render(canvas);
         }
     }
 }
