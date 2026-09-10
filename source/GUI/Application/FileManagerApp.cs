@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using Cosmos.Kernel.System.Graphics;
+using Cosmos.Kernel.System.Graphics.Fonts;
 using Cosmos.Kernel.System.Keyboard;
 using ZonderqOS.GUI.Icons;
 
@@ -246,7 +247,6 @@ namespace ZonderqOS.GUI.Apps
                 if (idx == app.SelectedIndex) { canvas.DrawFilledRectangle(Color.FromArgb(220, 232, 247), tx, ty, tw, th); canvas.DrawRectangle(Color.FromArgb(105, 150, 205), tx, ty, tw, th); }
                 IconManager.Draw(canvas, e.IsDirectory ? IconType.Folder : IconType.File, tx + 40, ty + 8, Color.White);
                 string n = e.Name ?? ""; if (n.Length > 11) n = n.Substring(0, 8) + "...";
-                // The label is kept on its own line under the icon, like desktop file managers.
                 int nx = tx + Math.Max(4, (tw - n.Length * 16) / 2); canvas.DrawString(n, font, Color.FromArgb(30, 30, 30), nx, ty + 58);
             }
         }
@@ -254,14 +254,19 @@ namespace ZonderqOS.GUI.Apps
         private void Button(Canvas c, IconType type, int off) { int bx = X + off; c.DrawFilledRectangle(Color.White, bx, Y + 7, 36, 30); c.DrawRectangle(Color.Silver, bx, Y + 7, 36, 30); IconManager.Draw(c, type, bx + 9, Y + 11, Color.Black); }
         private void Menu(Canvas c)
         {
-            int x = X + app.ContextMenuX, y = Y + app.ContextMenuY; c.DrawFilledRectangle(Color.FromArgb(245, 245, 245), x + 3, y + 3, 220, 116); c.DrawFilledRectangle(Color.White, x, y, 220, 116); c.DrawRectangle(Color.DimGray, x, y, 220, 116);
-            string[] a = { "Nowy plik", "Nowy folder", "Odśwież", "Przejdź wyżej" }; for (int i = 0; i < 4; i++) c.DrawString(a[i], font, Color.Black, x + 12, y + 6 + i * 29);
+            int x = X + app.ContextMenuX, y = Y + app.ContextMenuY; c.DrawFilledRectangle(Color.White, x, y, 220, 116); c.DrawRectangle(Color.Gray, x, y, 220, 116);
+            string[] items = { "New file", "New folder", "Refresh", "Go up" };
+            for (int i = 0; i < items.Length; i++) c.DrawString(items[i], font, Color.Black, x + 10, y + 3 + i * 29);
         }
         private void Dialog(Canvas c)
         {
-            int w = 500, h = 150, x = X + (Width - w) / 2, y = Y + (Height - h) / 2; c.DrawFilledRectangle(Color.FromArgb(40, 40, 40), x + 4, y + 4, w, h); c.DrawFilledRectangle(Color.WhiteSmoke, x, y, w, h); c.DrawRectangle(Color.DimGray, x, y, w, h); c.DrawFilledRectangle(Color.FromArgb(35, 55, 75), x, y, w, 32);
-            c.DrawString(app.DialogMode == 1 ? "Utwórz nowy plik" : "Utwórz nowy folder", font, Color.White, x + 12, y + 4); c.DrawString("Nazwa:", font, Color.Black, x + 16, y + 52); c.DrawFilledRectangle(Color.White, x + 100, y + 45, 380, 30); c.DrawRectangle(Color.Silver, x + 100, y + 45, 380, 30);
-            string n = app.DialogName ?? ""; if (n.Length > 22) n = n.Substring(n.Length - 22); c.DrawString(n + "_", font, Color.Black, x + 108, y + 49); c.DrawString("Enter = utwórz    Esc = anuluj", font, Color.DimGray, x + 16, y + 105);
+            int w = 430, h = 110, x = X + (Width - w) / 2, y = Y + (Height - h) / 2;
+            c.DrawFilledRectangle(Color.WhiteSmoke, x, y, w, h); c.DrawRectangle(Color.Gray, x, y, w, h);
+            string title = app.DialogMode == 1 ? "New file" : "New folder";
+            c.DrawString(title, font, Color.Black, x + 12, y + 10);
+            c.DrawFilledRectangle(Color.White, x + 12, y + 38, w - 24, 28); c.DrawRectangle(Color.Silver, x + 12, y + 38, w - 24, 28);
+            c.DrawString(app.DialogName + "_", font, Color.Black, x + 18, y + 41);
+            c.DrawString("Enter = create   Esc = cancel", font, Color.DimGray, x + 12, y + 75);
         }
     }
 }
