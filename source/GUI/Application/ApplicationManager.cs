@@ -99,6 +99,24 @@ namespace ZonderqOS.GUI.Apps
             SetActiveStates(ActiveApplication);
         }
 
+        /// <summary>
+        /// Closes every window owned by the current desktop session. This is used on
+        /// logout so a newly authenticated user can never inherit another user's open
+        /// applications, paths or in-memory document state.
+        /// </summary>
+        public void CloseAll()
+        {
+            for (int i = applications.Count - 1; i >= 0; i--)
+            {
+                Application application = applications[i];
+                if (application != null && application.IsRunning)
+                    application.Close();
+            }
+
+            applications.Clear();
+            SetActiveStates(null);
+        }
+
         public void HandleKeyboard(KeyEvent key)
         {
             ActiveApplication?.HandleKeyboard(key);
