@@ -42,6 +42,10 @@ namespace ZonderqOS.GUI.Apps
         internal const int TileGap = 6;
         internal const int SidebarSectionHeight = 22;
         internal const int SidebarItemHeight = 36;
+        internal const int ContextMenuWidth = 240;
+        internal const int ContextMenuItemHeight = 29;
+        internal const int ContextMenuItemCount = 7;
+        internal const int ContextMenuHeight = ContextMenuItemHeight * ContextMenuItemCount;
 
         public FileManagerApp(int x, int y, Action<string> openFile) : base("File Manager")
         {
@@ -94,11 +98,12 @@ namespace ZonderqOS.GUI.Apps
 
                 if (x >= SidebarWidth + 6 && y >= ContentTop && y < contentBottom)
                 {
-                    contextMenuX = Math.Max(SidebarWidth + 8, Math.Min(x, view.Width - 226));
-                    contextMenuY = Math.Max(ContentTop, Math.Min(y, view.Height - 126));
+                    selectedIndex = HitEntryIndex(x, y);
+                    contextMenuX = Math.Max(SidebarWidth + 8, Math.Min(x, view.Width - ContextMenuWidth - 6));
+                    contextMenuY = Math.Max(ContentTop, Math.Min(y, view.Height - ContextMenuHeight - FooterHeight - 8));
                     contextMenuVisible = true;
+                    return;
                 }
-                return;
             }
 
             if (!left || oldLeft || dialogMode != 0)
@@ -126,16 +131,12 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            int gridLeft = SidebarWidth + 8;
-            int columns = Columns();
-            int col = (x - gridLeft) / (TileWidth + TileGap);
-            int row = (y - ContentTop) / (TileHeight + TileGap);
-            if (col < 0 || col >= columns || row < 0)
-                return;
-
-            int index = scrollIndex + row * columns + col;
+            int index = HitEntryIndex(x, y);
             if (index < 0 || index >= entries.Count)
+            {
+                selectedIndex = -1;
                 return;
+            }
 
             if (selectedIndex == index && lastClickIndex == index && frameCounter - clickFrame <= 25)
                 OpenEntry(index);
@@ -147,21 +148,52 @@ namespace ZonderqOS.GUI.Apps
             EnsureSelectionVisible();
         }
 
+        private int HitEntryIndex(int x, int y)
+        {
+            int contentBottom = view.Height - FooterHeight - 8;
+            if (x < SidebarWidth + 8 || y < ContentTop || y >= contentBottom)
+                return -1;
+
+            int gridLeft = SidebarWidth + 8;
+            int columns = Columns();
+            int relativeX = x - gridLeft;
+            int relativeY = y - ContentTop;
+            int strideX = TileWidth + TileGap;
+            int strideY = TileHeight + TileGap;
+            int col = relativeX / strideX;
+            int row = relativeY / strideY;
+
+            if (col < 0 || col >= columns || row < 0)
+                return -1;
+            if (relativeX % strideX >= TileWidth || relativeY % strideY >= TileHeight)
+                return -1;
+
+            int index = scrollIndex + row * columns + col;
+            return index >= 0 && index < entries.Count ? index : -1;
+        }
+
         private bool ContextClick(int x, int y)
         {
-            if (x < contextMenuX || x >= contextMenuX + 220 || y < contextMenuY || y >= contextMenuY + 116)
+            if (x < contextMenuX || x >= contextMenuX + ContextMenuWidth ||
+                y < contextMenuY || y >= contextMenuY + ContextMenuHeight)
                 return false;
 
-            int item = (y - contextMenuY) / 29;
+            int item = (y - contextMenuY) / ContextMenuItemHeight;
             contextMenuVisible = false;
 
             if (item == 0)
-                BeginCreate(1);
+                CopySelected(false);
             else if (item == 1)
-                BeginCreate(2);
+                CopySelected(true);
             else if (item == 2)
-                RefreshAll();
+                PasteClipboard();
             else if (item == 3)
+                BeginCreate(1);
+            else if (item == 4)
+                BeginCreate(2);
+            else if (item == 5)
+                RefreshAll();
+            else if (item == 6)
                 GoUp();
 
             return true;
@@ -371,6 +403,26 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            bool control = (key.Modifiers & ConsoleModifiers.Control) != 0;
+            if (control)
+            {
+                if (key.Key == ConsoleKeyEx.C)
+                {
+                    CopySelected(false);
+                    return;
+                }
+                if (key.Key == ConsoleKeyEx.X)
+                {
+                    CopySelected(true);
+                    return;
+                }
+                if (key.Key == ConsoleKeyEx.V)
+                {
+                    PasteClipboard();
+                    return;
+                }
+            }
+
             if (key.Key == ConsoleKeyEx.Escape)
             {
                 if (contextMenuVisible)
@@ -432,6 +484,40 @@ namespace ZonderqOS.GUI.Apps
                     searchText += key.KeyChar;
                 Refresh();
             }
+        }
+
+        private void CopySelected(bool cut)
+        {
+            if (selectedIndex < 0 || selectedIndex >= entries.Count)
+            {
+                status = cut ? "Select an item to cut" : "Select an item to copy";
+                return;
+            }
+
+            FileEntry entry = entries[selectedIndex];
+            FileClipboard.Set(entry.FullPath, entry.IsDirectory, cut);
+            status = (cut ? "Cut: " : "Copied: ") + entry.Name + " - choose destination and paste";
+        }
+
+        private void PasteClipboard()
+        {
+            string destinationPath;
+            string error;
+            bool wasCut = FileClipboard.IsCut;
+            string sourceName = FileClipboard.DisplayName;
+
+            if (!FileClipboard.TryPaste(currentPath, out destinationPath, out error))
+            {
+                status = "Paste error: " + (string.IsNullOrEmpty(error) ? "unknown error" : error);
+                return;
+            }
+
+            string targetName = Path.GetFileName((destinationPath ?? "").TrimEnd('/', '\\'));
+            if (string.IsNullOrEmpty(targetName))
+                targetName = sourceName;
+
+            status = (wasCut ? "Moved: " : "Pasted: ") + targetName;
+            RefreshKeepStatus();
         }
 
         private int Columns()
@@ -967,8 +1053,8 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawLine(Color.FromArgb(72, 84, 96), footerX, footerY, footerX + footerW, footerY);
 
             string hint = Width >= 760
-                ? "M MOUNT   U UNMOUNT   F5 REFRESH"
-                : "F5 REFRESH";
+                ? "CTRL+C COPY   CTRL+X CUT   CTRL+V PASTE   F5 REFRESH"
+                : "COPY CUT PASTE: RIGHT CLICK";
 
             int hintWidth = SmallTextRenderer.Width(hint);
             int hintX = Math.Max(X + Width / 2, X + Width - 10 - hintWidth);
@@ -1081,19 +1167,36 @@ namespace ZonderqOS.GUI.Apps
             int x = X + app.ContextMenuX;
             int y = Y + app.ContextMenuY;
 
-            canvas.DrawFilledRectangle(Color.FromArgb(20, 24, 29), x + 3, y + 3, 220, 116);
-            canvas.DrawFilledRectangle(Color.FromArgb(40, 47, 55), x, y, 220, 116);
-            canvas.DrawRectangle(Color.FromArgb(85, 102, 118), x, y, 220, 116);
+            canvas.DrawFilledRectangle(Color.FromArgb(20, 24, 29), x + 3, y + 3,
+                FileManagerApp.ContextMenuWidth, FileManagerApp.ContextMenuHeight);
+            canvas.DrawFilledRectangle(Color.FromArgb(40, 47, 55), x, y,
+                FileManagerApp.ContextMenuWidth, FileManagerApp.ContextMenuHeight);
+            canvas.DrawRectangle(Color.FromArgb(85, 102, 118), x, y,
+                FileManagerApp.ContextMenuWidth, FileManagerApp.ContextMenuHeight);
 
-            DrawMenuItem(canvas, "New file", x, y + 3);
-            DrawMenuItem(canvas, "New folder", x, y + 32);
-            DrawMenuItem(canvas, "Refresh", x, y + 61);
-            DrawMenuItem(canvas, "Go up", x, y + 90);
+            bool selected = app.SelectedIndex >= 0 && app.SelectedIndex < app.Entries.Count;
+            DrawMenuItem(canvas, "Copy", "Ctrl+C", x, y + 0 * FileManagerApp.ContextMenuItemHeight, selected);
+            DrawMenuItem(canvas, "Cut", "Ctrl+X", x, y + 1 * FileManagerApp.ContextMenuItemHeight, selected);
+            DrawMenuItem(canvas, "Paste", "Ctrl+V", x, y + 2 * FileManagerApp.ContextMenuItemHeight, FileClipboard.HasItem);
+            canvas.DrawLine(Color.FromArgb(63, 73, 84), x + 8, y + 87, x + FileManagerApp.ContextMenuWidth - 8, y + 87);
+            DrawMenuItem(canvas, "New file", "", x, y + 3 * FileManagerApp.ContextMenuItemHeight, true);
+            DrawMenuItem(canvas, "New folder", "", x, y + 4 * FileManagerApp.ContextMenuItemHeight, true);
+            DrawMenuItem(canvas, "Refresh", "F5", x, y + 5 * FileManagerApp.ContextMenuItemHeight, true);
+            DrawMenuItem(canvas, "Go up", "Backspace", x, y + 6 * FileManagerApp.ContextMenuItemHeight, true);
         }
 
-        private void DrawMenuItem(Canvas canvas, string text, int x, int y)
+        private void DrawMenuItem(Canvas canvas, string text, string shortcut, int x, int y, bool enabled)
         {
-            SmallTextRenderer.Draw(canvas, text, x + 10, y + 10, MainText);
+            Color color = enabled ? MainText : Color.FromArgb(91, 103, 114);
+            SmallTextRenderer.Draw(canvas, text, x + 10, y + 10, color);
+
+            if (!string.IsNullOrEmpty(shortcut))
+            {
+                int width = SmallTextRenderer.Width(shortcut);
+                SmallTextRenderer.Draw(canvas, shortcut,
+                    x + FileManagerApp.ContextMenuWidth - width - 10, y + 10,
+                    enabled ? SecondaryText : Color.FromArgb(75, 86, 96));
+            }
         }
 
         private void Dialog(Canvas canvas)
