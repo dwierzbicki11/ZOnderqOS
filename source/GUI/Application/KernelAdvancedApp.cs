@@ -115,7 +115,7 @@ namespace ZonderqOS.GUI.Apps
                     gcCommittedMb = CosmosGc.GetTotalCommittedBytes() / 1024UL / 1024UL;
                     gcFragmentedKb = CosmosGc.GetFragmentedBytes() / 1024UL;
                     gcPinned = (ulong)System.Math.Max(0, CosmosGc.GetPinnedObjectsCount());
-                    gcCollections = CosmosGc.GetCollectionIndex();
+                    gcCollections = (ulong)System.Math.Max(0, CosmosGc.GetCollectionIndex());
                 }
                 else
                 {
