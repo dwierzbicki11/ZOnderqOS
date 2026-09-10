@@ -21,10 +21,26 @@ namespace ZonderqOS.GUI
         private int dragOffsetX, dragOffsetY;
         private int hoveredControl;
 
+        private bool resizing;
+        private int resizeMode;
+        private int hoveredResizeMode;
+        private int resizeStartMouseX, resizeStartMouseY;
+        private int resizeStartX, resizeStartY, resizeStartWidth, resizeStartHeight;
+        private int interactionFrame;
+        private int lastTitleClickFrame = -1000;
+
         private const int TitleBarHeight = 38;
         private const int ButtonSize = 30;
         private const int ButtonTop = 4;
         private const int RightPadding = 4;
+        private const int ResizeBorder = 6;
+        private const int MinWidth = 320;
+        private const int MinHeight = 220;
+
+        private const int ResizeLeft = 1;
+        private const int ResizeRight = 2;
+        private const int ResizeTop = 4;
+        private const int ResizeBottom = 8;
 
         public static void ConfigureDesktop(int width, int height)
         {
@@ -48,7 +64,8 @@ namespace ZonderqOS.GUI
         {
             int dx = newX - X;
             int dy = newY - Y;
-            if (dx == 0 && dy == 0) return;
+            if (dx == 0 && dy == 0)
+                return;
 
             X = newX;
             Y = newY;
@@ -62,7 +79,9 @@ namespace ZonderqOS.GUI
         public void Minimize()
         {
             dragging = false;
+            resizing = false;
             hoveredControl = 0;
+            hoveredResizeMode = 0;
             IsMinimized = true;
             Visible = false;
             IsActive = false;
@@ -76,8 +95,10 @@ namespace ZonderqOS.GUI
 
         public void ToggleMinimize()
         {
-            if (IsMinimized) RestoreFromMinimized();
-            else Minimize();
+            if (IsMinimized)
+                RestoreFromMinimized();
+            else
+                Minimize();
         }
 
         public void ToggleMaximize()
@@ -89,6 +110,9 @@ namespace ZonderqOS.GUI
             }
 
             dragging = false;
+            resizing = false;
+            hoveredResizeMode = 0;
+
             if (!IsMaximized)
             {
                 restoreX = X;
@@ -120,6 +144,8 @@ namespace ZonderqOS.GUI
             if (!Visible || IsMinimized)
                 return;
 
+            interactionFrame++;
+
             int closeX = X + Width - RightPadding - ButtonSize;
             int maximizeX = closeX - ButtonSize;
             int minimizeX = maximizeX - ButtonSize;
@@ -128,16 +154,29 @@ namespace ZonderqOS.GUI
             hoveredControl = 0;
             if (inControlsY)
             {
-                if (mouseX >= closeX && mouseX < closeX + ButtonSize) hoveredControl = 3;
-                else if (mouseX >= maximizeX && mouseX < maximizeX + ButtonSize) hoveredControl = 2;
-                else if (mouseX >= minimizeX && mouseX < minimizeX + ButtonSize) hoveredControl = 1;
+                if (mouseX >= closeX && mouseX < closeX + ButtonSize)
+                    hoveredControl = 3;
+                else if (mouseX >= maximizeX && mouseX < maximizeX + ButtonSize)
+                    hoveredControl = 2;
+                else if (mouseX >= minimizeX && mouseX < minimizeX + ButtonSize)
+                    hoveredControl = 1;
             }
 
-            bool inTitle = mouseY >= Y && mouseY < Y + TitleBarHeight && mouseX >= X && mouseX < X + Width;
+            hoveredResizeMode = hoveredControl == 0 && !IsMaximized
+                ? GetResizeMode(mouseX, mouseY)
+                : 0;
 
             if (!isClicked)
             {
                 dragging = false;
+                resizing = false;
+                resizeMode = 0;
+                return;
+            }
+
+            if (resizing)
+            {
+                ApplyResize(mouseX, mouseY);
                 return;
             }
 
@@ -155,31 +194,119 @@ namespace ZonderqOS.GUI
                 return;
             }
 
-            if (!wasClicked && inTitle)
-            {
-                if (hoveredControl == 1)
-                {
-                    Minimize();
-                    return;
-                }
-                if (hoveredControl == 2)
-                {
-                    ToggleMaximize();
-                    return;
-                }
-                if (hoveredControl == 3)
-                {
-                    CloseAction?.Invoke();
-                    return;
-                }
+            if (wasClicked)
+                return;
 
-                if (!IsMaximized && mouseX < minimizeX)
-                {
-                    dragging = true;
-                    dragOffsetX = mouseX - X;
-                    dragOffsetY = mouseY - Y;
-                }
+            if (hoveredControl == 1)
+            {
+                Minimize();
+                return;
             }
+            if (hoveredControl == 2)
+            {
+                ToggleMaximize();
+                return;
+            }
+            if (hoveredControl == 3)
+            {
+                CloseAction?.Invoke();
+                return;
+            }
+
+            if (hoveredResizeMode != 0)
+            {
+                BeginResize(mouseX, mouseY, hoveredResizeMode);
+                return;
+            }
+
+            bool inTitle = mouseY >= Y && mouseY < Y + TitleBarHeight && mouseX >= X && mouseX < X + Width;
+            if (!inTitle || mouseX >= minimizeX)
+                return;
+
+            bool doubleClick = interactionFrame - lastTitleClickFrame <= 28;
+            lastTitleClickFrame = interactionFrame;
+            if (doubleClick)
+            {
+                ToggleMaximize();
+                lastTitleClickFrame = -1000;
+                return;
+            }
+
+            if (!IsMaximized)
+            {
+                dragging = true;
+                dragOffsetX = mouseX - X;
+                dragOffsetY = mouseY - Y;
+            }
+        }
+
+        private int GetResizeMode(int mouseX, int mouseY)
+        {
+            if (mouseX < X || mouseX >= X + Width || mouseY < Y || mouseY >= Y + Height)
+                return 0;
+
+            int mode = 0;
+            if (mouseX < X + ResizeBorder)
+                mode |= ResizeLeft;
+            else if (mouseX >= X + Width - ResizeBorder)
+                mode |= ResizeRight;
+
+            if (mouseY < Y + ResizeBorder)
+                mode |= ResizeTop;
+            else if (mouseY >= Y + Height - ResizeBorder)
+                mode |= ResizeBottom;
+
+            return mode;
+        }
+
+        private void BeginResize(int mouseX, int mouseY, int mode)
+        {
+            resizing = true;
+            resizeMode = mode;
+            resizeStartMouseX = mouseX;
+            resizeStartMouseY = mouseY;
+            resizeStartX = X;
+            resizeStartY = Y;
+            resizeStartWidth = Width;
+            resizeStartHeight = Height;
+        }
+
+        private void ApplyResize(int mouseX, int mouseY)
+        {
+            int dx = mouseX - resizeStartMouseX;
+            int dy = mouseY - resizeStartMouseY;
+            int newX = resizeStartX;
+            int newY = resizeStartY;
+            int newWidth = resizeStartWidth;
+            int newHeight = resizeStartHeight;
+
+            if ((resizeMode & ResizeLeft) != 0)
+            {
+                int right = resizeStartX + resizeStartWidth;
+                newX = System.Math.Max(0, System.Math.Min(resizeStartX + dx, right - MinWidth));
+                newWidth = right - newX;
+            }
+            else if ((resizeMode & ResizeRight) != 0)
+            {
+                int maxWidth = System.Math.Max(MinWidth, desktopWidth - resizeStartX);
+                newWidth = System.Math.Max(MinWidth, System.Math.Min(resizeStartWidth + dx, maxWidth));
+            }
+
+            if ((resizeMode & ResizeTop) != 0)
+            {
+                int bottom = resizeStartY + resizeStartHeight;
+                newY = System.Math.Max(0, System.Math.Min(resizeStartY + dy, bottom - MinHeight));
+                newHeight = bottom - newY;
+            }
+            else if ((resizeMode & ResizeBottom) != 0)
+            {
+                int maxHeight = System.Math.Max(MinHeight, desktopHeight - resizeStartY);
+                newHeight = System.Math.Max(MinHeight, System.Math.Min(resizeStartHeight + dy, maxHeight));
+            }
+
+            MoveTo(newX, newY);
+            Width = newWidth;
+            Height = newHeight;
         }
 
         public override void Render(Canvas canvas)
@@ -225,8 +352,24 @@ namespace ZonderqOS.GUI
             DrawCaptionButton(canvas, closeX, buttonY, 3);
             IconManager.DrawScaled(canvas, IconType.Close, closeX + 7, buttonY + 6, 16, 16);
 
+            if (!IsMaximized && hoveredResizeMode != 0)
+                DrawResizeHint(canvas, hoveredResizeMode);
+
             for (int i = 0; i < Children.Count; i++)
                 Children[i].Render(canvas);
+        }
+
+        private void DrawResizeHint(Canvas canvas, int mode)
+        {
+            Color hint = Color.FromArgb(82, 160, 220);
+            if ((mode & ResizeLeft) != 0)
+                canvas.DrawFilledRectangle(hint, X, Y + 8, 2, System.Math.Max(1, Height - 16));
+            if ((mode & ResizeRight) != 0)
+                canvas.DrawFilledRectangle(hint, X + Width - 2, Y + 8, 2, System.Math.Max(1, Height - 16));
+            if ((mode & ResizeTop) != 0)
+                canvas.DrawFilledRectangle(hint, X + 8, Y, System.Math.Max(1, Width - 16), 2);
+            if ((mode & ResizeBottom) != 0)
+                canvas.DrawFilledRectangle(hint, X + 8, Y + Height - 2, System.Math.Max(1, Width - 16), 2);
         }
 
         private void DrawCaptionButton(Canvas canvas, int x, int y, int control)
