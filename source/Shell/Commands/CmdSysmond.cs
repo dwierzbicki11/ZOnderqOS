@@ -10,6 +10,8 @@ namespace ZonderqOS.Commands
         public string Name { get; } = "sysmond";
         public string Description { get; } = "Spawns background telemetry daemon (mem logger)";
 
+        private const long MaxLogBytes = 64 * 1024;
+
         public void Execute(string[] args, ref string currentPath)
         {
             CommandIO.WriteLine("[INFO] Inicjalizacja sysmond w tle...");
@@ -23,7 +25,21 @@ namespace ZonderqOS.Commands
                     ulong pageSize = PageAllocator.PageSize;
                     ulong freeRamMiB = (freePages * pageSize) / (1024 * 1024);
                     string logEntry = $"[DAEMON-TICK] Wolny RAM: {freeRamMiB} MB\n";
-                    try { File.AppendAllText(logFile, logEntry); } catch { }
+
+                    try
+                    {
+                        if (File.Exists(logFile) && new FileInfo(logFile).Length >= MaxLogBytes)
+                        {
+                            File.WriteAllText(logFile, "=== sysmond log rotated ===\n");
+                        }
+
+                        File.AppendAllText(logFile, logEntry);
+                    }
+                    catch
+                    {
+                        // Telemetria nie może zatrzymać procesu sysmond.
+                    }
+
                     if (token.WaitHandle.WaitOne(10000)) break;
                 }
             });
