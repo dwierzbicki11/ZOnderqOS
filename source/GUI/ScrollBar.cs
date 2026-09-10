@@ -18,7 +18,11 @@ namespace ZonderqOS.GUI
             set
             {
                 int max = MaxValue;
-                this.value = Math.Max(0, Math.Min(value, max));
+                int next = Math.Max(0, Math.Min(value, max));
+                if (this.value == next)
+                    return;
+
+                this.value = next;
                 ValueChanged?.Invoke(this.value);
             }
         }
@@ -37,9 +41,16 @@ namespace ZonderqOS.GUI
 
         public void SetRange(int contentCount, int visibleCount)
         {
-            contentItems = Math.Max(0, contentCount);
-            visibleItems = Math.Max(1, visibleCount);
+            int nextContent = Math.Max(0, contentCount);
+            int nextVisible = Math.Max(1, visibleCount);
+            bool rangeChanged = contentItems != nextContent || visibleItems != nextVisible;
+
+            contentItems = nextContent;
+            visibleItems = nextVisible;
             Value = value;
+
+            if (rangeChanged && MaxValue == 0 && this.value != 0)
+                Value = 0;
         }
 
         private int GetThumbHeight()
@@ -62,7 +73,10 @@ namespace ZonderqOS.GUI
         public bool HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
         {
             if (!Visible || MaxValue <= 0)
+            {
+                dragging = false;
                 return false;
+            }
 
             int thumbHeight = GetThumbHeight();
             int thumbY = GetThumbY();
@@ -108,8 +122,9 @@ namespace ZonderqOS.GUI
             canvas.DrawFilledRectangle(Color.FromArgb(45, 45, 45), X, Y, Width, Height);
             int thumbHeight = GetThumbHeight();
             int thumbY = GetThumbY();
-            canvas.DrawFilledRectangle(Color.FromArgb(100, 115, 130), X + 1, thumbY, Math.Max(1, Width - 2), thumbHeight);
-            canvas.DrawRectangle(Color.FromArgb(150, 165, 180), X + 1, thumbY, Math.Max(1, Width - 2), thumbHeight);
+            int thumbWidth = Math.Max(1, Width - 2);
+            canvas.DrawFilledRectangle(Color.FromArgb(100, 115, 130), X + 1, thumbY, thumbWidth, thumbHeight);
+            canvas.DrawRectangle(Color.FromArgb(150, 165, 180), X + 1, thumbY, thumbWidth, thumbHeight);
         }
     }
 }
