@@ -315,7 +315,7 @@ namespace ZonderqOS.GUI
                 return;
 
             Color surface = Color.FromArgb(29, 34, 40);
-            Color border = IsActive ? Color.FromArgb(72, 145, 205) : Color.FromArgb(58, 66, 75);
+            Color border = IsActive ? SystemTheme.AccentBorder : Color.FromArgb(58, 66, 75);
             Color titleBar = IsActive ? Color.FromArgb(27, 34, 42) : Color.FromArgb(31, 36, 42);
             Color titleText = IsActive ? Color.FromArgb(242, 246, 250) : Color.FromArgb(196, 203, 210);
 
@@ -330,7 +330,7 @@ namespace ZonderqOS.GUI
             canvas.DrawFilledRectangle(titleBar, X + 1, Y + 1, Width - 2, TitleBarHeight - 1);
 
             if (IsActive)
-                canvas.DrawFilledRectangle(Color.FromArgb(65, 142, 205), X + 1, Y + 1, Width - 2, 2);
+                canvas.DrawFilledRectangle(SystemTheme.Accent, X + 1, Y + 1, Width - 2, 2);
 
             canvas.DrawLine(Color.FromArgb(48, 57, 67), X + 1, Y + TitleBarHeight,
                 X + Width - 2, Y + TitleBarHeight);
@@ -361,7 +361,7 @@ namespace ZonderqOS.GUI
 
         private void DrawResizeHint(Canvas canvas, int mode)
         {
-            Color hint = Color.FromArgb(82, 160, 220);
+            Color hint = SystemTheme.Accent;
             if ((mode & ResizeLeft) != 0)
                 canvas.DrawFilledRectangle(hint, X, Y + 8, 2, System.Math.Max(1, Height - 16));
             if ((mode & ResizeRight) != 0)
@@ -379,10 +379,10 @@ namespace ZonderqOS.GUI
 
             Color hover = control == 3
                 ? Color.FromArgb(174, 50, 58)
-                : Color.FromArgb(49, 62, 74);
+                : SystemTheme.AccentSoft;
             Color edge = control == 3
                 ? Color.FromArgb(215, 78, 84)
-                : Color.FromArgb(73, 91, 108);
+                : SystemTheme.AccentBorder;
 
             canvas.DrawFilledRectangle(hover, x, y, ButtonSize, ButtonSize);
             canvas.DrawRectangle(edge, x, y, ButtonSize, ButtonSize);
