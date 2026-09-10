@@ -132,6 +132,7 @@ namespace ZonderqOS
             SecurityContext.SetAuthenticated(username, home, uid);
             EnvironmentManager.Set("USER", username);
             EnvironmentManager.Set("HOME", home);
+            SessionManager.BeginSession();
             SecurityLogger.LogEvent("INFO", $"User '{username}' logged in.");
             return true;
         }
@@ -146,11 +147,13 @@ namespace ZonderqOS
             SecurityContext.SetAuthenticated(username, home, uid);
             EnvironmentManager.Set("USER", username);
             EnvironmentManager.Set("HOME", home);
+            SessionManager.BeginSession();
             return true;
         }
 
         public static void PrepareLogin()
         {
+            SessionManager.EndSession();
             SecurityContext.EnterLoginState();
             EnvironmentManager.Set("USER", string.Empty);
             EnvironmentManager.Set("HOME", "/");
