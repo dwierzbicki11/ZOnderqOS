@@ -11,6 +11,8 @@ namespace ZonderqOS
     {
         private const string SettingsDirectory = "/etc/zonderq";
         private const string SettingsPath = SettingsDirectory + "/settings.conf";
+        private const long MaxSettingsBytes = 64 * 1024;
+        private const int MaxSettingsLines = 128;
 
         private static bool loaded;
 
@@ -44,9 +46,9 @@ namespace ZonderqOS
 
                 switch (PerformanceProfile)
                 {
-                    case 0: return 8000; // ~120 s
-                    case 2: return 1000; // ~15 s
-                    default: return 4000; // ~60 s
+                    case 0: return 8000;
+                    case 2: return 1000;
+                    default: return 4000;
                 }
             }
         }
@@ -57,9 +59,9 @@ namespace ZonderqOS
             {
                 switch (PerformanceProfile)
                 {
-                    case 0: return 134; // ~2 s
-                    case 2: return 34;  // ~0.5 s
-                    default: return 67; // ~1 s
+                    case 0: return 134;
+                    case 2: return 34;
+                    default: return 67;
                 }
             }
         }
@@ -113,31 +115,52 @@ namespace ZonderqOS
             if (loaded)
                 return;
 
-            loaded = true;
+            RestoreDefaultsInternal();
+
             try
             {
                 if (!File.Exists(SettingsPath))
-                    return;
-
-                string[] lines = File.ReadAllLines(SettingsPath);
-                for (int i = 0; i < lines.Length; i++)
                 {
-                    string line = lines[i];
-                    if (string.IsNullOrEmpty(line) || line[0] == '#')
-                        continue;
+                    loaded = true;
+                    return;
+                }
 
-                    int split = line.IndexOf('=');
-                    if (split <= 0 || split >= line.Length - 1)
-                        continue;
+                FileInfo info = new FileInfo(SettingsPath);
+                if (info.Length > MaxSettingsBytes)
+                {
+                    WriteMessage.WriteError($"Settings file exceeds {MaxSettingsBytes / 1024} KB limit. Defaults loaded.", "CFG");
+                    loaded = true;
+                    return;
+                }
 
-                    string key = line.Substring(0, split).Trim();
-                    string value = line.Substring(split + 1).Trim();
-                    ApplyLoadedValue(key, value);
+                using (var reader = new StreamReader(SettingsPath))
+                {
+                    string line;
+                    int lineCount = 0;
+                    while ((line = reader.ReadLine()) != null && lineCount < MaxSettingsLines)
+                    {
+                        lineCount++;
+                        if (string.IsNullOrEmpty(line) || line[0] == '#')
+                            continue;
+
+                        int split = line.IndexOf('=');
+                        if (split <= 0 || split >= line.Length - 1)
+                            continue;
+
+                        string key = line.Substring(0, split).Trim();
+                        string value = line.Substring(split + 1).Trim();
+                        ApplyLoadedValue(key, value);
+                    }
                 }
             }
-            catch
+            catch (Exception ex)
             {
                 RestoreDefaultsInternal();
+                WriteMessage.WriteError($"Settings load failed: {ex.Message}. Defaults loaded.", "CFG");
+            }
+            finally
+            {
+                loaded = true;
             }
         }
 
@@ -165,11 +188,13 @@ namespace ZonderqOS
                     "dns_server=" + DnsServer + "\n";
 
                 File.WriteAllText(SettingsPath, content);
+                PermissionManager.SetPermission(SettingsPath, "root", 600);
                 SecurityLogger.LogEvent("INFO", "System settings updated from GUI.");
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                WriteMessage.WriteError($"Settings save failed: {ex.Message}", "CFG");
                 return false;
             }
         }
@@ -242,7 +267,7 @@ namespace ZonderqOS
 
         public static bool SetStaticNetwork(string ip, string mask, string gateway, string dns)
         {
-            if (!IsAddressText(ip) || !IsAddressText(mask) || !IsAddressText(gateway) || !IsAddressText(dns))
+            if (!IsValidIPv4(ip) || !IsValidSubnetMask(mask) || !IsValidIPv4(gateway) || !IsValidIPv4(dns))
                 return false;
 
             StaticIpAddress = ip;
@@ -313,31 +338,87 @@ namespace ZonderqOS
                     NetworkUseDhcp = ParseBool(value, NetworkUseDhcp);
                     break;
                 case "static_ip":
-                    if (IsAddressText(value)) StaticIpAddress = value;
+                    if (IsValidIPv4(value)) StaticIpAddress = value;
                     break;
                 case "static_mask":
-                    if (IsAddressText(value)) StaticSubnetMask = value;
+                    if (IsValidSubnetMask(value)) StaticSubnetMask = value;
                     break;
                 case "static_gateway":
-                    if (IsAddressText(value)) StaticGateway = value;
+                    if (IsValidIPv4(value)) StaticGateway = value;
                     break;
                 case "dns_server":
-                    if (IsAddressText(value)) DnsServer = value;
+                    if (IsValidIPv4(value)) DnsServer = value;
                     break;
             }
         }
 
-        private static bool IsAddressText(string value)
+        private static bool IsValidIPv4(string value)
         {
             if (string.IsNullOrEmpty(value) || value.Length > 15)
                 return false;
 
-            for (int i = 0; i < value.Length; i++)
+            int octetCount = 0;
+            int octetValue = 0;
+            int octetDigits = 0;
+
+            for (int i = 0; i <= value.Length; i++)
             {
-                char c = value[i];
-                if ((c < '0' || c > '9') && c != '.')
+                char c = i < value.Length ? value[i] : '.';
+                if (c == '.')
+                {
+                    if (octetDigits == 0 || octetValue > 255)
+                        return false;
+
+                    octetCount++;
+                    octetValue = 0;
+                    octetDigits = 0;
+                    continue;
+                }
+
+                if (c < '0' || c > '9' || octetDigits >= 3)
                     return false;
+
+                octetValue = octetValue * 10 + (c - '0');
+                octetDigits++;
             }
+
+            return octetCount == 4;
+        }
+
+        private static bool IsValidSubnetMask(string value)
+        {
+            if (!TryParseIPv4(value, out uint mask))
+                return false;
+
+            if (mask == 0)
+                return false;
+
+            uint inverted = ~mask;
+            return (inverted & (inverted + 1)) == 0;
+        }
+
+        private static bool TryParseIPv4(string value, out uint address)
+        {
+            address = 0;
+            if (!IsValidIPv4(value))
+                return false;
+
+            uint result = 0;
+            int current = 0;
+            for (int i = 0; i <= value.Length; i++)
+            {
+                if (i == value.Length || value[i] == '.')
+                {
+                    result = (result << 8) | (uint)current;
+                    current = 0;
+                }
+                else
+                {
+                    current = current * 10 + (value[i] - '0');
+                }
+            }
+
+            address = result;
             return true;
         }
 
