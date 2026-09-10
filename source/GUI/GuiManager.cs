@@ -49,6 +49,7 @@ namespace ZonderqOS.GUI
                 desktopContextMenu = new DesktopContextMenu(
                     () => LaunchTerminal(145, 96),
                     () => LaunchFileManager(120, 78),
+                    () => LaunchNotepad(150, 105, null),
                     RefreshDesktop,
                     () => LaunchDiagnostics(170, 120));
 
@@ -58,6 +59,7 @@ namespace ZonderqOS.GUI
 
                 startMenu.AddItem("Terminal CLI", IconType.Terminal, () => LaunchTerminal(125, 90));
                 startMenu.AddItem("File Manager", IconType.Folder, () => LaunchFileManager(105, 75));
+                startMenu.AddItem("Notatnik", IconType.File, () => LaunchNotepad(145, 100, null));
                 startMenu.AddItem("Diagnostyka", IconType.Settings, () => LaunchDiagnostics(150, 120));
                 startMenu.AddItem("O Systemie", IconType.About, () => LaunchAbout(180, 140));
                 startMenu.AddItem("Pomoc", IconType.About, () => LaunchAbout(210, 160));
@@ -142,8 +144,9 @@ namespace ZonderqOS.GUI
             {
                 new DesktopShortcut(20, 22, "File Manager", IconType.Folder, () => LaunchFileManager(110, 72)),
                 new DesktopShortcut(20, 116, "Terminal", IconType.Terminal, () => LaunchTerminal(135, 92)),
-                new DesktopShortcut(20, 210, "System", IconType.Settings, () => LaunchDiagnostics(155, 116)),
-                new DesktopShortcut(20, 304, "About", IconType.About, () => LaunchAbout(180, 138))
+                new DesktopShortcut(20, 210, "Notatnik", IconType.File, () => LaunchNotepad(150, 105, null)),
+                new DesktopShortcut(20, 304, "System", IconType.Settings, () => LaunchDiagnostics(155, 116)),
+                new DesktopShortcut(20, 398, "About", IconType.About, () => LaunchAbout(180, 138))
             };
         }
 
@@ -166,8 +169,14 @@ namespace ZonderqOS.GUI
 
         private void LaunchFileManager(int x, int y)
         {
-            var fileManager = new FileManagerApp(x, y, path => applicationManager.Launch(new NanoApp(path, null)));
+            var fileManager = new FileManagerApp(x, y,
+                path => LaunchNotepad(145, 95, path));
             applicationManager.Launch(fileManager);
+        }
+
+        private void LaunchNotepad(int x, int y, string path)
+        {
+            applicationManager.Launch(new NotepadApp(x, y, path, null));
         }
 
         private void LaunchDiagnostics(int x, int y)
