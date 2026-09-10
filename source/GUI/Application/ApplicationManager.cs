@@ -49,6 +49,12 @@ namespace ZonderqOS.GUI.Apps
             ActiveApplication?.HandleMouse(mouseX, mouseY, isClicked, wasClicked);
         }
 
+        public void HandleMouse(int mouseX, int mouseY, bool leftClicked, bool leftWasClicked,
+            bool rightClicked, bool rightWasClicked)
+        {
+            ActiveApplication?.HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked, rightClicked, rightWasClicked);
+        }
+
         public void Update()
         {
             for (int i = applications.Count - 1; i >= 0; i--)
