@@ -6,10 +6,9 @@ namespace ZonderqOS
 {
     public static class CommandIO
     {
-        private static List<string> _outBuffer = new List<string>();
-        private static bool _isOutRedirected = false;
-        private static Stack<TextWriter> _consoleWriters = new Stack<TextWriter>();
-        private static Stack<StringWriter> _captureWriters = new Stack<StringWriter>();
+        private static readonly Stack<List<string>> _outBuffers = new Stack<List<string>>();
+        private static readonly Stack<TextWriter> _consoleWriters = new Stack<TextWriter>();
+        private static readonly Stack<StringWriter> _captureWriters = new Stack<StringWriter>();
 
         private static string _inBuffer = null;
         public static bool LastCommandSuccess { get; set; } = true;
@@ -32,8 +31,7 @@ namespace ZonderqOS
 
         public static void StartRedirection()
         {
-            _outBuffer.Clear();
-            _isOutRedirected = true;
+            _outBuffers.Push(new List<string>());
 
             TextWriter previous = Console.Out;
             StringWriter capture = new StringWriter();
@@ -44,42 +42,45 @@ namespace ZonderqOS
 
         public static string EndRedirection()
         {
-            string consoleOutput = "";
-            if (_captureWriters.Count > 0)
-                consoleOutput = _captureWriters.Pop().ToString();
+            if (_outBuffers.Count == 0 || _captureWriters.Count == 0 || _consoleWriters.Count == 0)
+                return string.Empty;
 
-            if (_consoleWriters.Count > 0)
-                Console.SetOut(_consoleWriters.Pop());
+            StringWriter capture = _captureWriters.Pop();
+            string consoleOutput = capture.ToString();
+            capture.Dispose();
 
-            _isOutRedirected = false;
+            Console.SetOut(_consoleWriters.Pop());
 
-            string commandOutput = string.Join("\n", _outBuffer);
-            if (_outBuffer.Count > 0)
+            List<string> buffer = _outBuffers.Pop();
+            string commandOutput = string.Join("\n", buffer);
+            if (buffer.Count > 0)
                 commandOutput += "\n";
 
-            _outBuffer.Clear();
             return commandOutput + consoleOutput;
         }
 
         public static void WriteLine(string text)
         {
-            if (_isOutRedirected)
-                _outBuffer.Add(text ?? "");
+            if (_outBuffers.Count > 0)
+                _outBuffers.Peek().Add(text ?? "");
             else
                 Console.WriteLine(text);
         }
 
         public static void Write(string text)
         {
-            if (_isOutRedirected)
+            if (_outBuffers.Count > 0)
             {
-                if (_outBuffer.Count == 0)
-                    _outBuffer.Add(text ?? "");
+                List<string> buffer = _outBuffers.Peek();
+                if (buffer.Count == 0)
+                    buffer.Add(text ?? "");
                 else
-                    _outBuffer[_outBuffer.Count - 1] += text ?? "";
+                    buffer[buffer.Count - 1] += text ?? "";
             }
             else
+            {
                 Console.Write(text);
+            }
         }
     }
 }
