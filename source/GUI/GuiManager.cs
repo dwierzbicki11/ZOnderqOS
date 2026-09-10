@@ -182,7 +182,7 @@ namespace ZonderqOS.GUI
 
         private void LaunchTaskManager(int x, int y)
         {
-            applicationManager.Launch(new TaskManagerApp(x, y, applicationManager, null));
+            applicationManager.Launch(new TaskManagerModernApp(x, y, applicationManager, null));
         }
 
         private void LaunchDiagnostics(int x, int y)
