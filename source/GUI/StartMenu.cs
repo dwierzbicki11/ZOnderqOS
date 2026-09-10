@@ -88,11 +88,11 @@ namespace ZonderqOS.GUI
             AddPinned(text, icon, onClick);
         }
 
-        public void SetPowerActions(Action reboot, Action shutdown, Action exitGui)
+        public void SetPowerActions(Action reboot, Action shutdown, Action logout)
         {
             rebootButton = CreatePowerButton(reboot);
             shutdownButton = CreatePowerButton(shutdown);
-            exitButton = CreatePowerButton(exitGui);
+            exitButton = CreatePowerButton(logout);
             UpdateLayout();
         }
 
@@ -199,9 +199,9 @@ namespace ZonderqOS.GUI
             }
             if (exitButton != null)
             {
-                exitButton.X = X + Width - Padding - 274;
+                exitButton.X = X + Width - Padding - 292;
                 exitButton.Y = powerY;
-                exitButton.Width = 74;
+                exitButton.Width = 92;
                 exitButton.Height = 44;
             }
         }
@@ -316,7 +316,7 @@ namespace ZonderqOS.GUI
             SmallTextRenderer.Draw(canvas, "GEN3", X + Padding + 34, footerY + 38, Muted);
 
             if (exitButton != null)
-                RenderPowerButton(canvas, exitButton, IconType.Close, "GUI", false);
+                RenderPowerButton(canvas, exitButton, IconType.Close, "WYLOGUJ", false);
             if (rebootButton != null)
                 RenderPowerButton(canvas, rebootButton, IconType.Reboot, "REBOOT", false);
             if (shutdownButton != null)
