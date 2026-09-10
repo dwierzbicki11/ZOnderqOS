@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using Cosmos.Kernel.System.Graphics;
-using Cosmos.Kernel.System.Graphics.Fonts;
 using Cosmos.Kernel.System.Keyboard;
 using ZonderqOS.GUI.Icons;
 
@@ -14,19 +13,10 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action<string> nanoLauncher;
         private readonly FileManagerView view;
         private readonly List<FileEntry> entries = new List<FileEntry>();
-        private string currentPath = "/root";
-        private string searchText = "";
-        private int selectedIndex = -1;
-        private int scrollIndex;
-        private int lastClickIndex = -1;
-        private int clickFrame = -1000;
-        private int frameCounter;
-        private string status = "";
-
+        private string currentPath = "/root", searchText = "", status = "";
+        private int selectedIndex = -1, scrollIndex, lastClickIndex = -1, clickFrame = -1000, frameCounter;
         private bool contextMenuVisible;
-        private int contextMenuX;
-        private int contextMenuY;
-        private int dialogMode;
+        private int contextMenuX, contextMenuY, dialogMode;
         private string dialogName = "";
 
         public FileManagerApp(int x, int y, Action<string> openFile) : base("File Manager")
@@ -42,449 +32,161 @@ namespace ZonderqOS.GUI.Apps
         public override void Update()
         {
             frameCounter++;
-            UpdateLayout();
+            view.X = Window.X + 10; view.Y = Window.Y + 40;
+            view.Width = Math.Max(360, Window.Width - 20); view.Height = Math.Max(220, Window.Height - 50);
         }
 
-        private void UpdateLayout()
+        public override void HandleMouse(int x, int y, bool clicked, bool wasClicked) { HandleMouse(x, y, clicked, wasClicked, false, false); }
+
+        public override void HandleMouse(int mx, int my, bool left, bool oldLeft, bool right, bool oldRight)
         {
-            view.X = Window.X + 10;
-            view.Y = Window.Y + 40;
-            view.Width = Math.Max(360, Window.Width - 20);
-            view.Height = Math.Max(220, Window.Height - 50);
-        }
-
-        public override void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
-        {
-            HandleMouse(mouseX, mouseY, isClicked, wasClicked, false, false);
-        }
-
-        public override void HandleMouse(int mouseX, int mouseY, bool leftClicked, bool leftWasClicked,
-            bool rightClicked, bool rightWasClicked)
-        {
-            Window.HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked);
-            if (!Window.Visible)
-                return;
-
-            int localX = mouseX - view.X;
-            int localY = mouseY - view.Y;
-            if (localX < 0 || localY < 0 || localX >= view.Width || localY >= view.Height)
-                return;
-
-            if (rightClicked && !rightWasClicked)
+            Window.HandleMouse(mx, my, left, oldLeft);
+            if (!Window.Visible) return;
+            int x = mx - view.X, y = my - view.Y;
+            if (x < 0 || y < 0 || x >= view.Width || y >= view.Height) return;
+            if (right && !oldRight)
             {
                 if (dialogMode == 0)
                 {
-                    contextMenuX = Math.Max(6, Math.Min(localX, view.Width - 226));
-                    contextMenuY = Math.Max(72, Math.Min(localY, view.Height - 126));
+                    contextMenuX = Math.Max(6, Math.Min(x, view.Width - 226));
+                    contextMenuY = Math.Max(78, Math.Min(y, view.Height - 126));
                     contextMenuVisible = true;
-                    status = "Quick menu";
                 }
                 return;
             }
-
-            if (!leftClicked || leftWasClicked)
-                return;
-
-            if (dialogMode != 0)
-                return;
-
+            if (!left || oldLeft || dialogMode != 0) return;
             if (contextMenuVisible)
             {
-                if (HandleContextMenuClick(localX, localY))
-                    return;
+                if (ContextClick(x, y)) return;
                 contextMenuVisible = false;
             }
+            if (y >= 4 && y < 42) { Toolbar(x); return; }
+            if (y < 78) return;
 
-            if (localY >= 4 && localY < 70)
-            {
-                HandleToolbar(localX);
-                return;
-            }
-
-            int listTop = 114;
-            int rowHeight = 28;
-            if (localY >= listTop + 30)
-            {
-                int index = scrollIndex + (localY - (listTop + 30)) / rowHeight;
-                if (index >= 0 && index < entries.Count)
-                {
-                    if (selectedIndex == index && lastClickIndex == index && frameCounter - clickFrame <= 25)
-                        OpenEntry(index);
-                    else
-                        selectedIndex = index;
-
-                    lastClickIndex = index;
-                    clickFrame = frameCounter;
-                    EnsureSelectionVisible();
-                }
-            }
+            int tileW = 112, tileH = 94, gap = 6;
+            int columns = Math.Max(1, (view.Width - 8 + gap) / (tileW + gap));
+            int col = Math.Max(0, (x - 4) / (tileW + gap));
+            int row = Math.Max(0, (y - 78) / (tileH + gap));
+            if (col >= columns) return;
+            int index = scrollIndex + row * columns + col;
+            if (index < 0 || index >= entries.Count) return;
+            if (selectedIndex == index && lastClickIndex == index && frameCounter - clickFrame <= 25) OpenEntry(index);
+            else selectedIndex = index;
+            lastClickIndex = index; clickFrame = frameCounter; EnsureSelectionVisible();
         }
 
-        private bool HandleContextMenuClick(int x, int y)
+        private bool ContextClick(int x, int y)
         {
-            if (x < contextMenuX || x >= contextMenuX + 220 ||
-                y < contextMenuY || y >= contextMenuY + 116)
-                return false;
-
-            int item = (y - contextMenuY) / 29;
-            contextMenuVisible = false;
-
-            if (item == 0)
-            {
-                BeginCreate(1);
-                return true;
-            }
-
-            if (item == 1)
-            {
-                BeginCreate(2);
-                return true;
-            }
-
-            if (item == 2)
-            {
-                Refresh();
-                return true;
-            }
-
-            if (item == 3)
-            {
-                GoUp();
-                return true;
-            }
-
+            if (x < contextMenuX || x >= contextMenuX + 220 || y < contextMenuY || y >= contextMenuY + 116) return false;
+            int item = (y - contextMenuY) / 29; contextMenuVisible = false;
+            if (item == 0) BeginCreate(1); else if (item == 1) BeginCreate(2); else if (item == 2) Refresh(); else if (item == 3) GoUp();
             return true;
         }
 
-        private void BeginCreate(int mode)
+        private void Toolbar(int x)
         {
-            dialogMode = mode;
-            dialogName = "";
-            status = mode == 1 ? "New file: type a name" : "New folder: type a name";
-        }
-
-        private void FinishCreate()
-        {
-            string name = (dialogName ?? "").Trim();
-            if (string.IsNullOrEmpty(name))
-            {
-                status = "Name cannot be empty";
-                return;
-            }
-
-            if (name == "." || name == ".." || name.IndexOf('/') >= 0 || name.IndexOf('\\') >= 0)
-            {
-                status = "Invalid name";
-                return;
-            }
-
-            string path = Path.Combine(currentPath, name).Replace('\\', '/');
-            try
-            {
-                if (dialogMode == 1)
-                {
-                    if (File.Exists(path) || Directory.Exists(path))
-                    {
-                        status = "Already exists";
-                        return;
-                    }
-                    File.WriteAllText(path, "");
-                    status = "Created file: " + name;
-                }
-                else
-                {
-                    if (Directory.Exists(path) || File.Exists(path))
-                    {
-                        status = "Already exists";
-                        return;
-                    }
-                    Directory.CreateDirectory(path);
-                    status = "Created folder: " + name;
-                }
-
-                dialogMode = 0;
-                dialogName = "";
-                RefreshPreserveStatus();
-            }
-            catch (Exception ex)
-            {
-                status = "Create error: " + ex.Message;
-                dialogMode = 0;
-                dialogName = "";
-            }
-        }
-
-        private void CancelCreate()
-        {
-            dialogMode = 0;
-            dialogName = "";
-            status = "Cancelled";
-        }
-
-        private void HandleToolbar(int x)
-        {
-            if (x < 68)
-                GoUp();
-            else if (x < 136)
-            {
-                currentPath = "/root";
-                searchText = "";
-                Refresh();
-            }
-            else if (x < 204)
-                Refresh();
-            else if (x < 272)
-            {
-                searchText = "";
-                status = "Search cleared";
-                RefreshPreserveStatus();
-            }
+            if (x < 42) GoUp();
+            else if (x < 84) { currentPath = "/root"; searchText = ""; Refresh(); }
+            else if (x < 126) Refresh();
+            else if (x < 168) { searchText = ""; status = "Search cleared"; RefreshKeepStatus(); }
         }
 
         public override void HandleKeyboard(KeyEvent key)
         {
             if (dialogMode != 0)
             {
-                if (key.Key == ConsoleKeyEx.Escape)
-                {
-                    CancelCreate();
-                    return;
-                }
-
-                if (key.Key == ConsoleKeyEx.Enter)
-                {
-                    FinishCreate();
-                    return;
-                }
-
-                if (key.Key == ConsoleKeyEx.Backspace)
-                {
-                    if (dialogName.Length > 0)
-                        dialogName = dialogName.Substring(0, dialogName.Length - 1);
-                    return;
-                }
-
-                if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar) && dialogName.Length < 64)
-                    dialogName += key.KeyChar;
+                if (key.Key == ConsoleKeyEx.Escape) { dialogMode = 0; dialogName = ""; status = "Cancelled"; return; }
+                if (key.Key == ConsoleKeyEx.Enter) { FinishCreate(); return; }
+                if (key.Key == ConsoleKeyEx.Backspace) { if (dialogName.Length > 0) dialogName = dialogName.Substring(0, dialogName.Length - 1); return; }
+                if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar) && dialogName.Length < 64) dialogName += key.KeyChar;
                 return;
             }
-
-            if (key.Key == ConsoleKeyEx.Escape)
-            {
-                if (contextMenuVisible)
-                {
-                    contextMenuVisible = false;
-                    return;
-                }
-                Close();
-                return;
-            }
-
-            if (key.Key == ConsoleKeyEx.Backspace)
-            {
-                GoUp();
-                return;
-            }
-
-            if (key.Key == ConsoleKeyEx.UpArrow)
-            {
-                SelectRelative(-1);
-                return;
-            }
-
-            if (key.Key == ConsoleKeyEx.DownArrow)
-            {
-                SelectRelative(1);
-                return;
-            }
-
-            if (key.Key == ConsoleKeyEx.Enter)
-            {
-                if (selectedIndex >= 0 && selectedIndex < entries.Count)
-                    OpenEntry(selectedIndex);
-                return;
-            }
-
-            if (key.Key == ConsoleKeyEx.F5)
-            {
-                Refresh();
-                return;
-            }
-
-            if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar))
-            {
-                if (searchText.Length < 48)
-                    searchText += key.KeyChar;
-                Refresh();
-            }
+            if (key.Key == ConsoleKeyEx.Escape) { if (contextMenuVisible) { contextMenuVisible = false; return; } Close(); return; }
+            if (key.Key == ConsoleKeyEx.Backspace) { GoUp(); return; }
+            if (key.Key == ConsoleKeyEx.LeftArrow) { Select(-1); return; }
+            if (key.Key == ConsoleKeyEx.RightArrow) { Select(1); return; }
+            if (key.Key == ConsoleKeyEx.UpArrow) { Select(-Columns()); return; }
+            if (key.Key == ConsoleKeyEx.DownArrow) { Select(Columns()); return; }
+            if (key.Key == ConsoleKeyEx.Enter) { if (selectedIndex >= 0) OpenEntry(selectedIndex); return; }
+            if (key.Key == ConsoleKeyEx.F5) { Refresh(); return; }
+            if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar)) { if (searchText.Length < 48) searchText += key.KeyChar; Refresh(); }
         }
 
-        private void SelectRelative(int delta)
+        private int Columns() { return Math.Max(1, (view.Width - 8 + 6) / 118); }
+        private void Select(int delta)
         {
-            if (entries.Count == 0)
-                return;
-
-            if (selectedIndex < 0)
-                selectedIndex = delta > 0 ? 0 : entries.Count - 1;
-            else
-                selectedIndex = Math.Max(0, Math.Min(entries.Count - 1, selectedIndex + delta));
-
+            if (entries.Count == 0) return;
+            if (selectedIndex < 0) selectedIndex = delta >= 0 ? 0 : entries.Count - 1;
+            else selectedIndex = Math.Max(0, Math.Min(entries.Count - 1, selectedIndex + delta));
             EnsureSelectionVisible();
         }
-
         private void EnsureSelectionVisible()
         {
-            int visible = Math.Max(1, (view.Height - 180) / 28);
-            if (selectedIndex < scrollIndex)
-                scrollIndex = selectedIndex;
-            else if (selectedIndex >= scrollIndex + visible)
-                scrollIndex = selectedIndex - visible + 1;
-
-            int maxScroll = Math.Max(0, entries.Count - visible);
-            if (scrollIndex > maxScroll) scrollIndex = maxScroll;
+            int cols = Columns(), rows = Math.Max(1, (view.Height - 112) / 100), visible = cols * rows;
+            if (selectedIndex < scrollIndex) scrollIndex = selectedIndex;
+            else if (selectedIndex >= scrollIndex + visible) scrollIndex = selectedIndex - visible + cols;
+            scrollIndex -= scrollIndex % cols;
             if (scrollIndex < 0) scrollIndex = 0;
+            int max = Math.Max(0, entries.Count - visible); if (scrollIndex > max) scrollIndex = Math.Max(0, max - max % cols);
         }
 
         private void GoUp()
         {
-            if (currentPath == "/")
-            {
-                status = "Already at root";
-                return;
-            }
-
-            try
-            {
-                string parent = Directory.GetParent(currentPath)?.FullName;
-                if (string.IsNullOrEmpty(parent))
-                    parent = "/";
-
-                currentPath = parent.Replace('\\', '/');
-                searchText = "";
-                Refresh();
-            }
-            catch (Exception ex)
-            {
-                status = "Parent error: " + ex.Message;
-            }
+            if (currentPath == "/") { status = "Already at root"; return; }
+            try { string p = Directory.GetParent(currentPath)?.FullName; currentPath = string.IsNullOrEmpty(p) ? "/" : p.Replace('\\', '/'); searchText = ""; Refresh(); }
+            catch (Exception ex) { status = "Parent error: " + ex.Message; }
         }
 
         private void OpenEntry(int index)
         {
-            if (index < 0 || index >= entries.Count)
-                return;
-
-            FileEntry entry = entries[index];
-            if (entry.IsDirectory)
-            {
-                currentPath = entry.FullPath;
-                searchText = "";
-                Refresh();
-                return;
-            }
-
-            if (nanoLauncher != null)
-            {
-                nanoLauncher(entry.FullPath);
-                status = "Opened " + entry.Name;
-            }
-            else
-                status = "No editor available";
+            if (index < 0 || index >= entries.Count) return;
+            FileEntry e = entries[index];
+            if (e.IsDirectory) { currentPath = e.FullPath; searchText = ""; Refresh(); }
+            else if (nanoLauncher != null) { nanoLauncher(e.FullPath); status = "Opened " + e.Name; }
         }
 
-        private void Refresh()
+        private void BeginCreate(int mode) { dialogMode = mode; dialogName = ""; status = mode == 1 ? "New file: type a name" : "New folder: type a name"; }
+        private void FinishCreate()
         {
-            RefreshInternal("");
-        }
-
-        private void RefreshPreserveStatus()
-        {
-            string oldStatus = status;
-            RefreshInternal(oldStatus);
-        }
-
-        private void RefreshInternal(string statusAfter)
-        {
-            entries.Clear();
-            selectedIndex = -1;
-            scrollIndex = 0;
-            contextMenuVisible = false;
-
+            string n = (dialogName ?? "").Trim();
+            if (string.IsNullOrEmpty(n)) { status = "Name cannot be empty"; return; }
+            if (n == "." || n == ".." || n.IndexOf('/') >= 0 || n.IndexOf('\\') >= 0) { status = "Invalid name"; return; }
+            string p = Path.Combine(currentPath, n).Replace('\\', '/');
             try
             {
-                if (!Directory.Exists(currentPath))
-                {
-                    currentPath = "/";
-                    if (!Directory.Exists(currentPath))
-                    {
-                        status = "Directory not found";
-                        return;
-                    }
-                }
-
-                string[] directories = Directory.GetDirectories(currentPath);
-                string[] files = Directory.GetFiles(currentPath);
-
-                AddEntries(directories, true);
-                AddEntries(files, false);
-                SortEntries();
-
-                if (!string.IsNullOrEmpty(searchText))
-                    FilterEntries();
-
-                status = string.IsNullOrEmpty(statusAfter)
-                    ? entries.Count + " item(s)"
-                    : statusAfter;
+                if (File.Exists(p) || Directory.Exists(p)) { status = "Already exists"; return; }
+                if (dialogMode == 1) { File.WriteAllText(p, ""); status = "Created file: " + n; }
+                else { Directory.CreateDirectory(p); status = "Created folder: " + n; }
+                dialogMode = 0; dialogName = ""; RefreshKeepStatus();
             }
-            catch (Exception ex)
-            {
-                status = "Read error: " + ex.Message;
-            }
+            catch (Exception ex) { status = "Create error: " + ex.Message; dialogMode = 0; dialogName = ""; }
         }
 
-        private void AddEntries(string[] paths, bool directory)
+        private void Refresh() { RefreshInternal(""); }
+        private void RefreshKeepStatus() { RefreshInternal(status); }
+        private void RefreshInternal(string keep)
+        {
+            entries.Clear(); selectedIndex = -1; scrollIndex = 0; contextMenuVisible = false;
+            try
+            {
+                if (!Directory.Exists(currentPath)) currentPath = "/";
+                Add(Directory.GetDirectories(currentPath), true); Add(Directory.GetFiles(currentPath), false); Sort();
+                if (!string.IsNullOrEmpty(searchText)) Filter();
+                status = string.IsNullOrEmpty(keep) ? entries.Count + " item(s)" : keep;
+            }
+            catch (Exception ex) { status = "Read error: " + ex.Message; }
+        }
+        private void Add(string[] paths, bool dir)
         {
             if (paths == null) return;
-            for (int i = 0; i < paths.Length; i++)
-            {
-                string path = paths[i];
-                string name = Path.GetFileName(path.TrimEnd('/', '\\'));
-                if (string.IsNullOrEmpty(name)) name = path;
-                entries.Add(new FileEntry(name, path.Replace('\\', '/'), directory));
-            }
+            for (int i = 0; i < paths.Length; i++) { string p = paths[i]; string n = Path.GetFileName(p.TrimEnd('/', '\\')); if (string.IsNullOrEmpty(n)) n = p; entries.Add(new FileEntry(n, p.Replace('\\', '/'), dir)); }
         }
-
-        private void SortEntries()
+        private void Sort()
         {
-            for (int i = 1; i < entries.Count; i++)
-            {
-                FileEntry value = entries[i];
-                int j = i - 1;
-                while (j >= 0 && CompareEntries(entries[j], value) > 0)
-                {
-                    entries[j + 1] = entries[j];
-                    j--;
-                }
-                entries[j + 1] = value;
-            }
+            for (int i = 1; i < entries.Count; i++) { FileEntry v = entries[i]; int j = i - 1; while (j >= 0 && Compare(entries[j], v) > 0) { entries[j + 1] = entries[j]; j--; } entries[j + 1] = v; }
         }
-
-        private int CompareEntries(FileEntry a, FileEntry b)
-        {
-            if (a.IsDirectory != b.IsDirectory)
-                return a.IsDirectory ? -1 : 1;
-            return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private void FilterEntries()
-        {
-            string filter = searchText.ToLowerInvariant();
-            for (int i = entries.Count - 1; i >= 0; i--)
-            {
-                if (!entries[i].Name.ToLowerInvariant().Contains(filter))
-                    entries.RemoveAt(i);
-            }
-        }
+        private int Compare(FileEntry a, FileEntry b) { if (a.IsDirectory != b.IsDirectory) return a.IsDirectory ? -1 : 1; return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase); }
+        private void Filter() { string f = searchText.ToLowerInvariant(); for (int i = entries.Count - 1; i >= 0; i--) if (!entries[i].Name.ToLowerInvariant().Contains(f)) entries.RemoveAt(i); }
 
         public string CurrentPath { get { return currentPath; } }
         public string SearchText { get { return searchText; } }
@@ -501,215 +203,65 @@ namespace ZonderqOS.GUI.Apps
 
     public sealed class FileEntry
     {
-        public readonly string Name;
-        public readonly string FullPath;
-        public readonly bool IsDirectory;
-
-        public FileEntry(string name, string fullPath, bool isDirectory)
-        {
-            Name = name;
-            FullPath = fullPath;
-            IsDirectory = isDirectory;
-        }
+        public readonly string Name, FullPath; public readonly bool IsDirectory;
+        public FileEntry(string name, string fullPath, bool isDirectory) { Name = name; FullPath = fullPath; IsDirectory = isDirectory; }
     }
 
     internal sealed class FileManagerView : Widget
     {
         private readonly FileManagerApp app;
         private readonly Font font = PCScreenFont.DefaultFont;
-
-        public FileManagerView(int x, int y, int width, int height, FileManagerApp owner)
-            : base(x, y, width, height)
-        {
-            app = owner;
-        }
+        public FileManagerView(int x, int y, int width, int height, FileManagerApp owner) : base(x, y, width, height) { app = owner; }
 
         public override void Render(Canvas canvas)
         {
             if (!Visible) return;
+            canvas.DrawFilledRectangle(Color.WhiteSmoke, X, Y, Width, Height); canvas.DrawRectangle(Color.Gray, X, Y, Width, Height);
+            canvas.DrawFilledRectangle(Color.FromArgb(225, 230, 235), X + 4, Y + 4, Width - 8, 38);
+            Button(canvas, IconType.ArrowUp, 8); Button(canvas, IconType.Start, 50); Button(canvas, IconType.Refresh, 92); Button(canvas, IconType.Search, 134);
+            int pathX = X + 180, pathW = Math.Max(120, Width - 190);
+            canvas.DrawFilledRectangle(Color.White, pathX, Y + 9, pathW, 26); canvas.DrawRectangle(Color.Silver, pathX, Y + 9, pathW, 26);
+            string path = app.CurrentPath + (string.IsNullOrEmpty(app.SearchText) ? "" : " [" + app.SearchText + "]");
+            int max = Math.Max(8, (pathW - 14) / 16); if (path.Length > max) path = "..." + path.Substring(path.Length - max + 3);
+            canvas.DrawString(path, font, Color.Black, pathX + 7, Y + 11);
 
-            canvas.DrawFilledRectangle(Color.WhiteSmoke, X, Y, Width, Height);
-            canvas.DrawRectangle(Color.Silver, X, Y, Width, Height);
+            int listX = X + 4, listY = Y + 48, listW = Width - 8, listH = Height - 84;
+            canvas.DrawFilledRectangle(Color.White, listX, listY, listW, listH); Grid(canvas, listX, listY, listW, listH);
 
-            // Modern toolbar: icon on top, compact caption underneath.
-            canvas.DrawFilledRectangle(Color.FromArgb(238, 241, 244), X + 4, Y + 4, Width - 8, 66);
-            DrawButton(canvas, IconType.ArrowUp, 8, "Up");
-            DrawButton(canvas, IconType.Start, 76, "Home");
-            DrawButton(canvas, IconType.Refresh, 144, "Refresh");
-            DrawButton(canvas, IconType.Search, 212, "Search");
-
-            int pathX = X + 10;
-            int pathY = Y + 78;
-            int pathWidth = Math.Max(120, Width - 20);
-            canvas.DrawFilledRectangle(Color.White, pathX, pathY, pathWidth, 30);
-            canvas.DrawRectangle(Color.Silver, pathX, pathY, pathWidth, 30);
-
-            string pathText = app.CurrentPath;
-            if (!string.IsNullOrEmpty(app.SearchText))
-                pathText += " [" + app.SearchText + "]";
-            int maxPathChars = Math.Max(8, (pathWidth - 14) / 16);
-            if (pathText.Length > maxPathChars)
-                pathText = "..." + pathText.Substring(pathText.Length - maxPathChars + 3);
-            canvas.DrawString(pathText, font, Color.Black, pathX + 7, pathY + 2);
-
-            int listY = Y + 114;
-            canvas.DrawFilledRectangle(Color.FromArgb(225, 230, 235), X + 4, listY, Width - 8, 30);
-            canvas.DrawString("Name", font, Color.FromArgb(55, 65, 75), X + 34, listY + 4);
-            canvas.DrawString("Type", font, Color.FromArgb(55, 65, 75), X + Width - 150, listY + 4);
-
-            int rowHeight = 28;
-            int visible = Math.Max(1, (Height - 180) / rowHeight);
-            int start = app.ScrollIndex;
-            for (int i = 0; i < visible; i++)
-            {
-                int index = start + i;
-                if (index >= app.Entries.Count) break;
-
-                FileEntry entry = app.Entries[index];
-                int rowY = listY + 30 + i * rowHeight;
-                bool selected = index == app.SelectedIndex;
-                Color rowColor = selected
-                    ? Color.FromArgb(210, 225, 242)
-                    : (i % 2 == 0 ? Color.White : Color.FromArgb(248, 249, 250));
-
-                canvas.DrawFilledRectangle(rowColor, X + 4, rowY, Width - 8, rowHeight);
-                canvas.DrawLine(Color.Gainsboro, X + 4, rowY + rowHeight - 1, X + Width - 4, rowY + rowHeight - 1);
-
-                IconManager.Draw(canvas, entry.IsDirectory ? IconType.Folder : IconType.File,
-                    X + 10, rowY + 5, Color.White);
-
-                string displayName = entry.Name;
-                int maxNameChars = Math.Max(8, (Width - 205) / 16);
-                if (displayName.Length > maxNameChars)
-                    displayName = displayName.Substring(0, maxNameChars - 3) + "...";
-
-                canvas.DrawString(displayName, font, Color.Black, X + 34, rowY + 4);
-                canvas.DrawString(entry.IsDirectory ? "Folder" : "File", font, Color.DimGray, X + Width - 150, rowY + 4);
-            }
-
-            int footerY = Y + Height - 34;
-            canvas.DrawFilledRectangle(Color.FromArgb(238, 241, 244), X + 4, footerY, Width - 8, 28);
-
-            string statusText = app.Status ?? "";
-            int maxStatusChars = Math.Max(8, (Width / 2 - 16) / 16);
-            if (statusText.Length > maxStatusChars)
-                statusText = statusText.Substring(0, maxStatusChars - 3) + "...";
-            canvas.DrawString(statusText, font, Color.DimGray, X + 10, footerY + 3);
-
-            string help = "Enter open | Backspace parent | F5 refresh";
-            int helpX = Math.Max(X + Width / 2, X + 220);
-            int maxHelpChars = Math.Max(8, (Width - (helpX - X) - 12) / 16);
-            if (help.Length > maxHelpChars)
-                help = help.Substring(0, maxHelpChars - 3) + "...";
-            canvas.DrawString(help, font, Color.DimGray, helpX, footerY + 3);
-
-            if (app.ContextMenuVisible)
-                RenderContextMenu(canvas);
-
-            if (app.DialogMode != 0)
-                RenderDialog(canvas);
+            int fy = Y + Height - 34; canvas.DrawFilledRectangle(Color.FromArgb(225, 230, 235), X + 4, fy, Width - 8, 28);
+            string s = app.Status ?? ""; int sm = Math.Max(8, (Width / 2 - 16) / 16); if (s.Length > sm) s = s.Substring(0, sm - 3) + "...";
+            canvas.DrawString(s, font, Color.DimGray, X + 10, fy + 3);
+            canvas.DrawString("Double click open | Enter | F5 refresh", font, Color.DimGray, X + Width / 2, fy + 3);
+            if (app.ContextMenuVisible) Menu(canvas); if (app.DialogMode != 0) Dialog(canvas);
         }
 
-        private void DrawButton(Canvas canvas, IconType type, int offset, string label)
+        private void Grid(Canvas canvas, int x, int y, int w, int h)
         {
-            int bx = X + offset;
-            int by = Y + 7;
-            canvas.DrawFilledRectangle(Color.White, bx, by, 62, 60);
-            canvas.DrawRectangle(Color.FromArgb(205, 210, 215), bx, by, 62, 60);
-
-            IconManager.Draw(canvas, type, bx + 22, by + 7, Color.Black);
-            DrawMiniText(canvas, label.ToUpperInvariant(), bx + 31, by + 46, Color.FromArgb(65, 70, 75));
-        }
-
-        private void DrawMiniText(Canvas canvas, string text, int centerX, int y, Color color)
-        {
-            int scale = 2;
-            int charWidth = 6 * scale;
-            int width = text.Length * charWidth - scale;
-            int x = centerX - width / 2;
-
-            for (int i = 0; i < text.Length; i++)
+            int tw = 112, th = 94, gap = 6, cols = Math.Max(1, (w + gap) / (tw + gap)), rows = Math.Max(1, h / (th + gap));
+            int count = cols * rows;
+            for (int i = 0; i < count; i++)
             {
-                DrawMiniGlyph(canvas, text[i], x + i * charWidth, y, scale, color);
+                int idx = app.ScrollIndex + i; if (idx >= app.Entries.Count) break; FileEntry e = app.Entries[idx];
+                int tx = x + i % cols * (tw + gap), ty = y + i / cols * (th + gap);
+                if (idx == app.SelectedIndex) { canvas.DrawFilledRectangle(Color.FromArgb(220, 232, 247), tx, ty, tw, th); canvas.DrawRectangle(Color.FromArgb(105, 150, 205), tx, ty, tw, th); }
+                IconManager.Draw(canvas, e.IsDirectory ? IconType.Folder : IconType.File, tx + 40, ty + 8, Color.White);
+                string n = e.Name ?? ""; if (n.Length > 11) n = n.Substring(0, 8) + "...";
+                // The label is kept on its own line under the icon, like desktop file managers.
+                int nx = tx + Math.Max(4, (tw - n.Length * 16) / 2); canvas.DrawString(n, font, Color.FromArgb(30, 30, 30), nx, ty + 58);
             }
         }
 
-        private void DrawMiniGlyph(Canvas canvas, char c, int x, int y, int scale, Color color)
+        private void Button(Canvas c, IconType type, int off) { int bx = X + off; c.DrawFilledRectangle(Color.White, bx, Y + 7, 36, 30); c.DrawRectangle(Color.Silver, bx, Y + 7, 36, 30); IconManager.Draw(c, type, bx + 9, Y + 11, Color.Black); }
+        private void Menu(Canvas c)
         {
-            string[] rows;
-            switch (c)
-            {
-                case 'A': rows = new[] { "01110", "10001", "10001", "11111", "10001", "10001", "10001" }; break;
-                case 'C': rows = new[] { "01111", "10000", "10000", "10000", "10000", "10000", "01111" }; break;
-                case 'E': rows = new[] { "11111", "10000", "10000", "11110", "10000", "10000", "11111" }; break;
-                case 'F': rows = new[] { "11111", "10000", "10000", "11110", "10000", "10000", "10000" }; break;
-                case 'H': rows = new[] { "10001", "10001", "10001", "11111", "10001", "10001", "10001" }; break;
-                case 'M': rows = new[] { "10001", "11011", "10101", "10101", "10001", "10001", "10001" }; break;
-                case 'O': rows = new[] { "01110", "10001", "10001", "10001", "10001", "10001", "01110" }; break;
-                case 'P': rows = new[] { "11110", "10001", "10001", "11110", "10000", "10000", "10000" }; break;
-                case 'R': rows = new[] { "11110", "10001", "10001", "11110", "10100", "10010", "10001" }; break;
-                case 'S': rows = new[] { "01111", "10000", "10000", "01110", "00001", "00001", "11110" }; break;
-                case 'U': rows = new[] { "10001", "10001", "10001", "10001", "10001", "10001", "01110" }; break;
-                default: rows = new[] { "00000", "00000", "00000", "00000", "00000", "00000", "00000" }; break;
-            }
-
-            for (int row = 0; row < rows.Length; row++)
-            {
-                for (int col = 0; col < rows[row].Length; col++)
-                {
-                    if (rows[row][col] == '1')
-                        canvas.DrawFilledRectangle(color, x + col * scale, y + row * scale, scale, scale);
-                }
-            }
+            int x = X + app.ContextMenuX, y = Y + app.ContextMenuY; c.DrawFilledRectangle(Color.FromArgb(245, 245, 245), x + 3, y + 3, 220, 116); c.DrawFilledRectangle(Color.White, x, y, 220, 116); c.DrawRectangle(Color.DimGray, x, y, 220, 116);
+            string[] a = { "Nowy plik", "Nowy folder", "Odśwież", "Przejdź wyżej" }; for (int i = 0; i < 4; i++) c.DrawString(a[i], font, Color.Black, x + 12, y + 6 + i * 29);
         }
-
-        private void RenderContextMenu(Canvas canvas)
+        private void Dialog(Canvas c)
         {
-            int menuX = X + app.ContextMenuX;
-            int menuY = Y + app.ContextMenuY;
-            canvas.DrawFilledRectangle(Color.FromArgb(210, 210, 210), menuX + 3, menuY + 3, 220, 116);
-            canvas.DrawFilledRectangle(Color.White, menuX, menuY, 220, 116);
-            canvas.DrawRectangle(Color.DimGray, menuX, menuY, 220, 116);
-
-            DrawMenuItem(canvas, menuX, menuY, 0, "Nowy plik");
-            DrawMenuItem(canvas, menuX, menuY, 1, "Nowy folder");
-            DrawMenuItem(canvas, menuX, menuY, 2, "Odśwież");
-            DrawMenuItem(canvas, menuX, menuY, 3, "Przejdź wyżej");
-        }
-
-        private void DrawMenuItem(Canvas canvas, int x, int y, int index, string text)
-        {
-            int itemY = y + 4 + index * 29;
-            canvas.DrawFilledRectangle(Color.White, x + 4, itemY, 212, 25);
-            canvas.DrawString(text, font, Color.Black, x + 12, itemY + 2);
-        }
-
-        private void RenderDialog(Canvas canvas)
-        {
-            int dialogWidth = 500;
-            int dialogHeight = 150;
-            int dx = X + (Width - dialogWidth) / 2;
-            int dy = Y + (Height - dialogHeight) / 2;
-
-            canvas.DrawFilledRectangle(Color.FromArgb(40, 40, 40), dx + 4, dy + 4, dialogWidth, dialogHeight);
-            canvas.DrawFilledRectangle(Color.WhiteSmoke, dx, dy, dialogWidth, dialogHeight);
-            canvas.DrawRectangle(Color.DimGray, dx, dy, dialogWidth, dialogHeight);
-            canvas.DrawFilledRectangle(Color.FromArgb(35, 55, 75), dx, dy, dialogWidth, 32);
-
-            string title = app.DialogMode == 1 ? "Utwórz nowy plik" : "Utwórz nowy folder";
-            canvas.DrawString(title, font, Color.White, dx + 12, dy + 4);
-            canvas.DrawString("Nazwa:", font, Color.Black, dx + 16, dy + 52);
-
-            canvas.DrawFilledRectangle(Color.White, dx + 100, dy + 45, 380, 30);
-            canvas.DrawRectangle(Color.Silver, dx + 100, dy + 45, 380, 30);
-
-            string name = app.DialogName ?? "";
-            int maxChars = 22;
-            if (name.Length > maxChars)
-                name = name.Substring(name.Length - maxChars);
-            canvas.DrawString(name + "_", font, Color.Black, dx + 108, dy + 49);
-
-            canvas.DrawString("Enter = utwórz    Esc = anuluj", font, Color.DimGray, dx + 16, dy + 105);
+            int w = 500, h = 150, x = X + (Width - w) / 2, y = Y + (Height - h) / 2; c.DrawFilledRectangle(Color.FromArgb(40, 40, 40), x + 4, y + 4, w, h); c.DrawFilledRectangle(Color.WhiteSmoke, x, y, w, h); c.DrawRectangle(Color.DimGray, x, y, w, h); c.DrawFilledRectangle(Color.FromArgb(35, 55, 75), x, y, w, 32);
+            c.DrawString(app.DialogMode == 1 ? "Utwórz nowy plik" : "Utwórz nowy folder", font, Color.White, x + 12, y + 4); c.DrawString("Nazwa:", font, Color.Black, x + 16, y + 52); c.DrawFilledRectangle(Color.White, x + 100, y + 45, 380, 30); c.DrawRectangle(Color.Silver, x + 100, y + 45, 380, 30);
+            string n = app.DialogName ?? ""; if (n.Length > 22) n = n.Substring(n.Length - 22); c.DrawString(n + "_", font, Color.Black, x + 108, y + 49); c.DrawString("Enter = utwórz    Esc = anuluj", font, Color.DimGray, x + 16, y + 105);
         }
     }
 }
