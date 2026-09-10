@@ -15,6 +15,8 @@ namespace ZonderqOS.GUI.Icons
         ArrowUp,
         Refresh,
         Search,
-        Trash
+        Trash,
+        Reboot,
+        Shutdown
     }
 }
