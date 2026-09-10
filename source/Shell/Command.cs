@@ -54,9 +54,6 @@ namespace ZonderqOS
             _commands.Add(new CmdSysmond());
             _commands.Add(new CmdNetwork());
             _commands.Add(new CmdKill());
-
-            // Komendy obecne w source/Shell/Commands, które wcześniej nie były
-            // rejestrowane i dlatego nie działały w żadnej sesji przez Command.Run.
             _commands.Add(new CmdEnv());
             _commands.Add(new CmdExport());
             _commands.Add(new CmdDns());
@@ -67,7 +64,6 @@ namespace ZonderqOS
             if (string.IsNullOrWhiteSpace(fullInput)) return;
             fullInput = EnvironmentExpander.Expand(fullInput, currentPath);
 
-            // 1. Rozdzielanie po średnikach (;) - sekwencje niezależne
             string[] semiCommands = fullInput.Split(';', StringSplitOptions.RemoveEmptyEntries);
 
             foreach (string semiCmd in semiCommands)
@@ -75,7 +71,6 @@ namespace ZonderqOS
                 string block = semiCmd.Trim();
                 if (string.IsNullOrEmpty(block)) continue;
 
-                // 2. Rozdzielanie po operatorze warunkowym (&&)
                 string[] andCommands = block.Split(new string[] { "&&" }, StringSplitOptions.RemoveEmptyEntries);
 
                 foreach (string andCmd in andCommands)
@@ -83,14 +78,10 @@ namespace ZonderqOS
                     string pipelineCmd = andCmd.Trim();
                     if (string.IsNullOrEmpty(pipelineCmd)) continue;
 
-                    // Wykonaj potok (obsługuje '|', '>' oraz '>>')
                     ExecutePipeline(pipelineCmd, ref currentPath);
 
-                    // Jeśli poprzednie polecenie w bloku '&&' zawiodło, przerywamy łańcuch
                     if (!CommandIO.LastCommandSuccess)
-                    {
                         break;
-                    }
                 }
             }
         }
@@ -100,29 +91,41 @@ namespace ZonderqOS
             string[] pipeParts = pipelineStr.Split('|');
             string pipedInput = null;
 
-            for (int i = 0; i < pipeParts.Length; i++)
+            try
             {
-                string singleCmdStr = pipeParts[i].Trim();
-                if (string.IsNullOrEmpty(singleCmdStr)) continue;
-
-                // Przekazanie stdin z poprzedniego potoku
-                CommandIO.SetInput(pipedInput);
-
-                bool isIntermediate = (i < pipeParts.Length - 1);
-
-                if (isIntermediate)
+                for (int i = 0; i < pipeParts.Length; i++)
                 {
-                    CommandIO.StartRedirection();
-                    ExecuteSingleCommandWithRedirection(singleCmdStr, ref currentPath);
-                    pipedInput = CommandIO.EndRedirection();
-                }
-                else
-                {
-                    // Ostatni element potoku (lub pojedyncza komenda)
-                    ExecuteSingleCommandWithRedirection(singleCmdStr, ref currentPath);
+                    string singleCmdStr = pipeParts[i].Trim();
+                    if (string.IsNullOrEmpty(singleCmdStr)) continue;
+
+                    CommandIO.SetInput(pipedInput);
+                    bool isIntermediate = i < pipeParts.Length - 1;
+
+                    if (isIntermediate)
+                    {
+                        string captured = string.Empty;
+                        CommandIO.StartRedirection();
+                        try
+                        {
+                            ExecuteSingleCommandWithRedirection(singleCmdStr, ref currentPath);
+                        }
+                        finally
+                        {
+                            captured = CommandIO.EndRedirection();
+                        }
+
+                        pipedInput = captured;
+                    }
+                    else
+                    {
+                        ExecuteSingleCommandWithRedirection(singleCmdStr, ref currentPath);
+                    }
                 }
             }
-            CommandIO.SetInput(null);
+            finally
+            {
+                CommandIO.SetInput(null);
+            }
         }
 
         private static void ExecuteSingleCommandWithRedirection(string commandLine, ref string currentPath)
@@ -134,7 +137,6 @@ namespace ZonderqOS
             int singleIndex = -1;
             bool inQuotes = false;
 
-            // Szukamy znaków > lub >> IGNORUJĄC to, co jest w cudzysłowach
             for (int i = 0; i < commandLine.Length; i++)
             {
                 char c = commandLine[i];
@@ -158,6 +160,7 @@ namespace ZonderqOS
             }
 
             string commandPart = commandLine;
+            bool hasRedirection = appendIndex != -1 || singleIndex != -1;
 
             if (appendIndex != -1)
             {
@@ -167,13 +170,23 @@ namespace ZonderqOS
             }
             else if (singleIndex != -1)
             {
-                appendMode = false;
                 commandPart = commandLine.Substring(0, singleIndex);
                 redirectPath = commandLine.Substring(singleIndex + 1).Trim();
             }
 
+            if (hasRedirection && string.IsNullOrEmpty(redirectPath))
+            {
+                WriteMessage.WriteError("Missing redirection target path.", "CMD");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             string[] words = commandPart.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-            if (words.Length == 0) return;
+            if (words.Length == 0)
+            {
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
 
             string cmdName = words[0].ToLower();
 
@@ -199,18 +212,22 @@ namespace ZonderqOS
                 if (!string.IsNullOrEmpty(redirectPath))
                 {
                     string resolvedPath = PathResolver.GetAbsolutePath(currentPath, redirectPath);
+                    string output = string.Empty;
+
                     CommandIO.StartRedirection();
-                    targetCmd.Execute(words, ref currentPath);
-                    string output = CommandIO.EndRedirection();
+                    try
+                    {
+                        targetCmd.Execute(words, ref currentPath);
+                    }
+                    finally
+                    {
+                        output = CommandIO.EndRedirection();
+                    }
 
                     if (appendMode)
-                    {
                         Disk.AppendFile(resolvedPath, output.TrimEnd('\r', '\n'));
-                    }
                     else
-                    {
                         Disk.CreateFile(resolvedPath, output.TrimEnd('\r', '\n'));
-                    }
                 }
                 else
                 {
