@@ -11,6 +11,22 @@ namespace ZonderqOS.GUI
             return string.IsNullOrEmpty(text) ? 0 : text.Length * 6 - 1;
         }
 
+        public static int WidthUInt(ulong value)
+        {
+            return DigitCount(value) * 6 - 1;
+        }
+
+        public static int WidthInt(long value)
+        {
+            if (value >= 0)
+                return WidthUInt((ulong)value);
+
+            ulong magnitude = value == long.MinValue
+                ? ((ulong)long.MaxValue + 1UL)
+                : (ulong)(-value);
+            return 6 + WidthUInt(magnitude);
+        }
+
         public static void Draw(Canvas canvas, string text, int x, int y, Color color)
         {
             if (string.IsNullOrEmpty(text))
@@ -18,6 +34,56 @@ namespace ZonderqOS.GUI
 
             for (int i = 0; i < text.Length; i++)
                 DrawChar(canvas, text[i], x + i * 6, y, color);
+        }
+
+        public static void DrawUInt(Canvas canvas, ulong value, int x, int y, Color color)
+        {
+            int digits = DigitCount(value);
+            ulong divisor = Pow10(digits - 1);
+            for (int i = 0; i < digits; i++)
+            {
+                ulong digit = divisor == 0 ? 0 : value / divisor;
+                DrawChar(canvas, (char)('0' + (int)digit), x + i * 6, y, color);
+                if (divisor > 1)
+                {
+                    value %= divisor;
+                    divisor /= 10;
+                }
+                else
+                {
+                    divisor = 0;
+                }
+            }
+        }
+
+        public static void DrawInt(Canvas canvas, long value, int x, int y, Color color)
+        {
+            if (value >= 0)
+            {
+                DrawUInt(canvas, (ulong)value, x, y, color);
+                return;
+            }
+
+            DrawChar(canvas, '-', x, y, color);
+            ulong magnitude = value == long.MinValue
+                ? ((ulong)long.MaxValue + 1UL)
+                : (ulong)(-value);
+            DrawUInt(canvas, magnitude, x + 6, y, color);
+        }
+
+        public static void DrawPercent(Canvas canvas, int value, int x, int y, Color color)
+        {
+            if (value < 0) value = 0;
+            if (value > 100) value = 100;
+            DrawUInt(canvas, (ulong)value, x, y, color);
+            DrawChar(canvas, '%', x + WidthUInt((ulong)value) + 2, y, color);
+        }
+
+        public static void DrawUIntWithSuffix(Canvas canvas, ulong value, string suffix, int x, int y, Color color)
+        {
+            DrawUInt(canvas, value, x, y, color);
+            if (!string.IsNullOrEmpty(suffix))
+                Draw(canvas, suffix, x + WidthUInt(value) + 6, y, color);
         }
 
         public static void DrawClipped(Canvas canvas, string text, int x, int y, int maxWidth, Color color)
@@ -66,6 +132,25 @@ namespace ZonderqOS.GUI
             int end = Math.Min(text.Length, start + count);
             for (int i = start; i < end; i++)
                 DrawChar(canvas, text[i], x + (i - start) * 6, y, color);
+        }
+
+        private static int DigitCount(ulong value)
+        {
+            int count = 1;
+            while (value >= 10)
+            {
+                value /= 10;
+                count++;
+            }
+            return count;
+        }
+
+        private static ulong Pow10(int exponent)
+        {
+            ulong value = 1;
+            for (int i = 0; i < exponent; i++)
+                value *= 10;
+            return value;
         }
 
         private static void DrawChar(Canvas canvas, char ch, int x, int y, Color color)
