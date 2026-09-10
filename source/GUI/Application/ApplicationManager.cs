@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Keyboard;
 
 namespace ZonderqOS.GUI.Apps
@@ -11,20 +12,29 @@ namespace ZonderqOS.GUI.Apps
         {
             get
             {
-                if (applications.Count == 0) return null;
-                return applications[applications.Count - 1];
+                for (int i = applications.Count - 1; i >= 0; i--)
+                {
+                    Application application = applications[i];
+                    if (application != null && application.IsRunning && application.Window != null && application.Window.Visible)
+                        return application;
+                }
+                return null;
             }
         }
 
         public void Launch(Application application)
         {
-            if (application == null) return;
+            if (application == null || !application.IsRunning)
+                return;
+
             applications.Add(application);
         }
 
         public void Close(Application application)
         {
-            if (application == null) return;
+            if (application == null)
+                return;
+
             application.Close();
             applications.Remove(application);
         }
@@ -37,25 +47,26 @@ namespace ZonderqOS.GUI.Apps
         public void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
         {
             ActiveApplication?.HandleMouse(mouseX, mouseY, isClicked, wasClicked);
-            ActiveApplication?.Window?.HandleMouse(mouseX, mouseY, isClicked, wasClicked);
         }
 
         public void Update()
         {
             for (int i = applications.Count - 1; i >= 0; i--)
             {
-                if (!applications[i].IsRunning)
+                Application application = applications[i];
+                if (application == null || !application.IsRunning || application.Window == null || !application.Window.Visible)
                     applications.RemoveAt(i);
                 else
-                    applications[i].Update();
+                    application.Update();
             }
         }
 
-        public void Render(Cosmos.Kernel.System.Graphics.Canvas canvas)
+        public void Render(Canvas canvas)
         {
-            foreach (var application in applications)
+            for (int i = 0; i < applications.Count; i++)
             {
-                if (application.IsRunning)
+                Application application = applications[i];
+                if (application != null && application.IsRunning && application.Window != null && application.Window.Visible)
                     application.Render(canvas);
             }
         }
