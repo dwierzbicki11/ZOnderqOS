@@ -27,10 +27,17 @@ namespace ZonderqOS.GUI
         private int frameCounter;
 
         private const int TaskbarHeight = 44;
-        // When the desktop is idle there is no reason to redraw a 1920x1080
-        // backbuffer ~60 times per second. Input still redraws immediately;
-        // this heartbeat keeps clocks, task-manager graphs and background state fresh.
-        private const int IdleRenderHeartbeatFrames = 20;
+
+        // Normal desktop/app windows are fully event-driven: if nothing changes,
+        // there is no reason to repaint the 1920x1080 framebuffer. A very slow
+        // heartbeat remains only so the taskbar clock can advance while completely idle.
+        private const int IdleClockHeartbeatFrames = 4000; // ~60 s at 15 ms loop sleep
+
+        // Task Manager is the one window that intentionally shows changing telemetry.
+        // One refresh per ~1 s is enough for graphs/counters and avoids turning an
+        // otherwise idle desktop into a continuous renderer.
+        private const int TelemetryRenderHeartbeatFrames = 67; // ~1 s
+
         private const string WallpaperCacheDirectory = "/root/.zonderq-wallpapers";
         private const string WallpaperCachePath = WallpaperCacheDirectory + "/wallpaper.png";
         private const string WallpaperResourceName = "Wallpapers.wallpaper.png";
@@ -86,10 +93,12 @@ namespace ZonderqOS.GUI
                 int previousMouseX = -1;
                 int previousMouseY = -1;
 
-                // First frame is always drawn. After that, the GUI is input-driven
-                // with a low-rate heartbeat instead of allocating/rendering at 60 FPS
-                // while absolutely nothing on screen changes.
-                RenderFrame(0, 0);
+                // First frame is always drawn. Later frames are caused by input or by
+                // a deliberately low-rate heartbeat. An idle normal application no
+                // longer causes periodic full-screen redraws every few hundred ms.
+                int firstMouseX = (int)MouseManager.X;
+                int firstMouseY = (int)MouseManager.Y;
+                RenderFrame(firstMouseX, firstMouseY);
 
                 while (isRunning)
                 {
@@ -140,7 +149,12 @@ namespace ZonderqOS.GUI
 
                     applicationManager.Update();
 
-                    bool heartbeat = frameCounter % IdleRenderHeartbeatFrames == 0;
+                    bool heartbeat;
+                    if (applicationManager.HasLiveTelemetryWindow)
+                        heartbeat = frameCounter % TelemetryRenderHeartbeatFrames == 0;
+                    else
+                        heartbeat = frameCounter % IdleClockHeartbeatFrames == 0;
+
                     if (keyboardActivity || pointerMoved || buttonChanged || heartbeat)
                         RenderFrame(mouseX, mouseY);
 
