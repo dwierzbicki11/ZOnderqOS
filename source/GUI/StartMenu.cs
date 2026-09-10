@@ -330,8 +330,22 @@ namespace ZonderqOS.GUI
             canvas.DrawLine(Color.FromArgb(49, 61, 72), X + 1, footerY, X + Width - 2, footerY);
 
             IconManager.DrawScaled(canvas, IconType.Start, X + Padding, footerY + 21, 24, 24);
-            SmallTextRenderer.Draw(canvas, "ZONDERQOS", X + Padding + 34, footerY + 23, Text);
-            SmallTextRenderer.Draw(canvas, "GEN3", X + Padding + 34, footerY + 38, Muted);
+            string currentUser = SecurityContext.CurrentUser;
+            if (string.IsNullOrEmpty(currentUser))
+                currentUser = "USER";
+            SmallTextRenderer.DrawClipped(canvas, currentUser, X + Padding + 34, footerY + 23, 58, Text);
+            SmallTextRenderer.Draw(canvas, "LOCK", X + Padding + 34, footerY + 38, Muted);
+            int autoLock = global::ZonderqOS.SystemSettings.AutoLockMinutes;
+            if (autoLock <= 0)
+            {
+                SmallTextRenderer.Draw(canvas, "OFF", X + Padding + 62, footerY + 38, Muted);
+            }
+            else
+            {
+                SmallTextRenderer.DrawUInt(canvas, (ulong)autoLock, X + Padding + 62, footerY + 38, Muted);
+                SmallTextRenderer.Draw(canvas, "M", X + Padding + 62 + SmallTextRenderer.WidthUInt((ulong)autoLock) + 3,
+                    footerY + 38, Muted);
+            }
 
             if (lockButton != null)
                 RenderPowerButton(canvas, lockButton, IconType.Settings, "BLOKUJ", false);
