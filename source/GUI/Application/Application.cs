@@ -1,4 +1,5 @@
 using Cosmos.Kernel.System.Graphics;
+using Cosmos.Kernel.System.Keyboard;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -15,18 +16,24 @@ namespace ZonderqOS.GUI.Apps
 
         public virtual void Update() { }
 
-        public virtual void HandleKeyboard(Cosmos.Kernel.System.Keyboard.KeyEvent key) { }
+        public virtual void HandleKeyboard(KeyEvent key) { }
 
-        public virtual void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked) { }
+        public virtual void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
+        {
+            Window?.HandleMouse(mouseX, mouseY, isClicked, wasClicked);
+        }
 
         public virtual void Render(Canvas canvas)
         {
-            if (Window != null)
+            if (Window != null && Window.Visible && IsRunning)
                 Window.Render(canvas);
         }
 
         public virtual void Close()
         {
+            if (!IsRunning)
+                return;
+
             IsRunning = false;
             if (Window != null)
                 Window.Visible = false;
