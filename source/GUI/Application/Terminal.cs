@@ -66,7 +66,7 @@ namespace ZonderqOS.GUI.Apps
         {
             string user = EnvironmentManager.Get("USER") ?? "root";
             string host = EnvironmentManager.Get("HOSTNAME") ?? "ZOnderqOS";
-            terminalBox.Prompt = $"{user}@{host}:{currentPath}$ ";
+            terminalBox.Prompt = user + "@" + host + ":" + currentPath + "$ ";
         }
 
         private void PrintCommandOutput(string output)
@@ -96,7 +96,7 @@ namespace ZonderqOS.GUI.Apps
                 return;
 
             string command = terminalBox.Text.Trim();
-            terminalBox.PrintLine(terminalBox.Prompt + command);
+            terminalBox.PrintLine(terminalBox.Prompt + MaskSensitiveCommand(command));
             terminalBox.ClearInput();
 
             if (string.IsNullOrEmpty(command))
@@ -109,7 +109,7 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                terminalBox.PrintLine($"Kernel error: {ex.Message}");
+                terminalBox.PrintLine("Kernel error: " + ex.Message);
             }
             finally
             {
@@ -117,6 +117,27 @@ namespace ZonderqOS.GUI.Apps
                 PrintCommandOutput(output);
                 UpdatePrompt();
             }
+        }
+
+        private static string MaskSensitiveCommand(string command)
+        {
+            if (string.IsNullOrEmpty(command))
+                return string.Empty;
+
+            // su currently accepts the password as its second argument. Do not persist that
+            // credential in the terminal scrollback after Enter is pressed.
+            if (command.StartsWith("su ", StringComparison.OrdinalIgnoreCase))
+            {
+                int usernameStart = 3;
+                while (usernameStart < command.Length && command[usernameStart] == ' ')
+                    usernameStart++;
+
+                int passwordSeparator = command.IndexOf(' ', usernameStart);
+                if (passwordSeparator > usernameStart)
+                    return command.Substring(0, passwordSeparator) + " ********";
+            }
+
+            return command;
         }
 
         public override void Close()
