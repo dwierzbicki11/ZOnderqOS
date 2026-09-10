@@ -213,6 +213,15 @@ namespace ZonderqOS.GUI.Apps
     {
         private readonly FileManagerApp app;
         private readonly Font font = PCScreenFont.DefaultFont;
+        private static readonly string[] CharCache = BuildCharCache();
+
+        private static string[] BuildCharCache()
+        {
+            string[] cache = new string[256];
+            for (int i = 0; i < cache.Length; i++) cache[i] = ((char)i).ToString();
+            return cache;
+        }
+
         public FileManagerView(int x, int y, int width, int height, FileManagerApp owner) : base(x, y, width, height) { app = owner; }
 
         public override void Render(Canvas canvas)
@@ -274,7 +283,10 @@ namespace ZonderqOS.GUI.Apps
             if (text == null || count <= 0 || start < 0 || start >= text.Length) return;
             int end = Math.Min(text.Length, start + count);
             for (int i = start; i < end; i++)
-                canvas.DrawString(text[i].ToString(), font, color, x + (i - start) * 16, y);
+            {
+                char ch = text[i];
+                canvas.DrawString(ch < 256 ? CharCache[ch] : ch.ToString(), font, color, x + (i - start) * 16, y);
+            }
         }
 
         private void Grid(Canvas canvas, int x, int y, int w, int h)
@@ -322,7 +334,6 @@ namespace ZonderqOS.GUI.Apps
 
         private void DrawTinyTextRange(Canvas canvas, string text, int start, int count, int x, int y)
         {
-            const int spacing = 1;
             int end = Math.Min(text.Length, start + count);
             for (int i = start; i < end; i++) DrawTinyChar(canvas, text[i], x + (i - start) * 6, y);
         }
