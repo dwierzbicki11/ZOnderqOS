@@ -1,46 +1,35 @@
-using IL2CPU.API.Attribs;
+using System;
+using System.IO;
+using System.Reflection;
 
 namespace ZonderqOS.GUI.Icons
 {
     internal static class IconResources
     {
-        [ManifestResourceStream(ResourceName = "Icons.terminal-2.png")]
-        public static byte[] Terminal;
+        private static readonly Assembly Assembly = typeof(IconResources).Assembly;
 
-        [ManifestResourceStream(ResourceName = "Icons.folder.png")]
-        public static byte[] Folder;
+        public static byte[] Get(string resourceName)
+        {
+            using (Stream stream = Assembly.GetManifestResourceStream(resourceName))
+            {
+                if (stream == null)
+                    return null;
 
-        [ManifestResourceStream(ResourceName = "Icons.file.png")]
-        public static byte[] File;
+                int length = (int)stream.Length;
+                byte[] data = new byte[length];
+                int offset = 0;
 
-        [ManifestResourceStream(ResourceName = "Icons.settings-2.png")]
-        public static byte[] Settings;
+                while (offset < length)
+                {
+                    int read = stream.Read(data, offset, length - offset);
+                    if (read <= 0)
+                        return null;
 
-        [ManifestResourceStream(ResourceName = "Icons.info-circle.png")]
-        public static byte[] About;
+                    offset += read;
+                }
 
-        [ManifestResourceStream(ResourceName = "Icons.square-rounded-x.png")]
-        public static byte[] Close;
-
-        [ManifestResourceStream(ResourceName = "Icons.arrows-maximize.png")]
-        public static byte[] Maximize;
-
-        [ManifestResourceStream(ResourceName = "Icons.restore.png")]
-        public static byte[] Restore;
-
-        [ManifestResourceStream(ResourceName = "Icons.home.png")]
-        public static byte[] Start;
-
-        [ManifestResourceStream(ResourceName = "Icons.arrow-up.png")]
-        public static byte[] ArrowUp;
-
-        [ManifestResourceStream(ResourceName = "Icons.refresh.png")]
-        public static byte[] Refresh;
-
-        [ManifestResourceStream(ResourceName = "Icons.search.png")]
-        public static byte[] Search;
-
-        [ManifestResourceStream(ResourceName = "Icons.trash.png")]
-        public static byte[] Trash;
+                return data;
+            }
+        }
     }
 }
