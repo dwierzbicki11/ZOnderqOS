@@ -50,6 +50,29 @@ namespace ZonderqOS.GUI
             if (name.IndexOf("terminal", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 name.IndexOf("shell", StringComparison.OrdinalIgnoreCase) >= 0)
                 return IconType.Terminal;
+            if (name.IndexOf("zdjec", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("image", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("photo", StringComparison.OrdinalIgnoreCase) >= 0)
+                return IconType.ImageViewer;
+            if (name.IndexOf("calculator", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("kalkulator", StringComparison.OrdinalIgnoreCase) >= 0)
+                return IconType.Calculator;
+            if (name.IndexOf("paint", StringComparison.OrdinalIgnoreCase) >= 0)
+                return IconType.Paint;
+            if (name.IndexOf("network", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("siec", StringComparison.OrdinalIgnoreCase) >= 0)
+                return IconType.Network;
+            if (name.IndexOf("disk", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("dysk", StringComparison.OrdinalIgnoreCase) >= 0)
+                return IconType.DiskManager;
+            if (name.IndexOf("hex", StringComparison.OrdinalIgnoreCase) >= 0)
+                return IconType.HexViewer;
+            if (name.IndexOf("calendar", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("kalendar", StringComparison.OrdinalIgnoreCase) >= 0)
+                return IconType.Calendar;
+            if (name.IndexOf("app center", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                name.IndexOf("centrum aplik", StringComparison.OrdinalIgnoreCase) >= 0)
+                return IconType.AppCenter;
             if (name.IndexOf("task", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 name.IndexOf("zadan", StringComparison.OrdinalIgnoreCase) >= 0)
                 return IconType.Settings;
@@ -185,7 +208,7 @@ namespace ZonderqOS.GUI
             if (global::ZonderqOS.SystemSettings.ShowTrayStatus)
             {
                 bool networkReady = global::ZonderqOS.Network.IsReady;
-                DrawTrayTile(canvas, trayX + 9, 58, IconType.Settings, "NET", networkReady);
+                DrawTrayTile(canvas, trayX + 9, 58, IconType.Network, "NET", networkReady);
                 DrawTrayTile(canvas, trayX + 73, 72, IconType.FileManager, cachedVolumeLabel, cachedVolumeCount > 0);
             }
 
