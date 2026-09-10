@@ -24,7 +24,7 @@ namespace ZonderqOS.GUI.Apps
         private string pendingNewPassword = string.Empty;
 
         public UserAccountsApp(int x, int y)
-            : base("Konta lokalne", "Konta i sesje użytkowników - ZOnderqOS", x, y, 900, 660)
+            : base("Konta lokalne", "Konta i sesje użytkowników - ZOnderqOS", x, y, 900, 724)
         {
             RefreshData();
         }
@@ -56,6 +56,9 @@ namespace ZonderqOS.GUI.Apps
                 "AUTO BLOKADA", "Blokuj pulpit po okresie bezczynnosci; kliknij aby zmienic",
                 global::ZonderqOS.SystemSettings.AutoLockName,
                 global::ZonderqOS.SystemSettings.AutoLockMinutes > 0 ? Good : Warning);
+            DrawNumericRow(canvas, 7, IconType.About,
+                "CZAS SESJI", "Minuty od ostatniego pomyslnego logowania lub przelaczenia konta",
+                global::ZonderqOS.SessionManager.ElapsedSeconds / 60UL, " MIN");
 
             if (inputMode != 0)
                 RenderInputOverlay(canvas);
@@ -150,7 +153,7 @@ namespace ZonderqOS.GUI.Apps
             if (inputMode != 0)
                 return;
 
-            int row = HitRow(mouseX, mouseY, 7);
+            int row = HitRow(mouseX, mouseY, 8);
             if (row < 0)
                 return;
 
@@ -207,7 +210,11 @@ namespace ZonderqOS.GUI.Apps
             {
                 global::ZonderqOS.SystemSettings.CycleAutoLockTimeout();
                 SetStatus("ZMIENIONO CZAS AUTOMATYCZNEJ BLOKADY", Good);
+                return;
             }
+
+            if (row == 7)
+                SetStatus("CZAS BIEZACEJ UWIERZYTELNIONEJ SESJI", Accent);
         }
 
         public override void HandleKeyboard(KeyEvent key)
