@@ -2,13 +2,13 @@ namespace ZonderqOS
 {
     public static class SecurityContext
     {
-        // Boot-time services still start with root context so filesystem/security
-        // initialization can complete. Kernel switches this context to the login
-        // state before exposing a shell to the user.
-        public static string CurrentUser { get; set; } = "root";
-        public static string CurrentHome { get; set; } = "/root";
-        public static int CurrentUid { get; set; } = 0;
-        public static bool IsAuthenticated { get; internal set; }
+        // Boot-time services start with root identity only so filesystem/security
+        // initialization can complete. The context can be changed only by the
+        // authenticated session code below; ordinary applications cannot assign UID/user.
+        public static string CurrentUser { get; private set; } = "root";
+        public static string CurrentHome { get; private set; } = "/root";
+        public static int CurrentUid { get; private set; } = 0;
+        public static bool IsAuthenticated { get; private set; }
 
         internal static void EnterLoginState()
         {
