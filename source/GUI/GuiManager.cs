@@ -18,6 +18,7 @@ namespace ZonderqOS.GUI
         private Canvas wallpaperCanvas;
         private Taskbar taskbar;
         private StartMenu startMenu;
+        private NotificationCenter notificationCenter;
         private DesktopContextMenu desktopContextMenu;
         private ApplicationManager applicationManager;
         private DesktopShortcut[] desktopShortcuts;
@@ -48,6 +49,10 @@ namespace ZonderqOS.GUI
                 // Settings are read once. Later GUI decisions use only primitive fields,
                 // so no configuration-file IO happens in the render loop.
                 global::ZonderqOS.SystemSettings.Load();
+
+                // Notifications are session-local so messages from one authenticated user
+                // never leak into the next login session.
+                global::ZonderqOS.NotificationService.ResetForSession();
 
                 // Decode embedded PNG assets exactly once before the first GUI frame.
                 // Later renders only reuse persistent raw pixel buffers.
@@ -89,16 +94,27 @@ namespace ZonderqOS.GUI
                     LogoutSession);
                 startMenu.SetLockAction(RequestLockSession);
 
+                notificationCenter = new NotificationCenter((int)canvas.Width, (int)canvas.Height, TaskbarHeight);
+
                 taskbar = new Taskbar((int)canvas.Width, (int)canvas.Height, TaskbarHeight, () =>
                 {
                     bool opening = !startMenu.Visible;
                     startMenu.Visible = opening;
                     if (opening)
+                    {
                         startMenu.ResetSearch();
+                        notificationCenter?.Close();
+                    }
                     if (desktopContextMenu != null)
                         desktopContextMenu.Visible = false;
                     selectedShortcut = -1;
-                }, applicationManager);
+                }, applicationManager, ToggleNotificationCenter);
+
+                global::ZonderqOS.NotificationService.Post(
+                    global::ZonderqOS.NotificationKind.Security,
+                    "SESJA",
+                    "Witaj, " + SecurityContext.CurrentUser,
+                    "Bezpieczna sesja ZOnderqOS zostala uruchomiona.");
 
                 bool previousLeftButtonState = false;
                 bool previousRightButtonState = false;
@@ -119,6 +135,7 @@ namespace ZonderqOS.GUI
                     if (!SecurityContext.IsAuthenticated)
                     {
                         applicationManager.CloseAll();
+                        global::ZonderqOS.NotificationService.ResetForSession();
                         isRunning = false;
                         break;
                     }
@@ -136,6 +153,7 @@ namespace ZonderqOS.GUI
                         {
                             if (startMenu != null)
                                 startMenu.Visible = false;
+                            notificationCenter?.Close();
                             if (desktopContextMenu != null)
                                 desktopContextMenu.Visible = false;
 
@@ -164,6 +182,18 @@ namespace ZonderqOS.GUI
                         {
                             RequestLockSession();
                             break;
+                        }
+
+                        if (IsNotificationShortcut(key))
+                        {
+                            ToggleNotificationCenter();
+                            continue;
+                        }
+
+                        if (notificationCenter != null && notificationCenter.Visible)
+                        {
+                            notificationCenter.HandleKeyboard(key);
+                            continue;
                         }
 
                         if (key.Key == ConsoleKeyEx.Escape && startMenu.Visible)
@@ -239,33 +269,40 @@ namespace ZonderqOS.GUI
                         continue;
                     }
 
-                    applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
-                        currentRightButtonState, previousRightButtonState);
-                    startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
+                    bool notificationCaptured = notificationCenter != null &&
+                        notificationCenter.UpdateInteractions(mouseX, mouseY,
+                            currentLeftButtonState, previousLeftButtonState);
 
-                    // A lock requested from Start must take over before the taskbar or desktop
-                    // can process the same click. Open applications remain alive and untouched.
-                    if (lockRequested)
+                    if (!notificationCaptured)
                     {
-                        lockRequested = false;
-                        if (!RunLockScreen())
+                        applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
+                            currentRightButtonState, previousRightButtonState);
+                        startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
+
+                        // A lock requested from Start must take over before the taskbar or desktop
+                        // can process the same click. Open applications remain alive and untouched.
+                        if (lockRequested)
                         {
-                            LogoutSession();
-                            break;
+                            lockRequested = false;
+                            if (!RunLockScreen())
+                            {
+                                LogoutSession();
+                                break;
+                            }
+
+                            previousLeftButtonState = MouseManager.LeftButton;
+                            previousRightButtonState = MouseManager.RightButton;
+                            previousMouseX = (int)MouseManager.X;
+                            previousMouseY = (int)MouseManager.Y;
+                            ResetActivityTimer();
+                            RenderFrame(previousMouseX, previousMouseY);
+                            continue;
                         }
 
-                        previousLeftButtonState = MouseManager.LeftButton;
-                        previousRightButtonState = MouseManager.RightButton;
-                        previousMouseX = (int)MouseManager.X;
-                        previousMouseY = (int)MouseManager.Y;
-                        ResetActivityTimer();
-                        RenderFrame(previousMouseX, previousMouseY);
-                        continue;
+                        taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
+                        UpdateDesktopInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
+                            currentRightButtonState, previousRightButtonState);
                     }
-
-                    taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
-                    UpdateDesktopInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
-                        currentRightButtonState, previousRightButtonState);
 
                     previousLeftButtonState = currentLeftButtonState;
                     previousRightButtonState = currentRightButtonState;
@@ -304,6 +341,7 @@ namespace ZonderqOS.GUI
             taskbar.Render(canvas);
             startMenu.Render(canvas);
             desktopContextMenu?.Render(canvas);
+            notificationCenter?.Render(canvas);
             Cursor.Draw(canvas, mouseX, mouseY);
             canvas.Display();
         }
@@ -336,6 +374,23 @@ namespace ZonderqOS.GUI
                 desktopContextMenu.Visible = false;
         }
 
+        private void ToggleNotificationCenter()
+        {
+            if (notificationCenter == null)
+                return;
+
+            bool opening = !notificationCenter.Visible;
+            if (opening)
+            {
+                if (startMenu != null)
+                    startMenu.Visible = false;
+                if (desktopContextMenu != null)
+                    desktopContextMenu.Visible = false;
+                selectedShortcut = -1;
+            }
+            notificationCenter.Toggle();
+        }
+
         private void RequestLockSession()
         {
             if (!SecurityContext.IsAuthenticated)
@@ -343,6 +398,7 @@ namespace ZonderqOS.GUI
 
             if (startMenu != null)
                 startMenu.Visible = false;
+            notificationCenter?.Close();
             if (desktopContextMenu != null)
                 desktopContextMenu.Visible = false;
 
@@ -365,6 +421,11 @@ namespace ZonderqOS.GUI
                 SessionManager.MarkUnlock();
                 SecurityLogger.LogEvent("INFO", "Graphical session unlocked for user " +
                     SecurityContext.CurrentUser + ".");
+                global::ZonderqOS.NotificationService.Post(
+                    global::ZonderqOS.NotificationKind.Security,
+                    "BEZPIECZENSTWO",
+                    "Sesja odblokowana",
+                    "Dostep do pulpitu zostal przywrocony po uwierzytelnieniu.");
             }
             return unlocked;
         }
@@ -409,16 +470,28 @@ namespace ZonderqOS.GUI
             return control && alt;
         }
 
+        private static bool IsNotificationShortcut(KeyEvent key)
+        {
+            if (key == null || key.Key != ConsoleKeyEx.N)
+                return false;
+
+            bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+            bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+            return control && alt;
+        }
+
         private void LogoutSession()
         {
             if (!SecurityContext.IsAuthenticated)
             {
+                global::ZonderqOS.NotificationService.ResetForSession();
                 isRunning = false;
                 return;
             }
 
             if (startMenu != null)
                 startMenu.Visible = false;
+            notificationCenter?.Close();
             if (desktopContextMenu != null)
                 desktopContextMenu.Visible = false;
 
@@ -431,6 +504,7 @@ namespace ZonderqOS.GUI
                 applicationManager.CloseAll();
 
             UserManager.EndSession();
+            global::ZonderqOS.NotificationService.ResetForSession();
             isRunning = false;
         }
 
