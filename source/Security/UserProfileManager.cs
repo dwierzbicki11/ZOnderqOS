@@ -29,18 +29,42 @@ namespace ZonderqOS
 
         public static void EnsureProfile(string home)
         {
-            if (!IsSafeHome(home))
+            string owner = SecurityContext.IsAuthenticated ? SecurityContext.CurrentUser : "root";
+            EnsureProfile(owner, home);
+        }
+
+        public static void EnsureProfile(string owner, string home)
+        {
+            if (!IsValidUsername(owner) || !IsSafeHome(home))
                 return;
 
             try
             {
                 EnsureDirectory(home);
-                EnsureDirectory(Append(home, "Desktop"));
-                EnsureDirectory(Append(home, "Documents"));
-                EnsureDirectory(Append(home, "Downloads"));
-                EnsureDirectory(Append(home, "Pictures"));
-                EnsureDirectory(Append(home, ".config"));
-                EnsureDirectory(Append(home, ".config/zonderq"));
+                string desktop = Append(home, "Desktop");
+                string documents = Append(home, "Documents");
+                string downloads = Append(home, "Downloads");
+                string pictures = Append(home, "Pictures");
+                string config = Append(home, ".config");
+                string zonderqConfig = Append(home, ".config/zonderq");
+
+                EnsureDirectory(desktop);
+                EnsureDirectory(documents);
+                EnsureDirectory(downloads);
+                EnsureDirectory(pictures);
+                EnsureDirectory(config);
+                EnsureDirectory(zonderqConfig);
+
+                // The VFS itself does not provide Unix ownership metadata, so ZOnderqOS
+                // keeps ownership in PermissionManager. Without these ACLs a freshly-created
+                // user's own home would fall back to root:600 and be unusable to that account.
+                EnsurePermission(home, owner, 700);
+                EnsurePermission(desktop, owner, 700);
+                EnsurePermission(documents, owner, 700);
+                EnsurePermission(downloads, owner, 700);
+                EnsurePermission(pictures, owner, 700);
+                EnsurePermission(config, owner, 700);
+                EnsurePermission(zonderqConfig, owner, 700);
             }
             catch (Exception ex)
             {
@@ -83,6 +107,15 @@ namespace ZonderqOS
             {
                 return null;
             }
+        }
+
+        private static void EnsurePermission(string path, string owner, int permissions)
+        {
+            var current = PermissionManager.GetPermission(path);
+            if (current.Owner == owner && current.Perms == permissions)
+                return;
+
+            PermissionManager.SetPermission(path, owner, permissions);
         }
 
         private static bool IsSafeHome(string home)
