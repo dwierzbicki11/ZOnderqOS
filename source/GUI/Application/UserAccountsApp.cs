@@ -44,7 +44,7 @@ namespace ZonderqOS.GUI.Apps
             DrawRow(canvas, 3, IconType.Settings,
                 "DODAJ UZYTKOWNIKA", "Dostepne dla sesji root; kreator pyta o nazwe i haslo",
                 inputMode == 1 || inputMode == 2 ? "WPROWADZANIE" : "UTWORZ",
-                global::ZonderqOS.SecurityContext.CurrentUser == "root" ? Good : Muted);
+                IsRootSession() ? Good : Muted);
             DrawRow(canvas, 4, IconType.Start,
                 "ZMIEN UZYTKOWNIKA", "Potwierdz haslo konta; biezaca sesja zostanie bezpiecznie zakonczona",
                 inputMode == 3 ? "HASLO..." : "PRZELACZ", Warning);
@@ -67,7 +67,8 @@ namespace ZonderqOS.GUI.Apps
         private void RenderInputOverlay(Canvas canvas)
         {
             int width = System.Math.Min(520, Window.Width - 80);
-            int height = 112;
+            bool passwordPolicyMode = inputMode == 2 || inputMode == 5 || inputMode == 6;
+            int height = passwordPolicyMode ? 132 : 112;
             int x = Window.X + (Window.Width - width) / 2;
             int y = Window.Y + 230;
             canvas.DrawFilledRectangle(Color.FromArgb(18, 23, 29), x, y, width, height);
@@ -90,12 +91,20 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, title, x + 16, y + 16, Text);
             SmallTextRenderer.Draw(canvas, "ENTER DALEJ  |  ESC ANULUJ", x + 16, y + 36, Muted);
 
-            canvas.DrawFilledRectangle(Color.FromArgb(27, 34, 41), x + 16, y + 58, width - 32, 34);
-            canvas.DrawRectangle(Border, x + 16, y + 58, width - 32, 34);
+            int inputY = y + 58;
+            if (passwordPolicyMode)
+            {
+                SmallTextRenderer.DrawClipped(canvas, global::ZonderqOS.PasswordPolicy.Summary,
+                    x + 16, y + 56, width - 32, Warning);
+                inputY = y + 78;
+            }
+
+            canvas.DrawFilledRectangle(Color.FromArgb(27, 34, 41), x + 16, inputY, width - 32, 34);
+            canvas.DrawRectangle(Border, x + 16, inputY, width - 32, 34);
             if (inputMode == 1)
-                SmallTextRenderer.DrawClipped(canvas, inputText, x + 26, y + 72, width - 54, Text);
+                SmallTextRenderer.DrawClipped(canvas, inputText, x + 26, inputY + 14, width - 54, Text);
             else
-                DrawMasked(canvas, inputText.Length, x + 26, y + 72, width - 54);
+                DrawMasked(canvas, inputText.Length, x + 26, inputY + 14, width - 54);
         }
 
         private static void DrawMasked(Canvas canvas, int count, int x, int y, int maxWidth)
@@ -171,9 +180,9 @@ namespace ZonderqOS.GUI.Apps
 
             if (row == 3)
             {
-                if (global::ZonderqOS.SecurityContext.CurrentUser != "root")
+                if (!IsRootSession())
                 {
-                    SetStatus("TYLKO ROOT MOZE TWORZYC KONTA", Danger);
+                    SetStatus("TYLKO UWIERZYTELNIONY ROOT MOZE TWORZYC KONTA", Danger);
                     return;
                 }
                 ClearInputState();
@@ -262,7 +271,7 @@ namespace ZonderqOS.GUI.Apps
                 if (allowed && inputText.Length < 32)
                     inputText += ch;
             }
-            else if (ch >= 32 && ch <= 126 && inputText.Length < 128)
+            else if (ch >= 32 && ch <= 126 && inputText.Length < global::ZonderqOS.PasswordPolicy.MaxLength)
             {
                 inputText += ch;
             }
@@ -287,9 +296,10 @@ namespace ZonderqOS.GUI.Apps
 
             if (inputMode == 2)
             {
-                if (inputText.Length == 0)
+                string reason;
+                if (!global::ZonderqOS.PasswordPolicy.Validate(inputText, out reason))
                 {
-                    SetStatus("HASLO NIE MOZE BYC PUSTE", Danger);
+                    SetStatus(reason, Danger);
                     return;
                 }
 
@@ -346,14 +356,28 @@ namespace ZonderqOS.GUI.Apps
             if (inputMode == 4)
             {
                 string actor = global::ZonderqOS.SecurityContext.CurrentUser;
-                if (string.IsNullOrEmpty(inputText) ||
-                    !global::ZonderqOS.UserManager.ValidateCredentials(actor, inputText))
+                int retryAfter;
+                if (!global::ZonderqOS.AuthenticationGuard.CanAttempt(actor, out retryAfter))
                 {
                     inputText = string.Empty;
-                    SetStatus("NIEPRAWIDLOWE HASLO BIEZACEJ SESJI", Danger);
+                    SetStatus("AUTORYZACJA ZABLOKOWANA - ODCZEKAJ " + retryAfter + " S", Danger);
                     return;
                 }
 
+                bool authorized = !string.IsNullOrEmpty(inputText) &&
+                    global::ZonderqOS.UserManager.ValidateCredentials(actor, inputText);
+                if (!authorized)
+                {
+                    inputText = string.Empty;
+                    global::ZonderqOS.AuthenticationGuard.RecordFailure(actor);
+                    retryAfter = global::ZonderqOS.AuthenticationGuard.GetRetryAfterSeconds(actor);
+                    SetStatus(retryAfter > 0
+                        ? "NIEPRAWIDLOWE HASLO - BLOKADA " + retryAfter + " S"
+                        : "NIEPRAWIDLOWE HASLO BIEZACEJ SESJI", Danger);
+                    return;
+                }
+
+                global::ZonderqOS.AuthenticationGuard.RecordSuccess(actor);
                 pendingAuthorizationPassword = inputText;
                 inputText = string.Empty;
                 inputMode = 5;
@@ -363,9 +387,10 @@ namespace ZonderqOS.GUI.Apps
 
             if (inputMode == 5)
             {
-                if (inputText.Length == 0)
+                string reason;
+                if (!global::ZonderqOS.PasswordPolicy.Validate(inputText, out reason))
                 {
-                    SetStatus("NOWE HASLO NIE MOZE BYC PUSTE", Danger);
+                    SetStatus(reason, Danger);
                     return;
                 }
 
@@ -407,7 +432,14 @@ namespace ZonderqOS.GUI.Apps
             string selected = users[selectedUser];
             string current = global::ZonderqOS.SecurityContext.CurrentUser;
             return !string.IsNullOrEmpty(selected) &&
-                   (current == "root" || current == selected);
+                   (IsRootSession() || current == selected);
+        }
+
+        private static bool IsRootSession()
+        {
+            return global::ZonderqOS.SecurityContext.IsAuthenticated &&
+                   global::ZonderqOS.SecurityContext.CurrentUid == 0 &&
+                   global::ZonderqOS.SecurityContext.CurrentUser == "root";
         }
 
         private void ClearInputState()
