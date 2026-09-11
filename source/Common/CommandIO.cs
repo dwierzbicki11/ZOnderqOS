@@ -15,11 +15,34 @@ namespace ZonderqOS
         private static readonly Stack<BoundedTextWriter> _captureWriters = new Stack<BoundedTextWriter>();
 
         private static string _inBuffer = null;
+        private static int _graphicalCommandDepth;
         public static bool LastCommandSuccess { get; set; } = true;
 
         // GUI applications can provide native interactive handlers for commands
         // that historically owned the Console (for example nano).
         public static Action<string> NanoLauncher { get; set; }
+
+        /// <summary>
+        /// True while a command (including nested shell scripts) is executing inside the
+        /// graphical Terminal. Security-sensitive commands can use this to avoid changing
+        /// desktop identity underneath already-open windows.
+        /// </summary>
+        public static bool IsGraphicalCommand
+        {
+            get { return _graphicalCommandDepth > 0; }
+        }
+
+        internal static void BeginGraphicalCommand()
+        {
+            if (_graphicalCommandDepth < Int32.MaxValue)
+                _graphicalCommandDepth++;
+        }
+
+        internal static void EndGraphicalCommand()
+        {
+            if (_graphicalCommandDepth > 0)
+                _graphicalCommandDepth--;
+        }
 
         public static void SetInput(string input)
         {
