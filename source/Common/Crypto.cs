@@ -63,6 +63,29 @@ namespace ZonderqOS
             return hash.ToString("X");
         }
 
+        /// <summary>
+        /// Compares credential hashes without returning on the first mismatching character.
+        /// Hash strings are short and fixed-shape in the current shadow format, so this keeps
+        /// the authentication path deterministic without relying on unsupported crypto APIs.
+        /// </summary>
+        public static bool FixedTimeEquals(string left, string right)
+        {
+            if (left == null || right == null)
+                return false;
+
+            int max = System.Math.Max(left.Length, right.Length);
+            int difference = left.Length ^ right.Length;
+
+            for (int i = 0; i < max; i++)
+            {
+                char a = i < left.Length ? left[i] : '\0';
+                char b = i < right.Length ? right[i] : '\0';
+                difference |= a ^ b;
+            }
+
+            return difference == 0;
+        }
+
         private static ulong Mix64(ulong value)
         {
             value ^= value >> 30;
