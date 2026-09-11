@@ -52,6 +52,7 @@ namespace ZonderqOS.GUI
                 if (partitionIndex < 0 || partitionIndex >= partitionCount)
                 {
                     error = "Partition does not exist";
+                    NotifyFailure("Nie mozna zamontowac woluminu", error);
                     return false;
                 }
 
@@ -79,6 +80,7 @@ namespace ZonderqOS.GUI
                 if (string.IsNullOrEmpty(mountPoint))
                 {
                     error = "No free mount point under /mnt";
+                    NotifyFailure("Nie mozna zamontowac woluminu", error);
                     return false;
                 }
 
@@ -87,17 +89,24 @@ namespace ZonderqOS.GUI
                 {
                     mountPoint = null;
                     error = "Mount failed: volume must contain a Cosmos FAT12/16/32 filesystem";
+                    NotifyFailure("Montowanie nie powiodlo sie", error);
                     return false;
                 }
 
                 mountPoint = mount.MountPoint;
                 mountedPartitions[partitionIndex] = mountPoint;
+                global::ZonderqOS.NotificationService.Post(
+                    global::ZonderqOS.NotificationKind.Storage,
+                    "MAGAZYN",
+                    "Wolumin zamontowany",
+                    mountPoint);
                 return true;
             }
             catch (Exception ex)
             {
                 mountPoint = null;
                 error = "Mount exception: " + ex.Message;
+                NotifyFailure("Blad montowania woluminu", error);
                 return false;
             }
         }
@@ -111,6 +120,7 @@ namespace ZonderqOS.GUI
                 if (partitionIndex <= 0)
                 {
                     error = "System volume cannot be unmounted";
+                    NotifyFailure("Odmontowanie zablokowane", error);
                     return false;
                 }
 
@@ -124,17 +134,33 @@ namespace ZonderqOS.GUI
                 if (!VfsManager.TryUnmount(mountPoint))
                 {
                     error = "Unmount failed: volume may still be in use";
+                    NotifyFailure("Odmontowanie nie powiodlo sie", error);
                     return false;
                 }
 
                 mountedPartitions.Remove(partitionIndex);
+                global::ZonderqOS.NotificationService.Post(
+                    global::ZonderqOS.NotificationKind.Storage,
+                    "MAGAZYN",
+                    "Wolumin odmontowany",
+                    mountPoint);
                 return true;
             }
             catch (Exception ex)
             {
                 error = "Unmount exception: " + ex.Message;
+                NotifyFailure("Blad odmontowania woluminu", error);
                 return false;
             }
+        }
+
+        private static void NotifyFailure(string title, string message)
+        {
+            global::ZonderqOS.NotificationService.Post(
+                global::ZonderqOS.NotificationKind.Warning,
+                "MAGAZYN",
+                title,
+                message);
         }
 
         private static string FindMountPointInVfs(int partitionIndex)
