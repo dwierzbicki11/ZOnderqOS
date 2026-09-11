@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using Cosmos.Kernel.System.Network;
@@ -28,6 +28,7 @@ namespace ZonderqOS
                 PermissionManager.Initialize();
                 Network.Initialize();
                 SystemGuardian.Initialize();
+                SystemSettings.Load();
 
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
@@ -47,6 +48,21 @@ namespace ZonderqOS
                 if (!SecurityContext.IsAuthenticated)
                 {
                     sessionUser = null;
+
+                    // A fresh image used to expose root/root until the user changed it manually.
+                    // The factory credential is now only a bootstrap marker: it must be replaced
+                    // before either the graphical login or console recovery prompt can start.
+                    if (UserManager.RequiresInitialRootPasswordSetup())
+                    {
+                        bool setupComplete = InitialSetupManager.Run();
+                        if (!setupComplete || UserManager.RequiresInitialRootPasswordSetup())
+                        {
+                            RunInitialRootSetupPrompt();
+                            return;
+                        }
+
+                        UserManager.PrepareLogin();
+                    }
 
                     bool graphicalLogin = LoginScreenManager.Run();
                     if (!graphicalLogin || !SecurityContext.IsAuthenticated)
@@ -97,8 +113,62 @@ namespace ZonderqOS
             }
         }
 
+        private void RunInitialRootSetupPrompt()
+        {
+            Console.Clear();
+            Console.WriteLine("ZOnderqOS INITIAL SECURITY SETUP");
+            Console.WriteLine("The factory root/root credential must be replaced before login.");
+            Console.WriteLine(PasswordPolicy.Summary);
+            Console.WriteLine();
+
+            Console.Write("new root password: ");
+            string first = ReadPassword();
+
+            string reason;
+            if (!PasswordPolicy.Validate(first, out reason))
+            {
+                first = null;
+                Console.WriteLine(reason);
+                Thread.Sleep(900);
+                return;
+            }
+
+            Console.Write("confirm password: ");
+            string second = ReadPassword();
+            if (first != second)
+            {
+                first = null;
+                second = null;
+                Console.WriteLine("Passwords do not match.");
+                Thread.Sleep(900);
+                return;
+            }
+
+            bool ok = UserManager.CompleteInitialRootPasswordSetup(first);
+            first = null;
+            second = null;
+
+            if (!ok)
+            {
+                Console.WriteLine("Could not save the new root credential. Setup will retry.");
+                Thread.Sleep(1000);
+                return;
+            }
+
+            UserManager.PrepareLogin();
+            Console.WriteLine("Root password changed. Secure login is ready.");
+            Thread.Sleep(600);
+        }
+
         private void RunLoginPrompt()
         {
+            // Never allow the recovery console to bypass first-boot hardening.
+            if (UserManager.RequiresInitialRootPasswordSetup())
+            {
+                RunInitialRootSetupPrompt();
+                return;
+            }
+
             Console.Write("login: ");
             string username = Console.ReadLine();
             if (username != null)
@@ -192,7 +262,7 @@ namespace ZonderqOS
                     continue;
                 }
 
-                if (keyInfo.KeyChar >= 32 && keyInfo.KeyChar <= 126 && password.Length < 128)
+                if (keyInfo.KeyChar >= 32 && keyInfo.KeyChar <= 126 && password.Length < PasswordPolicy.MaxLength)
                 {
                     password += keyInfo.KeyChar;
                     Console.Write('*');
