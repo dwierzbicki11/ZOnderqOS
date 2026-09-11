@@ -6,10 +6,19 @@ namespace ZonderqOS.Commands
     public class CmdSu : ICommand
     {
         public string Name => "su";
-        public string Description => "Switch user session (su <username> <password>)";
+        public string Description => "Switch user session in console mode (su <username> <password>)";
 
         public void Execute(string[] args, ref string currentPath)
         {
+            if (CommandIO.IsGraphicalCommand)
+            {
+                WriteMessage.WriteError(
+                    "In-place 'su' is disabled inside the graphical desktop because open windows belong to the current session. Use logout or the Accounts panel to switch users safely.",
+                    "AUTH");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             if (args.Length <= 2)
             {
                 WriteMessage.WriteError("Usage: su <username> <password>", "CMD");
@@ -22,6 +31,7 @@ namespace ZonderqOS.Commands
             int retryAfter;
             if (!AuthenticationGuard.CanAttempt(username, out retryAfter))
             {
+                password = null;
                 WriteMessage.WriteError("Authentication temporarily blocked for " + retryAfter + " s.", "AUTH");
                 CommandIO.LastCommandSuccess = false;
                 return;
@@ -37,7 +47,7 @@ namespace ZonderqOS.Commands
                     currentPath = home;
 
                 WriteMessage.WriteOK("Switched session to user: " + username, "AUTH");
-                SecurityLogger.LogEvent("INFO", "Successful session switch to '" + username + "'.");
+                SecurityLogger.LogEvent("INFO", "Successful console session switch to '" + username + "'.");
                 CommandIO.LastCommandSuccess = true;
                 return;
             }
