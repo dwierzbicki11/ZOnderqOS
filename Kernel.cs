@@ -55,7 +55,7 @@ namespace ZonderqOS
                     if (UserManager.RequiresInitialRootPasswordSetup())
                     {
                         bool setupComplete = InitialSetupManager.Run();
-                        if (!setupComplete || UserManager.RequiresInitialRootPasswordSetup())
+                        if (!setupComplete)
                         {
                             RunInitialRootSetupPrompt();
                             return;
@@ -97,7 +97,8 @@ namespace ZonderqOS
                     Command.Run(command, ref path);
 
                     // Password-bearing account commands are deliberately excluded from
-                    // history. History is also cleared whenever the authenticated user changes.
+                    // history even when they appear in a later ';', '&&' or pipeline segment.
+                    // History is also cleared whenever the authenticated user changes.
                     if (SecurityContext.IsAuthenticated && !IsSensitiveCommand(command) &&
                         (history.Count == 0 || history[history.Count - 1] != command))
                     {
@@ -225,19 +226,7 @@ namespace ZonderqOS
 
         private static bool IsSensitiveCommand(string command)
         {
-            if (string.IsNullOrWhiteSpace(command))
-                return false;
-
-            string trimmed = command.TrimStart();
-            return StartsWithCommand(trimmed, "su") || StartsWithCommand(trimmed, "useradd");
-        }
-
-        private static bool StartsWithCommand(string input, string commandName)
-        {
-            if (!input.StartsWith(commandName, StringComparison.OrdinalIgnoreCase))
-                return false;
-            return input.Length == commandName.Length ||
-                   (input.Length > commandName.Length && char.IsWhiteSpace(input[commandName.Length]));
+            return SensitiveCommandPolicy.ContainsPasswordBearingCommand(command);
         }
 
         private string ReadPassword()
