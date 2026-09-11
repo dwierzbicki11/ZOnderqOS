@@ -14,12 +14,17 @@ namespace ZonderqOS.GUI
         public Color BackgroundColor { get; set; } = Color.FromArgb(22, 27, 33);
 
         private readonly ApplicationManager applicationManager;
+        private readonly Action notificationClick;
         private int hoveredAppIndex = -1;
+        private bool notificationHovered;
         private int cachedClockKey = -1;
         private int cachedDay = -1;
         private int cachedVolumeCount = -1;
         private int cachedTimeZone = int.MinValue;
         private bool cachedSecondsMode;
+        private bool cachedNetworkReady;
+        private bool networkStateInitialized;
+        private bool volumeStateInitialized;
         private string cachedTime = "--:--";
         private string cachedDate = "--.--";
         private string cachedVolumeLabel = "VOL 0";
@@ -28,12 +33,19 @@ namespace ZonderqOS.GUI
         private const int AppButtonSize = 40;
         private const int AppButtonGap = 5;
         private const int SidePadding = 6;
-        private const int TrayWidth = 238;
+        private const int TrayWidth = 278;
 
         public Taskbar(int screenWidth, int screenHeight, int height, Action onStartClick, ApplicationManager manager)
+            : this(screenWidth, screenHeight, height, onStartClick, manager, null)
+        {
+        }
+
+        public Taskbar(int screenWidth, int screenHeight, int height, Action onStartClick,
+            ApplicationManager manager, Action onNotificationClick)
             : base(0, screenHeight - height, screenWidth, height)
         {
             applicationManager = manager;
+            notificationClick = onNotificationClick;
 
             var startButton = new Button(0, Y, StartButtonWidth, height, "", onStartClick);
             startButton.BackgroundColor = Color.FromArgb(27, 34, 42);
@@ -183,6 +195,22 @@ namespace ZonderqOS.GUI
                 cachedDate = currentTime.ToString("dd.MM");
             }
 
+            bool networkReady = global::ZonderqOS.Network.IsReady;
+            if (!networkStateInitialized)
+            {
+                cachedNetworkReady = networkReady;
+                networkStateInitialized = true;
+            }
+            else if (networkReady != cachedNetworkReady)
+            {
+                cachedNetworkReady = networkReady;
+                global::ZonderqOS.NotificationService.Post(
+                    global::ZonderqOS.NotificationKind.Network,
+                    "SIEC",
+                    networkReady ? "Siec polaczona" : "Siec rozlaczona",
+                    networkReady ? "Interfejs sieciowy jest gotowy do pracy." : "Polaczenie sieciowe nie jest obecnie gotowe.");
+            }
+
             int volumeCount = 0;
             try
             {
@@ -195,8 +223,17 @@ namespace ZonderqOS.GUI
 
             if (volumeCount != cachedVolumeCount)
             {
+                if (volumeStateInitialized)
+                {
+                    global::ZonderqOS.NotificationService.Post(
+                        global::ZonderqOS.NotificationKind.Storage,
+                        "MAGAZYN",
+                        "Zmiana woluminow",
+                        "System wykryl zmiane listy partycji lub woluminow.");
+                }
                 cachedVolumeCount = volumeCount;
                 cachedVolumeLabel = "VOL " + volumeCount;
+                volumeStateInitialized = true;
             }
         }
 
@@ -205,11 +242,13 @@ namespace ZonderqOS.GUI
             int trayX = Width - TrayWidth;
             canvas.DrawLine(Color.FromArgb(48, 59, 70), trayX, Y + 7, trayX, Y + Height - 7);
 
+            DrawNotificationTile(canvas, trayX + 9, 34);
+
             if (global::ZonderqOS.SystemSettings.ShowTrayStatus)
             {
                 bool networkReady = global::ZonderqOS.Network.IsReady;
-                DrawTrayTile(canvas, trayX + 9, 58, IconType.Network, "NET", networkReady);
-                DrawTrayTile(canvas, trayX + 73, 72, IconType.FileManager, cachedVolumeLabel, cachedVolumeCount > 0);
+                DrawTrayTile(canvas, trayX + 49, 58, IconType.Network, "NET", networkReady);
+                DrawTrayTile(canvas, trayX + 113, 72, IconType.FileManager, cachedVolumeLabel, cachedVolumeCount > 0);
             }
 
             int clockX = Width - 78;
@@ -227,6 +266,36 @@ namespace ZonderqOS.GUI
             {
                 SmallTextRenderer.DrawCentered(canvas, cachedTime, clockX, Y + 19, 68,
                     Color.FromArgb(232, 237, 242));
+            }
+        }
+
+        private void DrawNotificationTile(Canvas canvas, int x, int width)
+        {
+            int unread = global::ZonderqOS.NotificationService.UnreadCount;
+            bool dnd = global::ZonderqOS.NotificationService.DoNotDisturb;
+            Color background = notificationHovered
+                ? Color.FromArgb(40, 53, 64)
+                : unread > 0 ? SystemTheme.AccentSoft : Color.FromArgb(30, 35, 41);
+            Color border = notificationHovered || unread > 0
+                ? SystemTheme.AccentBorder
+                : Color.FromArgb(49, 58, 67);
+
+            canvas.DrawFilledRectangle(background, x, Y + 6, width, Height - 12);
+            canvas.DrawRectangle(border, x, Y + 6, width, Height - 12);
+            IconManager.DrawScaled(canvas, IconType.About, x + 8, Y + 13, 16, 16);
+
+            if (unread > 0)
+            {
+                int badgeX = x + width - 12;
+                int badgeY = Y + 7;
+                canvas.DrawFilledRectangle(dnd ? Color.FromArgb(176, 132, 62) : SystemTheme.Accent,
+                    badgeX, badgeY, 11, 11);
+                if (unread < 10)
+                    SmallTextRenderer.DrawUInt(canvas, (ulong)unread, badgeX + 3, badgeY + 2, Color.White);
+            }
+            else if (dnd)
+            {
+                canvas.DrawFilledRectangle(Color.FromArgb(224, 174, 76), x + width - 7, Y + 10, 3, 3);
             }
         }
 
@@ -258,7 +327,21 @@ namespace ZonderqOS.GUI
             }
 
             hoveredAppIndex = -1;
-            if (mouseY < Y || mouseY >= Y + Height || applicationManager == null)
+            notificationHovered = false;
+            if (mouseY < Y || mouseY >= Y + Height)
+                return;
+
+            int trayX = Width - TrayWidth;
+            int notificationX = trayX + 9;
+            if (mouseX >= notificationX && mouseX < notificationX + 34)
+            {
+                notificationHovered = true;
+                if (isClicked && !wasClicked)
+                    notificationClick?.Invoke();
+                return;
+            }
+
+            if (applicationManager == null)
                 return;
 
             int appX = StartButtonWidth + SidePadding + 6;
