@@ -103,6 +103,7 @@ namespace ZonderqOS.GUI.Apps
                 return;
 
             CommandIO.StartRedirection();
+            CommandIO.BeginGraphicalCommand();
             try
             {
                 Command.Run(command, ref currentPath);
@@ -113,6 +114,7 @@ namespace ZonderqOS.GUI.Apps
             }
             finally
             {
+                CommandIO.EndGraphicalCommand();
                 string output = CommandIO.EndRedirection();
                 PrintCommandOutput(output);
                 UpdatePrompt();
