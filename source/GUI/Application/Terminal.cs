@@ -126,30 +126,12 @@ namespace ZonderqOS.GUI.Apps
             if (string.IsNullOrEmpty(command))
                 return string.Empty;
 
-            if (StartsWithCommand(command, "su") || StartsWithCommand(command, "useradd"))
-            {
-                int firstSpace = command.IndexOf(' ');
-                if (firstSpace < 0)
-                    return command;
-
-                int usernameStart = firstSpace + 1;
-                while (usernameStart < command.Length && command[usernameStart] == ' ')
-                    usernameStart++;
-
-                int passwordSeparator = command.IndexOf(' ', usernameStart);
-                if (passwordSeparator > usernameStart)
-                    return command.Substring(0, passwordSeparator) + " ********";
-            }
-
-            return command;
-        }
-
-        private static bool StartsWithCommand(string input, string commandName)
-        {
-            if (!input.StartsWith(commandName, StringComparison.OrdinalIgnoreCase))
-                return false;
-            return input.Length == commandName.Length ||
-                   (input.Length > commandName.Length && input[commandName.Length] == ' ');
+            // Do not try to preserve only parts of compound lines. A password may appear in
+            // a later ';', '&&' or pipeline segment, so hide the whole entered line whenever
+            // it contains a password-bearing account command.
+            return global::ZonderqOS.SensitiveCommandPolicy.ContainsPasswordBearingCommand(command)
+                ? "[sensitive command hidden]"
+                : command;
         }
 
         public override void Close()
