@@ -5,8 +5,8 @@ namespace ZonderqOS
 {
     public static class UserManager
     {
-        private static string PasswdPath = @"/etc/passwd";
-        private static string ShadowPath = @"/etc/shadow";
+        private static readonly string PasswdPath = @"/etc/passwd";
+        private static readonly string ShadowPath = @"/etc/shadow";
 
         public static void Initialize()
         {
@@ -15,8 +15,8 @@ namespace ZonderqOS
                 if (!Directory.Exists("/etc"))
                     Directory.CreateDirectory("/etc");
 
-                // Nie nadpisuj istniejącej bazy użytkowników tylko dlatego, że brakuje
-                // jednego z plików. Każdy plik inicjalizujemy niezależnie.
+                // Never overwrite an existing account database just because its companion
+                // file is missing. Each database is initialized independently.
                 if (!File.Exists(PasswdPath))
                     File.WriteAllText(PasswdPath, "root:x:0:/root\n");
 
@@ -24,13 +24,46 @@ namespace ZonderqOS
                 {
                     string salt = Crypto.GenerateSalt();
                     string hash = Crypto.HashPassword("root", salt);
-                    File.WriteAllText(ShadowPath, $"root:{salt}${hash}\n");
+                    File.WriteAllText(ShadowPath, "root:" + salt + "$" + hash + "\n");
                 }
             }
             catch (Exception ex)
             {
-                WriteMessage.WriteError($"UserManager init failed: {ex.Message}", "AUTH");
+                WriteMessage.WriteError("UserManager init failed: " + ex.Message, "AUTH");
             }
+        }
+
+        public static bool RequiresInitialRootPasswordSetup()
+        {
+            try
+            {
+                return UserExists("root") && ValidateCredentials("root", "root");
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Replaces the factory root/root credential before any interactive session exists.
+        /// This path is intentionally valid only while the default credential is still active.
+        /// </summary>
+        public static bool CompleteInitialRootPasswordSetup(string newPassword)
+        {
+            string reason;
+            if (!PasswordPolicy.Validate(newPassword, out reason))
+                return false;
+
+            if (!RequiresInitialRootPasswordSetup())
+                return false;
+
+            if (!RewritePasswordEntry("root", newPassword))
+                return false;
+
+            AuthenticationGuard.Reset("root");
+            SecurityLogger.LogEvent("INFO", "Initial root credential was replaced during secure setup.");
+            return true;
         }
 
         private static bool IsValidUsername(string username)
@@ -55,24 +88,26 @@ namespace ZonderqOS
 
         public static bool UserExists(string username)
         {
-            if (!IsValidUsername(username)) return false;
+            if (!IsValidUsername(username))
+                return false;
 
             try
             {
-                if (!File.Exists(PasswdPath)) return false;
-                string content = File.ReadAllText(PasswdPath);
-                string[] lines = content.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                if (!File.Exists(PasswdPath))
+                    return false;
 
-                foreach (var line in lines)
+                string[] lines = File.ReadAllLines(PasswdPath);
+                for (int i = 0; i < lines.Length; i++)
                 {
-                    string[] parts = line.Split(':');
-                    if (parts.Length > 0 && parts[0] == username)
+                    string line = lines[i];
+                    int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
+                    if (separator > 0 && line.Substring(0, separator) == username)
                         return true;
                 }
             }
             catch (Exception ex)
             {
-                SecurityLogger.LogEvent("ERR", $"Passwd file read error: {ex.Message}");
+                SecurityLogger.LogEvent("ERR", "Passwd file read error: " + ex.Message);
             }
 
             return false;
@@ -80,34 +115,36 @@ namespace ZonderqOS
 
         public static bool ValidateCredentials(string username, string password)
         {
-            if (!IsValidUsername(username) || password == null) return false;
+            if (!IsValidUsername(username) || password == null)
+                return false;
 
             try
             {
-                if (!File.Exists(ShadowPath)) return false;
-                string content = File.ReadAllText(ShadowPath);
-                string[] lines = content.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                if (!File.Exists(ShadowPath))
+                    return false;
 
-                foreach (var line in lines)
+                string[] lines = File.ReadAllLines(ShadowPath);
+                for (int i = 0; i < lines.Length; i++)
                 {
-                    string[] parts = line.Split(':');
-                    if (parts.Length >= 2 && parts[0] == username)
-                    {
-                        string[] securityData = parts[1].Split('$');
-                        if (securityData.Length == 2)
-                        {
-                            string salt = securityData[0];
-                            string storedHash = securityData[1];
-                            string computedHash = Crypto.HashPassword(password, salt);
+                    string line = lines[i];
+                    int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
+                    if (separator <= 0 || line.Substring(0, separator) != username)
+                        continue;
 
-                            return storedHash == computedHash;
-                        }
-                    }
+                    string credential = line.Substring(separator + 1);
+                    int saltSeparator = credential.IndexOf('$');
+                    if (saltSeparator <= 0 || saltSeparator >= credential.Length - 1)
+                        return false;
+
+                    string salt = credential.Substring(0, saltSeparator);
+                    string storedHash = credential.Substring(saltSeparator + 1);
+                    string computedHash = Crypto.HashPassword(password, salt);
+                    return Crypto.FixedTimeEquals(storedHash, computedHash);
                 }
             }
             catch (Exception ex)
             {
-                SecurityLogger.LogEvent("ERR", $"Shadow file read error: {ex.Message}");
+                SecurityLogger.LogEvent("ERR", "Shadow file read error: " + ex.Message);
             }
 
             return false;
@@ -117,7 +154,7 @@ namespace ZonderqOS
         {
             if (!ValidateCredentials(username, password))
             {
-                SecurityLogger.LogEvent("WARN", $"Failed login attempt for '{username ?? "?"}'.");
+                SecurityLogger.LogEvent("WARN", "Failed login attempt for '" + (username ?? "?") + "'.");
                 return false;
             }
 
@@ -125,7 +162,7 @@ namespace ZonderqOS
             string home;
             if (!TryGetUserInfo(username, out uid, out home))
             {
-                SecurityLogger.LogEvent("ERR", $"Authenticated user '{username}' is missing from passwd database.");
+                SecurityLogger.LogEvent("ERR", "Authenticated user '" + username + "' is missing from passwd database.");
                 return false;
             }
 
@@ -135,11 +172,11 @@ namespace ZonderqOS
             UserProfileManager.EnsureProfile(home);
             UserProfileManager.RememberLastUser(username);
             SessionManager.BeginSession();
-            SecurityLogger.LogEvent("INFO", $"User '{username}' logged in.");
+            SecurityLogger.LogEvent("INFO", "User '" + username + "' logged in.");
             return true;
         }
 
-        public static bool ActivateSession(string username)
+        internal static bool ActivateSession(string username)
         {
             int uid;
             string home;
@@ -167,7 +204,7 @@ namespace ZonderqOS
         {
             string user = SecurityContext.CurrentUser;
             if (SecurityContext.IsAuthenticated)
-                SecurityLogger.LogEvent("INFO", $"User '{user}' logged out.");
+                SecurityLogger.LogEvent("INFO", "User '" + user + "' logged out.");
 
             PrepareLogin();
         }
@@ -202,7 +239,7 @@ namespace ZonderqOS
             }
             catch (Exception ex)
             {
-                SecurityLogger.LogEvent("ERR", $"User info lookup failed: {ex.Message}");
+                SecurityLogger.LogEvent("ERR", "User info lookup failed: " + ex.Message);
             }
 
             return false;
@@ -210,39 +247,43 @@ namespace ZonderqOS
 
         public static bool CreateUser(string username, string password)
         {
-            if (!IsValidUsername(username) || password == null || password.Length == 0 || password.Length > 128)
+            string passwordError;
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0 ||
+                !IsValidUsername(username) || !PasswordPolicy.Validate(password, out passwordError))
+            {
                 return false;
+            }
 
             try
             {
-                if (!UserExists(username))
-                {
-                    string homeDir = $"/home/{username}";
-                    if (!Directory.Exists(homeDir)) Directory.CreateDirectory(homeDir);
+                if (UserExists(username))
+                    return false;
 
-                    string content = File.Exists(PasswdPath) ? File.ReadAllText(PasswdPath) : string.Empty;
-                    int lineCount = content.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries).Length;
-                    int uid = 1000 + lineCount;
+                int uid = FindNextUid();
+                if (uid < 1000)
+                    return false;
 
-                    string salt = Crypto.GenerateSalt();
-                    string hash = Crypto.HashPassword(password, salt);
+                string homeDir = "/home/" + username;
+                if (!Directory.Exists(homeDir))
+                    Directory.CreateDirectory(homeDir);
 
-                    string passwdEntry = $"{username}:x:{uid}:{homeDir}\n";
-                    string shadowEntry = $"{username}:{salt}${hash}\n";
+                string salt = Crypto.GenerateSalt();
+                string hash = Crypto.HashPassword(password, salt);
+                string passwdEntry = username + ":x:" + uid + ":" + homeDir + "\n";
+                string shadowEntry = username + ":" + salt + "$" + hash + "\n";
 
-                    File.AppendAllText(PasswdPath, passwdEntry);
-                    File.AppendAllText(ShadowPath, shadowEntry);
-                    UserProfileManager.EnsureProfile(homeDir);
-                    SecurityLogger.LogEvent("INFO", $"Local user '{username}' created by '{SecurityContext.CurrentUser}'.");
-                    return true;
-                }
+                File.AppendAllText(PasswdPath, passwdEntry);
+                File.AppendAllText(ShadowPath, shadowEntry);
+                UserProfileManager.EnsureProfile(homeDir);
+                SecurityLogger.LogEvent("INFO", "Local user '" + username + "' created by '" +
+                    SecurityContext.CurrentUser + "'.");
+                return true;
             }
             catch (Exception ex)
             {
-                WriteMessage.WriteError($"CreateUser exception: {ex.Message}", "AUTH");
+                WriteMessage.WriteError("CreateUser exception: " + ex.Message, "AUTH");
+                return false;
             }
-
-            return false;
         }
 
         /// <summary>
@@ -252,9 +293,9 @@ namespace ZonderqOS
         /// </summary>
         public static bool ChangePassword(string username, string authorizationPassword, string newPassword)
         {
+            string passwordError;
             if (!SecurityContext.IsAuthenticated || !IsValidUsername(username) ||
-                authorizationPassword == null || newPassword == null ||
-                newPassword.Length == 0 || newPassword.Length > 128)
+                authorizationPassword == null || !PasswordPolicy.Validate(newPassword, out passwordError))
             {
                 return false;
             }
@@ -264,19 +305,37 @@ namespace ZonderqOS
                 return false;
 
             bool ownAccount = actor == username;
-            bool rootReset = actor == "root";
+            bool rootReset = SecurityContext.CurrentUid == 0 && actor == "root";
             if (!ownAccount && !rootReset)
             {
-                SecurityLogger.LogEvent("WARN", $"User '{actor}' attempted to change password for '{username}'.");
+                SecurityLogger.LogEvent("WARN", "User '" + actor + "' attempted to change password for '" +
+                    username + "'.");
                 return false;
             }
 
             if (!ValidateCredentials(actor, authorizationPassword))
             {
-                SecurityLogger.LogEvent("WARN", $"Password change authorization failed for '{actor}'.");
+                SecurityLogger.LogEvent("WARN", "Password change authorization failed for '" + actor + "'.");
                 return false;
             }
 
+            if (!RewritePasswordEntry(username, newPassword))
+                return false;
+
+            AuthenticationGuard.Reset(username);
+            SecurityLogger.LogEvent("INFO", "Password changed for '" + username + "' by '" + actor + "'.");
+            return true;
+        }
+
+        public static string GetHomeDirectory(string username)
+        {
+            int uid;
+            string home;
+            return TryGetUserInfo(username, out uid, out home) ? home : "/root";
+        }
+
+        private static bool RewritePasswordEntry(string username, string newPassword)
+        {
             try
             {
                 if (!File.Exists(ShadowPath))
@@ -305,21 +364,48 @@ namespace ZonderqOS
                 string hash = Crypto.HashPassword(newPassword, salt);
                 lines[entryIndex] = username + ":" + salt + "$" + hash;
                 File.WriteAllLines(ShadowPath, lines);
-                SecurityLogger.LogEvent("INFO", $"Password changed for '{username}' by '{actor}'.");
                 return true;
             }
             catch (Exception ex)
             {
-                SecurityLogger.LogEvent("ERR", $"Password change failed for '{username}': {ex.Message}");
+                SecurityLogger.LogEvent("ERR", "Password database update failed for '" + username + "': " + ex.Message);
                 return false;
             }
         }
 
-        public static string GetHomeDirectory(string username)
+        private static int FindNextUid()
         {
-            int uid;
-            string home;
-            return TryGetUserInfo(username, out uid, out home) ? home : "/root";
+            int nextUid = 1000;
+            try
+            {
+                if (!File.Exists(PasswdPath))
+                    return nextUid;
+
+                string[] lines = File.ReadAllLines(PasswdPath);
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    string[] parts = lines[i].Split(':');
+                    if (parts.Length < 3)
+                        continue;
+
+                    int uid;
+                    if (!Int32.TryParse(parts[2], out uid) || uid < 1000)
+                        continue;
+
+                    if (uid >= nextUid)
+                    {
+                        if (uid == Int32.MaxValue)
+                            return -1;
+                        nextUid = uid + 1;
+                    }
+                }
+            }
+            catch
+            {
+                return -1;
+            }
+
+            return nextUid;
         }
     }
 }
