@@ -88,10 +88,10 @@ namespace ZonderqOS.GUI
 
         private sealed class LoginScreen
         {
-            private const int MaxUsers = 16;
+            private const int MaxUsers = 32;
             private const int VisibleUsers = 6;
             private const int MaxUsernameLength = 32;
-            private const int MaxPasswordLength = 128;
+            private const int MaxPasswordLength = PasswordPolicy.MaxLength;
             private const string PasswordMask =
                 "********************************************************************************************************************************";
 
@@ -103,7 +103,6 @@ namespace ZonderqOS.GUI
             private static readonly Color Text = Color.FromArgb(232, 237, 242);
             private static readonly Color Muted = Color.FromArgb(134, 150, 165);
             private static readonly Color Good = Color.FromArgb(78, 185, 126);
-            private static readonly Color Warning = Color.FromArgb(224, 174, 76);
             private static readonly Color Danger = Color.FromArgb(215, 86, 91);
 
             private readonly int screenWidth;
@@ -116,7 +115,6 @@ namespace ZonderqOS.GUI
             private int userOffset;
             private int passwordLength;
             private bool passwordField;
-            private bool defaultRootPassword;
             private string username = string.Empty;
             private string status = "WYBIERZ KONTO LUB WPISZ LOGIN";
             private Color statusColor = Muted;
@@ -340,7 +338,7 @@ namespace ZonderqOS.GUI
                 SmallTextRenderer.Draw(canvas, "HASLO", rightX + 28, cardY + 204, Muted);
                 RenderInput(canvas, rightX + 28, cardY + 224, 350, 48, true);
 
-                Color loginColor = passwordField && !string.IsNullOrEmpty(username)
+                Color loginColor = passwordField && !string.IsNullOrEmpty(username) && passwordLength > 0
                     ? SystemTheme.Accent
                     : Color.FromArgb(54, 67, 79);
                 canvas.DrawFilledRectangle(loginColor, rightX + 28, cardY + 300, 350, 48);
@@ -356,16 +354,13 @@ namespace ZonderqOS.GUI
                 SmallTextRenderer.Draw(canvas, "F5 KONTA  |  GORA/DOL WYBOR  |  ESC WSTECZ",
                     rightX + 43, cardY + 417, Muted);
 
-                if (defaultRootPassword)
-                {
-                    SmallTextRenderer.Draw(canvas,
-                        "UWAGA: konto root nadal uzywa domyslnego hasla. Zmien je po zalogowaniu.",
-                        28, screenHeight - 58, Warning);
-                }
-                SmallTextRenderer.Draw(canvas, "ZOnderqOS chroni pulpit przed dostepem bez uwierzytelnienia.",
+                SmallTextRenderer.Draw(canvas,
+                    "ZOnderqOS chroni pulpit przed dostepem bez uwierzytelnienia.",
                     28, screenHeight - 38, Muted);
-                RenderPowerButton(canvas, screenWidth - 226, screenHeight - 66, 92, "REBOOT", IconType.Reboot, false);
-                RenderPowerButton(canvas, screenWidth - 124, screenHeight - 66, 100, "WYLACZ", IconType.Shutdown, true);
+                RenderPowerButton(canvas, screenWidth - 226, screenHeight - 66, 92,
+                    "REBOOT", IconType.Reboot, false);
+                RenderPowerButton(canvas, screenWidth - 124, screenHeight - 66, 100,
+                    "WYLACZ", IconType.Shutdown, true);
             }
 
             private void RenderUsers(Canvas canvas, int cardX, int cardY)
@@ -489,17 +484,6 @@ namespace ZonderqOS.GUI
                 ClearPassword();
                 passwordField = userCount > 0;
                 KeepSelectedVisible();
-
-                try
-                {
-                    defaultRootPassword = UserManager.UserExists("root") &&
-                                          UserManager.ValidateCredentials("root", "root");
-                }
-                catch
-                {
-                    defaultRootPassword = false;
-                }
-
                 ShowAccountStatus();
             }
 
@@ -537,10 +521,9 @@ namespace ZonderqOS.GUI
 
             private void ShowAccountStatus()
             {
-                if (defaultRootPassword && username == "root")
-                    SetStatus("ROOT: ZMIEN DOMYSLNE HASLO PO LOGOWANIU", Warning);
-                else
-                    SetStatus("WYBRANO KONTO - WPISZ HASLO", Muted);
+                SetStatus(userCount > 0
+                    ? "WYBRANO KONTO - WPISZ HASLO"
+                    : "WPISZ NAZWE UZYTKOWNIKA", Muted);
             }
 
             private void Authenticate()
@@ -550,6 +533,12 @@ namespace ZonderqOS.GUI
                     passwordField = false;
                     ClearPassword();
                     SetStatus("BRAK NAZWY UZYTKOWNIKA", Danger);
+                    return;
+                }
+
+                if (passwordLength <= 0)
+                {
+                    SetStatus("HASLO JEST WYMAGANE", Danger);
                     return;
                 }
 
