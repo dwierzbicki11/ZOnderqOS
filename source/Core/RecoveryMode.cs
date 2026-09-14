@@ -6,8 +6,8 @@ namespace ZonderqOS
 {
     /// <summary>
     /// Dependency-light recovery console used after a failed boot or by authenticated root.
-    /// Automatic boot recovery is intentionally read-only to avoid turning a boot failure
-    /// into an unauthenticated administrative shell.
+    /// Automatic boot recovery exposes diagnostics only; filesystem access and mutations are
+    /// available exclusively to an already authenticated root session.
     /// </summary>
     public static class RecoveryMode
     {
@@ -22,7 +22,7 @@ namespace ZonderqOS
             string currentPath = "/";
 
             SystemLogger.Log(SystemLogLevel.Warning, "RECOVERY",
-                "Recovery mode entered: " + safeReason + (authenticatedAdmin ? " [admin]" : " [read-only]"));
+                "Recovery mode entered: " + safeReason + (authenticatedAdmin ? " [admin]" : " [diagnostic-only]"));
 
             DrawBanner(safeReason, cause, authenticatedAdmin);
 
@@ -31,7 +31,7 @@ namespace ZonderqOS
                 try
                 {
                     Console.ForegroundColor = ConsoleColor.Yellow;
-                    Console.Write("recovery:" + currentPath + "# ");
+                    Console.Write("recovery:" + currentPath + (authenticatedAdmin ? "# " : "> "));
                     Console.ForegroundColor = ConsoleColor.White;
 
                     string input = Console.ReadLine();
@@ -62,11 +62,15 @@ namespace ZonderqOS
                     }
                     else if (command == "ls")
                     {
+                        if (!RequireAdminFilesystem(authenticatedAdmin))
+                            continue;
                         string target = parts.Length > 1 ? ResolvePath(currentPath, parts[1]) : currentPath;
                         ListDirectory(target);
                     }
                     else if (command == "cd")
                     {
+                        if (!RequireAdminFilesystem(authenticatedAdmin))
+                            continue;
                         string target = parts.Length > 1 ? ResolvePath(currentPath, parts[1]) : "/";
                         if (Directory.Exists(target))
                             currentPath = NormalizePath(target);
@@ -75,6 +79,8 @@ namespace ZonderqOS
                     }
                     else if (command == "view" || command == "cat")
                     {
+                        if (!RequireAdminFilesystem(authenticatedAdmin))
+                            continue;
                         if (parts.Length < 2)
                             WriteRecoveryError("Usage: view <path>");
                         else
@@ -101,7 +107,7 @@ namespace ZonderqOS
                     {
                         if (!authenticatedAdmin)
                         {
-                            WriteRecoveryError("Automatic recovery cannot exit into the failed boot path.");
+                            WriteRecoveryError("Boot recovery cannot continue into the failed boot path.");
                             continue;
                         }
 
@@ -143,7 +149,7 @@ namespace ZonderqOS
                 Console.WriteLine("============================================================");
                 Console.ForegroundColor = ConsoleColor.White;
                 Console.WriteLine("Reason : " + reason);
-                Console.WriteLine("Access : " + (authenticatedAdmin ? "authenticated root / maintenance" : "read-only boot recovery"));
+                Console.WriteLine("Access : " + (authenticatedAdmin ? "authenticated root / maintenance" : "diagnostic-only boot recovery"));
                 if (cause != null)
                     Console.WriteLine("Cause  : " + cause.GetType().Name + ": " + cause.Message);
                 Console.WriteLine("Type 'help' for available recovery commands.");
@@ -159,14 +165,14 @@ namespace ZonderqOS
             Console.WriteLine("help                 Show this command list");
             Console.WriteLine("status               Show boot, RAM, network and logger state");
             Console.WriteLine("logs [count]         Show recent in-memory system log entries");
-            Console.WriteLine("ls [path]            List a directory (bounded)");
-            Console.WriteLine("cd [path]            Change recovery working directory");
-            Console.WriteLine("view <path>          Read first " + MaxViewLines + " lines of a text file");
             Console.WriteLine("disk                 List detected block devices");
             Console.WriteLine("net                  Show network interfaces if initialized");
             Console.WriteLine("clear                Clear the recovery console");
             if (authenticatedAdmin)
             {
+                Console.WriteLine("ls [path]            List a directory (bounded)");
+                Console.WriteLine("cd [path]            Change recovery working directory");
+                Console.WriteLine("view <path>          Read first " + MaxViewLines + " lines of a text file");
                 Console.WriteLine("reset-settings CONFIRM  Remove saved system settings");
                 Console.WriteLine("exit                 Return to the authenticated shell");
             }
@@ -177,7 +183,7 @@ namespace ZonderqOS
         private static void ShowStatus(string reason, Exception cause, bool authenticatedAdmin)
         {
             Console.WriteLine("Recovery reason : " + reason);
-            Console.WriteLine("Access mode     : " + (authenticatedAdmin ? "ADMIN" : "READ-ONLY"));
+            Console.WriteLine("Access mode     : " + (authenticatedAdmin ? "ADMIN" : "DIAGNOSTIC-ONLY"));
             Console.WriteLine("Authenticated   : " + SecurityContext.IsAuthenticated);
             Console.WriteLine("Current user    : " + (SecurityContext.CurrentUser ?? "none"));
             Console.WriteLine("System log RAM  : " + SystemLogger.Count + " entries");
@@ -216,6 +222,18 @@ namespace ZonderqOS
                 if (SystemLogger.TryGetRecent(offset, out entry))
                     Console.WriteLine(SystemLogger.Format(entry));
             }
+        }
+
+        private static bool RequireAdminFilesystem(bool authenticatedAdmin)
+        {
+            if (authenticatedAdmin && SecurityContext.IsAuthenticated &&
+                SecurityContext.CurrentUid == 0 && SecurityContext.CurrentUser == "root")
+            {
+                return true;
+            }
+
+            WriteRecoveryError("Filesystem access is disabled before authenticated root recovery.");
+            return false;
         }
 
         private static void ListDirectory(string path)
