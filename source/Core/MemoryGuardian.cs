@@ -37,7 +37,11 @@ namespace ZonderqOS.SystemCore
                             if (freePercent <= RamCriticalThresholdPercent &&
                                 now - lastRamAlert >= RamAlertInterval)
                             {
-                                string ramAlert = $"[CRITICAL][RAM] Niski stan pamięci! Wolne: {freePercent}% ({freePages}/{totalPages} stron)\n";
+                                string message = "Niski stan pamięci! Wolne: " + freePercent + "% (" +
+                                                 freePages + "/" + totalPages + " stron)";
+                                string ramAlert = "[CRITICAL][RAM] " + message + "\n";
+                                global::ZonderqOS.SystemLogger.Log(
+                                    global::ZonderqOS.SystemLogLevel.Critical, "RAM", message);
                                 Disk.AppendFile("/sysmon.log", ramAlert);
                                 lastRamAlert = now;
                             }

@@ -26,6 +26,8 @@ namespace ZonderqOS
 
         public static void LogEvent(string severity, string message)
         {
+            SystemLogger.Log(MapSeverity(severity), "SEC", message);
+
             try
             {
                 string currentUser = SecurityContext.CurrentUser ?? "unknown";
@@ -44,6 +46,23 @@ namespace ZonderqOS
             {
                 // Błąd loggera nie może doprowadzić do kernel panic.
             }
+        }
+
+        private static SystemLogLevel MapSeverity(string severity)
+        {
+            if (string.IsNullOrEmpty(severity))
+                return SystemLogLevel.Info;
+
+            string value = severity.ToUpperInvariant();
+            if (value == "CRITICAL" || value == "FATAL")
+                return SystemLogLevel.Critical;
+            if (value == "ERROR" || value == "ERR")
+                return SystemLogLevel.Error;
+            if (value == "WARN" || value == "WARNING")
+                return SystemLogLevel.Warning;
+            if (value == "DEBUG")
+                return SystemLogLevel.Debug;
+            return SystemLogLevel.Info;
         }
 
         private static string GetTimestamp()

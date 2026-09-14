@@ -26,6 +26,7 @@ namespace ZonderqOS
                 EnvironmentManager.Initialize();
                 SecurityLogger.Initialize();
                 PermissionManager.Initialize();
+                SystemLogger.Initialize();
                 Network.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
@@ -37,7 +38,7 @@ namespace ZonderqOS
             }
             catch (Exception ex)
             {
-                WriteMessage.WriteError("Boot critical error: " + ex.Message, "SYS");
+                KernelPanic.Show(ex, "BOOT", false);
             }
         }
 
@@ -111,7 +112,7 @@ namespace ZonderqOS
             }
             catch (Exception ex)
             {
-                WriteMessage.WriteError("Wystąpił błąd jądra: " + ex.Message, "Kernel");
+                KernelPanic.Show(ex, "RUNTIME", true);
             }
         }
 
