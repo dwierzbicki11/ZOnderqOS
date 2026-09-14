@@ -160,7 +160,7 @@ namespace ZonderqOS
                 IsReady = true;
                 WriteMessage.WriteOK("DHCP skonfigurowane pomyślnie!", "NET");
                 WriteMessage.WriteInfo($"  Karta:   {ActiveDevice.Name}", "NET");
-                WriteMessage.WriteInfo($"  IP:      {config.IPAddress}", "NET");
+                WriteMessage.WriteInfo($"  IP:      {config.Address}", "NET");
                 WriteMessage.WriteInfo($"  Subnet:  {config.SubnetMask}", "NET");
                 WriteMessage.WriteInfo($"  Gateway: {config.DefaultGateway}", "NET");
                 return true;
