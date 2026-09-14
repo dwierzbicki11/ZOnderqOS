@@ -228,6 +228,16 @@ namespace ZonderqOS.GUI
             Text = "";
         }
 
+        public void SetInput(string text)
+        {
+            string value = text ?? string.Empty;
+            int maxChars = GetMaxChars();
+            int promptChars = Prompt == null ? 0 : Prompt.Length;
+            int capacity = Math.Max(0, maxChars - promptChars);
+            Text = value.Length <= capacity ? value : value.Substring(0, capacity);
+            ScrollToBottom();
+        }
+
         private void DrawTerminalString(Canvas canvas, string text, int x, int y, Color color)
         {
             if (string.IsNullOrEmpty(text) || Font == null)

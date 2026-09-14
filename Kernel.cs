@@ -89,8 +89,9 @@ namespace ZonderqOS
                 if (string.IsNullOrEmpty(host))
                     host = "ZonderqOS";
 
-                Console.Write(user + "@" + host + ":" + path + "$ ");
-                string command = ReadLineWithHistory();
+                string prompt = user + "@" + host + ":" + path + "$ ";
+                Console.Write(prompt);
+                string command = ReadLineWithHistory(prompt);
 
                 if (!string.IsNullOrWhiteSpace(command))
                 {
@@ -259,7 +260,7 @@ namespace ZonderqOS
             }
         }
 
-        private string ReadLineWithHistory()
+        private string ReadLineWithHistory(string prompt)
         {
             string currentInput = "";
             int cursorPosition = 0;
@@ -333,6 +334,26 @@ namespace ZonderqOS
                         historyIndex = history.Count;
                         currentInput = "";
                         cursorPosition = 0;
+                        RefreshLine(startLeft, startTop, currentInput, cursorPosition);
+                    }
+                }
+                else if (keyInfo.Key == ConsoleKey.Tab)
+                {
+                    ShellCompletionResult result = ShellCompletion.Complete(currentInput, cursorPosition, path);
+                    if (result.Changed)
+                    {
+                        currentInput = result.Text;
+                        cursorPosition = result.CursorPosition;
+                        RefreshLine(startLeft, startTop, currentInput, cursorPosition);
+                    }
+                    else if (result.Matches.Length > 1)
+                    {
+                        SetConsoleCursor(startLeft, startTop, currentInput.Length);
+                        Console.WriteLine();
+                        Console.WriteLine(string.Join("  ", result.Matches));
+                        Console.Write(prompt);
+                        startLeft = Console.CursorLeft;
+                        startTop = Console.CursorTop;
                         RefreshLine(startLeft, startTop, currentInput, cursorPosition);
                     }
                 }
