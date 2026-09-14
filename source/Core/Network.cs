@@ -206,8 +206,9 @@ namespace ZonderqOS
                     return false;
                 }
 
-                DNSConfig.DNSNameservers.Clear();
-                DNSConfig.Add(dnsAddress);
+                while (DnsConfig.Nameservers.Count > 0)
+                    DnsConfig.Remove(DnsConfig.Nameservers[0]);
+                DnsConfig.Add(dnsAddress);
                 dnsConfigured = true;
                 IsReady = true;
 
@@ -248,18 +249,18 @@ namespace ZonderqOS
             {
                 if (!dnsConfigured)
                 {
-                    if (DNSConfig.DNSNameservers.Count == 0)
-                        DNSConfig.Add(new Address(1, 1, 1, 1));
+                    if (DnsConfig.Nameservers.Count == 0)
+                        DnsConfig.Add(new Address4(1, 1, 1, 1));
                     dnsConfigured = true;
                 }
 
-                Address dnsServer = DNSConfig.DNSNameservers.Count > 0
-                    ? DNSConfig.DNSNameservers[0]
-                    : new Address(1, 1, 1, 1);
+                Address dnsServer = DnsConfig.Nameservers.Count > 0
+                    ? DnsConfig.Nameservers[0]
+                    : new Address4(1, 1, 1, 1);
 
                 using var dnsClient = new DnsClient();
                 dnsClient.Connect(dnsServer);
-                dnsClient.SendAsk(domain);
+                dnsClient.SendQuery(domain);
                 Address resolvedAddress = dnsClient.Receive(5000);
                 dnsClient.Close();
 
