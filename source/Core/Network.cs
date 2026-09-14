@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Text;
 using System.Net;
 using System.Net.Sockets;
-using Cosmos.Kernel.HAL.Interfaces.Devices;
 using Cosmos.Kernel.System.Network;
 using Cosmos.Kernel.System.Network.Config;
 using Cosmos.Kernel.System.Network.IPv4;
@@ -12,10 +11,30 @@ using Cosmos.Kernel.System.Network.IPv4.UDP.DNS;
 
 namespace ZonderqOS
 {
+    /// <summary>
+    /// Stable application-facing view of a Cosmos network adapter. The raw
+    /// INetworkDevice contract is internal in Cosmos Gen3 and must not leak
+    /// into kernel applications.
+    /// </summary>
+    public sealed class NetworkDeviceInfo
+    {
+        internal NetworkAdapter Adapter { get; }
+
+        internal NetworkDeviceInfo(NetworkAdapter adapter)
+        {
+            Adapter = adapter;
+        }
+
+        public string Name => Adapter.Name ?? "Unknown";
+        public string MacAddress => Adapter.MacAddress?.ToString() ?? "00:00:00:00:00:00";
+        public bool LinkUp => Adapter.LinkUp;
+        public bool Ready => Adapter.Ready;
+    }
+
     public static class Network
     {
-        public static List<INetworkDevice> Devices { get; private set; } = new List<INetworkDevice>();
-        public static INetworkDevice ActiveDevice { get; private set; }
+        public static List<NetworkDeviceInfo> Devices { get; private set; } = new List<NetworkDeviceInfo>();
+        public static NetworkDeviceInfo ActiveDevice { get; private set; }
         public static bool IsReady { get; private set; }
         private static bool dnsConfigured;
 
@@ -32,16 +51,16 @@ namespace ZonderqOS
                 int deviceCount = NetworkManager.DeviceCount;
                 for (int i = 0; i < deviceCount; i++)
                 {
-                    var dev = NetworkManager.GetDevice(i);
-                    if (dev != null)
-                        Devices.Add(dev);
+                    NetworkAdapter adapter = NetworkManager.GetAdapter(i);
+                    if (adapter.IsValid)
+                        Devices.Add(new NetworkDeviceInfo(adapter));
                 }
 
                 if (Devices.Count == 0)
                 {
-                    var primary = NetworkManager.PrimaryDevice;
-                    if (primary != null)
-                        Devices.Add(primary);
+                    NetworkAdapter primary = NetworkManager.Primary;
+                    if (primary.IsValid)
+                        Devices.Add(new NetworkDeviceInfo(primary));
                 }
 
                 if (Devices.Count == 0)
@@ -51,8 +70,7 @@ namespace ZonderqOS
                 }
 
                 ActiveDevice = Devices[0];
-                if (!ActiveDevice.Ready)
-                    ActiveDevice.Initialize();
+                NetworkManager.Primary = ActiveDevice.Adapter;
 
                 SystemSettings.Load();
                 bool configured = ApplySavedConfiguration();
@@ -86,8 +104,7 @@ namespace ZonderqOS
             }
 
             ActiveDevice = Devices[index];
-            if (!ActiveDevice.Ready)
-                ActiveDevice.Initialize();
+            NetworkManager.Primary = ActiveDevice.Adapter;
 
             bool configured = ApplySavedConfiguration();
             IsReady = configured;
@@ -113,13 +130,13 @@ namespace ZonderqOS
         {
             try
             {
-                if (ActiveDevice == null)
+                if (ActiveDevice == null || !ActiveDevice.Adapter.IsValid)
                 {
                     WriteMessage.WriteError("Brak aktywnego interfejsu sieciowego.", "NET");
                     return false;
                 }
 
-                // A renew must not leave stale static/DHCP entries in the global maps.
+                NetworkManager.Primary = ActiveDevice.Adapter;
                 NetworkStack.RemoveAllConfigIP();
                 WriteMessage.WriteInfo($"Wysyłanie pakietu DHCP DISCOVER na karcie {ActiveDevice.Name}...", "NET");
                 using (var dhcpClient = new DHCPClient())
@@ -132,7 +149,7 @@ namespace ZonderqOS
                     }
                 }
 
-                IPConfig config = NetworkConfigManager.Get(ActiveDevice);
+                IPConfig config = ActiveDevice.Adapter.IPConfig;
                 if (config == null)
                 {
                     IsReady = false;
@@ -143,7 +160,7 @@ namespace ZonderqOS
                 IsReady = true;
                 WriteMessage.WriteOK("DHCP skonfigurowane pomyślnie!", "NET");
                 WriteMessage.WriteInfo($"  Karta:   {ActiveDevice.Name}", "NET");
-                WriteMessage.WriteInfo($"  IP:      {config.IPAddress}", "NET");
+                WriteMessage.WriteInfo($"  IP:      {config.Address}", "NET");
                 WriteMessage.WriteInfo($"  Subnet:  {config.SubnetMask}", "NET");
                 WriteMessage.WriteInfo($"  Gateway: {config.DefaultGateway}", "NET");
                 return true;
@@ -160,7 +177,7 @@ namespace ZonderqOS
         {
             try
             {
-                if (ActiveDevice == null)
+                if (ActiveDevice == null || !ActiveDevice.Adapter.IsValid)
                 {
                     WriteMessage.WriteError("Brak aktywnego interfejsu sieciowego.", "NET");
                     return false;
@@ -176,11 +193,9 @@ namespace ZonderqOS
                     return false;
                 }
 
-                if (!ActiveDevice.Ready)
-                    ActiveDevice.Initialize();
-
+                NetworkManager.Primary = ActiveDevice.Adapter;
                 NetworkStack.RemoveAllConfigIP();
-                bool enabled = IPConfig.Enable(ActiveDevice, ipAddress, subnetAddress, gatewayAddress);
+                bool enabled = IPConfig.Enable(ActiveDevice.Adapter, ipAddress, subnetAddress, gatewayAddress);
                 if (!enabled)
                 {
                     IsReady = false;
@@ -259,7 +274,7 @@ namespace ZonderqOS
 
             for (int i = 0; i < Devices.Count; i++)
             {
-                var dev = Devices[i];
+                NetworkDeviceInfo dev = Devices[i];
                 bool isActive = dev == ActiveDevice;
                 string marker = isActive ? " [ACTIVE]" : "";
 

@@ -6,6 +6,7 @@
     <CosmosEnableGraphics>true</CosmosEnableGraphics>
     <CosmosEnableMouse>true</CosmosEnableMouse>
     <CosmosEnableKeyboard>true</CosmosEnableKeyboard>
+    <CosmosEnableScheduler>true</CosmosEnableScheduler>
     <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
