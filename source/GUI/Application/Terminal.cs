@@ -26,7 +26,7 @@ namespace ZonderqOS.GUI.Apps
             UpdatePrompt();
 
             terminalBox.PrintLine("ZOnderqOS Terminal - Gen3");
-            terminalBox.PrintLine("Type 'help' to list available commands.");
+            terminalBox.PrintLine("Type 'help' to list available commands. Press Tab to autocomplete.");
             terminalBox.PrintLine("");
 
             Window.AddChild(terminalBox);
@@ -91,6 +91,12 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleKeyboard(KeyEvent key)
         {
+            if (key.Key == ConsoleKeyEx.Tab)
+            {
+                CompleteInput();
+                return;
+            }
+
             terminalBox.HandleKey(key);
             if (key.Key != ConsoleKeyEx.Enter)
                 return;
@@ -118,6 +124,25 @@ namespace ZonderqOS.GUI.Apps
                 string output = CommandIO.EndRedirection();
                 PrintCommandOutput(output);
                 UpdatePrompt();
+            }
+        }
+
+        private void CompleteInput()
+        {
+            ShellCompletionResult result = ShellCompletion.Complete(
+                terminalBox.Text,
+                terminalBox.Text.Length,
+                currentPath);
+
+            if (result.Changed)
+            {
+                terminalBox.SetInput(result.Text);
+                return;
+            }
+
+            if (result.Matches.Length > 1)
+            {
+                terminalBox.PrintLine(string.Join("  ", result.Matches));
             }
         }
 
