@@ -5,8 +5,9 @@ using Cosmos.Kernel.Core.Memory;
 namespace ZonderqOS
 {
     /// <summary>
-    /// Last-resort console diagnostics for uncaught kernel exceptions. The screen avoids
-    /// graphics and filesystem dependencies so it can still be useful during partial failure.
+    /// Last-resort console diagnostics for uncaught kernel exceptions. Boot failures first
+    /// enter the restricted recovery console; this screen remains the dependency-light
+    /// fallback if recovery itself cannot stay alive.
     /// </summary>
     public static class KernelPanic
     {
@@ -20,6 +21,19 @@ namespace ZonderqOS
 
             SystemLogger.Log(SystemLogLevel.Critical, "PANIC",
                 safePhase + ": " + typeName + ": " + message);
+
+            if (!allowContinue && string.Equals(safePhase, "BOOT", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    RecoveryMode.Run("BOOT FAILURE", exception, false);
+                }
+                catch (Exception recoveryError)
+                {
+                    SystemLogger.Log(SystemLogLevel.Critical, "RECOVERY",
+                        "Recovery mode failed: " + recoveryError.Message);
+                }
+            }
 
             try
             {
