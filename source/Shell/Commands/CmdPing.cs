@@ -123,7 +123,7 @@ namespace ZonderqOS.Commands
         {
             try
             {
-                using (var client = new ICMPClient())
+                using (var client = new IcmpClient())
                 {
                     client.Connect(target);
                     CosmosEndPoint source = new CosmosEndPoint(target, 0);
