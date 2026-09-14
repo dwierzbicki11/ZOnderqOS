@@ -1,14 +1,52 @@
 using System;
 using Cosmos.Kernel.System.Diagnostics;
 
-// Compatibility facade for GUI code that was written against the pre-ring
-// scheduler/GC diagnostic surface. Cosmos Gen3 intentionally hides the raw
-// collector and scheduler control blocks from applications; the public ring
-// exposes stable snapshots through MemoryInfo and SchedulerInfo instead.
-//
-// These source-defined names deliberately shadow the imported low-level types
-// inside this project so existing GUI code can keep its small read-only API
-// while all actual data comes from supported public diagnostics.
+// Compatibility facade for GUI/system code that was written against pre-ring
+// memory, scheduler and GC diagnostic surfaces. Cosmos Gen3 intentionally hides
+// the raw allocator, collector and scheduler control blocks from applications;
+// stable snapshots are exposed through MemoryInfo and SchedulerInfo instead.
+namespace Cosmos.Kernel.Core.Memory
+{
+    public static class PageAllocator
+    {
+        public static ulong TotalPageCount
+        {
+            get
+            {
+                try { return MemoryInfo.TotalPages; }
+                catch { return 0UL; }
+            }
+        }
+
+        public static ulong FreePageCount
+        {
+            get
+            {
+                try { return MemoryInfo.FreePages; }
+                catch { return 0UL; }
+            }
+        }
+
+        public static ulong PageSize
+        {
+            get
+            {
+                try { return MemoryInfo.PageSizeBytes; }
+                catch { return 4096UL; }
+            }
+        }
+
+        public static ulong RamSize
+        {
+            get
+            {
+                try { return MemoryInfo.RamSizeBytes; }
+                catch { return 0UL; }
+            }
+        }
+    }
+}
+
 namespace Cosmos.Kernel.Core.Memory.GarbageCollector
 {
     public static class GarbageCollector
