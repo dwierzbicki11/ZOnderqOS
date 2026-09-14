@@ -3,46 +3,30 @@ using Cosmos.Kernel.System.Diagnostics;
 
 // Compatibility facade for GUI/system code that was written against pre-ring
 // memory, scheduler and GC diagnostic surfaces. Cosmos Gen3 intentionally hides
-// the raw allocator, collector and scheduler control blocks from applications;
-// stable snapshots are exposed through MemoryInfo and SchedulerInfo instead.
+// raw kernel control structures from applications; stable snapshots are exposed
+// through public diagnostic and adapter APIs instead.
 namespace Cosmos.Kernel.Core.Memory
 {
     public static class PageAllocator
     {
         public static ulong TotalPageCount
         {
-            get
-            {
-                try { return MemoryInfo.TotalPages; }
-                catch { return 0UL; }
-            }
+            get { try { return MemoryInfo.TotalPages; } catch { return 0UL; } }
         }
 
         public static ulong FreePageCount
         {
-            get
-            {
-                try { return MemoryInfo.FreePages; }
-                catch { return 0UL; }
-            }
+            get { try { return MemoryInfo.FreePages; } catch { return 0UL; } }
         }
 
         public static ulong PageSize
         {
-            get
-            {
-                try { return MemoryInfo.PageSizeBytes; }
-                catch { return 4096UL; }
-            }
+            get { try { return MemoryInfo.PageSizeBytes; } catch { return 4096UL; } }
         }
 
         public static ulong RamSize
         {
-            get
-            {
-                try { return MemoryInfo.RamSizeBytes; }
-                catch { return 0UL; }
-            }
+            get { try { return MemoryInfo.RamSizeBytes; } catch { return 0UL; } }
         }
     }
 }
@@ -60,10 +44,7 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
                 long value = GC.GetGCMemoryInfo().HeapSizeBytes;
                 return value > 0 ? (ulong)value : 0UL;
             }
-            catch
-            {
-                return 0UL;
-            }
+            catch { return 0UL; }
         }
 
         public static ulong GetTotalCommittedBytes()
@@ -73,10 +54,7 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
                 long value = GC.GetGCMemoryInfo().TotalCommittedBytes;
                 return value > 0 ? (ulong)value : 0UL;
             }
-            catch
-            {
-                return 0UL;
-            }
+            catch { return 0UL; }
         }
 
         public static ulong GetFragmentedBytes()
@@ -86,10 +64,7 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
                 long value = GC.GetGCMemoryInfo().FragmentedBytes;
                 return value > 0 ? (ulong)value : 0UL;
             }
-            catch
-            {
-                return 0UL;
-            }
+            catch { return 0UL; }
         }
 
         public static ulong GetPinnedObjectsCount()
@@ -99,22 +74,13 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
                 long value = GC.GetGCMemoryInfo().PinnedObjectsCount;
                 return value > 0 ? (ulong)value : 0UL;
             }
-            catch
-            {
-                return 0UL;
-            }
+            catch { return 0UL; }
         }
 
         public static int GetCollectionIndex()
         {
-            try
-            {
-                return MemoryInfo.TotalCollections;
-            }
-            catch
-            {
-                return 0;
-            }
+            try { return MemoryInfo.TotalCollections; }
+            catch { return 0; }
         }
     }
 }
@@ -155,29 +121,17 @@ namespace Cosmos.Kernel.Core.Scheduler
     {
         public static bool IsReady
         {
-            get
-            {
-                try { return SchedulerInfo.IsInitialized; }
-                catch { return false; }
-            }
+            get { try { return SchedulerInfo.IsInitialized; } catch { return false; } }
         }
 
         public static int ThreadCount
         {
-            get
-            {
-                try { return SchedulerInfo.ThreadCount; }
-                catch { return 0; }
-            }
+            get { try { return SchedulerInfo.ThreadCount; } catch { return 0; } }
         }
 
         public static uint CpuCount
         {
-            get
-            {
-                try { return SchedulerInfo.CpuCount; }
-                catch { return 0; }
-            }
+            get { try { return SchedulerInfo.CpuCount; } catch { return 0; } }
         }
 
         public static SchedulerDescriptor Current
@@ -189,10 +143,7 @@ namespace Cosmos.Kernel.Core.Scheduler
                     string name = SchedulerInfo.SchedulerName;
                     return string.IsNullOrEmpty(name) ? null : new SchedulerDescriptor(name);
                 }
-                catch
-                {
-                    return null;
-                }
+                catch { return null; }
             }
         }
 
@@ -221,10 +172,7 @@ namespace Cosmos.Kernel.Core.Scheduler
                     }
                     return result;
                 }
-                catch
-                {
-                    return new Thread[0];
-                }
+                catch { return new Thread[0]; }
             }
         }
 
@@ -238,6 +186,31 @@ namespace Cosmos.Kernel.Core.Scheduler
                 case KernelThreadState.Sleeping: return ThreadState.Sleeping;
                 case KernelThreadState.Dead: return ThreadState.Dead;
                 default: return ThreadState.Created;
+            }
+        }
+    }
+}
+
+namespace Cosmos.Kernel.System.Network.Config
+{
+    /// <summary>
+    /// Compatibility bridge for GUI code that used the removed NetworkConfigManager.
+    /// All reads are backed by the active public NetworkAdapter handle.
+    /// </summary>
+    public static class NetworkConfigManager
+    {
+        public static IPConfig Get(global::ZonderqOS.NetworkDeviceInfo device)
+        {
+            return device == null ? null : device.Adapter.IPConfig;
+        }
+
+        public static global::Cosmos.Kernel.System.Network.Address CurrentAddress
+        {
+            get
+            {
+                global::ZonderqOS.NetworkDeviceInfo active = global::ZonderqOS.Network.ActiveDevice;
+                IPConfig config = active == null ? null : active.Adapter.IPConfig;
+                return config == null ? null : config.Address;
             }
         }
     }
