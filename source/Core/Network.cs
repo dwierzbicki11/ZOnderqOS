@@ -29,6 +29,9 @@ namespace ZonderqOS
         public string MacAddress => Adapter.MacAddress?.ToString() ?? "00:00:00:00:00:00";
         public bool LinkUp => Adapter.LinkUp;
         public bool Ready => Adapter.Ready;
+        public string IpAddress => Adapter.IPConfig?.Address?.ToString() ?? "0.0.0.0";
+        public string SubnetMask => Adapter.IPConfig?.SubnetMask?.ToString() ?? "0.0.0.0";
+        public string DefaultGateway => Adapter.IPConfig?.DefaultGateway?.ToString() ?? "0.0.0.0";
     }
 
     public static class Network
@@ -36,6 +39,7 @@ namespace ZonderqOS
         public static List<NetworkDeviceInfo> Devices { get; private set; } = new List<NetworkDeviceInfo>();
         public static NetworkDeviceInfo ActiveDevice { get; private set; }
         public static bool IsReady { get; private set; }
+        public static string CurrentAddress => ActiveDevice?.IpAddress ?? "0.0.0.0";
         private static bool dnsConfigured;
 
         public static void Initialize()
@@ -282,17 +286,13 @@ namespace ZonderqOS
                 WriteMessage.WriteInfo($"    MAC:      {dev.MacAddress}", "NET");
                 WriteMessage.WriteInfo($"    Link Up:  {dev.LinkUp}", "NET");
                 WriteMessage.WriteInfo($"    Ready:    {dev.Ready}", "NET");
+                WriteMessage.WriteInfo($"    IPv4:     {dev.IpAddress}", "NET");
             }
 
             if (ActiveDevice != null)
-            {
-                var ip = NetworkConfigManager.CurrentAddress;
-                WriteMessage.WriteInfo($"Aktywny adres IPv4: {(ip != null ? ip.ToString() : "0.0.0.0")}", "NET");
-            }
+                WriteMessage.WriteInfo($"Aktywny adres IPv4: {CurrentAddress}", "NET");
             else
-            {
                 WriteMessage.WriteError("Brak aktywnego interfejsu.", "NET");
-            }
         }
     }
 }
