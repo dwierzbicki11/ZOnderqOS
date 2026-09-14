@@ -15,7 +15,7 @@ namespace ZonderqOS
         {
             Text = text ?? string.Empty;
             CursorPosition = cursorPosition;
-            Matches = matches ?? Array.Empty<string>();
+            Matches = matches ?? new string[0];
             Changed = changed;
         }
     }
