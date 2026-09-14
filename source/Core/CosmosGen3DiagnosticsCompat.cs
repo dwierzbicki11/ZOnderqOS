@@ -199,9 +199,17 @@ namespace Cosmos.Kernel.System.Network.Config
     /// </summary>
     public static class NetworkConfigManager
     {
-        public static IPConfig Get(global::ZonderqOS.NetworkDeviceInfo device)
+        public static global::ZonderqOS.GUI.Apps.IPConfig Get(global::ZonderqOS.NetworkDeviceInfo device)
         {
-            return device == null ? null : device.Adapter.IPConfig;
+            global::Cosmos.Kernel.System.Network.Config.IPConfig config =
+                device == null ? null : device.Adapter.IPConfig;
+            if (config == null)
+                return null;
+
+            return new global::ZonderqOS.GUI.Apps.IPConfig(
+                config.Address,
+                config.SubnetMask,
+                config.DefaultGateway);
         }
 
         public static global::Cosmos.Kernel.System.Network.Address CurrentAddress
@@ -209,7 +217,8 @@ namespace Cosmos.Kernel.System.Network.Config
             get
             {
                 global::ZonderqOS.NetworkDeviceInfo active = global::ZonderqOS.Network.ActiveDevice;
-                IPConfig config = active == null ? null : active.Adapter.IPConfig;
+                global::Cosmos.Kernel.System.Network.Config.IPConfig config =
+                    active == null ? null : active.Adapter.IPConfig;
                 return config == null ? null : config.Address;
             }
         }
