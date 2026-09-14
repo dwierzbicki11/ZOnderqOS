@@ -62,6 +62,14 @@ namespace ZonderqOS
             _commands.Add(new CmdDns());
         }
 
+        internal static string[] GetCommandNames()
+        {
+            string[] names = new string[_commands.Count];
+            for (int i = 0; i < _commands.Count; i++)
+                names[i] = _commands[i].Name;
+            return names;
+        }
+
         public static void Run(string fullInput, ref string currentPath)
         {
             if (string.IsNullOrWhiteSpace(fullInput))
