@@ -54,6 +54,8 @@ namespace ZonderqOS
             _commands.Add(new CmdPs());
             _commands.Add(new CmdSysmond());
             _commands.Add(new CmdNetwork());
+            _commands.Add(new CmdIp());
+            _commands.Add(new CmdPing());
             _commands.Add(new CmdKill());
             _commands.Add(new CmdEnv());
             _commands.Add(new CmdExport());
