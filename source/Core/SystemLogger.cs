@@ -110,17 +110,21 @@ namespace ZonderqOS
         {
             try
             {
-                SystemLogEntry entry = new SystemLogEntry
-                {
-                    Sequence = nextSequence++,
-                    Level = level,
-                    Source = NormalizeSource(source),
-                    Message = NormalizeMessage(message),
-                    TimeText = GetTimestamp()
-                };
+                string normalizedSource = NormalizeSource(source);
+                string normalizedMessage = NormalizeMessage(message);
+                string timestamp = GetTimestamp();
 
                 lock (Sync)
                 {
+                    SystemLogEntry entry = new SystemLogEntry
+                    {
+                        Sequence = nextSequence++,
+                        Level = level,
+                        Source = normalizedSource,
+                        Message = normalizedMessage,
+                        TimeText = timestamp
+                    };
+
                     Entries[writeIndex] = entry;
                     writeIndex = (writeIndex + 1) % Capacity;
                     if (count < Capacity)
@@ -251,10 +255,10 @@ namespace ZonderqOS
         {
             try
             {
-                var time = RTC.ReadTime();
-                return "20" + time.year.ToString("D2") + "-" + time.month.ToString("D2") + "-" +
-                       time.day.ToString("D2") + " " + time.hour.ToString("D2") + ":" +
-                       time.minute.ToString("D2") + ":" + time.second.ToString("D2");
+                var (year, month, day, hour, minute, second) = RTC.ReadTime();
+                return "20" + year.ToString("D2") + "-" + month.ToString("D2") + "-" +
+                       day.ToString("D2") + " " + hour.ToString("D2") + ":" +
+                       minute.ToString("D2") + ":" + second.ToString("D2");
             }
             catch
             {
