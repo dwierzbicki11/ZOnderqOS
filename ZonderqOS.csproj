@@ -1,13 +1,26 @@
 <Project Sdk="Cosmos.Sdk/3.0.84">
 
   <PropertyGroup>
-    <CosmosEnableStorage>true</CosmosEnableStorage>
-    <CosmosEnableNetwork>true</CosmosEnableNetwork>
+    <!-- x64 keeps the full desktop feature set. -->
+    <CosmosEnableStorage Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableStorage>
+    <CosmosEnableNetwork Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableNetwork>
+    <CosmosEnableMouse Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableMouse>
+    <CosmosEnableKeyboard Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableKeyboard>
+
+    <!-- Raspberry Pi 4 boot-smoke profile: current Cosmos ARM64 HAL is QEMU/VirtIO-oriented.
+         Keep these features off until BCM2711 USB/SD/network drivers exist. -->
+    <CosmosEnableStorage Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableStorage>
+    <CosmosEnableNetwork Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableNetwork>
+    <CosmosEnableMouse Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableMouse>
+    <CosmosEnableKeyboard Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableKeyboard>
+
     <CosmosEnableGraphics>true</CosmosEnableGraphics>
-    <CosmosEnableMouse>true</CosmosEnableMouse>
-    <CosmosEnableKeyboard>true</CosmosEnableKeyboard>
     <CosmosEnableScheduler>true</CosmosEnableScheduler>
-    <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
+
+    <CosmosKernelClass Condition="'$(CosmosArch)' != 'arm64'">ZonderqOS.Kernel</CosmosKernelClass>
+    <CosmosKernelClass Condition="'$(CosmosArch)' == 'arm64'">ZonderqOS.Rpi4BootKernel</CosmosKernelClass>
+    <DefineConstants Condition="'$(CosmosArch)' == 'arm64'">$(DefineConstants);ZONDERQ_RPI4_SMOKE</DefineConstants>
+
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
@@ -15,6 +28,16 @@
   <ItemGroup>
     <PackageReference Include="Cosmos.Kernel" Version="3.0.84" />
     <PackageReference Include="Cosmos.Kernel.System" Version="3.0.84" />
+  </ItemGroup>
+
+  <!-- Cosmos 3.0.84's ARM64 package currently does not expose several public
+       networking/scheduler projection types that are present in the x64 surface.
+       For real RPi4 boot testing, compile a dependency-light compatibility layer
+       instead of the full QEMU-oriented network implementation. -->
+  <ItemGroup Condition="'$(CosmosArch)' == 'arm64'">
+    <Compile Remove="source/Core/Network.cs" />
+    <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" />
+    <Compile Remove="source/Shell/Commands/CmdPing.cs" />
   </ItemGroup>
 
   <ItemGroup>
