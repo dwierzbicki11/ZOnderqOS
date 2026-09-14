@@ -46,11 +46,19 @@ namespace ZonderqOS
         {
             try
             {
-                WriteMessage.WriteInfo("Initializing TCP/IP stack & scanning network devices...", "NET");
-                NetworkStack.Initialize();
+                WriteMessage.WriteInfo("Scanning network devices...", "NET");
                 Devices.Clear();
                 IsReady = false;
                 ActiveDevice = null;
+
+                // Cosmos Gen3 initializes NetworkManager and registers the platform NIC
+                // from LibraryInitializer before the user kernel starts. NetworkStack no
+                // longer exposes a public Initialize method.
+                if (!NetworkManager.IsInitialized)
+                {
+                    WriteMessage.WriteError("Menedzer sieci nie zostal zainicjalizowany przez runtime Cosmos.", "NET");
+                    return;
+                }
 
                 int deviceCount = NetworkManager.DeviceCount;
                 for (int i = 0; i < deviceCount; i++)
@@ -143,7 +151,7 @@ namespace ZonderqOS
                 NetworkManager.Primary = ActiveDevice.Adapter;
                 NetworkStack.RemoveAllConfigIP();
                 WriteMessage.WriteInfo($"Wysyłanie pakietu DHCP DISCOVER na karcie {ActiveDevice.Name}...", "NET");
-                using (var dhcpClient = new DHCPClient())
+                using (var dhcpClient = new DhcpClient())
                 {
                     if (dhcpClient.SendDiscoverPacket() == -1)
                     {
