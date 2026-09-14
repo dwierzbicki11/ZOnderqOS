@@ -7,74 +7,19 @@ using ZonderqOS.GUI.Icons;
 namespace ZonderqOS.GUI.Apps
 {
     /// <summary>
-    /// Local catalog of built-in ZOnderqOS applications. The catalog itself is static;
-    /// filtering only rebuilds a small fixed index array after user input, so leaving
-    /// App Center open does not create new managed objects every GUI frame.
+    /// Browser for applications registered in the current GUI session. Metadata and
+    /// launch actions come from AppRegistry, so App Center never keeps a parallel list.
     /// </summary>
     public sealed class AppCenterApp : Application
     {
-        private const int AppCount = 12;
         private const int VisibleRows = 6;
         private const int RowHeight = 57;
         private const int RowGap = 6;
 
-        // 0 = all, 1 = system, 2 = tools, 3 = files.
+        // AppCategory values intentionally map to these tab indexes.
         private static readonly string[] CategoryLabels =
         {
             "WSZYSTKIE", "SYSTEM", "NARZEDZIA", "PLIKI"
-        };
-
-        private static readonly string[] AppNames =
-        {
-            "Terminal",
-            "File Manager",
-            "Notatnik",
-            "Zdjecia",
-            "Kalkulator",
-            "Kalendarz",
-            "Centrum sieci",
-            "Menedzer dyskow",
-            "Manager zadan",
-            "Ustawienia",
-            "Diagnostyka",
-            "O Systemie"
-        };
-
-        private static readonly string[] AppDescriptions =
-        {
-            "Powłoka i narzedzia wiersza polecen",
-            "Pliki, katalogi, schowek i zamontowane woluminy",
-            "Lekki edytor tekstu i plikow konfiguracyjnych",
-            "Przegladarka obrazow PNG i BMP",
-            "Kalkulator standardowy z pamiecia i historia",
-            "Miesieczny kalendarz systemowy",
-            "Interfejsy, DHCP, IPv4, DNS i test polaczenia",
-            "Dyski, partycje i punkty montowania VFS",
-            "Procesy, CPU, pamiec i telemetria kernela",
-            "Konfiguracja systemu, GUI, sieci i kont",
-            "Szybki podglad stanu komponentow systemowych",
-            "Informacje o ZOnderqOS i platformie Cosmos Gen3"
-        };
-
-        private static readonly int[] AppCategories =
-        {
-            2, 3, 3, 3, 2, 2, 1, 1, 1, 1, 1, 1
-        };
-
-        private static readonly IconType[] AppIcons =
-        {
-            IconType.Terminal,
-            IconType.Folder,
-            IconType.File,
-            IconType.ImageViewer,
-            IconType.Calculator,
-            IconType.Calendar,
-            IconType.Network,
-            IconType.DiskManager,
-            IconType.Settings,
-            IconType.Settings,
-            IconType.About,
-            IconType.About
         };
 
         private static readonly Color Surface = Color.FromArgb(19, 24, 30);
@@ -88,9 +33,9 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color Good = Color.FromArgb(78, 185, 126);
         private static readonly Color Warning = Color.FromArgb(224, 174, 76);
 
-        private readonly Action[] launchers;
+        private readonly AppRegistry registry;
         private readonly Action closeCallback;
-        private readonly int[] visibleIndices = new int[AppCount];
+        private readonly int[] visibleIndices;
 
         private int category;
         private int visibleCount;
@@ -103,11 +48,12 @@ namespace ZonderqOS.GUI.Apps
         private string statusMessage = "GOTOWE";
         private Color statusColor = Good;
 
-        public AppCenterApp(int x, int y, Action[] appLaunchers, Action onClose)
+        public AppCenterApp(int x, int y, AppRegistry appRegistry, Action onClose)
             : base("App Center")
         {
-            launchers = appLaunchers;
+            registry = appRegistry ?? new AppRegistry();
             closeCallback = onClose;
+            visibleIndices = new int[Math.Max(1, registry.Count)];
             Window = new Window(x, y, 1040, 700, "App Center - ZOnderqOS");
             Window.CloseAction = Close;
             RebuildFilter();
@@ -266,7 +212,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "LOKALNY KATALOG WBUDOWANYCH APLIKACJI ZONDERQOS", x + 55, y + 32, Muted);
 
             SmallTextRenderer.Draw(canvas, "ZAINSTALOWANE", x + width - 190, y + 14, Muted);
-            SmallTextRenderer.DrawUInt(canvas, (ulong)AppCount, x + width - 70, y + 14, Text);
+            SmallTextRenderer.DrawUInt(canvas, (ulong)registry.AppCenterCount, x + width - 70, y + 14, Text);
         }
 
         private void RenderTabs(Canvas canvas)
@@ -311,8 +257,8 @@ namespace ZonderqOS.GUI.Apps
             else
             {
                 SmallTextRenderer.DrawClipped(canvas, searchText, x + 105, y + 17,
-                    System.Math.Max(40, width - 185), Text);
-                int caretX = x + 105 + System.Math.Min(SmallTextRenderer.Width(searchText) + 5, width - 120);
+                    Math.Max(40, width - 185), Text);
+                int caretX = x + 105 + Math.Min(SmallTextRenderer.Width(searchText) + 5, width - 120);
                 canvas.DrawFilledRectangle(SystemTheme.Accent, caretX, y + 12, 1, 15);
             }
 
@@ -346,12 +292,15 @@ namespace ZonderqOS.GUI.Apps
                     continue;
                 }
 
-                int appIndex = visibleIndices[visibleIndex];
+                AppDescriptor app = registry.GetAt(visibleIndices[visibleIndex]);
+                if (app == null)
+                    continue;
+
                 if (selected)
                     canvas.DrawFilledRectangle(SystemTheme.Accent, x, ry + 5, 3, RowHeight - 10);
-                IconManager.DrawScaled(canvas, AppIcons[appIndex], x + 14, ry + 15, 25, 25);
-                SmallTextRenderer.DrawClipped(canvas, AppNames[appIndex], x + 52, ry + 14, 300, Text);
-                SmallTextRenderer.DrawClipped(canvas, AppDescriptions[appIndex], x + 52, ry + 34, 450, Muted);
+                IconManager.DrawScaled(canvas, app.Icon, x + 14, ry + 15, 25, 25);
+                SmallTextRenderer.DrawClipped(canvas, app.Name, x + 52, ry + 14, 300, Text);
+                SmallTextRenderer.DrawClipped(canvas, app.Description, x + 52, ry + 34, 450, Muted);
 
                 int chipX = x + width - 119;
                 canvas.DrawFilledRectangle(Color.FromArgb(23, 31, 37), chipX, ry + 13, 104, 30);
@@ -372,30 +321,38 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "SZCZEGOLY", x + 16, y + 17, Text);
             canvas.DrawLine(Border, x + 16, y + 38, x + width - 16, y + 38);
 
-            int appIndex = SelectedAppIndex();
-            if (appIndex < 0)
+            AppDescriptor app = SelectedApp();
+            if (app == null)
             {
                 SmallTextRenderer.Draw(canvas, "BRAK WYBRANEJ APLIKACJI", x + 16, y + 62, Muted);
                 return;
             }
 
-            IconManager.DrawScaled(canvas, AppIcons[appIndex], x + 16, y + 55, 46, 46);
-            SmallTextRenderer.DrawClipped(canvas, AppNames[appIndex], x + 76, y + 66,
-                System.Math.Max(50, width - 92), Text);
+            IconManager.DrawScaled(canvas, app.Icon, x + 16, y + 55, 46, 46);
+            SmallTextRenderer.DrawClipped(canvas, app.Name, x + 76, y + 66,
+                Math.Max(50, width - 92), Text);
             SmallTextRenderer.Draw(canvas, "ZONDERQOS BUILT-IN", x + 76, y + 87, Good);
 
-            DrawDetailLine(canvas, x, y + 127, width, "KATEGORIA", CategoryLabels[AppCategories[appIndex]], Text);
+            DrawDetailLine(canvas, x, y + 127, width, "KATEGORIA", CategoryLabel(app.Category), Text);
             DrawDetailLine(canvas, x, y + 158, width, "STATUS", "ZAINSTALOWANA", Good);
             DrawDetailLine(canvas, x, y + 189, width, "ZRODLO", "SYSTEM", Text);
             DrawDetailLine(canvas, x, y + 220, width, "AKCJA", "URUCHOM", SystemTheme.Accent);
 
             canvas.DrawFilledRectangle(Color.FromArgb(23, 29, 35), x + 14, y + 262, width - 28, 82);
             canvas.DrawRectangle(Border, x + 14, y + 262, width - 28, 82);
-            SmallTextRenderer.DrawClipped(canvas, AppDescriptions[appIndex], x + 27, y + 281,
-                System.Math.Max(40, width - 54), Text);
+            SmallTextRenderer.DrawClipped(canvas, app.Description, x + 27, y + 281,
+                Math.Max(40, width - 54), Text);
             SmallTextRenderer.DrawClipped(canvas,
                 "App Center nie instaluje jeszcze pakietow z sieci.", x + 27, y + 317,
-                System.Math.Max(40, width - 54), Warning);
+                Math.Max(40, width - 54), Warning);
+        }
+
+        private static string CategoryLabel(AppCategory appCategory)
+        {
+            int index = (int)appCategory;
+            if (index < 1 || index >= CategoryLabels.Length)
+                return "INNA";
+            return CategoryLabels[index];
         }
 
         private static void DrawDetailLine(Canvas canvas, int x, int y, int width,
@@ -403,7 +360,7 @@ namespace ZonderqOS.GUI.Apps
         {
             SmallTextRenderer.Draw(canvas, label, x + 16, y, Muted);
             SmallTextRenderer.DrawClipped(canvas, value ?? string.Empty, x + 112, y,
-                System.Math.Max(30, width - 128), valueColor);
+                Math.Max(30, width - 128), valueColor);
         }
 
         private void RenderActions(Canvas canvas)
@@ -426,7 +383,7 @@ namespace ZonderqOS.GUI.Apps
                 canvas.DrawFilledRectangle(SystemTheme.Accent, x, y, 3, 42);
             IconManager.DrawScaled(canvas, icon, x + 12, y + 11, 20, 20);
             SmallTextRenderer.DrawClipped(canvas, label, x + 42, y + 18,
-                System.Math.Max(20, width - 54), textColor);
+                Math.Max(20, width - 54), textColor);
         }
 
         private void RenderStatus(Canvas canvas)
@@ -438,7 +395,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawRectangle(Border, x, y, width, 27);
             canvas.DrawFilledRectangle(statusColor, x + 10, y + 11, 5, 5);
             SmallTextRenderer.DrawClipped(canvas, statusMessage, x + 25, y + 11,
-                System.Math.Max(40, width - 35), statusColor);
+                Math.Max(40, width - 35), statusColor);
         }
 
         private void UpdateHover(int mouseX, int mouseY)
@@ -452,7 +409,7 @@ namespace ZonderqOS.GUI.Apps
             int totalWidth = Window.Width - 36;
             const int gap = 7;
             int tabWidth = (totalWidth - gap * 3) / 4;
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < CategoryLabels.Length; i++)
             {
                 int tx = tabsX + i * (tabWidth + gap);
                 if (Hit(mouseX, mouseY, tx, tabsY, tabWidth, 37))
@@ -487,16 +444,20 @@ namespace ZonderqOS.GUI.Apps
         private void RebuildFilter()
         {
             visibleCount = 0;
-            for (int i = 0; i < AppCount; i++)
+            for (int i = 0; i < registry.Count; i++)
             {
-                if (category != 0 && AppCategories[i] != category)
+                AppDescriptor app = registry.GetAt(i);
+                if (app == null || !app.ShowInAppCenter)
+                    continue;
+                if (category != 0 && (int)app.Category != category)
                     continue;
                 if (!string.IsNullOrEmpty(searchText) &&
-                    AppNames[i].IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0 &&
-                    AppDescriptions[i].IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0)
+                    app.Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0 &&
+                    app.Description.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0)
                     continue;
 
-                visibleIndices[visibleCount++] = i;
+                if (visibleCount < visibleIndices.Length)
+                    visibleIndices[visibleCount++] = i;
             }
 
             if (visibleCount == 0)
@@ -545,37 +506,36 @@ namespace ZonderqOS.GUI.Apps
             else if (selectedVisibleIndex >= offset + VisibleRows)
                 offset = selectedVisibleIndex - VisibleRows + 1;
 
-            int maxOffset = System.Math.Max(0, visibleCount - VisibleRows);
+            int maxOffset = Math.Max(0, visibleCount - VisibleRows);
             if (offset > maxOffset)
                 offset = maxOffset;
             if (offset < 0)
                 offset = 0;
         }
 
-        private int SelectedAppIndex()
+        private AppDescriptor SelectedApp()
         {
             if (visibleCount <= 0 || selectedVisibleIndex < 0 || selectedVisibleIndex >= visibleCount)
-                return -1;
-            return visibleIndices[selectedVisibleIndex];
+                return null;
+            return registry.GetAt(visibleIndices[selectedVisibleIndex]);
         }
 
         private void LaunchSelected()
         {
-            int appIndex = SelectedAppIndex();
-            if (appIndex < 0)
+            AppDescriptor app = SelectedApp();
+            if (app == null)
             {
                 SetStatus("BRAK APLIKACJI DO URUCHOMIENIA", Warning);
                 return;
             }
 
-            if (launchers == null || appIndex >= launchers.Length || launchers[appIndex] == null)
+            if (!app.Launch())
             {
                 SetStatus("APLIKACJA NIE MA PODPIETEGO STARTERA", Warning);
                 return;
             }
 
-            launchers[appIndex].Invoke();
-            SetStatus("URUCHOMIONO APLIKACJE", Good);
+            SetStatus("URUCHOMIONO: " + app.Name, Good);
         }
 
         private void ResetFilter()

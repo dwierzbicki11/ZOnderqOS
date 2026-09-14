@@ -21,6 +21,7 @@ namespace ZonderqOS.GUI
         private NotificationCenter notificationCenter;
         private DesktopContextMenu desktopContextMenu;
         private ApplicationManager applicationManager;
+        private AppRegistry appRegistry;
         private DesktopShortcut[] desktopShortcuts;
         private bool isRunning = true;
         private bool lockRequested;
@@ -61,32 +62,20 @@ namespace ZonderqOS.GUI
                 int desktopHeight = (int)canvas.Height - TaskbarHeight;
                 Window.ConfigureDesktop((int)canvas.Width, desktopHeight);
                 applicationManager = new ApplicationManager();
+                InitializeAppRegistry();
                 LoadWallpaper((int)canvas.Width, desktopHeight);
                 InitializeDesktopShortcuts();
                 desktopContextMenu = new DesktopContextMenu(
-                    () => LaunchTerminal(145, 96),
-                    () => LaunchFileManager(120, 78),
-                    () => LaunchNotepad(150, 105, null),
+                    () => LaunchRegisteredApp(AppIds.Terminal),
+                    () => LaunchRegisteredApp(AppIds.FileManager),
+                    () => LaunchRegisteredApp(AppIds.Notepad),
                     RefreshDesktop,
-                    () => LaunchSettings(145, 92));
+                    () => LaunchRegisteredApp(AppIds.Settings));
 
                 int menuWidth = 480;
                 int menuHeight = 560;
                 startMenu = new StartMenu(8, (int)canvas.Height - TaskbarHeight - menuHeight - 8, menuWidth, menuHeight);
-
-                startMenu.AddPinned("Terminal", IconType.Terminal, () => LaunchTerminal(125, 90));
-                startMenu.AddPinned("File Manager", IconType.Folder, () => LaunchFileManager(105, 75));
-                startMenu.AddPinned("Notatnik", IconType.File, () => LaunchNotepad(145, 100, null));
-                startMenu.AddPinned("Manager zadan", IconType.Settings, () => LaunchTaskManager(165, 110));
-                startMenu.AddPinned("Ustawienia", IconType.Settings, () => LaunchSettings(125, 82));
-                startMenu.AddPinned("Zdjecia", IconType.ImageViewer, () => LaunchImageViewer(155, 92, null));
-
-                startMenu.AddTool("Kalkulator", IconType.Calculator, () => LaunchCalculator(185, 96));
-                startMenu.AddTool("Kalendarz", IconType.Calendar, () => LaunchCalendar(170, 88));
-                startMenu.AddTool("Diagnostyka", IconType.About, () => LaunchDiagnostics(150, 120));
-                startMenu.AddTool("App Center", IconType.AppCenter, () => LaunchAppCenter(145, 76));
-                startMenu.AddTool("Dyski", IconType.DiskManager, () => LaunchDiskManager(135, 78));
-                startMenu.AddTool("Siec", IconType.Network, () => LaunchNetworkCenter(150, 84));
+                PopulateStartMenu();
 
                 startMenu.SetPowerActions(
                     () => Cosmos.Kernel.System.Power.Reboot(),
@@ -346,22 +335,158 @@ namespace ZonderqOS.GUI
             canvas.Display();
         }
 
+        private void InitializeAppRegistry()
+        {
+            appRegistry = new AppRegistry();
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Terminal, "Terminal", "Terminal", "Terminal",
+                "Powłoka i narzedzia wiersza polecen",
+                AppCategory.Tools, IconType.Terminal, () => LaunchTerminal(145, 96),
+                StartMenuPlacement.Pinned, 0, 1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.FileManager, "File Manager", "File Manager", "File Manager",
+                "Pliki, katalogi, schowek i zamontowane woluminy",
+                AppCategory.Files, IconType.Folder, () => LaunchFileManager(120, 78),
+                StartMenuPlacement.Pinned, 1, 0, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Notepad, "Notatnik", "Notatnik", "Notatnik",
+                "Lekki edytor tekstu i plikow konfiguracyjnych",
+                AppCategory.Files, IconType.File, () => LaunchNotepad(150, 105, null),
+                StartMenuPlacement.Pinned, 2, 2, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.ImageViewer, "Zdjecia", "Zdjecia", "Zdjecia",
+                "Przegladarka obrazow PNG i BMP",
+                AppCategory.Files, IconType.ImageViewer, () => LaunchImageViewer(155, 92, null),
+                StartMenuPlacement.Pinned, 5, 4, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Calculator, "Kalkulator", "Kalkulator", "Kalkulator",
+                "Kalkulator standardowy z pamiecia i historia",
+                AppCategory.Tools, IconType.Calculator, () => LaunchCalculator(185, 96),
+                StartMenuPlacement.Tool, 0, 5, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Calendar, "Kalendarz", "Kalendarz", "Kalendarz",
+                "Miesieczny kalendarz systemowy",
+                AppCategory.Tools, IconType.Calendar, () => LaunchCalendar(170, 88),
+                StartMenuPlacement.Tool, 1, 9, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.NetworkCenter, "Centrum sieci", "Siec", "Siec",
+                "Interfejsy, DHCP, IPv4, DNS i test polaczenia",
+                AppCategory.System, IconType.Network, () => LaunchNetworkCenter(150, 84),
+                StartMenuPlacement.Tool, 5, 6, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.DiskManager, "Menedzer dyskow", "Dyski", "Dyski",
+                "Dyski, partycje i punkty montowania VFS",
+                AppCategory.System, IconType.DiskManager, () => LaunchDiskManager(135, 78),
+                StartMenuPlacement.Tool, 4, 7, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.TaskManager, "Manager zadan", "Manager zadan", "Manager zadan",
+                "Procesy, CPU, pamiec i telemetria kernela",
+                AppCategory.System, IconType.Settings, () => LaunchTaskManager(165, 110),
+                StartMenuPlacement.Pinned, 3, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Settings, "Ustawienia", "Ustawienia", "Ustawienia",
+                "Konfiguracja systemu, GUI, sieci i kont",
+                AppCategory.System, IconType.Settings, () => LaunchSettings(125, 82),
+                StartMenuPlacement.Pinned, 4, 3, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Diagnostics, "Diagnostyka", "Diagnostyka", "Diagnostyka",
+                "Szybki podglad stanu komponentow systemowych",
+                AppCategory.System, IconType.About, () => LaunchDiagnostics(150, 120),
+                StartMenuPlacement.Tool, 2, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.About, "O Systemie", "O Systemie", "About",
+                "Informacje o ZOnderqOS i platformie Cosmos Gen3",
+                AppCategory.System, IconType.About, () => LaunchAbout(210, 160),
+                StartMenuPlacement.None, -1, 8, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.AppCenter, "App Center", "App Center", "App Center",
+                "Katalog wbudowanych aplikacji ZOnderqOS",
+                AppCategory.System, IconType.AppCenter, () => LaunchAppCenter(145, 76),
+                StartMenuPlacement.Tool, 3, 10, false));
+        }
+
+        private void PopulateStartMenu()
+        {
+            AddStartMenuApps(StartMenuPlacement.Pinned);
+            AddStartMenuApps(StartMenuPlacement.Tool);
+        }
+
+        private void AddStartMenuApps(StartMenuPlacement placement)
+        {
+            if (startMenu == null || appRegistry == null)
+                return;
+
+            for (int order = 0; order < appRegistry.Count; order++)
+            {
+                for (int i = 0; i < appRegistry.Count; i++)
+                {
+                    AppDescriptor app = appRegistry.GetAt(i);
+                    if (app == null || app.StartPlacement != placement || app.StartOrder != order)
+                        continue;
+
+                    Action launch = app.Launcher;
+                    if (placement == StartMenuPlacement.Pinned)
+                        startMenu.AddPinned(app.MenuName, app.Icon, launch);
+                    else
+                        startMenu.AddTool(app.MenuName, app.Icon, launch);
+                }
+            }
+        }
+
         private void InitializeDesktopShortcuts()
         {
-            desktopShortcuts = new[]
+            if (appRegistry == null)
             {
-                new DesktopShortcut(20, 22, "File Manager", IconType.Folder, () => LaunchFileManager(110, 72)),
-                new DesktopShortcut(20, 116, "Terminal", IconType.Terminal, () => LaunchTerminal(135, 92)),
-                new DesktopShortcut(20, 210, "Notatnik", IconType.File, () => LaunchNotepad(150, 105, null)),
-                new DesktopShortcut(20, 304, "Ustawienia", IconType.Settings, () => LaunchSettings(130, 82)),
-                new DesktopShortcut(20, 398, "Zdjecia", IconType.ImageViewer, () => LaunchImageViewer(155, 92, null)),
-                new DesktopShortcut(20, 492, "Kalkulator", IconType.Calculator, () => LaunchCalculator(185, 96)),
-                new DesktopShortcut(20, 586, "Siec", IconType.Network, () => LaunchNetworkCenter(150, 84)),
-                new DesktopShortcut(20, 680, "Dyski", IconType.DiskManager, () => LaunchDiskManager(135, 78)),
-                new DesktopShortcut(20, 774, "About", IconType.About, () => LaunchAbout(180, 138)),
-                new DesktopShortcut(120, 22, "Kalendarz", IconType.Calendar, () => LaunchCalendar(170, 88)),
-                new DesktopShortcut(120, 116, "App Center", IconType.AppCenter, () => LaunchAppCenter(145, 76))
-            };
+                desktopShortcuts = new DesktopShortcut[0];
+                return;
+            }
+
+            int shortcutCount = 0;
+            for (int i = 0; i < appRegistry.Count; i++)
+            {
+                AppDescriptor app = appRegistry.GetAt(i);
+                if (app != null && app.DesktopOrder >= 0)
+                    shortcutCount++;
+            }
+
+            desktopShortcuts = new DesktopShortcut[shortcutCount];
+            int target = 0;
+            for (int order = 0; order < appRegistry.Count && target < shortcutCount; order++)
+            {
+                for (int i = 0; i < appRegistry.Count; i++)
+                {
+                    AppDescriptor app = appRegistry.GetAt(i);
+                    if (app == null || app.DesktopOrder != order)
+                        continue;
+
+                    const int rowsPerColumn = 9;
+                    int column = target / rowsPerColumn;
+                    int row = target % rowsPerColumn;
+                    int x = 20 + column * 100;
+                    int y = 22 + row * 94;
+                    desktopShortcuts[target++] = new DesktopShortcut(
+                        x, y, app.DesktopName, app.Icon, app.Launcher);
+                }
+            }
+        }
+
+        private void LaunchRegisteredApp(string id)
+        {
+            if (appRegistry != null)
+                appRegistry.Launch(id);
         }
 
         private void RefreshDesktop()
@@ -557,23 +682,10 @@ namespace ZonderqOS.GUI
 
         private void LaunchAppCenter(int x, int y)
         {
-            Action[] launchers =
-            {
-                () => LaunchTerminal(145, 96),
-                () => LaunchFileManager(120, 78),
-                () => LaunchNotepad(150, 105, null),
-                () => LaunchImageViewer(155, 92, null),
-                () => LaunchCalculator(185, 96),
-                () => LaunchCalendar(170, 88),
-                () => LaunchNetworkCenter(150, 84),
-                () => LaunchDiskManager(135, 78),
-                () => LaunchTaskManager(165, 110),
-                () => LaunchSettings(125, 82),
-                () => LaunchDiagnostics(150, 120),
-                () => LaunchAbout(210, 160)
-            };
+            if (appRegistry == null)
+                return;
 
-            applicationManager.Launch(new AppCenterApp(x, y, launchers, null));
+            applicationManager.Launch(new AppCenterApp(x, y, appRegistry, null));
         }
 
         private void LaunchNetworkCenter(int x, int y)
