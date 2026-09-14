@@ -16,7 +16,11 @@
 
     <CosmosEnableGraphics>true</CosmosEnableGraphics>
     <CosmosEnableScheduler>true</CosmosEnableScheduler>
-    <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
+
+    <CosmosKernelClass Condition="'$(CosmosArch)' != 'arm64'">ZonderqOS.Kernel</CosmosKernelClass>
+    <CosmosKernelClass Condition="'$(CosmosArch)' == 'arm64'">ZonderqOS.Rpi4BootKernel</CosmosKernelClass>
+    <DefineConstants Condition="'$(CosmosArch)' == 'arm64'">$(DefineConstants);ZONDERQ_RPI4_SMOKE</DefineConstants>
+
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
   </PropertyGroup>
