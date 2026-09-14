@@ -34,6 +34,7 @@ namespace ZonderqOS
             _commands.Add(new CmdViewLog());
             _commands.Add(new CmdClear());
             _commands.Add(new CmdSysInfo());
+            _commands.Add(new CmdRecovery());
             _commands.Add(new CmdGrep());
             _commands.Add(new CmdHead());
             _commands.Add(new CmdEcho());
