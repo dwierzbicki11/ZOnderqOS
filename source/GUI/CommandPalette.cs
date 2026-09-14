@@ -41,9 +41,9 @@ namespace ZonderqOS.GUI
             : base(0, 0, 680, HeaderHeight + SearchHeight + MaxVisibleResults * RowHeight + FooterHeight + 30)
         {
             registry = appRegistry ?? new AppRegistry();
-            resultIndices = new int[Math.Max(1, registry.Count)];
-            X = Math.Max(8, (screenWidth - Width) / 2);
-            Y = Math.Max(18, Math.Min(100, (screenHeight - Height) / 4));
+            resultIndices = new int[System.Math.Max(1, registry.Count)];
+            X = System.Math.Max(8, (screenWidth - Width) / 2);
+            Y = System.Math.Max(18, System.Math.Min(100, (screenHeight - Height) / 4));
             Visible = false;
             RebuildResults();
         }
@@ -201,11 +201,11 @@ namespace ZonderqOS.GUI
             string display = string.IsNullOrEmpty(query) ? "Wpisz np. terminal, settings, disk..." : query;
             Color color = string.IsNullOrEmpty(query) ? Muted : Text;
             SmallTextRenderer.DrawClipped(canvas, display, x + 13, y + 15,
-                Math.Max(40, width - 42), color);
+                System.Math.Max(40, width - 42), color);
 
             if (!string.IsNullOrEmpty(query))
             {
-                int caretX = x + 13 + Math.Min(SmallTextRenderer.Width(query) + 4, width - 22);
+                int caretX = x + 13 + System.Math.Min(SmallTextRenderer.Width(query) + 4, width - 22);
                 canvas.DrawFilledRectangle(SystemTheme.Accent, caretX, y + 10, 1, 17);
             }
         }
@@ -245,7 +245,7 @@ namespace ZonderqOS.GUI
                 string idText = app.Id ?? string.Empty;
                 int idWidth = SmallTextRenderer.Width(idText);
                 SmallTextRenderer.DrawClipped(canvas, idText,
-                    X + Width - 30 - Math.Min(150, idWidth), y + 18, 150,
+                    X + Width - 30 - System.Math.Min(150, idWidth), y + 18, 150,
                     selected ? SystemTheme.Accent : Muted);
             }
         }
@@ -280,7 +280,7 @@ namespace ZonderqOS.GUI
             else if (selectedIndex >= firstVisibleIndex + MaxVisibleResults)
                 firstVisibleIndex = selectedIndex - MaxVisibleResults + 1;
 
-            int maxFirst = Math.Max(0, resultCount - MaxVisibleResults);
+            int maxFirst = System.Math.Max(0, resultCount - MaxVisibleResults);
             if (firstVisibleIndex > maxFirst)
                 firstVisibleIndex = maxFirst;
             if (firstVisibleIndex < 0)
