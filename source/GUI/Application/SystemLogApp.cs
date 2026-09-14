@@ -14,7 +14,7 @@ namespace ZonderqOS.GUI.Apps
         private readonly string[] cachedLines = new string[MaxCachedLines];
         private int lineCount;
         private int scrollOffset;
-        private int sourceMode; // 0 auth.log, 1 sysmon.log
+        private int sourceMode; // 0 auth.log, 1 system.log, 2 sysmon.log
         private long fileBytes;
         private long clearArmedAt;
         private bool accessDenied;
@@ -27,18 +27,32 @@ namespace ZonderqOS.GUI.Apps
 
         private string CurrentPath
         {
-            get { return sourceMode == 0 ? "/var/log/auth.log" : "/sysmon.log"; }
+            get
+            {
+                if (sourceMode == 0)
+                    return "/var/log/auth.log";
+                if (sourceMode == 1)
+                    return global::ZonderqOS.SystemLogger.LogPath;
+                return "/sysmon.log";
+            }
         }
 
         private string CurrentName
         {
-            get { return sourceMode == 0 ? "AUTH / SECURITY" : "SYSTEM GUARDIAN"; }
+            get
+            {
+                if (sourceMode == 0)
+                    return "AUTH / SECURITY";
+                if (sourceMode == 1)
+                    return "SYSTEM / KERNEL";
+                return "SYSTEM GUARDIAN";
+            }
         }
 
         protected override void RenderContent(Canvas canvas)
         {
             DrawRow(canvas, 0, IconType.File,
-                "ZRODLO LOGU", "Kliknij aby przelaczyc auth.log / sysmon.log", CurrentName, Accent);
+                "ZRODLO LOGU", "Kliknij aby przelaczyc auth / system / guardian", CurrentName, Accent);
             DrawNumericRow(canvas, 1, IconType.File,
                 "ROZMIAR PLIKU", CurrentPath, fileBytes > 0 ? (ulong)fileBytes / 1024UL : 0UL, " KB");
 
@@ -134,10 +148,7 @@ namespace ZonderqOS.GUI.Apps
             int row = HitRow(mouseX, mouseY, 2);
             if (row == 0)
             {
-                sourceMode = sourceMode == 0 ? 1 : 0;
-                clearArmedAt = 0;
-                RefreshData();
-                SetStatus("ZMIENIONO ZRODLO LOGU", Accent);
+                CycleSource(1);
             }
             else if (row == 1)
             {
@@ -158,17 +169,31 @@ namespace ZonderqOS.GUI.Apps
                 if (scrollOffset + 1 < lineCount)
                     scrollOffset++;
             }
-            else if (key.Key == ConsoleKeyEx.LeftArrow || key.Key == ConsoleKeyEx.RightArrow)
+            else if (key.Key == ConsoleKeyEx.LeftArrow)
             {
-                sourceMode = sourceMode == 0 ? 1 : 0;
-                clearArmedAt = 0;
-                RefreshData();
-                SetStatus("ZMIENIONO ZRODLO LOGU", Accent);
+                CycleSource(-1);
+            }
+            else if (key.Key == ConsoleKeyEx.RightArrow)
+            {
+                CycleSource(1);
             }
             else if (key.Key == ConsoleKeyEx.Delete)
             {
                 RequestClear();
             }
+        }
+
+        private void CycleSource(int delta)
+        {
+            sourceMode += delta;
+            if (sourceMode < 0)
+                sourceMode = 2;
+            else if (sourceMode > 2)
+                sourceMode = 0;
+
+            clearArmedAt = 0;
+            RefreshData();
+            SetStatus("ZMIENIONO ZRODLO LOGU", Accent);
         }
 
         private void RequestClear()
@@ -193,10 +218,20 @@ namespace ZonderqOS.GUI.Apps
             clearArmedAt = 0;
             try
             {
-                File.WriteAllText(CurrentPath, string.Empty);
-                global::ZonderqOS.SecurityLogger.LogEvent("WARN", "System log cleared from Settings GUI.");
+                bool cleared;
+                if (sourceMode == 1)
+                    cleared = global::ZonderqOS.SystemLogger.Clear();
+                else
+                {
+                    File.WriteAllText(CurrentPath, string.Empty);
+                    cleared = true;
+                }
+
+                global::ZonderqOS.SecurityLogger.LogEvent("WARN",
+                    "System log source cleared from Settings GUI: " + CurrentName + ".");
                 RefreshData();
-                SetStatus("LOG WYCZYSZCZONY", Warning);
+                SetStatus(cleared ? "LOG WYCZYSZCZONY" : "LOG WYCZYSZCZONY TYLKO W PAMIECI",
+                    cleared ? Warning : Danger);
             }
             catch
             {
