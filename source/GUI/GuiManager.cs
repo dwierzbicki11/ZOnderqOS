@@ -22,6 +22,7 @@ namespace ZonderqOS.GUI
         private DesktopContextMenu desktopContextMenu;
         private ApplicationManager applicationManager;
         private AppRegistry appRegistry;
+        private CommandPalette commandPalette;
         private DesktopShortcut[] desktopShortcuts;
         private bool isRunning = true;
         private bool lockRequested;
@@ -63,6 +64,7 @@ namespace ZonderqOS.GUI
                 Window.ConfigureDesktop((int)canvas.Width, desktopHeight);
                 applicationManager = new ApplicationManager();
                 InitializeAppRegistry();
+                commandPalette = new CommandPalette((int)canvas.Width, desktopHeight, appRegistry);
                 LoadWallpaper((int)canvas.Width, desktopHeight);
                 InitializeDesktopShortcuts();
                 desktopContextMenu = new DesktopContextMenu(
@@ -91,6 +93,7 @@ namespace ZonderqOS.GUI
                     startMenu.Visible = opening;
                     if (opening)
                     {
+                        commandPalette?.Close();
                         startMenu.ResetSearch();
                         notificationCenter?.Close();
                     }
@@ -140,6 +143,7 @@ namespace ZonderqOS.GUI
 
                         if (IsSecureSessionShortcut(key))
                         {
+                            commandPalette?.Close();
                             if (startMenu != null)
                                 startMenu.Visible = false;
                             notificationCenter?.Close();
@@ -176,6 +180,18 @@ namespace ZonderqOS.GUI
                         if (IsNotificationShortcut(key))
                         {
                             ToggleNotificationCenter();
+                            continue;
+                        }
+
+                        if (IsCommandPaletteShortcut(key))
+                        {
+                            ToggleCommandPalette();
+                            continue;
+                        }
+
+                        if (commandPalette != null && commandPalette.Visible)
+                        {
+                            commandPalette.HandleKeyboard(key);
                             continue;
                         }
 
@@ -258,11 +274,15 @@ namespace ZonderqOS.GUI
                         continue;
                     }
 
-                    bool notificationCaptured = notificationCenter != null &&
+                    bool paletteCaptured = commandPalette != null && commandPalette.Visible &&
+                        commandPalette.HandleMouse(mouseX, mouseY,
+                            currentLeftButtonState, previousLeftButtonState);
+
+                    bool notificationCaptured = !paletteCaptured && notificationCenter != null &&
                         notificationCenter.UpdateInteractions(mouseX, mouseY,
                             currentLeftButtonState, previousLeftButtonState);
 
-                    if (!notificationCaptured)
+                    if (!paletteCaptured && !notificationCaptured)
                     {
                         applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
                             currentRightButtonState, previousRightButtonState);
@@ -331,6 +351,7 @@ namespace ZonderqOS.GUI
             startMenu.Render(canvas);
             desktopContextMenu?.Render(canvas);
             notificationCenter?.Render(canvas);
+            commandPalette?.Render(canvas);
             Cursor.Draw(canvas, mouseX, mouseY);
             canvas.Display();
         }
@@ -489,6 +510,26 @@ namespace ZonderqOS.GUI
                 appRegistry.Launch(id);
         }
 
+        private void ToggleCommandPalette()
+        {
+            if (commandPalette == null)
+                return;
+
+            if (commandPalette.Visible)
+            {
+                commandPalette.Close();
+                return;
+            }
+
+            if (startMenu != null)
+                startMenu.Visible = false;
+            notificationCenter?.Close();
+            if (desktopContextMenu != null)
+                desktopContextMenu.Visible = false;
+            selectedShortcut = -1;
+            commandPalette.Show();
+        }
+
         private void RefreshDesktop()
         {
             selectedShortcut = -1;
@@ -507,6 +548,7 @@ namespace ZonderqOS.GUI
             bool opening = !notificationCenter.Visible;
             if (opening)
             {
+                commandPalette?.Close();
                 if (startMenu != null)
                     startMenu.Visible = false;
                 if (desktopContextMenu != null)
@@ -521,6 +563,7 @@ namespace ZonderqOS.GUI
             if (!SecurityContext.IsAuthenticated)
                 return;
 
+            commandPalette?.Close();
             if (startMenu != null)
                 startMenu.Visible = false;
             notificationCenter?.Close();
@@ -605,8 +648,19 @@ namespace ZonderqOS.GUI
             return control && alt;
         }
 
+        private static bool IsCommandPaletteShortcut(KeyEvent key)
+        {
+            if (key == null || key.Key != ConsoleKeyEx.Spacebar)
+                return false;
+
+            bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+            bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+            return alt && !control;
+        }
+
         private void LogoutSession()
         {
+            commandPalette?.Close();
             if (!SecurityContext.IsAuthenticated)
             {
                 global::ZonderqOS.NotificationService.ResetForSession();
