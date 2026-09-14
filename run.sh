@@ -1,4 +1,9 @@
 #!/bin/bash
+
+clear
+
+git pull
+
 cosmos build
 
 qemu-system-x86_64 \

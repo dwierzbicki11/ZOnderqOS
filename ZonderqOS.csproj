@@ -1,4 +1,4 @@
-<Project Sdk="Cosmos.Sdk/3.0.82">
+<Project Sdk="Cosmos.Sdk/3.0.84">
 
   <PropertyGroup>
     <CosmosEnableStorage>true</CosmosEnableStorage>
@@ -13,8 +13,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cosmos.Kernel" Version="3.0.82" />
-    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.82" />
+    <PackageReference Include="Cosmos.Kernel" Version="3.0.84" />
+    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.84" />
   </ItemGroup>
 
   <ItemGroup>
