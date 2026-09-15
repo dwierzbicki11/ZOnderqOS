@@ -1,4 +1,3 @@
-#if ZONDERQ_RPI4_SMOKE
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -296,4 +295,3 @@ namespace ZonderqOS.Commands
         }
     }
 }
-#endif

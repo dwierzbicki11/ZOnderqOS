@@ -19,7 +19,6 @@
 
     <CosmosKernelClass Condition="'$(CosmosArch)' != 'arm64'">ZonderqOS.Kernel</CosmosKernelClass>
     <CosmosKernelClass Condition="'$(CosmosArch)' == 'arm64'">ZonderqOS.Rpi4BootKernel</CosmosKernelClass>
-    <DefineConstants Condition="'$(CosmosArch)' == 'arm64'">$(DefineConstants);ZONDERQ_RPI4_SMOKE</DefineConstants>
 
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -38,6 +37,12 @@
     <Compile Remove="source/Core/Network.cs" />
     <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" />
     <Compile Remove="source/Shell/Commands/CmdPing.cs" />
+  </ItemGroup>
+
+  <!-- Select the ARM64 compatibility implementation with MSBuild instead of
+       relying on a preprocessor symbol that the Cosmos SDK can overwrite. -->
+  <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">
+    <Compile Remove="source/Core/Arm64BootCompat.cs" />
   </ItemGroup>
 
   <ItemGroup>
