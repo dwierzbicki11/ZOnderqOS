@@ -26,8 +26,10 @@
     <CosmosEnableScheduler Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableScheduler>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableScheduler>
 
-    <!-- The physical ARM64 framebuffer probe writes directly through the
-         Limine framebuffer pointer and therefore needs unsafe code. -->
+    <!-- Explicit app-side symbol for the reduced Raspberry Pi shell profile. -->
+    <DefineConstants Condition="'$(CosmosArch)' == 'arm64'">$(DefineConstants);ZONDERQ_ARM64</DefineConstants>
+
+    <!-- Kept enabled for ARM64 diagnostics and future low-level hardware probes. -->
     <AllowUnsafeBlocks Condition="'$(CosmosArch)' == 'arm64'">true</AllowUnsafeBlocks>
 
     <CosmosKernelClass Condition="'$(CosmosArch)' != 'arm64'">ZonderqOS.Kernel</CosmosKernelClass>
@@ -56,6 +58,16 @@
   <ItemGroup Condition="'$(CosmosArch)' == 'arm64'">
     <Compile Remove="Kernel.cs" />
     <Compile Remove="source/**/*.cs" />
+
+    <!-- Real ZonderqOS shell core, intentionally limited to commands that do not
+         require storage, network, GUI, keyboard IRQs or scheduler support yet. -->
+    <Compile Include="source/Common/CommandIO.cs" />
+    <Compile Include="source/Shell/Command.cs" />
+    <Compile Include="source/Shell/Commands/ICommand.cs" />
+    <Compile Include="source/Shell/Commands/CmdPwd.cs" />
+    <Compile Include="source/Shell/Commands/CmdClear.cs" />
+    <Compile Include="source/Shell/Commands/CmdEcho.cs" />
+    <Compile Include="source/Shell/Commands/CmdHelp.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">
