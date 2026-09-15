@@ -13,7 +13,7 @@ namespace ZonderqOS
         {
             _commands.Clear();
 
-#if ZONDERQ_ARM64
+#if ARCH_ARM64
             // Raspberry Pi bring-up profile: use the real shell dispatcher and
             // real command implementations, but register only commands that do
             // not require storage, networking, GUI, input IRQs or the scheduler.
@@ -83,7 +83,7 @@ namespace ZonderqOS
             if (string.IsNullOrWhiteSpace(fullInput))
                 return;
 
-#if !ZONDERQ_ARM64
+#if !ARCH_ARM64
             fullInput = EnvironmentExpander.Expand(fullInput, currentPath);
 #endif
             List<string> semiCommands = SplitOutsideQuotes(fullInput, ";");
@@ -160,7 +160,7 @@ namespace ZonderqOS
 
             if (redirectIndex >= 0)
             {
-#if ZONDERQ_ARM64
+#if ARCH_ARM64
                 ReportError("File redirection is unavailable while ARM64 storage is disabled.");
                 CommandIO.LastCommandSuccess = false;
                 return;
@@ -213,7 +213,7 @@ namespace ZonderqOS
 
             try
             {
-#if ZONDERQ_ARM64
+#if ARCH_ARM64
                 targetCmd.Execute(words, ref currentPath);
 #else
                 if (!string.IsNullOrEmpty(redirectPath))
@@ -251,7 +251,7 @@ namespace ZonderqOS
 
         private static void ReportError(string message)
         {
-#if ZONDERQ_ARM64
+#if ARCH_ARM64
             CommandIO.WriteLine($"[CMD] [ERROR] {message}");
 #else
             WriteMessage.WriteError(message, "CMD");
