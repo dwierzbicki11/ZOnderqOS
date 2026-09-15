@@ -12,7 +12,8 @@
     <CosmosEnableKeyboard Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableKeyboard>
 
     <CosmosEnableGraphics>true</CosmosEnableGraphics>
-    <CosmosEnableScheduler>true</CosmosEnableScheduler>
+    <CosmosEnableScheduler Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableScheduler>
+    <CosmosEnableScheduler Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableScheduler>
 
     <CosmosKernelClass Condition="'$(CosmosArch)' != 'arm64'">ZonderqOS.Kernel</CosmosKernelClass>
     <CosmosKernelClass Condition="'$(CosmosArch)' == 'arm64'">ZonderqOS.Rpi4BootKernel</CosmosKernelClass>
