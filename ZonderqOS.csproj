@@ -11,14 +11,14 @@
     <CosmosEnableMouse Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableMouse>
     <CosmosEnableKeyboard Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableKeyboard>
 
-    <!-- Physical Raspberry Pi 4 IRQ/GIC diagnostic. Re-enable the ARM64 interrupt
-         path while keeping higher-level drivers disabled, so a successful boot proves
-         the early GIC + GenericTimer + RTC path can reach the managed shell. -->
+    <!-- Physical Raspberry Pi 4 baseline: the Cosmos ARM64 IRQ/GIC + GenericTimer
+         + RTC initialization path has reached the managed shell successfully. Keep
+         interrupts enabled while higher-level input/storage drivers stay isolated. -->
     <CosmosEnableInterrupts Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnableInterrupts>
 
-    <!-- Keep generic Cosmos PCI initialization out of this specific IRQ diagnostic.
-         The BCM2711 manual PCI probe still runs later from managed code. This keeps
-         a PCI failure from being confused with a GIC/interrupt bring-up failure. -->
+    <!-- Generic Cosmos PCI remains disabled on the Pi target because BCM2711 PCI
+         configuration space requires a platform-specific CFG_INDEX/CFG_DATA quirk,
+         not ordinary ECAM. Rpi4XhciProbe handles that path explicitly for now. -->
     <CosmosEnablePCI Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnablePCI>
 
     <!-- Cosmos Gen3's ARM64 serial backend is currently hard-wired to the QEMU virt
@@ -31,7 +31,7 @@
     <CosmosEnableScheduler Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableScheduler>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableScheduler>
 
-    <!-- Kept enabled for ARM64 diagnostics and low-level hardware probes. -->
+    <!-- Required by the ARM64 BCM2711/xHCI MMIO bring-up probe. -->
     <AllowUnsafeBlocks Condition="'$(CosmosArch)' == 'arm64'">true</AllowUnsafeBlocks>
 
     <CosmosKernelClass Condition="'$(CosmosArch)' != 'arm64'">ZonderqOS.Kernel</CosmosKernelClass>
@@ -62,7 +62,7 @@
     <Compile Remove="source/**/*.cs" />
 
     <!-- Real ZonderqOS shell core, intentionally limited to commands that do not
-         require storage, network, GUI, keyboard IRQs or scheduler support yet. -->
+         require storage, network, GUI, keyboard input or scheduler support yet. -->
     <Compile Include="source/Common/CommandIO.cs" />
     <Compile Include="source/Shell/Command.cs" />
     <Compile Include="source/Shell/Commands/ICommand.cs" />
