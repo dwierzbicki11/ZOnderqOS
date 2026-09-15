@@ -19,11 +19,12 @@ namespace ZonderqOS
             Console.Clear();
             Console.WriteLine("========================================");
             Console.WriteLine(" ZonderqOS ARM64 - Raspberry Pi 4");
-            Console.WriteLine(" REAL SHELL + XHCI PROBE");
+            Console.WriteLine(" IRQ/GIC RE-ENABLE TEST + XHCI PROBE");
             Console.WriteLine("========================================");
             Console.WriteLine();
             Console.WriteLine("UART: OFF");
-            Console.WriteLine("Interrupts: OFF");
+            Console.WriteLine("Interrupts: ON (GIC test)");
+            Console.WriteLine("Generic PCI init: OFF (isolated test)");
             Console.WriteLine("Scheduler: OFF");
             Console.WriteLine("Keyboard: OFF (xHCI probe only)");
             Console.WriteLine();
@@ -42,7 +43,7 @@ namespace ZonderqOS
             Console.WriteLine();
             Rpi4XhciProbe.Run();
             Console.WriteLine();
-            Console.WriteLine("Shell core ready. xHCI probe completed; keyboard driver is still OFF.");
+            Console.WriteLine("Shell core ready. IRQ/GIC path reached managed code.");
             Console.WriteLine();
         }
 
