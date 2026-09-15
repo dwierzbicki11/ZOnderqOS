@@ -15,9 +15,9 @@
          disabled while hardware paths are enabled and tested one at a time. -->
     <CosmosEnableInterrupts Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableInterrupts>
 
-    <!-- Expose the PCI feature to the ARM64 build, but note that Cosmos 3.0.84
-         only runs its generic PciManager.Setup() inside the interrupts-enabled
-         path. The RPi4 probe therefore uses BCM2711's config-space quirk directly. -->
+    <!-- Requested ARM64 PCI state. Cosmos SDK 3.0.84 cascades this back to false
+         while CosmosEnableInterrupts=false, so generic PciManager.Setup() still
+         stays off. The RPi4 probe talks to BCM2711 PCI config space directly. -->
     <CosmosEnablePCI Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnablePCI>
 
     <!-- Cosmos Gen3's ARM64 serial backend is currently hard-wired to the QEMU virt
