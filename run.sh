@@ -8,6 +8,36 @@ MIN_USB_BYTES=28000000000
 MAX_USB_BYTES=35000000000
 USB_LABEL="ZONDERQ"
 
+ISO_MOUNT=""
+USB_PARTITION=""
+USB_MOUNT=""
+USB_TEMP_MOUNT=""
+
+cleanup_mounts() {
+    set +e
+
+    if [[ -n "${ISO_MOUNT:-}" ]] && mountpoint -q "$ISO_MOUNT"; then
+        sudo umount "$ISO_MOUNT"
+    fi
+
+    if [[ -n "${USB_PARTITION:-}" ]] && findmnt -nr -S "$USB_PARTITION" >/dev/null 2>&1; then
+        sudo umount "$USB_PARTITION"
+    fi
+
+    if [[ -n "${USB_TEMP_MOUNT:-}" ]]; then
+        rmdir "$USB_TEMP_MOUNT" 2>/dev/null || true
+    fi
+
+    if [[ -n "${ISO_MOUNT:-}" ]]; then
+        rmdir "$ISO_MOUNT" 2>/dev/null || true
+    fi
+
+    ISO_MOUNT=""
+    USB_PARTITION=""
+    USB_MOUNT=""
+    USB_TEMP_MOUNT=""
+}
+
 print_header() {
     clear
     echo "========================================"
@@ -103,7 +133,7 @@ find_32gb_usb() {
     if (( ${#devices[@]} > 1 )); then
         echo "[BLAD] Znaleziono wiecej niz jeden wymienny nosnik ~32 GB:" >&2
         printf '  %s\n' "${devices[@]}" >&2
-        echo "Odłącz pozostale nosniki, zeby nie bylo ryzyka wyboru zlego dysku." >&2
+        echo "Odlacz pozostale nosniki, zeby nie bylo ryzyka wyboru zlego dysku." >&2
         exit 1
     fi
 
@@ -144,67 +174,60 @@ install_arm64_to_usb() {
     echo "[USB] Szukanie wymiennego nosnika ~32 GB..."
     local usb_device
     usb_device="$(find_32gb_usb)"
-    local usb_partition
-    usb_partition="$(find_zonderq_partition "$usb_device")"
+    USB_PARTITION="$(find_zonderq_partition "$usb_device")"
 
     echo "[USB] Znaleziono: $usb_device"
     lsblk -o NAME,RM,SIZE,MODEL,TRAN,FSTYPE,LABEL,MOUNTPOINTS "$usb_device"
     echo
 
-    read -r -p "Wgrac build ARM64 na $usb_partition? [t/N] " answer
+    read -r -p "Wgrac build ARM64 na $USB_PARTITION? [t/N] " answer
     if [[ ! "$answer" =~ ^[TtYy]$ ]]; then
         echo "Anulowano."
         exit 0
     fi
 
-    local iso_mount usb_mount
-    iso_mount="$(mktemp -d /tmp/zonderq-iso.XXXXXX)"
-    usb_mount="$(findmnt -nr -S "$usb_partition" -o TARGET || true)"
-    local usb_temp_mount=""
+    ISO_MOUNT="$(mktemp -d /tmp/zonderq-iso.XXXXXX)"
+    USB_MOUNT="$(findmnt -nr -S "$USB_PARTITION" -o TARGET || true)"
+    USB_TEMP_MOUNT=""
 
-    cleanup() {
-        set +e
-        mountpoint -q "$iso_mount" && sudo umount "$iso_mount"
-        if findmnt -nr -S "$usb_partition" >/dev/null 2>&1; then
-            sudo umount "$usb_partition"
-        fi
-        [[ -n "$usb_temp_mount" ]] && rmdir "$usb_temp_mount" 2>/dev/null || true
-        rmdir "$iso_mount" 2>/dev/null || true
-    }
-    trap cleanup EXIT
+    trap cleanup_mounts EXIT INT TERM
 
-    sudo mount -o loop,ro "$iso" "$iso_mount"
+    sudo mount -o loop,ro "$iso" "$ISO_MOUNT"
 
-    if [[ -z "$usb_mount" ]]; then
-        usb_temp_mount="$(mktemp -d /tmp/zonderq-usb.XXXXXX)"
-        sudo mount "$usb_partition" "$usb_temp_mount"
-        usb_mount="$usb_temp_mount"
+    if [[ -z "$USB_MOUNT" ]]; then
+        USB_TEMP_MOUNT="$(mktemp -d /tmp/zonderq-usb.XXXXXX)"
+        sudo mount "$USB_PARTITION" "$USB_TEMP_MOUNT"
+        USB_MOUNT="$USB_TEMP_MOUNT"
     fi
 
     # Safety check: this must already be the prepared Raspberry Pi 4 card.
-    if [[ ! -f "$usb_mount/RPI_EFI.fd" || ! -f "$usb_mount/config.txt" || ! -f "$usb_mount/start4.elf" ]]; then
-        echo "[BLAD] $usb_partition nie wyglada jak przygotowana karta RPi4/PFTF." >&2
+    if [[ ! -f "$USB_MOUNT/RPI_EFI.fd" || ! -f "$USB_MOUNT/config.txt" || ! -f "$USB_MOUNT/start4.elf" ]]; then
+        echo "[BLAD] $USB_PARTITION nie wyglada jak przygotowana karta RPi4/PFTF." >&2
         echo "Brakuje RPI_EFI.fd, config.txt albo start4.elf. Niczego nie nadpisano." >&2
         exit 1
     fi
 
-    if [[ ! -f "$iso_mount/EFI/BOOT/BOOTAA64.EFI" || ! -f "$iso_mount/boot/ZonderqOS.elf" ]]; then
+    if [[ ! -f "$ISO_MOUNT/EFI/BOOT/BOOTAA64.EFI" || ! -f "$ISO_MOUNT/boot/ZonderqOS.elf" ]]; then
         echo "[BLAD] Obraz ARM64 nie zawiera wymaganych plikow bootowania." >&2
         exit 1
     fi
 
-    echo "[USB] Wgrywanie Limine + ZonderqOS na $usb_partition..."
-    sudo mkdir -p "$usb_mount/EFI/BOOT"
-    sudo cp -f "$iso_mount/EFI/BOOT/BOOTAA64.EFI" "$usb_mount/EFI/BOOT/BOOTAA64.EFI"
-    sudo rm -rf "$usb_mount/boot"
-    sudo cp -a "$iso_mount/boot" "$usb_mount/boot"
-    sudo rm -f "$usb_mount/EFI/BOOT/BOOTAA64.EFI.disabled"
+    echo "[USB] Wgrywanie Limine + ZonderqOS na $USB_PARTITION..."
+    sudo mkdir -p "$USB_MOUNT/EFI/BOOT"
+    sudo cp -f "$ISO_MOUNT/EFI/BOOT/BOOTAA64.EFI" "$USB_MOUNT/EFI/BOOT/BOOTAA64.EFI"
+    sudo rm -rf "$USB_MOUNT/boot"
+    sudo mkdir -p "$USB_MOUNT/boot"
+    sudo cp -R "$ISO_MOUNT/boot/." "$USB_MOUNT/boot/"
+    sudo rm -f "$USB_MOUNT/EFI/BOOT/BOOTAA64.EFI.disabled"
     sync
 
+    cleanup_mounts
+    trap - EXIT INT TERM
+
     echo
-    echo "[OK] ARM64 zostal wgrany na $usb_partition."
+    echo "[OK] ARM64 zostal wgrany na karte."
     echo "[OK] Firmware RPi/PFTF zostal zachowany."
-    echo "[OK] Nosnik zostanie odmontowany i bedzie gotowy do wyjecia."
+    echo "[OK] Nosnik zostal odmontowany i jest gotowy do wyjecia."
 }
 
 print_header
