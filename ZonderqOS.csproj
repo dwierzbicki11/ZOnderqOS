@@ -65,6 +65,9 @@
     <Compile Include="source/Shell/Commands/CmdClear.cs" />
     <Compile Include="source/Shell/Commands/CmdEcho.cs" />
     <Compile Include="source/Shell/Commands/CmdHelp.cs" />
+
+    <!-- Raspberry Pi 4 VL805/xHCI bring-up probe. Read-only at this stage. -->
+    <Compile Include="source/Arm64/Rpi4XhciProbe.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">
