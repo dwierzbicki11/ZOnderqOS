@@ -26,9 +26,6 @@
     <CosmosEnableScheduler Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableScheduler>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableScheduler>
 
-    <!-- Explicit app-side symbol for the reduced Raspberry Pi shell profile. -->
-    <DefineConstants Condition="'$(CosmosArch)' == 'arm64'">$(DefineConstants);ZONDERQ_ARM64</DefineConstants>
-
     <!-- Kept enabled for ARM64 diagnostics and future low-level hardware probes. -->
     <AllowUnsafeBlocks Condition="'$(CosmosArch)' == 'arm64'">true</AllowUnsafeBlocks>
 
