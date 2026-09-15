@@ -20,6 +20,10 @@
     <CosmosEnableScheduler Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableScheduler>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableScheduler>
 
+    <!-- The physical ARM64 framebuffer probe writes directly through the
+         Limine framebuffer pointer and therefore needs unsafe code. -->
+    <AllowUnsafeBlocks Condition="'$(CosmosArch)' == 'arm64'">true</AllowUnsafeBlocks>
+
     <CosmosKernelClass Condition="'$(CosmosArch)' != 'arm64'">ZonderqOS.Kernel</CosmosKernelClass>
     <CosmosKernelClass Condition="'$(CosmosArch)' == 'arm64'">ZonderqOS.Rpi4BootKernel</CosmosKernelClass>
 
