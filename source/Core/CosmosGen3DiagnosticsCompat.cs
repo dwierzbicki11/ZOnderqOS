@@ -4,7 +4,7 @@ using Cosmos.Kernel.System.Diagnostics;
 // Compatibility facade for GUI/system code that was written against pre-ring
 // memory, scheduler and GC diagnostic surfaces. Cosmos Gen3 intentionally hides
 // raw kernel control structures from applications; stable snapshots are exposed
-// through public diagnostic and adapter APIs instead.
+// through public diagnostic APIs instead.
 namespace Cosmos.Kernel.Core.Memory
 {
     public static class PageAllocator
@@ -186,40 +186,6 @@ namespace Cosmos.Kernel.Core.Scheduler
                 case KernelThreadState.Sleeping: return ThreadState.Sleeping;
                 case KernelThreadState.Dead: return ThreadState.Dead;
                 default: return ThreadState.Created;
-            }
-        }
-    }
-}
-
-namespace Cosmos.Kernel.System.Network.Config
-{
-    /// <summary>
-    /// Compatibility bridge for GUI code that used the removed NetworkConfigManager.
-    /// All reads are backed by the active public NetworkAdapter handle.
-    /// </summary>
-    public static class NetworkConfigManager
-    {
-        public static global::ZonderqOS.GUI.Apps.IPConfig Get(global::ZonderqOS.NetworkDeviceInfo device)
-        {
-            global::Cosmos.Kernel.System.Network.Config.IPConfig config =
-                device == null ? null : device.Adapter.IPConfig;
-            if (config == null)
-                return null;
-
-            return new global::ZonderqOS.GUI.Apps.IPConfig(
-                config.Address,
-                config.SubnetMask,
-                config.DefaultGateway);
-        }
-
-        public static global::Cosmos.Kernel.System.Network.Address CurrentAddress
-        {
-            get
-            {
-                global::ZonderqOS.NetworkDeviceInfo active = global::ZonderqOS.Network.ActiveDevice;
-                global::Cosmos.Kernel.System.Network.Config.IPConfig config =
-                    active == null ? null : active.Adapter.IPConfig;
-                return config == null ? null : config.Address;
             }
         }
     }

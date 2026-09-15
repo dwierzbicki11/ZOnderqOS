@@ -1,16 +1,13 @@
 <Project Sdk="Cosmos.Sdk/3.0.84">
 
   <PropertyGroup>
-    <!-- x64 keeps the full desktop feature set. -->
+    <CosmosEnableNetwork>false</CosmosEnableNetwork>
+
     <CosmosEnableStorage Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableStorage>
-    <CosmosEnableNetwork Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableNetwork>
     <CosmosEnableMouse Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableMouse>
     <CosmosEnableKeyboard Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableKeyboard>
 
-    <!-- Raspberry Pi 4 boot-smoke profile: current Cosmos ARM64 HAL is QEMU/VirtIO-oriented.
-         Keep these features off until BCM2711 USB/SD/network drivers exist. -->
     <CosmosEnableStorage Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableStorage>
-    <CosmosEnableNetwork Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableNetwork>
     <CosmosEnableMouse Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableMouse>
     <CosmosEnableKeyboard Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableKeyboard>
 
@@ -29,28 +26,24 @@
     <PackageReference Include="Cosmos.Kernel.System" Version="3.0.84" />
   </ItemGroup>
 
-  <!-- Cosmos 3.0.84's ARM64 package currently does not expose several public
-       networking/scheduler projection types that are present in the x64 surface.
-       For real RPi4 boot testing, compile a dependency-light compatibility layer
-       instead of the full QEMU-oriented network implementation. -->
-  <ItemGroup Condition="'$(CosmosArch)' == 'arm64'">
-    <Compile Remove="source/Core/Network.cs" />
-    <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" />
+  <ItemGroup>
+    <Compile Remove="source/Core/CosmosGen3NetworkGlobalUsings.cs" />
+    <Compile Remove="source/GUI/Application/LegacyNetworkConfig.cs" />
+    <Compile Remove="source/Shell/Commands/CmdNetwork.cs" />
+    <Compile Remove="source/Shell/Commands/CmdIp.cs" />
     <Compile Remove="source/Shell/Commands/CmdPing.cs" />
-
-    <!-- The smoke kernel never opens the desktop. Exclude GUI modules that still
-         depend on x64-only network projections or APIs with different ARM64
-         signatures so they cannot block the UEFI -> Limine -> kernel test. -->
-    <Compile Remove="source/GUI/Application/NetworkAdvancedApp.cs" />
-    <Compile Remove="source/GUI/Application/NetworkCenterApp.cs" />
-    <Compile Remove="source/GUI/Application/ImageViewerApp.cs" />
-  </ItemGroup>
-
-  <!-- Select ARM64-only compatibility sources with MSBuild instead of relying
-       on preprocessor symbols that the Cosmos SDK may replace. -->
-  <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">
+    <Compile Remove="source/Shell/Commands/CmdDns.cs" />
     <Compile Remove="source/Core/Arm64BootCompat.cs" />
     <Compile Remove="source/Core/Arm64DiagnosticsStub.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(CosmosArch)' == 'arm64'">
+    <Compile Remove="Kernel.cs" />
+    <Compile Remove="source/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">
+    <Compile Remove="Rpi4BootKernel.cs" />
   </ItemGroup>
 
   <ItemGroup>
