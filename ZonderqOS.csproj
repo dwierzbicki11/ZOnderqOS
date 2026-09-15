@@ -37,12 +37,20 @@
     <Compile Remove="source/Core/Network.cs" />
     <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" />
     <Compile Remove="source/Shell/Commands/CmdPing.cs" />
+
+    <!-- The smoke kernel never opens the desktop. Exclude GUI modules that still
+         depend on x64-only network projections or APIs with different ARM64
+         signatures so they cannot block the UEFI -> Limine -> kernel test. -->
+    <Compile Remove="source/GUI/Application/NetworkAdvancedApp.cs" />
+    <Compile Remove="source/GUI/Application/NetworkCenterApp.cs" />
+    <Compile Remove="source/GUI/Application/ImageViewerApp.cs" />
   </ItemGroup>
 
-  <!-- Select the ARM64 compatibility implementation with MSBuild instead of
-       relying on a preprocessor symbol that the Cosmos SDK can overwrite. -->
+  <!-- Select ARM64-only compatibility sources with MSBuild instead of relying
+       on preprocessor symbols that the Cosmos SDK may replace. -->
   <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">
     <Compile Remove="source/Core/Arm64BootCompat.cs" />
+    <Compile Remove="source/Core/Arm64DiagnosticsStub.cs" />
   </ItemGroup>
 
   <ItemGroup>
