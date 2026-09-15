@@ -9,29 +9,30 @@
 
     <CosmosEnableStorage Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableStorage>
     <CosmosEnableMouse Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableMouse>
+
+    <!-- IMPORTANT: keep Cosmos' generic ARM64 keyboard disabled. That path currently
+         scans QEMU virtio MMIO. Physical Pi 4 keyboard input is provided by the
+         ZonderqOS VL805/xHCI HID polling driver instead. -->
     <CosmosEnableKeyboard Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableKeyboard>
 
-    <!-- Physical Raspberry Pi 4 baseline: the Cosmos ARM64 IRQ/GIC + GenericTimer
-         + RTC initialization path has reached the managed shell successfully. Keep
-         interrupts enabled while higher-level input/storage drivers stay isolated. -->
+    <!-- Physical Raspberry Pi 4 baseline: IRQ/GIC + GenericTimer + RTC reach the
+         managed shell successfully. xHCI itself is polled, so no xHCI MSI setup is
+         required yet. -->
     <CosmosEnableInterrupts Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnableInterrupts>
 
-    <!-- Generic Cosmos PCI remains disabled on the Pi target because BCM2711 PCI
-         configuration space requires a platform-specific CFG_INDEX/CFG_DATA quirk,
-         not ordinary ECAM. Rpi4XhciProbe handles that path explicitly for now. -->
+    <!-- Generic Cosmos PCI stays off: BCM2711 PCI config uses the platform-specific
+         CFG_INDEX/CFG_DATA quirk. The Pi xHCI driver enables Memory Space + Bus Master
+         only on the validated onboard VL805 function. -->
     <CosmosEnablePCI Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnablePCI>
 
-    <!-- Cosmos Gen3's ARM64 serial backend is currently hard-wired to the QEMU virt
-         PL011 at 0x09000000. Touching that MMIO address on Raspberry Pi 4 can fault or
-         hang before the managed kernel lifecycle starts, so keep UART disabled for the
-         physical ARM64 target until a BCM2711-specific PL011 backend exists. -->
+    <!-- Cosmos Gen3's ARM64 serial backend is hard-wired to the QEMU virt PL011 at
+         0x09000000, so keep it off on physical BCM2711. -->
     <CosmosEnableUART Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableUART>
 
     <CosmosEnableGraphics>true</CosmosEnableGraphics>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableScheduler>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableScheduler>
 
-    <!-- Required by the ARM64 BCM2711/xHCI MMIO bring-up probe. -->
     <AllowUnsafeBlocks Condition="'$(CosmosArch)' == 'arm64'">true</AllowUnsafeBlocks>
 
     <CosmosKernelClass Condition="'$(CosmosArch)' != 'arm64'">ZonderqOS.Kernel</CosmosKernelClass>
@@ -61,8 +62,7 @@
     <Compile Remove="Kernel.cs" />
     <Compile Remove="source/**/*.cs" />
 
-    <!-- Real ZonderqOS shell core, intentionally limited to commands that do not
-         require storage, network, GUI, keyboard input or scheduler support yet. -->
+    <!-- Real ZonderqOS shell core. -->
     <Compile Include="source/Common/CommandIO.cs" />
     <Compile Include="source/Shell/Command.cs" />
     <Compile Include="source/Shell/Commands/ICommand.cs" />
@@ -71,8 +71,14 @@
     <Compile Include="source/Shell/Commands/CmdEcho.cs" />
     <Compile Include="source/Shell/Commands/CmdHelp.cs" />
 
-    <!-- Raspberry Pi 4 BCM2711 PCI + VL805/xHCI bring-up probe. -->
+    <!-- Raspberry Pi 4 platform path: validated BCM2711/VL805 probe plus the
+         polling xHCI + USB HID boot-keyboard driver. -->
     <Compile Include="source/Arm64/Rpi4XhciProbe.cs" />
+    <Compile Include="source/Arm64/Rpi4UsbKeyboard.cs" />
+
+    <!-- Non-coherent PCIe DMA cache maintenance + a physically contiguous,
+         page-aligned DMA arena linked into the ARM64 kernel image. -->
+    <GCCProject Include="./source/Arm64/Native/" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">
