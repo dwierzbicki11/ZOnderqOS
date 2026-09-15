@@ -6,8 +6,8 @@ namespace ZonderqOS
     /// Raspberry Pi 4 shell bring-up kernel.
     ///
     /// Uses the normal Cosmos console and the real ZonderqOS Command dispatcher.
-    /// Hardware input is still intentionally disabled, so this stage runs a small
-    /// scripted shell self-test and then leaves the normal prompt on screen.
+    /// Hardware input remains intentionally disabled while the Pi-specific
+    /// VL805/xHCI path is brought up one step at a time.
     /// </summary>
     public sealed class Rpi4BootKernel : Cosmos.Kernel.System.Kernel
     {
@@ -19,13 +19,13 @@ namespace ZonderqOS
             Console.Clear();
             Console.WriteLine("========================================");
             Console.WriteLine(" ZonderqOS ARM64 - Raspberry Pi 4");
-            Console.WriteLine(" REAL SHELL CORE TEST");
+            Console.WriteLine(" REAL SHELL + XHCI PROBE");
             Console.WriteLine("========================================");
             Console.WriteLine();
             Console.WriteLine("UART: OFF");
             Console.WriteLine("Interrupts: OFF");
             Console.WriteLine("Scheduler: OFF");
-            Console.WriteLine("Keyboard: OFF");
+            Console.WriteLine("Keyboard: OFF (xHCI probe only)");
             Console.WriteLine();
 
             Command.Initialize();
@@ -40,7 +40,9 @@ namespace ZonderqOS
             RunSelfTest("help");
 
             Console.WriteLine();
-            Console.WriteLine("Shell core ready. USB keyboard support is the next hardware stage.");
+            Rpi4XhciProbe.Run();
+            Console.WriteLine();
+            Console.WriteLine("Shell core ready. xHCI probe completed; keyboard driver is still OFF.");
             Console.WriteLine();
         }
 
