@@ -11,6 +11,11 @@
     <CosmosEnableMouse Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableMouse>
     <CosmosEnableKeyboard Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableKeyboard>
 
+    <!-- Physical Raspberry Pi 4 stage-0 diagnostic: skip the ARM64 interrupt/GIC/timer
+         bring-up entirely. If this changes the black-screen behavior after Limine,
+         the failure is in early platform HAL rather than the managed smoke kernel. -->
+    <CosmosEnableInterrupts Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableInterrupts>
+
     <CosmosEnableGraphics>true</CosmosEnableGraphics>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableScheduler>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableScheduler>
