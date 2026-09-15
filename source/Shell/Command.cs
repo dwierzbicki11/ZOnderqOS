@@ -12,6 +12,16 @@ namespace ZonderqOS
         public static void Initialize()
         {
             _commands.Clear();
+
+#if ZONDERQ_ARM64
+            // Raspberry Pi bring-up profile: use the real shell dispatcher and
+            // real command implementations, but register only commands that do
+            // not require storage, networking, GUI, input IRQs or the scheduler.
+            _commands.Add(new CmdPwd());
+            _commands.Add(new CmdClear());
+            _commands.Add(new CmdEcho());
+            _commands.Add(new CmdHelp(_commands));
+#else
             _commands.Add(new CmdPwd());
             _commands.Add(new CmdCd());
             _commands.Add(new CmdLs());
@@ -57,6 +67,7 @@ namespace ZonderqOS
             _commands.Add(new CmdKill());
             _commands.Add(new CmdEnv());
             _commands.Add(new CmdExport());
+#endif
         }
 
         internal static string[] GetCommandNames()
@@ -72,7 +83,9 @@ namespace ZonderqOS
             if (string.IsNullOrWhiteSpace(fullInput))
                 return;
 
+#if !ZONDERQ_ARM64
             fullInput = EnvironmentExpander.Expand(fullInput, currentPath);
+#endif
             List<string> semiCommands = SplitOutsideQuotes(fullInput, ";");
 
             for (int i = 0; i < semiCommands.Count; i++)
@@ -147,12 +160,17 @@ namespace ZonderqOS
 
             if (redirectIndex >= 0)
             {
+#if ZONDERQ_ARM64
+                ReportError("File redirection is unavailable while ARM64 storage is disabled.");
+                CommandIO.LastCommandSuccess = false;
+                return;
+#else
                 commandPart = commandLine.Substring(0, redirectIndex);
                 redirectPath = commandLine.Substring(redirectIndex + (appendMode ? 2 : 1)).Trim();
 
                 if (string.IsNullOrEmpty(redirectPath))
                 {
-                    WriteMessage.WriteError("Missing redirection target path.", "CMD");
+                    ReportError("Missing redirection target path.");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
@@ -160,10 +178,11 @@ namespace ZonderqOS
                 redirectPath = UnquotePath(redirectPath);
                 if (string.IsNullOrEmpty(redirectPath))
                 {
-                    WriteMessage.WriteError("Invalid redirection target path.", "CMD");
+                    ReportError("Invalid redirection target path.");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
+#endif
             }
 
             string[] words = Tokenize(commandPart);
@@ -187,13 +206,16 @@ namespace ZonderqOS
 
             if (targetCmd == null)
             {
-                WriteMessage.WriteError($"Unknown command: {cmdName}", "CMD");
+                ReportError($"Unknown command: {cmdName}");
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
 
             try
             {
+#if ZONDERQ_ARM64
+                targetCmd.Execute(words, ref currentPath);
+#else
                 if (!string.IsNullOrEmpty(redirectPath))
                 {
                     string resolvedPath = PathResolver.GetAbsolutePath(currentPath, redirectPath);
@@ -218,12 +240,22 @@ namespace ZonderqOS
                 {
                     targetCmd.Execute(words, ref currentPath);
                 }
+#endif
             }
             catch (Exception ex)
             {
-                WriteMessage.WriteError($"Command '{cmdName}' execution failed: {ex.Message}", "CMD");
+                ReportError($"Command '{cmdName}' execution failed: {ex.Message}");
                 CommandIO.LastCommandSuccess = false;
             }
+        }
+
+        private static void ReportError(string message)
+        {
+#if ZONDERQ_ARM64
+            CommandIO.WriteLine($"[CMD] [ERROR] {message}");
+#else
+            WriteMessage.WriteError(message, "CMD");
+#endif
         }
 
         private static int FindRedirection(string value, out bool appendMode)
