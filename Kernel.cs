@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cosmos.Kernel.System.Network;
-using ZonderqOS.GUI;
 using ZonderqOS.SystemCore;
 using Sys = Cosmos.Kernel.System;
 
@@ -27,14 +25,14 @@ namespace ZonderqOS
                 SecurityLogger.Initialize();
                 PermissionManager.Initialize();
                 SystemLogger.Initialize();
-                Network.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
 
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
                 Console.WriteLine();
-                Console.WriteLine("Starting ZOnderqOS secure graphical login...");
+                Console.WriteLine("Starting ZOnderqOS console login...");
+                Console.WriteLine("Type 'gui' after login to start the desktop.");
             }
             catch (Exception ex)
             {
@@ -50,33 +48,15 @@ namespace ZonderqOS
                 {
                     sessionUser = null;
 
-                    // A fresh image used to expose root/root until the user changed it manually.
-                    // The factory credential is now only a bootstrap marker: it must be replaced
-                    // before either the graphical login or console recovery prompt can start.
+                    // Keep first-boot hardening entirely in the console path so GUI
+                    // failures can never block access to the shell.
                     if (UserManager.RequiresInitialRootPasswordSetup())
                     {
-                        bool setupComplete = InitialSetupManager.Run();
-                        if (!setupComplete)
-                        {
-                            RunInitialRootSetupPrompt();
-                            return;
-                        }
-
-                        UserManager.PrepareLogin();
-                    }
-
-                    bool graphicalLogin = LoginScreenManager.Run();
-                    if (!graphicalLogin || !SecurityContext.IsAuthenticated)
-                    {
-                        RunLoginPrompt();
+                        RunInitialRootSetupPrompt();
                         return;
                     }
 
-                    history.Clear();
-                    SynchronizeSession();
-
-                    GuiManager manager = new GuiManager();
-                    manager.Run();
+                    RunLoginPrompt();
                     return;
                 }
 
@@ -199,6 +179,7 @@ namespace ZonderqOS
                     path = "/";
 
                 Console.WriteLine("Welcome, " + SecurityContext.CurrentUser + ".");
+                Console.WriteLine("Type 'gui' to start the graphical desktop.");
                 Console.WriteLine();
                 return;
             }
