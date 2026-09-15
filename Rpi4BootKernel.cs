@@ -3,15 +3,15 @@ using System;
 namespace ZonderqOS
 {
     /// <summary>
-    /// Raspberry Pi 4 stage-2 console probe.
+    /// Raspberry Pi 4 shell bring-up kernel.
     ///
-    /// Uses the normal Cosmos KernelConsole/System.Console path instead of the
-    /// custom direct-framebuffer renderer. UART, interrupts, scheduler and input
-    /// remain disabled in the ARM64 project profile so this test changes only the
-    /// terminal output path.
+    /// Uses the normal Cosmos console and the real ZonderqOS Command dispatcher.
+    /// Hardware input is still intentionally disabled, so this stage runs a small
+    /// scripted shell self-test and then leaves the normal prompt on screen.
     /// </summary>
     public sealed class Rpi4BootKernel : Cosmos.Kernel.System.Kernel
     {
+        private string currentPath = "/";
         private bool promptShown;
 
         protected override void BeforeRun()
@@ -19,17 +19,29 @@ namespace ZonderqOS
             Console.Clear();
             Console.WriteLine("========================================");
             Console.WriteLine(" ZonderqOS ARM64 - Raspberry Pi 4");
-            Console.WriteLine(" STANDARD COSMOS CONSOLE TEST");
+            Console.WriteLine(" REAL SHELL CORE TEST");
             Console.WriteLine("========================================");
             Console.WriteLine();
-            Console.WriteLine("KernelConsole / System.Console: OK");
-            Console.WriteLine("Managed BeforeRun(): OK");
             Console.WriteLine("UART: OFF");
             Console.WriteLine("Interrupts: OFF");
             Console.WriteLine("Scheduler: OFF");
-            Console.WriteLine("Keyboard: OFF (next hardware stage)");
+            Console.WriteLine("Keyboard: OFF");
             Console.WriteLine();
-            Console.WriteLine("Terminal output path is alive.");
+
+            Command.Initialize();
+            Console.WriteLine("ZonderqOS Command dispatcher: OK");
+            Console.WriteLine();
+            Console.WriteLine("Shell self-test:");
+            Console.WriteLine();
+
+            RunSelfTest("pwd");
+            RunSelfTest("echo ARM64 real shell dispatcher OK");
+            RunSelfTest("echo parser-one && echo parser-two");
+            RunSelfTest("help");
+
+            Console.WriteLine();
+            Console.WriteLine("Shell core ready. USB keyboard support is the next hardware stage.");
+            Console.WriteLine();
         }
 
         protected override void Run()
@@ -37,10 +49,16 @@ namespace ZonderqOS
             if (promptShown)
                 return;
 
-            Console.WriteLine("Managed Run(): OK");
-            Console.WriteLine();
-            Console.Write("zonderq@rpi4:/$ ");
+            Console.Write("zonderq@rpi4:" + currentPath + "$ ");
             promptShown = true;
+        }
+
+        private void RunSelfTest(string command)
+        {
+            Console.Write("$ ");
+            Console.WriteLine(command);
+            Command.Run(command, ref currentPath);
+            Console.WriteLine();
         }
     }
 }
