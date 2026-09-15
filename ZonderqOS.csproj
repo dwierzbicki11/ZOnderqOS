@@ -16,6 +16,12 @@
          the failure is in early platform HAL rather than the managed smoke kernel. -->
     <CosmosEnableInterrupts Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableInterrupts>
 
+    <!-- Cosmos Gen3's ARM64 serial backend is currently hard-wired to the QEMU virt
+         PL011 at 0x09000000. Touching that MMIO address on Raspberry Pi 4 can fault or
+         hang before the managed kernel lifecycle starts, so keep UART disabled for the
+         physical ARM64 smoke target until a BCM2711-specific PL011 backend exists. -->
+    <CosmosEnableUART Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableUART>
+
     <CosmosEnableGraphics>true</CosmosEnableGraphics>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableScheduler>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableScheduler>
