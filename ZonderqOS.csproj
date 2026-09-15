@@ -11,14 +11,15 @@
     <CosmosEnableMouse Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableMouse>
     <CosmosEnableKeyboard Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableKeyboard>
 
-    <!-- Physical Raspberry Pi 4 bring-up: IRQ/GIC/timer initialization remains
-         disabled while hardware paths are enabled and tested one at a time. -->
-    <CosmosEnableInterrupts Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableInterrupts>
+    <!-- Physical Raspberry Pi 4 IRQ/GIC diagnostic. Re-enable the ARM64 interrupt
+         path while keeping higher-level drivers disabled, so a successful boot proves
+         the early GIC + GenericTimer + RTC path can reach the managed shell. -->
+    <CosmosEnableInterrupts Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnableInterrupts>
 
-    <!-- Requested ARM64 PCI state. Cosmos SDK 3.0.84 cascades this back to false
-         while CosmosEnableInterrupts=false, so generic PciManager.Setup() still
-         stays off. The RPi4 probe talks to BCM2711 PCI config space directly. -->
-    <CosmosEnablePCI Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnablePCI>
+    <!-- Keep generic Cosmos PCI initialization out of this specific IRQ diagnostic.
+         The BCM2711 manual PCI probe still runs later from managed code. This keeps
+         a PCI failure from being confused with a GIC/interrupt bring-up failure. -->
+    <CosmosEnablePCI Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnablePCI>
 
     <!-- Cosmos Gen3's ARM64 serial backend is currently hard-wired to the QEMU virt
          PL011 at 0x09000000. Touching that MMIO address on Raspberry Pi 4 can fault or
