@@ -11,22 +11,26 @@
     <CosmosEnableMouse Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableMouse>
     <CosmosEnableKeyboard Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableKeyboard>
 
-    <!-- Physical Raspberry Pi 4 stage-0 diagnostic: skip the ARM64 interrupt/GIC/timer
-         bring-up entirely. If this changes the black-screen behavior after Limine,
-         the failure is in early platform HAL rather than the managed smoke kernel. -->
+    <!-- Physical Raspberry Pi 4 bring-up: IRQ/GIC/timer initialization remains
+         disabled while hardware paths are enabled and tested one at a time. -->
     <CosmosEnableInterrupts Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableInterrupts>
+
+    <!-- Expose the PCI feature to the ARM64 build, but note that Cosmos 3.0.84
+         only runs its generic PciManager.Setup() inside the interrupts-enabled
+         path. The RPi4 probe therefore uses BCM2711's config-space quirk directly. -->
+    <CosmosEnablePCI Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnablePCI>
 
     <!-- Cosmos Gen3's ARM64 serial backend is currently hard-wired to the QEMU virt
          PL011 at 0x09000000. Touching that MMIO address on Raspberry Pi 4 can fault or
          hang before the managed kernel lifecycle starts, so keep UART disabled for the
-         physical ARM64 smoke target until a BCM2711-specific PL011 backend exists. -->
+         physical ARM64 target until a BCM2711-specific PL011 backend exists. -->
     <CosmosEnableUART Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableUART>
 
     <CosmosEnableGraphics>true</CosmosEnableGraphics>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableScheduler>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableScheduler>
 
-    <!-- Kept enabled for ARM64 diagnostics and future low-level hardware probes. -->
+    <!-- Kept enabled for ARM64 diagnostics and low-level hardware probes. -->
     <AllowUnsafeBlocks Condition="'$(CosmosArch)' == 'arm64'">true</AllowUnsafeBlocks>
 
     <CosmosKernelClass Condition="'$(CosmosArch)' != 'arm64'">ZonderqOS.Kernel</CosmosKernelClass>
@@ -66,7 +70,7 @@
     <Compile Include="source/Shell/Commands/CmdEcho.cs" />
     <Compile Include="source/Shell/Commands/CmdHelp.cs" />
 
-    <!-- Raspberry Pi 4 VL805/xHCI bring-up probe. Read-only at this stage. -->
+    <!-- Raspberry Pi 4 BCM2711 PCI + VL805/xHCI bring-up probe. -->
     <Compile Include="source/Arm64/Rpi4XhciProbe.cs" />
   </ItemGroup>
 
