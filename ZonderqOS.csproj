@@ -76,6 +76,15 @@
     <Compile Include="source/Arm64/Rpi4XhciResetStage.cs" />
   </ItemGroup>
 
+  <!-- The critical Raspberry Pi 4 VL805 reset path is compiled as freestanding
+       AArch64 C by Cosmos.Build.CC. The arm64 subdirectory is selected automatically
+       by the Cosmos architecture-aware GCCProject override. DirectPInvoke makes the
+       NativeAOT call resolve directly to the linked C symbol (no dynamic loader). -->
+  <ItemGroup Condition="'$(CosmosArch)' == 'arm64'">
+    <GCCProject Include="source/Native/" />
+    <DirectPInvoke Include="zq_rpi4_native" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">
     <Compile Remove="Rpi4BootKernel.cs" />
   </ItemGroup>
