@@ -1,6 +1,9 @@
 using System;
-using System.Runtime.Intrinsics.X86;
 using System.Text;
+using Cosmos.Kernel.System.Diagnostics;
+#if !ARCH_ARM64
+using System.Runtime.Intrinsics.X86;
+#endif
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -29,6 +32,30 @@ namespace ZonderqOS.GUI.Apps
         public static CpuHardwareInfo Detect()
         {
             CpuHardwareInfo info = new CpuHardwareInfo();
+
+#if ARCH_ARM64
+            // Cosmos 3.0.84 currently brings up one managed CPU on ARM64/QEMU
+            // (ARM64PlatformInitializer.GetCpuCount() returns 1). Keep Task Manager
+            // honest and architecture-aware instead of falling through to x86 CPUID.
+            info.Architecture = "ARM64";
+            info.Vendor = "ARM";
+            info.Brand = "Cortex-A72 (QEMU virt)";
+            info.Features = "AArch64";
+            int managedCpuCount = 1;
+            try
+            {
+                managedCpuCount = Math.Max(1, (int)SchedulerInfo.CpuCount);
+            }
+            catch
+            {
+                managedCpuCount = 1;
+            }
+            info.PhysicalCores = managedCpuCount;
+            info.LogicalProcessors = managedCpuCount;
+            info.ThreadsPerCore = 1;
+            info.HypervisorPresent = true;
+            return info;
+#else
             try
             {
                 if (!X86Base.IsSupported)
@@ -90,9 +117,6 @@ namespace ZonderqOS.GUI.Apps
                     info.Features = BuildFeatureList(maxBasic, featureEcx, featureEdx, maxExtended);
                 }
 
-                // Prefer the modern topology leaves over inferring core count from
-                // cache-sharing data. 0x1F supersedes 0x0B, while 0x0B remains the
-                // compatible fallback on older x86-64 CPUs and hypervisors.
                 DetectExtendedTopology(maxBasic, info);
 
                 if (maxBasic >= 4)
@@ -130,8 +154,10 @@ namespace ZonderqOS.GUI.Apps
             }
 
             return info;
+#endif
         }
 
+#if !ARCH_ARM64
         private static void DetectExtendedTopology(uint maxBasic, CpuHardwareInfo info)
         {
             uint leaf = maxBasic >= 0x1Fu ? 0x1Fu : maxBasic >= 0x0Bu ? 0x0Bu : 0u;
@@ -297,5 +323,6 @@ namespace ZonderqOS.GUI.Apps
             }
             return result.ToString().Trim();
         }
+#endif
     }
 }

@@ -13,16 +13,8 @@ namespace ZonderqOS
         {
             _commands.Clear();
 
-#if ARCH_ARM64
-            // QEMU ARM64 profile: use the real shell dispatcher and command
-            // implementations that do not depend on storage, networking, GUI
-            // startup or the scheduler. Keyboard input comes from Cosmos'
-            // VirtIO-MMIO keyboard backend through System.Console.
-            _commands.Add(new CmdPwd());
-            _commands.Add(new CmdClear());
-            _commands.Add(new CmdEcho());
-            _commands.Add(new CmdHelp(_commands));
-#else
+            // Keep the shell surface architecture-neutral. Hardware-specific
+            // differences belong in HAL/drivers, not in the user command set.
             _commands.Add(new CmdPwd());
             _commands.Add(new CmdCd());
             _commands.Add(new CmdLs());
@@ -68,7 +60,6 @@ namespace ZonderqOS
             _commands.Add(new CmdKill());
             _commands.Add(new CmdEnv());
             _commands.Add(new CmdExport());
-#endif
         }
 
         internal static string[] GetCommandNames()
@@ -84,9 +75,7 @@ namespace ZonderqOS
             if (string.IsNullOrWhiteSpace(fullInput))
                 return;
 
-#if !ARCH_ARM64
             fullInput = EnvironmentExpander.Expand(fullInput, currentPath);
-#endif
             List<string> semiCommands = SplitOutsideQuotes(fullInput, ";");
 
             for (int i = 0; i < semiCommands.Count; i++)
@@ -127,7 +116,7 @@ namespace ZonderqOS
 
                     if (isIntermediate)
                     {
-                        string captured = string.Empty;
+                        string captured;
                         CommandIO.StartRedirection();
                         try
                         {
@@ -137,7 +126,6 @@ namespace ZonderqOS
                         {
                             captured = CommandIO.EndRedirection();
                         }
-
                         pipedInput = captured;
                     }
                     else
@@ -155,17 +143,12 @@ namespace ZonderqOS
         private static void ExecuteSingleCommandWithRedirection(string commandLine, ref string currentPath)
         {
             string redirectPath = null;
-            bool appendMode = false;
+            bool appendMode;
             int redirectIndex = FindRedirection(commandLine, out appendMode);
             string commandPart = commandLine;
 
             if (redirectIndex >= 0)
             {
-#if ARCH_ARM64
-                ReportError("File redirection is unavailable while ARM64 storage is disabled.");
-                CommandIO.LastCommandSuccess = false;
-                return;
-#else
                 commandPart = commandLine.Substring(0, redirectIndex);
                 redirectPath = commandLine.Substring(redirectIndex + (appendMode ? 2 : 1)).Trim();
 
@@ -183,7 +166,6 @@ namespace ZonderqOS
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
-#endif
             }
 
             string[] words = Tokenize(commandPart);
@@ -195,7 +177,6 @@ namespace ZonderqOS
 
             string cmdName = words[0].ToLower();
             ICommand targetCmd = null;
-
             for (int i = 0; i < _commands.Count; i++)
             {
                 if (_commands[i].Name == cmdName)
@@ -214,13 +195,10 @@ namespace ZonderqOS
 
             try
             {
-#if ARCH_ARM64
-                targetCmd.Execute(words, ref currentPath);
-#else
                 if (!string.IsNullOrEmpty(redirectPath))
                 {
                     string resolvedPath = PathResolver.GetAbsolutePath(currentPath, redirectPath);
-                    string output = string.Empty;
+                    string output;
 
                     CommandIO.StartRedirection();
                     try
@@ -241,7 +219,6 @@ namespace ZonderqOS
                 {
                     targetCmd.Execute(words, ref currentPath);
                 }
-#endif
             }
             catch (Exception ex)
             {
@@ -252,11 +229,7 @@ namespace ZonderqOS
 
         private static void ReportError(string message)
         {
-#if ARCH_ARM64
-            CommandIO.WriteLine($"[CMD] [ERROR] {message}");
-#else
             WriteMessage.WriteError(message, "CMD");
-#endif
         }
 
         private static int FindRedirection(string value, out bool appendMode)
@@ -274,32 +247,27 @@ namespace ZonderqOS
                     escaped = false;
                     continue;
                 }
-
                 if (c == '\\')
                 {
                     escaped = true;
                     continue;
                 }
-
                 if (c == '"' && !inSingleQuotes)
                 {
                     inDoubleQuotes = !inDoubleQuotes;
                     continue;
                 }
-
                 if (c == '\'' && !inDoubleQuotes)
                 {
                     inSingleQuotes = !inSingleQuotes;
                     continue;
                 }
-
                 if (!inDoubleQuotes && !inSingleQuotes && c == '>')
                 {
                     appendMode = i + 1 < value.Length && value[i + 1] == '>';
                     return i;
                 }
             }
-
             return -1;
         }
 
@@ -317,35 +285,30 @@ namespace ZonderqOS
             for (int i = 0; i < input.Length; i++)
             {
                 char c = input[i];
-
                 if (escaped)
                 {
                     current.Append(c);
                     escaped = false;
                     continue;
                 }
-
                 if (c == '\\')
                 {
                     current.Append(c);
                     escaped = true;
                     continue;
                 }
-
                 if (c == '"' && !inSingleQuotes)
                 {
                     inDoubleQuotes = !inDoubleQuotes;
                     current.Append(c);
                     continue;
                 }
-
                 if (c == '\'' && !inDoubleQuotes)
                 {
                     inSingleQuotes = !inSingleQuotes;
                     current.Append(c);
                     continue;
                 }
-
                 if (!inDoubleQuotes && !inSingleQuotes && MatchesAt(input, separator, i))
                 {
                     result.Add(current.ToString());
@@ -353,7 +316,6 @@ namespace ZonderqOS
                     i += separator.Length - 1;
                     continue;
                 }
-
                 current.Append(c);
             }
 
@@ -365,13 +327,9 @@ namespace ZonderqOS
         {
             if (index + separator.Length > value.Length)
                 return false;
-
             for (int i = 0; i < separator.Length; i++)
-            {
                 if (value[index + i] != separator[i])
                     return false;
-            }
-
             return true;
         }
 
@@ -387,7 +345,6 @@ namespace ZonderqOS
             for (int i = 0; i < commandPart.Length; i++)
             {
                 char c = commandPart[i];
-
                 if (escaped)
                 {
                     current.Append(c);
@@ -395,28 +352,24 @@ namespace ZonderqOS
                     escaped = false;
                     continue;
                 }
-
                 if (c == '\\')
                 {
                     escaped = true;
                     tokenStarted = true;
                     continue;
                 }
-
                 if (c == '"' && !inSingleQuotes)
                 {
                     inDoubleQuotes = !inDoubleQuotes;
                     tokenStarted = true;
                     continue;
                 }
-
                 if (c == '\'' && !inDoubleQuotes)
                 {
                     inSingleQuotes = !inSingleQuotes;
                     tokenStarted = true;
                     continue;
                 }
-
                 if (!inDoubleQuotes && !inSingleQuotes && char.IsWhiteSpace(c))
                 {
                     if (tokenStarted)
@@ -427,17 +380,14 @@ namespace ZonderqOS
                     }
                     continue;
                 }
-
                 current.Append(c);
                 tokenStarted = true;
             }
 
             if (escaped)
                 current.Append('\\');
-
             if (tokenStarted)
                 tokens.Add(current.ToString());
-
             return tokens.ToArray();
         }
 
@@ -451,7 +401,6 @@ namespace ZonderqOS
                 if ((first == '"' && last == '"') || (first == '\'' && last == '\''))
                     path = path.Substring(1, path.Length - 2);
             }
-
             return path.Replace("\\\"", "\"").Replace("\\'", "'");
         }
     }

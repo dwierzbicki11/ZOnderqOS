@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using Cosmos.Kernel.HAL.X64.Devices.Clock;
 
 namespace ZonderqOS
 {
@@ -36,16 +35,16 @@ namespace ZonderqOS
 
         public static string GenerateSalt()
         {
-            // Cosmos Gen3 does not currently expose a CSPRNG through this project. The salt
-            // is not a secret; uniqueness is what matters here. Mix RTC, monotonic time and
-            // a per-boot counter so credentials created in the same RTC second still differ.
+            // DateTime.Now is backed by the platform clock on both x86_64 and ARM64.
+            // The salt is not secret; uniqueness is what matters here. Mix wall-clock
+            // time, monotonic time and a per-boot counter so same-second credentials differ.
             ulong rtcValue = 0;
             try
             {
-                var (y, m, d, h, min, s) = RTC.ReadTime();
-                rtcValue = (ulong)y * 31536000UL + (ulong)m * 2592000UL +
-                           (ulong)d * 86400UL + (ulong)h * 3600UL +
-                           (ulong)min * 60UL + (ulong)s;
+                DateTime now = DateTime.Now;
+                rtcValue = (ulong)now.Year * 31536000UL + (ulong)now.Month * 2592000UL +
+                           (ulong)now.Day * 86400UL + (ulong)now.Hour * 3600UL +
+                           (ulong)now.Minute * 60UL + (ulong)now.Second;
             }
             catch
             {
