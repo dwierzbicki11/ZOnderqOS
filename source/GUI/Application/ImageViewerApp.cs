@@ -350,15 +350,15 @@ namespace ZonderqOS.GUI.Apps
                 if (path.EndsWith(".png", StringComparison.OrdinalIgnoreCase))
                 {
                     Png image = new Png(path);
-                    width = (int)image.Width;
-                    height = (int)image.Height;
+                    width = image.Width;
+                    height = image.Height;
                     pixels = image.RawData;
                 }
                 else if (path.EndsWith(".bmp", StringComparison.OrdinalIgnoreCase))
                 {
                     CosmosBitmap image = new CosmosBitmap(path);
-                    width = (int)image.Width;
-                    height = (int)image.Height;
+                    width = image.Width;
+                    height = image.Height;
                     pixels = image.RawData;
                 }
                 else
@@ -513,7 +513,7 @@ namespace ZonderqOS.GUI.Apps
                 }
             }
 
-            CosmosBitmap preview = new CosmosBitmap((uint)targetWidth, (uint)targetHeight, ColorDepth.ColorDepth32);
+            CosmosBitmap preview = new CosmosBitmap(targetWidth, targetHeight, ColorDepth.ColorDepth32);
             int[] destination = preview.RawData;
             if (destination == null || destination.Length < targetWidth * targetHeight)
                 return;
