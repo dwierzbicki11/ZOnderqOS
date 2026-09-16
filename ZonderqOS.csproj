@@ -31,7 +31,7 @@
     <CosmosEnableScheduler Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableScheduler>
     <CosmosEnableScheduler Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableScheduler>
 
-    <!-- Required by the ARM64 BCM2711/xHCI MMIO bring-up probe. -->
+    <!-- Required by the ARM64 BCM2711/xHCI bring-up code. -->
     <AllowUnsafeBlocks Condition="'$(CosmosArch)' == 'arm64'">true</AllowUnsafeBlocks>
 
     <CosmosKernelClass Condition="'$(CosmosArch)' != 'arm64'">ZonderqOS.Kernel</CosmosKernelClass>
@@ -71,8 +71,9 @@
     <Compile Include="source/Shell/Commands/CmdEcho.cs" />
     <Compile Include="source/Shell/Commands/CmdHelp.cs" />
 
-    <!-- Raspberry Pi 4 BCM2711 PCI + VL805/xHCI bring-up probe. -->
+    <!-- Raspberry Pi 4 BCM2711 PCI + VL805/xHCI bring-up. -->
     <Compile Include="source/Arm64/Rpi4XhciProbe.cs" />
+    <Compile Include="source/Arm64/Rpi4XhciResetStage.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">

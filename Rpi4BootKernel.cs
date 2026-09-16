@@ -7,8 +7,7 @@ namespace ZonderqOS
     ///
     /// Uses the normal Cosmos console and the real ZonderqOS Command dispatcher.
     /// IRQ/GIC initialization is enabled and has reached this managed stage on the
-    /// physical Pi. USB input remains intentionally disabled while VL805/xHCI is
-    /// brought up in small, diagnosable steps.
+    /// physical Pi. USB is brought up in small, diagnosable stages.
     /// </summary>
     public sealed class Rpi4BootKernel : Cosmos.Kernel.System.Kernel
     {
@@ -20,14 +19,14 @@ namespace ZonderqOS
             Console.Clear();
             Console.WriteLine("========================================");
             Console.WriteLine(" ZonderqOS ARM64 - Raspberry Pi 4");
-            Console.WriteLine(" IRQ/GIC OK + BCM2711 XHCI PROBE");
+            Console.WriteLine(" XHCI STAGE 1 - OWNERSHIP + RESET");
             Console.WriteLine("========================================");
             Console.WriteLine();
             Console.WriteLine("UART: OFF");
             Console.WriteLine("Interrupts: ON (managed path reached)");
-            Console.WriteLine("Generic PCI init: OFF (Pi-specific probe used)");
+            Console.WriteLine("Generic PCI init: OFF (Pi-specific path used)");
             Console.WriteLine("Scheduler: OFF");
-            Console.WriteLine("Keyboard: OFF (USB/xHCI bring-up in progress)");
+            Console.WriteLine("Keyboard: OFF (xHCI staged bring-up)");
             Console.WriteLine();
 
             Command.Initialize();
@@ -44,7 +43,14 @@ namespace ZonderqOS
             Console.WriteLine();
             Rpi4XhciProbe.Run();
             Console.WriteLine();
-            Console.WriteLine("Shell core ready. IRQ/GIC managed path OK; xHCI probe returned.");
+
+            bool resetReady = Rpi4XhciResetStage.Run();
+            Console.WriteLine();
+            Console.WriteLine(resetReady
+                ? "xHCI Stage 1 complete. Next: DMA + command/event rings."
+                : "xHCI Stage 1 failed. Rings/HID were NOT attempted.");
+            Console.WriteLine();
+            Console.WriteLine("Shell core ready.");
             Console.WriteLine();
         }
 
