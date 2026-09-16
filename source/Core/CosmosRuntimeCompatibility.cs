@@ -1,21 +1,15 @@
 using System;
-using System.Collections.Generic;
-using Cosmos.Kernel.System.Diagnostics;
 using ZonderqOS.SystemCore;
 
-// Keep every Cosmos ABI workaround in this file. Application/UI code may keep
-// consuming the small legacy surface below while package-specific differences
-// are isolated here. When Cosmos exposes the same diagnostics ABI on every
-// architecture, this file is the only place that should need to change.
+#pragma warning disable COSMOS0001
 
-#if ARCH_ARM64
+// Cosmos 3.0.85 ships the scheduler seam in Cosmos.Kernel.Core, but the
+// Cosmos.Kernel.System.Diagnostics compile surface is not available in every
+// packaged architecture asset. ZonderqOS keeps one small compatibility layer
+// so x64 and ARM64 build the same UI code and consume real scheduler state.
+
 namespace Cosmos.Kernel.System.Diagnostics
 {
-    /// <summary>
-    /// ARM64 compatibility projection for the diagnostics API currently absent
-    /// from the packaged Cosmos.Kernel.System compile asset. Values are sourced
-    /// from managed runtime/process data instead of being invented by the UI.
-    /// </summary>
     public enum KernelThreadState : byte
     {
         Created,
@@ -122,18 +116,59 @@ namespace Cosmos.Kernel.System.Diagnostics
 
     public static class SchedulerInfo
     {
+        private const int MaxTrackedThreads = 256;
+        private const int MaxTrackedCpus = 256;
+
         private static readonly object SnapshotLock = new object();
-        private static readonly List<KernelProcess> ProcessSnapshot = new List<KernelProcess>(16);
+        private static readonly global::Cosmos.Kernel.Core.Scheduler.SchedulerThread[] KnownThreads =
+            new global::Cosmos.Kernel.Core.Scheduler.SchedulerThread[MaxTrackedThreads];
+
+        private static int knownHighWater;
         private static PortableRuntimeTelemetry.CpuUtilizationState cpuState;
 
-        // Current Cosmos ARM64/QEMU bring-up exposes one managed CPU even when
-        // QEMU presents more vCPUs. Report what the kernel can actually schedule.
         public static bool IsSupported => true;
-        public static bool IsInitialized => true;
-        public static bool IsRunning => true;
-        public static string SchedulerName => "Stride";
-        public static uint CpuCount => 1U;
-        public static ulong TickPeriodNs => 10_000_000UL;
+
+        public static bool IsInitialized
+        {
+            get
+            {
+                try { return global::Cosmos.Kernel.Core.Scheduler.SchedulerManager.IsReady; }
+                catch { return false; }
+            }
+        }
+
+        public static bool IsRunning => IsInitialized && SchedulerName != null;
+
+        public static string SchedulerName
+        {
+            get
+            {
+                try
+                {
+                    return global::Cosmos.Kernel.Core.Scheduler.SchedulerManager.Current?.Name;
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+        }
+
+        public static uint CpuCount
+        {
+            get
+            {
+                lock (SnapshotLock)
+                    return DetectCpuCount();
+            }
+        }
+
+        // Cosmos starts both current x64 and ARM64 scheduler timers from the
+        // reference quantum. The exact driver period is not public in the
+        // packaged diagnostics surface, so expose the configured quantum rather
+        // than inventing a value.
+        public static ulong TickPeriodNs =>
+            global::Cosmos.Kernel.Core.Scheduler.SchedulerManager.DefaultQuantumNs;
 
         public static ulong BusyCpuTimeNs
         {
@@ -150,107 +185,232 @@ namespace Cosmos.Kernel.System.Diagnostics
             {
                 lock (SnapshotLock)
                 {
-                    RefreshProcesses();
-                    return ProcessSnapshot.Count + 1;
+                    RefreshKnownThreads();
+                    int count = 0;
+                    for (int i = 0; i < knownHighWater; i++)
+                    {
+                        var thread = KnownThreads[i];
+                        if (thread != null && thread.State != global::Cosmos.Kernel.Core.Scheduler.SchedulerThreadState.Dead)
+                            count++;
+                    }
+                    return count;
                 }
             }
         }
 
-        public static int ThreadSlotCount => ThreadCount;
+        public static int ThreadSlotCount
+        {
+            get
+            {
+                lock (SnapshotLock)
+                {
+                    RefreshKnownThreads();
+                    return knownHighWater;
+                }
+            }
+        }
 
         public static bool TryGetThreadInSlot(int slot, out KernelThreadInfo info)
         {
             lock (SnapshotLock)
             {
-                RefreshProcesses();
-
-                if (slot == 0)
-                {
-                    info = new KernelThreadInfo(
-                        uint.MaxValue,
-                        0U,
-                        KernelThreadState.Running,
-                        false,
-                        true,
-                        PortableRuntimeTelemetry.SampleBusyCpuTimeNs(ref cpuState),
-                        0,
-                        0,
-                        false);
-                    return true;
-                }
-
-                int index = slot - 1;
-                if (index < 0 || index >= ProcessSnapshot.Count)
+                if (slot < 0 || slot >= knownHighWater)
                 {
                     info = default;
                     return false;
                 }
 
-                KernelProcess process = ProcessSnapshot[index];
-                uint id = process.PID > 0 ? (uint)process.PID : (uint)(index + 1);
+                var thread = KnownThreads[slot];
+                if (thread == null || thread.State == global::Cosmos.Kernel.Core.Scheduler.SchedulerThreadState.Dead)
+                {
+                    info = default;
+                    return false;
+                }
+
+                bool isIdle = (thread.Flags & global::Cosmos.Kernel.Core.Scheduler.SchedulerThreadFlags.IdleThread) != 0;
+                bool isManaged = (thread.Flags & global::Cosmos.Kernel.Core.Scheduler.SchedulerThreadFlags.Managed) != 0;
+                long priority = 0;
+                bool hasPriority = false;
+
+                try
+                {
+                    var scheduler = global::Cosmos.Kernel.Core.Scheduler.SchedulerManager.Current;
+                    if (scheduler != null)
+                    {
+                        priority = scheduler.GetPriority(thread);
+                        hasPriority = true;
+                    }
+                }
+                catch
+                {
+                }
+
                 info = new KernelThreadInfo(
-                    id,
-                    0U,
-                    process.IsRunning ? KernelThreadState.Running : KernelThreadState.Dead,
-                    false,
-                    true,
-                    0UL,
-                    0,
-                    0,
-                    false);
+                    thread.Id,
+                    thread.CpuId,
+                    MapState(thread.State),
+                    isIdle,
+                    isManaged,
+                    thread.TotalRuntime,
+                    thread.StackSize,
+                    priority,
+                    hasPriority);
                 return true;
             }
         }
 
-        private static void RefreshProcesses()
+        private static uint DetectCpuCount()
         {
-            try
+            if (!IsInitialized)
+                return 0U;
+
+            uint count = 0;
+            for (uint cpu = 0; cpu < MaxTrackedCpus; cpu++)
             {
-                ProcessManager.FillActiveProcesses(ProcessSnapshot);
+                try
+                {
+                    var state = global::Cosmos.Kernel.Core.Scheduler.SchedulerManager.GetCpuState(cpu);
+                    if (state == null)
+                        break;
+                    count++;
+                }
+                catch (IndexOutOfRangeException)
+                {
+                    break;
+                }
+                catch
+                {
+                    break;
+                }
             }
-            catch
+
+            return count;
+        }
+
+        private static void RefreshKnownThreads()
+        {
+            if (!IsInitialized)
+                return;
+
+            uint cpuCount = DetectCpuCount();
+            var scheduler = global::Cosmos.Kernel.Core.Scheduler.SchedulerManager.Current;
+
+            for (uint cpu = 0; cpu < cpuCount; cpu++)
             {
-                ProcessSnapshot.Clear();
+                global::Cosmos.Kernel.Core.Scheduler.PerCpuState state;
+                try
+                {
+                    state = global::Cosmos.Kernel.Core.Scheduler.SchedulerManager.GetCpuState(cpu);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (state == null)
+                    continue;
+
+                Remember(state.IdleThread);
+                Remember(state.CurrentThread);
+
+                if (scheduler == null)
+                    continue;
+
+                int queued = 0;
+                try { queued = scheduler.GetRunQueueCount(state); }
+                catch { queued = 0; }
+
+                if (queued < 0) queued = 0;
+                if (queued > MaxTrackedThreads) queued = MaxTrackedThreads;
+
+                for (int i = 0; i < queued; i++)
+                {
+                    try { Remember(scheduler.GetRunQueueThread(state, i)); }
+                    catch { }
+                }
+            }
+
+            // Keep references to blocked/sleeping threads that were observed
+            // earlier so their state remains visible. Dead entries are released
+            // and can be reused by newly discovered threads.
+            for (int i = 0; i < knownHighWater; i++)
+            {
+                var thread = KnownThreads[i];
+                if (thread != null && thread.State == global::Cosmos.Kernel.Core.Scheduler.SchedulerThreadState.Dead)
+                    KnownThreads[i] = null;
+            }
+
+            while (knownHighWater > 0 && KnownThreads[knownHighWater - 1] == null)
+                knownHighWater--;
+        }
+
+        private static void Remember(global::Cosmos.Kernel.Core.Scheduler.SchedulerThread thread)
+        {
+            if (thread == null)
+                return;
+
+            int freeSlot = -1;
+            for (int i = 0; i < knownHighWater; i++)
+            {
+                if (ReferenceEquals(KnownThreads[i], thread))
+                    return;
+                if (freeSlot < 0 && KnownThreads[i] == null)
+                    freeSlot = i;
+            }
+
+            if (freeSlot >= 0)
+            {
+                KnownThreads[freeSlot] = thread;
+                return;
+            }
+
+            if (knownHighWater < KnownThreads.Length)
+                KnownThreads[knownHighWater++] = thread;
+        }
+
+        private static KernelThreadState MapState(global::Cosmos.Kernel.Core.Scheduler.SchedulerThreadState state)
+        {
+            switch (state)
+            {
+                case global::Cosmos.Kernel.Core.Scheduler.SchedulerThreadState.Ready: return KernelThreadState.Ready;
+                case global::Cosmos.Kernel.Core.Scheduler.SchedulerThreadState.Running: return KernelThreadState.Running;
+                case global::Cosmos.Kernel.Core.Scheduler.SchedulerThreadState.Blocked: return KernelThreadState.Blocked;
+                case global::Cosmos.Kernel.Core.Scheduler.SchedulerThreadState.Sleeping: return KernelThreadState.Sleeping;
+                case global::Cosmos.Kernel.Core.Scheduler.SchedulerThreadState.Dead: return KernelThreadState.Dead;
+                default: return KernelThreadState.Created;
             }
         }
     }
 }
-#endif
 
 namespace Cosmos.Kernel.Core.Memory
 {
-    /// <summary>
-    /// Legacy ZonderqOS memory facade mapped onto the public Gen3 diagnostics API.
-    /// </summary>
     public static class PageAllocator
     {
         public static ulong TotalPageCount
         {
-            get { try { return MemoryInfo.TotalPages; } catch { return 0UL; } }
+            get { try { return global::Cosmos.Kernel.System.Diagnostics.MemoryInfo.TotalPages; } catch { return 0UL; } }
         }
 
         public static ulong FreePageCount
         {
-            get { try { return MemoryInfo.FreePages; } catch { return 0UL; } }
+            get { try { return global::Cosmos.Kernel.System.Diagnostics.MemoryInfo.FreePages; } catch { return 0UL; } }
         }
 
         public static ulong PageSize
         {
-            get { try { return MemoryInfo.PageSizeBytes; } catch { return 4096UL; } }
+            get { try { return global::Cosmos.Kernel.System.Diagnostics.MemoryInfo.PageSizeBytes; } catch { return 4096UL; } }
         }
 
         public static ulong RamSize
         {
-            get { try { return MemoryInfo.RamSizeBytes; } catch { return 0UL; } }
+            get { try { return global::Cosmos.Kernel.System.Diagnostics.MemoryInfo.RamSizeBytes; } catch { return 0UL; } }
         }
     }
 }
 
 namespace Cosmos.Kernel.Core.Memory.GarbageCollector
 {
-    /// <summary>
-    /// Legacy GC facade backed by System.GC rather than Cosmos private internals.
-    /// </summary>
     public static class GarbageCollector
     {
         public static bool IsEnabled => true;
@@ -262,10 +422,7 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
                 long value = GC.GetGCMemoryInfo().HeapSizeBytes;
                 return value > 0 ? (ulong)value : 0UL;
             }
-            catch
-            {
-                return 0UL;
-            }
+            catch { return 0UL; }
         }
 
         public static ulong GetTotalCommittedBytes()
@@ -275,10 +432,7 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
                 long value = GC.GetGCMemoryInfo().TotalCommittedBytes;
                 return value > 0 ? (ulong)value : 0UL;
             }
-            catch
-            {
-                return 0UL;
-            }
+            catch { return 0UL; }
         }
 
         public static ulong GetFragmentedBytes()
@@ -288,10 +442,7 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
                 long value = GC.GetGCMemoryInfo().FragmentedBytes;
                 return value > 0 ? (ulong)value : 0UL;
             }
-            catch
-            {
-                return 0UL;
-            }
+            catch { return 0UL; }
         }
 
         public static ulong GetPinnedObjectsCount()
@@ -301,132 +452,15 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
                 long value = GC.GetGCMemoryInfo().PinnedObjectsCount;
                 return value > 0 ? (ulong)value : 0UL;
             }
-            catch
-            {
-                return 0UL;
-            }
+            catch { return 0UL; }
         }
 
         public static int GetCollectionIndex()
         {
-            try { return MemoryInfo.TotalCollections; }
+            try { return global::Cosmos.Kernel.System.Diagnostics.MemoryInfo.TotalCollections; }
             catch { return 0; }
         }
     }
 }
 
-namespace Cosmos.Kernel.Core.Scheduler
-{
-    public enum ThreadState
-    {
-        Created = 0,
-        Ready = 1,
-        Running = 2,
-        Blocked = 3,
-        Sleeping = 4,
-        Dead = 5
-    }
-
-    public sealed class Thread
-    {
-        public ThreadState State { get; }
-
-        internal Thread(ThreadState state)
-        {
-            State = state;
-        }
-    }
-
-    public sealed class SchedulerDescriptor
-    {
-        public string Name { get; }
-
-        internal SchedulerDescriptor(string name)
-        {
-            Name = name ?? string.Empty;
-        }
-    }
-
-    /// <summary>
-    /// Legacy scheduler facade. No application code should reach into Cosmos
-    /// scheduler internals directly; all version-sensitive mapping stays here.
-    /// </summary>
-    public static class SchedulerManager
-    {
-        public static bool IsReady
-        {
-            get { try { return SchedulerInfo.IsInitialized; } catch { return false; } }
-        }
-
-        public static int ThreadCount
-        {
-            get { try { return SchedulerInfo.ThreadCount; } catch { return 0; } }
-        }
-
-        public static uint CpuCount
-        {
-            get { try { return SchedulerInfo.CpuCount; } catch { return 0U; } }
-        }
-
-        public static SchedulerDescriptor Current
-        {
-            get
-            {
-                try
-                {
-                    string name = SchedulerInfo.SchedulerName;
-                    return string.IsNullOrEmpty(name) ? null : new SchedulerDescriptor(name);
-                }
-                catch
-                {
-                    return null;
-                }
-            }
-        }
-
-        public static ulong GetBusyCpuTimeNs()
-        {
-            try { return SchedulerInfo.BusyCpuTimeNs; }
-            catch { return 0UL; }
-        }
-
-        public static Thread[] Threads
-        {
-            get
-            {
-                try
-                {
-                    int slots = SchedulerInfo.ThreadSlotCount;
-                    if (slots <= 0)
-                        return Array.Empty<Thread>();
-
-                    Thread[] result = new Thread[slots];
-                    for (int i = 0; i < slots; i++)
-                    {
-                        if (SchedulerInfo.TryGetThreadInSlot(i, out KernelThreadInfo info))
-                            result[i] = new Thread(MapState(info.State));
-                    }
-
-                    return result;
-                }
-                catch
-                {
-                    return Array.Empty<Thread>();
-                }
-            }
-        }
-
-        private static ThreadState MapState(KernelThreadState state)
-        {
-            switch (state)
-            {
-                case KernelThreadState.Ready: return ThreadState.Ready;
-                case KernelThreadState.Running: return ThreadState.Running;
-                case KernelThreadState.Blocked: return ThreadState.Blocked;
-                case KernelThreadState.Sleeping: return ThreadState.Sleeping;
-                case KernelThreadState.Dead: return ThreadState.Dead;
-                default: return ThreadState.Created;
-            }
-        }
-    }
-}
+#pragma warning restore COSMOS0001
