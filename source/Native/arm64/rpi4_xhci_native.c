@@ -4,6 +4,9 @@ typedef unsigned int u32;
 typedef unsigned long long u64;
 typedef signed int s32;
 
+/* Cosmos already exposes this bridge for its own native C components. */
+extern void *__cosmos_heap_alloc(unsigned long size);
+
 #define PCIE_REG_PHYS              0x00000000FD500000ULL
 #define PCIE_CPU_MMIO_BASE         0x0000000600000000ULL
 #define PCIE_BUS_MMIO_BASE         0x00000000F8000000ULL
@@ -27,9 +30,11 @@ typedef signed int s32;
 #define MAILBOX_EMPTY              0x40000000U
 #define MAILBOX_PROPERTY_CHANNEL   8U
 #define MAILBOX_GPU_UNCACHED_BASE  0xC0000000U
+#define MAILBOX_ARM_PHYS_LIMIT     0x40000000ULL
 #define FW_STATUS_SUCCESS          0x80000000U
 #define FW_NOTIFY_XHCI_RESET       0x00030058U
 #define VL805_FIRMWARE_BDF         0x00100000U
+#define MAILBOX_PACKET_BYTES       28ULL
 
 #define XHCI_HCCPARAMS1_OFF        0x10ULL
 #define XHCI_USBCMD_OFF            0x00ULL
@@ -72,6 +77,9 @@ typedef signed int s32;
 #define R_LAST_USBCMD              22U
 #define R_LAST_USBSTS              23U
 #define R_MAILBOX_ATTEMPTS         24U
+#define R_MBOX_BUF_VIRT            25U
+#define R_CACHE_LINE               26U
+#define R_MBOX_ALLOC_BYTES         27U
 
 #define ERR_OK                     0
 #define ERR_BAD_ARGUMENT          -1
@@ -93,9 +101,7 @@ typedef signed int s32;
 #define ERR_HCE_AFTER             -17
 #define ERR_NOT_HALTED            -18
 #define ERR_PAGE_SIZE             -19
-
-/* One full page guarantees the mailbox property packet never crosses a page. */
-static volatile u32 g_property_page[1024] __attribute__((aligned(4096)));
+#define ERR_MBOX_ALLOC            -20
 
 static inline void barrier_full(void)
 {
@@ -305,8 +311,11 @@ static int locate_xhci(u64 hhdm, u64 *xhci_base, u64 *operational_base, u64 *res
 
 static int firmware_notify_xhci_reset(u64 hhdm, u64 *result)
 {
-    volatile u32 *buffer = g_property_page;
-    u64 buffer_virtual = (u64)(unsigned long)buffer;
+    u64 line = (u64)dcache_line_size();
+    u64 allocation_size;
+    void *raw;
+    volatile u32 *buffer;
+    u64 buffer_virtual;
     u64 buffer_physical = 0;
     u32 bus_address;
     u32 message;
@@ -317,13 +326,36 @@ static int firmware_notify_xhci_reset(u64 hhdm, u64 *result)
     u32 drain_count = 0;
 
     result[R_MAILBOX_ATTEMPTS]++;
+    result[R_CACHE_LINE] = line;
+
+    /* Keep the packet in one private cache line. That makes dc ivac safe: it
+       cannot discard dirty bytes belonging to another managed/native object. */
+    if (line < 32ULL || line > 256ULL || (line & (line - 1ULL)) != 0)
+        return ERR_MBOX_ALLOC;
+
+    allocation_size = (line * 2ULL) + 64ULL;
+    result[R_MBOX_ALLOC_BYTES] = allocation_size;
+
+    raw = __cosmos_heap_alloc((unsigned long)allocation_size);
+    if (raw == (void *)0)
+        return ERR_MBOX_ALLOC;
+
+    /* Intentionally retain this tiny allocation for the kernel lifetime. A late
+       firmware reply after a timeout must never DMA into memory that was reused. */
+    buffer_virtual = (((u64)(unsigned long)raw) + line - 1ULL) & ~(line - 1ULL);
+    buffer = (volatile u32 *)(unsigned long)buffer_virtual;
+    result[R_MBOX_BUF_VIRT] = buffer_virtual;
 
     if (!virtual_to_physical(buffer_virtual, &buffer_physical))
         return ERR_MBOX_VA_TO_PA;
 
     result[R_MBOX_BUF_PHYS] = buffer_physical;
 
-    if ((buffer_physical & 0xFFFULL) != 0 || buffer_physical >= 0x40000000ULL)
+    /* The Pi 4 firmware mailbox bus alias is 32-bit: 0xC0000000 + ARM phys.
+       Do not mask a high physical address down: that would target unrelated RAM. */
+    if ((buffer_physical & 0xFULL) != 0 ||
+        buffer_physical >= MAILBOX_ARM_PHYS_LIMIT ||
+        buffer_physical + MAILBOX_PACKET_BYTES > MAILBOX_ARM_PHYS_LIMIT)
         return ERR_MBOX_ADDRESS_RANGE;
 
     buffer[0] = 28U;
@@ -334,7 +366,7 @@ static int firmware_notify_xhci_reset(u64 hhdm, u64 *result)
     buffer[5] = VL805_FIRMWARE_BDF;
     buffer[6] = 0U;
 
-    cache_clean_range((const void *)buffer, 28ULL);
+    cache_clean_range((const void *)buffer, MAILBOX_PACKET_BYTES);
 
     bus_address = ((u32)buffer_physical & 0x3FFFFFF0U) | MAILBOX_GPU_UNCACHED_BASE;
     message = bus_address | MAILBOX_PROPERTY_CHANNEL;
@@ -379,7 +411,7 @@ static int firmware_notify_xhci_reset(u64 hhdm, u64 *result)
     }
 
     result[R_MBOX_REPLY] = reply;
-    cache_invalidate_range((const void *)buffer, 28ULL);
+    cache_invalidate_range((const void *)buffer, MAILBOX_PACKET_BYTES);
 
     result[R_MBOX_STATUS] = buffer[1];
     result[R_MBOX_TAG_STATUS] = buffer[4];
@@ -510,7 +542,7 @@ static void clear_result(u64 *result)
 }
 
 /*
- * Native Raspberry Pi 4 VL805 Stage 1.
+ * Native Raspberry Pi 4 VL805 Stage 1D.
  * Called directly from Cosmos NativeAOT via DirectPInvoke.
  * Returns 0 on success or a negative ERR_* code on a bounded failure.
  */
@@ -524,7 +556,7 @@ int zq_rpi4_xhci_stage1_native(u64 hhdm, u64 *result)
         return ERR_BAD_ARGUMENT;
 
     clear_result(result);
-    result[R_MAGIC] = 0x5A51555342314331ULL; /* "ZQUSB1C1" */
+    result[R_MAGIC] = 0x5A51555342314431ULL; /* "ZQUSB1D1" */
 
     result[R_STAGE] = 1;
     rc = locate_xhci(hhdm, &xhci_base, &operational_base, result);
