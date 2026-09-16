@@ -123,14 +123,18 @@ run_arm64() {
     echo
     echo "[ARM64] Uruchamianie QEMU virt + VirtIO keyboard..."
     echo "[ARM64] UEFI: $firmware"
+    echo "[ARM64] QEMU: $(qemu-system-aarch64 --version | head -n 1)"
 
-    # Keep this close to Cosmos' own ARM64 DevKernel launch profile:
-    # QEMU virt + GICv3 + ramfb + VirtIO MMIO keyboard. The SCSI controller is
-    # only needed by UEFI/Limine to boot the ISO; ZonderqOS storage stays disabled.
+    # Modern-QEMU-compatible ARM64 profile. Do not force highmem=off here:
+    # on newer QEMU releases that constrains the whole virt machine to a
+    # 32-bit physical address space and can make the machine fail before UEFI
+    # starts. Cosmos' regular ARM64 profile also uses highmem enabled with
+    # cortex-a72 and 512 MiB RAM. VirtIO keyboard still lives in the low MMIO
+    # window scanned by the Cosmos ARM64 HAL.
     local -a qemu_args=(
-        -M virt,highmem=off,gic-version=3
-        -cpu cortex-a53
-        -m 1G
+        -M virt,gic-version=3
+        -cpu cortex-a72
+        -m 512M
         -bios "$firmware"
         -drive "if=none,id=cd,file=$iso,format=raw,readonly=on"
         -device virtio-scsi-pci
