@@ -1,1 +1,1 @@
-global using SchedulerManager = Cosmos.Kernel.System.Diagnostics.SchedulerInfo;
+global using SchedulerManager = ZonderqOS.SystemCore.LegacySchedulerFacade;
