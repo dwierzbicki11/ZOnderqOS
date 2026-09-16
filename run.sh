@@ -14,7 +14,21 @@ print_header() {
 
 sync_repo() {
     echo "[GIT] Aktualizacja main..."
-    git pull --ff-only origin main
+
+    local current_branch
+    current_branch="$(git branch --show-current)"
+    if [[ "$current_branch" != "main" ]]; then
+        echo "[BLAD] Launcher musi byc uruchomiony z brancha main (aktualnie: ${current_branch:-detached HEAD})." >&2
+        echo "       Przelacz sie bezpiecznie: git switch main" >&2
+        exit 1
+    fi
+
+    # Fetch one explicit remote branch instead of using `git pull origin main`.
+    # This deliberately ignores accidental multiple branch.*.merge entries in
+    # the user's local git config, which otherwise make pull fail with:
+    #   fatal: Cannot fast-forward to multiple branches.
+    git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
+    git merge --ff-only refs/remotes/origin/main
     echo
 }
 
