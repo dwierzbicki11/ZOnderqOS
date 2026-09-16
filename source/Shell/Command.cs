@@ -14,9 +14,10 @@ namespace ZonderqOS
             _commands.Clear();
 
 #if ARCH_ARM64
-            // Raspberry Pi bring-up profile: use the real shell dispatcher and
-            // real command implementations, but register only commands that do
-            // not require storage, networking, GUI, input IRQs or the scheduler.
+            // QEMU ARM64 profile: use the real shell dispatcher and command
+            // implementations that do not depend on storage, networking, GUI
+            // startup or the scheduler. Keyboard input comes from Cosmos'
+            // VirtIO-MMIO keyboard backend through System.Console.
             _commands.Add(new CmdPwd());
             _commands.Add(new CmdClear());
             _commands.Add(new CmdEcho());
