@@ -513,7 +513,7 @@ namespace ZonderqOS.GUI.Apps
                 }
             }
 
-            CosmosBitmap preview = new CosmosBitmap((uint)targetWidth, (uint)targetHeight, ColorDepth.ColorDepth32);
+            CosmosBitmap preview = new CosmosBitmap(targetWidth,targetHeight, ColorDepth.ColorDepth32);
             int[] destination = preview.RawData;
             if (destination == null || destination.Length < targetWidth * targetHeight)
                 return;
