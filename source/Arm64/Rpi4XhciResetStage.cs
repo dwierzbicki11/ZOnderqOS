@@ -43,11 +43,15 @@ namespace ZonderqOS
         private const int RLastUsbCmd = 22;
         private const int RLastUsbSts = 23;
         private const int RMailboxAttempts = 24;
+        private const int RMailboxBufferVirtual = 25;
+        private const int RCacheLine = 26;
+        private const int RMailboxAllocationBytes = 27;
 
         public static bool Run()
         {
-            Console.WriteLine("RPi4 xHCI Stage 1C - native C backend:");
+            Console.WriteLine("RPi4 xHCI Stage 1D - low-memory mailbox + native C backend:");
             Console.WriteLine("  backend:         AArch64 C / clang / DirectPInvoke");
+            Console.WriteLine("  mailbox buffer:  Cosmos heap, cache-line isolated");
             Console.WriteLine("  DMA/rings:       OFF");
             Console.WriteLine("  USB enumeration: OFF");
             Console.WriteLine("  HID keyboard:    OFF");
@@ -85,7 +89,10 @@ namespace ZonderqOS
             {
                 Console.WriteLine("  firmware mailbox:");
                 Console.WriteLine("    attempts:        " + result[RMailboxAttempts]);
+                Console.WriteLine("    buffer virtual:  " + Hex(result[RMailboxBufferVirtual]));
                 Console.WriteLine("    buffer physical: " + Hex(result[RMailboxBufferPhysical]));
+                Console.WriteLine("    cache line:      " + result[RCacheLine] + " bytes");
+                Console.WriteLine("    heap allocation: " + result[RMailboxAllocationBytes] + " bytes");
                 Console.WriteLine("    request word:    " + Hex32(result[RMailboxMessage]));
                 Console.WriteLine("    reply word:      " + Hex32(result[RMailboxReply]));
                 Console.WriteLine("    status:          " + Hex32(result[RMailboxStatus]));
@@ -116,7 +123,7 @@ namespace ZonderqOS
             if (nativeCode != 0)
             {
                 long storedError = unchecked((long)result[RError]);
-                Console.WriteLine("RESULT: xHCI Stage 1C FAILED");
+                Console.WriteLine("RESULT: xHCI Stage 1D FAILED");
                 Console.WriteLine("  native rc: " + nativeCode);
                 Console.WriteLine("  stored rc: " + storedError);
                 Console.WriteLine("  meaning:   " + ErrorText(nativeCode));
@@ -124,7 +131,7 @@ namespace ZonderqOS
                 return false;
             }
 
-            Console.WriteLine("RESULT: xHCI Stage 1C PASS - native firmware handoff + HCRST completed.");
+            Console.WriteLine("RESULT: xHCI Stage 1D PASS - firmware handoff + HCRST completed.");
             Console.WriteLine("Controller intentionally remains HALTED; rings/DMA are still OFF.");
             return true;
         }
@@ -138,8 +145,8 @@ namespace ZonderqOS
                 -3 => "VL805 PCI function/class/config is not usable",
                 -4 => "VL805 BAR0 is invalid or outside the Pi PCIe aperture",
                 -5 => "xHCI capability signature is invalid",
-                -6 => "native mailbox buffer VA->PA translation failed",
-                -7 => "native mailbox buffer is outside the VideoCore low-memory alias",
+                -6 => "Cosmos heap mailbox buffer VA->PA translation failed",
+                -7 => "Cosmos heap mailbox buffer is still outside the <1 GiB VideoCore DMA window",
                 -8 => "mailbox TX stayed full",
                 -9 => "mailbox firmware response timed out",
                 -10 => "firmware property request returned failure",
@@ -152,6 +159,7 @@ namespace ZonderqOS
                 -17 => "controller reported HCE after reset",
                 -18 => "controller unexpectedly ran after reset",
                 -19 => "controller does not advertise 4 KiB pages",
+                -20 => "could not allocate a safe cache-line-isolated mailbox buffer",
                 _ => "unknown native failure"
             };
         }
