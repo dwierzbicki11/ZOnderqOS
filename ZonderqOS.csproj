@@ -17,6 +17,11 @@
     <!-- Make the disabled network state explicit to ZonderqOS code without
          depending on package-internal networking types. -->
     <DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_DISABLED</DefineConstants>
+
+    <!-- An obsolete experimental shim existed locally in some checkouts. Put it
+         in DefaultItemExcludes as well as Compile Remove so it cannot re-enter
+         through SDK wildcard item discovery on either x64 or ARM64. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);source/Core/CosmosGen3DiagnosticsCompat.cs;**/CosmosGen3DiagnosticsCompat.cs</DefaultItemExcludes>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(CosmosArch)' == 'arm64'">
@@ -33,10 +38,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Obsolete local shim from the pre-3.0.85 experiments. Some developer
-         checkouts still have this file untracked; SDK wildcard compilation
-         would otherwise pick it up and collide with the current compatibility layer. -->
     <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" />
+    <Compile Remove="**/CosmosGen3DiagnosticsCompat.cs" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true'">
