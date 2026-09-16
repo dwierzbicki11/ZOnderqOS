@@ -1,41 +1,101 @@
 <Project Sdk="Cosmos.Sdk/3.0.85">
 
-<PropertyGroup> <OutputType>Exe</OutputType> <TargetFramework>net10.0</TargetFramework> <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers> <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+    <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
 
-<!-- Keep one feature profile for both architectures. Architecture-specific
-     hardware setup belongs in Cosmos/HAL adapters, not throughout the app. -->
-<CosmosEnableNetwork>false</CosmosEnableNetwork>
-<CosmosEnableStorage>true</CosmosEnableStorage>
-<CosmosEnableMouse>true</CosmosEnableMouse>
-<CosmosEnableKeyboard>true</CosmosEnableKeyboard>
-<CosmosEnableGraphics>true</CosmosEnableGraphics>
-<CosmosEnableScheduler>true</CosmosEnableScheduler>
+    <!-- Keep one feature profile for both architectures. Architecture-specific
+         hardware setup belongs in Cosmos/HAL adapters, not throughout the app. -->
+    <CosmosEnableNetwork>false</CosmosEnableNetwork>
+    <CosmosEnableStorage>true</CosmosEnableStorage>
+    <CosmosEnableMouse>true</CosmosEnableMouse>
+    <CosmosEnableKeyboard>true</CosmosEnableKeyboard>
+    <CosmosEnableGraphics>true</CosmosEnableGraphics>
+    <CosmosEnableScheduler>true</CosmosEnableScheduler>
 
-<!-- Make the disabled network state explicit to ZonderqOS code without
-     depending on package-internal networking types. -->
-<DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_DISABLED</DefineConstants>
+    <!-- Make the disabled network state explicit to ZonderqOS code without
+         depending on package-internal networking types. -->
+    <DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_DISABLED</DefineConstants>
 
-<!-- An obsolete experimental shim existed locally in some checkouts. Put it
-     in DefaultItemExcludes as well as Compile Remove so it cannot re-enter
-     through SDK wildcard item discovery on either x64 or ARM64. -->
-<DefaultItemExcludes>$(DefaultItemExcludes);source/Core/CosmosGen3DiagnosticsCompat.cs;**/CosmosGen3DiagnosticsCompat.cs</DefaultItemExcludes>
+    <!-- An obsolete experimental shim existed locally in some checkouts. Put it
+         in DefaultItemExcludes as well as Compile Remove so it cannot re-enter
+         through SDK wildcard item discovery on either x64 or ARM64. -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);source/Core/CosmosGen3DiagnosticsCompat.cs;**/CosmosGen3DiagnosticsCompat.cs</DefaultItemExcludes>
+  </PropertyGroup>
 
-</PropertyGroup>
+  <!-- Keep architecture selection deterministic even when the project is
+       restored/published directly instead of only through `cosmos build`. -->
+  <PropertyGroup Condition="'$(CosmosArch)' == '' and '$(RuntimeIdentifier)' == 'linux-x64'">
+    <CosmosArch>x64</CosmosArch>
+  </PropertyGroup>
 
-<PropertyGroup Condition="'$(CosmosArch)' == 'arm64'"> <!-- QEMU virt ARM64: GICv3 + PL011 + ACPI/ECAM PCI + NVMe/VirtIO devices. --> <CosmosEnableInterrupts>true</CosmosEnableInterrupts> <CosmosEnablePCI>true</CosmosEnablePCI> <CosmosEnableUART>true</CosmosEnableUART> </PropertyGroup>
+  <PropertyGroup Condition="'$(CosmosArch)' == '' and '$(RuntimeIdentifier)' == 'linux-arm64'">
+    <CosmosArch>arm64</CosmosArch>
+  </PropertyGroup>
 
-<ItemGroup> <!-- SDK and runtime packages must stay on the exact same Cosmos release. --> <PackageReference Include="Cosmos.Kernel" Version="3.0.85" /> <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" /> </ItemGroup>
+  <PropertyGroup Condition="'$(CosmosArch)' == 'arm64'">
+    <!-- QEMU virt ARM64: GICv3 + PL011 + ACPI/ECAM PCI + NVMe/VirtIO devices. -->
+    <CosmosEnableInterrupts>true</CosmosEnableInterrupts>
+    <CosmosEnablePCI>true</CosmosEnablePCI>
+    <CosmosEnableUART>true</CosmosEnableUART>
+  </PropertyGroup>
 
-<!-- Platform architecture boundary: Common is always compiled. Exactly one architecture-specific backend remains in Compile items for each build. -->
+  <ItemGroup>
+    <!-- SDK and runtime packages must stay on the exact same Cosmos release. -->
+    <PackageReference Include="Cosmos.Kernel" Version="3.0.85" />
+    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" />
+  </ItemGroup>
 
-<ItemGroup Condition="'$(CosmosArch)' == 'arm64'"> <Compile Remove="source/Platform/X64/**/*.cs" /> </ItemGroup>
+  <!-- Cosmos.Sdk normally injects the architecture HAL package. Remove that
+       implicit item and pin it here so restore and NativeAOT always agree on the
+       selected architecture. This avoids ILC seeing --root:HAL.ARM64 without the
+       corresponding assembly in its reference graph. -->
+  <ItemGroup>
+    <PackageReference Remove="Cosmos.Kernel.HAL.X64" />
+    <PackageReference Remove="Cosmos.Kernel.HAL.ARM64" />
+  </ItemGroup>
 
-<ItemGroup Condition="'$(CosmosArch)' != 'arm64'"> <Compile Remove="source/Platform/Arm64/**/*.cs" /> </ItemGroup>
+  <ItemGroup Condition="'$(CosmosArch)' == 'x64'">
+    <PackageReference Include="Cosmos.Kernel.HAL.X64" Version="3.0.85" />
+  </ItemGroup>
 
-<ItemGroup> <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" /> <Compile Remove="**/CosmosGen3DiagnosticsCompat.cs" /> </ItemGroup>
+  <ItemGroup Condition="'$(CosmosArch)' == 'arm64'">
+    <PackageReference Include="Cosmos.Kernel.HAL.ARM64" Version="3.0.85" />
+  </ItemGroup>
 
-<ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true'"> <!-- Network commands directly consume the Cosmos networking API. Keep them out until the feature is re-enabled and backed by a real platform NIC. --> <Compile Remove="source/Shell/Commands/CmdNetwork.cs" /> <Compile Remove="source/Shell/Commands/CmdIp.cs" /> <Compile Remove="source/Shell/Commands/CmdPing.cs" /> <Compile Remove="source/Shell/Commands/CmdDns.cs" /> </ItemGroup>
+  <!-- Platform architecture boundary: Common is always compiled. Exactly one
+       architecture-specific backend remains in Compile items for each build. -->
+  <ItemGroup Condition="'$(CosmosArch)' == 'arm64'">
+    <Compile Remove="source/Platform/X64/**/*.cs" />
+  </ItemGroup>
 
-<ItemGroup> <EmbeddedResource Include="source/GUI/Icons/Assets/*.png"> <LogicalName>Icons.%(Filename)%(Extension)</LogicalName> </EmbeddedResource> <EmbeddedResource Include="source/Wallpapers/*.png"> <LogicalName>Wallpapers.%(Filename)%(Extension)</LogicalName> </EmbeddedResource> </ItemGroup>
+  <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">
+    <Compile Remove="source/Platform/Arm64/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" />
+    <Compile Remove="**/CosmosGen3DiagnosticsCompat.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true'">
+    <!-- Network commands directly consume the Cosmos networking API. Keep them
+         out until the feature is re-enabled and backed by a real platform NIC. -->
+    <Compile Remove="source/Shell/Commands/CmdNetwork.cs" />
+    <Compile Remove="source/Shell/Commands/CmdIp.cs" />
+    <Compile Remove="source/Shell/Commands/CmdPing.cs" />
+    <Compile Remove="source/Shell/Commands/CmdDns.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="source/GUI/Icons/Assets/*.png">
+      <LogicalName>Icons.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+    <EmbeddedResource Include="source/Wallpapers/*.png">
+      <LogicalName>Wallpapers.%(Filename)%(Extension)</LogicalName>
+    </EmbeddedResource>
+  </ItemGroup>
 
 </Project>
