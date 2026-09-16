@@ -1,0 +1,93 @@
+diff --git a/src/Cosmos.Kernel.Boot.Limine/Limine.cs b/src/Cosmos.Kernel.Boot.Limine/Limine.cs
+index 88f37a1..2bd6f27 100644
+--- a/src/Cosmos.Kernel.Boot.Limine/Limine.cs
++++ b/src/Cosmos.Kernel.Boot.Limine/Limine.cs
+@@ -10,6 +10,7 @@ public static class Limine
+     public static readonly LimineBootTimeRequest BootTime = new();
+     public static readonly LimineEfiSystemTableRequest EfiSystemTable = new();
+     public static readonly LimineExecutableCmdlineRequest ExecutableCmdline = new();
++    public static readonly LimineMpRequest MP = new();
+     public static readonly LimineStackSizeRequest StackSize = new(LimineStackSizeRequest.DefaultRequestedSize);
+ 
+     /// <summary>
+diff --git a/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs b/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+new file mode 100644
+index 0000000..7d36d10
+--- /dev/null
++++ b/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+@@ -0,0 +1,76 @@
++using System.Runtime.InteropServices;
++
++namespace Cosmos.Kernel.Boot.Limine;
++
++/// <summary>
++/// Limine MP request. Merely publishing this request makes Limine bootstrap
++/// secondary processors and park them until the kernel stores an entry point
++/// into each CPU's goto_address field.
++/// </summary>
++[StructLayout(LayoutKind.Sequential)]
++public readonly unsafe struct LimineMpRequest()
++{
++    public readonly LimineID ID = new(0x95a67b819a1b857e, 0xa0b61b723b6a73e0);
++    public readonly ulong Revision = 0;
++    public readonly void* Response;
++
++    // Keep xAPIC for the first bring-up. QEMU exposes <= 128 logical CPUs in
++    // ZOnderqOS and xAPIC gives us a simple 8-bit APIC ID while the scheduler
++    // is being made genuinely per-CPU. x2APIC can be enabled later.
++    public readonly ulong Flags = 0;
++}
++
++/// <summary>x86-64 view of the Limine MP response.</summary>
++[StructLayout(LayoutKind.Sequential)]
++public readonly unsafe struct LimineMpResponseX64
++{
++    public readonly ulong Revision;
++    public readonly uint Flags;
++    public readonly uint BspLapicId;
++    public readonly ulong CpuCount;
++    public readonly LimineMpInfoX64** Cpus;
++}
++
++/// <summary>x86-64 CPU descriptor supplied by Limine.</summary>
++[StructLayout(LayoutKind.Sequential)]
++public unsafe struct LimineMpInfoX64
++{
++    public uint ProcessorId;
++    public uint LapicId;
++    public ulong Reserved;
++    public delegate* unmanaged<LimineMpInfoX64*, void> GotoAddress;
++    public ulong ExtraArgument;
++}
++
++/// <summary>ARM64 view of the Limine MP response.</summary>
++[StructLayout(LayoutKind.Sequential)]
++public readonly unsafe struct LimineMpResponseArm64
++{
++    public readonly ulong Revision;
++    public readonly ulong Flags;
++    public readonly ulong BspMpidr;
++    public readonly ulong CpuCount;
++    public readonly LimineMpInfoArm64** Cpus;
++}
++
++/// <summary>ARM64 CPU descriptor supplied by Limine.</summary>
++[StructLayout(LayoutKind.Sequential)]
++public unsafe struct LimineMpInfoArm64
++{
++    public uint ProcessorId;
++    public uint Reserved1;
++    public ulong Mpidr;
++    public ulong Reserved;
++    public delegate* unmanaged<LimineMpInfoArm64*, void> GotoAddress;
++    public ulong ExtraArgument;
++}
++
++public static unsafe class LimineMp
++{
++    public static LimineMpResponseX64* X64Response =>
++        (LimineMpResponseX64*)Limine.MP.Response;
++
++    public static LimineMpResponseArm64* Arm64Response =>
++        (LimineMpResponseArm64*)Limine.MP.Response;
++}
