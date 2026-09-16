@@ -59,34 +59,33 @@ namespace Cosmos.Kernel.System.Diagnostics
     {
         public const ulong PageSizeBytes = 4096UL;
 
-        // GC.GetGCMemoryInfo() is a collection snapshot. On OrionGC its heap and
-        // committed fields can still be zero before the first collection even
-        // though the runtime has already allocated objects. Use the cumulative
-        // allocation counter only as an early-boot fallback; as soon as a live
-        // snapshot exists, the current heap/committed values win.
+        // GC.GetGCMemoryInfo() is a snapshot captured at the end of the last
+        // collection, so its heap fields may be zero before the first GC and
+        // stale between collections. Cosmos Gen3 wires GC.GetTotalMemory(false)
+        // to OrionGC's live GetHeapSizeBytes() implementation, so use that for
+        // current managed-memory usage. Never use GetTotalAllocatedBytes here:
+        // it is cumulative and therefore grows forever even when memory is freed.
         private static ulong ReadLiveManagedBytes()
         {
             try
             {
-                GCMemoryInfo info = GC.GetGCMemoryInfo();
-                long live = Math.Max(info.TotalCommittedBytes, info.HeapSizeBytes);
+                long live = GC.GetTotalMemory(forceFullCollection: false);
                 if (live > 0)
                     return (ulong)live;
-
-                long allocated = GC.GetTotalAllocatedBytes(precise: false);
-                return allocated > 0 ? (ulong)allocated : 0UL;
             }
             catch
             {
-                try
-                {
-                    long allocated = GC.GetTotalAllocatedBytes(precise: false);
-                    return allocated > 0 ? (ulong)allocated : 0UL;
-                }
-                catch
-                {
-                    return 0UL;
-                }
+            }
+
+            try
+            {
+                GCMemoryInfo info = GC.GetGCMemoryInfo();
+                long snapshot = Math.Max(info.HeapSizeBytes, info.TotalCommittedBytes);
+                return snapshot > 0 ? (ulong)snapshot : 0UL;
+            }
+            catch
+            {
+                return 0UL;
             }
         }
 
@@ -438,12 +437,12 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
     {
         public static bool IsEnabled => true;
 
-        private static ulong ReadEarlyAllocationFallback()
+        private static ulong ReadLiveHeapBytes()
         {
             try
             {
-                long allocated = GC.GetTotalAllocatedBytes(precise: false);
-                return allocated > 0 ? (ulong)allocated : 0UL;
+                long live = GC.GetTotalMemory(forceFullCollection: false);
+                return live > 0 ? (ulong)live : 0UL;
             }
             catch
             {
@@ -453,12 +452,16 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
 
         public static ulong GetHeapSizeBytes()
         {
+            ulong live = ReadLiveHeapBytes();
+            if (live > 0)
+                return live;
+
             try
             {
-                long value = GC.GetGCMemoryInfo().HeapSizeBytes;
-                return value > 0 ? (ulong)value : ReadEarlyAllocationFallback();
+                long snapshot = GC.GetGCMemoryInfo().HeapSizeBytes;
+                return snapshot > 0 ? (ulong)snapshot : 0UL;
             }
-            catch { return ReadEarlyAllocationFallback(); }
+            catch { return 0UL; }
         }
 
         public static ulong GetTotalCommittedBytes()
@@ -467,9 +470,9 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
             {
                 GCMemoryInfo info = GC.GetGCMemoryInfo();
                 long value = Math.Max(info.TotalCommittedBytes, info.HeapSizeBytes);
-                return value > 0 ? (ulong)value : ReadEarlyAllocationFallback();
+                return value > 0 ? (ulong)value : ReadLiveHeapBytes();
             }
-            catch { return ReadEarlyAllocationFallback(); }
+            catch { return ReadLiveHeapBytes(); }
         }
 
         public static ulong GetFragmentedBytes()
