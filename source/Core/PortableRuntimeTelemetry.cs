@@ -9,7 +9,7 @@ namespace ZonderqOS.SystemCore
     /// Cosmos.Kernel.Core for CoreLib. The native implementation samples the
     /// real scheduler busy-time counter, so this is not a synthetic graph.
     /// </summary>
-    internal static partial class PortableRuntimeTelemetry
+    internal static class PortableRuntimeTelemetry
     {
         [StructLayout(LayoutKind.Sequential)]
         internal struct CpuUtilizationState
@@ -19,8 +19,8 @@ namespace ZonderqOS.SystemCore
             internal ulong LastRecordedUserTime;
         }
 
-        [LibraryImport("libSystem.Native", EntryPoint = "SystemNative_GetCpuUtilization")]
-        private static partial double GetCpuUtilizationNative(ref CpuUtilizationState previousCpuInfo);
+        [DllImport("libSystem.Native", EntryPoint = "SystemNative_GetCpuUtilization")]
+        private static extern double GetCpuUtilizationNative(ref CpuUtilizationState previousCpuInfo);
 
         internal static int SampleCpuPercent(ref CpuUtilizationState state)
         {
