@@ -1,0 +1,92 @@
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Import/ContextSwitchNative.cs b/src/Cosmos.Kernel.Core/Bridge/Import/ContextSwitchNative.cs
+index 8bc8d51..3aab7f0 100644
+--- a/src/Cosmos.Kernel.Core/Bridge/Import/ContextSwitchNative.cs
++++ b/src/Cosmos.Kernel.Core/Bridge/Import/ContextSwitchNative.cs
+@@ -25,6 +25,11 @@ internal static unsafe partial class ContextSwitchNative
+     [SuppressGCTransition]
+     public static partial void SetContextSwitchNewThread(int isNew);
+ 
++    [LibraryImport("*", EntryPoint = "_native_get_current_cpu_id")]
++    [SuppressGCTransition]
++    public static partial uint GetCurrentCpuId();
++
+     /// <summary>
+     /// Captures the calling frame's callee-saved registers + stack pointer into the supplied
+     /// <c>REGDISPLAY</c> and returns the caller's return address (IP). Used by the precise GC
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+index 4bc69cd..3e986be 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+@@ -426,16 +426,13 @@ public static class SchedulerManager
+     internal static int ThreadCount => s_allThreadCount;
+ 
+     /// <summary>
+-    /// Returns the CPU ID currently executing this code path. Single-CPU
+-    /// today. Internal: a policy is handed the CPU it operates on by every
+-    /// hook, and a caller holding a <see cref="SchedulerThread"/> reads
+-    /// <see cref="SchedulerThread.CpuId"/>, which stays correct under SMP where this
+-    /// constant does not.
+-    /// TODO(SMP): replace with x86_64 GS-relative per-CPU storage or ARM64 MPIDR_EL1
+-    /// affinity read once application processors are brought online.
++    /// Returns the logical CPU currently executing this code path. x64 maps
++    /// this to the current xAPIC ID; ARM64 remains CPU0 until its separate MP
++    /// bring-up grows a dense MPIDR-to-scheduler-index map.
+     /// </summary>
+-    internal static uint GetCurrentCpuId() => 0;
++    internal static uint GetCurrentCpuId() => ContextSwitchNative.GetCurrentCpuId();
+ 
+     /// <summary>
+     /// Sum of TotalRuntime across all non-idle threads, in nanoseconds.
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+index f6a9d8c..60526bf 100644
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -317,6 +317,20 @@ _native_get_sp:
+     mov rax, rsp
+     ret
+ 
++// uint _native_get_current_cpu_id(void)
++// Return the current logical processor's xAPIC ID. The SMT bring-up keeps
++// x2APIC disabled initially, so CPUID.1:EBX[31:24] is sufficient and matches
++// the index used by the per-CPU context-switch staging arrays.
++.global _native_get_current_cpu_id
++_native_get_current_cpu_id:
++    push rbx
++    mov eax, 1
++    xor ecx, ecx
++    cpuid
++    shr ebx, 24
++    mov eax, ebx
++    pop rbx
++    ret
++
+ // uint64_t _native_x64_get_last_error_code()
+ // Returns the error code stashed by the most recent error-code exception
+ // stub (vectors 8, 10-14, 17, 21, 29, 30). Only meaningful while handling
+diff --git a/src/Cosmos.Kernel.Native.ARM64/CPU/ContextSwitch.s b/src/Cosmos.Kernel.Native.ARM64/CPU/ContextSwitch.s
+index 16b96e0..a8cf71d 100644
+--- a/src/Cosmos.Kernel.Native.ARM64/CPU/ContextSwitch.s
++++ b/src/Cosmos.Kernel.Native.ARM64/CPU/ContextSwitch.s
+@@ -4,6 +4,7 @@
+ .global _native_get_context_switch_sp
+ .global _native_get_sp
+ .global _native_set_context_switch_new_thread
++.global _native_get_current_cpu_id
+ .global _context_switch_target_sp
+ .global _context_switch_is_new_thread
+ .global _temp_is_new_thread
+@@ -56,6 +57,13 @@ _native_get_sp:
+     mov     x0, sp
+     ret
+ 
++// uint _native_get_current_cpu_id(void)
++// ARM64 SMP is a separate bring-up. Preserve the current CPU0-only behavior
++// while exporting the same cross-architecture symbol consumed by Core.
++.balign 4
++_native_get_current_cpu_id:
++    mov     x0, #0
++    ret
++
+ // void _native_set_context_switch_new_thread(int isNew)
+ // Sets whether the target thread is NEW (1) or RESUMED (0)
+ // x0 = isNew flag
