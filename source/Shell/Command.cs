@@ -14,9 +14,10 @@ namespace ZonderqOS
             _commands.Clear();
 
 #if ARCH_ARM64
-            // Raspberry Pi bring-up profile: use the real shell dispatcher and
-            // real command implementations, but register only commands that do
-            // not require storage, networking, GUI, input IRQs or the scheduler.
+            // QEMU ARM64 profile: use the real shell dispatcher and command
+            // implementations that do not depend on storage, networking, GUI
+            // startup or the scheduler. Keyboard input is provided by Cosmos'
+            // VirtIO-MMIO keyboard backend through System.Console.
             _commands.Add(new CmdPwd());
             _commands.Add(new CmdClear());
             _commands.Add(new CmdEcho());
@@ -138,6 +139,8 @@ namespace ZonderqOS
                         }
 
                         pipedInput = captured;
+                        if (!CommandIO.LastCommandSuccess)
+                            break;
                     }
                     else
                     {
@@ -148,310 +151,286 @@ namespace ZonderqOS
             finally
             {
                 CommandIO.SetInput(null);
+                CommandIO.ResetRedirection();
             }
         }
 
         private static void ExecuteSingleCommandWithRedirection(string commandLine, ref string currentPath)
         {
-            string redirectPath = null;
-            bool appendMode = false;
-            int redirectIndex = FindRedirection(commandLine, out appendMode);
-            string commandPart = commandLine;
+            bool append;
+            string redirectPath;
+            string commandPart;
 
-            if (redirectIndex >= 0)
+            ParseOutputRedirection(commandLine, out commandPart, out redirectPath, out append);
+
+            if (redirectPath == null)
             {
+                ExecuteSingleCommand(commandPart, ref currentPath);
+                return;
+            }
+
 #if ARCH_ARM64
-                ReportError("File redirection is unavailable while ARM64 storage is disabled.");
-                CommandIO.LastCommandSuccess = false;
-                return;
+            CommandIO.WriteLine("redirection: unavailable in the ARM64 QEMU shell profile");
+            CommandIO.LastCommandSuccess = false;
 #else
-                commandPart = commandLine.Substring(0, redirectIndex);
-                redirectPath = commandLine.Substring(redirectIndex + (appendMode ? 2 : 1)).Trim();
-
-                if (string.IsNullOrEmpty(redirectPath))
-                {
-                    ReportError("Missing redirection target path.");
-                    CommandIO.LastCommandSuccess = false;
-                    return;
-                }
-
-                redirectPath = UnquotePath(redirectPath);
-                if (string.IsNullOrEmpty(redirectPath))
-                {
-                    ReportError("Invalid redirection target path.");
-                    CommandIO.LastCommandSuccess = false;
-                    return;
-                }
-#endif
+            string output = string.Empty;
+            CommandIO.StartRedirection();
+            try
+            {
+                ExecuteSingleCommand(commandPart, ref currentPath);
+            }
+            finally
+            {
+                output = CommandIO.EndRedirection();
             }
 
-            string[] words = Tokenize(commandPart);
-            if (words.Length == 0)
+            if (!CommandIO.LastCommandSuccess)
+                return;
+
+            string resolvedPath = PathResolver.Resolve(redirectPath, currentPath);
+
+            try
             {
+                if (append && File.Exists(resolvedPath))
+                {
+                    string previous = File.ReadAllText(resolvedPath);
+                    File.WriteAllText(resolvedPath, previous + output);
+                }
+                else
+                {
+                    File.WriteAllText(resolvedPath, output);
+                }
+
+                CommandIO.LastCommandSuccess = true;
+            }
+            catch (Exception ex)
+            {
+                WriteMessage.WriteError("redirection failed: " + ex.Message, "SHELL");
                 CommandIO.LastCommandSuccess = false;
+            }
+#endif
+        }
+
+        private static void ExecuteSingleCommand(string input, ref string currentPath)
+        {
+            List<string> tokens = Tokenize(input);
+            if (tokens.Count == 0)
+            {
+                CommandIO.LastCommandSuccess = true;
                 return;
             }
 
-            string cmdName = words[0].ToLower();
-            ICommand targetCmd = null;
+            string commandName = tokens[0];
+            string[] args = new string[tokens.Count - 1];
+            for (int i = 1; i < tokens.Count; i++)
+                args[i - 1] = tokens[i];
 
-            for (int i = 0; i < _commands.Count; i++)
+            ICommand command = FindCommand(commandName);
+            if (command == null)
             {
-                if (_commands[i].Name == cmdName)
-                {
-                    targetCmd = _commands[i];
-                    break;
-                }
-            }
-
-            if (targetCmd == null)
-            {
-                ReportError($"Unknown command: {cmdName}");
+                CommandIO.WriteLine(commandName + ": command not found");
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
 
             try
             {
-#if ARCH_ARM64
-                targetCmd.Execute(words, ref currentPath);
-#else
-                if (!string.IsNullOrEmpty(redirectPath))
-                {
-                    string resolvedPath = PathResolver.GetAbsolutePath(currentPath, redirectPath);
-                    string output = string.Empty;
-
-                    CommandIO.StartRedirection();
-                    try
-                    {
-                        targetCmd.Execute(words, ref currentPath);
-                    }
-                    finally
-                    {
-                        output = CommandIO.EndRedirection();
-                    }
-
-                    if (appendMode)
-                        Disk.AppendFile(resolvedPath, output.TrimEnd('\r', '\n'));
-                    else
-                        Disk.CreateFile(resolvedPath, output.TrimEnd('\r', '\n'));
-                }
-                else
-                {
-                    targetCmd.Execute(words, ref currentPath);
-                }
-#endif
+                command.Execute(args, ref currentPath);
             }
             catch (Exception ex)
             {
-                ReportError($"Command '{cmdName}' execution failed: {ex.Message}");
+#if ARCH_ARM64
+                CommandIO.WriteLine(commandName + ": " + ex.Message);
+#else
+                WriteMessage.WriteError(commandName + ": " + ex.Message, "SHELL");
+#endif
                 CommandIO.LastCommandSuccess = false;
             }
         }
 
-        private static void ReportError(string message)
+        private static ICommand FindCommand(string name)
         {
-#if ARCH_ARM64
-            CommandIO.WriteLine($"[CMD] [ERROR] {message}");
-#else
-            WriteMessage.WriteError(message, "CMD");
-#endif
-        }
-
-        private static int FindRedirection(string value, out bool appendMode)
-        {
-            appendMode = false;
-            bool inDoubleQuotes = false;
-            bool inSingleQuotes = false;
-            bool escaped = false;
-
-            for (int i = 0; i < value.Length; i++)
+            for (int i = 0; i < _commands.Count; i++)
             {
-                char c = value[i];
-                if (escaped)
-                {
-                    escaped = false;
-                    continue;
-                }
-
-                if (c == '\\')
-                {
-                    escaped = true;
-                    continue;
-                }
-
-                if (c == '"' && !inSingleQuotes)
-                {
-                    inDoubleQuotes = !inDoubleQuotes;
-                    continue;
-                }
-
-                if (c == '\'' && !inDoubleQuotes)
-                {
-                    inSingleQuotes = !inSingleQuotes;
-                    continue;
-                }
-
-                if (!inDoubleQuotes && !inSingleQuotes && c == '>')
-                {
-                    appendMode = i + 1 < value.Length && value[i + 1] == '>';
-                    return i;
-                }
+                if (string.Equals(_commands[i].Name, name, StringComparison.OrdinalIgnoreCase))
+                    return _commands[i];
             }
 
-            return -1;
+            return null;
         }
 
-        private static List<string> SplitOutsideQuotes(string input, string separator)
+        private static List<string> Tokenize(string input)
         {
-            var result = new List<string>();
-            if (string.IsNullOrEmpty(input))
-                return result;
-
-            var current = new StringBuilder();
-            bool inDoubleQuotes = false;
-            bool inSingleQuotes = false;
-            bool escaped = false;
+            List<string> tokens = new List<string>();
+            StringBuilder current = new StringBuilder();
+            bool inSingle = false;
+            bool inDouble = false;
+            bool escaping = false;
 
             for (int i = 0; i < input.Length; i++)
             {
                 char c = input[i];
 
-                if (escaped)
+                if (escaping)
                 {
                     current.Append(c);
-                    escaped = false;
+                    escaping = false;
                     continue;
                 }
 
-                if (c == '\\')
+                if (c == '\\' && !inSingle)
                 {
-                    current.Append(c);
-                    escaped = true;
+                    escaping = true;
                     continue;
                 }
 
-                if (c == '"' && !inSingleQuotes)
+                if (c == '\'' && !inDouble)
                 {
-                    inDoubleQuotes = !inDoubleQuotes;
-                    current.Append(c);
+                    inSingle = !inSingle;
                     continue;
                 }
 
-                if (c == '\'' && !inDoubleQuotes)
+                if (c == '"' && !inSingle)
                 {
-                    inSingleQuotes = !inSingleQuotes;
-                    current.Append(c);
+                    inDouble = !inDouble;
                     continue;
                 }
 
-                if (!inDoubleQuotes && !inSingleQuotes && MatchesAt(input, separator, i))
+                if (char.IsWhiteSpace(c) && !inSingle && !inDouble)
                 {
-                    result.Add(current.ToString());
-                    current.Clear();
-                    i += separator.Length - 1;
+                    if (current.Length > 0)
+                    {
+                        tokens.Add(current.ToString());
+                        current.Clear();
+                    }
                     continue;
                 }
 
                 current.Append(c);
             }
 
-            result.Add(current.ToString());
-            return result;
+            if (escaping)
+                current.Append('\\');
+
+            if (current.Length > 0)
+                tokens.Add(current.ToString());
+
+            return tokens;
         }
 
-        private static bool MatchesAt(string value, string separator, int index)
+        private static List<string> SplitOutsideQuotes(string input, string separator)
         {
-            if (index + separator.Length > value.Length)
+            List<string> parts = new List<string>();
+            int start = 0;
+            bool inSingle = false;
+            bool inDouble = false;
+            bool escaping = false;
+
+            for (int i = 0; i <= input.Length - separator.Length; i++)
+            {
+                char c = input[i];
+
+                if (escaping)
+                {
+                    escaping = false;
+                    continue;
+                }
+
+                if (c == '\\' && !inSingle)
+                {
+                    escaping = true;
+                    continue;
+                }
+
+                if (c == '\'' && !inDouble)
+                {
+                    inSingle = !inSingle;
+                    continue;
+                }
+
+                if (c == '"' && !inSingle)
+                {
+                    inDouble = !inDouble;
+                    continue;
+                }
+
+                if (!inSingle && !inDouble && MatchesAt(input, separator, i))
+                {
+                    parts.Add(input.Substring(start, i - start));
+                    i += separator.Length - 1;
+                    start = i + 1;
+                }
+            }
+
+            parts.Add(input.Substring(start));
+            return parts;
+        }
+
+        private static bool MatchesAt(string text, string value, int index)
+        {
+            if (index + value.Length > text.Length)
                 return false;
 
-            for (int i = 0; i < separator.Length; i++)
+            for (int i = 0; i < value.Length; i++)
             {
-                if (value[index + i] != separator[i])
+                if (text[index + i] != value[i])
                     return false;
             }
 
             return true;
         }
 
-        private static string[] Tokenize(string commandPart)
+        private static void ParseOutputRedirection(string input, out string commandPart, out string redirectPath, out bool append)
         {
-            var tokens = new List<string>();
-            var current = new StringBuilder();
-            bool inDoubleQuotes = false;
-            bool inSingleQuotes = false;
-            bool escaped = false;
-            bool tokenStarted = false;
+            commandPart = input;
+            redirectPath = null;
+            append = false;
 
-            for (int i = 0; i < commandPart.Length; i++)
+            bool inSingle = false;
+            bool inDouble = false;
+            bool escaping = false;
+
+            for (int i = 0; i < input.Length; i++)
             {
-                char c = commandPart[i];
+                char c = input[i];
 
-                if (escaped)
+                if (escaping)
                 {
-                    current.Append(c);
-                    tokenStarted = true;
-                    escaped = false;
+                    escaping = false;
                     continue;
                 }
 
-                if (c == '\\')
+                if (c == '\\' && !inSingle)
                 {
-                    escaped = true;
-                    tokenStarted = true;
+                    escaping = true;
                     continue;
                 }
 
-                if (c == '"' && !inSingleQuotes)
+                if (c == '\'' && !inDouble)
                 {
-                    inDoubleQuotes = !inDoubleQuotes;
-                    tokenStarted = true;
+                    inSingle = !inSingle;
                     continue;
                 }
 
-                if (c == '\'' && !inDoubleQuotes)
+                if (c == '"' && !inSingle)
                 {
-                    inSingleQuotes = !inSingleQuotes;
-                    tokenStarted = true;
+                    inDouble = !inDouble;
                     continue;
                 }
 
-                if (!inDoubleQuotes && !inSingleQuotes && char.IsWhiteSpace(c))
-                {
-                    if (tokenStarted)
-                    {
-                        tokens.Add(current.ToString());
-                        current.Clear();
-                        tokenStarted = false;
-                    }
+                if (c != '>' || inSingle || inDouble)
                     continue;
-                }
 
-                current.Append(c);
-                tokenStarted = true;
+                append = i + 1 < input.Length && input[i + 1] == '>';
+                int pathStart = i + (append ? 2 : 1);
+                commandPart = input.Substring(0, i).TrimEnd();
+                redirectPath = input.Substring(pathStart).Trim();
+
+                if (redirectPath.Length == 0)
+                    redirectPath = null;
+
+                return;
             }
-
-            if (escaped)
-                current.Append('\\');
-
-            if (tokenStarted)
-                tokens.Add(current.ToString());
-
-            return tokens.ToArray();
-        }
-
-        private static string UnquotePath(string value)
-        {
-            string path = value.Trim();
-            if (path.Length >= 2)
-            {
-                char first = path[0];
-                char last = path[path.Length - 1];
-                if ((first == '"' && last == '"') || (first == '\'' && last == '\''))
-                    path = path.Substring(1, path.Length - 2);
-            }
-
-            return path.Replace("\\\"", "\"").Replace("\\'", "'");
         }
     }
 }
