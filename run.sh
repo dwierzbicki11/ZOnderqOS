@@ -11,6 +11,8 @@ HW_THREADS=1
 HW_RAM=""
 HW_CPU_MODEL=""
 HW_VCPUS=1
+DISPLAY_WIDTH=1920
+DISPLAY_HEIGHT=1080
 
 print_header() {
     clear
@@ -350,7 +352,7 @@ run_arm64() {
     echo "[ARM64] UEFI: $firmware"
     echo "[ARM64] QEMU: $(qemu-system-aarch64 --version | head -n 1)"
     echo "[ARM64] Input: VirtIO MMIO keyboard + mouse"
-    echo "[ARM64] Display: UEFI GOP / ramfb"
+    echo "[ARM64] Display: UEFI GOP / ramfb ${DISPLAY_WIDTH}x${DISPLAY_HEIGHT}"
     echo "[ARM64] Scheduler: ON"
     echo "[ARM64] PCI/storage: ON (NVMe when an image is present)"
     echo "[ARM64] PCI address space: low ECAM/MMIO compatibility mode"
@@ -368,7 +370,7 @@ run_arm64() {
         -device scsi-cd,drive=cd,bootindex=0
         -device virtio-keyboard-device
         -device virtio-mouse-device
-        -device ramfb
+        -device "ramfb,xres=${DISPLAY_WIDTH},yres=${DISPLAY_HEIGHT}"
         -display gtk,zoom-to-fit=on
         -serial stdio
         -no-reboot
