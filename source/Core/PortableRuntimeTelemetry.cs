@@ -1,13 +1,13 @@
+#if ARCH_ARM64
 using System;
 using System.Runtime.InteropServices;
 
 namespace ZonderqOS.SystemCore
 {
     /// <summary>
-    /// Architecture-neutral bridge to the CPU utilization entry point already
-    /// exported by Cosmos.Kernel.Core for CoreLib. This avoids depending on the
-    /// optional Cosmos.Kernel.System.Diagnostics facade on ARM64 while still
-    /// reporting scheduler-backed, non-fabricated CPU utilization.
+    /// ARM64 bridge to the CPU utilization entry point already exported by
+    /// Cosmos.Kernel.Core for CoreLib. The native implementation samples the
+    /// real scheduler busy-time counter, so this is not a synthetic graph.
     /// </summary>
     internal static partial class PortableRuntimeTelemetry
     {
@@ -38,5 +38,15 @@ namespace ZonderqOS.SystemCore
                 return 0;
             }
         }
+
+        internal static ulong SampleBusyCpuTimeNs(ref CpuUtilizationState state)
+        {
+            // The native helper stores SchedulerManager.GetBusyCpuTimeNs() in
+            // LastRecordedUserTime whenever it takes a sample. A call made too
+            // soon simply leaves the previous real value in place.
+            SampleCpuPercent(ref state);
+            return state.LastRecordedUserTime;
+        }
     }
 }
+#endif
