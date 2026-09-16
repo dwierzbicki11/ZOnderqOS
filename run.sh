@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_ISO=""
 cd "$ROOT_DIR"
 
 print_header() {
@@ -42,7 +43,9 @@ sync_repo() {
 
 clean_build_cache() {
     local arch="$1"
-    echo "[$(printf '%s' "$arch" | tr '[:lower:]' '[:upper:]')] Czyszczenie cache builda..."
+    local label
+    label="$(printf '%s' "$arch" | tr '[:lower:]' '[:upper:]')"
+    echo "[$label] Czyszczenie cache builda..."
 
     # obj/bin are shared MSBuild/NativeAOT intermediates. Removing them on an
     # architecture switch prevents x64 and ARM64 compile assets from mixing.
@@ -60,16 +63,14 @@ build_iso() {
     echo "[$label] Budowanie ZonderqOS..."
     cosmos build -a "$arch"
 
-    local iso="$ROOT_DIR/output-$arch/ZonderqOS.iso"
-    [[ -f "$iso" ]] || fail "Brak obrazu po buildzie: $iso"
-    printf '%s\n' "$iso"
+    BUILD_ISO="$ROOT_DIR/output-$arch/ZonderqOS.iso"
+    [[ -f "$BUILD_ISO" ]] || fail "Brak obrazu po buildzie: $BUILD_ISO"
 }
 
 run_x64() {
     require_command qemu-system-x86_64
-
-    local iso
-    iso="$(build_iso x64)"
+    build_iso x64
+    local iso="$BUILD_ISO"
 
     echo
     echo "[X64] Uruchamianie QEMU..."
@@ -142,9 +143,8 @@ find_arm64_firmware() {
 
 run_arm64() {
     require_command qemu-system-aarch64
-
-    local iso
-    iso="$(build_iso arm64)"
+    build_iso arm64
+    local iso="$BUILD_ISO"
 
     local firmware
     firmware="$(find_arm64_firmware)"
