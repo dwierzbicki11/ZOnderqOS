@@ -19,7 +19,7 @@ namespace ZonderqOS
             Console.Clear();
             Console.WriteLine("========================================");
             Console.WriteLine(" ZonderqOS ARM64 - Raspberry Pi 4");
-            Console.WriteLine(" XHCI STAGE 1B - FW HANDOFF + RESET");
+            Console.WriteLine(" XHCI STAGE 1C - NATIVE C RESET PATH");
             Console.WriteLine("========================================");
             Console.WriteLine();
             Console.WriteLine("UART: OFF");
@@ -47,8 +47,8 @@ namespace ZonderqOS
             bool resetReady = Rpi4XhciResetStage.Run();
             Console.WriteLine();
             Console.WriteLine(resetReady
-                ? "xHCI Stage 1B complete. Next: DMA + command/event rings."
-                : "xHCI Stage 1B failed. Rings/HID were NOT attempted.");
+                ? "xHCI Stage 1C complete. Next: DMA + command/event rings."
+                : "xHCI Stage 1C failed. Rings/HID were NOT attempted.");
             Console.WriteLine();
             Console.WriteLine("Shell core ready.");
             Console.WriteLine();
