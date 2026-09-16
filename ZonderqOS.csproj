@@ -32,6 +32,13 @@
     <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Obsolete local shim from the pre-3.0.85 experiments. Some developer
+         checkouts still have this file untracked; SDK wildcard compilation
+         would otherwise pick it up and collide with the current compatibility layer. -->
+    <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true'">
     <!-- Network commands directly consume the Cosmos networking API. Keep them
          out until the feature is re-enabled and backed by a real platform NIC. -->
