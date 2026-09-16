@@ -1,9 +1,12 @@
 <Project Sdk="Cosmos.Sdk/3.0.85">
 
   <PropertyGroup>
-    <!-- Keep the feature surface identical on x86_64 and ARM64/QEMU wherever
-         Cosmos Gen3 has a backend for both architectures. Networking remains
-         intentionally disabled on both profiles. -->
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
+
+    <!-- Keep one feature profile for both architectures. Architecture-specific
+         hardware setup belongs in Cosmos/HAL adapters, not throughout the app. -->
     <CosmosEnableNetwork>false</CosmosEnableNetwork>
     <CosmosEnableStorage>true</CosmosEnableStorage>
     <CosmosEnableMouse>true</CosmosEnableMouse>
@@ -11,41 +14,31 @@
     <CosmosEnableGraphics>true</CosmosEnableGraphics>
     <CosmosEnableScheduler>true</CosmosEnableScheduler>
 
-    <!-- QEMU virt ARM64 uses GICv3, PL011, ACPI/ECAM PCI and VirtIO-MMIO
-         keyboard/mouse. PCI is also required for the NVMe data disk used by
-         the normal ZonderqOS VFS/storage path. -->
-    <CosmosEnableInterrupts Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnableInterrupts>
-    <CosmosEnablePCI Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnablePCI>
-    <CosmosEnableUART Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnableUART>
+    <!-- Make the disabled network state explicit to ZonderqOS code without
+         depending on package-internal networking types. -->
+    <DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_DISABLED</DefineConstants>
+  </PropertyGroup>
 
-    <!-- One kernel and one application surface on both architectures. -->
-    <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
-
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+  <PropertyGroup Condition="'$(CosmosArch)' == 'arm64'">
+    <!-- QEMU virt ARM64: GICv3 + PL011 + ACPI/ECAM PCI + NVMe/VirtIO devices. -->
+    <CosmosEnableInterrupts>true</CosmosEnableInterrupts>
+    <CosmosEnablePCI>true</CosmosEnablePCI>
+    <CosmosEnableUART>true</CosmosEnableUART>
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Keep SDK, kernel and system packages on exactly the same release.
-         3.0.85 rebuilds the multi-arch artifacts coherently, which is required
-         for ARM64 NativeAOT to see the same public ABI at compile and link time. -->
+    <!-- SDK and runtime packages must stay on the exact same Cosmos release. -->
     <PackageReference Include="Cosmos.Kernel" Version="3.0.85" />
     <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" />
   </ItemGroup>
 
-  <ItemGroup>
-    <!-- Networking is disabled globally for now, so keep its command surface
-         out of both architecture builds until the feature is restored. -->
-    <Compile Remove="source/Core/CosmosGen3NetworkGlobalUsings.cs" />
-    <Compile Remove="source/GUI/Application/LegacyNetworkConfig.cs" />
+  <ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true'">
+    <!-- Network commands directly consume the Cosmos networking API. Keep them
+         out until the feature is re-enabled and backed by a real platform NIC. -->
     <Compile Remove="source/Shell/Commands/CmdNetwork.cs" />
     <Compile Remove="source/Shell/Commands/CmdIp.cs" />
     <Compile Remove="source/Shell/Commands/CmdPing.cs" />
     <Compile Remove="source/Shell/Commands/CmdDns.cs" />
-
-    <!-- The old reduced ARM64 shell kernel is retained in git history only;
-         ARM64 now boots the same ZonderqOS.Kernel class as x86_64. -->
-    <Compile Remove="Arm64QemuKernel.cs" />
   </ItemGroup>
 
   <ItemGroup>
