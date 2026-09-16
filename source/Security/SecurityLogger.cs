@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using Cosmos.Kernel.HAL.X64.Devices.Clock;
 
 namespace ZonderqOS
 {
@@ -33,18 +32,14 @@ namespace ZonderqOS
                 string currentUser = SecurityContext.CurrentUser ?? "unknown";
                 string logEntry = $"[{GetTimestamp()}] [{severity}] [UID:{currentUser}] {message}\n";
 
-                // Log bezpieczeństwa nie może rosnąć bez końca. Przed dopisaniem
-                // nowego wpisu rotujemy go po przekroczeniu limitu.
                 if (File.Exists(LogPath) && new FileInfo(LogPath).Length + logEntry.Length > MaxLogSize)
-                {
                     File.WriteAllText(LogPath, $"[{GetTimestamp()}] [SYS] Security audit log rotated.\n");
-                }
 
                 File.AppendAllText(LogPath, logEntry);
             }
             catch
             {
-                // Błąd loggera nie może doprowadzić do kernel panic.
+                // Logging must never panic the kernel.
             }
         }
 
@@ -54,14 +49,10 @@ namespace ZonderqOS
                 return SystemLogLevel.Info;
 
             string value = severity.ToUpperInvariant();
-            if (value == "CRITICAL" || value == "FATAL")
-                return SystemLogLevel.Critical;
-            if (value == "ERROR" || value == "ERR")
-                return SystemLogLevel.Error;
-            if (value == "WARN" || value == "WARNING")
-                return SystemLogLevel.Warning;
-            if (value == "DEBUG")
-                return SystemLogLevel.Debug;
+            if (value == "CRITICAL" || value == "FATAL") return SystemLogLevel.Critical;
+            if (value == "ERROR" || value == "ERR") return SystemLogLevel.Error;
+            if (value == "WARN" || value == "WARNING") return SystemLogLevel.Warning;
+            if (value == "DEBUG") return SystemLogLevel.Debug;
             return SystemLogLevel.Info;
         }
 
@@ -69,15 +60,10 @@ namespace ZonderqOS
         {
             try
             {
-                var (year, month, day, hour, minute, second) = RTC.ReadTime();
-                string strYear = "20" + year.ToString("D2");
-                string strMonth = month.ToString("D2");
-                string strDay = day.ToString("D2");
-                string strHour = hour.ToString("D2");
-                string strMinute = minute.ToString("D2");
-                string strSecond = second.ToString("D2");
-
-                return $"{strYear}-{strMonth}-{strDay} {strHour}:{strMinute}:{strSecond}";
+                DateTime now = DateTime.Now;
+                return now.Year.ToString("D4") + "-" + now.Month.ToString("D2") + "-" +
+                       now.Day.ToString("D2") + " " + now.Hour.ToString("D2") + ":" +
+                       now.Minute.ToString("D2") + ":" + now.Second.ToString("D2");
             }
             catch
             {
