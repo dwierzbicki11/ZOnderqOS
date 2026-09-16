@@ -26,7 +26,7 @@
   </PropertyGroup>
 
   <!-- Keep architecture selection deterministic even when the project is
-       restored/published directly instead of only through `cosmos build`. -->
+       restored/published directly instead of only through cosmos build. -->
   <PropertyGroup Condition="'$(CosmosArch)' == '' and '$(RuntimeIdentifier)' == 'linux-x64'">
     <CosmosArch>x64</CosmosArch>
   </PropertyGroup>
@@ -50,7 +50,7 @@
 
   <!-- Cosmos.Sdk normally injects the architecture HAL package. Remove that
        implicit item and pin it here so restore and NativeAOT always agree on the
-       selected architecture. This avoids ILC seeing --root:HAL.ARM64 without the
+       selected architecture. This avoids ILC rooting HAL.ARM64 without the
        corresponding assembly in its reference graph. -->
   <ItemGroup>
     <PackageReference Remove="Cosmos.Kernel.HAL.X64" />
