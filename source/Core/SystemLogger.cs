@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using Cosmos.Kernel.HAL.X64.Devices.Clock;
 
 namespace ZonderqOS
 {
@@ -22,11 +21,6 @@ namespace ZonderqOS
         public string TimeText;
     }
 
-    /// <summary>
-    /// General-purpose system log used by kernel, GUI and services. The in-memory
-    /// ring stays bounded and remains useful even when the filesystem is unavailable.
-    /// Persistent logging is best-effort and must never become a source of kernel faults.
-    /// </summary>
     public static class SystemLogger
     {
         public const string LogPath = "/var/log/system.log";
@@ -68,17 +62,13 @@ namespace ZonderqOS
                             if (new FileInfo(LogPath).Length > MaxLogBytes)
                                 File.WriteAllText(LogPath, "[SYSTEM] Previous system log rotated at boot.\n");
                         }
-                        catch
-                        {
-                        }
+                        catch { }
                     }
                     else
                     {
                         File.WriteAllText(LogPath, string.Empty);
                     }
 
-                    // Flush messages collected before VFS/log initialization. This keeps
-                    // early boot diagnostics without forcing file IO before storage is ready.
                     int start = count == Capacity ? writeIndex : 0;
                     for (int i = 0; i < count; i++)
                     {
@@ -90,7 +80,6 @@ namespace ZonderqOS
                 }
                 catch
                 {
-                    // The memory ring is still valid even if persistent storage failed.
                     initialized = false;
                 }
             }
@@ -99,9 +88,7 @@ namespace ZonderqOS
             {
                 PermissionManager.SetPermission(LogPath, "root", 600);
             }
-            catch
-            {
-            }
+            catch { }
 
             Log(SystemLogLevel.Info, "LOGGER", "Central system logger initialized.");
         }
@@ -206,9 +193,7 @@ namespace ZonderqOS
                 if (estimated > MaxLogBytes)
                     File.WriteAllText(LogPath, "[SYSTEM] Log rotated after reaching size limit.\n");
             }
-            catch
-            {
-            }
+            catch { }
         }
 
         private static void AppendPersistentLocked(SystemLogEntry entry)
@@ -217,9 +202,7 @@ namespace ZonderqOS
             {
                 File.AppendAllText(LogPath, Format(entry) + "\n");
             }
-            catch
-            {
-            }
+            catch { }
         }
 
         private static string NormalizeSource(string source)
@@ -255,10 +238,10 @@ namespace ZonderqOS
         {
             try
             {
-                var (year, month, day, hour, minute, second) = RTC.ReadTime();
-                return "20" + year.ToString("D2") + "-" + month.ToString("D2") + "-" +
-                       day.ToString("D2") + " " + hour.ToString("D2") + ":" +
-                       minute.ToString("D2") + ":" + second.ToString("D2");
+                DateTime now = DateTime.Now;
+                return now.Year.ToString("D4") + "-" + now.Month.ToString("D2") + "-" +
+                       now.Day.ToString("D2") + " " + now.Hour.ToString("D2") + ":" +
+                       now.Minute.ToString("D2") + ":" + now.Second.ToString("D2");
             }
             catch
             {
