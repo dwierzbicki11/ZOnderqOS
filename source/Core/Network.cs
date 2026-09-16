@@ -3,8 +3,8 @@ using System.Collections.Generic;
 namespace ZonderqOS
 {
     /// <summary>
-    /// Compatibility snapshot retained so non-network UI code can compile while
-    /// networking is intentionally disabled in ZonderqOS.
+    /// Stable application-facing network device snapshot. UI code depends on
+    /// this type instead of Cosmos NIC implementation details.
     /// </summary>
     public sealed class NetworkDeviceInfo
     {
@@ -18,20 +18,23 @@ namespace ZonderqOS
     }
 
     /// <summary>
-    /// Networking is disabled until the Cosmos Gen3 hardware paths used by
-    /// ZonderqOS are complete. No DHCP, DNS, ICMP, UDP or NIC initialization
-    /// is performed from this facade.
+    /// ZonderqOS network facade. Networking is disabled at build-profile level
+    /// until the required Cosmos Gen3 hardware paths are stable on both targets.
+    /// Consumers can still query deterministic state without touching Cosmos
+    /// networking namespaces or architecture-specific adapters.
     /// </summary>
     public static class Network
     {
-        public static List<NetworkDeviceInfo> Devices { get; } = new List<NetworkDeviceInfo>();
+        private static readonly List<NetworkDeviceInfo> devices = new List<NetworkDeviceInfo>();
+
+        public static IReadOnlyList<NetworkDeviceInfo> Devices => devices;
         public static NetworkDeviceInfo ActiveDevice => null;
         public static bool IsReady => false;
         public static string CurrentAddress => "0.0.0.0";
 
         public static void Initialize()
         {
-            Devices.Clear();
+            devices.Clear();
         }
 
         public static bool SetActiveDevice(int index) => false;
@@ -55,10 +58,12 @@ namespace ZonderqOS
 namespace Cosmos.Kernel.System.Network.Config
 {
     /// <summary>
-    /// Legacy read-only bridge for SettingsApp while networking is removed.
+    /// Temporary bridge for legacy Settings UI. Keep the compatibility type
+    /// read-only and route it through the ZonderqOS facade instead of Cosmos NIC
+    /// internals. Remove this namespace shim when Settings no longer imports it.
     /// </summary>
     public static class NetworkConfigManager
     {
-        public static string CurrentAddress => null;
+        public static string CurrentAddress => global::ZonderqOS.Network.CurrentAddress;
     }
 }
