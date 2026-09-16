@@ -350,7 +350,7 @@ run_arm64() {
     echo "[ARM64] UEFI: $firmware"
     echo "[ARM64] QEMU: $(qemu-system-aarch64 --version | head -n 1)"
     echo "[ARM64] Input: VirtIO MMIO keyboard + mouse"
-    echo "[ARM64] Display: UEFI GOP / virtio-gpu-pci; Limine requests 1920x1080x32"
+    echo "[ARM64] Display: UEFI GOP / virtio-gpu-pci 1920x1080; Limine requests 1920x1080x32"
     echo "[ARM64] Scheduler: ON"
     echo "[ARM64] PCI/storage: ON (NVMe when an image is present)"
     echo "[ARM64] PCI address space: low ECAM/MMIO compatibility mode"
@@ -368,7 +368,7 @@ run_arm64() {
         -device scsi-cd,drive=cd,bootindex=0
         -device virtio-keyboard-device
         -device virtio-mouse-device
-        -device virtio-gpu-pci
+        -device virtio-gpu-pci,xres=1920,yres=1080
         -display gtk,zoom-to-fit=on
         -serial stdio
         -no-reboot
