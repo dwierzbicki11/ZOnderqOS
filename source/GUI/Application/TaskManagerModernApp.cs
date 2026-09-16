@@ -432,9 +432,13 @@ namespace ZonderqOS.GUI.Apps
             try
             {
                 totalPages = PageAllocator.TotalPageCount;
-                freePages = PageAllocator.FreePageCount;
-                usedMemoryPercent = totalPages == 0 ? 0 : ((totalPages - freePages) * 100UL) / totalPages;
+                freePages = Math.Min(PageAllocator.FreePageCount, totalPages);
+                ulong usedPages = totalPages - freePages;
+                usedMemoryPercent = totalPages == 0 ? 0 : usedPages * 100UL / totalPages;
                 usedMemoryPercent = Math.Min(100UL, usedMemoryPercent);
+
+                gcHeapBytes = 0;
+                gcCommittedBytes = 0;
                 if (CosmosGc.IsEnabled)
                 {
                     gcHeapBytes = CosmosGc.GetHeapSizeBytes();
@@ -670,6 +674,21 @@ namespace ZonderqOS.GUI.Apps
             return (bytes / 1024UL) + " KB";
         }
 
+        private static string FormatMiBPrecise(ulong bytes)
+        {
+            const ulong MiB = 1024UL * 1024UL;
+            ulong whole = bytes / MiB;
+            ulong hundredths = (bytes % MiB) * 100UL / MiB;
+            return whole + "." + D2((int)hundredths) + " MB";
+        }
+
+        private static string FormatPercentPrecise(ulong used, ulong total)
+        {
+            if (total == 0) return "0.00%";
+            ulong scaled = Math.Min(10000UL, used * 10000UL / total);
+            return (scaled / 100UL) + "." + D2((int)(scaled % 100UL)) + "%";
+        }
+
         public override void Close()
         {
             base.Close();
@@ -691,10 +710,17 @@ namespace ZonderqOS.GUI.Apps
         internal ulong UsedMemoryPercent => usedMemoryPercent;
         internal ulong TotalPages => totalPages;
         internal ulong FreePages => freePages;
-        internal ulong UsedMemoryMb => (totalPages - Math.Min(totalPages, freePages)) * PageAllocator.PageSize / (1024UL * 1024UL);
+        internal ulong UsedPages => totalPages - Math.Min(totalPages, freePages);
+        internal ulong UsedMemoryMb => UsedPages * PageAllocator.PageSize / (1024UL * 1024UL);
         internal ulong TotalMemoryMb => totalPages * PageAllocator.PageSize / (1024UL * 1024UL);
         internal ulong GcHeapMb => gcHeapBytes / (1024UL * 1024UL);
         internal ulong GcCommittedMb => gcCommittedBytes / (1024UL * 1024UL);
+        internal string UsedMemoryText => FormatMiBPrecise(UsedPages * PageAllocator.PageSize);
+        internal string FreeMemoryText => FormatMiBPrecise(freePages * PageAllocator.PageSize);
+        internal string TotalMemoryText => FormatMiBPrecise(totalPages * PageAllocator.PageSize);
+        internal string MemoryUsageText => FormatPercentPrecise(UsedPages, totalPages);
+        internal string GcHeapText => FormatMiBPrecise(gcHeapBytes);
+        internal string GcCommittedText => FormatMiBPrecise(gcCommittedBytes);
         internal int StorageDeviceCount => storageDeviceCount;
         internal int StoragePartitionCount => storagePartitionCount;
         internal bool NetworkReady => networkReady;
@@ -961,7 +987,7 @@ namespace ZonderqOS.GUI.Apps
             DrawSummary(canvas, x, cardW, "APPS", (ulong)app.GuiAppCount, "APPLICATIONS", false);
             DrawSummary(canvas, x + cardW + gap, cardW, "THREADS", (ulong)Math.Max(0, app.SchedulerThreadCount), "SCHEDULER", false);
             DrawSummary(canvas, x + (cardW + gap) * 2, cardW, "CPU", (ulong)app.CpuUsagePercent, "TOTAL USAGE", true);
-            DrawSummary(canvas, x + (cardW + gap) * 3, cardW, "MEMORY", app.UsedMemoryPercent, "PHYSICAL", true);
+            DrawSummaryText(canvas, x + (cardW + gap) * 3, cardW, "MEMORY", app.MemoryUsageText, "COSMOS HEAP");
             RenderTable(canvas, x, width);
         }
 
@@ -974,6 +1000,16 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawUInt(canvas, value, x + 10, y + 27, Text);
             if (percent) SmallTextRenderer.Draw(canvas, "%", x + 12 + SmallTextRenderer.WidthUInt(value), y + 27, Text);
             SmallTextRenderer.DrawClipped(canvas, detail, x + 66, y + 27, Math.Max(20, width - 74), Muted);
+        }
+
+        private void DrawSummaryText(Canvas canvas, int x, int width, string title, string value, string detail)
+        {
+            int y = Y + SummaryTop;
+            canvas.DrawFilledRectangle(Color.FromArgb(26, 32, 38), x, y, width, SummaryHeight);
+            canvas.DrawRectangle(Color.FromArgb(53, 65, 76), x, y, width, SummaryHeight);
+            SmallTextRenderer.Draw(canvas, title, x + 10, y + 12, Muted);
+            SmallTextRenderer.DrawClipped(canvas, value, x + 10, y + 27, 56, Text);
+            SmallTextRenderer.DrawClipped(canvas, detail, x + 72, y + 27, Math.Max(20, width - 80), Muted);
         }
 
         private void RenderTable(Canvas canvas, int x, int width)
@@ -1032,7 +1068,7 @@ namespace ZonderqOS.GUI.Apps
             int resourceX = X + SidebarWidth + 10;
             int resourceY = Y + 64;
             DrawResource(canvas, resourceX, resourceY, 0, "CPU", (ulong)app.CpuUsagePercent, "%");
-            DrawResource(canvas, resourceX, resourceY + 82, 1, "MEMORY", app.UsedMemoryPercent, "%");
+            DrawResourceText(canvas, resourceX, resourceY + 82, 1, "MEMORY", app.MemoryUsageText);
             DrawResource(canvas, resourceX, resourceY + 164, 2, "SYSTEM", (ulong)Math.Max(0, app.SchedulerThreadCount), "");
 
             int x = resourceX + 170;
@@ -1051,6 +1087,15 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, title, x + 12, y + 13, active ? Color.WhiteSmoke : Text);
             SmallTextRenderer.DrawUInt(canvas, value, x + 12, y + 32, active ? Color.FromArgb(126, 194, 238) : Text);
             if (!string.IsNullOrEmpty(suffix)) SmallTextRenderer.Draw(canvas, suffix, x + 14 + SmallTextRenderer.WidthUInt(value), y + 32, Text);
+        }
+
+        private void DrawResourceText(Canvas canvas, int x, int y, int resource, string title, string value)
+        {
+            bool active = app.PerformanceResource == resource;
+            canvas.DrawFilledRectangle(active ? Color.FromArgb(35, 55, 71) : Color.FromArgb(26, 32, 38), x, y, 154, 72);
+            canvas.DrawRectangle(active ? Color.FromArgb(65, 126, 169) : Color.FromArgb(52, 63, 74), x, y, 154, 72);
+            SmallTextRenderer.Draw(canvas, title, x + 12, y + 13, active ? Color.WhiteSmoke : Text);
+            SmallTextRenderer.DrawClipped(canvas, value, x + 12, y + 32, 130, active ? Color.FromArgb(126, 194, 238) : Text);
         }
 
         private void RenderCpu(Canvas canvas, int x, int y, int width)
@@ -1153,15 +1198,16 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderMemory(Canvas canvas, int x, int y, int width)
         {
-            SmallTextRenderer.Draw(canvas, "MEMORY", x, y + 4, Color.WhiteSmoke);
+            SmallTextRenderer.Draw(canvas, "MEMORY / COSMOS HEAP", x, y + 4, Color.WhiteSmoke);
             int graphH = Math.Max(150, Height - 360);
             DrawGraph(canvas, x, y + 40, width, graphH, app.MemoryHistoryCount, app.GetMemoryHistory, -2, Color.FromArgb(116, 174, 219), true);
             int stats = y + graphH + 80;
-            DrawKey(canvas, x, stats, width / 2, "USED", app.UsedMemoryMb, "MB");
-            DrawKey(canvas, x, stats + 20, width / 2, "TOTAL", app.TotalMemoryMb, "MB");
-            DrawKey(canvas, x, stats + 40, width / 2, "FREE PAGES", app.FreePages, null);
-            DrawKey(canvas, x + width / 2, stats, width / 2, "GC HEAP", app.GcHeapMb, "MB");
-            DrawKey(canvas, x + width / 2, stats + 20, width / 2, "GC COMMITTED", app.GcCommittedMb, "MB");
+            DrawKeyText(canvas, x, stats, width / 2, "HEAP USED", app.UsedMemoryText);
+            DrawKeyText(canvas, x, stats + 20, width / 2, "HEAP FREE", app.FreeMemoryText);
+            DrawKeyText(canvas, x, stats + 40, width / 2, "HEAP TOTAL", app.TotalMemoryText);
+            DrawKeyText(canvas, x + width / 2, stats, width / 2, "HEAP USAGE", app.MemoryUsageText);
+            DrawKeyText(canvas, x + width / 2, stats + 20, width / 2, "GC HEAP", app.GcHeapText);
+            DrawKeyText(canvas, x + width / 2, stats + 40, width / 2, "GC COMMITTED", app.GcCommittedText);
         }
 
         private void RenderSystem(Canvas canvas, int x, int y, int width)
