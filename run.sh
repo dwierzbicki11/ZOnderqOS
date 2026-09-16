@@ -353,11 +353,12 @@ run_arm64() {
     echo "[ARM64] Display: UEFI GOP / ramfb"
     echo "[ARM64] Scheduler: ON"
     echo "[ARM64] PCI/storage: ON (NVMe when an image is present)"
+    echo "[ARM64] PCI address space: low ECAM/MMIO compatibility mode"
     print_hardware_summary arm64
 
     local smp="cpus=${HW_VCPUS},sockets=${HW_SOCKETS},cores=${HW_CORES},threads=${HW_THREADS}"
     local -a qemu_args=(
-        -M virt,gic-version=3
+        -M virt,gic-version=3,highmem-ecam=off,highmem-mmio=off
         -cpu "$HW_CPU_MODEL"
         -smp "$smp"
         -m "$HW_RAM"
