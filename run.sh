@@ -103,6 +103,12 @@ find_arm64_firmware() {
 }
 
 run_arm64() {
+    echo "[ARM64] Czyszczenie starego cache NativeAOT/multi-arch..."
+    # Cosmos 3.0.84 could leave architecture-specific System assemblies in the
+    # patcher/ILC intermediate tree. A clean ARM64 publish is cheap compared to
+    # debugging an ABI mix where Roslyn and ILC see different graphics APIs.
+    rm -rf "$ROOT_DIR/obj" "$ROOT_DIR/bin" "$ROOT_DIR/output-arm64"
+
     echo "[ARM64] Budowanie pelnego ZonderqOS desktop dla QEMU virt..."
     cosmos build -a arm64
 

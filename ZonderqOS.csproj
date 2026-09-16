@@ -1,4 +1,4 @@
-<Project Sdk="Cosmos.Sdk/3.0.84">
+<Project Sdk="Cosmos.Sdk/3.0.85">
 
   <PropertyGroup>
     <!-- Keep the feature surface identical on x86_64 and ARM64/QEMU wherever
@@ -26,8 +26,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Cosmos.Kernel" Version="3.0.84" />
-    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.84" />
+    <!-- Keep SDK, kernel and system packages on exactly the same release.
+         3.0.85 rebuilds the multi-arch artifacts coherently, which is required
+         for ARM64 NativeAOT to see the same public ABI at compile and link time. -->
+    <PackageReference Include="Cosmos.Kernel" Version="3.0.85" />
+    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" />
   </ItemGroup>
 
   <ItemGroup>
