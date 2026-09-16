@@ -1,6 +1,25 @@
+# .NET / Cosmos build outputs
 bin/
 obj/
+output-*/
+
+# Disk / VM images
 *.img
 *.iso
 *.vmdk
+*.qcow2
+*.raw
+
+# IDE / editor state
 .vs/
+.idea/
+.vscode/*.log
+
+# Local tooling / crash output
+*.log
+*.dmp
+*.core
+
+# OS junk
+.DS_Store
+Thumbs.db

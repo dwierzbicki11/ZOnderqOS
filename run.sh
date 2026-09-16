@@ -2,6 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+BUILD_ISO=""
 cd "$ROOT_DIR"
 
 print_header() {
@@ -12,40 +13,64 @@ print_header() {
     echo
 }
 
+fail() {
+    echo "[BLAD] $*" >&2
+    exit 1
+}
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || fail "Brak $1 w PATH."
+}
+
 sync_repo() {
     echo "[GIT] Aktualizacja main..."
 
     local current_branch
     current_branch="$(git branch --show-current)"
-    if [[ "$current_branch" != "main" ]]; then
-        echo "[BLAD] Launcher musi byc uruchomiony z brancha main (aktualnie: ${current_branch:-detached HEAD})." >&2
-        echo "       Przelacz sie bezpiecznie: git switch main" >&2
-        exit 1
+    [[ "$current_branch" == "main" ]] || \
+        fail "Launcher musi byc uruchomiony z brancha main (aktualnie: ${current_branch:-detached HEAD})."
+
+    if [[ -n "$(git status --porcelain --untracked-files=no)" ]]; then
+        fail "Masz lokalne zmiany w sledzonych plikach. Commit/stash przed automatycznym sync."
     fi
 
-    # Fetch one explicit remote branch instead of using `git pull origin main`.
-    # This deliberately ignores accidental multiple branch.*.merge entries in
-    # the user's local git config, which otherwise make pull fail with:
-    #   fatal: Cannot fast-forward to multiple branches.
+    # Fetch one explicit remote branch. This avoids local branch.*.merge config
+    # accidentally making a normal pull target multiple branches.
     git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
     git merge --ff-only refs/remotes/origin/main
     echo
 }
 
+clean_build_cache() {
+    local arch="$1"
+    local label
+    label="$(printf '%s' "$arch" | tr '[:lower:]' '[:upper:]')"
+    echo "[$label] Czyszczenie cache builda..."
+
+    # obj/bin are shared MSBuild/NativeAOT intermediates. Removing them on an
+    # architecture switch prevents x64 and ARM64 compile assets from mixing.
+    rm -rf "$ROOT_DIR/obj" "$ROOT_DIR/bin" "$ROOT_DIR/output-$arch"
+}
+
+build_iso() {
+    local arch="$1"
+    local label
+    label="$(printf '%s' "$arch" | tr '[:lower:]' '[:upper:]')"
+
+    require_command cosmos
+    clean_build_cache "$arch"
+
+    echo "[$label] Budowanie ZonderqOS..."
+    cosmos build -a "$arch"
+
+    BUILD_ISO="$ROOT_DIR/output-$arch/ZonderqOS.iso"
+    [[ -f "$BUILD_ISO" ]] || fail "Brak obrazu po buildzie: $BUILD_ISO"
+}
+
 run_x64() {
-    echo "[X64] Budowanie ZonderqOS..."
-    cosmos build -a x64
-
-    local iso="$ROOT_DIR/output-x64/ZonderqOS.iso"
-    if [[ ! -f "$iso" ]]; then
-        echo "[BLAD] Brak obrazu: $iso" >&2
-        exit 1
-    fi
-
-    if ! command -v qemu-system-x86_64 >/dev/null 2>&1; then
-        echo "[BLAD] Brak qemu-system-x86_64 w PATH." >&2
-        exit 1
-    fi
+    require_command qemu-system-x86_64
+    build_iso x64
+    local iso="$BUILD_ISO"
 
     echo
     echo "[X64] Uruchamianie QEMU..."
@@ -89,7 +114,7 @@ run_x64() {
         )
     fi
 
-    # Networking remains intentionally disabled in the current ZonderqOS profile.
+    # Networking is intentionally disabled in the current ZonderqOS profile.
     qemu-system-x86_64 "${qemu_args[@]}"
 }
 
@@ -117,25 +142,9 @@ find_arm64_firmware() {
 }
 
 run_arm64() {
-    echo "[ARM64] Czyszczenie starego cache NativeAOT/multi-arch..."
-    # Cosmos 3.0.84 could leave architecture-specific System assemblies in the
-    # patcher/ILC intermediate tree. A clean ARM64 publish is cheap compared to
-    # debugging an ABI mix where Roslyn and ILC see different graphics APIs.
-    rm -rf "$ROOT_DIR/obj" "$ROOT_DIR/bin" "$ROOT_DIR/output-arm64"
-
-    echo "[ARM64] Budowanie pelnego ZonderqOS desktop dla QEMU virt..."
-    cosmos build -a arm64
-
-    local iso="$ROOT_DIR/output-arm64/ZonderqOS.iso"
-    if [[ ! -f "$iso" ]]; then
-        echo "[BLAD] Brak obrazu: $iso" >&2
-        exit 1
-    fi
-
-    if ! command -v qemu-system-aarch64 >/dev/null 2>&1; then
-        echo "[BLAD] Brak qemu-system-aarch64 w PATH." >&2
-        exit 1
-    fi
+    require_command qemu-system-aarch64
+    build_iso arm64
+    local iso="$BUILD_ISO"
 
     local firmware
     firmware="$(find_arm64_firmware)"
@@ -149,10 +158,6 @@ run_arm64() {
     echo "[ARM64] Scheduler: ON"
     echo "[ARM64] PCI/storage: ON (NVMe when an image is present)"
 
-    # ARM64 is intended to expose the same ZonderqOS userspace as x86_64.
-    # The devices differ underneath: GICv3 + VirtIO-MMIO input + PCIe/NVMe.
-    # Do not force highmem=off; modern QEMU can otherwise reject the machine
-    # before UEFI starts because the virt platform no longer fits below 4 GiB.
     local -a qemu_args=(
         -M virt,gic-version=3
         -cpu cortex-a72
@@ -170,9 +175,8 @@ run_arm64() {
         -no-shutdown
     )
 
-    # Reuse the same persistent ZonderqOS disk image on both architectures,
-    # but expose it as NVMe on ARM64. Cosmos Gen3 has a PCI/NVMe path on QEMU
-    # virt, while the keyboard and mouse remain VirtIO-MMIO devices.
+    # Reuse one persistent data disk across architectures, but expose it as NVMe
+    # on QEMU virt where Cosmos Gen3 has a PCI/NVMe path.
     if [[ -f "$ROOT_DIR/zonder_disk.img" ]]; then
         qemu_args+=(
             -drive "file=$ROOT_DIR/zonder_disk.img,if=none,id=armroot,format=raw"
@@ -187,7 +191,6 @@ run_arm64() {
         echo "[ARM64] Root/data disk: disk_nvme_2G.img -> NVMe"
     else
         echo "[ARM64] UWAGA: brak persistent disk image; VFS nie bedzie mial partycji root." >&2
-        echo "[ARM64] Utworz/wykorzystaj zonder_disk.img, aby login, pliki i ustawienia byly trwale." >&2
     fi
 
     qemu-system-aarch64 "${qemu_args[@]}"
