@@ -1,27 +1,25 @@
 <Project Sdk="Cosmos.Sdk/3.0.84">
 
   <PropertyGroup>
+    <!-- Keep the feature surface identical on x86_64 and ARM64/QEMU wherever
+         Cosmos Gen3 has a backend for both architectures. Networking remains
+         intentionally disabled on both profiles. -->
     <CosmosEnableNetwork>false</CosmosEnableNetwork>
+    <CosmosEnableStorage>true</CosmosEnableStorage>
+    <CosmosEnableMouse>true</CosmosEnableMouse>
+    <CosmosEnableKeyboard>true</CosmosEnableKeyboard>
+    <CosmosEnableGraphics>true</CosmosEnableGraphics>
+    <CosmosEnableScheduler>true</CosmosEnableScheduler>
 
-    <CosmosEnableStorage Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableStorage>
-    <CosmosEnableMouse Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableMouse>
-    <CosmosEnableKeyboard Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableKeyboard>
-
-    <!-- ARM64 is developed and tested on QEMU virt. Keep the profile small, but
-         enable the pieces required by Cosmos' VirtIO-MMIO keyboard path. -->
-    <CosmosEnableStorage Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableStorage>
-    <CosmosEnableMouse Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableMouse>
-    <CosmosEnableKeyboard Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnableKeyboard>
+    <!-- QEMU virt ARM64 uses GICv3, PL011, ACPI/ECAM PCI and VirtIO-MMIO
+         keyboard/mouse. PCI is also required for the NVMe data disk used by
+         the normal ZonderqOS VFS/storage path. -->
     <CosmosEnableInterrupts Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnableInterrupts>
-    <CosmosEnablePCI Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnablePCI>
+    <CosmosEnablePCI Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnablePCI>
     <CosmosEnableUART Condition="'$(CosmosArch)' == 'arm64'">true</CosmosEnableUART>
 
-    <CosmosEnableGraphics>true</CosmosEnableGraphics>
-    <CosmosEnableScheduler Condition="'$(CosmosArch)' != 'arm64'">true</CosmosEnableScheduler>
-    <CosmosEnableScheduler Condition="'$(CosmosArch)' == 'arm64'">false</CosmosEnableScheduler>
-
-    <CosmosKernelClass Condition="'$(CosmosArch)' != 'arm64'">ZonderqOS.Kernel</CosmosKernelClass>
-    <CosmosKernelClass Condition="'$(CosmosArch)' == 'arm64'">ZonderqOS.Arm64QemuKernel</CosmosKernelClass>
+    <!-- One kernel and one application surface on both architectures. -->
+    <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
 
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -33,31 +31,17 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Networking is disabled globally for now, so keep its command surface
+         out of both architecture builds until the feature is restored. -->
     <Compile Remove="source/Core/CosmosGen3NetworkGlobalUsings.cs" />
     <Compile Remove="source/GUI/Application/LegacyNetworkConfig.cs" />
     <Compile Remove="source/Shell/Commands/CmdNetwork.cs" />
     <Compile Remove="source/Shell/Commands/CmdIp.cs" />
     <Compile Remove="source/Shell/Commands/CmdPing.cs" />
     <Compile Remove="source/Shell/Commands/CmdDns.cs" />
-  </ItemGroup>
 
-  <ItemGroup Condition="'$(CosmosArch)' == 'arm64'">
-    <Compile Remove="Kernel.cs" />
-    <Compile Remove="source/**/*.cs" />
-
-    <!-- QEMU ARM64 shell profile. These commands are intentionally independent of
-         storage, networking, GUI startup and the scheduler. Keyboard input itself
-         is provided by Cosmos' VirtIO-MMIO keyboard driver. -->
-    <Compile Include="source/Common/CommandIO.cs" />
-    <Compile Include="source/Shell/Command.cs" />
-    <Compile Include="source/Shell/Commands/ICommand.cs" />
-    <Compile Include="source/Shell/Commands/CmdPwd.cs" />
-    <Compile Include="source/Shell/Commands/CmdClear.cs" />
-    <Compile Include="source/Shell/Commands/CmdEcho.cs" />
-    <Compile Include="source/Shell/Commands/CmdHelp.cs" />
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">
+    <!-- The old reduced ARM64 shell kernel is retained in git history only;
+         ARM64 now boots the same ZonderqOS.Kernel class as x86_64. -->
     <Compile Remove="Arm64QemuKernel.cs" />
   </ItemGroup>
 
