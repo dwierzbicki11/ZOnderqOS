@@ -10,6 +10,7 @@ HW_CORES=1
 HW_THREADS=1
 HW_RAM=""
 HW_CPU_MODEL=""
+HW_CPU_LABEL=""
 HW_VCPUS=1
 
 print_header() {
@@ -30,26 +31,32 @@ require_command() {
 }
 
 usage() {
-    cat <<'EOF'
+    cat <<'EOF_USAGE'
 Uzycie:
-  ./run.sh [x64|arm64] [opcje]
+  ./run.sh
+  ./run.sh [x64|arm64]
+  ./run.sh [x64|arm64] [opcje zaawansowane]
 
-Opcje sprzetu QEMU:
-  --sockets N       liczba socketow (domyslnie 1)
-  --cores N         rdzenie na socket
-  --threads N       watki na rdzen
-  --ram SIZE        RAM, np. 256M, 1G, 4G (sama liczba = MB)
-  --cpu MODEL       model CPU QEMU, np. max, qemu64, cortex-a72
-  --preset NAME     tiny | dual | quad | smt | stress
+Tryb interaktywny:
+  1. wybierasz architekture,
+  2. wybierasz 1 z 10 realnych profili CPU,
+  3. wpisujesz ilosc RAM dla systemu.
+
+Opcje zaawansowane:
+  --cpu MODEL       model CPU QEMU, np. Skylake-Client, EPYC-Milan, cortex-a72
+  --cores N         liczba fizycznych rdzeni na socket
+  --threads N       liczba watkow SMT na rdzen (1 = bez SMT)
+  --sockets N       liczba socketow
+  --ram SIZE        RAM, np. 512M, 2G, 8G (sama liczba = MB)
   -h, --help        pomoc
 
 Przyklady:
-  ./run.sh x64 --cores 4 --threads 2 --ram 2G
-  ./run.sh x64 --sockets 2 --cores 2 --threads 1 --ram 1G
-  ./run.sh x64 --preset stress
-  ./run.sh arm64 --cores 4 --ram 1G
-  ./run.sh arm64 --cores 8 --ram 4G --cpu cortex-a72
-EOF
+  ./run.sh
+  ./run.sh x64
+  ./run.sh arm64
+  ./run.sh x64 --cpu EPYC-Milan --cores 24 --threads 2 --ram 8G
+  ./run.sh arm64 --cpu cortex-a72 --cores 4 --threads 1 --ram 2G
+EOF_USAGE
 }
 
 check_untracked_build_inputs() {
@@ -80,13 +87,8 @@ sync_repo() {
     fi
 
     check_untracked_build_inputs
-
-    # Fetch one explicit remote branch. This avoids local branch.*.merge config
-    # accidentally making a normal pull target multiple branches.
     git fetch --no-tags origin refs/heads/main:refs/remotes/origin/main
     git merge --ff-only refs/remotes/origin/main
-
-    # A merge may introduce/remove wildcard-compiled files, so check again.
     check_untracked_build_inputs
     echo
 }
@@ -96,9 +98,6 @@ clean_build_cache() {
     local label
     label="$(printf '%s' "$arch" | tr '[:lower:]' '[:upper:]')"
     echo "[$label] Czyszczenie cache builda..."
-
-    # obj/bin are shared MSBuild/NativeAOT intermediates. Removing them on an
-    # architecture switch prevents x64 and ARM64 compile assets from mixing.
     rm -rf "$ROOT_DIR/obj" "$ROOT_DIR/bin" "$ROOT_DIR/output-$arch"
 }
 
@@ -117,37 +116,183 @@ build_iso() {
     [[ -f "$BUILD_ISO" ]] || fail "Brak obrazu po buildzie: $BUILD_ISO"
 }
 
-set_arch_defaults() {
+apply_cpu_profile() {
     local arch="$1"
+    local profile="$2"
+
     HW_SOCKETS=1
-    HW_CORES=1
-    HW_THREADS=1
 
     if [[ "$arch" == "x64" ]]; then
-        HW_RAM="2G"
-        HW_CPU_MODEL="max"
+        case "$profile" in
+            1)
+                HW_CPU_MODEL="Conroe"
+                HW_CPU_LABEL="Intel Core 2 Duo E6600 (Conroe)"
+                HW_CORES=2; HW_THREADS=1 ;;
+            2)
+                HW_CPU_MODEL="Nehalem"
+                HW_CPU_LABEL="Intel Core i7-920 (Nehalem)"
+                HW_CORES=4; HW_THREADS=2 ;;
+            3)
+                HW_CPU_MODEL="SandyBridge"
+                HW_CPU_LABEL="Intel Core i7-2600 (Sandy Bridge)"
+                HW_CORES=4; HW_THREADS=2 ;;
+            4)
+                HW_CPU_MODEL="IvyBridge"
+                HW_CPU_LABEL="Intel Core i7-3770 (Ivy Bridge)"
+                HW_CORES=4; HW_THREADS=2 ;;
+            5)
+                HW_CPU_MODEL="Haswell"
+                HW_CPU_LABEL="Intel Core i7-4770 (Haswell)"
+                HW_CORES=4; HW_THREADS=2 ;;
+            6)
+                HW_CPU_MODEL="Broadwell"
+                HW_CPU_LABEL="Intel Core i7-5775C (Broadwell)"
+                HW_CORES=4; HW_THREADS=2 ;;
+            7)
+                HW_CPU_MODEL="Skylake-Client"
+                HW_CPU_LABEL="Intel Core i7-6700K (Skylake)"
+                HW_CORES=4; HW_THREADS=2 ;;
+            8)
+                HW_CPU_MODEL="Cascadelake-Server"
+                HW_CPU_LABEL="Intel Xeon Platinum 8280 (Cascade Lake)"
+                HW_CORES=28; HW_THREADS=2 ;;
+            9)
+                HW_CPU_MODEL="EPYC-Rome"
+                HW_CPU_LABEL="AMD EPYC 7302 (Rome)"
+                HW_CORES=16; HW_THREADS=2 ;;
+            10)
+                HW_CPU_MODEL="EPYC-Milan"
+                HW_CPU_LABEL="AMD EPYC 7443 (Milan)"
+                HW_CORES=24; HW_THREADS=2 ;;
+            *)
+                fail "Nieprawidlowy profil x64: $profile" ;;
+        esac
     else
-        HW_RAM="512M"
-        HW_CPU_MODEL="cortex-a72"
+        case "$profile" in
+            1)
+                HW_CPU_MODEL="cortex-a35"
+                HW_CPU_LABEL="NXP i.MX 8QuadXPlus / Cortex-A35"
+                HW_CORES=4; HW_THREADS=1 ;;
+            2)
+                HW_CPU_MODEL="cortex-a53"
+                HW_CPU_LABEL="Raspberry Pi 3 BCM2837 / Cortex-A53"
+                HW_CORES=4; HW_THREADS=1 ;;
+            3)
+                HW_CPU_MODEL="cortex-a55"
+                HW_CPU_LABEL="Rockchip RK3568 / Cortex-A55"
+                HW_CORES=4; HW_THREADS=1 ;;
+            4)
+                HW_CPU_MODEL="cortex-a57"
+                HW_CPU_LABEL="NVIDIA Tegra X1 A57 cluster / Cortex-A57"
+                HW_CORES=4; HW_THREADS=1 ;;
+            5)
+                HW_CPU_MODEL="cortex-a72"
+                HW_CPU_LABEL="Raspberry Pi 4 BCM2711 / Cortex-A72"
+                HW_CORES=4; HW_THREADS=1 ;;
+            6)
+                HW_CPU_MODEL="cortex-a76"
+                HW_CPU_LABEL="Raspberry Pi 5 BCM2712 / Cortex-A76"
+                HW_CORES=4; HW_THREADS=1 ;;
+            7)
+                HW_CPU_MODEL="cortex-a710"
+                HW_CPU_LABEL="Snapdragon 8 Gen 1 A710 cluster / Cortex-A710"
+                HW_CORES=3; HW_THREADS=1 ;;
+            8)
+                HW_CPU_MODEL="neoverse-n1"
+                HW_CPU_LABEL="AWS Graviton2 / Neoverse-N1"
+                HW_CORES=64; HW_THREADS=1 ;;
+            9)
+                HW_CPU_MODEL="neoverse-v1"
+                HW_CPU_LABEL="AWS Graviton3 / Neoverse-V1"
+                HW_CORES=64; HW_THREADS=1 ;;
+            10)
+                HW_CPU_MODEL="a64fx"
+                HW_CPU_LABEL="Fujitsu A64FX"
+                HW_CORES=48; HW_THREADS=1 ;;
+            *)
+                fail "Nieprawidlowy profil ARM64: $profile" ;;
+        esac
     fi
 }
 
-apply_preset() {
-    local preset="$1"
-    case "$preset" in
-        tiny)
-            HW_SOCKETS=1; HW_CORES=1; HW_THREADS=1; HW_RAM="256M" ;;
-        dual)
-            HW_SOCKETS=1; HW_CORES=2; HW_THREADS=1; HW_RAM="512M" ;;
-        quad)
-            HW_SOCKETS=1; HW_CORES=4; HW_THREADS=1; HW_RAM="1G" ;;
-        smt)
-            HW_SOCKETS=1; HW_CORES=4; HW_THREADS=2; HW_RAM="2G" ;;
-        stress)
-            HW_SOCKETS=1; HW_CORES=8; HW_THREADS=2; HW_RAM="4G" ;;
-        *)
-            fail "Nieznany preset '$preset'. Dostepne: tiny, dual, quad, smt, stress." ;;
-    esac
+print_cpu_menu() {
+    local arch="$1"
+    echo
+    echo "Wybierz model procesora:"
+    echo
+
+    if [[ "$arch" == "x64" ]]; then
+        echo " 1) Intel Core 2 Duo E6600       Conroe             2C / 2T"
+        echo " 2) Intel Core i7-920            Nehalem            4C / 8T"
+        echo " 3) Intel Core i7-2600           Sandy Bridge       4C / 8T"
+        echo " 4) Intel Core i7-3770           Ivy Bridge         4C / 8T"
+        echo " 5) Intel Core i7-4770           Haswell            4C / 8T"
+        echo " 6) Intel Core i7-5775C          Broadwell          4C / 8T"
+        echo " 7) Intel Core i7-6700K          Skylake            4C / 8T"
+        echo " 8) Intel Xeon Platinum 8280     Cascade Lake      28C / 56T"
+        echo " 9) AMD EPYC 7302                Rome              16C / 32T"
+        echo "10) AMD EPYC 7443                Milan             24C / 48T"
+        echo
+        echo "QEMU emuluje rodzine CPU; nazwa po lewej jest realnym SKU, z ktorego bierzemy topologie."
+    else
+        echo " 1) NXP i.MX 8QuadXPlus          Cortex-A35         4C / 4T"
+        echo " 2) Raspberry Pi 3 BCM2837       Cortex-A53         4C / 4T"
+        echo " 3) Rockchip RK3568              Cortex-A55         4C / 4T"
+        echo " 4) NVIDIA Tegra X1 A57 cluster  Cortex-A57         4C / 4T"
+        echo " 5) Raspberry Pi 4 BCM2711       Cortex-A72         4C / 4T"
+        echo " 6) Raspberry Pi 5 BCM2712       Cortex-A76         4C / 4T"
+        echo " 7) Snapdragon 8 Gen 1 A710      Cortex-A710        3C / 3T"
+        echo " 8) AWS Graviton2                Neoverse-N1       64C / 64T"
+        echo " 9) AWS Graviton3                Neoverse-V1       64C / 64T"
+        echo "10) Fujitsu A64FX                A64FX             48C / 48T"
+        echo
+        echo "ARM nie ma SMT w tych profilach. A710 odwzorowuje 3-rdzeniowy klaster A710 z heterogenicznego SoC."
+    fi
+}
+
+select_cpu_profile() {
+    local arch="$1"
+    local default_profile
+    local choice
+
+    if [[ "$arch" == "x64" ]]; then
+        default_profile=7
+    else
+        default_profile=5
+    fi
+
+    print_cpu_menu "$arch"
+    read -r -p "Wybierz [1-10, Enter=${default_profile}]: " choice
+    choice="${choice:-$default_profile}"
+    [[ "$choice" =~ ^([1-9]|10)$ ]] || fail "Wybierz numer 1-10."
+    apply_cpu_profile "$arch" "$choice"
+}
+
+prompt_ram() {
+    local arch="$1"
+    local default_ram
+    local entered
+
+    if [[ "$arch" == "x64" ]]; then
+        default_ram="2G"
+    else
+        default_ram="512M"
+    fi
+
+    echo
+    read -r -p "Ile RAM przydzielic systemowi? [${default_ram}]: " entered
+    HW_RAM="${entered:-$default_ram}"
+}
+
+set_advanced_defaults() {
+    local arch="$1"
+    if [[ "$arch" == "x64" ]]; then
+        apply_cpu_profile x64 7
+        HW_RAM="2G"
+    else
+        apply_cpu_profile arm64 5
+        HW_RAM="512M"
+    fi
 }
 
 parse_hardware_args() {
@@ -167,10 +312,9 @@ parse_hardware_args() {
                 HW_RAM="$2"; shift 2 ;;
             --cpu)
                 [[ $# -ge 2 ]] || fail "--cpu wymaga wartosci."
-                HW_CPU_MODEL="$2"; shift 2 ;;
-            --preset)
-                [[ $# -ge 2 ]] || fail "--preset wymaga nazwy."
-                apply_preset "$2"; shift 2 ;;
+                HW_CPU_MODEL="$2"
+                HW_CPU_LABEL="Custom: $2"
+                shift 2 ;;
             -h|--help)
                 usage
                 exit 0 ;;
@@ -197,71 +341,48 @@ validate_hardware() {
     HW_RAM="${HW_RAM^^}"
     HW_RAM="${HW_RAM%B}"
     [[ "$HW_RAM" =~ ^[1-9][0-9]*[KMGTPE]$ ]] || \
-        fail "Nieprawidlowy RAM '$HW_RAM'. Przyklady: 256M, 1G, 4G."
+        fail "Nieprawidlowy RAM '$HW_RAM'. Przyklady: 512M, 2G, 8G."
 
     HW_VCPUS=$((HW_SOCKETS * HW_CORES * HW_THREADS))
     (( HW_VCPUS >= 1 && HW_VCPUS <= 128 )) || \
-        fail "Laczna liczba vCPU musi byc 1..128 (jest: $HW_VCPUS)."
+        fail "Laczna liczba watkow/vCPU musi byc 1..128 (jest: $HW_VCPUS)."
 
     [[ -n "$HW_CPU_MODEL" ]] || fail "Model CPU nie moze byc pusty."
 }
 
-select_hardware_profile() {
+verify_cpu_model() {
     local arch="$1"
-    echo
-    echo "Profil sprzetu QEMU:"
-    echo "1) Domyslny  - 1C/1T (${HW_RAM})"
-    echo "2) Tiny      - 1C/1T, 256M"
-    echo "3) Dual      - 2C/1T, 512M"
-    echo "4) Quad      - 4C/1T, 1G"
-    echo "5) SMT       - 4C/2T, 2G"
-    echo "6) Stress    - 8C/2T, 4G"
-    echo "7) Custom"
-    echo
+    local emulator
 
-    local profile
-    read -r -p "Wybierz [1-7, Enter=1]: " profile
-    profile="${profile:-1}"
+    if [[ "$arch" == "x64" ]]; then
+        emulator="qemu-system-x86_64"
+    else
+        emulator="qemu-system-aarch64"
+    fi
 
-    case "$profile" in
-        1) ;;
-        2) apply_preset tiny ;;
-        3) apply_preset dual ;;
-        4) apply_preset quad ;;
-        5) apply_preset smt ;;
-        6) apply_preset stress ;;
-        7)
-            read -r -p "Sockety [1]: " HW_SOCKETS
-            HW_SOCKETS="${HW_SOCKETS:-1}"
-            read -r -p "Rdzenie na socket [1]: " HW_CORES
-            HW_CORES="${HW_CORES:-1}"
-            read -r -p "Watki na rdzen [1]: " HW_THREADS
-            HW_THREADS="${HW_THREADS:-1}"
-            read -r -p "RAM [${HW_RAM}]: " custom_ram
-            HW_RAM="${custom_ram:-$HW_RAM}"
-            read -r -p "Model CPU [${HW_CPU_MODEL}]: " custom_cpu
-            HW_CPU_MODEL="${custom_cpu:-$HW_CPU_MODEL}"
-            ;;
-        *) fail "Nieprawidlowy profil: $profile" ;;
-    esac
-
-    validate_hardware
+    require_command "$emulator"
+    if ! "$emulator" -cpu help 2>/dev/null | grep -Fq "$HW_CPU_MODEL"; then
+        fail "QEMU nie zna modelu CPU '$HW_CPU_MODEL' dla $arch. Sprawdz: $emulator -cpu help"
+    fi
 }
 
 print_hardware_summary() {
     local arch="$1"
-    echo "[QEMU] CPU model: $HW_CPU_MODEL"
-    echo "[QEMU] Topologia: ${HW_SOCKETS} socket x ${HW_CORES} core x ${HW_THREADS} thread = ${HW_VCPUS} vCPU"
+    local total_threads="$HW_VCPUS"
+
+    echo "[QEMU] CPU: $HW_CPU_LABEL"
+    echo "[QEMU] Model: $HW_CPU_MODEL"
+    echo "[QEMU] Topologia: ${HW_SOCKETS} socket x ${HW_CORES} core x ${HW_THREADS} thread/core = ${total_threads} logicznych CPU"
     echo "[QEMU] RAM: $HW_RAM"
 
     if [[ "$arch" == "arm64" && "$HW_VCPUS" -gt 1 ]]; then
-        echo "[ARM64] UWAGA: QEMU wystawi ${HW_VCPUS} vCPU, ale obecny Cosmos ARM64 HAL zarzadza tylko CPU0." >&2
-        echo "[ARM64] RAM i hardware enumeration testujemy realnie; pelne ARM SMP wymaga osobnego bring-up AP/secondary CPUs." >&2
+        echo "[ARM64] UWAGA: QEMU wystawi ${HW_VCPUS} vCPU zgodnie z realnym profilem, ale obecny Cosmos ARM64 HAL zarzadza tylko CPU0." >&2
+        echo "[ARM64] Pelne wykorzystanie pozostalych rdzeni wymaga osobnego bring-up SMP w HAL-u." >&2
     fi
 }
 
 run_x64() {
-    require_command qemu-system-x86_64
+    verify_cpu_model x64
     build_iso x64
     local iso="$BUILD_ISO"
 
@@ -338,7 +459,7 @@ find_arm64_firmware() {
 }
 
 run_arm64() {
-    require_command qemu-system-aarch64
+    verify_cpu_model arm64
     build_iso arm64
     local iso="$BUILD_ISO"
 
@@ -375,8 +496,6 @@ run_arm64() {
         -no-shutdown
     )
 
-    # Reuse one persistent data disk across architectures, but expose it as NVMe
-    # on QEMU virt where Cosmos Gen3 has a PCI/NVMe path.
     if [[ -f "$ROOT_DIR/zonder_disk.img" ]]; then
         qemu_args+=(
             -drive "file=$ROOT_DIR/zonder_disk.img,if=none,id=armroot,format=raw"
@@ -400,9 +519,7 @@ print_header
 sync_repo
 
 choice="${1:-}"
-interactive_choice=0
 if [[ -z "$choice" ]]; then
-    interactive_choice=1
     echo "1) x86_64 - full ZonderqOS + QEMU"
     echo "2) ARM64  - full ZonderqOS + QEMU virt"
     echo
@@ -424,14 +541,20 @@ case "$choice" in
         ;;
 esac
 
-set_arch_defaults "$arch"
-
-if (( interactive_choice )); then
-    select_hardware_profile "$arch"
+if [[ $# -eq 0 ]]; then
+    select_cpu_profile "$arch"
+    prompt_ram "$arch"
 else
+    set_advanced_defaults "$arch"
     parse_hardware_args "$@"
-    validate_hardware
 fi
+
+validate_hardware
+
+echo
+echo "Wybrana konfiguracja:"
+print_hardware_summary "$arch"
+echo
 
 case "$arch" in
     x64) run_x64 ;;
