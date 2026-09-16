@@ -3,26 +3,16 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
 using Cosmos.Kernel.Core.Memory;
-using Cosmos.Kernel.Core.Scheduler;
+using Cosmos.Kernel.System.Diagnostics;
 using Cosmos.Kernel.System.Graphics;
-using Cosmos.Kernel.System.Graphics.Fonts;
 using Cosmos.Kernel.System.Keyboard;
 using Cosmos.Kernel.System.Storage;
 using ZonderqOS.GUI.Icons;
 using ZonderqOS.SystemCore;
 using CosmosGc = Cosmos.Kernel.Core.Memory.GarbageCollector.GarbageCollector;
-using SchedulerThread = Cosmos.Kernel.Core.Scheduler.Thread;
-using SchedulerThreadState = Cosmos.Kernel.Core.Scheduler.ThreadState;
-using Font = Cosmos.Kernel.System.Graphics.Fonts.Font;
 
 namespace ZonderqOS.GUI.Apps
 {
-    /// <summary>
-    /// Windows-inspired task manager. The hot Update/Render path is intentionally
-    /// allocation-free after the initial row pool has warmed up. This matters on
-    /// Cosmos where repeated short-lived GUI strings can make the managed heap grow
-    /// noticeably before the collector decides to reclaim them.
-    /// </summary>
     public sealed class TaskManagerModernApp : Application
     {
         internal const int PageProcesses = 0;
@@ -34,16 +24,13 @@ namespace ZonderqOS.GUI.Apps
         internal const int PerfMemory = 1;
         internal const int PerfSystem = 2;
 
-        private const int RefreshIntervalFrames = 45;
-        private const int HistoryLength = 120;
-        private const int InitialRowPool = 32;
+        internal const int CpuGraphTotal = 0;
+        internal const int CpuGraphLogical = 1;
 
-        private const string StateActive = "ACTIVE";
-        private const string StateRunning = "RUNNING";
-        private const string StateMinimized = "MINIMIZED";
-        private const string StateStopped = "STOPPED";
-        private const string DetailKernel = "KERNEL THREAD";
-        private const string DetailProtected = "SYSTEM PROTECTED";
+        private const int RefreshIntervalFrames = 30;
+        private const int HistoryLength = 120;
+        private const int LogicalPerPage = 16;
+        private const int InitialRowPool = 32;
 
         private readonly ApplicationManager applicationManager;
         private readonly Action closeCallback;
@@ -62,8 +49,22 @@ namespace ZonderqOS.GUI.Apps
         private int memoryHistoryCount;
         private int memoryHistoryWrite;
 
+        private int[][] logicalHistory = new int[0][];
+        private int[] logicalHistoryCount = new int[0];
+        private int[] logicalHistoryWrite = new int[0];
+        private int[] logicalUsage = new int[0];
+        private ulong[] logicalBusyDelta = new ulong[0];
+        private int logicalCapacity;
+
+        private uint[] previousThreadIds = new uint[0];
+        private ulong[] previousThreadRuntime = new ulong[0];
+        private bool[] previousThreadValid = new bool[0];
+        private int threadSlotCapacity;
+
         private int activePage = PageProcesses;
         private int performanceResource = PerfCpu;
+        private int cpuGraphMode = CpuGraphTotal;
+        private int logicalPage;
         private int selectedIndex = -1;
         private int scrollIndex;
         private int refreshFrame;
@@ -77,31 +78,32 @@ namespace ZonderqOS.GUI.Apps
         private ulong usedMemoryPercent;
         private ulong gcHeapBytes;
         private ulong gcCommittedBytes;
-        private ulong gcFragmentedBytes;
-        private ulong gcPinnedObjects;
-        private int gcCollections;
         private int storageDeviceCount;
         private int storagePartitionCount;
         private bool networkReady;
 
         private uint onlineCpuCount;
         private int schedulerThreadCount;
-        private int readyThreadCount;
         private int runningThreadCount;
+        private int readyThreadCount;
         private int blockedThreadCount;
         private int sleepingThreadCount;
         private string schedulerName = "N/A";
+        private ulong schedulerTickNs;
 
         private long lastCpuTimestamp;
         private ulong lastBusyCpuNs;
-        private readonly long openedAtTimestamp;
+        private readonly long managerOpenedAt;
 
-        // Hardware strings are calculated once. They never change while the OS runs.
+        private long clockSecond = -1;
+        private string clockText = "--:--:--";
+        private string dateText = "--.--.----";
+
         private readonly string baseSpeedText;
         private readonly string maxSpeedText;
+        private readonly string topologyText;
         private readonly string cacheText;
         private readonly string signatureText;
-        private readonly string topologyText;
 
         public TaskManagerModernApp(int x, int y, ApplicationManager manager, Action onClose)
             : base("Manager zadan")
@@ -109,24 +111,27 @@ namespace ZonderqOS.GUI.Apps
             applicationManager = manager;
             closeCallback = onClose;
             cpuInfo = CpuHardwareInfo.Detect();
-            openedAtTimestamp = Stopwatch.GetTimestamp();
+            managerOpenedAt = Stopwatch.GetTimestamp();
 
-            baseSpeedText = FormatSpeedOnce(cpuInfo.BaseMHz);
-            maxSpeedText = FormatSpeedOnce(cpuInfo.MaxMHz);
-            cacheText = FormatCacheOnce(cpuInfo.L1Bytes) + " / " +
-                        FormatCacheOnce(cpuInfo.L2Bytes) + " / " +
-                        FormatCacheOnce(cpuInfo.L3Bytes);
+            baseSpeedText = FormatSpeed(cpuInfo.BaseMHz);
+            maxSpeedText = FormatSpeed(cpuInfo.MaxMHz);
+            topologyText = Math.Max(1, cpuInfo.PhysicalCores) + " / " +
+                           Math.Max(1, cpuInfo.LogicalProcessors) + " / " +
+                           Math.Max(1, cpuInfo.ThreadsPerCore);
+            cacheText = FormatBytes(cpuInfo.L1Bytes) + " / " + FormatBytes(cpuInfo.L2Bytes) + " / " + FormatBytes(cpuInfo.L3Bytes);
             signatureText = cpuInfo.Family + " / " + cpuInfo.Model + " / " + cpuInfo.Stepping;
-            topologyText = cpuInfo.PhysicalCores + " / " + cpuInfo.LogicalProcessors + " / " + cpuInfo.ThreadsPerCore;
 
             for (int i = 0; i < InitialRowPool; i++)
                 rowPool.Add(new ModernTaskRow());
 
-            Window = new Window(x, y, 980, 660, "Manager zadan");
-            Window.CloseAction = Close;
+            EnsureLogicalCapacity(Math.Max(1, cpuInfo.LogicalProcessors));
+            UpdateClock();
 
-            view = new TaskManagerModernView(10, 40, 960, 605, this);
+            Window = new Window(x, y, 1040, 690, "Manager zadan");
+            Window.CloseAction = Close;
+            view = new TaskManagerModernView(10, 40, 1020, 635, this);
             Window.AddChild(view);
+
             UpdateLayout();
             RefreshSnapshot();
         }
@@ -134,6 +139,7 @@ namespace ZonderqOS.GUI.Apps
         public override void Update()
         {
             UpdateLayout();
+            UpdateClock();
             refreshFrame++;
             if (refreshFrame >= RefreshIntervalFrames)
             {
@@ -146,9 +152,39 @@ namespace ZonderqOS.GUI.Apps
         {
             view.X = Window.X + 10;
             view.Y = Window.Y + 40;
-            view.Width = Math.Max(650, Window.Width - 20);
-            view.Height = Math.Max(390, Window.Height - 50);
+            view.Width = Math.Max(700, Window.Width - 20);
+            view.Height = Math.Max(430, Window.Height - 50);
             ClampScroll();
+            ClampLogicalPage();
+        }
+
+        private void UpdateClock()
+        {
+            try
+            {
+                DateTime now = DateTime.Now;
+                long key = now.Ticks / TimeSpan.TicksPerSecond;
+                if (key == clockSecond)
+                    return;
+                clockSecond = key;
+                clockText = D2(now.Hour) + ":" + D2(now.Minute) + ":" + D2(now.Second);
+                dateText = D2(now.Day) + "." + D2(now.Month) + "." + D4(now.Year);
+            }
+            catch
+            {
+                clockText = "--:--:--";
+                dateText = "--.--.----";
+            }
+        }
+
+        private static string D2(int value) => value < 10 ? "0" + Math.Max(0, value) : value.ToString();
+        private static string D4(int value)
+        {
+            value = Math.Max(0, value);
+            if (value < 10) return "000" + value;
+            if (value < 100) return "00" + value;
+            if (value < 1000) return "0" + value;
+            return value.ToString();
         }
 
         public override void HandleMouse(int mouseX, int mouseY, bool left, bool oldLeft)
@@ -156,10 +192,8 @@ namespace ZonderqOS.GUI.Apps
             Window.HandleMouse(mouseX, mouseY, left, oldLeft);
             if (!Window.Visible || !IsRunning)
                 return;
-
             if (view.HandleScrollMouse(mouseX, mouseY, left, oldLeft))
                 return;
-
             if (!left || oldLeft)
                 return;
 
@@ -175,14 +209,14 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            int action = view.ToolbarActionAt(x, y);
-            if (action == 1)
+            int toolbar = view.ToolbarActionAt(x, y);
+            if (toolbar == 1)
             {
                 RefreshSnapshot();
-                status = "Lista odswiezona";
+                status = "Odswiezono";
                 return;
             }
-            if (action == 2)
+            if (toolbar == 2)
             {
                 EndSelectedTask();
                 return;
@@ -191,22 +225,39 @@ namespace ZonderqOS.GUI.Apps
             if (activePage == PagePerformance)
             {
                 int resource = view.PerformanceResourceAt(x, y);
-                if (resource >= PerfCpu && resource <= PerfSystem)
+                if (resource >= 0)
                 {
                     performanceResource = resource;
-                    status = resource == PerfCpu ? "Wydajnosc CPU" :
-                             resource == PerfMemory ? "Wydajnosc pamieci" : "Stan systemu";
+                    return;
+                }
+
+                if (performanceResource == PerfCpu)
+                {
+                    int graph = view.CpuGraphModeAt(x, y);
+                    if (graph >= 0)
+                    {
+                        cpuGraphMode = graph;
+                        status = graph == CpuGraphTotal ? "CPU: lacznie" : "CPU: logiczne procesory";
+                        return;
+                    }
+
+                    int delta = view.CpuLogicalPageActionAt(x, y);
+                    if (delta != 0)
+                    {
+                        logicalPage += delta;
+                        ClampLogicalPage();
+                        return;
+                    }
                 }
                 return;
             }
 
-            int rowIndex = view.RowAt(x, y);
-            if (rowIndex >= 0 && rowIndex < visibleRows.Count)
+            int row = view.RowAt(x, y);
+            if (row >= 0 && row < visibleRows.Count)
             {
-                selectedIndex = rowIndex;
+                selectedIndex = row;
                 EnsureSelectionVisible();
-                ModernTaskRow row = visibleRows[rowIndex];
-                status = row.Name;
+                status = visibleRows[row].Name;
             }
         }
 
@@ -217,82 +268,44 @@ namespace ZonderqOS.GUI.Apps
                 Close();
                 return;
             }
-
             if (key.Key == ConsoleKeyEx.F5)
             {
                 RefreshSnapshot();
-                status = "Lista odswiezona";
+                status = "Odswiezono";
                 return;
             }
-
-            if (key.Key == ConsoleKeyEx.LeftArrow)
-            {
-                if (activePage == PagePerformance && performanceResource > PerfCpu)
-                    performanceResource--;
-                else
-                    SetPage(Math.Max(PageProcesses, activePage - 1));
-                return;
-            }
-
-            if (key.Key == ConsoleKeyEx.RightArrow)
-            {
-                if (activePage == PagePerformance && performanceResource < PerfSystem)
-                    performanceResource++;
-                else
-                    SetPage(Math.Min(PageServices, activePage + 1));
-                return;
-            }
-
             if (activePage == PagePerformance)
                 return;
-
-            if (key.Key == ConsoleKeyEx.UpArrow)
-                Select(-1);
-            else if (key.Key == ConsoleKeyEx.DownArrow)
-                Select(1);
-            else if (key.Key == ConsoleKeyEx.Delete)
-                EndSelectedTask();
+            if (key.Key == ConsoleKeyEx.UpArrow) Select(-1);
+            else if (key.Key == ConsoleKeyEx.DownArrow) Select(1);
+            else if (key.Key == ConsoleKeyEx.Delete) EndSelectedTask();
         }
 
         private void SetPage(int page)
         {
             if (page < PageProcesses || page > PageServices || page == activePage)
                 return;
-
             activePage = page;
             selectedIndex = -1;
             scrollIndex = 0;
             RebuildVisibleRows(null, -1);
-
-            if (page == PageProcesses) status = "Procesy";
-            else if (page == PagePerformance) status = "Wydajnosc";
-            else if (page == PageDetails) status = "Szczegoly";
-            else status = "Uslugi kernela";
+            status = page == PageProcesses ? "Procesy" : page == PagePerformance ? "Wydajnosc" : page == PageDetails ? "Szczegoly" : "Uslugi";
         }
 
         private void Select(int delta)
         {
             if (visibleRows.Count == 0)
                 return;
-
-            if (selectedIndex < 0)
-                selectedIndex = delta >= 0 ? 0 : visibleRows.Count - 1;
-            else
-                selectedIndex = Math.Max(0, Math.Min(visibleRows.Count - 1, selectedIndex + delta));
-
+            selectedIndex = selectedIndex < 0
+                ? (delta >= 0 ? 0 : visibleRows.Count - 1)
+                : Math.Max(0, Math.Min(visibleRows.Count - 1, selectedIndex + delta));
             EnsureSelectionVisible();
             status = visibleRows[selectedIndex].Name;
         }
 
         private void EndSelectedTask()
         {
-            if (activePage == PagePerformance)
-            {
-                status = "Wybierz proces w Procesach, Szczegolach lub Uslugach";
-                return;
-            }
-
-            if (selectedIndex < 0 || selectedIndex >= visibleRows.Count)
+            if (activePage == PagePerformance || selectedIndex < 0 || selectedIndex >= visibleRows.Count)
             {
                 status = "Wybierz zadanie";
                 return;
@@ -301,7 +314,7 @@ namespace ZonderqOS.GUI.Apps
             ModernTaskRow row = visibleRows[selectedIndex];
             if (!row.CanEnd)
             {
-                status = "To zadanie jest chronione";
+                status = "Zadanie chronione";
                 return;
             }
 
@@ -309,10 +322,9 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (row.GuiApplication == this)
                 {
-                    status = "Manager zadan zamknij przyciskiem X";
+                    status = "Manager zamknij przyciskiem X";
                     return;
                 }
-
                 row.GuiApplication.Close();
                 status = "Zakonczono aplikacje";
                 RefreshSnapshot();
@@ -321,8 +333,8 @@ namespace ZonderqOS.GUI.Apps
 
             if (row.KernelPid > 0)
             {
-                bool requested = ProcessManager.Kill(row.KernelPid);
-                status = requested ? "Wyslano zatrzymanie procesu" : "Nie mozna zatrzymac procesu";
+                bool ok = ProcessManager.Kill(row.KernelPid);
+                status = ok ? "Wyslano zatrzymanie" : "Nie mozna zatrzymac";
                 RefreshSnapshot();
             }
         }
@@ -354,8 +366,8 @@ namespace ZonderqOS.GUI.Apps
         private void BuildRows()
         {
             allRows.Clear();
-            int slot = 0;
             guiAppCount = 0;
+            int slot = 0;
             Application active = applicationManager != null ? applicationManager.ActiveApplication : null;
 
             if (applicationManager != null)
@@ -363,16 +375,12 @@ namespace ZonderqOS.GUI.Apps
                 List<Application> apps = applicationManager.Applications;
                 for (int i = 0; i < apps.Count; i++)
                 {
-                    Application application = apps[i];
-                    if (application == null || !application.IsRunning || application.Window == null)
+                    Application app = apps[i];
+                    if (app == null || !app.IsRunning || app.Window == null)
                         continue;
-
-                    string state = application.Window.IsMinimized
-                        ? StateMinimized
-                        : active == application ? StateActive : StateRunning;
-
                     ModernTaskRow row = AcquireRow(slot++);
-                    row.SetApplication(application, state, application != this);
+                    string state = app.Window.IsMinimized ? "MINIMIZED" : active == app ? "ACTIVE" : "RUNNING";
+                    row.SetApplication(app, state, app != this);
                     allRows.Add(row);
                     guiAppCount++;
                 }
@@ -384,11 +392,9 @@ namespace ZonderqOS.GUI.Apps
                 KernelProcess process = processSnapshot[i];
                 if (process == null)
                     continue;
-
                 bool protectedProcess = string.Equals(process.Name, "sys_guardian", StringComparison.OrdinalIgnoreCase);
                 ModernTaskRow row = AcquireRow(slot++);
-                row.SetKernel(process, process.IsRunning ? StateRunning : StateStopped,
-                    protectedProcess ? DetailProtected : DetailKernel, !protectedProcess);
+                row.SetKernel(process, process.IsRunning ? "RUNNING" : "STOPPED", protectedProcess ? "SYSTEM PROTECTED" : "KERNEL PROCESS", !protectedProcess);
                 allRows.Add(row);
             }
         }
@@ -408,24 +414,15 @@ namespace ZonderqOS.GUI.Apps
             }
 
             selectedIndex = -1;
-            if (selectedApp != null || selectedPid > 0)
+            for (int i = 0; i < visibleRows.Count; i++)
             {
-                for (int i = 0; i < visibleRows.Count; i++)
+                ModernTaskRow row = visibleRows[i];
+                if ((selectedApp != null && row.GuiApplication == selectedApp) || (selectedPid > 0 && row.KernelPid == selectedPid))
                 {
-                    ModernTaskRow row = visibleRows[i];
-                    if (selectedApp != null && row.GuiApplication == selectedApp)
-                    {
-                        selectedIndex = i;
-                        break;
-                    }
-                    if (selectedPid > 0 && row.KernelPid == selectedPid)
-                    {
-                        selectedIndex = i;
-                        break;
-                    }
+                    selectedIndex = i;
+                    break;
                 }
             }
-
             ClampScroll();
             EnsureSelectionVisible();
         }
@@ -437,23 +434,11 @@ namespace ZonderqOS.GUI.Apps
                 totalPages = PageAllocator.TotalPageCount;
                 freePages = PageAllocator.FreePageCount;
                 usedMemoryPercent = totalPages == 0 ? 0 : ((totalPages - freePages) * 100UL) / totalPages;
-                if (usedMemoryPercent > 100) usedMemoryPercent = 100;
-
+                usedMemoryPercent = Math.Min(100UL, usedMemoryPercent);
                 if (CosmosGc.IsEnabled)
                 {
                     gcHeapBytes = CosmosGc.GetHeapSizeBytes();
                     gcCommittedBytes = CosmosGc.GetTotalCommittedBytes();
-                    gcFragmentedBytes = CosmosGc.GetFragmentedBytes();
-                    gcPinnedObjects = CosmosGc.GetPinnedObjectsCount();
-                    gcCollections = CosmosGc.GetCollectionIndex();
-                }
-                else
-                {
-                    gcHeapBytes = 0;
-                    gcCommittedBytes = 0;
-                    gcFragmentedBytes = 0;
-                    gcPinnedObjects = 0;
-                    gcCollections = 0;
                 }
             }
             catch
@@ -463,97 +448,149 @@ namespace ZonderqOS.GUI.Apps
                 usedMemoryPercent = 0;
                 gcHeapBytes = 0;
                 gcCommittedBytes = 0;
-                gcFragmentedBytes = 0;
-                gcPinnedObjects = 0;
-                gcCollections = 0;
             }
-
             RecordHistory(memoryHistory, ref memoryHistoryCount, ref memoryHistoryWrite, (int)usedMemoryPercent);
         }
 
         private void UpdateCpuSnapshot()
         {
-            UpdateSchedulerStats();
+            uint cpuCount = 0;
+            int slots = 0;
+            ulong busyTotal = 0;
+            try
+            {
+                cpuCount = SchedulerInfo.CpuCount;
+                slots = SchedulerInfo.ThreadSlotCount;
+                busyTotal = SchedulerInfo.BusyCpuTimeNs;
+                schedulerName = string.IsNullOrEmpty(SchedulerInfo.SchedulerName) ? "N/A" : SchedulerInfo.SchedulerName;
+                schedulerTickNs = SchedulerInfo.TickPeriodNs;
+            }
+            catch
+            {
+                schedulerName = "N/A";
+                schedulerTickNs = 0;
+            }
 
-            if (!SchedulerManager.IsReady || Stopwatch.Frequency <= 0)
+            onlineCpuCount = cpuCount;
+            EnsureLogicalCapacity(Math.Max(1, Math.Max(cpuInfo.LogicalProcessors, (int)cpuCount)));
+            EnsureThreadSlotCapacity(Math.Max(0, slots));
+
+            schedulerThreadCount = 0;
+            runningThreadCount = 0;
+            readyThreadCount = 0;
+            blockedThreadCount = 0;
+            sleepingThreadCount = 0;
+            Array.Clear(logicalBusyDelta, 0, logicalBusyDelta.Length);
+
+            long now = Stopwatch.GetTimestamp();
+            long elapsedTicks = lastCpuTimestamp == 0 ? 0 : now - lastCpuTimestamp;
+            ulong elapsedNs = elapsedTicks > 0 && Stopwatch.Frequency > 0
+                ? TicksToNanoseconds((ulong)elapsedTicks, (ulong)Stopwatch.Frequency)
+                : 0;
+            bool validWindow = lastCpuTimestamp != 0 && elapsedNs >= 1_000_000UL;
+
+            for (int slot = 0; slot < slots; slot++)
+            {
+                KernelThreadInfo info;
+                bool present;
+                try { present = SchedulerInfo.TryGetThreadInSlot(slot, out info); }
+                catch { info = default; present = false; }
+
+                if (!present)
+                {
+                    if (slot < previousThreadValid.Length) previousThreadValid[slot] = false;
+                    continue;
+                }
+
+                schedulerThreadCount++;
+                if (info.State == KernelThreadState.Running) runningThreadCount++;
+                else if (info.State == KernelThreadState.Ready) readyThreadCount++;
+                else if (info.State == KernelThreadState.Blocked) blockedThreadCount++;
+                else if (info.State == KernelThreadState.Sleeping) sleepingThreadCount++;
+
+                ulong delta = 0;
+                if (validWindow && previousThreadValid[slot] && previousThreadIds[slot] == info.Id && info.TotalRuntimeNs >= previousThreadRuntime[slot])
+                    delta = info.TotalRuntimeNs - previousThreadRuntime[slot];
+
+                if (!info.IsIdle && info.CpuId < (uint)logicalBusyDelta.Length)
+                    logicalBusyDelta[info.CpuId] += delta;
+
+                previousThreadIds[slot] = info.Id;
+                previousThreadRuntime[slot] = info.TotalRuntimeNs;
+                previousThreadValid[slot] = true;
+            }
+
+            if (!validWindow)
             {
                 cpuUsagePercent = 0;
                 RecordHistory(cpuHistory, ref cpuHistoryCount, ref cpuHistoryWrite, 0);
-                return;
-            }
-
-            try
-            {
-                long now = Stopwatch.GetTimestamp();
-                ulong busy = SchedulerManager.GetBusyCpuTimeNs();
-
-                if (lastCpuTimestamp == 0)
+                for (int cpu = 0; cpu < logicalCapacity; cpu++)
                 {
-                    lastCpuTimestamp = now;
-                    lastBusyCpuNs = busy;
-                    RecordHistory(cpuHistory, ref cpuHistoryCount, ref cpuHistoryWrite, 0);
-                    return;
+                    logicalUsage[cpu] = 0;
+                    RecordHistory(logicalHistory[cpu], ref logicalHistoryCount[cpu], ref logicalHistoryWrite[cpu], 0);
                 }
-
-                long elapsedTicksSigned = now - lastCpuTimestamp;
-                if (elapsedTicksSigned <= 0)
-                    return;
-
-                ulong elapsedNs = TicksToNanoseconds((ulong)elapsedTicksSigned, (ulong)Stopwatch.Frequency);
-                if (elapsedNs < 50_000_000UL)
-                    return;
-
-                ulong cpuCount = Math.Max(1UL, (ulong)onlineCpuCount);
-                ulong capacityNs = elapsedNs * cpuCount;
-                ulong busyDelta = busy >= lastBusyCpuNs ? busy - lastBusyCpuNs : 0;
-                ulong usage = capacityNs > 0 ? (busyDelta * 100UL) / capacityNs : 0;
-                cpuUsagePercent = (int)Math.Min(100UL, usage);
-
-                lastCpuTimestamp = now;
-                lastBusyCpuNs = busy;
-                RecordHistory(cpuHistory, ref cpuHistoryCount, ref cpuHistoryWrite, cpuUsagePercent);
             }
-            catch
+            else
             {
+                ulong capacity = elapsedNs * Math.Max(1UL, (ulong)cpuCount);
+                ulong busyDelta = busyTotal >= lastBusyCpuNs ? busyTotal - lastBusyCpuNs : 0;
+                cpuUsagePercent = capacity == 0 ? 0 : (int)Math.Min(100UL, busyDelta * 100UL / capacity);
+                RecordHistory(cpuHistory, ref cpuHistoryCount, ref cpuHistoryWrite, cpuUsagePercent);
+
+                for (int cpu = 0; cpu < logicalCapacity; cpu++)
+                {
+                    int usage = (uint)cpu < cpuCount && elapsedNs > 0
+                        ? (int)Math.Min(100UL, logicalBusyDelta[cpu] * 100UL / elapsedNs)
+                        : 0;
+                    logicalUsage[cpu] = usage;
+                    RecordHistory(logicalHistory[cpu], ref logicalHistoryCount[cpu], ref logicalHistoryWrite[cpu], usage);
+                }
             }
+
+            lastCpuTimestamp = now;
+            lastBusyCpuNs = busyTotal;
+            ClampLogicalPage();
         }
 
-        private void UpdateSchedulerStats()
+        private void EnsureLogicalCapacity(int required)
         {
-            onlineCpuCount = 0;
-            schedulerThreadCount = 0;
-            readyThreadCount = 0;
-            runningThreadCount = 0;
-            blockedThreadCount = 0;
-            sleepingThreadCount = 0;
-            schedulerName = "N/A";
-
-            try
+            required = Math.Max(1, Math.Min(256, required));
+            if (required <= logicalCapacity)
+                return;
+            int old = logicalCapacity;
+            int size = Math.Min(256, Math.Max(required, Math.Max(4, old * 2)));
+            int[][] history = new int[size][];
+            int[] counts = new int[size];
+            int[] writes = new int[size];
+            int[] usage = new int[size];
+            ulong[] busy = new ulong[size];
+            for (int i = 0; i < size; i++)
             {
-                onlineCpuCount = SchedulerManager.CpuCount;
-                if (SchedulerManager.Current != null && !string.IsNullOrEmpty(SchedulerManager.Current.Name))
-                    schedulerName = SchedulerManager.Current.Name;
-
-                SchedulerThread[] threads = SchedulerManager.Threads;
-                if (threads == null)
-                    return;
-
-                for (int i = 0; i < threads.Length; i++)
+                history[i] = i < old ? logicalHistory[i] : new int[HistoryLength];
+                if (i < old)
                 {
-                    SchedulerThread thread = threads[i];
-                    if (thread == null)
-                        continue;
-
-                    schedulerThreadCount++;
-                    if (thread.State == SchedulerThreadState.Ready) readyThreadCount++;
-                    else if (thread.State == SchedulerThreadState.Running) runningThreadCount++;
-                    else if (thread.State == SchedulerThreadState.Blocked) blockedThreadCount++;
-                    else if (thread.State == SchedulerThreadState.Sleeping) sleepingThreadCount++;
+                    counts[i] = logicalHistoryCount[i];
+                    writes[i] = logicalHistoryWrite[i];
+                    usage[i] = logicalUsage[i];
                 }
             }
-            catch
-            {
-            }
+            logicalHistory = history;
+            logicalHistoryCount = counts;
+            logicalHistoryWrite = writes;
+            logicalUsage = usage;
+            logicalBusyDelta = busy;
+            logicalCapacity = size;
+        }
+
+        private void EnsureThreadSlotCapacity(int required)
+        {
+            if (required <= threadSlotCapacity)
+                return;
+            int size = Math.Max(required, Math.Max(32, threadSlotCapacity * 2));
+            Array.Resize(ref previousThreadIds, size);
+            Array.Resize(ref previousThreadRuntime, size);
+            Array.Resize(ref previousThreadValid, size);
+            threadSlotCapacity = size;
         }
 
         private void UpdateSystemSnapshot()
@@ -573,60 +610,37 @@ namespace ZonderqOS.GUI.Apps
 
         private static ulong TicksToNanoseconds(ulong ticks, ulong frequency)
         {
-            if (frequency == 0)
-                return 0;
-            return (ticks / frequency) * 1_000_000_000UL +
-                   ((ticks % frequency) * 1_000_000_000UL) / frequency;
+            if (frequency == 0) return 0;
+            return ticks / frequency * 1_000_000_000UL + ticks % frequency * 1_000_000_000UL / frequency;
         }
 
-        private static void RecordHistory(int[] history, ref int count, ref int writeIndex, int value)
+        private static void RecordHistory(int[] history, ref int count, ref int write, int value)
         {
             value = Math.Max(0, Math.Min(100, value));
-            history[writeIndex] = value;
-            writeIndex = (writeIndex + 1) % history.Length;
-            if (count < history.Length)
-                count++;
+            history[write] = value;
+            write = (write + 1) % history.Length;
+            if (count < history.Length) count++;
         }
 
-        internal int GetCpuHistory(int chronologicalIndex)
+        private static int ReadHistory(int[] history, int count, int write, int index)
         {
-            return GetHistory(cpuHistory, cpuHistoryCount, cpuHistoryWrite, chronologicalIndex);
-        }
-
-        internal int GetMemoryHistory(int chronologicalIndex)
-        {
-            return GetHistory(memoryHistory, memoryHistoryCount, memoryHistoryWrite, chronologicalIndex);
-        }
-
-        private static int GetHistory(int[] history, int count, int writeIndex, int chronologicalIndex)
-        {
-            if (chronologicalIndex < 0 || chronologicalIndex >= count)
-                return 0;
-            int start = count < history.Length ? 0 : writeIndex;
-            return history[(start + chronologicalIndex) % history.Length];
+            if (index < 0 || index >= count) return 0;
+            int start = count < history.Length ? 0 : write;
+            return history[(start + index) % history.Length];
         }
 
         private void EnsureSelectionVisible()
         {
-            if (selectedIndex < 0 || activePage == PagePerformance)
-                return;
-
+            if (selectedIndex < 0 || activePage == PagePerformance) return;
             int visible = Math.Max(1, view.VisibleRows);
-            if (selectedIndex < scrollIndex)
-                scrollIndex = selectedIndex;
-            else if (selectedIndex >= scrollIndex + visible)
-                scrollIndex = selectedIndex - visible + 1;
+            if (selectedIndex < scrollIndex) scrollIndex = selectedIndex;
+            else if (selectedIndex >= scrollIndex + visible) scrollIndex = selectedIndex - visible + 1;
             ClampScroll();
         }
 
         private void ClampScroll()
         {
-            if (activePage == PagePerformance)
-            {
-                scrollIndex = 0;
-                return;
-            }
-
+            if (activePage == PagePerformance) { scrollIndex = 0; return; }
             int max = Math.Max(0, visibleRows.Count - Math.Max(1, view.VisibleRows));
             scrollIndex = Math.Max(0, Math.Min(scrollIndex, max));
         }
@@ -637,82 +651,82 @@ namespace ZonderqOS.GUI.Apps
             scrollIndex = Math.Max(0, Math.Min(value, max));
         }
 
-        internal ulong UptimeSeconds
+        private void ClampLogicalPage()
         {
-            get
-            {
-                long frequency = Stopwatch.Frequency;
-                if (frequency <= 0)
-                    return 0;
-                long now = Stopwatch.GetTimestamp();
-                long elapsed = now - openedAtTimestamp;
-                return elapsed > 0 ? (ulong)elapsed / (ulong)frequency : 0;
-            }
+            logicalPage = Math.Max(0, Math.Min(logicalPage, LogicalPageCount - 1));
         }
 
-        private static string FormatSpeedOnce(int mhz)
+        private static string FormatSpeed(int mhz)
         {
             if (mhz <= 0) return "N/A";
             if (mhz >= 1000) return (mhz / 1000) + "." + ((mhz % 1000) / 100) + " GHZ";
             return mhz + " MHZ";
         }
 
-        private static string FormatCacheOnce(ulong bytes)
+        private static string FormatBytes(ulong bytes)
         {
             if (bytes == 0) return "N/A";
-            if (bytes >= 1024UL * 1024UL)
-            {
-                ulong mb10 = bytes * 10UL / (1024UL * 1024UL);
-                return (mb10 / 10UL) + "." + (mb10 % 10UL) + " MB";
-            }
+            if (bytes >= 1024UL * 1024UL) return (bytes / (1024UL * 1024UL)) + " MB";
             return (bytes / 1024UL) + " KB";
         }
 
         public override void Close()
         {
             base.Close();
-            if (closeCallback != null)
-                closeCallback();
+            closeCallback?.Invoke();
         }
 
-        internal List<ModernTaskRow> Rows { get { return visibleRows; } }
-        internal int ActivePage { get { return activePage; } }
-        internal int PerformanceResource { get { return performanceResource; } }
-        internal int SelectedIndex { get { return selectedIndex; } }
-        internal int ScrollIndex { get { return scrollIndex; } }
-        internal string Status { get { return status; } }
-        internal int GuiAppCount { get { return guiAppCount; } }
-        internal int KernelProcessCount { get { return kernelProcessCount; } }
-        internal int CpuUsagePercent { get { return cpuUsagePercent; } }
-        internal ulong TotalPages { get { return totalPages; } }
-        internal ulong FreePages { get { return freePages; } }
-        internal ulong UsedMemoryPercent { get { return usedMemoryPercent; } }
-        internal ulong UsedMemoryMb { get { return (totalPages - Math.Min(totalPages, freePages)) * PageAllocator.PageSize / (1024UL * 1024UL); } }
-        internal ulong TotalMemoryMb { get { return totalPages * PageAllocator.PageSize / (1024UL * 1024UL); } }
-        internal ulong GcHeapMb { get { return gcHeapBytes / (1024UL * 1024UL); } }
-        internal ulong GcCommittedMb { get { return gcCommittedBytes / (1024UL * 1024UL); } }
-        internal ulong GcFragmentedKb { get { return gcFragmentedBytes / 1024UL; } }
-        internal ulong GcPinnedObjects { get { return gcPinnedObjects; } }
-        internal int GcCollections { get { return gcCollections; } }
-        internal int StorageDeviceCount { get { return storageDeviceCount; } }
-        internal int StoragePartitionCount { get { return storagePartitionCount; } }
-        internal bool NetworkReady { get { return networkReady; } }
-        internal uint OnlineCpuCount { get { return onlineCpuCount; } }
-        internal int SchedulerThreadCount { get { return schedulerThreadCount; } }
-        internal int ReadyThreadCount { get { return readyThreadCount; } }
-        internal int RunningThreadCount { get { return runningThreadCount; } }
-        internal int BlockedThreadCount { get { return blockedThreadCount; } }
-        internal int SleepingThreadCount { get { return sleepingThreadCount; } }
-        internal string SchedulerName { get { return schedulerName; } }
-        internal CpuHardwareInfo CpuInfo { get { return cpuInfo; } }
-        internal int CpuHistoryCount { get { return cpuHistoryCount; } }
-        internal int MemoryHistoryCount { get { return memoryHistoryCount; } }
-        internal int HistoryCapacity { get { return HistoryLength; } }
-        internal string BaseSpeedText { get { return baseSpeedText; } }
-        internal string MaxSpeedText { get { return maxSpeedText; } }
-        internal string CacheText { get { return cacheText; } }
-        internal string SignatureText { get { return signatureText; } }
-        internal string TopologyText { get { return topologyText; } }
+        internal List<ModernTaskRow> Rows => visibleRows;
+        internal int ActivePage => activePage;
+        internal int PerformanceResource => performanceResource;
+        internal int CpuGraphMode => cpuGraphMode;
+        internal int SelectedIndex => selectedIndex;
+        internal int ScrollIndex => scrollIndex;
+        internal string Status => status;
+        internal string ClockText => clockText;
+        internal string DateText => dateText;
+        internal int GuiAppCount => guiAppCount;
+        internal int KernelProcessCount => kernelProcessCount;
+        internal int CpuUsagePercent => cpuUsagePercent;
+        internal ulong UsedMemoryPercent => usedMemoryPercent;
+        internal ulong TotalPages => totalPages;
+        internal ulong FreePages => freePages;
+        internal ulong UsedMemoryMb => (totalPages - Math.Min(totalPages, freePages)) * PageAllocator.PageSize / (1024UL * 1024UL);
+        internal ulong TotalMemoryMb => totalPages * PageAllocator.PageSize / (1024UL * 1024UL);
+        internal ulong GcHeapMb => gcHeapBytes / (1024UL * 1024UL);
+        internal ulong GcCommittedMb => gcCommittedBytes / (1024UL * 1024UL);
+        internal int StorageDeviceCount => storageDeviceCount;
+        internal int StoragePartitionCount => storagePartitionCount;
+        internal bool NetworkReady => networkReady;
+        internal uint OnlineCpuCount => onlineCpuCount;
+        internal int SchedulerThreadCount => schedulerThreadCount;
+        internal int RunningThreadCount => runningThreadCount;
+        internal int ReadyThreadCount => readyThreadCount;
+        internal int BlockedThreadCount => blockedThreadCount;
+        internal int SleepingThreadCount => sleepingThreadCount;
+        internal string SchedulerName => schedulerName;
+        internal ulong SchedulerTickUs => schedulerTickNs / 1000UL;
+        internal CpuHardwareInfo CpuInfo => cpuInfo;
+        internal string BaseSpeedText => baseSpeedText;
+        internal string MaxSpeedText => maxSpeedText;
+        internal string TopologyText => topologyText;
+        internal string CacheText => cacheText;
+        internal string SignatureText => signatureText;
+        internal int CpuHistoryCount => cpuHistoryCount;
+        internal int MemoryHistoryCount => memoryHistoryCount;
+        internal int HistoryCapacity => HistoryLength;
+        internal int GetCpuHistory(int index) => ReadHistory(cpuHistory, cpuHistoryCount, cpuHistoryWrite, index);
+        internal int GetMemoryHistory(int index) => ReadHistory(memoryHistory, memoryHistoryCount, memoryHistoryWrite, index);
+        internal int GetLogicalHistory(int cpu, int index) => cpu >= 0 && cpu < logicalCapacity ? ReadHistory(logicalHistory[cpu], logicalHistoryCount[cpu], logicalHistoryWrite[cpu], index) : 0;
+        internal int GetLogicalHistoryCount(int cpu) => cpu >= 0 && cpu < logicalCapacity ? logicalHistoryCount[cpu] : 0;
+        internal int GetLogicalUsage(int cpu) => cpu >= 0 && cpu < logicalCapacity ? logicalUsage[cpu] : 0;
+        internal int LogicalDisplayCount => Math.Min(logicalCapacity, Math.Max(Math.Max(1, cpuInfo.LogicalProcessors), Math.Max(1, (int)onlineCpuCount)));
+        internal int LogicalPageCount => Math.Max(1, (LogicalDisplayCount + LogicalPerPage - 1) / LogicalPerPage);
+        internal int LogicalPageStart => logicalPage * LogicalPerPage;
+        internal int LogicalPageIndex => logicalPage;
+        internal int LogicalPerPageCount => LogicalPerPage;
+        internal ulong UptimeSeconds => Stopwatch.Frequency > 0 && Stopwatch.GetTimestamp() > 0 ? (ulong)Stopwatch.GetTimestamp() / (ulong)Stopwatch.Frequency : 0;
+        internal ulong ManagerOpenSeconds => Stopwatch.Frequency > 0 ? (ulong)Math.Max(0L, Stopwatch.GetTimestamp() - managerOpenedAt) / (ulong)Stopwatch.Frequency : 0;
     }
 
     internal sealed class ModernTaskRow
@@ -727,17 +741,17 @@ namespace ZonderqOS.GUI.Apps
         public int WindowWidth;
         public int WindowHeight;
 
-        public void SetApplication(Application application, string state, bool canEnd)
+        public void SetApplication(Application app, string state, bool canEnd)
         {
-            GuiApplication = application;
+            GuiApplication = app;
             KernelPid = -1;
             IsKernel = false;
             CanEnd = canEnd;
-            Name = application == null || string.IsNullOrEmpty(application.Name) ? "Application" : application.Name;
+            Name = app == null || string.IsNullOrEmpty(app.Name) ? "Application" : app.Name;
             State = state;
             Detail = "GUI WINDOW";
-            WindowWidth = application != null && application.Window != null ? application.Window.Width : 0;
-            WindowHeight = application != null && application.Window != null ? application.Window.Height : 0;
+            WindowWidth = app != null && app.Window != null ? app.Window.Width : 0;
+            WindowHeight = app != null && app.Window != null ? app.Window.Height : 0;
         }
 
         public void SetKernel(KernelProcess process, string state, string detail, bool canEnd)
@@ -757,16 +771,16 @@ namespace ZonderqOS.GUI.Apps
     internal sealed class TaskManagerModernView : Widget
     {
         private const int SidebarWidth = 170;
-        private const int HeaderHeight = 52;
-        private const int SummaryTop = 58;
+        private const int HeaderHeight = 54;
+        private const int SummaryTop = 60;
         private const int SummaryHeight = 48;
-        private const int TableHeaderTop = 114;
+        private const int TableHeaderTop = 116;
         private const int TableHeaderHeight = 30;
-        private const int ListTop = 144;
+        private const int ListTop = 146;
         private const int FooterHeight = 28;
         private const int RowHeight = 36;
         private const int ScrollReserve = 16;
-        private const int NavTop = 58;
+        private const int NavTop = 60;
         private const int NavHeight = 42;
         private const int PerfCardHeight = 72;
         private const int PerfCardGap = 10;
@@ -777,114 +791,109 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color Accent = Color.FromArgb(65, 140, 200);
         private static readonly Color Text = Color.FromArgb(228, 234, 239);
         private static readonly Color Muted = Color.FromArgb(139, 154, 168);
-        private static readonly string[] DigitStrings = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9" };
+        private static readonly Color Good = Color.FromArgb(111, 194, 145);
 
         private readonly TaskManagerModernApp app;
         private readonly ScrollBar scrollBar;
-        private readonly Font font = PCScreenFont.DefaultFont;
 
-        public TaskManagerModernView(int x, int y, int width, int height, TaskManagerModernApp owner)
-            : base(x, y, width, height)
+        public TaskManagerModernView(int x, int y, int width, int height, TaskManagerModernApp owner) : base(x, y, width, height)
         {
             app = owner;
             scrollBar = new ScrollBar(0, 0, 10, 100);
-            scrollBar.ValueChanged = delegate(int value) { app.SetScrollIndex(value); };
+            scrollBar.ValueChanged = value => app.SetScrollIndex(value);
         }
 
-        public int VisibleRows
-        {
-            get
-            {
-                int listHeight = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
-                return Math.Max(1, listHeight / RowHeight);
-            }
-        }
+        public int VisibleRows => Math.Max(1, Math.Max(RowHeight, Height - ListTop - FooterHeight - 6) / RowHeight);
 
         public int NavAt(int x, int y)
         {
-            if (x < 6 || x >= SidebarWidth - 6 || y < NavTop)
-                return -1;
+            if (x < 6 || x >= SidebarWidth - 6 || y < NavTop) return -1;
             int relative = y - NavTop;
             int page = relative / NavHeight;
-            return page >= TaskManagerModernApp.PageProcesses && page <= TaskManagerModernApp.PageServices &&
-                   relative < NavHeight * 4 ? page : -1;
+            return page >= 0 && page <= 3 && relative < NavHeight * 4 ? page : -1;
         }
 
         public int ToolbarActionAt(int x, int y)
         {
-            if (x < SidebarWidth || y < 10 || y >= 40)
-                return 0;
-            int refreshX = Width - 210;
-            int endX = Width - 114;
-            if (x >= refreshX && x < refreshX + 88) return 1;
-            if (x >= endX && x < endX + 100) return 2;
+            if (x < SidebarWidth || y < 8 || y >= 42) return 0;
+            int refresh = Width - 210;
+            int end = Width - 114;
+            if (x >= refresh && x < refresh + 88) return 1;
+            if (x >= end && x < end + 100) return 2;
             return 0;
         }
 
         public int PerformanceResourceAt(int x, int y)
         {
-            if (app.ActivePage != TaskManagerModernApp.PagePerformance)
-                return -1;
+            if (app.ActivePage != TaskManagerModernApp.PagePerformance) return -1;
             int left = SidebarWidth + 10;
-            int top = 62;
-            int width = 154;
-            if (x < left || x >= left + width || y < top)
-                return -1;
+            int top = 64;
             int relative = y - top;
             int stride = PerfCardHeight + PerfCardGap;
+            if (x < left || x >= left + 154 || relative < 0) return -1;
             int index = relative / stride;
-            if (index < 0 || index > 2 || relative % stride >= PerfCardHeight)
-                return -1;
-            return index;
+            return index >= 0 && index <= 2 && relative % stride < PerfCardHeight ? index : -1;
+        }
+
+        public int CpuGraphModeAt(int x, int y)
+        {
+            if (app.ActivePage != TaskManagerModernApp.PagePerformance || app.PerformanceResource != TaskManagerModernApp.PerfCpu) return -1;
+            int panelX = SidebarWidth + 180;
+            int top = 86;
+            if (y < top || y >= top + 26) return -1;
+            if (x >= panelX && x < panelX + 92) return TaskManagerModernApp.CpuGraphTotal;
+            if (x >= panelX + 98 && x < panelX + 212) return TaskManagerModernApp.CpuGraphLogical;
+            return -1;
+        }
+
+        public int CpuLogicalPageActionAt(int x, int y)
+        {
+            if (app.CpuGraphMode != TaskManagerModernApp.CpuGraphLogical || app.LogicalPageCount <= 1) return 0;
+            int top = 122;
+            int right = Width - 16;
+            if (y < top || y >= top + 26) return 0;
+            if (x >= right - 60 && x < right - 34) return -1;
+            if (x >= right - 28 && x < right - 2) return 1;
+            return 0;
         }
 
         public int RowAt(int x, int y)
         {
-            if (app.ActivePage == TaskManagerModernApp.PagePerformance)
-                return -1;
+            if (app.ActivePage == TaskManagerModernApp.PagePerformance) return -1;
             int contentX = SidebarWidth + 8;
-            int listHeight = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
-            if (x < contentX || x >= Width - ScrollReserve || y < ListTop || y >= ListTop + listHeight)
-                return -1;
-            int row = (y - ListTop) / RowHeight;
-            int index = app.ScrollIndex + row;
+            int listH = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
+            if (x < contentX || x >= Width - ScrollReserve || y < ListTop || y >= ListTop + listH) return -1;
+            int index = app.ScrollIndex + (y - ListTop) / RowHeight;
             return index >= 0 && index < app.Rows.Count ? index : -1;
         }
 
         public bool HandleScrollMouse(int mouseX, int mouseY, bool left, bool oldLeft)
         {
-            if (app.ActivePage == TaskManagerModernApp.PagePerformance)
-                return false;
+            if (app.ActivePage == TaskManagerModernApp.PagePerformance) return false;
             UpdateScrollBar();
             return scrollBar.HandleMouse(mouseX, mouseY, left, oldLeft);
         }
 
         private void UpdateScrollBar()
         {
-            int listHeight = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
+            int listH = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
             scrollBar.X = X + Width - 15;
             scrollBar.Y = Y + ListTop + 2;
             scrollBar.Width = 10;
-            scrollBar.Height = Math.Max(24, listHeight - 4);
+            scrollBar.Height = Math.Max(24, listH - 4);
             scrollBar.SetRange(app.Rows.Count, VisibleRows);
             scrollBar.Value = app.ScrollIndex;
         }
 
         public override void Render(Canvas canvas)
         {
-            if (!Visible)
-                return;
-
+            if (!Visible) return;
             canvas.DrawFilledRectangle(Chrome, X, Y, Width, Height);
             canvas.DrawRectangle(Border, X, Y, Width, Height);
             RenderSidebar(canvas);
             RenderHeader(canvas);
-
-            if (app.ActivePage == TaskManagerModernApp.PagePerformance)
-                RenderPerformance(canvas);
-            else
-                RenderProcessPage(canvas);
-
+            if (app.ActivePage == TaskManagerModernApp.PagePerformance) RenderPerformance(canvas);
+            else RenderProcessPage(canvas);
             RenderFooter(canvas);
         }
 
@@ -894,19 +903,18 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawLine(Color.FromArgb(52, 62, 72), X + SidebarWidth, Y + 1, X + SidebarWidth, Y + Height - 2);
             IconManager.DrawScaled(canvas, IconType.Settings, X + 16, Y + 16, 20, 20);
             SmallTextRenderer.Draw(canvas, "TASK MANAGER", X + 46, Y + 23, Text);
-
-            DrawNavItem(canvas, TaskManagerModernApp.PageProcesses, "Procesy", IconType.FileManager);
-            DrawNavItem(canvas, TaskManagerModernApp.PagePerformance, "Wydajnosc", IconType.Settings);
-            DrawNavItem(canvas, TaskManagerModernApp.PageDetails, "Szczegoly", IconType.File);
-            DrawNavItem(canvas, TaskManagerModernApp.PageServices, "Uslugi", IconType.Settings);
-
-            int bottomY = Y + Height - 44;
-            canvas.DrawLine(Color.FromArgb(48, 58, 68), X + 10, bottomY - 8, X + SidebarWidth - 10, bottomY - 8);
-            IconManager.DrawScaled(canvas, IconType.About, X + 17, bottomY, 16, 16);
-            SmallTextRenderer.Draw(canvas, "ZONDERQOS", X + 44, bottomY + 5, Muted);
+            DrawNav(canvas, 0, "Procesy", IconType.FileManager);
+            DrawNav(canvas, 1, "Wydajnosc", IconType.Settings);
+            DrawNav(canvas, 2, "Szczegoly", IconType.File);
+            DrawNav(canvas, 3, "Uslugi", IconType.Settings);
+            int bottom = Y + Height - 62;
+            canvas.DrawLine(Color.FromArgb(48, 58, 68), X + 10, bottom - 8, X + SidebarWidth - 10, bottom - 8);
+            SmallTextRenderer.Draw(canvas, "SYSTEM CLOCK", X + 16, bottom + 2, Muted);
+            SmallTextRenderer.Draw(canvas, app.ClockText, X + 16, bottom + 20, Color.WhiteSmoke);
+            SmallTextRenderer.Draw(canvas, app.DateText, X + 82, bottom + 20, Muted);
         }
 
-        private void DrawNavItem(Canvas canvas, int page, string label, IconType icon)
+        private void DrawNav(Canvas canvas, int page, string label, IconType icon)
         {
             int y = Y + NavTop + page * NavHeight;
             bool active = app.ActivePage == page;
@@ -915,7 +923,6 @@ namespace ZonderqOS.GUI.Apps
                 canvas.DrawFilledRectangle(Color.FromArgb(38, 55, 70), X + 8, y + 2, SidebarWidth - 16, NavHeight - 4);
                 canvas.DrawFilledRectangle(Accent, X + 8, y + 7, 3, NavHeight - 14);
             }
-            canvas.DrawFilledRectangle(Color.FromArgb(31, 38, 45), X + 18, y + 10, 24, 24);
             IconManager.DrawScaled(canvas, icon, X + 21, y + 13, 18, 18);
             SmallTextRenderer.Draw(canvas, label, X + 52, y + 18, active ? Color.WhiteSmoke : Color.FromArgb(196, 205, 213));
         }
@@ -923,298 +930,271 @@ namespace ZonderqOS.GUI.Apps
         private void RenderHeader(Canvas canvas)
         {
             int contentX = X + SidebarWidth + 8;
-            int contentW = Width - SidebarWidth - 12;
-            string title = app.ActivePage == TaskManagerModernApp.PageProcesses ? "Procesy" :
-                           app.ActivePage == TaskManagerModernApp.PagePerformance ? "Wydajnosc" :
-                           app.ActivePage == TaskManagerModernApp.PageDetails ? "Szczegoly" : "Uslugi";
+            string title = app.ActivePage == 0 ? "Procesy" : app.ActivePage == 1 ? "Wydajnosc" : app.ActivePage == 2 ? "Szczegoly" : "Uslugi";
             SmallTextRenderer.Draw(canvas, title, contentX + 4, Y + 21, Color.WhiteSmoke);
-
-            int refreshX = X + Width - 210;
-            int endX = X + Width - 114;
-            DrawButton(canvas, refreshX, Y + 10, 88, "REFRESH", IconType.Refresh, false, true);
-            DrawButton(canvas, endX, Y + 10, 100, "END TASK", IconType.Close, true,
-                app.ActivePage != TaskManagerModernApp.PagePerformance);
-            canvas.DrawLine(Color.FromArgb(52, 63, 74), contentX, Y + HeaderHeight, contentX + contentW, Y + HeaderHeight);
+            int refresh = X + Width - 210;
+            int end = X + Width - 114;
+            int clock = Math.Max(contentX + 120, refresh - 154);
+            SmallTextRenderer.Draw(canvas, app.ClockText, clock, Y + 13, Color.WhiteSmoke);
+            SmallTextRenderer.Draw(canvas, app.DateText, clock, Y + 31, Muted);
+            DrawButton(canvas, refresh, Y + 10, 88, "REFRESH", IconType.Refresh, false, true);
+            DrawButton(canvas, end, Y + 10, 100, "END TASK", IconType.Close, true, app.ActivePage != 1);
+            canvas.DrawLine(Color.FromArgb(52, 63, 74), contentX, Y + HeaderHeight, X + Width - 4, Y + HeaderHeight);
         }
 
         private void DrawButton(Canvas canvas, int x, int y, int width, string label, IconType icon, bool danger, bool enabled)
         {
-            Color background = !enabled ? Color.FromArgb(35, 40, 46) : danger ? Color.FromArgb(63, 42, 47) : Color.FromArgb(47, 55, 64);
+            Color bg = !enabled ? Color.FromArgb(35, 40, 46) : danger ? Color.FromArgb(63, 42, 47) : Color.FromArgb(47, 55, 64);
             Color border = !enabled ? Color.FromArgb(54, 62, 70) : danger ? Color.FromArgb(111, 65, 73) : Color.FromArgb(80, 94, 108);
-            Color labelColor = enabled ? Color.WhiteSmoke : Color.FromArgb(112, 122, 132);
-            canvas.DrawFilledRectangle(background, x, y, width, 30);
+            canvas.DrawFilledRectangle(bg, x, y, width, 30);
             canvas.DrawRectangle(border, x, y, width, 30);
             IconManager.DrawScaled(canvas, icon, x + 7, y + 7, 16, 16);
-            SmallTextRenderer.DrawClipped(canvas, label, x + 29, y + 12, Math.Max(10, width - 34), labelColor);
+            SmallTextRenderer.DrawClipped(canvas, label, x + 29, y + 12, width - 34, enabled ? Color.WhiteSmoke : Muted);
         }
 
         private void RenderProcessPage(Canvas canvas)
         {
-            int contentX = X + SidebarWidth + 8;
-            int contentW = Width - SidebarWidth - 12;
-            RenderSummary(canvas, contentX, contentW);
-            RenderTableHeader(canvas, contentX, contentW);
-            RenderRows(canvas, contentX, contentW);
-        }
-
-        private void RenderSummary(Canvas canvas, int x, int width)
-        {
+            int x = X + SidebarWidth + 8;
+            int width = Width - SidebarWidth - 12;
             int gap = 8;
             int cardW = Math.Max(86, (width - gap * 3) / 4);
-            DrawSummaryNumber(canvas, x, cardW, "APPS", (ulong)app.GuiAppCount, "APPLICATIONS", false, false);
-            DrawSummaryNumber(canvas, x + cardW + gap, cardW, "BACKGROUND", (ulong)app.KernelProcessCount, "KERNEL", false, false);
-            DrawSummaryNumber(canvas, x + (cardW + gap) * 2, cardW, "CPU", (ulong)app.CpuUsagePercent, "TOTAL USAGE", true, true);
-            DrawSummaryNumber(canvas, x + (cardW + gap) * 3, cardW, "MEMORY", app.UsedMemoryPercent, "PHYSICAL", false, true);
+            DrawSummary(canvas, x, cardW, "APPS", (ulong)app.GuiAppCount, "APPLICATIONS", false);
+            DrawSummary(canvas, x + cardW + gap, cardW, "THREADS", (ulong)Math.Max(0, app.SchedulerThreadCount), "SCHEDULER", false);
+            DrawSummary(canvas, x + (cardW + gap) * 2, cardW, "CPU", (ulong)app.CpuUsagePercent, "TOTAL USAGE", true);
+            DrawSummary(canvas, x + (cardW + gap) * 3, cardW, "MEMORY", app.UsedMemoryPercent, "PHYSICAL", true);
+            RenderTable(canvas, x, width);
         }
 
-        private void DrawSummaryNumber(Canvas canvas, int x, int width, string label, ulong value, string detail, bool accent, bool percent)
+        private void DrawSummary(Canvas canvas, int x, int width, string title, ulong value, string detail, bool percent)
         {
             int y = Y + SummaryTop;
             canvas.DrawFilledRectangle(Color.FromArgb(26, 32, 38), x, y, width, SummaryHeight);
             canvas.DrawRectangle(Color.FromArgb(53, 65, 76), x, y, width, SummaryHeight);
-            if (accent) canvas.DrawFilledRectangle(Accent, x, y, 3, SummaryHeight);
-            SmallTextRenderer.Draw(canvas, label, x + 10, y + 12, Muted);
-            SmallTextRenderer.DrawUInt(canvas, value, x + 10, y + 27, accent ? Color.FromArgb(137, 194, 233) : Text);
-            if (percent)
-                SmallTextRenderer.Draw(canvas, "%", x + 12 + SmallTextRenderer.WidthUInt(value), y + 27, accent ? Color.FromArgb(137, 194, 233) : Text);
+            SmallTextRenderer.Draw(canvas, title, x + 10, y + 12, Muted);
+            SmallTextRenderer.DrawUInt(canvas, value, x + 10, y + 27, Text);
+            if (percent) SmallTextRenderer.Draw(canvas, "%", x + 12 + SmallTextRenderer.WidthUInt(value), y + 27, Text);
             SmallTextRenderer.DrawClipped(canvas, detail, x + 66, y + 27, Math.Max(20, width - 74), Muted);
         }
 
-        private void RenderTableHeader(Canvas canvas, int x, int width)
+        private void RenderTable(Canvas canvas, int x, int width)
         {
-            int y = Y + TableHeaderTop;
-            canvas.DrawFilledRectangle(Color.FromArgb(33, 39, 46), x, y, width, TableHeaderHeight);
-            canvas.DrawLine(Color.FromArgb(57, 68, 79), x, y + TableHeaderHeight - 1, x + width, y + TableHeaderHeight - 1);
+            int headerY = Y + TableHeaderTop;
+            canvas.DrawFilledRectangle(Color.FromArgb(33, 39, 46), x, headerY, width, TableHeaderHeight);
+            SmallTextRenderer.Draw(canvas, app.ActivePage == 2 ? "PID" : "NAME", x + 12, headerY + 11, Muted);
+            SmallTextRenderer.Draw(canvas, app.ActivePage == 2 ? "NAME" : "TYPE", x + 90, headerY + 11, Muted);
+            SmallTextRenderer.Draw(canvas, "STATUS", x + Math.Max(370, width - 240), headerY + 11, Muted);
+            SmallTextRenderer.Draw(canvas, "DETAIL", x + Math.Max(470, width - 120), headerY + 11, Muted);
 
-            if (app.ActivePage == TaskManagerModernApp.PageDetails)
-            {
-                SmallTextRenderer.Draw(canvas, "PID", x + 12, y + 11, Muted);
-                SmallTextRenderer.Draw(canvas, "NAME", x + 74, y + 11, Muted);
-                SmallTextRenderer.Draw(canvas, "STATUS", x + Math.Max(320, width - 260), y + 11, Muted);
-                SmallTextRenderer.Draw(canvas, "DETAIL", x + Math.Max(410, width - 154), y + 11, Muted);
-            }
-            else
-            {
-                SmallTextRenderer.Draw(canvas, "NAME", x + 12, y + 11, Muted);
-                SmallTextRenderer.Draw(canvas, "TYPE", x + Math.Max(280, width - 350), y + 11, Muted);
-                SmallTextRenderer.Draw(canvas, "STATUS", x + Math.Max(370, width - 240), y + 11, Muted);
-                SmallTextRenderer.Draw(canvas, "ID", x + Math.Max(470, width - 108), y + 11, Muted);
-            }
-        }
-
-        private void RenderRows(Canvas canvas, int contentX, int contentW)
-        {
             int listY = Y + ListTop;
-            int listHeight = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
-            int rowWidth = Math.Max(80, contentW - ScrollReserve);
-            canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), contentX, listY, contentW, listHeight);
-            canvas.DrawRectangle(Color.FromArgb(50, 60, 70), contentX, listY, contentW, listHeight);
+            int listH = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
+            int rowW = width - ScrollReserve;
+            canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), x, listY, width, listH);
+            canvas.DrawRectangle(Color.FromArgb(50, 60, 70), x, listY, width, listH);
 
-            int visible = VisibleRows;
-            for (int rowIndex = 0; rowIndex < visible; rowIndex++)
+            for (int rowIndex = 0; rowIndex < VisibleRows; rowIndex++)
             {
                 int index = app.ScrollIndex + rowIndex;
                 if (index >= app.Rows.Count) break;
-
                 ModernTaskRow row = app.Rows[index];
                 int y = listY + rowIndex * RowHeight;
                 bool selected = index == app.SelectedIndex;
-                if (selected)
-                {
-                    canvas.DrawFilledRectangle(Color.FromArgb(38, 62, 82), contentX + 2, y + 1, rowWidth - 2, RowHeight - 2);
-                    canvas.DrawFilledRectangle(Accent, contentX + 2, y + 1, 3, RowHeight - 2);
-                }
-                else if ((rowIndex & 1) != 0)
-                {
-                    canvas.DrawFilledRectangle(Color.FromArgb(27, 33, 39), contentX + 2, y + 1, rowWidth - 2, RowHeight - 2);
-                }
-
-                if (app.ActivePage == TaskManagerModernApp.PageDetails)
-                    DrawDetailsRow(canvas, row, contentX, rowWidth, y, selected);
-                else
-                    DrawProcessRow(canvas, row, contentX, rowWidth, y, selected);
+                if (selected) canvas.DrawFilledRectangle(Color.FromArgb(38, 62, 82), x + 2, y + 1, rowW - 2, RowHeight - 2);
+                else if ((rowIndex & 1) != 0) canvas.DrawFilledRectangle(Color.FromArgb(27, 33, 39), x + 2, y + 1, rowW - 2, RowHeight - 2);
+                DrawRow(canvas, row, x, rowW, y, selected);
             }
-
-            if (app.Rows.Count == 0)
-                SmallTextRenderer.Draw(canvas, "BRAK AKTYWNYCH ZADAN", contentX + 16, listY + 18, Muted);
 
             UpdateScrollBar();
             scrollBar.Render(canvas);
         }
 
-        private void DrawProcessRow(Canvas canvas, ModernTaskRow row, int x, int width, int y, bool selected)
+        private void DrawRow(Canvas canvas, ModernTaskRow row, int x, int width, int y, bool selected)
         {
-            IconType icon = row.IsKernel ? IconType.Settings : GetApplicationIcon(row.GuiApplication);
-            canvas.DrawFilledRectangle(Color.FromArgb(34, 41, 48), x + 10, y + 6, 24, 24);
-            IconManager.DrawScaled(canvas, icon, x + 13, y + 9, 18, 18);
-
-            int typeX = x + Math.Max(280, width - 350);
+            if (app.ActivePage == 2)
+            {
+                if (row.KernelPid > 0) SmallTextRenderer.DrawUInt(canvas, (ulong)row.KernelPid, x + 12, y + 14, Muted);
+                else SmallTextRenderer.Draw(canvas, "GUI", x + 12, y + 14, Muted);
+                SmallTextRenderer.DrawClipped(canvas, row.Name, x + 90, y + 14, Math.Max(80, width - 380), selected ? Color.WhiteSmoke : Text);
+            }
+            else
+            {
+                IconManager.DrawScaled(canvas, row.IsKernel ? IconType.Settings : IconType.File, x + 12, y + 9, 18, 18);
+                SmallTextRenderer.DrawClipped(canvas, row.Name, x + 40, y + 14, Math.Max(80, width - 410), selected ? Color.WhiteSmoke : Text);
+                SmallTextRenderer.Draw(canvas, row.IsKernel ? "KERNEL" : "APP", x + 90, y + 25, Muted);
+            }
             int statusX = x + Math.Max(370, width - 240);
-            int idX = x + Math.Max(470, width - 108);
-            int nameW = Math.Max(40, typeX - x - 54);
-            SmallTextRenderer.DrawClipped(canvas, row.Name, x + 44, y + 14, nameW, selected ? Color.WhiteSmoke : Text);
-            SmallTextRenderer.Draw(canvas, row.IsKernel ? "KERNEL" : "APP", typeX, y + 14, row.IsKernel ? Color.FromArgb(154, 176, 195) : Color.FromArgb(124, 186, 229));
-            SmallTextRenderer.DrawClipped(canvas, row.State, statusX, y + 14, 86, row.State == "ACTIVE" ? Color.FromArgb(111, 194, 145) : Muted);
-            if (row.KernelPid > 0)
-                SmallTextRenderer.DrawUInt(canvas, (ulong)row.KernelPid, idX, y + 14, Muted);
-            else
-                SmallTextRenderer.Draw(canvas, "GUI", idX, y + 14, Muted);
-            if (!row.CanEnd)
-                SmallTextRenderer.Draw(canvas, "LOCK", x + width - 46, y + 25, Color.FromArgb(184, 126, 133));
-        }
-
-        private void DrawDetailsRow(Canvas canvas, ModernTaskRow row, int x, int width, int y, bool selected)
-        {
-            int stateX = x + Math.Max(320, width - 260);
-            int detailX = x + Math.Max(410, width - 154);
-            int nameW = Math.Max(40, stateX - x - 82);
-            if (row.KernelPid > 0)
-                SmallTextRenderer.DrawUInt(canvas, (ulong)row.KernelPid, x + 12, y + 14, Muted);
-            else
-                SmallTextRenderer.Draw(canvas, "GUI", x + 12, y + 14, Muted);
-            SmallTextRenderer.DrawClipped(canvas, row.Name, x + 74, y + 14, nameW, selected ? Color.WhiteSmoke : Text);
-            SmallTextRenderer.DrawClipped(canvas, row.State, stateX, y + 14, 82, row.State == "ACTIVE" ? Color.FromArgb(111, 194, 145) : Muted);
-
-            if (row.IsKernel)
-            {
-                SmallTextRenderer.DrawClipped(canvas, row.Detail, detailX, y + 14, Math.Max(30, width - (detailX - x) - 8), Muted);
-            }
-            else
-            {
-                SmallTextRenderer.DrawUInt(canvas, (ulong)Math.Max(0, row.WindowWidth), detailX, y + 14, Muted);
-                int px = detailX + SmallTextRenderer.WidthUInt((ulong)Math.Max(0, row.WindowWidth)) + 6;
-                SmallTextRenderer.Draw(canvas, "X", px, y + 14, Muted);
-                SmallTextRenderer.DrawUInt(canvas, (ulong)Math.Max(0, row.WindowHeight), px + 10, y + 14, Muted);
-            }
+            int detailX = x + Math.Max(470, width - 120);
+            SmallTextRenderer.DrawClipped(canvas, row.State, statusX, y + 14, 82, row.State == "ACTIVE" ? Good : Muted);
+            SmallTextRenderer.DrawClipped(canvas, row.Detail, detailX, y + 14, Math.Max(30, width - (detailX - x) - 6), Muted);
         }
 
         private void RenderPerformance(Canvas canvas)
         {
             int resourceX = X + SidebarWidth + 10;
-            int resourceY = Y + 62;
-            int resourceW = 154;
-            DrawPerformanceResource(canvas, resourceX, resourceY, resourceW, TaskManagerModernApp.PerfCpu, "CPU", (ulong)app.CpuUsagePercent, "%", app.BaseSpeedText);
-            DrawPerformanceResource(canvas, resourceX, resourceY + PerfCardHeight + PerfCardGap, resourceW, TaskManagerModernApp.PerfMemory, "MEMORY", app.UsedMemoryPercent, "%", "PHYSICAL RAM");
-            DrawPerformanceResource(canvas, resourceX, resourceY + (PerfCardHeight + PerfCardGap) * 2, resourceW, TaskManagerModernApp.PerfSystem, "SYSTEM", (ulong)app.SchedulerThreadCount, "", "THREADS");
+            int resourceY = Y + 64;
+            DrawResource(canvas, resourceX, resourceY, 0, "CPU", (ulong)app.CpuUsagePercent, "%");
+            DrawResource(canvas, resourceX, resourceY + 82, 1, "MEMORY", app.UsedMemoryPercent, "%");
+            DrawResource(canvas, resourceX, resourceY + 164, 2, "SYSTEM", (ulong)Math.Max(0, app.SchedulerThreadCount), "");
 
-            int x = resourceX + resourceW + 16;
+            int x = resourceX + 170;
             int y = resourceY;
-            int width = Math.Max(330, Width - (x - X) - 10);
-            if (app.PerformanceResource == TaskManagerModernApp.PerfCpu)
-                RenderCpuPerformance(canvas, x, y, width);
-            else if (app.PerformanceResource == TaskManagerModernApp.PerfMemory)
-                RenderMemoryPerformance(canvas, x, y, width);
-            else
-                RenderSystemPerformance(canvas, x, y, width);
+            int width = Math.Max(360, Width - (x - X) - 10);
+            if (app.PerformanceResource == 0) RenderCpu(canvas, x, y, width);
+            else if (app.PerformanceResource == 1) RenderMemory(canvas, x, y, width);
+            else RenderSystem(canvas, x, y, width);
         }
 
-        private void DrawPerformanceResource(Canvas canvas, int x, int y, int width, int resource, string title, ulong value, string suffix, string detail)
+        private void DrawResource(Canvas canvas, int x, int y, int resource, string title, ulong value, string suffix)
         {
-            bool selected = app.PerformanceResource == resource;
-            Color background = selected ? Color.FromArgb(35, 55, 71) : Color.FromArgb(26, 32, 38);
-            Color border = selected ? Color.FromArgb(65, 126, 169) : Color.FromArgb(52, 63, 74);
-            canvas.DrawFilledRectangle(background, x, y, width, PerfCardHeight);
-            canvas.DrawRectangle(border, x, y, width, PerfCardHeight);
-            if (selected) canvas.DrawFilledRectangle(Accent, x, y, 3, PerfCardHeight);
-            SmallTextRenderer.Draw(canvas, title, x + 12, y + 13, selected ? Color.WhiteSmoke : Text);
-            SmallTextRenderer.DrawUInt(canvas, value, x + 12, y + 31, selected ? Color.FromArgb(126, 194, 238) : Color.FromArgb(190, 201, 211));
-            if (!string.IsNullOrEmpty(suffix))
-                SmallTextRenderer.Draw(canvas, suffix, x + 14 + SmallTextRenderer.WidthUInt(value), y + 31, selected ? Color.FromArgb(126, 194, 238) : Color.FromArgb(190, 201, 211));
-            SmallTextRenderer.DrawClipped(canvas, detail, x + 12, y + 50, width - 22, Muted);
+            bool active = app.PerformanceResource == resource;
+            canvas.DrawFilledRectangle(active ? Color.FromArgb(35, 55, 71) : Color.FromArgb(26, 32, 38), x, y, 154, 72);
+            canvas.DrawRectangle(active ? Color.FromArgb(65, 126, 169) : Color.FromArgb(52, 63, 74), x, y, 154, 72);
+            SmallTextRenderer.Draw(canvas, title, x + 12, y + 13, active ? Color.WhiteSmoke : Text);
+            SmallTextRenderer.DrawUInt(canvas, value, x + 12, y + 32, active ? Color.FromArgb(126, 194, 238) : Text);
+            if (!string.IsNullOrEmpty(suffix)) SmallTextRenderer.Draw(canvas, suffix, x + 14 + SmallTextRenderer.WidthUInt(value), y + 32, Text);
         }
 
-        private void RenderCpuPerformance(Canvas canvas, int x, int y, int width)
+        private void RenderCpu(Canvas canvas, int x, int y, int width)
         {
             SmallTextRenderer.Draw(canvas, "CPU", x, y + 4, Color.WhiteSmoke);
-            SmallTextRenderer.DrawClipped(canvas, app.CpuInfo.Brand, x + 44, y + 4, Math.Max(50, width - 48), Color.FromArgb(190, 201, 211));
-            SmallTextRenderer.Draw(canvas, "% UTILIZATION", x, y + 24, Muted);
-            int graphY = y + 40;
-            int graphHeight = Math.Max(150, Height - 350);
-            DrawGraph(canvas, x, graphY, width, graphHeight, app.CpuHistoryCount, app.GetCpuHistory, Accent);
+            SmallTextRenderer.DrawClipped(canvas, app.CpuInfo.Brand, x + 44, y + 4, width - 48, Text);
+            DrawMode(canvas, x, y + 22, 92, 0, "LACZNIE");
+            DrawMode(canvas, x + 98, y + 22, 114, 1, "LOGICZNE");
 
-            int statsY = graphY + graphHeight + 20;
-            DrawLargePercent(canvas, app.CpuUsagePercent, x, statsY, Color.WhiteSmoke);
-            SmallTextRenderer.Draw(canvas, "UTILIZATION", x, statsY + 36, Muted);
-
-            int leftX = x + 124;
-            int rightX = x + Math.Max(330, width / 2 + 70);
-            int rightW = Math.Max(160, width - (rightX - x));
-            DrawKeyText(canvas, leftX, statsY + 2, 190, "BASE SPEED", app.BaseSpeedText);
-            DrawKeyText(canvas, leftX, statsY + 20, 190, "MAX SPEED", app.MaxSpeedText);
-            DrawKeyUInt(canvas, leftX, statsY + 38, 190, "THREADS", (ulong)app.SchedulerThreadCount, null);
-            DrawKeyUInt(canvas, leftX, statsY + 56, 190, "ONLINE CPU", app.OnlineCpuCount, null);
-            DrawKeyText(canvas, leftX, statsY + 74, 190, "SCHEDULER", app.SchedulerName);
-
-            DrawKeyText(canvas, rightX, statsY + 2, rightW, "VENDOR", app.CpuInfo.Vendor);
-            DrawKeyText(canvas, rightX, statsY + 20, rightW, "FAMILY/MODEL/STEP", app.SignatureText);
-            DrawKeyText(canvas, rightX, statsY + 38, rightW, "CORES/LOGICAL/TPC", app.TopologyText);
-            DrawKeyText(canvas, rightX, statsY + 56, rightW, "CACHE L1/L2/L3", app.CacheText);
-            DrawKeyText(canvas, rightX, statsY + 74, rightW, "VIRTUALIZATION", app.CpuInfo.VirtualizationSupported ? "SUPPORTED" : "NO");
-            DrawKeyText(canvas, rightX, statsY + 92, rightW, "HYPERVISOR", app.CpuInfo.HypervisorPresent ? "PRESENT" : "NO");
-            SmallTextRenderer.Draw(canvas, "FEATURES", x, statsY + 118, Muted);
-            SmallTextRenderer.DrawClipped(canvas, app.CpuInfo.Features, x + 58, statsY + 118, Math.Max(40, width - 62), Color.FromArgb(185, 199, 211));
+            if (app.CpuGraphMode == TaskManagerModernApp.CpuGraphLogical)
+                RenderLogicalCpu(canvas, x, y + 58, width);
+            else
+                RenderTotalCpu(canvas, x, y + 58, width);
         }
 
-        private void RenderMemoryPerformance(Canvas canvas, int x, int y, int width)
+        private void DrawMode(Canvas canvas, int x, int y, int width, int mode, string text)
+        {
+            bool active = app.CpuGraphMode == mode;
+            canvas.DrawFilledRectangle(active ? Color.FromArgb(38, 67, 88) : Color.FromArgb(31, 38, 45), x, y, width, 26);
+            canvas.DrawRectangle(active ? Color.FromArgb(73, 139, 184) : Color.FromArgb(58, 69, 80), x, y, width, 26);
+            SmallTextRenderer.DrawClipped(canvas, text, x + 9, y + 10, width - 18, active ? Color.WhiteSmoke : Muted);
+        }
+
+        private void RenderTotalCpu(Canvas canvas, int x, int y, int width)
+        {
+            int graphH = Math.Max(145, Height - 390);
+            DrawGraph(canvas, x, y + 16, width, graphH, app.CpuHistoryCount, app.GetCpuHistory, -1, Accent, true);
+            int stats = y + graphH + 54;
+            DrawPercent(canvas, app.CpuUsagePercent, x, stats);
+            int left = x + 124;
+            int right = x + Math.Max(380, width / 2 + 80);
+            int rightW = Math.Max(160, width - (right - x));
+            DrawKey(canvas, left, stats, 230, "PHYSICAL CORES", (ulong)Math.Max(1, app.CpuInfo.PhysicalCores), null);
+            DrawKey(canvas, left, stats + 20, 230, "LOGICAL CPU", (ulong)Math.Max(1, app.CpuInfo.LogicalProcessors), null);
+            DrawKey(canvas, left, stats + 40, 230, "THREADS/CORE", (ulong)Math.Max(1, app.CpuInfo.ThreadsPerCore), null);
+            DrawKey(canvas, left, stats + 60, 230, "ONLINE CPU", app.OnlineCpuCount, null);
+            DrawKeyText(canvas, left, stats + 80, 230, "BASE / MAX", app.BaseSpeedText + " / " + app.MaxSpeedText);
+            DrawKey(canvas, right, stats, rightW, "SCHED THREADS", (ulong)Math.Max(0, app.SchedulerThreadCount), null);
+            DrawKeyText(canvas, right, stats + 20, rightW, "SCHEDULER", app.SchedulerName);
+            DrawKeyText(canvas, right, stats + 40, rightW, "VENDOR", app.CpuInfo.Vendor);
+            DrawKeyText(canvas, right, stats + 60, rightW, "TOPOLOGY C/L/T", app.TopologyText);
+            DrawKeyText(canvas, right, stats + 80, rightW, "CACHE L1/L2/L3", app.CacheText);
+        }
+
+        private void RenderLogicalCpu(Canvas canvas, int x, int y, int width)
+        {
+            int total = app.LogicalDisplayCount;
+            int start = app.LogicalPageStart;
+            int count = Math.Min(app.LogicalPerPageCount, Math.Max(0, total - start));
+            SmallTextRenderer.Draw(canvas, "LOGICAL PROCESSORS", x, y, Muted);
+            if (app.LogicalPageCount > 1)
+            {
+                int right = x + width;
+                SmallTextRenderer.DrawUInt(canvas, (ulong)(app.LogicalPageIndex + 1), right - 108, y, Text);
+                SmallTextRenderer.Draw(canvas, "/", right - 92, y, Muted);
+                SmallTextRenderer.DrawUInt(canvas, (ulong)app.LogicalPageCount, right - 80, y, Muted);
+                DrawArrow(canvas, right - 60, y - 8, "<");
+                DrawArrow(canvas, right - 28, y - 8, ">");
+            }
+
+            int gridY = y + 22;
+            int availableH = Math.Max(220, Height - (gridY - Y) - FooterHeight - 18);
+            int columns = count <= 4 ? 2 : count <= 9 ? 3 : 4;
+            int rows = Math.Max(1, (count + columns - 1) / columns);
+            int gap = 8;
+            int cellW = Math.Max(110, (width - gap * (columns - 1)) / columns);
+            int cellH = Math.Max(72, (availableH - gap * (rows - 1)) / rows);
+            for (int i = 0; i < count; i++)
+            {
+                int cpu = start + i;
+                int cx = x + (i % columns) * (cellW + gap);
+                int cy = gridY + (i / columns) * (cellH + gap);
+                DrawLogicalCard(canvas, cpu, cx, cy, cellW, cellH);
+            }
+        }
+
+        private void DrawArrow(Canvas canvas, int x, int y, string text)
+        {
+            canvas.DrawFilledRectangle(Color.FromArgb(31, 38, 45), x, y, 26, 26);
+            canvas.DrawRectangle(Color.FromArgb(58, 69, 80), x, y, 26, 26);
+            SmallTextRenderer.Draw(canvas, text, x + 9, y + 10, Text);
+        }
+
+        private void DrawLogicalCard(Canvas canvas, int cpu, int x, int y, int width, int height)
+        {
+            bool online = (uint)cpu < app.OnlineCpuCount;
+            int usage = online ? app.GetLogicalUsage(cpu) : 0;
+            canvas.DrawFilledRectangle(Color.FromArgb(24, 30, 36), x, y, width, height);
+            canvas.DrawRectangle(online ? Color.FromArgb(61, 91, 113) : Color.FromArgb(52, 58, 64), x, y, width, height);
+            SmallTextRenderer.Draw(canvas, "CPU", x + 7, y + 8, online ? Text : Muted);
+            SmallTextRenderer.DrawUInt(canvas, (ulong)cpu, x + 34, y + 8, online ? Text : Muted);
+            if (online)
+            {
+                SmallTextRenderer.DrawUInt(canvas, (ulong)usage, x + width - 42, y + 8, Color.FromArgb(126, 194, 238));
+                SmallTextRenderer.Draw(canvas, "%", x + width - 18, y + 8, Color.FromArgb(126, 194, 238));
+            }
+            else SmallTextRenderer.Draw(canvas, "OFF", x + width - 30, y + 8, Muted);
+            DrawGraph(canvas, x + 5, y + 24, width - 10, Math.Max(32, height - 30), app.GetLogicalHistoryCount(cpu), null, cpu, online ? Accent : Muted, false);
+        }
+
+        private void RenderMemory(Canvas canvas, int x, int y, int width)
         {
             SmallTextRenderer.Draw(canvas, "MEMORY", x, y + 4, Color.WhiteSmoke);
-            SmallTextRenderer.Draw(canvas, "% PHYSICAL MEMORY IN USE", x, y + 24, Muted);
-            int graphY = y + 40;
-            int graphHeight = Math.Max(150, Height - 350);
-            DrawGraph(canvas, x, graphY, width, graphHeight, app.MemoryHistoryCount, app.GetMemoryHistory, Color.FromArgb(116, 174, 219));
-
-            int statsY = graphY + graphHeight + 20;
-            DrawLargePercent(canvas, (int)app.UsedMemoryPercent, x, statsY, Color.WhiteSmoke);
-            SmallTextRenderer.Draw(canvas, "IN USE", x, statsY + 36, Muted);
-
-            int leftX = x + 124;
-            int rightX = x + Math.Max(340, width / 2 + 70);
-            int rightW = Math.Max(160, width - (rightX - x));
-            DrawKeyUInt(canvas, leftX, statsY + 2, 200, "USED", app.UsedMemoryMb, "MB");
-            DrawKeyUInt(canvas, leftX, statsY + 20, 200, "TOTAL", app.TotalMemoryMb, "MB");
-            DrawKeyUInt(canvas, leftX, statsY + 38, 200, "FREE PAGES", app.FreePages, null);
-            DrawKeyUInt(canvas, leftX, statsY + 56, 200, "TOTAL PAGES", app.TotalPages, null);
-
-            DrawKeyUInt(canvas, rightX, statsY + 2, rightW, "GC HEAP", app.GcHeapMb, "MB");
-            DrawKeyUInt(canvas, rightX, statsY + 20, rightW, "GC COMMITTED", app.GcCommittedMb, "MB");
-            DrawKeyUInt(canvas, rightX, statsY + 38, rightW, "FRAGMENTED", app.GcFragmentedKb, "KB");
-            DrawKeyUInt(canvas, rightX, statsY + 56, rightW, "PINNED", app.GcPinnedObjects, null);
-            DrawKeyUInt(canvas, rightX, statsY + 74, rightW, "COLLECTIONS", (ulong)Math.Max(0, app.GcCollections), null);
-            DrawKeyText(canvas, rightX, statsY + 92, rightW, "COLLECTOR", CosmosGc.IsEnabled ? "ORION GC ACTIVE" : "GC OFF");
+            int graphH = Math.Max(150, Height - 360);
+            DrawGraph(canvas, x, y + 40, width, graphH, app.MemoryHistoryCount, app.GetMemoryHistory, -2, Color.FromArgb(116, 174, 219), true);
+            int stats = y + graphH + 80;
+            DrawKey(canvas, x, stats, width / 2, "USED", app.UsedMemoryMb, "MB");
+            DrawKey(canvas, x, stats + 20, width / 2, "TOTAL", app.TotalMemoryMb, "MB");
+            DrawKey(canvas, x, stats + 40, width / 2, "FREE PAGES", app.FreePages, null);
+            DrawKey(canvas, x + width / 2, stats, width / 2, "GC HEAP", app.GcHeapMb, "MB");
+            DrawKey(canvas, x + width / 2, stats + 20, width / 2, "GC COMMITTED", app.GcCommittedMb, "MB");
         }
 
-        private void RenderSystemPerformance(Canvas canvas, int x, int y, int width)
+        private void RenderSystem(Canvas canvas, int x, int y, int width)
         {
             SmallTextRenderer.Draw(canvas, "SYSTEM", x, y + 4, Color.WhiteSmoke);
-            SmallTextRenderer.Draw(canvas, "KERNEL AND HARDWARE OVERVIEW", x, y + 24, Muted);
+            int cardY = y + 36;
+            int gap = 8;
+            int cardW = Math.Max(100, (width - gap * 3) / 4);
+            DrawSystemCard(canvas, x, cardY, cardW, "CORES", (ulong)Math.Max(1, app.CpuInfo.PhysicalCores), "PHYSICAL");
+            DrawSystemCard(canvas, x + cardW + gap, cardY, cardW, "LOGICAL", (ulong)Math.Max(1, app.CpuInfo.LogicalProcessors), "CPU THREADS");
+            DrawSystemCard(canvas, x + (cardW + gap) * 2, cardY, cardW, "THREADS", (ulong)Math.Max(0, app.SchedulerThreadCount), "SCHEDULER");
+            DrawSystemCard(canvas, x + (cardW + gap) * 3, cardY, cardW, "CPU", (ulong)app.CpuUsagePercent, "% TOTAL");
 
-            int cardY = y + 48;
-            int gap = 10;
-            int cardW = Math.Max(120, (width - gap * 2) / 3);
-            DrawSystemCard(canvas, x, cardY, cardW, "GUI APPS", (ulong)app.GuiAppCount, "RUNNING WINDOWS");
-            DrawSystemCard(canvas, x + cardW + gap, cardY, cardW, "KERNEL PROCS", (ulong)app.KernelProcessCount, "BACKGROUND");
-            DrawSystemCard(canvas, x + (cardW + gap) * 2, cardY, cardW, "THREADS", (ulong)app.SchedulerThreadCount, "SCHEDULER");
+            int row = cardY + 88;
+            int half = width / 2 - 8;
+            DrawKeyText(canvas, x, row, half, "CLOCK", app.ClockText);
+            DrawKeyText(canvas, x, row + 20, half, "DATE", app.DateText);
+            DrawKey(canvas, x, row + 40, half, "UPTIME", app.UptimeSeconds, "SEC");
+            DrawKey(canvas, x, row + 60, half, "MANAGER OPEN", app.ManagerOpenSeconds, "SEC");
+            DrawKey(canvas, x, row + 80, half, "THREADS/CORE", (ulong)Math.Max(1, app.CpuInfo.ThreadsPerCore), null);
+            DrawKey(canvas, x, row + 100, half, "ONLINE CPU", app.OnlineCpuCount, null);
+            DrawKeyText(canvas, x, row + 120, half, "SCHEDULER", app.SchedulerName);
+            DrawKey(canvas, x, row + 140, half, "SCHED TICK", app.SchedulerTickUs, "US");
 
-            int lineY = cardY + 86;
-            DrawKeyUInt(canvas, x, lineY, width / 2 - 8, "RUNNING THREADS", (ulong)app.RunningThreadCount, null);
-            DrawKeyUInt(canvas, x, lineY + 20, width / 2 - 8, "READY THREADS", (ulong)app.ReadyThreadCount, null);
-            DrawKeyUInt(canvas, x, lineY + 40, width / 2 - 8, "BLOCKED THREADS", (ulong)app.BlockedThreadCount, null);
-            DrawKeyUInt(canvas, x, lineY + 60, width / 2 - 8, "SLEEPING THREADS", (ulong)app.SleepingThreadCount, null);
-            DrawKeyUInt(canvas, x, lineY + 80, width / 2 - 8, "UPTIME", app.UptimeSeconds, "SEC");
-
-            int rightX = x + width / 2 + 8;
-            int rightW = width - width / 2 - 8;
-            DrawKeyUInt(canvas, rightX, lineY, rightW, "STORAGE DEVICES", (ulong)Math.Max(0, app.StorageDeviceCount), null);
-            DrawKeyUInt(canvas, rightX, lineY + 20, rightW, "PARTITIONS", (ulong)Math.Max(0, app.StoragePartitionCount), null);
-            DrawKeyText(canvas, rightX, lineY + 40, rightW, "NETWORK", app.NetworkReady ? "READY" : "OFFLINE");
-            DrawKeyUInt(canvas, rightX, lineY + 60, rightW, "ONLINE CPU", app.OnlineCpuCount, null);
-            DrawKeyText(canvas, rightX, lineY + 80, rightW, "ARCHITECTURE", app.CpuInfo.Architecture);
-
-            int noteY = lineY + 124;
-            canvas.DrawFilledRectangle(Color.FromArgb(25, 31, 37), x, noteY, width, 58);
-            canvas.DrawRectangle(Color.FromArgb(54, 66, 77), x, noteY, width, 58);
-            SmallTextRenderer.Draw(canvas, "MEMORY STABILITY MODE", x + 12, noteY + 14, Color.FromArgb(129, 193, 235));
-            SmallTextRenderer.DrawClipped(canvas, "REUSED SNAPSHOTS - FIXED HISTORY - NO PER-FRAME FORMAT STRINGS", x + 12, noteY + 33, width - 24, Muted);
+            int right = x + width / 2 + 8;
+            DrawKey(canvas, right, row, half, "RUNNING", (ulong)Math.Max(0, app.RunningThreadCount), null);
+            DrawKey(canvas, right, row + 20, half, "READY", (ulong)Math.Max(0, app.ReadyThreadCount), null);
+            DrawKey(canvas, right, row + 40, half, "BLOCKED", (ulong)Math.Max(0, app.BlockedThreadCount), null);
+            DrawKey(canvas, right, row + 60, half, "SLEEPING", (ulong)Math.Max(0, app.SleepingThreadCount), null);
+            DrawKey(canvas, right, row + 80, half, "GUI APPS", (ulong)Math.Max(0, app.GuiAppCount), null);
+            DrawKey(canvas, right, row + 100, half, "KERNEL PROCS", (ulong)Math.Max(0, app.KernelProcessCount), null);
+            DrawKey(canvas, right, row + 120, half, "STORAGE", (ulong)Math.Max(0, app.StorageDeviceCount), null);
+            DrawKeyText(canvas, right, row + 140, half, "NETWORK", app.NetworkReady ? "READY" : "OFFLINE");
         }
 
         private void DrawSystemCard(Canvas canvas, int x, int y, int width, string title, ulong value, string detail)
@@ -1227,92 +1207,57 @@ namespace ZonderqOS.GUI.Apps
         }
 
         private delegate int HistoryGetter(int index);
-
-        private void DrawGraph(Canvas canvas, int x, int y, int width, int height, int count, HistoryGetter getter, Color lineColor)
+        private void DrawGraph(Canvas canvas, int x, int y, int width, int height, int count, HistoryGetter getter, int logicalCpu, Color line, bool labels)
         {
             canvas.DrawFilledRectangle(Color.FromArgb(23, 29, 35), x, y, width, height);
             canvas.DrawRectangle(Color.FromArgb(66, 111, 145), x, y, width, height);
-            for (int i = 1; i < 4; i++)
-            {
-                int gy = y + i * height / 4;
-                canvas.DrawLine(Color.FromArgb(39, 52, 63), x + 1, gy, x + width - 1, gy);
-            }
-            for (int i = 1; i < 6; i++)
-            {
-                int gx = x + i * width / 6;
-                canvas.DrawLine(Color.FromArgb(35, 47, 58), gx, y + 1, gx, y + height - 1);
-            }
+            for (int i = 1; i < 4; i++) canvas.DrawLine(Color.FromArgb(39, 52, 63), x + 1, y + i * height / 4, x + width - 1, y + i * height / 4);
+            for (int i = 1; i < 6; i++) canvas.DrawLine(Color.FromArgb(35, 47, 58), x + i * width / 6, y + 1, x + i * width / 6, y + height - 1);
 
             if (count > 1)
             {
-                int denominator = Math.Max(1, app.HistoryCapacity - 1);
-                int startOffset = app.HistoryCapacity - count;
-                int previousX = x + startOffset * width / denominator;
-                int previousY = y + height - getter(0) * height / 100;
+                int denom = Math.Max(1, app.HistoryCapacity - 1);
+                int offset = app.HistoryCapacity - count;
+                int previousX = x + offset * width / denom;
+                int previousValue = logicalCpu >= 0 ? app.GetLogicalHistory(logicalCpu, 0) : getter != null ? getter(0) : 0;
+                int previousY = y + height - previousValue * height / 100;
                 for (int i = 1; i < count; i++)
                 {
-                    int px = x + (startOffset + i) * width / denominator;
-                    int py = y + height - getter(i) * height / 100;
-                    canvas.DrawLine(lineColor, previousX, previousY, px, py);
+                    int value = logicalCpu >= 0 ? app.GetLogicalHistory(logicalCpu, i) : getter != null ? getter(i) : 0;
+                    int px = x + (offset + i) * width / denom;
+                    int py = y + height - value * height / 100;
+                    canvas.DrawLine(line, previousX, previousY, px, py);
                     previousX = px;
                     previousY = py;
                 }
             }
-
-            SmallTextRenderer.Draw(canvas, "100%", x + 6, y + 7, Color.FromArgb(102, 122, 139));
-            SmallTextRenderer.Draw(canvas, "0%", x + 6, y + height - 12, Color.FromArgb(102, 122, 139));
-            SmallTextRenderer.Draw(canvas, "RECENT HISTORY", x + 8, y + height + 7, Muted);
+            if (labels)
+            {
+                SmallTextRenderer.Draw(canvas, "100%", x + 6, y + 7, Muted);
+                SmallTextRenderer.Draw(canvas, "0%", x + 6, y + height - 12, Muted);
+            }
         }
 
-        private void DrawLargePercent(Canvas canvas, int value, int x, int y, Color color)
+        private void DrawPercent(Canvas canvas, int value, int x, int y)
         {
-            value = Math.Max(0, Math.Min(100, value));
-            int charWidth = Math.Max(8, font.Width);
-            int cursor = x;
-            if (value == 100)
-            {
-                canvas.DrawString(DigitStrings[1], font, color, cursor, y); cursor += charWidth;
-                canvas.DrawString(DigitStrings[0], font, color, cursor, y); cursor += charWidth;
-                canvas.DrawString(DigitStrings[0], font, color, cursor, y); cursor += charWidth;
-            }
-            else if (value >= 10)
-            {
-                canvas.DrawString(DigitStrings[value / 10], font, color, cursor, y); cursor += charWidth;
-                canvas.DrawString(DigitStrings[value % 10], font, color, cursor, y); cursor += charWidth;
-            }
-            else
-            {
-                canvas.DrawString(DigitStrings[value], font, color, cursor, y); cursor += charWidth;
-            }
-            canvas.DrawString("%", font, color, cursor, y);
+            ulong bounded = (ulong)Math.Max(0, Math.Min(100, value));
+            SmallTextRenderer.DrawUInt(canvas, bounded, x, y, Color.WhiteSmoke);
+            SmallTextRenderer.Draw(canvas, "% UTILIZATION", x + SmallTextRenderer.WidthUInt(bounded) + 8, y, Muted);
+        }
+
+        private void DrawKey(Canvas canvas, int x, int y, int width, string key, ulong value, string suffix)
+        {
+            int keyW = Math.Min(142, Math.Max(84, width / 2));
+            SmallTextRenderer.DrawClipped(canvas, key, x, y, keyW - 4, Muted);
+            SmallTextRenderer.DrawUInt(canvas, value, x + keyW, y, Text);
+            if (!string.IsNullOrEmpty(suffix)) SmallTextRenderer.Draw(canvas, suffix, x + keyW + SmallTextRenderer.WidthUInt(value) + 6, y, Text);
         }
 
         private void DrawKeyText(Canvas canvas, int x, int y, int width, string key, string value)
         {
-            int keyWidth = Math.Min(132, Math.Max(76, width / 2));
-            SmallTextRenderer.DrawClipped(canvas, key, x, y, keyWidth - 4, Muted);
-            SmallTextRenderer.DrawClipped(canvas, value, x + keyWidth, y, Math.Max(20, width - keyWidth), Text);
-        }
-
-        private void DrawKeyUInt(Canvas canvas, int x, int y, int width, string key, ulong value, string suffix)
-        {
-            int keyWidth = Math.Min(132, Math.Max(76, width / 2));
-            SmallTextRenderer.DrawClipped(canvas, key, x, y, keyWidth - 4, Muted);
-            int valueX = x + keyWidth;
-            SmallTextRenderer.DrawUInt(canvas, value, valueX, y, Text);
-            if (!string.IsNullOrEmpty(suffix))
-                SmallTextRenderer.Draw(canvas, suffix, valueX + SmallTextRenderer.WidthUInt(value) + 6, y, Text);
-        }
-
-        private IconType GetApplicationIcon(Application application)
-        {
-            if (application == null || string.IsNullOrEmpty(application.Name)) return IconType.File;
-            string name = application.Name;
-            if (name.IndexOf("terminal", StringComparison.OrdinalIgnoreCase) >= 0) return IconType.Terminal;
-            if (name.IndexOf("file", StringComparison.OrdinalIgnoreCase) >= 0) return IconType.Folder;
-            if (name.IndexOf("notat", StringComparison.OrdinalIgnoreCase) >= 0) return IconType.File;
-            if (name.IndexOf("diagn", StringComparison.OrdinalIgnoreCase) >= 0 || name.IndexOf("about", StringComparison.OrdinalIgnoreCase) >= 0) return IconType.About;
-            return IconType.Settings;
+            int keyW = Math.Min(142, Math.Max(84, width / 2));
+            SmallTextRenderer.DrawClipped(canvas, key, x, y, keyW - 4, Muted);
+            SmallTextRenderer.DrawClipped(canvas, value, x + keyW, y, Math.Max(20, width - keyW), Text);
         }
 
         private void RenderFooter(Canvas canvas)
@@ -1322,8 +1267,9 @@ namespace ZonderqOS.GUI.Apps
             int width = Width - SidebarWidth - 12;
             canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), x, y, width, FooterHeight - 4);
             canvas.DrawLine(Color.FromArgb(58, 69, 80), x, y, x + width, y);
-            SmallTextRenderer.DrawClipped(canvas, app.Status, x + 8, y + 9, Math.Max(20, width - 220), Color.FromArgb(184, 195, 205));
-            SmallTextRenderer.Draw(canvas, "F5 REFRESH   DEL END TASK", x + width - 174, y + 9, Muted);
+            SmallTextRenderer.DrawClipped(canvas, app.Status, x + 8, y + 9, Math.Max(20, width - 260), Text);
+            SmallTextRenderer.Draw(canvas, "F5 REFRESH   DEL END TASK", x + width - 244, y + 9, Muted);
+            SmallTextRenderer.Draw(canvas, app.ClockText, x + width - 72, y + 9, Text);
         }
     }
 }
