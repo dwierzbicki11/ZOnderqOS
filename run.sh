@@ -103,7 +103,7 @@ find_arm64_firmware() {
 }
 
 run_arm64() {
-    echo "[ARM64] Budowanie ZonderqOS dla QEMU virt..."
+    echo "[ARM64] Budowanie pelnego ZonderqOS desktop dla QEMU virt..."
     cosmos build -a arm64
 
     local iso="$ROOT_DIR/output-arm64/ZonderqOS.iso"
@@ -121,16 +121,18 @@ run_arm64() {
     firmware="$(find_arm64_firmware)"
 
     echo
-    echo "[ARM64] Uruchamianie QEMU virt + VirtIO keyboard..."
+    echo "[ARM64] Uruchamianie pelnego profilu QEMU virt..."
     echo "[ARM64] UEFI: $firmware"
     echo "[ARM64] QEMU: $(qemu-system-aarch64 --version | head -n 1)"
+    echo "[ARM64] Input: VirtIO MMIO keyboard + mouse"
+    echo "[ARM64] Display: UEFI GOP / ramfb"
+    echo "[ARM64] Scheduler: ON"
+    echo "[ARM64] PCI/storage: ON (NVMe when an image is present)"
 
-    # Modern-QEMU-compatible ARM64 profile. Do not force highmem=off here:
-    # on newer QEMU releases that constrains the whole virt machine to a
-    # 32-bit physical address space and can make the machine fail before UEFI
-    # starts. Cosmos' regular ARM64 profile also uses highmem enabled with
-    # cortex-a72 and 512 MiB RAM. VirtIO keyboard still lives in the low MMIO
-    # window scanned by the Cosmos ARM64 HAL.
+    # ARM64 is intended to expose the same ZonderqOS userspace as x86_64.
+    # The devices differ underneath: GICv3 + VirtIO-MMIO input + PCIe/NVMe.
+    # Do not force highmem=off; modern QEMU can otherwise reject the machine
+    # before UEFI starts because the virt platform no longer fits below 4 GiB.
     local -a qemu_args=(
         -M virt,gic-version=3
         -cpu cortex-a72
@@ -140,12 +142,33 @@ run_arm64() {
         -device virtio-scsi-pci
         -device scsi-cd,drive=cd,bootindex=0
         -device virtio-keyboard-device
+        -device virtio-mouse-device
         -device ramfb
         -display gtk,zoom-to-fit=on
         -serial stdio
         -no-reboot
         -no-shutdown
     )
+
+    # Reuse the same persistent ZonderqOS disk image on both architectures,
+    # but expose it as NVMe on ARM64. Cosmos Gen3 has a PCI/NVMe path on QEMU
+    # virt, while the keyboard and mouse remain VirtIO-MMIO devices.
+    if [[ -f "$ROOT_DIR/zonder_disk.img" ]]; then
+        qemu_args+=(
+            -drive "file=$ROOT_DIR/zonder_disk.img,if=none,id=armroot,format=raw"
+            -device nvme,drive=armroot,serial=zonderq-arm-root
+        )
+        echo "[ARM64] Root/data disk: zonder_disk.img -> NVMe"
+    elif [[ -f "$ROOT_DIR/disk_nvme_2G.img" ]]; then
+        qemu_args+=(
+            -drive "file=$ROOT_DIR/disk_nvme_2G.img,if=none,id=armroot,format=raw"
+            -device nvme,drive=armroot,serial=zonderq-arm-root
+        )
+        echo "[ARM64] Root/data disk: disk_nvme_2G.img -> NVMe"
+    else
+        echo "[ARM64] UWAGA: brak persistent disk image; VFS nie bedzie mial partycji root." >&2
+        echo "[ARM64] Utworz/wykorzystaj zonder_disk.img, aby login, pliki i ustawienia byly trwale." >&2
+    fi
 
     qemu-system-aarch64 "${qemu_args[@]}"
 }
@@ -155,8 +178,8 @@ sync_repo
 
 choice="${1:-}"
 if [[ -z "$choice" ]]; then
-    echo "1) x86_64 - build + QEMU"
-    echo "2) ARM64  - build + QEMU virt + VirtIO keyboard"
+    echo "1) x86_64 - full ZonderqOS + QEMU"
+    echo "2) ARM64  - full ZonderqOS + QEMU virt"
     echo
     read -r -p "Wybierz [1/2]: " choice
 fi
