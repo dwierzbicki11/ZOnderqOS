@@ -13,9 +13,8 @@ namespace ZonderqOS.SystemCore
     }
 
     /// <summary>
-    /// Preserves the small SchedulerManager-shaped surface used by older GUI
-    /// panels while all real data comes from the cross-architecture diagnostics
-    /// compatibility layer.
+    /// Small compatibility surface for older UI panels. The platform layer owns
+    /// the Cosmos scheduler dependency so GUI code remains architecture-neutral.
     /// </summary>
     internal static class LegacySchedulerFacade
     {

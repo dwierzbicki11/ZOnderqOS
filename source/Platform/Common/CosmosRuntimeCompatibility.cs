@@ -3,10 +3,10 @@ using ZonderqOS.SystemCore;
 
 #pragma warning disable COSMOS0001
 
-// Cosmos 3.0.85 ships the scheduler seam in Cosmos.Kernel.Core, but the
-// Cosmos.Kernel.System.Diagnostics compile surface is not available in every
-// packaged architecture asset. ZonderqOS keeps one small compatibility layer
-// so x64 and ARM64 build the same UI code and consume real scheduler state.
+// Cross-architecture Cosmos compatibility belongs in Platform/Common. The
+// application/GUI layer must not care which packaged architecture exposes a
+// particular diagnostics type. Both x64 and ARM64 consume the same facade and
+// the architecture-specific code is selected separately by the project file.
 
 namespace Cosmos.Kernel.System.Diagnostics
 {
@@ -163,10 +163,6 @@ namespace Cosmos.Kernel.System.Diagnostics
             }
         }
 
-        // Cosmos starts both current x64 and ARM64 scheduler timers from the
-        // reference quantum. The exact driver period is not public in the
-        // packaged diagnostics surface, so expose the configured quantum rather
-        // than inventing a value.
         public static ulong TickPeriodNs =>
             global::Cosmos.Kernel.Core.Scheduler.SchedulerManager.DefaultQuantumNs;
 
@@ -330,9 +326,6 @@ namespace Cosmos.Kernel.System.Diagnostics
                 }
             }
 
-            // Keep references to blocked/sleeping threads that were observed
-            // earlier so their state remains visible. Dead entries are released
-            // and can be reused by newly discovered threads.
             for (int i = 0; i < knownHighWater; i++)
             {
                 var thread = KnownThreads[i];

@@ -1,15 +1,16 @@
 using System;
-using System.Text;
-using Cosmos.Kernel.System.Diagnostics;
-#if !ARCH_ARM64
 using System.Runtime.Intrinsics.X86;
-#endif
+using System.Text;
 
 namespace ZonderqOS.GUI.Apps
 {
+    /// <summary>
+    /// x86_64 CPU discovery. This file is compiled only for the x64 Cosmos target.
+    /// No ARM64 build sees CPUID or System.Runtime.Intrinsics.X86 symbols.
+    /// </summary>
     public sealed class CpuHardwareInfo
     {
-        public string Architecture = "64-bit";
+        public string Architecture = "x86-64";
         public string Vendor = "N/A";
         public string Brand = "Processor";
         public string Features = "N/A";
@@ -32,37 +33,12 @@ namespace ZonderqOS.GUI.Apps
         public static CpuHardwareInfo Detect()
         {
             CpuHardwareInfo info = new CpuHardwareInfo();
-
-#if ARCH_ARM64
-            // Cosmos 3.0.84 currently brings up one managed CPU on ARM64/QEMU
-            // (ARM64PlatformInitializer.GetCpuCount() returns 1). Keep Task Manager
-            // honest and architecture-aware instead of falling through to x86 CPUID.
-            info.Architecture = "ARM64";
-            info.Vendor = "ARM";
-            info.Brand = "Cortex-A72 (QEMU virt)";
-            info.Features = "AArch64";
-            int managedCpuCount = 1;
-            try
-            {
-                managedCpuCount = Math.Max(1, (int)SchedulerInfo.CpuCount);
-            }
-            catch
-            {
-                managedCpuCount = 1;
-            }
-            info.PhysicalCores = managedCpuCount;
-            info.LogicalProcessors = managedCpuCount;
-            info.ThreadsPerCore = 1;
-            info.HypervisorPresent = true;
-            return info;
-#else
             try
             {
                 if (!X86Base.IsSupported)
                     return info;
 
                 info.CpuidAvailable = true;
-                info.Architecture = "x86-64";
 
                 int maxBasicSigned, vendorB, vendorC, vendorD;
                 (maxBasicSigned, vendorB, vendorC, vendorD) = X86Base.CpuId(0, 0);
@@ -76,7 +52,9 @@ namespace ZonderqOS.GUI.Apps
                     (extMax, b, c, d) = X86Base.CpuId(unchecked((int)0x80000000u), 0);
                     maxExtended = (uint)extMax;
                 }
-                catch { }
+                catch
+                {
+                }
 
                 if (maxExtended >= 0x80000004u)
                 {
@@ -90,8 +68,10 @@ namespace ZonderqOS.GUI.Apps
                         AppendRegister(brand, c);
                         AppendRegister(brand, d);
                     }
+
                     string text = CollapseSpaces(brand.ToString());
-                    if (!string.IsNullOrEmpty(text)) info.Brand = text;
+                    if (!string.IsNullOrEmpty(text))
+                        info.Brand = text;
                 }
 
                 uint featureEcx = 0;
@@ -113,6 +93,7 @@ namespace ZonderqOS.GUI.Apps
                         (a, b, extC, d) = X86Base.CpuId(unchecked((int)0x80000001u), 0);
                         svm = (((uint)extC) & (1u << 2)) != 0;
                     }
+
                     info.VirtualizationSupported = (featureEcx & (1u << 5)) != 0 || svm;
                     info.Features = BuildFeatureList(maxBasic, featureEcx, featureEdx, maxExtended);
                 }
@@ -132,8 +113,10 @@ namespace ZonderqOS.GUI.Apps
                 if ((info.L1Bytes == 0 || info.L2Bytes == 0) && maxExtended >= 0x80000006u)
                     DetectLegacyExtendedCaches(info, maxExtended);
 
-                if (info.LogicalProcessors <= 0) info.LogicalProcessors = Math.Max(1, info.PhysicalCores);
-                if (info.PhysicalCores <= 0) info.PhysicalCores = Math.Max(1, info.LogicalProcessors);
+                if (info.LogicalProcessors <= 0)
+                    info.LogicalProcessors = Math.Max(1, info.PhysicalCores);
+                if (info.PhysicalCores <= 0)
+                    info.PhysicalCores = Math.Max(1, info.LogicalProcessors);
                 if (info.ThreadsPerCore <= 0)
                     info.ThreadsPerCore = Math.Max(1, info.LogicalProcessors / Math.Max(1, info.PhysicalCores));
 
@@ -154,14 +137,13 @@ namespace ZonderqOS.GUI.Apps
             }
 
             return info;
-#endif
         }
 
-#if !ARCH_ARM64
         private static void DetectExtendedTopology(uint maxBasic, CpuHardwareInfo info)
         {
             uint leaf = maxBasic >= 0x1Fu ? 0x1Fu : maxBasic >= 0x0Bu ? 0x0Bu : 0u;
-            if (leaf == 0) return;
+            if (leaf == 0)
+                return;
 
             int smtWidth = 0;
             int packageLogical = 0;
@@ -171,9 +153,12 @@ namespace ZonderqOS.GUI.Apps
                 (a, b, c, d) = X86Base.CpuId((int)leaf, subleaf);
                 int logicalAtLevel = b & 0xFFFF;
                 int levelType = (int)(((uint)c >> 8) & 0xFFu);
-                if (logicalAtLevel == 0 || levelType == 0) break;
-                if (levelType == 1) smtWidth = logicalAtLevel;
-                else if (levelType == 2) packageLogical = logicalAtLevel;
+                if (logicalAtLevel == 0 || levelType == 0)
+                    break;
+                if (levelType == 1)
+                    smtWidth = logicalAtLevel;
+                else if (levelType == 2)
+                    packageLogical = logicalAtLevel;
             }
 
             if (packageLogical > 0) info.LogicalProcessors = packageLogical;
@@ -206,7 +191,8 @@ namespace ZonderqOS.GUI.Apps
                 uint b = (uint)ebx;
                 uint c = (uint)ecx;
                 int cacheType = (int)(a & 0x1Fu);
-                if (cacheType == 0) break;
+                if (cacheType == 0)
+                    break;
 
                 int level = (int)((a >> 5) & 0x7u);
                 ulong lineSize = (b & 0xFFFu) + 1u;
@@ -236,6 +222,7 @@ namespace ZonderqOS.GUI.Apps
                 (a, b, c, d) = X86Base.CpuId(unchecked((int)0x80000005u), 0);
                 info.L1Bytes = ((((uint)c >> 24) & 0xFFu) + (((uint)d >> 24) & 0xFFu)) * 1024UL;
             }
+
             if (maxExtended >= 0x80000006u)
             {
                 int a, b, c, d;
@@ -256,6 +243,7 @@ namespace ZonderqOS.GUI.Apps
             AddFeature(result, (ecx & (1u << 20)) != 0, "SSE4.2");
             AddFeature(result, (ecx & (1u << 25)) != 0, "AES");
             AddFeature(result, (ecx & (1u << 28)) != 0, "AVX");
+
             if (maxBasic >= 7)
             {
                 int a, b, c, d;
@@ -266,19 +254,23 @@ namespace ZonderqOS.GUI.Apps
                 AddFeature(result, (flags & (1u << 8)) != 0, "BMI2");
                 AddFeature(result, (flags & (1u << 29)) != 0, "SHA");
             }
+
             if (maxExtended >= 0x80000001u)
             {
                 int a, b, c, d;
                 (a, b, c, d) = X86Base.CpuId(unchecked((int)0x80000001u), 0);
                 AddFeature(result, (((uint)d) & (1u << 20)) != 0, "NX");
             }
+
             return result.Length == 0 ? "N/A" : result.ToString();
         }
 
         private static void AddFeature(StringBuilder builder, bool available, string name)
         {
-            if (!available) return;
-            if (builder.Length > 0) builder.Append(' ');
+            if (!available)
+                return;
+            if (builder.Length > 0)
+                builder.Append(' ');
             builder.Append(name);
         }
 
@@ -297,14 +289,17 @@ namespace ZonderqOS.GUI.Apps
             for (int i = 0; i < 4; i++)
             {
                 char ch = (char)((data >> (i * 8)) & 0xFFu);
-                if (ch == '\0') return;
+                if (ch == '\0')
+                    return;
                 builder.Append(ch >= 32 && ch <= 126 ? ch : ' ');
             }
         }
 
         private static string CollapseSpaces(string value)
         {
-            if (string.IsNullOrEmpty(value)) return "";
+            if (string.IsNullOrEmpty(value))
+                return string.Empty;
+
             StringBuilder result = new StringBuilder(value.Length);
             bool lastSpace = true;
             for (int i = 0; i < value.Length; i++)
@@ -313,7 +308,11 @@ namespace ZonderqOS.GUI.Apps
                 bool space = ch == ' ' || ch == '\t' || ch == '\r' || ch == '\n';
                 if (space)
                 {
-                    if (!lastSpace) { result.Append(' '); lastSpace = true; }
+                    if (!lastSpace)
+                    {
+                        result.Append(' ');
+                        lastSpace = true;
+                    }
                 }
                 else if (ch >= 32 && ch <= 126)
                 {
@@ -321,8 +320,8 @@ namespace ZonderqOS.GUI.Apps
                     lastSpace = false;
                 }
             }
+
             return result.ToString().Trim();
         }
-#endif
     }
 }

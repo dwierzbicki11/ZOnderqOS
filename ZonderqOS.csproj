@@ -37,6 +37,16 @@
     <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" />
   </ItemGroup>
 
+  <!-- Platform architecture boundary: Common is always compiled. Exactly one
+       architecture-specific backend remains in Compile items for each build. -->
+  <ItemGroup Condition="'$(CosmosArch)' == 'arm64'">
+    <Compile Remove="source/Platform/X64/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">
+    <Compile Remove="source/Platform/Arm64/**/*.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" />
     <Compile Remove="**/CosmosGen3DiagnosticsCompat.cs" />
