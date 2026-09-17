@@ -10,6 +10,41 @@ fail() {
     exit 1
 }
 
+cleanup_generated_tracked_changes() {
+    local dirty
+    local path
+    local unsafe=0
+    local -a generated=()
+
+    dirty="$(git -C "$ROOT_DIR" status --porcelain --untracked-files=no)"
+    [[ -n "$dirty" ]] || return 0
+
+    while IFS= read -r line; do
+        [[ -n "$line" ]] || continue
+        path="${line:3}"
+        case "$path" in
+            output-*/*|bin/*|obj/*|.nuget/*)
+                generated+=("$path")
+                ;;
+            *)
+                unsafe=1
+                ;;
+        esac
+    done <<< "$dirty"
+
+    if (( ${#generated[@]} > 0 )); then
+        echo "[GIT] Cofam lokalne zmiany tylko w wygenerowanych artefaktach builda..."
+        git -C "$ROOT_DIR" restore --worktree --staged -- "${generated[@]}" 2>/dev/null || \
+            git -C "$ROOT_DIR" checkout -- "${generated[@]}"
+    fi
+
+    if (( unsafe )); then
+        echo "[BLAD] Sa lokalne zmiany w prawdziwych plikach projektu; nie bede ich automatycznie kasowal." >&2
+        git -C "$ROOT_DIR" status --short >&2
+        exit 1
+    fi
+}
+
 is_cosmos_checkout() {
     local path="$1"
     [[ -d "$path" ]] || return 1
@@ -60,6 +95,8 @@ resolve_cosmos_root() {
     bootstrap_cosmos_checkout "$sibling" >&2
     printf '%s\n' "$(cd "$sibling" && pwd)"
 }
+
+cleanup_generated_tracked_changes
 
 cosmos_root="$(resolve_cosmos_root)" || exit $?
 [[ -n "$cosmos_root" ]] || fail "Nie udalo sie ustalic katalogu Cosmos."
