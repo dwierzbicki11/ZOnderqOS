@@ -232,3 +232,17 @@ index 32676c1..6cfd0d1 100644
      public ITimerDevice CreateTimer()
      {
          if (!CosmosFeatures.TimerEnabled)
+diff --git a/src/Cosmos.Kernel.Core/Runtime/Stdllib.cs b/src/Cosmos.Kernel.Core/Runtime/Stdllib.cs
+index d80881e..0000000 100644
+--- a/src/Cosmos.Kernel.Core/Runtime/Stdllib.cs
++++ b/src/Cosmos.Kernel.Core/Runtime/Stdllib.cs
+@@ -185,6 +185,9 @@ namespace Cosmos.Kernel.Core.Runtime
+         [RuntimeExport("RhReRegisterForFinalize")]
+         internal static void RhReRegisterForFinalize(object obj) { }
+ 
++        [RuntimeExport("RhWaitForPendingFinalizers")]
++        internal static void RhWaitForPendingFinalizers() { }
++
+         /// <summary>
+         /// Returns the MethodTable* for System.Array. This is used by the runtime when
+         /// it needs to determine the base type of array types.
