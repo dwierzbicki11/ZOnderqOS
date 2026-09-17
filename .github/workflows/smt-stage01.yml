@@ -43,11 +43,14 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Install QEMU x64
+      - name: Install Cosmos native toolchain and QEMU x64
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86
+          sudo apt-get install -y qemu-system-x86 lld xorriso nasm
           qemu-system-x86_64 --version
+          ld.lld --version
+          xorriso -version | head -n 1
+          nasm -v
 
       - name: Shell syntax
         run: |
