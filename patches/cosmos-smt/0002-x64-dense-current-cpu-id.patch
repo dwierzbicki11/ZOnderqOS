@@ -1,0 +1,256 @@
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Import/ContextSwitchNative.cs b/src/Cosmos.Kernel.Core/Bridge/Import/ContextSwitchNative.cs
+--- a/src/Cosmos.Kernel.Core/Bridge/Import/ContextSwitchNative.cs
++++ b/src/Cosmos.Kernel.Core/Bridge/Import/ContextSwitchNative.cs
+@@ -25,5 +25,9 @@ internal static unsafe partial class ContextSwitchNative
+     [SuppressGCTransition]
+     public static partial void SetContextSwitchNewThread(int isNew);
+ 
++    [LibraryImport("*", EntryPoint = "_native_get_hardware_cpu_id")]
++    [SuppressGCTransition]
++    public static partial uint GetCurrentHardwareCpuId();
++
+     /// <summary>
+     /// Captures the calling frame's callee-saved registers + stack pointer into the supplied
+     /// <c>REGDISPLAY</c> and returns the caller's return address (IP). Used by the precise GC
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/CpuIdentity.cs b/src/Cosmos.Kernel.Core/Scheduler/CpuIdentity.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Scheduler/CpuIdentity.cs
+@@ -0,0 +1,141 @@
++using Cosmos.Kernel.Boot.Limine;
++using Cosmos.Kernel.Core.Bridge;
++
++namespace Cosmos.Kernel.Core.Scheduler;
++
++/// <summary>
++/// Maps architecture hardware CPU identifiers to the scheduler's dense 0..N-1
++/// CPU indexes. APs are still parked during stage 2, so the table is immutable
++/// after boot-time initialization and needs no locking on the hot path.
++/// </summary>
++internal static unsafe class CpuIdentity
++{
++#if ARCH_X64
++    private const int XApicTableSize = 256;
++    private const uint InvalidCpuIndex = uint.MaxValue;
++    private const uint DiscoveredCpuMarker = uint.MaxValue - 1;
++
++    private static uint[]? s_xapicToCpuIndex;
++#endif
++
++    internal static void Initialize(uint cpuCount)
++    {
++#if ARCH_X64
++        LimineMpResponseX64* response = LimineMp.X64Response;
++        if (response == null || response->Cpus == null)
++        {
++            Cosmos.Kernel.Core.Panic.Halt("SMT stage 2 requires a valid Limine MP response.");
++            return;
++        }
++
++        if ((response->Flags & LimineMp.X64ResponseFlagX2Apic) != 0)
++        {
++            Cosmos.Kernel.Core.Panic.Halt("SMT stage 2 requires xAPIC mode.");
++            return;
++        }
++
++        if (cpuCount == 0 || cpuCount > XApicTableSize || response->CpuCount != cpuCount)
++        {
++            Cosmos.Kernel.Core.Panic.Halt("SMT stage 2 CPU count does not match Limine MP topology.");
++            return;
++        }
++
++        uint[] map = new uint[XApicTableSize];
++        for (int i = 0; i < map.Length; i++)
++        {
++            map[i] = InvalidCpuIndex;
++        }
++
++        bool bspSeen = false;
++        for (ulong i = 0; i < response->CpuCount; i++)
++        {
++            LimineMpInfoX64* cpu = response->Cpus[i];
++            if (cpu == null || cpu->LapicId >= XApicTableSize)
++            {
++                Cosmos.Kernel.Core.Panic.Halt("SMT stage 2 found an invalid xAPIC CPU descriptor.");
++                return;
++            }
++
++            int xapicId = (int)cpu->LapicId;
++            if (map[xapicId] != InvalidCpuIndex)
++            {
++                Cosmos.Kernel.Core.Panic.Halt("SMT stage 2 found duplicate xAPIC IDs.");
++                return;
++            }
++
++            if (cpu->LapicId == response->BspLapicId)
++            {
++                map[xapicId] = 0;
++                bspSeen = true;
++            }
++            else
++            {
++                map[xapicId] = DiscoveredCpuMarker;
++            }
++        }
++
++        if (!bspSeen)
++        {
++            Cosmos.Kernel.Core.Panic.Halt("SMT stage 2 could not find the BSP in Limine MP topology.");
++            return;
++        }
++
++        uint nextCpuIndex = 1;
++        for (ulong i = 0; i < response->CpuCount; i++)
++        {
++            LimineMpInfoX64* cpu = response->Cpus[i];
++            if (cpu->LapicId == response->BspLapicId)
++            {
++                continue;
++            }
++
++            map[(int)cpu->LapicId] = nextCpuIndex++;
++        }
++
++        if (nextCpuIndex != cpuCount)
++        {
++            Cosmos.Kernel.Core.Panic.Halt("SMT stage 2 produced an incomplete dense CPU map.");
++            return;
++        }
++
++        uint currentXapicId = ContextSwitchNative.GetCurrentHardwareCpuId();
++        if (currentXapicId != response->BspLapicId || map[(int)currentXapicId] != 0)
++        {
++            Cosmos.Kernel.Core.Panic.Halt("SMT stage 2 BSP identity validation failed.");
++            return;
++        }
++
++        s_xapicToCpuIndex = map;
++#endif
++    }
++
++    internal static uint GetCurrentCpuIndex()
++    {
++#if ARCH_X64
++        uint[]? map = s_xapicToCpuIndex;
++        if (map is null)
++        {
++            // Preserve the pre-scheduler boot contract: only the BSP executes.
++            return 0;
++        }
++
++        uint xapicId = ContextSwitchNative.GetCurrentHardwareCpuId();
++        if (xapicId >= XApicTableSize)
++        {
++            Cosmos.Kernel.Core.Panic.Halt("Current xAPIC ID is outside the stage 2 map.");
++            return 0;
++        }
++
++        uint cpuIndex = map[(int)xapicId];
++        if (cpuIndex == InvalidCpuIndex || cpuIndex == DiscoveredCpuMarker)
++        {
++            Cosmos.Kernel.Core.Panic.Halt("Current xAPIC ID is not present in Limine MP topology.");
++            return 0;
++        }
++
++        return cpuIndex;
++#else
++        return 0;
++#endif
++    }
++}
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+@@ -95,4 +95,6 @@ public static class SchedulerManager
+     {
+         ThrowIfDisabled();
+ 
++        CpuIdentity.Initialize(cpuCount);
++
+         s_cpuCount = cpuCount;
+         s_cpuStates = new PerCpuState[cpuCount];
+ 
+@@ -426,13 +428,9 @@ public static class SchedulerManager
+     internal static int ThreadCount => s_allThreadCount;
+ 
+     /// <summary>
+-    /// Returns the CPU ID currently executing this code path. Single-CPU
+-    /// today. Internal: a policy is handed the CPU it operates on by every
+-    /// hook, and a caller holding a <see cref="SchedulerThread"/> reads
+-    /// <see cref="SchedulerThread.CpuId"/>, which stays correct under SMP where this
+-    /// constant does not.
+-    /// TODO(SMP): replace with x86_64 GS-relative per-CPU storage or ARM64 MPIDR_EL1
+-    /// affinity read once application processors are brought online.
++    /// Returns the scheduler's dense logical CPU index for the processor
++    /// currently executing this code path. Hardware identifiers such as
++    /// xAPIC IDs are translated by <see cref="CpuIdentity"/>.
+     /// </summary>
+-    internal static uint GetCurrentCpuId() => 0;
++    internal static uint GetCurrentCpuId() => CpuIdentity.GetCurrentCpuIndex();
+ 
+     /// <summary>
+     /// Sum of TotalRuntime across all non-idle threads, in nanoseconds.
+diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs b/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs
+--- a/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs
++++ b/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs
+@@ -403,6 +403,6 @@ public static class LocalApic
+     {
+         s_timerTickCount++;
+ 
+-        // Get current CPU ID from APIC
+-        uint cpuId = (uint)GetId();
++        // Scheduler CPU indexes are dense; hardware LAPIC IDs may be sparse.
++        uint cpuId = SchedulerManager.GetCurrentCpuId();
+ 
+         // Calculate RSP pointing to saved context for context switching
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -307,5 +307,20 @@ _native_get_sp:
+     mov rax, rsp
+     ret
+ 
++// uint _native_get_hardware_cpu_id(void)
++// Return the current processor's initial xAPIC ID. Stage 1 explicitly keeps
++// x2APIC disabled, so CPUID.1:EBX[31:24] is the hardware identifier used by
++// the Limine MP table. Managed CpuIdentity maps it to a dense scheduler index.
++.global _native_get_hardware_cpu_id
++_native_get_hardware_cpu_id:
++    push rbx
++    mov eax, 1
++    xor ecx, ecx
++    cpuid
++    shr ebx, 24
++    mov eax, ebx
++    pop rbx
++    ret
++
+ // uint64_t _native_x64_get_last_error_code()
+ // Returns the error code stashed by the most recent error-code exception
+ // stub (vectors 8, 10-14, 17, 21, 29, 30). Only meaningful while handling
+diff --git a/src/Cosmos.Kernel.Native.ARM64/CPU/ContextSwitch.s b/src/Cosmos.Kernel.Native.ARM64/CPU/ContextSwitch.s
+--- a/src/Cosmos.Kernel.Native.ARM64/CPU/ContextSwitch.s
++++ b/src/Cosmos.Kernel.Native.ARM64/CPU/ContextSwitch.s
+@@ -4,6 +4,7 @@
+ .global _native_get_context_switch_sp
+ .global _native_get_sp
+ .global _native_set_context_switch_new_thread
++.global _native_get_hardware_cpu_id
+ .global _context_switch_target_sp
+ .global _context_switch_is_new_thread
+ .global _temp_is_new_thread
+@@ -56,5 +57,13 @@ _native_get_sp:
+     mov     x0, sp
+     ret
+ 
++// uint _native_get_hardware_cpu_id(void)
++// ARM64 SMP is a separate bring-up. Preserve the CPU0-only behavior while
++// exporting the same symbol consumed by the common Core assembly.
++.balign 4
++_native_get_hardware_cpu_id:
++    mov     x0, #0
++    ret
++
+ // void _native_set_context_switch_new_thread(int isNew)
+ // Sets whether the target thread is NEW (1) or RESUMED (0)
+ // x0 = isNew flag
