@@ -10,7 +10,7 @@ index 6cfd0d1..c68ca20 100644
  
          // Initialize APIC
          Serial.WriteString("[X64HAL] Initializing APIC...\n");
-@@ -132,6 +133,74 @@ internal class X64PlatformInitializer : IPlatformInitializer
+@@ -132,6 +133,108 @@ internal class X64PlatformInitializer : IPlatformInitializer
          }
      }
  
@@ -48,7 +48,7 @@ index 6cfd0d1..c68ca20 100644
 +            return;
 +        }
 +
-+        PrintDenseCpu(denseId++, bsp, true);
++        AssignDenseCpu(denseId++, bsp, true);
 +
 +        // APs get contiguous scheduler IDs in Limine descriptor order. Hardware
 +        // LAPIC IDs are metadata only; they are never used as scheduler indexes.
@@ -57,7 +57,7 @@ index 6cfd0d1..c68ca20 100644
 +            LimineMpInfoX64* cpu = response->Cpus[i];
 +            if (cpu == null || cpu == bsp)
 +                continue;
-+            PrintDenseCpu(denseId++, cpu, false);
++            AssignDenseCpu(denseId++, cpu, false);
 +        }
 +
 +        if (denseId != response->CpuCount)
@@ -66,11 +66,23 @@ index 6cfd0d1..c68ca20 100644
 +            return;
 +        }
 +
++        if (!ValidateDenseCpuMap(response))
++        {
++            Serial.WriteString("[SMP] WARNING: dense CPU map validation failed.\n");
++            return;
++        }
++
++        Serial.WriteString("[SMP] Dense CPU map verified: BSP=0, CpuIds are unique and contiguous.\n");
 +        Serial.WriteString("[SMP] Stage 2 complete: dense CPU map ready; APs remain parked.\n");
 +    }
 +
-+    private static unsafe void PrintDenseCpu(ulong cpuId, LimineMpInfoX64* cpu, bool bsp)
++    private static unsafe void AssignDenseCpu(ulong cpuId, LimineMpInfoX64* cpu, bool bsp)
 +    {
++        // Limine leaves ExtraArgument for the kernel. Stage 3 can read this
++        // directly from the descriptor passed to the AP entry point, avoiding
++        // raw LAPIC IDs as scheduler indexes and avoiding CPUID in hot paths.
++        cpu->ExtraArgument = cpuId;
++
 +        Serial.WriteString("[SMP] CpuId[");
 +        Serial.WriteNumber(cpuId);
 +        Serial.WriteString("] LAPIC=");
@@ -80,6 +92,28 @@ index 6cfd0d1..c68ca20 100644
 +        if (bsp)
 +            Serial.WriteString(" BSP");
 +        Serial.WriteString("\n");
++    }
++
++    private static unsafe bool ValidateDenseCpuMap(LimineMpResponseX64* response)
++    {
++        for (ulong i = 0; i < response->CpuCount; i++)
++        {
++            LimineMpInfoX64* cpu = response->Cpus[i];
++            if (cpu == null || cpu->ExtraArgument >= response->CpuCount)
++                return false;
++
++            if (cpu->LapicId == response->BspLapicId && cpu->ExtraArgument != 0)
++                return false;
++
++            for (ulong j = 0; j < i; j++)
++            {
++                LimineMpInfoX64* previous = response->Cpus[j];
++                if (previous != null && previous->ExtraArgument == cpu->ExtraArgument)
++                    return false;
++            }
++        }
++
++        return true;
 +    }
 +
      private static unsafe void DisplayLimineMpInfo()
