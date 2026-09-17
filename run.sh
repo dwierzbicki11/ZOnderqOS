@@ -106,11 +106,15 @@ build_iso() {
     local label
     label="$(printf '%s' "$arch" | tr '[:lower:]' '[:upper:]')"
 
-    require_command cosmos
     clean_build_cache "$arch"
 
     echo "[$label] Budowanie ZonderqOS..."
-    cosmos build -a "$arch"
+    if [[ "$arch" == "x64" ]]; then
+        bash "$ROOT_DIR/tools/build-x64-smt.sh"
+    else
+        require_command cosmos
+        cosmos build -a "$arch"
+    fi
 
     BUILD_ISO="$ROOT_DIR/output-$arch/ZonderqOS.iso"
     [[ -f "$BUILD_ISO" ]] || fail "Brak obrazu po buildzie: $BUILD_ISO"
