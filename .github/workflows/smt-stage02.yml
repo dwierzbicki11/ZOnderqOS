@@ -1,0 +1,105 @@
+name: SMT stage 2 dense CPU map
+
+on:
+  push:
+    branches: [ main ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage02-qemu.sh', 'ZonderqOS.csproj', 'Bootloader/limine.conf', '.github/workflows/smt-stage02.yml' ]
+  pull_request:
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage02-qemu.sh', 'ZonderqOS.csproj', 'Bootloader/limine.conf', '.github/workflows/smt-stage02.yml' ]
+
+jobs:
+  validate-stage02:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cpus: 1
+            cores: 1
+            threads: 1
+          - cpus: 8
+            cores: 4
+            threads: 2
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: zonderq }
+      - uses: actions/checkout@v4
+        with:
+          repository: CosmosOS/Cosmos
+          ref: v3.0.85
+          path: cosmos
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - name: Install native toolchain and QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 lld xorriso nasm
+      - name: Validate and apply Stage 2
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+        run: |
+          bash -n zonderq/tools/prepare-cosmos-smt.sh
+          bash -n zonderq/tools/smoke-stage02-qemu.sh
+          bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 2 --check-only
+          bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 2 --patch-only
+          git -C cosmos diff --check
+          grep -Fq 'cpu->ExtraArgument = cpuId;' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+          grep -Fq '[SMP] Dense CPU map verified: BSP=0, CpuIds are unique and contiguous.' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+          grep -Fq '[SMP] Stage 2 complete: dense CPU map ready; APs remain parked.' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+          ! grep -Fq '_native_get_current_cpu_id' cosmos/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+          ! grep -Fq '_context_switch_target_rsp: .zero 2048' cosmos/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+      - name: Verify Stage 2 helper idempotence and build patched Cosmos packages
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+        run: bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 2
+      - name: Force local patched Cosmos packages
+        run: |
+          cat > zonderq/NuGet.Config <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources><clear /><add key="local-cosmos" value="${{ github.workspace }}/cosmos/artifacts/package/release" /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources>
+            <packageSourceMapping><packageSource key="local-cosmos"><package pattern="Cosmos.*" /></packageSource><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping>
+          </configuration>
+          EOF
+          rm -rf "${{ runner.temp }}/zonderq-stage02-packages"
+          mkdir -p "${{ runner.temp }}/zonderq-stage02-packages"
+      - name: Build ZonderqOS x64 ISO
+        working-directory: zonderq
+        env:
+          NUGET_PACKAGES: ${{ runner.temp }}/zonderq-stage02-packages
+        run: |
+          set -o pipefail
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --configfile NuGet.Config --force --no-cache 2>&1 | tee stage02-restore.log
+          for package in cosmos.sdk cosmos.kernel cosmos.kernel.hal.x64 cosmos.kernel.boot.limine; do
+            metadata="$NUGET_PACKAGES/$package/3.0.85/.nupkg.metadata"
+            test -f "$metadata" || { echo "[SMT-CI][FAIL] Missing restored package metadata: $metadata" >&2; exit 1; }
+            grep -Fq "${{ github.workspace }}/cosmos/artifacts/package/release" "$metadata" || { echo "[SMT-CI][FAIL] $package did not come from patched local feed" >&2; cat "$metadata" >&2; exit 1; }
+          done
+          cosmos build -a x64 -v 2>&1 | tee stage02-build.log
+          test -f output-x64/ZonderqOS.iso
+      - name: QEMU dense-map smoke
+        working-directory: zonderq
+        env:
+          STAGE02_QEMU_CPUS: ${{ matrix.cpus }}
+          STAGE02_QEMU_CORES: ${{ matrix.cores }}
+          STAGE02_QEMU_THREADS: ${{ matrix.threads }}
+          STAGE02_QEMU_TIMEOUT_SECONDS: 75
+        run: bash tools/smoke-stage02-qemu.sh output-x64/ZonderqOS.iso stage02-qemu-serial.log
+      - name: Diagnostics
+        if: always()
+        working-directory: zonderq
+        run: |
+          tail -n 250 stage02-build.log 2>/dev/null || true
+          cat stage02-qemu-serial.log 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage02-diagnostics-${{ matrix.cpus }}cpu
+          if-no-files-found: ignore
+          path: |
+            zonderq/stage02-restore.log
+            zonderq/stage02-build.log
+            zonderq/stage02-qemu-serial.log
