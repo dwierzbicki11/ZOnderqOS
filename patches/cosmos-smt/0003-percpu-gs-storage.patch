@@ -2,7 +2,7 @@ diff --git a/src/Cosmos.Kernel.Core/CPU/CpuLocal.cs b/src/Cosmos.Kernel.Core/CPU
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/CPU/CpuLocal.cs
-@@ -0,0 +1,38 @@
+@@ -0,0 +1,42 @@
 +// This code is licensed under the BSD 3-Clause license (see LICENSE for details)
 +
 +using System.Runtime.InteropServices;
@@ -24,6 +24,8 @@ new file mode 100644
 +    [SuppressGCTransition]
 +    private static partial uint NativeGetCurrentCpuId();
 +
++    internal static bool IsNativePerCpuSupported => true;
++
 +    internal static bool Initialize(uint cpuId)
 +    {
 +        NativeInitialize(cpuId);
@@ -32,10 +34,12 @@ new file mode 100644
 +
 +    internal static uint CurrentCpuId => NativeGetCurrentCpuId();
 +#else
++    internal static bool IsNativePerCpuSupported => false;
++
 +    internal static bool Initialize(uint cpuId)
 +    {
 +        _ = cpuId;
-+        return false;
++        return true;
 +    }
 +
 +    internal static uint CurrentCpuId => 0;
@@ -44,46 +48,62 @@ new file mode 100644
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-@@ -1,7 +1,6 @@
-     /// hook, and a caller holding a <see cref="SchedulerThread"/> reads
+@@ -434,12 +434,8 @@
+     /// <summary>
+-    /// Returns the CPU ID currently executing this code path. Single-CPU
+-    /// today. Internal: a policy is handed the CPU it operates on by every
+-    /// hook, and a caller holding a <see cref="SchedulerThread"/> reads
 -    /// <see cref="SchedulerThread.CpuId"/>, which stays correct under SMP where this
 -    /// constant does not.
 -    /// TODO(SMP): replace with x86_64 GS-relative per-CPU storage or ARM64 MPIDR_EL1
 -    /// affinity read once application processors are brought online.
-+    /// <see cref="SchedulerThread.CpuId"/>, which stays correct under SMP.
-+    /// On x64 this is backed by GS-relative per-CPU storage initialized before
++    /// Returns the dense CPU ID currently executing this code path. On x64
++    /// this is backed by GS-relative per-CPU storage initialized before
 +    /// interrupts are enabled; ARM64 remains CPU0-only until its MP bring-up.
      /// </summary>
 -    internal static uint GetCurrentCpuId() => 0;
 +    internal static uint GetCurrentCpuId() => CpuLocal.CurrentCpuId;
+ 
+     /// <summary>
 diff --git a/src/Cosmos.Kernel.HAL/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel.HAL/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 --- a/src/Cosmos.Kernel.HAL/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 +++ b/src/Cosmos.Kernel.HAL/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-@@ -1,5 +1,12 @@
+@@ -44,6 +44,18 @@
          // Initialize interrupts (skipped if CosmosEnableInterrupts=false)
          if (InterruptManager.IsEnabled)
          {
-+            // Stage 3: bind BSP CPU-local storage before the IDT/controller can
-+            // deliver any interrupt that touches GS-relative scheduler scratch.
-+            if (CpuLocal.Initialize(0))
++            // Stage 3 is x64-only. ARM64 keeps its existing CPU0 path until
++            // its own MP bring-up gets architecture-local storage.
++            if (CpuLocal.IsNativePerCpuSupported)
 +            {
++                if (!CpuLocal.Initialize(0))
++                {
++                    Cosmos.Kernel.Core.Panic.Halt("Stage 3 failed to initialize BSP per-CPU GS storage.");
++                }
++
 +                Serial.WriteString("[SMP] Stage 3 complete: BSP CpuId=0, GS per-CPU storage active; APs remain parked.\n");
 +            }
 +
              Serial.WriteString("[KERNEL]   - Initializing interrupts...\n");
              InterruptManager.Initialize(initializer.CreateInterruptController());
+ 
 diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs b/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs
 --- a/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs
 +++ b/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs
-@@ -1,2 +1,2 @@
+@@ -405,7 +405,7 @@
+         s_timerTickCount++;
+ 
 -        // Get current CPU ID from APIC
 -        uint cpuId = (uint)GetId();
 +        // Scheduler CPU IDs are dense and independent from hardware APIC IDs.
 +        uint cpuId = SchedulerManager.GetCurrentCpuId();
+ 
+         // Calculate RSP pointing to saved context for context switching
+         nuint contextPtr = (nuint)Unsafe.AsPointer(ref context);
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-@@ -287,58 +287,80 @@
+@@ -289,17 +289,53 @@
 +// void _native_x64_init_percpu(uint cpuId)
 +// Binds GS base to this logical CPU's cache-line-sized native scratch slot.
 +// Must run before interrupts are enabled on every CPU.
@@ -142,10 +162,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
      ret
  
  // nuint _native_get_sp()
- // Gets the current SP value
- .global _native_get_sp
- _native_get_sp:
-     mov rax, rsp
+@@ -310,39 +346,25 @@
      ret
  
  // uint64_t _native_x64_get_last_error_code()
@@ -192,13 +209,16 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +// +32 last exception error code, remainder reserved/padding.
 +.balign 64
 +_percpu_slots: .zero 16384
-@@ -621,4 +643,4 @@
+ 
+ .data
+@@ -629,5 +629,5 @@
      // uniform frame. (Leaving the extra qword put RSP 8 bytes off; the first
      // movaps in managed code then raised #GP, recursing to a triple fault.)
 -    pop qword ptr [rip + _irq_last_error_code]
 +    pop qword ptr gs:[32]
      .endif
-@@ -748,12 +770,12 @@
+     // === SAVE CONTEXT ===
+@@ -752,14 +752,14 @@
      // === CHECK FOR CONTEXT SWITCH ===
 -    mov rax, [rip + _context_switch_target_rsp]
 +    mov rax, qword ptr gs:[8]
@@ -217,13 +237,16 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    // Save this CPU's is_new_thread flag before clearing.
 +    mov rdx, qword ptr gs:[16]
 +    mov qword ptr gs:[16], rcx
-@@ -783,4 +805,4 @@
-     // First, read TempRcx BEFORE restoring GPRs (so we don't destroy RAX)
+ 
+     // Switch stack
+@@ -780,5 +780,5 @@
      // TempRcx is at: XMM(256) + GPRs(120) + interrupt(8) + cpuflags(8) + cr2(8) = offset 400
      mov rax, [rsp + 256 + 120 + 24]  // Read TempRcx (is_new_thread flag)
 -    mov [rip + _temp_is_new_thread], rax  // Save it in a global variable
 +    mov qword ptr gs:[24], rax       // Preserve it in this CPU's scratch slot
-@@ -826,5 +848,5 @@
+ 
+     // Restore XMM
+@@ -822,7 +822,7 @@
      // === EXIT PATH ===
      // Stack now: RIP, CS, RFLAGS, [RSP, SS if privilege change]
 -    // Check saved flag for new thread
@@ -231,3 +254,5 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    // Check this CPU's saved flag for new thread
 +    cmp qword ptr gs:[24], 0
      jnz .Lnew_thread\n
+ 
+     // RESUMED thread or normal return - use iretq
