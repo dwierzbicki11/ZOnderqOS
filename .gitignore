@@ -3,6 +3,9 @@ bin/
 obj/
 output-*/
 
+# Local launcher/cache state
+.cache/
+
 # Disk / VM images
 *.img
 *.iso
