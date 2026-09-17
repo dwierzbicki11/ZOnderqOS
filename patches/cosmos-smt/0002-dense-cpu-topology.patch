@@ -1,168 +1,120 @@
-diff --git a/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs b/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs
-new file mode 100644
---- /dev/null
-+++ b/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs
-@@ -0,0 +1,104 @@
-+namespace Cosmos.Kernel.Core.CPU;
-+
-+/// <summary>
-+/// Architecture-neutral logical CPU topology discovered by the platform layer.
-+/// Scheduler CPU IDs are always dense (0..CpuCount-1) and never equal to a
-+/// hardware APIC/MPIDR identifier by assumption.
-+/// </summary>
-+internal static class CpuTopology
-+{
-+    private static ulong[]? s_hardwareIds;
-+
-+    /// <summary>True after the platform has published a validated topology.</summary>
-+    internal static bool IsInitialized => s_hardwareIds is not null;
-+
-+    /// <summary>Number of logical CPUs in the discovered topology.</summary>
-+    internal static uint CpuCount => (uint)(s_hardwareIds?.Length ?? 0);
-+
-+    /// <summary>
-+    /// Initializes the dense map. The boot CPU is always assigned logical
-+    /// CpuId 0; remaining CPUs retain firmware enumeration order.
-+    /// </summary>
-+    internal static bool TryInitialize(ulong bootHardwareId, ulong[] hardwareIds)
-+    {
-+        if (hardwareIds is null || hardwareIds.Length == 0 || s_hardwareIds is not null)
-+        {
-+            return false;
-+        }
-+
-+        int bootIndex = -1;
-+        for (int i = 0; i < hardwareIds.Length; i++)
-+        {
-+            ulong hardwareId = hardwareIds[i];
-+            if (hardwareId == bootHardwareId)
-+            {
-+                bootIndex = i;
-+            }
-+
-+            for (int j = 0; j < i; j++)
-+            {
-+                if (hardwareIds[j] == hardwareId)
-+                {
-+                    return false;
-+                }
-+            }
-+        }
-+
-+        if (bootIndex < 0)
-+        {
-+            return false;
-+        }
-+
-+        var denseHardwareIds = new ulong[hardwareIds.Length];
-+        denseHardwareIds[0] = bootHardwareId;
-+
-+        int next = 1;
-+        for (int i = 0; i < hardwareIds.Length; i++)
-+        {
-+            if (i == bootIndex)
-+            {
-+                continue;
-+            }
-+
-+            denseHardwareIds[next++] = hardwareIds[i];
-+        }
-+
-+        // Publish only after validation and construction are complete.
-+        s_hardwareIds = denseHardwareIds;
-+        return true;
-+    }
-+
-+    /// <summary>Returns the hardware identifier assigned to a dense CpuId.</summary>
-+    internal static bool TryGetHardwareId(uint cpuId, out ulong hardwareId)
-+    {
-+        ulong[]? hardwareIds = s_hardwareIds;
-+        if (hardwareIds is null || cpuId >= (uint)hardwareIds.Length)
-+        {
-+            hardwareId = 0;
-+            return false;
-+        }
-+
-+        hardwareId = hardwareIds[cpuId];
-+        return true;
-+    }
-+
-+    /// <summary>Maps an architecture hardware identifier to a dense CpuId.</summary>
-+    internal static bool TryGetCpuId(ulong hardwareId, out uint cpuId)
-+    {
-+        ulong[]? hardwareIds = s_hardwareIds;
-+        if (hardwareIds is not null)
-+        {
-+            for (int i = 0; i < hardwareIds.Length; i++)
-+            {
-+                if (hardwareIds[i] == hardwareId)
-+                {
-+                    cpuId = (uint)i;
-+                    return true;
-+                }
-+            }
-+        }
-+
-+        cpuId = 0;
-+        return false;
-+    }
-+}
 diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+index 6cfd0d1..c68ca20 100644
 --- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
 +++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
-@@ -8,6 +8,55 @@
-         }
+@@ -84,6 +84,7 @@ internal class X64PlatformInitializer : IPlatformInitializer
+         // Stage-1 SMP proof: validate the bootloader MP response while every
+         // application processor is still parked inside Limine.
+         DisplayLimineMpInfo();
++        BuildDenseCpuMap();
  
-         Serial.WriteString("[SMP] Stage 1 complete: MP response inspected; APs remain parked.\n");
-+
-+        if (!BuildDenseCpuTopology(response, inspectCount))
+         // Initialize APIC
+         Serial.WriteString("[X64HAL] Initializing APIC...\n");
+@@ -132,6 +133,108 @@ internal class X64PlatformInitializer : IPlatformInitializer
+         }
+     }
+ 
++    private static unsafe void BuildDenseCpuMap()
++    {
++        LimineMpResponseX64* response = LimineMp.X64Response;
++        if (response == null || response->Cpus == null || response->CpuCount == 0 ||
++            response->CpuCount > LimineMp.MaxXApicCpuCount)
 +        {
-+            Serial.WriteString("[SMP] WARNING: failed to build dense CPU topology.\n");
++            Serial.WriteString("[SMP] WARNING: cannot build dense CPU map from invalid MP response.\n");
 +            return;
 +        }
 +
-+        Serial.WriteString("[SMP] Stage 2 complete: dense CPU topology ready; APs remain parked.\n");
-+    }
++        Serial.WriteString("[SMP] Dense CPU map: ");
++        Serial.WriteNumber(response->CpuCount);
++        Serial.WriteString(" logical CPU(s)\n");
 +
-+    private static unsafe bool BuildDenseCpuTopology(LimineMpResponseX64* response, ulong cpuCount)
-+    {
-+        var hardwareIds = new ulong[(int)cpuCount];
-+
-+        for (ulong i = 0; i < cpuCount; i++)
++        // CpuId 0 is always the BSP. This keeps the existing single-CPU
++        // scheduler/runtime state attached to CPU0 while SMP grows.
++        ulong denseId = 0;
++        LimineMpInfoX64* bsp = null;
++        for (ulong i = 0; i < response->CpuCount; i++)
 +        {
 +            LimineMpInfoX64* cpu = response->Cpus[i];
-+            if (cpu == null)
++            if (cpu != null && cpu->LapicId == response->BspLapicId)
 +            {
-+                return false;
++                bsp = cpu;
++                break;
 +            }
-+
-+            hardwareIds[(int)i] = cpu->LapicId;
 +        }
 +
-+        if (!CpuTopology.TryInitialize(response->BspLapicId, hardwareIds))
++        if (bsp == null)
 +        {
-+            return false;
++            Serial.WriteString("[SMP] WARNING: BSP missing while building dense CPU map.\n");
++            return;
 +        }
 +
-+        for (uint cpuId = 0; cpuId < CpuTopology.CpuCount; cpuId++)
-+        {
-+            if (!CpuTopology.TryGetHardwareId(cpuId, out ulong hardwareId))
-+            {
-+                return false;
-+            }
++        AssignDenseCpu(denseId++, bsp, true);
 +
-+            Serial.WriteString("[SMP] MAP CpuId=");
-+            Serial.WriteNumber(cpuId);
-+            Serial.WriteString(" LAPIC=");
-+            Serial.WriteNumber(hardwareId);
-+            if (cpuId == 0)
++        // APs get contiguous scheduler IDs in Limine descriptor order. LAPIC
++        // IDs remain hardware metadata and are never scheduler array indexes.
++        for (ulong i = 0; i < response->CpuCount; i++)
++        {
++            LimineMpInfoX64* cpu = response->Cpus[i];
++            if (cpu == null || cpu == bsp)
++                continue;
++            AssignDenseCpu(denseId++, cpu, false);
++        }
++
++        if (denseId != response->CpuCount)
++        {
++            Serial.WriteString("[SMP] WARNING: dense CPU map size differs from MP CPU count.\n");
++            return;
++        }
++
++        if (!ValidateDenseCpuMap(response))
++        {
++            Serial.WriteString("[SMP] WARNING: dense CPU map validation failed.\n");
++            return;
++        }
++
++        Serial.WriteString("[SMP] Dense CPU map verified: BSP=0, CpuIds are unique and contiguous.\n");
++        Serial.WriteString("[SMP] Stage 2 complete: dense CPU map ready; APs remain parked.\n");
++    }
++
++    private static unsafe void AssignDenseCpu(ulong cpuId, LimineMpInfoX64* cpu, bool bsp)
++    {
++        // Limine reserves ExtraArgument for the kernel. Stage 3 will receive
++        // this descriptor directly at AP entry, avoiding CPUID in hot paths.
++        cpu->ExtraArgument = cpuId;
++
++        Serial.WriteString("[SMP] CpuId[");
++        Serial.WriteNumber(cpuId);
++        Serial.WriteString("] LAPIC=");
++        Serial.WriteNumber(cpu->LapicId);
++        Serial.WriteString(" processor=");
++        Serial.WriteNumber(cpu->ProcessorId);
++        if (bsp)
++            Serial.WriteString(" BSP");
++        Serial.WriteString("\n");
++    }
++
++    private static unsafe bool ValidateDenseCpuMap(LimineMpResponseX64* response)
++    {
++        for (ulong i = 0; i < response->CpuCount; i++)
++        {
++            LimineMpInfoX64* cpu = response->Cpus[i];
++            if (cpu == null || cpu->ExtraArgument >= response->CpuCount)
++                return false;
++
++            if (cpu->LapicId == response->BspLapicId && cpu->ExtraArgument != 0)
++                return false;
++
++            for (ulong j = 0; j < i; j++)
 +            {
-+                Serial.WriteString(" BSP");
++                LimineMpInfoX64* previous = response->Cpus[j];
++                if (previous != null && previous->ExtraArgument == cpu->ExtraArgument)
++                    return false;
 +            }
-+            Serial.WriteString("\n");
 +        }
 +
 +        return true;
-     }
- 
-     public ITimerDevice CreateTimer()
++    }
++
+     private static unsafe void DisplayLimineMpInfo()
+     {
+         LimineMpResponseX64* response = LimineMp.X64Response;
