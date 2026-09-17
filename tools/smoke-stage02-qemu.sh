@@ -3,19 +3,44 @@ set -euo pipefail
 
 ISO="${1:-output-x64/ZonderqOS.iso}"
 LOG="${2:-stage02-qemu-serial.log}"
+CPU_MODEL="${STAGE02_QEMU_CPU_MODEL:-Nehalem}"
+SOCKETS="${STAGE02_QEMU_SOCKETS:-1}"
 CPUS="${STAGE02_QEMU_CPUS:-8}"
 CORES="${STAGE02_QEMU_CORES:-4}"
 THREADS="${STAGE02_QEMU_THREADS:-2}"
 TIMEOUT="${STAGE02_QEMU_TIMEOUT_SECONDS:-75}"
 
-command -v qemu-system-x86_64 >/dev/null || { echo '[SMT-QEMU][FAIL] qemu-system-x86_64 not found' >&2; exit 1; }
-[[ -f "$ISO" ]] || { echo "[SMT-QEMU][FAIL] ISO not found: $ISO" >&2; exit 1; }
-[[ "$TIMEOUT" =~ ^[0-9]+$ ]] || { echo '[SMT-QEMU][FAIL] invalid timeout' >&2; exit 1; }
+fail() {
+  echo "[SMT-QEMU][FAIL] $*" >&2
+  exit 1
+}
+
+command -v qemu-system-x86_64 >/dev/null || fail 'qemu-system-x86_64 not found'
+[[ -f "$ISO" ]] || fail "ISO not found: $ISO"
+
+for value_name in SOCKETS CPUS CORES THREADS TIMEOUT; do
+  value="${!value_name}"
+  [[ "$value" =~ ^[1-9][0-9]*$ ]] || fail "$value_name must be a positive integer (got: $value)"
+done
+
+EXPECTED_CPUS=$((SOCKETS * CORES * THREADS))
+[[ "$CPUS" -eq "$EXPECTED_CPUS" ]] || \
+  fail "invalid topology: cpus=$CPUS but sockets*cores*threads=${SOCKETS}*${CORES}*${THREADS}=$EXPECTED_CPUS"
+
+if ! qemu-system-x86_64 -cpu help 2>/dev/null | grep -Eq "(^|[[:space:]])${CPU_MODEL}([[:space:]]|$)"; then
+  fail "QEMU CPU model '$CPU_MODEL' is not available on this host"
+fi
+
 : > "$LOG"
 
+echo "[SMT-QEMU] CPU model: $CPU_MODEL"
+echo "[SMT-QEMU] QEMU topology: ${SOCKETS} socket(s) x ${CORES} core(s) x ${THREADS} thread(s)/core = ${CPUS} logical CPU(s)"
+echo "[SMT-QEMU] Waiting for Stage 2 dense CPU map..."
+
 qemu-system-x86_64 \
-  -M q35 -cpu qemu64 \
-  -smp "cpus=$CPUS,sockets=1,cores=$CORES,threads=$THREADS" \
+  -M q35 \
+  -cpu "$CPU_MODEL" \
+  -smp "cpus=$CPUS,sockets=$SOCKETS,cores=$CORES,threads=$THREADS" \
   -m 2G \
   -drive "file=$ISO,media=cdrom,if=ide,readonly=on" -boot d \
   -display none -monitor none -serial "file:$LOG" \
@@ -29,34 +54,61 @@ for ((second=0; second<TIMEOUT; second++)); do
     cat "$LOG" >&2
     exit 1
   fi
+
   if grep -Fq '[SMP] WARNING:' "$LOG"; then
     echo '[SMT-QEMU][FAIL] SMP warning detected' >&2
     cat "$LOG" >&2
     exit 1
   fi
+
   if grep -Fq '[SMP] Stage 2 complete: dense CPU map ready; APs remain parked.' "$LOG"; then
-    grep -Fq "[SMP] Dense CPU map: $CPUS logical CPU(s)" "$LOG"
-    grep -Fq '[SMP] Dense CPU map verified: BSP=0, CpuIds are unique and contiguous.' "$LOG"
+    grep -Fq "[SMP] Dense CPU map: $CPUS logical CPU(s)" "$LOG" || \
+      { echo "[SMT-QEMU][FAIL] kernel did not report $CPUS logical CPUs" >&2; cat "$LOG" >&2; exit 1; }
+    grep -Fq '[SMP] Dense CPU map verified: BSP=0, CpuIds are unique and contiguous.' "$LOG" || \
+      { echo '[SMT-QEMU][FAIL] kernel did not verify the dense CPU map' >&2; cat "$LOG" >&2; exit 1; }
 
     map_count="$(grep -Fc '[SMP] CpuId[' "$LOG" || true)"
-    [[ "$map_count" -eq "$CPUS" ]] || { echo "[SMT-QEMU][FAIL] expected $CPUS dense map entries, got $map_count" >&2; cat "$LOG" >&2; exit 1; }
+    [[ "$map_count" -eq "$CPUS" ]] || {
+      echo "[SMT-QEMU][FAIL] expected $CPUS dense map entries, got $map_count" >&2
+      cat "$LOG" >&2
+      exit 1
+    }
 
     for ((id=0; id<CPUS; id++)); do
-      grep -Fq "[SMP] CpuId[$id]" "$LOG" || { echo "[SMT-QEMU][FAIL] missing dense CpuId $id" >&2; cat "$LOG" >&2; exit 1; }
+      grep -Fq "[SMP] CpuId[$id]" "$LOG" || {
+        echo "[SMT-QEMU][FAIL] missing dense CpuId $id" >&2
+        cat "$LOG" >&2
+        exit 1
+      }
     done
 
     bsp_count="$(grep -F '[SMP] CpuId[' "$LOG" | grep -Fc ' BSP' || true)"
-    [[ "$bsp_count" -eq 1 ]] || { echo "[SMT-QEMU][FAIL] expected exactly one BSP map entry, got $bsp_count" >&2; cat "$LOG" >&2; exit 1; }
-    grep -F '[SMP] CpuId[0]' "$LOG" | grep -Fq ' BSP'
+    [[ "$bsp_count" -eq 1 ]] || {
+      echo "[SMT-QEMU][FAIL] expected exactly one BSP map entry, got $bsp_count" >&2
+      cat "$LOG" >&2
+      exit 1
+    }
+    grep -F '[SMP] CpuId[0]' "$LOG" | grep -Fq ' BSP' || {
+      echo '[SMT-QEMU][FAIL] dense CpuId 0 is not the BSP' >&2
+      cat "$LOG" >&2
+      exit 1
+    }
 
-    echo "[SMT-QEMU][OK] dense CpuId 0..$((CPUS-1)) verified for ${CORES}C/${CPUS}T."
+    if (( THREADS > 1 )); then
+      echo "[SMT-QEMU][OK] QEMU SMT topology works: ${SOCKETS}S/${CORES}C/${THREADS}T-per-core = ${CPUS} logical CPUs."
+    else
+      echo "[SMT-QEMU][OK] QEMU SMP topology works: ${SOCKETS}S/${CORES}C = ${CPUS} logical CPUs."
+    fi
+    echo "[SMT-QEMU][OK] Stage 2 dense CpuId 0..$((CPUS-1)) verified; APs are intentionally still parked at this stage."
     exit 0
   fi
+
   if ! kill -0 "$QEMU_PID" 2>/dev/null; then
     echo '[SMT-QEMU][FAIL] QEMU exited before Stage 2 marker' >&2
     cat "$LOG" >&2
     exit 1
   fi
+
   sleep 1
 done
 
