@@ -9,11 +9,11 @@
     ".NETCoreApp,Version=v10.0/linux-arm64": {
       "ZonderqOS/1.0.0": {
         "dependencies": {
+          "Cosmos.Build.Analyzer.Patcher": "3.0.85",
           "Cosmos.Build.Ilc": "3.0.85",
           "Cosmos.Kernel": "3.0.85",
-          "Cosmos.Kernel.Core.X64": "3.0.85",
+          "Cosmos.Kernel.Core.ARM64": "3.0.85",
           "Cosmos.Kernel.HAL.ARM64": "3.0.85",
-          "Cosmos.Kernel.HAL.X64": "3.0.85",
           "Cosmos.Kernel.SourceGenerators": "3.0.85",
           "Cosmos.Kernel.System": "3.0.85",
           "runtimepack.Microsoft.NETCore.App.Runtime.linux-arm64": "10.0.11"
@@ -761,6 +761,31 @@
           }
         }
       },
+      "Cosmos.Build.Analyzer.Patcher/3.0.85": {
+        "dependencies": {
+          "Cosmos.Build.Analyzer.Patcher.CodeFixes": "3.0.85",
+          "_Cosmos.Build.Analyzer.Patcher": "3.0.85"
+        },
+        "runtime": {
+          "lib/netstandard2.0/Cosmos.Build.Analyzer.Patcher.Package.dll": {
+            "assemblyVersion": "3.0.85.0",
+            "fileVersion": "3.0.85.0"
+          }
+        }
+      },
+      "Cosmos.Build.Analyzer.Patcher.CodeFixes/3.0.85": {
+        "dependencies": {
+          "Microsoft.CodeAnalysis.CSharp.Workspaces": "4.14.0",
+          "Microsoft.CodeAnalysis.Common": "4.14.0",
+          "_Cosmos.Build.Analyzer.Patcher": "3.0.85"
+        },
+        "runtime": {
+          "lib/netstandard2.0/Cosmos.Build.Analyzer.Patcher.CodeFixes.dll": {
+            "assemblyVersion": "3.0.85.0",
+            "fileVersion": "3.0.85.0"
+          }
+        }
+      },
       "Cosmos.Build.API/3.0.85": {
         "runtime": {
           "lib/netstandard2.0/Cosmos.Build.API.dll": {
@@ -930,6 +955,225 @@
           }
         }
       },
+      "Humanizer.Core/2.14.1": {
+        "runtime": {
+          "lib/net6.0/Humanizer.dll": {
+            "assemblyVersion": "2.14.0.0",
+            "fileVersion": "2.14.1.48190"
+          }
+        }
+      },
+      "Microsoft.CodeAnalysis.Common/4.14.0": {
+        "runtime": {
+          "lib/net9.0/Microsoft.CodeAnalysis.dll": {
+            "assemblyVersion": "4.14.0.0",
+            "fileVersion": "4.1400.25.26210"
+          }
+        },
+        "resources": {
+          "lib/net9.0/cs/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "cs"
+          },
+          "lib/net9.0/de/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "de"
+          },
+          "lib/net9.0/es/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "es"
+          },
+          "lib/net9.0/fr/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "fr"
+          },
+          "lib/net9.0/it/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "it"
+          },
+          "lib/net9.0/ja/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "ja"
+          },
+          "lib/net9.0/ko/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "ko"
+          },
+          "lib/net9.0/pl/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "pl"
+          },
+          "lib/net9.0/pt-BR/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "pt-BR"
+          },
+          "lib/net9.0/ru/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "ru"
+          },
+          "lib/net9.0/tr/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "tr"
+          },
+          "lib/net9.0/zh-Hans/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "zh-Hans"
+          },
+          "lib/net9.0/zh-Hant/Microsoft.CodeAnalysis.resources.dll": {
+            "locale": "zh-Hant"
+          }
+        }
+      },
+      "Microsoft.CodeAnalysis.CSharp/4.14.0": {
+        "dependencies": {
+          "Microsoft.CodeAnalysis.Common": "4.14.0"
+        },
+        "runtime": {
+          "lib/net9.0/Microsoft.CodeAnalysis.CSharp.dll": {
+            "assemblyVersion": "4.14.0.0",
+            "fileVersion": "4.1400.25.26210"
+          }
+        },
+        "resources": {
+          "lib/net9.0/cs/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "cs"
+          },
+          "lib/net9.0/de/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "de"
+          },
+          "lib/net9.0/es/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "es"
+          },
+          "lib/net9.0/fr/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "fr"
+          },
+          "lib/net9.0/it/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "it"
+          },
+          "lib/net9.0/ja/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "ja"
+          },
+          "lib/net9.0/ko/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "ko"
+          },
+          "lib/net9.0/pl/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "pl"
+          },
+          "lib/net9.0/pt-BR/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "pt-BR"
+          },
+          "lib/net9.0/ru/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "ru"
+          },
+          "lib/net9.0/tr/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "tr"
+          },
+          "lib/net9.0/zh-Hans/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "zh-Hans"
+          },
+          "lib/net9.0/zh-Hant/Microsoft.CodeAnalysis.CSharp.resources.dll": {
+            "locale": "zh-Hant"
+          }
+        }
+      },
+      "Microsoft.CodeAnalysis.CSharp.Workspaces/4.14.0": {
+        "dependencies": {
+          "Humanizer.Core": "2.14.1",
+          "Microsoft.CodeAnalysis.CSharp": "4.14.0",
+          "Microsoft.CodeAnalysis.Common": "4.14.0",
+          "Microsoft.CodeAnalysis.Workspaces.Common": "4.14.0",
+          "System.Composition": "9.0.0"
+        },
+        "runtime": {
+          "lib/net9.0/Microsoft.CodeAnalysis.CSharp.Workspaces.dll": {
+            "assemblyVersion": "4.14.0.0",
+            "fileVersion": "4.1400.25.26210"
+          }
+        },
+        "resources": {
+          "lib/net9.0/cs/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "cs"
+          },
+          "lib/net9.0/de/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "de"
+          },
+          "lib/net9.0/es/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "es"
+          },
+          "lib/net9.0/fr/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "fr"
+          },
+          "lib/net9.0/it/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "it"
+          },
+          "lib/net9.0/ja/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "ja"
+          },
+          "lib/net9.0/ko/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "ko"
+          },
+          "lib/net9.0/pl/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "pl"
+          },
+          "lib/net9.0/pt-BR/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "pt-BR"
+          },
+          "lib/net9.0/ru/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "ru"
+          },
+          "lib/net9.0/tr/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "tr"
+          },
+          "lib/net9.0/zh-Hans/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "zh-Hans"
+          },
+          "lib/net9.0/zh-Hant/Microsoft.CodeAnalysis.CSharp.Workspaces.resources.dll": {
+            "locale": "zh-Hant"
+          }
+        }
+      },
+      "Microsoft.CodeAnalysis.Workspaces.Common/4.14.0": {
+        "dependencies": {
+          "Humanizer.Core": "2.14.1",
+          "Microsoft.CodeAnalysis.Common": "4.14.0",
+          "System.Composition": "9.0.0"
+        },
+        "runtime": {
+          "lib/net9.0/Microsoft.CodeAnalysis.Workspaces.dll": {
+            "assemblyVersion": "4.14.0.0",
+            "fileVersion": "4.1400.25.26210"
+          }
+        },
+        "resources": {
+          "lib/net9.0/cs/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "cs"
+          },
+          "lib/net9.0/de/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "de"
+          },
+          "lib/net9.0/es/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "es"
+          },
+          "lib/net9.0/fr/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "fr"
+          },
+          "lib/net9.0/it/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "it"
+          },
+          "lib/net9.0/ja/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "ja"
+          },
+          "lib/net9.0/ko/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "ko"
+          },
+          "lib/net9.0/pl/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "pl"
+          },
+          "lib/net9.0/pt-BR/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "pt-BR"
+          },
+          "lib/net9.0/ru/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "ru"
+          },
+          "lib/net9.0/tr/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "tr"
+          },
+          "lib/net9.0/zh-Hans/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "zh-Hans"
+          },
+          "lib/net9.0/zh-Hant/Microsoft.CodeAnalysis.Workspaces.resources.dll": {
+            "locale": "zh-Hant"
+          }
+        }
+      },
       "Mono.Cecil/0.11.6": {
         "runtime": {
           "lib/netstandard2.0/Mono.Cecil.Mdb.dll": {
@@ -949,6 +1193,78 @@
             "fileVersion": "0.11.6.0"
           }
         }
+      },
+      "System.Composition/9.0.0": {
+        "dependencies": {
+          "System.Composition.AttributedModel": "9.0.0",
+          "System.Composition.Convention": "9.0.0",
+          "System.Composition.Hosting": "9.0.0",
+          "System.Composition.Runtime": "9.0.0",
+          "System.Composition.TypedParts": "9.0.0"
+        }
+      },
+      "System.Composition.AttributedModel/9.0.0": {
+        "runtime": {
+          "lib/net9.0/System.Composition.AttributedModel.dll": {
+            "assemblyVersion": "9.0.0.0",
+            "fileVersion": "9.0.24.52809"
+          }
+        }
+      },
+      "System.Composition.Convention/9.0.0": {
+        "dependencies": {
+          "System.Composition.AttributedModel": "9.0.0"
+        },
+        "runtime": {
+          "lib/net9.0/System.Composition.Convention.dll": {
+            "assemblyVersion": "9.0.0.0",
+            "fileVersion": "9.0.24.52809"
+          }
+        }
+      },
+      "System.Composition.Hosting/9.0.0": {
+        "dependencies": {
+          "System.Composition.Runtime": "9.0.0"
+        },
+        "runtime": {
+          "lib/net9.0/System.Composition.Hosting.dll": {
+            "assemblyVersion": "9.0.0.0",
+            "fileVersion": "9.0.24.52809"
+          }
+        }
+      },
+      "System.Composition.Runtime/9.0.0": {
+        "runtime": {
+          "lib/net9.0/System.Composition.Runtime.dll": {
+            "assemblyVersion": "9.0.0.0",
+            "fileVersion": "9.0.24.52809"
+          }
+        }
+      },
+      "System.Composition.TypedParts/9.0.0": {
+        "dependencies": {
+          "System.Composition.AttributedModel": "9.0.0",
+          "System.Composition.Hosting": "9.0.0",
+          "System.Composition.Runtime": "9.0.0"
+        },
+        "runtime": {
+          "lib/net9.0/System.Composition.TypedParts.dll": {
+            "assemblyVersion": "9.0.0.0",
+            "fileVersion": "9.0.24.52809"
+          }
+        }
+      },
+      "_Cosmos.Build.Analyzer.Patcher/3.0.85": {
+        "dependencies": {
+          "Cosmos.Build.API": "3.0.85",
+          "Microsoft.CodeAnalysis.CSharp": "4.14.0"
+        },
+        "runtime": {
+          "lib/netstandard2.0/Cosmos.Build.Analyzer.Patcher.dll": {
+            "assemblyVersion": "3.0.85.0",
+            "fileVersion": "3.0.85.0"
+          }
+        }
       }
     }
   },
@@ -963,110 +1279,159 @@
       "serviceable": false,
       "sha512": ""
     },
+    "Cosmos.Build.Analyzer.Patcher/3.0.85": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-Y26XwFx5iaHFw8RsX8oHSDtCwyFuRjeRUNKS/v5lVW0wHFU3cTeYYlyMnR6ntMZbf5VKAN7BQlAyRfFhi8Y8yQ==",
+      "path": "cosmos.build.analyzer.patcher/3.0.85",
+      "hashPath": "cosmos.build.analyzer.patcher.3.0.85.nupkg.sha512"
+    },
+    "Cosmos.Build.Analyzer.Patcher.CodeFixes/3.0.85": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-a30yFCG6dNzD4FkO8rty4WZ/nlxBX5sJ6MBdKVYWpC2DMMzbne6yVQ4P1sZMZO08+MwNzOcsLHRBn/WUX+tcdw==",
+      "path": "cosmos.build.analyzer.patcher.codefixes/3.0.85",
+      "hashPath": "cosmos.build.analyzer.patcher.codefixes.3.0.85.nupkg.sha512"
+    },
     "Cosmos.Build.API/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-541YtJKdCX3gp5knoy9G88co219nIJIvUK3Uogk0FngtO2Pq2r5E9IrQJ0upoG7MUVZXwT9oRFJmMrhj/RWKNw==",
+      "sha512": "sha512-ECOdttK2SVy8x0JpcXoIE7qcpbPgYgHnQDSW+eDDtlyQ2M2QaBBAFCeiQbg+bVWbtCmzlpm3sASEwCGUb3VYmw==",
       "path": "cosmos.build.api/3.0.85",
       "hashPath": "cosmos.build.api.3.0.85.nupkg.sha512"
     },
     "Cosmos.Build.Ilc/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-n37HlHC4PvU1tfLxtMTQvTII/hb5GYTnH8gn/WOePZd3SJkeDBUs7s6YK1gcupPfJxIJFmSK4EKe7W8k5cVHBw==",
+      "sha512": "sha512-r3Q+hoVpZv070KRBLL78XbRpNT3c1ZoAXwyM2ssDo+pK9vSGV+yNuJRC5ODzBbTiPLMZgStd51+DZ5tUjid9EA==",
       "path": "cosmos.build.ilc/3.0.85",
       "hashPath": "cosmos.build.ilc.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-2515tt5qCBqKBNDQHeOdNVqMTwY2ZbAj6JpYs8Q8wWnbWr7fjj0KZM1OtelaX+vuqZtTTx1/9GYPddsRepZtZg==",
+      "sha512": "sha512-BKbbfWw8ZgDhjr3ZuANkVNUb4nY5zkuvNjSyf/zvdv8F1P8j8/vypQQZD+nRLkvijDNmN9CAukyBBl7xFVasKg==",
       "path": "cosmos.kernel/3.0.85",
       "hashPath": "cosmos.kernel.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel.Boot.Limine/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-fV/+pQ/tt8nHDwd8ul0aXeBj3z0eck9HLlW22RxIEOBOyX/7E5+4qVBMJSrFi3+K7Pm5VhXqzFJb/piwUz8knw==",
+      "sha512": "sha512-pwO8cWuqKgfcywzj6yiOb4lluOjUARe/gQDnlgEbilGHpc1lX1UTB+pwkzFakINqPAEKsx19GLNt73tayCEh1g==",
       "path": "cosmos.kernel.boot.limine/3.0.85",
       "hashPath": "cosmos.kernel.boot.limine.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel.Core/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-ZaH0LVs+mlF/W/Jc4P/abKAdghbg1dLMWyyhTzhMUTWSZO5lkKCTQX90UrcXts0b46u+aEdaagEYj9ACWMRimA==",
+      "sha512": "sha512-i2wjzBwn4lXRmKeI267f8XZj/3Kq1QRp64zbzX+z3xYiUm0zVkpfJO6TpCSROysU/9rgNFLb4l8yfYfvR8IOYA==",
       "path": "cosmos.kernel.core/3.0.85",
       "hashPath": "cosmos.kernel.core.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel.Core.ARM64/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-04ZQI7ItbQHCCjdUTl42RxJo7dDdjFAcC0aS7QL87gQc8X18QhhIc1yIzxZCYLGX0fklgzpgeU+s40BiAjGpUw==",
+      "sha512": "sha512-sJDE9UBf/HDfy6cAZdvsltWFqumZ0a9RvtD+mymINAhiogIIva1meaFo/eNRDaGOrzQCJ0IJy/n8CvYtHsD2HQ==",
       "path": "cosmos.kernel.core.arm64/3.0.85",
       "hashPath": "cosmos.kernel.core.arm64.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel.Core.X64/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-hayaGt/FqDDOeq35bpyLebAwDMEy6Tz0w4UotwDu/ah3rotvKYmUGJLZppAnJAsxd3Hw92TelLzWO4Zb4PjMuQ==",
+      "sha512": "sha512-zq6C+0kQFHkFR3SOj0uLTtBn6uC2dj6IHxgnVpoGn9lS70BetE7Glehy65mE0aaZotGsZ3cAqdfFoccCaVbfPg==",
       "path": "cosmos.kernel.core.x64/3.0.85",
       "hashPath": "cosmos.kernel.core.x64.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel.Debug/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-ta5AwhtUytFfUcSkYD0JHDv61jApQwvG+kmcLsJ5Ef+DG08Nk1QBilm9FDxFFAsp1Wncp+/FXX/vHtfCQpcqUA==",
+      "sha512": "sha512-+VqLzZUvpukUY5FTuU/R+3MgnJVchtUphOdi+zIRrK1EgrXHvwnkE4L8ebaJKrPm3KbK+IX+Pv2Wyd0b0aZw+A==",
       "path": "cosmos.kernel.debug/3.0.85",
       "hashPath": "cosmos.kernel.debug.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel.HAL/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-2zNKeeVkG6Y0jDCu+9pXl2kS/JGOV5Mwfpbv2YiV5NodNGWQkHTeGryRm0P0Md7QNtxDKwIIE/7HGAFc/UyqAQ==",
+      "sha512": "sha512-94rHm3riFmg05GbC5btXFZxsdZc/4Zn+IBfsSQRDRbdmiuwRJm89e19p0b/lmBpi0a7rm+iiGpf4kCwzO8vedg==",
       "path": "cosmos.kernel.hal/3.0.85",
       "hashPath": "cosmos.kernel.hal.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel.HAL.ARM64/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-BIUe64NH5utNzkuGXPi+sohCDDcntn9zgZzOLJ+xYZOIaUTQP85TTHQVW1/TEue3/BXXYQK64UGFgkoQ3FBoFQ==",
+      "sha512": "sha512-WJ9IdLdSvL5kSh4nVdUA5PMa2DL2P/ZJG/f3WeUhE9L7Vvsxbj09PUaRp7wioyf3zUmSqr69a7VUx76n3uvffQ==",
       "path": "cosmos.kernel.hal.arm64/3.0.85",
       "hashPath": "cosmos.kernel.hal.arm64.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel.HAL.Interfaces/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-5kcmjzBU3nZeEGiTRRm21zUt0jSLUVnPhnJPvTwhbtGiS6PbCkeOfw5cj8wOTj4TV86JJ1KWiIbmVK6+nbjsAg==",
+      "sha512": "sha512-V26nxi+1FvkZ2gXVYrMqsCO6S0/R+T+6hdh2V2ySd3qomTzgkEbBD1UtuRYLPy4E2rbet1YujgO/RF8BX0kItg==",
       "path": "cosmos.kernel.hal.interfaces/3.0.85",
       "hashPath": "cosmos.kernel.hal.interfaces.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel.HAL.X64/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-0yZp4A2EfEcs3jdwkzhgIh+jQfYJSiroi4RlAtcAB5Ig7uBGQFZ1Z8a7q3fAzQyISZvs7Ft+Bl6pHKIYFO91Xw==",
+      "sha512": "sha512-8xlYJNaLXo9N1t6IOMxSaAangqJJzhWEFPNFPGou814snU2eIdWdKisgt1QMOodKq7WTuZRjs3U+JuipK4EXOQ==",
       "path": "cosmos.kernel.hal.x64/3.0.85",
       "hashPath": "cosmos.kernel.hal.x64.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel.Plugs/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-kG1hSElQ9btaeaFFj+ro0303daq64KH0FJuUbpOqPcq9NfELBOsMRl5yJzC3MLL+cO+MtuBzggVYioFO+Qf1Kg==",
+      "sha512": "sha512-ofMhdFDQRzWlKoD3ISin/Fie2dcn3LLl3ANH8fLAKbWMgvHsCc5hjbWlQT7J9GnLwtymFJ/vIvZww3ghQTYPYA==",
       "path": "cosmos.kernel.plugs/3.0.85",
       "hashPath": "cosmos.kernel.plugs.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel.SourceGenerators/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-a+Dq2FGRW++7QFj4J/sXO9UyHfaCgcXUu3L9hJ0mMfJ8Hh0KhnRObrQCeQTS4HTZivIyD8gCwiFsIHgEe0HIyA==",
+      "sha512": "sha512-5DOq056hcfePghG8eYXBhyw0lx29q2MGSity+Yw1cYA9RFJgKQI7nPJ7mIFTqAA5+CQ+BxQZ3VUxa1jf/xfzbQ==",
       "path": "cosmos.kernel.sourcegenerators/3.0.85",
       "hashPath": "cosmos.kernel.sourcegenerators.3.0.85.nupkg.sha512"
     },
     "Cosmos.Kernel.System/3.0.85": {
       "type": "package",
       "serviceable": true,
-      "sha512": "sha512-4K8cyzh3yvIQd1iUTXr9Yt9/3bF0+PIYYmlX+Jy4zmieeUf0Z5AzBoqjwlb6sj4+GBc/uWTNFBdWVz5vYV3r9Q==",
+      "sha512": "sha512-Augj4qbIC6A3O2p5Opn4tP6z5BiqriKJPREo9bW++uFoBLmXUAD+QklPfo61om6xIbMfLHHWcPDpEsnDMCc8Hg==",
       "path": "cosmos.kernel.system/3.0.85",
       "hashPath": "cosmos.kernel.system.3.0.85.nupkg.sha512"
+    },
+    "Humanizer.Core/2.14.1": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-lQKvtaTDOXnoVJ20ibTuSIOf2i0uO0MPbDhd1jm238I+U/2ZnRENj0cktKZhtchBMtCUSRQ5v4xBCUbKNmyVMw==",
+      "path": "humanizer.core/2.14.1",
+      "hashPath": "humanizer.core.2.14.1.nupkg.sha512"
+    },
+    "Microsoft.CodeAnalysis.Common/4.14.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-PC3tuwZYnC+idaPuoC/AZpEdwrtX7qFpmnrfQkgobGIWiYmGi5MCRtl5mx6QrfMGQpK78X2lfIEoZDLg/qnuHg==",
+      "path": "microsoft.codeanalysis.common/4.14.0",
+      "hashPath": "microsoft.codeanalysis.common.4.14.0.nupkg.sha512"
+    },
+    "Microsoft.CodeAnalysis.CSharp/4.14.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-568a6wcTivauIhbeWcCwfWwIn7UV7MeHEBvFB2uzGIpM2OhJ4eM/FZ8KS0yhPoNxnSpjGzz7x7CIjTxhslojQA==",
+      "path": "microsoft.codeanalysis.csharp/4.14.0",
+      "hashPath": "microsoft.codeanalysis.csharp.4.14.0.nupkg.sha512"
+    },
+    "Microsoft.CodeAnalysis.CSharp.Workspaces/4.14.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-QkgCEM4qJo6gdtblXtNgHqtykS61fxW+820hx5JN6n9DD4mQtqNB+6fPeJ3GQWg6jkkGz6oG9yZq7H3Gf0zwYw==",
+      "path": "microsoft.codeanalysis.csharp.workspaces/4.14.0",
+      "hashPath": "microsoft.codeanalysis.csharp.workspaces.4.14.0.nupkg.sha512"
+    },
+    "Microsoft.CodeAnalysis.Workspaces.Common/4.14.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-wNVK9JrqjqDC/WgBUFV6henDfrW87NPfo98nzah/+M/G1D6sBOPtXwqce3UQNn+6AjTnmkHYN1WV9XmTlPemTw==",
+      "path": "microsoft.codeanalysis.workspaces.common/4.14.0",
+      "hashPath": "microsoft.codeanalysis.workspaces.common.4.14.0.nupkg.sha512"
     },
     "Mono.Cecil/0.11.6": {
       "type": "package",
@@ -1074,6 +1439,55 @@
       "sha512": "sha512-f33RkDtZO8VlGXCtmQIviOtxgnUdym9xx/b1p9h91CRGOsJFxCFOFK1FDbVt1OCf1aWwYejUFa2MOQyFWTFjbA==",
       "path": "mono.cecil/0.11.6",
       "hashPath": "mono.cecil.0.11.6.nupkg.sha512"
+    },
+    "System.Composition/9.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-3Djj70fFTraOarSKmRnmRy/zm4YurICm+kiCtI0dYRqGJnLX6nJ+G3WYuFJ173cAPax/gh96REcbNiVqcrypFQ==",
+      "path": "system.composition/9.0.0",
+      "hashPath": "system.composition.9.0.0.nupkg.sha512"
+    },
+    "System.Composition.AttributedModel/9.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-iri00l/zIX9g4lHMY+Nz0qV1n40+jFYAmgsaiNn16xvt2RDwlqByNG4wgblagnDYxm3YSQQ0jLlC/7Xlk9CzyA==",
+      "path": "system.composition.attributedmodel/9.0.0",
+      "hashPath": "system.composition.attributedmodel.9.0.0.nupkg.sha512"
+    },
+    "System.Composition.Convention/9.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-+vuqVP6xpi582XIjJi6OCsIxuoTZfR0M7WWufk3uGDeCl3wGW6KnpylUJ3iiXdPByPE0vR5TjJgR6hDLez4FQg==",
+      "path": "system.composition.convention/9.0.0",
+      "hashPath": "system.composition.convention.9.0.0.nupkg.sha512"
+    },
+    "System.Composition.Hosting/9.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-OFqSeFeJYr7kHxDfaViGM1ymk7d4JxK//VSoNF9Ux0gpqkLsauDZpu89kTHHNdCWfSljbFcvAafGyBoY094btQ==",
+      "path": "system.composition.hosting/9.0.0",
+      "hashPath": "system.composition.hosting.9.0.0.nupkg.sha512"
+    },
+    "System.Composition.Runtime/9.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-w1HOlQY1zsOWYussjFGZCEYF2UZXgvoYnS94NIu2CBnAGMbXFAX8PY8c92KwUItPmowal68jnVLBCzdrWLeEKA==",
+      "path": "system.composition.runtime/9.0.0",
+      "hashPath": "system.composition.runtime.9.0.0.nupkg.sha512"
+    },
+    "System.Composition.TypedParts/9.0.0": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-aRZlojCCGEHDKqh43jaDgaVpYETsgd7Nx4g1zwLKMtv4iTo0627715ajEFNpEEBTgLmvZuv8K0EVxc3sM4NWJA==",
+      "path": "system.composition.typedparts/9.0.0",
+      "hashPath": "system.composition.typedparts.9.0.0.nupkg.sha512"
+    },
+    "_Cosmos.Build.Analyzer.Patcher/3.0.85": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-35/4aLDPnUCRqbsnA9HiyiDeGgmjBHP0qs6MZC1cufU87pWygCF5RjTv6hE+n9FqOESSgur6OORIkwL+FnaCSA==",
+      "path": "_cosmos.build.analyzer.patcher/3.0.85",
+      "hashPath": "_cosmos.build.analyzer.patcher.3.0.85.nupkg.sha512"
     }
   },
   "runtimes": {
