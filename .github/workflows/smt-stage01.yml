@@ -1,0 +1,68 @@
+name: SMT stage 0-1 validation
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'patches/cosmos-smt/**'
+      - 'tools/prepare-cosmos-smt.sh'
+      - '.github/workflows/smt-stage01.yml'
+  pull_request:
+    paths:
+      - 'patches/cosmos-smt/**'
+      - 'tools/prepare-cosmos-smt.sh'
+      - '.github/workflows/smt-stage01.yml'
+
+jobs:
+  validate-stage01:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout ZonderqOS
+        uses: actions/checkout@v4
+        with:
+          path: zonderq
+
+      - name: Checkout pinned Cosmos 3.0.85
+        uses: actions/checkout@v4
+        with:
+          repository: CosmosOS/Cosmos
+          ref: v3.0.85
+          path: cosmos
+
+      - name: Install .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Shell syntax
+        run: bash -n zonderq/tools/prepare-cosmos-smt.sh
+
+      - name: Preflight stage 0-1 only
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+        run: bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 1 --check-only
+
+      - name: Apply stage 1 only
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+        run: bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 1 --patch-only
+
+      - name: Verify patch hygiene and stage isolation
+        run: |
+          git -C cosmos diff --check
+          test -f cosmos/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+          grep -Fq 'public static readonly LimineMpRequest MP = new();' cosmos/src/Cosmos.Kernel.Boot.Limine/Limine.cs
+          grep -Fq '[SMP] Stage 1 OK: topology discovered; APs remain parked.' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+          ! grep -Fq '_native_get_current_cpu_id' cosmos/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+
+      - name: Build patched x64 HAL
+        working-directory: cosmos
+        run: >-
+          dotnet build src/Cosmos.Kernel.HAL.X64/Cosmos.Kernel.HAL.X64.csproj
+          -c Release
+          -r linux-x64
+          -p:CosmosArch=x64
+          -p:GeneratePackageOnBuild=false
+          --no-incremental
