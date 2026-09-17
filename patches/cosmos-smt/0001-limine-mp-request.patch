@@ -15,7 +15,7 @@ new file mode 100644
 index 0000000..47ef0fe
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
-@@ -0,0 +1,84 @@
+@@ -0,0 +1,83 @@
 +using System.Runtime.InteropServices;
 +
 +namespace Cosmos.Kernel.Boot.Limine;
