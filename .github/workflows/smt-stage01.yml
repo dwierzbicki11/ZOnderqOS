@@ -187,7 +187,12 @@ jobs:
       - name: QEMU boot smoke 4C/8T
         working-directory: zonderq
         env:
-          STAGE01_QEMU_TIMEOUT_SECONDS: 75
+          STAGE01_QEMU_CPU_MODEL: Nehalem
+          STAGE01_QEMU_SOCKETS: 1
+          STAGE01_QEMU_CPUS: 8
+          STAGE01_QEMU_CORES: 4
+          STAGE01_QEMU_THREADS: 2
+          STAGE01_QEMU_TIMEOUT_SECONDS: 90
         run: bash tools/smoke-stage01-qemu.sh output-x64/ZonderqOS.iso stage01-qemu-serial.log
 
       - name: Show build and QEMU diagnostics
