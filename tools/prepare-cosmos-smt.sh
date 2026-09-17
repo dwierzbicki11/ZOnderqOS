@@ -3,12 +3,69 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PATCH_DIR="$ROOT_DIR/patches/cosmos-smt"
-COSMOS_ROOT="${ZONDERQ_COSMOS_SOURCE_ROOT:-$(cd "$ROOT_DIR/.." && pwd)}"
 COSMOS_BASE_TAG="${ZONDERQ_COSMOS_BASE_TAG:-v3.0.85}"
+COSMOS_REPO="${ZONDERQ_COSMOS_REPO:-https://github.com/CosmosOS/Cosmos.git}"
 PATCH_ONLY=0
 CHECK_ONLY=0
 ALL_STAGES=0
 MAX_STAGE=1
+
+fail() {
+    echo "[SMT][BLAD] $*" >&2
+    exit 1
+}
+
+is_cosmos_checkout() {
+    local path="$1"
+    [[ -d "$path" ]] || return 1
+    git -C "$path" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
+    [[ -f "$path/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs" ]] || return 1
+    [[ -f "$path/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s" ]] || return 1
+}
+
+bootstrap_cosmos_checkout() {
+    local target="$1"
+
+    command -v git >/dev/null 2>&1 || fail "Brak git w PATH, a checkout Cosmos nie istnieje."
+
+    if [[ -e "$target" ]]; then
+        fail "Nie znaleziono poprawnego checkoutu Cosmos, a sciezka docelowa juz istnieje: $target"
+    fi
+
+    echo "[SMT] Nie znaleziono checkoutu Cosmos. Klonuje $COSMOS_BASE_TAG do: $target" >&2
+    git clone --recursive --branch "$COSMOS_BASE_TAG" "$COSMOS_REPO" "$target" >&2
+    is_cosmos_checkout "$target" || fail "Sklonowano Cosmos, ale checkout jest niekompletny: $target"
+}
+
+resolve_cosmos_root() {
+    if [[ -n "${ZONDERQ_COSMOS_SOURCE_ROOT:-}" ]]; then
+        is_cosmos_checkout "$ZONDERQ_COSMOS_SOURCE_ROOT" || \
+            fail "ZONDERQ_COSMOS_SOURCE_ROOT nie wskazuje poprawnego checkoutu Cosmos: $ZONDERQ_COSMOS_SOURCE_ROOT"
+        printf '%s\n' "$(cd "$ZONDERQ_COSMOS_SOURCE_ROOT" && pwd)"
+        return 0
+    fi
+
+    local parent
+    local sibling
+    parent="$(cd "$ROOT_DIR/.." && pwd)"
+    sibling="$parent/Cosmos"
+
+    if is_cosmos_checkout "$sibling"; then
+        printf '%s\n' "$(cd "$sibling" && pwd)"
+        return 0
+    fi
+
+    if is_cosmos_checkout "$parent"; then
+        printf '%s\n' "$parent"
+        return 0
+    fi
+
+    # Przy typowym layoucie /mnt/CosmosKernel/ZonderqOS checkout Cosmosa jest
+    # siblingiem /mnt/CosmosKernel/Cosmos. Jesli jeszcze go nie ma, tworzymy go
+    # wlasnie tam, zamiast blednie traktowac /mnt/CosmosKernel jako repo git.
+    bootstrap_cosmos_checkout "$sibling"
+    printf '%s\n' "$(cd "$sibling" && pwd)"
+}
 
 usage() {
     cat <<'EOF'
@@ -26,18 +83,15 @@ Zmienne srodowiskowe:
   ZONDERQ_COSMOS_SOURCE_ROOT       sciezka do checkoutu Cosmos
   ZONDERQ_COSMOS_BASE_TAG          oczekiwana baza (domyslnie v3.0.85)
   ZONDERQ_COSMOS_ALLOW_UNPINNED=1 pozwol na inny HEAD (tylko development)
+  ZONDERQ_COSMOS_REPO              alternatywny URL repo Cosmos
 
 Przyklady:
   bash tools/prepare-cosmos-smt.sh --check-only
   bash tools/prepare-cosmos-smt.sh --through-stage 1 --patch-only
   bash tools/prepare-cosmos-smt.sh --through-stage 2
+  bash tools/prepare-cosmos-smt.sh --through-stage 3
   bash tools/prepare-cosmos-smt.sh --all
 EOF
-}
-
-fail() {
-    echo "[SMT][BLAD] $*" >&2
-    exit 1
 }
 
 while [[ $# -gt 0 ]]; do
@@ -71,11 +125,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -d "$PATCH_DIR" ]] || fail "Brak katalogu patchy: $PATCH_DIR"
-[[ -d "$COSMOS_ROOT/.git" ]] || fail "COSMOS_ROOT nie jest repozytorium git: $COSMOS_ROOT"
-[[ -f "$COSMOS_ROOT/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs" ]] || \
-    fail "To nie wyglada na checkout Cosmos Gen3: $COSMOS_ROOT"
-[[ -f "$COSMOS_ROOT/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s" ]] || \
-    fail "Brak natywnego backendu x64 w: $COSMOS_ROOT"
+COSMOS_ROOT="$(resolve_cosmos_root)"
+[[ -n "$COSMOS_ROOT" ]] || fail "Nie udalo sie ustalic katalogu Cosmos."
+is_cosmos_checkout "$COSMOS_ROOT" || fail "To nie wyglada na checkout Cosmos Gen3: $COSMOS_ROOT"
 
 mapfile -t ALL_PATCHES < <(find "$PATCH_DIR" -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]-*.patch' | sort)
 (( ${#ALL_PATCHES[@]} > 0 )) || fail "Brak numerowanych patchy w $PATCH_DIR"
@@ -88,8 +140,6 @@ for patch in "${ALL_PATCHES[@]}"; do
     prefix="${name%%-*}"
     stage=$((10#$prefix))
 
-    # Jeden numer = jeden atomowy etap. Dzieki temu --through-stage N ma
-    # jednoznaczne znaczenie i nie zalezy od przypadkowej kolejnosci nazw.
     if (( stage != expected_stage )); then
         fail "Seria patchy ma luke lub duplikat: oczekiwano etapu $(printf '%04d' "$expected_stage"), znaleziono $name"
     fi
@@ -106,9 +156,6 @@ done
 SELECTED_STAGE="$(basename "${PATCHES[-1]}")"
 SELECTED_STAGE=$((10#${SELECTED_STAGE%%-*}))
 
-# Reproducible bring-up: seria jest utrzymywana i testowana wzgledem v3.0.85.
-# git apply nie zmienia HEAD, wiec to sprawdzenie nadal dziala po zastosowaniu
-# naszych niezacommitowanych patchy.
 base_sha="$(git -C "$COSMOS_ROOT" rev-list -n 1 "$COSMOS_BASE_TAG" 2>/dev/null || true)"
 [[ -n "$base_sha" ]] || fail "Brak taga/ref '$COSMOS_BASE_TAG' w checkoutcie Cosmos."
 head_sha="$(git -C "$COSMOS_ROOT" rev-parse HEAD)"
@@ -116,7 +163,6 @@ if [[ "${ZONDERQ_COSMOS_ALLOW_UNPINNED:-0}" != "1" && "$head_sha" != "$base_sha"
     fail "Cosmos HEAD=$head_sha, oczekiwano $COSMOS_BASE_TAG=$base_sha. Checkoutnij $COSMOS_BASE_TAG albo ustaw ZONDERQ_COSMOS_ALLOW_UNPINNED=1 tylko do developmentu."
 fi
 
-# Nie dotykamy indexu uzytkownika. Nasza seria zawsze pozostaje unstaged.
 if ! git -C "$COSMOS_ROOT" diff --cached --quiet; then
     fail "Checkout Cosmosa ma staged changes. Commit/stash je przed SMT bring-up."
 fi
@@ -125,17 +171,12 @@ echo "[SMT] Cosmos source: $COSMOS_ROOT"
 echo "[SMT] Base: $COSMOS_BASE_TAG ($head_sha)"
 echo "[SMT] Wybrany zakres: etap 1..$SELECTED_STAGE (${#PATCHES[@]} patch/y)"
 
-# Etap wyzszy niz wybrany nie moze juz byc obecny w checkoutcie. Inaczej test
-# etapu 1 w rzeczywistosci testowalby takze kod z etapu 2/3.
 for patch in "${UNSELECTED_PATCHES[@]}"; do
     if git -C "$COSMOS_ROOT" apply --reverse --check "$patch" >/dev/null 2>&1; then
         fail "W checkoutcie jest juz zastosowany pozniejszy patch $(basename "$patch"). Do testu etapu $SELECTED_STAGE przywroc czysta baze $COSMOS_BASE_TAG."
     fi
 done
 
-# Preflight calego wybranego szeregu wykonujemy na osobnym worktree. To lapie
-# zaleznosci miedzy patchami w prawidlowej kolejnosci i gwarantuje, ze walidacja
-# nie pozostawi polowy serii w prawdziwym checkoutcie.
 preflight_dir="$(mktemp -d -t zonderq-smt-preflight.XXXXXX)"
 cleanup_preflight() {
     git -C "$COSMOS_ROOT" worktree remove --force "$preflight_dir" >/dev/null 2>&1 || true
@@ -156,7 +197,6 @@ done
 cleanup_preflight
 trap - EXIT
 
-# Lista sciezek nalezacych do wybranej serii. Zmiany poza nia sa zawsze obce.
 mapfile -t allowed_paths < <(
     for patch in "${PATCHES[@]}"; do
         sed -n 's|^+++ b/||p' "$patch"
@@ -180,10 +220,6 @@ for dirty in "${dirty_paths[@]}"; do
     (( allowed )) || fail "Obca lokalna zmiana poza wybrana seria SMT: $dirty"
 done
 
-# Wykrywanie juz zastosowanego prefixu musi uwzgledniac zaleznosci miedzy
-# etapami. Patch N moze zmieniac te same linie co patch N-1, przez co zwykle
-# `git apply --reverse --check patchN-1` daje falszywy negatyw. Dlatego robimy
-# snapshot aktualnych plikow w tymczasowym worktree i cofamy serie OD KONCA.
 state_dir="$(mktemp -d -t zonderq-smt-state.XXXXXX)"
 cleanup_state() {
     git -C "$COSMOS_ROOT" worktree remove --force "$state_dir" >/dev/null 2>&1 || true
@@ -219,8 +255,6 @@ for (( i=${#PATCHES[@]}-1; i>=0; i-- )); do
     fi
 done
 
-# Zastosowane etapy musza tworzyc prefix 1..N. Stage 2 bez Stage 1 albo inna
-# mieszanka oznacza uszkodzony checkout, a nie stan ktory helper ma zgadywac.
 applied_count=0
 seen_gap=0
 for i in "${!PATCHES[@]}"; do
@@ -232,8 +266,6 @@ for i in "${!PATCHES[@]}"; do
     fi
 done
 
-# Po cofnieciu wykrytego prefixu snapshot ma byc identyczny z baza. To lapie
-# reczne/obce modyfikacje nawet wtedy, gdy dotykaja pliku nalezacego do patcha.
 if ! git -C "$state_dir" diff --quiet || [[ -n "$(git -C "$state_dir" ls-files --others --exclude-standard)" ]]; then
     fail "Checkout Cosmosa zawiera zmiany w plikach SMT, ktore nie odpowiadaja wybranemu prefixowi patchy."
 fi
@@ -248,8 +280,6 @@ if (( CHECK_ONLY )); then
     exit 0
 fi
 
-# Aplikacja jest transakcyjna na poziomie naszej serii: jesli kolejny patch
-# nie przejdzie, cofamy tylko patche nalozone w tym uruchomieniu.
 newly_applied=()
 rollback_new_patches() {
     local i
@@ -300,4 +330,8 @@ echo "[SMT] Lokalne paczki gotowe do etapu $SELECTED_STAGE."
 if (( SELECTED_STAGE == 1 )); then
     echo "[SMT] Etap 1 tylko publikuje Limine MP request i pozostawia AP-y zaparkowane."
     echo "[SMT] Nie uruchamia jeszcze scheduler/GC na dodatkowych CPU."
+elif (( SELECTED_STAGE == 2 )); then
+    echo "[SMT] Etap 2 buduje gesty CpuId/APIC map; AP-y nadal pozostaja zaparkowane."
+elif (( SELECTED_STAGE == 3 )); then
+    echo "[SMT] Etap 3 wlacza GS-local storage na BSP i weryfikuje pierwszy tick LAPIC; AP-y nadal pozostaja zaparkowane."
 fi
