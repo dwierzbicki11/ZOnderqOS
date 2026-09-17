@@ -101,12 +101,97 @@ clean_build_cache() {
     rm -rf "$ROOT_DIR/obj" "$ROOT_DIR/bin" "$ROOT_DIR/output-$arch"
 }
 
+prepare_patched_cosmos_x64() {
+    local cosmos_root="${ZONDERQ_COSMOS_SOURCE_ROOT:-$(cd "$ROOT_DIR/.." && pwd)}"
+    local runtime_source="$cosmos_root/src/Cosmos.Kernel.Core/Runtime/Stdllib.cs"
+    local package_feed="$cosmos_root/artifacts/package/release"
+    local package_cache="$ROOT_DIR/.nuget/smt-local-packages"
+    local kernel_package=""
+    local rebuild=0
+
+    [[ -d "$cosmos_root/.git" ]] || \
+        fail "x64 SMT wymaga checkoutu Cosmos obok ZonderqOS albo ZONDERQ_COSMOS_SOURCE_ROOT. Brak: $cosmos_root"
+    [[ -f "$runtime_source" ]] || \
+        fail "Brak Cosmos runtime source: $runtime_source"
+    [[ -x "$ROOT_DIR/tools/prepare-cosmos-smt.sh" || -f "$ROOT_DIR/tools/prepare-cosmos-smt.sh" ]] || \
+        fail "Brak tools/prepare-cosmos-smt.sh"
+
+    if ! grep -Fq 'RuntimeExport("RhWaitForPendingFinalizers")' "$runtime_source"; then
+        rebuild=1
+    fi
+
+    if [[ -d "$package_feed" ]]; then
+        kernel_package="$(find "$package_feed" -maxdepth 1 -type f -iname 'Cosmos.Kernel.3.0.85.nupkg' -print -quit 2>/dev/null || true)"
+    fi
+
+    if [[ -z "$kernel_package" || "$runtime_source" -nt "$kernel_package" ]]; then
+        rebuild=1
+    fi
+
+    if (( rebuild )); then
+        echo "[SMT] Przygotowuje lokalne paczki Cosmos z aktualna seria patchy..."
+        ZONDERQ_COSMOS_SOURCE_ROOT="$cosmos_root" \
+            bash "$ROOT_DIR/tools/prepare-cosmos-smt.sh" --all
+        kernel_package="$(find "$package_feed" -maxdepth 1 -type f -iname 'Cosmos.Kernel.3.0.85.nupkg' -print -quit 2>/dev/null || true)"
+        [[ -n "$kernel_package" ]] || fail "Po buildzie Cosmos nadal brakuje Cosmos.Kernel.3.0.85.nupkg w $package_feed"
+    else
+        echo "[SMT] Lokalne patched Cosmos 3.0.85 sa aktualne."
+    fi
+
+    # Cosmos packages keep version 3.0.85 after patching, so a normal global
+    # NuGet cache can silently reuse the official package. Restore into a clean,
+    # project-local cache and map Cosmos.* exclusively to the local feed.
+    rm -rf "$package_cache"
+    mkdir -p "$package_cache"
+
+    local nuget_config
+    nuget_config="$(mktemp -t zonderq-nuget.XXXXXX.config)"
+    cat > "$nuget_config" <<EOF_NUGET
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="local-cosmos" value="$package_feed" />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+  </packageSources>
+  <packageSourceMapping>
+    <packageSource key="local-cosmos">
+      <package pattern="Cosmos.*" />
+    </packageSource>
+    <packageSource key="nuget.org">
+      <package pattern="*" />
+    </packageSource>
+  </packageSourceMapping>
+</configuration>
+EOF_NUGET
+
+    echo "[SMT] Restore x64 z lokalnych paczek Cosmos (izolowany cache)..."
+    NUGET_PACKAGES="$package_cache" dotnet restore "$ROOT_DIR/ZonderqOS.csproj" \
+        -r linux-x64 \
+        -p:CosmosArch=x64 \
+        --configfile "$nuget_config" \
+        --force \
+        --no-cache
+    rm -f "$nuget_config"
+
+    local metadata="$package_cache/cosmos.kernel/3.0.85/.nupkg.metadata"
+    [[ -f "$metadata" ]] || fail "Restore nie utworzyl metadata dla Cosmos.Kernel 3.0.85."
+    grep -Fq "$package_feed" "$metadata" || \
+        fail "Cosmos.Kernel 3.0.85 nie pochodzi z lokalnego patched feedu: $package_feed"
+
+    export NUGET_PACKAGES="$package_cache"
+}
+
 build_iso() {
     local arch="$1"
     local label
     label="$(printf '%s' "$arch" | tr '[:lower:]' '[:upper:]')"
 
     require_command cosmos
+    if [[ "$arch" == "x64" ]]; then
+        require_command dotnet
+        prepare_patched_cosmos_x64
+    fi
     clean_build_cache "$arch"
 
     echo "[$label] Budowanie ZonderqOS..."
