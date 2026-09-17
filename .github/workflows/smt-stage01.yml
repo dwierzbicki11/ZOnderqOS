@@ -6,17 +6,23 @@ on:
     paths:
       - 'patches/cosmos-smt/**'
       - 'tools/prepare-cosmos-smt.sh'
+      - 'tools/smoke-stage01-qemu.sh'
+      - 'ZonderqOS.csproj'
+      - 'Bootloader/limine.conf'
       - '.github/workflows/smt-stage01.yml'
   pull_request:
     paths:
       - 'patches/cosmos-smt/**'
       - 'tools/prepare-cosmos-smt.sh'
+      - 'tools/smoke-stage01-qemu.sh'
+      - 'ZonderqOS.csproj'
+      - 'Bootloader/limine.conf'
       - '.github/workflows/smt-stage01.yml'
 
 jobs:
   validate-stage01:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
 
     steps:
       - name: Checkout ZonderqOS
@@ -37,8 +43,16 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
+      - name: Install QEMU x64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86
+          qemu-system-x86_64 --version
+
       - name: Shell syntax
-        run: bash -n zonderq/tools/prepare-cosmos-smt.sh
+        run: |
+          bash -n zonderq/tools/prepare-cosmos-smt.sh
+          bash -n zonderq/tools/smoke-stage01-qemu.sh
 
       - name: Preflight stage 0-1 only
         env:
@@ -96,3 +110,52 @@ jobs:
           -p:CosmosArch=arm64
           -p:GeneratePackageOnBuild=false
           --no-incremental
+
+      - name: Build local patched Cosmos packages
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+        run: bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 1
+
+      - name: Force ZonderqOS to restore patched Cosmos packages
+        run: |
+          cat > zonderq/NuGet.Config <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="local-cosmos" value="${{ github.workspace }}/cosmos/artifacts/package/release" />
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+            </packageSources>
+            <packageSourceMapping>
+              <packageSource key="local-cosmos">
+                <package pattern="Cosmos.*" />
+              </packageSource>
+              <packageSource key="nuget.org">
+                <package pattern="*" />
+              </packageSource>
+            </packageSourceMapping>
+          </configuration>
+          EOF
+          rm -rf ~/.nuget/packages/cosmos.*
+
+      - name: Build ZonderqOS x64 ISO from patched Cosmos
+        working-directory: zonderq
+        run: |
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          cosmos build -a x64
+          test -f output-x64/ZonderqOS.iso
+
+      - name: QEMU boot smoke 4C/8T
+        working-directory: zonderq
+        env:
+          STAGE01_QEMU_TIMEOUT_SECONDS: 75
+        run: bash tools/smoke-stage01-qemu.sh output-x64/ZonderqOS.iso stage01-qemu-serial.log
+
+      - name: Show QEMU serial log
+        if: always()
+        working-directory: zonderq
+        run: |
+          if [[ -f stage01-qemu-serial.log ]]; then
+            echo '========== QEMU SERIAL =========='
+            cat stage01-qemu-serial.log
+          fi
