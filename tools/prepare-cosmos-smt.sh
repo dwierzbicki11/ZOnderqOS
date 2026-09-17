@@ -156,44 +156,92 @@ done
 cleanup_preflight
 trap - EXIT
 
-# Sprawdzamy aktualny checkout. Dirty stan jest akceptowany tylko gdy co
-# najmniej jeden wybrany patch jest juz w calosci obecny; obce pliki poza
-# sciezkami dotykanymi przez wybrana serie sa blokowane.
-applied_count=0
-for patch in "${PATCHES[@]}"; do
-    if git -C "$COSMOS_ROOT" apply --reverse --check "$patch" >/dev/null 2>&1; then
-        applied_count=$((applied_count + 1))
+# Lista sciezek nalezacych do wybranej serii. Zmiany poza nia sa zawsze obce.
+mapfile -t allowed_paths < <(
+    for patch in "${PATCHES[@]}"; do
+        sed -n 's|^+++ b/||p' "$patch"
+    done | grep -v '^/dev/null$' | sort -u
+)
+mapfile -t dirty_paths < <(
+    {
+        git -C "$COSMOS_ROOT" diff --name-only
+        git -C "$COSMOS_ROOT" ls-files --others --exclude-standard
+    } | sort -u
+)
+
+for dirty in "${dirty_paths[@]}"; do
+    allowed=0
+    for path in "${allowed_paths[@]}"; do
+        if [[ "$dirty" == "$path" ]]; then
+            allowed=1
+            break
+        fi
+    done
+    (( allowed )) || fail "Obca lokalna zmiana poza wybrana seria SMT: $dirty"
+done
+
+# Wykrywanie juz zastosowanego prefixu musi uwzgledniac zaleznosci miedzy
+# etapami. Patch N moze zmieniac te same linie co patch N-1, przez co zwykle
+# `git apply --reverse --check patchN-1` daje falszywy negatyw. Dlatego robimy
+# snapshot aktualnych plikow w tymczasowym worktree i cofamy serie OD KONCA.
+state_dir="$(mktemp -d -t zonderq-smt-state.XXXXXX)"
+cleanup_state() {
+    git -C "$COSMOS_ROOT" worktree remove --force "$state_dir" >/dev/null 2>&1 || true
+    rm -rf "$state_dir" >/dev/null 2>&1 || true
+}
+trap cleanup_state EXIT
+
+git -C "$COSMOS_ROOT" worktree add --detach --quiet "$state_dir" "$head_sha" || \
+    fail "Nie mozna utworzyc tymczasowego worktree do wykrycia stanu patchy."
+
+for path in "${allowed_paths[@]}"; do
+    src="$COSMOS_ROOT/$path"
+    dst="$state_dir/$path"
+    if [[ -e "$src" || -L "$src" ]]; then
+        mkdir -p "$(dirname "$dst")"
+        rm -rf "$dst"
+        cp -a "$src" "$dst"
+    else
+        rm -rf "$dst"
     fi
 done
 
-if ! git -C "$COSMOS_ROOT" diff --quiet || [[ -n "$(git -C "$COSMOS_ROOT" ls-files --others --exclude-standard)" ]]; then
-    if (( applied_count == 0 )); then
-        fail "Checkout Cosmosa ma obce lokalne zmiany. Przywroc czysta baze przed pierwszym zastosowaniem serii SMT."
+APPLIED_PATCH=()
+for _ in "${PATCHES[@]}"; do
+    APPLIED_PATCH+=(0)
+done
+
+for (( i=${#PATCHES[@]}-1; i>=0; i-- )); do
+    patch="${PATCHES[$i]}"
+    if git -C "$state_dir" apply --reverse --check "$patch" >/dev/null 2>&1; then
+        git -C "$state_dir" apply --reverse "$patch"
+        APPLIED_PATCH[$i]=1
     fi
+done
 
-    mapfile -t allowed_paths < <(
-        for patch in "${PATCHES[@]}"; do
-            sed -n 's|^+++ b/||p' "$patch"
-        done | grep -v '^/dev/null$' | sort -u
-    )
-    mapfile -t dirty_paths < <(
-        {
-            git -C "$COSMOS_ROOT" diff --name-only
-            git -C "$COSMOS_ROOT" ls-files --others --exclude-standard
-        } | sort -u
-    )
+# Zastosowane etapy musza tworzyc prefix 1..N. Stage 2 bez Stage 1 albo inna
+# mieszanka oznacza uszkodzony checkout, a nie stan ktory helper ma zgadywac.
+applied_count=0
+seen_gap=0
+for i in "${!PATCHES[@]}"; do
+    if (( APPLIED_PATCH[$i] )); then
+        (( seen_gap == 0 )) || fail "Wykryto etap $(basename "${PATCHES[$i]}") bez wszystkich poprzednich etapow."
+        applied_count=$((applied_count + 1))
+    else
+        seen_gap=1
+    fi
+done
 
-    for dirty in "${dirty_paths[@]}"; do
-        allowed=0
-        for path in "${allowed_paths[@]}"; do
-            if [[ "$dirty" == "$path" ]]; then
-                allowed=1
-                break
-            fi
-        done
-        (( allowed )) || fail "Obca lokalna zmiana poza wybrana seria SMT: $dirty"
-    done
+# Po cofnieciu wykrytego prefixu snapshot ma byc identyczny z baza. To lapie
+# reczne/obce modyfikacje nawet wtedy, gdy dotykaja pliku nalezacego do patcha.
+if ! git -C "$state_dir" diff --quiet || [[ -n "$(git -C "$state_dir" ls-files --others --exclude-standard)" ]]; then
+    fail "Checkout Cosmosa zawiera zmiany w plikach SMT, ktore nie odpowiadaja wybranemu prefixowi patchy."
 fi
+
+cleanup_state
+trap - EXIT
+
+echo "[SMT] Wykryty zastosowany prefix: etap 1..$applied_count"
 
 if (( CHECK_ONLY )); then
     echo "[SMT] CHECK-ONLY OK: baza i seria do etapu $SELECTED_STAGE sa spojne."
@@ -211,9 +259,11 @@ rollback_new_patches() {
 }
 trap rollback_new_patches ERR
 
-for patch in "${PATCHES[@]}"; do
+for i in "${!PATCHES[@]}"; do
+    patch="${PATCHES[$i]}"
     name="$(basename "$patch")"
-    if git -C "$COSMOS_ROOT" apply --reverse --check "$patch" >/dev/null 2>&1; then
+
+    if (( APPLIED_PATCH[$i] )); then
         echo "[SMT] OK (juz jest): $name"
         continue
     fi
