@@ -1,6 +1,7 @@
 # .NET / Cosmos build outputs
 bin/
 obj/
+.nuget/
 
 # Disk / VM images
 *.img
