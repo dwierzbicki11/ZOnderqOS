@@ -62,7 +62,7 @@ trap cleanup EXIT
 
 start_seconds=$SECONDS
 while (( SECONDS - start_seconds < TIMEOUT_SECONDS )); do
-    if grep -Eiq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG_PATH"; then
+    if grep -Eq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG_PATH"; then
         fail "Kernel zgłosil fatalny blad podczas bootu."
     fi
 
