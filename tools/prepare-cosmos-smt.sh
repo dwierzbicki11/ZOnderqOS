@@ -133,6 +133,14 @@ for patch in "${UNSELECTED_PATCHES[@]}"; do
     fi
 done
 
+# Wszystkie sciezki nalezace do wybranego prefiksu serii. Bierzemy obie strony
+# diffa, zeby poprawnie obslugiwac rowniez przyszle usuniecia plikow.
+mapfile -t selected_paths < <(
+    for patch in "${PATCHES[@]}"; do
+        sed -n -e 's|^--- a/||p' -e 's|^+++ b/||p' "$patch"
+    done | grep -v '^/dev/null$' | sort -u
+)
+
 # Preflight calego wybranego szeregu wykonujemy na osobnym worktree. To lapie
 # zaleznosci miedzy patchami w prawidlowej kolejnosci i gwarantuje, ze walidacja
 # nie pozostawi polowy serii w prawdziwym checkoutcie.
@@ -153,12 +161,33 @@ for patch in "${PATCHES[@]}"; do
     echo "[SMT] PRECHECK OK: $name"
 done
 
+# Pojedynczy `git apply --reverse --check` nie jest wiarygodnym testem, gdy
+# pozniejszy etap ponownie modyfikuje ten sam plik. Porownujemy wiec aktualny
+# checkout z wynikiem calego wybranego prefiksu serii. To sprawia, ze
+# `--patch-only`, a potem zwykle uruchomienie helpera jest idempotentne nawet
+# dla nachodzacych na siebie etapow.
+series_fully_applied=1
+for path in "${selected_paths[@]}"; do
+    expected="$preflight_dir/$path"
+    actual="$COSMOS_ROOT/$path"
+
+    if [[ -f "$expected" ]]; then
+        if [[ ! -f "$actual" ]] || ! cmp -s "$expected" "$actual"; then
+            series_fully_applied=0
+            break
+        fi
+    elif [[ -e "$actual" || -L "$actual" ]]; then
+        series_fully_applied=0
+        break
+    fi
+done
+
 cleanup_preflight
 trap - EXIT
 
 # Sprawdzamy aktualny checkout. Dirty stan jest akceptowany tylko gdy co
-# najmniej jeden wybrany patch jest juz w calosci obecny; obce pliki poza
-# sciezkami dotykanymi przez wybrana serie sa blokowane.
+# najmniej jeden wybrany patch jest juz w calosci obecny albo caly wybrany
+# prefiks odpowiada dokladnie wynikowi preflightu. Obce pliki sa blokowane.
 applied_count=0
 for patch in "${PATCHES[@]}"; do
     if git -C "$COSMOS_ROOT" apply --reverse --check "$patch" >/dev/null 2>&1; then
@@ -167,15 +196,10 @@ for patch in "${PATCHES[@]}"; do
 done
 
 if ! git -C "$COSMOS_ROOT" diff --quiet || [[ -n "$(git -C "$COSMOS_ROOT" ls-files --others --exclude-standard)" ]]; then
-    if (( applied_count == 0 )); then
+    if (( applied_count == 0 && series_fully_applied == 0 )); then
         fail "Checkout Cosmosa ma obce lokalne zmiany. Przywroc czysta baze przed pierwszym zastosowaniem serii SMT."
     fi
 
-    mapfile -t allowed_paths < <(
-        for patch in "${PATCHES[@]}"; do
-            sed -n 's|^+++ b/||p' "$patch"
-        done | grep -v '^/dev/null$' | sort -u
-    )
     mapfile -t dirty_paths < <(
         {
             git -C "$COSMOS_ROOT" diff --name-only
@@ -185,7 +209,7 @@ if ! git -C "$COSMOS_ROOT" diff --quiet || [[ -n "$(git -C "$COSMOS_ROOT" ls-fil
 
     for dirty in "${dirty_paths[@]}"; do
         allowed=0
-        for path in "${allowed_paths[@]}"; do
+        for path in "${selected_paths[@]}"; do
             if [[ "$dirty" == "$path" ]]; then
                 allowed=1
                 break
@@ -211,18 +235,22 @@ rollback_new_patches() {
 }
 trap rollback_new_patches ERR
 
-for patch in "${PATCHES[@]}"; do
-    name="$(basename "$patch")"
-    if git -C "$COSMOS_ROOT" apply --reverse --check "$patch" >/dev/null 2>&1; then
-        echo "[SMT] OK (juz jest): $name"
-        continue
-    fi
+if (( series_fully_applied )); then
+    echo "[SMT] OK: cala seria do etapu $SELECTED_STAGE jest juz zastosowana."
+else
+    for patch in "${PATCHES[@]}"; do
+        name="$(basename "$patch")"
+        if git -C "$COSMOS_ROOT" apply --reverse --check "$patch" >/dev/null 2>&1; then
+            echo "[SMT] OK (juz jest): $name"
+            continue
+        fi
 
-    git -C "$COSMOS_ROOT" apply --check "$patch" || fail "Nie mozna zastosowac: $name"
-    git -C "$COSMOS_ROOT" apply "$patch"
-    newly_applied+=("$patch")
-    echo "[SMT] Zastosowano: $name"
-done
+        git -C "$COSMOS_ROOT" apply --check "$patch" || fail "Nie mozna zastosowac: $name"
+        git -C "$COSMOS_ROOT" apply "$patch"
+        newly_applied+=("$patch")
+        echo "[SMT] Zastosowano: $name"
+    done
+fi
 trap - ERR
 
 if (( PATCH_ONLY )); then
@@ -250,4 +278,6 @@ echo "[SMT] Lokalne paczki gotowe do etapu $SELECTED_STAGE."
 if (( SELECTED_STAGE == 1 )); then
     echo "[SMT] Etap 1 tylko publikuje Limine MP request i pozostawia AP-y zaparkowane."
     echo "[SMT] Nie uruchamia jeszcze scheduler/GC na dodatkowych CPU."
+elif (( SELECTED_STAGE == 2 )); then
+    echo "[SMT] Etap 2 buduje dense CpuId; AP-y nadal pozostaja zaparkowane."
 fi
