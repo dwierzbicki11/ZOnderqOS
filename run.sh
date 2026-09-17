@@ -2,6 +2,8 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+COSMOS_TAG="v3.0.85"
+COSMOS_REPO="https://github.com/CosmosOS/Cosmos.git"
 
 fail() {
     echo "[BLAD] $*" >&2
@@ -13,6 +15,23 @@ is_cosmos_checkout() {
     [[ -d "$path" ]] || return 1
     git -C "$path" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 1
     [[ -f "$path/src/Cosmos.Kernel.Core/Runtime/Stdllib.cs" ]] || return 1
+}
+
+bootstrap_cosmos_checkout() {
+    local target="$1"
+
+    command -v git >/dev/null 2>&1 || \
+        fail "Brak git w PATH, a checkout Cosmos nie istnieje."
+
+    if [[ -e "$target" ]]; then
+        fail "Nie znaleziono poprawnego checkoutu Cosmos, a sciezka docelowa juz istnieje: $target"
+    fi
+
+    echo "[SMT] Nie znaleziono Cosmos. Klonuje $COSMOS_TAG do: $target"
+    git clone --recursive --branch "$COSMOS_TAG" "$COSMOS_REPO" "$target"
+
+    is_cosmos_checkout "$target" || \
+        fail "Sklonowano Cosmos, ale checkout jest niekompletny: $target"
 }
 
 resolve_cosmos_root() {
@@ -38,15 +57,13 @@ resolve_cosmos_root() {
         return 0
     fi
 
-    echo "[BLAD] Nie znaleziono checkoutu Cosmos wymaganego dla x64 SMT." >&2
-    echo "Sprawdzono:" >&2
-    echo "  $sibling" >&2
-    echo "  $parent" >&2
-    echo "Mozesz tez ustawic ZONDERQ_COSMOS_SOURCE_ROOT=/sciezka/do/Cosmos" >&2
-    exit 1
+    bootstrap_cosmos_checkout "$sibling" >&2
+    printf '%s\n' "$(cd "$sibling" && pwd)"
 }
 
-export ZONDERQ_COSMOS_SOURCE_ROOT="$(resolve_cosmos_root)"
+cosmos_root="$(resolve_cosmos_root)" || exit $?
+[[ -n "$cosmos_root" ]] || fail "Nie udalo sie ustalic katalogu Cosmos."
+export ZONDERQ_COSMOS_SOURCE_ROOT="$cosmos_root"
 echo "[SMT] Cosmos source: $ZONDERQ_COSMOS_SOURCE_ROOT"
 
-exec "$ROOT_DIR/run-core.sh" "$@"
+exec bash "$ROOT_DIR/run-core.sh" "$@"
