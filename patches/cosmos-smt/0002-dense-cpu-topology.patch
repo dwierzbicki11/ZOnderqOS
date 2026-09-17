@@ -13,9 +13,10 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/SmpCpuTopology.cs b/src/Cosmos.Kernel.HAL
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.HAL.X64/SmpCpuTopology.cs
-@@ -0,0 +1,169 @@
+@@ -0,0 +1,170 @@
 +using Cosmos.Kernel.Boot.Limine;
 +using Cosmos.Kernel.Core;
++using Cosmos.Kernel.Core.IO;
 +
 +namespace Cosmos.Kernel.HAL.X64;
 +
