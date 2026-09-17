@@ -136,13 +136,46 @@ jobs:
             </packageSourceMapping>
           </configuration>
           EOF
-          rm -rf ~/.nuget/packages/cosmos.*
+
+          # NuGet ignores Package Source Mapping for packages already present in
+          # the global packages folder. Use a fresh, job-local cache so the
+          # Stage 0/1 smoke test cannot silently consume official 3.0.85 bits.
+          rm -rf "${{ runner.temp }}/zonderq-stage01-packages"
+          mkdir -p "${{ runner.temp }}/zonderq-stage01-packages"
 
       - name: Build ZonderqOS x64 ISO from patched Cosmos
         working-directory: zonderq
+        env:
+          NUGET_PACKAGES: ${{ runner.temp }}/zonderq-stage01-packages
         run: |
+          set -o pipefail
           export PATH="$HOME/.dotnet/tools:$PATH"
-          cosmos build -a x64
+
+          echo '[SMT-CI] Restoring ZonderqOS into isolated NuGet cache...'
+          dotnet restore ZonderqOS.csproj \
+            -r linux-x64 \
+            -p:CosmosArch=x64 \
+            --configfile NuGet.Config \
+            --force \
+            --no-cache \
+            --verbosity normal 2>&1 | tee stage01-restore.log
+
+          echo '[SMT-CI] Verifying patched Cosmos packages came from the local feed...'
+          for package in cosmos.sdk cosmos.kernel cosmos.kernel.hal.x64 cosmos.kernel.boot.limine; do
+            metadata="$NUGET_PACKAGES/$package/3.0.85/.nupkg.metadata"
+            test -f "$metadata" || {
+              echo "[SMT-CI][FAIL] Missing restored package metadata: $metadata" >&2
+              exit 1
+            }
+            grep -Fq "${{ github.workspace }}/cosmos/artifacts/package/release" "$metadata" || {
+              echo "[SMT-CI][FAIL] $package 3.0.85 did not come from the patched local feed." >&2
+              cat "$metadata" >&2
+              exit 1
+            }
+          done
+
+          echo '[SMT-CI] Building real ZonderqOS ISO with patched Cosmos...'
+          cosmos build -a x64 -v 2>&1 | tee stage01-build.log
           test -f output-x64/ZonderqOS.iso
 
       - name: QEMU boot smoke 4C/8T
@@ -151,11 +184,26 @@ jobs:
           STAGE01_QEMU_TIMEOUT_SECONDS: 75
         run: bash tools/smoke-stage01-qemu.sh output-x64/ZonderqOS.iso stage01-qemu-serial.log
 
-      - name: Show QEMU serial log
+      - name: Show build and QEMU diagnostics
         if: always()
         working-directory: zonderq
         run: |
+          if [[ -f stage01-build.log ]]; then
+            echo '========== COSMOS BUILD (last 250 lines) =========='
+            tail -n 250 stage01-build.log
+          fi
           if [[ -f stage01-qemu-serial.log ]]; then
             echo '========== QEMU SERIAL =========='
             cat stage01-qemu-serial.log
           fi
+
+      - name: Upload Stage 0-1 diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stage01-diagnostics
+          if-no-files-found: ignore
+          path: |
+            zonderq/stage01-restore.log
+            zonderq/stage01-build.log
+            zonderq/stage01-qemu-serial.log
