@@ -15,7 +15,7 @@ new file mode 100644
 index 0000000..47ef0fe
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,84 @@
 +using System.Runtime.InteropServices;
 +
 +namespace Cosmos.Kernel.Boot.Limine;
@@ -122,7 +122,7 @@ index 32676c1..6cfd0d1 100644
          // Initialize APIC
          Serial.WriteString("[X64HAL] Initializing APIC...\n");
          ApicManager.Initialize();
-@@ -127,6 +132,100 @@ internal class X64PlatformInitializer : IPlatformInitializer
+@@ -127,6 +132,109 @@ internal class X64PlatformInitializer : IPlatformInitializer
          }
      }
  
