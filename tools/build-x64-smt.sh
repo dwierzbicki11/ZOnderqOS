@@ -8,7 +8,6 @@ CACHE_ROOT="${ZONDERQ_SMT_CACHE_ROOT:-$ROOT_DIR/.cache/smt}"
 NUGET_PACKAGES="${ZONDERQ_NUGET_PACKAGES:-$CACHE_ROOT/nuget-stage${SMT_STAGE}}"
 NUGET_CONFIG="$CACHE_ROOT/NuGet.stage${SMT_STAGE}.Config"
 LOCAL_FEED="$COSMOS_ROOT/artifacts/package/release"
-PATCH_FILE="$ROOT_DIR/patches/cosmos-smt/$(printf '%04d' "$SMT_STAGE")-"
 
 fail() {
     echo "[SMT-BUILD][BLAD] $*" >&2
@@ -24,13 +23,16 @@ require_command() {
 [[ -f "$COSMOS_ROOT/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs" ]] || fail "To nie wyglada na Cosmos Kernel Gen3: $COSMOS_ROOT"
 
 require_command dotnet
-require_command cosmos
 require_command sha256sum
 
-mapfile -t selected_patch < <(find "$ROOT_DIR/patches/cosmos-smt" -maxdepth 1 -type f -name "$(printf '%04d' "$SMT_STAGE")-*.patch" | sort)
-(( ${#selected_patch[@]} == 1 )) || fail "Nie znaleziono dokladnie jednego patcha dla etapu $SMT_STAGE."
-PATCH_FILE="${selected_patch[0]}"
-PATCH_FINGERPRINT="$(sha256sum "$PATCH_FILE" | awk '{print $1}')"
+stage_patches=()
+for ((stage = 1; stage <= SMT_STAGE; stage++)); do
+    mapfile -t matches < <(find "$ROOT_DIR/patches/cosmos-smt" -maxdepth 1 -type f -name "$(printf '%04d' "$stage")-*.patch" | sort)
+    (( ${#matches[@]} == 1 )) || fail "Nie znaleziono dokladnie jednego patcha dla etapu $stage."
+    stage_patches+=("${matches[0]}")
+done
+PATCH_FINGERPRINT="$(cat "${stage_patches[@]}" | sha256sum | awk '{print $1}')"
+
 mkdir -p "$CACHE_ROOT" "$NUGET_PACKAGES"
 STAMP_FILE="$CACHE_ROOT/stage${SMT_STAGE}-${PATCH_FINGERPRINT}.ready"
 
@@ -87,6 +89,7 @@ EOF_CONFIG
 rm -rf "$NUGET_PACKAGES"/cosmos.*
 
 export NUGET_PACKAGES
+export PATH="$HOME/.dotnet/tools:$PATH"
 
 echo "[SMT-BUILD] Restore ZonderqOS z lokalnego patched feedu..."
 dotnet restore "$ROOT_DIR/ZonderqOS.csproj" \
@@ -105,6 +108,8 @@ for package in cosmos.sdk cosmos.kernel cosmos.kernel.hal.x64 cosmos.kernel.boot
         exit 1
     }
 done
+
+require_command cosmos
 
 echo "[SMT-BUILD] Paczki Cosmos zweryfikowane. Buduje x64..."
 cd "$ROOT_DIR"
