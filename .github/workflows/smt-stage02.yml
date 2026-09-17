@@ -71,8 +71,9 @@ jobs:
         run: |
           git -C cosmos diff --check
           test -f cosmos/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs
-          grep -Fq 'public static bool TryInitialize(ulong bootHardwareId, ulong[] hardwareIds)' cosmos/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs
-          grep -Fq 'public static bool TryGetCpuId(ulong hardwareId, out uint cpuId)' cosmos/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs
+          grep -Fq 'internal static class CpuTopology' cosmos/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs
+          grep -Fq 'internal static bool TryInitialize(ulong bootHardwareId, ulong[] hardwareIds)' cosmos/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs
+          grep -Fq 'internal static bool TryGetCpuId(ulong hardwareId, out uint cpuId)' cosmos/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs
           grep -Fq 'denseHardwareIds[0] = bootHardwareId;' cosmos/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs
           grep -Fq '[SMP] Stage 2 complete: dense CPU topology ready; APs remain parked.' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
           grep -Fq '[SMP] MAP CpuId=' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
