@@ -50,13 +50,32 @@ jobs:
           ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
         run: bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 1 --patch-only
 
+      - name: Verify Limine MP protocol layout
+        run: |
+          grep -Fq 'LimineID ID = new(0x95a67b819a1b857e, 0xa0b61b723b6a73e0);' cosmos/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+          grep -Fq 'public readonly ulong Flags = 0;' cosmos/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+          grep -Fq 'public readonly uint BspLapicId;' cosmos/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+          grep -Fq 'public readonly ulong CpuCount;' cosmos/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+          grep -Fq 'public readonly LimineMpInfoX64** Cpus;' cosmos/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+          grep -Fq 'public delegate* unmanaged<LimineMpInfoX64*, void> GotoAddress;' cosmos/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+          grep -Fq 'public readonly ulong BspMpidr;' cosmos/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+          grep -Fq 'public readonly LimineMpInfoArm64** Cpus;' cosmos/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+          grep -Fq 'public delegate* unmanaged<LimineMpInfoArm64*, void> GotoAddress;' cosmos/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+
       - name: Verify patch hygiene and stage isolation
         run: |
           git -C cosmos diff --check
           test -f cosmos/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
           grep -Fq 'public static readonly LimineMpRequest MP = new();' cosmos/src/Cosmos.Kernel.Boot.Limine/Limine.cs
-          grep -Fq '[SMP] Stage 1 OK: topology discovered; APs remain parked.' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+          grep -Fq '[SMP] Stage 1 complete: MP response inspected; APs remain parked.' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
           ! grep -Fq '_native_get_current_cpu_id' cosmos/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+          grep -Fq '_context_switch_target_rsp: .zero 8' cosmos/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+          ! grep -Fq '_context_switch_target_rsp: .zero 2048' cosmos/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+
+      - name: Verify helper is idempotent at stage 1
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+        run: bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 1 --patch-only
 
       - name: Build patched x64 HAL
         working-directory: cosmos
@@ -65,5 +84,15 @@ jobs:
           -c Release
           -r linux-x64
           -p:CosmosArch=x64
+          -p:GeneratePackageOnBuild=false
+          --no-incremental
+
+      - name: Build Limine MP definitions for ARM64
+        working-directory: cosmos
+        run: >-
+          dotnet build src/Cosmos.Kernel.Boot.Limine/Cosmos.Kernel.Boot.Limine.csproj
+          -c Release
+          -r linux-arm64
+          -p:CosmosArch=arm64
           -p:GeneratePackageOnBuild=false
           --no-incremental
