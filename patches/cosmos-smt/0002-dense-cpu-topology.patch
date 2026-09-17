@@ -1,0 +1,168 @@
+diff --git a/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs b/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/CPU/CpuTopology.cs
+@@ -0,0 +1,104 @@
++namespace Cosmos.Kernel.Core.CPU;
++
++/// <summary>
++/// Architecture-neutral logical CPU topology discovered by the platform layer.
++/// Scheduler CPU IDs are always dense (0..CpuCount-1) and never equal to a
++/// hardware APIC/MPIDR identifier by assumption.
++/// </summary>
++internal static class CpuTopology
++{
++    private static ulong[]? s_hardwareIds;
++
++    /// <summary>True after the platform has published a validated topology.</summary>
++    internal static bool IsInitialized => s_hardwareIds is not null;
++
++    /// <summary>Number of logical CPUs in the discovered topology.</summary>
++    internal static uint CpuCount => (uint)(s_hardwareIds?.Length ?? 0);
++
++    /// <summary>
++    /// Initializes the dense map. The boot CPU is always assigned logical
++    /// CpuId 0; remaining CPUs retain firmware enumeration order.
++    /// </summary>
++    internal static bool TryInitialize(ulong bootHardwareId, ulong[] hardwareIds)
++    {
++        if (hardwareIds is null || hardwareIds.Length == 0 || s_hardwareIds is not null)
++        {
++            return false;
++        }
++
++        int bootIndex = -1;
++        for (int i = 0; i < hardwareIds.Length; i++)
++        {
++            ulong hardwareId = hardwareIds[i];
++            if (hardwareId == bootHardwareId)
++            {
++                bootIndex = i;
++            }
++
++            for (int j = 0; j < i; j++)
++            {
++                if (hardwareIds[j] == hardwareId)
++                {
++                    return false;
++                }
++            }
++        }
++
++        if (bootIndex < 0)
++        {
++            return false;
++        }
++
++        var denseHardwareIds = new ulong[hardwareIds.Length];
++        denseHardwareIds[0] = bootHardwareId;
++
++        int next = 1;
++        for (int i = 0; i < hardwareIds.Length; i++)
++        {
++            if (i == bootIndex)
++            {
++                continue;
++            }
++
++            denseHardwareIds[next++] = hardwareIds[i];
++        }
++
++        // Publish only after validation and construction are complete.
++        s_hardwareIds = denseHardwareIds;
++        return true;
++    }
++
++    /// <summary>Returns the hardware identifier assigned to a dense CpuId.</summary>
++    internal static bool TryGetHardwareId(uint cpuId, out ulong hardwareId)
++    {
++        ulong[]? hardwareIds = s_hardwareIds;
++        if (hardwareIds is null || cpuId >= (uint)hardwareIds.Length)
++        {
++            hardwareId = 0;
++            return false;
++        }
++
++        hardwareId = hardwareIds[cpuId];
++        return true;
++    }
++
++    /// <summary>Maps an architecture hardware identifier to a dense CpuId.</summary>
++    internal static bool TryGetCpuId(ulong hardwareId, out uint cpuId)
++    {
++        ulong[]? hardwareIds = s_hardwareIds;
++        if (hardwareIds is not null)
++        {
++            for (int i = 0; i < hardwareIds.Length; i++)
++            {
++                if (hardwareIds[i] == hardwareId)
++                {
++                    cpuId = (uint)i;
++                    return true;
++                }
++            }
++        }
++
++        cpuId = 0;
++        return false;
++    }
++}
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -8,6 +8,55 @@
+         }
+ 
+         Serial.WriteString("[SMP] Stage 1 complete: MP response inspected; APs remain parked.\n");
++
++        if (!BuildDenseCpuTopology(response, inspectCount))
++        {
++            Serial.WriteString("[SMP] WARNING: failed to build dense CPU topology.\n");
++            return;
++        }
++
++        Serial.WriteString("[SMP] Stage 2 complete: dense CPU topology ready; APs remain parked.\n");
++    }
++
++    private static unsafe bool BuildDenseCpuTopology(LimineMpResponseX64* response, ulong cpuCount)
++    {
++        var hardwareIds = new ulong[(int)cpuCount];
++
++        for (ulong i = 0; i < cpuCount; i++)
++        {
++            LimineMpInfoX64* cpu = response->Cpus[i];
++            if (cpu == null)
++            {
++                return false;
++            }
++
++            hardwareIds[(int)i] = cpu->LapicId;
++        }
++
++        if (!CpuTopology.TryInitialize(response->BspLapicId, hardwareIds))
++        {
++            return false;
++        }
++
++        for (uint cpuId = 0; cpuId < CpuTopology.CpuCount; cpuId++)
++        {
++            if (!CpuTopology.TryGetHardwareId(cpuId, out ulong hardwareId))
++            {
++                return false;
++            }
++
++            Serial.WriteString("[SMP] MAP CpuId=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" LAPIC=");
++            Serial.WriteNumber(hardwareId);
++            if (cpuId == 0)
++            {
++                Serial.WriteString(" BSP");
++            }
++            Serial.WriteString("\n");
++        }
++
++        return true;
+     }
+ 
+     public ITimerDevice CreateTimer()
