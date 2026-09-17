@@ -45,9 +45,12 @@ jobs:
           bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 2 --check-only
           bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 2 --patch-only
           git -C cosmos diff --check
+          grep -Fq 'cpu->ExtraArgument = cpuId;' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+          grep -Fq '[SMP] Dense CPU map verified: BSP=0, CpuIds are unique and contiguous.' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
           grep -Fq '[SMP] Stage 2 complete: dense CPU map ready; APs remain parked.' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
           ! grep -Fq '_native_get_current_cpu_id' cosmos/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-      - name: Build local patched Cosmos packages
+          ! grep -Fq '_context_switch_target_rsp: .zero 2048' cosmos/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+      - name: Verify Stage 2 helper idempotence and build patched Cosmos packages
         env:
           ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
         run: bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 2
@@ -61,6 +64,7 @@ jobs:
           </configuration>
           EOF
           rm -rf "${{ runner.temp }}/zonderq-stage02-packages"
+          mkdir -p "${{ runner.temp }}/zonderq-stage02-packages"
       - name: Build ZonderqOS x64 ISO
         working-directory: zonderq
         env:
@@ -69,6 +73,11 @@ jobs:
           set -o pipefail
           export PATH="$HOME/.dotnet/tools:$PATH"
           dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --configfile NuGet.Config --force --no-cache 2>&1 | tee stage02-restore.log
+          for package in cosmos.sdk cosmos.kernel cosmos.kernel.hal.x64 cosmos.kernel.boot.limine; do
+            metadata="$NUGET_PACKAGES/$package/3.0.85/.nupkg.metadata"
+            test -f "$metadata" || { echo "[SMT-CI][FAIL] Missing restored package metadata: $metadata" >&2; exit 1; }
+            grep -Fq "${{ github.workspace }}/cosmos/artifacts/package/release" "$metadata" || { echo "[SMT-CI][FAIL] $package did not come from patched local feed" >&2; cat "$metadata" >&2; exit 1; }
+          done
           cosmos build -a x64 -v 2>&1 | tee stage02-build.log
           test -f output-x64/ZonderqOS.iso
       - name: QEMU dense-map smoke
