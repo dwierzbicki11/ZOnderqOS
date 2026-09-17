@@ -43,16 +43,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- SDK/runtime/HAL packages must stay on the exact same Cosmos release.
-         Cosmos 3.0.85 intentionally restores both HAL packages and lets the
-         RuntimeIdentifier/CosmosArch select the active backend during build.
-         Keeping both references unconditional is important for a clean restore:
-         conditional PackageReference removal can leave NativeAOT with a plug
-         that references HAL.ARM64 while the assembly is absent from the graph. -->
+    <!-- SDK/runtime packages must stay on the exact same Cosmos release.
+         Cosmos.Sdk 3.0.85 imports Cosmos.Architecture.props, which already adds
+         both HAL.X64 and HAL.ARM64 at the matching Cosmos package version.
+         Re-declaring those HAL references here creates NU1504 duplicates. -->
     <PackageReference Include="Cosmos.Kernel" Version="3.0.85" />
     <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" />
-    <PackageReference Include="Cosmos.Kernel.HAL.X64" Version="3.0.85" />
-    <PackageReference Include="Cosmos.Kernel.HAL.ARM64" Version="3.0.85" />
   </ItemGroup>
 
   <!-- Platform architecture boundary: Common is always compiled. Exactly one
