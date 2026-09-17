@@ -226,7 +226,7 @@ index 32676c1..6cfd0d1 100644
 +            Serial.WriteString("\n");
 +        }
 +
-+        Serial.WriteString("[SMP] Stage 1 OK: topology discovered; APs remain parked.\n");
++        Serial.WriteString("[SMP] Stage 1 complete: MP response inspected; APs remain parked.\n");
 +    }
 +
      public ITimerDevice CreateTimer()
