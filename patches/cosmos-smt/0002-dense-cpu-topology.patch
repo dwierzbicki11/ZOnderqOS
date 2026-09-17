@@ -10,21 +10,21 @@ new file mode 100644
 +/// Scheduler CPU IDs are always dense (0..CpuCount-1) and never equal to a
 +/// hardware APIC/MPIDR identifier by assumption.
 +/// </summary>
-+public static class CpuTopology
++internal static class CpuTopology
 +{
 +    private static ulong[]? s_hardwareIds;
 +
 +    /// <summary>True after the platform has published a validated topology.</summary>
-+    public static bool IsInitialized => s_hardwareIds is not null;
++    internal static bool IsInitialized => s_hardwareIds is not null;
 +
 +    /// <summary>Number of logical CPUs in the discovered topology.</summary>
-+    public static uint CpuCount => (uint)(s_hardwareIds?.Length ?? 0);
++    internal static uint CpuCount => (uint)(s_hardwareIds?.Length ?? 0);
 +
 +    /// <summary>
 +    /// Initializes the dense map. The boot CPU is always assigned logical
 +    /// CpuId 0; remaining CPUs retain firmware enumeration order.
 +    /// </summary>
-+    public static bool TryInitialize(ulong bootHardwareId, ulong[] hardwareIds)
++    internal static bool TryInitialize(ulong bootHardwareId, ulong[] hardwareIds)
 +    {
 +        if (hardwareIds is null || hardwareIds.Length == 0 || s_hardwareIds is not null)
 +        {
@@ -74,7 +74,7 @@ new file mode 100644
 +    }
 +
 +    /// <summary>Returns the hardware identifier assigned to a dense CpuId.</summary>
-+    public static bool TryGetHardwareId(uint cpuId, out ulong hardwareId)
++    internal static bool TryGetHardwareId(uint cpuId, out ulong hardwareId)
 +    {
 +        ulong[]? hardwareIds = s_hardwareIds;
 +        if (hardwareIds is null || cpuId >= (uint)hardwareIds.Length)
@@ -88,7 +88,7 @@ new file mode 100644
 +    }
 +
 +    /// <summary>Maps an architecture hardware identifier to a dense CpuId.</summary>
-+    public static bool TryGetCpuId(ulong hardwareId, out uint cpuId)
++    internal static bool TryGetCpuId(ulong hardwareId, out uint cpuId)
 +    {
 +        ulong[]? hardwareIds = s_hardwareIds;
 +        if (hardwareIds is not null)
