@@ -36,14 +36,20 @@ for ((second=0; second<TIMEOUT; second++)); do
   fi
   if grep -Fq '[SMP] Stage 2 complete: dense CPU map ready; APs remain parked.' "$LOG"; then
     grep -Fq "[SMP] Dense CPU map: $CPUS logical CPU(s)" "$LOG"
+    grep -Fq '[SMP] Dense CPU map verified: BSP=0, CpuIds are unique and contiguous.' "$LOG"
+
     map_count="$(grep -Fc '[SMP] CpuId[' "$LOG" || true)"
     [[ "$map_count" -eq "$CPUS" ]] || { echo "[SMT-QEMU][FAIL] expected $CPUS dense map entries, got $map_count" >&2; cat "$LOG" >&2; exit 1; }
+
     for ((id=0; id<CPUS; id++)); do
       grep -Fq "[SMP] CpuId[$id]" "$LOG" || { echo "[SMT-QEMU][FAIL] missing dense CpuId $id" >&2; cat "$LOG" >&2; exit 1; }
     done
-    grep -Fq '[SMP] CpuId[0]' "$LOG"
+
+    bsp_count="$(grep -F '[SMP] CpuId[' "$LOG" | grep -Fc ' BSP' || true)"
+    [[ "$bsp_count" -eq 1 ]] || { echo "[SMT-QEMU][FAIL] expected exactly one BSP map entry, got $bsp_count" >&2; cat "$LOG" >&2; exit 1; }
     grep -F '[SMP] CpuId[0]' "$LOG" | grep -Fq ' BSP'
-    echo "[SMT-QEMU][OK] dense CpuId 0..$((CPUS-1)) verified for ${CORES}C/${CPUS}T."
+
+    echo "[SMT-QEMU][OK] persisted dense CpuId 0..$((CPUS-1)) verified for ${CORES}C/${CPUS}T."
     exit 0
   fi
   if ! kill -0 "$QEMU_PID" 2>/dev/null; then
