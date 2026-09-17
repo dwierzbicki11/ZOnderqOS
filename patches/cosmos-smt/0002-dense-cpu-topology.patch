@@ -107,62 +107,62 @@ new file mode 100644
 +        return false;
 +    }
 +}
-+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
-+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
-++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
-+@@ -8,6 +8,55 @@
-+         }
-+ 
-+         Serial.WriteString("[SMP] Stage 1 complete: MP response inspected; APs remain parked.\n");
-++
-++        if (!BuildDenseCpuTopology(response, inspectCount))
-++        {
-++            Serial.WriteString("[SMP] WARNING: failed to build dense CPU topology.\n");
-++            return;
-++        }
-++
-++        Serial.WriteString("[SMP] Stage 2 complete: dense CPU topology ready; APs remain parked.\n");
-++    }
-++
-++    private static unsafe bool BuildDenseCpuTopology(LimineMpResponseX64* response, ulong cpuCount)
-++    {
-++        var hardwareIds = new ulong[(int)cpuCount];
-++
-++        for (ulong i = 0; i < cpuCount; i++)
-++        {
-++            LimineMpInfoX64* cpu = response->Cpus[i];
-++            if (cpu == null)
-++            {
-++                return false;
-++            }
-++
-++            hardwareIds[(int)i] = cpu->LapicId;
-++        }
-++
-++        if (!CpuTopology.TryInitialize(response->BspLapicId, hardwareIds))
-++        {
-++            return false;
-++        }
-++
-++        for (uint cpuId = 0; cpuId < CpuTopology.CpuCount; cpuId++)
-++        {
-++            if (!CpuTopology.TryGetHardwareId(cpuId, out ulong hardwareId))
-++            {
-++                return false;
-++            }
-++
-++            Serial.WriteString("[SMP] MAP CpuId=");
-++            Serial.WriteNumber(cpuId);
-++            Serial.WriteString(" LAPIC=");
-++            Serial.WriteNumber(hardwareId);
-++            if (cpuId == 0)
-++            {
-++                Serial.WriteString(" BSP");
-++            }
-++            Serial.WriteString("\n");
-++        }
-++
-++        return true;
-+     }
-+ 
-+     public ITimerDevice CreateTimer()
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -8,6 +8,55 @@
+         }
+ 
+         Serial.WriteString("[SMP] Stage 1 complete: MP response inspected; APs remain parked.\n");
++
++        if (!BuildDenseCpuTopology(response, inspectCount))
++        {
++            Serial.WriteString("[SMP] WARNING: failed to build dense CPU topology.\n");
++            return;
++        }
++
++        Serial.WriteString("[SMP] Stage 2 complete: dense CPU topology ready; APs remain parked.\n");
++    }
++
++    private static unsafe bool BuildDenseCpuTopology(LimineMpResponseX64* response, ulong cpuCount)
++    {
++        var hardwareIds = new ulong[(int)cpuCount];
++
++        for (ulong i = 0; i < cpuCount; i++)
++        {
++            LimineMpInfoX64* cpu = response->Cpus[i];
++            if (cpu == null)
++            {
++                return false;
++            }
++
++            hardwareIds[(int)i] = cpu->LapicId;
++        }
++
++        if (!CpuTopology.TryInitialize(response->BspLapicId, hardwareIds))
++        {
++            return false;
++        }
++
++        for (uint cpuId = 0; cpuId < CpuTopology.CpuCount; cpuId++)
++        {
++            if (!CpuTopology.TryGetHardwareId(cpuId, out ulong hardwareId))
++            {
++                return false;
++            }
++
++            Serial.WriteString("[SMP] MAP CpuId=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" LAPIC=");
++            Serial.WriteNumber(hardwareId);
++            if (cpuId == 0)
++            {
++                Serial.WriteString(" BSP");
++            }
++            Serial.WriteString("\n");
++        }
++
++        return true;
+     }
+ 
+     public ITimerDevice CreateTimer()
