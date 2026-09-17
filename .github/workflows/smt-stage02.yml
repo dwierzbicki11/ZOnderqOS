@@ -45,9 +45,13 @@ jobs:
           bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 2 --check-only
           bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 2 --patch-only
           git -C cosmos diff --check
-          grep -Fq 'cpu->ExtraArgument = cpuId;' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
-          grep -Fq '[SMP] Dense CPU map verified: BSP=0, CpuIds are unique and contiguous.' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
-          grep -Fq '[SMP] Stage 2 complete: dense CPU map ready; APs remain parked.' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+          test -f cosmos/src/Cosmos.Kernel.HAL.X64/SmpCpuTopology.cs
+          grep -Fq 'SmpCpuTopology.BuildDenseCpuMap();' cosmos/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+          grep -Fq 'bsp->ExtraArgument = 0;' cosmos/src/Cosmos.Kernel.HAL.X64/SmpCpuTopology.cs
+          grep -Fq 'cpu->ExtraArgument = nextCpuId;' cosmos/src/Cosmos.Kernel.HAL.X64/SmpCpuTopology.cs
+          grep -Fq 'ValidateAssignedMap(response)' cosmos/src/Cosmos.Kernel.HAL.X64/SmpCpuTopology.cs
+          grep -Fq '[SMP] Dense CPU map verified: BSP=0, CpuIds are unique and contiguous.' cosmos/src/Cosmos.Kernel.HAL.X64/SmpCpuTopology.cs
+          grep -Fq '[SMP] Stage 2 complete: dense CPU map ready; APs remain parked.' cosmos/src/Cosmos.Kernel.HAL.X64/SmpCpuTopology.cs
           ! grep -Fq '_native_get_current_cpu_id' cosmos/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
           ! grep -Fq '_context_switch_target_rsp: .zero 2048' cosmos/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
       - name: Verify Stage 2 helper idempotence and build patched Cosmos packages
