@@ -12,18 +12,18 @@ index 88f37a1..2bd6f27 100644
      /// <summary>
 diff --git a/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs b/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
 new file mode 100644
-index 0000000..7d36d10
+index 0000000..47ef0fe
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,85 @@
 +using System.Runtime.InteropServices;
 +
 +namespace Cosmos.Kernel.Boot.Limine;
 +
 +/// <summary>
-+/// Limine MP request. Merely publishing this request makes Limine bootstrap
-+/// secondary processors and park them until the kernel stores an entry point
-+/// into each CPU's goto_address field.
++/// Limine MP request. Publishing this request makes Limine bootstrap secondary
++/// processors and park them until the kernel atomically publishes an entry
++/// point through each CPU descriptor's <c>goto_address</c> field.
 +/// </summary>
 +[StructLayout(LayoutKind.Sequential)]
 +public readonly unsafe struct LimineMpRequest()
@@ -32,9 +32,10 @@ index 0000000..7d36d10
 +    public readonly ulong Revision = 0;
 +    public readonly void* Response;
 +
-+    // Keep xAPIC for the first bring-up. QEMU exposes <= 128 logical CPUs in
-+    // ZOnderqOS and xAPIC gives us a simple 8-bit APIC ID while the scheduler
-+    // is being made genuinely per-CPU. x2APIC can be enabled later.
++    // Stage 1 deliberately requests legacy xAPIC mode. It gives every x64
++    // logical CPU an 8-bit APIC ID and keeps the first bring-up independent
++    // from x2APIC/MSR support. Stage 2 will build a dense scheduler-id map;
++    // no scheduler code should ever assume APIC IDs themselves are dense.
 +    public readonly ulong Flags = 0;
 +}
 +
@@ -83,11 +84,151 @@ index 0000000..7d36d10
 +    public ulong ExtraArgument;
 +}
 +
++/// <summary>
++/// Architecture views and protocol constants for the Limine MP response.
++/// Stage 1 is discovery-only: it never writes <c>goto_address</c>.
++/// </summary>
 +public static unsafe class LimineMp
 +{
++    public const uint X64ResponseFlagX2Apic = 1u << 0;
++    public const ulong MaxXApicCpuCount = 256;
++
 +    public static LimineMpResponseX64* X64Response =>
 +        (LimineMpResponseX64*)Limine.MP.Response;
 +
 +    public static LimineMpResponseArm64* Arm64Response =>
 +        (LimineMpResponseArm64*)Limine.MP.Response;
 +}
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+index 32676c1..6cfd0d1 100644
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -1,6 +1,7 @@
+ // This code is licensed under the BSD 3-Clause license (see LICENSE for details)
+ 
+ using Cosmos.Build.API.Enum;
++using Cosmos.Kernel.Boot.Limine;
+ using Cosmos.Kernel.Core;
+ using Cosmos.Kernel.Core.CPU;
+ using Cosmos.Kernel.Core.IO;
+@@ -80,6 +81,10 @@ internal class X64PlatformInitializer : IPlatformInitializer
+         Serial.WriteString("[X64HAL] Displaying ACPI MADT info...\n");
+         AcpiMadt.DisplayMadtInfo();
+ 
++        // Stage-1 SMP proof: validate the bootloader MP response while every
++        // application processor is still parked inside Limine.
++        DisplayLimineMpInfo();
++
+         // Initialize APIC
+         Serial.WriteString("[X64HAL] Initializing APIC...\n");
+         ApicManager.Initialize();
+@@ -127,6 +132,100 @@ internal class X64PlatformInitializer : IPlatformInitializer
+         }
+     }
+ 
++    private static unsafe void DisplayLimineMpInfo()
++    {
++        LimineMpResponseX64* response = LimineMp.X64Response;
++        if (response == null)
++        {
++            Serial.WriteString("[SMP] WARNING: Limine MP response is unavailable; stage 1 is not active.\n");
++            return;
++        }
++
++        ulong cpuCount = response->CpuCount;
++        Serial.WriteString("[SMP] Limine MP response: ");
++        Serial.WriteNumber(cpuCount);
++        Serial.WriteString(" logical CPU(s), BSP LAPIC=");
++        Serial.WriteNumber(response->BspLapicId);
++        Serial.WriteString("\n");
++
++        if ((response->Flags & LimineMp.X64ResponseFlagX2Apic) != 0)
++        {
++            Serial.WriteString("[SMP] WARNING: Limine enabled x2APIC although stage 1 requested xAPIC mode.\n");
++        }
++
++        if (cpuCount == 0)
++        {
++            Serial.WriteString("[SMP] WARNING: Limine MP returned zero CPUs.\n");
++            return;
++        }
++
++        if (response->Cpus == null)
++        {
++            Serial.WriteString("[SMP] WARNING: Limine MP CPU pointer table is null.\n");
++            return;
++        }
++
++        ulong inspectCount = cpuCount;
++        if (inspectCount > LimineMp.MaxXApicCpuCount)
++        {
++            Serial.WriteString("[SMP] WARNING: CPU count exceeds the xAPIC address space; inspecting first 256 entries only.\n");
++            inspectCount = LimineMp.MaxXApicCpuCount;
++        }
++
++        bool bspSeen = false;
++        bool duplicateLapicSeen = false;
++
++        for (ulong i = 0; i < inspectCount; i++)
++        {
++            LimineMpInfoX64* cpu = response->Cpus[i];
++            if (cpu == null)
++            {
++                Serial.WriteString("[SMP] WARNING: null CPU descriptor at index ");
++                Serial.WriteNumber(i);
++                Serial.WriteString("\n");
++                continue;
++            }
++
++            bool isBsp = cpu->LapicId == response->BspLapicId;
++            bspSeen |= isBsp;
++
++            for (ulong j = 0; j < i; j++)
++            {
++                LimineMpInfoX64* previous = response->Cpus[j];
++                if (previous != null && previous->LapicId == cpu->LapicId)
++                {
++                    duplicateLapicSeen = true;
++                    break;
++                }
++            }
++
++            Serial.WriteString("[SMP] CPU[");
++            Serial.WriteNumber(i);
++            Serial.WriteString("] processor=");
++            Serial.WriteNumber(cpu->ProcessorId);
++            Serial.WriteString(" LAPIC=");
++            Serial.WriteNumber(cpu->LapicId);
++            if (isBsp)
++            {
++                Serial.WriteString(" BSP");
++            }
++            Serial.WriteString("\n");
++        }
++
++        if (!bspSeen)
++        {
++            Serial.WriteString("[SMP] WARNING: BSP LAPIC ID is missing from the Limine CPU table.\n");
++        }
++        if (duplicateLapicSeen)
++        {
++            Serial.WriteString("[SMP] WARNING: duplicate LAPIC IDs detected in the Limine CPU table.\n");
++        }
++
++        var madtInfo = AcpiMadt.GetMadtInfoPtr();
++        uint madtCpuCount = madtInfo != null ? madtInfo->CpuCount : 1;
++        if ((ulong)madtCpuCount != cpuCount)
++        {
++            Serial.WriteString("[SMP] WARNING: Limine/MADT CPU-count mismatch: Limine=");
++            Serial.WriteNumber(cpuCount);
++            Serial.WriteString(" MADT=");
++            Serial.WriteNumber(madtCpuCount);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[SMP] Stage 1 OK: topology discovered; APs remain parked.\n");
++    }
++
+     public ITimerDevice CreateTimer()
+     {
+         if (!CosmosFeatures.TimerEnabled)
