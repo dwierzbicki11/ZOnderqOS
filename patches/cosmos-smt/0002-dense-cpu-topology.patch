@@ -1,72 +1,65 @@
 diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
-index 6cfd0d1..c68ca20 100644
 --- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
 +++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
 @@ -84,6 +84,7 @@ internal class X64PlatformInitializer : IPlatformInitializer
          // Stage-1 SMP proof: validate the bootloader MP response while every
          // application processor is still parked inside Limine.
          DisplayLimineMpInfo();
-+        BuildDenseCpuMap();
++        SmpCpuTopology.BuildDenseCpuMap();
  
          // Initialize APIC
          Serial.WriteString("[X64HAL] Initializing APIC...\n");
-@@ -132,6 +133,106 @@ internal class X64PlatformInitializer : IPlatformInitializer
-         }
-     }
- 
-+    private static unsafe void BuildDenseCpuMap()
+diff --git a/src/Cosmos.Kernel.HAL.X64/SmpCpuTopology.cs b/src/Cosmos.Kernel.HAL.X64/SmpCpuTopology.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Cosmos.Kernel.HAL.X64/SmpCpuTopology.cs
+@@ -0,0 +1,169 @@
++using Cosmos.Kernel.Boot.Limine;
++using Cosmos.Kernel.Core;
++
++namespace Cosmos.Kernel.HAL.X64;
++
++/// <summary>
++/// Stage-2 SMP topology builder.
++///
++/// Limine exposes hardware LAPIC IDs, but those IDs are not guaranteed to be
++/// dense or suitable as scheduler-array indexes. This stage assigns every
++/// Limine CPU descriptor a stable dense CpuId through ExtraArgument while all
++/// APs are still parked.
++/// </summary>
++internal static unsafe class SmpCpuTopology
++{
++    public static void BuildDenseCpuMap()
 +    {
 +        LimineMpResponseX64* response = LimineMp.X64Response;
-+        if (response == null || response->Cpus == null || response->CpuCount == 0 ||
-+            response->CpuCount > LimineMp.MaxXApicCpuCount)
++        if (!TryValidateResponse(response, out LimineMpInfoX64* bsp))
 +        {
-+            Serial.WriteString("[SMP] WARNING: cannot build dense CPU map from invalid MP response.\n");
 +            return;
 +        }
 +
++        ulong cpuCount = response->CpuCount;
 +        Serial.WriteString("[SMP] Dense CPU map: ");
-+        Serial.WriteNumber(response->CpuCount);
++        Serial.WriteNumber(cpuCount);
 +        Serial.WriteString(" logical CPU(s)\n");
 +
-+        // CpuId 0 is always the BSP. This keeps the existing single-CPU
-+        // scheduler/runtime state attached to CPU0 while SMP grows.
-+        ulong denseId = 0;
-+        LimineMpInfoX64* bsp = null;
-+        for (ulong i = 0; i < response->CpuCount; i++)
++        bsp->ExtraArgument = 0;
++        WriteMapping(0, bsp, true);
++
++        ulong nextCpuId = 1;
++        for (ulong i = 0; i < cpuCount; i++)
 +        {
 +            LimineMpInfoX64* cpu = response->Cpus[i];
-+            if (cpu != null && cpu->LapicId == response->BspLapicId)
++            if (cpu == bsp)
 +            {
-+                bsp = cpu;
-+                break;
-+            }
-+        }
-+
-+        if (bsp == null)
-+        {
-+            Serial.WriteString("[SMP] WARNING: BSP missing while building dense CPU map.\n");
-+            return;
-+        }
-+
-+        AssignDenseCpu(denseId++, bsp, true);
-+
-+        // APs get contiguous scheduler IDs in Limine descriptor order. LAPIC
-+        // IDs remain hardware metadata and are never scheduler array indexes.
-+        for (ulong i = 0; i < response->CpuCount; i++)
-+        {
-+            LimineMpInfoX64* cpu = response->Cpus[i];
-+            if (cpu == null || cpu == bsp)
 +                continue;
-+            AssignDenseCpu(denseId++, cpu, false);
++            }
++
++            cpu->ExtraArgument = nextCpuId;
++            WriteMapping(nextCpuId, cpu, false);
++            nextCpuId++;
 +        }
 +
-+        if (denseId != response->CpuCount)
-+        {
-+            Serial.WriteString("[SMP] WARNING: dense CPU map size differs from MP CPU count.\n");
-+            return;
-+        }
-+
-+        if (!ValidateDenseCpuMap(response))
++        if (nextCpuId != cpuCount || !ValidateAssignedMap(response))
 +        {
 +            Serial.WriteString("[SMP] WARNING: dense CPU map validation failed.\n");
 +            return;
@@ -76,45 +69,117 @@ index 6cfd0d1..c68ca20 100644
 +        Serial.WriteString("[SMP] Stage 2 complete: dense CPU map ready; APs remain parked.\n");
 +    }
 +
-+    private static unsafe void AssignDenseCpu(ulong cpuId, LimineMpInfoX64* cpu, bool bsp)
++    private static bool TryValidateResponse(
++        LimineMpResponseX64* response,
++        out LimineMpInfoX64* bsp)
 +    {
-+        // Limine reserves ExtraArgument for the kernel. Stage 3 will receive
-+        // this descriptor directly at AP entry, avoiding CPUID in hot paths.
-+        cpu->ExtraArgument = cpuId;
++        bsp = null;
 +
-+        Serial.WriteString("[SMP] CpuId[");
-+        Serial.WriteNumber(cpuId);
-+        Serial.WriteString("] LAPIC=");
-+        Serial.WriteNumber(cpu->LapicId);
-+        Serial.WriteString(" processor=");
-+        Serial.WriteNumber(cpu->ProcessorId);
-+        if (bsp)
-+            Serial.WriteString(" BSP");
-+        Serial.WriteString("\n");
-+    }
++        if (response == null ||
++            response->Cpus == null ||
++            response->CpuCount == 0 ||
++            response->CpuCount > LimineMp.MaxXApicCpuCount)
++        {
++            Serial.WriteString("[SMP] WARNING: cannot build dense CPU map from invalid MP response.\n");
++            return false;
++        }
 +
-+    private static unsafe bool ValidateDenseCpuMap(LimineMpResponseX64* response)
-+    {
-+        for (ulong i = 0; i < response->CpuCount; i++)
++        ulong cpuCount = response->CpuCount;
++        uint bspLapicId = response->BspLapicId;
++        ulong bspMatches = 0;
++
++        for (ulong i = 0; i < cpuCount; i++)
 +        {
 +            LimineMpInfoX64* cpu = response->Cpus[i];
-+            if (cpu == null || cpu->ExtraArgument >= response->CpuCount)
++            if (cpu == null)
++            {
++                Serial.WriteString("[SMP] WARNING: null CPU descriptor while building dense CPU map.\n");
 +                return false;
++            }
 +
-+            if (cpu->LapicId == response->BspLapicId && cpu->ExtraArgument != 0)
-+                return false;
++            if (cpu->LapicId == bspLapicId)
++            {
++                bsp = cpu;
++                bspMatches++;
++            }
 +
 +            for (ulong j = 0; j < i; j++)
 +            {
-+                LimineMpInfoX64* previous = response->Cpus[j];
-+                if (previous != null && previous->ExtraArgument == cpu->ExtraArgument)
++                if (response->Cpus[j]->LapicId == cpu->LapicId)
++                {
++                    Serial.WriteString("[SMP] WARNING: duplicate LAPIC ID while building dense CPU map.\n");
 +                    return false;
++                }
++            }
++        }
++
++        if (bspMatches != 1 || bsp == null)
++        {
++            Serial.WriteString("[SMP] WARNING: dense CPU map requires exactly one BSP descriptor.\n");
++            return false;
++        }
++
++        return true;
++    }
++
++    private static bool ValidateAssignedMap(LimineMpResponseX64* response)
++    {
++        int cpuCount = (int)response->CpuCount;
++        byte* seen = stackalloc byte[cpuCount];
++
++        for (int i = 0; i < cpuCount; i++)
++        {
++            seen[i] = 0;
++        }
++
++        for (ulong i = 0; i < response->CpuCount; i++)
++        {
++            LimineMpInfoX64* cpu = response->Cpus[i];
++            ulong cpuId = cpu->ExtraArgument;
++
++            if (cpuId >= response->CpuCount)
++            {
++                return false;
++            }
++
++            if (seen[(int)cpuId] != 0)
++            {
++                return false;
++            }
++
++            seen[(int)cpuId] = 1;
++
++            if (cpu->LapicId == response->BspLapicId && cpuId != 0)
++            {
++                return false;
++            }
++        }
++
++        for (int i = 0; i < cpuCount; i++)
++        {
++            if (seen[i] == 0)
++            {
++                return false;
 +            }
 +        }
 +
 +        return true;
 +    }
 +
-     private static unsafe void DisplayLimineMpInfo()
-     {
-         LimineMpResponseX64* response = LimineMp.X64Response;
++    private static void WriteMapping(ulong cpuId, LimineMpInfoX64* cpu, bool isBsp)
++    {
++        Serial.WriteString("[SMP] CpuId[");
++        Serial.WriteNumber(cpuId);
++        Serial.WriteString("] LAPIC=");
++        Serial.WriteNumber(cpu->LapicId);
++        Serial.WriteString(" processor=");
++        Serial.WriteNumber(cpu->ProcessorId);
++
++        if (isBsp)
++        {
++            Serial.WriteString(" BSP");
++        }
++
++        Serial.WriteString("\n");
++    }
++}
