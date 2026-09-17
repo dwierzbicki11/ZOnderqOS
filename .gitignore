@@ -1,11 +1,9 @@
 # .NET / Cosmos build outputs
 bin/
 obj/
-output-*/
 
 # Disk / VM images
 *.img
-*.iso
 *.vmdk
 *.qcow2
 *.raw
