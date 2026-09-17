@@ -10,7 +10,7 @@ index 6cfd0d1..c68ca20 100644
  
          // Initialize APIC
          Serial.WriteString("[X64HAL] Initializing APIC...\n");
-@@ -132,6 +133,108 @@ internal class X64PlatformInitializer : IPlatformInitializer
+@@ -132,6 +133,107 @@ internal class X64PlatformInitializer : IPlatformInitializer
          }
      }
  
