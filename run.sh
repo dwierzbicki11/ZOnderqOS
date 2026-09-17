@@ -45,6 +45,14 @@ cleanup_generated_tracked_changes() {
     fi
 }
 
+cleanup_generated_untracked_cache() {
+    # Te katalogi sa w 100% generowane przez restore. Nie moga byc traktowane
+    # jako recznie dodane .props/.targets przez check_untracked_build_inputs().
+    rm -rf \
+        "$ROOT_DIR/.nuget/smt-local-packages" \
+        "$ROOT_DIR/.nuget/arm64-packages"
+}
+
 is_cosmos_checkout() {
     local path="$1"
     [[ -d "$path" ]] || return 1
@@ -96,11 +104,72 @@ resolve_cosmos_root() {
     printf '%s\n' "$(cd "$sibling" && pwd)"
 }
 
+install_cosmos_wrapper() {
+    local real_cosmos
+    real_cosmos="$(type -P cosmos 2>/dev/null || true)"
+    [[ -n "$real_cosmos" ]] || return 0
+
+    export ZONDERQ_REAL_COSMOS="$real_cosmos"
+    export ZONDERQ_ROOT_DIR="$ROOT_DIR"
+
+    cosmos() {
+        local arg
+        local previous=""
+        local arm64_build=0
+        local package_cache
+
+        for arg in "$@"; do
+            if [[ ( "$previous" == "-a" || "$previous" == "--architecture" ) && "$arg" == "arm64" ]]; then
+                arm64_build=1
+            fi
+            if [[ "$arg" == "--architecture=arm64" ]]; then
+                arm64_build=1
+            fi
+            previous="$arg"
+        done
+
+        if (( arm64_build )); then
+            if ! command -v dotnet >/dev/null 2>&1; then
+                echo "[BLAD] Brak dotnet w PATH wymagany do ARM64 restore." >&2
+                return 1
+            fi
+
+            package_cache="$ZONDERQ_ROOT_DIR/.nuget/arm64-packages"
+            rm -rf "$package_cache"
+            mkdir -p "$package_cache"
+
+            echo "[ARM64] Wymuszam czysty restore linux-arm64 / CosmosArch=arm64..."
+            NUGET_PACKAGES="$package_cache" dotnet restore "$ZONDERQ_ROOT_DIR/ZonderqOS.csproj" \
+                -r linux-arm64 \
+                -p:CosmosArch=arm64 \
+                --force \
+                --no-cache || return $?
+
+            if [[ ! -d "$package_cache/cosmos.kernel.hal.arm64/3.0.85" ]]; then
+                echo "[BLAD] Restore ARM64 nie pobral Cosmos.Kernel.HAL.ARM64 3.0.85." >&2
+                return 1
+            fi
+            if [[ ! -d "$package_cache/cosmos.kernel.native.arm64/3.0.85" ]]; then
+                echo "[BLAD] Restore ARM64 nie pobral Cosmos.Kernel.Native.ARM64 3.0.85." >&2
+                return 1
+            fi
+
+            export NUGET_PACKAGES="$package_cache"
+        fi
+
+        "$ZONDERQ_REAL_COSMOS" "$@"
+    }
+
+    export -f cosmos
+}
+
 cleanup_generated_tracked_changes
+cleanup_generated_untracked_cache
 
 cosmos_root="$(resolve_cosmos_root)" || exit $?
 [[ -n "$cosmos_root" ]] || fail "Nie udalo sie ustalic katalogu Cosmos."
 export ZONDERQ_COSMOS_SOURCE_ROOT="$cosmos_root"
 echo "[SMT] Cosmos source: $ZONDERQ_COSMOS_SOURCE_ROOT"
 
+install_cosmos_wrapper
 exec bash "$ROOT_DIR/run-core.sh" "$@"
