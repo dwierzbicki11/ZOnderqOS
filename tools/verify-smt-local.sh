@@ -65,8 +65,8 @@ PACKAGE_CACHE="$ROOT_DIR/.nuget/smt-local-packages"
 ISO="$ROOT_DIR/output-x64/ZonderqOS.iso"
 
 echo "[SMT-LOCAL] Cosmos verify worktree: $COSMOS_ROOT"
-echo "[SMT-LOCAL] 1/4: preflight + Stage 1..13 + lokalne paczki Cosmos"
-bash "$ROOT_DIR/tools/prepare-cosmos-smt.sh" --through-stage 13
+echo "[SMT-LOCAL] 1/4: preflight + Stage 1..14 + lokalne paczki Cosmos"
+bash "$ROOT_DIR/tools/prepare-cosmos-smt.sh" --through-stage 14
 
 [[ -d "$PACKAGE_FEED" ]] || fail "Brak lokalnego feedu Cosmos: $PACKAGE_FEED"
 
@@ -113,15 +113,15 @@ rm -rf "$ROOT_DIR/obj" "$ROOT_DIR/bin" "$ROOT_DIR/output-x64"
 NUGET_PACKAGES="$PACKAGE_CACHE" cosmos build -a x64 -v
 [[ -s "$ISO" ]] || fail "Build nie utworzył ISO: $ISO"
 
-echo "[SMT-LOCAL] 4/4: QEMU Stage 13 — single CPU regression"
-STAGE13_QEMU_CPU_MODEL=Nehalem STAGE13_QEMU_SOCKETS=1 STAGE13_QEMU_CPUS=1 STAGE13_QEMU_CORES=1 STAGE13_QEMU_THREADS=1 STAGE13_QEMU_TIMEOUT_SECONDS=90 STAGE13_QEMU_STABLE_SECONDS=30 bash "$ROOT_DIR/tools/smoke-stage13-qemu.sh" "$ISO" "$ROOT_DIR/stage13-local-1cpu.log"
+echo "[SMT-LOCAL] 4/4: QEMU Stage 14 — single CPU regression"
+STAGE14_QEMU_CPU_MODEL=Nehalem STAGE14_QEMU_SOCKETS=1 STAGE14_QEMU_CPUS=1 STAGE14_QEMU_CORES=1 STAGE14_QEMU_THREADS=1 STAGE14_QEMU_TIMEOUT_SECONDS=90 STAGE14_QEMU_STABLE_SECONDS=30 bash "$ROOT_DIR/tools/smoke-stage14-qemu.sh" "$ISO" "$ROOT_DIR/stage14-local-1cpu.log"
 
-echo "[SMT-LOCAL] 4/4: QEMU Stage 13 — 4C/2T SMT"
-STAGE13_QEMU_CPU_MODEL=Nehalem STAGE13_QEMU_SOCKETS=1 STAGE13_QEMU_CPUS=8 STAGE13_QEMU_CORES=4 STAGE13_QEMU_THREADS=2 STAGE13_QEMU_TIMEOUT_SECONDS=90 STAGE13_QEMU_STABLE_SECONDS=30 bash "$ROOT_DIR/tools/smoke-stage13-qemu.sh" "$ISO" "$ROOT_DIR/stage13-local-8cpu.log"
+echo "[SMT-LOCAL] 4/4: QEMU Stage 14 — 4C/2T SMT"
+STAGE14_QEMU_CPU_MODEL=Nehalem STAGE14_QEMU_SOCKETS=1 STAGE14_QEMU_CPUS=8 STAGE14_QEMU_CORES=4 STAGE14_QEMU_THREADS=2 STAGE14_QEMU_TIMEOUT_SECONDS=90 STAGE14_QEMU_STABLE_SECONDS=30 bash "$ROOT_DIR/tools/smoke-stage14-qemu.sh" "$ISO" "$ROOT_DIR/stage14-local-8cpu.log"
 
 echo
-echo "[SMT-LOCAL][PASS] Stage 1..13 działa lokalnie w realnym ISO/QEMU."
-echo "[SMT-LOCAL][PASS] 1C/1T regression + 4C/2T SMT przeszły przez per-CPU scheduler foundation bez panic/triple fault/SMP warning."
+echo "[SMT-LOCAL][PASS] Stage 1..14 działa lokalnie w realnym ISO/QEMU."
+echo "[SMT-LOCAL][PASS] 1C/1T regression + 4C/2T SMT przeszły przez managed AP/OrionGC residency bez panic/triple fault/SMP warning."
 echo "[SMT-LOCAL] Logi:"
-echo "  $ROOT_DIR/stage13-local-1cpu.log"
-echo "  $ROOT_DIR/stage13-local-8cpu.log"
+echo "  $ROOT_DIR/stage14-local-1cpu.log"
+echo "  $ROOT_DIR/stage14-local-8cpu.log"

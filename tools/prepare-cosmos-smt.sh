@@ -100,6 +100,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 11
   bash tools/prepare-cosmos-smt.sh --through-stage 12
   bash tools/prepare-cosmos-smt.sh --through-stage 13
+  bash tools/prepare-cosmos-smt.sh --through-stage 14
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -378,4 +379,8 @@ elif (( SELECTED_STAGE == 13 )); then
     echo "[SMT] Etap 13 wykonuje jednorazowy handshake per-CPU z juz zainicjalizowanym schedulerem."
     echo "[SMT] BSP wykonuje enter/leave na kazdym PerCpuState, a kazdy AP waliduje swoja tozsamosc CPU-local i wraca do native HLT."
     echo "[SMT] Nie jest to jeszcze pelny scheduler SMP, migracja watkow ani preempcja."
+elif (( SELECTED_STAGE == 14 )); then
+    echo "[SMT] Etap 14 utrzymuje AP-y w alokacji-bezplatnej petli managed z wlaczonymi przerwaniami."
+    echo "[SMT] Prawdziwy OrionGC zatrzymuje i wznawia te konteksty przez IPI 0xF3, a heartbeat potwierdza dalsze wykonanie po GC."
+    echo "[SMT] AP-y wracaja potem do native HLT; managed Thread, dispatch, migracja i preempcja nadal nie sa wlaczone."
 fi
