@@ -249,7 +249,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
  
      mov r12, rdi
      mov r13, rsi
-@@ -1226,4 +1227,210 @@ GC_STATE_GETTER _native_x64_get_gc_saved_rflags, 48, 8
+@@ -1226,4 +1227,212 @@ GC_STATE_GETTER _native_x64_get_gc_saved_rflags, 48, 8
  
 +// long _native_x64_gc_stop_world()
 +// Returns 0 before SMP is active / on a single CPU, a positive rendezvous
@@ -261,14 +261,16 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    push r13
 +    push r14
 +    push r15
-+    mov r14, qword ptr [rip + _smp_gc_timeout_tsc_ticks]
-+    test r14, r14
-+    jz .Lgc_runtime_stop_invalid
 +    mov r12, qword ptr [rip + _smp_cpu_count]
++    // Before Stage 4 publishes the topology (count=0), and on a real
++    // single-CPU system, there is nobody else to stop.
 +    cmp r12, 1
 +    jbe .Lgc_runtime_stop_single
 +    cmp r12, 256
 +    ja .Lgc_runtime_stop_invalid
++    mov r14, qword ptr [rip + _smp_gc_timeout_tsc_ticks]
++    test r14, r14
++    jz .Lgc_runtime_stop_invalid
 +    cmp dword ptr gs:[0], 0
 +    jne .Lgc_runtime_stop_invalid
 +
