@@ -15,11 +15,47 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - cpus: 1
+          - name: single
+            cpu_model: qemu64
+            sockets: 1
+            cpus: 1
             cores: 1
             threads: 1
-          - cpus: 8
+          - name: nehalem-ht
+            cpu_model: Nehalem
+            sockets: 1
+            cpus: 8
             cores: 4
+            threads: 2
+          - name: sandybridge-ht
+            cpu_model: SandyBridge
+            sockets: 1
+            cpus: 8
+            cores: 4
+            threads: 2
+          - name: haswell-ht
+            cpu_model: Haswell
+            sockets: 1
+            cpus: 8
+            cores: 4
+            threads: 2
+          - name: skylake-ht
+            cpu_model: Skylake-Client
+            sockets: 1
+            cpus: 8
+            cores: 4
+            threads: 2
+          - name: cascadelake-ht
+            cpu_model: Cascadelake-Server
+            sockets: 1
+            cpus: 16
+            cores: 8
+            threads: 2
+          - name: epyc-rome-smt
+            cpu_model: EPYC-Rome
+            sockets: 1
+            cpus: 16
+            cores: 8
             threads: 2
     steps:
       - uses: actions/checkout@v4
@@ -87,6 +123,8 @@ jobs:
       - name: QEMU dense-map smoke
         working-directory: zonderq
         env:
+          STAGE02_QEMU_CPU_MODEL: ${{ matrix.cpu_model }}
+          STAGE02_QEMU_SOCKETS: ${{ matrix.sockets }}
           STAGE02_QEMU_CPUS: ${{ matrix.cpus }}
           STAGE02_QEMU_CORES: ${{ matrix.cores }}
           STAGE02_QEMU_THREADS: ${{ matrix.threads }}
@@ -101,7 +139,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: stage02-diagnostics-${{ matrix.cpus }}cpu
+          name: stage02-diagnostics-${{ matrix.name }}-${{ matrix.cpus }}cpu
           if-no-files-found: ignore
           path: |
             zonderq/stage02-restore.log
