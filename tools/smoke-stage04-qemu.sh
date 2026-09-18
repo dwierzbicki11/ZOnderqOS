@@ -112,8 +112,13 @@ for marker in required:
     if lines.count(marker) > 1:
         fail("duplicate bootstrap marker (possible reboot): " + marker)
 
+# Serial output is written by interrupt and managed-runtime paths without a
+# shared line lock.  A timer message can therefore begin after another
+# subsystem's partial line (observed on the 1-vCPU CI run).  Match the complete
+# LAPIC marker anywhere on the physical serial line while retaining the strict
+# numeric and monotonicity checks below.
 ticks = [int(match[1]) for line in lines
-         if (match := re.match(r"\[LAPIC\] Timer tick ([1-9]\d*) ", line))]
+         if (match := re.search(r"\[LAPIC\] Timer tick ([1-9]\d*)\b", line))]
 if any(current <= previous for previous, current in zip(ticks, ticks[1:])):
     fail("BSP timer tick count repeated or went backwards (possible reboot)")
 
