@@ -1,0 +1,247 @@
+diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+index eaf3c1d..4a9621f 100644
+--- a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
++++ b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+@@ -52,6 +52,14 @@ internal static unsafe partial class SmpApBootstrap
+     [SuppressGCTransition]
+     private static partial ulong NativeGetWorkCounter(uint cpuId);
+ 
++    [LibraryImport("*", EntryPoint = "_native_x64_run_ap_ipi_test")]
++    [SuppressGCTransition]
++    private static partial int NativeRunApIpiTest(ulong cpuCount, ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_ipi_count")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetIpiCount(uint cpuId);
++
+     internal static bool StartAndParkApplicationProcessors()
+     {
+         LimineMpResponseX64* response = LimineMp.X64Response;
+@@ -195,8 +203,49 @@ internal static unsafe partial class SmpApBootstrap
+ 
+         Serial.WriteString("[SMP] Native work proof complete: ");
+         Serial.WriteNumber((ulong)completed);
+-        Serial.WriteString(" AP worker(s); APs are now parked with interrupts disabled.\n");
++        Serial.WriteString(" AP worker(s); APs are now parked awaiting native fixed IPI.\n");
+         Serial.WriteString("[SMP-TEST] PASS\n");
+         return true;
+     }
++
++    internal static bool RunApplicationProcessorIpiProof()
++    {
++        LimineMpResponseX64* response = LimineMp.X64Response;
++        if (response == null || response->Cpus == null || response->CpuCount == 0 ||
++            response->CpuCount > LimineMp.MaxXApicCpuCount)
++        {
++            Serial.WriteString("[SMP] WARNING: fixed IPI proof has no valid CPU topology.\n");
++            return false;
++        }
++
++        long frequency = X64CpuOps.TscFrequency;
++        ulong timeoutTicks = frequency > 0 ? checked((ulong)frequency * ApReadyTimeoutSeconds) : 5_000_000_000UL;
++        int expected = checked((int)response->CpuCount - 1);
++        int acknowledged = NativeRunApIpiTest(response->CpuCount, timeoutTicks);
++        if (acknowledged != expected)
++        {
++            Serial.WriteString("[SMP] WARNING: fixed IPI acknowledgement timed out or rejected state.\n");
++            return false;
++        }
++
++        for (uint cpuId = 1; cpuId < response->CpuCount; cpuId++)
++        {
++            ulong count = NativeGetIpiCount(cpuId);
++            if (count != 1)
++            {
++                Serial.WriteString("[SMP] WARNING: fixed IPI count mismatch for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString("\n");
++                return false;
++            }
++            Serial.WriteString("[APIC] CPU ");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" fixed IPI ack count=");
++            Serial.WriteNumber(count);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[APIC-TEST] PASS\n");
++        return true;
++    }
+ }
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+index 9a31b5b..1fed060 100644
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -113,6 +113,13 @@ internal class X64PlatformInitializer : IPlatformInitializer
+             Cosmos.Kernel.Core.Panic.Halt("Native application-processor work proof failed.");
+         }
+ 
++        // Stage 6: fixed LAPIC IPI proof. The native handler only increments
++        // per-CPU state and sends EOI; it never enters managed runtime.
++        if (!SmpApBootstrap.RunApplicationProcessorIpiProof())
++        {
++            Cosmos.Kernel.Core.Panic.Halt("Fixed AP IPI proof failed.");
++        }
++
+         // Initialize RTC
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new RTC();
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+index 26330e4..1b7c60c 100644
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -483,6 +483,8 @@ _native_x64_ap_entry:
+     pushfq
+     pop rax
+     mov qword ptr [r14 + 24], rax
++    // Install a private native IDT before publishing READY.
++    call _native_x64_install_ap_ipi_idt
+     mfence
+     mov eax, 1
+     xchg dword ptr [r14 + 0], eax
+@@ -505,7 +507,7 @@ _native_x64_ap_entry:
+     xchg dword ptr [r14 + 48], eax
+ 
+ .Lap_park:
+-    cli
++    sti
+     hlt
+     jmp .Lap_park
+ 
+@@ -535,6 +537,124 @@ AP_STATE_GETTER _native_x64_get_ap_gs_id, 12, 4
+ AP_STATE_GETTER _native_x64_get_ap_stack, 16, 8
+ AP_STATE_GETTER _native_x64_get_ap_rflags, 24, 8
+ AP_STATE_GETTER _native_x64_get_ap_work_counter, 40, 8
++AP_STATE_GETTER _native_x64_get_ap_ipi_count, 56, 8
++
++// APs load a shared native IDT. Vector 0xF1 increments the AP-local mailbox
++// and acknowledges the LAPIC without entering managed runtime.
++_native_x64_install_ap_ipi_idt:
++    lea r8, [rip + _ap_ipi_idt]
++    lea r9, [rip + _native_x64_ap_ipi_handler]
++    mov rax, r9
++    mov word ptr [r8 + 0xF10], ax
++    mov word ptr [r8 + 0xF12], 0x0008
++    mov byte ptr [r8 + 0xF14], 0
++    mov byte ptr [r8 + 0xF15], 0x8E
++    shr rax, 16
++    mov word ptr [r8 + 0xF16], ax
++    shr rax, 16
++    mov dword ptr [r8 + 0xF18], eax
++    mov dword ptr [r8 + 0xF1C], 0
++    lea rax, [rip + _ap_ipi_idtr]
++    mov word ptr [rax], 4095
++    lea rcx, [rip + _ap_ipi_idt]
++    mov qword ptr [rax + 2], rcx
++    lidt [rax]
++    ret
++
++.global _native_x64_ap_ipi_handler
++_native_x64_ap_ipi_handler:
++    push rax
++    push rdx
++    mov eax, dword ptr gs:[0]
++    lea rdx, [rip + _ap_boot_state]
++    shl rax, 6
++    add rdx, rax
++    lock inc qword ptr [rdx + 56]
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    test rax, rax
++    jz .Lap_ipi_handler_return
++    mov dword ptr [rax + 0xB0], 0
++.Lap_ipi_handler_return:
++    pop rdx
++    pop rax
++    iretq
++
++// int _native_x64_run_ap_ipi_test(uint64_t cpuCount, uint64_t timeoutTscTicks)
++.global _native_x64_run_ap_ipi_test
++_native_x64_run_ap_ipi_test:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++    test rdi, rdi
++    jz .Lap_ipi_invalid
++    cmp rdi, 256
++    ja .Lap_ipi_invalid
++    test rsi, rsi
++    jz .Lap_ipi_invalid
++    mov r12, rdi
++    mov r13, rsi
++    call .Lap_read_lapic_base
++    test rax, rax
++    jz .Lap_ipi_invalid
++    mov qword ptr [rip + _native_x64_lapic_base], rax
++    mov ebx, 1
++.Lap_ipi_send_loop:
++    cmp rbx, r12
++    jae .Lap_ipi_success
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 0], 1
++    jne .Lap_ipi_invalid
++    cmp qword ptr [r8 + 56], 0
++    jne .Lap_ipi_invalid
++    mov edx, dword ptr [r8 + 8]
++    mov r15, qword ptr [rip + _native_x64_lapic_base]
++    mov dword ptr [r15 + 0x310], edx
++    mov dword ptr [r15 + 0x300], 0x000040F1
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r15, rax
++.Lap_ipi_wait:
++    cmp qword ptr [r8 + 56], 1
++    je .Lap_ipi_next
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r15
++    cmp rax, r13
++    jb .Lap_ipi_wait
++    mov eax, -1
++    jmp .Lap_ipi_return
++.Lap_ipi_next:
++    inc rbx
++    jmp .Lap_ipi_send_loop
++.Lap_ipi_success:
++    mov eax, r12d
++    dec eax
++    jmp .Lap_ipi_return
++.Lap_ipi_invalid:
++    mov eax, -2
++.Lap_ipi_return:
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++.Lap_read_lapic_base:
++    mov ecx, 0x1B
++    rdmsr
++    shl rdx, 32
++    or rax, rdx
++    and rax, 0xFFFFFFFFFFFFF000
++    ret
++
+ 
+ // int _native_x64_run_ap_work_test(uint64_t cpuCount,
+ //                                  uint64_t timeoutTscTicks)
+@@ -682,6 +802,11 @@ _ap_boot_state: .zero 16384
+ .balign 4096
+ _ap_stacks: .zero 4194304
+ 
++.balign 16
++_ap_ipi_idt: .zero 4096
++_ap_ipi_idtr: .zero 10
++_native_x64_lapic_base: .quad 0
++
+ .data
+ _native_x64_irq_table:
+ .quad irq0_stub
