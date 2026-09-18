@@ -90,6 +90,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 1 --patch-only
   bash tools/prepare-cosmos-smt.sh --through-stage 2
   bash tools/prepare-cosmos-smt.sh --through-stage 3
+  bash tools/prepare-cosmos-smt.sh --through-stage 4
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -334,4 +335,7 @@ elif (( SELECTED_STAGE == 2 )); then
     echo "[SMT] Etap 2 buduje gesty CpuId/APIC map; AP-y nadal pozostaja zaparkowane."
 elif (( SELECTED_STAGE == 3 )); then
     echo "[SMT] Etap 3 wlacza GS-local storage na BSP i weryfikuje pierwszy tick LAPIC; AP-y nadal pozostaja zaparkowane."
+elif (( SELECTED_STAGE == 4 )); then
+    echo "[SMT] Etap 4 uruchamia AP-y w natywnym entry, przydziela osobne stosy i parkuje je po READY."
+    echo "[SMT] Scheduler, przerwania i managed runtime pozostaja wylaczone na AP-ach."
 fi
