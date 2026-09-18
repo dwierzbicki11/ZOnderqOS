@@ -263,8 +263,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
  
      mov r12, rdi
      mov r13, rsi
-@@ -1226,5 +1227,211 @@ GC_STATE_GETTER _native_x64_get_gc_saved_rflags, 48, 8
- GC_STATE_GETTER _native_x64_get_gc_saved_rflags, 48, 8
+@@ -1226,4 +1227,210 @@ GC_STATE_GETTER _native_x64_get_gc_saved_rflags, 48, 8
  
 +// long _native_x64_gc_stop_world(uint64_t timeoutTscTicks)
 +// Returns 0 before SMP is active / on a single CPU, a positive rendezvous
@@ -475,9 +474,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
  // int _native_x64_run_gc_rendezvous_test(uint64_t cpuCount,
  //                                         uint64_t rounds,
  //                                         uint64_t timeoutTscTicks)
-@@ -1603,7 +1807,8 @@ _gc_rendezvous_state: .zero 16384
- // saved_rsp, saved_rip, saved_rflags.
- _gc_rendezvous_state: .zero 16384
+@@ -1603,5 +1807,6 @@ _gc_rendezvous_state: .zero 16384
  _gc_release_epoch: .quad 0
 +_smp_cpu_count: .quad 0
  
