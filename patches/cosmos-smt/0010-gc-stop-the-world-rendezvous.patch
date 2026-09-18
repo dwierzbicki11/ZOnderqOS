@@ -441,7 +441,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
  
  // int _native_x64_run_ap_work_test(uint64_t cpuCount,
  //                                  uint64_t timeoutTscTicks)
-@@ -1269,6 +1603,13 @@ _ap_timer_ticks: .zero 2048
+@@ -1269,5 +1603,12 @@ _ap_timer_ticks: .zero 2048
  _ap_timer_initial_count: .long 0
  
 +.balign 64
