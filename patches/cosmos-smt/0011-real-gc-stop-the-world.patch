@@ -1,18 +1,6 @@
 diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs
 --- a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs
 +++ b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs
-@@ -74,6 +74,11 @@ internal static unsafe partial class GarbageCollector
-     /// </summary>
-     private const uint ReservedHeaderSlotSize = 8;
- 
-+    /// <summary>
-+    /// Maximum time allowed for an x64 SMP GC stop/resume rendezvous.
-+    /// </summary>
-+    private const ulong SmpRendezvousTimeoutSeconds = 5;
-+
-     // --- Static fields ---
- 
-     /// <summary>
 @@ -184,6 +189,16 @@ internal static unsafe partial class GarbageCollector
      /// </summary>
      private static ulong s_deadThreadsNonAllocBytes;
@@ -20,17 +8,17 @@ diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs 
 +#if ARCH_X64
 +    [LibraryImport("*", EntryPoint = "_native_x64_gc_stop_world")]
 +    [SuppressGCTransition]
-+    private static partial long NativeGcStopWorld(ulong timeoutTscTicks);
++    private static partial long NativeGcStopWorld();
 +
 +    [LibraryImport("*", EntryPoint = "_native_x64_gc_resume_world")]
 +    [SuppressGCTransition]
-+    private static partial int NativeGcResumeWorld(ulong epoch, ulong timeoutTscTicks);
++    private static partial int NativeGcResumeWorld(ulong epoch);
 +#endif
 +
      // --- Properties ---
  
      /// <summary>
-@@ -256,66 +272,110 @@ internal static unsafe partial class GarbageCollector
+@@ -256,66 +272,106 @@ internal static unsafe partial class GarbageCollector
              return 0;
          }
  
@@ -57,11 +45,7 @@ diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs 
 -            for (int i = 0; i < NumSizeClasses; i++)
 +#if ARCH_X64
 +            ulong rendezvousEpoch = 0;
-+            ulong rendezvousTimeoutTicks = Stopwatch.Frequency > 0
-+                ? checked((ulong)Stopwatch.Frequency * SmpRendezvousTimeoutSeconds)
-+                : 5_000_000_000UL;
-+
-+            long stopResult = NativeGcStopWorld(rendezvousTimeoutTicks);
++            long stopResult = NativeGcStopWorld();
 +            if (stopResult < 0)
              {
 -                s_freeLists[i] = null;
@@ -170,7 +154,7 @@ diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs 
 +#if ARCH_X64
 +                if (rendezvousEpoch != 0)
 +                {
-+                    int resumed = NativeGcResumeWorld(rendezvousEpoch, rendezvousTimeoutTicks);
++                    int resumed = NativeGcResumeWorld(rendezvousEpoch);
 +                    if (resumed < 0)
 +                    {
 +                        Serial.WriteString("[GC-SMP] ERROR: failed to resume all application processors.\n");
@@ -209,7 +193,7 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Ke
          // Initialize RTC
          Serial.WriteString("[X64HAL] Initializing RTC...\n");
          _rtc = new RTC();
-@@ -188,6 +192,41 @@ internal class X64PlatformInitializer : IPlatformInitializer
+@@ -188,6 +192,42 @@ internal class X64PlatformInitializer : IPlatformInitializer
          }
      }
  
@@ -220,6 +204,7 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Ke
 +            Cosmos.Kernel.Core.Panic.Halt("Stage 11 requires OrionGC to be initialized.");
 +        }
 +
++        Serial.WriteString("[GC-SMP-INTEGRATION] begin\n");
 +        byte[] survivor = new byte[256];
 +        survivor[0] = 0x5A;
 +        survivor[255] = 0xA5;
@@ -254,18 +239,19 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Ke
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-@@ -356,7 +356,8 @@ _native_x64_start_aps:
+@@ -356,7 +356,9 @@ _native_x64_start_aps:
      cmp rsi, 256
      ja .Lap_start_invalid
      test rdx, rdx
      jz .Lap_start_invalid
 +    mov qword ptr [rip + _smp_cpu_count], rsi
++    mov qword ptr [rip + _smp_gc_timeout_tsc_ticks], rdx
  
      mov r12, rdi
      mov r13, rsi
 @@ -1226,4 +1227,210 @@ GC_STATE_GETTER _native_x64_get_gc_saved_rflags, 48, 8
  
-+// long _native_x64_gc_stop_world(uint64_t timeoutTscTicks)
++// long _native_x64_gc_stop_world()
 +// Returns 0 before SMP is active / on a single CPU, a positive rendezvous
 +// epoch after every AP is parked, or a negative error code.
 +.global _native_x64_gc_stop_world
@@ -275,9 +261,9 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    push r13
 +    push r14
 +    push r15
-+    test rdi, rdi
++    mov r14, qword ptr [rip + _smp_gc_timeout_tsc_ticks]
++    test r14, r14
 +    jz .Lgc_runtime_stop_invalid
-+    mov r14, rdi
 +    mov r12, qword ptr [rip + _smp_cpu_count]
 +    cmp r12, 1
 +    jbe .Lgc_runtime_stop_single
@@ -397,7 +383,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    pop rbx
 +    ret
 +
-+// int _native_x64_gc_resume_world(uint64_t epoch, uint64_t timeoutTscTicks)
++// int _native_x64_gc_resume_world(uint64_t epoch)
 +// Releases the APs parked by _native_x64_gc_stop_world and waits until every
 +// AP has returned through IRETQ to its previous native idle context.
 +.global _native_x64_gc_resume_world
@@ -408,10 +394,10 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    push r14
 +    test rdi, rdi
 +    jz .Lgc_runtime_resume_single
-+    test rsi, rsi
-+    jz .Lgc_runtime_resume_invalid
 +    mov r13, rdi
-+    mov r14, rsi
++    mov r14, qword ptr [rip + _smp_gc_timeout_tsc_ticks]
++    test r14, r14
++    jz .Lgc_runtime_resume_invalid
 +    mov r12, qword ptr [rip + _smp_cpu_count]
 +    cmp r12, 1
 +    jbe .Lgc_runtime_resume_single
@@ -474,9 +460,10 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
  // int _native_x64_run_gc_rendezvous_test(uint64_t cpuCount,
  //                                         uint64_t rounds,
  //                                         uint64_t timeoutTscTicks)
-@@ -1603,5 +1807,6 @@ _gc_rendezvous_state: .zero 16384
+@@ -1603,5 +1807,7 @@ _gc_rendezvous_state: .zero 16384
  _gc_release_epoch: .quad 0
 +_smp_cpu_count: .quad 0
++_smp_gc_timeout_tsc_ticks: .quad 0
  
  .data
  _native_x64_irq_table:
