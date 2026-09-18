@@ -132,13 +132,14 @@ index 26330e4..071897f 100644
 +_native_x64_install_ap_ipi_idt:
 +    lea r8, [rip + _ap_ipi_idt]
 +    lea r9, [rip + _native_x64_ap_ipi_handler]
-+    mov rax, r9
-+    mov word ptr [r8 + 0xF10], ax
++    mov r10, r9
++    mov word ptr [r8 + 0xF10], r10w
 +    xor eax, eax
 +    mov ax, cs
 +    mov word ptr [r8 + 0xF12], ax
 +    mov byte ptr [r8 + 0xF14], 0
 +    mov byte ptr [r8 + 0xF15], 0x8E
++    mov rax, r10
 +    shr rax, 16
 +    mov word ptr [r8 + 0xF16], ax
 +    shr rax, 16
