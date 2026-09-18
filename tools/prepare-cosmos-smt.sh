@@ -376,6 +376,6 @@ elif (( SELECTED_STAGE == 12 )); then
     echo "[SMT] BSP waliduje wynik oraz brak pozostalej komendy; scheduler i managed Thread nadal nie sa wlaczane na AP-ach."
 elif (( SELECTED_STAGE == 13 )); then
     echo "[SMT] Etap 13 wykonuje jednorazowy handshake per-CPU z juz zainicjalizowanym schedulerem."
-    echo "[SMT] Kazdy AP waliduje wlasny PerCpuState, wykonuje enter/leave i wraca do native HLT."
+    echo "[SMT] BSP wykonuje enter/leave na kazdym PerCpuState, a kazdy AP waliduje swoja tozsamosc CPU-local i wraca do native HLT."
     echo "[SMT] Nie jest to jeszcze pelny scheduler SMP, migracja watkow ani preempcja."
 fi

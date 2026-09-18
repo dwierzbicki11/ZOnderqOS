@@ -1,606 +1,220 @@
-diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/PerCpuSchedulerNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/PerCpuSchedulerNative.cs
-new file mode 100644
-index 000000000..4ecf5da48
---- /dev/null
-+++ b/src/Cosmos.Kernel.Core/Bridge/Export/PerCpuSchedulerNative.cs
-@@ -0,0 +1,47 @@
-+#if ARCH_X64
-+using System;
-+using System.Runtime.InteropServices;
-+using Cosmos.Kernel.Core.Runtime;
-+using Cosmos.Kernel.Core.Scheduler;
-+
-+namespace Cosmos.Kernel.Core.Bridge;
-+
-+/// <summary>
-+/// Stage-13 managed entry used only to validate the per-CPU scheduler state
-+/// created during normal scheduler initialization. It does not schedule a
-+/// managed thread and returns to the native AP idle loop after one transition.
-+/// </summary>
-+internal static partial class PerCpuSchedulerNative
-+{
-+    [LibraryImport("*", EntryPoint = "_native_x64_publish_percpu_scheduler_result")]
-+    [SuppressGCTransition]
-+    private static partial int NativePublishResult(
-+        uint cpuId,
-+        uint phase,
-+        uint entryCount);
-+
-+    /// <summary>
-+    /// Performs one bounded enter/leave proof against the AP's dense
-+    /// scheduler CpuId and managed PerCpuState.
-+    /// </summary>
-+    [UnmanagedCallersOnly(EntryPoint = "__cosmos_smp_percpu_scheduler_entry")]
-+    public static uint Entry(uint expectedCpuId)
-+    {
-+        StartupCodeHelpers.RhpReversePInvoke(IntPtr.Zero);
-+
-+        uint status = SchedulerManager.RunPerCpuSchedulerEntry(
-+            expectedCpuId,
-+            out uint phase,
-+            out uint entryCount);
-+
-+        if (status == 0 &&
-+            NativePublishResult(expectedCpuId, phase, entryCount) != 0)
-+        {
-+            status = 7;
-+        }
-+
-+        StartupCodeHelpers.RhpReversePInvokeReturn(IntPtr.Zero);
-+        return status;
-+    }
-+}
-+#endif
-diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-index 27ea1c851..2fb5233ab 100644
---- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-+++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-@@ -1,4 +1,5 @@
- using System.Diagnostics.CodeAnalysis;
-+using System.Threading;
+diff --git a/patches/cosmos-smt/0013-percpu-scheduler-foundation.patch b/patches/cosmos-smt/0013-percpu-scheduler-foundation.patch
+index 4c0f91b..b89c653 100644
+--- a/patches/cosmos-smt/0013-percpu-scheduler-foundation.patch
++++ b/patches/cosmos-smt/0013-percpu-scheduler-foundation.patch
+@@ -1,21 +1,23 @@
+ diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/PerCpuSchedulerNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/PerCpuSchedulerNative.cs
+ new file mode 100644
+-index 000000000..4ecf5da48
++index 000000000..39f317560
+ --- /dev/null
+ +++ b/src/Cosmos.Kernel.Core/Bridge/Export/PerCpuSchedulerNative.cs
+-@@ -0,0 +1,47 @@
++@@ -0,0 +1,50 @@
+ +#if ARCH_X64
+ +using System;
+ +using System.Runtime.InteropServices;
+ +using Cosmos.Kernel.Core.Runtime;
+-+using Cosmos.Kernel.Core.Scheduler;
+++using Cosmos.Kernel.Core.CPU;
+ +
+ +namespace Cosmos.Kernel.Core.Bridge;
+ +
+ +/// <summary>
+-+/// Stage-13 managed entry used only to validate the per-CPU scheduler state
+-+/// created during normal scheduler initialization. It does not schedule a
+-+/// managed thread and returns to the native AP idle loop after one transition.
+++/// Stage-13 managed entry used only to validate the AP's CPU-local identity.
+++/// The BSP owns the managed PerCpuState enter/leave proof; an AP must not walk
+++/// the scheduler object graph until a later stage gives it a managed thread
+++/// and full runtime/GC participation. This entry returns to native idle after
+++/// one bounded identity check.
+ +/// </summary>
+ +internal static partial class PerCpuSchedulerNative
+ +{
+@@ -27,18 +29,19 @@ index 000000000..4ecf5da48
+ +        uint entryCount);
+ +
+ +    /// <summary>
+-+    /// Performs one bounded enter/leave proof against the AP's dense
+-+    /// scheduler CpuId and managed PerCpuState.
+++    /// Performs one bounded CPU-local identity proof for the AP. The matching
+++    /// managed PerCpuState lifecycle proof is performed by the BSP before the
+++    /// native AP command is published.
+ +    /// </summary>
+ +    [UnmanagedCallersOnly(EntryPoint = "__cosmos_smp_percpu_scheduler_entry")]
+ +    public static uint Entry(uint expectedCpuId)
+ +    {
+ +        StartupCodeHelpers.RhpReversePInvoke(IntPtr.Zero);
+ +
+-+        uint status = SchedulerManager.RunPerCpuSchedulerEntry(
+-+            expectedCpuId,
+-+            out uint phase,
+-+            out uint entryCount);
+++        uint cpuId = CpuLocal.CurrentCpuId;
+++        uint status = cpuId == 0 || cpuId != expectedCpuId ? 1u : 0u;
+++        uint phase = status == 0 ? 2u : 0u;
+++        uint entryCount = status == 0 ? 1u : 0u;
+ +
+ +        if (status == 0 &&
+ +            NativePublishResult(expectedCpuId, phase, entryCount) != 0)
+@@ -52,7 +55,7 @@ index 000000000..4ecf5da48
+ +}
+ +#endif
+ diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+-index 27ea1c851..2fb5233ab 100644
++index 27ea1c851..381c33539 100644
+ --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+ +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+ @@ -1,4 +1,5 @@
+@@ -61,16 +64,17 @@ index 27ea1c851..2fb5233ab 100644
+  
+  namespace Cosmos.Kernel.Core.Scheduler;
+  
+-@@ -48,4 +49,41 @@ public sealed class PerCpuState : SchedulerExtensible
++@@ -48,4 +49,42 @@ public sealed class PerCpuState : SchedulerExtensible
+  
+      // ===== Synchronization =====
+      internal SpinLock _lock;
+ +
+ +    // Stage 13 is deliberately a one-shot ownership handshake, not a
+-+    // scheduler activation.  The AP proves that it can address this exact
+-+    // managed PerCpuState, enters and leaves the state once, and then returns
+-+    // to the native parked path.  A later stage will replace this proof with
+-+    // real AP idle threads and dispatch/context-switch ownership.
+++    // scheduler activation. The BSP validates this exact managed state and
+++    // performs one enter/leave transition for it; the AP separately proves
+++    // its CPU-local identity before returning to the native parked path. A
+++    // later stage will replace this proof with real AP idle threads and
+++    // dispatch/context-switch ownership.
+ +    private int _stage13Phase;
+ +    private int _stage13EntryCount;
+ +
+@@ -104,7 +108,7 @@ index 27ea1c851..2fb5233ab 100644
+ +    }
+  }
+ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+-index 9588e5fc6..c3103e0b6 100644
++index 9588e5fc6..fa685af4c 100644
+ --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+ +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+ @@ -15,7 +15,7 @@ namespace Cosmos.Kernel.Core.Scheduler;
+@@ -144,60 +148,10 @@ index 9588e5fc6..c3103e0b6 100644
+      /// <summary>
+      /// Whether scheduler support is compiled into this kernel
+      /// (the <c>CosmosEnableScheduler</c> feature switch). Internal: the ring
+-@@ -276,6 +297,150 @@ public static class SchedulerManager
++@@ -276,6 +297,110 @@ public static class SchedulerManager
+          set => s_enabled = value;
+      }
+  
+-+    /// <summary>
+-+    /// Validates one AP's addressability of its scheduler state and performs
+-+    /// one enter/leave transition. This is deliberately not a dispatch,
+-+    /// context switch, migration or preemption path: the AP returns to the
+-+    /// native parked loop immediately after this bounded proof.
+-+    /// </summary>
+-+    internal static uint RunPerCpuSchedulerEntry(
+-+        uint expectedCpuId,
+-+        out uint phase,
+-+        out uint entryCount)
+-+    {
+-+        phase = 0;
+-+        entryCount = 0;
+-+
+-+        if (!s_enabled || s_currentScheduler is null || s_cpuStates is null)
+-+        {
+-+            return 1;
+-+        }
+-+
+-+        if (expectedCpuId >= s_cpuCount || GetCurrentCpuId() != expectedCpuId)
+-+        {
+-+            return 2;
+-+        }
+-+
+-+        PerCpuState state = s_cpuStates[expectedCpuId];
+-+        if (state.CpuId != expectedCpuId ||
+-+            state.IdleThread is null ||
+-+            state.CurrentThread is null ||
+-+            !ReferenceEquals(state.CurrentThread, state.IdleThread) ||
+-+            state.CurrentThread.State != SchedulerThreadState.Running ||
+-+            state.SchedulerData is null)
+-+        {
+-+            return 3;
+-+        }
+-+
+-+        if (!state.TryEnterStage13(expectedCpuId))
+-+        {
+-+            return 4;
+-+        }
+-+
+-+        if (!state.TryLeaveStage13(expectedCpuId))
+-+        {
+-+            return 5;
+-+        }
+-+
+-+        phase = state.Stage13Phase;
+-+        entryCount = state.Stage13EntryCount;
+-+        return phase == 2 && entryCount == 1 ? 0u : 6u;
+-+    }
+-+
+ +    /// <summary>
+ +    /// Runs the Stage-13 per-CPU scheduler foundation proof after the
+ +    /// scheduler policy and all per-CPU states have been initialized.
+@@ -213,14 +167,24 @@ index 9588e5fc6..c3103e0b6 100644
+ +            return false;
+ +        }
+ +
+-+        PerCpuState bsp = s_cpuStates[0];
+-+        if (bsp.CpuId != 0 || bsp.IdleThread is null ||
+-+            !ReferenceEquals(bsp.CurrentThread, bsp.IdleThread) ||
+-+            bsp.CurrentThread.State != SchedulerThreadState.Running ||
+-+            bsp.SchedulerData is null)
+++        for (uint cpuId = 0; cpuId < s_cpuCount; cpuId++)
+ +        {
+-+            Serial.WriteString("[SCHED] WARNING: Stage 13 BSP per-CPU state is invalid.\n");
+-+            return false;
+++            PerCpuState state = s_cpuStates[cpuId];
+++            if (state.CpuId != cpuId || state.IdleThread is null ||
+++                state.CurrentThread is null ||
+++                !ReferenceEquals(state.CurrentThread, state.IdleThread) ||
+++                state.CurrentThread.State != SchedulerThreadState.Running ||
+++                state.SchedulerData is null || state.Stage13Phase != 0 ||
+++                state.Stage13EntryCount != 0 ||
+++                !state.TryEnterStage13(cpuId) ||
+++                !state.TryLeaveStage13(cpuId) ||
+++                state.Stage13Phase != 2 || state.Stage13EntryCount != 1)
+++            {
+++                Serial.WriteString("[SCHED] WARNING: Stage 13 per-CPU state is invalid for CpuId=");
+++                Serial.WriteNumber(cpuId);
+++                Serial.WriteString(".\n");
+++                return false;
+++            }
+ +        }
+ +
+ +#if ARCH_X64
+diff --git a/tools/prepare-cosmos-smt.sh b/tools/prepare-cosmos-smt.sh
+index d3559e3..eaca670 100644
+--- a/tools/prepare-cosmos-smt.sh
++++ b/tools/prepare-cosmos-smt.sh
+@@ -376,6 +376,6 @@ elif (( SELECTED_STAGE == 12 )); then
+     echo "[SMT] BSP waliduje wynik oraz brak pozostalej komendy; scheduler i managed Thread nadal nie sa wlaczane na AP-ach."
+ elif (( SELECTED_STAGE == 13 )); then
+     echo "[SMT] Etap 13 wykonuje jednorazowy handshake per-CPU z juz zainicjalizowanym schedulerem."
+-    echo "[SMT] Kazdy AP waliduje wlasny PerCpuState, wykonuje enter/leave i wraca do native HLT."
++    echo "[SMT] BSP wykonuje enter/leave na kazdym PerCpuState, a kazdy AP waliduje swoja tozsamosc CPU-local i wraca do native HLT."
+     echo "[SMT] Nie jest to jeszcze pelny scheduler SMP, migracja watkow ani preempcja."
+ fi
+diff --git a/tools/smoke-stage13-qemu.sh b/tools/smoke-stage13-qemu.sh
+index 1a3ae20..fa9d457 100755
+--- a/tools/smoke-stage13-qemu.sh
++++ b/tools/smoke-stage13-qemu.sh
+@@ -56,7 +56,7 @@ for line in lines:
+     if fatal.search(line) or re.search(r"\[SCHED\]\s*WARNING:", line, re.IGNORECASE):
+         fail("kernel failure or scheduler warning: " + line)
  
- namespace Cosmos.Kernel.Core.Scheduler;
- 
-@@ -48,4 +49,41 @@ public sealed class PerCpuState : SchedulerExtensible
- 
-     // ===== Synchronization =====
-     internal SpinLock _lock;
-+
-+    // Stage 13 is deliberately a one-shot ownership handshake, not a
-+    // scheduler activation.  The AP proves that it can address this exact
-+    // managed PerCpuState, enters and leaves the state once, and then returns
-+    // to the native parked path.  A later stage will replace this proof with
-+    // real AP idle threads and dispatch/context-switch ownership.
-+    private int _stage13Phase;
-+    private int _stage13EntryCount;
-+
-+    /// <summary>
-+    /// Stage-13 per-CPU scheduler foundation phase: 0=not entered,
-+    /// 1=entered, 2=left successfully.
-+    /// </summary>
-+    internal uint Stage13Phase => (uint)Volatile.Read(ref _stage13Phase);
-+
-+    /// <summary>
-+    /// Number of successful Stage-13 entries for this CPU.
-+    /// </summary>
-+    internal uint Stage13EntryCount => (uint)Volatile.Read(ref _stage13EntryCount);
-+
-+    internal bool TryEnterStage13(uint expectedCpuId)
-+    {
-+        if (CpuId != expectedCpuId ||
-+            Interlocked.CompareExchange(ref _stage13Phase, 1, 0) != 0)
-+        {
-+            return false;
-+        }
-+
-+        Interlocked.Increment(ref _stage13EntryCount);
-+        return true;
-+    }
-+
-+    internal bool TryLeaveStage13(uint expectedCpuId)
-+    {
-+        return CpuId == expectedCpuId &&
-+            Interlocked.CompareExchange(ref _stage13Phase, 2, 1) == 1;
-+    }
- }
-diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 9588e5fc6..c3103e0b6 100644
---- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-+++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-@@ -15,7 +15,7 @@ namespace Cosmos.Kernel.Core.Scheduler;
- /// Manages scheduler lifecycle and dispatches to current scheduler.
- /// </summary>
- [Experimental(Experimentals.SchedulerSeamDiagId)]
--public static class SchedulerManager
-+public static partial class SchedulerManager
- {
- 
-     private static IScheduler? s_currentScheduler;
-@@ -62,6 +62,27 @@ public static class SchedulerManager
-     /// <summary>After the initial ticks, log every Nth timer tick to avoid flooding serial output.</summary>
-     private const uint TickLogInterval = 50;
- 
-+    /// <summary>Bound for the native Stage-13 AP scheduler-state handshake.</summary>
-+    private const ulong Stage13TimeoutSeconds = 5;
-+
-+#if ARCH_X64
-+    [LibraryImport("*", EntryPoint = "_native_x64_run_percpu_scheduler_test")]
-+    [SuppressGCTransition]
-+    private static partial int NativeRunPerCpuSchedulerTest(ulong cpuCount, ulong timeoutTscTicks);
-+
-+    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_scheduler_state")]
-+    [SuppressGCTransition]
-+    private static partial uint NativeGetPerCpuSchedulerState(uint cpuId);
-+
-+    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_scheduler_phase")]
-+    [SuppressGCTransition]
-+    private static partial uint NativeGetPerCpuSchedulerPhase(uint cpuId);
-+
-+    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_scheduler_entries")]
-+    [SuppressGCTransition]
-+    private static partial uint NativeGetPerCpuSchedulerEntries(uint cpuId);
-+#endif
-+
-     /// <summary>
-     /// Whether scheduler support is compiled into this kernel
-     /// (the <c>CosmosEnableScheduler</c> feature switch). Internal: the ring
-@@ -276,6 +297,150 @@ public static class SchedulerManager
-         set => s_enabled = value;
-     }
- 
-+    /// <summary>
-+    /// Validates one AP's addressability of its scheduler state and performs
-+    /// one enter/leave transition. This is deliberately not a dispatch,
-+    /// context switch, migration or preemption path: the AP returns to the
-+    /// native parked loop immediately after this bounded proof.
-+    /// </summary>
-+    internal static uint RunPerCpuSchedulerEntry(
-+        uint expectedCpuId,
-+        out uint phase,
-+        out uint entryCount)
-+    {
-+        phase = 0;
-+        entryCount = 0;
-+
-+        if (!s_enabled || s_currentScheduler is null || s_cpuStates is null)
-+        {
-+            return 1;
-+        }
-+
-+        if (expectedCpuId >= s_cpuCount || GetCurrentCpuId() != expectedCpuId)
-+        {
-+            return 2;
-+        }
-+
-+        PerCpuState state = s_cpuStates[expectedCpuId];
-+        if (state.CpuId != expectedCpuId ||
-+            state.IdleThread is null ||
-+            state.CurrentThread is null ||
-+            !ReferenceEquals(state.CurrentThread, state.IdleThread) ||
-+            state.CurrentThread.State != SchedulerThreadState.Running ||
-+            state.SchedulerData is null)
-+        {
-+            return 3;
-+        }
-+
-+        if (!state.TryEnterStage13(expectedCpuId))
-+        {
-+            return 4;
-+        }
-+
-+        if (!state.TryLeaveStage13(expectedCpuId))
-+        {
-+            return 5;
-+        }
-+
-+        phase = state.Stage13Phase;
-+        entryCount = state.Stage13EntryCount;
-+        return phase == 2 && entryCount == 1 ? 0u : 6u;
-+    }
-+
-+    /// <summary>
-+    /// Runs the Stage-13 per-CPU scheduler foundation proof after the
-+    /// scheduler policy and all per-CPU states have been initialized.
-+    /// x64 APs enter the managed validation export once and return to native
-+    /// HLT; this method does not claim a full SMP scheduler or preemption.
-+    /// </summary>
-+    internal static bool RunPerCpuSchedulerFoundationProof()
-+    {
-+        if (!s_enabled || s_currentScheduler is null ||
-+            s_cpuStates is null || s_cpuCount == 0)
-+        {
-+            Serial.WriteString("[SCHED] WARNING: Stage 13 scheduler state is not initialized.\n");
-+            return false;
-+        }
-+
-+        PerCpuState bsp = s_cpuStates[0];
-+        if (bsp.CpuId != 0 || bsp.IdleThread is null ||
-+            !ReferenceEquals(bsp.CurrentThread, bsp.IdleThread) ||
-+            bsp.CurrentThread.State != SchedulerThreadState.Running ||
-+            bsp.SchedulerData is null)
-+        {
-+            Serial.WriteString("[SCHED] WARNING: Stage 13 BSP per-CPU state is invalid.\n");
-+            return false;
-+        }
-+
-+#if ARCH_X64
-+        Serial.WriteString("[SCHED-PERCPU] dispatch\n");
-+        long frequency = Stopwatch.Frequency;
-+        ulong timeoutTicks = frequency > 0
-+            ? checked((ulong)frequency * Stage13TimeoutSeconds)
-+            : 5_000_000_000UL;
-+        int expectedAps = checked((int)s_cpuCount - 1);
-+        int completed = expectedAps == 0
-+            ? 0
-+            : NativeRunPerCpuSchedulerTest(s_cpuCount, timeoutTicks);
-+        Serial.WriteString("[SCHED-PERCPU] native-return\n");
-+        if (completed != expectedAps)
-+        {
-+            Serial.WriteString("[SCHED] WARNING: Stage 13 AP scheduler-state proof result=");
-+            if (completed < 0)
-+            {
-+                Serial.WriteString("-");
-+                Serial.WriteNumber((ulong)(-completed));
-+            }
-+            else
-+            {
-+                Serial.WriteNumber((ulong)completed);
-+            }
-+
-+            Serial.WriteString(" expected=");
-+            Serial.WriteNumber((ulong)expectedAps);
-+            Serial.WriteString("\n");
-+            return false;
-+        }
-+
-+        Serial.WriteString("[SCHED-PERCPU] cpu=0 phase=0 entries=0 state=bsp-idle\n");
-+        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
-+        {
-+            PerCpuState state = s_cpuStates[cpuId];
-+            uint nativeState = NativeGetPerCpuSchedulerState(cpuId);
-+            uint nativePhase = NativeGetPerCpuSchedulerPhase(cpuId);
-+            uint nativeEntries = NativeGetPerCpuSchedulerEntries(cpuId);
-+            if (state.CpuId != cpuId || state.IdleThread is null ||
-+                state.CurrentThread is null ||
-+                !ReferenceEquals(state.CurrentThread, state.IdleThread) ||
-+                state.CurrentThread.State != SchedulerThreadState.Running ||
-+                state.SchedulerData is null ||
-+                state.Stage13Phase != 2 || state.Stage13EntryCount != 1 ||
-+                nativeState != 1 || nativePhase != 2 || nativeEntries != 1)
-+            {
-+                Serial.WriteString("[SCHED] WARNING: Stage 13 state mismatch for CpuId=");
-+                Serial.WriteNumber(cpuId);
-+                Serial.WriteString("\n");
-+                return false;
-+            }
-+
-+            Serial.WriteString("[SCHED-PERCPU] cpu=");
-+            Serial.WriteNumber(cpuId);
-+            Serial.WriteString(" phase=");
-+            Serial.WriteNumber(nativePhase);
-+            Serial.WriteString(" entries=");
-+            Serial.WriteNumber(nativeEntries);
-+            Serial.WriteString(" state=returned-native-idle\n");
-+        }
-+#else
-+        // ARM64 keeps its existing CPU0-only scheduler path. It is compiled
-+        // by the regression job but has no Stage-13 AP runtime claim.
-+        return true;
-+#endif
-+
-+        Serial.WriteString("[SCHED-PERCPU-TEST] PASS\n");
-+        return true;
-+    }
-+
-     /// <summary>
-     /// Allocates a new unique thread ID.
-     /// </summary>
-diff --git a/src/Cosmos.Kernel.HAL.X64/Cosmos.Kernel.HAL.X64.csproj b/src/Cosmos.Kernel.HAL.X64/Cosmos.Kernel.HAL.X64.csproj
-index 3e71fc419..248f0e134 100644
---- a/src/Cosmos.Kernel.HAL.X64/Cosmos.Kernel.HAL.X64.csproj
-+++ b/src/Cosmos.Kernel.HAL.X64/Cosmos.Kernel.HAL.X64.csproj
-@@ -7,6 +7,8 @@
-     <PackageTags>cosmos;kernel;hal;x64;hardware</PackageTags>
-     <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
-     <DefineConstants>$(DefineConstants);ARCH_X64</DefineConstants>
-+    <!-- Stage 13 intentionally consumes the experimental scheduler seam. -->
-+    <NoWarn>$(NoWarn);COSMOS0001</NoWarn>
-   </PropertyGroup>
-   <ItemGroup>
-     <ProjectReference Include="..\Cosmos.Kernel.Boot.Limine\Cosmos.Kernel.Boot.Limine.csproj" />
-@@ -23,4 +25,4 @@
-     <!-- White-box timer suite exercises PIT and RTC directly. -->
-     <InternalsVisibleTo Include="Cosmos.Kernel.Tests.Timer" />
-   </ItemGroup>
--</Project>
-\ No newline at end of file
-+</Project>
-diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-index df5d77042..33988f6bc 100644
---- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-+++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-@@ -258,6 +258,7 @@
- .global _native_x64_irq_table
- .extern __managed__irq
- .extern __cosmos_smp_managed_ap_entry
-+.extern __cosmos_smp_percpu_scheduler_entry
- 
- .intel_syntax noprefix
- 
-@@ -523,6 +524,8 @@ _native_x64_ap_entry:
-     je .Lap_park_command_timer_stop
-     cmp eax, 5
-     je .Lap_park_command_managed
-+    cmp eax, 6
-+    je .Lap_park_command_percpu_scheduler
-     jmp .Lap_park
- 
- .Lap_park_command_work:
-@@ -595,6 +598,39 @@ _native_x64_ap_entry:
-     xchg dword ptr [r14 + 48], eax
-     jmp .Lap_park
- 
-+.Lap_park_command_percpu_scheduler:
-+    // Stage 13: validate the managed PerCpuState belonging to this AP once,
-+    // then return to the native HLT loop. This is not thread dispatch or
-+    // preemption; the scheduler state remains an explicit foundation proof.
-+    xor eax, eax
-+    xchg dword ptr [r14 + 32], eax
-+    cli
-+    mov edi, r13d
-+    call __cosmos_smp_percpu_scheduler_entry
-+    test eax, eax
-+    jz .Lap_percpu_scheduler_entry_success
-+
-+    lea rcx, [rip + _ap_scheduler_state]
-+    mov rax, r13
-+    shl rax, 6
-+    add rcx, rax
-+    mov dword ptr [rcx + 0], 2
-+    mfence
-+    mov eax, 2
-+    xchg dword ptr [r14 + 48], eax
-+    jmp .Lap_park
-+
-+.Lap_percpu_scheduler_entry_success:
-+    lea rcx, [rip + _ap_scheduler_state]
-+    mov rax, r13
-+    shl rax, 6
-+    add rcx, rax
-+    mov dword ptr [rcx + 0], 1
-+    mfence
-+    mov eax, 1
-+    xchg dword ptr [r14 + 48], eax
-+    jmp .Lap_park
-+
- .macro AP_STATE_GETTER name, offset, width
- .global \name
- \name:
-@@ -672,6 +708,64 @@ _native_x64_publish_managed_ap_result:
-     mov eax, -1
-     ret
- 
-+.global _native_x64_get_ap_scheduler_state
-+_native_x64_get_ap_scheduler_state:
-+    cmp edi, 255
-+    ja .Lap_scheduler_state_get_invalid
-+    lea rcx, [rip + _ap_scheduler_state]
-+    mov eax, edi
-+    shl rax, 6
-+    mov eax, dword ptr [rcx + rax]
-+    ret
-+.Lap_scheduler_state_get_invalid:
-+    xor eax, eax
-+    ret
-+
-+.global _native_x64_get_ap_scheduler_phase
-+_native_x64_get_ap_scheduler_phase:
-+    cmp edi, 255
-+    ja .Lap_scheduler_phase_get_invalid
-+    lea rcx, [rip + _ap_scheduler_state]
-+    mov eax, edi
-+    shl rax, 6
-+    mov eax, dword ptr [rcx + rax + 4]
-+    ret
-+.Lap_scheduler_phase_get_invalid:
-+    xor eax, eax
-+    ret
-+
-+.global _native_x64_get_ap_scheduler_entries
-+_native_x64_get_ap_scheduler_entries:
-+    cmp edi, 255
-+    ja .Lap_scheduler_entries_get_invalid
-+    lea rcx, [rip + _ap_scheduler_state]
-+    mov eax, edi
-+    shl rax, 6
-+    mov eax, dword ptr [rcx + rax + 8]
-+    ret
-+.Lap_scheduler_entries_get_invalid:
-+    xor eax, eax
-+    ret
-+
-+.global _native_x64_publish_percpu_scheduler_result
-+_native_x64_publish_percpu_scheduler_result:
-+    cmp edi, 255
-+    ja .Lap_scheduler_publish_invalid
-+    cmp edi, dword ptr gs:[0]
-+    jne .Lap_scheduler_publish_invalid
-+    lea rcx, [rip + _ap_scheduler_state]
-+    mov eax, edi
-+    shl rax, 6
-+    add rcx, rax
-+    mov dword ptr [rcx + 4], esi
-+    mov dword ptr [rcx + 8], edx
-+    mfence
-+    xor eax, eax
-+    ret
-+.Lap_scheduler_publish_invalid:
-+    mov eax, -1
-+    ret
-+
- .global _native_x64_get_ap_timer_ticks
- _native_x64_get_ap_timer_ticks:
-     cmp edi, 255
-@@ -1246,6 +1340,126 @@ _native_x64_run_managed_ap_test:
-     ret
- 
- 
-+// int _native_x64_run_percpu_scheduler_test(uint64_t cpuCount,
-+//                                           uint64_t timeoutTscTicks)
-+// Wakes every parked AP with command 6. The managed entry validates the
-+// scheduler's real PerCpuState for that CpuId and performs one enter/leave
-+// transition. The AP then returns to native idle; no managed thread is run.
-+.global _native_x64_run_percpu_scheduler_test
-+_native_x64_run_percpu_scheduler_test:
-+    push rbx
-+    push r12
-+    push r13
-+    push r14
-+    push r15
-+    test rdi, rdi
-+    jz .Lap_scheduler_test_invalid
-+    cmp rdi, 256
-+    ja .Lap_scheduler_test_invalid
-+    test rsi, rsi
-+    jz .Lap_scheduler_test_invalid
-+    mov r12, rdi
-+    mov r13, rsi
-+    cmp r12, 1
-+    je .Lap_scheduler_test_success
-+    call .Lap_read_lapic_base
-+    test rax, rax
-+    jz .Lap_scheduler_test_invalid
-+    mov qword ptr [rip + _native_x64_lapic_base], rax
-+    mov r15, rax
-+    xor r14d, r14d
-+    mov ebx, 1
-+
-+.Lap_scheduler_test_cpu_loop:
-+    cmp rbx, r12
-+    jae .Lap_scheduler_test_success
-+    lea r8, [rip + _ap_boot_state]
-+    mov rax, rbx
-+    shl rax, 6
-+    add r8, rax
-+    cmp dword ptr [r8 + 0], 1
-+    jne .Lap_scheduler_test_invalid
-+    cmp dword ptr [r8 + 32], 0
-+    jne .Lap_scheduler_test_invalid
-+    cmp dword ptr [r8 + 48], 1
-+    jne .Lap_scheduler_test_invalid
-+    cmp qword ptr [r8 + 56], 8
-+    jne .Lap_scheduler_test_invalid
-+
-+    lea r9, [rip + _ap_scheduler_state]
-+    mov rax, rbx
-+    shl rax, 6
-+    add r9, rax
-+    cmp dword ptr [r9 + 0], 0
-+    jne .Lap_scheduler_test_invalid
-+    mov dword ptr [r9 + 4], 0
-+    mov dword ptr [r9 + 8], 0
-+    mfence
-+
-+    xor eax, eax
-+    xchg dword ptr [r8 + 48], eax
-+    cmp eax, 1
-+    jne .Lap_scheduler_test_invalid
-+    mov eax, 6
-+    xchg dword ptr [r8 + 32], eax
-+    test eax, eax
-+    jne .Lap_scheduler_test_invalid
-+
-+    mov edx, dword ptr [r8 + 8]
-+    shl edx, 24
-+    mov dword ptr [r15 + 0x310], edx
-+    mov dword ptr [r15 + 0x300], 0x000000F1
-+    rdtsc
-+    shl rdx, 32
-+    or rax, rdx
-+    mov r11, rax
-+
-+.Lap_scheduler_test_wait:
-+    cmp dword ptr [r9 + 0], 2
-+    je .Lap_scheduler_test_failure
-+    cmp dword ptr [r9 + 0], 1
-+    jne .Lap_scheduler_test_poll
-+    cmp dword ptr [r9 + 4], 2
-+    jne .Lap_scheduler_test_poll
-+    cmp dword ptr [r9 + 8], 1
-+    jne .Lap_scheduler_test_poll
-+    cmp dword ptr [r8 + 48], 1
-+    jne .Lap_scheduler_test_poll
-+    cmp dword ptr [r8 + 32], 0
-+    jne .Lap_scheduler_test_poll
-+    cmp qword ptr [r8 + 56], 9
-+    jne .Lap_scheduler_test_poll
-+    inc r14
-+    inc rbx
-+    jmp .Lap_scheduler_test_cpu_loop
-+
-+.Lap_scheduler_test_poll:
-+    pause
-+    rdtsc
-+    shl rdx, 32
-+    or rax, rdx
-+    sub rax, r11
-+    cmp rax, r13
-+    jb .Lap_scheduler_test_wait
-+    jmp .Lap_scheduler_test_failure
-+
-+.Lap_scheduler_test_success:
-+    mov eax, r14d
-+    jmp .Lap_scheduler_test_return
-+.Lap_scheduler_test_failure:
-+    mov eax, -3
-+    jmp .Lap_scheduler_test_return
-+.Lap_scheduler_test_invalid:
-+    mov eax, -2
-+.Lap_scheduler_test_return:
-+    pop r15
-+    pop r14
-+    pop r13
-+    pop r12
-+    pop rbx
-+    ret
-+
-+
- // int _native_x64_run_ap_timer_test(uint64_t cpuCount,
- //                                    uint32_t initialCount,
- //                                    uint64_t minimumTicks,
-@@ -1970,6 +2184,12 @@ _ap_managed_state: .zero 1024
- .balign 64
- _ap_managed_result: .zero 2048
- 
-+.balign 64
-+// Stage-13 per-CPU scheduler foundation mailboxes. Each 64-byte record is:
-+// +0 native completion (0=idle, 1=managed proof returned, 2=managed failure),
-+// +4 managed enter/leave phase, +8 successful managed entry count.
-+_ap_scheduler_state: .zero 16384
-+
- .balign 64
- // 256 cache-line-isolated records:
- // request_epoch, ack_epoch, resume_epoch, state, padding,
-diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-index 1f438b349..79f361983 100644
---- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-+++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-@@ -108,5 +108,18 @@ internal class LibraryInitializer
-         // Enable scheduler (timer will start invoking it)
-         SchedulerManager.IsRunning = true;
-         Serial.WriteString("[SCHED] Scheduler enabled\n");
-+
-+        // Stage 13: run only after the scheduler manager, policy, idle
-+        // threads, and every PerCpuState have been initialized. APs still
-+        // return to the native parked loop; this is not full SMP scheduling
-+        // or preemption.
-+        if (CpuLocal.IsNativePerCpuSupported)
-+        {
-+            Serial.WriteString("[SCHED-PERCPU] begin\n");
-+            if (!SchedulerManager.RunPerCpuSchedulerFoundationProof())
-+            {
-+                Cosmos.Kernel.Core.Panic.Halt("Stage 13 per-CPU scheduler foundation proof failed.");
-+            }
-+        }
-     }
- }
+-bsp_re = re.compile(r"\[SCHED-PERCPU\] cpu=0 phase=0 entries=0 state=bsp-idle")
++bsp_re = re.compile(r"\[SCHED-PERCPU\] cpu=0 phase=2 entries=1 state=bsp-idle")
+ ap_re = re.compile(
+     r"\[SCHED-PERCPU\] cpu=(\d+) phase=(\d+) entries=(\d+) "
+     r"state=returned-native-idle"

@@ -56,7 +56,7 @@ for line in lines:
     if fatal.search(line) or re.search(r"\[SCHED\]\s*WARNING:", line, re.IGNORECASE):
         fail("kernel failure or scheduler warning: " + line)
 
-bsp_re = re.compile(r"\[SCHED-PERCPU\] cpu=0 phase=0 entries=0 state=bsp-idle")
+bsp_re = re.compile(r"\[SCHED-PERCPU\] cpu=0 phase=2 entries=1 state=bsp-idle")
 ap_re = re.compile(
     r"\[SCHED-PERCPU\] cpu=(\d+) phase=(\d+) entries=(\d+) "
     r"state=returned-native-idle"
