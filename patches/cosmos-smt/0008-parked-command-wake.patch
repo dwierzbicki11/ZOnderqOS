@@ -102,7 +102,7 @@ index 378c2d2..8fb1718 100644
      jmp .Lap_park
  
  .macro AP_STATE_GETTER name, offset, width
-@@ -759,6 +766,93 @@ _native_x64_run_ap_ipi_rounds:
+@@ -759,6 +766,100 @@ _native_x64_run_ap_ipi_rounds:
      ret
  
  
@@ -145,6 +145,13 @@ index 378c2d2..8fb1718 100644
 +    jne .Lap_parkcmd_invalid
 +    cmp qword ptr [r8 + 56], 4
 +    jne .Lap_parkcmd_invalid
++    xor eax, eax
++    xchg dword ptr [r8 + 4], eax
++    test eax, eax
++    je .Lap_parkcmd_command_clear
++    cmp eax, 1
++    jne .Lap_parkcmd_invalid
++.Lap_parkcmd_command_clear:
 +    xor eax, eax
 +    xchg dword ptr [r8 + 48], eax
 +    mov eax, 2
