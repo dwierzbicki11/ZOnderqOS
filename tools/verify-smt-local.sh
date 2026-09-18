@@ -39,13 +39,32 @@ resolve_cosmos_root() {
   fail "Nie znaleziono checkoutu Cosmos. Uruchom najpierw ./run.sh albo ustaw ZONDERQ_COSMOS_SOURCE_ROOT."
 }
 
-COSMOS_ROOT="$(resolve_cosmos_root)"
+SOURCE_COSMOS_ROOT="$(resolve_cosmos_root)"
+BASE_TAG="${ZONDERQ_COSMOS_BASE_TAG:-v3.0.85}"
+BASE_SHA="$(git -C "$SOURCE_COSMOS_ROOT" rev-list -n 1 "$BASE_TAG" 2>/dev/null || true)"
+[[ -n "$BASE_SHA" ]] || fail "Brak taga/ref '$BASE_TAG' w checkoutcie Cosmos: $SOURCE_COSMOS_ROOT"
+
+VERIFY_PARENT="$(cd "$ROOT_DIR/.." && pwd)"
+VERIFY_COSMOS_ROOT="$(mktemp -d "$VERIFY_PARENT/.cosmos-smt-verify.XXXXXX")"
+rmdir "$VERIFY_COSMOS_ROOT"
+
+cleanup_worktree() {
+  git -C "$SOURCE_COSMOS_ROOT" worktree remove --force "$VERIFY_COSMOS_ROOT" >/dev/null 2>&1 || true
+}
+trap cleanup_worktree EXIT
+
+echo "[SMT-LOCAL] Cosmos source: $SOURCE_COSMOS_ROOT"
+echo "[SMT-LOCAL] Tworze czysty worktree $BASE_TAG do weryfikacji..."
+git -C "$SOURCE_COSMOS_ROOT" worktree add --detach "$VERIFY_COSMOS_ROOT" "$BASE_SHA" >/dev/null
+git -C "$VERIFY_COSMOS_ROOT" submodule update --init --recursive
+
+COSMOS_ROOT="$VERIFY_COSMOS_ROOT"
 export ZONDERQ_COSMOS_SOURCE_ROOT="$COSMOS_ROOT"
 PACKAGE_FEED="$COSMOS_ROOT/artifacts/package/release"
 PACKAGE_CACHE="$ROOT_DIR/.nuget/smt-local-packages"
 ISO="$ROOT_DIR/output-x64/ZonderqOS.iso"
 
-echo "[SMT-LOCAL] Cosmos: $COSMOS_ROOT"
+echo "[SMT-LOCAL] Cosmos verify worktree: $COSMOS_ROOT"
 echo "[SMT-LOCAL] 1/4: preflight + Stage 1..9 + lokalne paczki Cosmos"
 bash "$ROOT_DIR/tools/prepare-cosmos-smt.sh" --through-stage 9
 
@@ -58,6 +77,7 @@ mkdir -p "$PACKAGE_CACHE"
 NUGET_CONFIG="$(mktemp -t zonderq-smt-local.XXXXXX.config)"
 cleanup() {
   rm -f "$NUGET_CONFIG"
+  cleanup_worktree
 }
 trap cleanup EXIT
 
