@@ -1,0 +1,786 @@
+diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs
+index 1d7fd5e7dc9b952625dff6cbde6953e22e193777..de373e25f2c63125d209f7ce788076fed40133dd 100644
+--- a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs
++++ b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs
+@@ -16,6 +16,24 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector;
+ /// </summary>
+ internal static unsafe partial class GarbageCollector
+ {
++    private static uint s_lastSmpStackScanCount;
++    private static ulong s_lastSmpStackScanBytes;
++    private static ulong s_lastSmpStackScanWordXor;
++
++    internal static uint LastSmpStackScanCount => s_lastSmpStackScanCount;
++    internal static ulong LastSmpStackScanBytes => s_lastSmpStackScanBytes;
++    internal static ulong LastSmpStackScanWordXor => s_lastSmpStackScanWordXor;
++
++#if ARCH_X64
++    [LibraryImport("*", EntryPoint = "_native_x64_get_gc_state")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetGcStateForStackScan(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_gc_saved_rsp")]
++    [SuppressGCTransition]
++    private static partial nuint NativeGetGcSavedRspForStackScan(uint cpuId);
++#endif
++
+     /// <summary>
+     /// Executes the mark phase: scans roots (stack, GC handles) and marks all reachable objects.
+     /// Static roots need no separate pass: <c>ManagedModule.InitializeStatics</c> holds every
+@@ -26,6 +44,9 @@ internal static unsafe partial class GarbageCollector
+     private static void MarkPhase()
+     {
+         s_markStackCount = 0;
++        s_lastSmpStackScanCount = 0;
++        s_lastSmpStackScanBytes = 0;
++        s_lastSmpStackScanWordXor = 0;
+         ScanStackRoots();
+         ScanGCHandles();
+     }
+@@ -206,23 +227,46 @@ internal static unsafe partial class GarbageCollector
+         // Determine stack range to scan
+         nuint stackStart;
+         nuint stackEnd;
++        bool recordSmpStackWords = false;
+ 
+         if (thread.State == SchedulerThreadState.Running)
+         {
+-            // For the currently running thread, thread.StackPointer is stale (saved
+-            // during the last context switch). Use the actual RSP instead.
+-            stackStart = ContextSwitchNative.GetSp();
++            // ScanThreadStack is called only for registry entries other than
++            // CurrentCpuState.CurrentThread. Before Stage 15, AP idle records
++            // intentionally have no stack bounds and the AP managed proofs hold
++            // no references, so there is no remote stack to scan yet.
++            if (thread.StackBase == 0 || thread.StackSize == 0)
++            {
++                return;
++            }
+ 
+-            if (thread.StackBase != 0 && thread.StackSize != 0)
++#if ARCH_X64
++            // A remote Running thread cannot use GetSp(): that would read the
++            // collector BSP's GS-local RSP. The native GC rendezvous captured
++            // the interrupted AP RSP and keeps the AP parked in state 2 for the
++            // complete mark/sweep interval.
++            if (thread.CpuId == 0 || NativeGetGcStateForStackScan(thread.CpuId) != 2)
+             {
+-                // Regular scheduled thread with allocated stack
+-                stackEnd = thread.StackBase + thread.StackSize;
++                Cosmos.Kernel.Core.Panic.Halt("SMP GC remote idle stack is not parked.");
++                return;
+             }
+-            else
++
++            stackStart = NativeGetGcSavedRspForStackScan(thread.CpuId);
++            stackEnd = thread.StackBase + thread.StackSize;
++            if (stackStart < thread.StackBase || stackStart >= stackEnd)
+             {
+-                // Boot/idle thread uses the bootloader's stack — no StackBase/StackSize.
+-                stackEnd = GetCurrentStackEndForBootStack();
++                Cosmos.Kernel.Core.Panic.Halt("SMP GC remote idle stack pointer is outside its bounds.");
++                return;
+             }
++
++            s_lastSmpStackScanCount++;
++            s_lastSmpStackScanBytes += (ulong)(stackEnd - stackStart);
++            recordSmpStackWords = true;
++#else
++            // ARM64 does not expose remote Running CPUs before its own SMP
++            // bootstrap and GC rendezvous exist.
++            return;
++#endif
+         }
+         else
+         {
+@@ -238,7 +282,7 @@ internal static unsafe partial class GarbageCollector
+ 
+         if (stackStart < stackEnd)
+         {
+-            ScanMemoryRange((nint*)stackStart, (nint*)stackEnd);
++            ScanMemoryRange((nint*)stackStart, (nint*)stackEnd, recordSmpStackWords);
+         }
+     }
+ 
+@@ -247,11 +291,22 @@ internal static unsafe partial class GarbageCollector
+     /// </summary>
+     /// <param name="start">Pointer to the first word to scan.</param>
+     /// <param name="end">Pointer past the last word to scan.</param>
+-    private static void ScanMemoryRange(nint* start, nint* end)
++    private static void ScanMemoryRange(nint* start, nint* end, bool recordSmpStackWords = false)
+     {
+         for (nint* ptr = start; ptr < end; ptr++)
+         {
+-            TryMarkRoot(*ptr);
++            nint value = *ptr;
++            if (recordSmpStackWords)
++            {
++                // Stage 15 exposes this allocation-free fingerprint so the
++                // boot proof can show that the exact canary words resident on
++                // remote AP stacks passed through the GC scanner. It is
++                // diagnostic evidence only; reachability still comes solely
++                // from TryMarkRoot below.
++                s_lastSmpStackScanWordXor ^= (ulong)value;
++            }
++
++            TryMarkRoot(value);
+         }
+     }
+ 
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+index 381c335393476e4a70159be06303ff7a81de5f4a..84a60cba3676b067203120f78c60919f087c8f0d 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+@@ -58,6 +58,7 @@ public sealed class PerCpuState : SchedulerExtensible
+     // dispatch/context-switch ownership.
+     private int _stage13Phase;
+     private int _stage13EntryCount;
++    private int _stage15IdleStackEnrolled;
+ 
+     /// <summary>
+     /// Stage-13 per-CPU scheduler foundation phase: 0=not entered,
+@@ -87,4 +88,17 @@ public sealed class PerCpuState : SchedulerExtensible
+         return CpuId == expectedCpuId &&
+             Interlocked.CompareExchange(ref _stage13Phase, 2, 1) == 1;
+     }
++
++    /// <summary>
++    /// Whether Stage 15 bound this CPU's native bootstrap stack to its
++    /// registered idle scheduler thread.
++    /// </summary>
++    internal bool Stage15IdleStackEnrolled =>
++        Volatile.Read(ref _stage15IdleStackEnrolled) != 0;
++
++    internal bool TryEnrollStage15IdleStack(uint expectedCpuId)
++    {
++        return CpuId == expectedCpuId && Stage13Phase == 2 &&
++            Interlocked.CompareExchange(ref _stage15IdleStackEnrolled, 1, 0) == 0;
++    }
+ }
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..6065a76e3d52a28c78865b0ff47150e391d9e4b0 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+@@ -68,6 +68,12 @@ public static partial class SchedulerManager
+     /// <summary>Bound for entering and leaving the Stage-14 managed AP residency window.</summary>
+     private const ulong Stage14TimeoutSeconds = 5;
+ 
++    /// <summary>Size of each native AP bootstrap stack reserved by x64 assembly.</summary>
++    private const nuint ApplicationProcessorBootstrapStackSize = 16 * 1024;
++
++    /// <summary>Bound for the Stage-15 remote idle-stack scan proof.</summary>
++    private const ulong Stage15TimeoutSeconds = 5;
++
+ #if ARCH_X64
+     [LibraryImport("*", EntryPoint = "_native_x64_run_percpu_scheduler_test")]
+     [SuppressGCTransition]
+@@ -104,6 +110,30 @@ public static partial class SchedulerManager
+     [LibraryImport("*", EntryPoint = "_native_x64_get_managed_residency_checksum")]
+     [SuppressGCTransition]
+     private static partial ulong NativeGetManagedResidencyChecksum(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_stack")]
++    [SuppressGCTransition]
++    private static partial nuint NativeGetApplicationProcessorStackTop(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_begin_idle_stack_test")]
++    [SuppressGCTransition]
++    private static partial int NativeBeginIdleStackTest(ulong cpuCount, ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_end_idle_stack_test")]
++    [SuppressGCTransition]
++    private static partial int NativeEndIdleStackTest(ulong cpuCount, ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_idle_stack_state")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetIdleStackState(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_idle_stack_canary")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetIdleStackCanary(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_idle_stack_observed")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetIdleStackObserved(uint cpuId);
+ #endif
+ 
+     /// <summary>
+@@ -576,6 +606,179 @@ public static partial class SchedulerManager
+         return true;
+     }
+ 
++    /// <summary>
++    /// Binds each x64 AP's native 16-KiB bootstrap stack to its registered
++    /// idle scheduler thread, then proves that OrionGC scans the remote stack
++    /// from the RSP captured by the stop-the-world rendezvous. APs park with a
++    /// native canary on-stack for the collection and return to native HLT.
++    /// No managed AP thread dispatch or allocation is enabled by this stage.
++    /// </summary>
++    internal static bool RunApplicationProcessorIdleStackEnrollmentProof()
++    {
++        if (!s_enabled || s_currentScheduler is null ||
++            s_cpuStates is null || s_cpuCount == 0 ||
++            !GarbageCollector.IsEnabled)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 15 stack prerequisites are not initialized.\n");
++            return false;
++        }
++
++#if ARCH_X64
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            PerCpuState state = s_cpuStates[cpuId];
++            SchedulerThread? idle = state.IdleThread;
++            nuint stackTop = NativeGetApplicationProcessorStackTop(cpuId);
++            if (state.CpuId != cpuId || idle is null ||
++                !ReferenceEquals(state.CurrentThread, idle) ||
++                idle.State != SchedulerThreadState.Running ||
++                idle.StackBase != 0 || idle.StackSize != 0 || idle.StackPointer != 0 ||
++                NativeGetManagedResidencyState(cpuId) != 2 ||
++                stackTop < ApplicationProcessorBootstrapStackSize ||
++                (stackTop & 0xFUL) != 0)
++            {
++                Serial.WriteString("[SCHED] WARNING: Stage 15 AP idle-stack metadata is invalid for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString(".\n");
++                return false;
++            }
++
++            if (state.Stage15IdleStackEnrolled || idle is null)
++            {
++                Serial.WriteString("[SCHED] WARNING: Stage 15 AP idle stack was already enrolled.\n");
++                return false;
++            }
++
++            idle.StackBase = stackTop - ApplicationProcessorBootstrapStackSize;
++            idle.StackSize = ApplicationProcessorBootstrapStackSize;
++            idle.StackPointer = stackTop;
++            if (!state.TryEnrollStage15IdleStack(cpuId))
++            {
++                Serial.WriteString("[SCHED] WARNING: Stage 15 AP idle-stack enrollment raced.\n");
++                return false;
++            }
++
++            Serial.WriteString("[SCHED-AP-STACK] cpu=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" base=");
++            Serial.WriteHexWithPrefix((ulong)idle.StackBase);
++            Serial.WriteString(" top=");
++            Serial.WriteHexWithPrefix((ulong)stackTop);
++            Serial.WriteString(" size=16384 state=enrolled\n");
++        }
++
++        long frequency = Stopwatch.Frequency;
++        ulong timeoutTicks = frequency > 0
++            ? checked((ulong)frequency * Stage15TimeoutSeconds)
++            : 5_000_000_000UL;
++        int expectedAps = checked((int)s_cpuCount - 1);
++
++        Serial.WriteString("[SCHED-AP-STACK] dispatch\n");
++        int entered = expectedAps == 0
++            ? 0
++            : NativeBeginIdleStackTest(s_cpuCount, timeoutTicks);
++        if (entered != expectedAps)
++        {
++            if (expectedAps != 0)
++            {
++                NativeEndIdleStackTest(s_cpuCount, timeoutTicks);
++            }
++
++            Serial.WriteString("[SCHED] WARNING: Stage 15 AP stack entry result=");
++            WriteSignedNumber(entered);
++            Serial.WriteString(" expected=");
++            Serial.WriteNumber((ulong)expectedAps);
++            Serial.WriteString("\n");
++            return false;
++        }
++
++        int collectionBefore = GarbageCollector.GetCollectionIndex();
++        int collectionAfter;
++        int released;
++        try
++        {
++            GarbageCollector.Collect();
++            collectionAfter = GarbageCollector.GetCollectionIndex();
++        }
++        finally
++        {
++            released = expectedAps == 0
++                ? 0
++                : NativeEndIdleStackTest(s_cpuCount, timeoutTicks);
++        }
++
++        if (collectionAfter != collectionBefore + 1 || released != expectedAps)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 15 collection/release proof failed.\n");
++            return false;
++        }
++
++        uint scanned = GarbageCollector.LastSmpStackScanCount;
++        ulong scannedBytes = GarbageCollector.LastSmpStackScanBytes;
++        ulong scannedWordXor = GarbageCollector.LastSmpStackScanWordXor;
++        ulong expectedBytes = (ulong)expectedAps * sizeof(ulong);
++        if (scanned != (uint)expectedAps || scannedBytes != expectedBytes)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 15 remote stack scan count/size mismatch.\n");
++            return false;
++        }
++
++        if (expectedAps == 0)
++        {
++            Serial.WriteString("[SCHED-AP-STACK] cpu=0 state=bsp-only\n");
++        }
++
++        ulong expectedCanaryXor = 0;
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            PerCpuState state = s_cpuStates[cpuId];
++            SchedulerThread? idle = state.IdleThread;
++            ulong canary = NativeGetIdleStackCanary(cpuId);
++            ulong observed = NativeGetIdleStackObserved(cpuId);
++            if (!state.Stage15IdleStackEnrolled || idle is null ||
++                NativeGetIdleStackState(cpuId) != 2 || canary == 0 ||
++                observed != canary)
++            {
++                Serial.WriteString("[SCHED] WARNING: Stage 15 AP stack canary mismatch for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString(".\n");
++                return false;
++            }
++
++            expectedCanaryXor ^= canary;
++
++            Serial.WriteString("[SCHED-AP-STACK] cpu=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" canary=");
++            Serial.WriteHexWithPrefix(canary);
++            Serial.WriteString(" state=gc-scanned-returned-native-idle\n");
++        }
++
++        if (scannedWordXor != expectedCanaryXor)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 15 GC stack fingerprint does not match AP canaries.\n");
++            return false;
++        }
++
++        Serial.WriteString("[SCHED-AP-STACK] gc-collection=");
++        Serial.WriteNumber((ulong)collectionAfter);
++        Serial.WriteString(" scanned=");
++        Serial.WriteNumber(scanned);
++        Serial.WriteString(" bytes=");
++        Serial.WriteNumber(scannedBytes);
++        Serial.WriteString(" word-xor=");
++        Serial.WriteHexWithPrefix(scannedWordXor);
++        Serial.WriteString("\n");
++#else
++        // ARM64 remains CPU0-only until it has architecture-local AP stacks
++        // and a stop-the-world interrupt snapshot contract.
++        return true;
++#endif
++
++        Serial.WriteString("[SCHED-AP-STACK-TEST] PASS\n");
++        return true;
++    }
++
+     private static void WriteSignedNumber(int value)
+     {
+         if (value < 0)
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+index 01d78a1aa40a0241a51134502b4c7f91e1abe564..30ef79f9c91da55854c993a4815c39cb3433b987 100644
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -529,6 +529,8 @@ _native_x64_ap_entry:
+     je .Lap_park_command_percpu_scheduler
+     cmp eax, 7
+     je .Lap_park_command_managed_residency
++    cmp eax, 8
++    je .Lap_park_command_idle_stack
+     jmp .Lap_park
+ 
+ .Lap_park_command_work:
+@@ -663,6 +665,47 @@ _native_x64_ap_entry:
+     xchg dword ptr [r14 + 48], eax
+     jmp .Lap_park
+ 
++.Lap_park_command_idle_stack:
++    // Stage 15: park with a deterministic canary occupying one word on the
++    // native AP bootstrap stack. The GC rendezvous captures this RSP; the BSP
++    // must scan from it through the enrolled idle-thread stack bound.
++    xor eax, eax
++    xchg dword ptr [r14 + 32], eax
++    lea r10, [rip + _ap_idle_stack_state]
++    mov rax, r13
++    shl rax, 6
++    add r10, rax
++    mov rax, qword ptr [r10 + 8]
++    test rax, rax
++    jz .Lap_idle_stack_failure
++    push rax
++    mfence
++    mov dword ptr [r10 + 0], 1
++
++.Lap_idle_stack_wait:
++    sti
++    hlt
++    cmp dword ptr [r10 + 4], 1
++    jne .Lap_idle_stack_wait
++    cli
++    pop rax
++    mov qword ptr [r10 + 16], rax
++    cmp rax, qword ptr [r10 + 8]
++    jne .Lap_idle_stack_failure
++    mfence
++    mov dword ptr [r10 + 0], 2
++    mov eax, 1
++    xchg dword ptr [r14 + 48], eax
++    jmp .Lap_park
++
++.Lap_idle_stack_failure:
++    cli
++    mov dword ptr [r10 + 0], 3
++    mfence
++    mov eax, 2
++    xchg dword ptr [r14 + 48], eax
++    jmp .Lap_park
++
+ .macro AP_STATE_GETTER name, offset, width
+ .global \name
+ \name:
+@@ -884,6 +927,30 @@ _native_x64_publish_managed_residency:
+     mov eax, -1
+     ret
+ 
++.macro IDLE_STACK_GETTER name, offset, width
++.global \name
++\name:
++    cmp edi, 255
++    ja .Lap_idle_stack_get_invalid_\@
++    lea rcx, [rip + _ap_idle_stack_state]
++    mov eax, edi
++    shl rax, 6
++    add rcx, rax
++    .if \width == 4
++        mov eax, dword ptr [rcx + \offset]
++    .else
++        mov rax, qword ptr [rcx + \offset]
++    .endif
++    ret
++.Lap_idle_stack_get_invalid_\@:
++    xor eax, eax
++    ret
++.endm
++
++IDLE_STACK_GETTER _native_x64_get_idle_stack_state, 0, 4
++IDLE_STACK_GETTER _native_x64_get_idle_stack_canary, 8, 8
++IDLE_STACK_GETTER _native_x64_get_idle_stack_observed, 16, 8
++
+ .global _native_x64_get_ap_timer_ticks
+ _native_x64_get_ap_timer_ticks:
+     cmp edi, 255
+@@ -1863,6 +1930,272 @@ _native_x64_end_managed_residency:
+     ret
+ 
+ 
++// int _native_x64_begin_idle_stack_test(uint64_t cpuCount,
++//                                        uint64_t timeoutTscTicks)
++// Wakes every AP with command 8 and waits until a canary is resident on each
++// native bootstrap stack with the AP blocked in HLT and IF=1.
++.global _native_x64_begin_idle_stack_test
++_native_x64_begin_idle_stack_test:
++    push rbx
++    push r12
++    push r13
++    push r15
++    test rdi, rdi
++    jz .Lap_idle_stack_begin_invalid
++    cmp rdi, 256
++    ja .Lap_idle_stack_begin_invalid
++    test rsi, rsi
++    jz .Lap_idle_stack_begin_invalid
++    mov r12, rdi
++    mov r13, rsi
++    cmp r12, 1
++    je .Lap_idle_stack_begin_single
++    call .Lap_read_lapic_base
++    test rax, rax
++    jz .Lap_idle_stack_begin_invalid
++    mov qword ptr [rip + _native_x64_lapic_base], rax
++    mov r15, rax
++
++    mov ebx, 1
++.Lap_idle_stack_begin_prepare:
++    cmp rbx, r12
++    jae .Lap_idle_stack_begin_send_first
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 0], 1
++    jne .Lap_idle_stack_begin_invalid
++    cmp dword ptr [r8 + 32], 0
++    jne .Lap_idle_stack_begin_invalid
++    cmp dword ptr [r8 + 48], 1
++    jne .Lap_idle_stack_begin_invalid
++    cmp qword ptr [r8 + 56], 10
++    jne .Lap_idle_stack_begin_invalid
++
++    lea r9, [rip + _ap_idle_stack_state]
++    mov rax, rbx
++    shl rax, 6
++    add r9, rax
++    cmp dword ptr [r9 + 0], 0
++    jne .Lap_idle_stack_begin_invalid
++    mov dword ptr [r9 + 4], 0
++    movabs rax, 0x51A6C0DEF00D0000
++    xor rax, rbx
++    mov qword ptr [r9 + 8], rax
++    mov qword ptr [r9 + 16], 0
++    inc rbx
++    jmp .Lap_idle_stack_begin_prepare
++
++.Lap_idle_stack_begin_send_first:
++    mfence
++    mov ebx, 1
++.Lap_idle_stack_begin_send:
++    cmp rbx, r12
++    jae .Lap_idle_stack_begin_wait_start
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    xor eax, eax
++    xchg dword ptr [r8 + 48], eax
++    cmp eax, 1
++    jne .Lap_idle_stack_begin_failure
++    mov eax, 8
++    xchg dword ptr [r8 + 32], eax
++    test eax, eax
++    jne .Lap_idle_stack_begin_failure
++    mov edx, dword ptr [r8 + 8]
++    shl edx, 24
++    mov dword ptr [r15 + 0x310], edx
++    mov dword ptr [r15 + 0x300], 0x000000F1
++    inc rbx
++    jmp .Lap_idle_stack_begin_send
++
++.Lap_idle_stack_begin_wait_start:
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++
++.Lap_idle_stack_begin_wait:
++    mov ebx, 1
++.Lap_idle_stack_begin_check:
++    cmp rbx, r12
++    jae .Lap_idle_stack_begin_success
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    lea r9, [rip + _ap_idle_stack_state]
++    mov rax, rbx
++    shl rax, 6
++    add r9, rax
++    cmp dword ptr [r9 + 0], 3
++    je .Lap_idle_stack_begin_failure
++    cmp dword ptr [r9 + 0], 1
++    jne .Lap_idle_stack_begin_poll
++    cmp qword ptr [r9 + 8], 0
++    je .Lap_idle_stack_begin_poll
++    cmp qword ptr [r9 + 16], 0
++    jne .Lap_idle_stack_begin_poll
++    cmp dword ptr [r8 + 32], 0
++    jne .Lap_idle_stack_begin_poll
++    cmp dword ptr [r8 + 48], 0
++    jne .Lap_idle_stack_begin_poll
++    cmp qword ptr [r8 + 56], 11
++    jne .Lap_idle_stack_begin_poll
++    inc rbx
++    jmp .Lap_idle_stack_begin_check
++
++.Lap_idle_stack_begin_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r13
++    jb .Lap_idle_stack_begin_wait
++    mov eax, -1
++    jmp .Lap_idle_stack_begin_return
++
++.Lap_idle_stack_begin_success:
++    mov eax, r12d
++    dec eax
++    jmp .Lap_idle_stack_begin_return
++.Lap_idle_stack_begin_single:
++    xor eax, eax
++    jmp .Lap_idle_stack_begin_return
++.Lap_idle_stack_begin_failure:
++    mov eax, -3
++    jmp .Lap_idle_stack_begin_return
++.Lap_idle_stack_begin_invalid:
++    mov eax, -2
++.Lap_idle_stack_begin_return:
++    pop r15
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++
++// int _native_x64_end_idle_stack_test(uint64_t cpuCount,
++//                                      uint64_t timeoutTscTicks)
++// Releases every AP stack-canary loop with a fixed IPI and waits for native
++// HLT re-entry plus exact canary restoration.
++.global _native_x64_end_idle_stack_test
++_native_x64_end_idle_stack_test:
++    push rbx
++    push r12
++    push r13
++    push r15
++    test rdi, rdi
++    jz .Lap_idle_stack_end_invalid
++    cmp rdi, 256
++    ja .Lap_idle_stack_end_invalid
++    test rsi, rsi
++    jz .Lap_idle_stack_end_invalid
++    mov r12, rdi
++    mov r13, rsi
++    cmp r12, 1
++    je .Lap_idle_stack_end_single
++    call .Lap_read_lapic_base
++    test rax, rax
++    jz .Lap_idle_stack_end_invalid
++    mov qword ptr [rip + _native_x64_lapic_base], rax
++    mov r15, rax
++
++    mov ebx, 1
++.Lap_idle_stack_end_release:
++    cmp rbx, r12
++    jae .Lap_idle_stack_end_wait_start
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    lea r9, [rip + _ap_idle_stack_state]
++    mov rax, rbx
++    shl rax, 6
++    add r9, rax
++    cmp dword ptr [r9 + 0], 1
++    jne .Lap_idle_stack_end_failure
++    mov dword ptr [r9 + 4], 1
++    mfence
++    mov edx, dword ptr [r8 + 8]
++    shl edx, 24
++    mov dword ptr [r15 + 0x310], edx
++    mov dword ptr [r15 + 0x300], 0x000000F1
++    inc rbx
++    jmp .Lap_idle_stack_end_release
++
++.Lap_idle_stack_end_wait_start:
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++
++.Lap_idle_stack_end_wait:
++    mov ebx, 1
++.Lap_idle_stack_end_check:
++    cmp rbx, r12
++    jae .Lap_idle_stack_end_success
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    lea r9, [rip + _ap_idle_stack_state]
++    mov rax, rbx
++    shl rax, 6
++    add r9, rax
++    cmp dword ptr [r9 + 0], 3
++    je .Lap_idle_stack_end_failure
++    cmp dword ptr [r9 + 0], 2
++    jne .Lap_idle_stack_end_poll
++    mov rax, qword ptr [r9 + 8]
++    test rax, rax
++    jz .Lap_idle_stack_end_failure
++    cmp qword ptr [r9 + 16], rax
++    jne .Lap_idle_stack_end_failure
++    cmp dword ptr [r8 + 32], 0
++    jne .Lap_idle_stack_end_poll
++    cmp dword ptr [r8 + 48], 1
++    jne .Lap_idle_stack_end_poll
++    cmp qword ptr [r8 + 56], 12
++    jne .Lap_idle_stack_end_poll
++    inc rbx
++    jmp .Lap_idle_stack_end_check
++
++.Lap_idle_stack_end_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r13
++    jb .Lap_idle_stack_end_wait
++    mov eax, -1
++    jmp .Lap_idle_stack_end_return
++
++.Lap_idle_stack_end_success:
++    mov eax, r12d
++    dec eax
++    jmp .Lap_idle_stack_end_return
++.Lap_idle_stack_end_single:
++    xor eax, eax
++    jmp .Lap_idle_stack_end_return
++.Lap_idle_stack_end_failure:
++    mov eax, -3
++    jmp .Lap_idle_stack_end_return
++.Lap_idle_stack_end_invalid:
++    mov eax, -2
++.Lap_idle_stack_end_return:
++    pop r15
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++
+ // int _native_x64_run_ap_timer_test(uint64_t cpuCount,
+ //                                    uint32_t initialCount,
+ //                                    uint64_t minimumTicks,
+@@ -2599,6 +2932,12 @@ _ap_scheduler_state: .zero 16384
+ // +4 release request, +8 heartbeat, +16 deterministic checksum.
+ _ap_managed_residency_state: .zero 16384
+ 
++.balign 64
++// Stage-15 AP idle-stack enrollment mailboxes. Each 64-byte record is:
++// +0 state (0=idle, 1=canary parked, 2=returned, 3=failure),
++// +4 release request, +8 expected canary, +16 observed canary after pop.
++_ap_idle_stack_state: .zero 16384
++
+ .balign 64
+ // 256 cache-line-isolated records:
+ // request_epoch, ack_epoch, resume_epoch, state, padding,
+diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+index 363529ce03b312b6d9790a03738f1c73660dfa9e..9cc627fc8c7836847e97a9bb51b7e2051c5bded3 100644
+--- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
++++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+@@ -130,6 +130,16 @@ internal class LibraryInitializer
+             {
+                 Cosmos.Kernel.Core.Panic.Halt("Stage 14 managed AP GC residency proof failed.");
+             }
++
++            // Stage 15: bind native AP bootstrap-stack bounds to the already
++            // registered idle scheduler threads. A native on-stack canary and
++            // real GC rendezvous prove that OrionGC scans every remote AP from
++            // its captured RSP before the AP returns to native HLT.
++            Serial.WriteString("[SCHED-AP-STACK] begin\n");
++            if (!SchedulerManager.RunApplicationProcessorIdleStackEnrollmentProof())
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 15 AP idle-stack enrollment proof failed.");
++            }
+         }
+     }
+ }
