@@ -3,7 +3,7 @@ name: SMT stage 9 AP-local periodic timer proof
 on:
   push:
     branches: [ main ]
-    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage09-qemu.sh', 'ZonderqOS.csproj', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage09.yml' ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage09-qemu.sh', 'tools/verify-smt-local.sh', 'ZonderqOS.csproj', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage09.yml' ]
   pull_request:
     paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage09-qemu.sh', 'ZonderqOS.csproj', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage09.yml' ]
   workflow_dispatch:
