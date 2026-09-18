@@ -1,0 +1,236 @@
+diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+index 2322d85..eaf3c1d 100644
+--- a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
++++ b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+@@ -42,6 +42,16 @@ internal static unsafe partial class SmpApBootstrap
+     [SuppressGCTransition]
+     private static partial ulong NativeGetRflags(uint cpuId);
+ 
++    [LibraryImport("*", EntryPoint = "_native_x64_run_ap_work_test")]
++    [SuppressGCTransition]
++    private static partial int NativeRunApWorkTest(
++        ulong cpuCount,
++        ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_work_counter")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetWorkCounter(uint cpuId);
++
+     internal static bool StartAndParkApplicationProcessors()
+     {
+         LimineMpResponseX64* response = LimineMp.X64Response;
+@@ -140,4 +150,53 @@ internal static unsafe partial class SmpApBootstrap
+         Serial.WriteString("[SMP-BOOT] PASS\n");
+         return true;
+     }
++
++    internal static bool RunApplicationProcessorWorkProof()
++    {
++        const ulong ExpectedCounter = 100_000;
++        LimineMpResponseX64* response = LimineMp.X64Response;
++        if (response == null || response->Cpus == null ||
++            response->CpuCount == 0 ||
++            response->CpuCount > LimineMp.MaxXApicCpuCount)
++        {
++            Serial.WriteString("[SMP] WARNING: native AP work proof has no valid CPU topology.\n");
++            return false;
++        }
++
++        long frequency = X64CpuOps.TscFrequency;
++        ulong timeoutTicks = frequency > 0
++            ? checked((ulong)frequency * ApReadyTimeoutSeconds)
++            : 5_000_000_000UL;
++        int expected = checked((int)response->CpuCount - 1);
++        int completed = NativeRunApWorkTest(response->CpuCount, timeoutTicks);
++        if (completed != expected)
++        {
++            Serial.WriteString("[SMP] WARNING: native AP work proof timed out or rejected invalid state.\n");
++            return false;
++        }
++
++        for (uint cpuId = 1; cpuId < response->CpuCount; cpuId++)
++        {
++            ulong counter = NativeGetWorkCounter(cpuId);
++            if (counter != ExpectedCounter)
++            {
++                Serial.WriteString("[SMP] WARNING: AP work counter mismatch for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString("\n");
++                return false;
++            }
++
++            Serial.WriteString("[SMP-TEST] cpu=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" counter=");
++            Serial.WriteNumber(counter);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[SMP] Native work proof complete: ");
++        Serial.WriteNumber((ulong)completed);
++        Serial.WriteString(" AP worker(s); APs are now parked with interrupts disabled.\n");
++        Serial.WriteString("[SMP-TEST] PASS\n");
++        return true;
++    }
+ }
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+index 53040bd..9a31b5b 100644
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -105,6 +105,14 @@ internal class X64PlatformInitializer : IPlatformInitializer
+             Cosmos.Kernel.Core.Panic.Halt("Stage 4 failed to start and safely park every application processor.");
+         }
+ 
++        // Execute one bounded native command on every AP. This proves actual
++        // post-bootstrap work without exposing managed runtime or scheduler
++        // state to another CPU. Every AP permanently parks after completion.
++        if (!SmpApBootstrap.RunApplicationProcessorWorkProof())
++        {
++            Cosmos.Kernel.Core.Panic.Halt("Native application-processor work proof failed.");
++        }
++
+         // Initialize RTC
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new RTC();
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+index cb4596e..26330e4 100644
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -371,6 +371,9 @@ _native_x64_start_aps:
+     mov qword ptr [r9 + 16], rax
+     mov qword ptr [r9 + 24], rax
+     mov qword ptr [r9 + 32], rax
++    mov qword ptr [r9 + 40], rax
++    mov qword ptr [r9 + 48], rax
++    mov qword ptr [r9 + 56], rax
+ 
+     xor eax, eax
+     lea rdx, [rip + _native_x64_ap_entry]
+@@ -484,6 +487,23 @@ _native_x64_ap_entry:
+     mov eax, 1
+     xchg dword ptr [r14 + 0], eax
+ 
++// Stage 5 command mailbox. The BSP publishes command 1 only after every AP
++// has reported READY. Each AP atomically increments its own cache-line-local
++// counter, publishes DONE, and only then enters the permanent parked path.
++.Lap_wait_work:
++    pause
++    cmp dword ptr [r14 + 32], 1
++    jne .Lap_wait_work
++    mov r15d, 100000
++
++.Lap_work_loop:
++    lock inc qword ptr [r14 + 40]
++    dec r15d
++    jne .Lap_work_loop
++    mfence
++    mov eax, 1
++    xchg dword ptr [r14 + 48], eax
++
+ .Lap_park:
+     cli
+     hlt
+@@ -514,6 +534,102 @@ AP_STATE_GETTER _native_x64_get_ap_lapic_id, 8, 4
+ AP_STATE_GETTER _native_x64_get_ap_gs_id, 12, 4
+ AP_STATE_GETTER _native_x64_get_ap_stack, 16, 8
+ AP_STATE_GETTER _native_x64_get_ap_rflags, 24, 8
++AP_STATE_GETTER _native_x64_get_ap_work_counter, 40, 8
++
++// int _native_x64_run_ap_work_test(uint64_t cpuCount,
++//                                  uint64_t timeoutTscTicks)
++// Publishes one bounded native work command to each dense AP CpuId and waits
++// for every AP to report completion. APs remain native-only with IF=0.
++.global _native_x64_run_ap_work_test
++_native_x64_run_ap_work_test:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++
++    test rdi, rdi
++    jz .Lap_work_invalid
++    cmp rdi, 256
++    ja .Lap_work_invalid
++    test rsi, rsi
++    jz .Lap_work_invalid
++
++    mov r12, rdi
++    mov r13, rsi
++    lea r14, [r12 - 1]
++    mov ebx, 1
++
++.Lap_command_loop:
++    cmp rbx, r12
++    jae .Lap_commands_published
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 0], 1
++    jne .Lap_work_invalid
++    cmp qword ptr [r8 + 40], 0
++    jne .Lap_work_invalid
++    cmp dword ptr [r8 + 48], 0
++    jne .Lap_work_invalid
++    mov eax, 1
++    xchg dword ptr [r8 + 32], eax
++    inc rbx
++    jmp .Lap_command_loop
++
++.Lap_commands_published:
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r15, rax
++
++.Lap_work_poll:
++    xor r11d, r11d
++    mov ebx, 1
++
++.Lap_work_count_loop:
++    cmp rbx, r12
++    jae .Lap_work_count_done
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 48], 1
++    jne .Lap_work_count_next
++    inc r11d
++
++.Lap_work_count_next:
++    inc rbx
++    jmp .Lap_work_count_loop
++
++.Lap_work_count_done:
++    cmp r11, r14
++    je .Lap_work_success
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r15
++    cmp rax, r13
++    jb .Lap_work_poll
++    mov eax, -1
++    jmp .Lap_work_return
++
++.Lap_work_invalid:
++    mov eax, -2
++    jmp .Lap_work_return
++
++.Lap_work_success:
++    mov eax, r14d
++
++.Lap_work_return:
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
+ 
+ // void _native_set_context_switch_sp(nuint newSp)
+ // Sets this CPU's target SP for context switch.
+
