@@ -193,7 +193,7 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Ke
          // Initialize RTC
          Serial.WriteString("[X64HAL] Initializing RTC...\n");
          _rtc = new RTC();
-@@ -188,6 +192,42 @@ internal class X64PlatformInitializer : IPlatformInitializer
+@@ -188,6 +192,50 @@ internal class X64PlatformInitializer : IPlatformInitializer
          }
      }
  
@@ -212,6 +212,14 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Ke
 +
 +        for (uint round = 1; round <= 3; round++)
 +        {
++            // Create actual unreachable managed objects before every collection.
++            // Merely calling Collect() would prove the rendezvous path, but not
++            // that mark/sweep can reclaim garbage while all APs are parked.
++            for (int garbage = 0; garbage < 64; garbage++)
++            {
++                _ = new byte[128 + garbage];
++            }
++
 +            int freed = GarbageCollector.Collect();
 +            int collectionIndex = GarbageCollector.GetCollectionIndex();
 +            if (collectionIndex != collectionStart + (int)round ||
