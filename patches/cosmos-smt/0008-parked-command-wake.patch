@@ -1,8 +1,8 @@
 diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
-index 6c0f14c..6d8f2dd 100644
+index 6c0f14c..fdb128c 100644
 --- a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
 +++ b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
-@@ -64,6 +64,10 @@ internal static unsafe partial class SmpApBootstrap
+@@ -64,6 +64,18 @@ internal static unsafe partial class SmpApBootstrap
      [SuppressGCTransition]
      private static partial int NativeRunApIpiRounds(ulong cpuCount, ulong rounds, ulong timeoutTscTicks);
  
@@ -10,10 +10,18 @@ index 6c0f14c..6d8f2dd 100644
 +    [SuppressGCTransition]
 +    private static partial int NativeRunApParkedCommandTest(ulong cpuCount, ulong timeoutTscTicks);
 +
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_command")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetCommand(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_completion")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetCompletion(uint cpuId);
++
      internal static bool StartAndParkApplicationProcessors()
      {
          LimineMpResponseX64* response = LimineMp.X64Response;
-@@ -295,4 +299,51 @@ internal static unsafe partial class SmpApBootstrap
+@@ -295,4 +307,87 @@ internal static unsafe partial class SmpApBootstrap
          Serial.WriteString("[APIC-RUN-TEST] PASS\n");
          return true;
      }
@@ -36,7 +44,12 @@ index 6c0f14c..6d8f2dd 100644
 +        int completed = NativeRunApParkedCommandTest(response->CpuCount, timeoutTicks);
 +        if (completed != expected)
 +        {
-+            Serial.WriteString("[SMP] WARNING: parked AP command proof timed out or rejected state.\n");
++            Serial.WriteString("[SMP] WARNING: parked AP command proof result=");
++            WriteSignedNumber(completed);
++            Serial.WriteString(" expected=");
++            Serial.WriteNumber((ulong)expected);
++            Serial.WriteString("\n");
++            DumpParkedCommandState(response->CpuCount);
 +            return false;
 +        }
 +
@@ -49,6 +62,7 @@ index 6c0f14c..6d8f2dd 100644
 +                Serial.WriteString("[SMP] WARNING: parked AP command state mismatch for CpuId=");
 +                Serial.WriteNumber(cpuId);
 +                Serial.WriteString("\n");
++                DumpParkedCommandState(response->CpuCount);
 +                return false;
 +            }
 +
@@ -63,6 +77,36 @@ index 6c0f14c..6d8f2dd 100644
 +
 +        Serial.WriteString("[SMP-IDLE-TEST] PASS\n");
 +        return true;
++    }
++
++    private static void WriteSignedNumber(int value)
++    {
++        if (value < 0)
++        {
++            Serial.WriteString("-");
++            Serial.WriteNumber((ulong)(-(long)value));
++            return;
++        }
++
++        Serial.WriteNumber((ulong)value);
++    }
++
++    private static void DumpParkedCommandState(ulong cpuCount)
++    {
++        for (uint cpuId = 1; cpuId < cpuCount; cpuId++)
++        {
++            Serial.WriteString("[SMP-IDLE-DIAG] cpu=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" command=");
++            Serial.WriteNumber(NativeGetCommand(cpuId));
++            Serial.WriteString(" completion=");
++            Serial.WriteNumber(NativeGetCompletion(cpuId));
++            Serial.WriteString(" counter=");
++            Serial.WriteNumber(NativeGetWorkCounter(cpuId));
++            Serial.WriteString(" ipi=");
++            Serial.WriteNumber(NativeGetIpiCount(cpuId));
++            Serial.WriteString("\n");
++        }
 +    }
  }
 diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
@@ -85,7 +129,7 @@ index 2514a94..57b064a 100644
          Serial.WriteString("[X64HAL] Initializing RTC...\n");
          _rtc = new RTC();
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-index 378c2d2..8fb1718 100644
+index 378c2d2..704659c 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 @@ -511,6 +511,13 @@ _native_x64_ap_entry:
@@ -102,7 +146,16 @@ index 378c2d2..8fb1718 100644
      jmp .Lap_park
  
  .macro AP_STATE_GETTER name, offset, width
-@@ -759,6 +766,100 @@ _native_x64_run_ap_ipi_rounds:
+@@ -539,6 +546,8 @@ AP_STATE_GETTER _native_x64_get_ap_gs_id, 12, 4
+ AP_STATE_GETTER _native_x64_get_ap_stack, 16, 8
+ AP_STATE_GETTER _native_x64_get_ap_rflags, 24, 8
+ AP_STATE_GETTER _native_x64_get_ap_work_counter, 40, 8
++AP_STATE_GETTER _native_x64_get_ap_command, 4, 4
++AP_STATE_GETTER _native_x64_get_ap_completion, 48, 4
+ AP_STATE_GETTER _native_x64_get_ap_ipi_count, 56, 8
+ 
+ _native_x64_enable_ap_local_apic:
+@@ -759,6 +768,100 @@ _native_x64_run_ap_ipi_rounds:
      ret
  
  
