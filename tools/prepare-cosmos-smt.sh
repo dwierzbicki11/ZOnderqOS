@@ -96,6 +96,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 7
   bash tools/prepare-cosmos-smt.sh --through-stage 8
   bash tools/prepare-cosmos-smt.sh --through-stage 9
+  bash tools/prepare-cosmos-smt.sh --through-stage 10
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -358,4 +359,8 @@ elif (( SELECTED_STAGE == 8 )); then
 elif (( SELECTED_STAGE == 9 )); then
     echo "[SMT] Etap 9 uruchamia okresowy LAPIC timer osobno na kazdym AP i potwierdza kilka tickow."
     echo "[SMT] Timer jest potem zatrzymywany; scheduler i GC nadal nie wchodza na AP-y."
+elif (( SELECTED_STAGE == 10 )); then
+    echo "[SMT] Etap 10 wykonuje wielokrotny native GC stop-the-world rendezvous przez IPI 0xF3."
+    echo "[SMT] AP-y publikuja kontekst, ACK epoki, parkuja z IF=0 i wracaja dopiero po release BSP."
+    echo "[SMT] To jest fundament pod SMP-safe GarbageCollector; managed GC nie jest jeszcze uruchamiany na AP-ach."
 fi

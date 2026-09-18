@@ -1,0 +1,456 @@
+diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+--- a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
++++ b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+@@ -88,6 +88,37 @@ internal static unsafe partial class SmpApBootstrap
+     [SuppressGCTransition]
+     private static partial ulong NativeGetTimerTicks(uint cpuId);
+ 
++    [LibraryImport("*", EntryPoint = "_native_x64_run_gc_rendezvous_test")]
++    [SuppressGCTransition]
++    private static partial int NativeRunGcRendezvousTest(
++        ulong cpuCount,
++        ulong rounds,
++        ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_gc_ack_epoch")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetGcAckEpoch(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_gc_resume_epoch")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetGcResumeEpoch(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_gc_state")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetGcState(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_gc_saved_rsp")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetGcSavedRsp(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_gc_saved_rip")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetGcSavedRip(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_gc_saved_rflags")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetGcSavedRflags(uint cpuId);
++
+     internal static bool StartAndParkApplicationProcessors()
+     {
+         LimineMpResponseX64* response = LimineMp.X64Response;
+@@ -439,6 +467,71 @@ internal static unsafe partial class SmpApBootstrap
+         return true;
+     }
+ 
++    internal static bool RunGcStopTheWorldRendezvousProof()
++    {
++        const ulong Rounds = 3;
++        LimineMpResponseX64* response = LimineMp.X64Response;
++        if (response == null || response->Cpus == null || response->CpuCount == 0 ||
++            response->CpuCount > LimineMp.MaxXApicCpuCount)
++        {
++            Serial.WriteString("[SMP] WARNING: GC rendezvous proof has no valid CPU topology.\n");
++            return false;
++        }
++
++        long frequency = X64CpuOps.TscFrequency;
++        ulong timeoutTicks = frequency > 0
++            ? checked((ulong)frequency * ApReadyTimeoutSeconds)
++            : 5_000_000_000UL;
++
++        int completed = NativeRunGcRendezvousTest(response->CpuCount, Rounds, timeoutTicks);
++        if (completed != (int)Rounds)
++        {
++            Serial.WriteString("[SMP] WARNING: GC rendezvous proof result=");
++            WriteSignedNumber(completed);
++            Serial.WriteString(" expected=");
++            Serial.WriteNumber(Rounds);
++            Serial.WriteString("\n");
++            return false;
++        }
++
++        for (uint cpuId = 1; cpuId < response->CpuCount; cpuId++)
++        {
++            ulong ackEpoch = NativeGetGcAckEpoch(cpuId);
++            ulong resumeEpoch = NativeGetGcResumeEpoch(cpuId);
++            uint state = NativeGetGcState(cpuId);
++            ulong savedRsp = NativeGetGcSavedRsp(cpuId);
++            ulong savedRip = NativeGetGcSavedRip(cpuId);
++            ulong savedRflags = NativeGetGcSavedRflags(cpuId);
++
++            if (ackEpoch != Rounds || resumeEpoch != Rounds || state != 0 ||
++                savedRsp == 0 || savedRip == 0 || (savedRflags & (1UL << 9)) == 0)
++            {
++                Serial.WriteString("[SMP] WARNING: GC rendezvous state mismatch for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString("\n");
++                return false;
++            }
++
++            Serial.WriteString("[GC-RDV] cpu=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" ack=");
++            Serial.WriteNumber(ackEpoch);
++            Serial.WriteString(" resume=");
++            Serial.WriteNumber(resumeEpoch);
++            Serial.WriteString(" state=");
++            Serial.WriteNumber(state);
++            Serial.WriteString(" rsp=0x");
++            Serial.WriteHex(savedRsp);
++            Serial.WriteString(" rip=0x");
++            Serial.WriteHex(savedRip);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[GC-RDV] epochs=3 all APs stopped and resumed cleanly.\n");
++        Serial.WriteString("[GC-RDV-TEST] PASS\n");
++        return true;
++    }
++
+     private static void WriteSignedNumber(int value)
+     {
+         if (value < 0)
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -145,6 +145,14 @@ internal class X64PlatformInitializer : IPlatformInitializer
+             Cosmos.Kernel.Core.Panic.Halt("AP-local timer proof failed.");
+         }
+ 
++        // Stage 10: native stop-the-world rendezvous foundation for SMP GC.
++        // Each AP is interrupted on vector 0xF3, publishes a saved context and
++        // epoch acknowledgement, spins with IF=0, then resumes after BSP release.
++        if (!SmpApBootstrap.RunGcStopTheWorldRendezvousProof())
++        {
++            Cosmos.Kernel.Core.Panic.Halt("GC stop-the-world rendezvous proof failed.");
++        }
++
+         // Initialize RTC
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new RTC();
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -652,6 +652,24 @@ _native_x64_install_ap_ipi_idt:
+     shr rax, 16
+     mov dword ptr [r8 + 0xF28], eax
+     mov dword ptr [r8 + 0xF2C], 0
++
++    // Vector 0xF3 is reserved for the native GC stop-the-world rendezvous.
++    // The handler never enters managed code and returns only after BSP publishes
++    // the matching release epoch.
++    lea r9, [rip + _native_x64_gc_rendezvous_handler]
++    mov r10, r9
++    mov word ptr [r8 + 0xF30], r10w
++    xor eax, eax
++    mov ax, cs
++    mov word ptr [r8 + 0xF32], ax
++    mov byte ptr [r8 + 0xF34], 0
++    mov byte ptr [r8 + 0xF35], 0x8E
++    mov rax, r10
++    shr rax, 16
++    mov word ptr [r8 + 0xF36], ax
++    shr rax, 16
++    mov dword ptr [r8 + 0xF38], eax
++    mov dword ptr [r8 + 0xF3C], 0
+ 
+     lea rax, [rip + _ap_ipi_idtr]
+     mov word ptr [rax], 4095
+@@ -694,6 +712,84 @@ _native_x64_ap_timer_handler:
+     pop rax
+     iretq
+ 
++.global _native_x64_gc_rendezvous_handler
++_native_x64_gc_rendezvous_handler:
++    // Interrupt gates clear IF before entering here. Keep it clear for the
++    // complete stop-the-world interval: nested device/timer work must not run.
++    push rax
++    push rcx
++    push rdx
++    push r8
++    push r9
++    push r10
++
++    mov eax, dword ptr gs:[0]
++    test eax, eax
++    jz .Lgc_rdv_eoi_return
++    cmp eax, 255
++    ja .Lgc_rdv_eoi_return
++
++    lea r8, [rip + _gc_rendezvous_state]
++    mov ecx, eax
++    shl rcx, 6
++    add r8, rcx
++    mov rcx, qword ptr [r8 + 0]
++    test rcx, rcx
++    jz .Lgc_rdv_eoi_return
++
++    // Six pushes above = 48 bytes. The same-CPL interrupt frame starts at
++    // rsp+48 and contains RIP, CS, RFLAGS. The interrupted RSP is therefore
++    // the address immediately above that 24-byte frame.
++    lea r9, [rsp + 72]
++    mov qword ptr [r8 + 32], r9
++    mov r9, qword ptr [rsp + 48]
++    mov qword ptr [r8 + 40], r9
++    mov r9, qword ptr [rsp + 64]
++    mov qword ptr [r8 + 48], r9
++
++    mov qword ptr [r8 + 8], rcx
++    mov eax, 2
++    xchg dword ptr [r8 + 24], eax
++    mfence
++
++    // EOI before parking so the LAPIC does not keep the rendezvous interrupt
++    // in-service for the entire GC critical section.
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    test rax, rax
++    jz .Lgc_rdv_wait_release
++    mov dword ptr [rax + 0xB0], 0
++
++.Lgc_rdv_wait_release:
++    mov rax, qword ptr [rip + _gc_release_epoch]
++    cmp rax, rcx
++    jae .Lgc_rdv_resume
++    pause
++    jmp .Lgc_rdv_wait_release
++
++.Lgc_rdv_resume:
++    mov eax, 3
++    xchg dword ptr [r8 + 24], eax
++    mov qword ptr [r8 + 16], rcx
++    mfence
++    xor eax, eax
++    xchg dword ptr [r8 + 24], eax
++    jmp .Lgc_rdv_restore
++
++.Lgc_rdv_eoi_return:
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    test rax, rax
++    jz .Lgc_rdv_restore
++    mov dword ptr [rax + 0xB0], 0
++
++.Lgc_rdv_restore:
++    pop r10
++    pop r9
++    pop r8
++    pop rdx
++    pop rcx
++    pop rax
++    iretq
++
+ // int _native_x64_run_ap_ipi_test(uint64_t cpuCount, uint64_t timeoutTscTicks)
+ .global _native_x64_run_ap_ipi_test
+ _native_x64_run_ap_ipi_test:
+@@ -1120,6 +1226,198 @@ _native_x64_run_ap_timer_test:
+     pop rbx
+     ret
+ 
++// uint64_t getters for the Stage-10 GC rendezvous state.
++.macro GC_STATE_GETTER name, offset, width
++.global \name
++\name:
++    cmp edi, 255
++    ja .Lgc_get_invalid_\@
++    lea rcx, [rip + _gc_rendezvous_state]
++    mov eax, edi
++    shl rax, 6
++    add rcx, rax
++    .if \width == 4
++        mov eax, dword ptr [rcx + \offset]
++    .else
++        mov rax, qword ptr [rcx + \offset]
++    .endif
++    ret
++.Lgc_get_invalid_\@:
++    xor eax, eax
++    ret
++.endm
++
++GC_STATE_GETTER _native_x64_get_gc_ack_epoch, 8, 8
++GC_STATE_GETTER _native_x64_get_gc_resume_epoch, 16, 8
++GC_STATE_GETTER _native_x64_get_gc_state, 24, 4
++GC_STATE_GETTER _native_x64_get_gc_saved_rsp, 32, 8
++GC_STATE_GETTER _native_x64_get_gc_saved_rip, 40, 8
++GC_STATE_GETTER _native_x64_get_gc_saved_rflags, 48, 8
++
++// int _native_x64_run_gc_rendezvous_test(uint64_t cpuCount,
++//                                         uint64_t rounds,
++//                                         uint64_t timeoutTscTicks)
++// Repeatedly publishes an epoch, sends vector 0xF3 to every AP, waits until
++// every AP is parked with IF=0, releases the epoch, then waits for all APs to
++// return to their interrupted HLT path. No managed code runs on an AP.
++.global _native_x64_run_gc_rendezvous_test
++_native_x64_run_gc_rendezvous_test:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++    test rdi, rdi
++    jz .Lgc_test_invalid
++    cmp rdi, 256
++    ja .Lgc_test_invalid
++    test rsi, rsi
++    jz .Lgc_test_invalid
++    test rdx, rdx
++    jz .Lgc_test_invalid
++
++    mov r12, rdi
++    mov r13, rsi
++    mov r14, rdx
++    call .Lap_read_lapic_base
++    test rax, rax
++    jz .Lgc_test_invalid
++    mov qword ptr [rip + _native_x64_lapic_base], rax
++    mov r15, rax
++    mov qword ptr [rip + _gc_release_epoch], 0
++    mov ebx, 1
++
++.Lgc_test_round:
++    cmp rbx, r13
++    ja .Lgc_test_success
++
++    // Publish every AP slot before delivering any rendezvous IPI.
++    mov r10d, 1
++.Lgc_publish_loop:
++    cmp r10, r12
++    jae .Lgc_publish_done
++    lea r8, [rip + _gc_rendezvous_state]
++    mov rax, r10
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 24], 0
++    jne .Lgc_test_invalid
++    mov qword ptr [r8 + 8], 0
++    mov qword ptr [r8 + 16], 0
++    mov qword ptr [r8 + 32], 0
++    mov qword ptr [r8 + 40], 0
++    mov qword ptr [r8 + 48], 0
++    mov qword ptr [r8 + 0], rbx
++    mov eax, 1
++    xchg dword ptr [r8 + 24], eax
++    inc r10
++    jmp .Lgc_publish_loop
++
++.Lgc_publish_done:
++    mfence
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++
++    mov r10d, 1
++.Lgc_send_loop:
++    cmp r10, r12
++    jae .Lgc_wait_parked
++    lea r8, [rip + _ap_boot_state]
++    mov rax, r10
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 0], 1
++    jne .Lgc_test_invalid
++    mov edx, dword ptr [r8 + 8]
++    shl edx, 24
++    mov dword ptr [r15 + 0x310], edx
++    mov dword ptr [r15 + 0x300], 0x000000F3
++    inc r10
++    jmp .Lgc_send_loop
++
++.Lgc_wait_parked:
++    mov r10d, 1
++.Lgc_check_parked:
++    cmp r10, r12
++    jae .Lgc_all_parked
++    lea r8, [rip + _gc_rendezvous_state]
++    mov rax, r10
++    shl rax, 6
++    add r8, rax
++    cmp qword ptr [r8 + 8], rbx
++    jne .Lgc_park_poll
++    cmp dword ptr [r8 + 24], 2
++    jne .Lgc_park_poll
++    inc r10
++    jmp .Lgc_check_parked
++
++.Lgc_park_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r14
++    jb .Lgc_wait_parked
++    mov eax, -1
++    jmp .Lgc_test_return
++
++.Lgc_all_parked:
++    mov rax, rbx
++    xchg qword ptr [rip + _gc_release_epoch], rax
++    mfence
++
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++
++.Lgc_wait_resumed:
++    mov r10d, 1
++.Lgc_check_resumed:
++    cmp r10, r12
++    jae .Lgc_round_done
++    lea r8, [rip + _gc_rendezvous_state]
++    mov rax, r10
++    shl rax, 6
++    add r8, rax
++    cmp qword ptr [r8 + 16], rbx
++    jne .Lgc_resume_poll
++    cmp dword ptr [r8 + 24], 0
++    jne .Lgc_resume_poll
++    inc r10
++    jmp .Lgc_check_resumed
++
++.Lgc_resume_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r14
++    jb .Lgc_wait_resumed
++    mov eax, -1
++    jmp .Lgc_test_return
++
++.Lgc_round_done:
++    inc rbx
++    jmp .Lgc_test_round
++
++.Lgc_test_success:
++    mov eax, r13d
++    jmp .Lgc_test_return
++.Lgc_test_invalid:
++    mov eax, -2
++.Lgc_test_return:
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
+ 
+ // int _native_x64_run_ap_work_test(uint64_t cpuCount,
+ //                                  uint64_t timeoutTscTicks)
+@@ -1269,5 +1603,12 @@ _ap_timer_ticks: .zero 2048
+ _ap_timer_initial_count: .long 0
+ 
++.balign 64
++// 256 cache-line-isolated records:
++// request_epoch, ack_epoch, resume_epoch, state, padding,
++// saved_rsp, saved_rip, saved_rflags.
++_gc_rendezvous_state: .zero 16384
++_gc_release_epoch: .quad 0
++
+ .data
+ _native_x64_irq_table:
+ .quad irq0_stub
