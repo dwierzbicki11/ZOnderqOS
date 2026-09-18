@@ -1,7 +1,7 @@
 diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
 --- a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
 +++ b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
-@@ -88,6 +88,34 @@ internal static unsafe partial class SmpApBootstrap
+@@ -88,6 +88,37 @@ internal static unsafe partial class SmpApBootstrap
      [SuppressGCTransition]
      private static partial ulong NativeGetTimerTicks(uint cpuId);
  
@@ -39,7 +39,7 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL
      internal static bool StartAndParkApplicationProcessors()
      {
          LimineMpResponseX64* response = LimineMp.X64Response;
-@@ -439,6 +467,79 @@ internal static unsafe partial class SmpApBootstrap
+@@ -439,6 +467,71 @@ internal static unsafe partial class SmpApBootstrap
          return true;
      }
  
@@ -114,7 +114,7 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL
 diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
 --- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
 +++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
-@@ -145,6 +145,15 @@ internal class X64PlatformInitializer : IPlatformInitializer
+@@ -145,6 +145,14 @@ internal class X64PlatformInitializer : IPlatformInitializer
              Cosmos.Kernel.Core.Panic.Halt("AP-local timer proof failed.");
          }
  
@@ -157,7 +157,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
  
      lea rax, [rip + _ap_ipi_idtr]
      mov word ptr [rax], 4095
-@@ -694,6 +712,94 @@ _native_x64_ap_timer_handler:
+@@ -694,6 +712,84 @@ _native_x64_ap_timer_handler:
      pop rax
      iretq
  
@@ -242,7 +242,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
  // int _native_x64_run_ap_ipi_test(uint64_t cpuCount, uint64_t timeoutTscTicks)
  .global _native_x64_run_ap_ipi_test
  _native_x64_run_ap_ipi_test:
-@@ -1120,6 +1226,234 @@ _native_x64_run_ap_timer_test:
+@@ -1120,6 +1226,198 @@ _native_x64_run_ap_timer_test:
      pop rbx
      ret
  
