@@ -87,7 +87,7 @@ index 9a31b5b..1fed060 100644
          Serial.WriteString("[X64HAL] Initializing RTC...\n");
          _rtc = new RTC();
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-index 26330e4..52c01ad 100644
+index 26330e4..071897f 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 @@ -483,6 +483,10 @@ _native_x64_ap_entry:
@@ -205,7 +205,7 @@ index 26330e4..52c01ad 100644
 +    shl edx, 24
 +    mov r15, qword ptr [rip + _native_x64_lapic_base]
 +    mov dword ptr [r15 + 0x310], edx
-+    mov dword ptr [r15 + 0x300], 0x000040F1
++    mov dword ptr [r15 + 0x300], 0x000000F1
 +    rdtsc
 +    shl rdx, 32
 +    or rax, rdx
