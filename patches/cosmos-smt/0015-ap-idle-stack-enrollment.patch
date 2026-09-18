@@ -427,7 +427,7 @@ index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..0584999197d2dae5a777b4b72e720975
      {
          if (value < 0)
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-index 01d78a1aa40a0241a51134502b4c7f91e1abe564..30ef79f9c91da55854c993a4815c39cb3433b987 100644
+index 01d78a1aa40a0241a51134502b4c7f91e1abe564..a2dbeebcc55fec4dd82fe7fa2d62686ce83f2c96 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 @@ -529,6 +529,8 @@ _native_x64_ap_entry:
@@ -518,7 +518,20 @@ index 01d78a1aa40a0241a51134502b4c7f91e1abe564..30ef79f9c91da55854c993a4815c39cb
  .global _native_x64_get_ap_timer_ticks
  _native_x64_get_ap_timer_ticks:
      cmp edi, 255
-@@ -1863,6 +1930,272 @@ _native_x64_end_managed_residency:
+@@ -1032,7 +1099,8 @@ _native_x64_gc_rendezvous_handler:
+-    // Six pushes above = 48 bytes. The same-CPL interrupt frame starts at
+-    // rsp+48 and contains RIP, CS, RFLAGS. The interrupted RSP is therefore
+-    // the address immediately above that 24-byte frame.
+-    lea r9, [rsp + 72]
++    // Six pushes above = 48 bytes. The AP interrupt frame starts at rsp+48
++    // and contains RIP, CS, RFLAGS, the interrupted RSP and SS. Load the RSP
++    // saved in that frame; taking the address of its slot would make the GC
++    // scan the interrupt-frame tail instead of the AP's live stack.
++    mov r9, qword ptr [rsp + 72]
+     mov qword ptr [r8 + 32], r9
+     mov r9, qword ptr [rsp + 48]
+     mov qword ptr [r8 + 40], r9
+@@ -1863,6 +1931,272 @@ _native_x64_end_managed_residency:
      ret
  
  
@@ -791,7 +804,7 @@ index 01d78a1aa40a0241a51134502b4c7f91e1abe564..30ef79f9c91da55854c993a4815c39cb
  // int _native_x64_run_ap_timer_test(uint64_t cpuCount,
  //                                    uint32_t initialCount,
  //                                    uint64_t minimumTicks,
-@@ -2599,6 +2932,12 @@ _ap_scheduler_state: .zero 16384
+@@ -2599,6 +2933,12 @@ _ap_scheduler_state: .zero 16384
  // +4 release request, +8 heartbeat, +16 deterministic checksum.
  _ap_managed_residency_state: .zero 16384
  
