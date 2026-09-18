@@ -1,0 +1,62 @@
+name: Network stage N1 NIC/link validation
+
+on:
+  pull_request:
+    paths:
+      - 'source/**'
+      - 'ZonderqOS.csproj'
+      - 'tools/network-stage-n1-qemu.sh'
+      - 'docs/network-driver-roadmap.md'
+      - '.github/workflows/network-stage-n1.yml'
+  workflow_dispatch:
+
+jobs:
+  validate-network-n1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout ZonderqOS
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10 and QEMU
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install native build/runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 lld xorriso nasm
+          qemu-system-x86_64 --version
+
+      - name: Verify N1 feature gate
+        run: |
+          grep -Fq '<CosmosEnableNetwork>true</CosmosEnableNetwork>' ZonderqOS.csproj
+          grep -Fq '<CosmosEnableNetwork>false</CosmosEnableNetwork>' ZonderqOS.csproj
+          grep -Fq 'Cosmos.Kernel.System.Network.EndPoint' source/Commands/CmdPing.cs
+          ! grep -Fq 'Cosmos.Kernel.System.Network.IPv4.EndPoint' source/Commands/CmdPing.cs
+
+      - name: Build x64 ISO with networking enabled
+        run: |
+          set -o pipefail
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64
+          dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 --no-restore 2>&1 | tee network-n1-build.log
+          test -f bin/Release/net10.0/linux-x64/ZonderqOS.iso || find bin -name '*.iso' -print -quit | grep -q .
+
+      - name: ARM64 regression compile
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64
+          dotnet build ZonderqOS.csproj -c Release -r linux-arm64 -p:CosmosArch=arm64 --no-restore
+
+      - name: QEMU N1 runtime proof
+        run: bash tools/network-stage-n1-qemu.sh
+
+      - name: Upload N1 logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: network-n1-logs
+          path: |
+            network-n1-build.log
+            network-n1-qemu.log
+          if-no-files-found: ignore
