@@ -1,0 +1,486 @@
+diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs
+--- a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs
++++ b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs
+@@ -74,6 +74,11 @@ internal static unsafe partial class GarbageCollector
+     /// </summary>
+     private const uint ReservedHeaderSlotSize = 8;
+ 
++    /// <summary>
++    /// Maximum time allowed for an x64 SMP GC stop/resume rendezvous.
++    /// </summary>
++    private const ulong SmpRendezvousTimeoutSeconds = 5;
++
+     // --- Static fields ---
+ 
+     /// <summary>
+@@ -184,6 +189,16 @@ internal static unsafe partial class GarbageCollector
+     /// </summary>
+     private static ulong s_deadThreadsNonAllocBytes;
+ 
++#if ARCH_X64
++    [LibraryImport("*", EntryPoint = "_native_x64_gc_stop_world")]
++    [SuppressGCTransition]
++    private static partial long NativeGcStopWorld(ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_gc_resume_world")]
++    [SuppressGCTransition]
++    private static partial int NativeGcResumeWorld(ulong epoch, ulong timeoutTscTicks);
++#endif
++
+     // --- Properties ---
+ 
+     /// <summary>
+@@ -256,66 +272,110 @@ internal static unsafe partial class GarbageCollector
+             return 0;
+         }
+ 
+-        // TODO: Add compilation option to disable metric collection
+-        int freedCount;
++        int freedCount = 0;
+         using (InternalCpu.DisableInterruptsScope())
+         {
+-            // Record GC start timestamp
+-            long gcStart = Stopwatch.GetTimestamp();
+-
+-            Serial.WriteString("[GC] Collection #");
+-            Serial.WriteNumber((uint)s_totalCollections + 1);
+-            Serial.WriteString("\n");
+-
+-            // Return all TLABs before collection — stamps unused gaps as FreeBlocks
+-            ReturnAllAllocContexts();
+-
+-            // Record pre-GC metrics
+-            s_lastGen0SizeBefore = GetGenerationSize(0);
+-            s_lastGen0FragmentationBefore = GetCurrentFragmentation(0);
+-
+-            // Clear free lists - will be rebuilt during sweep
+-            for (int i = 0; i < NumSizeClasses; i++)
++#if ARCH_X64
++            ulong rendezvousEpoch = 0;
++            ulong rendezvousTimeoutTicks = Stopwatch.Frequency > 0
++                ? checked((ulong)Stopwatch.Frequency * SmpRendezvousTimeoutSeconds)
++                : 5_000_000_000UL;
++
++            long stopResult = NativeGcStopWorld(rendezvousTimeoutTicks);
++            if (stopResult < 0)
+             {
+-                s_freeLists[i] = null;
++                Serial.WriteString("[GC-SMP] ERROR: failed to stop all application processors.\n");
++                Cosmos.Kernel.Core.Panic.Halt("SMP GC stop-the-world rendezvous failed.");
++                return 0;
+             }
++            rendezvousEpoch = (ulong)stopResult;
++            if (rendezvousEpoch != 0)
++            {
++                Serial.WriteString("[GC-SMP] STOP epoch=");
++                Serial.WriteNumber(rendezvousEpoch);
++                Serial.WriteString("\n");
++            }
++#endif
+ 
+-            // Mark reachable objects
+-            MarkPhase();
++            try
++            {
++                // Record GC start timestamp
++                long gcStart = Stopwatch.GetTimestamp();
+ 
+-            // Free Weak GC Handles
+-            s_gCHandleManager.FreeWeakHandles();
++                Serial.WriteString("[GC] Collection #");
++                Serial.WriteNumber((uint)s_totalCollections + 1);
++                Serial.WriteString("\n");
+ 
+-            // Sweep and rebuild free lists
+-            freedCount = SweepPhase();
++                // Return all TLABs before collection — stamps unused gaps as FreeBlocks
++                ReturnAllAllocContexts();
+ 
+-            // Reorder segments and free empty ones
+-            ReorderSegmentsAndFreeEmpty();
+-            ReorderPinnedSegmentsAndFreeEmpty();
+-            RecomputeHeapRange();
++                // Record pre-GC metrics
++                s_lastGen0SizeBefore = GetGenerationSize(0);
++                s_lastGen0FragmentationBefore = GetCurrentFragmentation(0);
+ 
+-            // Record post-GC metrics
+-            s_lastGen0SizeAfter = GetGenerationSize(0);
+-            s_lastGen0FragmentationAfter = GetCurrentFragmentation(0);
++                // Clear free lists - will be rebuilt during sweep
++                for (int i = 0; i < NumSizeClasses; i++)
++                {
++                    s_freeLists[i] = null;
++                }
+ 
+-            s_totalCollections++;
+-            s_totalObjectsFreed += freedCount;
++                // Mark reachable objects
++                MarkPhase();
+ 
+-            // Freeze the heap-wide metrics reported by GCMemoryInfo. Recorded after the
+-            // counters above so the snapshot carries the index of this very collection.
+-            RecordLastGCMemoryInfo();
++                // Free Weak GC Handles
++                s_gCHandleManager.FreeWeakHandles();
+ 
+-            Serial.WriteString("[GC] Freed ");
+-            Serial.WriteNumber((uint)freedCount);
+-            Serial.WriteString(" objects\n");
++                // Sweep and rebuild free lists
++                freedCount = SweepPhase();
+ 
+-            // Record GC end timestamp and compute duration/interval
+-            long gcEnd = Stopwatch.GetTimestamp();
+-            long duration = gcEnd - gcStart;
+-            long interval = s_lastGCEndTick == 0 ? duration : gcEnd - s_lastGCEndTick;
+-            s_lastGCDurationTicks = duration;
+-            s_lastGCIntervalTicks = interval;
+-            s_lastGCEndTick = gcEnd;
++                // Reorder segments and free empty ones
++                ReorderSegmentsAndFreeEmpty();
++                ReorderPinnedSegmentsAndFreeEmpty();
++                RecomputeHeapRange();
++
++                // Record post-GC metrics
++                s_lastGen0SizeAfter = GetGenerationSize(0);
++                s_lastGen0FragmentationAfter = GetCurrentFragmentation(0);
++
++                s_totalCollections++;
++                s_totalObjectsFreed += freedCount;
++
++                // Freeze the heap-wide metrics reported by GCMemoryInfo. Recorded after the
++                // counters above so the snapshot carries the index of this very collection.
++                RecordLastGCMemoryInfo();
++
++                Serial.WriteString("[GC] Freed ");
++                Serial.WriteNumber((uint)freedCount);
++                Serial.WriteString(" objects\n");
++
++                // Record GC end timestamp and compute duration/interval
++                long gcEnd = Stopwatch.GetTimestamp();
++                long duration = gcEnd - gcStart;
++                long interval = s_lastGCEndTick == 0 ? duration : gcEnd - s_lastGCEndTick;
++                s_lastGCDurationTicks = duration;
++                s_lastGCIntervalTicks = interval;
++                s_lastGCEndTick = gcEnd;
++            }
++            finally
++            {
++#if ARCH_X64
++                if (rendezvousEpoch != 0)
++                {
++                    int resumed = NativeGcResumeWorld(rendezvousEpoch, rendezvousTimeoutTicks);
++                    if (resumed < 0)
++                    {
++                        Serial.WriteString("[GC-SMP] ERROR: failed to resume all application processors.\n");
++                        Cosmos.Kernel.Core.Panic.Halt("SMP GC resume rendezvous failed.");
++                    }
++
++                    Serial.WriteString("[GC-SMP] RESUME epoch=");
++                    Serial.WriteNumber(rendezvousEpoch);
++                    Serial.WriteString(" aps=");
++                    Serial.WriteNumber((ulong)resumed);
++                    Serial.WriteString("\n");
++                }
++#endif
++            }
+         }
+ 
+         return freedCount;
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -4,6 +4,7 @@ using Cosmos.Build.API.Enum;
+ using Cosmos.Kernel.Core;
+ using Cosmos.Kernel.Core.CPU;
+ using Cosmos.Kernel.Core.IO;
++using Cosmos.Kernel.Core.Memory.GarbageCollector;
+ using Cosmos.Kernel.Core.Power;
+ using Cosmos.Kernel.Core.X64;
+ using Cosmos.Kernel.Core.X64.Cpu;
+@@ -154,6 +155,9 @@ internal class X64PlatformInitializer : IPlatformInitializer
+             Cosmos.Kernel.Core.Panic.Halt("GC stop-the-world rendezvous proof failed.");
+         }
+ 
++        // Stage 11: run the real OrionGC collection path while APs are online.
++        RunRealGcStopTheWorldIntegrationProof();
++
+         // Initialize RTC
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new RTC();
+@@ -188,6 +192,41 @@ internal class X64PlatformInitializer : IPlatformInitializer
+         }
+     }
+ 
++    private static void RunRealGcStopTheWorldIntegrationProof()
++    {
++        if (!GarbageCollector.IsEnabled)
++        {
++            Cosmos.Kernel.Core.Panic.Halt("Stage 11 requires OrionGC to be initialized.");
++        }
++
++        byte[] survivor = new byte[256];
++        survivor[0] = 0x5A;
++        survivor[255] = 0xA5;
++        int collectionStart = GarbageCollector.GetCollectionIndex();
++
++        for (uint round = 1; round <= 3; round++)
++        {
++            int freed = GarbageCollector.Collect();
++            int collectionIndex = GarbageCollector.GetCollectionIndex();
++            if (collectionIndex != collectionStart + (int)round ||
++                survivor[0] != 0x5A || survivor[255] != 0xA5)
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 11 real SMP GC integration proof failed.");
++            }
++
++            Serial.WriteString("[GC-SMP-INTEGRATION] round=");
++            Serial.WriteNumber(round);
++            Serial.WriteString(" collection=");
++            Serial.WriteNumber((ulong)collectionIndex);
++            Serial.WriteString(" freed=");
++            Serial.WriteNumber((ulong)freed);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[GC-SMP-INTEGRATION] survivor=OK collections=3\n");
++        Serial.WriteString("[GC-SMP-INTEGRATION-TEST] PASS\n");
++    }
++
+     private static unsafe void DisplayLimineMpInfo()
+     {
+         LimineMpResponseX64* response = LimineMp.X64Response;
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -356,7 +356,8 @@ _native_x64_start_aps:
+     cmp rsi, 256
+     ja .Lap_start_invalid
+     test rdx, rdx
+     jz .Lap_start_invalid
++    mov qword ptr [rip + _smp_cpu_count], rsi
+ 
+     mov r12, rdi
+     mov r13, rsi
+@@ -1226,5 +1227,211 @@ GC_STATE_GETTER _native_x64_get_gc_saved_rflags, 48, 8
+ GC_STATE_GETTER _native_x64_get_gc_saved_rflags, 48, 8
+ 
++// long _native_x64_gc_stop_world(uint64_t timeoutTscTicks)
++// Returns 0 before SMP is active / on a single CPU, a positive rendezvous
++// epoch after every AP is parked, or a negative error code.
++.global _native_x64_gc_stop_world
++_native_x64_gc_stop_world:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++    test rdi, rdi
++    jz .Lgc_runtime_stop_invalid
++    mov r14, rdi
++    mov r12, qword ptr [rip + _smp_cpu_count]
++    cmp r12, 1
++    jbe .Lgc_runtime_stop_single
++    cmp r12, 256
++    ja .Lgc_runtime_stop_invalid
++    cmp dword ptr gs:[0], 0
++    jne .Lgc_runtime_stop_invalid
++
++    call .Lap_read_lapic_base
++    test rax, rax
++    jz .Lgc_runtime_stop_invalid
++    mov qword ptr [rip + _native_x64_lapic_base], rax
++    mov r15, rax
++
++    mov r13, qword ptr [rip + _gc_release_epoch]
++    inc r13
++    jz .Lgc_runtime_stop_invalid
++
++    // Validate every AP before sending any rendezvous IPI, then publish the
++    // new epoch into one cache-line-local record per AP.
++    mov ebx, 1
++.Lgc_runtime_publish:
++    cmp rbx, r12
++    jae .Lgc_runtime_publish_done
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 0], 1
++    jne .Lgc_runtime_stop_invalid
++
++    lea r9, [rip + _gc_rendezvous_state]
++    mov rax, rbx
++    shl rax, 6
++    add r9, rax
++    cmp dword ptr [r9 + 24], 0
++    jne .Lgc_runtime_stop_invalid
++    mov qword ptr [r9 + 8], 0
++    mov qword ptr [r9 + 16], 0
++    mov qword ptr [r9 + 32], 0
++    mov qword ptr [r9 + 40], 0
++    mov qword ptr [r9 + 48], 0
++    mov qword ptr [r9 + 0], r13
++    mov eax, 1
++    xchg dword ptr [r9 + 24], eax
++    inc rbx
++    jmp .Lgc_runtime_publish
++
++.Lgc_runtime_publish_done:
++    mfence
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++
++    mov ebx, 1
++.Lgc_runtime_send:
++    cmp rbx, r12
++    jae .Lgc_runtime_wait_parked
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    mov edx, dword ptr [r8 + 8]
++    shl edx, 24
++    mov dword ptr [r15 + 0x310], edx
++    mov dword ptr [r15 + 0x300], 0x000000F3
++    inc rbx
++    jmp .Lgc_runtime_send
++
++.Lgc_runtime_wait_parked:
++    mov ebx, 1
++.Lgc_runtime_check_parked:
++    cmp rbx, r12
++    jae .Lgc_runtime_stop_success
++    lea r8, [rip + _gc_rendezvous_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    cmp qword ptr [r8 + 8], r13
++    jne .Lgc_runtime_stop_poll
++    cmp dword ptr [r8 + 24], 2
++    jne .Lgc_runtime_stop_poll
++    inc rbx
++    jmp .Lgc_runtime_check_parked
++
++.Lgc_runtime_stop_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r14
++    jb .Lgc_runtime_wait_parked
++
++    // Never return to managed GC with a subset of APs parked. Publish release
++    // first so every AP that did acknowledge can escape before the caller panics.
++    mov rax, r13
++    xchg qword ptr [rip + _gc_release_epoch], rax
++    mfence
++    mov rax, -1
++    jmp .Lgc_runtime_stop_return
++
++.Lgc_runtime_stop_success:
++    mov rax, r13
++    jmp .Lgc_runtime_stop_return
++.Lgc_runtime_stop_single:
++    xor eax, eax
++    jmp .Lgc_runtime_stop_return
++.Lgc_runtime_stop_invalid:
++    mov rax, -2
++.Lgc_runtime_stop_return:
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++// int _native_x64_gc_resume_world(uint64_t epoch, uint64_t timeoutTscTicks)
++// Releases the APs parked by _native_x64_gc_stop_world and waits until every
++// AP has returned through IRETQ to its previous native idle context.
++.global _native_x64_gc_resume_world
++_native_x64_gc_resume_world:
++    push rbx
++    push r12
++    push r13
++    push r14
++    test rdi, rdi
++    jz .Lgc_runtime_resume_single
++    test rsi, rsi
++    jz .Lgc_runtime_resume_invalid
++    mov r13, rdi
++    mov r14, rsi
++    mov r12, qword ptr [rip + _smp_cpu_count]
++    cmp r12, 1
++    jbe .Lgc_runtime_resume_single
++    cmp r12, 256
++    ja .Lgc_runtime_resume_invalid
++    cmp dword ptr gs:[0], 0
++    jne .Lgc_runtime_resume_invalid
++
++    mov rax, r13
++    xchg qword ptr [rip + _gc_release_epoch], rax
++    mfence
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++
++.Lgc_runtime_wait_resumed:
++    mov ebx, 1
++.Lgc_runtime_check_resumed:
++    cmp rbx, r12
++    jae .Lgc_runtime_resume_success
++    lea r8, [rip + _gc_rendezvous_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    cmp qword ptr [r8 + 16], r13
++    jne .Lgc_runtime_resume_poll
++    cmp dword ptr [r8 + 24], 0
++    jne .Lgc_runtime_resume_poll
++    inc rbx
++    jmp .Lgc_runtime_check_resumed
++
++.Lgc_runtime_resume_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r14
++    jb .Lgc_runtime_wait_resumed
++    mov eax, -1
++    jmp .Lgc_runtime_resume_return
++
++.Lgc_runtime_resume_success:
++    mov eax, r12d
++    dec eax
++    jmp .Lgc_runtime_resume_return
++.Lgc_runtime_resume_single:
++    xor eax, eax
++    jmp .Lgc_runtime_resume_return
++.Lgc_runtime_resume_invalid:
++    mov eax, -2
++.Lgc_runtime_resume_return:
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
+ // int _native_x64_run_gc_rendezvous_test(uint64_t cpuCount,
+ //                                         uint64_t rounds,
+ //                                         uint64_t timeoutTscTicks)
+@@ -1603,7 +1807,8 @@ _gc_rendezvous_state: .zero 16384
+ // saved_rsp, saved_rip, saved_rflags.
+ _gc_rendezvous_state: .zero 16384
+ _gc_release_epoch: .quad 0
++_smp_cpu_count: .quad 0
+ 
+ .data
+ _native_x64_irq_table:
+ .quad irq0_stub
