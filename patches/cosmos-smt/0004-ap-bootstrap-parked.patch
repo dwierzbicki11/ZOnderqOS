@@ -1,0 +1,385 @@
+diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+new file mode 100644
+index 0000000000000000000000000000000000000000..2322d858c2e9df6152cfbc630b3e161fa61e8c82
+--- /dev/null
++++ b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+@@ -0,0 +1,143 @@
++using System.Runtime.InteropServices;
++using Cosmos.Kernel.Boot.Limine;
++using Cosmos.Kernel.Core.IO;
++using Cosmos.Kernel.Core.X64.Cpu;
++
++namespace Cosmos.Kernel.HAL.X64;
++
++/// <summary>
++/// Stage-4 x64 application-processor bootstrap. APs execute only a native,
++/// allocation-free entry path, bind their dense CpuId to GS, report READY,
++/// and park with interrupts disabled. Managed runtime, GC and scheduler work
++/// remain confined to the BSP.
++/// </summary>
++internal static unsafe partial class SmpApBootstrap
++{
++    private const ulong ApReadyTimeoutSeconds = 5;
++
++    [LibraryImport("*", EntryPoint = "_native_x64_start_aps")]
++    [SuppressGCTransition]
++    private static partial int NativeStartAps(
++        LimineMpInfoX64** cpus,
++        ulong cpuCount,
++        ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_ready")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetReady(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_lapic_id")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetLapicId(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_gs_id")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetGsId(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_stack")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetStack(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_rflags")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetRflags(uint cpuId);
++
++    internal static bool StartAndParkApplicationProcessors()
++    {
++        LimineMpResponseX64* response = LimineMp.X64Response;
++        if (response == null || response->Cpus == null ||
++            response->CpuCount == 0 ||
++            response->CpuCount > LimineMp.MaxXApicCpuCount)
++        {
++            Serial.WriteString("[SMP] WARNING: Stage 4 requires a valid legacy-xAPIC MP response.\n");
++            return false;
++        }
++
++        if ((response->Flags & LimineMp.X64ResponseFlagX2Apic) != 0)
++        {
++            Serial.WriteString("[SMP] WARNING: Stage 4 does not support x2APIC descriptors yet.\n");
++            return false;
++        }
++
++        long frequency = X64CpuOps.TscFrequency;
++        ulong timeoutTicks = frequency > 0
++            ? checked((ulong)frequency * ApReadyTimeoutSeconds)
++            : 5_000_000_000UL;
++
++        int started = NativeStartAps(response->Cpus, response->CpuCount, timeoutTicks);
++        int expected = checked((int)response->CpuCount - 1);
++        if (started != expected)
++        {
++            Serial.WriteString("[SMP] WARNING: Stage 4 AP READY timeout or invalid native bootstrap state.\n");
++            return false;
++        }
++
++        for (ulong tableIndex = 0; tableIndex < response->CpuCount; tableIndex++)
++        {
++            LimineMpInfoX64* descriptor = response->Cpus[tableIndex];
++            if (descriptor == null)
++            {
++                Serial.WriteString("[SMP] WARNING: Stage 4 encountered a null CPU descriptor.\n");
++                return false;
++            }
++
++            uint cpuId = checked((uint)descriptor->ExtraArgument);
++            if (cpuId == 0)
++            {
++                if (descriptor->LapicId != response->BspLapicId)
++                {
++                    Serial.WriteString("[SMP] WARNING: Stage 4 dense CpuId 0 is not the BSP.\n");
++                    return false;
++                }
++                continue;
++            }
++
++            uint ready = NativeGetReady(cpuId);
++            uint lapicId = NativeGetLapicId(cpuId);
++            uint gsId = NativeGetGsId(cpuId);
++            ulong stack = NativeGetStack(cpuId);
++            ulong rflags = NativeGetRflags(cpuId);
++
++            if (ready != 1 || lapicId != descriptor->LapicId ||
++                gsId != cpuId || stack == 0 || (stack & 0xFUL) != 0 ||
++                (rflags & (1UL << 9)) != 0)
++            {
++                Serial.WriteString("[SMP] WARNING: Stage 4 AP state validation failed for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString("\n");
++                return false;
++            }
++
++            for (ulong previousIndex = 0; previousIndex < tableIndex; previousIndex++)
++            {
++                LimineMpInfoX64* previous = response->Cpus[previousIndex];
++                if (previous == null || previous->ExtraArgument == 0)
++                {
++                    continue;
++                }
++
++                if (NativeGetStack(checked((uint)previous->ExtraArgument)) == stack)
++                {
++                    Serial.WriteString("[SMP] WARNING: Stage 4 AP stacks are not unique.\n");
++                    return false;
++                }
++            }
++
++            Serial.WriteString("[SMP] AP READY: CpuId=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" LAPIC=");
++            Serial.WriteNumber(lapicId);
++            Serial.WriteString(" GS=");
++            Serial.WriteNumber(gsId);
++            Serial.WriteString(" stack=0x");
++            Serial.WriteHex(stack);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[SMP] Stage 4 complete: ");
++        Serial.WriteNumber((ulong)started);
++        Serial.WriteString(" AP(s) ready; AP scheduler/interrupts remain disabled.\n");
++        Serial.WriteString("[SMP-BOOT] PASS\n");
++        return true;
++    }
++}
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+index 67d03e396c6c9da4356757fe5de49f0df37b5dcd..53040bd9008295ebd4ac6c7ef0783452fbb65121 100644
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -97,6 +97,14 @@ internal class X64PlatformInitializer : IPlatformInitializer
+         Serial.WriteNumber((ulong)X64CpuOps.TscFrequency);
+         Serial.WriteString(" Hz\n");
+ 
++        // Stage 4: release each Limine AP into a minimal native-only entry,
++        // validate its dense CpuId/GS/stack, then leave it parked with IF=0.
++        // No managed runtime, GC, scheduler or interrupt handler runs on APs.
++        if (!SmpApBootstrap.StartAndParkApplicationProcessors())
++        {
++            Cosmos.Kernel.Core.Panic.Halt("Stage 4 failed to start and safely park every application processor.");
++        }
++
+         // Initialize RTC
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new RTC();
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+index ad20063f645c08439b6a66c1ea84f024b70c4acc..cb4596ecfabf3f23fcd7c816bfa1e227788cfbe9 100644
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -323,6 +323,198 @@ _native_x64_get_current_cpu_id:
+     mov eax, dword ptr gs:[0]
+     ret
+ 
++// int _native_x64_start_aps(LimineMpInfoX64** cpus, uint64_t count,
++//                           uint64_t timeoutTscTicks)
++// Publishes the native AP entry after clearing each AP's boot-state cacheline,
++// then waits for every AP with a single bounded TSC deadline.
++.global _native_x64_start_aps
++_native_x64_start_aps:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++
++    test rdi, rdi
++    jz .Lap_start_invalid
++    test rsi, rsi
++    jz .Lap_start_invalid
++    cmp rsi, 256
++    ja .Lap_start_invalid
++    test rdx, rdx
++    jz .Lap_start_invalid
++
++    mov r12, rdi
++    mov r13, rsi
++    mov r14, rdx
++    xor r15d, r15d
++    xor ebx, ebx
++
++.Lap_publish_loop:
++    cmp rbx, r13
++    jae .Lap_publish_done
++    mov r8, qword ptr [r12 + rbx * 8]
++    test r8, r8
++    jz .Lap_start_invalid
++    mov rcx, qword ptr [r8 + 24]
++    test rcx, rcx
++    jz .Lap_publish_next
++    cmp rcx, 255
++    ja .Lap_start_invalid
++
++    lea r9, [rip + _ap_boot_state]
++    shl rcx, 6
++    add r9, rcx
++    xor eax, eax
++    mov qword ptr [r9 + 0], rax
++    mov qword ptr [r9 + 8], rax
++    mov qword ptr [r9 + 16], rax
++    mov qword ptr [r9 + 24], rax
++    mov qword ptr [r9 + 32], rax
++
++    xor eax, eax
++    lea rdx, [rip + _native_x64_ap_entry]
++    lock cmpxchg qword ptr [r8 + 16], rdx
++    test rax, rax
++    jnz .Lap_start_invalid
++    inc r15d
++
++.Lap_publish_next:
++    inc rbx
++    jmp .Lap_publish_loop
++
++.Lap_publish_done:
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r10, rax
++
++.Lap_poll:
++    xor r11d, r11d
++    xor ebx, ebx
++
++.Lap_count_loop:
++    cmp rbx, r13
++    jae .Lap_count_done
++    mov r8, qword ptr [r12 + rbx * 8]
++    mov rcx, qword ptr [r8 + 24]
++    test rcx, rcx
++    jz .Lap_count_next
++    lea r9, [rip + _ap_boot_state]
++    shl rcx, 6
++    add r9, rcx
++    cmp dword ptr [r9 + 0], 1
++    jne .Lap_count_next
++    inc r11d
++
++.Lap_count_next:
++    inc rbx
++    jmp .Lap_count_loop
++
++.Lap_count_done:
++    cmp r11d, r15d
++    je .Lap_start_success
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r10
++    cmp rax, r14
++    jb .Lap_poll
++    mov eax, -1
++    jmp .Lap_start_return
++
++.Lap_start_invalid:
++    mov eax, -2
++    jmp .Lap_start_return
++
++.Lap_start_success:
++    mov eax, r15d
++
++.Lap_start_return:
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++// Limine enters here with RDI pointing at this AP's MP descriptor.
++// The path is native-only and never enables interrupts or enters managed code.
++.global _native_x64_ap_entry
++_native_x64_ap_entry:
++    cli
++    cld
++    mov r12, rdi
++    test r12, r12
++    jz .Lap_park
++    mov r13, qword ptr [r12 + 24]
++    test r13, r13
++    jz .Lap_park
++    cmp r13, 255
++    ja .Lap_park
++
++    lea rsp, [rip + _ap_stacks]
++    mov rax, r13
++    shl rax, 14
++    add rsp, rax
++    add rsp, 16384
++    and rsp, -16
++
++    mov edi, r13d
++    call _native_x64_init_percpu
++
++    lea r14, [rip + _ap_boot_state]
++    mov rax, r13
++    shl rax, 6
++    add r14, rax
++
++    mov eax, 1
++    cpuid
++    shr ebx, 24
++    mov dword ptr [r14 + 4], r13d
++    mov dword ptr [r14 + 8], ebx
++    mov eax, dword ptr gs:[0]
++    mov dword ptr [r14 + 12], eax
++    mov qword ptr [r14 + 16], rsp
++    pushfq
++    pop rax
++    mov qword ptr [r14 + 24], rax
++    mfence
++    mov eax, 1
++    xchg dword ptr [r14 + 0], eax
++
++.Lap_park:
++    cli
++    hlt
++    jmp .Lap_park
++
++.macro AP_STATE_GETTER name, offset, width
++.global \name
++\name:
++    cmp edi, 255
++    ja .Lap_get_invalid_\@
++    lea rcx, [rip + _ap_boot_state]
++    mov eax, edi
++    shl rax, 6
++    add rcx, rax
++    .if \width == 4
++        mov eax, dword ptr [rcx + \offset]
++    .else
++        mov rax, qword ptr [rcx + \offset]
++    .endif
++    ret
++.Lap_get_invalid_\@:
++    xor eax, eax
++    ret
++.endm
++
++AP_STATE_GETTER _native_x64_get_ap_ready, 0, 4
++AP_STATE_GETTER _native_x64_get_ap_lapic_id, 8, 4
++AP_STATE_GETTER _native_x64_get_ap_gs_id, 12, 4
++AP_STATE_GETTER _native_x64_get_ap_stack, 16, 8
++AP_STATE_GETTER _native_x64_get_ap_rflags, 24, 8
++
+ // void _native_set_context_switch_sp(nuint newSp)
+ // Sets this CPU's target SP for context switch.
+ // rdi = new RSP to switch to (pointing to saved context)
+@@ -367,6 +559,13 @@ _native_set_context_switch_new_thread:
+ .balign 64
+ _percpu_slots: .zero 16384
+ 
++// Native-only Stage-4 bootstrap state and dedicated 16 KiB stack for every
++// possible xAPIC CpuId. CpuId 0 remains reserved for the BSP.
++.balign 64
++_ap_boot_state: .zero 16384
++.balign 4096
++_ap_stacks: .zero 4194304
++
+ .data
+ _native_x64_irq_table:
+ .quad irq0_stub
