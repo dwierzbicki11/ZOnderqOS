@@ -1,0 +1,179 @@
+diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+index 4a9621f..6c0f14c 100644
+--- a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
++++ b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+@@ -60,6 +60,10 @@ internal static unsafe partial class SmpApBootstrap
+     [SuppressGCTransition]
+     private static partial ulong NativeGetIpiCount(uint cpuId);
+ 
++    [LibraryImport("*", EntryPoint = "_native_x64_run_ap_ipi_rounds")]
++    [SuppressGCTransition]
++    private static partial int NativeRunApIpiRounds(ulong cpuCount, ulong rounds, ulong timeoutTscTicks);
++
+     internal static bool StartAndParkApplicationProcessors()
+     {
+         LimineMpResponseX64* response = LimineMp.X64Response;
+@@ -248,4 +252,47 @@ internal static unsafe partial class SmpApBootstrap
+         Serial.WriteString("[APIC-TEST] PASS\n");
+         return true;
+     }
++
++    internal static bool RunApplicationProcessorIpiRendezvousProof()
++    {
++        const ulong ExtraRounds = 3;
++        LimineMpResponseX64* response = LimineMp.X64Response;
++        if (response == null || response->Cpus == null || response->CpuCount == 0 ||
++            response->CpuCount > LimineMp.MaxXApicCpuCount)
++        {
++            Serial.WriteString("[SMP] WARNING: repeated fixed IPI rendezvous has no valid CPU topology.\n");
++            return false;
++        }
++
++        long frequency = X64CpuOps.TscFrequency;
++        ulong timeoutTicks = frequency > 0 ? checked((ulong)frequency * ApReadyTimeoutSeconds) : 5_000_000_000UL;
++        int expected = checked((int)((response->CpuCount - 1) * ExtraRounds));
++        int acknowledged = NativeRunApIpiRounds(response->CpuCount, ExtraRounds, timeoutTicks);
++        if (acknowledged != expected)
++        {
++            Serial.WriteString("[SMP] WARNING: repeated fixed IPI rendezvous timed out or rejected state.\n");
++            return false;
++        }
++
++        ulong expectedCount = 1 + ExtraRounds;
++        for (uint cpuId = 1; cpuId < response->CpuCount; cpuId++)
++        {
++            ulong count = NativeGetIpiCount(cpuId);
++            if (count != expectedCount)
++            {
++                Serial.WriteString("[SMP] WARNING: repeated fixed IPI count mismatch for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString("\n");
++                return false;
++            }
++            Serial.WriteString("[APIC-RUN] CPU ");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" repeated fixed IPI total count=");
++            Serial.WriteNumber(count);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[APIC-RUN-TEST] PASS\n");
++        return true;
++    }
+ }
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+index 1fed060..2514a94 100644
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -120,6 +120,14 @@ internal class X64PlatformInitializer : IPlatformInitializer
+             Cosmos.Kernel.Core.Panic.Halt("Fixed AP IPI proof failed.");
+         }
+ 
++        // Stage 7: repeated native fixed IPI rendezvous. This proves APs can
++        // leave the parked HLT path repeatedly, acknowledge each IPI, and return
++        // to the native-only idle path without entering managed runtime.
++        if (!SmpApBootstrap.RunApplicationProcessorIpiRendezvousProof())
++        {
++            Cosmos.Kernel.Core.Panic.Halt("Repeated AP IPI rendezvous proof failed.");
++        }
++
+         // Initialize RTC
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new RTC();
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+index c519e59..378c2d2 100644
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -673,6 +673,92 @@ _native_x64_run_ap_ipi_test:
+     ret
+ 
+ 
++// int _native_x64_run_ap_ipi_rounds(uint64_t cpuCount,
++//                                   uint64_t rounds,
++//                                   uint64_t timeoutTscTicks)
++// Sends several fixed IPIs to every parked AP and waits for each native handler
++// acknowledgement. APs remain in the native HLT loop between IPIs.
++.global _native_x64_run_ap_ipi_rounds
++_native_x64_run_ap_ipi_rounds:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++    test rdi, rdi
++    jz .Lap_ipi_rounds_invalid
++    cmp rdi, 256
++    ja .Lap_ipi_rounds_invalid
++    test rsi, rsi
++    jz .Lap_ipi_rounds_invalid
++    test rdx, rdx
++    jz .Lap_ipi_rounds_invalid
++    mov r12, rdi
++    mov r13, rsi
++    mov r14, rdx
++    call .Lap_read_lapic_base
++    test rax, rax
++    jz .Lap_ipi_rounds_invalid
++    mov qword ptr [rip + _native_x64_lapic_base], rax
++    mov r15, rax
++    xor r9d, r9d
++    xor r10d, r10d
++.Lap_ipi_round_loop:
++    cmp r10, r13
++    jae .Lap_ipi_rounds_success
++    mov ebx, 1
++.Lap_ipi_round_cpu_loop:
++    cmp rbx, r12
++    jae .Lap_ipi_round_next
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 0], 1
++    jne .Lap_ipi_rounds_invalid
++    mov rcx, qword ptr [r8 + 56]
++    lea r11, [rcx + 1]
++    mov edx, dword ptr [r8 + 8]
++    shl edx, 24
++    mov dword ptr [r15 + 0x310], edx
++    mov dword ptr [r15 + 0x300], 0x000000F1
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov rsi, rax
++.Lap_ipi_round_wait:
++    cmp qword ptr [r8 + 56], r11
++    je .Lap_ipi_round_ack
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, rsi
++    cmp rax, r14
++    jb .Lap_ipi_round_wait
++    mov eax, -1
++    jmp .Lap_ipi_rounds_return
++.Lap_ipi_round_ack:
++    inc r9
++    inc rbx
++    jmp .Lap_ipi_round_cpu_loop
++.Lap_ipi_round_next:
++    inc r10
++    jmp .Lap_ipi_round_loop
++.Lap_ipi_rounds_success:
++    mov eax, r9d
++    jmp .Lap_ipi_rounds_return
++.Lap_ipi_rounds_invalid:
++    mov eax, -2
++.Lap_ipi_rounds_return:
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++
+ // int _native_x64_run_ap_work_test(uint64_t cpuCount,
+ //                                  uint64_t timeoutTscTicks)
+ // Publishes one bounded native work command to each dense AP CpuId and waits

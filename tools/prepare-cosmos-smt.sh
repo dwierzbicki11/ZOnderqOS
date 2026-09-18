@@ -93,6 +93,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 4
   bash tools/prepare-cosmos-smt.sh --through-stage 5
   bash tools/prepare-cosmos-smt.sh --through-stage 6
+  bash tools/prepare-cosmos-smt.sh --through-stage 7
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -346,4 +347,7 @@ elif (( SELECTED_STAGE == 5 )); then
 elif (( SELECTED_STAGE == 6 )); then
     echo "[SMT] Etap 6 wysyla fixed IPI do kazdego AP i sprawdza natywne potwierdzenie z EOI."
     echo "[SMT] AP-y pozostaja poza managed runtime i schedulerem; test korzysta z wlasnego wektora IDT."
+elif (( SELECTED_STAGE == 7 )); then
+    echo "[SMT] Etap 7 wykonuje powtarzalny native fixed-IPI rendezvous z kazdym AP."
+    echo "[SMT] AP-y wracaja do natywnego idle/HLT; scheduler i managed runtime nadal pozostaja na BSP."
 fi
