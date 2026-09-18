@@ -66,7 +66,8 @@ summaries = [
     for i, line in enumerate(lines)
     if (match := re.fullmatch(
         r"\[SCHED-AP-STACK\] gc-collection=(\d+) scanned=(\d+) "
-        r"bytes=(\d+) word-xor=0x([0-9a-fA-F]+)",
+        r"bytes=(\d+) start-word-xor=0x([0-9a-fA-F]+) "
+        r"word-xor=0x([0-9a-fA-F]+)",
         line,
     ))
 ]
@@ -127,7 +128,8 @@ elif stops or resumes:
     fail("single-CPU run unexpectedly emitted an SMP GC rendezvous")
 
 ap_re = re.compile(
-    r"\[SCHED-AP-STACK\] cpu=(\d+) canary=0x([0-9a-fA-F]+) "
+    r"\[SCHED-AP-STACK\] cpu=(\d+) saved-rsp=0x([0-9a-fA-F]+) "
+    r"span=(\d+) canary=0x([0-9a-fA-F]+) "
     r"state=gc-scanned-returned-native-idle"
 )
 ap_results = {}
@@ -141,13 +143,21 @@ for line in segment:
     match = ap_re.fullmatch(line)
     if not match:
         fail("malformed AP idle-stack scan evidence: " + line)
-    cpu, canary = int(match.group(1)), int(match.group(2), 16)
+    cpu = int(match.group(1))
+    saved_rsp = int(match.group(2), 16)
+    span = int(match.group(3))
+    canary = int(match.group(4), 16)
     if cpu not in range(1, expected) or cpu in ap_results:
         fail("out-of-range or duplicate AP idle-stack result: " + line)
+    base, top = enrolled[cpu]
+    if not (base <= saved_rsp < top):
+        fail("captured AP RSP is outside its enrolled stack: " + line)
+    if span != top - saved_rsp or span < 8 or span > 16 * 1024 or span % 8:
+        fail("AP stack scan span does not exactly match captured RSP to stack top: " + line)
     expected_canary = 0x51A6C0DEF00D0000 ^ cpu
     if canary != expected_canary:
         fail("AP idle-stack canary is not the deterministic expected value: " + line)
-    ap_results[cpu] = canary
+    ap_results[cpu] = (canary, span)
 
 if expected == 1:
     if bsp_only != 1 or ap_results:
@@ -157,24 +167,27 @@ else:
         raise SystemExit(2)
 
 collection, scanned, scanned_bytes = map(int, summary.group(1, 2, 3))
-word_xor = int(summary.group(4), 16)
+start_word_xor = int(summary.group(4), 16)
+word_xor = int(summary.group(5), 16)
 expected_xor = 0
-for canary in ap_results.values():
+expected_bytes = 0
+for canary, span in ap_results.values():
     expected_xor ^= canary
+    expected_bytes += span
 if collection <= 0:
     fail("invalid OrionGC collection index")
-if scanned != expected_aps or scanned_bytes != expected_aps * 8:
+if scanned != expected_aps or scanned_bytes != expected_bytes:
     fail(
         f"remote stack scan summary is {scanned} stack(s)/{scanned_bytes} byte(s), "
-        f"expected {expected_aps}/{expected_aps * 8}"
+        f"expected {expected_aps}/{expected_bytes} from the captured RSP ranges"
     )
-if word_xor != expected_xor:
-    fail("GC scan fingerprint does not equal the XOR of AP stack canaries")
+if start_word_xor != expected_xor:
+    fail("GC stack-start fingerprint does not equal the XOR of AP stack canaries")
 
 print(
     f"[SMT15-QEMU] Serial proof: {expected_aps} AP idle stack(s) enrolled with "
-    "explicit bounds; OrionGC scanned each captured remote RSP and matched "
-    "the on-stack canary fingerprint before AP return to native HLT"
+    "explicit bounds; OrionGC scanned each exact captured-RSP range and matched "
+    "the first live word to the on-stack canary before AP return to native HLT"
 )
 PY
 }

@@ -1,17 +1,19 @@
 diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs
-index 1d7fd5e7dc9b952625dff6cbde6953e22e193777..fe29e99f9693c2fe86442f85c9f7172b8da542ba 100644
+index 1d7fd5e7dc9b952625dff6cbde6953e22e193777..049756bd8bb3a02ced3914e4badcbe28feeff118 100644
 --- a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs
 +++ b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs
-@@ -16,6 +16,24 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector;
+@@ -16,6 +16,26 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector;
  /// </summary>
  internal static unsafe partial class GarbageCollector
  {
 +    private static uint s_lastSmpStackScanCount;
 +    private static ulong s_lastSmpStackScanBytes;
++    private static ulong s_lastSmpStackScanStartWordXor;
 +    private static ulong s_lastSmpStackScanWordXor;
 +
 +    internal static uint LastSmpStackScanCount => s_lastSmpStackScanCount;
 +    internal static ulong LastSmpStackScanBytes => s_lastSmpStackScanBytes;
++    internal static ulong LastSmpStackScanStartWordXor => s_lastSmpStackScanStartWordXor;
 +    internal static ulong LastSmpStackScanWordXor => s_lastSmpStackScanWordXor;
 +
 +#if ARCH_X64
@@ -27,17 +29,18 @@ index 1d7fd5e7dc9b952625dff6cbde6953e22e193777..fe29e99f9693c2fe86442f85c9f7172b
      /// <summary>
      /// Executes the mark phase: scans roots (stack, GC handles) and marks all reachable objects.
      /// Static roots need no separate pass: <c>ManagedModule.InitializeStatics</c> holds every
-@@ -26,6 +44,9 @@ internal static unsafe partial class GarbageCollector
+@@ -26,6 +46,10 @@ internal static unsafe partial class GarbageCollector
      private static void MarkPhase()
      {
          s_markStackCount = 0;
 +        s_lastSmpStackScanCount = 0;
 +        s_lastSmpStackScanBytes = 0;
++        s_lastSmpStackScanStartWordXor = 0;
 +        s_lastSmpStackScanWordXor = 0;
          ScanStackRoots();
          ScanGCHandles();
      }
-@@ -206,23 +227,46 @@ internal static unsafe partial class GarbageCollector
+@@ -206,23 +230,46 @@ internal static unsafe partial class GarbageCollector
          // Determine stack range to scan
          nuint stackStart;
          nuint stackEnd;
@@ -93,7 +96,7 @@ index 1d7fd5e7dc9b952625dff6cbde6953e22e193777..fe29e99f9693c2fe86442f85c9f7172b
          }
          else
          {
-@@ -238,7 +282,7 @@ internal static unsafe partial class GarbageCollector
+@@ -238,7 +285,7 @@ internal static unsafe partial class GarbageCollector
  
          if (stackStart < stackEnd)
          {
@@ -102,7 +105,7 @@ index 1d7fd5e7dc9b952625dff6cbde6953e22e193777..fe29e99f9693c2fe86442f85c9f7172b
          }
      }
  
-@@ -247,11 +291,25 @@ internal static unsafe partial class GarbageCollector
+@@ -247,11 +294,33 @@ internal static unsafe partial class GarbageCollector
      /// </summary>
      /// <param name="start">Pointer to the first word to scan.</param>
      /// <param name="end">Pointer past the last word to scan.</param>
@@ -118,11 +121,19 @@ index 1d7fd5e7dc9b952625dff6cbde6953e22e193777..fe29e99f9693c2fe86442f85c9f7172b
 +            nint value = *ptr;
 +            if (recordSmpStackWords)
 +            {
++                if (ptr == start)
++                {
++                    // The first live word is checked separately by the
++                    // Stage-15 proof. This keeps the canary assertion exact
++                    // even when an AP has other live native words between its
++                    // captured RSP and the registered stack top.
++                    s_lastSmpStackScanStartWordXor ^= (ulong)value;
++                }
++
 +                // Stage 15 exposes this allocation-free fingerprint so the
-+                // boot proof can show that the exact canary words resident on
-+                // remote AP stacks passed through the GC scanner. It is
-+                // diagnostic evidence only; reachability still comes solely
-+                // from TryMarkRoot below.
++                // boot proof can also report all words resident in the remote
++                // AP stack ranges. It is diagnostic evidence only;
++                // reachability still comes solely from TryMarkRoot below.
 +                s_lastSmpStackScanWordXor ^= (ulong)value;
 +            }
 +
@@ -161,7 +172,7 @@ index 381c335393476e4a70159be06303ff7a81de5f4a..84a60cba3676b067203120f78c60919f
 +    }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..3e12cd81c45c48eca630e970973bbe81941d8d2c 100644
+index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..0584999197d2dae5a777b4b72e720975e6d5ed5d 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -68,6 +68,12 @@ public static partial class SchedulerManager
@@ -212,7 +223,7 @@ index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..3e12cd81c45c48eca630e970973bbe81
  #endif
  
      /// <summary>
-@@ -576,6 +610,218 @@ public static partial class SchedulerManager
+@@ -576,6 +610,202 @@ public static partial class SchedulerManager
          return true;
      }
  
@@ -325,50 +336,15 @@ index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..3e12cd81c45c48eca630e970973bbe81
 +
 +        uint scanned = GarbageCollector.LastSmpStackScanCount;
 +        ulong scannedBytes = GarbageCollector.LastSmpStackScanBytes;
++        ulong scannedStartWordXor = GarbageCollector.LastSmpStackScanStartWordXor;
 +        ulong scannedWordXor = GarbageCollector.LastSmpStackScanWordXor;
-+        ulong expectedBytes = (ulong)expectedAps * sizeof(ulong);
-+        if (scanned != (uint)expectedAps || scannedBytes != expectedBytes)
++        if (scanned != (uint)expectedAps)
 +        {
-+            Serial.WriteString("[SCHED-AP-STACK-DIAG] observed-stacks=");
++            Serial.WriteString("[SCHED] WARNING: Stage 15 remote stack scan count=");
 +            Serial.WriteNumber(scanned);
-+            Serial.WriteString(" observed-bytes=");
-+            Serial.WriteNumber(scannedBytes);
-+            Serial.WriteString(" expected-stacks=");
++            Serial.WriteString(" expected=");
 +            Serial.WriteNumber((ulong)expectedAps);
-+            Serial.WriteString(" expected-bytes=");
-+            Serial.WriteNumber(expectedBytes);
 +            Serial.WriteString("\n");
-+
-+            for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
-+            {
-+                SchedulerThread? idle = s_cpuStates[cpuId].IdleThread;
-+                if (idle is null)
-+                {
-+                    continue;
-+                }
-+
-+                nuint savedStackPointer = NativeGetGcSavedStackPointer(cpuId);
-+                nuint stackTop = idle.StackBase + idle.StackSize;
-+                ulong span = 0;
-+                if (savedStackPointer >= idle.StackBase && savedStackPointer <= stackTop)
-+                {
-+                    span = (ulong)(stackTop - savedStackPointer);
-+                }
-+
-+                Serial.WriteString("[SCHED-AP-STACK-DIAG] cpu=");
-+                Serial.WriteNumber(cpuId);
-+                Serial.WriteString(" saved-rsp=");
-+                Serial.WriteHexWithPrefix((ulong)savedStackPointer);
-+                Serial.WriteString(" base=");
-+                Serial.WriteHexWithPrefix((ulong)idle.StackBase);
-+                Serial.WriteString(" top=");
-+                Serial.WriteHexWithPrefix((ulong)stackTop);
-+                Serial.WriteString(" span=");
-+                Serial.WriteNumber(span);
-+                Serial.WriteString("\n");
-+            }
-+
-+            Serial.WriteString("[SCHED] WARNING: Stage 15 remote stack scan count/size mismatch.\n");
 +            return false;
 +        }
 +
@@ -378,15 +354,20 @@ index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..3e12cd81c45c48eca630e970973bbe81
 +        }
 +
 +        ulong expectedCanaryXor = 0;
++        ulong expectedBytes = 0;
 +        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
 +        {
 +            PerCpuState state = s_cpuStates[cpuId];
 +            SchedulerThread? idle = state.IdleThread;
 +            ulong canary = NativeGetIdleStackCanary(cpuId);
 +            ulong observed = NativeGetIdleStackObserved(cpuId);
++            nuint savedStackPointer = NativeGetGcSavedStackPointer(cpuId);
++            nuint stackTop = idle is null ? 0 : idle.StackBase + idle.StackSize;
 +            if (!state.Stage15IdleStackEnrolled || idle is null ||
 +                NativeGetIdleStackState(cpuId) != 2 || canary == 0 ||
-+                observed != canary)
++                observed != canary || savedStackPointer < idle.StackBase ||
++                savedStackPointer >= stackTop ||
++                ((stackTop - savedStackPointer) & (sizeof(ulong) - 1)) != 0)
 +            {
 +                Serial.WriteString("[SCHED] WARNING: Stage 15 AP stack canary mismatch for CpuId=");
 +                Serial.WriteNumber(cpuId);
@@ -395,17 +376,29 @@ index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..3e12cd81c45c48eca630e970973bbe81
 +            }
 +
 +            expectedCanaryXor ^= canary;
++            ulong span = (ulong)(stackTop - savedStackPointer);
++            expectedBytes += span;
 +
 +            Serial.WriteString("[SCHED-AP-STACK] cpu=");
 +            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" saved-rsp=");
++            Serial.WriteHexWithPrefix((ulong)savedStackPointer);
++            Serial.WriteString(" span=");
++            Serial.WriteNumber(span);
 +            Serial.WriteString(" canary=");
 +            Serial.WriteHexWithPrefix(canary);
 +            Serial.WriteString(" state=gc-scanned-returned-native-idle\n");
 +        }
 +
-+        if (scannedWordXor != expectedCanaryXor)
++        if (scannedBytes != expectedBytes)
 +        {
-+            Serial.WriteString("[SCHED] WARNING: Stage 15 GC stack fingerprint does not match AP canaries.\n");
++            Serial.WriteString("[SCHED] WARNING: Stage 15 GC stack byte count does not match captured RSP ranges.\n");
++            return false;
++        }
++
++        if (scannedStartWordXor != expectedCanaryXor)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 15 GC stack-start fingerprint does not match AP canaries.\n");
 +            return false;
 +        }
 +
@@ -415,6 +408,8 @@ index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..3e12cd81c45c48eca630e970973bbe81
 +        Serial.WriteNumber(scanned);
 +        Serial.WriteString(" bytes=");
 +        Serial.WriteNumber(scannedBytes);
++        Serial.WriteString(" start-word-xor=");
++        Serial.WriteHexWithPrefix(scannedStartWordXor);
 +        Serial.WriteString(" word-xor=");
 +        Serial.WriteHexWithPrefix(scannedWordXor);
 +        Serial.WriteString("\n");
