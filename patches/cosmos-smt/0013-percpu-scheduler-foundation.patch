@@ -293,6 +293,36 @@ index 9588e5fc6..15129c600 100644
      /// <summary>
      /// Allocates a new unique thread ID.
      /// </summary>
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+index 9029723c3..adc08cb0e 100644
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -7,6 +7,7 @@ using Cosmos.Kernel.Core.CPU;
+ using Cosmos.Kernel.Core.IO;
+ using Cosmos.Kernel.Core.Memory.GarbageCollector;
+ using Cosmos.Kernel.Core.Power;
++using Cosmos.Kernel.Core.Scheduler;
+ using Cosmos.Kernel.Core.X64;
+ using Cosmos.Kernel.Core.X64.Cpu;
+ using Cosmos.Kernel.Core.X64.IO;
+@@ -166,6 +167,17 @@ internal class X64PlatformInitializer : IPlatformInitializer
+             Cosmos.Kernel.Core.Panic.Halt("Managed AP execution proof failed.");
+         }
+ 
++        // Stage 13: validate that each x64 AP can address the managed
++        // per-CPU scheduler state created by the scheduler initializer and
++        // complete one bounded enter/leave handshake. This is only a
++        // foundation proof: APs return to native HLT and no managed thread
++        // is dispatched on them.
++        if (CpuLocal.IsNativePerCpuSupported &&
++            !SchedulerManager.RunPerCpuSchedulerFoundationProof())
++        {
++            Cosmos.Kernel.Core.Panic.Halt("Stage 13 per-CPU scheduler foundation proof failed.");
++        }
++
+         // Initialize RTC
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new RTC();
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 index df5d77042..33988f6bc 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
@@ -559,23 +589,3 @@ index df5d77042..33988f6bc 100644
  .balign 64
  // 256 cache-line-isolated records:
  // request_epoch, ack_epoch, resume_epoch, state, padding,
-diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-index 1f438b349..9df7ffe6e 100644
---- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-+++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-@@ -108,5 +108,15 @@ internal class LibraryInitializer
-         // Enable scheduler (timer will start invoking it)
-         SchedulerManager.IsRunning = true;
-         Serial.WriteString("[SCHED] Scheduler enabled\n");
-+
-+        // Stage 13: validate that each x64 AP can address the managed
-+        // per-CPU scheduler state created above and complete one bounded
-+        // enter/leave handshake. This is only a foundation proof: APs still
-+        // return to native HLT and no managed thread is dispatched on them.
-+        if (CpuLocal.IsNativePerCpuSupported &&
-+            !SchedulerManager.RunPerCpuSchedulerFoundationProof())
-+        {
-+            Cosmos.Kernel.Core.Panic.Halt("Stage 13 per-CPU scheduler foundation proof failed.");
-+        }
-     }
- }
