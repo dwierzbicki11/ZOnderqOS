@@ -326,7 +326,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    cmp dword ptr [r8 + 48], 1
 +    jne .Lap_timer_wait_start_poll
 +    cmp qword ptr [r8 + 56], 6
-+    jne .Lap_timer_test_invalid
++    jne .Lap_timer_wait_start_poll
 +    jmp .Lap_timer_wait_ticks
 +
 +.Lap_timer_wait_start_poll:
@@ -378,9 +378,9 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    cmp dword ptr [r8 + 48], 1
 +    jne .Lap_timer_wait_stop_poll
 +    cmp qword ptr [r8 + 56], 7
-+    jne .Lap_timer_test_invalid
++    jne .Lap_timer_wait_stop_poll
 +    cmp dword ptr [r8 + 32], 0
-+    jne .Lap_timer_test_invalid
++    jne .Lap_timer_wait_stop_poll
 +    inc r10
 +    inc rbx
 +    jmp .Lap_timer_test_cpu_loop
