@@ -1,0 +1,144 @@
+name: SMT stage 10 scheduler SMP safety
+
+on:
+  push:
+    branches: [ main, 'smp/runtime-all-cpus' ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage09-qemu.sh', 'tools/verify-smt-local.sh', 'ZonderqOS.csproj', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage10.yml' ]
+  pull_request:
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage09-qemu.sh', 'ZonderqOS.csproj', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage10.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate-stage10:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - cpus: 1
+            cores: 1
+            threads: 1
+          - cpus: 8
+            cores: 4
+            threads: 2
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: zonderq }
+      - uses: actions/checkout@v4
+        with:
+          repository: CosmosOS/Cosmos
+          ref: v3.0.85
+          path: cosmos
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - name: Install native toolchain and QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 lld xorriso nasm
+          qemu-system-x86_64 --version
+      - name: Validate and apply Stage 10
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+        run: |
+          set -o pipefail
+          bash -n zonderq/tools/prepare-cosmos-smt.sh
+          bash -n zonderq/tools/smoke-stage09-qemu.sh
+          bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 10 --check-only 2>&1 | tee zonderq/stage10-preflight.log
+          bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 10 --patch-only 2>&1 | tee zonderq/stage10-apply.log
+          git -C cosmos diff --check
+          git -C zonderq rev-parse HEAD > zonderq/stage10-revisions.log
+          git -C cosmos rev-parse HEAD >> zonderq/stage10-revisions.log
+          git -C cosmos diff --stat >> zonderq/stage10-revisions.log
+      - name: Verify idempotence and build clean patched Cosmos packages
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+        run: |
+          set -o pipefail
+          bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 10 2>&1 | tee zonderq/stage10-packages.log
+      - name: ARM64 managed HAL regression compile
+        if: matrix.cpus == 1
+        working-directory: cosmos
+        run: |
+          set -o pipefail
+          dotnet build src/Cosmos.Kernel.HAL/Cosmos.Kernel.HAL.csproj \
+            -c Release -r linux-arm64 -p:CosmosArch=arm64 \
+            -p:GeneratePackageOnBuild=false --no-incremental 2>&1 | tee ../zonderq/stage10-arm64-hal.log
+          dotnet build src/Cosmos.Kernel.HAL.ARM64/Cosmos.Kernel.HAL.ARM64.csproj \
+            -c Release -r linux-arm64 -p:CosmosArch=arm64 \
+            -p:GeneratePackageOnBuild=false --no-incremental 2>&1 | tee ../zonderq/stage10-arm64-platform.log
+          echo 'ARM64 managed compile only; no ARM64 ISO boot/runtime claim.'
+      - name: Force local patched Cosmos packages
+        run: |
+          cat > zonderq/NuGet.Config <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources><clear /><add key="local-cosmos" value="${{ github.workspace }}/cosmos/artifacts/package/release" /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources>
+            <packageSourceMapping><packageSource key="local-cosmos"><package pattern="Cosmos.*" /></packageSource><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping>
+          </configuration>
+          EOF
+          mkdir -p "${{ runner.temp }}/zonderq-stage10-packages"
+          test -z "$(ls -A "${{ runner.temp }}/zonderq-stage10-packages")"
+      - name: Build real ZonderqOS x64 ISO
+        working-directory: zonderq
+        env:
+          NUGET_PACKAGES: ${{ runner.temp }}/zonderq-stage10-packages
+          LOCAL_COSMOS_FEED: ${{ github.workspace }}/cosmos/artifacts/package/release
+        run: |
+          set -o pipefail
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --configfile NuGet.Config --force --no-cache 2>&1 | tee stage10-restore.log
+          python3 - <<'PY' | tee stage10-package-sources.log
+          import json
+          import os
+          import pathlib
+
+          cache = pathlib.Path(os.environ['NUGET_PACKAGES'])
+          feed = pathlib.Path(os.environ['LOCAL_COSMOS_FEED']).resolve()
+          required = {'cosmos.sdk', 'cosmos.kernel', 'cosmos.kernel.core', 'cosmos.kernel.core.x64', 'cosmos.kernel.hal', 'cosmos.kernel.hal.x64', 'cosmos.kernel.native.x64', 'cosmos.kernel.boot.limine'}
+          found = set()
+          for metadata in sorted(cache.glob('cosmos.*/3.0.85/.nupkg.metadata')):
+              package = metadata.parent.parent.name
+              source = json.loads(metadata.read_text())['source']
+              if pathlib.Path(source).resolve() != feed:
+                  raise SystemExit(f'[SMT10-CI][FAIL] {package} restored from {source}, expected {feed}')
+              found.add(package)
+              print(f'{package} 3.0.85: {source}')
+          if required - found:
+              raise SystemExit(f'[SMT10-CI][FAIL] missing local package metadata: {sorted(required - found)}')
+          PY
+          cosmos build -a x64 -v 2>&1 | tee stage10-build.log
+          test -s output-x64/ZonderqOS.iso
+          sha256sum output-x64/ZonderqOS.iso | tee stage10-iso.sha256
+      - name: QEMU Stage 9 regression after scheduler hardening
+        working-directory: zonderq
+        env:
+          STAGE09_QEMU_CPU_MODEL: Nehalem
+          STAGE09_QEMU_SOCKETS: 1
+          STAGE09_QEMU_CPUS: ${{ matrix.cpus }}
+          STAGE09_QEMU_CORES: ${{ matrix.cores }}
+          STAGE09_QEMU_THREADS: ${{ matrix.threads }}
+          STAGE09_QEMU_TIMEOUT_SECONDS: 90
+          STAGE09_QEMU_STABLE_SECONDS: 30
+        run: |
+          set -o pipefail
+          bash tools/smoke-stage09-qemu.sh output-x64/ZonderqOS.iso stage10-qemu-serial.log 2>&1 | tee stage10-smoke.log
+      - name: Diagnostics
+        if: always()
+        working-directory: zonderq
+        run: |
+          tail -n 250 stage10-build.log 2>/dev/null || true
+          cat stage10-qemu-serial.log stage10-qemu-serial.log.stderr 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stage10-diagnostics-Nehalem-${{ matrix.cpus }}cpu
+          if-no-files-found: ignore
+          path: |
+            zonderq/stage10-*.log
+            zonderq/stage10-qemu-serial.log.stderr
+            zonderq/stage10-iso.sha256
