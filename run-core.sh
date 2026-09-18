@@ -61,7 +61,7 @@ EOF_USAGE
 
 check_untracked_build_inputs() {
     local untracked
-    untracked="$(git ls-files --others --exclude-standard -- '*.cs' '*.csproj' '*.props' '*.targets')"
+    untracked="$(git ls-files --others --exclude-standard -- '*.cs' '*.csproj' '*.props' '*.targets' | grep -Ev '^(\.nuget/|bin/|obj/|output-[^/]+/)' || true)"
     if [[ -n "$untracked" ]]; then
         echo "[BLAD] W katalogu sa niecommitowane pliki zrodlowe, ktore MSBuild moze automatycznie kompilowac:" >&2
         while IFS= read -r path; do
