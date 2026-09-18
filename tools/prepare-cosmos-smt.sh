@@ -98,6 +98,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 9
   bash tools/prepare-cosmos-smt.sh --through-stage 10
   bash tools/prepare-cosmos-smt.sh --through-stage 11
+  bash tools/prepare-cosmos-smt.sh --through-stage 12
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -368,4 +369,8 @@ elif (( SELECTED_STAGE == 11 )); then
     echo "[SMT] Etap 11 podpina prawdziwy OrionGC pod native stop-the-world z etapu 10."
     echo "[SMT] GarbageCollector.Collect zatrzymuje wszystkie AP-y przed mark/sweep i wznawia je w finally."
     echo "[SMT] Boot proof wykonuje trzy realne kolekcje i sprawdza przezycie zarzadzanej referencji."
+elif (( SELECTED_STAGE == 12 )); then
+    echo "[SMT] Etap 12 budzi AP-y do pojedynczego, alokacji-bezplatnego eksportu C# bez schedulera."
+    echo "[SMT] Managed entry czyta GS-local CpuId, publikuje deterministyczny checksum i wraca do native HLT."
+    echo "[SMT] BSP waliduje wynik oraz brak pozostalej komendy; scheduler i managed Thread nadal nie sa wlaczane na AP-ach."
 fi
