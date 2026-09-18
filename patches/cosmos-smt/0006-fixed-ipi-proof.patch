@@ -87,19 +87,21 @@ index 9a31b5b..1fed060 100644
          Serial.WriteString("[X64HAL] Initializing RTC...\n");
          _rtc = new RTC();
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-index 26330e4..d9648e8 100644
+index 26330e4..a2556c2 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-@@ -483,6 +483,8 @@ _native_x64_ap_entry:
+@@ -483,6 +483,10 @@ _native_x64_ap_entry:
      pushfq
      pop rax
      mov qword ptr [r14 + 24], rax
++    // Enable the local APIC on each AP before publishing READY.
++    call _native_x64_enable_ap_local_apic
 +    // Install a private native IDT before publishing READY.
 +    call _native_x64_install_ap_ipi_idt
      mfence
      mov eax, 1
      xchg dword ptr [r14 + 0], eax
-@@ -505,7 +507,7 @@ _native_x64_ap_entry:
+@@ -505,7 +509,7 @@ _native_x64_ap_entry:
      xchg dword ptr [r14 + 48], eax
  
  .Lap_park:
@@ -108,11 +110,22 @@ index 26330e4..d9648e8 100644
      hlt
      jmp .Lap_park
  
-@@ -535,6 +537,125 @@ AP_STATE_GETTER _native_x64_get_ap_gs_id, 12, 4
+@@ -535,6 +539,136 @@ AP_STATE_GETTER _native_x64_get_ap_gs_id, 12, 4
  AP_STATE_GETTER _native_x64_get_ap_stack, 16, 8
  AP_STATE_GETTER _native_x64_get_ap_rflags, 24, 8
  AP_STATE_GETTER _native_x64_get_ap_work_counter, 40, 8
 +AP_STATE_GETTER _native_x64_get_ap_ipi_count, 56, 8
++
++_native_x64_enable_ap_local_apic:
++    mov ecx, 0x1B
++    rdmsr
++    or eax, 0x800
++    wrmsr
++    shl rdx, 32
++    or rax, rdx
++    and rax, 0xFFFFFFFFFFFFF000
++    mov dword ptr [rax + 0xF0], 0x1FF
++    ret
 +
 +// APs load a shared native IDT. Vector 0xF1 increments the AP-local mailbox
 +// and acknowledges the LAPIC without entering managed runtime.
@@ -234,7 +247,7 @@ index 26330e4..d9648e8 100644
  
  // int _native_x64_run_ap_work_test(uint64_t cpuCount,
  //                                  uint64_t timeoutTscTicks)
-@@ -682,6 +803,11 @@ _ap_boot_state: .zero 16384
+@@ -682,6 +816,11 @@ _ap_boot_state: .zero 16384
  .balign 4096
  _ap_stacks: .zero 4194304
  
