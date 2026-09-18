@@ -161,7 +161,7 @@ index 381c335393476e4a70159be06303ff7a81de5f4a..84a60cba3676b067203120f78c60919f
 +    }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..6065a76e3d52a28c78865b0ff47150e391d9e4b0 100644
+index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..3e12cd81c45c48eca630e970973bbe81941d8d2c 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -68,6 +68,12 @@ public static partial class SchedulerManager
@@ -177,7 +177,7 @@ index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..6065a76e3d52a28c78865b0ff47150e3
  #if ARCH_X64
      [LibraryImport("*", EntryPoint = "_native_x64_run_percpu_scheduler_test")]
      [SuppressGCTransition]
-@@ -104,6 +110,30 @@ public static partial class SchedulerManager
+@@ -104,6 +110,34 @@ public static partial class SchedulerManager
      [LibraryImport("*", EntryPoint = "_native_x64_get_managed_residency_checksum")]
      [SuppressGCTransition]
      private static partial ulong NativeGetManagedResidencyChecksum(uint cpuId);
@@ -205,10 +205,14 @@ index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..6065a76e3d52a28c78865b0ff47150e3
 +    [LibraryImport("*", EntryPoint = "_native_x64_get_idle_stack_observed")]
 +    [SuppressGCTransition]
 +    private static partial ulong NativeGetIdleStackObserved(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_gc_saved_rsp")]
++    [SuppressGCTransition]
++    private static partial nuint NativeGetGcSavedStackPointer(uint cpuId);
  #endif
  
      /// <summary>
-@@ -576,6 +606,179 @@ public static partial class SchedulerManager
+@@ -576,6 +610,218 @@ public static partial class SchedulerManager
          return true;
      }
  
@@ -325,6 +329,45 @@ index 1b13f9bd2688fa12a79cafa449f2dea499d42bf6..6065a76e3d52a28c78865b0ff47150e3
 +        ulong expectedBytes = (ulong)expectedAps * sizeof(ulong);
 +        if (scanned != (uint)expectedAps || scannedBytes != expectedBytes)
 +        {
++            Serial.WriteString("[SCHED-AP-STACK-DIAG] observed-stacks=");
++            Serial.WriteNumber(scanned);
++            Serial.WriteString(" observed-bytes=");
++            Serial.WriteNumber(scannedBytes);
++            Serial.WriteString(" expected-stacks=");
++            Serial.WriteNumber((ulong)expectedAps);
++            Serial.WriteString(" expected-bytes=");
++            Serial.WriteNumber(expectedBytes);
++            Serial.WriteString("\n");
++
++            for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++            {
++                SchedulerThread? idle = s_cpuStates[cpuId].IdleThread;
++                if (idle is null)
++                {
++                    continue;
++                }
++
++                nuint savedStackPointer = NativeGetGcSavedStackPointer(cpuId);
++                nuint stackTop = idle.StackBase + idle.StackSize;
++                ulong span = 0;
++                if (savedStackPointer >= idle.StackBase && savedStackPointer <= stackTop)
++                {
++                    span = (ulong)(stackTop - savedStackPointer);
++                }
++
++                Serial.WriteString("[SCHED-AP-STACK-DIAG] cpu=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString(" saved-rsp=");
++                Serial.WriteHexWithPrefix((ulong)savedStackPointer);
++                Serial.WriteString(" base=");
++                Serial.WriteHexWithPrefix((ulong)idle.StackBase);
++                Serial.WriteString(" top=");
++                Serial.WriteHexWithPrefix((ulong)stackTop);
++                Serial.WriteString(" span=");
++                Serial.WriteNumber(span);
++                Serial.WriteString("\n");
++            }
++
 +            Serial.WriteString("[SCHED] WARNING: Stage 15 remote stack scan count/size mismatch.\n");
 +            return false;
 +        }
