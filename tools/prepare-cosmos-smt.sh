@@ -97,6 +97,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 8
   bash tools/prepare-cosmos-smt.sh --through-stage 9
   bash tools/prepare-cosmos-smt.sh --through-stage 10
+  bash tools/prepare-cosmos-smt.sh --through-stage 11
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -363,4 +364,8 @@ elif (( SELECTED_STAGE == 10 )); then
     echo "[SMT] Etap 10 wykonuje wielokrotny native GC stop-the-world rendezvous przez IPI 0xF3."
     echo "[SMT] AP-y publikuja kontekst, ACK epoki, parkuja z IF=0 i wracaja dopiero po release BSP."
     echo "[SMT] To jest fundament pod SMP-safe GarbageCollector; managed GC nie jest jeszcze uruchamiany na AP-ach."
+elif (( SELECTED_STAGE == 11 )); then
+    echo "[SMT] Etap 11 podpina prawdziwy OrionGC pod native stop-the-world z etapu 10."
+    echo "[SMT] GarbageCollector.Collect zatrzymuje wszystkie AP-y przed mark/sweep i wznawia je w finally."
+    echo "[SMT] Boot proof wykonuje trzy realne kolekcje i sprawdza przezycie zarzadzanej referencji."
 fi
