@@ -104,7 +104,7 @@ index 27ea1c851..2fb5233ab 100644
 +    }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 9588e5fc6..15129c600 100644
+index 9588e5fc6..c3103e0b6 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -15,7 +15,7 @@ namespace Cosmos.Kernel.Core.Scheduler;
@@ -144,7 +144,7 @@ index 9588e5fc6..15129c600 100644
      /// <summary>
      /// Whether scheduler support is compiled into this kernel
      /// (the <c>CosmosEnableScheduler</c> feature switch). Internal: the ring
-@@ -276,6 +297,148 @@ public static class SchedulerManager
+@@ -276,6 +297,150 @@ public static class SchedulerManager
          set => s_enabled = value;
      }
  
@@ -224,6 +224,7 @@ index 9588e5fc6..15129c600 100644
 +        }
 +
 +#if ARCH_X64
++        Serial.WriteString("[SCHED-PERCPU] dispatch\n");
 +        long frequency = Stopwatch.Frequency;
 +        ulong timeoutTicks = frequency > 0
 +            ? checked((ulong)frequency * Stage13TimeoutSeconds)
@@ -232,6 +233,7 @@ index 9588e5fc6..15129c600 100644
 +        int completed = expectedAps == 0
 +            ? 0
 +            : NativeRunPerCpuSchedulerTest(s_cpuCount, timeoutTicks);
++        Serial.WriteString("[SCHED-PERCPU] native-return\n");
 +        if (completed != expectedAps)
 +        {
 +            Serial.WriteString("[SCHED] WARNING: Stage 13 AP scheduler-state proof result=");
@@ -314,35 +316,17 @@ index 3e71fc419..248f0e134 100644
 \ No newline at end of file
 +</Project>
 diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
-index 9029723c3..adc08cb0e 100644
+index 9029723c3..4d4970dba 100644
 --- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
 +++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
-@@ -7,6 +7,7 @@ using Cosmos.Kernel.Core.CPU;
+@@ -3,7 +3,6 @@
+ using Cosmos.Build.API.Enum;
+ using Cosmos.Kernel.Boot.Limine;
+ using Cosmos.Kernel.Core;
+-using Cosmos.Kernel.Core.CPU;
  using Cosmos.Kernel.Core.IO;
  using Cosmos.Kernel.Core.Memory.GarbageCollector;
  using Cosmos.Kernel.Core.Power;
-+using Cosmos.Kernel.Core.Scheduler;
- using Cosmos.Kernel.Core.X64;
- using Cosmos.Kernel.Core.X64.Cpu;
- using Cosmos.Kernel.Core.X64.IO;
-@@ -166,6 +167,17 @@ internal class X64PlatformInitializer : IPlatformInitializer
-             Cosmos.Kernel.Core.Panic.Halt("Managed AP execution proof failed.");
-         }
- 
-+        // Stage 13: validate that each x64 AP can address the managed
-+        // per-CPU scheduler state created by the scheduler initializer and
-+        // complete one bounded enter/leave handshake. This is only a
-+        // foundation proof: APs return to native HLT and no managed thread
-+        // is dispatched on them.
-+        if (CpuLocal.IsNativePerCpuSupported &&
-+            !SchedulerManager.RunPerCpuSchedulerFoundationProof())
-+        {
-+            Cosmos.Kernel.Core.Panic.Halt("Stage 13 per-CPU scheduler foundation proof failed.");
-+        }
-+
-         // Initialize RTC
-         Serial.WriteString("[X64HAL] Initializing RTC...\n");
-         _rtc = new RTC();
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 index df5d77042..33988f6bc 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
@@ -609,3 +593,26 @@ index df5d77042..33988f6bc 100644
  .balign 64
  // 256 cache-line-isolated records:
  // request_epoch, ack_epoch, resume_epoch, state, padding,
+diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+index 1f438b349..79f361983 100644
+--- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
++++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+@@ -108,5 +108,18 @@ internal class LibraryInitializer
+         // Enable scheduler (timer will start invoking it)
+         SchedulerManager.IsRunning = true;
+         Serial.WriteString("[SCHED] Scheduler enabled\n");
++
++        // Stage 13: run only after the scheduler manager, policy, idle
++        // threads, and every PerCpuState have been initialized. APs still
++        // return to the native parked loop; this is not full SMP scheduling
++        // or preemption.
++        if (CpuLocal.IsNativePerCpuSupported)
++        {
++            Serial.WriteString("[SCHED-PERCPU] begin\n");
++            if (!SchedulerManager.RunPerCpuSchedulerFoundationProof())
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 13 per-CPU scheduler foundation proof failed.");
++            }
++        }
+     }
+ }
