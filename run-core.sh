@@ -179,6 +179,45 @@ EOF_NUGET
     export NUGET_PACKAGES="$package_cache"
 }
 
+prepare_clean_arm64() {
+    require_command dotnet
+
+    local package_cache="$ROOT_DIR/.nuget/arm64-packages"
+    local nuget_config
+    nuget_config="$(mktemp -t zonderq-arm64-nuget.XXXXXX.config)"
+
+    rm -rf "$package_cache"
+    mkdir -p "$package_cache"
+
+    cat > "$nuget_config" <<'EOF_NUGET_ARM64'
+<?xml version="1.0" encoding="utf-8"?>
+<configuration>
+  <packageSources>
+    <clear />
+    <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+  </packageSources>
+</configuration>
+EOF_NUGET_ARM64
+
+    echo "[ARM64] Restore w czystym, izolowanym cache NuGet..."
+    NUGET_PACKAGES="$package_cache" dotnet restore "$ROOT_DIR/ZonderqOS.csproj" \
+        -r linux-arm64 \
+        -p:CosmosArch=arm64 \
+        --configfile "$nuget_config" \
+        --force \
+        --no-cache
+    rm -f "$nuget_config"
+
+    local hal="$package_cache/cosmos.kernel.hal.arm64/3.0.85/lib/net10.0/Cosmos.Kernel.HAL.ARM64.dll"
+    if [[ ! -f "$hal" ]]; then
+        hal="$(find "$package_cache/cosmos.kernel.hal.arm64/3.0.85" -type f -name 'Cosmos.Kernel.HAL.ARM64.dll' -print -quit 2>/dev/null || true)"
+    fi
+    [[ -n "$hal" && -f "$hal" ]] || \
+        fail "Restore ARM64 nie dostarczyl Cosmos.Kernel.HAL.ARM64 3.0.85 w izolowanym cache."
+
+    export NUGET_PACKAGES="$package_cache"
+}
+
 build_iso() {
     local arch="$1"
     local label
@@ -188,6 +227,8 @@ build_iso() {
     if [[ "$arch" == "x64" ]]; then
         require_command dotnet
         prepare_patched_cosmos_x64
+    else
+        prepare_clean_arm64
     fi
     clean_build_cache "$arch"
 
