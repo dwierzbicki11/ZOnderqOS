@@ -136,10 +136,10 @@ index 378c2d2..704659c 100644
  .Lap_park:
      sti
      hlt
-+    cmp dword ptr [r14 + 4], 2
++    cmp dword ptr [r14 + 32], 2
 +    jne .Lap_park
 +    xor eax, eax
-+    xchg dword ptr [r14 + 4], eax
++    xchg dword ptr [r14 + 32], eax
 +    lock inc qword ptr [r14 + 40]
 +    mov eax, 1
 +    xchg dword ptr [r14 + 48], eax
@@ -150,7 +150,7 @@ index 378c2d2..704659c 100644
  AP_STATE_GETTER _native_x64_get_ap_stack, 16, 8
  AP_STATE_GETTER _native_x64_get_ap_rflags, 24, 8
  AP_STATE_GETTER _native_x64_get_ap_work_counter, 40, 8
-+AP_STATE_GETTER _native_x64_get_ap_command, 4, 4
++AP_STATE_GETTER _native_x64_get_ap_command, 32, 4
 +AP_STATE_GETTER _native_x64_get_ap_completion, 48, 4
  AP_STATE_GETTER _native_x64_get_ap_ipi_count, 56, 8
  
@@ -199,7 +199,7 @@ index 378c2d2..704659c 100644
 +    cmp qword ptr [r8 + 56], 4
 +    jne .Lap_parkcmd_invalid
 +    xor eax, eax
-+    xchg dword ptr [r8 + 4], eax
++    xchg dword ptr [r8 + 32], eax
 +    test eax, eax
 +    je .Lap_parkcmd_command_clear
 +    cmp eax, 1
@@ -208,7 +208,7 @@ index 378c2d2..704659c 100644
 +    xor eax, eax
 +    xchg dword ptr [r8 + 48], eax
 +    mov eax, 2
-+    xchg dword ptr [r8 + 4], eax
++    xchg dword ptr [r8 + 32], eax
 +    test eax, eax
 +    jne .Lap_parkcmd_invalid
 +    mov edx, dword ptr [r8 + 8]
