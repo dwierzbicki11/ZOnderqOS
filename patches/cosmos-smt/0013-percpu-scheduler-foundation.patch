@@ -293,6 +293,26 @@ index 9588e5fc6..15129c600 100644
      /// <summary>
      /// Allocates a new unique thread ID.
      /// </summary>
+diff --git a/src/Cosmos.Kernel.HAL.X64/Cosmos.Kernel.HAL.X64.csproj b/src/Cosmos.Kernel.HAL.X64/Cosmos.Kernel.HAL.X64.csproj
+index 3e71fc419..248f0e134 100644
+--- a/src/Cosmos.Kernel.HAL.X64/Cosmos.Kernel.HAL.X64.csproj
++++ b/src/Cosmos.Kernel.HAL.X64/Cosmos.Kernel.HAL.X64.csproj
+@@ -7,6 +7,8 @@
+     <PackageTags>cosmos;kernel;hal;x64;hardware</PackageTags>
+     <PackageLicenseExpression>BSD-3-Clause</PackageLicenseExpression>
+     <DefineConstants>$(DefineConstants);ARCH_X64</DefineConstants>
++    <!-- Stage 13 intentionally consumes the experimental scheduler seam. -->
++    <NoWarn>$(NoWarn);COSMOS0001</NoWarn>
+   </PropertyGroup>
+   <ItemGroup>
+     <ProjectReference Include="..\Cosmos.Kernel.Boot.Limine\Cosmos.Kernel.Boot.Limine.csproj" />
+@@ -23,4 +25,4 @@
+     <!-- White-box timer suite exercises PIT and RTC directly. -->
+     <InternalsVisibleTo Include="Cosmos.Kernel.Tests.Timer" />
+   </ItemGroup>
+-</Project>
+\ No newline at end of file
++</Project>
 diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
 index 9029723c3..adc08cb0e 100644
 --- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
