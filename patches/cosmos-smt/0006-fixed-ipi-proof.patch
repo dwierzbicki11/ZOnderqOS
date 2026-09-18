@@ -87,7 +87,7 @@ index 9a31b5b..1fed060 100644
          Serial.WriteString("[X64HAL] Initializing RTC...\n");
          _rtc = new RTC();
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-index 26330e4..a2556c2 100644
+index 26330e4..52c01ad 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 @@ -483,6 +483,10 @@ _native_x64_ap_entry:
@@ -110,7 +110,7 @@ index 26330e4..a2556c2 100644
      hlt
      jmp .Lap_park
  
-@@ -535,6 +539,136 @@ AP_STATE_GETTER _native_x64_get_ap_gs_id, 12, 4
+@@ -535,6 +539,138 @@ AP_STATE_GETTER _native_x64_get_ap_gs_id, 12, 4
  AP_STATE_GETTER _native_x64_get_ap_stack, 16, 8
  AP_STATE_GETTER _native_x64_get_ap_rflags, 24, 8
  AP_STATE_GETTER _native_x64_get_ap_work_counter, 40, 8
@@ -134,7 +134,9 @@ index 26330e4..a2556c2 100644
 +    lea r9, [rip + _native_x64_ap_ipi_handler]
 +    mov rax, r9
 +    mov word ptr [r8 + 0xF10], ax
-+    mov word ptr [r8 + 0xF12], 0x0008
++    xor eax, eax
++    mov ax, cs
++    mov word ptr [r8 + 0xF12], ax
 +    mov byte ptr [r8 + 0xF14], 0
 +    mov byte ptr [r8 + 0xF15], 0x8E
 +    shr rax, 16
@@ -247,7 +249,7 @@ index 26330e4..a2556c2 100644
  
  // int _native_x64_run_ap_work_test(uint64_t cpuCount,
  //                                  uint64_t timeoutTscTicks)
-@@ -682,6 +816,11 @@ _ap_boot_state: .zero 16384
+@@ -682,6 +818,11 @@ _ap_boot_state: .zero 16384
  .balign 4096
  _ap_stacks: .zero 4194304
  
