@@ -1,0 +1,426 @@
+diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+--- a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
++++ b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+@@ -76,6 +76,18 @@
+     [SuppressGCTransition]
+     private static partial uint NativeGetCompletion(uint cpuId);
+ 
++    [LibraryImport("*", EntryPoint = "_native_x64_run_ap_timer_test")]
++    [SuppressGCTransition]
++    private static partial int NativeRunApTimerTest(
++        ulong cpuCount,
++        uint initialCount,
++        ulong minimumTicks,
++        ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_timer_ticks")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetTimerTicks(uint cpuId);
++
+     internal static bool StartAndParkApplicationProcessors()
+     {
+         LimineMpResponseX64* response = LimineMp.X64Response;
+@@ -361,6 +373,72 @@
+         return true;
+     }
+ 
++    internal static bool RunApplicationProcessorTimerProof()
++    {
++        const uint TimerIntervalMs = 10;
++        const ulong MinimumTicks = 3;
++        const ulong ExpectedIpiCount = 7;
++
++        LimineMpResponseX64* response = LimineMp.X64Response;
++        if (response == null || response->Cpus == null || response->CpuCount == 0 ||
++            response->CpuCount > LimineMp.MaxXApicCpuCount)
++        {
++            Serial.WriteString("[SMP] WARNING: AP-local timer proof has no valid CPU topology.\n");
++            return false;
++        }
++
++        uint ticksPerMs = LocalApic.TicksPerMs;
++        if (ticksPerMs == 0 || ticksPerMs > uint.MaxValue / TimerIntervalMs)
++        {
++            Serial.WriteString("[SMP] WARNING: AP-local timer proof has an invalid LAPIC calibration.\n");
++            return false;
++        }
++
++        uint initialCount = ticksPerMs * TimerIntervalMs;
++        long frequency = X64CpuOps.TscFrequency;
++        ulong timeoutTicks = frequency > 0
++            ? checked((ulong)frequency * ApReadyTimeoutSeconds)
++            : 5_000_000_000UL;
++
++        int expected = checked((int)response->CpuCount - 1);
++        int completed = NativeRunApTimerTest(response->CpuCount, initialCount, MinimumTicks, timeoutTicks);
++        if (completed != expected)
++        {
++            Serial.WriteString("[SMP] WARNING: AP-local timer proof result=");
++            WriteSignedNumber(completed);
++            Serial.WriteString(" expected=");
++            Serial.WriteNumber((ulong)expected);
++            Serial.WriteString("\n");
++            DumpParkedCommandState(response->CpuCount);
++            return false;
++        }
++
++        for (uint cpuId = 1; cpuId < response->CpuCount; cpuId++)
++        {
++            ulong timerTicks = NativeGetTimerTicks(cpuId);
++            ulong ipiCount = NativeGetIpiCount(cpuId);
++            if (timerTicks < MinimumTicks || ipiCount != ExpectedIpiCount)
++            {
++                Serial.WriteString("[SMP] WARNING: AP-local timer state mismatch for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString("\n");
++                DumpParkedCommandState(response->CpuCount);
++                return false;
++            }
++
++            Serial.WriteString("[SMP-TIMER] cpu=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" ticks=");
++            Serial.WriteNumber(timerTicks);
++            Serial.WriteString(" ipi=");
++            Serial.WriteNumber(ipiCount);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[SMP-TIMER-TEST] PASS\n");
++        return true;
++    }
++
+     private static void WriteSignedNumber(int value)
+     {
+         if (value < 0)
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -136,6 +136,15 @@
+             Cosmos.Kernel.Core.Panic.Halt("Parked AP command proof failed.");
+         }
+ 
++        // Stage 9: configure and observe a periodic Local APIC timer on every
++        // application processor, then stop it through the parked-command path.
++        // This proves the per-CPU preemption clock without entering managed
++        // scheduler or GC code on an AP.
++        if (!SmpApBootstrap.RunApplicationProcessorTimerProof())
++        {
++            Cosmos.Kernel.Core.Panic.Halt("AP-local timer proof failed.");
++        }
++
+         // Initialize RTC
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new RTC();
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -511,8 +511,16 @@
+ .Lap_park:
+     sti
+     hlt
+-    cmp dword ptr [r14 + 32], 2
+-    jne .Lap_park
++    mov eax, dword ptr [r14 + 32]
++    cmp eax, 2
++    je .Lap_park_command_work
++    cmp eax, 3
++    je .Lap_park_command_timer_start
++    cmp eax, 4
++    je .Lap_park_command_timer_stop
++    jmp .Lap_park
++
++.Lap_park_command_work:
+     xor eax, eax
+     xchg dword ptr [r14 + 32], eax
+     lock inc qword ptr [r14 + 40]
+@@ -520,6 +528,40 @@
+     xchg dword ptr [r14 + 48], eax
+     jmp .Lap_park
+ 
++.Lap_park_command_timer_start:
++    xor eax, eax
++    xchg dword ptr [r14 + 32], eax
++    lea rax, [rip + _ap_timer_ticks]
++    mov rcx, r13
++    shl rcx, 3
++    mov qword ptr [rax + rcx], 0
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    test rax, rax
++    jz .Lap_park
++    mov dword ptr [rax + 0x3E0], 0x3
++    mov dword ptr [rax + 0x320], 0x000200F2
++    mov ecx, dword ptr [rip + _ap_timer_initial_count]
++    test ecx, ecx
++    jz .Lap_park
++    mov dword ptr [rax + 0x380], ecx
++    mfence
++    mov eax, 1
++    xchg dword ptr [r14 + 48], eax
++    jmp .Lap_park
++
++.Lap_park_command_timer_stop:
++    xor eax, eax
++    xchg dword ptr [r14 + 32], eax
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    test rax, rax
++    jz .Lap_park
++    mov dword ptr [rax + 0x320], 0x000100F2
++    mov dword ptr [rax + 0x380], 0
++    mfence
++    mov eax, 1
++    xchg dword ptr [r14 + 48], eax
++    jmp .Lap_park
++
+ .macro AP_STATE_GETTER name, offset, width
+ .global \name
+ \name:
+@@ -550,6 +592,19 @@
+ AP_STATE_GETTER _native_x64_get_ap_completion, 48, 4
+ AP_STATE_GETTER _native_x64_get_ap_ipi_count, 56, 8
+ 
++.global _native_x64_get_ap_timer_ticks
++_native_x64_get_ap_timer_ticks:
++    cmp edi, 255
++    ja .Lap_timer_get_invalid
++    lea rcx, [rip + _ap_timer_ticks]
++    mov eax, edi
++    shl rax, 3
++    mov rax, qword ptr [rcx + rax]
++    ret
++.Lap_timer_get_invalid:
++    xor eax, eax
++    ret
++
+ _native_x64_enable_ap_local_apic:
+     mov ecx, 0x1B
+     rdmsr
+@@ -579,6 +634,24 @@
+     shr rax, 16
+     mov dword ptr [r8 + 0xF18], eax
+     mov dword ptr [r8 + 0xF1C], 0
++
++    // Vector 0xF2 is a private AP-local periodic timer proof. It stays native
++    // until the SMP scheduler and GC rendezvous are ready.
++    lea r9, [rip + _native_x64_ap_timer_handler]
++    mov r10, r9
++    mov word ptr [r8 + 0xF20], r10w
++    xor eax, eax
++    mov ax, cs
++    mov word ptr [r8 + 0xF22], ax
++    mov byte ptr [r8 + 0xF24], 0
++    mov byte ptr [r8 + 0xF25], 0x8E
++    mov rax, r10
++    shr rax, 16
++    mov word ptr [r8 + 0xF26], ax
++    shr rax, 16
++    mov dword ptr [r8 + 0xF28], eax
++    mov dword ptr [r8 + 0xF2C], 0
++
+     lea rax, [rip + _ap_ipi_idtr]
+     mov word ptr [rax], 4095
+     lea rcx, [rip + _ap_ipi_idt]
+@@ -604,6 +677,23 @@
+     pop rax
+     iretq
+ 
++.global _native_x64_ap_timer_handler
++_native_x64_ap_timer_handler:
++    push rax
++    push rdx
++    mov eax, dword ptr gs:[0]
++    lea rdx, [rip + _ap_timer_ticks]
++    shl rax, 3
++    lock inc qword ptr [rdx + rax]
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    test rax, rax
++    jz .Lap_timer_handler_return
++    mov dword ptr [rax + 0xB0], 0
++.Lap_timer_handler_return:
++    pop rdx
++    pop rax
++    iretq
++
+ // int _native_x64_run_ap_ipi_test(uint64_t cpuCount, uint64_t timeoutTscTicks)
+ .global _native_x64_run_ap_ipi_test
+ _native_x64_run_ap_ipi_test:
+@@ -862,6 +952,168 @@
+     ret
+ 
+ 
++// int _native_x64_run_ap_timer_test(uint64_t cpuCount,
++//                                    uint32_t initialCount,
++//                                    uint64_t minimumTicks,
++//                                    uint64_t timeoutTscTicks)
++// Starts a periodic LAPIC timer on each AP through the parked-command path,
++// observes several private native timer interrupts, then stops the timer.
++.global _native_x64_run_ap_timer_test
++_native_x64_run_ap_timer_test:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++    test rdi, rdi
++    jz .Lap_timer_test_invalid
++    cmp rdi, 256
++    ja .Lap_timer_test_invalid
++    test esi, esi
++    jz .Lap_timer_test_invalid
++    test rdx, rdx
++    jz .Lap_timer_test_invalid
++    test rcx, rcx
++    jz .Lap_timer_test_invalid
++    mov r12, rdi
++    mov r13d, esi
++    mov r14, rdx
++    mov r15, rcx
++    call .Lap_read_lapic_base
++    test rax, rax
++    jz .Lap_timer_test_invalid
++    mov qword ptr [rip + _native_x64_lapic_base], rax
++    mov dword ptr [rip + _ap_timer_initial_count], r13d
++    xor r10d, r10d
++    mov ebx, 1
++
++.Lap_timer_test_cpu_loop:
++    cmp rbx, r12
++    jae .Lap_timer_test_success
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 0], 1
++    jne .Lap_timer_test_invalid
++    cmp dword ptr [r8 + 32], 0
++    jne .Lap_timer_test_invalid
++    cmp dword ptr [r8 + 48], 1
++    jne .Lap_timer_test_invalid
++    cmp qword ptr [r8 + 40], 100001
++    jne .Lap_timer_test_invalid
++    cmp qword ptr [r8 + 56], 5
++    jne .Lap_timer_test_invalid
++
++    lea rdx, [rip + _ap_timer_ticks]
++    mov rax, rbx
++    shl rax, 3
++    mov qword ptr [rdx + rax], 0
++    xor eax, eax
++    xchg dword ptr [r8 + 48], eax
++    mov eax, 3
++    xchg dword ptr [r8 + 32], eax
++    test eax, eax
++    jne .Lap_timer_test_invalid
++
++    mov edx, dword ptr [r8 + 8]
++    shl edx, 24
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    mov dword ptr [rax + 0x310], edx
++    mov dword ptr [rax + 0x300], 0x000000F1
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r9, rax
++
++.Lap_timer_wait_start:
++    cmp dword ptr [r8 + 48], 1
++    jne .Lap_timer_wait_start_poll
++    cmp qword ptr [r8 + 56], 6
++    jne .Lap_timer_test_invalid
++    jmp .Lap_timer_wait_ticks
++
++.Lap_timer_wait_start_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r9
++    cmp rax, r15
++    jb .Lap_timer_wait_start
++    mov eax, -1
++    jmp .Lap_timer_test_return
++
++.Lap_timer_wait_ticks:
++    lea rdx, [rip + _ap_timer_ticks]
++    mov rax, rbx
++    shl rax, 3
++    cmp qword ptr [rdx + rax], r14
++    jae .Lap_timer_stop_prepare
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r9
++    cmp rax, r15
++    jb .Lap_timer_wait_ticks
++    mov eax, -1
++    jmp .Lap_timer_test_return
++
++.Lap_timer_stop_prepare:
++    xor eax, eax
++    xchg dword ptr [r8 + 48], eax
++    mov eax, 4
++    xchg dword ptr [r8 + 32], eax
++    test eax, eax
++    jne .Lap_timer_test_invalid
++
++    mov edx, dword ptr [r8 + 8]
++    shl edx, 24
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    mov dword ptr [rax + 0x310], edx
++    mov dword ptr [rax + 0x300], 0x000000F1
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r9, rax
++
++.Lap_timer_wait_stop:
++    cmp dword ptr [r8 + 48], 1
++    jne .Lap_timer_wait_stop_poll
++    cmp qword ptr [r8 + 56], 7
++    jne .Lap_timer_test_invalid
++    cmp dword ptr [r8 + 32], 0
++    jne .Lap_timer_test_invalid
++    inc r10
++    inc rbx
++    jmp .Lap_timer_test_cpu_loop
++
++.Lap_timer_wait_stop_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r9
++    cmp rax, r15
++    jb .Lap_timer_wait_stop
++    mov eax, -1
++    jmp .Lap_timer_test_return
++
++.Lap_timer_test_success:
++    mov eax, r10d
++    jmp .Lap_timer_test_return
++.Lap_timer_test_invalid:
++    mov eax, -2
++.Lap_timer_test_return:
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++
+ // int _native_x64_run_ap_work_test(uint64_t cpuCount,
+ //                                  uint64_t timeoutTscTicks)
+ // Publishes one bounded native work command to each dense AP CpuId and waits
+@@ -1013,6 +1265,10 @@
+ _ap_ipi_idtr: .zero 10
+ _native_x64_lapic_base: .quad 0
+ 
++.balign 64
++_ap_timer_ticks: .zero 2048
++_ap_timer_initial_count: .long 0
++
+ .data
+ _native_x64_irq_table:
+ .quad irq0_stub
