@@ -1,0 +1,208 @@
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+@@ -25,7 +25,7 @@ public static class SchedulerManager
+     private static uint s_cpuCount;
+     private static SpinLock s_globalLock;
+     private static bool s_enabled;
+-    private static uint s_nextThreadId;
++    private static int s_nextThreadId;
+ 
+     // Global thread registry: tracks ALL live threads across all states
+     // (Running, Ready, Blocked, Sleeping). Used by GC to scan all thread stacks.
+@@ -263,7 +263,7 @@ public static class SchedulerManager
+     /// <summary>
+     /// Allocates a new unique thread ID.
+     /// </summary>
+-    internal static uint AllocateThreadId() => s_nextThreadId++;
++    internal static uint AllocateThreadId() => (uint)(Interlocked.Increment(ref s_nextThreadId) - 1);
+ 
+     // ========== Thread Entry Dispatch ==========
+     [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
+@@ -504,7 +504,7 @@ public static class SchedulerManager
+             return;
+         }
+ 
+-        using (CPU.InternalCpu.DisableInterruptsScope())
++        using (s_globalLock.AcquireIrqSafe())
+         {
+             // Idempotent: SetScheduler hands every registry entry to the
+             // incoming policy exactly once, so a thread must hold one slot.
+@@ -538,21 +538,24 @@ public static class SchedulerManager
+             return;
+         }
+ 
+-        for (int i = 0; i < s_allThreads.Length; i++)
++        using (s_globalLock.AcquireIrqSafe())
+         {
+-            if (s_allThreads[i] == thread)
++            for (int i = 0; i < s_allThreads.Length; i++)
+             {
+-                if ((thread.Flags & SchedulerThreadFlags.IdleThread) == 0)
++                if (s_allThreads[i] == thread)
+                 {
+-                    s_exitedNonIdleRuntimeNs += thread.TotalRuntime;
++                    if ((thread.Flags & SchedulerThreadFlags.IdleThread) == 0)
++                    {
++                        s_exitedNonIdleRuntimeNs += thread.TotalRuntime;
++                    }
++                    s_allThreads[i] = null;
++                    s_allThreadCount--;
++                    return;
+                 }
+-                s_allThreads[i] = null;
+-                s_allThreadCount--;
+-                return;
+             }
+         }
+     }
+@@ -589,10 +592,11 @@ public static class SchedulerManager
+         ThrowIfSchedulerNotSet();
+ 
+         Serial.WriteString("[SCHED] CreateThread: entering\n");
+         RegisterThread(thread);
+-        using (CPU.InternalCpu.DisableInterruptsScope())
++        PerCpuState state = s_cpuStates[cpuId];
++        using (state._lock.AcquireIrqSafe())
+         {
+-            var state = s_cpuStates[cpuId];
+             s_currentScheduler.OnThreadCreate(state, thread);
+         }
+         Serial.WriteString("[SCHED] CreateThread: done\n");
+@@ -605,10 +609,10 @@ public static class SchedulerManager
+         ThrowIfCpuStateNotInitialized();
+         ThrowIfSchedulerNotSet();
+ 
+-        using (CPU.InternalCpu.DisableInterruptsScope())
++        PerCpuState state = s_cpuStates[cpuId];
++        using (state._lock.AcquireIrqSafe())
+         {
+-            var state = s_cpuStates[cpuId];
+-
+             // Only set to Ready if not a new thread (Created).
+             // New threads stay Created until they actually start running.
+             // This allows ScheduleFromInterrupt to detect first-time execution.
+@@ -641,10 +645,9 @@ public static class SchedulerManager
+         ThrowIfCpuStateNotInitialized();
+         ThrowIfSchedulerNotSet();
+ 
+-        using (CPU.InternalCpu.DisableInterruptsScope())
++        PerCpuState state = s_cpuStates[cpuId];
++        using (state._lock.AcquireIrqSafe())
+         {
+-            PerCpuState state = s_cpuStates[cpuId];
+-
+             thread.State = SchedulerThreadState.Blocked;
+             s_currentScheduler.OnThreadBlocked(state, thread);
+ 
+@@ -738,10 +741,9 @@ public static class SchedulerManager
+         ThrowIfCpuStateNotInitialized();
+         ThrowIfSchedulerNotSet();
+ 
+-        using (CPU.InternalCpu.DisableInterruptsScope())
++        PerCpuState state = s_cpuStates[cpuId];
++        using (state._lock.AcquireIrqSafe())
+         {
+-            PerCpuState state = s_cpuStates[cpuId];
+-
+             s_currentScheduler.OnThreadYield(state, thread);
+         }
+     }
+@@ -777,10 +779,9 @@ public static class SchedulerManager
+         ThrowIfCpuStateNotInitialized();
+         ThrowIfSchedulerNotSet();
+ 
+-        using (InternalCpu.DisableInterruptsScope())
++        PerCpuState cpuState = s_cpuStates[cpuId];
++        using (cpuState._lock.AcquireIrqSafe())
+         {
+-            PerCpuState cpuState = s_cpuStates[cpuId];
+-
+             ulong timestamp = GetTimestamp();
+             // WakeupTime is compared against GetTimestamp() — Stopwatch ticks —
+             // so the offset must be in ticks too. Adding nanoseconds stretched
+@@ -1000,13 +1001,22 @@ public static class SchedulerManager
+             return;
+         }
+ 
+-        // Check and wake up sleeping threads whose timeout has expired
+-        CheckSleepingThreads(elapsedNs);
++        // One CPU owns the global sleeping-thread scan. ReadyThread takes the
++        // destination CPU's run-queue lock, so remote wakeups cannot race a
++        // simultaneous PickNext on that CPU.
++        if (cpuId == 0)
++        {
++            CheckSleepingThreads(elapsedNs);
++        }
+ 
+-        // Update timing and check if preemption needed
+-        bool needsReschedule = s_currentScheduler.OnTick(state, state.CurrentThread, elapsedNs);
+-
+-        if (needsReschedule)
++        state._lock.Acquire();
++        try
+         {
+-            ScheduleFromInterrupt(cpuId, currentRsp);
++            bool needsReschedule = s_currentScheduler.OnTick(state, state.CurrentThread, elapsedNs);
++            if (needsReschedule)
++            {
++                ScheduleFromInterruptLocked(state, currentRsp);
++            }
++        }
++        finally
++        {
++            state._lock.Release();
+         }
+     }
+@@ -1062,12 +1072,19 @@ public static class SchedulerManager
+             return;
+         }
+ 
+-        state._needReschedule = false;
+-
+-        if (ContextSwitchNative.GetContextSwitchSp() != 0)
++        state._lock.Acquire();
++        try
+         {
+-            return;
++            state._needReschedule = false;
++            if (ContextSwitchNative.GetContextSwitchSp() == 0)
++            {
++                ScheduleFromInterruptLocked(state, currentRsp);
++            }
++        }
++        finally
++        {
++            state._lock.Release();
+         }
+-
+-        ScheduleFromInterrupt(cpuId, currentRsp);
+     }
+@@ -1087,12 +1104,27 @@ public static class SchedulerManager
+         {
+             return;
+         }
+ 
+         PerCpuState state = s_cpuStates[cpuId];
++        state._lock.Acquire();
++        try
++        {
++            ScheduleFromInterruptLocked(state, currentRsp);
++        }
++        finally
++        {
++            state._lock.Release();
++        }
++    }
+ 
+-        // No lock needed - interrupts are already disabled in interrupt context
++    /// <summary>
++    /// IRQ-side scheduler core. The caller holds <see cref="PerCpuState._lock"/>
++    /// and interrupts are already masked on the executing CPU.
++    /// </summary>
++    private static void ScheduleFromInterruptLocked(PerCpuState state, nuint currentRsp)
++    {
+         SchedulerThread? prev = state.CurrentThread;
+         SchedulerThread? next = s_currentScheduler.PickNext(state) ?? state.IdleThread;
+ 
+         if (next is null)
