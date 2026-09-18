@@ -1,0 +1,198 @@
+diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+index 6c0f14c..6d8f2dd 100644
+--- a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
++++ b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+@@ -64,6 +64,10 @@ internal static unsafe partial class SmpApBootstrap
+     [SuppressGCTransition]
+     private static partial int NativeRunApIpiRounds(ulong cpuCount, ulong rounds, ulong timeoutTscTicks);
+ 
++    [LibraryImport("*", EntryPoint = "_native_x64_run_ap_parked_command_test")]
++    [SuppressGCTransition]
++    private static partial int NativeRunApParkedCommandTest(ulong cpuCount, ulong timeoutTscTicks);
++
+     internal static bool StartAndParkApplicationProcessors()
+     {
+         LimineMpResponseX64* response = LimineMp.X64Response;
+@@ -295,4 +299,51 @@ internal static unsafe partial class SmpApBootstrap
+         Serial.WriteString("[APIC-RUN-TEST] PASS\n");
+         return true;
+     }
++
++    internal static bool RunApplicationProcessorParkedCommandProof()
++    {
++        const ulong ExpectedCounter = 100_001;
++        const ulong ExpectedIpiCount = 5;
++        LimineMpResponseX64* response = LimineMp.X64Response;
++        if (response == null || response->Cpus == null || response->CpuCount == 0 ||
++            response->CpuCount > LimineMp.MaxXApicCpuCount)
++        {
++            Serial.WriteString("[SMP] WARNING: parked AP command proof has no valid CPU topology.\n");
++            return false;
++        }
++
++        long frequency = X64CpuOps.TscFrequency;
++        ulong timeoutTicks = frequency > 0 ? checked((ulong)frequency * ApReadyTimeoutSeconds) : 5_000_000_000UL;
++        int expected = checked((int)response->CpuCount - 1);
++        int completed = NativeRunApParkedCommandTest(response->CpuCount, timeoutTicks);
++        if (completed != expected)
++        {
++            Serial.WriteString("[SMP] WARNING: parked AP command proof timed out or rejected state.\n");
++            return false;
++        }
++
++        for (uint cpuId = 1; cpuId < response->CpuCount; cpuId++)
++        {
++            ulong counter = NativeGetWorkCounter(cpuId);
++            ulong ipiCount = NativeGetIpiCount(cpuId);
++            if (counter != ExpectedCounter || ipiCount != ExpectedIpiCount)
++            {
++                Serial.WriteString("[SMP] WARNING: parked AP command state mismatch for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString("\n");
++                return false;
++            }
++
++            Serial.WriteString("[SMP-IDLE] cpu=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" parked-command counter=");
++            Serial.WriteNumber(counter);
++            Serial.WriteString(" ipi=");
++            Serial.WriteNumber(ipiCount);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[SMP-IDLE-TEST] PASS\n");
++        return true;
++    }
+ }
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+index 2514a94..57b064a 100644
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -128,6 +128,14 @@ internal class X64PlatformInitializer : IPlatformInitializer
+             Cosmos.Kernel.Core.Panic.Halt("Repeated AP IPI rendezvous proof failed.");
+         }
+ 
++        // Stage 8: native parked-command wake. BSP publishes one native command,
++        // wakes each AP with a fixed IPI, and APs execute the command after HLT
++        // returns, still outside managed runtime and scheduler participation.
++        if (!SmpApBootstrap.RunApplicationProcessorParkedCommandProof())
++        {
++            Cosmos.Kernel.Core.Panic.Halt("Parked AP command proof failed.");
++        }
++
+         // Initialize RTC
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new RTC();
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+index 378c2d2..8fb1718 100644
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -511,6 +511,13 @@ _native_x64_ap_entry:
+ .Lap_park:
+     sti
+     hlt
++    cmp dword ptr [r14 + 4], 2
++    jne .Lap_park
++    xor eax, eax
++    xchg dword ptr [r14 + 4], eax
++    lock inc qword ptr [r14 + 40]
++    mov eax, 1
++    xchg dword ptr [r14 + 48], eax
+     jmp .Lap_park
+ 
+ .macro AP_STATE_GETTER name, offset, width
+@@ -759,6 +766,93 @@ _native_x64_run_ap_ipi_rounds:
+     ret
+ 
+ 
++// int _native_x64_run_ap_parked_command_test(uint64_t cpuCount,
++//                                            uint64_t timeoutTscTicks)
++// Publishes one native command to each parked AP, wakes it with a fixed IPI,
++// and waits for the AP idle path after HLT to complete the command.
++.global _native_x64_run_ap_parked_command_test
++_native_x64_run_ap_parked_command_test:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++    test rdi, rdi
++    jz .Lap_parkcmd_invalid
++    cmp rdi, 256
++    ja .Lap_parkcmd_invalid
++    test rsi, rsi
++    jz .Lap_parkcmd_invalid
++    mov r12, rdi
++    mov r13, rsi
++    call .Lap_read_lapic_base
++    test rax, rax
++    jz .Lap_parkcmd_invalid
++    mov qword ptr [rip + _native_x64_lapic_base], rax
++    mov r15, rax
++    xor r14d, r14d
++    mov ebx, 1
++.Lap_parkcmd_loop:
++    cmp rbx, r12
++    jae .Lap_parkcmd_success
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 0], 1
++    jne .Lap_parkcmd_invalid
++    cmp qword ptr [r8 + 40], 100000
++    jne .Lap_parkcmd_invalid
++    cmp qword ptr [r8 + 56], 4
++    jne .Lap_parkcmd_invalid
++    xor eax, eax
++    xchg dword ptr [r8 + 48], eax
++    mov eax, 2
++    xchg dword ptr [r8 + 4], eax
++    test eax, eax
++    jne .Lap_parkcmd_invalid
++    mov edx, dword ptr [r8 + 8]
++    shl edx, 24
++    mov dword ptr [r15 + 0x310], edx
++    mov dword ptr [r15 + 0x300], 0x000000F1
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++.Lap_parkcmd_wait:
++    cmp dword ptr [r8 + 48], 1
++    jne .Lap_parkcmd_poll
++    cmp qword ptr [r8 + 40], 100001
++    jne .Lap_parkcmd_invalid
++    cmp qword ptr [r8 + 56], 5
++    jne .Lap_parkcmd_invalid
++    inc r14
++    inc rbx
++    jmp .Lap_parkcmd_loop
++.Lap_parkcmd_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r13
++    jb .Lap_parkcmd_wait
++    mov eax, -1
++    jmp .Lap_parkcmd_return
++.Lap_parkcmd_success:
++    mov eax, r14d
++    jmp .Lap_parkcmd_return
++.Lap_parkcmd_invalid:
++    mov eax, -2
++.Lap_parkcmd_return:
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++
+ // int _native_x64_run_ap_work_test(uint64_t cpuCount,
+ //                                  uint64_t timeoutTscTicks)
+ // Publishes one bounded native work command to each dense AP CpuId and waits
