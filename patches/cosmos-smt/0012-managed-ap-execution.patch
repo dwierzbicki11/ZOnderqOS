@@ -1,18 +1,74 @@
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApNative.cs
+new file mode 100644
+index 000000000..1828646f1
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApNative.cs
+@@ -0,0 +1,60 @@
++#if ARCH_X64
++using System;
++using System.Runtime.InteropServices;
++using Cosmos.Kernel.Core.CPU;
++using Cosmos.Kernel.Core.Runtime;
++
++namespace Cosmos.Kernel.Core.Bridge;
++
++/// <summary>
++/// The Stage-12 reverse-P/Invoke entry used by the native AP proof. It is kept
++/// in the Core assembly because Cosmos emits its native managed exports from
++/// Core; HAL only owns the native command and result validation.
++/// </summary>
++internal static partial class ManagedApNative
++{
++    [LibraryImport("*", EntryPoint = "_native_x64_publish_managed_ap_result")]
++    [SuppressGCTransition]
++    private static partial int NativePublishResult(uint cpuId, ulong checksum);
++
++    /// <summary>
++    /// Executes a bounded managed operation on an AP and publishes its result.
++    /// No allocation, lock, scheduler operation or serial I/O is performed.
++    /// </summary>
++    [UnmanagedCallersOnly(EntryPoint = "__cosmos_smp_managed_ap_entry")]
++    public static uint Entry(uint expectedCpuId)
++    {
++        StartupCodeHelpers.RhpReversePInvoke(IntPtr.Zero);
++
++        uint cpuId = CpuLocal.CurrentCpuId;
++        uint status = 0;
++        if (cpuId == 0 || cpuId != expectedCpuId)
++        {
++            status = 1;
++        }
++        else
++        {
++            ulong checksum = ComputeChecksum(cpuId);
++            if (NativePublishResult(cpuId, checksum) != 0)
++            {
++                status = 2;
++            }
++        }
++
++        StartupCodeHelpers.RhpReversePInvokeReturn(IntPtr.Zero);
++        return status;
++    }
++
++    private static ulong ComputeChecksum(uint cpuId)
++    {
++        ulong checksum = 0xD6E8FEB86659FD93UL ^ cpuId;
++        for (uint round = 0; round < 1024; round++)
++        {
++            checksum ^= (ulong)(cpuId + round) * 0x9E3779B97F4A7C15UL;
++            checksum = (checksum << 13) | (checksum >> 51);
++        }
++
++        return checksum;
++    }
++}
++#endif
 diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
-index f7d193ab6..013248bf8 100644
+index f7d193ab6..942362337 100644
 --- a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
 +++ b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
-@@ -1,6 +1,9 @@
-+using System;
- using System.Runtime.InteropServices;
- using Cosmos.Kernel.Boot.Limine;
-+using Cosmos.Kernel.Core.CPU;
- using Cosmos.Kernel.Core.IO;
-+using Cosmos.Kernel.Core.Runtime;
- using Cosmos.Kernel.Core.X64.Cpu;
- 
- namespace Cosmos.Kernel.HAL.X64;
-@@ -76,6 +79,22 @@ internal static unsafe partial class SmpApBootstrap
+@@ -76,6 +76,18 @@ internal static unsafe partial class SmpApBootstrap
      [SuppressGCTransition]
      private static partial uint NativeGetCompletion(uint cpuId);
  
@@ -28,45 +84,13 @@ index f7d193ab6..013248bf8 100644
 +    [SuppressGCTransition]
 +    private static partial ulong NativeGetManagedResult(uint cpuId);
 +
-+    [LibraryImport("*", EntryPoint = "_native_x64_publish_managed_ap_result")]
-+    [SuppressGCTransition]
-+    private static partial int NativePublishManagedApResult(uint cpuId, ulong checksum);
-+
      [LibraryImport("*", EntryPoint = "_native_x64_run_ap_timer_test")]
      [SuppressGCTransition]
      private static partial int NativeRunApTimerTest(
-@@ -119,6 +138,46 @@ internal static unsafe partial class SmpApBootstrap
+@@ -119,6 +131,18 @@ internal static unsafe partial class SmpApBootstrap
      [SuppressGCTransition]
      private static partial ulong NativeGetGcSavedRflags(uint cpuId);
  
-+    // Native AP entry point for Stage 12. The method deliberately performs no
-+    // allocation, locking, scheduling or serial I/O: it only proves that an
-+    // AP can cross the reverse-P/Invoke boundary, read its GS-local CpuId and
-+    // return a deterministic value through a native mailbox.
-+    [UnmanagedCallersOnly(EntryPoint = "__cosmos_smp_managed_ap_entry")]
-+    public static uint ManagedApplicationProcessorEntry(uint expectedCpuId)
-+    {
-+        StartupCodeHelpers.RhpReversePInvoke(IntPtr.Zero);
-+
-+        uint cpuId = CpuLocal.CurrentCpuId;
-+        uint status = 0;
-+        if (cpuId == 0 || cpuId != expectedCpuId)
-+        {
-+            status = 1;
-+        }
-+        else
-+        {
-+            ulong checksum = ComputeManagedApChecksum(cpuId);
-+            if (NativePublishManagedApResult(cpuId, checksum) != 0)
-+            {
-+                status = 2;
-+            }
-+        }
-+
-+        StartupCodeHelpers.RhpReversePInvokeReturn(IntPtr.Zero);
-+        return status;
-+    }
-+
 +    private static ulong ComputeManagedApChecksum(uint cpuId)
 +    {
 +        ulong checksum = 0xD6E8FEB86659FD93UL ^ cpuId;
@@ -82,7 +106,7 @@ index f7d193ab6..013248bf8 100644
      internal static bool StartAndParkApplicationProcessors()
      {
          LimineMpResponseX64* response = LimineMp.X64Response;
-@@ -535,6 +594,92 @@ internal static unsafe partial class SmpApBootstrap
+@@ -535,6 +559,92 @@ internal static unsafe partial class SmpApBootstrap
          return true;
      }
  
