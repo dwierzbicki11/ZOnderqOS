@@ -42,7 +42,17 @@ jobs:
           assert 'if (end > processUserRange.EndExclusive)' in abi
           assert 'processUserRange.EndExclusive - 1 > X64LowerCanonicalMax' in abi
 
-          # Pointer-bearing dispatcher calls must go through the range validator.
-          assert dispatcher.count('TryValidateUserRange') >= 3, 'dispatcher pointer validation missing'
+          # Every pointer-bearing ABI operation must be routed through validation.
+          # Write and Read intentionally share one switch body, so validate structure
+          # rather than incorrectly requiring one textual call site per syscall.
+          assert 'case UserKernelAbi.Syscall.Write:' in dispatcher
+          assert 'case UserKernelAbi.Syscall.Read:' in dispatcher
+          assert 'case UserKernelAbi.Syscall.Open:' in dispatcher
+          assert dispatcher.count('TryValidateUserRange') >= 2, 'dispatcher pointer validation missing'
+          io_block = dispatcher.split('case UserKernelAbi.Syscall.Write:', 1)[1].split('case UserKernelAbi.Syscall.Open:', 1)[0]
+          open_block = dispatcher.split('case UserKernelAbi.Syscall.Open:', 1)[1].split('case UserKernelAbi.Syscall.Exit:', 1)[0]
+          assert 'case UserKernelAbi.Syscall.Read:' in io_block
+          assert 'TryValidateUserRange(arg1, arg2, context.UserRange' in io_block
+          assert 'TryValidateUserRange(arg0, arg1, context.UserRange' in open_block
           assert 'Result.NotSupported' in dispatcher
           print('R1 ABI contract and fail-closed invariants verified')
