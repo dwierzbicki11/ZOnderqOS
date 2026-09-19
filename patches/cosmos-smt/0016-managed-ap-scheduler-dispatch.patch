@@ -1,0 +1,580 @@
+diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs b/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs
+index cf8a0af..ccbe4ab 100644
+--- a/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs
++++ b/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs
+@@ -71,7 +71,10 @@ internal class X64InterruptController : IInterruptController
+                     nuint currentRsp = (nuint)Unsafe.AsPointer(ref ctx) - XmmSaveAreaSizeBytes;
+                     if ((currentRsp & AddressSpace.KernelSpaceCanonicalMask) == AddressSpace.KernelSpaceCanonicalMask)
+                     {
+-                        SchedulerManager.ReschedulePendingFromIrq(LocalApic.GetId(), currentRsp);
++                        // APIC IDs are hardware topology identifiers and can be
++                        // sparse. Scheduler state is indexed by the dense CpuId
++                        // installed in GS on every processor.
++                        SchedulerManager.ReschedulePendingFromIrq(SchedulerManager.GetCurrentCpuId(), currentRsp);
+                     }
+                 }
+                 return;
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs
+new file mode 100644
+index 0000000..838fc02
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs
+@@ -0,0 +1,26 @@
++using System.Runtime.InteropServices;
++using Cosmos.Kernel.Core.CPU;
++using Cosmos.Kernel.Core.Scheduler;
++
++namespace Cosmos.Kernel.Core.Bridge;
++
++/// <summary>
++/// Initial instruction pointer for the Stage-16 scheduler thread. Unlike the
++/// earlier AP exports this entry is reached by the normal interrupt-return
++/// context-switch path on the thread's separately allocated scheduler stack.
++/// </summary>
++internal static class ManagedApSchedulerThreadNative
++{
++    [UnmanagedCallersOnly]
++    internal static void Entry(uint expectedCpuId)
++    {
++        SchedulerManager.RunStage16DispatchedThread(expectedCpuId);
++
++        // A completed thread is switched away by the AP LAPIC timer. It must
++        // never return: the initial context was entered with a jump, not call.
++        while (true)
++        {
++            InternalCpu.Halt();
++        }
++    }
++}
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+index 84a60cb..8b122bd 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+@@ -45,7 +45,10 @@ public sealed class PerCpuState : SchedulerExtensible
+     // InterruptEvent.Signal); consumed by ReschedulePendingFromIrq on
+     // hardware-IRQ exit so the woken thread runs immediately instead of
+     // sitting in the run queue until the next timer tick.
+-    internal bool _needReschedule;
++    // Written by any CPU that queues/wakes work and consumed by the owning
++    // CPU on IRQ exit. Volatile provides the publication edge required by
++    // Stage 16's BSP-to-AP dispatch IPI.
++    internal volatile bool _needReschedule;
+ 
+     // ===== Synchronization =====
+     internal SpinLock _lock;
+@@ -59,6 +62,10 @@ public sealed class PerCpuState : SchedulerExtensible
+     private int _stage13Phase;
+     private int _stage13EntryCount;
+     private int _stage15IdleStackEnrolled;
++    private int _stage16DispatchState;
++    private int _stage16DispatchCount;
++    private uint _stage16ThreadId;
++    private ulong _stage16Checksum;
+ 
+     /// <summary>
+     /// Stage-13 per-CPU scheduler foundation phase: 0=not entered,
+@@ -101,4 +108,33 @@ public sealed class PerCpuState : SchedulerExtensible
+         return CpuId == expectedCpuId && Stage13Phase == 2 &&
+             Interlocked.CompareExchange(ref _stage15IdleStackEnrolled, 1, 0) == 0;
+     }
++
++    internal uint Stage16DispatchState => (uint)Volatile.Read(ref _stage16DispatchState);
++    internal uint Stage16DispatchCount => (uint)Volatile.Read(ref _stage16DispatchCount);
++    internal uint Stage16ThreadId => Volatile.Read(ref _stage16ThreadId);
++    internal ulong Stage16Checksum => Volatile.Read(ref _stage16Checksum);
++
++    internal bool TryEnterStage16Dispatch(uint expectedCpuId, uint threadId)
++    {
++        if (CpuId != expectedCpuId || Stage15IdleStackEnrolled == false ||
++            Interlocked.CompareExchange(ref _stage16DispatchState, 1, 0) != 0)
++        {
++            return false;
++        }
++
++        Volatile.Write(ref _stage16ThreadId, threadId);
++        Interlocked.Increment(ref _stage16DispatchCount);
++        return true;
++    }
++
++    internal bool TryCompleteStage16Dispatch(uint expectedCpuId, uint threadId, ulong checksum)
++    {
++        if (CpuId != expectedCpuId || Stage16ThreadId != threadId || checksum == 0)
++        {
++            return false;
++        }
++
++        Volatile.Write(ref _stage16Checksum, checksum);
++        return Interlocked.CompareExchange(ref _stage16DispatchState, 2, 1) == 1;
++    }
+ }
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+index 0584999..10413f8 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+@@ -74,6 +74,12 @@ public static partial class SchedulerManager
+     /// <summary>Bound for the Stage-15 remote idle-stack scan proof.</summary>
+     private const ulong Stage15TimeoutSeconds = 5;
+ 
++    /// <summary>Bound for one Stage-16 AP scheduler dispatch and return.</summary>
++    private const ulong Stage16TimeoutSeconds = 5;
++
++    /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
++    private const byte Stage16DispatchVector = 0xF4;
++
+ #if ARCH_X64
+     [LibraryImport("*", EntryPoint = "_native_x64_run_percpu_scheduler_test")]
+     [SuppressGCTransition]
+@@ -138,6 +144,18 @@ public static partial class SchedulerManager
+     [LibraryImport("*", EntryPoint = "_native_x64_get_gc_saved_rsp")]
+     [SuppressGCTransition]
+     private static partial nuint NativeGetGcSavedStackPointer(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_code_selector")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetCodeSelector();
++
++    [LibraryImport("*", EntryPoint = "_native_x64_run_scheduler_dispatch_test")]
++    [SuppressGCTransition]
++    private static partial int NativeRunSchedulerDispatchTest(uint cpuId, ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_arm_scheduler_timer")]
++    [SuppressGCTransition]
++    private static partial int NativeArmSchedulerTimer();
+ #endif
+ 
+     /// <summary>
+@@ -860,6 +878,141 @@ public static partial class SchedulerManager
+     /// </summary>
+     internal static uint AllocateThreadId() => s_nextThreadId++;
+ 
++    /// <summary>
++    /// Creates one real scheduler thread per AP, enqueues it in that CPU's
++    /// Stride run queue and dispatches CPUs one at a time through the common
++    /// x64 IRQ context-switch path. Each worker runs on its allocated stack,
++    /// observes itself as CurrentThread, exits through the scheduler lifecycle
++    /// and is switched back to the enrolled AP idle context by the LAPIC timer.
++    /// </summary>
++    internal static unsafe bool RunManagedApplicationProcessorSchedulerDispatchProof()
++    {
++        if (!s_enabled || s_currentScheduler is null || s_cpuStates is null ||
++            s_cpuCount == 0 || !GarbageCollector.IsEnabled)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 16 dispatch prerequisites are not initialized.\n");
++            return false;
++        }
++
++#if ARCH_X64
++        // The vector is delivered as a real LAPIC self-IPI, so the normal EOI
++        // and pending-reschedule path are both exercised.
++        InterruptManager.SetHandler(Stage16DispatchVector, Stage16DispatchInterrupt);
++
++        SchedulerThread?[] workers = new SchedulerThread?[checked((int)s_cpuCount)];
++        ushort codeSelector = (ushort)NativeGetCodeSelector();
++        nuint entryPoint = (nuint)(delegate* unmanaged<uint, void>)&ManagedApSchedulerThreadNative.Entry;
++
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            PerCpuState state = s_cpuStates[cpuId];
++            if (!state.Stage15IdleStackEnrolled || state.Stage16DispatchState != 0 ||
++                state.Stage16DispatchCount != 0 || state.IdleThread is null ||
++                !ReferenceEquals(state.CurrentThread, state.IdleThread))
++            {
++                Serial.WriteString("[SCHED] WARNING: Stage 16 per-CPU state is not dispatchable.\n");
++                return false;
++            }
++
++            SchedulerThread worker = new()
++            {
++                Id = AllocateThreadId(),
++                CpuId = cpuId,
++                State = SchedulerThreadState.Created,
++                Flags = SchedulerThreadFlags.Pinned
++            };
++            worker.InitializeStack(entryPoint, codeSelector, cpuId);
++            CreateThread(cpuId, worker);
++            ReadyThread(cpuId, worker);
++            workers[cpuId] = worker;
++        }
++
++        long frequency = Stopwatch.Frequency;
++        ulong timeoutTicks = frequency > 0
++            ? checked((ulong)frequency * Stage16TimeoutSeconds)
++            : 5_000_000_000UL;
++
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            SchedulerThread? worker = workers[cpuId];
++            int result = NativeRunSchedulerDispatchTest(cpuId, timeoutTicks);
++            PerCpuState state = s_cpuStates[cpuId];
++            ulong expectedChecksum = ComputeStage16Checksum(cpuId, worker?.Id ?? 0);
++            if (result != 1 || worker is null || worker.State != SchedulerThreadState.Dead ||
++                state.Stage16DispatchState != 2 || state.Stage16DispatchCount != 1 ||
++                state.Stage16ThreadId != worker.Id || state.Stage16Checksum != expectedChecksum ||
++                !ReferenceEquals(state.CurrentThread, state.IdleThread) ||
++                state.IdleThread?.State != SchedulerThreadState.Running)
++            {
++                Serial.WriteString("[SCHED] WARNING: Stage 16 AP dispatch failed for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString(".\n");
++                return false;
++            }
++
++            Serial.WriteString("[SCHED-AP-DISPATCH] cpu=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" thread=");
++            Serial.WriteNumber(worker.Id);
++            Serial.WriteString(" checksum=");
++            Serial.WriteHexWithPrefix(expectedChecksum);
++            Serial.WriteString(" state=exited-idle-restored\n");
++        }
++#else
++        // ARM64 remains a CPU0-only compile regression until MP bootstrap and
++        // a per-CPU interrupt-return context switch are implemented there.
++        return true;
++#endif
++
++        Serial.WriteString("[SCHED-AP-DISPATCH-TEST] PASS\n");
++        return true;
++    }
++
++    internal static void RunStage16DispatchedThread(uint expectedCpuId)
++    {
++        PerCpuState? state = CurrentCpuState;
++        SchedulerThread? thread = state?.CurrentThread;
++        if (state is null || thread is null || state.CpuId != expectedCpuId ||
++            thread.CpuId != expectedCpuId || ReferenceEquals(thread, state.IdleThread) ||
++            thread.State != SchedulerThreadState.Running ||
++            !state.TryEnterStage16Dispatch(expectedCpuId, thread.Id))
++        {
++            Panic.Halt("Stage 16 AP scheduler thread entered with invalid ownership.");
++            return;
++        }
++
++        // Keep interrupts masked while the worker publishes completion and
++        // leaves the scheduler. Arm the timer only after ExitThread: arming it
++        // in the native idle command races vector 0xEF against the dispatch
++        // IPI and can make the timer enter the managed scheduler first.
++        using (InternalCpu.DisableInterruptsScope())
++        {
++            ulong checksum = ComputeStage16Checksum(expectedCpuId, thread.Id);
++            if (!state.TryCompleteStage16Dispatch(expectedCpuId, thread.Id, checksum))
++            {
++                Panic.Halt("Stage 16 AP scheduler thread failed to publish completion.");
++                return;
++            }
++
++            ExitThread(expectedCpuId, thread);
++#if ARCH_X64
++            if (NativeArmSchedulerTimer() != 1)
++            {
++                Panic.Halt("Stage 16 AP scheduler timer could not be armed.");
++                return;
++            }
++#endif
++        }
++    }
++
++    private static ulong ComputeStage16Checksum(uint cpuId, uint threadId) =>
++        0x534D_5031_3600_0000UL ^ ((ulong)cpuId << 32) ^ threadId;
++
++    private static void Stage16DispatchInterrupt(ref IRQContext context)
++    {
++        _ = context;
++    }
++
+     // ========== Thread Entry Dispatch ==========
+     [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
+     private static extern void StartThread(SysThread aThis, IntPtr parameter);
+@@ -1250,7 +1403,12 @@ public static partial class SchedulerManager
+         // thread exiting itself gets that callback; a thread reaped from
+         // someone else's context (SchedulerInfo.RequestKill on a queued
+         // thread) gets the same three steps addressed at it explicitly.
+-        if (ReferenceEquals(GetCpuState(cpuId)?.CurrentThread, thread))
++        // A native/free-entry SchedulerThread has no corresponding CoreLib
++        // Thread. Calling the global CoreLib exit callback for it would read
++        // an absent t_currentThread on an AP. Only managed-backed threads own
++        // that callback lifecycle.
++        if (thread._managedThread.IsAllocated &&
++            ReferenceEquals(GetCpuState(cpuId)?.CurrentThread, thread))
+         {
+             nint managedCallback = OnThreadExitCallback;
+             if (managedCallback != IntPtr.Zero)
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+index a2dbeeb..e78810c 100644
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -531,6 +531,8 @@ _native_x64_ap_entry:
+     je .Lap_park_command_managed_residency
+     cmp eax, 8
+     je .Lap_park_command_idle_stack
++    cmp eax, 9
++    je .Lap_park_command_scheduler_dispatch
+     jmp .Lap_park
+ 
+ .Lap_park_command_work:
+@@ -706,6 +708,66 @@ _native_x64_ap_entry:
+     xchg dword ptr [r14 + 48], eax
+     jmp .Lap_park
+ 
++.Lap_park_command_scheduler_dispatch:
++    // Stage 16: the BSP has already placed one SchedulerThread in this CPU's
++    // Stride run queue. Send a LAPIC self-IPI on the common managed IRQ vector
++    // and halt. The IRQ return switches to the worker's allocated stack. The
++    // worker arms vector 0xEF only after it is dead, eliminating a race where
++    // the timer could enter the scheduler before this dispatch IPI.
++    xor eax, eax
++    xchg dword ptr [r14 + 32], eax
++
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    test rax, rax
++    jz .Lap_scheduler_dispatch_failure
++    // Real fixed self-IPI, not INT: the managed controller's EOI corresponds
++    // to an actual LAPIC in-service vector.
++    mov edx, dword ptr [r14 + 8]
++    shl edx, 24
++    mov dword ptr [rax + 0x310], edx
++    mov dword ptr [rax + 0x300], 0x000000F4
++    sti
++    hlt
++    cli
++
++    // Reaching here proves the dead worker was switched back to the saved
++    // native idle IRQ context. Stop the proof timer before returning to HLT.
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    mov dword ptr [rax + 0x320], 0x000100EF
++    mov dword ptr [rax + 0x380], 0
++    mfence
++    mov eax, 1
++    xchg dword ptr [r14 + 48], eax
++    jmp .Lap_park
++
++.Lap_scheduler_dispatch_failure:
++    cli
++    mov eax, 2
++    xchg dword ptr [r14 + 48], eax
++    jmp .Lap_park
++
++// int _native_x64_arm_scheduler_timer()
++// Called by the running Stage-16 worker with interrupts disabled, after its
++// scheduler state is Dead. The pending timer then switches it to idle as soon
++// as the caller restores IF.
++.global _native_x64_arm_scheduler_timer
++_native_x64_arm_scheduler_timer:
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    test rax, rax
++    jz .Lap_arm_scheduler_timer_failure
++    mov ecx, dword ptr [rip + _ap_timer_initial_count]
++    test ecx, ecx
++    jz .Lap_arm_scheduler_timer_failure
++    mov dword ptr [rax + 0x3E0], 0x3
++    mov dword ptr [rax + 0x320], 0x000200EF
++    mov dword ptr [rax + 0x380], ecx
++    mfence
++    mov eax, 1
++    ret
++.Lap_arm_scheduler_timer_failure:
++    xor eax, eax
++    ret
++
+ .macro AP_STATE_GETTER name, offset, width
+ .global \name
+ \name:
+@@ -979,6 +1041,34 @@ _native_x64_enable_ap_local_apic:
+ // and acknowledges the LAPIC without entering managed runtime.
+ _native_x64_install_ap_ipi_idt:
+     lea r8, [rip + _ap_ipi_idt]
++
++    // Once APs enter the managed IRQ/context-switch path, faults must be
++    // diagnosable instead of cascading through a null exception gate into a
++    // silent triple fault. Populate all architectural exception vectors with
++    // the same stubs as the BSP before installing the private AP vectors.
++    lea r9, [rip + _native_x64_irq_table]
++    xor ecx, ecx
++.Lap_install_ap_exception_gate:
++    mov r10, qword ptr [r9 + rcx * 8]
++    mov rax, rcx
++    shl rax, 4
++    lea r11, [r8 + rax]
++    mov word ptr [r11 + 0], r10w
++    xor eax, eax
++    mov ax, cs
++    mov word ptr [r11 + 2], ax
++    mov byte ptr [r11 + 4], 0
++    mov byte ptr [r11 + 5], 0x8E
++    mov rax, r10
++    shr rax, 16
++    mov word ptr [r11 + 6], ax
++    shr rax, 16
++    mov dword ptr [r11 + 8], eax
++    mov dword ptr [r11 + 12], 0
++    inc ecx
++    cmp ecx, 32
++    jb .Lap_install_ap_exception_gate
++
+     lea r9, [rip + _native_x64_ap_ipi_handler]
+     mov r10, r9
+     mov word ptr [r8 + 0xF10], r10w
+@@ -1029,6 +1119,41 @@ _native_x64_install_ap_ipi_idt:
+     mov dword ptr [r8 + 0xF38], eax
+     mov dword ptr [r8 + 0xF3C], 0
+ 
++    // Vector 0xF4 enters the ordinary managed IRQ stub. Stage 16 uses a
++    // fixed self-IPI on this vector to make the scheduler select the AP's
++    // queued worker through ReschedulePendingFromIrq.
++    lea r9, [rip + irq244_stub]
++    mov r10, r9
++    mov word ptr [r8 + 0xF40], r10w
++    xor eax, eax
++    mov ax, cs
++    mov word ptr [r8 + 0xF42], ax
++    mov byte ptr [r8 + 0xF44], 0
++    mov byte ptr [r8 + 0xF45], 0x8E
++    mov rax, r10
++    shr rax, 16
++    mov word ptr [r8 + 0xF46], ax
++    shr rax, 16
++    mov dword ptr [r8 + 0xF48], eax
++    mov dword ptr [r8 + 0xF4C], 0
++
++    // Vector 0xEF is the real managed LAPIC scheduler timer handler. It is
++    // needed to switch an exited Stage-16 worker back to its AP idle context.
++    lea r9, [rip + irq239_stub]
++    mov r10, r9
++    mov word ptr [r8 + 0xEF0], r10w
++    xor eax, eax
++    mov ax, cs
++    mov word ptr [r8 + 0xEF2], ax
++    mov byte ptr [r8 + 0xEF4], 0
++    mov byte ptr [r8 + 0xEF5], 0x8E
++    mov rax, r10
++    shr rax, 16
++    mov word ptr [r8 + 0xEF6], ax
++    shr rax, 16
++    mov dword ptr [r8 + 0xEF8], eax
++    mov dword ptr [r8 + 0xEFC], 0
++
+     lea rax, [rip + _ap_ipi_idtr]
+     mov word ptr [rax], 4095
+     lea rcx, [rip + _ap_ipi_idt]
+@@ -2197,6 +2322,100 @@ _native_x64_end_idle_stack_test:
+     ret
+ 
+ 
++// int _native_x64_run_scheduler_dispatch_test(uint32_t cpuId,
++//                                              uint64_t timeoutTscTicks)
++// Dispatches exactly one already-queued SchedulerThread on one AP. Keeping
++// this stage sequential avoids pretending the global registry is SMP-safe;
++// registry locking is a later prerequisite before concurrent AP creation/exit.
++.global _native_x64_run_scheduler_dispatch_test
++_native_x64_run_scheduler_dispatch_test:
++    push rbx
++    push r12
++    push r13
++    push r14
++    test edi, edi
++    jz .Lap_scheduler_dispatch_test_invalid
++    mov rax, qword ptr [rip + _smp_cpu_count]
++    cmp rdi, rax
++    jae .Lap_scheduler_dispatch_test_invalid
++    test rsi, rsi
++    jz .Lap_scheduler_dispatch_test_invalid
++    mov r12d, edi
++    mov r13, rsi
++    call .Lap_read_lapic_base
++    test rax, rax
++    jz .Lap_scheduler_dispatch_test_invalid
++    mov qword ptr [rip + _native_x64_lapic_base], rax
++    mov r14, rax
++
++    lea rbx, [rip + _ap_boot_state]
++    mov eax, r12d
++    shl rax, 6
++    add rbx, rax
++    cmp dword ptr [rbx + 0], 1
++    jne .Lap_scheduler_dispatch_test_invalid
++    cmp dword ptr [rbx + 32], 0
++    jne .Lap_scheduler_dispatch_test_invalid
++    cmp dword ptr [rbx + 48], 1
++    jne .Lap_scheduler_dispatch_test_invalid
++    mov r10, qword ptr [rbx + 56]
++
++    xor eax, eax
++    xchg dword ptr [rbx + 48], eax
++    cmp eax, 1
++    jne .Lap_scheduler_dispatch_test_invalid
++    mov eax, 9
++    xchg dword ptr [rbx + 32], eax
++    test eax, eax
++    jne .Lap_scheduler_dispatch_test_invalid
++    mfence
++
++    mov edx, dword ptr [rbx + 8]
++    shl edx, 24
++    mov dword ptr [r14 + 0x310], edx
++    mov dword ptr [r14 + 0x300], 0x000000F1
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++
++.Lap_scheduler_dispatch_test_wait:
++    cmp dword ptr [rbx + 48], 2
++    je .Lap_scheduler_dispatch_test_failure
++    cmp dword ptr [rbx + 48], 1
++    jne .Lap_scheduler_dispatch_test_poll
++    cmp dword ptr [rbx + 32], 0
++    jne .Lap_scheduler_dispatch_test_poll
++    mov rax, qword ptr [rbx + 56]
++    sub rax, r10
++    cmp rax, 1
++    jne .Lap_scheduler_dispatch_test_poll
++    mov eax, 1
++    jmp .Lap_scheduler_dispatch_test_return
++
++.Lap_scheduler_dispatch_test_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r13
++    jb .Lap_scheduler_dispatch_test_wait
++    mov eax, -1
++    jmp .Lap_scheduler_dispatch_test_return
++.Lap_scheduler_dispatch_test_failure:
++    mov eax, -3
++    jmp .Lap_scheduler_dispatch_test_return
++.Lap_scheduler_dispatch_test_invalid:
++    mov eax, -2
++.Lap_scheduler_dispatch_test_return:
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++
+ // int _native_x64_run_ap_timer_test(uint64_t cpuCount,
+ //                                    uint32_t initialCount,
+ //                                    uint64_t minimumTicks,
+diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+index 9cc627f..35d47bb 100644
+--- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
++++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+@@ -140,6 +140,16 @@ internal class LibraryInitializer
+             {
+                 Cosmos.Kernel.Core.Panic.Halt("Stage 15 AP idle-stack enrollment proof failed.");
+             }
++
++            // Stage 16: enqueue and execute one genuine SchedulerThread on
++            // every AP. The common IRQ return switches from the enrolled idle
++            // context to the worker's allocated stack; the LAPIC timer returns
++            // each exited worker to idle through the same scheduler path.
++            Serial.WriteString("[SCHED-AP-DISPATCH] begin\n");
++            if (!SchedulerManager.RunManagedApplicationProcessorSchedulerDispatchProof())
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 16 managed AP scheduler dispatch proof failed.");
++            }
+         }
+     }
+ }
