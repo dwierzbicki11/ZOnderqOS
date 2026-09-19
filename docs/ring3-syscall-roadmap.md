@@ -1,6 +1,6 @@
 # Ring 3 / syscall boundary roadmap
 
-Status: **Stage R1 in validation. Ring 3 is not enabled yet.**
+Status: **Stage R1 complete. Stage R2 blocked by the real VMM/process address-space dependency. Ring 3 is not enabled yet.**
 
 Every stage is dependency-gated. A later stage MUST NOT start until the previous stage is green for the exact PR-head SHA in GitHub Actions. Runtime stages additionally require real QEMU proof; compilation or a synthetic PASS marker is not sufficient.
 
@@ -8,8 +8,8 @@ Every stage is dependency-gated. A later stage MUST NOT start until the previous
 
 | Stage | Goal | Completion gate | Status |
 |---|---|---|---|
-| R1 | Stable ABI + fail-closed scaffolding | ABI contract tests green on exact SHA; invalid/unconfigured/high-half/wrapped ranges rejected | IN VALIDATION |
-| R2 | Integrate real VMM/process address space | Per-process user range comes from VMM ownership; x64 + ARM64 regression CI green | BLOCKED by R1/VMM |
+| R1 | Stable ABI + fail-closed scaffolding | ABI contract tests green on exact SHA; invalid/unconfigured/high-half/wrapped ranges rejected | COMPLETE — CI green at `506a435cf723b386bee0e092cdb024daf40096fe` |
+| R2 | Integrate real VMM/process address space | Per-process user range comes from VMM ownership; x64 + ARM64 regression CI green | BLOCKED by VMM V3+ |
 | R3 | x86_64 GDT/TSS CPL3 foundation | Valid CPL3 selectors + per-CPU kernel transition stack; QEMU proof | BLOCKED |
 | R4 | x86_64 syscall entry/exit ASM | Documented register ABI; CPL3->CPL0->CPL3 round-trip in QEMU | BLOCKED |
 | R5 | Minimal dispatcher + user-pointer access | exit/write/getpid with checked copy-in/out and negative pointer tests | BLOCKED |
@@ -17,9 +17,13 @@ Every stage is dependency-gated. A later stage MUST NOT start until the previous
 | R7 | Fault isolation | CPL3 kernel write faults, offending process is contained, kernel remains alive | BLOCKED |
 | R8 | Stress/regression | Repeated syscall/fault cycles; 1-vCPU + SMP smoke; ARM64 regression green | BLOCKED |
 
+## R1 validation record
+
+R1 was validated by GitHub Actions workflow `Ring3 stage R1 ABI foundation`, run 2, for exact PR-head SHA `506a435cf723b386bee0e092cdb024daf40096fe`. The workflow completed successfully. This records only the ABI/scaffolding result; it is not evidence that CPL3 or memory isolation is active.
+
 ## Current dependency
 
-The current process implementation does not yet provide a verified per-process CR3/page-table address space. Entering CPL3 before the VMM/process work provides isolated address spaces would create a misleading or unsafe user/kernel boundary. Therefore R2 and later remain blocked even if R1 becomes green.
+The process/VMM work has architecture-neutral VMM contracts, but the Ring 3 branch must not manufacture a user range from constants or from the old thread-based process model. R2 requires a verified, owned per-process address space backed by real x86_64 page tables and suitable mapping/query permissions. Until that dependency lands or is safely integrated, `SyscallDispatcher.Context.UserRange` remains explicit/fail-closed and R3 must not begin.
 
 ## ABI v1
 
