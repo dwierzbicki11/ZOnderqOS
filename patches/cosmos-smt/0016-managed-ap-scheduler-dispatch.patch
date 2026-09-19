@@ -108,7 +108,7 @@ index 84a60cb..8b122bd 100644
 +    }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 0584999..ff70c94 100644
+index 0584999..10413f8 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -74,6 +74,12 @@ public static partial class SchedulerManager
@@ -143,7 +143,7 @@ index 0584999..ff70c94 100644
  #endif
  
      /// <summary>
-@@ -860,6 +878,139 @@ public static partial class SchedulerManager
+@@ -860,6 +878,141 @@ public static partial class SchedulerManager
      /// </summary>
      internal static uint AllocateThreadId() => s_nextThreadId++;
  
@@ -264,11 +264,13 @@ index 0584999..ff70c94 100644
 +            }
 +
 +            ExitThread(expectedCpuId, thread);
++#if ARCH_X64
 +            if (NativeArmSchedulerTimer() != 1)
 +            {
 +                Panic.Halt("Stage 16 AP scheduler timer could not be armed.");
 +                return;
 +            }
++#endif
 +        }
 +    }
 +
@@ -283,7 +285,7 @@ index 0584999..ff70c94 100644
      // ========== Thread Entry Dispatch ==========
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
-@@ -1250,7 +1401,12 @@ public static partial class SchedulerManager
+@@ -1250,7 +1403,12 @@ public static partial class SchedulerManager
          // thread exiting itself gets that callback; a thread reaped from
          // someone else's context (SchedulerInfo.RequestKill on a queued
          // thread) gets the same three steps addressed at it explicitly.
