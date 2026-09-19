@@ -29,6 +29,14 @@ jobs:
           sudo apt-get install -y qemu-system-x86 lld xorriso nasm
           qemu-system-x86_64 --version
 
+      - name: Install Cosmos build tools
+        run: |
+          dotnet tool install --global Cosmos.Patcher --version 3.0.85
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          command -v cosmos.patcher
+          cosmos.patcher --version
+
       - name: Verify N1 feature gate
         run: |
           grep -Fq '<CosmosEnableNetwork>true</CosmosEnableNetwork>' ZonderqOS.csproj
