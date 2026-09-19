@@ -5,9 +5,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
     <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
+    <CosmosNetworkStageN2>false</CosmosNetworkStageN2>
 
-    <!-- Keep one base feature profile. Networking is enabled only on x64 while
-         the first real NIC/link path is brought up and verified in QEMU. -->
     <CosmosEnableNetwork>false</CosmosEnableNetwork>
     <CosmosEnableStorage>true</CosmosEnableStorage>
     <CosmosEnableMouse>true</CosmosEnableMouse>
@@ -26,11 +25,14 @@
     <CosmosArch>arm64</CosmosArch>
   </PropertyGroup>
 
-  <!-- Stage 1 networking feature gate. Do not enable this on ARM64 until an
-       ARM64 NIC backend has equivalent runtime proof. -->
   <PropertyGroup Condition="'$(CosmosArch)' == 'x64'">
     <CosmosEnableNetwork>true</CosmosEnableNetwork>
     <DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_X64</DefineConstants>
+  </PropertyGroup>
+
+  <!-- N2 probe is deliberately opt-in. Normal boots keep the exact N1-tested path. -->
+  <PropertyGroup Condition="'$(CosmosArch)' == 'x64' and '$(CosmosNetworkStageN2)' == 'true'">
+    <DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_N2_PROBE</DefineConstants>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(CosmosArch)' == 'arm64'">
