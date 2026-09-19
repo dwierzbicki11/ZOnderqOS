@@ -1,5 +1,5 @@
 #if ZONDERQ_NETWORK_N2_PROBE
-using Cosmos.Kernel.Core.IO;
+using System;
 
 namespace ZonderqOS
 {
@@ -9,7 +9,7 @@ namespace ZonderqOS
         protected override void BeforeRun()
         {
             base.BeforeRun();
-            Serial.WriteString("[NETWORK-N2] starting raw Ethernet probe\n");
+            Console.WriteLine("[NETWORK-N2] starting raw Ethernet probe");
             EthernetStageProbe.RunTx();
         }
     }
