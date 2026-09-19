@@ -6,6 +6,8 @@ on:
       - 'source/**'
       - 'ZonderqOS.csproj'
       - 'tools/network-stage-n1-qemu.sh'
+      - 'tools/prepare-cosmos-smt.sh'
+      - 'patches/cosmos-smt/**'
       - 'docs/network-driver-roadmap.md'
       - '.github/workflows/network-stage-n1.yml'
   workflow_dispatch:
@@ -44,15 +46,26 @@ jobs:
           grep -Fq 'Cosmos.Kernel.System.Network.EndPoint' source/Shell/Commands/CmdPing.cs
           ! grep -Fq 'Cosmos.Kernel.System.Network.IPv4.EndPoint' source/Shell/Commands/CmdPing.cs
 
-      - name: Build x64 ISO with networking enabled
+      - name: Prepare patched Cosmos runtime
         run: |
           set -o pipefail
-          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64
+          ZONDERQ_COSMOS_SOURCE_ROOT="$RUNNER_TEMP/Cosmos" \
+            bash tools/prepare-cosmos-smt.sh --all 2>&1 | tee network-n1-cosmos.log
+          grep -R -Fq 'RuntimeExport("RhWaitForPendingFinalizers")' "$RUNNER_TEMP/Cosmos/src/Cosmos.Kernel.Core/Runtime"
+
+      - name: Build x64 ISO with networking enabled
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ runner.temp }}/Cosmos
+        run: |
+          set -o pipefail
+          source <(sed -n '/^prepare_patched_cosmos_x64()/,/^}/p' run-core.sh)
+          prepare_patched_cosmos_x64
           dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 --no-restore 2>&1 | tee network-n1-build.log
           test -f bin/Release/net10.0/linux-x64/ZonderqOS.iso || find bin -name '*.iso' -print -quit | grep -q .
 
       - name: ARM64 regression compile
         run: |
+          unset NUGET_PACKAGES
           dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64
           dotnet build ZonderqOS.csproj -c Release -r linux-arm64 -p:CosmosArch=arm64 --no-restore
 
@@ -65,6 +78,7 @@ jobs:
         with:
           name: network-n1-logs
           path: |
+            network-n1-cosmos.log
             network-n1-build.log
             network-n1-qemu.log
           if-no-files-found: ignore
