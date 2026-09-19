@@ -15,9 +15,15 @@ qemu_rc=${PIPESTATUS[0]}
 set -e
 [[ $qemu_rc -eq 0 || $qemu_rc -eq 124 ]] || exit "$qemu_rc"
 
-grep -Fq '[NETWORK-N2][TX-QUEUED]' "$LOG" || { echo '[NETWORK-N2][FAIL] guest did not queue raw frame' >&2; exit 1; }
+# Require the real E1000E path to initialize before accepting packet evidence.
+grep -Fq '[E1000E] MAC Address:' "$LOG" || { echo '[NETWORK-N2][FAIL] E1000E MAC not observed' >&2; exit 1; }
+grep -Fq '[E1000E] TX initialized' "$LOG" || { echo '[NETWORK-N2][FAIL] E1000E TX ring not initialized' >&2; exit 1; }
+grep -Fq '[E1000E] Link: UP' "$LOG" || { echo '[NETWORK-N2][FAIL] E1000E link not up' >&2; exit 1; }
+
 [[ -s "$PCAP" ]] || { echo '[NETWORK-N2][FAIL] QEMU capture is empty' >&2; exit 1; }
-# Proof that bytes crossed the emulated NIC boundary, not merely that Send() returned true.
+# Runtime proof is deliberately taken at the emulated NIC boundary. Console.WriteLine
+# is VGA-only in the isolated probe kernel, so requiring its TX-QUEUED text on the
+# serial stream would reject a frame that QEMU has already captured outside the guest.
 grep -aFq 'ZONDERQ_N2_TX' "$PCAP" || { echo '[NETWORK-N2][FAIL] probe payload absent from QEMU pcap' >&2; exit 1; }
 echo '[NETWORK-N2][TX-PASS] raw Ethernet frame observed outside guest in QEMU pcap'
 
