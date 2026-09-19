@@ -49,27 +49,42 @@ jobs:
       - name: Prepare patched Cosmos runtime
         run: |
           set -o pipefail
-          # prepare-cosmos-smt bootstraps the Cosmos checkout as a sibling of the
-          # ZonderqOS workspace (../Cosmos), not under RUNNER_TEMP.
           unset ZONDERQ_COSMOS_SOURCE_ROOT
           bash tools/prepare-cosmos-smt.sh --all 2>&1 | tee network-n1-cosmos.log
           COSMOS_ROOT="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"
           test -d "$COSMOS_ROOT/.git"
           grep -R -Fq 'RuntimeExport("RhWaitForPendingFinalizers")' "$COSMOS_ROOT/src/Cosmos.Kernel.Core/Runtime"
+          test -f "$COSMOS_ROOT/artifacts/package/release/Cosmos.Kernel.3.0.85.nupkg"
 
       - name: Build x64 ISO with networking enabled
-        env:
-          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/../Cosmos
         run: |
           set -o pipefail
-          # We intentionally import only the non-interactive helper instead of
-          # sourcing all of run-core.sh (which would enter the launcher). The
-          # helper depends on ROOT_DIR and fail(), so initialize both explicitly.
-          ROOT_DIR="$GITHUB_WORKSPACE"
-          fail() { echo "[BLAD] $*" >&2; exit 1; }
-          source <(sed -n '/^prepare_patched_cosmos_x64()/,/^}/p' run-core.sh)
-          prepare_patched_cosmos_x64
-          dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 --no-restore 2>&1 | tee network-n1-build.log
+          COSMOS_ROOT="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"
+          COSMOS_FEED="$COSMOS_ROOT/artifacts/package/release"
+          PACKAGE_CACHE="$GITHUB_WORKSPACE/.nuget/network-n1-packages"
+          rm -rf "$PACKAGE_CACHE" obj bin
+          mkdir -p "$PACKAGE_CACHE"
+          cat > network-n1-nuget.config <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="local-cosmos" value="$COSMOS_FEED" />
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+            </packageSources>
+            <packageSourceMapping>
+              <packageSource key="local-cosmos"><package pattern="Cosmos.*" /></packageSource>
+              <packageSource key="nuget.org"><package pattern="*" /></packageSource>
+            </packageSourceMapping>
+          </configuration>
+          EOF
+          NUGET_PACKAGES="$PACKAGE_CACHE" dotnet restore ZonderqOS.csproj \
+            -r linux-x64 -p:CosmosArch=x64 \
+            --configfile network-n1-nuget.config --force --no-cache 2>&1 | tee network-n1-restore.log
+          test -f "$PACKAGE_CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
+          grep -Fq "$COSMOS_FEED" "$PACKAGE_CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
+          NUGET_PACKAGES="$PACKAGE_CACHE" dotnet build ZonderqOS.csproj \
+            -c Release -r linux-x64 -p:CosmosArch=x64 --no-restore 2>&1 | tee network-n1-build.log
           test -f bin/Release/net10.0/linux-x64/ZonderqOS.iso || find bin -name '*.iso' -print -quit | grep -q .
 
       - name: ARM64 regression compile
@@ -88,6 +103,7 @@ jobs:
           name: network-n1-logs
           path: |
             network-n1-cosmos.log
+            network-n1-restore.log
             network-n1-build.log
             network-n1-qemu.log
           if-no-files-found: ignore
