@@ -27,7 +27,12 @@ Criteria:
 
 ## V3 — x86_64 page-table backend
 
-Status: **IN PROGRESS — V2 gate is green; no runtime claim yet**.
+Status: **IN PROGRESS — encoding/index validation checkpoint added; hardware mapping and QEMU proof still required**.
+
+Checkpoint:
+- `X64PageTableModel` now defines 4 KiB leaf-entry encoding, Present/RW/User/NX permissions, physical-address masking, canonical-address validation and PML4/PDPT/PD/PT index extraction;
+- the model is deliberately fail-closed and performs no privileged CR3/TLB operation;
+- `VMM stage V3 x64 page tables` gates this foundation separately; a green result does **not** complete V3 because runtime mapping/query/unmapping proof is mandatory.
 
 Criteria:
 - controlled PML4 root creation/destruction;
