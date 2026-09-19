@@ -1,0 +1,65 @@
+name: Network stage N2 Ethernet TX bring-up
+
+on:
+  pull_request:
+    paths:
+      - 'source/Core/EthernetStageProbe.cs'
+      - 'source/Core/NetworkN2Kernel.cs'
+      - 'ZonderqOS.csproj'
+      - 'tools/network-stage-n2-qemu.sh'
+      - 'tools/prepare-cosmos-smt.sh'
+      - 'patches/cosmos-smt/**'
+      - '.github/workflows/network-stage-n2.yml'
+  workflow_dispatch:
+
+jobs:
+  validate-network-n2-tx:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 lld xorriso nasm
+          dotnet tool install --global Cosmos.Patcher --version 3.0.85
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Prepare patched Cosmos runtime
+        run: |
+          unset ZONDERQ_COSMOS_SOURCE_ROOT
+          bash tools/prepare-cosmos-smt.sh --all 2>&1 | tee network-n2-cosmos.log
+      - name: Build isolated x64 N2 probe ISO
+        run: |
+          set -o pipefail
+          COSMOS_ROOT="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"
+          COSMOS_FEED="$COSMOS_ROOT/artifacts/package/release"
+          CACHE="$GITHUB_WORKSPACE/.nuget/network-n2-packages"
+          rm -rf "$CACHE" obj bin
+          mkdir -p "$CACHE"
+          cat > network-n2-nuget.config <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration><packageSources><clear/><add key="local-cosmos" value="$COSMOS_FEED"/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources><packageSourceMapping><packageSource key="local-cosmos"><package pattern="Cosmos.*"/></packageSource><packageSource key="nuget.org"><package pattern="*"/></packageSource></packageSourceMapping></configuration>
+          EOF
+          NUGET_PACKAGES="$CACHE" dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN2=true --configfile network-n2-nuget.config --force --no-cache 2>&1 | tee network-n2-restore.log
+          NUGET_PACKAGES="$CACHE" dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN2=true --no-restore 2>&1 | tee network-n2-build.log
+          ISO="$(find bin -type f \( -name 'ZonderqOS.iso' -o -name '*.iso' \) | head -n 1)"
+          test -n "$ISO" && test -f "$ISO"
+          cp "$ISO" network-n2-x64.iso
+          echo "ZONDERQ_ISO=$GITHUB_WORKSPACE/network-n2-x64.iso" >> "$GITHUB_ENV"
+      - name: QEMU Ethernet TX proof
+        run: bash tools/network-stage-n2-qemu.sh
+      - name: Upload N2 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: network-n2-tx-evidence
+          path: |
+            network-n2-cosmos.log
+            network-n2-restore.log
+            network-n2-build.log
+            network-n2-qemu.log
+            network-n2.pcap
+          if-no-files-found: ignore
