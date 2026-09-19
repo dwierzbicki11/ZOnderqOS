@@ -85,13 +85,26 @@ jobs:
           grep -Fq "$COSMOS_FEED" "$PACKAGE_CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
           NUGET_PACKAGES="$PACKAGE_CACHE" dotnet build ZonderqOS.csproj \
             -c Release -r linux-x64 -p:CosmosArch=x64 --no-restore 2>&1 | tee network-n1-build.log
-          test -f bin/Release/net10.0/linux-x64/ZonderqOS.iso || find bin -name '*.iso' -print -quit | grep -q .
+          ISO="$(find bin -type f -name 'ZonderqOS.iso' -o -name '*.iso' | head -n 1)"
+          test -n "$ISO" && test -f "$ISO"
+          cp "$ISO" "$GITHUB_WORKSPACE/network-n1-x64.iso"
+          echo "ZONDERQ_ISO=$GITHUB_WORKSPACE/network-n1-x64.iso" >> "$GITHUB_ENV"
 
       - name: ARM64 regression compile
         run: |
-          unset NUGET_PACKAGES
-          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64
-          dotnet build ZonderqOS.csproj -c Release -r linux-arm64 -p:CosmosArch=arm64 --no-restore
+          set -o pipefail
+          COSMOS_ROOT="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"
+          COSMOS_FEED="$COSMOS_ROOT/artifacts/package/release"
+          ARM_PACKAGE_CACHE="$GITHUB_WORKSPACE/.nuget/network-n1-arm64-packages"
+          rm -rf obj "$ARM_PACKAGE_CACHE"
+          mkdir -p "$ARM_PACKAGE_CACHE"
+          NUGET_PACKAGES="$ARM_PACKAGE_CACHE" dotnet restore ZonderqOS.csproj \
+            -r linux-arm64 -p:CosmosArch=arm64 \
+            --configfile network-n1-nuget.config --force --no-cache 2>&1 | tee network-n1-arm64-restore.log
+          test -f "$ARM_PACKAGE_CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
+          grep -Fq "$COSMOS_FEED" "$ARM_PACKAGE_CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
+          NUGET_PACKAGES="$ARM_PACKAGE_CACHE" dotnet build ZonderqOS.csproj \
+            -c Release -r linux-arm64 -p:CosmosArch=arm64 --no-restore 2>&1 | tee network-n1-arm64-build.log
 
       - name: QEMU N1 runtime proof
         run: bash tools/network-stage-n1-qemu.sh
@@ -105,5 +118,7 @@ jobs:
             network-n1-cosmos.log
             network-n1-restore.log
             network-n1-build.log
+            network-n1-arm64-restore.log
+            network-n1-arm64-build.log
             network-n1-qemu.log
           if-no-files-found: ignore
