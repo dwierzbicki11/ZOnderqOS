@@ -47,10 +47,16 @@ jobs:
           ! grep -Fq 'Cosmos.Kernel.System.Network.IPv4.EndPoint' source/Shell/Commands/CmdPing.cs
 
       - name: Prepare patched Cosmos runtime
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ runner.temp }}/Cosmos
         run: |
           set -o pipefail
-          ZONDERQ_COSMOS_SOURCE_ROOT="$RUNNER_TEMP/Cosmos" \
-            bash tools/prepare-cosmos-smt.sh --all 2>&1 | tee network-n1-cosmos.log
+          # prepare-cosmos-smt can bootstrap a missing sibling checkout itself.
+          # Do not pre-set ZONDERQ_COSMOS_SOURCE_ROOT before that checkout exists,
+          # because the script intentionally validates an explicit root first.
+          unset ZONDERQ_COSMOS_SOURCE_ROOT
+          bash tools/prepare-cosmos-smt.sh --all 2>&1 | tee network-n1-cosmos.log
+          test -d "$RUNNER_TEMP/Cosmos/.git"
           grep -R -Fq 'RuntimeExport("RhWaitForPendingFinalizers")' "$RUNNER_TEMP/Cosmos/src/Cosmos.Kernel.Core/Runtime"
 
       - name: Build x64 ISO with networking enabled
