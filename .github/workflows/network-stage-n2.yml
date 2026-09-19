@@ -1,4 +1,4 @@
-name: Network stage N2 Ethernet TX bring-up
+name: Network stage N2 Ethernet TX/RX bring-up
 
 on:
   pull_request:
@@ -9,11 +9,12 @@ on:
       - 'tools/network-stage-n2-qemu.sh'
       - 'tools/prepare-cosmos-smt.sh'
       - 'patches/cosmos-smt/**'
+      - 'patches/network-n2/**'
       - '.github/workflows/network-stage-n2.yml'
   workflow_dispatch:
 
 jobs:
-  validate-network-n2-tx:
+  validate-network-n2:
     runs-on: ubuntu-latest
     timeout-minutes: 55
     steps:
@@ -27,10 +28,18 @@ jobs:
           sudo apt-get install -y qemu-system-x86 lld xorriso nasm
           dotnet tool install --global Cosmos.Patcher --version 3.0.85
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
-      - name: Prepare patched Cosmos runtime
+      - name: Prepare patched Cosmos runtime with isolated N2 raw RX hook
         run: |
           unset ZONDERQ_COSMOS_SOURCE_ROOT
-          bash tools/prepare-cosmos-smt.sh --all 2>&1 | tee network-n2-cosmos.log
+          bash tools/prepare-cosmos-smt.sh --all --patch-only 2>&1 | tee network-n2-cosmos.log
+          COSMOS_ROOT="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"
+          git -C "$COSMOS_ROOT" apply --check "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
+          git -C "$COSMOS_ROOT" apply "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
+          (
+            cd "$COSMOS_ROOT"
+            export VersionPrefix=3.0.85
+            bash .devcontainer/postCreateCommand.sh
+          ) 2>&1 | tee -a network-n2-cosmos.log
       - name: Build isolated x64 N2 probe ISO
         run: |
           set -o pipefail
@@ -49,13 +58,13 @@ jobs:
           test -n "$ISO" && test -f "$ISO"
           cp "$ISO" network-n2-x64.iso
           echo "ZONDERQ_ISO=$GITHUB_WORKSPACE/network-n2-x64.iso" >> "$GITHUB_ENV"
-      - name: QEMU Ethernet TX proof
+      - name: QEMU Ethernet TX and RX proof
         run: bash tools/network-stage-n2-qemu.sh
       - name: Upload N2 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: network-n2-tx-evidence
+          name: network-n2-tx-rx-evidence
           path: |
             network-n2-cosmos.log
             network-n2-restore.log
