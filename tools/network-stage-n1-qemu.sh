@@ -13,8 +13,9 @@ fi
 LOG="${ZONDERQ_NETWORK_N1_LOG:-network-n1-qemu.log}"
 rm -f "$LOG"
 
-# rtl8139 is intentionally explicit: N1 is not complete until this exact QEMU
-# NIC is both supported by the kernel and produces runtime MAC/link evidence.
+# The x64 HAL currently probes an Intel E1000E device. Exercise that supported
+# path instead of presenting an RTL8139 which the runtime only enumerates as a
+# generic PCI Ethernet controller and never binds to a network driver.
 # User-mode networking avoids requiring privileged TAP configuration in CI.
 set +e
 timeout 35s qemu-system-x86_64 \
@@ -26,7 +27,7 @@ timeout 35s qemu-system-x86_64 \
   -serial stdio \
   -no-reboot \
   -netdev user,id=net0 \
-  -device rtl8139,netdev=net0 2>&1 | tee "$LOG"
+  -device e1000e,netdev=net0 2>&1 | tee "$LOG"
 qemu_rc=${PIPESTATUS[0]}
 set -e
 
@@ -36,9 +37,10 @@ if [[ $qemu_rc -ne 0 && $qemu_rc -ne 124 ]]; then
 fi
 
 # These are runtime evidence requirements, not injected PASS markers. Until
-# the kernel emits both facts from the actual NIC path this stage MUST fail.
-grep -Eiq '(rtl8139|realtek.*8139|network.*device|nic.*(found|detected|enumerat))' "$LOG" || {
-  echo '[NETWORK-N1][FAIL] no supported NIC enumeration evidence in QEMU log.' >&2
+# the kernel emits all three facts from the actual bound NIC path this stage
+# MUST fail.
+grep -Eiq '(e1000e|intel.*(82574|ethernet)|network.*device|nic.*(found|detected|enumerat))' "$LOG" || {
+  echo '[NETWORK-N1][FAIL] no supported E1000E NIC enumeration evidence in QEMU log.' >&2
   exit 1
 }
 grep -Eiq '([[:xdigit:]]{2}:){5}[[:xdigit:]]{2}' "$LOG" || {
@@ -50,4 +52,4 @@ grep -Eiq '(link[ =:-]*(up|ready|connected)|network.*(ready|online))' "$LOG" || 
   exit 1
 }
 
-echo '[NETWORK-N1] NIC enumeration, MAC and link evidence observed.'
+echo '[NETWORK-N1] E1000E enumeration, MAC and link evidence observed.'
