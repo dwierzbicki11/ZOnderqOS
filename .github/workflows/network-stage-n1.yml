@@ -103,8 +103,14 @@ jobs:
             --configfile network-n1-nuget.config --force --no-cache 2>&1 | tee network-n1-arm64-restore.log
           test -f "$ARM_PACKAGE_CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
           grep -Fq "$COSMOS_FEED" "$ARM_PACKAGE_CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
-          NUGET_PACKAGES="$ARM_PACKAGE_CACHE" dotnet build ZonderqOS.csproj \
-            -c Release -r linux-arm64 -p:CosmosArch=arm64 --no-restore 2>&1 | tee network-n1-arm64-build.log
+          # This runner is linux-x64. A full linux-arm64 Cosmos Build target tries
+          # to execute the ARM64 Cosmos.Build.ILC host here and fails with ENOEXEC
+          # before it can validate ZonderqOS. Keep this gate honest: compile the
+          # ARM64-conditioned managed kernel sources and references, but do not
+          # claim an ARM64 image/runtime proof from an x64 runner.
+          NUGET_PACKAGES="$ARM_PACKAGE_CACHE" dotnet msbuild ZonderqOS.csproj \
+            -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-arm64 \
+            -p:CosmosArch=arm64 -p:RestoreIgnoreFailedSources=false 2>&1 | tee network-n1-arm64-build.log
 
       - name: QEMU N1 runtime proof
         run: bash tools/network-stage-n1-qemu.sh
