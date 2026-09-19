@@ -1,5 +1,5 @@
 diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs b/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs
-index cf8a0afbb..ccbe4abc1 100644
+index cf8a0af..ccbe4ab 100644
 --- a/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs
 +++ b/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs
 @@ -71,7 +71,10 @@ internal class X64InterruptController : IInterruptController
@@ -14,40 +14,9 @@ index cf8a0afbb..ccbe4abc1 100644
                      }
                  }
                  return;
-diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs
-new file mode 100644
-index 000000000..838fc026d
---- /dev/null
-+++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs
-@@ -0,0 +1,26 @@
-+using System.Runtime.InteropServices;
-+using Cosmos.Kernel.Core.CPU;
-+using Cosmos.Kernel.Core.Scheduler;
-+
-+namespace Cosmos.Kernel.Core.Bridge;
-+
-+/// <summary>
-+/// Initial instruction pointer for the Stage-16 scheduler thread. Unlike the
-+/// earlier AP exports this entry is reached by the normal interrupt-return
-+/// context-switch path on the thread's separately allocated scheduler stack.
-+/// </summary>
-+internal static class ManagedApSchedulerThreadNative
-+{
-+    [UnmanagedCallersOnly]
-+    internal static void Entry(uint expectedCpuId)
-+    {
-+        SchedulerManager.RunStage16DispatchedThread(expectedCpuId);
-+
-+        // A completed thread is switched away by the AP LAPIC timer. It must
-+        // never return: the initial context was entered with a jump, not call.
-+        while (true)
-+        {
-+            InternalCpu.Halt();
-+        }
-+    }
-+}
+error: Could not access 'Cosmos15baseline/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs'
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-index 84a60cba3..8b122bd49 100644
+index 84a60cb..8b122bd 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 @@ -45,7 +45,10 @@ public sealed class PerCpuState : SchedulerExtensible
@@ -108,7 +77,7 @@ index 84a60cba3..8b122bd49 100644
 +    }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 058499919..fc5963fee 100644
+index 0584999..b1a0bcf 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -74,6 +74,12 @@ public static partial class SchedulerManager
@@ -139,7 +108,7 @@ index 058499919..fc5963fee 100644
  #endif
  
      /// <summary>
-@@ -860,6 +874,127 @@ public static partial class SchedulerManager
+@@ -860,6 +874,134 @@ public static partial class SchedulerManager
      /// </summary>
      internal static uint AllocateThreadId() => s_nextThreadId++;
  
@@ -246,14 +215,21 @@ index 058499919..fc5963fee 100644
 +            return;
 +        }
 +
-+        ulong checksum = ComputeStage16Checksum(expectedCpuId, thread.Id);
-+        if (!state.TryCompleteStage16Dispatch(expectedCpuId, thread.Id, checksum))
++        // The AP timer is already armed. Keep it masked until the worker has
++        // published completion and left the scheduler: otherwise a first-tick
++        // preemption can restore the native idle frame while the worker is
++        // still live (or interrupt ExitThread while it owns the serial lock).
++        using (InternalCpu.DisableInterruptsScope())
 +        {
-+            Panic.Halt("Stage 16 AP scheduler thread failed to publish completion.");
-+            return;
-+        }
++            ulong checksum = ComputeStage16Checksum(expectedCpuId, thread.Id);
++            if (!state.TryCompleteStage16Dispatch(expectedCpuId, thread.Id, checksum))
++            {
++                Panic.Halt("Stage 16 AP scheduler thread failed to publish completion.");
++                return;
++            }
 +
-+        ExitThread(expectedCpuId, thread);
++            ExitThread(expectedCpuId, thread);
++        }
 +    }
 +
 +    private static ulong ComputeStage16Checksum(uint cpuId, uint threadId) =>
@@ -268,7 +244,7 @@ index 058499919..fc5963fee 100644
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-index a2dbeebcc..4f775abe9 100644
+index a2dbeeb..448da80 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 @@ -531,6 +531,8 @@ _native_x64_ap_entry:
@@ -411,7 +387,7 @@ index a2dbeebcc..4f775abe9 100644
      lea rax, [rip + _ap_ipi_idtr]
      mov word ptr [rax], 4095
      lea rcx, [rip + _ap_ipi_idt]
-@@ -2197,6 +2281,100 @@ _native_x64_end_idle_stack_test:
+@@ -2197,6 +2309,100 @@ _native_x64_end_idle_stack_test:
      ret
  
  
@@ -513,7 +489,7 @@ index a2dbeebcc..4f775abe9 100644
  //                                    uint32_t initialCount,
  //                                    uint64_t minimumTicks,
 diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-index 9cc627fc8..35d47bbbc 100644
+index 9cc627f..35d47bb 100644
 --- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 +++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 @@ -140,6 +140,16 @@ internal class LibraryInitializer
@@ -533,3 +509,4 @@ index 9cc627fc8..35d47bbbc 100644
          }
      }
  }
+
