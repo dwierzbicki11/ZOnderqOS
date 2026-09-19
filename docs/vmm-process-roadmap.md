@@ -27,12 +27,19 @@ Criteria:
 
 ## V3 — x86_64 page-table backend
 
-Status: **IN PROGRESS — encoding/index validation checkpoint added; hardware mapping and QEMU proof still required**.
+Status: **IN PROGRESS — encoding/index validation checkpoint green; hardware mapping is blocked on an allocator boundary that must be solved without fabricating physical pages**.
 
 Checkpoint:
-- `X64PageTableModel` now defines 4 KiB leaf-entry encoding, Present/RW/User/NX permissions, physical-address masking, canonical-address validation and PML4/PDPT/PD/PT index extraction;
+- `X64PageTableModel` defines 4 KiB leaf-entry encoding, Present/RW/User/NX permissions, physical-address masking, canonical-address validation and PML4/PDPT/PD/PT index extraction;
 - the model is deliberately fail-closed and performs no privileged CR3/TLB operation;
 - `VMM stage V3 x64 page tables` gates this foundation separately; a green result does **not** complete V3 because runtime mapping/query/unmapping proof is mandatory.
+
+Verified allocator dependency (Cosmos Gen 3 / SDK 3.0.85 line):
+- Cosmos already owns physical-page allocation through `Cosmos.Kernel.Core.Memory.PageAllocator`, backed by the Limine memory map and HHDM;
+- `PageAllocator.AllocPages(PageType, ulong, bool)` is public, but the containing `PageAllocator` type and `PageType` are `internal` to `Cosmos.Kernel.Core`, so ZonderqOS cannot legally call this implementation through the package API;
+- allocating managed/unmanaged virtual memory and treating its address as a physical frame is forbidden: V3 needs a real physical frame identity suitable for PTEs;
+- do not duplicate a second allocator over the Limine memory map: that would race Cosmos ownership/RAT bookkeeping and can allocate frames already owned by the runtime, GC, heap, DMA, or page directories;
+- therefore the next implementation step is a narrow supported Cosmos kernel API for page-table frame allocation/free + virtual/HHDM access (or an equivalent existing public API if one is found), followed by the ZonderqOS x64 adapter. Until that boundary exists, V3 remains blocked rather than using a fake allocator.
 
 Criteria:
 - controlled PML4 root creation/destruction;
