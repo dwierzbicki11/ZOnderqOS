@@ -144,4 +144,5 @@ jobs:
           path: |
             zonderq/stage16-*.log
             zonderq/stage16-qemu-serial.log.stderr
+            zonderq/stage16-qemu-serial.log.qemu-exceptions.log
             zonderq/stage16-iso.sha256

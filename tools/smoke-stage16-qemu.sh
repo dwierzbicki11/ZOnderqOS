@@ -247,6 +247,7 @@ if (( CHECK_LOG )); then
   exit $?
 fi
 
+export SMT_QEMU_EXCEPTION_TRACE="${LOG}.qemu-exceptions.log"
 bash tools/smoke-stage14-qemu.sh "$ISO" "$LOG"
 check_stage16_serial "$LOG"
 echo '[SMT16-QEMU][OK] Stage 14/15 regressions and Stage 16 managed AP scheduler dispatch survived the stability interval.'
