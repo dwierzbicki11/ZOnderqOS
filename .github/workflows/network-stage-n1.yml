@@ -62,6 +62,11 @@ jobs:
           ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/../Cosmos
         run: |
           set -o pipefail
+          # We intentionally import only the non-interactive helper instead of
+          # sourcing all of run-core.sh (which would enter the launcher). The
+          # helper depends on ROOT_DIR and fail(), so initialize both explicitly.
+          ROOT_DIR="$GITHUB_WORKSPACE"
+          fail() { echo "[BLAD] $*" >&2; exit 1; }
           source <(sed -n '/^prepare_patched_cosmos_x64()/,/^}/p' run-core.sh)
           prepare_patched_cosmos_x64
           dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 --no-restore 2>&1 | tee network-n1-build.log
