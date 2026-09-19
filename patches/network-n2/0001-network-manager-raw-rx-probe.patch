@@ -2,7 +2,7 @@ diff --git a/src/Cosmos.Kernel.System/Network/NetworkManager.cs b/src/Cosmos.Ker
 index 9a6f4d4..c4f7a11 100644
 --- a/src/Cosmos.Kernel.System/Network/NetworkManager.cs
 +++ b/src/Cosmos.Kernel.System/Network/NetworkManager.cs
-@@ -111,6 +111,27 @@ public static class NetworkManager
+@@ -111,3 +111,21 @@ public static class NetworkManager
          return IsEnabled && (PrimaryDevice?.Send(data, length) ?? false);
      }
 +
