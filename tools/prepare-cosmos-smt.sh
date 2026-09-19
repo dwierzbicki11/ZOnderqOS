@@ -102,6 +102,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 13
   bash tools/prepare-cosmos-smt.sh --through-stage 14
   bash tools/prepare-cosmos-smt.sh --through-stage 15
+  bash tools/prepare-cosmos-smt.sh --through-stage 16
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -388,4 +389,8 @@ elif (( SELECTED_STAGE == 15 )); then
     echo "[SMT] Etap 15 przypisuje natywne stosy bootstrap AP do zarejestrowanych watkow idle z jawnymi granicami."
     echo "[SMT] OrionGC skanuje kazdy zdalny stos od RSP przechwyconego przez IPI 0xF3 i weryfikuje fingerprint kanarkow."
     echo "[SMT] AP-y wracaja do native HLT; dispatch zwyklych watkow, migracja i preempcja nadal nie sa wlaczone."
+elif (( SELECTED_STAGE == 16 )); then
+    echo "[SMT] Etap 16 kolejkuje prawdziwy SchedulerThread osobno na kazdy AP i przelacza go przez zwykla sciezke IRQ."
+    echo "[SMT] Worker wykonuje sie na przydzielonym stosie, przechodzi pelny lifecycle exit i wraca timerem LAPIC do idle."
+    echo "[SMT] Dispatch jest jeszcze sekwencyjny; wspolbiezne kolejki, migracja i pelna preempcja beda utwardzane dalej."
 fi
