@@ -1,33 +1,42 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using ZonderqOS.SystemCore.Processes;
 
 namespace ZonderqOS.SystemCore
 {
+    /// <summary>
+    /// Compatibility view used by the existing shell and GUI. Entries created by
+    /// Start are kernel tasks backed by managed threads and share the kernel address
+    /// space. They are not isolated user processes.
+    /// </summary>
     public class KernelProcess
     {
-        public int PID { get; }
-        public string Name { get; }
-        public Thread ExecutionThread { get; }
-        public CancellationTokenSource Cts { get; }
-        public bool IsRunning => ExecutionThread != null && ExecutionThread.IsAlive;
+        private readonly ProcessControlBlock _controlBlock;
 
-        public KernelProcess(int pid, string name, Thread thread, CancellationTokenSource cts)
+        public int PID => _controlBlock.PID;
+        public string Name => _controlBlock.Name;
+        public Thread ExecutionThread => _controlBlock.ExecutionThread;
+        public CancellationTokenSource Cts => _controlBlock.Cancellation;
+        public bool IsRunning => _controlBlock.IsRunning;
+        public ProcessKind Kind => _controlBlock.Kind;
+        public ProcessState State => _controlBlock.State;
+        public bool HasIsolatedAddressSpace => _controlBlock.AddressSpace.IsIsolated;
+
+        internal KernelProcess(ProcessControlBlock controlBlock)
         {
-            PID = pid;
-            Name = name;
-            ExecutionThread = thread;
-            Cts = cts;
+            _controlBlock = controlBlock ?? throw new ArgumentNullException(nameof(controlBlock));
         }
     }
 
     public static class ProcessManager
     {
-        private static readonly Dictionary<int, KernelProcess> _processes = new Dictionary<int, KernelProcess>();
-        private static readonly List<int> _deadPidScratch = new List<int>(16);
-        private static int _nextPid = 1;
-        private static readonly object _registryLock = new object();
+        private static readonly ProcessRegistry _registry = new ProcessRegistry();
 
+        /// <summary>
+        /// Starts a kernel task in the shared kernel address space. This API is kept
+        /// for compatibility; it does not create a protected Ring-3 process.
+        /// </summary>
         public static int Start(string name, Action<CancellationToken> startMethod)
         {
             if (startMethod == null)
@@ -37,38 +46,36 @@ namespace ZonderqOS.SystemCore
             int pid;
             CancellationTokenSource cts;
             Thread thread;
+            ProcessControlBlock controlBlock = null;
 
-            lock (_registryLock)
+            lock (_registry.SyncRoot)
             {
-                if (_nextPid <= 0)
-                    _nextPid = 1;
-
-                while (_processes.ContainsKey(_nextPid))
-                {
-                    _nextPid++;
-                    if (_nextPid <= 0)
-                        _nextPid = 1;
-                }
-
-                pid = _nextPid++;
+                pid = _registry.AllocatePidLocked();
                 cts = new CancellationTokenSource();
                 thread = new Thread(() =>
                 {
+                    bool faulted = false;
                     try
                     {
                         startMethod(cts.Token);
                     }
                     catch (Exception ex)
                     {
+                        faulted = true;
+                        controlBlock.MarkFaulted();
                         WriteMessage.WriteError($"Proces {processName} (PID {pid}) zakończył się błędem: {ex.Message}", "PROC");
                     }
                     finally
                     {
+                        if (!faulted)
+                            controlBlock.MarkExited();
                         RemoveProcess(pid);
                     }
                 });
 
-                _processes.Add(pid, new KernelProcess(pid, processName, thread, cts));
+                controlBlock = new ProcessControlBlock(pid, processName, thread, cts);
+                _registry.Entries.Add(pid, controlBlock);
+                controlBlock.MarkRunning();
                 thread.Start();
             }
 
@@ -85,19 +92,20 @@ namespace ZonderqOS.SystemCore
 
         public static bool Kill(int pid)
         {
-            lock (_registryLock)
+            lock (_registry.SyncRoot)
             {
-                if (!_processes.TryGetValue(pid, out var process))
+                if (!_registry.Entries.TryGetValue(pid, out var process))
                     return false;
 
                 if (!process.IsRunning)
                 {
-                    _processes.Remove(pid);
-                    process.Cts.Dispose();
+                    _registry.Entries.Remove(pid);
+                    process.Cancellation.Dispose();
                     return false;
                 }
 
-                process.Cts.Cancel();
+                process.MarkStopRequested();
+                process.Cancellation.Cancel();
                 return true;
             }
         }
@@ -107,10 +115,10 @@ namespace ZonderqOS.SystemCore
             if (string.IsNullOrEmpty(name))
                 return false;
 
-            lock (_registryLock)
+            lock (_registry.SyncRoot)
             {
                 CleanupDeadProcessesLocked();
-                foreach (var process in _processes.Values)
+                foreach (var process in _registry.Entries.Values)
                 {
                     if (process.IsRunning && string.Equals(process.Name, name, StringComparison.OrdinalIgnoreCase))
                         return true;
@@ -120,23 +128,18 @@ namespace ZonderqOS.SystemCore
             }
         }
 
-        /// <summary>
-        /// Fills a caller-owned list with the active process registry without allocating
-        /// a new snapshot list on every refresh. This is intended for GUI monitors that
-        /// poll frequently. The destination list is cleared and reused.
-        /// </summary>
         public static int FillActiveProcesses(List<KernelProcess> destination)
         {
             if (destination == null)
                 throw new ArgumentNullException(nameof(destination));
 
-            lock (_registryLock)
+            lock (_registry.SyncRoot)
             {
                 destination.Clear();
                 CleanupDeadProcessesLocked();
 
-                foreach (var process in _processes.Values)
-                    destination.Add(process);
+                foreach (var process in _registry.Entries.Values)
+                    destination.Add(new KernelProcess(process));
 
                 return destination.Count;
             }
@@ -151,37 +154,38 @@ namespace ZonderqOS.SystemCore
 
         private static void RemoveProcess(int pid)
         {
-            lock (_registryLock)
+            lock (_registry.SyncRoot)
             {
-                if (_processes.TryGetValue(pid, out var process))
+                if (_registry.Entries.TryGetValue(pid, out var process))
                 {
-                    _processes.Remove(pid);
-                    process.Cts.Dispose();
+                    _registry.Entries.Remove(pid);
+                    process.Cancellation.Dispose();
                 }
             }
         }
 
         private static void CleanupDeadProcessesLocked()
         {
-            _deadPidScratch.Clear();
+            var deadPidScratch = _registry.DeadPidScratch;
+            deadPidScratch.Clear();
 
-            foreach (var kvp in _processes)
+            foreach (var kvp in _registry.Entries)
             {
                 if (kvp.Value == null || !kvp.Value.IsRunning)
-                    _deadPidScratch.Add(kvp.Key);
+                    deadPidScratch.Add(kvp.Key);
             }
 
-            for (int i = 0; i < _deadPidScratch.Count; i++)
+            for (int i = 0; i < deadPidScratch.Count; i++)
             {
-                int pid = _deadPidScratch[i];
-                if (_processes.TryGetValue(pid, out var process))
+                int pid = deadPidScratch[i];
+                if (_registry.Entries.TryGetValue(pid, out var process))
                 {
-                    _processes.Remove(pid);
-                    process.Cts.Dispose();
+                    _registry.Entries.Remove(pid);
+                    process.Cancellation.Dispose();
                 }
             }
 
-            _deadPidScratch.Clear();
+            deadPidScratch.Clear();
         }
     }
 }
