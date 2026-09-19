@@ -4,7 +4,7 @@ This roadmap gates the migration from managed kernel tasks to real isolated proc
 
 ## V1 — truthful process model and lifecycle
 
-Status: **implementation present; validation gate pending**.
+Status: **COMPLETE — green CI on PR head ancestry**.
 
 Criteria:
 - existing `ProcessManager.Start` objects are explicitly kernel tasks, not isolated processes;
@@ -12,11 +12,11 @@ Criteria:
 - shared kernel address space is represented explicitly;
 - x86_64 and ARM64 builds remain regression-free.
 
-Gate: build/CI for the exact PR head. No runtime-isolation claim is made in V1.
+Gate: `VMM stage V1 process model`. No runtime-isolation claim is made in V1.
 
 ## V2 — architecture-neutral VMM contracts
 
-Status: blocked by V1 gate.
+Status: **COMPLETE — green `VMM stage V2 contracts` on `49d9b4e981dbf7994313bbaa200d57857fba9c62`**.
 
 Criteria:
 - page size/alignment and mapping contracts;
@@ -27,7 +27,7 @@ Criteria:
 
 ## V3 — x86_64 page-table backend
 
-Status: blocked by V2.
+Status: **IN PROGRESS — V2 gate is green; no runtime claim yet**.
 
 Criteria:
 - controlled PML4 root creation/destruction;
