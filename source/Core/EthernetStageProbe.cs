@@ -1,5 +1,6 @@
 #if ZONDERQ_NETWORK_N2_PROBE
-using Cosmos.Kernel.Core.IO;
+using System;
+using Cosmos.Kernel.HAL.Interfaces.Devices;
 using Cosmos.Kernel.System.Network;
 
 namespace ZonderqOS
@@ -17,29 +18,29 @@ namespace ZonderqOS
         {
             if (!NetworkManager.IsEnabled || !NetworkManager.Ready || !NetworkManager.LinkUp)
             {
-                Serial.WriteString("[NETWORK-N2][TX-FAIL] NIC not ready/link-up\n");
+                Console.WriteLine("[NETWORK-N2][TX-FAIL] NIC not ready/link-up");
                 return;
             }
 
             MACAddress? mac = NetworkManager.MacAddress;
             if (mac is null)
             {
-                Serial.WriteString("[NETWORK-N2][TX-FAIL] no MAC\n");
+                Console.WriteLine("[NETWORK-N2][TX-FAIL] no MAC");
                 return;
             }
 
-            byte[] source = ParseMac(mac.ToString());
+            byte[] source = ParseMac(mac.ToString() ?? string.Empty);
             byte[] frame = new byte[64];
             for (int i = 0; i < 6; i++) frame[i] = 0xFF;
             for (int i = 0; i < 6; i++) frame[6 + i] = source[i];
             frame[12] = (byte)(ProbeEtherType >> 8);
-            frame[13] = (byte)ProbeEtherType;
+            frame[13] = (byte)(ProbeEtherType & 0xFF);
 
             byte[] marker = { (byte)'Z', (byte)'O', (byte)'N', (byte)'D', (byte)'E', (byte)'R', (byte)'Q', (byte)'_', (byte)'N', (byte)'2', (byte)'_', (byte)'T', (byte)'X' };
             for (int i = 0; i < marker.Length; i++) frame[14 + i] = marker[i];
 
             bool queued = NetworkManager.Send(frame, frame.Length);
-            Serial.WriteString(queued ? "[NETWORK-N2][TX-QUEUED] raw Ethernet frame queued\n" : "[NETWORK-N2][TX-FAIL] driver rejected raw Ethernet frame\n");
+            Console.WriteLine(queued ? "[NETWORK-N2][TX-QUEUED] raw Ethernet frame queued" : "[NETWORK-N2][TX-FAIL] driver rejected raw Ethernet frame");
         }
 
         private static byte[] ParseMac(string text)
