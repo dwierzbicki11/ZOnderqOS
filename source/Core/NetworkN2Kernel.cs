@@ -9,8 +9,8 @@ namespace ZonderqOS
         protected override void BeforeRun()
         {
             base.BeforeRun();
-            Console.WriteLine("[NETWORK-N2] starting raw Ethernet probe");
-            EthernetStageProbe.RunTx();
+            Console.WriteLine("[NETWORK-N2] starting raw Ethernet TX/RX probe");
+            EthernetStageProbe.Run();
         }
     }
 }
