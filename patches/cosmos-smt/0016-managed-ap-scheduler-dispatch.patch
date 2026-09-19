@@ -14,6 +14,38 @@ index cf8a0af..ccbe4ab 100644
                      }
                  }
                  return;
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs
+new file mode 100644
+index 0000000..838fc02
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs
+@@ -0,0 +1,26 @@
++using System.Runtime.InteropServices;
++using Cosmos.Kernel.Core.CPU;
++using Cosmos.Kernel.Core.Scheduler;
++
++namespace Cosmos.Kernel.Core.Bridge;
++
++/// <summary>
++/// Initial instruction pointer for the Stage-16 scheduler thread. Unlike the
++/// earlier AP exports this entry is reached by the normal interrupt-return
++/// context-switch path on the thread's separately allocated scheduler stack.
++/// </summary>
++internal static class ManagedApSchedulerThreadNative
++{
++    [UnmanagedCallersOnly]
++    internal static void Entry(uint expectedCpuId)
++    {
++        SchedulerManager.RunStage16DispatchedThread(expectedCpuId);
++
++        // A completed thread is switched away by the AP LAPIC timer. It must
++        // never return: the initial context was entered with a jump, not call.
++        while (true)
++        {
++            InternalCpu.Halt();
++        }
++    }
++}
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 index 84a60cb..8b122bd 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
@@ -76,7 +108,7 @@ index 84a60cb..8b122bd 100644
 +    }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 0584999..b1a0bcf 100644
+index 0584999..ff70c94 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -74,6 +74,12 @@ public static partial class SchedulerManager
@@ -92,7 +124,7 @@ index 0584999..b1a0bcf 100644
  #if ARCH_X64
      [LibraryImport("*", EntryPoint = "_native_x64_run_percpu_scheduler_test")]
      [SuppressGCTransition]
-@@ -138,6 +144,14 @@ public static partial class SchedulerManager
+@@ -138,6 +144,18 @@ public static partial class SchedulerManager
      [LibraryImport("*", EntryPoint = "_native_x64_get_gc_saved_rsp")]
      [SuppressGCTransition]
      private static partial nuint NativeGetGcSavedStackPointer(uint cpuId);
@@ -104,10 +136,14 @@ index 0584999..b1a0bcf 100644
 +    [LibraryImport("*", EntryPoint = "_native_x64_run_scheduler_dispatch_test")]
 +    [SuppressGCTransition]
 +    private static partial int NativeRunSchedulerDispatchTest(uint cpuId, ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_arm_scheduler_timer")]
++    [SuppressGCTransition]
++    private static partial int NativeArmSchedulerTimer();
  #endif
  
      /// <summary>
-@@ -860,6 +874,134 @@ public static partial class SchedulerManager
+@@ -860,6 +878,139 @@ public static partial class SchedulerManager
      /// </summary>
      internal static uint AllocateThreadId() => s_nextThreadId++;
  
@@ -214,10 +250,10 @@ index 0584999..b1a0bcf 100644
 +            return;
 +        }
 +
-+        // The AP timer is already armed. Keep it masked until the worker has
-+        // published completion and left the scheduler: otherwise a first-tick
-+        // preemption can restore the native idle frame while the worker is
-+        // still live (or interrupt ExitThread while it owns the serial lock).
++        // Keep interrupts masked while the worker publishes completion and
++        // leaves the scheduler. Arm the timer only after ExitThread: arming it
++        // in the native idle command races vector 0xEF against the dispatch
++        // IPI and can make the timer enter the managed scheduler first.
 +        using (InternalCpu.DisableInterruptsScope())
 +        {
 +            ulong checksum = ComputeStage16Checksum(expectedCpuId, thread.Id);
@@ -228,6 +264,11 @@ index 0584999..b1a0bcf 100644
 +            }
 +
 +            ExitThread(expectedCpuId, thread);
++            if (NativeArmSchedulerTimer() != 1)
++            {
++                Panic.Halt("Stage 16 AP scheduler timer could not be armed.");
++                return;
++            }
 +        }
 +    }
 +
@@ -242,8 +283,22 @@ index 0584999..b1a0bcf 100644
      // ========== Thread Entry Dispatch ==========
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
+@@ -1250,7 +1401,12 @@ public static partial class SchedulerManager
+         // thread exiting itself gets that callback; a thread reaped from
+         // someone else's context (SchedulerInfo.RequestKill on a queued
+         // thread) gets the same three steps addressed at it explicitly.
+-        if (ReferenceEquals(GetCpuState(cpuId)?.CurrentThread, thread))
++        // A native/free-entry SchedulerThread has no corresponding CoreLib
++        // Thread. Calling the global CoreLib exit callback for it would read
++        // an absent t_currentThread on an AP. Only managed-backed threads own
++        // that callback lifecycle.
++        if (thread._managedThread.IsAllocated &&
++            ReferenceEquals(GetCpuState(cpuId)?.CurrentThread, thread))
+         {
+             nint managedCallback = OnThreadExitCallback;
+             if (managedCallback != IntPtr.Zero)
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-index a2dbeeb..448da80 100644
+index a2dbeeb..e78810c 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 @@ -531,6 +531,8 @@ _native_x64_ap_entry:
@@ -255,31 +310,22 @@ index a2dbeeb..448da80 100644
      jmp .Lap_park
  
  .Lap_park_command_work:
-@@ -706,6 +708,53 @@ _native_x64_ap_entry:
+@@ -706,6 +708,66 @@ _native_x64_ap_entry:
      xchg dword ptr [r14 + 48], eax
      jmp .Lap_park
  
 +.Lap_park_command_scheduler_dispatch:
 +    // Stage 16: the BSP has already placed one SchedulerThread in this CPU's
-+    // Stride run queue. Arm the real scheduler timer, send a LAPIC self-IPI on
-+    // the common managed IRQ vector and halt. The IRQ return switches to the
-+    // worker's allocated stack. Once that worker exits, vector 0xEF switches
-+    // back to this exact idle context and execution resumes after HLT.
++    // Stride run queue. Send a LAPIC self-IPI on the common managed IRQ vector
++    // and halt. The IRQ return switches to the worker's allocated stack. The
++    // worker arms vector 0xEF only after it is dead, eliminating a race where
++    // the timer could enter the scheduler before this dispatch IPI.
 +    xor eax, eax
 +    xchg dword ptr [r14 + 32], eax
 +
 +    mov rax, qword ptr [rip + _native_x64_lapic_base]
 +    test rax, rax
 +    jz .Lap_scheduler_dispatch_failure
-+    mov ecx, dword ptr [rip + _ap_timer_initial_count]
-+    test ecx, ecx
-+    jz .Lap_scheduler_dispatch_failure
-+
-+    // Divide by 16, periodic, vector 0xEF (the registered scheduler timer).
-+    mov dword ptr [rax + 0x3E0], 0x3
-+    mov dword ptr [rax + 0x320], 0x000200EF
-+    mov dword ptr [rax + 0x380], ecx
-+
 +    // Real fixed self-IPI, not INT: the managed controller's EOI corresponds
 +    // to an actual LAPIC in-service vector.
 +    mov edx, dword ptr [r14 + 8]
@@ -306,10 +352,32 @@ index a2dbeeb..448da80 100644
 +    xchg dword ptr [r14 + 48], eax
 +    jmp .Lap_park
 +
++// int _native_x64_arm_scheduler_timer()
++// Called by the running Stage-16 worker with interrupts disabled, after its
++// scheduler state is Dead. The pending timer then switches it to idle as soon
++// as the caller restores IF.
++.global _native_x64_arm_scheduler_timer
++_native_x64_arm_scheduler_timer:
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    test rax, rax
++    jz .Lap_arm_scheduler_timer_failure
++    mov ecx, dword ptr [rip + _ap_timer_initial_count]
++    test ecx, ecx
++    jz .Lap_arm_scheduler_timer_failure
++    mov dword ptr [rax + 0x3E0], 0x3
++    mov dword ptr [rax + 0x320], 0x000200EF
++    mov dword ptr [rax + 0x380], ecx
++    mfence
++    mov eax, 1
++    ret
++.Lap_arm_scheduler_timer_failure:
++    xor eax, eax
++    ret
++
  .macro AP_STATE_GETTER name, offset, width
  .global \name
  \name:
-@@ -979,6 +1028,34 @@ _native_x64_enable_ap_local_apic:
+@@ -979,6 +1041,34 @@ _native_x64_enable_ap_local_apic:
  // and acknowledges the LAPIC without entering managed runtime.
  _native_x64_install_ap_ipi_idt:
      lea r8, [rip + _ap_ipi_idt]
@@ -344,7 +412,7 @@ index a2dbeeb..448da80 100644
      lea r9, [rip + _native_x64_ap_ipi_handler]
      mov r10, r9
      mov word ptr [r8 + 0xF10], r10w
-@@ -1029,6 +1106,41 @@ _native_x64_install_ap_ipi_idt:
+@@ -1029,6 +1119,41 @@ _native_x64_install_ap_ipi_idt:
      mov dword ptr [r8 + 0xF38], eax
      mov dword ptr [r8 + 0xF3C], 0
  
@@ -386,7 +454,7 @@ index a2dbeeb..448da80 100644
      lea rax, [rip + _ap_ipi_idtr]
      mov word ptr [rax], 4095
      lea rcx, [rip + _ap_ipi_idt]
-@@ -2197,6 +2309,100 @@ _native_x64_end_idle_stack_test:
+@@ -2197,6 +2322,100 @@ _native_x64_end_idle_stack_test:
      ret
  
  
@@ -508,36 +576,3 @@ index 9cc627f..35d47bb 100644
          }
      }
  }
-diff --git a/Cosmos15clean2/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs
-new file mode 100644
-index 0000000..838fc02
---- /dev/null
-+++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApSchedulerThreadNative.cs
-@@ -0,0 +1,26 @@
-+using System.Runtime.InteropServices;
-+using Cosmos.Kernel.Core.CPU;
-+using Cosmos.Kernel.Core.Scheduler;
-+
-+namespace Cosmos.Kernel.Core.Bridge;
-+
-+/// <summary>
-+/// Initial instruction pointer for the Stage-16 scheduler thread. Unlike the
-+/// earlier AP exports this entry is reached by the normal interrupt-return
-+/// context-switch path on the thread's separately allocated scheduler stack.
-+/// </summary>
-+internal static class ManagedApSchedulerThreadNative
-+{
-+    [UnmanagedCallersOnly]
-+    internal static void Entry(uint expectedCpuId)
-+    {
-+        SchedulerManager.RunStage16DispatchedThread(expectedCpuId);
-+
-+        // A completed thread is switched away by the AP LAPIC timer. It must
-+        // never return: the initial context was entered with a jump, not call.
-+        while (true)
-+        {
-+            InternalCpu.Halt();
-+        }
-+    }
-+}
-
