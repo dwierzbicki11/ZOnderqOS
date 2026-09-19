@@ -8,7 +8,7 @@ Every stage is dependency-gated. A later stage MUST NOT start until the previous
 
 | Stage | Goal | Completion gate | Status |
 |---|---|---|---|
-| R1 | Stable ABI + fail-closed scaffolding | ABI contract tests green on exact SHA; invalid/unconfigured/high-half/wrapped ranges rejected | COMPLETE — CI green at `506a435cf723b386bee0e092cdb024daf40096fe`; revalidated green at `7a22c9b509de4c0479b90bfcff8b9683cdfbabd5` |
+| R1 | Stable ABI + fail-closed scaffolding | ABI contract tests green on exact SHA; invalid/unconfigured/high-half/wrapped ranges rejected | COMPLETE — CI green at `506a435cf723b386bee0e092cdb024daf40096fe`; revalidated green at `7a22c9b509de4c0479b90bfcff8b9683cdfbabd5` and `b41e65cbcb8a09b4f120f564f537fb652753070a` |
 | R2 | Integrate real VMM/process address space | Per-process user range comes from VMM ownership; x64 + ARM64 regression CI green | BLOCKED by VMM V3/V4 ownership path |
 | R3 | x86_64 GDT/TSS CPL3 foundation | Valid CPL3 selectors + per-CPU kernel transition stack; QEMU proof | BLOCKED |
 | R4 | x86_64 syscall entry/exit ASM | Documented register ABI; CPL3->CPL0->CPL3 round-trip in QEMU | BLOCKED |
@@ -19,7 +19,7 @@ Every stage is dependency-gated. A later stage MUST NOT start until the previous
 
 ## R1 validation record
 
-R1 was first validated by GitHub Actions workflow `Ring3 stage R1 ABI foundation`, run 2, for exact SHA `506a435cf723b386bee0e092cdb024daf40096fe`. The same R1 gate was revalidated successfully on PR-head SHA `7a22c9b509de4c0479b90bfcff8b9683cdfbabd5` (run 3). These runs prove only the ABI/fail-closed scaffolding contract; they are not evidence that CPL3 or memory isolation is active.
+R1 was first validated by GitHub Actions workflow `Ring3 stage R1 ABI foundation`, run 2, for exact SHA `506a435cf723b386bee0e092cdb024daf40096fe`. The same R1 gate was revalidated successfully on PR-head SHA `7a22c9b509de4c0479b90bfcff8b9683cdfbabd5` (run 3) and, after tightening the R2 ownership/lifetime requirements, on SHA `b41e65cbcb8a09b4f120f564f537fb652753070a` (run 4, Actions run `35422876138`). These runs prove only the ABI/fail-closed scaffolding contract; they are not evidence that CPL3 or memory isolation is active.
 
 ## Current dependency: exact VMM gate for R2
 
