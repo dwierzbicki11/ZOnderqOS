@@ -30,16 +30,26 @@ jobs:
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
       - name: Prepare patched Cosmos runtime with isolated N2 raw RX hook
         run: |
+          set -o pipefail
           unset ZONDERQ_COSMOS_SOURCE_ROOT
-          bash tools/prepare-cosmos-smt.sh --all --patch-only 2>&1 | tee network-n2-cosmos.log
+          # Build the normal complete local Cosmos feed first. N2 previously used
+          # --patch-only here, which left Cosmos.Kernel* packages absent and made
+          # NuGet package-source mapping fail before the probe could compile.
+          bash tools/prepare-cosmos-smt.sh --all 2>&1 | tee network-n2-cosmos.log
           COSMOS_ROOT="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"
+          COSMOS_FEED="$COSMOS_ROOT/artifacts/package/release"
+          test -f "$COSMOS_FEED/Cosmos.Kernel.3.0.85.nupkg"
           git -C "$COSMOS_ROOT" apply --check "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
           git -C "$COSMOS_ROOT" apply "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
+          # Repack only the package modified by the isolated raw-RX hook, while
+          # retaining the complete feed produced above for all Cosmos.Kernel deps.
           (
             cd "$COSMOS_ROOT"
             export VersionPrefix=3.0.85
-            bash .devcontainer/postCreateCommand.sh
+            dotnet pack src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj \
+              -c Release -p:VersionPrefix=3.0.85 -o "$COSMOS_FEED"
           ) 2>&1 | tee -a network-n2-cosmos.log
+          test -f "$COSMOS_FEED/Cosmos.Kernel.System.3.0.85.nupkg"
       - name: Build isolated x64 N2 probe ISO
         run: |
           set -o pipefail
@@ -53,6 +63,8 @@ jobs:
           <configuration><packageSources><clear/><add key="local-cosmos" value="$COSMOS_FEED"/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources><packageSourceMapping><packageSource key="local-cosmos"><package pattern="Cosmos.*"/></packageSource><packageSource key="nuget.org"><package pattern="*"/></packageSource></packageSourceMapping></configuration>
           EOF
           NUGET_PACKAGES="$CACHE" dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN2=true --configfile network-n2-nuget.config --force --no-cache 2>&1 | tee network-n2-restore.log
+          test -f "$CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
+          grep -Fq "$COSMOS_FEED" "$CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
           NUGET_PACKAGES="$CACHE" dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN2=true --no-restore 2>&1 | tee network-n2-build.log
           ISO="$(find bin -type f \( -name 'ZonderqOS.iso' -o -name '*.iso' \) | head -n 1)"
           test -n "$ISO" && test -f "$ISO"
