@@ -15,6 +15,15 @@ namespace ZonderqOS
 
         protected override void BeforeRun()
         {
+#if ZONDERQ_NETWORK_N3_PROBE
+            // The Cosmos Gen3 image still boots the normal ZonderqOS.Kernel entrypoint
+            // for this project. Keep the N3 runtime proof isolated by compile-time flag
+            // and execute it before storage/login initialization can interfere with the
+            // network-only CI image.
+            Console.WriteLine("[NETWORK-N3] starting ARP request/reply/cache probe");
+            ArpStageProbe.Run();
+            return;
+#else
             try
             {
                 Console.Clear();
@@ -38,10 +47,17 @@ namespace ZonderqOS
             {
                 KernelPanic.Show(ex, "BOOT", false);
             }
+#endif
         }
 
         protected override void Run()
         {
+#if ZONDERQ_NETWORK_N3_PROBE
+            // All N3 work is interrupt/RX-callback driven after BeforeRun queues the
+            // request. Do not enter the interactive shell while the CI proof waits.
+            Thread.Sleep(1000);
+            return;
+#else
             try
             {
                 if (!SecurityContext.IsAuthenticated)
@@ -94,6 +110,7 @@ namespace ZonderqOS
             {
                 KernelPanic.Show(ex, "RUNTIME", true);
             }
+#endif
         }
 
         private void RunInitialRootSetupPrompt()
