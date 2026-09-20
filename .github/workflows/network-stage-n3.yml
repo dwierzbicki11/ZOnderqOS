@@ -1,7 +1,7 @@
 name: Network stage N3 ARP
 on:
   pull_request:
-    paths: ['Kernel.cs','source/Core/ArpStageProbe.cs','source/Core/NetworkN3Kernel.cs','ZonderqOS.csproj','tools/network-stage-n3-qemu.sh','patches/network-n2/**','.github/workflows/network-stage-n3.yml']
+    paths: ['Kernel.cs','source/Core/ArpStageProbe.cs','source/Core/NetworkN3Kernel.cs','source/Core/NetworkN3EntryKernel.cs','ZonderqOS.csproj','tools/network-stage-n3-qemu.sh','patches/network-n2/**','.github/workflows/network-stage-n3.yml']
   workflow_dispatch:
 jobs:
   validate-network-n3:
