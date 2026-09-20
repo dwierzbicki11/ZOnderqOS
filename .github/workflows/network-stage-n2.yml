@@ -32,20 +32,21 @@ jobs:
         run: |
           set -o pipefail
           unset ZONDERQ_COSMOS_SOURCE_ROOT
-          # Build the normal complete local Cosmos feed first. N2 previously used
-          # --patch-only here, which left Cosmos.Kernel* packages absent and made
-          # NuGet package-source mapping fail before the probe could compile.
           bash tools/prepare-cosmos-smt.sh --all 2>&1 | tee network-n2-cosmos.log
           COSMOS_ROOT="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"
           COSMOS_FEED="$COSMOS_ROOT/artifacts/package/release"
           test -f "$COSMOS_FEED/Cosmos.Kernel.3.0.85.nupkg"
           git -C "$COSMOS_ROOT" apply --check "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
           git -C "$COSMOS_ROOT" apply "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
-          # Repack only the package modified by the isolated raw-RX hook, while
-          # retaining the complete feed produced above for all Cosmos.Kernel deps.
+          # Cosmos.Kernel.System packages architecture-specific runtime DLLs. A plain
+          # dotnet pack after patching would reuse the stale pre-patch runtime DLLs
+          # produced by prepare-cosmos-smt.sh, so rebuild both supported runtime
+          # payloads before repacking. This keeps x64 patched and ARM64 compile-safe.
           (
             cd "$COSMOS_ROOT"
             export VersionPrefix=3.0.85
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-x64 -p:VersionPrefix=3.0.85 --no-restore
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-arm64 -p:VersionPrefix=3.0.85 --no-restore
             dotnet pack src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj \
               -c Release -p:VersionPrefix=3.0.85 -o "$COSMOS_FEED"
           ) 2>&1 | tee -a network-n2-cosmos.log
