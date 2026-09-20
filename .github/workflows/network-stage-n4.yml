@@ -23,7 +23,19 @@ jobs:
           C="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"; F="$C/artifacts/package/release"
           git -C "$C" apply --check "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
           git -C "$C" apply "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
-          (cd "$C"; export VersionPrefix=3.0.85; dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -p:VersionPrefix=3.0.85 --force --no-cache; dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -p:VersionPrefix=3.0.85 --no-restore; dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -r linux-x64 -p:VersionPrefix=3.0.85 --force --no-cache; dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-x64 -p:VersionPrefix=3.0.85 --no-restore; dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -r linux-arm64 -p:VersionPrefix=3.0.85 --force --no-cache; dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-arm64 -p:VersionPrefix=3.0.85 --no-restore; dotnet pack src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -p:VersionPrefix=3.0.85 -o "$F" --no-build) 2>&1 | tee -a network-n4-cosmos.log
+          ( cd "$C"; export VersionPrefix=3.0.85
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -p:VersionPrefix=3.0.85 --no-restore
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -r linux-x64 -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-x64 -p:VersionPrefix=3.0.85 --no-restore
+            mkdir -p artifacts/multiarch/Cosmos.Kernel.System/x64
+            cp artifacts/bin/Cosmos.Kernel.System/release_linux-x64/Cosmos.Kernel.System.dll artifacts/multiarch/Cosmos.Kernel.System/x64/
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -r linux-arm64 -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-arm64 -p:VersionPrefix=3.0.85 --no-restore
+            mkdir -p artifacts/multiarch/Cosmos.Kernel.System/arm64
+            cp artifacts/bin/Cosmos.Kernel.System/release_linux-arm64/Cosmos.Kernel.System.dll artifacts/multiarch/Cosmos.Kernel.System/arm64/
+            dotnet pack src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -p:VersionPrefix=3.0.85 -o "$F" --no-build
+          ) 2>&1 | tee -a network-n4-cosmos.log
       - name: Build isolated x64 N4 probe ISO
         run: |
           set -o pipefail; C="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"; F="$C/artifacts/package/release"; CACHE="$GITHUB_WORKSPACE/.nuget/network-n4-packages"; rm -rf "$CACHE" obj bin; mkdir -p "$CACHE"
