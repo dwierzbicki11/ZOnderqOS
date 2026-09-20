@@ -40,7 +40,7 @@ namespace ZonderqOS
                 return;
             }
 
-            if (data[12] != (byte)(ProbeEtherType >> 8) || data[13] != (byte)ProbeEtherType)
+            if (data[12] != unchecked((byte)(ProbeEtherType >> 8)) || data[13] != unchecked((byte)ProbeEtherType))
             {
                 return;
             }
@@ -64,8 +64,8 @@ namespace ZonderqOS
             byte[] frame = new byte[64];
             for (int i = 0; i < 6; i++) frame[i] = 0xFF;
             for (int i = 0; i < 6; i++) frame[6 + i] = source[i];
-            frame[12] = (byte)(ProbeEtherType >> 8);
-            frame[13] = (byte)ProbeEtherType;
+            frame[12] = unchecked((byte)(ProbeEtherType >> 8));
+            frame[13] = unchecked((byte)ProbeEtherType);
             for (int i = 0; i < marker.Length; i++) frame[14 + i] = marker[i];
 
             bool queued = NetworkManager.Send(frame, frame.Length);
