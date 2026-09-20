@@ -4,18 +4,26 @@
     <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
     <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass><CosmosNetworkStageN2>false</CosmosNetworkStageN2><CosmosNetworkStageN3>false</CosmosNetworkStageN3>
     <CosmosEnableNetwork>false</CosmosEnableNetwork><CosmosEnableStorage>true</CosmosEnableStorage><CosmosEnableMouse>true</CosmosEnableMouse><CosmosEnableKeyboard>true</CosmosEnableKeyboard><CosmosEnableGraphics>true</CosmosEnableGraphics><CosmosEnableScheduler>true</CosmosEnableScheduler>
-    <DefaultItemExcludes>$(DefaultItemExcludes);source/Core/CosmosGen3DiagnosticsCompat.cs;**/CosmosGen3DiagnosticsCompat.cs</DefaultItemExcludes>
+    <DefaultItemExcludes>$(DefaultItemExcludes);source/Core/CosmosGen3DiagnosticsCompat.cs;**/CosmosGen3DiagnosticsCompat.cs;source/Core/NetworkN3EntryKernel.cs</DefaultItemExcludes>
   </PropertyGroup>
   <PropertyGroup Condition="'$(CosmosArch)' == '' and '$(RuntimeIdentifier)' == 'linux-x64'"><CosmosArch>x64</CosmosArch></PropertyGroup>
   <PropertyGroup Condition="'$(CosmosArch)' == '' and '$(RuntimeIdentifier)' == 'linux-arm64'"><CosmosArch>arm64</CosmosArch></PropertyGroup>
   <PropertyGroup Condition="'$(CosmosArch)' == 'x64'"><CosmosEnableNetwork>true</CosmosEnableNetwork><DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_X64</DefineConstants></PropertyGroup>
   <PropertyGroup Condition="'$(CosmosArch)' == 'x64' and '$(CosmosNetworkStageN2)' == 'true'"><DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_N2_PROBE</DefineConstants><CosmosKernelClass>ZonderqOS.NetworkN2Kernel</CosmosKernelClass></PropertyGroup>
-  <PropertyGroup Condition="'$(CosmosArch)' == 'x64' and '$(CosmosNetworkStageN3)' == 'true'"><DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_N3_PROBE</DefineConstants><CosmosKernelClass>ZonderqOS.NetworkN3Kernel</CosmosKernelClass></PropertyGroup>
+  <PropertyGroup Condition="'$(CosmosArch)' == 'x64' and '$(CosmosNetworkStageN3)' == 'true'"><DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_N3_PROBE</DefineConstants><CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass></PropertyGroup>
   <PropertyGroup Condition="'$(CosmosArch)' == 'arm64'"><CosmosEnableInterrupts>true</CosmosEnableInterrupts><CosmosEnablePCI>true</CosmosEnablePCI><CosmosEnableUART>true</CosmosEnableUART><DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_DISABLED</DefineConstants></PropertyGroup>
   <ItemGroup><PackageReference Include="Cosmos.Kernel" Version="3.0.85" /><PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" /></ItemGroup>
   <ItemGroup Condition="'$(CosmosArch)' == 'arm64'"><Compile Remove="source/Platform/X64/**/*.cs" /></ItemGroup>
   <ItemGroup Condition="'$(CosmosArch)' != 'arm64'"><Compile Remove="source/Platform/Arm64/**/*.cs" /></ItemGroup>
   <ItemGroup><Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" /><Compile Remove="**/CosmosGen3DiagnosticsCompat.cs" /></ItemGroup>
+  <!-- Gen3 currently boots ZonderqOS.Kernel regardless of the alternate CosmosKernelClass
+       requested by the probe profile. For N3, select the concrete CI entrypoint at the
+       compile-item layer instead. This cannot affect normal or ARM64 builds. -->
+  <ItemGroup Condition="'$(CosmosArch)' == 'x64' and '$(CosmosNetworkStageN3)' == 'true'">
+    <Compile Remove="Kernel.cs" />
+    <Compile Remove="source/Core/NetworkN3Kernel.cs" />
+    <Compile Include="source/Core/NetworkN3EntryKernel.cs" />
+  </ItemGroup>
   <ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true'"><Compile Remove="source/Shell/Commands/CmdNetwork.cs" /><Compile Remove="source/Shell/Commands/CmdIp.cs" /><Compile Remove="source/Shell/Commands/CmdPing.cs" /><Compile Remove="source/Shell/Commands/CmdDns.cs" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="source/GUI/Icons/Assets/*.png"><LogicalName>Icons.%(Filename)%(Extension)</LogicalName></EmbeddedResource><EmbeddedResource Include="source/Wallpapers/*.png"><LogicalName>Wallpapers.%(Filename)%(Extension)</LogicalName></EmbeddedResource></ItemGroup>
 
