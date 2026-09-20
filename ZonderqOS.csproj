@@ -64,17 +64,23 @@
     <EmbeddedResource Include="source/Wallpapers/*.png"><LogicalName>Wallpapers.%(Filename)%(Extension)</LogicalName></EmbeddedResource>
   </ItemGroup>
 
-  <!-- N2 is deliberately isolated from production builds. NuGet/Cosmos multi-arch
-       imports can contribute another Cosmos.Kernel.System reference after project
-       evaluation. Replace that compile reference immediately before CoreCompile
-       with the exact package DLL that the N2 workflow has already inspected. -->
+  <!-- N2 is deliberately isolated from production builds. Cosmos multi-arch
+       package props add Cosmos.Kernel.System as a Reference with a RID-specific
+       HintPath. Replace that Reference before ResolveAssemblyReferences (RAR),
+       so the compiler's ReferencePath is produced from the exact DLL that the
+       N2 workflow already inspected. Rewriting ReferencePath before CoreCompile
+       is too late/fragile because RAR owns construction of that item. -->
   <Target Name="BindVerifiedNetworkN2CosmosSystemAssembly"
-          BeforeTargets="CoreCompile"
+          BeforeTargets="ResolveAssemblyReferences"
           Condition="'$(CosmosNetworkStageN2)' == 'true' and '$(NetworkN2CosmosKernelSystemPath)' != ''">
     <ItemGroup>
-      <ReferencePath Remove="@(ReferencePath)" Condition="'%(ReferencePath.Filename)' == 'Cosmos.Kernel.System'" />
-      <ReferencePath Include="$(NetworkN2CosmosKernelSystemPath)" />
+      <Reference Remove="Cosmos.Kernel.System" />
+      <Reference Include="Cosmos.Kernel.System">
+        <HintPath>$(NetworkN2CosmosKernelSystemPath)</HintPath>
+        <Private>false</Private>
+      </Reference>
     </ItemGroup>
+    <Message Importance="High" Text="N2: binding Cosmos.Kernel.System to verified assembly $(NetworkN2CosmosKernelSystemPath) before RAR" />
   </Target>
 
 </Project>
