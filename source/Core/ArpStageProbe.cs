@@ -61,7 +61,7 @@ namespace ZonderqOS
             byte[] frame = new byte[64];
             Copy(ResolvedMac, 0, frame, 0, 6);
             Copy(localMac, 0, frame, 6, 6);
-            frame[12] = (byte)(ProofEtherType >> 8); frame[13] = (byte)ProofEtherType;
+            frame[12] = (byte)(ProofEtherType >> 8); frame[13] = (byte)(ProofEtherType & 0xff);
             Copy(ProofMarker, 0, frame, 14, ProofMarker.Length);
             Copy(ResolvedMac, 0, frame, 14 + ProofMarker.Length, 6);
             NetworkManager.Send(frame, frame.Length);
