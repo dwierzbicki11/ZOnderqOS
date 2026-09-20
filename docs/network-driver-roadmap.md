@@ -8,8 +8,8 @@ This work is intentionally sequential. A stage may advance only after the exact 
 |---|---|---|---|
 | N1 | x64 supported NIC + link | x64 ISO builds with networking enabled; QEMU supported NIC enumerates with MAC/link evidence; ARM64 regression remains safe | PASS — verified at `6db386000020a7e5e2652994af8dbfd74a6f4556`, Actions run #12 |
 | N2 | Ethernet | frame TX/RX demonstrated in QEMU | PASS — verified at `3159db51e128310b9b0d14805223c7066cba6f7a`, Actions run #23 |
-| N3 | ARP | request/reply and cache resolution demonstrated | IN PROGRESS |
-| N4 | IPv4 | configured IPv4 packet TX/RX demonstrated | BLOCKED BY N3 |
+| N3 | ARP | request/reply and cache resolution demonstrated | PASS — verified at `566d5d932878ace911e8f002144d8ef4c8b07540`, Actions run #9; isolated x64 N3 ISO build and real QEMU ARP request/reply + resolution proof green |
+| N4 | IPv4 | configured IPv4 packet TX/RX demonstrated | IN PROGRESS |
 | N5 | ICMP | successful echo request/reply to controlled QEMU peer | BLOCKED BY N4 |
 | N6 | UDP | datagram TX/RX to controlled peer | BLOCKED BY N5 |
 | N7 | DHCP | lease acquisition and applied network configuration | BLOCKED BY N6 |
@@ -30,4 +30,4 @@ Phase 1 is complete only after N9 is green. Driver/hardware work must not start 
 
 ## Current checkpoint
 
-N1 is complete and verified on exact SHA `6db386000020a7e5e2652994af8dbfd74a6f4556`. N2 is complete and verified on exact SHA `3159db51e128310b9b0d14805223c7066cba6f7a`: GitHub Actions `Network stage N2 Ethernet TX/RX bring-up` run #23 completed successfully, including patched Cosmos preparation, isolated x64 N2 ISO build, real QEMU Ethernet TX/RX proof, and evidence upload. N3 ARP is now the only active networking stage. Its completion gate requires a real ARP request/reply exchange and verified cache resolution in QEMU on the exact PR-head SHA. N4 and all later protocol stages remain blocked until N3 is green; Phase 2 remains blocked until N9.
+N1 is complete and verified on exact SHA `6db386000020a7e5e2652994af8dbfd74a6f4556`. N2 is complete and verified on exact SHA `3159db51e128310b9b0d14805223c7066cba6f7a`. N3 is complete and verified on exact SHA `566d5d932878ace911e8f002144d8ef4c8b07540`: GitHub Actions `Network stage N3 ARP` run #9 completed successfully, including patched Cosmos preparation, isolated x64 N3 ISO build, real QEMU ARP request/reply and resolution proof, and evidence upload. N4 IPv4 is now the only active networking stage. Its completion gate requires configured IPv4 packet TX/RX demonstrated in QEMU on the exact PR-head SHA with green GitHub Actions. N5 and all later protocol stages remain blocked until N4 is green; Phase 2 remains blocked until N9.
