@@ -38,10 +38,6 @@ jobs:
           test -f "$COSMOS_FEED/Cosmos.Kernel.3.0.85.nupkg"
           git -C "$COSMOS_ROOT" apply --check "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
           git -C "$COSMOS_ROOT" apply "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
-          # Cosmos multi-arch packages are packed from artifacts/multiarch, not
-          # directly from bin/. Rebuild the patched assembly for both RIDs and
-          # explicitly restage those DLLs before repacking, otherwise the nupkg
-          # silently keeps the pre-patch assemblies created by postCreateCommand.
           (
             cd "$COSMOS_ROOT"
             export VersionPrefix=3.0.85
@@ -59,7 +55,6 @@ jobs:
               -c Release -p:VersionPrefix=3.0.85 -o "$COSMOS_FEED" --no-build
           ) 2>&1 | tee -a network-n2-cosmos.log
           test -f "$COSMOS_FEED/Cosmos.Kernel.System.3.0.85.nupkg"
-          # Prove that the public hook survived the multi-arch pack itself.
           rm -rf /tmp/network-n2-package
           mkdir -p /tmp/network-n2-package
           unzip -q "$COSMOS_FEED/Cosmos.Kernel.System.3.0.85.nupkg" -d /tmp/network-n2-package
@@ -82,11 +77,16 @@ jobs:
           NUGET_PACKAGES="$CACHE" dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN2=true --configfile network-n2-nuget.config --force --no-cache 2>&1 | tee network-n2-restore.log
           test -f "$CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
           grep -Fq "$COSMOS_FEED" "$CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
-          # Verify the exact restored runtime asset before compiling the probe.
           RESTORED_SYSTEM="$CACHE/cosmos.kernel.system/3.0.85/runtimes/linux-x64/lib/net10.0/Cosmos.Kernel.System.dll"
           test -f "$RESTORED_SYSTEM"
           strings "$RESTORED_SYSTEM" | grep -Fq SetRawReceiveHandler
-          NUGET_PACKAGES="$CACHE" dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN2=true --no-restore 2>&1 | tee network-n2-build.log
+          # Directory.MultiArch.targets normally supplies this HintPath through the
+          # package's generated .props. Pin the global property to the exact DLL
+          # just verified above so another imported Cosmos package cannot replace
+          # the compile-time reference with an older assembly of the same identity.
+          NUGET_PACKAGES="$CACHE" dotnet build ZonderqOS.csproj -c Release -r linux-x64 \
+            -p:CosmosArch=x64 -p:CosmosNetworkStageN2=true \
+            -p:_CosmosKernelSystemAssemblyPath="$RESTORED_SYSTEM" --no-restore 2>&1 | tee network-n2-build.log
           ISO="$(find bin -type f \( -name 'ZonderqOS.iso' -o -name '*.iso' \) | head -n 1)"
           test -n "$ISO" && test -f "$ISO"
           cp "$ISO" network-n2-x64.iso
