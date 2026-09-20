@@ -1,89 +1,28 @@
 <Project Sdk="Cosmos.Sdk/3.0.85">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
-    <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
-    <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
-    <CosmosNetworkStageN2>false</CosmosNetworkStageN2>
-    <CosmosEnableNetwork>false</CosmosEnableNetwork>
-    <CosmosEnableStorage>true</CosmosEnableStorage>
-    <CosmosEnableMouse>true</CosmosEnableMouse>
-    <CosmosEnableKeyboard>true</CosmosEnableKeyboard>
-    <CosmosEnableGraphics>true</CosmosEnableGraphics>
-    <CosmosEnableScheduler>true</CosmosEnableScheduler>
+    <OutputType>Exe</OutputType><TargetFramework>net10.0</TargetFramework><RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+    <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass><CosmosNetworkStageN2>false</CosmosNetworkStageN2><CosmosNetworkStageN3>false</CosmosNetworkStageN3>
+    <CosmosEnableNetwork>false</CosmosEnableNetwork><CosmosEnableStorage>true</CosmosEnableStorage><CosmosEnableMouse>true</CosmosEnableMouse><CosmosEnableKeyboard>true</CosmosEnableKeyboard><CosmosEnableGraphics>true</CosmosEnableGraphics><CosmosEnableScheduler>true</CosmosEnableScheduler>
     <DefaultItemExcludes>$(DefaultItemExcludes);source/Core/CosmosGen3DiagnosticsCompat.cs;**/CosmosGen3DiagnosticsCompat.cs</DefaultItemExcludes>
   </PropertyGroup>
+  <PropertyGroup Condition="'$(CosmosArch)' == '' and '$(RuntimeIdentifier)' == 'linux-x64'"><CosmosArch>x64</CosmosArch></PropertyGroup>
+  <PropertyGroup Condition="'$(CosmosArch)' == '' and '$(RuntimeIdentifier)' == 'linux-arm64'"><CosmosArch>arm64</CosmosArch></PropertyGroup>
+  <PropertyGroup Condition="'$(CosmosArch)' == 'x64'"><CosmosEnableNetwork>true</CosmosEnableNetwork><DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_X64</DefineConstants></PropertyGroup>
+  <PropertyGroup Condition="'$(CosmosArch)' == 'x64' and '$(CosmosNetworkStageN2)' == 'true'"><DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_N2_PROBE</DefineConstants><CosmosKernelClass>ZonderqOS.NetworkN2Kernel</CosmosKernelClass></PropertyGroup>
+  <PropertyGroup Condition="'$(CosmosArch)' == 'x64' and '$(CosmosNetworkStageN3)' == 'true'"><DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_N3_PROBE</DefineConstants><CosmosKernelClass>ZonderqOS.NetworkN3Kernel</CosmosKernelClass></PropertyGroup>
+  <PropertyGroup Condition="'$(CosmosArch)' == 'arm64'"><CosmosEnableInterrupts>true</CosmosEnableInterrupts><CosmosEnablePCI>true</CosmosEnablePCI><CosmosEnableUART>true</CosmosEnableUART><DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_DISABLED</DefineConstants></PropertyGroup>
+  <ItemGroup><PackageReference Include="Cosmos.Kernel" Version="3.0.85" /><PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" /></ItemGroup>
+  <ItemGroup Condition="'$(CosmosArch)' == 'arm64'"><Compile Remove="source/Platform/X64/**/*.cs" /></ItemGroup>
+  <ItemGroup Condition="'$(CosmosArch)' != 'arm64'"><Compile Remove="source/Platform/Arm64/**/*.cs" /></ItemGroup>
+  <ItemGroup><Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" /><Compile Remove="**/CosmosGen3DiagnosticsCompat.cs" /></ItemGroup>
+  <ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true'"><Compile Remove="source/Shell/Commands/CmdNetwork.cs" /><Compile Remove="source/Shell/Commands/CmdIp.cs" /><Compile Remove="source/Shell/Commands/CmdPing.cs" /><Compile Remove="source/Shell/Commands/CmdDns.cs" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="source/GUI/Icons/Assets/*.png"><LogicalName>Icons.%(Filename)%(Extension)</LogicalName></EmbeddedResource><EmbeddedResource Include="source/Wallpapers/*.png"><LogicalName>Wallpapers.%(Filename)%(Extension)</LogicalName></EmbeddedResource></ItemGroup>
 
-  <PropertyGroup Condition="'$(CosmosArch)' == '' and '$(RuntimeIdentifier)' == 'linux-x64'">
-    <CosmosArch>x64</CosmosArch>
-  </PropertyGroup>
-  <PropertyGroup Condition="'$(CosmosArch)' == '' and '$(RuntimeIdentifier)' == 'linux-arm64'">
-    <CosmosArch>arm64</CosmosArch>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(CosmosArch)' == 'x64'">
-    <CosmosEnableNetwork>true</CosmosEnableNetwork>
-    <DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_X64</DefineConstants>
-  </PropertyGroup>
-  <!-- CI-only N2 profile: subclass the normal kernel so production boot remains unchanged. -->
-  <PropertyGroup Condition="'$(CosmosArch)' == 'x64' and '$(CosmosNetworkStageN2)' == 'true'">
-    <DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_N2_PROBE</DefineConstants>
-    <CosmosKernelClass>ZonderqOS.NetworkN2Kernel</CosmosKernelClass>
-  </PropertyGroup>
-
-  <PropertyGroup Condition="'$(CosmosArch)' == 'arm64'">
-    <CosmosEnableInterrupts>true</CosmosEnableInterrupts>
-    <CosmosEnablePCI>true</CosmosEnablePCI>
-    <CosmosEnableUART>true</CosmosEnableUART>
-    <DefineConstants>$(DefineConstants);ZONDERQ_NETWORK_DISABLED</DefineConstants>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include="Cosmos.Kernel" Version="3.0.85" />
-    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(CosmosArch)' == 'arm64'">
-    <Compile Remove="source/Platform/X64/**/*.cs" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(CosmosArch)' != 'arm64'">
-    <Compile Remove="source/Platform/Arm64/**/*.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" />
-    <Compile Remove="**/CosmosGen3DiagnosticsCompat.cs" />
-  </ItemGroup>
-  <ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true'">
-    <Compile Remove="source/Shell/Commands/CmdNetwork.cs" />
-    <Compile Remove="source/Shell/Commands/CmdIp.cs" />
-    <Compile Remove="source/Shell/Commands/CmdPing.cs" />
-    <Compile Remove="source/Shell/Commands/CmdDns.cs" />
-  </ItemGroup>
-  <ItemGroup>
-    <EmbeddedResource Include="source/GUI/Icons/Assets/*.png"><LogicalName>Icons.%(Filename)%(Extension)</LogicalName></EmbeddedResource>
-    <EmbeddedResource Include="source/Wallpapers/*.png"><LogicalName>Wallpapers.%(Filename)%(Extension)</LogicalName></EmbeddedResource>
-  </ItemGroup>
-
-  <!-- N2 is deliberately isolated from production builds. Cosmos/NuGet may add
-       more than one Cosmos.Kernel.System candidate while resolving package and
-       RID assets. Pin the compiler input only after RAR has finished, replacing
-       every resolved Cosmos.Kernel.System ReferencePath with the exact runtime
-       DLL already verified by the N2 workflow. This avoids relying on ordering
-       of package .props/.targets while leaving normal builds untouched. -->
-  <Target Name="BindVerifiedNetworkN2CosmosSystemAssembly"
-          AfterTargets="ResolveAssemblyReferences"
-          BeforeTargets="CoreCompile"
-          Condition="'$(CosmosNetworkStageN2)' == 'true' and '$(NetworkN2CosmosKernelSystemPath)' != ''">
-    <ItemGroup>
-      <_NetworkN2OldCosmosSystem Include="@(ReferencePath)" Condition="'%(ReferencePath.Filename)' == 'Cosmos.Kernel.System'" />
-      <ReferencePath Remove="@(_NetworkN2OldCosmosSystem)" />
-      <ReferencePath Include="$(NetworkN2CosmosKernelSystemPath)">
-        <ReferenceSourceTarget>NetworkN2VerifiedRuntime</ReferenceSourceTarget>
-        <Private>false</Private>
-      </ReferencePath>
-    </ItemGroup>
-    <Message Importance="High" Text="N2: replaced resolved Cosmos.Kernel.System reference(s) @(_NetworkN2OldCosmosSystem) with verified assembly $(NetworkN2CosmosKernelSystemPath)" />
-    <Error Condition="'@(_NetworkN2OldCosmosSystem)' == ''" Text="N2: RAR produced no Cosmos.Kernel.System ReferencePath to replace" />
+  <!-- N2/N3 CI probes need the patched raw-RX Cosmos assembly. Normal builds are untouched. -->
+  <Target Name="BindVerifiedNetworkProbeCosmosSystemAssembly" AfterTargets="ResolveAssemblyReferences" BeforeTargets="CoreCompile" Condition="('$(CosmosNetworkStageN2)' == 'true' or '$(CosmosNetworkStageN3)' == 'true') and '$(NetworkN2CosmosKernelSystemPath)' != ''">
+    <ItemGroup><_NetworkProbeOldCosmosSystem Include="@(ReferencePath)" Condition="'%(ReferencePath.Filename)' == 'Cosmos.Kernel.System'" /><ReferencePath Remove="@(_NetworkProbeOldCosmosSystem)" /><ReferencePath Include="$(NetworkN2CosmosKernelSystemPath)"><ReferenceSourceTarget>NetworkProbeVerifiedRuntime</ReferenceSourceTarget><Private>false</Private></ReferencePath></ItemGroup>
+    <Message Importance="High" Text="Network probe: replaced resolved Cosmos.Kernel.System reference(s) @(_NetworkProbeOldCosmosSystem) with verified assembly $(NetworkN2CosmosKernelSystemPath)" />
+    <Error Condition="'@(_NetworkProbeOldCosmosSystem)' == ''" Text="Network probe: RAR produced no Cosmos.Kernel.System ReferencePath to replace" />
   </Target>
-
 </Project>
