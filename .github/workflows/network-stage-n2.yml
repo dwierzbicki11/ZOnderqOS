@@ -38,20 +38,21 @@ jobs:
           test -f "$COSMOS_FEED/Cosmos.Kernel.3.0.85.nupkg"
           git -C "$COSMOS_ROOT" apply --check "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
           git -C "$COSMOS_ROOT" apply "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
-          # Cosmos.Kernel.System packages architecture-specific runtime DLLs. A plain
-          # dotnet pack after patching would reuse the stale pre-patch runtime DLLs
-          # produced by prepare-cosmos-smt.sh, so rebuild both supported runtime
-          # payloads before repacking. Restore each RID immediately before its
-          # --no-restore build so project.assets.json contains that exact target.
+          # Rebuild the target-framework reference/lib assembly as well as both
+          # architecture-specific runtime payloads. The consumer compiles against
+          # the generic net10.0 asset, so rebuilding only linux-* leaves the old
+          # NetworkManager API visible even though the runtime DLL is patched.
           (
             cd "$COSMOS_ROOT"
             export VersionPrefix=3.0.85
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -p:VersionPrefix=3.0.85 --no-restore
             dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -r linux-x64 -p:VersionPrefix=3.0.85 --force --no-cache
             dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-x64 -p:VersionPrefix=3.0.85 --no-restore
             dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -r linux-arm64 -p:VersionPrefix=3.0.85 --force --no-cache
             dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-arm64 -p:VersionPrefix=3.0.85 --no-restore
             dotnet pack src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj \
-              -c Release -p:VersionPrefix=3.0.85 -o "$COSMOS_FEED"
+              -c Release -p:VersionPrefix=3.0.85 -o "$COSMOS_FEED" --no-build
           ) 2>&1 | tee -a network-n2-cosmos.log
           test -f "$COSMOS_FEED/Cosmos.Kernel.System.3.0.85.nupkg"
       - name: Build isolated x64 N2 probe ISO
