@@ -8,9 +8,11 @@ namespace ZonderqOS
     /// <summary>CI-only N3 proof: emits a real ARP request and only reports resolution after a validated ARP reply is cached.</summary>
     internal static class ArpStageProbe
     {
+        private const ushort ProofEtherType = 0x88B6;
         private static readonly byte[] LocalIp = { 10, 0, 2, 15 };
         private static readonly byte[] PeerIp = { 10, 0, 2, 2 };
         private static readonly byte[] ResolvedMac = new byte[6];
+        private static readonly byte[] ProofMarker = Bytes("ZONDERQ_N3_ARP_RESOLVED");
         private static bool Resolved;
 
         internal static void Run()
@@ -47,6 +49,22 @@ namespace ZonderqOS
             Resolved = true;
             Console.WriteLine("[NETWORK-N3][ARP-REPLY-VALID]");
             Console.WriteLine("[NETWORK-N3][CACHE-RESOLVED] " + MacText(ResolvedMac));
+            SendResolutionProof();
+        }
+
+        // Emit a distinct Ethernet frame only after a validated ARP reply populated
+        // ResolvedMac. QEMU PCAP can therefore prove RX + validation + cache state even
+        // when the Gen3 console does not mirror probe Console.WriteLine calls to serial.
+        private static void SendResolutionProof()
+        {
+            byte[] localMac = ParseMac(NetworkManager.MacAddress?.ToString() ?? string.Empty);
+            byte[] frame = new byte[64];
+            Copy(ResolvedMac, 0, frame, 0, 6);
+            Copy(localMac, 0, frame, 6, 6);
+            frame[12] = (byte)(ProofEtherType >> 8); frame[13] = (byte)ProofEtherType;
+            Copy(ProofMarker, 0, frame, 14, ProofMarker.Length);
+            Copy(ResolvedMac, 0, frame, 14 + ProofMarker.Length, 6);
+            NetworkManager.Send(frame, frame.Length);
         }
 
         private static ushort Get16(byte[] b, int o) => (ushort)((b[o] << 8) | b[o + 1]);
@@ -54,6 +72,7 @@ namespace ZonderqOS
         private static void Copy(byte[] s, int so, byte[] d, int o, int n) { for (int i = 0; i < n; i++) d[o + i] = s[so + i]; }
         private static string MacText(byte[] b) => Hex(b[0])+":"+Hex(b[1])+":"+Hex(b[2])+":"+Hex(b[3])+":"+Hex(b[4])+":"+Hex(b[5]);
         private static string Hex(byte b) { const string h="0123456789ABCDEF"; return new string(new[]{h[b>>4],h[b&15]}); }
+        private static byte[] Bytes(string text) { byte[] r=new byte[text.Length]; for(int i=0;i<text.Length;i++) r[i]=(byte)text[i]; return r; }
         private static byte[] ParseMac(string text)
         {
             byte[] r=new byte[6]; int output=0,value=0,digits=0;
