@@ -7,8 +7,8 @@ This work is intentionally sequential. A stage may advance only after the exact 
 | Stage | Goal | Completion gate | Status |
 |---|---|---|---|
 | N1 | x64 supported NIC + link | x64 ISO builds with networking enabled; QEMU supported NIC enumerates with MAC/link evidence; ARM64 regression remains safe | PASS — verified at `6db386000020a7e5e2652994af8dbfd74a6f4556`, Actions run #12 |
-| N2 | Ethernet | frame TX/RX demonstrated in QEMU | IN PROGRESS |
-| N3 | ARP | request/reply and cache resolution demonstrated | BLOCKED BY N2 |
+| N2 | Ethernet | frame TX/RX demonstrated in QEMU | PASS — verified at `3159db51e128310b9b0d14805223c7066cba6f7a`, Actions run #23 |
+| N3 | ARP | request/reply and cache resolution demonstrated | IN PROGRESS |
 | N4 | IPv4 | configured IPv4 packet TX/RX demonstrated | BLOCKED BY N3 |
 | N5 | ICMP | successful echo request/reply to controlled QEMU peer | BLOCKED BY N4 |
 | N6 | UDP | datagram TX/RX to controlled peer | BLOCKED BY N5 |
@@ -30,4 +30,4 @@ Phase 1 is complete only after N9 is green. Driver/hardware work must not start 
 
 ## Current checkpoint
 
-N1 is complete and verified on exact SHA `6db386000020a7e5e2652994af8dbfd74a6f4556`. GitHub Actions `Network stage N1 NIC/link validation` run #12 completed successfully: the x64 ISO built with networking enabled, the ARM64 compile-only regression passed, and the QEMU E1000E runtime proof passed its NIC binding, MAC and link evidence gates. N2 is now the only active networking stage. Its completion criterion is deliberately stronger than NIC/link discovery: a real Ethernet frame must be transmitted and received in QEMU. N3 and all later protocol stages remain blocked until that proof is green.
+N1 is complete and verified on exact SHA `6db386000020a7e5e2652994af8dbfd74a6f4556`. N2 is complete and verified on exact SHA `3159db51e128310b9b0d14805223c7066cba6f7a`: GitHub Actions `Network stage N2 Ethernet TX/RX bring-up` run #23 completed successfully, including patched Cosmos preparation, isolated x64 N2 ISO build, real QEMU Ethernet TX/RX proof, and evidence upload. N3 ARP is now the only active networking stage. Its completion gate requires a real ARP request/reply exchange and verified cache resolution in QEMU on the exact PR-head SHA. N4 and all later protocol stages remain blocked until N3 is green; Phase 2 remains blocked until N9.
