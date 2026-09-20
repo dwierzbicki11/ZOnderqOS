@@ -80,13 +80,9 @@ jobs:
           RESTORED_SYSTEM="$CACHE/cosmos.kernel.system/3.0.85/runtimes/linux-x64/lib/net10.0/Cosmos.Kernel.System.dll"
           test -f "$RESTORED_SYSTEM"
           strings "$RESTORED_SYSTEM" | grep -Fq SetRawReceiveHandler
-          # Directory.MultiArch.targets normally supplies this HintPath through the
-          # package's generated .props. Pin the global property to the exact DLL
-          # just verified above so another imported Cosmos package cannot replace
-          # the compile-time reference with an older assembly of the same identity.
           NUGET_PACKAGES="$CACHE" dotnet build ZonderqOS.csproj -c Release -r linux-x64 \
             -p:CosmosArch=x64 -p:CosmosNetworkStageN2=true \
-            -p:_CosmosKernelSystemAssemblyPath="$RESTORED_SYSTEM" --no-restore 2>&1 | tee network-n2-build.log
+            -p:NetworkN2CosmosKernelSystemPath="$RESTORED_SYSTEM" --no-restore 2>&1 | tee network-n2-build.log
           ISO="$(find bin -type f \( -name 'ZonderqOS.iso' -o -name '*.iso' \) | head -n 1)"
           test -n "$ISO" && test -f "$ISO"
           cp "$ISO" network-n2-x64.iso
