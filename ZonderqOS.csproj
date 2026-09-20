@@ -64,4 +64,17 @@
     <EmbeddedResource Include="source/Wallpapers/*.png"><LogicalName>Wallpapers.%(Filename)%(Extension)</LogicalName></EmbeddedResource>
   </ItemGroup>
 
+  <!-- N2 is deliberately isolated from production builds. NuGet/Cosmos multi-arch
+       imports can contribute another Cosmos.Kernel.System reference after project
+       evaluation. Replace that compile reference immediately before CoreCompile
+       with the exact package DLL that the N2 workflow has already inspected. -->
+  <Target Name="BindVerifiedNetworkN2CosmosSystemAssembly"
+          BeforeTargets="CoreCompile"
+          Condition="'$(CosmosNetworkStageN2)' == 'true' and '$(NetworkN2CosmosKernelSystemPath)' != ''">
+    <ItemGroup>
+      <ReferencePath Remove="@(ReferencePath)" Condition="'%(ReferencePath.Filename)' == 'Cosmos.Kernel.System'" />
+      <ReferencePath Include="$(NetworkN2CosmosKernelSystemPath)" />
+    </ItemGroup>
+  </Target>
+
 </Project>
