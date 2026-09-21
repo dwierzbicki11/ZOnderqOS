@@ -14,15 +14,15 @@ This work is intentionally sequential. A stage may advance only after the exact 
 | N6 | UDP | datagram TX/RX to controlled peer | PASS — verified at `bb292d50e96303b3230c2fc729594ef31b2fe731`, Actions run #1; patched Cosmos preparation, isolated x64 N6 ISO build, real QEMU UDP TX/RX runtime proof and evidence upload green |
 | N7 | DHCP | lease acquisition and applied network configuration | PASS — revalidated at `5f00a6558763cb1cb607e89352a69c1d76dcce69`, Actions run #8; real QEMU DHCP DORA gate green after linker hardening |
 | N8 | DNS | hostname resolution through configured DNS server | PASS — revalidated at `5f00a6558763cb1cb607e89352a69c1d76dcce69`, Actions run #5; real DNS QEMU runtime gate green |
-| N9 | TCP | connection + payload TX/RX to controlled peer, with boot/storage/GUI regressions checked | IN PROGRESS |
+| N9 | TCP | connection + payload TX/RX to controlled peer, with boot/storage/GUI regressions checked | TCP RUNTIME PASS / REGRESSION CHECKS PENDING — TCP QEMU gate verified at `beea331a1cc9fd8914c1feb027609fccbcfe2783`, Actions run #4; isolated x64 N9 ISO build and real QEMU TCP runtime proof green. Phase 1 remains open until boot/storage/GUI regression checks are green on an exact PR-head SHA. |
 
-Phase 1 is complete only after N9 is green. Driver/hardware work must not start before then except dependency analysis required for the networking NIC.
+Phase 1 is complete only after N9 TCP and its boot/storage/GUI regression checks are green. Driver/hardware work must not start before then except dependency analysis required for the networking NIC.
 
 ## Phase 2 — Driver/hardware stack
 
 | Stage | Goal | Completion gate | Status |
 |---|---|---|---|
-| D1 | device/driver binding + PCI/PCIe | deterministic enumeration/binding tests | BLOCKED BY N9 |
+| D1 | device/driver binding + PCI/PCIe | deterministic enumeration/binding tests | BLOCKED BY PHASE 1 REGRESSION GATE |
 | D2 | AHCI/NVMe stabilization | storage runtime tests in QEMU | BLOCKED BY D1 |
 | D3 | USB xHCI | controller init + transfer proof | BLOCKED BY D2 |
 | D4 | HID | input device runtime proof | BLOCKED BY D3 |
@@ -30,4 +30,4 @@ Phase 1 is complete only after N9 is green. Driver/hardware work must not start 
 
 ## Current checkpoint
 
-The exact PR-head SHA `5f00a6558763cb1cb607e89352a69c1d76dcce69` has green GitHub Actions for every networking gate N1 through N8. In particular, `Network stage N7 DHCP` run #8 is green after the LLVM/lld workflow hardening, and `Network stage N8 DNS` run #5 is green on the same SHA. This restores the strict dependency chain and allows N9 TCP to begin. N9 is now the only active networking stage. Its completion gate requires a real TCP connection to a controlled QEMU peer, bidirectional payload TX/RX validated by the guest/peer, green exact-SHA Actions, and boot/storage/GUI regression checks. Phase 2 remains blocked until N9 is green.
+The exact PR-head SHA `beea331a1cc9fd8914c1feb027609fccbcfe2783` has green GitHub Actions for networking gates N1 through N9. `Network stage N9 TCP` run #4 built the isolated x64 N9 ISO and completed the real QEMU TCP runtime proof successfully. This verifies the TCP execution gate, but it does not by itself satisfy the explicitly required boot/storage/GUI regression portion of N9. Therefore Phase 1 is not yet declared complete and Phase 2 remains blocked. The next required work is an exact-SHA regression gate covering normal boot plus storage and GUI/render-loop behavior without weakening existing runtime proofs.
