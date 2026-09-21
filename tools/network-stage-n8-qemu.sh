@@ -17,8 +17,8 @@ def arp_reply(g):
  a=bytearray(28);a[:8]=bytes.fromhex('0001080006040002');a[8:14]=peer;a[14:18]=pip;a[18:24]=g;a[24:28]=gip;return eth(g,peer,0x806,a)
 def dns_reply(g,d):
  ip=d[14:34];u=d[34:];query=u[8:];
- if len(query)<29 or query[:2]!=b'Z8' or query[2:4]!=b'\x01\0' or query[4:6]!=b'\0\x01' or query[12:29]!=b'\x07zonderq\x04test\0\0\x01\0\x01':raise RuntimeError('invalid DNS A query')
- r=query[:2]+b'\x81\x80\0\x01\0\x01\0\0\0\0'+query[12:29]+b'\xc0\x0c\0\x01\0\x01\0\0\0\x3c\0\x04'+answer
+ if len(query)<30 or query[:2]!=b'Z8' or query[2:4]!=b'\x01\0' or query[4:6]!=b'\0\x01' or query[12:30]!=b'\x07zonderq\x04test\0\0\x01\0\x01':raise RuntimeError('invalid DNS A query')
+ r=query[:2]+b'\x81\x80\0\x01\0\x01\0\0\0\0'+query[12:30]+b'\xc0\x0c\0\x01\0\x01\0\0\0\x3c\0\x04'+answer
  ru=bytearray(8+len(r));ru[:2]=(53).to_bytes(2,'big');ru[2:4]=u[:2];ru[4:6]=len(ru).to_bytes(2,'big');ru[8:]=r;c=udp_cs(ru,pip,gip);ru[6:8]=(c or 0xffff).to_bytes(2,'big')
  h=bytearray(20);h[0]=0x45;h[2:4]=(20+len(ru)).to_bytes(2,'big');h[8]=64;h[9]=17;h[12:16]=pip;h[16:20]=gip;h[10:12]=cs(h).to_bytes(2,'big');return eth(g,peer,0x800,h+ru)
 s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(('127.0.0.1',5598));s.settimeout(25)
@@ -26,7 +26,7 @@ try:
  d,_=s.recvfrom(2048);g=d[6:12]
  if len(d)<42 or d[12:14]!=b'\x08\x06' or d[38:42]!=pip:raise RuntimeError('ARP for DNS peer absent')
  s.sendto(arp_reply(g),('127.0.0.1',5597));d,_=s.recvfrom(2048)
- if len(d)<63 or d[12:14]!=b'\x08\0' or d[23]!=17 or d[36:38]!=b'\0\x35':raise RuntimeError('DNS UDP query absent')
+ if len(d)<64 or d[12:14]!=b'\x08\0' or d[23]!=17 or d[36:38]!=b'\0\x35':raise RuntimeError('DNS UDP query absent')
  s.sendto(dns_reply(g,d),('127.0.0.1',5597))
 except Exception as e:print('[NETWORK-N8][PEER-FAIL]',e,file=sys.stderr);sys.exit(1)
 finally:s.close()
