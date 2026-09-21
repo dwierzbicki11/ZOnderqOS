@@ -13,7 +13,9 @@ jobs:
         with: { dotnet-version: '10.0.x' }
       - name: Install dependencies
         run: |
-          sudo apt-get update && sudo apt-get install -y qemu-system-x86 lld xorriso nasm
+          sudo apt-get update && sudo apt-get install -y qemu-system-x86 llvm lld xorriso nasm
+          command -v ld.lld
+          ld.lld --version
           dotnet tool install --global Cosmos.Patcher --version 3.0.85
           echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
       - name: Prepare patched Cosmos raw RX runtime
@@ -36,7 +38,11 @@ jobs:
           ) 2>&1 | tee -a network-n7-cosmos.log
       - name: Build isolated x64 N7 probe ISO
         run: |
-          set -o pipefail; C="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"; F="$C/artifacts/package/release"; CACHE="$GITHUB_WORKSPACE/.nuget/network-n7-packages"; rm -rf "$CACHE" obj bin; mkdir -p "$CACHE"
+          set -o pipefail
+          export PATH="/usr/lib/llvm-20/bin:/usr/lib/llvm-19/bin:/usr/lib/llvm-18/bin:/usr/lib/llvm-17/bin:/usr/lib/llvm-16/bin:/usr/bin:$PATH"
+          command -v ld.lld
+          ld.lld --version
+          C="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"; F="$C/artifacts/package/release"; CACHE="$GITHUB_WORKSPACE/.nuget/network-n7-packages"; rm -rf "$CACHE" obj bin; mkdir -p "$CACHE"
           printf '%s\n' '<?xml version="1.0" encoding="utf-8"?><configuration><packageSources><clear/><add key="local-cosmos" value="'"$F"'"/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources></configuration>' > network-n7-nuget.config
           NUGET_PACKAGES="$CACHE" dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN7=true --configfile network-n7-nuget.config --force --no-cache 2>&1 | tee network-n7-restore.log
           S="$CACHE/cosmos.kernel.system/3.0.85/runtimes/linux-x64/lib/net10.0/Cosmos.Kernel.System.dll"; test -f "$S"; strings "$S" | grep -Fq SetRawReceiveHandler
