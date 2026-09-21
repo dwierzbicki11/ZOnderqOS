@@ -1,7 +1,7 @@
 name: Network stage N9 TCP
 on:
   pull_request:
-    paths: ['source/Core/TcpStageProbe.cs','source/Core/NetworkN9EntryKernel.cs','ZonderqOS.csproj','tools/network-stage-n9-qemu.sh','patches/network-n2/**','.github/workflows/network-stage-n9.yml']
+    paths: ['source/Core/TcpStageProbe.cs','source/Core/NetworkN9EntryKernel.cs','ZonderqOS.csproj','Kernel.cs','tools/network-stage-n9-qemu.sh','patches/network-n2/**','.github/workflows/network-stage-n9.yml']
   workflow_dispatch:
 jobs:
   validate-network-n9:
@@ -45,6 +45,38 @@ jobs:
           ISO="$(find bin -type f -name '*.iso' | head -n1)"; test -f "$ISO"; cp "$ISO" network-n9-x64.iso; echo "ZONDERQ_ISO=$GITHUB_WORKSPACE/network-n9-x64.iso" >> "$GITHUB_ENV"
       - name: QEMU TCP runtime proof
         run: bash tools/network-stage-n9-qemu.sh
+      - name: Build normal x64 regression ISO
+        run: |
+          set -o pipefail
+          CACHE="$GITHUB_WORKSPACE/.nuget/network-n9-packages"
+          S="$CACHE/cosmos.kernel.system/3.0.85/runtimes/linux-x64/lib/net10.0/Cosmos.Kernel.System.dll"
+          rm -rf obj bin
+          NUGET_PACKAGES="$CACHE" dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --configfile network-n9-nuget.config --force --no-cache 2>&1 | tee network-n9-regression-restore.log
+          NUGET_PACKAGES="$CACHE" dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:NetworkN2CosmosKernelSystemPath="$S" --no-restore 2>&1 | tee network-n9-regression-build.log
+          ISO="$(find bin -type f -name '*.iso' | head -n1)"; test -f "$ISO"; cp "$ISO" network-n9-regression-x64.iso
+      - name: QEMU normal boot and storage-init regression proof
+        run: |
+          set -euo pipefail
+          LOG=network-n9-regression-qemu.log
+          : > "$LOG"
+          qemu-system-x86_64 -M q35 -cpu Nehalem -m 2G -drive file=network-n9-regression-x64.iso,media=cdrom,if=ide,readonly=on -boot d -display none -monitor none -serial "file:$LOG" -no-reboot -no-shutdown &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 90); do
+            if grep -Eq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG"; then
+              echo 'Fatal kernel error during normal regression boot'; tail -n 200 "$LOG"; exit 1
+            fi
+            if grep -Fq 'ZonderqOS kernel successfully booted.' "$LOG"; then
+              # This marker is emitted only after Disk.Initialize and the remaining normal
+              # boot initializers return successfully in Kernel.BeforeRun.
+              echo 'Normal boot + storage initialization regression proof passed.'
+              tail -n 120 "$LOG" || true
+              exit 0
+            fi
+            kill -0 "$PID" 2>/dev/null || { wait "$PID" || true; echo 'QEMU exited before normal boot proof'; tail -n 200 "$LOG"; exit 1; }
+            sleep 1
+          done
+          echo 'Timeout waiting for normal boot/storage initialization proof'; tail -n 200 "$LOG"; exit 1
       - name: Upload N9 evidence
         if: always()
         uses: actions/upload-artifact@v4
@@ -56,4 +88,7 @@ jobs:
             network-n9-build.log
             network-n9-qemu.log
             network-n9.pcap
+            network-n9-regression-restore.log
+            network-n9-regression-build.log
+            network-n9-regression-qemu.log
           if-no-files-found: ignore
