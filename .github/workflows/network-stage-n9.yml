@@ -1,0 +1,57 @@
+name: Network stage N9 TCP
+on:
+  pull_request:
+    paths: ['source/Core/TcpStageProbe.cs','source/Core/NetworkN9EntryKernel.cs','ZonderqOS.csproj','tools/network-stage-n9-qemu.sh','patches/network-n2/**','.github/workflows/network-stage-n9.yml']
+  workflow_dispatch:
+jobs:
+  validate-network-n9:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y qemu-system-x86 llvm lld xorriso nasm
+          command -v ld.lld && ld.lld --version
+          dotnet tool install --global Cosmos.Patcher --version 3.0.85
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Prepare patched Cosmos raw RX runtime
+        run: |
+          set -o pipefail; unset ZONDERQ_COSMOS_SOURCE_ROOT
+          bash tools/prepare-cosmos-smt.sh --all 2>&1 | tee network-n9-cosmos.log
+          C="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"; F="$C/artifacts/package/release"
+          git -C "$C" apply --check "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
+          git -C "$C" apply "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
+          ( cd "$C"; export VersionPrefix=3.0.85
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -p:VersionPrefix=3.0.85 --no-restore
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -r linux-x64 -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-x64 -p:VersionPrefix=3.0.85 --no-restore
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -r linux-arm64 -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-arm64 -p:VersionPrefix=3.0.85 --no-restore
+            dotnet pack src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -p:VersionPrefix=3.0.85 -o "$F" --no-build
+          ) 2>&1 | tee -a network-n9-cosmos.log
+      - name: Build isolated x64 N9 probe ISO
+        run: |
+          set -o pipefail; C="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"; F="$C/artifacts/package/release"; CACHE="$GITHUB_WORKSPACE/.nuget/network-n9-packages"; rm -rf "$CACHE" obj bin; mkdir -p "$CACHE"
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?><configuration><packageSources><clear/><add key="local-cosmos" value="'"$F"'"/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources></configuration>' > network-n9-nuget.config
+          NUGET_PACKAGES="$CACHE" dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN9=true --configfile network-n9-nuget.config --force --no-cache 2>&1 | tee network-n9-restore.log
+          S="$CACHE/cosmos.kernel.system/3.0.85/runtimes/linux-x64/lib/net10.0/Cosmos.Kernel.System.dll"; test -f "$S"; strings "$S" | grep -Fq SetRawReceiveHandler
+          NUGET_PACKAGES="$CACHE" dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN9=true -p:NetworkN2CosmosKernelSystemPath="$S" --no-restore 2>&1 | tee network-n9-build.log
+          ISO="$(find bin -type f -name '*.iso' | head -n1)"; test -f "$ISO"; cp "$ISO" network-n9-x64.iso; echo "ZONDERQ_ISO=$GITHUB_WORKSPACE/network-n9-x64.iso" >> "$GITHUB_ENV"
+      - name: QEMU TCP runtime proof
+        run: bash tools/network-stage-n9-qemu.sh
+      - name: Upload N9 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: network-n9-tcp-evidence
+          path: |
+            network-n9-cosmos.log
+            network-n9-restore.log
+            network-n9-build.log
+            network-n9-qemu.log
+            network-n9.pcap
+          if-no-files-found: ignore
