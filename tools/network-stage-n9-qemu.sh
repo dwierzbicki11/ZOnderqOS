@@ -19,9 +19,11 @@ def tcp(g,seq,ack,flags,payload=b''):
  h=bytearray(20);h[0]=0x45;h[2:4]=(20+len(t)).to_bytes(2,'big');h[8]=64;h[9]=6;h[12:16]=pip;h[16:20]=gip;h[10:12]=cs(h).to_bytes(2,'big');return eth(g,peer,0x800,h+t)
 def parse(d,flags=None):
  if len(d)<54 or d[12:14]!=b'\x08\0' or d[23]!=6:raise RuntimeError('TCP frame absent')
- ih=(d[14]&15)*4;t=14+ih;th=(d[t+12]>>4)*4;seq=int.from_bytes(d[t+4:t+8],'big');ack=int.from_bytes(d[t+8:t+12],'big');fl=d[t+13];pl=d[t+th:14+int.from_bytes(d[16:18],'big')]
+ ih=(d[14]&15)*4;t=14+ih;iplen=int.from_bytes(d[16:18],'big');tcplen=iplen-ih
+ if tcplen<20 or t+tcplen>len(d):raise RuntimeError('TCP length invalid')
+ th=(d[t+12]>>4)*4;seq=int.from_bytes(d[t+4:t+8],'big');ack=int.from_bytes(d[t+8:t+12],'big');fl=d[t+13];pl=d[t+th:t+tcplen]
  if d[t:t+2]!=(46309).to_bytes(2,'big') or d[t+2:t+4]!=(8080).to_bytes(2,'big'):raise RuntimeError('TCP ports invalid')
- if cs(gip+pip+b'\0\x06'+(len(d)-t).to_bytes(2,'big')+d[t:])!=0:raise RuntimeError('TCP checksum invalid')
+ if cs(gip+pip+b'\0\x06'+tcplen.to_bytes(2,'big')+d[t:t+tcplen])!=0:raise RuntimeError('TCP checksum invalid')
  if flags is not None and fl&flags!=flags:raise RuntimeError('TCP flags invalid')
  return seq,ack,fl,pl
 s=socket.socket(socket.AF_INET,socket.SOCK_DGRAM);s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(('127.0.0.1',5600));s.settimeout(30)
