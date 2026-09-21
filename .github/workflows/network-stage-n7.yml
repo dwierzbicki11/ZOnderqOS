@@ -1,0 +1,58 @@
+name: Network stage N7 DHCP
+on:
+  pull_request:
+    paths: ['source/Core/DhcpStageProbe.cs','source/Core/NetworkN7EntryKernel.cs','ZonderqOS.csproj','tools/network-stage-n7-qemu.sh','patches/network-n2/**','.github/workflows/network-stage-n7.yml']
+  workflow_dispatch:
+jobs:
+  validate-network-n7:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y qemu-system-x86 lld xorriso nasm
+          dotnet tool install --global Cosmos.Patcher --version 3.0.85
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Prepare patched Cosmos raw RX runtime
+        run: |
+          set -o pipefail; unset ZONDERQ_COSMOS_SOURCE_ROOT
+          bash tools/prepare-cosmos-smt.sh --all 2>&1 | tee network-n7-cosmos.log
+          C="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"; F="$C/artifacts/package/release"
+          git -C "$C" apply --check "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
+          git -C "$C" apply "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
+          ( cd "$C"; export VersionPrefix=3.0.85
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -p:VersionPrefix=3.0.85 --no-restore
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -r linux-x64 -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-x64 -p:VersionPrefix=3.0.85 --no-restore
+            mkdir -p artifacts/multiarch/Cosmos.Kernel.System/x64; cp artifacts/bin/Cosmos.Kernel.System/release_linux-x64/Cosmos.Kernel.System.dll artifacts/multiarch/Cosmos.Kernel.System/x64/
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -r linux-arm64 -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-arm64 -p:VersionPrefix=3.0.85 --no-restore
+            mkdir -p artifacts/multiarch/Cosmos.Kernel.System/arm64; cp artifacts/bin/Cosmos.Kernel.System/release_linux-arm64/Cosmos.Kernel.System.dll artifacts/multiarch/Cosmos.Kernel.System/arm64/
+            dotnet pack src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -p:VersionPrefix=3.0.85 -o "$F" --no-build
+          ) 2>&1 | tee -a network-n7-cosmos.log
+      - name: Build isolated x64 N7 probe ISO
+        run: |
+          set -o pipefail; C="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"; F="$C/artifacts/package/release"; CACHE="$GITHUB_WORKSPACE/.nuget/network-n7-packages"; rm -rf "$CACHE" obj bin; mkdir -p "$CACHE"
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?><configuration><packageSources><clear/><add key="local-cosmos" value="'"$F"'"/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources></configuration>' > network-n7-nuget.config
+          NUGET_PACKAGES="$CACHE" dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN7=true --configfile network-n7-nuget.config --force --no-cache 2>&1 | tee network-n7-restore.log
+          S="$CACHE/cosmos.kernel.system/3.0.85/runtimes/linux-x64/lib/net10.0/Cosmos.Kernel.System.dll"; test -f "$S"; strings "$S" | grep -Fq SetRawReceiveHandler
+          NUGET_PACKAGES="$CACHE" dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN7=true -p:NetworkN2CosmosKernelSystemPath="$S" --no-restore 2>&1 | tee network-n7-build.log
+          ISO="$(find bin -type f -name '*.iso' | head -n1)"; test -f "$ISO"; cp "$ISO" network-n7-x64.iso; echo "ZONDERQ_ISO=$GITHUB_WORKSPACE/network-n7-x64.iso" >> "$GITHUB_ENV"
+      - name: QEMU DHCP DORA runtime proof
+        run: bash tools/network-stage-n7-qemu.sh
+      - name: Upload N7 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: network-n7-dhcp-evidence
+          path: |
+            network-n7-cosmos.log
+            network-n7-restore.log
+            network-n7-build.log
+            network-n7-qemu.log
+            network-n7.pcap
+          if-no-files-found: ignore
