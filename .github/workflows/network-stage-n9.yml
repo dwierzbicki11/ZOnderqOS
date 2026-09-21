@@ -62,18 +62,18 @@ jobs:
           qemu-system-x86_64 -M q35 -cpu Nehalem -m 2G -drive file=network-n9-regression-x64.iso,media=cdrom,if=ide,readonly=on -boot d -display none -monitor none -serial "file:$LOG" -no-reboot -no-shutdown &
           PID=$!
           trap 'kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true' EXIT
-          # Normal Gen3 boot performs a deliberately verbose full heap/RAT initialization
-          # before Kernel.BeforeRun. Keep the proof strict, but allow enough wall time for
-          # the real boot marker instead of treating a still-progressing boot as failure.
+          # Cosmos emits this serial milestone only after ZonderqOS.BeforeRun() returns.
+          # BeforeRun performs Disk.Initialize plus all remaining normal boot initializers;
+          # any uncaught BOOT failure enters KernelPanic/RecoveryMode and therefore cannot
+          # reach the base-kernel main-loop milestone. This avoids depending on the
+          # graphical Console marker, which is intentionally not mirrored to serial.
           for _ in $(seq 1 300); do
             if grep -Eq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG"; then
               echo 'Fatal kernel error during normal regression boot'; tail -n 200 "$LOG"; exit 1
             fi
-            if grep -Fq 'ZonderqOS kernel successfully booted.' "$LOG"; then
-              # This marker is emitted only after Disk.Initialize and the remaining normal
-              # boot initializers return successfully in Kernel.BeforeRun.
+            if grep -Fq '[Kernel] Entering main loop...' "$LOG"; then
               echo 'Normal boot + storage initialization regression proof passed.'
-              tail -n 120 "$LOG" || true
+              tail -n 160 "$LOG" || true
               exit 0
             fi
             kill -0 "$PID" 2>/dev/null || { wait "$PID" || true; echo 'QEMU exited before normal boot proof'; tail -n 200 "$LOG"; exit 1; }
