@@ -32,4 +32,25 @@ jobs:
       - name: Restore isolated x64 D1 runtime probe
         run: dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:CosmosDriverStageD1=true
       - name: Compile isolated x64 D1 runtime probe
-        run: dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:CosmosDriverStageD1=true --no-restore
+        id: d1_build
+        shell: bash
+        run: |
+          set +e
+          dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:CosmosDriverStageD1=true --no-restore 2>&1 | tee d1-runtime-build.log
+          status=${PIPESTATUS[0]}
+          {
+            echo '## D1 runtime probe compiler diagnostics'
+            echo
+            echo '```text'
+            grep -E '(^|[[:space:]])(error|warning) [A-Z]+[0-9]+|Build (FAILED|succeeded)' d1-runtime-build.log | tail -n 120 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Upload D1 runtime probe build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: d1-runtime-build-log-${{ github.sha }}
+          path: d1-runtime-build.log
+          if-no-files-found: error
+          retention-days: 7
