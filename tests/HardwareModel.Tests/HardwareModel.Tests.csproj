@@ -9,5 +9,6 @@
     <Compile Include="../../source/Hardware/DeviceModel.cs" Link="DeviceModel.cs" />
     <Compile Include="../../source/Hardware/PciDeviceModel.cs" Link="PciDeviceModel.cs" />
     <Compile Include="../../source/Hardware/PciConfigDiscoverySource.cs" Link="PciConfigDiscoverySource.cs" />
+    <Compile Include="../../source/Hardware/PciConfigMechanism1.cs" Link="PciConfigMechanism1.cs" />
   </ItemGroup>
 </Project>
