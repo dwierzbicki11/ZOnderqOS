@@ -31,6 +31,12 @@ jobs:
           grep -Fq 'NativePortIo.ReadDWord(ConfigDataPort)' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'EntryPoint = "_native_io_write_dword"' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'EntryPoint = "_native_io_read_dword"' source/Platform/X64/PciConfigIoAccessor.cs
+      - name: Install Cosmos native build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lld
+          command -v ld.lld
+          ld.lld --version
       - name: Install Cosmos patcher required by Cosmos.Build.Patcher
         run: |
           export PATH="$HOME/.dotnet/tools:$PATH"
