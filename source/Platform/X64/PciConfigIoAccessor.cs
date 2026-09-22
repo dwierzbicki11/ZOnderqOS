@@ -7,7 +7,7 @@ namespace ZonderqOS.Platform.X64
     /// x86/x64 PCI Configuration Mechanism #1 backend for the architecture-neutral
     /// D1 topology walker. Hardware policy remains in PciConfigDiscoverySource.
     /// </summary>
-    public sealed class PciConfigIoAccessor : IPciConfigAccessor
+    public sealed partial class PciConfigIoAccessor : IPciConfigAccessor
     {
         private const ushort ConfigAddressPort = 0xCF8;
         private const ushort ConfigDataPort = 0xCFC;
