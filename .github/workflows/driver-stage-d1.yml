@@ -29,5 +29,7 @@ jobs:
           grep -Fq 'PciConfigMechanism1.Extract16' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'PlatformHAL.PortIO.WriteDWord(ConfigAddressPort, address)' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'PlatformHAL.PortIO.ReadDWord(ConfigDataPort)' source/Platform/X64/PciConfigIoAccessor.cs
+      - name: Restore isolated x64 D1 runtime probe
+        run: dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:CosmosDriverStageD1=true
       - name: Compile isolated x64 D1 runtime probe
         run: dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:CosmosDriverStageD1=true --no-restore
