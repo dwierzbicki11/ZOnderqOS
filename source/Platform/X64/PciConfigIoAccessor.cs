@@ -1,4 +1,4 @@
-using Cosmos.Kernel.Core;
+using System.Runtime.InteropServices;
 using ZonderqOS.Hardware;
 
 namespace ZonderqOS.Platform.X64
@@ -31,8 +31,22 @@ namespace ZonderqOS.Platform.X64
         private static uint ReadAlignedDword(byte bus, byte device, byte function, byte offset)
         {
             uint address = PciConfigMechanism1.EncodeAddress(bus, device, function, offset);
-            PlatformHAL.PortIO.WriteDWord(ConfigAddressPort, address);
-            return PlatformHAL.PortIO.ReadDWord(ConfigDataPort);
+            NativePortIo.WriteDWord(ConfigAddressPort, address);
+            return NativePortIo.ReadDWord(ConfigDataPort);
+        }
+
+        // Cosmos Gen3 keeps PlatformHAL/IPortIO internal. Bind only to the same x64
+        // native ABI used by Cosmos.Kernel.Core.X64 instead of reaching through an
+        // inaccessible managed HAL type. This file is excluded from ARM64 builds.
+        private static partial class NativePortIo
+        {
+            [LibraryImport("*", EntryPoint = "_native_io_read_dword")]
+            [SuppressGCTransition]
+            internal static partial uint ReadDWord(ushort port);
+
+            [LibraryImport("*", EntryPoint = "_native_io_write_dword")]
+            [SuppressGCTransition]
+            internal static partial void WriteDWord(ushort port, uint value);
         }
     }
 }
