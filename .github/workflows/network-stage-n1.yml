@@ -1,0 +1,130 @@
+name: Network stage N1 NIC/link validation
+
+on:
+  pull_request:
+    paths:
+      - 'source/**'
+      - 'ZonderqOS.csproj'
+      - 'tools/network-stage-n1-qemu.sh'
+      - 'tools/prepare-cosmos-smt.sh'
+      - 'patches/cosmos-smt/**'
+      - 'docs/network-driver-roadmap.md'
+      - '.github/workflows/network-stage-n1.yml'
+  workflow_dispatch:
+
+jobs:
+  validate-network-n1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    steps:
+      - name: Checkout ZonderqOS
+        uses: actions/checkout@v4
+
+      - name: Install .NET 10 and QEMU
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install native build/runtime dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 lld xorriso nasm
+          qemu-system-x86_64 --version
+
+      - name: Install Cosmos build tools
+        run: |
+          dotnet tool install --global Cosmos.Patcher --version 3.0.85
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          command -v cosmos.patcher
+          cosmos.patcher --version
+
+      - name: Verify N1 feature gate
+        run: |
+          grep -Fq '<CosmosEnableNetwork>true</CosmosEnableNetwork>' ZonderqOS.csproj
+          grep -Fq '<CosmosEnableNetwork>false</CosmosEnableNetwork>' ZonderqOS.csproj
+          grep -Fq 'Cosmos.Kernel.System.Network.EndPoint' source/Shell/Commands/CmdPing.cs
+          ! grep -Fq 'Cosmos.Kernel.System.Network.IPv4.EndPoint' source/Shell/Commands/CmdPing.cs
+
+      - name: Prepare patched Cosmos runtime
+        run: |
+          set -o pipefail
+          unset ZONDERQ_COSMOS_SOURCE_ROOT
+          bash tools/prepare-cosmos-smt.sh --all 2>&1 | tee network-n1-cosmos.log
+          COSMOS_ROOT="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"
+          test -d "$COSMOS_ROOT/.git"
+          grep -R -Fq 'RuntimeExport("RhWaitForPendingFinalizers")' "$COSMOS_ROOT/src/Cosmos.Kernel.Core/Runtime"
+          test -f "$COSMOS_ROOT/artifacts/package/release/Cosmos.Kernel.3.0.85.nupkg"
+
+      - name: Build x64 ISO with networking enabled
+        run: |
+          set -o pipefail
+          COSMOS_ROOT="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"
+          COSMOS_FEED="$COSMOS_ROOT/artifacts/package/release"
+          PACKAGE_CACHE="$GITHUB_WORKSPACE/.nuget/network-n1-packages"
+          rm -rf "$PACKAGE_CACHE" obj bin
+          mkdir -p "$PACKAGE_CACHE"
+          cat > network-n1-nuget.config <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="local-cosmos" value="$COSMOS_FEED" />
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+            </packageSources>
+            <packageSourceMapping>
+              <packageSource key="local-cosmos"><package pattern="Cosmos.*" /></packageSource>
+              <packageSource key="nuget.org"><package pattern="*" /></packageSource>
+            </packageSourceMapping>
+          </configuration>
+          EOF
+          NUGET_PACKAGES="$PACKAGE_CACHE" dotnet restore ZonderqOS.csproj \
+            -r linux-x64 -p:CosmosArch=x64 \
+            --configfile network-n1-nuget.config --force --no-cache 2>&1 | tee network-n1-restore.log
+          test -f "$PACKAGE_CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
+          grep -Fq "$COSMOS_FEED" "$PACKAGE_CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
+          NUGET_PACKAGES="$PACKAGE_CACHE" dotnet build ZonderqOS.csproj \
+            -c Release -r linux-x64 -p:CosmosArch=x64 --no-restore 2>&1 | tee network-n1-build.log
+          ISO="$(find bin -type f -name 'ZonderqOS.iso' -o -name '*.iso' | head -n 1)"
+          test -n "$ISO" && test -f "$ISO"
+          cp "$ISO" "$GITHUB_WORKSPACE/network-n1-x64.iso"
+          echo "ZONDERQ_ISO=$GITHUB_WORKSPACE/network-n1-x64.iso" >> "$GITHUB_ENV"
+
+      - name: ARM64 regression compile
+        run: |
+          set -o pipefail
+          COSMOS_ROOT="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"
+          COSMOS_FEED="$COSMOS_ROOT/artifacts/package/release"
+          ARM_PACKAGE_CACHE="$GITHUB_WORKSPACE/.nuget/network-n1-arm64-packages"
+          rm -rf obj "$ARM_PACKAGE_CACHE"
+          mkdir -p "$ARM_PACKAGE_CACHE"
+          NUGET_PACKAGES="$ARM_PACKAGE_CACHE" dotnet restore ZonderqOS.csproj \
+            -r linux-arm64 -p:CosmosArch=arm64 \
+            --configfile network-n1-nuget.config --force --no-cache 2>&1 | tee network-n1-arm64-restore.log
+          test -f "$ARM_PACKAGE_CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
+          grep -Fq "$COSMOS_FEED" "$ARM_PACKAGE_CACHE/cosmos.kernel/3.0.85/.nupkg.metadata"
+          # This runner is linux-x64. A full linux-arm64 Cosmos Build target tries
+          # to execute the ARM64 Cosmos.Build.ILC host here and fails with ENOEXEC
+          # before it can validate ZonderqOS. Keep this gate honest: compile the
+          # ARM64-conditioned managed kernel sources and references, but do not
+          # claim an ARM64 image/runtime proof from an x64 runner.
+          NUGET_PACKAGES="$ARM_PACKAGE_CACHE" dotnet msbuild ZonderqOS.csproj \
+            -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-arm64 \
+            -p:CosmosArch=arm64 -p:RestoreIgnoreFailedSources=false 2>&1 | tee network-n1-arm64-build.log
+
+      - name: QEMU N1 runtime proof
+        run: bash tools/network-stage-n1-qemu.sh
+
+      - name: Upload N1 logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: network-n1-logs
+          path: |
+            network-n1-cosmos.log
+            network-n1-restore.log
+            network-n1-build.log
+            network-n1-arm64-restore.log
+            network-n1-arm64-build.log
+            network-n1-qemu.log
+          if-no-files-found: ignore
