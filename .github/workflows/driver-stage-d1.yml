@@ -31,6 +31,12 @@ jobs:
           grep -Fq 'NativePortIo.ReadDWord(ConfigDataPort)' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'EntryPoint = "_native_io_write_dword"' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'EntryPoint = "_native_io_read_dword"' source/Platform/X64/PciConfigIoAccessor.cs
+      - name: Install Cosmos patcher required by Cosmos.Build.Patcher
+        run: |
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          dotnet tool install --global Cosmos.Patcher --version 3.0.85
+          command -v cosmos.patcher
+          cosmos.patcher --help >/dev/null
       - name: Restore isolated x64 D1 runtime probe
         run: dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:CosmosDriverStageD1=true
       - name: Compile isolated x64 D1 runtime probe
@@ -38,6 +44,7 @@ jobs:
         shell: bash
         run: |
           set +e
+          export PATH="$HOME/.dotnet/tools:$PATH"
           dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:CosmosDriverStageD1=true --no-restore 2>&1 | tee d1-runtime-build.log
           status=${PIPESTATUS[0]}
           {
