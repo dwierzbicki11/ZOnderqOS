@@ -1,0 +1,24 @@
+name: Driver stage D1 device model
+
+on:
+  push:
+    branches: [ drivers/d1-device-pci ]
+    paths: [ 'source/Hardware/**', 'tests/HardwareModel.Tests/**', '.github/workflows/driver-stage-d1.yml' ]
+  pull_request:
+    paths: [ 'source/Hardware/**', 'tests/HardwareModel.Tests/**', '.github/workflows/driver-stage-d1.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  device-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run deterministic device and PCI model regression tests
+        run: dotnet run --project tests/HardwareModel.Tests/HardwareModel.Tests.csproj -c Release
