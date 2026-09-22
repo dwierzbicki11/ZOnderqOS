@@ -72,6 +72,14 @@ static class Program
             Require(topology.Count == 4, "topology walker must discover root, multifunction and bridged functions");
             Require(topology[0].Id.Address == "00:01.0" && topology[1].Id.Address == "00:02.0" && topology[2].Id.Address == "00:02.1" && topology[3].Id.Address == "02:00.0", "topology discovery BDF mismatch");
 
+            var multiRoot = new ConfigAccessor();
+            AddFunction(multiRoot, 0, 0, 0, 0x8086, 0x1000, 0x06, 0x00, 0, 0x80);
+            AddFunction(multiRoot, 0, 0, 2, 0x8086, 0x1002, 0x06, 0x00, 0);
+            AddFunction(multiRoot, 2, 3, 0, 0x1AF4, 0x1000, 0x02, 0x00, 0);
+            List<DeviceDescriptor> roots = new PciDiscoveryService(new PciConfigDiscoverySource(multiRoot)).DiscoverDevices();
+            Require(roots.Count == 3, "multifunction host controller must expose every present root bus");
+            Require(roots[0].Id.Address == "00:00.0" && roots[1].Id.Address == "02:00.0" && roots[2].Id.Address == "02:03.0", "multifunction host root discovery mismatch");
+
             var registry = new DriverRegistry();
             var failingSpecific = new Driver("specific-fails", d => d.VendorId == 0x8086, false);
             var fallback = new Driver("fallback", d => true);
