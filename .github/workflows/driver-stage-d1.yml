@@ -27,8 +27,10 @@ jobs:
           grep -Fq 'PciConfigMechanism1.EncodeAddress' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'PciConfigMechanism1.Extract8' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'PciConfigMechanism1.Extract16' source/Platform/X64/PciConfigIoAccessor.cs
-          grep -Fq 'PlatformHAL.PortIO.WriteDWord(ConfigAddressPort, address)' source/Platform/X64/PciConfigIoAccessor.cs
-          grep -Fq 'PlatformHAL.PortIO.ReadDWord(ConfigDataPort)' source/Platform/X64/PciConfigIoAccessor.cs
+          grep -Fq 'NativePortIo.WriteDWord(ConfigAddressPort, address)' source/Platform/X64/PciConfigIoAccessor.cs
+          grep -Fq 'NativePortIo.ReadDWord(ConfigDataPort)' source/Platform/X64/PciConfigIoAccessor.cs
+          grep -Fq 'EntryPoint = "_native_io_write_dword"' source/Platform/X64/PciConfigIoAccessor.cs
+          grep -Fq 'EntryPoint = "_native_io_read_dword"' source/Platform/X64/PciConfigIoAccessor.cs
       - name: Restore isolated x64 D1 runtime probe
         run: dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:CosmosDriverStageD1=true
       - name: Compile isolated x64 D1 runtime probe
