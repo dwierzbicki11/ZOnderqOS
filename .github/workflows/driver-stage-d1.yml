@@ -34,9 +34,11 @@ jobs:
       - name: Install Cosmos native build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y lld
+          sudo apt-get install -y lld xorriso
           command -v ld.lld
           ld.lld --version
+          command -v xorriso
+          xorriso -version
       - name: Install Cosmos patcher required by Cosmos.Build.Patcher
         run: |
           export PATH="$HOME/.dotnet/tools:$PATH"
