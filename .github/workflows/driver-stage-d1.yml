@@ -3,9 +3,9 @@ name: Driver stage D1 device model
 on:
   push:
     branches: [ drivers/d1-device-pci ]
-    paths: [ 'source/Hardware/**', 'source/Platform/X64/PciConfigIoAccessor.cs', 'tests/HardwareModel.Tests/**', '.github/workflows/driver-stage-d1.yml' ]
+    paths: [ 'source/Hardware/**', 'source/Platform/X64/PciConfigIoAccessor.cs', 'source/Core/DriverD1EntryKernel.cs', 'ZonderqOS.csproj', 'tests/HardwareModel.Tests/**', '.github/workflows/driver-stage-d1.yml' ]
   pull_request:
-    paths: [ 'source/Hardware/**', 'source/Platform/X64/PciConfigIoAccessor.cs', 'tests/HardwareModel.Tests/**', '.github/workflows/driver-stage-d1.yml' ]
+    paths: [ 'source/Hardware/**', 'source/Platform/X64/PciConfigIoAccessor.cs', 'source/Core/DriverD1EntryKernel.cs', 'ZonderqOS.csproj', 'tests/HardwareModel.Tests/**', '.github/workflows/driver-stage-d1.yml' ]
   workflow_dispatch:
 
 permissions:
@@ -14,7 +14,7 @@ permissions:
 jobs:
   device-model:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -29,3 +29,5 @@ jobs:
           grep -Fq 'PciConfigMechanism1.Extract16' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'PlatformHAL.PortIO.WriteDWord(ConfigAddressPort, address)' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'PlatformHAL.PortIO.ReadDWord(ConfigDataPort)' source/Platform/X64/PciConfigIoAccessor.cs
+      - name: Compile isolated x64 D1 runtime probe
+        run: dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:CosmosDriverStageD1=true --no-restore
