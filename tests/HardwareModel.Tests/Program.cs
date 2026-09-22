@@ -15,6 +15,13 @@ static class Program
         public bool Bind(DeviceDescriptor device) { BindCalls++; return bind; }
     }
 
+    private sealed class DiscoverySource : IPciDiscoverySource
+    {
+        private readonly IEnumerable<PciFunctionSnapshot>? snapshots;
+        public DiscoverySource(IEnumerable<PciFunctionSnapshot>? snapshots) { this.snapshots = snapshots; }
+        public IEnumerable<PciFunctionSnapshot> Discover() => snapshots!;
+    }
+
     static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
 
     static int Main()
@@ -27,13 +34,17 @@ static class Program
                 new PciFunctionSnapshot(0, 1, 1, 0x8086, 1, 1, 6, 1),
                 new PciFunctionSnapshot(0, 1, 0, 0x8086, 3, 1, 6, 1)
             };
-            List<DeviceDescriptor> devices = PciDeviceEnumerator.Normalize(input);
+            List<DeviceDescriptor> devices = new PciDiscoveryService(new DiscoverySource(input)).DiscoverDevices();
             Require(devices.Count == 3, "sentinel must be omitted");
             Require(devices[0].Id.Address == "00:01.0" && devices[1].Id.Address == "00:01.1" && devices[2].Id.Address == "02:00.0", "BDF order must be deterministic");
 
             bool duplicateRejected = false;
-            try { PciDeviceEnumerator.Normalize(new[] { input[2], input[2] }); } catch (InvalidOperationException) { duplicateRejected = true; }
+            try { new PciDiscoveryService(new DiscoverySource(new[] { input[2], input[2] })).DiscoverDevices(); } catch (InvalidOperationException) { duplicateRejected = true; }
             Require(duplicateRejected, "duplicate BDF must be rejected");
+
+            bool nullDiscoveryRejected = false;
+            try { new PciDiscoveryService(new DiscoverySource(null)).DiscoverDevices(); } catch (InvalidOperationException) { nullDiscoveryRejected = true; }
+            Require(nullDiscoveryRejected, "null HAL discovery result must be rejected");
 
             bool invalidFunctionRejected = false;
             try { _ = new PciFunctionSnapshot(0, 0, 8, 1, 1, 0, 0, 0); } catch (ArgumentOutOfRangeException) { invalidFunctionRejected = true; }
