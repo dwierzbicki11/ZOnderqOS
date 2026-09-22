@@ -41,6 +41,37 @@ namespace ZonderqOS.Hardware
     }
 
     /// <summary>
+    /// Boundary implemented by the architecture/HAL layer. The system device
+    /// model never reaches into Cosmos PCI objects directly.
+    /// </summary>
+    public interface IPciDiscoverySource
+    {
+        IEnumerable<PciFunctionSnapshot> Discover();
+    }
+
+    /// <summary>
+    /// System-facing PCI discovery service. It deliberately owns normalization
+    /// so every HAL backend gets identical sentinel, duplicate and ordering rules.
+    /// </summary>
+    public sealed class PciDiscoveryService
+    {
+        private readonly IPciDiscoverySource source;
+
+        public PciDiscoveryService(IPciDiscoverySource source)
+        {
+            this.source = source ?? throw new ArgumentNullException(nameof(source));
+        }
+
+        public List<DeviceDescriptor> DiscoverDevices()
+        {
+            IEnumerable<PciFunctionSnapshot> discovered = source.Discover();
+            if (discovered == null)
+                throw new InvalidOperationException("PCI discovery source returned null");
+            return PciDeviceEnumerator.Normalize(discovered);
+        }
+    }
+
+    /// <summary>
     /// Converts bus discovery into stable system descriptors. Input order is not
     /// trusted: results are sorted by BDF and duplicate functions are rejected.
     /// </summary>
