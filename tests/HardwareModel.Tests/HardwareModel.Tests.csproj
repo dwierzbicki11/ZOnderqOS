@@ -8,5 +8,6 @@
   <ItemGroup>
     <Compile Include="../../source/Hardware/DeviceModel.cs" Link="DeviceModel.cs" />
     <Compile Include="../../source/Hardware/PciDeviceModel.cs" Link="PciDeviceModel.cs" />
+    <Compile Include="../../source/Hardware/PciConfigDiscoverySource.cs" Link="PciConfigDiscoverySource.cs" />
   </ItemGroup>
 </Project>
