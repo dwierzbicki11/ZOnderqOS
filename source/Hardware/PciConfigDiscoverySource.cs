@@ -15,8 +15,8 @@ namespace ZonderqOS.Hardware
 
     /// <summary>
     /// PCI topology walker shared by legacy config-I/O and PCIe ECAM backends.
-    /// It starts at bus 0, follows PCI-to-PCI bridge secondary buses, honours
-    /// multifunction headers, and never scans the same bus twice.
+    /// It discovers host-controller root buses, follows PCI-to-PCI bridge
+    /// secondary buses, honours multifunction headers, and never scans a bus twice.
     /// </summary>
     public sealed class PciConfigDiscoverySource : IPciDiscoverySource
     {
@@ -39,7 +39,7 @@ namespace ZonderqOS.Hardware
             var result = new List<PciFunctionSnapshot>();
             var pending = new Queue<byte>();
             var visited = new bool[256];
-            pending.Enqueue(0);
+            EnqueueRootBuses(pending);
 
             while (pending.Count != 0)
             {
@@ -73,6 +73,29 @@ namespace ZonderqOS.Hardware
             }
 
             return result;
+        }
+
+        private void EnqueueRootBuses(Queue<byte> pending)
+        {
+            // A conventional single-function host bridge owns bus 0.  On systems
+            // exposing a multifunction host controller at 00:00.x, each present
+            // function x represents an independent root bus x (PCI firmware model).
+            // Discover those roots before following downstream bridges so devices
+            // behind additional host bridges are not silently omitted.
+            ushort rootVendor = config.Read16(0, 0, 0, 0x00);
+            if (rootVendor == MissingVendor || (config.Read8(0, 0, 0, HeaderTypeOffset) & MultifunctionBit) == 0)
+            {
+                pending.Enqueue(0);
+                return;
+            }
+
+            for (byte function = 0; function < 8; function++)
+            {
+                if (config.Read16(0, 0, function, 0x00) != MissingVendor)
+                    pending.Enqueue(function);
+            }
+
+            // Function zero was present above, therefore at least bus 0 is queued.
         }
     }
 }
