@@ -74,35 +74,53 @@ jobs:
           ISO="$(find bin -type f -name '*.iso' | head -n1)"; test -f "$ISO"; cp "$ISO" network-n9-gui-x64.iso
       - name: QEMU GUI first-frame regression proof
         run: |
-          set -euo pipefail; LOG=network-n9-gui-qemu.log; SOCK=/tmp/zonderq-n9-monitor.sock; SHOT=network-n9-gui-frame.ppm; rm -f "$SOCK" "$SHOT"; : > "$LOG"
+          set -euo pipefail; LOG=network-n9-gui-qemu.log; SOCK=/tmp/zonderq-n9-monitor.sock; SHOT=network-n9-gui-frame.ppm; CAND=network-n9-gui-candidate.ppm; rm -f "$SOCK" "$SHOT" "$CAND"; : > "$LOG"
           qemu-system-x86_64 -M q35 -cpu Nehalem -m 2G -drive file=network-n9-gui-x64.iso,media=cdrom,if=ide,readonly=on -boot d -display none -monitor unix:"$SOCK",server=on,wait=off -serial "file:$LOG" -no-reboot -no-shutdown &
-          PID=$!; trap 'kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; rm -f "$SOCK"' EXIT
-          for _ in $(seq 1 300); do
-            if grep -Eq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG"; then echo 'Fatal kernel error during GUI regression'; tail -n 200 "$LOG"; exit 1; fi
-            if grep -Fq '[Kernel] Entering main loop...' "$LOG"; then break; fi
-            kill -0 "$PID" 2>/dev/null || { echo 'QEMU exited before GUI proof'; tail -n 200 "$LOG"; exit 1; }; sleep 1
-          done
-          grep -Fq '[Kernel] Entering main loop...' "$LOG" || { echo 'GUI probe never returned from real GuiManager first-frame path'; exit 1; }
+          PID=$!; trap 'kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; rm -f "$SOCK" "$CAND"' EXIT
           python3 - <<'PY'
-          import socket,time
-          p='/tmp/zonderq-n9-monitor.sock'
-          for _ in range(50):
+          import os,socket,time
+          from pathlib import Path
+          sock='/tmp/zonderq-n9-monitor.sock'; log=Path('network-n9-gui-qemu.log'); cand=Path('network-n9-gui-candidate.ppm'); shot=Path('network-n9-gui-frame.ppm')
+          def fatal():
+              if not log.exists(): return False
+              t=log.read_text(errors='ignore')
+              return any(x in t for x in ('CPU EXCEPTION','System halted','Kernel Panic','PANIC','Unhandled Exception','Triple fault'))
+          def inspect(p):
               try:
-                  s=socket.socket(socket.AF_UNIX); s.connect(p); break
-              except OSError: time.sleep(.1)
-          else: raise SystemExit('QEMU monitor unavailable')
-          s.recv(4096); s.sendall(b'screendump network-n9-gui-frame.ppm\n'); time.sleep(1); s.close()
+                  b=p.read_bytes(); parts=b.split(b'\n',3)
+                  if len(parts)<4 or parts[0].strip()!=b'P6': return None
+                  w,h=map(int,parts[1].split()); pix=parts[3]
+                  if w<640 or h<480: return None
+                  step=max(3,(len(pix)//30000)//3*3)
+                  colours={pix[i:i+3] for i in range(0,len(pix)-2,step)}
+                  return w,h,len(colours)
+              except (OSError,ValueError): return None
+          deadline=time.time()+300
+          while time.time()<deadline:
+              if fatal(): raise SystemExit('fatal kernel error during GUI regression')
+              if not os.path.exists(sock): time.sleep(.05); continue
+              try:
+                  s=socket.socket(socket.AF_UNIX); s.settimeout(1); s.connect(sock); s.recv(4096)
+                  s.sendall(b'screendump network-n9-gui-candidate.ppm\n'); time.sleep(.08); s.close()
+              except OSError:
+                  time.sleep(.05); continue
+              info=inspect(cand)
+              if info and info[2]>=16:
+                  shot.write_bytes(cand.read_bytes())
+                  print(f'Captured real GUI framebuffer before teardown: {info[0]}x{info[1]}, sampled colours={info[2]}')
+                  break
+              time.sleep(.05)
+          else: raise SystemExit('no diverse GUI framebuffer observed before timeout')
           PY
           test -s "$SHOT"
+          if grep -Eq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG"; then echo 'Fatal kernel error during GUI regression'; tail -n 200 "$LOG"; exit 1; fi
+          grep -Fq '[Kernel] Entering main loop...' "$LOG" || { echo 'GUI regression path did not return cleanly after real first-frame render'; tail -n 200 "$LOG"; exit 1; }
           python3 - <<'PY'
           from pathlib import Path
-          p=Path('network-n9-gui-frame.ppm'); b=p.read_bytes(); parts=b.split(b'\n',3)
-          if len(parts)<4 or parts[0].strip()!=b'P6': raise SystemExit('invalid QEMU PPM framebuffer')
-          dims=parts[1].split(); w,h=map(int,dims); pix=parts[3]
-          if w < 640 or h < 480: raise SystemExit(f'graphics mode too small: {w}x{h}')
-          sample={pix[i:i+3] for i in range(0,len(pix)-2,max(3,(len(pix)//30000)//3*3))}
-          if len(sample) < 16: raise SystemExit(f'framebuffer lacks GUI colour diversity: {len(sample)} colours')
-          print(f'GUI framebuffer proof passed: {w}x{h}, sampled colours={len(sample)}')
+          b=Path('network-n9-gui-frame.ppm').read_bytes(); parts=b.split(b'\n',3); w,h=map(int,parts[1].split()); pix=parts[3]
+          step=max(3,(len(pix)//30000)//3*3); colours={pix[i:i+3] for i in range(0,len(pix)-2,step)}
+          if w<640 or h<480 or len(colours)<16: raise SystemExit('saved GUI framebuffer failed final validation')
+          print(f'GUI framebuffer proof passed: {w}x{h}, sampled colours={len(colours)}')
           PY
       - name: Upload N9 evidence
         if: always()
