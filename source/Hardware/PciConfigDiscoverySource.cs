@@ -11,6 +11,7 @@ namespace ZonderqOS.Hardware
     {
         byte Read8(byte bus, byte device, byte function, byte offset);
         ushort Read16(byte bus, byte device, byte function, byte offset);
+        uint Read32(byte bus, byte device, byte function, byte offset);
     }
 
     /// <summary>
