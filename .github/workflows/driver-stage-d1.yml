@@ -68,9 +68,15 @@ jobs:
       - name: Locate dedicated D1 ISO
         run: |
           set -euo pipefail
-          mapfile -t ISOS < <(find tests/DriverD1.Runtime/bin -type f -name '*.iso')
-          printf 'Dedicated D1 ISO candidates:\n%s\n' "${ISOS[*]:-<none>}"
-          test "${#ISOS[@]}" -eq 1
+          mapfile -t ISOS < <(find "$GITHUB_WORKSPACE" -type f -name '*.iso' -print)
+          printf 'Dedicated D1 ISO candidates:\n'
+          printf '  %s\n' "${ISOS[@]:-<none>}"
+          if [ "${#ISOS[@]}" -ne 1 ]; then
+            echo 'Expected exactly one ISO from the dedicated D1 build.' >&2
+            echo 'Boot/build artifacts present in workspace:' >&2
+            find "$GITHUB_WORKSPACE" -type f \( -name '*.iso' -o -name '*.elf' -o -name '*.img' -o -name 'limine.conf' \) -print >&2 || true
+            exit 1
+          fi
           cp "${ISOS[0]}" driver-d1-x64.iso
           echo "D1_ISO=$GITHUB_WORKSPACE/driver-d1-x64.iso" >> "$GITHUB_ENV"
       - name: QEMU real PCI enumeration proof
