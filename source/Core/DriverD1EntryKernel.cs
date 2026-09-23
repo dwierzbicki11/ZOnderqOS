@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cosmos.Kernel.Core;
+using Cosmos.Kernel.System.Diagnostics;
 using Sys = Cosmos.Kernel.System;
 using ZonderqOS.Hardware;
 using ZonderqOS.Platform.X64;
@@ -19,7 +19,11 @@ namespace ZonderqOS
 
         protected override void BeforeRun()
         {
-            Console.WriteLine("[DRIVER-D1] starting real PCI discovery");
+            // The D1 probe deliberately boots with graphics disabled. System.Console
+            // therefore has no KernelConsole backing and must not be used here.
+            // Cosmos' public Diagnostics.Log writes directly to the platform serial
+            // device, which is exactly what the QEMU gate captures.
+            Log.WriteString("[DRIVER-D1] starting real PCI discovery\n");
             try
             {
                 var service = new PciDiscoveryService(
@@ -33,11 +37,19 @@ namespace ZonderqOS
                 for (int i = 0; i < devices.Count; i++)
                 {
                     DeviceDescriptor device = devices[i];
-                    Console.WriteLine("[DRIVER-D1] PCI " + device.Id +
-                        " vendor=0x" + device.VendorId.ToString("X4") +
-                        " device=0x" + device.DeviceId.ToString("X4") +
-                        " class=" + device.ClassCode.ToString("X2") + ":" +
-                        device.Subclass.ToString("X2") + ":" + device.ProgrammingInterface.ToString("X2"));
+                    Log.WriteString("[DRIVER-D1] PCI ");
+                    Log.WriteString(device.Id.ToString());
+                    Log.WriteString(" vendor=0x");
+                    Log.WriteString(device.VendorId.ToString("X4"));
+                    Log.WriteString(" device=0x");
+                    Log.WriteString(device.DeviceId.ToString("X4"));
+                    Log.WriteString(" class=");
+                    Log.WriteString(device.ClassCode.ToString("X2"));
+                    Log.WriteString(":");
+                    Log.WriteString(device.Subclass.ToString("X2"));
+                    Log.WriteString(":");
+                    Log.WriteString(device.ProgrammingInterface.ToString("X2"));
+                    Log.WriteString("\n");
                     if (device.ClassCode == 0x06 && device.Subclass == 0x00)
                         sawHostBridge = true;
                 }
@@ -45,12 +57,18 @@ namespace ZonderqOS
                 if (!sawHostBridge)
                     throw new InvalidOperationException("PCI host bridge was not discovered");
 
-                Console.WriteLine("[DRIVER-D1] PASS real PCI discovery count=" + devices.Count);
+                Log.WriteString("[DRIVER-D1] PASS real PCI discovery count=");
+                Log.WriteNumber(devices.Count);
+                Log.WriteString("\n");
                 completed = true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine("[DRIVER-D1] FAIL " + ex.GetType().Name + ": " + ex.Message);
+                Log.WriteString("[DRIVER-D1] FAIL ");
+                Log.WriteString(ex.GetType().Name);
+                Log.WriteString(": ");
+                Log.WriteString(ex.Message);
+                Log.WriteString("\n");
                 completed = true;
             }
         }
