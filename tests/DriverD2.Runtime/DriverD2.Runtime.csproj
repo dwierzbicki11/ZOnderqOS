@@ -1,0 +1,25 @@
+<Project Sdk="Cosmos.Sdk/3.0.85">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <CosmosArch>x64</CosmosArch>
+    <CosmosKernelClass>ZonderqOS.DriverD2EntryKernel</CosmosKernelClass>
+    <CosmosEnableNetwork>false</CosmosEnableNetwork>
+    <CosmosEnableStorage>false</CosmosEnableStorage>
+    <CosmosEnableMouse>false</CosmosEnableMouse>
+    <CosmosEnableKeyboard>false</CosmosEnableKeyboard>
+    <CosmosEnableGraphics>false</CosmosEnableGraphics>
+    <CosmosEnableScheduler>true</CosmosEnableScheduler>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Cosmos.Kernel" Version="3.0.85" />
+    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../source/Core/DriverD2EntryKernel.cs" Link="DriverD2EntryKernel.cs" />
+    <Compile Include="../../source/Hardware/**/*.cs" Link="Hardware/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../source/Platform/X64/PciConfigIoAccessor.cs" Link="Platform/X64/PciConfigIoAccessor.cs" />
+  </ItemGroup>
+</Project>
