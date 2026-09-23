@@ -127,14 +127,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf obj bin
-          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 2>&1 | tee d1-arm64-restore.log
-          # Cosmos.Build.Ilc 3.0.85 attempts to execute an ARM64-hosted tool during a full
-          # linux-arm64 build on this x64 runner. D1 requires a compile regression here,
-          # not a fabricated ARM64 link/boot proof, so stop at CoreCompile deliberately.
-          dotnet msbuild ZonderqOS.csproj -t:CoreCompile -p:Configuration=Release -p:RuntimeIdentifier=linux-arm64 -p:CosmosArch=arm64 -p:RestoreIgnoreFailedSources=true 2>&1 | tee d1-arm64-build.log
+          # D1's portable contract is source/Hardware. Compile that exact production code
+          # for ARM64 using the deterministic test project, without dragging the x64-only
+          # CF8/CFC backend or Cosmos' host-specific NativeAOT/ILC stages into this gate.
+          dotnet restore tests/HardwareModel.Tests/HardwareModel.Tests.csproj -r linux-arm64 2>&1 | tee d1-arm64-restore.log
+          dotnet build tests/HardwareModel.Tests/HardwareModel.Tests.csproj -c Release -r linux-arm64 --no-restore 2>&1 | tee d1-arm64-build.log
           if grep -Eqi '(^|[[:space:]])error([[:space:]]|:)|Build FAILED' d1-arm64-build.log; then
-            echo 'ARM64 CoreCompile regression failed.' >&2
+            echo 'ARM64 D1 production-model compile regression failed.' >&2
             exit 1
           fi
       - name: Upload D1 evidence
