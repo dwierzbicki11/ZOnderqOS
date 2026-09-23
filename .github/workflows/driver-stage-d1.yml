@@ -14,7 +14,7 @@ permissions:
 jobs:
   device-model:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -31,14 +31,16 @@ jobs:
           grep -Fq 'NativePortIo.ReadDWord(ConfigDataPort)' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'EntryPoint = "_native_io_write_dword"' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'EntryPoint = "_native_io_read_dword"' source/Platform/X64/PciConfigIoAccessor.cs
-      - name: Install Cosmos native build prerequisites
+      - name: Install Cosmos native build and QEMU prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y lld xorriso
+          sudo apt-get install -y lld xorriso qemu-system-x86
           command -v ld.lld
           ld.lld --version
           command -v xorriso
           xorriso -version
+          command -v qemu-system-x86_64
+          qemu-system-x86_64 --version
       - name: Install Cosmos patcher required by Cosmos.Build.Patcher
         run: |
           export PATH="$HOME/.dotnet/tools:$PATH"
@@ -63,11 +65,65 @@ jobs:
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
-      - name: Upload D1 runtime probe build log
+      - name: Locate D1 ISO
+        run: |
+          set -euo pipefail
+          ISO="$(find bin -type f -name '*.iso' | head -n1)"
+          test -n "$ISO"
+          test -f "$ISO"
+          cp "$ISO" driver-d1-x64.iso
+          echo "D1_ISO=$GITHUB_WORKSPACE/driver-d1-x64.iso" >> "$GITHUB_ENV"
+      - name: QEMU real PCI enumeration proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=driver-d1-qemu.log
+          : > "$LOG"
+          qemu-system-x86_64 -M q35 -cpu Nehalem -m 512M \
+            -drive file="$D1_ISO",media=cdrom,if=ide,readonly=on -boot d \
+            -device e1000 \
+            -display none -monitor none -serial "file:$LOG" -no-reboot -no-shutdown &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 180); do
+            if grep -Fq '[DRIVER-D1] FAIL ' "$LOG" || grep -Eq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG"; then
+              echo 'D1 runtime proof failed'
+              tail -n 200 "$LOG"
+              exit 1
+            fi
+            if grep -Eq '\[DRIVER-D1\] PCI .*vendor=0x[0-9A-F]{4}.*class=' "$LOG" && grep -Eq '\[DRIVER-D1\] PASS real PCI discovery count=[1-9][0-9]*' "$LOG"; then
+              echo 'Real QEMU PCI enumeration proof passed.'
+              tail -n 200 "$LOG"
+              exit 0
+            fi
+            kill -0 "$PID" 2>/dev/null || {
+              wait "$PID" || true
+              echo 'QEMU exited before D1 runtime proof'
+              tail -n 200 "$LOG"
+              exit 1
+            }
+            sleep 1
+          done
+          echo 'Timeout waiting for real D1 PCI enumeration proof'
+          tail -n 200 "$LOG"
+          exit 1
+      - name: ARM64 compile regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          rm -rf obj bin
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 2>&1 | tee d1-arm64-restore.log
+          dotnet build ZonderqOS.csproj -c Release -r linux-arm64 -p:CosmosArch=arm64 --no-restore 2>&1 | tee d1-arm64-build.log
+      - name: Upload D1 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: d1-runtime-build-log-${{ github.sha }}
-          path: d1-runtime-build.log
-          if-no-files-found: error
+          name: driver-d1-evidence-${{ github.sha }}
+          path: |
+            d1-runtime-build.log
+            driver-d1-qemu.log
+            d1-arm64-restore.log
+            d1-arm64-build.log
+          if-no-files-found: ignore
           retention-days: 7
