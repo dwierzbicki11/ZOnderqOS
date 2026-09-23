@@ -89,7 +89,24 @@ static class Program
             Require(registry.TryBind(devices[0], out IDeviceDriver rebound) && object.ReferenceEquals(bound, rebound), "rebinding must be stable");
             Require(fallback.BindCalls == 1, "already-bound device must not bind twice");
 
-            Console.WriteLine("D1 hardware model tests passed");
+            // D2.1: storage discovery/binding must be strict and HAL-neutral.
+            var ahci = new DeviceDescriptor(new DeviceId("pci", "00:1F.2"), 0x8086, 0x2922, 0x01, 0x06, 0x01);
+            var nvme = new DeviceDescriptor(new DeviceId("pci", "00:04.0"), 0x1B36, 0x0010, 0x01, 0x08, 0x02);
+            var legacySata = new DeviceDescriptor(new DeviceId("pci", "00:1F.1"), 0x8086, 0x1234, 0x01, 0x06, 0x00);
+            var unknownNvm = new DeviceDescriptor(new DeviceId("pci", "00:05.0"), 0x1234, 0x5678, 0x01, 0x08, 0x00);
+            Require(StorageControllerClassifier.TryClassify(ahci, out StorageControllerKind ahciKind) && ahciKind == StorageControllerKind.Ahci, "AHCI class/subclass/PI must classify");
+            Require(StorageControllerClassifier.TryClassify(nvme, out StorageControllerKind nvmeKind) && nvmeKind == StorageControllerKind.Nvme, "NVMe class/subclass/PI must classify");
+            Require(!StorageControllerClassifier.TryClassify(legacySata, out _), "non-AHCI SATA PI must not bind as AHCI");
+            Require(!StorageControllerClassifier.TryClassify(unknownNvm, out _), "unknown NVM PI must not bind as NVMe");
+            var storageRegistry = new DriverRegistry();
+            storageRegistry.Register(new AhciControllerDriver());
+            storageRegistry.Register(new NvmeControllerDriver());
+            Require(storageRegistry.TryBind(ahci, out IDeviceDriver ahciDriver) && ahciDriver.Name == "ahci", "AHCI binding mismatch");
+            Require(storageRegistry.TryBind(nvme, out IDeviceDriver nvmeDriver) && nvmeDriver.Name == "nvme", "NVMe binding mismatch");
+            Require(!storageRegistry.TryBind(legacySata, out _), "legacy SATA must remain unbound in D2.1");
+            Require(!storageRegistry.TryBind(unknownNvm, out _), "unknown NVM must remain unbound in D2.1");
+
+            Console.WriteLine("D1/D2.1 hardware model tests passed");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
