@@ -1,0 +1,86 @@
+name: Driver stage D2 AHCI NVMe
+
+on:
+  push:
+    branches: [ drivers/d2-ahci-nvme ]
+  pull_request:
+    paths: [ 'source/Hardware/**', 'source/Platform/X64/PciConfigIoAccessor.cs', 'source/Core/DriverD2EntryKernel.cs', 'tests/DriverD2.Runtime/**', 'tests/HardwareModel.Tests/**', 'docs/driver-d2-ahci-nvme.md', '.github/workflows/driver-stage-d2.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  d2-1-discovery-binding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Deterministic storage classification and binding tests
+        run: dotnet run --project tests/HardwareModel.Tests/HardwareModel.Tests.csproj -c Release
+      - name: Install Cosmos and QEMU prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lld xorriso qemu-system-x86 qemu-utils
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          dotnet tool install --global Cosmos.Patcher --version 3.0.85
+      - name: Build dedicated D2.1 runtime probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          dotnet restore tests/DriverD2.Runtime/DriverD2.Runtime.csproj -r linux-x64
+          dotnet build tests/DriverD2.Runtime/DriverD2.Runtime.csproj -c Release -r linux-x64 --no-restore 2>&1 | tee d2-runtime-build.log
+          mapfile -t ISO_LINES < <(grep -F 'ISO created at:' d2-runtime-build.log || true)
+          test "${#ISO_LINES[@]}" -eq 1
+          ISO="${ISO_LINES[0]#*ISO created at: }"
+          case "$ISO" in "$GITHUB_WORKSPACE"/*) ;; *) echo "ISO outside workspace: $ISO" >&2; exit 1;; esac
+          test -f "$ISO"
+          cp "$ISO" driver-d2-x64.iso
+          echo "D2_ISO=$GITHUB_WORKSPACE/driver-d2-x64.iso" >> "$GITHUB_ENV"
+      - name: QEMU real AHCI and NVMe discovery binding proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=driver-d2-qemu.log
+          qemu-img create -f raw d2-sata.img 16M
+          qemu-img create -f raw d2-nvme.img 16M
+          : > "$LOG"
+          qemu-system-x86_64 -M q35 -cpu Nehalem -m 512M \
+            -drive file="$D2_ISO",media=cdrom,if=ide,readonly=on -boot d \
+            -device ich9-ahci,id=d2ahci -drive if=none,id=d2sata,file=d2-sata.img,format=raw \
+            -device ide-hd,drive=d2sata,bus=d2ahci.0 \
+            -drive if=none,id=d2nvme,file=d2-nvme.img,format=raw \
+            -device nvme,drive=d2nvme,serial=ZONDERQD21 \
+            -display none -monitor none -serial "file:$LOG" -no-reboot -no-shutdown &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 180); do
+            if grep -Fq '[DRIVER-D2.1] FAIL ' "$LOG" || grep -Eq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG"; then
+              tail -n 200 "$LOG"; exit 1
+            fi
+            if grep -Fq '[DRIVER-D2.1] AHCI bound ' "$LOG" && grep -Fq '[DRIVER-D2.1] NVME bound ' "$LOG" && grep -Eq '\[DRIVER-D2.1\] PASS ahci=[1-9][0-9]* nvme=[1-9][0-9]*' "$LOG"; then
+              tail -n 200 "$LOG"; exit 0
+            fi
+            kill -0 "$PID" 2>/dev/null || { wait "$PID" || true; tail -n 200 "$LOG"; exit 1; }
+            sleep 1
+          done
+          echo 'Timeout waiting for D2.1 runtime proof' >&2
+          tail -n 200 "$LOG"; exit 1
+      - name: ARM64 production-model compile regression
+        run: |
+          dotnet restore tests/HardwareModel.Tests/HardwareModel.Tests.csproj -r linux-arm64
+          dotnet build tests/HardwareModel.Tests/HardwareModel.Tests.csproj -c Release -r linux-arm64 --no-restore
+      - name: Upload D2.1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: driver-d2-1-evidence-${{ github.sha }}
+          path: |
+            d2-runtime-build.log
+            driver-d2-qemu.log
+          if-no-files-found: ignore
+          retention-days: 7
