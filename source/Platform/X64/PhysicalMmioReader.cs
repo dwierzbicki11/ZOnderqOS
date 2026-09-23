@@ -1,4 +1,5 @@
 using System;
+using System.Threading;
 
 namespace ZonderqOS.Platform.X64
 {
@@ -15,7 +16,7 @@ namespace ZonderqOS.Platform.X64
             if (physicalAddress > (ulong)nuint.MaxValue)
                 throw new ArgumentOutOfRangeException(nameof(physicalAddress), "MMIO address is outside the native address width.");
 
-            return *(volatile uint*)(nuint)physicalAddress;
+            return Volatile.Read(ref *(uint*)(nuint)physicalAddress);
         }
 
         public static ulong Read64(ulong physicalAddress)
