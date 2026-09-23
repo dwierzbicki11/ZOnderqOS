@@ -28,8 +28,14 @@ static class Program
         private static string Key(byte b, byte d, byte f, byte o) => b + ":" + d + ":" + f + ":" + o;
         public void Set8(byte b, byte d, byte f, byte o, byte value) => values[Key(b,d,f,o)] = value;
         public void Set16(byte b, byte d, byte f, byte o, ushort value) => values[Key(b,d,f,o)] = value;
+        public void Set32(byte b, byte d, byte f, byte o, uint value) => values[Key(b,d,f,o)] = value;
         public byte Read8(byte b, byte d, byte f, byte o) => values.TryGetValue(Key(b,d,f,o), out uint v) ? (byte)v : (byte)0;
         public ushort Read16(byte b, byte d, byte f, byte o) => values.TryGetValue(Key(b,d,f,o), out uint v) ? (ushort)v : (ushort)0xFFFF;
+        public uint Read32(byte b, byte d, byte f, byte o)
+        {
+            if ((o & 3) != 0) throw new ArgumentOutOfRangeException(nameof(o));
+            return values.TryGetValue(Key(b,d,f,o), out uint v) ? v : 0xFFFFFFFFu;
+        }
     }
 
     static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
@@ -72,6 +78,14 @@ static class Program
             Require(topology.Count == 4, "topology walker must discover root, multifunction and bridged functions");
             Require(topology[0].Id.Address == "00:01.0" && topology[1].Id.Address == "00:02.0" && topology[2].Id.Address == "00:02.1" && topology[3].Id.Address == "02:00.0", "topology discovery BDF mismatch");
 
+            // D2.2 config boundary: dword BAR reads preserve all bits and reject
+            // unaligned accesses rather than silently aliasing another register.
+            config.Set32(0, 2, 0, 0x10, 0xFEDC0004u);
+            Require(config.Read32(0, 2, 0, 0x10) == 0xFEDC0004u, "PCI dword config read mismatch");
+            bool unalignedDwordRejected = false;
+            try { _ = config.Read32(0, 2, 0, 0x11); } catch (ArgumentOutOfRangeException) { unalignedDwordRejected = true; }
+            Require(unalignedDwordRejected, "unaligned PCI dword read must be rejected");
+
             var multiRoot = new ConfigAccessor();
             AddFunction(multiRoot, 0, 0, 0, 0x8086, 0x1000, 0x06, 0x00, 0, 0x80);
             AddFunction(multiRoot, 0, 0, 2, 0x8086, 0x1002, 0x06, 0x00, 0);
@@ -106,7 +120,7 @@ static class Program
             Require(!storageRegistry.TryBind(legacySata, out _), "legacy SATA must remain unbound in D2.1");
             Require(!storageRegistry.TryBind(unknownNvm, out _), "unknown NVM must remain unbound in D2.1");
 
-            Console.WriteLine("D1/D2.1 hardware model tests passed");
+            Console.WriteLine("D1/D2.1/D2.2 hardware model tests passed");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
