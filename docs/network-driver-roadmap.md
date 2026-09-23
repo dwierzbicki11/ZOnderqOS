@@ -22,8 +22,8 @@ Phase 1 is COMPLETE. It was revalidated after the documentation checkpoint `e269
 
 | Stage | Goal | Completion gate | Status |
 |---|---|---|---|
-| D1 | device/driver binding + PCI/PCIe | deterministic enumeration/binding tests, x86_64 QEMU PCI runtime proof, ARM64 compile regression, exact-SHA green CI | IN PROGRESS — deterministic model + real CF8/CFC backend + complete x64 Cosmos/ISO build are green; QEMU PCI proof and ARM64 regression are now enforced by D1 CI and remain pending on the current PR head |
-| D2 | AHCI/NVMe stabilization | storage runtime tests in QEMU | BLOCKED BY D1 |
+| D1 | device/driver binding + PCI/PCIe | deterministic enumeration/binding tests, x86_64 QEMU PCI runtime proof, ARM64 compile regression, exact-SHA green CI | PASS — exact SHA `74df4906cc4b2fb6195dd611cc86a0539e7eceb0`; D1 workflow run #73 green, including real x86_64 QEMU PCI proof and ARM64 production-model compile regression |
+| D2 | AHCI/NVMe stabilization | storage runtime tests in QEMU | NEXT — unblocked after D1; implementation must begin only after the D1 documentation checkpoint is itself green |
 | D3 | USB xHCI | controller init + transfer proof | BLOCKED BY D2 |
 | D4 | HID | input device runtime proof | BLOCKED BY D3 |
 | D5 | USB Mass Storage | enumerate, read/write test media safely | BLOCKED BY D4 |
@@ -40,4 +40,6 @@ Phase 1 is COMPLETE. It was revalidated after the documentation checkpoint `e269
 
 ## Current checkpoint
 
-D1 remains on the dedicated `drivers/d1-device-pci` branch created from the completed networking checkpoint. Exact SHA `c5b5045a7c3d090f4221d284b47a469ca731b370` passed the D1 deterministic model/backend checks and the complete isolated x64 Cosmos build/ISO gate in GitHub Actions run #51. The D1 workflow now continues with a real QEMU q35 PCI enumeration proof (including a known emulated e1000 function and required non-zero discovery/PASS markers), followed by an ARM64 compile regression. D1 is not PASS until both runtime and ARM64 gates are green on the same exact PR-head SHA. No AHCI/NVMe, USB, HID or mass-storage implementation work is permitted until then.
+D1 is verified COMPLETE on exact SHA `74df4906cc4b2fb6195dd611cc86a0539e7eceb0`. GitHub Actions `Driver stage D1 device model` run #73 completed successfully on that SHA. The run includes the deterministic device/PCI model checks, real x86_64 CF8/CFC-backed QEMU PCI enumeration proof, and ARM64 compile-regression of the architecture-neutral production hardware model. The x86-only CF8/CFC accessor remains covered by the x86_64 runtime gate rather than being forced into ARM64.
+
+This documentation update is the D1 closure checkpoint. D2 AHCI/NVMe remains untouched in this commit and may start only after exact-SHA CI for this checkpoint is green, preserving the strict stage ordering.
