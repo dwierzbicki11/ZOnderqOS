@@ -127,10 +127,16 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          export PATH="$HOME/.dotnet/tools:$PATH"
           rm -rf obj bin
           dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 2>&1 | tee d1-arm64-restore.log
-          dotnet build ZonderqOS.csproj -c Release -r linux-arm64 -p:CosmosArch=arm64 --no-restore 2>&1 | tee d1-arm64-build.log
+          # Cosmos.Build.Ilc 3.0.85 attempts to execute an ARM64-hosted tool during a full
+          # linux-arm64 build on this x64 runner. D1 requires a compile regression here,
+          # not a fabricated ARM64 link/boot proof, so stop at CoreCompile deliberately.
+          dotnet msbuild ZonderqOS.csproj -t:CoreCompile -p:Configuration=Release -p:RuntimeIdentifier=linux-arm64 -p:CosmosArch=arm64 --no-restore 2>&1 | tee d1-arm64-build.log
+          if grep -Eqi '(^|[[:space:]])error([[:space:]]|:)|Build FAILED' d1-arm64-build.log; then
+            echo 'ARM64 CoreCompile regression failed.' >&2
+            exit 1
+          fi
       - name: Upload D1 evidence
         if: always()
         uses: actions/upload-artifact@v4
