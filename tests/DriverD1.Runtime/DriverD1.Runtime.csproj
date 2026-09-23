@@ -1,0 +1,29 @@
+<Project Sdk="Cosmos.Sdk/3.0.85">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <RuntimeIdentifier>linux-x64</RuntimeIdentifier>
+    <CosmosArch>x64</CosmosArch>
+    <CosmosKernelClass>ZonderqOS.DriverD1EntryKernel</CosmosKernelClass>
+    <CosmosEnableNetwork>false</CosmosEnableNetwork>
+    <CosmosEnableStorage>false</CosmosEnableStorage>
+    <CosmosEnableMouse>false</CosmosEnableMouse>
+    <CosmosEnableKeyboard>false</CosmosEnableKeyboard>
+    <CosmosEnableGraphics>false</CosmosEnableGraphics>
+    <CosmosEnableScheduler>true</CosmosEnableScheduler>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Cosmos.Kernel" Version="3.0.85" />
+    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" />
+  </ItemGroup>
+
+  <!-- Deliberately link only the D1 proof and the production PCI/device code it exercises.
+       Kernel.cs and the normal OS boot path cannot enter this image. -->
+  <ItemGroup>
+    <Compile Include="../../source/Core/DriverD1EntryKernel.cs" Link="DriverD1EntryKernel.cs" />
+    <Compile Include="../../source/Hardware/**/*.cs" Link="Hardware/%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="../../source/Platform/X64/PciConfigIoAccessor.cs" Link="Platform/X64/PciConfigIoAccessor.cs" />
+  </ItemGroup>
+</Project>

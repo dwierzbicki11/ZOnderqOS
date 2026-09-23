@@ -1,0 +1,150 @@
+name: Driver stage D1 device model
+
+on:
+  push:
+    branches: [ drivers/d1-device-pci ]
+    paths: [ 'source/Hardware/**', 'source/Platform/X64/PciConfigIoAccessor.cs', 'source/Core/DriverD1EntryKernel.cs', 'ZonderqOS.csproj', 'tests/DriverD1.Runtime/**', 'tests/HardwareModel.Tests/**', 'docs/network-driver-roadmap.md', '.github/workflows/driver-stage-d1.yml' ]
+  pull_request:
+    paths: [ 'source/Hardware/**', 'source/Platform/X64/PciConfigIoAccessor.cs', 'source/Core/DriverD1EntryKernel.cs', 'ZonderqOS.csproj', 'tests/DriverD1.Runtime/**', 'tests/HardwareModel.Tests/**', 'docs/network-driver-roadmap.md', '.github/workflows/driver-stage-d1.yml' ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  device-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run deterministic device and PCI model regression tests
+        run: dotnet run --project tests/HardwareModel.Tests/HardwareModel.Tests.csproj -c Release
+      - name: Verify privileged x64 backend uses the tested mechanism-1 codec
+        run: |
+          grep -Fq 'PciConfigMechanism1.EncodeAddress' source/Platform/X64/PciConfigIoAccessor.cs
+          grep -Fq 'PciConfigMechanism1.Extract8' source/Platform/X64/PciConfigIoAccessor.cs
+          grep -Fq 'PciConfigMechanism1.Extract16' source/Platform/X64/PciConfigIoAccessor.cs
+          grep -Fq 'NativePortIo.WriteDWord(ConfigAddressPort, address)' source/Platform/X64/PciConfigIoAccessor.cs
+          grep -Fq 'NativePortIo.ReadDWord(ConfigDataPort)' source/Platform/X64/PciConfigIoAccessor.cs
+          grep -Fq 'EntryPoint = "_native_io_write_dword"' source/Platform/X64/PciConfigIoAccessor.cs
+          grep -Fq 'EntryPoint = "_native_io_read_dword"' source/Platform/X64/PciConfigIoAccessor.cs
+      - name: Install Cosmos native build and QEMU prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lld xorriso qemu-system-x86
+          command -v ld.lld
+          ld.lld --version
+          command -v xorriso
+          xorriso -version
+          command -v qemu-system-x86_64
+          qemu-system-x86_64 --version
+      - name: Install Cosmos patcher required by Cosmos.Build.Patcher
+        run: |
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          dotnet tool install --global Cosmos.Patcher --version 3.0.85
+          command -v cosmos.patcher
+          cosmos.patcher --help >/dev/null
+      - name: Restore dedicated x64 D1 runtime probe
+        run: dotnet restore tests/DriverD1.Runtime/DriverD1.Runtime.csproj -r linux-x64
+      - name: Compile dedicated x64 D1 runtime probe
+        id: d1_build
+        shell: bash
+        run: |
+          set +e
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          dotnet build tests/DriverD1.Runtime/DriverD1.Runtime.csproj -c Release -r linux-x64 --no-restore 2>&1 | tee d1-runtime-build.log
+          status=${PIPESTATUS[0]}
+          {
+            echo '## D1 runtime probe compiler diagnostics'
+            echo
+            echo '```text'
+            grep -E '(^|[[:space:]])(error|warning) [A-Z]+[0-9]+|Build (FAILED|succeeded)' d1-runtime-build.log | tail -n 120 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Locate dedicated D1 ISO
+        shell: bash
+        run: |
+          set -euo pipefail
+          mapfile -t ISO_LINES < <(grep -F 'ISO created at:' d1-runtime-build.log || true)
+          if [ "${#ISO_LINES[@]}" -ne 1 ]; then
+            echo "Expected exactly one Cosmos 'ISO created at:' record, got ${#ISO_LINES[@]}." >&2
+            printf '  %s\n' "${ISO_LINES[@]:-<none>}" >&2
+            exit 1
+          fi
+          ISO="${ISO_LINES[0]#*ISO created at: }"
+          case "$ISO" in
+            "$GITHUB_WORKSPACE"/*) ;;
+            *) echo "Refusing ISO outside workspace: $ISO" >&2; exit 1 ;;
+          esac
+          if [ ! -f "$ISO" ]; then
+            echo "Cosmos reported an ISO that does not exist: $ISO" >&2
+            echo 'Boot/build artifacts present in workspace:' >&2
+            find "$GITHUB_WORKSPACE" -type f \( -name '*.iso' -o -name '*.elf' -o -name '*.img' -o -name 'limine.conf' \) -print >&2 || true
+            exit 1
+          fi
+          echo "Using Cosmos-reported dedicated D1 ISO: $ISO"
+          cp "$ISO" driver-d1-x64.iso
+          echo "D1_ISO=$GITHUB_WORKSPACE/driver-d1-x64.iso" >> "$GITHUB_ENV"
+      - name: QEMU real PCI enumeration proof
+        shell: bash
+        run: |
+          set -euo pipefail
+          LOG=driver-d1-qemu.log
+          : > "$LOG"
+          qemu-system-x86_64 -M q35 -cpu Nehalem -m 512M \
+            -drive file="$D1_ISO",media=cdrom,if=ide,readonly=on -boot d \
+            -device e1000 \
+            -display none -monitor none -serial "file:$LOG" -no-reboot -no-shutdown &
+          PID=$!
+          trap 'kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 180); do
+            if grep -Fq '[DRIVER-D1] FAIL ' "$LOG" || grep -Eq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG"; then
+              echo 'D1 runtime proof failed'
+              tail -n 200 "$LOG"
+              exit 1
+            fi
+            if grep -Eq '\[DRIVER-D1\] PCI .*vendor=0x[0-9A-F]{4}.*class=' "$LOG" && grep -Eq '\[DRIVER-D1\] PASS real PCI discovery count=[1-9][0-9]*' "$LOG"; then
+              echo 'Real QEMU PCI enumeration proof passed.'
+              tail -n 200 "$LOG"
+              exit 0
+            fi
+            kill -0 "$PID" 2>/dev/null || {
+              wait "$PID" || true
+              echo 'QEMU exited before D1 runtime proof'
+              tail -n 200 "$LOG"
+              exit 1
+            }
+            sleep 1
+          done
+          echo 'Timeout waiting for real D1 PCI enumeration proof'
+          tail -n 200 "$LOG"
+          exit 1
+      - name: ARM64 compile regression
+        shell: bash
+        run: |
+          set -euo pipefail
+          # D1's portable contract is source/Hardware. Compile that exact production code
+          # for ARM64 using the deterministic test project, without dragging the x64-only
+          # CF8/CFC backend or Cosmos' host-specific NativeAOT/ILC stages into this gate.
+          dotnet restore tests/HardwareModel.Tests/HardwareModel.Tests.csproj -r linux-arm64 2>&1 | tee d1-arm64-restore.log
+          dotnet build tests/HardwareModel.Tests/HardwareModel.Tests.csproj -c Release -r linux-arm64 --no-restore 2>&1 | tee d1-arm64-build.log
+          if grep -Eqi '(^|[[:space:]])error([[:space:]]|:)|Build FAILED' d1-arm64-build.log; then
+            echo 'ARM64 D1 production-model compile regression failed.' >&2
+            exit 1
+          fi
+      - name: Upload D1 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: driver-d1-evidence-${{ github.sha }}
+          path: |
+            d1-runtime-build.log
+            driver-d1-qemu.log
+            d1-arm64-restore.log
+            d1-arm64-build.log
+          if-no-files-found: ignore
+          retention-days: 7
