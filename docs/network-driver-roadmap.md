@@ -22,7 +22,7 @@ Phase 1 is COMPLETE. It was revalidated after the documentation checkpoint `e269
 
 | Stage | Goal | Completion gate | Status |
 |---|---|---|---|
-| D1 | device/driver binding + PCI/PCIe | deterministic enumeration/binding tests, x86_64 QEMU PCI runtime proof, ARM64 compile regression, exact-SHA green CI | IN PROGRESS — system-facing device/driver binding model added on `drivers/d1-device-pci`; PCI HAL/enumerator and validation still pending |
+| D1 | device/driver binding + PCI/PCIe | deterministic enumeration/binding tests, x86_64 QEMU PCI runtime proof, ARM64 compile regression, exact-SHA green CI | IN PROGRESS — deterministic model + real CF8/CFC backend + complete x64 Cosmos/ISO build are green; QEMU PCI proof and ARM64 regression are now enforced by D1 CI and remain pending on the current PR head |
 | D2 | AHCI/NVMe stabilization | storage runtime tests in QEMU | BLOCKED BY D1 |
 | D3 | USB xHCI | controller init + transfer proof | BLOCKED BY D2 |
 | D4 | HID | input device runtime proof | BLOCKED BY D3 |
@@ -40,4 +40,4 @@ Phase 1 is COMPLETE. It was revalidated after the documentation checkpoint `e269
 
 ## Current checkpoint
 
-D1 has started on the dedicated `drivers/d1-device-pci` branch created from the completed networking checkpoint. The first implementation step adds the architecture-neutral device/driver binding contract. No AHCI/NVMe, USB, HID or mass-storage implementation work is permitted until D1 has its required exact-SHA CI and runtime evidence.
+D1 remains on the dedicated `drivers/d1-device-pci` branch created from the completed networking checkpoint. Exact SHA `c5b5045a7c3d090f4221d284b47a469ca731b370` passed the D1 deterministic model/backend checks and the complete isolated x64 Cosmos build/ISO gate in GitHub Actions run #51. The D1 workflow now continues with a real QEMU q35 PCI enumeration proof (including a known emulated e1000 function and required non-zero discovery/PASS markers), followed by an ARM64 compile regression. D1 is not PASS until both runtime and ARM64 gates are green on the same exact PR-head SHA. No AHCI/NVMe, USB, HID or mass-storage implementation work is permitted until then.
