@@ -1,3 +1,4 @@
+using System;
 using System.Runtime.InteropServices;
 using ZonderqOS.Hardware;
 
@@ -26,6 +27,15 @@ namespace ZonderqOS.Platform.X64
 
             uint value = ReadAlignedDword(bus, device, function, offset);
             return PciConfigMechanism1.Extract16(value, offset);
+        }
+
+        public uint Read32(byte bus, byte device, byte function, byte offset)
+        {
+            // BAR and capability dwords must never silently alias an adjacent
+            // configuration register. Reject unaligned offsets before port I/O.
+            if ((offset & 3) != 0)
+                throw new ArgumentOutOfRangeException(nameof(offset), "PCI 32-bit configuration reads must be dword aligned.");
+            return ReadAlignedDword(bus, device, function, offset);
         }
 
         private static uint ReadAlignedDword(byte bus, byte device, byte function, byte offset)
