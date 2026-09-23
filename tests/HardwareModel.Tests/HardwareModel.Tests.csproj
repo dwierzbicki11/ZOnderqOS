@@ -12,5 +12,6 @@
     <Compile Include="../../source/Hardware/PciConfigMechanism1.cs" Link="PciConfigMechanism1.cs" />
     <Compile Include="../../source/Hardware/StorageControllerDrivers.cs" Link="StorageControllerDrivers.cs" />
     <Compile Include="../../source/Hardware/PciBarDecoder.cs" Link="PciBarDecoder.cs" />
+    <Compile Include="../../source/Hardware/StorageControllerBars.cs" Link="StorageControllerBars.cs" />
   </ItemGroup>
 </Project>
