@@ -66,18 +66,28 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
           exit "$status"
       - name: Locate dedicated D1 ISO
+        shell: bash
         run: |
           set -euo pipefail
-          mapfile -t ISOS < <(find "$GITHUB_WORKSPACE" -type f -name '*.iso' -print)
-          printf 'Dedicated D1 ISO candidates:\n'
-          printf '  %s\n' "${ISOS[@]:-<none>}"
-          if [ "${#ISOS[@]}" -ne 1 ]; then
-            echo 'Expected exactly one ISO from the dedicated D1 build.' >&2
+          mapfile -t ISO_LINES < <(grep -F 'ISO created at:' d1-runtime-build.log || true)
+          if [ "${#ISO_LINES[@]}" -ne 1 ]; then
+            echo "Expected exactly one Cosmos 'ISO created at:' record, got ${#ISO_LINES[@]}." >&2
+            printf '  %s\n' "${ISO_LINES[@]:-<none>}" >&2
+            exit 1
+          fi
+          ISO="${ISO_LINES[0]#*ISO created at: }"
+          case "$ISO" in
+            "$GITHUB_WORKSPACE"/*) ;;
+            *) echo "Refusing ISO outside workspace: $ISO" >&2; exit 1 ;;
+          esac
+          if [ ! -f "$ISO" ]; then
+            echo "Cosmos reported an ISO that does not exist: $ISO" >&2
             echo 'Boot/build artifacts present in workspace:' >&2
             find "$GITHUB_WORKSPACE" -type f \( -name '*.iso' -o -name '*.elf' -o -name '*.img' -o -name 'limine.conf' \) -print >&2 || true
             exit 1
           fi
-          cp "${ISOS[0]}" driver-d1-x64.iso
+          echo "Using Cosmos-reported dedicated D1 ISO: $ISO"
+          cp "$ISO" driver-d1-x64.iso
           echo "D1_ISO=$GITHUB_WORKSPACE/driver-d1-x64.iso" >> "$GITHUB_ENV"
       - name: QEMU real PCI enumeration proof
         shell: bash
