@@ -12,6 +12,7 @@
     <CosmosEnableGraphics>false</CosmosEnableGraphics>
     <CosmosEnableScheduler>true</CosmosEnableScheduler>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Cosmos.Kernel" Version="3.0.85" />
@@ -21,5 +22,6 @@
     <Compile Include="../../source/Core/DriverD2EntryKernel.cs" Link="DriverD2EntryKernel.cs" />
     <Compile Include="../../source/Hardware/**/*.cs" Link="Hardware/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../../source/Platform/X64/PciConfigIoAccessor.cs" Link="Platform/X64/PciConfigIoAccessor.cs" />
+    <Compile Include="../../source/Platform/X64/PhysicalMmioReader.cs" Link="Platform/X64/PhysicalMmioReader.cs" />
   </ItemGroup>
 </Project>
