@@ -49,10 +49,12 @@ jobs:
           qemu-img create -f raw d2-sata.img 16M
           qemu-img create -f raw d2-nvme.img 16M
           : > "$LOG"
+          # q35 already exposes its chipset ICH9 AHCI controller.  Use that single
+          # controller for both the boot CD and SATA test disk instead of adding a
+          # second ich9-ahci device, so the runtime proof really targets one HBA.
           qemu-system-x86_64 -M q35 -cpu Nehalem -m 512M \
-            -drive file="$D2_ISO",media=cdrom,if=ide,readonly=on -boot d \
-            -device ich9-ahci,id=d2ahci -drive if=none,id=d2sata,file=d2-sata.img,format=raw \
-            -device ide-hd,drive=d2sata,bus=d2ahci.0 \
+            -drive file="$D2_ISO",media=cdrom,if=ide,readonly=on,index=0 -boot d \
+            -drive file=d2-sata.img,format=raw,if=ide,index=2 \
             -drive if=none,id=d2nvme,file=d2-nvme.img,format=raw \
             -device nvme,drive=d2nvme,serial=ZONDERQD23 \
             -display none -monitor none -serial "file:$LOG" -no-reboot -no-shutdown &
