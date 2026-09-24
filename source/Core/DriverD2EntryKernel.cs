@@ -76,10 +76,13 @@ namespace ZonderqOS
                 // Keep this first D2.3 checkpoint deliberately controller-global: no port
                 // command engine, DMA structures, interrupts, or storage commands yet.
                 ulong ghcAddress = checked(ahciBar.Address + 0x04UL);
+                Log.WriteString("[DRIVER-D2.3] AHCI reset: reading GHC before HR\n");
                 uint ghc = PhysicalMmioReader.Read32(ghcAddress);
                 if (ghc == 0xFFFFFFFFu)
                     throw new InvalidOperationException("AHCI GHC returned all-ones before reset");
+                Log.WriteString("[DRIVER-D2.3] AHCI reset: writing GHC.HR\n");
                 PhysicalMmioWriter.Write32(ghcAddress, ghc | AhciGhcHr);
+                Log.WriteString("[DRIVER-D2.3] AHCI reset: GHC.HR write returned\n");
 
                 bool resetComplete = false;
                 for (int spin = 0; spin < 1_000_000; spin++)
@@ -97,6 +100,7 @@ namespace ZonderqOS
                 if (!resetComplete)
                     throw new TimeoutException("AHCI HBA reset did not clear GHC.HR");
 
+                Log.WriteString("[DRIVER-D2.3] AHCI reset: HR cleared, validating CAP\n");
                 uint capAfterReset = PhysicalMmioReader.Read32(checked(ahciBar.Address + 0x00UL));
                 if (capAfterReset == 0xFFFFFFFFu)
                     throw new InvalidOperationException("AHCI CAP invalid after reset");
