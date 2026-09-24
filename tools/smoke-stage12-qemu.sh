@@ -282,6 +282,11 @@ awk -v model="$CPU_MODEL" '$2 == model { found=1 } END { exit !found }' <<< "$mo
 : > "$LOG"
 QEMU_STDERR="${LOG}.stderr"
 : > "$QEMU_STDERR"
+QEMU_DEBUG_ARGS=()
+if [[ -n "${SMT_QEMU_EXCEPTION_TRACE:-}" ]]; then
+  : > "$SMT_QEMU_EXCEPTION_TRACE"
+  QEMU_DEBUG_ARGS=(-d int,cpu_reset -D "$SMT_QEMU_EXCEPTION_TRACE")
+fi
 echo "[SMT12-QEMU] ${CPU_MODEL}: ${SOCKETS}S/${CORES}C/${THREADS}T = ${CPUS} logical CPU(s); stability=${STABLE_SECONDS}s"
 qemu-system-x86_64 \
   -M q35 -accel tcg \
@@ -290,6 +295,7 @@ qemu-system-x86_64 \
   -m 2G \
   -drive "file=$ISO,media=cdrom,if=ide,readonly=on" -boot d \
   -display none -monitor none -serial "file:$LOG" \
+  "${QEMU_DEBUG_ARGS[@]}" \
   -no-reboot -no-shutdown 2> "$QEMU_STDERR" &
 QEMU_PID=$!
 trap 'kill "$QEMU_PID" 2>/dev/null || true; wait "$QEMU_PID" 2>/dev/null || true' EXIT
