@@ -134,8 +134,57 @@ jobs:
         if: always()
         working-directory: zonderq
         run: |
+          python3 - <<'PY' > stage16-symbols.log 2>&1
+          import bisect
+          import pathlib
+          import re
+          import subprocess
+
+          elf = pathlib.Path('output-x64/ZonderqOS.elf')
+          trace = pathlib.Path('stage16-qemu-serial.log.qemu-exceptions.log')
+          print(f'ELF: {elf}')
+          if not elf.is_file():
+              print('[SMT16-SYMBOLS] ELF unavailable')
+              raise SystemExit(0)
+
+          nm = subprocess.run(
+              ['nm', '-n', str(elf)], check=True, text=True,
+              stdout=subprocess.PIPE).stdout
+          symbols = []
+          for line in nm.splitlines():
+              fields = line.split(maxsplit=2)
+              if len(fields) == 3 and re.fullmatch(r'[0-9a-fA-F]+', fields[0]):
+                  symbols.append((int(fields[0], 16), fields[2]))
+
+          addresses = []
+          seen = set()
+          if trace.is_file():
+              for match in re.finditer(r'RIP=([0-9a-fA-F]{16})', trace.read_text(errors='replace')):
+                  address = int(match.group(1), 16)
+                  if address >= 0xffffffff80000000 and address not in seen:
+                      seen.add(address)
+                      addresses.append(address)
+          else:
+              print('[SMT16-SYMBOLS] QEMU exception trace unavailable')
+
+          # Keep the tail because the dispatch fault is emitted after firmware noise.
+          for address in addresses[-128:]:
+              index = bisect.bisect_right(symbols, (address, chr(0x10ffff))) - 1
+              nearest = '<no preceding symbol>'
+              if index >= 0:
+                  symbol_address, symbol_name = symbols[index]
+                  nearest = f'{symbol_name}+0x{address - symbol_address:x}'
+              print(f'\n===== 0x{address:016x} {nearest} =====')
+              subprocess.run([
+                  'addr2line', '-a', '-f', '-C', '-e', str(elf), f'0x{address:x}'])
+              subprocess.run([
+                  'objdump', '-d', '-C',
+                  f'--start-address=0x{max(address - 32, 0):x}',
+                  f'--stop-address=0x{address + 48:x}', str(elf)])
+          PY
           tail -n 300 stage16-build.log 2>/dev/null || true
           cat stage16-qemu-serial.log stage16-qemu-serial.log.stderr 2>/dev/null || true
+          cat stage16-symbols.log 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
