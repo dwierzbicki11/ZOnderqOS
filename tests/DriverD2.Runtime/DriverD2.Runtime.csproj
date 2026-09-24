@@ -23,5 +23,6 @@
     <Compile Include="../../source/Hardware/**/*.cs" Link="Hardware/%(RecursiveDir)%(Filename)%(Extension)" />
     <Compile Include="../../source/Platform/X64/PciConfigIoAccessor.cs" Link="Platform/X64/PciConfigIoAccessor.cs" />
     <Compile Include="../../source/Platform/X64/PhysicalMmioReader.cs" Link="Platform/X64/PhysicalMmioReader.cs" />
+    <Compile Include="../../source/Platform/X64/PhysicalMmioWriter.cs" Link="Platform/X64/PhysicalMmioWriter.cs" />
   </ItemGroup>
 </Project>
