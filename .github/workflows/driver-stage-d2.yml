@@ -41,7 +41,7 @@ jobs:
           test -f "$ISO"
           cp "$ISO" driver-d2-x64.iso
           echo "D2_ISO=$GITHUB_WORKSPACE/driver-d2-x64.iso" >> "$GITHUB_ENV"
-      - name: QEMU real AHCI reset and NVMe disable checkpoint with D2.2 regression proof
+      - name: QEMU real AHCI reset and NVMe admin queue initialization with D2.2 regression proof
         shell: bash
         run: |
           set -euo pipefail
@@ -66,13 +66,16 @@ jobs:
                grep -Fq '[DRIVER-D2.2] PASS read-only capability MMIO' "$LOG" && \
                grep -Fq '[DRIVER-D2.3] AHCI HBA reset complete' "$LOG" && \
                grep -Fq '[DRIVER-D2.3] NVME disabled CSTS.RDY=0' "$LOG" && \
-               grep -Fq '[DRIVER-D2.3] PASS AHCI reset + NVMe disable checkpoint' "$LOG"; then
+               grep -Fq '[DRIVER-D2.3] NVME admin SQ/CQ DMA pages allocated' "$LOG" && \
+               grep -Fq '[DRIVER-D2.3] NVME AQA/ASQ/ACQ programmed and verified' "$LOG" && \
+               grep -Fq '[DRIVER-D2.3] NVME enabled CSTS.RDY=1 with real admin queues' "$LOG" && \
+               grep -Fq '[DRIVER-D2.3] PASS AHCI reset + NVMe admin queue init checkpoint' "$LOG"; then
               tail -n 200 "$LOG"; exit 0
             fi
             kill -0 "$PID" 2>/dev/null || { wait "$PID" || true; tail -n 200 "$LOG"; exit 1; }
             sleep 1
           done
-          echo 'Timeout waiting for D2.3 AHCI/NVMe runtime proof' >&2
+          echo 'Timeout waiting for D2.3 AHCI/NVMe admin queue runtime proof' >&2
           tail -n 200 "$LOG"; exit 1
       - name: ARM64 production-model compile regression
         run: |
