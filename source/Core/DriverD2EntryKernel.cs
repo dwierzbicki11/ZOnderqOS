@@ -8,14 +8,15 @@ using ZonderqOS.Platform.X64;
 
 namespace ZonderqOS
 {
-    /// <summary>D2.2 runtime proof: real PCI binding plus read-only AHCI/NVMe capability MMIO.</summary>
+    /// <summary>D2.3 runtime proof: verified D2.2 capability reads followed by bounded AHCI reset.</summary>
     public sealed class DriverD2EntryKernel : Sys.Kernel
     {
+        private const uint AhciGhcHr = 1u << 0;
         private bool completed;
 
         protected override void BeforeRun()
         {
-            Log.WriteString("[DRIVER-D2.2] starting storage BAR/MMIO capability probe\n");
+            Log.WriteString("[DRIVER-D2.3] starting storage capability probe and AHCI reset\n");
             try
             {
                 var config = new PciConfigIoAccessor();
@@ -38,6 +39,7 @@ namespace ZonderqOS
 
                 int ahciProbed = 0;
                 int nvmeProbed = 0;
+                PciMemoryBar ahciBar = default;
                 for (int i = 0; i < snapshots.Count; i++)
                 {
                     PciFunctionSnapshot function = snapshots[i];
@@ -48,6 +50,7 @@ namespace ZonderqOS
                         uint pi = PhysicalMmioReader.Read32(bar.Address + 0x0CUL);
                         if (cap == 0xFFFFFFFFu || pi == 0xFFFFFFFFu)
                             throw new InvalidOperationException("AHCI capability MMIO returned all-ones");
+                        ahciBar = bar;
                         ahciProbed++;
                         Log.WriteString("[DRIVER-D2.2] AHCI CAP/PI read\n");
                     }
@@ -65,13 +68,44 @@ namespace ZonderqOS
                     }
                 }
 
-                if (ahciProbed < 1) throw new InvalidOperationException("no AHCI controller capability-probed");
+                if (ahciProbed != 1) throw new InvalidOperationException("expected exactly one AHCI controller capability-probed");
                 if (nvmeProbed < 1) throw new InvalidOperationException("no NVMe controller capability-probed");
                 Log.WriteString("[DRIVER-D2.2] PASS read-only capability MMIO\n");
+
+                // AHCI 1.x section 10.4.3: set GHC.HR and wait for hardware to clear it.
+                // Keep this first D2.3 checkpoint deliberately controller-global: no port
+                // command engine, DMA structures, interrupts, or storage commands yet.
+                ulong ghcAddress = checked(ahciBar.Address + 0x04UL);
+                uint ghc = PhysicalMmioReader.Read32(ghcAddress);
+                if (ghc == 0xFFFFFFFFu)
+                    throw new InvalidOperationException("AHCI GHC returned all-ones before reset");
+                PhysicalMmioWriter.Write32(ghcAddress, ghc | AhciGhcHr);
+
+                bool resetComplete = false;
+                for (int spin = 0; spin < 1_000_000; spin++)
+                {
+                    uint current = PhysicalMmioReader.Read32(ghcAddress);
+                    if (current == 0xFFFFFFFFu)
+                        throw new InvalidOperationException("AHCI GHC returned all-ones during reset");
+                    if ((current & AhciGhcHr) == 0)
+                    {
+                        resetComplete = true;
+                        break;
+                    }
+                    Thread.SpinWait(32);
+                }
+                if (!resetComplete)
+                    throw new TimeoutException("AHCI HBA reset did not clear GHC.HR");
+
+                uint capAfterReset = PhysicalMmioReader.Read32(checked(ahciBar.Address + 0x00UL));
+                if (capAfterReset == 0xFFFFFFFFu)
+                    throw new InvalidOperationException("AHCI CAP invalid after reset");
+                Log.WriteString("[DRIVER-D2.3] AHCI HBA reset complete\n");
+                Log.WriteString("[DRIVER-D2.3] PASS AHCI reset checkpoint\n");
             }
             catch (Exception ex)
             {
-                Log.WriteString("[DRIVER-D2.2] FAIL ");
+                Log.WriteString("[DRIVER-D2.3] FAIL ");
                 Log.WriteString(ex.GetType().Name);
                 Log.WriteString(": ");
                 Log.WriteString(ex.Message);
