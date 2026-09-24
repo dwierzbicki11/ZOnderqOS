@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 jobs:
-  d2-capability-probe:
+  d2-ahci-reset:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
@@ -41,7 +41,7 @@ jobs:
           test -f "$ISO"
           cp "$ISO" driver-d2-x64.iso
           echo "D2_ISO=$GITHUB_WORKSPACE/driver-d2-x64.iso" >> "$GITHUB_ENV"
-      - name: QEMU real AHCI and NVMe read-only capability proof
+      - name: QEMU real AHCI reset checkpoint with D2.2 regression proof
         shell: bash
         run: |
           set -euo pipefail
@@ -54,31 +54,35 @@ jobs:
             -device ich9-ahci,id=d2ahci -drive if=none,id=d2sata,file=d2-sata.img,format=raw \
             -device ide-hd,drive=d2sata,bus=d2ahci.0 \
             -drive if=none,id=d2nvme,file=d2-nvme.img,format=raw \
-            -device nvme,drive=d2nvme,serial=ZONDERQD22 \
+            -device nvme,drive=d2nvme,serial=ZONDERQD23 \
             -display none -monitor none -serial "file:$LOG" -no-reboot -no-shutdown &
           PID=$!
           trap 'kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true' EXIT
           for _ in $(seq 1 180); do
-            if grep -Fq '[DRIVER-D2.2] FAIL ' "$LOG" || grep -Eq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG"; then
+            if grep -Fq '[DRIVER-D2.3] FAIL ' "$LOG" || grep -Eq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG"; then
               tail -n 200 "$LOG"; exit 1
             fi
-            if grep -Fq '[DRIVER-D2.2] AHCI CAP/PI read' "$LOG" && grep -Fq '[DRIVER-D2.2] NVME CAP/VS/CSTS read' "$LOG" && grep -Fq '[DRIVER-D2.2] PASS read-only capability MMIO' "$LOG"; then
+            if grep -Fq '[DRIVER-D2.2] AHCI CAP/PI read' "$LOG" && \
+               grep -Fq '[DRIVER-D2.2] NVME CAP/VS/CSTS read' "$LOG" && \
+               grep -Fq '[DRIVER-D2.2] PASS read-only capability MMIO' "$LOG" && \
+               grep -Fq '[DRIVER-D2.3] AHCI HBA reset complete' "$LOG" && \
+               grep -Fq '[DRIVER-D2.3] PASS AHCI reset checkpoint' "$LOG"; then
               tail -n 200 "$LOG"; exit 0
             fi
             kill -0 "$PID" 2>/dev/null || { wait "$PID" || true; tail -n 200 "$LOG"; exit 1; }
             sleep 1
           done
-          echo 'Timeout waiting for D2.2 runtime proof' >&2
+          echo 'Timeout waiting for D2.3 AHCI reset runtime proof' >&2
           tail -n 200 "$LOG"; exit 1
       - name: ARM64 production-model compile regression
         run: |
           dotnet restore tests/HardwareModel.Tests/HardwareModel.Tests.csproj -r linux-arm64
           dotnet build tests/HardwareModel.Tests/HardwareModel.Tests.csproj -c Release -r linux-arm64 --no-restore
-      - name: Upload D2.2 evidence
+      - name: Upload D2.3 evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: driver-d2-2-evidence-${{ github.sha }}
+          name: driver-d2-3-ahci-evidence-${{ github.sha }}
           path: |
             d2-runtime-build.log
             driver-d2-qemu.log
