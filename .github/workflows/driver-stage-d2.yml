@@ -41,7 +41,7 @@ jobs:
           test -f "$ISO"
           cp "$ISO" driver-d2-x64.iso
           echo "D2_ISO=$GITHUB_WORKSPACE/driver-d2-x64.iso" >> "$GITHUB_ENV"
-      - name: QEMU real AHCI reset checkpoint with D2.2 regression proof
+      - name: QEMU real AHCI reset and NVMe disable checkpoint with D2.2 regression proof
         shell: bash
         run: |
           set -euo pipefail
@@ -49,9 +49,6 @@ jobs:
           qemu-img create -f raw d2-sata.img 16M
           qemu-img create -f raw d2-nvme.img 16M
           : > "$LOG"
-          # q35 already exposes its chipset ICH9 AHCI controller.  Use that single
-          # controller for both the boot CD and SATA test disk instead of adding a
-          # second ich9-ahci device, so the runtime proof really targets one HBA.
           qemu-system-x86_64 -M q35 -cpu Nehalem -m 512M \
             -drive file="$D2_ISO",media=cdrom,if=ide,readonly=on,index=0 -boot d \
             -drive file=d2-sata.img,format=raw,if=ide,index=2 \
@@ -68,13 +65,14 @@ jobs:
                grep -Fq '[DRIVER-D2.2] NVME CAP/VS/CSTS read' "$LOG" && \
                grep -Fq '[DRIVER-D2.2] PASS read-only capability MMIO' "$LOG" && \
                grep -Fq '[DRIVER-D2.3] AHCI HBA reset complete' "$LOG" && \
-               grep -Fq '[DRIVER-D2.3] PASS AHCI reset checkpoint' "$LOG"; then
+               grep -Fq '[DRIVER-D2.3] NVME disabled CSTS.RDY=0' "$LOG" && \
+               grep -Fq '[DRIVER-D2.3] PASS AHCI reset + NVMe disable checkpoint' "$LOG"; then
               tail -n 200 "$LOG"; exit 0
             fi
             kill -0 "$PID" 2>/dev/null || { wait "$PID" || true; tail -n 200 "$LOG"; exit 1; }
             sleep 1
           done
-          echo 'Timeout waiting for D2.3 AHCI reset runtime proof' >&2
+          echo 'Timeout waiting for D2.3 AHCI/NVMe runtime proof' >&2
           tail -n 200 "$LOG"; exit 1
       - name: ARM64 production-model compile regression
         run: |
@@ -84,7 +82,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: driver-d2-3-ahci-evidence-${{ github.sha }}
+          name: driver-d2-3-controller-evidence-${{ github.sha }}
           path: |
             d2-runtime-build.log
             driver-d2-qemu.log
