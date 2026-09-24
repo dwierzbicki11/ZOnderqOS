@@ -8,12 +8,14 @@ using ZonderqOS.Platform.X64;
 
 namespace ZonderqOS
 {
-    /// <summary>D2.3 runtime proof: verified D2.2 capability reads followed by bounded AHCI reset and NVMe disable.</summary>
+    /// <summary>D2.3 runtime proof: verified D2.2 reads, AHCI reset, and real NVMe admin-queue initialization.</summary>
     public sealed class DriverD2EntryKernel : Sys.Kernel
     {
         private const uint AhciGhcHr = 1u << 0;
         private const uint NvmeCcEn = 1u << 0;
         private const uint NvmeCstsRdy = 1u << 0;
+        private const uint NvmeCstsCfs = 1u << 1;
+        private const uint NvmeAdminQueueEntries = 64;
         private bool completed;
 
         protected override void BeforeRun()
@@ -101,10 +103,6 @@ namespace ZonderqOS
                 if (capAfterReset == 0xFFFFFFFFu) throw new InvalidOperationException("AHCI CAP invalid after reset");
                 Log.WriteString("[DRIVER-D2.3] AHCI HBA reset complete\n");
 
-                // NVMe 1.x CC/CSTS shutdown side of the initialization sequence.  CAP.TO
-                // is in 500 ms units; use it to derive a bounded poll count while keeping
-                // this checkpoint free of queue/DMA setup.  Enabling is intentionally left
-                // for the next checkpoint because ASQ/ACQ/AQA must be valid first.
                 ulong nvmeCcAddress = checked(nvmeBar.Address + 0x14UL);
                 ulong nvmeCstsAddress = checked(nvmeBar.Address + 0x1CUL);
                 uint cc = PhysicalMmioReader.Read32(nvmeCcAddress);
@@ -126,7 +124,55 @@ namespace ZonderqOS
                 }
                 if (!nvmeDisabled) throw new TimeoutException("NVMe controller did not clear CSTS.RDY after CC.EN=0");
                 Log.WriteString("[DRIVER-D2.3] NVME disabled CSTS.RDY=0\n");
-                Log.WriteString("[DRIVER-D2.3] PASS AHCI reset + NVMe disable checkpoint\n");
+
+                // Admin queues use one real unmanaged, zeroed DMA page each. 64 SQ entries
+                // consume exactly 4096 bytes (64 bytes/command); the CQ fits in one page.
+                uint mqes = (uint)(nvmeCap & 0xFFFFUL) + 1u;
+                uint mpsMin = (uint)((nvmeCap >> 48) & 0xFUL);
+                uint mpsMax = (uint)((nvmeCap >> 52) & 0xFUL);
+                if (mqes < NvmeAdminQueueEntries)
+                    throw new InvalidOperationException("NVMe CAP.MQES cannot support the 64-entry admin queues");
+                if (mpsMin > 0 || mpsMax < 0)
+                    throw new InvalidOperationException("NVMe controller does not support 4 KiB memory pages");
+
+                DmaPageAllocator.InitializeBarrier();
+                DmaPageAllocator.Buffer adminSq = DmaPageAllocator.AllocateZeroed(1);
+                DmaPageAllocator.Buffer adminCq = DmaPageAllocator.AllocateZeroed(1);
+                if (adminSq.PhysicalAddress == adminCq.PhysicalAddress)
+                    throw new InvalidOperationException("NVMe admin SQ/CQ DMA pages alias");
+                DmaPageAllocator.Barrier();
+                Log.WriteString("[DRIVER-D2.3] NVME admin SQ/CQ DMA pages allocated\n");
+
+                uint queueSizeZeroBased = NvmeAdminQueueEntries - 1u;
+                uint aqa = (queueSizeZeroBased << 16) | queueSizeZeroBased;
+                ulong aqaAddress = checked(nvmeBar.Address + 0x24UL);
+                ulong asqAddress = checked(nvmeBar.Address + 0x28UL);
+                ulong acqAddress = checked(nvmeBar.Address + 0x30UL);
+                PhysicalMmioWriter.Write32(aqaAddress, aqa);
+                PhysicalMmioWriter.Write64(asqAddress, adminSq.PhysicalAddress);
+                PhysicalMmioWriter.Write64(acqAddress, adminCq.PhysicalAddress);
+                if (PhysicalMmioReader.Read32(aqaAddress) != aqa ||
+                    PhysicalMmioReader.Read64(asqAddress) != adminSq.PhysicalAddress ||
+                    PhysicalMmioReader.Read64(acqAddress) != adminCq.PhysicalAddress)
+                    throw new InvalidOperationException("NVMe admin queue register readback mismatch");
+                Log.WriteString("[DRIVER-D2.3] NVME AQA/ASQ/ACQ programmed and verified\n");
+
+                // NVM command set, 4 KiB pages, round-robin arbitration, no shutdown,
+                // 64-byte SQ entries (2^6) and 16-byte CQ entries (2^4).
+                uint enableCc = NvmeCcEn | (6u << 16) | (4u << 20);
+                PhysicalMmioWriter.Write32(nvmeCcAddress, enableCc);
+                bool nvmeReady = false;
+                for (int spin = 0; spin < pollLimit; spin++)
+                {
+                    uint csts = PhysicalMmioReader.Read32(nvmeCstsAddress);
+                    if (csts == 0xFFFFFFFFu) throw new InvalidOperationException("NVMe CSTS returned all-ones during enable");
+                    if ((csts & NvmeCstsCfs) != 0) throw new InvalidOperationException("NVMe controller reported CSTS.CFS during enable");
+                    if ((csts & NvmeCstsRdy) != 0) { nvmeReady = true; break; }
+                    Thread.SpinWait(32);
+                }
+                if (!nvmeReady) throw new TimeoutException("NVMe controller did not set CSTS.RDY after admin queue setup and CC.EN=1");
+                Log.WriteString("[DRIVER-D2.3] NVME enabled CSTS.RDY=1 with real admin queues\n");
+                Log.WriteString("[DRIVER-D2.3] PASS AHCI reset + NVMe admin queue init checkpoint\n");
             }
             catch (Exception ex)
             {
