@@ -299,6 +299,22 @@ index 0584999..10413f8 100644
          {
              nint managedCallback = OnThreadExitCallback;
              if (managedCallback != IntPtr.Zero)
+@@ -1575,8 +1733,13 @@ public static partial class SchedulerManager
+         // Check and wake up sleeping threads whose timeout has expired
+         CheckSleepingThreads(elapsedNs);
+ 
+-        // Update timing and check if preemption needed
+-        bool needsReschedule = s_currentScheduler.OnTick(state, state.CurrentThread, elapsedNs);
++        // A blocked, sleeping or dead current thread can never continue after
++        // this IRQ. Force the scheduler path even when the policy run queue is
++        // empty so ScheduleFromInterrupt can fall back to the per-CPU idle
++        // thread. Policy OnTick only decides quantum preemption for a thread
++        // that is still runnable.
++        bool needsReschedule = state.CurrentThread.State != SchedulerThreadState.Running ||
++            s_currentScheduler.OnTick(state, state.CurrentThread, elapsedNs);
+ 
+         if (needsReschedule)
+         {
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 index a2dbeeb..e78810c 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
