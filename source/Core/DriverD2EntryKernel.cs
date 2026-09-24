@@ -125,15 +125,12 @@ namespace ZonderqOS
                 if (!nvmeDisabled) throw new TimeoutException("NVMe controller did not clear CSTS.RDY after CC.EN=0");
                 Log.WriteString("[DRIVER-D2.3] NVME disabled CSTS.RDY=0\n");
 
-                // Admin queues use one real unmanaged, zeroed DMA page each. 64 SQ entries
-                // consume exactly 4096 bytes (64 bytes/command); the CQ fits in one page.
                 uint mqes = (uint)(nvmeCap & 0xFFFFUL) + 1u;
                 uint mpsMin = (uint)((nvmeCap >> 48) & 0xFUL);
-                uint mpsMax = (uint)((nvmeCap >> 52) & 0xFUL);
                 if (mqes < NvmeAdminQueueEntries)
                     throw new InvalidOperationException("NVMe CAP.MQES cannot support the 64-entry admin queues");
-                if (mpsMin > 0 || mpsMax < 0)
-                    throw new InvalidOperationException("NVMe controller does not support 4 KiB memory pages");
+                if (mpsMin != 0)
+                    throw new InvalidOperationException("NVMe controller requires pages larger than 4 KiB");
 
                 DmaPageAllocator.InitializeBarrier();
                 DmaPageAllocator.Buffer adminSq = DmaPageAllocator.AllocateZeroed(1);
@@ -157,8 +154,6 @@ namespace ZonderqOS
                     throw new InvalidOperationException("NVMe admin queue register readback mismatch");
                 Log.WriteString("[DRIVER-D2.3] NVME AQA/ASQ/ACQ programmed and verified\n");
 
-                // NVM command set, 4 KiB pages, round-robin arbitration, no shutdown,
-                // 64-byte SQ entries (2^6) and 16-byte CQ entries (2^4).
                 uint enableCc = NvmeCcEn | (6u << 16) | (4u << 20);
                 PhysicalMmioWriter.Write32(nvmeCcAddress, enableCc);
                 bool nvmeReady = false;
