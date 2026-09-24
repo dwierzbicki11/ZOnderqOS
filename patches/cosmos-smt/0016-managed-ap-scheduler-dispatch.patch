@@ -303,6 +303,19 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 index a2dbeeb..e78810c 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -453,6 +453,12 @@ _native_x64_start_aps:
+ _native_x64_ap_entry:
+     cli
+     cld
++    // The common IRQ stubs save and restore XMM0-XMM15 with MOVDQU. Control
++    // registers are per logical CPU, so enabling SIMD on the BSP does not
++    // enable CR4.OSFXSR on APs. Do this before an AP can install the managed
++    // IRQ gates; otherwise its first managed interrupt raises #UD while
++    // trying to save XMM0 and the exception stub recursively faults.
++    call _native_enable_simd
+     mov r12, rdi
+     test r12, r12
+     jz .Lap_park
 @@ -531,6 +531,8 @@ _native_x64_ap_entry:
      je .Lap_park_command_managed_residency
      cmp eax, 8
