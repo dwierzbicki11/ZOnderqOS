@@ -111,7 +111,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.K
 index 0584999..10413f8 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-@@ -74,6 +74,12 @@ public static partial class SchedulerManager
+@@ -74,6 +74,18 @@ public static partial class SchedulerManager
      /// <summary>Bound for the Stage-15 remote idle-stack scan proof.</summary>
      private const ulong Stage15TimeoutSeconds = 5;
  
@@ -120,6 +120,12 @@ index 0584999..10413f8 100644
 +
 +    /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
 +    private const byte Stage16DispatchVector = 0xF4;
++
++    /// <summary>Private AP scheduler-timer vector routed through the common IRQ path.</summary>
++    private const byte Stage16TimerVector = 0xEF;
++
++    /// <summary>XMM save area prepended by every x64 common IRQ stub.</summary>
++    private const nuint Stage16XmmSaveAreaSizeBytes = 256;
 +
  #if ARCH_X64
      [LibraryImport("*", EntryPoint = "_native_x64_run_percpu_scheduler_test")]
@@ -143,7 +149,7 @@ index 0584999..10413f8 100644
  #endif
  
      /// <summary>
-@@ -860,6 +878,141 @@ public static partial class SchedulerManager
+@@ -860,6 +884,151 @@ public static partial class SchedulerManager
      /// </summary>
      internal static uint AllocateThreadId() => s_nextThreadId++;
  
@@ -167,6 +173,10 @@ index 0584999..10413f8 100644
 +        // The vector is delivered as a real LAPIC self-IPI, so the normal EOI
 +        // and pending-reschedule path are both exercised.
 +        InterruptManager.SetHandler(Stage16DispatchVector, Stage16DispatchInterrupt);
++        // Scheduler initialization runs before the platform timer handler is
++        // registered. Stage 16 arms a private AP timer, so bind its vector now
++        // to the same scheduler entry point used by the platform handler.
++        InterruptManager.SetHandler(Stage16TimerVector, Stage16TimerInterrupt);
 +
 +        SchedulerThread?[] workers = new SchedulerThread?[checked((int)s_cpuCount)];
 +        ushort codeSelector = (ushort)NativeGetCodeSelector();
@@ -282,10 +292,16 @@ index 0584999..10413f8 100644
 +        _ = context;
 +    }
 +
++    private static unsafe void Stage16TimerInterrupt(ref IRQContext context)
++    {
++        nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
++        OnTimerInterrupt(GetCurrentCpuId(), currentRsp, DefaultQuantumNs);
++    }
++
      // ========== Thread Entry Dispatch ==========
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
-@@ -1250,7 +1403,12 @@ public static partial class SchedulerManager
+@@ -1250,7 +1419,12 @@ public static partial class SchedulerManager
          // thread exiting itself gets that callback; a thread reaped from
          // someone else's context (SchedulerInfo.RequestKill on a queued
          // thread) gets the same three steps addressed at it explicitly.
@@ -299,7 +315,7 @@ index 0584999..10413f8 100644
          {
              nint managedCallback = OnThreadExitCallback;
              if (managedCallback != IntPtr.Zero)
-@@ -1575,8 +1733,13 @@ public static partial class SchedulerManager
+@@ -1575,8 +1749,13 @@ public static partial class SchedulerManager
          // Check and wake up sleeping threads whose timeout has expired
          CheckSleepingThreads(elapsedNs);
  
