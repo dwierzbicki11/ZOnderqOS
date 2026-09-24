@@ -8,15 +8,17 @@ using ZonderqOS.Platform.X64;
 
 namespace ZonderqOS
 {
-    /// <summary>D2.3 runtime proof: verified D2.2 capability reads followed by bounded AHCI reset.</summary>
+    /// <summary>D2.3 runtime proof: verified D2.2 capability reads followed by bounded AHCI reset and NVMe disable.</summary>
     public sealed class DriverD2EntryKernel : Sys.Kernel
     {
         private const uint AhciGhcHr = 1u << 0;
+        private const uint NvmeCcEn = 1u << 0;
+        private const uint NvmeCstsRdy = 1u << 0;
         private bool completed;
 
         protected override void BeforeRun()
         {
-            Log.WriteString("[DRIVER-D2.3] starting storage capability probe and AHCI reset\n");
+            Log.WriteString("[DRIVER-D2.3] starting storage capability probe and controller reset/init\n");
             try
             {
                 var config = new PciConfigIoAccessor();
@@ -40,6 +42,8 @@ namespace ZonderqOS
                 int ahciProbed = 0;
                 int nvmeProbed = 0;
                 PciMemoryBar ahciBar = default;
+                PciMemoryBar nvmeBar = default;
+                ulong nvmeCap = 0;
                 for (int i = 0; i < snapshots.Count; i++)
                 {
                     PciFunctionSnapshot function = snapshots[i];
@@ -63,18 +67,17 @@ namespace ZonderqOS
                             throw new InvalidOperationException("NVMe capability MMIO returned all-ones");
                         if (vs == 0u)
                             throw new InvalidOperationException("NVMe version register is zero");
+                        nvmeBar = bar;
+                        nvmeCap = cap;
                         nvmeProbed++;
                         Log.WriteString("[DRIVER-D2.2] NVME CAP/VS/CSTS read\n");
                     }
                 }
 
                 if (ahciProbed != 1) throw new InvalidOperationException("expected exactly one AHCI controller capability-probed");
-                if (nvmeProbed < 1) throw new InvalidOperationException("no NVMe controller capability-probed");
+                if (nvmeProbed != 1) throw new InvalidOperationException("expected exactly one NVMe controller capability-probed");
                 Log.WriteString("[DRIVER-D2.2] PASS read-only capability MMIO\n");
 
-                // AHCI 1.x section 10.4.3: set GHC.HR and wait for hardware to clear it.
-                // Keep this first D2.3 checkpoint deliberately controller-global: no port
-                // command engine, DMA structures, interrupts, or storage commands yet.
                 ulong ghcAddress = checked(ahciBar.Address + 0x04UL);
                 Log.WriteString("[DRIVER-D2.3] AHCI reset: reading GHC before HR\n");
                 uint ghc = PhysicalMmioReader.Read32(ghcAddress);
@@ -90,22 +93,40 @@ namespace ZonderqOS
                     uint current = PhysicalMmioReader.Read32(ghcAddress);
                     if (current == 0xFFFFFFFFu)
                         throw new InvalidOperationException("AHCI GHC returned all-ones during reset");
-                    if ((current & AhciGhcHr) == 0)
-                    {
-                        resetComplete = true;
-                        break;
-                    }
+                    if ((current & AhciGhcHr) == 0) { resetComplete = true; break; }
                     Thread.SpinWait(32);
                 }
-                if (!resetComplete)
-                    throw new TimeoutException("AHCI HBA reset did not clear GHC.HR");
-
-                Log.WriteString("[DRIVER-D2.3] AHCI reset: HR cleared, validating CAP\n");
+                if (!resetComplete) throw new TimeoutException("AHCI HBA reset did not clear GHC.HR");
                 uint capAfterReset = PhysicalMmioReader.Read32(checked(ahciBar.Address + 0x00UL));
-                if (capAfterReset == 0xFFFFFFFFu)
-                    throw new InvalidOperationException("AHCI CAP invalid after reset");
+                if (capAfterReset == 0xFFFFFFFFu) throw new InvalidOperationException("AHCI CAP invalid after reset");
                 Log.WriteString("[DRIVER-D2.3] AHCI HBA reset complete\n");
-                Log.WriteString("[DRIVER-D2.3] PASS AHCI reset checkpoint\n");
+
+                // NVMe 1.x CC/CSTS shutdown side of the initialization sequence.  CAP.TO
+                // is in 500 ms units; use it to derive a bounded poll count while keeping
+                // this checkpoint free of queue/DMA setup.  Enabling is intentionally left
+                // for the next checkpoint because ASQ/ACQ/AQA must be valid first.
+                ulong nvmeCcAddress = checked(nvmeBar.Address + 0x14UL);
+                ulong nvmeCstsAddress = checked(nvmeBar.Address + 0x1CUL);
+                uint cc = PhysicalMmioReader.Read32(nvmeCcAddress);
+                uint cstsBefore = PhysicalMmioReader.Read32(nvmeCstsAddress);
+                if (cc == 0xFFFFFFFFu || cstsBefore == 0xFFFFFFFFu)
+                    throw new InvalidOperationException("NVMe CC/CSTS returned all-ones before disable");
+                Log.WriteString("[DRIVER-D2.3] NVME disable: clearing CC.EN\n");
+                PhysicalMmioWriter.Write32(nvmeCcAddress, cc & ~NvmeCcEn);
+
+                uint capTimeoutUnits = (uint)((nvmeCap >> 24) & 0xFFUL);
+                int pollLimit = capTimeoutUnits == 0 ? 100_000 : checked((int)capTimeoutUnits * 100_000);
+                bool nvmeDisabled = false;
+                for (int spin = 0; spin < pollLimit; spin++)
+                {
+                    uint csts = PhysicalMmioReader.Read32(nvmeCstsAddress);
+                    if (csts == 0xFFFFFFFFu) throw new InvalidOperationException("NVMe CSTS returned all-ones during disable");
+                    if ((csts & NvmeCstsRdy) == 0) { nvmeDisabled = true; break; }
+                    Thread.SpinWait(32);
+                }
+                if (!nvmeDisabled) throw new TimeoutException("NVMe controller did not clear CSTS.RDY after CC.EN=0");
+                Log.WriteString("[DRIVER-D2.3] NVME disabled CSTS.RDY=0\n");
+                Log.WriteString("[DRIVER-D2.3] PASS AHCI reset + NVMe disable checkpoint\n");
             }
             catch (Exception ex)
             {
