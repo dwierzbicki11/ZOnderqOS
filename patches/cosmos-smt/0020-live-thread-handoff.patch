@@ -1,0 +1,603 @@
+diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+index f77be09..0483577 100644
+--- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
++++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+@@ -171,6 +171,12 @@ internal class LibraryInitializer
+             {
+                 Cosmos.Kernel.Core.Panic.Halt("Stage 19 AP migration proof failed.");
+             }
++
++            Serial.WriteString("[SCHED-LIVE-MIGRATE] begin\n");
++            if (!SchedulerManager.RunLiveApplicationProcessorMigrationProof())
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 20 live AP migration proof failed.");
++            }
+         }
+     }
+ }
+diff --git a/workspace/scratch/c4258335e67e/cosmos-stage18-work/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApLiveMigratedThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApLiveMigratedThreadNative.cs
+new file mode 100644
+index 0000000..aad90a0
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApLiveMigratedThreadNative.cs
+@@ -0,0 +1,18 @@
++using System.Runtime.InteropServices;
++using Cosmos.Kernel.Core.CPU;
++using Cosmos.Kernel.Core.Scheduler;
++
++namespace Cosmos.Kernel.Core.Bridge;
++
++internal static class ManagedApLiveMigratedThreadNative
++{
++    [UnmanagedCallersOnly]
++    internal static void Entry(uint token)
++    {
++        SchedulerManager.RunStage20LiveMigratedThread(token);
++        while (true)
++        {
++            InternalCpu.Halt();
++        }
++    }
++}
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+index 27886a7..91176bc 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+@@ -87,6 +87,13 @@ public sealed class PerCpuState : SchedulerExtensible
+     private uint _stage19ThreadId1;
+     private ulong _stage19Checksum0;
+     private ulong _stage19Checksum1;
++    private int _pendingMigrationTargetPlusOne;
++    private int _stage20ResumeCount;
++    private int _stage20PreemptionCount;
++    private int _stage20MigrationOutCount;
++    private int _stage20MigrationInCount;
++    private int _stage20ThreadId;
++    private ulong _stage20Checksum;
+ 
+     /// <summary>
+     /// Stage-13 per-CPU scheduler foundation phase: 0=not entered,
+@@ -351,6 +358,106 @@ public sealed class PerCpuState : SchedulerExtensible
+         return TrySetBit(ref _stage19CompletedMask, bit);
+     }
+ 
++    internal uint Stage20ResumeCount => (uint)Volatile.Read(ref _stage20ResumeCount);
++    internal uint Stage20PreemptionCount => (uint)Volatile.Read(ref _stage20PreemptionCount);
++    internal uint Stage20MigrationOutCount => (uint)Volatile.Read(ref _stage20MigrationOutCount);
++    internal uint Stage20MigrationInCount => (uint)Volatile.Read(ref _stage20MigrationInCount);
++    internal uint Stage20ThreadId => checked((uint)Volatile.Read(ref _stage20ThreadId));
++    internal ulong Stage20Checksum => Volatile.Read(ref _stage20Checksum);
++
++    internal bool TryRequestMigration(uint threadId, uint targetCpuId)
++    {
++        if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue ||
++            CurrentThread?.Id != threadId)
++        {
++            return false;
++        }
++
++        return Interlocked.CompareExchange(
++            ref _pendingMigrationTargetPlusOne,
++            checked((int)targetCpuId + 1),
++            0) == 0;
++    }
++
++    internal bool TryTakeMigrationTarget(out uint targetCpuId)
++    {
++        int encoded = Interlocked.Exchange(ref _pendingMigrationTargetPlusOne, 0);
++        targetCpuId = encoded > 0 ? checked((uint)(encoded - 1)) : uint.MaxValue;
++        return encoded > 0;
++    }
++
++    internal bool TryRecordStage20Resume(uint threadId)
++    {
++        if (threadId == 0 || Stage19CompletedMask != 3)
++        {
++            return false;
++        }
++
++        int encodedThreadId = checked((int)threadId);
++        int observed = Volatile.Read(ref _stage20ThreadId);
++        if (observed == 0)
++        {
++            observed = Interlocked.CompareExchange(ref _stage20ThreadId, encodedThreadId, 0);
++            if (observed == 0)
++            {
++                observed = encodedThreadId;
++            }
++        }
++        if (observed != encodedThreadId)
++        {
++            return false;
++        }
++
++        Interlocked.Increment(ref _stage20ResumeCount);
++        return true;
++    }
++
++    internal bool TryRecordStage20Preemption(uint threadId)
++    {
++        if (threadId == 0 || Stage20ThreadId != threadId || Stage20ResumeCount == 0)
++        {
++            return false;
++        }
++
++        Interlocked.Increment(ref _stage20PreemptionCount);
++        return true;
++    }
++
++    internal bool TryRecordStage20MigrationOut(uint threadId)
++    {
++        if (threadId == 0 || Stage20ThreadId != threadId)
++        {
++            return false;
++        }
++
++        Interlocked.Increment(ref _stage20MigrationOutCount);
++        return true;
++    }
++
++    internal bool TryRecordStage20MigrationIn(uint threadId)
++    {
++        int observed = Volatile.Read(ref _stage20ThreadId);
++        if (observed != 0 && checked((uint)observed) != threadId)
++        {
++            return false;
++        }
++
++        Interlocked.Increment(ref _stage20MigrationInCount);
++        return true;
++    }
++
++    internal bool TryCompleteStage20(uint threadId, ulong checksum)
++    {
++        if (threadId == 0 || Stage20ThreadId != threadId || checksum == 0 ||
++            Stage20ResumeCount == 0 || Stage20PreemptionCount < 2)
++        {
++            return false;
++        }
++
++        Volatile.Write(ref _stage20Checksum, checksum);
++        return true;
++    }
++
+     private static bool TrySetBit(ref int target, int bit)
+     {
+         while (true)
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+index 4a28a6d..a2318c0 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+@@ -41,6 +41,9 @@ public static partial class SchedulerManager
+     private static int s_stage19StartedWorkers;
+     private static int s_stage19ReleaseWorkers;
+     private static int s_stage19ExpectedWorkers;
++    private static int s_stage20ReleaseWorker;
++    private static int s_stage20Failure;
++    private static uint s_stage20WorkerThreadId;
+ 
+     /// <summary>
+     /// The interval the boot path asks the platform to arm the scheduler
+@@ -91,6 +94,8 @@ public static partial class SchedulerManager
+     private const ulong Stage19TimeoutSeconds = 10;
+     private const uint Stage19WorkersPerApplicationProcessor = 2;
+     private const uint Stage19RequiredPreemptionsPerWorker = 2;
++    private const ulong Stage20TimeoutSeconds = 10;
++    private const uint Stage20RequiredPreemptionsPerCpu = 2;
+ 
+     /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
+     private const byte Stage16DispatchVector = 0xF4;
+@@ -178,6 +183,14 @@ public static partial class SchedulerManager
+     [SuppressGCTransition]
+     private static partial int NativeArmSchedulerTimer();
+ 
++    [LibraryImport("*", EntryPoint = "_native_x64_disarm_scheduler_timer")]
++    [SuppressGCTransition]
++    private static partial int NativeDisarmSchedulerTimer();
++
++    [LibraryImport("*", EntryPoint = "_native_x64_stage_scheduler_handoff")]
++    [SuppressGCTransition]
++    private static partial int NativeStageSchedulerHandoff(uint cpuId);
++
+     [LibraryImport("*", EntryPoint = "_native_x64_begin_concurrent_scheduler_test")]
+     [SuppressGCTransition]
+     private static partial int NativeBeginConcurrentSchedulerTest(ulong cpuCount);
+@@ -1651,6 +1664,225 @@ public static partial class SchedulerManager
+ 
+     private static ulong ComputeStage19Checksum(uint cpuId, uint slot, uint threadId) => 0x534D_5031_3900_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)slot << 24) ^ threadId;
+ 
++    internal static unsafe bool RunLiveApplicationProcessorMigrationProof()
++    {
++        if (!s_enabled || s_currentScheduler is null || s_cpuStates is null ||
++            s_cpuCount == 0 || !GarbageCollector.IsEnabled)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 20 live migration prerequisites are not initialized.\n");
++            return false;
++        }
++#if ARCH_X64
++        if (s_cpuCount == 1)
++        {
++            Serial.WriteString("[SCHED-LIVE-MIGRATE] gc-collection=0 scanned-aps=0 hops=0 checksum=0x0 registry=restored\n");
++            Serial.WriteString("[SCHED-LIVE-MIGRATE-TEST] PASS\n");
++            return true;
++        }
++
++        int initialThreadCount = ThreadCount;
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            PerCpuState state = s_cpuStates[cpuId];
++            if (state.Stage19CompletedMask != 3 || state.IdleThread is null ||
++                !ReferenceEquals(state.CurrentThread, state.IdleThread) ||
++                state.IdleThread.State != SchedulerThreadState.Running)
++            {
++                return false;
++            }
++        }
++
++        ushort codeSelector = (ushort)NativeGetCodeSelector();
++        nuint entryPoint = (nuint)(delegate* unmanaged<uint, void>)&ManagedApLiveMigratedThreadNative.Entry;
++        SchedulerThread worker = new()
++        {
++            Id = AllocateThreadId(),
++            CpuId = 1,
++            State = SchedulerThreadState.Created
++        };
++        worker.InitializeStack(entryPoint, codeSelector, 0);
++        CreateThread(1, worker);
++        ReadyThread(1, worker);
++        Volatile.Write(ref s_stage20ReleaseWorker, 0);
++        Volatile.Write(ref s_stage20Failure, 0);
++        Volatile.Write(ref s_stage20WorkerThreadId, worker.Id);
++
++        long frequency = Stopwatch.Frequency;
++        ulong timeoutTicks = frequency > 0
++            ? checked((ulong)frequency * Stage20TimeoutSeconds)
++            : 10_000_000_000UL;
++        int startedAps = NativeBeginConcurrentSchedulerTest(s_cpuCount);
++        if (startedAps != checked((int)s_cpuCount - 1) ||
++            !WaitForStage20Cpu(worker, 1, timeoutTicks))
++        {
++            Volatile.Write(ref s_stage20ReleaseWorker, 1);
++            return false;
++        }
++
++        uint hopCount = 0;
++        for (uint targetCpuId = 2; targetCpuId < s_cpuCount; targetCpuId++)
++        {
++            uint sourceCpuId = worker.CpuId;
++            if (sourceCpuId == 0 || sourceCpuId >= s_cpuCount ||
++                !s_cpuStates[sourceCpuId].TryRequestMigration(worker.Id, targetCpuId) ||
++                !WaitForStage20Cpu(worker, targetCpuId, timeoutTicks))
++            {
++                Volatile.Write(ref s_stage20ReleaseWorker, 1);
++                return false;
++            }
++
++            hopCount++;
++            Serial.WriteString("[SCHED-LIVE-MIGRATE] thread="); Serial.WriteNumber(worker.Id);
++            Serial.WriteString(" source="); Serial.WriteNumber(sourceCpuId);
++            Serial.WriteString(" target="); Serial.WriteNumber(targetCpuId);
++            Serial.WriteString(" source-out="); Serial.WriteNumber(s_cpuStates[sourceCpuId].Stage20MigrationOutCount);
++            Serial.WriteString(" target-in="); Serial.WriteNumber(s_cpuStates[targetCpuId].Stage20MigrationInCount);
++            Serial.WriteString(" preemptions="); Serial.WriteNumber(s_cpuStates[targetCpuId].Stage20PreemptionCount);
++            Serial.WriteString(" state=context-resumed\n");
++        }
++
++        int collectionBefore = GarbageCollector.GetCollectionIndex();
++        GarbageCollector.Collect();
++        int collectionAfter = GarbageCollector.GetCollectionIndex();
++        uint scannedAps = GarbageCollector.LastSmpStackScanCount;
++        Volatile.Write(ref s_stage20ReleaseWorker, 1);
++
++        if (collectionAfter != collectionBefore + 1 || scannedAps != s_cpuCount - 1 ||
++            !WaitForStage20Quiescence(worker, initialThreadCount, timeoutTicks) ||
++            NativeWaitConcurrentSchedulerTest(s_cpuCount, timeoutTicks) != checked((int)s_cpuCount - 1))
++        {
++            return false;
++        }
++
++        uint finalCpuId = worker.CpuId;
++        PerCpuState finalState = s_cpuStates[finalCpuId];
++        ulong expectedChecksum = ComputeStage20Checksum(worker.Id, hopCount, finalCpuId);
++        if (Volatile.Read(ref s_stage20Failure) != 0 || worker.State != SchedulerThreadState.Dead ||
++            finalState.Stage20Checksum != expectedChecksum || ThreadCount != initialThreadCount)
++        {
++            return false;
++        }
++
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            PerCpuState state = s_cpuStates[cpuId];
++            if (!ReferenceEquals(state.CurrentThread, state.IdleThread) ||
++                state.IdleThread?.State != SchedulerThreadState.Running)
++            {
++                return false;
++            }
++        }
++
++        Serial.WriteString("[SCHED-LIVE-MIGRATE] gc-collection="); Serial.WriteNumber((ulong)collectionAfter);
++        Serial.WriteString(" scanned-aps="); Serial.WriteNumber(scannedAps);
++        Serial.WriteString(" hops="); Serial.WriteNumber(hopCount);
++        Serial.WriteString(" checksum="); Serial.WriteHexWithPrefix(expectedChecksum);
++        Serial.WriteString(" registry=restored\n");
++#else
++        return true;
++#endif
++        Serial.WriteString("[SCHED-LIVE-MIGRATE-TEST] PASS\n");
++        return true;
++    }
++
++    internal static void RunStage20LiveMigratedThread(uint token)
++    {
++        _ = token;
++        SchedulerThread? thread = CurrentThread;
++        if (thread is null || thread.Id != Volatile.Read(ref s_stage20WorkerThreadId))
++        {
++            Volatile.Write(ref s_stage20Failure, 1);
++            Panic.Halt("Stage 20 live-migrated worker entered without scheduler ownership.");
++            return;
++        }
++
++        uint lastCpuId = uint.MaxValue;
++        uint resumeCount = 0;
++        while (Volatile.Read(ref s_stage20ReleaseWorker) == 0)
++        {
++            uint cpuId = GetCurrentCpuId();
++            if (cpuId != lastCpuId)
++            {
++                PerCpuState? state = CurrentCpuState;
++                if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) ||
++                    thread.CpuId != cpuId || !state.TryRecordStage20Resume(thread.Id))
++                {
++                    Volatile.Write(ref s_stage20Failure, 1);
++                    Panic.Halt("Stage 20 worker resumed with invalid CPU ownership.");
++                    return;
++                }
++                lastCpuId = cpuId;
++                resumeCount++;
++#if ARCH_X64
++                if (NativeArmSchedulerTimer() != 1)
++                {
++                    Volatile.Write(ref s_stage20Failure, 1);
++                    Panic.Halt("Stage 20 scheduler timer could not be armed after resume.");
++                    return;
++                }
++#endif
++            }
++            SysThread.SpinWait(64);
++        }
++
++        PerCpuState? finalState = CurrentCpuState;
++        uint finalCpuId = GetCurrentCpuId();
++        ulong checksum = ComputeStage20Checksum(thread.Id, resumeCount > 0 ? resumeCount - 1 : 0, finalCpuId);
++        if (finalState is null || !finalState.TryCompleteStage20(thread.Id, checksum))
++        {
++            Volatile.Write(ref s_stage20Failure, 1);
++            Panic.Halt("Stage 20 worker failed to publish completion.");
++            return;
++        }
++
++        using (InternalCpu.DisableInterruptsScope())
++        {
++            ExitThread(finalCpuId, thread);
++#if ARCH_X64
++            if (NativeArmSchedulerTimer() != 1)
++            {
++                Volatile.Write(ref s_stage20Failure, 1);
++                Panic.Halt("Stage 20 completion timer could not be armed.");
++            }
++#endif
++        }
++    }
++
++    private static bool WaitForStage20Cpu(SchedulerThread worker, uint cpuId, ulong timeoutTicks)
++    {
++        ulong start = (ulong)Stopwatch.GetTimestamp();
++        while (worker.CpuId != cpuId || s_cpuStates![cpuId].Stage20ResumeCount == 0 ||
++            s_cpuStates[cpuId].Stage20PreemptionCount < Stage20RequiredPreemptionsPerCpu)
++        {
++            if (Volatile.Read(ref s_stage20Failure) != 0 ||
++                (ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
++            {
++                return false;
++            }
++            SysThread.SpinWait(64);
++        }
++        return true;
++    }
++
++    private static bool WaitForStage20Quiescence(SchedulerThread worker, int initialThreadCount, ulong timeoutTicks)
++    {
++        ulong start = (ulong)Stopwatch.GetTimestamp();
++        while (worker.State != SchedulerThreadState.Dead || ThreadCount != initialThreadCount ||
++            !ReferenceEquals(s_cpuStates![worker.CpuId].CurrentThread, s_cpuStates[worker.CpuId].IdleThread))
++        {
++            if (Volatile.Read(ref s_stage20Failure) != 0 ||
++                (ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
++            {
++                return false;
++            }
++            SysThread.SpinWait(64);
++        }
++        return true;
++    }
++
++    private static ulong ComputeStage20Checksum(uint threadId, uint hopCount, uint cpuId) =>
++        0x534D_5031_4000_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)hopCount << 24) ^ threadId;
++
+     private static void Stage16DispatchInterrupt(ref IRQContext context)
+     {
+         _ = context;
+@@ -1675,11 +1907,76 @@ public static partial class SchedulerManager
+         {
+             _ = state.TryRecordStage19Preemption(cpuId, thread.Id);
+         }
++        if (state is not null && thread is not null && thread.Id == Volatile.Read(ref s_stage20WorkerThreadId))
++        {
++            _ = state.TryRecordStage20Preemption(thread.Id);
++        }
+ 
+         nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
++        if (TryMigrateCurrentThreadFromInterrupt(cpuId, currentRsp))
++        {
++            return;
++        }
+         OnTimerInterrupt(cpuId, currentRsp, DefaultQuantumNs);
+     }
+ 
++    private static bool TryMigrateCurrentThreadFromInterrupt(uint cpuId, nuint currentRsp)
++    {
++        if (s_cpuStates is null || s_currentScheduler is null || cpuId >= s_cpuCount)
++        {
++            return false;
++        }
++
++        PerCpuState source = s_cpuStates[cpuId];
++        if (!source.TryTakeMigrationTarget(out uint targetCpuId))
++        {
++            return false;
++        }
++
++        SchedulerThread? outgoing = source.CurrentThread;
++        if (targetCpuId == 0 || targetCpuId >= s_cpuCount || targetCpuId == cpuId ||
++            outgoing is null || outgoing.State != SchedulerThreadState.Running ||
++            ReferenceEquals(outgoing, source.IdleThread) ||
++            (outgoing.Flags & SchedulerThreadFlags.Pinned) != 0)
++        {
++            Volatile.Write(ref s_stage20Failure, 1);
++            return false;
++        }
++
++        PerCpuState destination = s_cpuStates[targetCpuId];
++        SchedulerThread? replacement = s_currentScheduler.PickNext(source) ?? source.IdleThread;
++        if (replacement is null || NativeDisarmSchedulerTimer() != 1)
++        {
++            Volatile.Write(ref s_stage20Failure, 1);
++            return false;
++        }
++
++        outgoing.StackPointer = currentRsp;
++        outgoing.State = SchedulerThreadState.Ready;
++        s_currentScheduler.OnThreadMigrate(outgoing, source, destination);
++        if (!source.TryRecordStage20MigrationOut(outgoing.Id) ||
++            !destination.TryRecordStage20MigrationIn(outgoing.Id))
++        {
++            Volatile.Write(ref s_stage20Failure, 1);
++            return false;
++        }
++
++        source.CurrentThread = replacement;
++        bool isNewThread = replacement.State == SchedulerThreadState.Created;
++        replacement.State = SchedulerThreadState.Running;
++        replacement.LastScheduledAt = GetTimestamp();
++
++        if (NativeStageSchedulerHandoff(targetCpuId) != 1)
++        {
++            Volatile.Write(ref s_stage20Failure, 1);
++            return false;
++        }
++
++        ContextSwitchNative.SetContextSwitchNewThread(isNewThread ? 1 : 0);
++        ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
++        return true;
++    }
++
+     // ========== Thread Entry Dispatch ==========
+     [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
+     private static extern void StartThread(SysThread aThis, IntPtr parameter);
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+index 742c355..0f3250e 100644
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -774,6 +774,54 @@ _native_x64_arm_scheduler_timer:
+     xor eax, eax
+     ret
+ 
++// int _native_x64_disarm_scheduler_timer()
++// Masks the current CPU's private scheduler timer before a live thread is
++// handed to another CPU. Without this, the old owner would keep receiving
++// periodic vector-0xEF interrupts after it had returned to idle.
++.global _native_x64_disarm_scheduler_timer
++_native_x64_disarm_scheduler_timer:
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    test rax, rax
++    jz .Lap_disarm_scheduler_timer_failure
++    mov dword ptr [rax + 0x320], 0x000100EF
++    mov dword ptr [rax + 0x380], 0
++    mfence
++    mov eax, 1
++    ret
++.Lap_disarm_scheduler_timer_failure:
++    xor eax, eax
++    ret
++
++// int _native_x64_stage_scheduler_handoff(uint32_t cpuId)
++// Records a destination for the common IRQ epilogue. The epilogue sends the
++// scheduler IPI only after it has left the outgoing thread's stack, preventing
++// the target CPU from restoring a context that the source IRQ still uses.
++.global _native_x64_stage_scheduler_handoff
++_native_x64_stage_scheduler_handoff:
++    cmp edi, 1
++    jb .Lap_stage_scheduler_handoff_failure
++    mov rcx, qword ptr [rip + _smp_cpu_count]
++    cmp rdi, rcx
++    jae .Lap_stage_scheduler_handoff_failure
++    lea rcx, [rip + _ap_boot_state]
++    mov edx, edi
++    shl rdx, 6
++    add rcx, rdx
++    cmp dword ptr [rcx + 0], 1
++    jne .Lap_stage_scheduler_handoff_failure
++    cmp dword ptr [rcx + 32], 0
++    jne .Lap_stage_scheduler_handoff_failure
++    cmp dword ptr [rcx + 48], 1
++    jne .Lap_stage_scheduler_handoff_failure
++    inc edi
++    mfence
++    mov qword ptr gs:[40], rdi
++    mov eax, 1
++    ret
++.Lap_stage_scheduler_handoff_failure:
++    xor eax, eax
++    ret
++
+ .macro AP_STATE_GETTER name, offset, width
+ .global \name
+ \name:
+@@ -3271,7 +3319,8 @@ _native_set_context_switch_new_thread:
+ .bss
+ // One 64-byte cache line per xAPIC logical CPU:
+ // +0 CpuId, +8 target RSP, +16 is-new-thread, +24 restore scratch,
+-// +32 last exception error code, remainder reserved/padding.
++// +32 last exception error code, +40 staged migration target CpuId+1,
++// remainder reserved/padding.
+ .balign 64
+ _percpu_slots: .zero 16384
+ 
+@@ -3745,6 +3794,26 @@ irq\n\()_stub:
+     // Switch stack
+     mov rsp, rax
+ 
++    // A live cross-CPU handoff may only wake its destination after this
++    // switch: the source no longer touches the outgoing worker's saved IRQ
++    // frame, so the destination can safely restore it. The target is stored
++    // as CpuId+1 in this CPU's private GS slot.
++    mov r8, qword ptr gs:[40]
++    test r8, r8
++    jz .Lno_handoff_kick\n
++    mov qword ptr gs:[40], 0
++    dec r8
++    lea r9, [rip + _ap_boot_state]
++    shl r8, 6
++    add r9, r8
++    mov r8d, dword ptr [r9 + 8]
++    shl r8d, 24
++    mov r9, qword ptr [rip + _native_x64_lapic_base]
++    mfence
++    mov dword ptr [r9 + 0x310], r8d
++    mov dword ptr [r9 + 0x300], 0x000000F4
++.Lno_handoff_kick\n:
++
+     // Store flag in a location we can read after GPR restore
+     // Use the TempRcx slot in the context (offset 400 from start, or after GPRs+info)
+     // After XMM restore: rsp points to GPRs
