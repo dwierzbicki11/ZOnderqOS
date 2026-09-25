@@ -15,7 +15,7 @@ index f77be09..0483577 100644
          }
      }
  }
-diff --git a/workspace/scratch/c4258335e67e/cosmos-stage18-work/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApLiveMigratedThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApLiveMigratedThreadNative.cs
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApLiveMigratedThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApLiveMigratedThreadNative.cs
 new file mode 100644
 index 0000000..aad90a0
 --- /dev/null
@@ -40,7 +40,7 @@ index 0000000..aad90a0
 +    }
 +}
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-index 27886a7..91176bc 100644
+index 27886a7..d5c5c29 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 @@ -87,6 +87,13 @@ public sealed class PerCpuState : SchedulerExtensible
@@ -165,7 +165,7 @@ index 27886a7..91176bc 100644
      {
          while (true)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 4a28a6d..a2318c0 100644
+index 4a28a6d..ee26aa9 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -41,6 +41,9 @@ public static partial class SchedulerManager
@@ -428,7 +428,7 @@ index 4a28a6d..a2318c0 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1675,11 +1907,76 @@ public static partial class SchedulerManager
+@@ -1675,11 +1907,80 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage19Preemption(cpuId, thread.Id);
          }
@@ -438,13 +438,16 @@ index 4a28a6d..a2318c0 100644
 +        }
  
          nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
++#if ARCH_X64
 +        if (TryMigrateCurrentThreadFromInterrupt(cpuId, currentRsp))
 +        {
 +            return;
 +        }
++#endif
          OnTimerInterrupt(cpuId, currentRsp, DefaultQuantumNs);
      }
  
++#if ARCH_X64
 +    private static bool TryMigrateCurrentThreadFromInterrupt(uint cpuId, nuint currentRsp)
 +    {
 +        if (s_cpuStates is null || s_currentScheduler is null || cpuId >= s_cpuCount)
@@ -501,6 +504,7 @@ index 4a28a6d..a2318c0 100644
 +        ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
 +        return true;
 +    }
++#endif
 +
      // ========== Thread Entry Dispatch ==========
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
