@@ -104,6 +104,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 15
   bash tools/prepare-cosmos-smt.sh --through-stage 16
   bash tools/prepare-cosmos-smt.sh --through-stage 17
+  bash tools/prepare-cosmos-smt.sh --through-stage 18
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -398,4 +399,8 @@ elif (( SELECTED_STAGE == 17 )); then
     echo "[SMT] Etap 17 wywlaszcza zywy SchedulerThread timerem LAPIC osobno na kazdym AP."
     echo "[SMT] Worker wraca do idle, jest ponownie wybierany i wznawia dokladnie zapisany kontekst przerwania."
     echo "[SMT] Watki pozostaja przypiete; migracja, wspolbiezne kolejki i load balancing beda utwardzane dalej."
+elif (( SELECTED_STAGE == 18 )); then
+    echo "[SMT] Etap 18 uruchamia po dwa przypiete workery na kazdym AP jako jedna wspolbiezna generacje."
+    echo "[SMT] Per-CPU kolejki przechodza wielokrotna preempcje, a OrionGC zatrzymuje wszystkie aktywne AP-y."
+    echo "[SMT] Globalny rejestr watkow jest synchronizowany i musi wrocic do stanu wyjsciowego po tescie."
 fi
