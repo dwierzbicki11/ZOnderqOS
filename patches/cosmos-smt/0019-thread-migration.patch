@@ -1,0 +1,441 @@
+diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+index 9092c69..f77be09 100644
+--- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
++++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+@@ -165,6 +165,12 @@ internal class LibraryInitializer
+             {
+                 Cosmos.Kernel.Core.Panic.Halt("Stage 18 concurrent AP scheduling proof failed.");
+             }
++
++            Serial.WriteString("[SCHED-MIGRATE] begin\n");
++            if (!SchedulerManager.RunApplicationProcessorMigrationProof())
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 19 AP migration proof failed.");
++            }
+         }
+     }
+ }
+diff --git a/workspace/scratch/c4258335e67e/cosmos-stage18-work/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApMigratedThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApMigratedThreadNative.cs
+new file mode 100644
+index 0000000..09ec550
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApMigratedThreadNative.cs
+@@ -0,0 +1,18 @@
++using System.Runtime.InteropServices;
++using Cosmos.Kernel.Core.CPU;
++using Cosmos.Kernel.Core.Scheduler;
++
++namespace Cosmos.Kernel.Core.Bridge;
++
++internal static class ManagedApMigratedThreadNative
++{
++    [UnmanagedCallersOnly]
++    internal static void Entry(uint encodedOwner)
++    {
++        SchedulerManager.RunStage19MigratedThread(encodedOwner);
++        while (true)
++        {
++            InternalCpu.Halt();
++        }
++    }
++}
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+index 9329fc4..27886a7 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+@@ -79,6 +79,14 @@ public sealed class PerCpuState : SchedulerExtensible
+     private uint _stage18ThreadId1;
+     private ulong _stage18Checksum0;
+     private ulong _stage18Checksum1;
++    private int _stage19EnteredMask;
++    private int _stage19CompletedMask;
++    private int _stage19Preemptions0;
++    private int _stage19Preemptions1;
++    private uint _stage19ThreadId0;
++    private uint _stage19ThreadId1;
++    private ulong _stage19Checksum0;
++    private ulong _stage19Checksum1;
+ 
+     /// <summary>
+     /// Stage-13 per-CPU scheduler foundation phase: 0=not entered,
+@@ -274,6 +282,75 @@ public sealed class PerCpuState : SchedulerExtensible
+         return TrySetBit(ref _stage18CompletedMask, bit);
+     }
+ 
++    internal uint Stage19EnteredMask => (uint)Volatile.Read(ref _stage19EnteredMask);
++    internal uint Stage19CompletedMask => (uint)Volatile.Read(ref _stage19CompletedMask);
++    internal uint GetStage19ThreadId(uint slot) => slot == 0 ? Volatile.Read(ref _stage19ThreadId0) : Volatile.Read(ref _stage19ThreadId1);
++    internal uint GetStage19PreemptionCount(uint slot) => slot == 0 ? (uint)Volatile.Read(ref _stage19Preemptions0) : (uint)Volatile.Read(ref _stage19Preemptions1);
++    internal ulong GetStage19Checksum(uint slot) => slot == 0 ? Volatile.Read(ref _stage19Checksum0) : Volatile.Read(ref _stage19Checksum1);
++
++    internal bool TryEnterStage19Worker(uint expectedCpuId, uint slot, uint threadId)
++    {
++        if (CpuId != expectedCpuId || slot > 1 || Stage18CompletedMask != 3)
++        {
++            return false;
++        }
++        int bit = 1 << (int)slot;
++        if ((Volatile.Read(ref _stage19EnteredMask) & bit) != 0)
++        {
++            return false;
++        }
++        if (slot == 0)
++        {
++            Volatile.Write(ref _stage19ThreadId0, threadId);
++        }
++        else
++        {
++            Volatile.Write(ref _stage19ThreadId1, threadId);
++        }
++        return TrySetBit(ref _stage19EnteredMask, bit);
++    }
++
++    internal bool TryRecordStage19Preemption(uint expectedCpuId, uint threadId)
++    {
++        if (CpuId != expectedCpuId)
++        {
++            return false;
++        }
++        if (Volatile.Read(ref _stage19ThreadId0) == threadId)
++        {
++            Interlocked.Increment(ref _stage19Preemptions0);
++            return true;
++        }
++        if (Volatile.Read(ref _stage19ThreadId1) == threadId)
++        {
++            Interlocked.Increment(ref _stage19Preemptions1);
++            return true;
++        }
++        return false;
++    }
++
++    internal bool TryCompleteStage19Worker(uint expectedCpuId, uint slot, uint threadId, ulong checksum)
++    {
++        if (CpuId != expectedCpuId || slot > 1 || checksum == 0 || GetStage19ThreadId(slot) != threadId || GetStage19PreemptionCount(slot) < 2)
++        {
++            return false;
++        }
++        int bit = 1 << (int)slot;
++        if ((Volatile.Read(ref _stage19CompletedMask) & bit) != 0)
++        {
++            return false;
++        }
++        if (slot == 0)
++        {
++            Volatile.Write(ref _stage19Checksum0, checksum);
++        }
++        else
++        {
++            Volatile.Write(ref _stage19Checksum1, checksum);
++        }
++        return TrySetBit(ref _stage19CompletedMask, bit);
++    }
++
+     private static bool TrySetBit(ref int target, int bit)
+     {
+         while (true)
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+index 33a92b1..71de420 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+@@ -38,6 +38,9 @@ public static partial class SchedulerManager
+     private static int s_stage18StartedWorkers;
+     private static int s_stage18ReleaseWorkers;
+     private static int s_stage18ExpectedWorkers;
++    private static int s_stage19StartedWorkers;
++    private static int s_stage19ReleaseWorkers;
++    private static int s_stage19ExpectedWorkers;
+ 
+     /// <summary>
+     /// The interval the boot path asks the platform to arm the scheduler
+@@ -85,6 +88,9 @@ public static partial class SchedulerManager
+     private const ulong Stage18TimeoutSeconds = 10;
+     private const uint Stage18WorkersPerApplicationProcessor = 2;
+     private const uint Stage18RequiredPreemptionsPerWorker = 2;
++    private const ulong Stage19TimeoutSeconds = 10;
++    private const uint Stage19WorkersPerApplicationProcessor = 2;
++    private const uint Stage19RequiredPreemptionsPerWorker = 2;
+ 
+     /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
+     private const byte Stage16DispatchVector = 0xF4;
+@@ -1409,6 +1415,217 @@ public static partial class SchedulerManager
+ 
+     private static ulong ComputeStage18Checksum(uint cpuId, uint slot, uint threadId) => 0x534D_5031_3800_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)slot << 24) ^ threadId;
+ 
++    internal static unsafe bool RunApplicationProcessorMigrationProof()
++    {
++        if (!s_enabled || s_currentScheduler is null || s_cpuStates is null || s_cpuCount == 0 || !GarbageCollector.IsEnabled)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 19 migration prerequisites are not initialized.\n");
++            return false;
++        }
++#if ARCH_X64
++        int initialThreadCount = ThreadCount;
++        int expectedWorkers = checked((int)((s_cpuCount - 1) * Stage19WorkersPerApplicationProcessor));
++        SchedulerThread?[] workers = new SchedulerThread?[checked((int)s_cpuCount * (int)Stage19WorkersPerApplicationProcessor)];
++        ushort codeSelector = (ushort)NativeGetCodeSelector();
++        nuint entryPoint = (nuint)(delegate* unmanaged<uint, void>)&ManagedApMigratedThreadNative.Entry;
++        Volatile.Write(ref s_stage19StartedWorkers, 0);
++        Volatile.Write(ref s_stage19ReleaseWorkers, 0);
++        Volatile.Write(ref s_stage19ExpectedWorkers, expectedWorkers);
++
++        if (expectedWorkers != 0)
++        {
++            for (int index = 0; index < expectedWorkers; index++)
++            {
++                SchedulerThread worker = new()
++                {
++                    Id = AllocateThreadId(),
++                    CpuId = 1,
++                    State = SchedulerThreadState.Created
++                };
++                worker.InitializeStack(entryPoint, codeSelector, 0);
++                CreateThread(1, worker);
++                ReadyThread(1, worker);
++            }
++
++            // All APs are parked and their timers are masked here. Two steal
++            // rounds exercise the policy's balancing hook while no owner CPU
++            // can concurrently mutate its queue.
++            using (InternalCpu.DisableInterruptsScope())
++            {
++                for (uint round = 0; round < Stage19WorkersPerApplicationProcessor; round++)
++                {
++                    for (uint cpuId = 2; cpuId < s_cpuCount; cpuId++)
++                    {
++                        s_currentScheduler.Balance(s_cpuStates[cpuId], s_cpuStates);
++                    }
++                }
++            }
++
++            for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++            {
++                PerCpuState state = s_cpuStates[cpuId];
++                if (state.Stage18CompletedMask != 3 || state.Stage19EnteredMask != 0 || state.Stage19CompletedMask != 0 || s_currentScheduler.GetRunQueueCount(state) != 2)
++                {
++                    return false;
++                }
++                for (uint slot = 0; slot < Stage19WorkersPerApplicationProcessor; slot++)
++                {
++                    SchedulerThread? worker = s_currentScheduler.GetRunQueueThread(state, (int)slot);
++                    if (worker is null || worker.CpuId != cpuId || (worker.Flags & SchedulerThreadFlags.Pinned) != 0)
++                    {
++                        return false;
++                    }
++                    worker.SetInitialArgument((cpuId << 1) | slot);
++                    workers[checked((int)(cpuId * Stage19WorkersPerApplicationProcessor + slot))] = worker;
++                    Serial.WriteString("[SCHED-MIGRATE] thread="); Serial.WriteNumber(worker.Id);
++                    Serial.WriteString(" source=1 target="); Serial.WriteNumber(cpuId);
++                    Serial.WriteString(" slot="); Serial.WriteNumber(slot);
++                    Serial.WriteString(" state=ready-rehomed\n");
++                }
++            }
++        }
++
++        long frequency = Stopwatch.Frequency;
++        ulong timeoutTicks = frequency > 0 ? checked((ulong)frequency * Stage19TimeoutSeconds) : 10_000_000_000UL;
++        int startedAps = expectedWorkers == 0 ? 0 : NativeBeginConcurrentSchedulerTest(s_cpuCount);
++        if (startedAps != checked((int)s_cpuCount - 1) || !WaitForStage19WorkerCount(expectedWorkers, timeoutTicks))
++        {
++            Volatile.Write(ref s_stage19ReleaseWorkers, 1);
++            if (expectedWorkers != 0)
++            {
++                _ = NativeWaitConcurrentSchedulerTest(s_cpuCount, timeoutTicks);
++            }
++            return false;
++        }
++
++        int collectionBefore = GarbageCollector.GetCollectionIndex();
++        GarbageCollector.Collect();
++        int collectionAfter = GarbageCollector.GetCollectionIndex();
++        uint scannedAps = GarbageCollector.LastSmpStackScanCount;
++        Volatile.Write(ref s_stage19ReleaseWorkers, 1);
++        int completedAps = expectedWorkers == 0 ? 0 : NativeWaitConcurrentSchedulerTest(s_cpuCount, timeoutTicks);
++        if (collectionAfter != collectionBefore + 1 || scannedAps != s_cpuCount - 1 || completedAps != checked((int)s_cpuCount - 1) || !WaitForStage19Quiescence(workers, initialThreadCount, timeoutTicks))
++        {
++            return false;
++        }
++
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            PerCpuState state = s_cpuStates[cpuId];
++            for (uint slot = 0; slot < Stage19WorkersPerApplicationProcessor; slot++)
++            {
++                SchedulerThread? worker = workers[checked((int)(cpuId * Stage19WorkersPerApplicationProcessor + slot))];
++                ulong expectedChecksum = ComputeStage19Checksum(cpuId, slot, worker?.Id ?? 0);
++                uint preemptions = state.GetStage19PreemptionCount(slot);
++                if (worker is null || worker.State != SchedulerThreadState.Dead || state.GetStage19ThreadId(slot) != worker.Id || preemptions < Stage19RequiredPreemptionsPerWorker || state.GetStage19Checksum(slot) != expectedChecksum)
++                {
++                    return false;
++                }
++                Serial.WriteString("[SCHED-MIGRATE-RUNTIME] cpu="); Serial.WriteNumber(cpuId);
++                Serial.WriteString(" worker="); Serial.WriteNumber(slot);
++                Serial.WriteString(" thread="); Serial.WriteNumber(worker.Id);
++                Serial.WriteString(" preemptions="); Serial.WriteNumber(preemptions);
++                Serial.WriteString(" checksum="); Serial.WriteHexWithPrefix(expectedChecksum);
++                Serial.WriteString(" state=migrated-preempted-exited-idle-restored\n");
++            }
++        }
++        Serial.WriteString("[SCHED-MIGRATE] gc-collection="); Serial.WriteNumber((ulong)collectionAfter);
++        Serial.WriteString(" scanned-aps="); Serial.WriteNumber(scannedAps);
++        Serial.WriteString(" workers="); Serial.WriteNumber((ulong)expectedWorkers);
++        Serial.WriteString(" registry=restored\n");
++#else
++        return true;
++#endif
++        Serial.WriteString("[SCHED-MIGRATE-TEST] PASS\n");
++        return true;
++    }
++
++    internal static void RunStage19MigratedThread(uint encodedOwner)
++    {
++        uint expectedCpuId = encodedOwner >> 1;
++        uint slot = encodedOwner & 1;
++        PerCpuState? state = CurrentCpuState;
++        SchedulerThread? thread = state?.CurrentThread;
++        if (state is null || thread is null || state.CpuId != expectedCpuId || thread.CpuId != expectedCpuId || ReferenceEquals(thread, state.IdleThread) || thread.State != SchedulerThreadState.Running || !state.TryEnterStage19Worker(expectedCpuId, slot, thread.Id))
++        {
++            Panic.Halt("Stage 19 migrated AP thread entered with invalid ownership.");
++            return;
++        }
++        Interlocked.Increment(ref s_stage19StartedWorkers);
++#if ARCH_X64
++        if (NativeArmSchedulerTimer() != 1)
++        {
++            Panic.Halt("Stage 19 AP scheduler timer could not be armed.");
++            return;
++        }
++#endif
++        while (Volatile.Read(ref s_stage19StartedWorkers) != Volatile.Read(ref s_stage19ExpectedWorkers) || Volatile.Read(ref s_stage19ReleaseWorkers) == 0 || state.GetStage19PreemptionCount(slot) < Stage19RequiredPreemptionsPerWorker)
++        {
++            Thread.SpinWait(64);
++        }
++        using (InternalCpu.DisableInterruptsScope())
++        {
++            ulong checksum = ComputeStage19Checksum(expectedCpuId, slot, thread.Id);
++            if (!state.TryCompleteStage19Worker(expectedCpuId, slot, thread.Id, checksum))
++            {
++                Panic.Halt("Stage 19 AP worker failed to publish completion.");
++                return;
++            }
++            ExitThread(expectedCpuId, thread);
++#if ARCH_X64
++            if (NativeArmSchedulerTimer() != 1)
++            {
++                Panic.Halt("Stage 19 AP completion timer could not be armed.");
++                return;
++            }
++#endif
++        }
++    }
++
++    private static bool WaitForStage19WorkerCount(int expectedWorkers, ulong timeoutTicks)
++    {
++        ulong start = (ulong)Stopwatch.GetTimestamp();
++        while (Volatile.Read(ref s_stage19StartedWorkers) != expectedWorkers)
++        {
++            if ((ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
++            {
++                return false;
++            }
++            Thread.SpinWait(64);
++        }
++        return true;
++    }
++
++    private static bool WaitForStage19Quiescence(SchedulerThread?[] workers, int initialThreadCount, ulong timeoutTicks)
++    {
++        ulong start = (ulong)Stopwatch.GetTimestamp();
++        while (true)
++        {
++            bool quiescent = ThreadCount == initialThreadCount;
++            for (uint cpuId = 1; quiescent && cpuId < s_cpuCount; cpuId++)
++            {
++                PerCpuState state = s_cpuStates![cpuId];
++                quiescent = state.Stage19EnteredMask == 3 && state.Stage19CompletedMask == 3 && ReferenceEquals(state.CurrentThread, state.IdleThread) && state.IdleThread?.State == SchedulerThreadState.Running;
++                for (uint slot = 0; quiescent && slot < Stage19WorkersPerApplicationProcessor; slot++)
++                {
++                    SchedulerThread? worker = workers[checked((int)(cpuId * Stage19WorkersPerApplicationProcessor + slot))];
++                    quiescent = worker?.State == SchedulerThreadState.Dead;
++                }
++            }
++            if (quiescent)
++            {
++                return true;
++            }
++            if ((ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
++            {
++                return false;
++            }
++            Thread.SpinWait(64);
++        }
++    }
++
++    private static ulong ComputeStage19Checksum(uint cpuId, uint slot, uint threadId) => 0x534D_5031_3900_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)slot << 24) ^ threadId;
++
+     private static void Stage16DispatchInterrupt(ref IRQContext context)
+     {
+         _ = context;
+@@ -1429,6 +1646,10 @@ public static partial class SchedulerManager
+         {
+             _ = state.TryRecordStage18Preemption(cpuId, thread.Id);
+         }
++        if (state is not null && thread is not null && !ReferenceEquals(thread, state.IdleThread) && state.Stage19EnteredMask != 0)
++        {
++            _ = state.TryRecordStage19Preemption(cpuId, thread.Id);
++        }
+ 
+         nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
+         OnTimerInterrupt(cpuId, currentRsp, DefaultQuantumNs);
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
+index 9fc46a1..1150a14 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
+@@ -179,6 +179,16 @@ public sealed unsafe class SchedulerThread : SchedulerExtensible
+         State = SchedulerThreadState.Created;
+     }
+ 
++    internal void SetInitialArgument(nuint arg)
++    {
++        if (State != SchedulerThreadState.Created || StackPointer == 0)
++        {
++            throw new InvalidOperationException("Only a created thread with an initialized context can be retargeted.");
++        }
++
++        ((ThreadContext*)StackPointer)->Rdi = arg;
++    }
++
+     /// <summary>
+     /// Hands CoreLib the thread's thread-static storage slot by reference so
+     /// it can allocate and grow it in place.
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs b/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs
+index 03152ee..ea6ac6d 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs
+@@ -366,6 +366,7 @@ internal class StrideScheduler : IScheduler
+         fromData.TotalTickets -= threadData.Tickets;
+ 
+         threadData.Pass = (long)toData.GlobalPass + threadData.Remain;
++        thread.CpuId = toState.CpuId;
+ 
+         InsertByPass(toData, thread);
+         toData.TotalTickets += threadData.Tickets;
+@@ -374,7 +375,7 @@ internal class StrideScheduler : IScheduler
+     public void Balance(PerCpuState cpuState, PerCpuState[] allCpuStates)
+     {
+         StrideCpuData? cpuData = CpuDataOf(cpuState);
+-        if (cpuData is null || cpuData.RunQueue.Count > 0)
++        if (cpuData is null)
+         {
+             return;
+         }
+@@ -397,7 +398,7 @@ internal class StrideScheduler : IScheduler
+             }
+         }
+ 
+-        if (busiest is null || maxCount <= 1)
++        if (busiest is null || maxCount <= cpuData.RunQueue.Count + 1)
+         {
+             return;
+         }
+
