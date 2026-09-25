@@ -388,7 +388,7 @@ index 33a92b1..71de420 100644
          nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
          OnTimerInterrupt(cpuId, currentRsp, DefaultQuantumNs);
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
-index 9fc46a1..1150a14 100644
+index 9fc46a1..37ce006 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
 @@ -179,6 +179,16 @@ public sealed unsafe class SchedulerThread : SchedulerExtensible
@@ -402,7 +402,7 @@ index 9fc46a1..1150a14 100644
 +            throw new InvalidOperationException("Only a created thread with an initialized context can be retargeted.");
 +        }
 +
-+        ((ThreadContext*)StackPointer)->Rdi = arg;
++        ((ThreadContext*)StackPointer)->SetInitialArgument(arg);
 +    }
 +
      /// <summary>
@@ -438,4 +438,32 @@ index 03152ee..ea6ac6d 100644
          {
              return;
          }
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/ThreadContext.ARM64.cs b/src/Cosmos.Kernel.Core/Scheduler/ThreadContext.ARM64.cs
+index 54343ab..9ffa3d9 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/ThreadContext.ARM64.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/ThreadContext.ARM64.cs
+@@ -86,4 +86,9 @@ internal unsafe struct ThreadContext
+         CpuFlags = 0;
+         Far = 0;
+     }
++
++    public void SetInitialArgument(nuint arg)
++    {
++        X0 = arg;
++    }
+ }
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/ThreadContext.X64.cs b/src/Cosmos.Kernel.Core/Scheduler/ThreadContext.X64.cs
+index c196b3a..6ce344d 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/ThreadContext.X64.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/ThreadContext.X64.cs
+@@ -92,4 +92,9 @@ internal unsafe struct ThreadContext
+             }
+         }
+     }
++
++    public void SetInitialArgument(nuint arg)
++    {
++        Rdi = arg;
++    }
+ }
 
