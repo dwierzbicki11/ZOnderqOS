@@ -132,7 +132,7 @@ index 8c42b6c..9329fc4 100644
 +    }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index ab897cb..55bac0c 100644
+index ab897cb..6d8abd9 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -23,7 +23,7 @@ public static partial class SchedulerManager
@@ -188,7 +188,7 @@ index ab897cb..55bac0c 100644
  
      /// <summary>
      /// Creates one real scheduler thread per AP, enqueues it in that CPU's
-@@ -1186,6 +1200,162 @@ public static partial class SchedulerManager
+@@ -1186,6 +1200,178 @@ public static partial class SchedulerManager
      private static ulong ComputeStage17Checksum(uint cpuId, uint threadId) =>
          0x534D_5031_3700_0000UL ^ ((ulong)cpuId << 32) ^ threadId;
  
@@ -256,6 +256,13 @@ index ab897cb..55bac0c 100644
 +            PerCpuState state = s_cpuStates[cpuId];
 +            if (state.Stage18EnteredMask != 3 || state.Stage18CompletedMask != 3 || !ReferenceEquals(state.CurrentThread, state.IdleThread) || state.IdleThread?.State != SchedulerThreadState.Running)
 +            {
++                Serial.WriteString("[SCHED-AP-CONCURRENT-CHECK] cpu="); Serial.WriteNumber(cpuId);
++                Serial.WriteString(" entered="); Serial.WriteNumber(state.Stage18EnteredMask);
++                Serial.WriteString(" completed="); Serial.WriteNumber(state.Stage18CompletedMask);
++                Serial.WriteString(" current="); Serial.WriteNumber(state.CurrentThread?.Id ?? uint.MaxValue);
++                Serial.WriteString(" idle="); Serial.WriteNumber(state.IdleThread?.Id ?? uint.MaxValue);
++                Serial.WriteString(" idle-state="); Serial.WriteNumber((ulong)(state.IdleThread?.State ?? SchedulerThreadState.Dead));
++                Serial.WriteString("\n");
 +                return false;
 +            }
 +            for (uint slot = 0; slot < Stage18WorkersPerApplicationProcessor; slot++)
@@ -265,6 +272,15 @@ index ab897cb..55bac0c 100644
 +                uint preemptions = state.GetStage18PreemptionCount(slot);
 +                if (worker is null || worker.State != SchedulerThreadState.Dead || state.GetStage18ThreadId(slot) != worker.Id || preemptions < Stage18RequiredPreemptionsPerWorker || state.GetStage18Checksum(slot) != expectedChecksum)
 +                {
++                    Serial.WriteString("[SCHED-AP-CONCURRENT-CHECK] cpu="); Serial.WriteNumber(cpuId);
++                    Serial.WriteString(" worker="); Serial.WriteNumber(slot);
++                    Serial.WriteString(" object-id="); Serial.WriteNumber(worker?.Id ?? uint.MaxValue);
++                    Serial.WriteString(" object-state="); Serial.WriteNumber((ulong)(worker?.State ?? SchedulerThreadState.Created));
++                    Serial.WriteString(" recorded-id="); Serial.WriteNumber(state.GetStage18ThreadId(slot));
++                    Serial.WriteString(" preemptions="); Serial.WriteNumber(preemptions);
++                    Serial.WriteString(" checksum="); Serial.WriteHexWithPrefix(state.GetStage18Checksum(slot));
++                    Serial.WriteString(" expected="); Serial.WriteHexWithPrefix(expectedChecksum);
++                    Serial.WriteString("\n");
 +                    return false;
 +                }
 +                Serial.WriteString("[SCHED-AP-CONCURRENT] cpu="); Serial.WriteNumber(cpuId);
@@ -351,7 +367,7 @@ index ab897cb..55bac0c 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1202,6 +1372,10 @@ public static partial class SchedulerManager
+@@ -1202,6 +1388,10 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage17Preemption(cpuId, thread.Id);
          }
@@ -362,7 +378,7 @@ index ab897cb..55bac0c 100644
  
          nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
          OnTimerInterrupt(cpuId, currentRsp, DefaultQuantumNs);
-@@ -1355,7 +1529,7 @@ public static partial class SchedulerManager
+@@ -1355,7 +1545,7 @@ public static partial class SchedulerManager
      /// <summary>
      /// Returns the number of registered threads. Safe to call from GC.
      /// </summary>
@@ -371,7 +387,7 @@ index ab897cb..55bac0c 100644
  
      /// <summary>
      /// Returns the dense CPU ID currently executing this code path. On x64
-@@ -1378,7 +1552,7 @@ public static partial class SchedulerManager
+@@ -1378,7 +1568,7 @@ public static partial class SchedulerManager
      /// </summary>
      internal static ulong GetBusyCpuTimeNs()
      {
@@ -380,7 +396,7 @@ index ab897cb..55bac0c 100644
          {
              SchedulerThread?[]? threads = s_allThreads;
              if (threads is null)
-@@ -1431,7 +1605,7 @@ public static partial class SchedulerManager
+@@ -1431,7 +1621,7 @@ public static partial class SchedulerManager
              return;
          }
  
@@ -389,7 +405,7 @@ index ab897cb..55bac0c 100644
          {
              // Idempotent: SetScheduler hands every registry entry to the
              // incoming policy exactly once, so a thread must hold one slot.
-@@ -1469,17 +1643,20 @@ public static partial class SchedulerManager
+@@ -1469,17 +1659,20 @@ public static partial class SchedulerManager
              return;
          }
  
@@ -417,7 +433,7 @@ index ab897cb..55bac0c 100644
              }
          }
      }
-@@ -1925,7 +2102,7 @@ public static partial class SchedulerManager
+@@ -1925,7 +2118,7 @@ public static partial class SchedulerManager
          }
  
          // Check and wake up sleeping threads whose timeout has expired
@@ -426,7 +442,7 @@ index ab897cb..55bac0c 100644
  
          // A blocked, sleeping or dead current thread can never continue after
          // this IRQ. Force the scheduler path even when the policy run queue is
-@@ -1946,7 +2123,7 @@ public static partial class SchedulerManager
+@@ -1946,7 +2139,7 @@ public static partial class SchedulerManager
      /// Called from timer interrupt handler to implement timed waits.
      /// </summary>
      [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -435,7 +451,7 @@ index ab897cb..55bac0c 100644
      {
          if (s_allThreads is null)
          {
-@@ -1958,7 +2135,7 @@ public static partial class SchedulerManager
+@@ -1958,7 +2151,7 @@ public static partial class SchedulerManager
          for (int i = 0; i < s_allThreads.Length; i++)
          {
              SchedulerThread? thread = s_allThreads[i];
@@ -444,7 +460,7 @@ index ab897cb..55bac0c 100644
              {
                  continue;
              }
-@@ -1972,7 +2149,7 @@ public static partial class SchedulerManager
+@@ -1972,7 +2165,7 @@ public static partial class SchedulerManager
  
                  // Wake the thread by marking it as ready
                  thread.WakeupTime = 0;
@@ -453,7 +469,7 @@ index ab897cb..55bac0c 100644
              }
          }
      }
-@@ -2069,7 +2246,7 @@ public static partial class SchedulerManager
+@@ -2069,7 +2262,7 @@ public static partial class SchedulerManager
                  }
  
                  // Put previous thread back in run queue if still runnable
