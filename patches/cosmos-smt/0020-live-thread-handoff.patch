@@ -40,7 +40,7 @@ index 0000000..aad90a0
 +    }
 +}
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-index 27886a7..d5c5c29 100644
+index 27886a7..97f02f2 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 @@ -87,6 +87,13 @@ public sealed class PerCpuState : SchedulerExtensible
@@ -67,11 +67,11 @@ index 27886a7..d5c5c29 100644
 +    internal uint Stage20MigrationInCount => (uint)Volatile.Read(ref _stage20MigrationInCount);
 +    internal uint Stage20ThreadId => checked((uint)Volatile.Read(ref _stage20ThreadId));
 +    internal ulong Stage20Checksum => Volatile.Read(ref _stage20Checksum);
++    internal int Stage20PendingMigration => Volatile.Read(ref _pendingMigrationTargetPlusOne);
 +
 +    internal bool TryRequestMigration(uint threadId, uint targetCpuId)
 +    {
-+        if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue ||
-+            CurrentThread?.Id != threadId)
++        if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
 +        {
 +            return false;
 +        }
@@ -165,7 +165,7 @@ index 27886a7..d5c5c29 100644
      {
          while (true)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 4a28a6d..4d9062a 100644
+index 4a28a6d..d465a0f 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -41,6 +41,9 @@ public static partial class SchedulerManager
@@ -210,7 +210,7 @@ index 4a28a6d..4d9062a 100644
      [LibraryImport("*", EntryPoint = "_native_x64_wait_concurrent_scheduler_test")]
      [SuppressGCTransition]
      private static partial int NativeWaitConcurrentSchedulerTest(ulong cpuCount, ulong timeoutTscTicks);
-@@ -1651,6 +1668,282 @@ public static partial class SchedulerManager
+@@ -1651,6 +1668,289 @@ public static partial class SchedulerManager
 
      private static ulong ComputeStage19Checksum(uint cpuId, uint slot, uint threadId) => 0x534D_5031_3900_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)slot << 24) ^ threadId;
 
@@ -294,13 +294,20 @@ index 4a28a6d..4d9062a 100644
 +        for (uint targetCpuId = 2; targetCpuId < s_cpuCount; targetCpuId++)
 +        {
 +            uint sourceCpuId = worker.CpuId;
-+            if (sourceCpuId == 0 || sourceCpuId >= s_cpuCount ||
-+                !s_cpuStates[sourceCpuId].TryRequestMigration(worker.Id, targetCpuId) ||
++            bool sourceValid = sourceCpuId != 0 && sourceCpuId < s_cpuCount;
++            bool requested = sourceValid && s_cpuStates[sourceCpuId].TryRequestMigration(worker.Id, targetCpuId);
++            if (!requested ||
 +                !WaitForStage20Cpu(worker, targetCpuId, Stage20RequiredPreemptionsPerCpu, timeoutTicks))
 +            {
 +                Serial.WriteString("[SCHED-LIVE-MIGRATE-CHECK] phase=hop source="); Serial.WriteNumber(sourceCpuId);
 +                Serial.WriteString(" target="); Serial.WriteNumber(targetCpuId);
++                Serial.WriteString(" requested="); Serial.WriteNumber(requested ? 1UL : 0UL);
 +                Serial.WriteString(" worker-cpu="); Serial.WriteNumber(worker.CpuId);
++                if (sourceValid)
++                {
++                    Serial.WriteString(" source-current="); Serial.WriteNumber(s_cpuStates[sourceCpuId].CurrentThread?.Id ?? uint.MaxValue);
++                    Serial.WriteString(" source-pending="); Serial.WriteNumber((ulong)s_cpuStates[sourceCpuId].Stage20PendingMigration);
++                }
 +                Serial.WriteString(" resumes="); Serial.WriteNumber(s_cpuStates[targetCpuId].Stage20ResumeCount);
 +                Serial.WriteString(" preemptions="); Serial.WriteNumber(s_cpuStates[targetCpuId].Stage20PreemptionCount);
 +                Serial.WriteString(" failure="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage20Failure));
@@ -493,7 +500,7 @@ index 4a28a6d..4d9062a 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1675,11 +1968,80 @@ public static partial class SchedulerManager
+@@ -1675,11 +1975,80 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage19Preemption(cpuId, thread.Id);
          }
