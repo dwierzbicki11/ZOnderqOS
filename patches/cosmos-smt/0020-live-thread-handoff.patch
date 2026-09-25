@@ -165,7 +165,7 @@ index 27886a7..d5c5c29 100644
      {
          while (true)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 4a28a6d..ee26aa9 100644
+index 4a28a6d..821450e 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -41,6 +41,9 @@ public static partial class SchedulerManager
@@ -202,7 +202,7 @@ index 4a28a6d..ee26aa9 100644
      [LibraryImport("*", EntryPoint = "_native_x64_begin_concurrent_scheduler_test")]
      [SuppressGCTransition]
      private static partial int NativeBeginConcurrentSchedulerTest(ulong cpuCount);
-@@ -1651,6 +1664,225 @@ public static partial class SchedulerManager
+@@ -1651,6 +1664,238 @@ public static partial class SchedulerManager
  
      private static ulong ComputeStage19Checksum(uint cpuId, uint slot, uint threadId) => 0x534D_5031_3900_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)slot << 24) ^ threadId;
  
@@ -255,8 +255,14 @@ index 4a28a6d..ee26aa9 100644
 +            : 10_000_000_000UL;
 +        int startedAps = NativeBeginConcurrentSchedulerTest(s_cpuCount);
 +        if (startedAps != checked((int)s_cpuCount - 1) ||
-+            !WaitForStage20Cpu(worker, 1, timeoutTicks))
++            !WaitForStage20Cpu(worker, 1, 0, timeoutTicks))
 +        {
++            Serial.WriteString("[SCHED-LIVE-MIGRATE-CHECK] phase=start started="); Serial.WriteNumber((ulong)startedAps);
++            Serial.WriteString(" worker-cpu="); Serial.WriteNumber(worker.CpuId);
++            Serial.WriteString(" resumes="); Serial.WriteNumber(s_cpuStates[1].Stage20ResumeCount);
++            Serial.WriteString(" preemptions="); Serial.WriteNumber(s_cpuStates[1].Stage20PreemptionCount);
++            Serial.WriteString(" failure="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage20Failure));
++            Serial.WriteString("\n");
 +            Volatile.Write(ref s_stage20ReleaseWorker, 1);
 +            return false;
 +        }
@@ -267,8 +273,15 @@ index 4a28a6d..ee26aa9 100644
 +            uint sourceCpuId = worker.CpuId;
 +            if (sourceCpuId == 0 || sourceCpuId >= s_cpuCount ||
 +                !s_cpuStates[sourceCpuId].TryRequestMigration(worker.Id, targetCpuId) ||
-+                !WaitForStage20Cpu(worker, targetCpuId, timeoutTicks))
++                !WaitForStage20Cpu(worker, targetCpuId, Stage20RequiredPreemptionsPerCpu, timeoutTicks))
 +            {
++                Serial.WriteString("[SCHED-LIVE-MIGRATE-CHECK] phase=hop source="); Serial.WriteNumber(sourceCpuId);
++                Serial.WriteString(" target="); Serial.WriteNumber(targetCpuId);
++                Serial.WriteString(" worker-cpu="); Serial.WriteNumber(worker.CpuId);
++                Serial.WriteString(" resumes="); Serial.WriteNumber(s_cpuStates[targetCpuId].Stage20ResumeCount);
++                Serial.WriteString(" preemptions="); Serial.WriteNumber(s_cpuStates[targetCpuId].Stage20PreemptionCount);
++                Serial.WriteString(" failure="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage20Failure));
++                Serial.WriteString("\n");
 +                Volatile.Write(ref s_stage20ReleaseWorker, 1);
 +                return false;
 +            }
@@ -390,11 +403,11 @@ index 4a28a6d..ee26aa9 100644
 +        }
 +    }
 +
-+    private static bool WaitForStage20Cpu(SchedulerThread worker, uint cpuId, ulong timeoutTicks)
++    private static bool WaitForStage20Cpu(SchedulerThread worker, uint cpuId, uint requiredPreemptions, ulong timeoutTicks)
 +    {
 +        ulong start = (ulong)Stopwatch.GetTimestamp();
 +        while (worker.CpuId != cpuId || s_cpuStates![cpuId].Stage20ResumeCount == 0 ||
-+            s_cpuStates[cpuId].Stage20PreemptionCount < Stage20RequiredPreemptionsPerCpu)
++            s_cpuStates[cpuId].Stage20PreemptionCount < requiredPreemptions)
 +        {
 +            if (Volatile.Read(ref s_stage20Failure) != 0 ||
 +                (ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
@@ -428,7 +441,7 @@ index 4a28a6d..ee26aa9 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1675,11 +1907,80 @@ public static partial class SchedulerManager
+@@ -1675,11 +1920,80 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage19Preemption(cpuId, thread.Id);
          }
