@@ -165,7 +165,7 @@ index 27886a7..97f02f2 100644
      {
          while (true)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 4a28a6d..d465a0f 100644
+index 4a28a6d..c85c66a 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -41,6 +41,9 @@ public static partial class SchedulerManager
@@ -210,7 +210,7 @@ index 4a28a6d..d465a0f 100644
      [LibraryImport("*", EntryPoint = "_native_x64_wait_concurrent_scheduler_test")]
      [SuppressGCTransition]
      private static partial int NativeWaitConcurrentSchedulerTest(ulong cpuCount, ulong timeoutTscTicks);
-@@ -1651,6 +1668,289 @@ public static partial class SchedulerManager
+@@ -1651,6 +1668,290 @@ public static partial class SchedulerManager
 
      private static ulong ComputeStage19Checksum(uint cpuId, uint slot, uint threadId) => 0x534D_5031_3900_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)slot << 24) ^ threadId;
 
@@ -306,6 +306,7 @@ index 4a28a6d..d465a0f 100644
 +                if (sourceValid)
 +                {
 +                    Serial.WriteString(" source-current="); Serial.WriteNumber(s_cpuStates[sourceCpuId].CurrentThread?.Id ?? uint.MaxValue);
++                    Serial.WriteString(" source-state="); Serial.WriteNumber((ulong)(s_cpuStates[sourceCpuId].CurrentThread?.State ?? SchedulerThreadState.Dead));
 +                    Serial.WriteString(" source-pending="); Serial.WriteNumber((ulong)s_cpuStates[sourceCpuId].Stage20PendingMigration);
 +                }
 +                Serial.WriteString(" resumes="); Serial.WriteNumber(s_cpuStates[targetCpuId].Stage20ResumeCount);
@@ -500,7 +501,7 @@ index 4a28a6d..d465a0f 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1675,11 +1975,80 @@ public static partial class SchedulerManager
+@@ -1675,11 +1976,80 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage19Preemption(cpuId, thread.Id);
          }
@@ -539,7 +540,7 @@ index 4a28a6d..d465a0f 100644
 +            ReferenceEquals(outgoing, source.IdleThread) ||
 +            (outgoing.Flags & SchedulerThreadFlags.Pinned) != 0)
 +        {
-+            Volatile.Write(ref s_stage20Failure, 1);
++            Volatile.Write(ref s_stage20Failure, 11);
 +            return false;
 +        }
 +
@@ -547,7 +548,7 @@ index 4a28a6d..d465a0f 100644
 +        SchedulerThread? replacement = s_currentScheduler.PickNext(source) ?? source.IdleThread;
 +        if (replacement is null || NativeDisarmSchedulerTimer() != 1)
 +        {
-+            Volatile.Write(ref s_stage20Failure, 1);
++            Volatile.Write(ref s_stage20Failure, 12);
 +            return false;
 +        }
 +
@@ -557,7 +558,7 @@ index 4a28a6d..d465a0f 100644
 +        if (!source.TryRecordStage20MigrationOut(outgoing.Id) ||
 +            !destination.TryRecordStage20MigrationIn(outgoing.Id))
 +        {
-+            Volatile.Write(ref s_stage20Failure, 1);
++            Volatile.Write(ref s_stage20Failure, 13);
 +            return false;
 +        }
 +
@@ -568,7 +569,7 @@ index 4a28a6d..d465a0f 100644
 +
 +        if (NativeStageSchedulerHandoff(targetCpuId) != 1)
 +        {
-+            Volatile.Write(ref s_stage20Failure, 1);
++            Volatile.Write(ref s_stage20Failure, 14);
 +            return false;
 +        }
 +
