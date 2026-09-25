@@ -15,7 +15,7 @@ index 0483577..21dcd5f 100644
          }
      }
  }
-diff --git a/workspace/scratch/c4258335e67e/cosmos-stage18-work/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs
 new file mode 100644
 index 0000000..ab964d9
 --- /dev/null
@@ -105,7 +105,7 @@ index 27b7ad7..600bc36 100644
      {
          if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c16e9d9..da00806 100644
+index c16e9d9..35c0fe0 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -44,6 +44,17 @@ public static partial class SchedulerManager
@@ -448,7 +448,7 @@ index c16e9d9..da00806 100644
              return false;
          }
 
-@@ -2048,8 +2309,117 @@ public static partial class SchedulerManager
+@@ -2048,8 +2309,123 @@ public static partial class SchedulerManager
          ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
          return true;
      }
@@ -486,22 +486,28 @@ index c16e9d9..da00806 100644
 +
 +            PerCpuState destination = s_cpuStates[candidate];
 +            uint candidateLoad = destination.PublishedRunnableCount;
-+            if (candidateLoad < bestLoad &&
++            // A command-0/completion-1 mailbox says that the native park loop
++            // is available, but it remains unchanged while an F4-dispatched
++            // worker is running. The owner-published zero load is therefore
++            // also required before this CPU may mutate the destination queue.
++            //
++            // Do not reserve candidates while scanning. Releasing a temporary
++            // reservation can race the destination owner's exact snapshot
++            // publication and decrement that fresh value back to zero. That
++            // made an active AP look parked and allowed a second remote queue
++            // mutation. Select read-only, then CAS exactly one final target.
++            if (candidateLoad == 0 && candidateLoad < bestLoad &&
 +                sourceLoad >= candidateLoad + AutomaticBalanceHysteresis &&
 +                NativeGetApplicationProcessorCommand(candidate) == 0 &&
-+                NativeGetApplicationProcessorCompletion(candidate) == 1 &&
-+                destination.TryReserveIncomingRunnable(candidateLoad))
++                NativeGetApplicationProcessorCompletion(candidate) == 1)
 +            {
-+                if (targetCpuId != uint.MaxValue)
-+                {
-+                    s_cpuStates[targetCpuId].ReleaseIncomingRunnableReservation();
-+                }
 +                bestLoad = candidateLoad;
 +                targetCpuId = candidate;
 +            }
 +        }
 +
-+        return targetCpuId != uint.MaxValue;
++        return targetCpuId != uint.MaxValue &&
++            s_cpuStates[targetCpuId].TryReserveIncomingRunnable(bestLoad);
 +    }
 +
 +    private static void RecordMigrationFailure(bool explicitlyRequested, int code)
@@ -566,7 +572,7 @@ index c16e9d9..da00806 100644
      // ========== Thread Entry Dispatch ==========
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
-@@ -2770,6 +3140,14 @@ public static partial class SchedulerManager
+@@ -2770,6 +3146,14 @@ public static partial class SchedulerManager
              return;
          }
 
