@@ -39,6 +39,54 @@ index 0000000..aad90a0
 +        }
 +    }
 +}
+diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs
+index 049756b..152e9c2 100644
+--- a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs
++++ b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs
+@@ -166,7 +166,17 @@ internal static unsafe partial class GarbageCollector
+             return;
+         }
+
+-        if (thread.State != SchedulerThreadState.Running)
++        // State is scheduling policy metadata; CurrentThread is the mechanism's
++        // authoritative owner. In particular, a timer can make a thread Ready
++        // before the IRQ epilogue switches stacks. Once STW has parked every AP,
++        // this identity is stable and tells us whether to use the rendezvous RSP
++        // or the thread's previously saved context.
++        PerCpuState[]? cpuStates = SchedulerManager.GetAllCpuStates();
++        bool isRemoteCurrent = thread.CpuId != 0 && cpuStates is not null &&
++            thread.CpuId < (uint)cpuStates.Length &&
++            object.ReferenceEquals(cpuStates[thread.CpuId].CurrentThread, thread);
++
++        if (!isRemoteCurrent)
+         {
+             Scheduler.ThreadContext* ctx = thread.GetContext();
+             if (ctx != null)
+@@ -232,7 +242,7 @@ internal static unsafe partial class GarbageCollector
+         nuint stackEnd;
+         bool recordSmpStackWords = false;
+
+-        if (thread.State == SchedulerThreadState.Running)
++        if (isRemoteCurrent)
+         {
+             // ScanThreadStack is called only for registry entries other than
+             // CurrentCpuState.CurrentThread. Before Stage 15, AP idle records
+@@ -258,7 +268,14 @@ internal static unsafe partial class GarbageCollector
+             stackEnd = thread.StackBase + thread.StackSize;
+             if (stackStart < thread.StackBase || stackStart >= stackEnd)
+             {
+-                Cosmos.Kernel.Core.Panic.Halt("SMP GC remote idle stack pointer is outside its bounds.");
++                Serial.WriteString("[GC-SMP] invalid-current-stack thread="); Serial.WriteNumber(thread.Id);
++                Serial.WriteString(" cpu="); Serial.WriteNumber(thread.CpuId);
++                Serial.WriteString(" state="); Serial.WriteNumber((ulong)thread.State);
++                Serial.WriteString(" rsp="); Serial.WriteHexWithPrefix((ulong)stackStart);
++                Serial.WriteString(" base="); Serial.WriteHexWithPrefix((ulong)thread.StackBase);
++                Serial.WriteString(" end="); Serial.WriteHexWithPrefix((ulong)stackEnd);
++                Serial.WriteString("\n");
++                Cosmos.Kernel.Core.Panic.Halt("SMP GC remote current stack pointer is outside its bounds.");
+                 return;
+             }
+
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 index 27886a7..27b7ad7 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
