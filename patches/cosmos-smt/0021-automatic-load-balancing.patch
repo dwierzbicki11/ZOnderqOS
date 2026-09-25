@@ -1,0 +1,55 @@
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+index 27b7ad7..8638a68 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+@@ -89,6 +89,7 @@ public sealed class PerCpuState : SchedulerExtensible
+     private ulong _stage19Checksum1;
+     private int _pendingMigrationThreadId;
+     private int _pendingMigrationTargetPlusOne;
++    private int _publishedRunnableCount;
+     private int _stage20ResumeCount;
+     private int _stage20PreemptionCount;
+     private int _stage20MigrationOutCount;
+@@ -367,6 +368,23 @@ public sealed class PerCpuState : SchedulerExtensible
+     internal ulong Stage20Checksum => Volatile.Read(ref _stage20Checksum);
+     internal int Stage20PendingMigration => Volatile.Read(ref _pendingMigrationTargetPlusOne);
+
++    /// <summary>
++    /// Owner-CPU snapshot of runnable non-idle work. Remote CPUs may read the
++    /// snapshot when choosing a balancing target, but never inspect or mutate
++    /// this CPU's live run queue directly.
++    /// </summary>
++    internal uint PublishedRunnableCount => checked((uint)Volatile.Read(ref _publishedRunnableCount));
++
++    internal void PublishRunnableCount(int runQueueCount, bool hasRunningWorker)
++    {
++        if (runQueueCount < 0)
++        {
++            return;
++        }
++
++        Volatile.Write(ref _publishedRunnableCount, checked(runQueueCount + (hasRunningWorker ? 1 : 0)));
++    }
++
+     internal bool TryRequestMigration(uint threadId, uint targetCpuId)
+     {
+         if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+index c16e9d9..ac3798a 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+@@ -2770,6 +2770,14 @@ public static partial class SchedulerManager
+             return;
+         }
+
++        // Only the owner CPU touches its scheduler run queue. Publish a
++        // compact load snapshot for Stage 21 target selection instead of
++        // allowing another CPU to enumerate a List<T> that an IRQ can mutate.
++        state.PublishRunnableCount(
++            s_currentScheduler.GetRunQueueCount(state),
++            !ReferenceEquals(state.CurrentThread, state.IdleThread) &&
++                state.CurrentThread.State == SchedulerThreadState.Running);
++
+         // Check and wake up sleeping threads whose timeout has expired
+         CheckSleepingThreads(cpuId, elapsedNs);
+
