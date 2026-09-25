@@ -40,13 +40,14 @@ index 0000000..aad90a0
 +    }
 +}
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-index 27886a7..97f02f2 100644
+index 27886a7..27b7ad7 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-@@ -87,6 +87,13 @@ public sealed class PerCpuState : SchedulerExtensible
+@@ -87,6 +87,14 @@ public sealed class PerCpuState : SchedulerExtensible
      private uint _stage19ThreadId1;
      private ulong _stage19Checksum0;
      private ulong _stage19Checksum1;
++    private int _pendingMigrationThreadId;
 +    private int _pendingMigrationTargetPlusOne;
 +    private int _stage20ResumeCount;
 +    private int _stage20PreemptionCount;
@@ -57,7 +58,7 @@ index 27886a7..97f02f2 100644
 
      /// <summary>
      /// Stage-13 per-CPU scheduler foundation phase: 0=not entered,
-@@ -351,6 +358,106 @@ public sealed class PerCpuState : SchedulerExtensible
+@@ -351,6 +359,122 @@ public sealed class PerCpuState : SchedulerExtensible
          return TrySetBit(ref _stage19CompletedMask, bit);
      }
 
@@ -76,17 +77,33 @@ index 27886a7..97f02f2 100644
 +            return false;
 +        }
 +
-+        return Interlocked.CompareExchange(
-+            ref _pendingMigrationTargetPlusOne,
-+            checked((int)targetCpuId + 1),
-+            0) == 0;
++        // Reserve the mailbox before publishing either payload field. A timer
++        // interrupt treats the negative value as "publication in progress",
++        // so it cannot consume a target paired with a stale thread ID.
++        if (Interlocked.CompareExchange(ref _pendingMigrationTargetPlusOne, -1, 0) != 0)
++        {
++            return false;
++        }
++
++        Volatile.Write(ref _pendingMigrationThreadId, checked((int)threadId));
++        Volatile.Write(ref _pendingMigrationTargetPlusOne, checked((int)targetCpuId + 1));
++        return true;
 +    }
 +
-+    internal bool TryTakeMigrationTarget(out uint targetCpuId)
++    internal bool TryTakeMigrationTarget(uint runningThreadId, out uint targetCpuId)
 +    {
-+        int encoded = Interlocked.Exchange(ref _pendingMigrationTargetPlusOne, 0);
-+        targetCpuId = encoded > 0 ? checked((uint)(encoded - 1)) : uint.MaxValue;
-+        return encoded > 0;
++        int encodedTarget = Volatile.Read(ref _pendingMigrationTargetPlusOne);
++        if (encodedTarget <= 0 ||
++            Volatile.Read(ref _pendingMigrationThreadId) != checked((int)runningThreadId) ||
++            Interlocked.CompareExchange(ref _pendingMigrationTargetPlusOne, 0, encodedTarget) != encodedTarget)
++        {
++            targetCpuId = uint.MaxValue;
++            return false;
++        }
++
++        Volatile.Write(ref _pendingMigrationThreadId, 0);
++        targetCpuId = checked((uint)(encodedTarget - 1));
++        return true;
 +    }
 +
 +    internal bool TryRecordStage20Resume(uint threadId)
@@ -165,7 +182,7 @@ index 27886a7..97f02f2 100644
      {
          while (true)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 4a28a6d..c85c66a 100644
+index 4a28a6d..c16e9d9 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -41,6 +41,9 @@ public static partial class SchedulerManager
@@ -529,16 +546,16 @@ index 4a28a6d..c85c66a 100644
 +        }
 +
 +        PerCpuState source = s_cpuStates[cpuId];
-+        if (!source.TryTakeMigrationTarget(out uint targetCpuId))
++        SchedulerThread? outgoing = source.CurrentThread;
++        if (outgoing is null || outgoing.State != SchedulerThreadState.Running ||
++            ReferenceEquals(outgoing, source.IdleThread) ||
++            (outgoing.Flags & SchedulerThreadFlags.Pinned) != 0 ||
++            !source.TryTakeMigrationTarget(outgoing.Id, out uint targetCpuId))
 +        {
 +            return false;
 +        }
 +
-+        SchedulerThread? outgoing = source.CurrentThread;
-+        if (targetCpuId == 0 || targetCpuId >= s_cpuCount || targetCpuId == cpuId ||
-+            outgoing is null || outgoing.State != SchedulerThreadState.Running ||
-+            ReferenceEquals(outgoing, source.IdleThread) ||
-+            (outgoing.Flags & SchedulerThreadFlags.Pinned) != 0)
++        if (targetCpuId == 0 || targetCpuId >= s_cpuCount || targetCpuId == cpuId)
 +        {
 +            Volatile.Write(ref s_stage20Failure, 11);
 +            return false;
