@@ -3,9 +3,9 @@ name: SMT stage 20 live cross-CPU thread handoff
 on:
   push:
     branches: [ main ]
-    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage14-qemu.sh', 'tools/smoke-stage19-qemu.sh', 'tools/smoke-stage20-qemu.sh', 'tools/verify-smt-local.sh', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage20.yml' ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage12-qemu.sh', 'tools/smoke-stage14-qemu.sh', 'tools/smoke-stage19-qemu.sh', 'tools/smoke-stage20-qemu.sh', 'tools/verify-smt-local.sh', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage20.yml' ]
   pull_request:
-    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage14-qemu.sh', 'tools/smoke-stage19-qemu.sh', 'tools/smoke-stage20-qemu.sh', 'tools/verify-smt-local.sh', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage20.yml' ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage12-qemu.sh', 'tools/smoke-stage14-qemu.sh', 'tools/smoke-stage19-qemu.sh', 'tools/smoke-stage20-qemu.sh', 'tools/verify-smt-local.sh', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage20.yml' ]
   workflow_dispatch:
 
 permissions:
