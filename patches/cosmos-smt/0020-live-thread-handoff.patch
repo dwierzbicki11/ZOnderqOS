@@ -54,13 +54,13 @@ index 27886a7..d5c5c29 100644
 +    private int _stage20MigrationInCount;
 +    private int _stage20ThreadId;
 +    private ulong _stage20Checksum;
- 
+
      /// <summary>
      /// Stage-13 per-CPU scheduler foundation phase: 0=not entered,
 @@ -351,6 +358,106 @@ public sealed class PerCpuState : SchedulerExtensible
          return TrySetBit(ref _stage19CompletedMask, bit);
      }
- 
+
 +    internal uint Stage20ResumeCount => (uint)Volatile.Read(ref _stage20ResumeCount);
 +    internal uint Stage20PreemptionCount => (uint)Volatile.Read(ref _stage20PreemptionCount);
 +    internal uint Stage20MigrationOutCount => (uint)Volatile.Read(ref _stage20MigrationOutCount);
@@ -165,7 +165,7 @@ index 27886a7..d5c5c29 100644
      {
          while (true)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 4a28a6d..8805525 100644
+index 4a28a6d..4d9062a 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -41,6 +41,9 @@ public static partial class SchedulerManager
@@ -175,7 +175,7 @@ index 4a28a6d..8805525 100644
 +    private static int s_stage20ReleaseWorker;
 +    private static int s_stage20Failure;
 +    private static uint s_stage20WorkerThreadId;
- 
+
      /// <summary>
      /// The interval the boot path asks the platform to arm the scheduler
 @@ -91,6 +94,8 @@ public static partial class SchedulerManager
@@ -184,13 +184,13 @@ index 4a28a6d..8805525 100644
      private const uint Stage19RequiredPreemptionsPerWorker = 2;
 +    private const ulong Stage20TimeoutSeconds = 10;
 +    private const uint Stage20RequiredPreemptionsPerCpu = 2;
- 
+
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
-@@ -178,6 +183,14 @@ public static partial class SchedulerManager
+@@ -178,10 +183,22 @@ public static partial class SchedulerManager
      [SuppressGCTransition]
      private static partial int NativeArmSchedulerTimer();
- 
+
 +    [LibraryImport("*", EntryPoint = "_native_x64_disarm_scheduler_timer")]
 +    [SuppressGCTransition]
 +    private static partial int NativeDisarmSchedulerTimer();
@@ -202,10 +202,18 @@ index 4a28a6d..8805525 100644
      [LibraryImport("*", EntryPoint = "_native_x64_begin_concurrent_scheduler_test")]
      [SuppressGCTransition]
      private static partial int NativeBeginConcurrentSchedulerTest(ulong cpuCount);
-@@ -1651,6 +1664,273 @@ public static partial class SchedulerManager
- 
+
++    [LibraryImport("*", EntryPoint = "_native_x64_begin_scheduler_cpu")]
++    [SuppressGCTransition]
++    private static partial int NativeBeginSchedulerCpu(uint cpuId);
++
+     [LibraryImport("*", EntryPoint = "_native_x64_wait_concurrent_scheduler_test")]
+     [SuppressGCTransition]
+     private static partial int NativeWaitConcurrentSchedulerTest(ulong cpuCount, ulong timeoutTscTicks);
+@@ -1651,6 +1668,282 @@ public static partial class SchedulerManager
+
      private static ulong ComputeStage19Checksum(uint cpuId, uint slot, uint threadId) => 0x534D_5031_3900_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)slot << 24) ^ threadId;
- 
+
 +    internal static unsafe bool RunLiveApplicationProcessorMigrationProof()
 +    {
 +        if (!s_enabled || s_currentScheduler is null || s_cpuStates is null ||
@@ -253,8 +261,8 @@ index 4a28a6d..8805525 100644
 +        ulong timeoutTicks = frequency > 0
 +            ? checked((ulong)frequency * Stage20TimeoutSeconds)
 +            : 10_000_000_000UL;
-+        int startedAps = NativeBeginConcurrentSchedulerTest(s_cpuCount);
-+        if (startedAps != checked((int)s_cpuCount - 1) ||
++        int startedAps = NativeBeginSchedulerCpu(1);
++        if (startedAps != 1 ||
 +            !WaitForStage20Cpu(worker, 1, 0, timeoutTicks))
 +        {
 +            Serial.WriteString("[SCHED-LIVE-MIGRATE-CHECK] phase=start started="); Serial.WriteNumber((ulong)startedAps);
@@ -269,6 +277,15 @@ index 4a28a6d..8805525 100644
 +        if (!WaitForStage20ParkedTargets(2, timeoutTicks))
 +        {
 +            Serial.WriteString("[SCHED-LIVE-MIGRATE-CHECK] phase=targets-not-parked\n");
++            for (uint cpuId = 2; cpuId < s_cpuCount; cpuId++)
++            {
++                Serial.WriteString("[SCHED-LIVE-MIGRATE-CHECK] cpu="); Serial.WriteNumber(cpuId);
++                Serial.WriteString(" command="); Serial.WriteNumber(NativeGetApplicationProcessorCommand(cpuId));
++                Serial.WriteString(" completion="); Serial.WriteNumber(NativeGetApplicationProcessorCompletion(cpuId));
++                Serial.WriteString(" current="); Serial.WriteNumber(s_cpuStates[cpuId].CurrentThread?.Id ?? uint.MaxValue);
++                Serial.WriteString(" idle="); Serial.WriteNumber(s_cpuStates[cpuId].IdleThread?.Id ?? uint.MaxValue);
++                Serial.WriteString("\n");
++            }
 +            Volatile.Write(ref s_stage20ReleaseWorker, 1);
 +            return false;
 +        }
@@ -476,7 +493,7 @@ index 4a28a6d..8805525 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1675,11 +1955,80 @@ public static partial class SchedulerManager
+@@ -1675,11 +1968,80 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage19Preemption(cpuId, thread.Id);
          }
@@ -484,7 +501,7 @@ index 4a28a6d..8805525 100644
 +        {
 +            _ = state.TryRecordStage20Preemption(thread.Id);
 +        }
- 
+
          nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
 +#if ARCH_X64
 +        if (TryMigrateCurrentThreadFromInterrupt(cpuId, currentRsp))
@@ -494,7 +511,7 @@ index 4a28a6d..8805525 100644
 +#endif
          OnTimerInterrupt(cpuId, currentRsp, DefaultQuantumNs);
      }
- 
+
 +#if ARCH_X64
 +    private static bool TryMigrateCurrentThreadFromInterrupt(uint cpuId, nuint currentRsp)
 +    {
@@ -558,13 +575,13 @@ index 4a28a6d..8805525 100644
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-index 742c355..0f3250e 100644
+index 742c355..485c42d 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 @@ -774,6 +774,54 @@ _native_x64_arm_scheduler_timer:
      xor eax, eax
      ret
- 
+
 +// int _native_x64_disarm_scheduler_timer()
 +// Masks the current CPU's private scheduler timer before a live thread is
 +// handed to another CPU. Without this, the old owner would keep receiving
@@ -616,7 +633,58 @@ index 742c355..0f3250e 100644
  .macro AP_STATE_GETTER name, offset, width
  .global \name
  \name:
-@@ -3271,7 +3319,8 @@ _native_set_context_switch_new_thread:
+@@ -2412,6 +2460,50 @@ _native_x64_begin_concurrent_scheduler_test:
+     pop rbx
+     ret
+
++// int _native_x64_begin_scheduler_cpu(uint32_t cpuId)
++// Starts command 9 on one AP. Stage 20 must leave every destination AP in
++// the outer parked loop until a live context is ready for it; starting an
++// empty command-9 generation would return its self-IPI to HLT with no worker.
++.global _native_x64_begin_scheduler_cpu
++_native_x64_begin_scheduler_cpu:
++    push rbx
++    mov ecx, dword ptr [rip + _smp_cpu_count]
++    cmp edi, 1
++    jb .Lap_scheduler_cpu_begin_invalid
++    cmp edi, ecx
++    jae .Lap_scheduler_cpu_begin_invalid
++    mov rax, qword ptr [rip + _native_x64_lapic_base]
++    test rax, rax
++    jz .Lap_scheduler_cpu_begin_invalid
++    lea rbx, [rip + _ap_boot_state]
++    mov ecx, edi
++    shl rcx, 6
++    add rbx, rcx
++    cmp dword ptr [rbx + 0], 1
++    jne .Lap_scheduler_cpu_begin_invalid
++    cmp dword ptr [rbx + 32], 0
++    jne .Lap_scheduler_cpu_begin_invalid
++    xor ecx, ecx
++    xchg dword ptr [rbx + 48], ecx
++    cmp ecx, 1
++    jne .Lap_scheduler_cpu_begin_invalid
++    mov ecx, 9
++    xchg dword ptr [rbx + 32], ecx
++    test ecx, ecx
++    jne .Lap_scheduler_cpu_begin_invalid
++    mfence
++    mov edx, dword ptr [rbx + 8]
++    shl edx, 24
++    mov dword ptr [rax + 0x310], edx
++    mov dword ptr [rax + 0x300], 0x000000F1
++    mov eax, 1
++    pop rbx
++    ret
++.Lap_scheduler_cpu_begin_invalid:
++    xor eax, eax
++    pop rbx
++    ret
++
+ .global _native_x64_wait_concurrent_scheduler_test
+ _native_x64_wait_concurrent_scheduler_test:
+     push rbx
+@@ -3271,7 +3363,8 @@ _native_set_context_switch_new_thread:
  .bss
  // One 64-byte cache line per xAPIC logical CPU:
  // +0 CpuId, +8 target RSP, +16 is-new-thread, +24 restore scratch,
@@ -625,11 +693,11 @@ index 742c355..0f3250e 100644
 +// remainder reserved/padding.
  .balign 64
  _percpu_slots: .zero 16384
- 
-@@ -3745,6 +3794,26 @@ irq\n\()_stub:
+
+@@ -3745,6 +3838,26 @@ irq\n\()_stub:
      // Switch stack
      mov rsp, rax
- 
+
 +    // A live cross-CPU handoff may only wake its destination after this
 +    // switch: the source no longer touches the outgoing worker's saved IRQ
 +    // frame, so the destination can safely restore it. The target is stored
