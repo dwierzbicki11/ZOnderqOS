@@ -415,7 +415,7 @@ elif (( SELECTED_STAGE == 20 )); then
     echo "[SMT] IPI docelowe jest wysylane dopiero po opuszczeniu stosu migrowanego watku przez zrodlowy epilog IRQ."
     echo "[SMT] Worker musi wznowic ten sam kontekst na kolejnych AP-ach, przejsc preempcje i realny OrionGC/STW."
 elif (( SELECTED_STAGE == 21 )); then
-    echo "[SMT] Etap 21 publikuje owner-CPU snapshot obciazenia bez zdalnego odczytu aktywnej kolejki."
-    echo "[SMT] Snapshot obejmuje gotowe watki oraz nie-idle worker aktualnie wykonywany na danym CPU."
-    echo "[SMT] Kolejny krok etapu wykorzysta te snapshoty do timerowego wyboru celu i automatycznego handoffu."
+    echo "[SMT] Etap 21 wybiera najmniej obciazony zaparkowany AP z owner-CPU snapshotow bez zdalnego odczytu aktywnej kolejki."
+    echo "[SMT] Atomowa rezerwacja celu, hysteresis i cooldown chronia przed thundering herd oraz ping-pongiem."
+    echo "[SMT] Dwa przeciazone CPU musza samodzielnie zainicjowac live handoffy pod timerem i OrionGC/STW."
 fi

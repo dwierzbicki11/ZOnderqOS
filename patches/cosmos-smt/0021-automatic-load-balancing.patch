@@ -105,7 +105,7 @@ index 27b7ad7..600bc36 100644
      {
          if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c16e9d9..863cc0e 100644
+index c16e9d9..da00806 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -44,6 +44,17 @@ public static partial class SchedulerManager
@@ -137,7 +137,7 @@ index c16e9d9..863cc0e 100644
 
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
-@@ -1952,6 +1967,219 @@ public static partial class SchedulerManager
+@@ -1952,6 +1967,224 @@ public static partial class SchedulerManager
      private static ulong ComputeStage20Checksum(uint threadId, uint hopCount, uint cpuId) =>
          0x534D_5031_4000_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)hopCount << 24) ^ threadId;
 
@@ -207,7 +207,12 @@ index c16e9d9..863cc0e 100644
 +            ? checked((ulong)frequency * Stage21TimeoutSeconds)
 +            : 15_000_000_000UL;
 +        Volatile.Write(ref s_automaticLoadBalancingEnabled, 1);
-+        int startedAps = NativeBeginConcurrentSchedulerTest(s_cpuCount);
++        // Keep candidate CPUs in the native parked state. Stage 20's delayed
++        // F4 handoff is deliberately valid only for a parked destination, so
++        // starting every empty AP here would turn safe target selection into
++        // a remote mutation of an active owner's run queue.
++        int startedAps = NativeBeginSchedulerCpu(1) + NativeBeginSchedulerCpu(highSourceCpu);
++        const int expectedStartedAps = 2;
 +        int requiredSourceMask = (1 << 1) | (1 << checked((int)highSourceCpu));
 +        ulong start = (ulong)Stopwatch.GetTimestamp();
 +        while (Volatile.Read(ref s_stage21StartedWorkers) != workerCount ||
@@ -216,7 +221,7 @@ index c16e9d9..863cc0e 100644
 +            CountStage21CpuBits(Volatile.Read(ref s_stage21TargetMask)) < 3 ||
 +            Volatile.Read(ref s_stage21Preemptions) < workerCount * 2)
 +        {
-+            if (startedAps != checked((int)s_cpuCount - 1) ||
++            if (startedAps != expectedStartedAps ||
 +                Volatile.Read(ref s_stage21Failure) != 0 ||
 +                (ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
 +            {
@@ -357,7 +362,7 @@ index c16e9d9..863cc0e 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1980,6 +2208,10 @@ public static partial class SchedulerManager
+@@ -1980,6 +2213,10 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage20Preemption(thread.Id);
          }
@@ -368,7 +373,7 @@ index c16e9d9..863cc0e 100644
 
          nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
  #if ARCH_X64
-@@ -2003,15 +2235,20 @@ public static partial class SchedulerManager
+@@ -2003,15 +2240,20 @@ public static partial class SchedulerManager
          SchedulerThread? outgoing = source.CurrentThread;
          if (outgoing is null || outgoing.State != SchedulerThreadState.Running ||
              ReferenceEquals(outgoing, source.IdleThread) ||
@@ -392,7 +397,7 @@ index c16e9d9..863cc0e 100644
              return false;
          }
 
-@@ -2019,19 +2256,38 @@ public static partial class SchedulerManager
+@@ -2019,19 +2261,38 @@ public static partial class SchedulerManager
          SchedulerThread? replacement = s_currentScheduler.PickNext(source) ?? source.IdleThread;
          if (replacement is null || NativeDisarmSchedulerTimer() != 1)
          {
@@ -434,7 +439,7 @@ index c16e9d9..863cc0e 100644
 
          source.CurrentThread = replacement;
          bool isNewThread = replacement.State == SchedulerThreadState.Created;
-@@ -2040,7 +2296,7 @@ public static partial class SchedulerManager
+@@ -2040,7 +2301,7 @@ public static partial class SchedulerManager
 
          if (NativeStageSchedulerHandoff(targetCpuId) != 1)
          {
@@ -443,7 +448,7 @@ index c16e9d9..863cc0e 100644
              return false;
          }
 
-@@ -2048,8 +2304,117 @@ public static partial class SchedulerManager
+@@ -2048,8 +2309,117 @@ public static partial class SchedulerManager
          ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
          return true;
      }
@@ -561,7 +566,7 @@ index c16e9d9..863cc0e 100644
      // ========== Thread Entry Dispatch ==========
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
-@@ -2770,6 +3135,14 @@ public static partial class SchedulerManager
+@@ -2770,6 +3140,14 @@ public static partial class SchedulerManager
              return;
          }
 
