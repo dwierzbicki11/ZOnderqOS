@@ -330,7 +330,7 @@ index 4a28a6d..a2318c0 100644
 +    internal static void RunStage20LiveMigratedThread(uint token)
 +    {
 +        _ = token;
-+        SchedulerThread? thread = CurrentThread;
++        SchedulerThread? thread = CurrentCpuState?.CurrentThread;
 +        if (thread is null || thread.Id != Volatile.Read(ref s_stage20WorkerThreadId))
 +        {
 +            Volatile.Write(ref s_stage20Failure, 1);
