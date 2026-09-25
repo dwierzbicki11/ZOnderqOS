@@ -30,7 +30,7 @@ index 0000000..49ba262
 +    }
 +}
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-index 8b122bd..9b118f0 100644
+index 8b122bd..8c42b6c 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 @@ -66,6 +66,11 @@ public sealed class PerCpuState : SchedulerExtensible
@@ -45,7 +45,7 @@ index 8b122bd..9b118f0 100644
  
      /// <summary>
      /// Stage-13 per-CPU scheduler foundation phase: 0=not entered,
-@@ -137,4 +142,55 @@ public sealed class PerCpuState : SchedulerExtensible
+@@ -137,4 +142,58 @@ public sealed class PerCpuState : SchedulerExtensible
          Volatile.Write(ref _stage16Checksum, checksum);
          return Interlocked.CompareExchange(ref _stage16DispatchState, 2, 1) == 1;
      }
@@ -61,13 +61,16 @@ index 8b122bd..9b118f0 100644
 +    internal bool TryEnterStage17Preemption(uint expectedCpuId, uint threadId)
 +    {
 +        if (CpuId != expectedCpuId || Stage16DispatchState != 2 ||
-+            Interlocked.CompareExchange(ref _stage17PreemptionState, 1, 0) != 0)
++            Stage17PreemptionState != 0)
 +        {
 +            return false;
 +        }
 +
++        // Publish ownership before phase 1. The AP timer may interrupt on the
++        // next instruction and its handler must never observe phase 1 with a
++        // stale thread ID.
 +        Volatile.Write(ref _stage17ThreadId, threadId);
-+        return true;
++        return Interlocked.CompareExchange(ref _stage17PreemptionState, 1, 0) == 0;
 +    }
 +
 +    internal bool TryRecordStage17Preemption(uint expectedCpuId, uint threadId)
