@@ -135,7 +135,7 @@ index 9329fc4..27886a7 100644
      {
          while (true)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 33a92b1..71de420 100644
+index 33a92b1..4a28a6d 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -38,6 +38,9 @@ public static partial class SchedulerManager
@@ -158,7 +158,26 @@ index 33a92b1..71de420 100644
  
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
-@@ -1409,6 +1415,217 @@ public static partial class SchedulerManager
+@@ -179,6 +185,18 @@ public static partial class SchedulerManager
+     [LibraryImport("*", EntryPoint = "_native_x64_wait_concurrent_scheduler_test")]
+     [SuppressGCTransition]
+     private static partial int NativeWaitConcurrentSchedulerTest(ulong cpuCount, ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_ready")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetApplicationProcessorReady(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_command")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetApplicationProcessorCommand(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_completion")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetApplicationProcessorCompletion(uint cpuId);
+ #endif
+ 
+     /// <summary>
+@@ -1409,6 +1427,230 @@ public static partial class SchedulerManager
  
      private static ulong ComputeStage18Checksum(uint cpuId, uint slot, uint threadId) => 0x534D_5031_3800_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)slot << 24) ^ threadId;
  
@@ -237,6 +256,19 @@ index 33a92b1..71de420 100644
 +        int startedAps = expectedWorkers == 0 ? 0 : NativeBeginConcurrentSchedulerTest(s_cpuCount);
 +        if (startedAps != checked((int)s_cpuCount - 1) || !WaitForStage19WorkerCount(expectedWorkers, timeoutTicks))
 +        {
++            Serial.WriteString("[SCHED-MIGRATE-DIAG] started-aps="); Serial.WriteNumber((ulong)(uint)startedAps);
++            Serial.WriteString(" expected-aps="); Serial.WriteNumber(s_cpuCount - 1);
++            Serial.WriteString(" started-workers="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage19StartedWorkers));
++            Serial.WriteString("\n");
++            for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++            {
++                Serial.WriteString("[SCHED-MIGRATE-DIAG] cpu="); Serial.WriteNumber(cpuId);
++                Serial.WriteString(" ready="); Serial.WriteNumber(NativeGetApplicationProcessorReady(cpuId));
++                Serial.WriteString(" command="); Serial.WriteNumber(NativeGetApplicationProcessorCommand(cpuId));
++                Serial.WriteString(" completion="); Serial.WriteNumber(NativeGetApplicationProcessorCompletion(cpuId));
++                Serial.WriteString(" queue="); Serial.WriteNumber((ulong)s_currentScheduler.GetRunQueueCount(s_cpuStates[cpuId]));
++                Serial.WriteString("\n");
++            }
 +            Volatile.Write(ref s_stage19ReleaseWorkers, 1);
 +            if (expectedWorkers != 0)
 +            {
@@ -376,7 +408,7 @@ index 33a92b1..71de420 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1429,6 +1646,10 @@ public static partial class SchedulerManager
+@@ -1429,6 +1671,10 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage18Preemption(cpuId, thread.Id);
          }
