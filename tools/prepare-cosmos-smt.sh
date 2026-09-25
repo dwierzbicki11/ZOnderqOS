@@ -103,6 +103,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 14
   bash tools/prepare-cosmos-smt.sh --through-stage 15
   bash tools/prepare-cosmos-smt.sh --through-stage 16
+  bash tools/prepare-cosmos-smt.sh --through-stage 17
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -393,4 +394,8 @@ elif (( SELECTED_STAGE == 16 )); then
     echo "[SMT] Etap 16 kolejkuje prawdziwy SchedulerThread osobno na kazdy AP i przelacza go przez zwykla sciezke IRQ."
     echo "[SMT] Worker wykonuje sie na przydzielonym stosie, przechodzi pelny lifecycle exit i wraca timerem LAPIC do idle."
     echo "[SMT] Dispatch jest jeszcze sekwencyjny; wspolbiezne kolejki, migracja i pelna preempcja beda utwardzane dalej."
+elif (( SELECTED_STAGE == 17 )); then
+    echo "[SMT] Etap 17 wywlaszcza zywy SchedulerThread timerem LAPIC osobno na kazdym AP."
+    echo "[SMT] Worker wraca do idle, jest ponownie wybierany i wznawia dokladnie zapisany kontekst przerwania."
+    echo "[SMT] Watki pozostaja przypiete; migracja, wspolbiezne kolejki i load balancing beda utwardzane dalej."
 fi

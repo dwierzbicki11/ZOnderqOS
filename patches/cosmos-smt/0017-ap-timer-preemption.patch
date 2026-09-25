@@ -1,0 +1,330 @@
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApPreemptionThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApPreemptionThreadNative.cs
+new file mode 100644
+index 0000000..49ba262
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApPreemptionThreadNative.cs
+@@ -0,0 +1,25 @@
++using System.Runtime.InteropServices;
++using Cosmos.Kernel.Core.CPU;
++using Cosmos.Kernel.Core.Scheduler;
++
++namespace Cosmos.Kernel.Core.Bridge;
++
++/// <summary>
++/// Stage-17 AP worker entered once as a new scheduler context and later
++/// resumed from the context saved by its LAPIC timer interrupt.
++/// </summary>
++internal static class ManagedApPreemptionThreadNative
++{
++    [UnmanagedCallersOnly]
++    internal static void Entry(uint expectedCpuId)
++    {
++        SchedulerManager.RunStage17PreemptedThread(expectedCpuId);
++
++        // Exit is completed by a timer-driven switch to idle. The original
++        // context was entered with a jump and therefore cannot return.
++        while (true)
++        {
++            InternalCpu.Halt();
++        }
++    }
++}
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+index 8b122bd..9b118f0 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+@@ -66,6 +66,11 @@ public sealed class PerCpuState : SchedulerExtensible
+     private int _stage16DispatchCount;
+     private uint _stage16ThreadId;
+     private ulong _stage16Checksum;
++    private int _stage17PreemptionState;
++    private int _stage17PreemptionCount;
++    private int _stage17ResumeCount;
++    private uint _stage17ThreadId;
++    private ulong _stage17Checksum;
+ 
+     /// <summary>
+     /// Stage-13 per-CPU scheduler foundation phase: 0=not entered,
+@@ -137,4 +142,55 @@ public sealed class PerCpuState : SchedulerExtensible
+         Volatile.Write(ref _stage16Checksum, checksum);
+         return Interlocked.CompareExchange(ref _stage16DispatchState, 2, 1) == 1;
+     }
++
++    // Stage 17 phases: 0=not entered, 1=worker running, 2=timer preempted,
++    // 3=resume requested by the BSP, 4=resumed worker completed.
++    internal uint Stage17PreemptionState => (uint)Volatile.Read(ref _stage17PreemptionState);
++    internal uint Stage17PreemptionCount => (uint)Volatile.Read(ref _stage17PreemptionCount);
++    internal uint Stage17ResumeCount => (uint)Volatile.Read(ref _stage17ResumeCount);
++    internal uint Stage17ThreadId => Volatile.Read(ref _stage17ThreadId);
++    internal ulong Stage17Checksum => Volatile.Read(ref _stage17Checksum);
++
++    internal bool TryEnterStage17Preemption(uint expectedCpuId, uint threadId)
++    {
++        if (CpuId != expectedCpuId || Stage16DispatchState != 2 ||
++            Interlocked.CompareExchange(ref _stage17PreemptionState, 1, 0) != 0)
++        {
++            return false;
++        }
++
++        Volatile.Write(ref _stage17ThreadId, threadId);
++        return true;
++    }
++
++    internal bool TryRecordStage17Preemption(uint expectedCpuId, uint threadId)
++    {
++        if (CpuId != expectedCpuId || Stage17ThreadId != threadId ||
++            Interlocked.CompareExchange(ref _stage17PreemptionState, 2, 1) != 1)
++        {
++            return false;
++        }
++
++        Interlocked.Increment(ref _stage17PreemptionCount);
++        return true;
++    }
++
++    internal bool TryRequestStage17Resume(uint expectedCpuId, uint threadId)
++    {
++        return CpuId == expectedCpuId && Stage17ThreadId == threadId &&
++            Interlocked.CompareExchange(ref _stage17PreemptionState, 3, 2) == 2;
++    }
++
++    internal bool TryCompleteStage17Resume(uint expectedCpuId, uint threadId, ulong checksum)
++    {
++        if (CpuId != expectedCpuId || Stage17ThreadId != threadId || checksum == 0 ||
++            Stage17PreemptionState != 3)
++        {
++            return false;
++        }
++
++        Volatile.Write(ref _stage17Checksum, checksum);
++        Interlocked.Increment(ref _stage17ResumeCount);
++        return Interlocked.CompareExchange(ref _stage17PreemptionState, 4, 3) == 3;
++    }
+ }
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+index 2c21e7b..ab897cb 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+@@ -77,6 +77,9 @@ public static partial class SchedulerManager
+     /// <summary>Bound for one Stage-16 AP scheduler dispatch and return.</summary>
+     private const ulong Stage16TimeoutSeconds = 5;
+ 
++    /// <summary>Bound for each half of the Stage-17 preempt/resume proof.</summary>
++    private const ulong Stage17TimeoutSeconds = 5;
++
+     /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
+     private const byte Stage16DispatchVector = 0xF4;
+ 
+@@ -1018,6 +1021,171 @@ public static partial class SchedulerManager
+     private static ulong ComputeStage16Checksum(uint cpuId, uint threadId) =>
+         0x534D_5031_3600_0000UL ^ ((ulong)cpuId << 32) ^ threadId;
+ 
++    /// <summary>
++    /// Proves that an AP-local LAPIC timer can preempt a live managed worker,
++    /// preserve its interrupt frame, return to the AP idle context and later
++    /// resume that exact worker through the normal scheduler IRQ path.
++    /// </summary>
++    internal static unsafe bool RunApplicationProcessorTimerPreemptionProof()
++    {
++        if (!s_enabled || s_currentScheduler is null || s_cpuStates is null ||
++            s_cpuCount == 0 || !GarbageCollector.IsEnabled)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 17 preemption prerequisites are not initialized.\n");
++            return false;
++        }
++
++#if ARCH_X64
++        SchedulerThread?[] workers = new SchedulerThread?[checked((int)s_cpuCount)];
++        ushort codeSelector = (ushort)NativeGetCodeSelector();
++        nuint entryPoint = (nuint)(delegate* unmanaged<uint, void>)&ManagedApPreemptionThreadNative.Entry;
++
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            PerCpuState state = s_cpuStates[cpuId];
++            if (!state.Stage15IdleStackEnrolled || state.Stage16DispatchState != 2 ||
++                state.Stage17PreemptionState != 0 || state.Stage17PreemptionCount != 0 ||
++                state.Stage17ResumeCount != 0 || state.IdleThread is null ||
++                !ReferenceEquals(state.CurrentThread, state.IdleThread))
++            {
++                Serial.WriteString("[SCHED] WARNING: Stage 17 per-CPU state is not preemptible.\n");
++                return false;
++            }
++
++            SchedulerThread worker = new()
++            {
++                Id = AllocateThreadId(),
++                CpuId = cpuId,
++                State = SchedulerThreadState.Created,
++                Flags = SchedulerThreadFlags.Pinned
++            };
++            worker.InitializeStack(entryPoint, codeSelector, cpuId);
++            CreateThread(cpuId, worker);
++            ReadyThread(cpuId, worker);
++            workers[cpuId] = worker;
++        }
++
++        long frequency = Stopwatch.Frequency;
++        ulong timeoutTicks = frequency > 0
++            ? checked((ulong)frequency * Stage17TimeoutSeconds)
++            : 5_000_000_000UL;
++
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            SchedulerThread? worker = workers[cpuId];
++            int preemptResult = NativeRunSchedulerDispatchTest(cpuId, timeoutTicks);
++            PerCpuState state = s_cpuStates[cpuId];
++            if (preemptResult != 1 || worker is null ||
++                worker.State != SchedulerThreadState.Ready ||
++                state.Stage17PreemptionState != 2 ||
++                state.Stage17PreemptionCount != 1 || state.Stage17ResumeCount != 0 ||
++                state.Stage17ThreadId != worker.Id ||
++                !ReferenceEquals(state.CurrentThread, state.IdleThread) ||
++                state.IdleThread?.State != SchedulerThreadState.Running)
++            {
++                Serial.WriteString("[SCHED] WARNING: Stage 17 AP preemption failed for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString(".\n");
++                return false;
++            }
++
++            if (!state.TryRequestStage17Resume(cpuId, worker.Id))
++            {
++                Serial.WriteString("[SCHED] WARNING: Stage 17 AP resume request failed for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString(".\n");
++                return false;
++            }
++
++            // The worker is already in the run queue after timer preemption,
++            // so explicitly request dispatch rather than calling ReadyThread.
++            state._needReschedule = true;
++            int resumeResult = NativeRunSchedulerDispatchTest(cpuId, timeoutTicks);
++            ulong expectedChecksum = ComputeStage17Checksum(cpuId, worker.Id);
++            if (resumeResult != 1 || worker.State != SchedulerThreadState.Dead ||
++                state.Stage17PreemptionState != 4 ||
++                state.Stage17PreemptionCount != 1 || state.Stage17ResumeCount != 1 ||
++                state.Stage17ThreadId != worker.Id ||
++                state.Stage17Checksum != expectedChecksum ||
++                !ReferenceEquals(state.CurrentThread, state.IdleThread) ||
++                state.IdleThread?.State != SchedulerThreadState.Running)
++            {
++                Serial.WriteString("[SCHED] WARNING: Stage 17 AP resume failed for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString(".\n");
++                return false;
++            }
++
++            Serial.WriteString("[SCHED-AP-PREEMPT] cpu=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" thread=");
++            Serial.WriteNumber(worker.Id);
++            Serial.WriteString(" checksum=");
++            Serial.WriteHexWithPrefix(expectedChecksum);
++            Serial.WriteString(" state=preempted-resumed-exited-idle-restored\n");
++        }
++#else
++        // ARM64 remains a CPU0-only compile regression until MP bootstrap and
++        // a per-CPU interrupt-return context switch are implemented there.
++        return true;
++#endif
++
++        Serial.WriteString("[SCHED-AP-PREEMPT-TEST] PASS\n");
++        return true;
++    }
++
++    internal static void RunStage17PreemptedThread(uint expectedCpuId)
++    {
++        PerCpuState? state = CurrentCpuState;
++        SchedulerThread? thread = state?.CurrentThread;
++        if (state is null || thread is null || state.CpuId != expectedCpuId ||
++            thread.CpuId != expectedCpuId || ReferenceEquals(thread, state.IdleThread) ||
++            thread.State != SchedulerThreadState.Running ||
++            !state.TryEnterStage17Preemption(expectedCpuId, thread.Id))
++        {
++            Panic.Halt("Stage 17 AP scheduler thread entered with invalid ownership.");
++            return;
++        }
++
++#if ARCH_X64
++        // Unlike Stage 16, arm the timer while the worker is live. The timer
++        // must save this continuation and choose idle before the BSP requests
++        // a second dispatch of the same ready thread.
++        if (NativeArmSchedulerTimer() != 1)
++        {
++            Panic.Halt("Stage 17 AP scheduler timer could not be armed.");
++            return;
++        }
++#endif
++
++        while (state.Stage17PreemptionState != 3)
++        {
++            Thread.SpinWait(64);
++        }
++
++        using (InternalCpu.DisableInterruptsScope())
++        {
++            ulong checksum = ComputeStage17Checksum(expectedCpuId, thread.Id);
++            if (!state.TryCompleteStage17Resume(expectedCpuId, thread.Id, checksum))
++            {
++                Panic.Halt("Stage 17 AP scheduler thread failed to publish completion.");
++                return;
++            }
++
++            ExitThread(expectedCpuId, thread);
++#if ARCH_X64
++            if (NativeArmSchedulerTimer() != 1)
++            {
++                Panic.Halt("Stage 17 AP completion timer could not be armed.");
++                return;
++            }
++#endif
++        }
++    }
++
++    private static ulong ComputeStage17Checksum(uint cpuId, uint threadId) =>
++        0x534D_5031_3700_0000UL ^ ((ulong)cpuId << 32) ^ threadId;
++
+     private static void Stage16DispatchInterrupt(ref IRQContext context)
+     {
+         _ = context;
+@@ -1025,8 +1193,18 @@ public static partial class SchedulerManager
+ 
+     private static unsafe void Stage16TimerInterrupt(ref IRQContext context)
+     {
++        uint cpuId = GetCurrentCpuId();
++        PerCpuState? state = CurrentCpuState;
++        SchedulerThread? thread = state?.CurrentThread;
++        if (state is not null && thread is not null &&
++            !ReferenceEquals(thread, state.IdleThread) &&
++            state.Stage17PreemptionState == 1)
++        {
++            _ = state.TryRecordStage17Preemption(cpuId, thread.Id);
++        }
++
+         nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
+-        OnTimerInterrupt(GetCurrentCpuId(), currentRsp, DefaultQuantumNs);
++        OnTimerInterrupt(cpuId, currentRsp, DefaultQuantumNs);
+     }
+ 
+     // ========== Thread Entry Dispatch ==========
+diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+index 35d47bb..3bc4783 100644
+--- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
++++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+@@ -150,6 +150,15 @@ internal class LibraryInitializer
+             {
+                 Cosmos.Kernel.Core.Panic.Halt("Stage 16 managed AP scheduler dispatch proof failed.");
+             }
++
++            // Stage 17: arm the AP-local timer while a managed worker is
++            // running, preempt it to idle, then resume the exact saved IRQ
++            // continuation and complete its normal scheduler lifecycle.
++            Serial.WriteString("[SCHED-AP-PREEMPT] begin\n");
++            if (!SchedulerManager.RunApplicationProcessorTimerPreemptionProof())
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 17 AP timer preemption proof failed.");
++            }
+         }
+     }
+ }
+
