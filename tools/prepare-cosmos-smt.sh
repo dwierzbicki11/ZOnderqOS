@@ -106,6 +106,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 17
   bash tools/prepare-cosmos-smt.sh --through-stage 18
   bash tools/prepare-cosmos-smt.sh --through-stage 19
+  bash tools/prepare-cosmos-smt.sh --through-stage 20
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -408,4 +409,8 @@ elif (( SELECTED_STAGE == 19 )); then
     echo "[SMT] Etap 19 tworzy niezbalansowana kolejke na AP1 i rozprowadza gotowe, nieprzypiete watki na wszystkie AP-y."
     echo "[SMT] Kazdy zmigrowany worker musi wykonac sie na docelowym CPU, przejsc preempcje i wrocic do idle."
     echo "[SMT] OrionGC zatrzymuje aktywna generacje po migracji, a rejestr watkow musi wrocic do stanu wyjsciowego."
+elif (( SELECTED_STAGE == 20 )); then
+    echo "[SMT] Etap 20 przechwytuje kontekst dzialajacego watku na timerze CPU zrodlowego i przekazuje go do innego AP."
+    echo "[SMT] IPI docelowe jest wysylane dopiero po opuszczeniu stosu migrowanego watku przez zrodlowy epilog IRQ."
+    echo "[SMT] Worker musi wznowic ten sam kontekst na kolejnych AP-ach, przejsc preempcje i realny OrionGC/STW."
 fi
