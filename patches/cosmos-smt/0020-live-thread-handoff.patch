@@ -165,7 +165,7 @@ index 27886a7..d5c5c29 100644
      {
          while (true)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 4a28a6d..821450e 100644
+index 4a28a6d..8805525 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -41,6 +41,9 @@ public static partial class SchedulerManager
@@ -202,7 +202,7 @@ index 4a28a6d..821450e 100644
      [LibraryImport("*", EntryPoint = "_native_x64_begin_concurrent_scheduler_test")]
      [SuppressGCTransition]
      private static partial int NativeBeginConcurrentSchedulerTest(ulong cpuCount);
-@@ -1651,6 +1664,238 @@ public static partial class SchedulerManager
+@@ -1651,6 +1664,273 @@ public static partial class SchedulerManager
  
      private static ulong ComputeStage19Checksum(uint cpuId, uint slot, uint threadId) => 0x534D_5031_3900_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)slot << 24) ^ threadId;
  
@@ -263,6 +263,12 @@ index 4a28a6d..821450e 100644
 +            Serial.WriteString(" preemptions="); Serial.WriteNumber(s_cpuStates[1].Stage20PreemptionCount);
 +            Serial.WriteString(" failure="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage20Failure));
 +            Serial.WriteString("\n");
++            Volatile.Write(ref s_stage20ReleaseWorker, 1);
++            return false;
++        }
++        if (!WaitForStage20ParkedTargets(2, timeoutTicks))
++        {
++            Serial.WriteString("[SCHED-LIVE-MIGRATE-CHECK] phase=targets-not-parked\n");
 +            Volatile.Write(ref s_stage20ReleaseWorker, 1);
 +            return false;
 +        }
@@ -419,6 +425,35 @@ index 4a28a6d..821450e 100644
 +        return true;
 +    }
 +
++#if ARCH_X64
++    private static bool WaitForStage20ParkedTargets(uint firstCpuId, ulong timeoutTicks)
++    {
++        ulong start = (ulong)Stopwatch.GetTimestamp();
++        while (true)
++        {
++            bool parked = true;
++            for (uint cpuId = firstCpuId; cpuId < s_cpuCount; cpuId++)
++            {
++                if (NativeGetApplicationProcessorCommand(cpuId) != 0 ||
++                    NativeGetApplicationProcessorCompletion(cpuId) != 1)
++                {
++                    parked = false;
++                    break;
++                }
++            }
++            if (parked)
++            {
++                return true;
++            }
++            if ((ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
++            {
++                return false;
++            }
++            SysThread.SpinWait(64);
++        }
++    }
++#endif
++
 +    private static bool WaitForStage20Quiescence(SchedulerThread worker, int initialThreadCount, ulong timeoutTicks)
 +    {
 +        ulong start = (ulong)Stopwatch.GetTimestamp();
@@ -441,7 +476,7 @@ index 4a28a6d..821450e 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1675,11 +1920,80 @@ public static partial class SchedulerManager
+@@ -1675,11 +1955,80 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage19Preemption(cpuId, thread.Id);
          }
