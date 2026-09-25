@@ -40,7 +40,7 @@ index 0000000..aad90a0
 +    }
 +}
 diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs
-index 049756b..152e9c2 100644
+index 049756b..00c0386 100644
 --- a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs
 +++ b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.Mark.cs
 @@ -166,7 +166,17 @@ internal static unsafe partial class GarbageCollector
@@ -71,9 +71,15 @@ index 049756b..152e9c2 100644
          {
              // ScanThreadStack is called only for registry entries other than
              // CurrentCpuState.CurrentThread. Before Stage 15, AP idle records
-@@ -258,7 +268,14 @@ internal static unsafe partial class GarbageCollector
+@@ -256,9 +266,19 @@ internal static unsafe partial class GarbageCollector
+
+             stackStart = NativeGetGcSavedRspForStackScan(thread.CpuId);
              stackEnd = thread.StackBase + thread.StackSize;
-             if (stackStart < thread.StackBase || stackStart >= stackEnd)
+-            if (stackStart < thread.StackBase || stackStart >= stackEnd)
++            // An AP parked in the native HLT loop may have an empty bootstrap
++            // stack, represented by RSP exactly at the exclusive upper bound.
++            // There are then zero words to scan, but the pointer is valid.
++            if (stackStart < thread.StackBase || stackStart > stackEnd)
              {
 -                Cosmos.Kernel.Core.Panic.Halt("SMP GC remote idle stack pointer is outside its bounds.");
 +                Serial.WriteString("[GC-SMP] invalid-current-stack thread="); Serial.WriteNumber(thread.Id);
