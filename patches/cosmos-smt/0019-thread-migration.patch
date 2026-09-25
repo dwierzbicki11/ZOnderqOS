@@ -441,18 +441,19 @@ index 9fc46a1..a740444 100644
      /// Hands CoreLib the thread's thread-static storage slot by reference so
      /// it can allocate and grow it in place.
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs b/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs
-index 03152ee..ea6ac6d 100644
+index 03152ee..2780151 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs
-@@ -366,6 +366,7 @@ internal class StrideScheduler : IScheduler
+@@ -366,6 +366,8 @@ internal class StrideScheduler : IScheduler
          fromData.TotalTickets -= threadData.Tickets;
  
          threadData.Pass = (long)toData.GlobalPass + threadData.Remain;
 +        thread.CpuId = toState.CpuId;
++        toState._needReschedule = true;
  
          InsertByPass(toData, thread);
          toData.TotalTickets += threadData.Tickets;
-@@ -374,7 +375,7 @@ internal class StrideScheduler : IScheduler
+@@ -374,7 +376,7 @@ internal class StrideScheduler : IScheduler
      public void Balance(PerCpuState cpuState, PerCpuState[] allCpuStates)
      {
          StrideCpuData? cpuData = CpuDataOf(cpuState);
@@ -461,7 +462,7 @@ index 03152ee..ea6ac6d 100644
          {
              return;
          }
-@@ -397,7 +398,7 @@ internal class StrideScheduler : IScheduler
+@@ -397,7 +399,7 @@ internal class StrideScheduler : IScheduler
              }
          }
  
