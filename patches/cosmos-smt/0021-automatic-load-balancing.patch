@@ -105,10 +105,10 @@ index 27b7ad7..600bc36 100644
      {
          if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c16e9d9..35c0fe0 100644
+index c16e9d9..03ab04b 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-@@ -44,6 +44,17 @@ public static partial class SchedulerManager
+@@ -44,6 +44,23 @@ public static partial class SchedulerManager
      private static int s_stage20ReleaseWorker;
      private static int s_stage20Failure;
      private static uint s_stage20WorkerThreadId;
@@ -123,10 +123,16 @@ index c16e9d9..35c0fe0 100644
 +    private static int s_stage21Migrations;
 +    private static int s_stage21SourceMask;
 +    private static int s_stage21TargetMask;
++    private static int s_stage21FailureCapture;
++    private static int s_stage21FailureToken;
++    private static int s_stage21FailureCpu;
++    private static int s_stage21FailureStateCpu;
++    private static int s_stage21FailureThreadCpu;
++    private static int s_stage21FailureCurrentThreadId;
 
      /// <summary>
      /// The interval the boot path asks the platform to arm the scheduler
-@@ -96,6 +107,10 @@ public static partial class SchedulerManager
+@@ -96,6 +113,10 @@ public static partial class SchedulerManager
      private const uint Stage19RequiredPreemptionsPerWorker = 2;
      private const ulong Stage20TimeoutSeconds = 10;
      private const uint Stage20RequiredPreemptionsPerCpu = 2;
@@ -137,7 +143,7 @@ index c16e9d9..35c0fe0 100644
 
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
-@@ -1952,6 +1967,224 @@ public static partial class SchedulerManager
+@@ -1952,6 +1973,242 @@ public static partial class SchedulerManager
      private static ulong ComputeStage20Checksum(uint threadId, uint hopCount, uint cpuId) =>
          0x534D_5031_4000_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)hopCount << 24) ^ threadId;
 
@@ -175,6 +181,12 @@ index c16e9d9..35c0fe0 100644
 +        Volatile.Write(ref s_stage21Migrations, 0);
 +        Volatile.Write(ref s_stage21SourceMask, 0);
 +        Volatile.Write(ref s_stage21TargetMask, 0);
++        Volatile.Write(ref s_stage21FailureCapture, 0);
++        Volatile.Write(ref s_stage21FailureToken, -1);
++        Volatile.Write(ref s_stage21FailureCpu, -1);
++        Volatile.Write(ref s_stage21FailureStateCpu, -1);
++        Volatile.Write(ref s_stage21FailureThreadCpu, -1);
++        Volatile.Write(ref s_stage21FailureCurrentThreadId, -1);
 +
 +        ushort codeSelector = (ushort)NativeGetCodeSelector();
 +        nuint entryPoint = (nuint)(delegate* unmanaged<uint, void>)&ManagedApAutomaticBalanceThreadNative.Entry;
@@ -233,6 +245,11 @@ index c16e9d9..35c0fe0 100644
 +                Serial.WriteString(" source-mask="); Serial.WriteHexWithPrefix((ulong)(uint)Volatile.Read(ref s_stage21SourceMask));
 +                Serial.WriteString(" target-mask="); Serial.WriteHexWithPrefix((ulong)(uint)Volatile.Read(ref s_stage21TargetMask));
 +                Serial.WriteString(" failure="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21Failure));
++                Serial.WriteString(" token="); Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage21FailureToken));
++                Serial.WriteString(" cpu="); Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage21FailureCpu));
++                Serial.WriteString(" state-cpu="); Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage21FailureStateCpu));
++                Serial.WriteString(" thread-cpu="); Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage21FailureThreadCpu));
++                Serial.WriteString(" current-thread="); Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage21FailureCurrentThreadId));
 +                Serial.WriteString("\n");
 +                return false;
 +            }
@@ -314,8 +331,15 @@ index c16e9d9..35c0fe0 100644
 +            PerCpuState? state = CurrentCpuState;
 +            if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) || thread.CpuId != cpuId)
 +            {
-+                Volatile.Write(ref s_stage21Failure, 2);
-+                Panic.Halt("Stage 21 worker resumed with invalid CPU ownership.");
++                if (Interlocked.CompareExchange(ref s_stage21FailureCapture, 1, 0) == 0)
++                {
++                    Volatile.Write(ref s_stage21FailureToken, checked((int)token));
++                    Volatile.Write(ref s_stage21FailureCpu, checked((int)cpuId));
++                    Volatile.Write(ref s_stage21FailureStateCpu, state is null ? -1 : checked((int)state.CpuId));
++                    Volatile.Write(ref s_stage21FailureThreadCpu, checked((int)thread.CpuId));
++                    Volatile.Write(ref s_stage21FailureCurrentThreadId, state?.CurrentThread is null ? -1 : checked((int)state.CurrentThread.Id));
++                    Volatile.Write(ref s_stage21Failure, 2);
++                }
 +                return;
 +            }
 +            if (cpuId != lastCpuId)
@@ -362,7 +386,7 @@ index c16e9d9..35c0fe0 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1980,6 +2213,10 @@ public static partial class SchedulerManager
+@@ -1980,6 +2237,10 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage20Preemption(thread.Id);
          }
@@ -373,7 +397,7 @@ index c16e9d9..35c0fe0 100644
 
          nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
  #if ARCH_X64
-@@ -2003,15 +2240,20 @@ public static partial class SchedulerManager
+@@ -2003,15 +2264,20 @@ public static partial class SchedulerManager
          SchedulerThread? outgoing = source.CurrentThread;
          if (outgoing is null || outgoing.State != SchedulerThreadState.Running ||
              ReferenceEquals(outgoing, source.IdleThread) ||
@@ -397,7 +421,7 @@ index c16e9d9..35c0fe0 100644
              return false;
          }
 
-@@ -2019,19 +2261,38 @@ public static partial class SchedulerManager
+@@ -2019,19 +2285,38 @@ public static partial class SchedulerManager
          SchedulerThread? replacement = s_currentScheduler.PickNext(source) ?? source.IdleThread;
          if (replacement is null || NativeDisarmSchedulerTimer() != 1)
          {
@@ -439,7 +463,7 @@ index c16e9d9..35c0fe0 100644
 
          source.CurrentThread = replacement;
          bool isNewThread = replacement.State == SchedulerThreadState.Created;
-@@ -2040,7 +2301,7 @@ public static partial class SchedulerManager
+@@ -2040,7 +2325,7 @@ public static partial class SchedulerManager
 
          if (NativeStageSchedulerHandoff(targetCpuId) != 1)
          {
@@ -448,7 +472,7 @@ index c16e9d9..35c0fe0 100644
              return false;
          }
 
-@@ -2048,8 +2309,123 @@ public static partial class SchedulerManager
+@@ -2048,8 +2333,123 @@ public static partial class SchedulerManager
          ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
          return true;
      }
@@ -572,7 +596,7 @@ index c16e9d9..35c0fe0 100644
      // ========== Thread Entry Dispatch ==========
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
-@@ -2770,6 +3146,14 @@ public static partial class SchedulerManager
+@@ -2770,6 +3170,14 @@ public static partial class SchedulerManager
              return;
          }
 
