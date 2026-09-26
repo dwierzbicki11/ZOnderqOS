@@ -107,6 +107,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 18
   bash tools/prepare-cosmos-smt.sh --through-stage 19
   bash tools/prepare-cosmos-smt.sh --through-stage 20
+  bash tools/prepare-cosmos-smt.sh --through-stage 21
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -413,4 +414,8 @@ elif (( SELECTED_STAGE == 20 )); then
     echo "[SMT] Etap 20 przechwytuje kontekst dzialajacego watku na timerze CPU zrodlowego i przekazuje go do innego AP."
     echo "[SMT] IPI docelowe jest wysylane dopiero po opuszczeniu stosu migrowanego watku przez zrodlowy epilog IRQ."
     echo "[SMT] Worker musi wznowic ten sam kontekst na kolejnych AP-ach, przejsc preempcje i realny OrionGC/STW."
+elif (( SELECTED_STAGE == 21 )); then
+    echo "[SMT] Etap 21 wybiera najmniej obciazony zaparkowany AP z owner-CPU snapshotow bez zdalnego odczytu aktywnej kolejki."
+    echo "[SMT] Atomowa rezerwacja celu, hysteresis i cooldown chronia przed thundering herd oraz ping-pongiem."
+    echo "[SMT] Dwa przeciazone CPU musza samodzielnie zainicjowac live handoffy pod timerem i OrionGC/STW."
 fi
