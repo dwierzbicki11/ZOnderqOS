@@ -16,7 +16,7 @@ index 21dcd5f..18641b2 100644
      }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c0df531..5d4f154 100644
+index c0df531..fd1365f 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -55,6 +55,11 @@ public static partial class SchedulerManager
@@ -72,21 +72,56 @@ index c0df531..5d4f154 100644
                  Serial.WriteString("\n");
                  return false;
              }
-@@ -2142,8 +2163,12 @@ public static partial class SchedulerManager
-             PerCpuState? state = CurrentCpuState;
-             if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) || thread.CpuId != cpuId)
-             {
-+                Volatile.Write(ref s_stage22FailureToken, checked((int)token));
-+                Volatile.Write(ref s_stage22FailureCpu, checked((int)cpuId));
-+                Volatile.Write(ref s_stage22FailureStateCpu, state is null ? -1 : checked((int)state.CpuId));
-+                Volatile.Write(ref s_stage22FailureThreadCpu, checked((int)thread.CpuId));
-+                Volatile.Write(ref s_stage22FailureCurrentThreadId, state?.CurrentThread is null ? -1 : checked((int)state.CurrentThread.Id));
-                 Volatile.Write(ref s_stage21Failure, 2);
+@@ -2138,26 +2159,33 @@ public static partial class SchedulerManager
+         uint lastCpuId = uint.MaxValue;
+         while (Volatile.Read(ref s_stage21ReleaseWorkers) == 0)
+         {
+-            uint cpuId = GetCurrentCpuId();
+-            PerCpuState? state = CurrentCpuState;
+-            if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) || thread.CpuId != cpuId)
+-            {
+-                Volatile.Write(ref s_stage21Failure, 2);
 -                Panic.Halt("Stage 21 worker resumed without scheduler ownership.");
-                 return;
+-                return;
+-            }
+-            if (cpuId != lastCpuId)
++            using (InternalCpu.DisableInterruptsScope())
+             {
+-                lastCpuId = cpuId;
+-                Interlocked.Increment(ref s_stage21Resumes);
+-#if ARCH_X64
+-                if (NativeArmSchedulerTimer() != 1)
++                uint cpuId = GetCurrentCpuId();
++                PerCpuState? state = CurrentCpuState;
++                if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) || thread.CpuId != cpuId)
+                 {
+-                    Volatile.Write(ref s_stage21Failure, 3);
+-                    Panic.Halt("Stage 21 scheduler timer could not be armed after resume.");
++                    Volatile.Write(ref s_stage22FailureToken, checked((int)token));
++                    Volatile.Write(ref s_stage22FailureCpu, checked((int)cpuId));
++                    Volatile.Write(ref s_stage22FailureStateCpu, state is null ? -1 : checked((int)state.CpuId));
++                    Volatile.Write(ref s_stage22FailureThreadCpu, checked((int)thread.CpuId));
++                    Volatile.Write(ref s_stage22FailureCurrentThreadId, state?.CurrentThread is null ? -1 : checked((int)state.CurrentThread.Id));
++                    Volatile.Write(ref s_stage21Failure, 2);
+                     return;
+                 }
++                if (cpuId != lastCpuId)
++                {
++                    lastCpuId = cpuId;
++                    Interlocked.Increment(ref s_stage21Resumes);
++#if ARCH_X64
++                    if (NativeArmSchedulerTimer() != 1)
++                    {
++                        Volatile.Write(ref s_stage21Failure, 3);
++                        Panic.Halt("Stage 21 scheduler timer could not be armed after resume.");
++                        return;
++                    }
+ #endif
++                }
              }
-             if (cpuId != lastCpuId)
-@@ -2176,6 +2201,75 @@ public static partial class SchedulerManager
+             SysThread.SpinWait(64);
+         }
+@@ -2176,6 +2204,75 @@ public static partial class SchedulerManager
          }
      }
  
@@ -162,7 +197,7 @@ index c0df531..5d4f154 100644
      private static int CountStage21CpuBits(int mask)
      {
          int count = 0;
-@@ -2260,7 +2354,15 @@ public static partial class SchedulerManager
+@@ -2260,7 +2357,15 @@ public static partial class SchedulerManager
          }
  
          PerCpuState destination = s_cpuStates[targetCpuId];
@@ -179,7 +214,7 @@ index c0df531..5d4f154 100644
          if (replacement is null || NativeDisarmSchedulerTimer() != 1)
          {
              if (!explicitlyRequested)
-@@ -2309,6 +2411,15 @@ public static partial class SchedulerManager
+@@ -2309,6 +2414,15 @@ public static partial class SchedulerManager
  
          ContextSwitchNative.SetContextSwitchNewThread(isNewThread ? 1 : 0);
          ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
