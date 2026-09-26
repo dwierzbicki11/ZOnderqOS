@@ -16,7 +16,7 @@ index 21dcd5f..18641b2 100644
      }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c0df531..dda5a73 100644
+index c0df531..e4e0a4b 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -55,6 +55,11 @@ public static partial class SchedulerManager
@@ -28,7 +28,7 @@ index c0df531..dda5a73 100644
 +    private static int s_stage22FailureStateCpu;
 +    private static int s_stage22FailureThreadCpu;
 +    private static int s_stage22FailureCurrentThreadId;
-
+ 
      /// <summary>
      /// The interval the boot path asks the platform to arm the scheduler
 @@ -111,6 +116,7 @@ public static partial class SchedulerManager
@@ -36,7 +36,7 @@ index c0df531..dda5a73 100644
      private const ulong Stage21TimeoutSeconds = 15;
      private const uint Stage21WorkersPerSource = 4;
 +    private const uint Stage22StressRounds = 8;
-
+ 
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
 @@ -2001,6 +2007,11 @@ public static partial class SchedulerManager
@@ -48,7 +48,7 @@ index c0df531..dda5a73 100644
 +        Volatile.Write(ref s_stage22FailureStateCpu, -1);
 +        Volatile.Write(ref s_stage22FailureThreadCpu, -1);
 +        Volatile.Write(ref s_stage22FailureCurrentThreadId, -1);
-
+ 
          ushort codeSelector = (ushort)NativeGetCodeSelector();
          nuint entryPoint = (nuint)(delegate* unmanaged<uint, void>)&ManagedApAutomaticBalanceThreadNative.Entry;
 @@ -2061,6 +2072,11 @@ public static partial class SchedulerManager
@@ -77,10 +77,10 @@ index c0df531..dda5a73 100644
                  return;
              }
              if (cpuId != lastCpuId)
-@@ -2176,6 +2196,74 @@ public static partial class SchedulerManager
+@@ -2176,6 +2196,75 @@ public static partial class SchedulerManager
          }
      }
-
+ 
 +    /// <summary>
 +    /// Repeats the complete Stage 21 lifecycle enough times to expose stale
 +    /// mailbox generations, leaked registry entries, lost continuations and
@@ -101,6 +101,7 @@ index c0df531..dda5a73 100644
 +
 +        for (uint round = 0; round < Stage22StressRounds; round++)
 +        {
++            Serial.WriteString("[SCHED-AUTO-BALANCE] begin\n");
 +            if (!RunAutomaticApplicationProcessorLoadBalancingProof())
 +            {
 +                Serial.WriteString("[SCHED-SMP-STRESS] failed-round=");
@@ -152,3 +153,33 @@ index c0df531..dda5a73 100644
      private static int CountStage21CpuBits(int mask)
      {
          int count = 0;
+@@ -2260,7 +2349,15 @@ public static partial class SchedulerManager
+         }
+ 
+         PerCpuState destination = s_cpuStates[targetCpuId];
+-        SchedulerThread? replacement = s_currentScheduler.PickNext(source) ?? source.IdleThread;
++        // An automatic handoff always returns the source to its already
++        // established idle continuation. Starting a never-run replacement in
++        // the same IRQ epilogue that publishes the outgoing live context lets
++        // the old worker observe its updated CpuId before the source has fully
++        // left that frame. The next local timer tick performs the ordinary
++        // idle-to-worker dispatch and leaves queued work owned by this CPU.
++        SchedulerThread? replacement = explicitlyRequested
++            ? s_currentScheduler.PickNext(source) ?? source.IdleThread
++            : source.IdleThread;
+         if (replacement is null || NativeDisarmSchedulerTimer() != 1)
+         {
+             if (!explicitlyRequested)
+@@ -2307,6 +2404,12 @@ public static partial class SchedulerManager
+             return false;
+         }
+ 
++        if (!explicitlyRequested && NativeArmSchedulerTimer() != 1)
++        {
++            RecordMigrationFailure(false, 15);
++            return false;
++        }
++
+         ContextSwitchNative.SetContextSwitchNewThread(isNewThread ? 1 : 0);
+         ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
+         return true;
