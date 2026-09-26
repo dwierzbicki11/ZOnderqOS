@@ -16,7 +16,7 @@ index 21dcd5f..18641b2 100644
      }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c0df531..9829750 100644
+index c0df531..5d4f154 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -55,6 +55,11 @@ public static partial class SchedulerManager
@@ -179,16 +179,19 @@ index c0df531..9829750 100644
          if (replacement is null || NativeDisarmSchedulerTimer() != 1)
          {
              if (!explicitlyRequested)
-@@ -2307,6 +2409,12 @@ public static partial class SchedulerManager
-             return false;
-         }
+@@ -2309,6 +2411,15 @@ public static partial class SchedulerManager
  
+         ContextSwitchNative.SetContextSwitchNewThread(isNewThread ? 1 : 0);
+         ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
++
++        // Publish the complete source context switch before rearming LAPIC.
++        // If the timer becomes pending immediately, the IRQ epilogue must
++        // already have the idle continuation needed to leave this frame.
 +        if (!explicitlyRequested && NativeArmSchedulerTimer() != 1)
 +        {
 +            RecordMigrationFailure(false, 15);
-+            return false;
++            return true;
 +        }
-+
-         ContextSwitchNative.SetContextSwitchNewThread(isNewThread ? 1 : 0);
-         ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
          return true;
+     }
+ 
