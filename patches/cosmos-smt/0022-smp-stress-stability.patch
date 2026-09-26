@@ -1,0 +1,104 @@
+diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+index 21dcd5f..18641b2 100644
+--- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
++++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+@@ -183,6 +183,12 @@ internal class LibraryInitializer
+             {
+                 Cosmos.Kernel.Core.Panic.Halt("Stage 21 automatic AP load-balancing proof failed.");
+             }
++
++            Serial.WriteString("[SCHED-SMP-STRESS] begin\n");
++            if (!SchedulerManager.RunSmpSchedulerStressStabilityProof())
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 22 SMP scheduler stress/stability proof failed.");
++            }
+         }
+     }
+ }
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+index c0df531..bba345f 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+@@ -111,6 +111,7 @@ public static partial class SchedulerManager
+     private const uint AutomaticBalanceHysteresis = 2;
+     private const ulong Stage21TimeoutSeconds = 15;
+     private const uint Stage21WorkersPerSource = 4;
++    private const uint Stage22StressRounds = 8;
+
+     /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
+     private const byte Stage16DispatchVector = 0xF4;
+@@ -2176,6 +2177,74 @@ public static partial class SchedulerManager
+         }
+     }
+
++    /// <summary>
++    /// Repeats the complete Stage 21 lifecycle enough times to expose stale
++    /// mailbox generations, leaked registry entries, lost continuations and
++    /// GC rendezvous state that a single successful balancing pass can hide.
++    /// Every round creates fresh workers, performs real timer-driven live
++    /// migration, runs OrionGC/STW, retires the workers and restores all APs
++    /// to their enrolled idle contexts before the next generation begins.
++    /// </summary>
++    internal static bool RunSmpSchedulerStressStabilityProof()
++    {
++        int initialThreadCount = ThreadCount;
++        int collectionBefore = GarbageCollector.GetCollectionIndex();
++        ulong totalMigrations = 0;
++        ulong totalPreemptions = 0;
++        ulong totalResumes = 0;
++        int sourceMask = 0;
++        int targetMask = 0;
++
++        for (uint round = 0; round < Stage22StressRounds; round++)
++        {
++            if (!RunAutomaticApplicationProcessorLoadBalancingProof())
++            {
++                Serial.WriteString("[SCHED-SMP-STRESS] failed-round=");
++                Serial.WriteNumber(round + 1);
++                Serial.WriteString("\n");
++                return false;
++            }
++
++#if ARCH_X64
++            if (s_cpuCount > 1)
++            {
++                int migrations = Volatile.Read(ref s_stage21Migrations);
++                int preemptions = Volatile.Read(ref s_stage21Preemptions);
++                int resumes = Volatile.Read(ref s_stage21Resumes);
++                if (migrations < 4 || preemptions < 16 || resumes < 8 + migrations)
++                {
++                    return false;
++                }
++
++                totalMigrations += checked((uint)migrations);
++                totalPreemptions += checked((uint)preemptions);
++                totalResumes += checked((uint)resumes);
++                sourceMask |= Volatile.Read(ref s_stage21SourceMask);
++                targetMask |= Volatile.Read(ref s_stage21TargetMask);
++            }
++#endif
++        }
++
++        int expectedCollections = s_cpuCount > 1 ? checked((int)Stage22StressRounds) : 0;
++        int collectionAfter = GarbageCollector.GetCollectionIndex();
++        if (ThreadCount != initialThreadCount ||
++            collectionAfter != collectionBefore + expectedCollections)
++        {
++            return false;
++        }
++
++        Serial.WriteString("[SCHED-SMP-STRESS] rounds="); Serial.WriteNumber(Stage22StressRounds);
++        Serial.WriteString(" migrations="); Serial.WriteNumber(totalMigrations);
++        Serial.WriteString(" preemptions="); Serial.WriteNumber(totalPreemptions);
++        Serial.WriteString(" resumes="); Serial.WriteNumber(totalResumes);
++        Serial.WriteString(" sources="); Serial.WriteHexWithPrefix((ulong)(uint)sourceMask);
++        Serial.WriteString(" targets="); Serial.WriteHexWithPrefix((ulong)(uint)targetMask);
++        Serial.WriteString(" gc-collections="); Serial.WriteNumber((ulong)(uint)expectedCollections);
++        Serial.WriteString(" registry=restored idle=restored\n");
++        Serial.WriteString("[SCHED-SMP-STRESS-TEST] PASS\n");
++        return true;
++    }
++
+     private static int CountStage21CpuBits(int mask)
+     {
+         int count = 0;
