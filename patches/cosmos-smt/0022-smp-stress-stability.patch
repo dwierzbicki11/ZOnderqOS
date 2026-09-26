@@ -16,10 +16,22 @@ index 21dcd5f..18641b2 100644
      }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c0df531..bba345f 100644
+index c0df531..dda5a73 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-@@ -111,6 +111,7 @@ public static partial class SchedulerManager
+@@ -55,6 +55,11 @@ public static partial class SchedulerManager
+     private static int s_stage21Migrations;
+     private static int s_stage21SourceMask;
+     private static int s_stage21TargetMask;
++    private static int s_stage22FailureToken;
++    private static int s_stage22FailureCpu;
++    private static int s_stage22FailureStateCpu;
++    private static int s_stage22FailureThreadCpu;
++    private static int s_stage22FailureCurrentThreadId;
+
+     /// <summary>
+     /// The interval the boot path asks the platform to arm the scheduler
+@@ -111,6 +116,7 @@ public static partial class SchedulerManager
      private const uint AutomaticBalanceHysteresis = 2;
      private const ulong Stage21TimeoutSeconds = 15;
      private const uint Stage21WorkersPerSource = 4;
@@ -27,7 +39,45 @@ index c0df531..bba345f 100644
 
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
-@@ -2176,6 +2177,74 @@ public static partial class SchedulerManager
+@@ -2001,6 +2007,11 @@ public static partial class SchedulerManager
+         Volatile.Write(ref s_stage21Migrations, 0);
+         Volatile.Write(ref s_stage21SourceMask, 0);
+         Volatile.Write(ref s_stage21TargetMask, 0);
++        Volatile.Write(ref s_stage22FailureToken, -1);
++        Volatile.Write(ref s_stage22FailureCpu, -1);
++        Volatile.Write(ref s_stage22FailureStateCpu, -1);
++        Volatile.Write(ref s_stage22FailureThreadCpu, -1);
++        Volatile.Write(ref s_stage22FailureCurrentThreadId, -1);
+
+         ushort codeSelector = (ushort)NativeGetCodeSelector();
+         nuint entryPoint = (nuint)(delegate* unmanaged<uint, void>)&ManagedApAutomaticBalanceThreadNative.Entry;
+@@ -2061,6 +2072,11 @@ public static partial class SchedulerManager
+                 Serial.WriteString(" source-mask="); Serial.WriteHexWithPrefix((ulong)(uint)Volatile.Read(ref s_stage21SourceMask));
+                 Serial.WriteString(" target-mask="); Serial.WriteHexWithPrefix((ulong)(uint)Volatile.Read(ref s_stage21TargetMask));
+                 Serial.WriteString(" failure="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21Failure));
++                Serial.WriteString(" token="); Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage22FailureToken));
++                Serial.WriteString(" cpu="); Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage22FailureCpu));
++                Serial.WriteString(" state-cpu="); Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage22FailureStateCpu));
++                Serial.WriteString(" thread-cpu="); Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage22FailureThreadCpu));
++                Serial.WriteString(" current-thread="); Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage22FailureCurrentThreadId));
+                 Serial.WriteString("\n");
+                 return false;
+             }
+@@ -2142,8 +2158,12 @@ public static partial class SchedulerManager
+             PerCpuState? state = CurrentCpuState;
+             if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) || thread.CpuId != cpuId)
+             {
++                Volatile.Write(ref s_stage22FailureToken, checked((int)token));
++                Volatile.Write(ref s_stage22FailureCpu, checked((int)cpuId));
++                Volatile.Write(ref s_stage22FailureStateCpu, state is null ? -1 : checked((int)state.CpuId));
++                Volatile.Write(ref s_stage22FailureThreadCpu, checked((int)thread.CpuId));
++                Volatile.Write(ref s_stage22FailureCurrentThreadId, state?.CurrentThread is null ? -1 : checked((int)state.CurrentThread.Id));
+                 Volatile.Write(ref s_stage21Failure, 2);
+-                Panic.Halt("Stage 21 worker resumed without scheduler ownership.");
+                 return;
+             }
+             if (cpuId != lastCpuId)
+@@ -2176,6 +2196,74 @@ public static partial class SchedulerManager
          }
      }
 
