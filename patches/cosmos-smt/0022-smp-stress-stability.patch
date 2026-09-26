@@ -16,7 +16,7 @@ index 21dcd5f..18641b2 100644
      }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c0df531..e4e0a4b 100644
+index c0df531..9829750 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -55,6 +55,11 @@ public static partial class SchedulerManager
@@ -51,7 +51,16 @@ index c0df531..e4e0a4b 100644
  
          ushort codeSelector = (ushort)NativeGetCodeSelector();
          nuint entryPoint = (nuint)(delegate* unmanaged<uint, void>)&ManagedApAutomaticBalanceThreadNative.Entry;
-@@ -2061,6 +2072,11 @@ public static partial class SchedulerManager
+@@ -2057,10 +2068,20 @@ public static partial class SchedulerManager
+                 Volatile.Write(ref s_stage21ReleaseWorkers, 1);
+                 Serial.WriteString("[SCHED-AUTO-BALANCE-CHECK] started-aps="); Serial.WriteNumber((ulong)(uint)startedAps);
+                 Serial.WriteString(" started-workers="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21StartedWorkers));
++                Serial.WriteString(" completed-workers="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21CompletedWorkers));
+                 Serial.WriteString(" migrations="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21Migrations));
++                Serial.WriteString(" preemptions="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21Preemptions));
++                Serial.WriteString(" resumes="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21Resumes));
++                Serial.WriteString(" threads="); Serial.WriteNumber((ulong)(uint)ThreadCount);
++                Serial.WriteString(" initial-threads="); Serial.WriteNumber((ulong)(uint)initialThreadCount);
                  Serial.WriteString(" source-mask="); Serial.WriteHexWithPrefix((ulong)(uint)Volatile.Read(ref s_stage21SourceMask));
                  Serial.WriteString(" target-mask="); Serial.WriteHexWithPrefix((ulong)(uint)Volatile.Read(ref s_stage21TargetMask));
                  Serial.WriteString(" failure="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21Failure));
@@ -63,7 +72,7 @@ index c0df531..e4e0a4b 100644
                  Serial.WriteString("\n");
                  return false;
              }
-@@ -2142,8 +2158,12 @@ public static partial class SchedulerManager
+@@ -2142,8 +2163,12 @@ public static partial class SchedulerManager
              PerCpuState? state = CurrentCpuState;
              if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) || thread.CpuId != cpuId)
              {
@@ -77,7 +86,7 @@ index c0df531..e4e0a4b 100644
                  return;
              }
              if (cpuId != lastCpuId)
-@@ -2176,6 +2196,75 @@ public static partial class SchedulerManager
+@@ -2176,6 +2201,75 @@ public static partial class SchedulerManager
          }
      }
  
@@ -153,7 +162,7 @@ index c0df531..e4e0a4b 100644
      private static int CountStage21CpuBits(int mask)
      {
          int count = 0;
-@@ -2260,7 +2349,15 @@ public static partial class SchedulerManager
+@@ -2260,7 +2354,15 @@ public static partial class SchedulerManager
          }
  
          PerCpuState destination = s_cpuStates[targetCpuId];
@@ -170,7 +179,7 @@ index c0df531..e4e0a4b 100644
          if (replacement is null || NativeDisarmSchedulerTimer() != 1)
          {
              if (!explicitlyRequested)
-@@ -2307,6 +2404,12 @@ public static partial class SchedulerManager
+@@ -2307,6 +2409,12 @@ public static partial class SchedulerManager
              return false;
          }
  
