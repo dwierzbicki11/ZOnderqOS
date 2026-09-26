@@ -16,7 +16,7 @@ index 21dcd5f..18641b2 100644
      }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c0df531..fd1365f 100644
+index c0df531..7472333 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -55,6 +55,11 @@ public static partial class SchedulerManager
@@ -197,36 +197,3 @@ index c0df531..fd1365f 100644
      private static int CountStage21CpuBits(int mask)
      {
          int count = 0;
-@@ -2260,7 +2357,15 @@ public static partial class SchedulerManager
-         }
- 
-         PerCpuState destination = s_cpuStates[targetCpuId];
--        SchedulerThread? replacement = s_currentScheduler.PickNext(source) ?? source.IdleThread;
-+        // An automatic handoff always returns the source to its already
-+        // established idle continuation. Starting a never-run replacement in
-+        // the same IRQ epilogue that publishes the outgoing live context lets
-+        // the old worker observe its updated CpuId before the source has fully
-+        // left that frame. The next local timer tick performs the ordinary
-+        // idle-to-worker dispatch and leaves queued work owned by this CPU.
-+        SchedulerThread? replacement = explicitlyRequested
-+            ? s_currentScheduler.PickNext(source) ?? source.IdleThread
-+            : source.IdleThread;
-         if (replacement is null || NativeDisarmSchedulerTimer() != 1)
-         {
-             if (!explicitlyRequested)
-@@ -2309,6 +2414,15 @@ public static partial class SchedulerManager
- 
-         ContextSwitchNative.SetContextSwitchNewThread(isNewThread ? 1 : 0);
-         ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
-+
-+        // Publish the complete source context switch before rearming LAPIC.
-+        // If the timer becomes pending immediately, the IRQ epilogue must
-+        // already have the idle continuation needed to leave this frame.
-+        if (!explicitlyRequested && NativeArmSchedulerTimer() != 1)
-+        {
-+            RecordMigrationFailure(false, 15);
-+            return true;
-+        }
-         return true;
-     }
- 
