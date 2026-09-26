@@ -16,7 +16,7 @@ index 21dcd5f..18641b2 100644
      }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c0df531..52b01ea 100644
+index c0df531..cac923c 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -55,6 +55,11 @@ public static partial class SchedulerManager
@@ -254,3 +254,36 @@ index c0df531..52b01ea 100644
      private static int CountStage21CpuBits(int mask)
      {
          int count = 0;
+@@ -2336,6 +2470,7 @@ public static partial class SchedulerManager
+         uint sourceLoad = checked((uint)queued + 1);
+         source.PublishRunnableCount(queued, true);
+         uint bestLoad = uint.MaxValue;
++        uint bestMigrationInCount = uint.MaxValue;
+         for (uint candidate = 1; candidate < s_cpuCount; candidate++)
+         {
+             if (candidate == source.CpuId)
+@@ -2345,6 +2480,7 @@ public static partial class SchedulerManager
+ 
+             PerCpuState destination = s_cpuStates[candidate];
+             uint candidateLoad = destination.PublishedRunnableCount;
++            uint candidateMigrationInCount = destination.AutomaticMigrationInCount;
+             // A command-0/completion-1 mailbox says that the native park loop
+             // is available, but it remains unchanged while an F4-dispatched
+             // worker is running. The owner-published zero load is therefore
+@@ -2355,12 +2491,15 @@ public static partial class SchedulerManager
+             // publication and decrement that fresh value back to zero. That
+             // made an active AP look parked and allowed a second remote queue
+             // mutation. Select read-only, then CAS exactly one final target.
+-            if (candidateLoad == 0 && candidateLoad < bestLoad &&
++            if (candidateLoad == 0 &&
++                (candidateLoad < bestLoad ||
++                 (candidateLoad == bestLoad && candidateMigrationInCount < bestMigrationInCount)) &&
+                 sourceLoad >= candidateLoad + AutomaticBalanceHysteresis &&
+                 NativeGetApplicationProcessorCommand(candidate) == 0 &&
+                 NativeGetApplicationProcessorCompletion(candidate) == 1)
+             {
+                 bestLoad = candidateLoad;
++                bestMigrationInCount = candidateMigrationInCount;
+                 targetCpuId = candidate;
+             }
+         }
