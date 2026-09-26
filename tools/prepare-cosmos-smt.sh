@@ -108,6 +108,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 19
   bash tools/prepare-cosmos-smt.sh --through-stage 20
   bash tools/prepare-cosmos-smt.sh --through-stage 21
+  bash tools/prepare-cosmos-smt.sh --through-stage 22
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -418,4 +419,8 @@ elif (( SELECTED_STAGE == 21 )); then
     echo "[SMT] Etap 21 wybiera najmniej obciazony zaparkowany AP z owner-CPU snapshotow bez zdalnego odczytu aktywnej kolejki."
     echo "[SMT] Atomowa rezerwacja celu, hysteresis i cooldown chronia przed thundering herd oraz ping-pongiem."
     echo "[SMT] Dwa przeciazone CPU musza samodzielnie zainicjowac live handoffy pod timerem i OrionGC/STW."
+elif (( SELECTED_STAGE == 22 )); then
+    echo "[SMT] Etap 22 powtarza pelny cykl automatycznego balansowania, preempcji i OrionGC/STW przez osiem generacji."
+    echo "[SMT] Kazda generacja musi odtworzyc rejestr watkow, konteksty idle i natywne skrzynki AP przed nastepna runda."
+    echo "[SMT] Jest to koncowa bramka stress/stability roadmapy SMT/SMP."
 fi
