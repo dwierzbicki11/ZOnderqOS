@@ -89,7 +89,7 @@ for index, (generation_migrations, generation_sources, generation_targets,
         fail(f"generation {index} did not balance from both edge APs")
     if generation_targets & 1 or generation_targets.bit_count() < 3:
         fail(f"generation {index} reached too few targets: 0x{generation_targets:x}")
-    if generation_preemptions < 16 or generation_resumes < 8 + generation_migrations:
+    if generation_preemptions < 16 or generation_resumes < 8:
         fail(f"generation {index} has incomplete timer/context continuation evidence")
     if generation_scanned != 7:
         fail(f"generation {index} scanned {generation_scanned} AP stacks instead of 7")

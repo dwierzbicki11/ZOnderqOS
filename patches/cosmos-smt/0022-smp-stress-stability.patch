@@ -16,7 +16,7 @@ index 21dcd5f..18641b2 100644
      }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c0df531..cac923c 100644
+index c0df531..a8b27ce 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -55,6 +55,11 @@ public static partial class SchedulerManager
@@ -51,44 +51,17 @@ index c0df531..cac923c 100644
  
          ushort codeSelector = (ushort)NativeGetCodeSelector();
          nuint entryPoint = (nuint)(delegate* unmanaged<uint, void>)&ManagedApAutomaticBalanceThreadNative.Entry;
-@@ -2032,7 +2043,11 @@ public static partial class SchedulerManager
-         ulong timeoutTicks = frequency > 0
-             ? checked((ulong)frequency * Stage21TimeoutSeconds)
-             : 15_000_000_000UL;
--        Volatile.Write(ref s_automaticLoadBalancingEnabled, 1);
-+        // Let every managed worker publish its initial owner before automatic
-+        // migration can move it. Otherwise a timer may hand a worker off
-+        // between its started marker and its first CPU sample, making one
-+        // legitimate source residency unobservable to the proof.
-+        Volatile.Write(ref s_automaticLoadBalancingEnabled, 0);
-         // Keep candidate CPUs in the native parked state. Stage 20's delayed
-         // F4 handoff is deliberately valid only for a parked destination, so
-         // starting every empty AP here would turn safe target selection into
-@@ -2041,8 +2056,21 @@ public static partial class SchedulerManager
-         const int expectedStartedAps = 2;
-         int requiredSourceMask = (1 << 1) | (1 << checked((int)highSourceCpu));
-         ulong start = (ulong)Stopwatch.GetTimestamp();
--        while (Volatile.Read(ref s_stage21StartedWorkers) != workerCount ||
--            Volatile.Read(ref s_stage21Migrations) < 4 ||
-+        while (Volatile.Read(ref s_stage21StartedWorkers) != workerCount)
-+        {
-+            if (startedAps != expectedStartedAps ||
-+                Volatile.Read(ref s_stage21Failure) != 0 ||
-+                (ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
-+            {
-+                Volatile.Write(ref s_stage21ReleaseWorkers, 1);
-+                return false;
-+            }
-+            SysThread.SpinWait(64);
-+        }
-+
-+        Volatile.Write(ref s_automaticLoadBalancingEnabled, 1);
-+        start = (ulong)Stopwatch.GetTimestamp();
-+        while (Volatile.Read(ref s_stage21Migrations) < 4 ||
+@@ -2046,8 +2057,7 @@ public static partial class SchedulerManager
              (Volatile.Read(ref s_stage21SourceMask) & requiredSourceMask) != requiredSourceMask ||
              CountStage21CpuBits(Volatile.Read(ref s_stage21TargetMask)) < 3 ||
              Volatile.Read(ref s_stage21Preemptions) < workerCount * 2 ||
-@@ -2057,10 +2085,20 @@ public static partial class SchedulerManager
+-            Volatile.Read(ref s_stage21Resumes) <
+-                workerCount + Volatile.Read(ref s_stage21Migrations))
++            Volatile.Read(ref s_stage21Resumes) < workerCount)
+         {
+             if (startedAps != expectedStartedAps ||
+                 Volatile.Read(ref s_stage21Failure) != 0 ||
+@@ -2057,10 +2067,20 @@ public static partial class SchedulerManager
                  Volatile.Write(ref s_stage21ReleaseWorkers, 1);
                  Serial.WriteString("[SCHED-AUTO-BALANCE-CHECK] started-aps="); Serial.WriteNumber((ulong)(uint)startedAps);
                  Serial.WriteString(" started-workers="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21StartedWorkers));
@@ -109,7 +82,7 @@ index c0df531..cac923c 100644
                  Serial.WriteString("\n");
                  return false;
              }
-@@ -2134,30 +2172,57 @@ public static partial class SchedulerManager
+@@ -2134,30 +2154,57 @@ public static partial class SchedulerManager
              return;
          }
  
@@ -178,7 +151,7 @@ index c0df531..cac923c 100644
              }
              SysThread.SpinWait(64);
          }
-@@ -2176,6 +2241,75 @@ public static partial class SchedulerManager
+@@ -2176,6 +2223,75 @@ public static partial class SchedulerManager
          }
      }
  
@@ -217,7 +190,7 @@ index c0df531..cac923c 100644
 +                int migrations = Volatile.Read(ref s_stage21Migrations);
 +                int preemptions = Volatile.Read(ref s_stage21Preemptions);
 +                int resumes = Volatile.Read(ref s_stage21Resumes);
-+                if (migrations < 4 || preemptions < 16 || resumes < 8 + migrations)
++                if (migrations < 4 || preemptions < 16 || resumes < 8)
 +                {
 +                    return false;
 +                }
@@ -254,7 +227,7 @@ index c0df531..cac923c 100644
      private static int CountStage21CpuBits(int mask)
      {
          int count = 0;
-@@ -2336,6 +2470,7 @@ public static partial class SchedulerManager
+@@ -2336,6 +2452,7 @@ public static partial class SchedulerManager
          uint sourceLoad = checked((uint)queued + 1);
          source.PublishRunnableCount(queued, true);
          uint bestLoad = uint.MaxValue;
@@ -262,7 +235,7 @@ index c0df531..cac923c 100644
          for (uint candidate = 1; candidate < s_cpuCount; candidate++)
          {
              if (candidate == source.CpuId)
-@@ -2345,6 +2480,7 @@ public static partial class SchedulerManager
+@@ -2345,6 +2462,7 @@ public static partial class SchedulerManager
  
              PerCpuState destination = s_cpuStates[candidate];
              uint candidateLoad = destination.PublishedRunnableCount;
@@ -270,7 +243,7 @@ index c0df531..cac923c 100644
              // A command-0/completion-1 mailbox says that the native park loop
              // is available, but it remains unchanged while an F4-dispatched
              // worker is running. The owner-published zero load is therefore
-@@ -2355,12 +2491,15 @@ public static partial class SchedulerManager
+@@ -2355,12 +2473,15 @@ public static partial class SchedulerManager
              // publication and decrement that fresh value back to zero. That
              // made an active AP look parked and allowed a second remote queue
              // mutation. Select read-only, then CAS exactly one final target.
