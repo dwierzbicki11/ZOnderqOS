@@ -1,5 +1,5 @@
 diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-index 21dcd5f..18641b2 100644
+index 21dcd5f31d8fa14e295a61538b557839b6d2a9b8..18641b25761b82b9d915cbc6521137e82922801d 100644
 --- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 +++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 @@ -183,6 +183,12 @@ internal class LibraryInitializer
@@ -15,9 +15,8 @@ index 21dcd5f..18641b2 100644
          }
      }
  }
-
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c0df531..2fa5f7b 100644
+index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03cf3473a82 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -55,6 +55,11 @@ public static partial class SchedulerManager
@@ -32,7 +31,9 @@ index c0df531..2fa5f7b 100644
 
      /// <summary>
      /// The interval the boot path asks the platform to arm the scheduler
-@@ -111,6 +116,7 @@ public static partial class SchedulerManager
+@@ -109,8 +114,9 @@ public static partial class SchedulerManager
+     private const uint Stage20RequiredPreemptionsPerCpu = 2;
+     private const ulong AutomaticBalanceCooldownNs = 50_000_000;
      private const uint AutomaticBalanceHysteresis = 2;
 -    private const ulong Stage21TimeoutSeconds = 15;
 +    private const ulong Stage21TimeoutSeconds = 60;
@@ -161,76 +162,19 @@ index c0df531..2fa5f7b 100644
              return false;
          }
          for (int index = 0; index < workers.Length; index++)
-@@ -2134,30 +2202,57 @@ public static partial class SchedulerManager
-             return;
-         }
-
--        Interlocked.Increment(ref s_stage21StartedWorkers);
--        uint lastCpuId = uint.MaxValue;
--        while (Volatile.Read(ref s_stage21ReleaseWorkers) == 0)
-+        uint lastCpuId;
-+        using (InternalCpu.DisableInterruptsScope())
-         {
-             uint cpuId = GetCurrentCpuId();
-             PerCpuState? state = CurrentCpuState;
-             if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) || thread.CpuId != cpuId)
-             {
-                 Volatile.Write(ref s_stage21Failure, 2);
--                Panic.Halt("Stage 21 worker resumed without scheduler ownership.");
-                 return;
-             }
--            if (cpuId != lastCpuId)
--            {
--                lastCpuId = cpuId;
--                Interlocked.Increment(ref s_stage21Resumes);
-+            lastCpuId = cpuId;
-+            Interlocked.Increment(ref s_stage21Resumes);
- #if ARCH_X64
--                if (NativeArmSchedulerTimer() != 1)
-+            if (NativeArmSchedulerTimer() != 1)
-+            {
-+                Volatile.Write(ref s_stage21Failure, 3);
-+                Panic.Halt("Stage 21 scheduler timer could not be armed after initial resume.");
-+                return;
-+            }
-+#endif
-+        }
-+        Interlocked.Increment(ref s_stage21StartedWorkers);
-+        while (Volatile.Read(ref s_stage21ReleaseWorkers) == 0)
-+        {
-+            using (InternalCpu.DisableInterruptsScope())
-+            {
-+                uint cpuId = GetCurrentCpuId();
-+                PerCpuState? state = CurrentCpuState;
-+                if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) || thread.CpuId != cpuId)
+@@ -2164,6 +2232,11 @@ public static partial class SchedulerManager
+                 PerCpuState? state = CurrentCpuState;
+                 if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) || thread.CpuId != cpuId)
                  {
--                    Volatile.Write(ref s_stage21Failure, 3);
--                    Panic.Halt("Stage 21 scheduler timer could not be armed after resume.");
 +                    Volatile.Write(ref s_stage22FailureToken, checked((int)token));
 +                    Volatile.Write(ref s_stage22FailureCpu, checked((int)cpuId));
 +                    Volatile.Write(ref s_stage22FailureStateCpu, state is null ? -1 : checked((int)state.CpuId));
 +                    Volatile.Write(ref s_stage22FailureThreadCpu, checked((int)thread.CpuId));
 +                    Volatile.Write(ref s_stage22FailureCurrentThreadId, state?.CurrentThread is null ? -1 : checked((int)state.CurrentThread.Id));
-+                    Volatile.Write(ref s_stage21Failure, 2);
+                     Volatile.Write(ref s_stage21Failure, 2);
                      return;
                  }
-+                if (cpuId != lastCpuId)
-+                {
-+                    lastCpuId = cpuId;
-+                    Interlocked.Increment(ref s_stage21Resumes);
-+#if ARCH_X64
-+                    if (NativeArmSchedulerTimer() != 1)
-+                    {
-+                        Volatile.Write(ref s_stage21Failure, 3);
-+                        Panic.Halt("Stage 21 scheduler timer could not be armed after resume.");
-+                        return;
-+                    }
- #endif
-+                }
-             }
-             SysThread.SpinWait(64);
-         }
-@@ -2176,6 +2271,75 @@ public static partial class SchedulerManager
+@@ -2198,6 +2271,75 @@ public static partial class SchedulerManager
          }
      }
 
@@ -306,7 +250,7 @@ index c0df531..2fa5f7b 100644
      private static int CountStage21CpuBits(int mask)
      {
          int count = 0;
-@@ -2336,6 +2500,7 @@ public static partial class SchedulerManager
+@@ -2358,6 +2500,7 @@ public static partial class SchedulerManager
          uint sourceLoad = checked((uint)queued + 1);
          source.PublishRunnableCount(queued, true);
          uint bestLoad = uint.MaxValue;
@@ -314,7 +258,7 @@ index c0df531..2fa5f7b 100644
          for (uint candidate = 1; candidate < s_cpuCount; candidate++)
          {
              if (candidate == source.CpuId)
-@@ -2345,6 +2510,7 @@ public static partial class SchedulerManager
+@@ -2367,6 +2510,7 @@ public static partial class SchedulerManager
 
              PerCpuState destination = s_cpuStates[candidate];
              uint candidateLoad = destination.PublishedRunnableCount;
@@ -322,7 +266,7 @@ index c0df531..2fa5f7b 100644
              // A command-0/completion-1 mailbox says that the native park loop
              // is available, but it remains unchanged while an F4-dispatched
              // worker is running. The owner-published zero load is therefore
-@@ -2355,12 +2521,15 @@ public static partial class SchedulerManager
+@@ -2377,12 +2521,15 @@ public static partial class SchedulerManager
              // publication and decrement that fresh value back to zero. That
              // made an active AP look parked and allowed a second remote queue
              // mutation. Select read-only, then CAS exactly one final target.
