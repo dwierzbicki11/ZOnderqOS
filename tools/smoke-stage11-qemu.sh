@@ -226,6 +226,8 @@ if any(current <= previous for previous, current in zip(ticks, ticks[1:])):
 collections = [gc_integration[i][0] for i in (1, 2, 3)] if set(gc_integration) == {1, 2, 3} else []
 if collections and not (collections[1] == collections[0] + 1 and collections[2] == collections[1] + 1):
     fail("real GC integration collection indexes are not consecutive")
+if set(gc_integration) == {1, 2, 3} and sum(gc_integration[i][1] for i in (1, 2, 3)) == 0:
+    fail("real GC integration did not reclaim any of the deliberately unreachable allocations")
 if expected > 1:
     if len(gc_stops) < 3 or len(gc_resumes) < 3:
         raise SystemExit(2)
