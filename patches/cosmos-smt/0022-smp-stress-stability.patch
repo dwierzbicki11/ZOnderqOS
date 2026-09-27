@@ -33,7 +33,8 @@ index c0df531..2fa5f7b 100644
      /// The interval the boot path asks the platform to arm the scheduler
 @@ -111,6 +116,7 @@ public static partial class SchedulerManager
      private const uint AutomaticBalanceHysteresis = 2;
-     private const ulong Stage21TimeoutSeconds = 60;
+-    private const ulong Stage21TimeoutSeconds = 15;
++    private const ulong Stage21TimeoutSeconds = 60;
      private const uint Stage21WorkersPerSource = 4;
 +    private const uint Stage22StressRounds = 8;
 
