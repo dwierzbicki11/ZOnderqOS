@@ -1,0 +1,836 @@
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApResidencyNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApResidencyNative.cs
+new file mode 100644
+index 0000000000000000000000000000000000000000..165106460e53e8a6f57a8715d47b845f49495274
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApResidencyNative.cs
+@@ -0,0 +1,109 @@
++#if ARCH_X64
++using System;
++using System.Runtime.InteropServices;
++using Cosmos.Kernel.Core.CPU;
++using Cosmos.Kernel.Core.Runtime;
++
++namespace Cosmos.Kernel.Core.Bridge;
++
++/// <summary>
++/// Stage-14 managed AP residency entry. Each AP remains in this bounded,
++/// allocation-free managed loop while the BSP performs a real OrionGC
++/// collection. The loop deliberately holds no managed heap references and
++/// does not enter the scheduler object graph; those contracts belong to the
++/// later managed-thread enrollment stage.
++/// </summary>
++internal static partial class ManagedApResidencyNative
++{
++    [LibraryImport("*", EntryPoint = "_native_x64_publish_managed_residency")]
++    [SuppressGCTransition]
++    private static partial int NativePublishState(
++        uint cpuId,
++        uint state,
++        ulong heartbeat,
++        ulong checksum);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_managed_residency_should_release")]
++    [SuppressGCTransition]
++    private static partial int NativeShouldRelease(uint cpuId);
++
++    /// <summary>
++    /// Runs on an AP with interrupts enabled so the native GC rendezvous IPI
++    /// can stop and resume this managed execution context. All communication
++    /// uses native cache-line-local mailboxes.
++    /// </summary>
++    [UnmanagedCallersOnly(EntryPoint = "__cosmos_smp_managed_residency_entry")]
++    public static uint Entry(uint expectedCpuId)
++    {
++        StartupCodeHelpers.RhpReversePInvoke(IntPtr.Zero);
++
++        uint cpuId = CpuLocal.CurrentCpuId;
++        uint status = cpuId == 0 || cpuId != expectedCpuId ? 1u : 0u;
++        ulong heartbeat = 0;
++        ulong checksum = ComputeChecksum(cpuId, heartbeat);
++
++        if (status == 0 &&
++            NativePublishState(cpuId, 1, heartbeat, checksum) != 0)
++        {
++            status = 2;
++        }
++
++        while (status == 0)
++        {
++            int release = NativeShouldRelease(cpuId);
++            if (release < 0)
++            {
++                status = 3;
++                break;
++            }
++
++            if (release != 0)
++            {
++                break;
++            }
++
++            heartbeat++;
++            if (heartbeat == 0)
++            {
++                status = 4;
++                break;
++            }
++
++            checksum = ComputeChecksum(cpuId, heartbeat);
++            if (NativePublishState(cpuId, 1, heartbeat, checksum) != 0)
++            {
++                status = 5;
++            }
++        }
++
++        if (status == 0)
++        {
++            checksum = ComputeChecksum(cpuId, heartbeat);
++            if (NativePublishState(cpuId, 2, heartbeat, checksum) != 0)
++            {
++                status = 6;
++            }
++        }
++
++        StartupCodeHelpers.RhpReversePInvokeReturn(IntPtr.Zero);
++        return status;
++    }
++
++    /// <summary>
++    /// Deterministic per-heartbeat value used to prove that each AP continued
++    /// executing managed instructions before and after the GC rendezvous.
++    /// </summary>
++    internal static ulong ComputeChecksum(uint cpuId, ulong heartbeat)
++    {
++        ulong value = 0xA0761D6478BD642FUL ^ ((ulong)cpuId << 32) ^ heartbeat;
++        for (uint round = 0; round < 256; round++)
++        {
++            value ^= ((ulong)cpuId + round + 1) * 0xE7037ED1A0B428DBUL;
++            value = (value << 17) | (value >> 47);
++            value += heartbeat ^ ((ulong)round * 0x8EBC6AF09C88C6E3UL);
++        }
++
++        return value;
++    }
++}
++#endif
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+index 28c5b17db15388da4fe7b6f822f569473bf1ebb7..1b13f9bd2688fa12a79cafa449f2dea499d42bf6 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+@@ -65,6 +65,9 @@ public static partial class SchedulerManager
+     /// <summary>Bound for the native Stage-13 AP scheduler-state handshake.</summary>
+     private const ulong Stage13TimeoutSeconds = 5;
+ 
++    /// <summary>Bound for entering and leaving the Stage-14 managed AP residency window.</summary>
++    private const ulong Stage14TimeoutSeconds = 5;
++
+ #if ARCH_X64
+     [LibraryImport("*", EntryPoint = "_native_x64_run_percpu_scheduler_test")]
+     [SuppressGCTransition]
+@@ -81,6 +84,26 @@ public static partial class SchedulerManager
+     [LibraryImport("*", EntryPoint = "_native_x64_get_ap_scheduler_entries")]
+     [SuppressGCTransition]
+     private static partial uint NativeGetPerCpuSchedulerEntries(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_begin_managed_residency")]
++    [SuppressGCTransition]
++    private static partial int NativeBeginManagedResidency(ulong cpuCount, ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_end_managed_residency")]
++    [SuppressGCTransition]
++    private static partial int NativeEndManagedResidency(ulong cpuCount, ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_managed_residency_state")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetManagedResidencyState(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_managed_residency_heartbeat")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetManagedResidencyHeartbeat(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_managed_residency_checksum")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetManagedResidencyChecksum(uint cpuId);
+ #endif
+ 
+     /// <summary>
+@@ -406,6 +429,202 @@ public static partial class SchedulerManager
+         return true;
+     }
+ 
++    /// <summary>
++    /// Keeps every AP inside an allocation-free managed execution window while
++    /// the BSP performs one real OrionGC collection. AP interrupts are enabled,
++    /// so the existing native stop-the-world IPI must park and resume each AP
++    /// before it can leave the managed entry. This is the GC/runtime prerequisite
++    /// for later managed AP idle threads; it does not dispatch, migrate or
++    /// preempt a scheduler thread.
++    /// </summary>
++    internal static bool RunManagedApGcResidencyProof()
++    {
++        if (!s_enabled || s_currentScheduler is null ||
++            s_cpuStates is null || s_cpuCount == 0 ||
++            !GarbageCollector.IsEnabled)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 14 runtime prerequisites are not initialized.\n");
++            return false;
++        }
++
++        for (uint cpuId = 0; cpuId < s_cpuCount; cpuId++)
++        {
++            PerCpuState state = s_cpuStates[cpuId];
++            if (state.CpuId != cpuId || state.Stage13Phase != 2 ||
++                state.Stage13EntryCount != 1)
++            {
++                Serial.WriteString("[SCHED] WARNING: Stage 14 requires completed Stage 13 state for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString(".\n");
++                return false;
++            }
++        }
++
++#if ARCH_X64
++        long frequency = Stopwatch.Frequency;
++        ulong timeoutTicks = frequency > 0
++            ? checked((ulong)frequency * Stage14TimeoutSeconds)
++            : 5_000_000_000UL;
++        int expectedAps = checked((int)s_cpuCount - 1);
++        ulong[] heartbeatBeforeGc = new ulong[checked((int)s_cpuCount)];
++
++        Serial.WriteString("[SCHED-AP-RUNTIME] dispatch\n");
++        int entered = expectedAps == 0
++            ? 0
++            : NativeBeginManagedResidency(s_cpuCount, timeoutTicks);
++        if (entered != expectedAps)
++        {
++            if (expectedAps != 0)
++            {
++                NativeEndManagedResidency(s_cpuCount, timeoutTicks);
++            }
++
++            Serial.WriteString("[SCHED] WARNING: Stage 14 managed AP entry result=");
++            WriteSignedNumber(entered);
++            Serial.WriteString(" expected=");
++            Serial.WriteNumber((ulong)expectedAps);
++            Serial.WriteString("\n");
++            return false;
++        }
++
++        Serial.WriteString("[SCHED-AP-RUNTIME] resident aps=");
++        Serial.WriteNumber((ulong)entered);
++        Serial.WriteString("\n");
++
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            heartbeatBeforeGc[cpuId] = NativeGetManagedResidencyHeartbeat(cpuId);
++        }
++
++        int collectionBefore = GarbageCollector.GetCollectionIndex();
++        int collectionAfter;
++        int released;
++        bool resumedAfterGc;
++        try
++        {
++            GarbageCollector.Collect();
++            collectionAfter = GarbageCollector.GetCollectionIndex();
++            resumedAfterGc = WaitForManagedApHeartbeatAdvance(heartbeatBeforeGc, timeoutTicks);
++        }
++        finally
++        {
++            released = expectedAps == 0
++                ? 0
++                : NativeEndManagedResidency(s_cpuCount, timeoutTicks);
++        }
++
++        if (collectionAfter != collectionBefore + 1)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 14 OrionGC collection did not advance exactly once.\n");
++            return false;
++        }
++
++        if (!resumedAfterGc)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 14 AP heartbeat did not advance after GC resume.\n");
++            return false;
++        }
++
++        if (released != expectedAps)
++        {
++            Serial.WriteString("[SCHED] WARNING: Stage 14 managed AP release result=");
++            WriteSignedNumber(released);
++            Serial.WriteString(" expected=");
++            Serial.WriteNumber((ulong)expectedAps);
++            Serial.WriteString("\n");
++            return false;
++        }
++
++        Serial.WriteString("[SCHED-AP-RUNTIME] gc-collection=");
++        Serial.WriteNumber((ulong)collectionAfter);
++        Serial.WriteString("\n");
++
++        if (expectedAps == 0)
++        {
++            Serial.WriteString("[SCHED-AP-RUNTIME] cpu=0 state=bsp-only\n");
++        }
++
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            uint nativeState = NativeGetManagedResidencyState(cpuId);
++            ulong heartbeat = NativeGetManagedResidencyHeartbeat(cpuId);
++            ulong checksum = NativeGetManagedResidencyChecksum(cpuId);
++            ulong expectedChecksum = ManagedApResidencyNative.ComputeChecksum(cpuId, heartbeat);
++            if (nativeState != 2 || heartbeat == 0 || checksum != expectedChecksum)
++            {
++                Serial.WriteString("[SCHED] WARNING: Stage 14 managed residency mismatch for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString(".\n");
++                return false;
++            }
++
++            Serial.WriteString("[SCHED-AP-RUNTIME] cpu=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" heartbeats=");
++            Serial.WriteNumber(heartbeat);
++            Serial.WriteString(" checksum=");
++            Serial.WriteHexWithPrefix(checksum);
++            Serial.WriteString(" state=returned-native-idle\n");
++        }
++#else
++        // ARM64 remains a CPU0-only compile regression until its architecture
++        // has an MP bootstrap and stop-the-world interrupt implementation.
++        return true;
++#endif
++
++        Serial.WriteString("[SCHED-AP-RUNTIME-TEST] PASS\n");
++        return true;
++    }
++
++    private static void WriteSignedNumber(int value)
++    {
++        if (value < 0)
++        {
++            Serial.WriteString("-");
++            Serial.WriteNumber((ulong)(-(long)value));
++            return;
++        }
++
++        Serial.WriteNumber((ulong)value);
++    }
++
++#if ARCH_X64
++    private static bool WaitForManagedApHeartbeatAdvance(
++        ulong[] heartbeatBeforeGc,
++        ulong timeoutTicks)
++    {
++        if (s_cpuCount <= 1)
++        {
++            return true;
++        }
++
++        ulong start = (ulong)Stopwatch.GetTimestamp();
++        while (true)
++        {
++            bool allAdvanced = true;
++            for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++            {
++                if (NativeGetManagedResidencyHeartbeat(cpuId) <= heartbeatBeforeGc[cpuId])
++                {
++                    allAdvanced = false;
++                    break;
++                }
++            }
++
++            if (allAdvanced)
++            {
++                return true;
++            }
++
++            ulong now = (ulong)Stopwatch.GetTimestamp();
++            if (now - start >= timeoutTicks)
++            {
++                return false;
++            }
++        }
++    }
++#endif
++
+     /// <summary>
+     /// Allocates a new unique thread ID.
+     /// </summary>
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+index 33988f6bc516eec765299b99cbda7d62bc68d737..01d78a1aa40a0241a51134502b4c7f91e1abe564 100644
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -259,6 +259,7 @@
+ .extern __managed__irq
+ .extern __cosmos_smp_managed_ap_entry
+ .extern __cosmos_smp_percpu_scheduler_entry
++.extern __cosmos_smp_managed_residency_entry
+ 
+ .intel_syntax noprefix
+ 
+@@ -526,6 +527,8 @@ _native_x64_ap_entry:
+     je .Lap_park_command_managed
+     cmp eax, 6
+     je .Lap_park_command_percpu_scheduler
++    cmp eax, 7
++    je .Lap_park_command_managed_residency
+     jmp .Lap_park
+ 
+ .Lap_park_command_work:
+@@ -631,6 +634,35 @@ _native_x64_ap_entry:
+     xchg dword ptr [r14 + 48], eax
+     jmp .Lap_park
+ 
++.Lap_park_command_managed_residency:
++    // Stage 14: remain in an allocation-free managed loop with IF=1 while
++    // the BSP performs a real OrionGC stop-the-world collection. The native
++    // vector-0xF3 handler can therefore interrupt, park and resume this AP.
++    xor eax, eax
++    xchg dword ptr [r14 + 32], eax
++    sti
++    mov edi, r13d
++    call __cosmos_smp_managed_residency_entry
++    cli
++    test eax, eax
++    jz .Lap_managed_residency_success
++
++    lea rcx, [rip + _ap_managed_residency_state]
++    mov rax, r13
++    shl rax, 6
++    add rcx, rax
++    mov dword ptr [rcx + 0], 3
++    mfence
++    mov eax, 2
++    xchg dword ptr [r14 + 48], eax
++    jmp .Lap_park
++
++.Lap_managed_residency_success:
++    mfence
++    mov eax, 1
++    xchg dword ptr [r14 + 48], eax
++    jmp .Lap_park
++
+ .macro AP_STATE_GETTER name, offset, width
+ .global \name
+ \name:
+@@ -766,6 +798,92 @@ _native_x64_publish_percpu_scheduler_result:
+     mov eax, -1
+     ret
+ 
++.macro MANAGED_RESIDENCY_GETTER name, offset, width
++.global \name
++\name:
++    cmp edi, 255
++    ja .Lap_managed_residency_get_invalid_\@
++    lea rcx, [rip + _ap_managed_residency_state]
++    mov eax, edi
++    shl rax, 6
++    add rcx, rax
++    .if \width == 4
++        mov eax, dword ptr [rcx + \offset]
++    .else
++        mov rax, qword ptr [rcx + \offset]
++    .endif
++    ret
++.Lap_managed_residency_get_invalid_\@:
++    xor eax, eax
++    ret
++.endm
++
++MANAGED_RESIDENCY_GETTER _native_x64_get_managed_residency_state, 0, 4
++MANAGED_RESIDENCY_GETTER _native_x64_get_managed_residency_heartbeat, 8, 8
++MANAGED_RESIDENCY_GETTER _native_x64_get_managed_residency_checksum, 16, 8
++
++// int _native_x64_managed_residency_should_release(uint32_t cpuId)
++.global _native_x64_managed_residency_should_release
++_native_x64_managed_residency_should_release:
++    cmp edi, 255
++    ja .Lap_managed_residency_release_invalid
++    cmp edi, dword ptr gs:[0]
++    jne .Lap_managed_residency_release_invalid
++    lea rcx, [rip + _ap_managed_residency_state]
++    mov eax, edi
++    shl rax, 6
++    mov eax, dword ptr [rcx + rax + 4]
++    ret
++.Lap_managed_residency_release_invalid:
++    mov eax, -1
++    ret
++
++// int _native_x64_publish_managed_residency(uint32_t cpuId,
++//                                            uint32_t state,
++//                                            uint64_t heartbeat,
++//                                            uint64_t checksum)
++.global _native_x64_publish_managed_residency
++_native_x64_publish_managed_residency:
++    cmp edi, 255
++    ja .Lap_managed_residency_publish_invalid
++    cmp edi, dword ptr gs:[0]
++    jne .Lap_managed_residency_publish_invalid
++    cmp esi, 1
++    je .Lap_managed_residency_publish_progress
++    cmp esi, 2
++    jne .Lap_managed_residency_publish_invalid
++
++    lea r8, [rip + _ap_managed_residency_state]
++    mov eax, edi
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 0], 1
++    jne .Lap_managed_residency_publish_invalid
++    cmp dword ptr [r8 + 4], 1
++    jne .Lap_managed_residency_publish_invalid
++    jmp .Lap_managed_residency_publish_store
++
++.Lap_managed_residency_publish_progress:
++    lea r8, [rip + _ap_managed_residency_state]
++    mov eax, edi
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 0], 1
++    je .Lap_managed_residency_publish_store
++    cmp dword ptr [r8 + 0], 0
++    jne .Lap_managed_residency_publish_invalid
++
++.Lap_managed_residency_publish_store:
++    mov qword ptr [r8 + 8], rdx
++    mov qword ptr [r8 + 16], rcx
++    mfence
++    mov dword ptr [r8 + 0], esi
++    xor eax, eax
++    ret
++.Lap_managed_residency_publish_invalid:
++    mov eax, -1
++    ret
++
+ .global _native_x64_get_ap_timer_ticks
+ _native_x64_get_ap_timer_ticks:
+     cmp edi, 255
+@@ -1460,6 +1578,291 @@ _native_x64_run_percpu_scheduler_test:
+     ret
+ 
+ 
++// int _native_x64_begin_managed_residency(uint64_t cpuCount,
++//                                          uint64_t timeoutTscTicks)
++// Starts command 7 on every AP and returns only after all APs are executing
++// the managed Stage-14 loop with interrupts enabled.
++.global _native_x64_begin_managed_residency
++_native_x64_begin_managed_residency:
++    push rbx
++    push r12
++    push r13
++    push r15
++    test rdi, rdi
++    jz .Lap_managed_residency_begin_invalid
++    cmp rdi, 256
++    ja .Lap_managed_residency_begin_invalid
++    test rsi, rsi
++    jz .Lap_managed_residency_begin_invalid
++    mov r12, rdi
++    mov r13, rsi
++    cmp r12, 1
++    je .Lap_managed_residency_begin_single
++    call .Lap_read_lapic_base
++    test rax, rax
++    jz .Lap_managed_residency_begin_invalid
++    mov qword ptr [rip + _native_x64_lapic_base], rax
++    mov r15, rax
++
++    // Validate and clear every mailbox before publishing any AP command.
++    mov ebx, 1
++.Lap_managed_residency_begin_prepare:
++    cmp rbx, r12
++    jae .Lap_managed_residency_begin_send_first
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 0], 1
++    jne .Lap_managed_residency_begin_invalid
++    cmp dword ptr [r8 + 32], 0
++    jne .Lap_managed_residency_begin_invalid
++    cmp dword ptr [r8 + 48], 1
++    jne .Lap_managed_residency_begin_invalid
++    cmp qword ptr [r8 + 56], 9
++    jne .Lap_managed_residency_begin_invalid
++
++    lea r9, [rip + _ap_managed_residency_state]
++    mov rax, rbx
++    shl rax, 6
++    add r9, rax
++    cmp dword ptr [r9 + 0], 0
++    jne .Lap_managed_residency_begin_invalid
++    mov dword ptr [r9 + 4], 0
++    mov qword ptr [r9 + 8], 0
++    mov qword ptr [r9 + 16], 0
++    inc rbx
++    jmp .Lap_managed_residency_begin_prepare
++
++.Lap_managed_residency_begin_send_first:
++    mfence
++    mov ebx, 1
++.Lap_managed_residency_begin_send:
++    cmp rbx, r12
++    jae .Lap_managed_residency_begin_wait_start
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    xor eax, eax
++    xchg dword ptr [r8 + 48], eax
++    cmp eax, 1
++    jne .Lap_managed_residency_begin_failure
++    mov eax, 7
++    xchg dword ptr [r8 + 32], eax
++    test eax, eax
++    jne .Lap_managed_residency_begin_failure
++    mov edx, dword ptr [r8 + 8]
++    shl edx, 24
++    mov dword ptr [r15 + 0x310], edx
++    mov dword ptr [r15 + 0x300], 0x000000F1
++    inc rbx
++    jmp .Lap_managed_residency_begin_send
++
++.Lap_managed_residency_begin_wait_start:
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++
++.Lap_managed_residency_begin_wait:
++    mov ebx, 1
++.Lap_managed_residency_begin_check:
++    cmp rbx, r12
++    jae .Lap_managed_residency_begin_success
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    lea r9, [rip + _ap_managed_residency_state]
++    mov rax, rbx
++    shl rax, 6
++    add r9, rax
++    cmp dword ptr [r9 + 0], 3
++    je .Lap_managed_residency_begin_failure
++    cmp dword ptr [r9 + 0], 1
++    jne .Lap_managed_residency_begin_poll
++    cmp qword ptr [r9 + 8], 0
++    je .Lap_managed_residency_begin_poll
++    cmp dword ptr [r8 + 32], 0
++    jne .Lap_managed_residency_begin_poll
++    cmp dword ptr [r8 + 48], 0
++    jne .Lap_managed_residency_begin_poll
++    cmp qword ptr [r8 + 56], 10
++    jne .Lap_managed_residency_begin_poll
++    inc rbx
++    jmp .Lap_managed_residency_begin_check
++
++.Lap_managed_residency_begin_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r13
++    jb .Lap_managed_residency_begin_wait
++    mov eax, -1
++    jmp .Lap_managed_residency_begin_return
++
++.Lap_managed_residency_begin_success:
++    mov eax, r12d
++    dec eax
++    jmp .Lap_managed_residency_begin_return
++.Lap_managed_residency_begin_single:
++    xor eax, eax
++    jmp .Lap_managed_residency_begin_return
++.Lap_managed_residency_begin_failure:
++    mov eax, -3
++    jmp .Lap_managed_residency_begin_return
++.Lap_managed_residency_begin_invalid:
++    mov eax, -2
++.Lap_managed_residency_begin_return:
++    pop r15
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++
++// int _native_x64_end_managed_residency(uint64_t cpuCount,
++//                                        uint64_t timeoutTscTicks)
++// Publishes release to every AP and waits until each managed export has
++// returned to the native HLT path.
++.global _native_x64_end_managed_residency
++_native_x64_end_managed_residency:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++    test rdi, rdi
++    jz .Lap_managed_residency_end_invalid
++    cmp rdi, 256
++    ja .Lap_managed_residency_end_invalid
++    test rsi, rsi
++    jz .Lap_managed_residency_end_invalid
++    mov r12, rdi
++    mov r13, rsi
++    cmp r12, 1
++    je .Lap_managed_residency_end_single
++
++    mov ebx, 1
++.Lap_managed_residency_end_publish:
++    cmp rbx, r12
++    jae .Lap_managed_residency_end_publish_done
++    lea r8, [rip + _ap_managed_residency_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    mov dword ptr [r8 + 4], 1
++    inc rbx
++    jmp .Lap_managed_residency_end_publish
++
++.Lap_managed_residency_end_publish_done:
++    mfence
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++
++.Lap_managed_residency_end_wait:
++    xor r14d, r14d
++    xor r15d, r15d
++    mov ebx, 1
++.Lap_managed_residency_end_check:
++    cmp rbx, r12
++    jae .Lap_managed_residency_end_all_quiescent
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    lea r9, [rip + _ap_managed_residency_state]
++    mov rax, rbx
++    shl rax, 6
++    add r9, rax
++
++    cmp dword ptr [r9 + 0], 2
++    je .Lap_managed_residency_end_check_success
++    cmp dword ptr [r9 + 0], 3
++    je .Lap_managed_residency_end_check_failed_return
++    cmp dword ptr [r9 + 0], 0
++    je .Lap_managed_residency_end_check_not_started
++    jmp .Lap_managed_residency_end_poll
++
++.Lap_managed_residency_end_check_success:
++    cmp qword ptr [r9 + 8], 0
++    je .Lap_managed_residency_end_poll
++    cmp dword ptr [r8 + 32], 0
++    jne .Lap_managed_residency_end_poll
++    cmp dword ptr [r8 + 48], 1
++    jne .Lap_managed_residency_end_poll
++    cmp qword ptr [r8 + 56], 10
++    jne .Lap_managed_residency_end_poll
++    inc r14d
++    inc rbx
++    jmp .Lap_managed_residency_end_check
++
++.Lap_managed_residency_end_check_failed_return:
++    cmp dword ptr [r8 + 32], 0
++    jne .Lap_managed_residency_end_poll
++    cmp dword ptr [r8 + 48], 2
++    jne .Lap_managed_residency_end_poll
++    cmp qword ptr [r8 + 56], 10
++    jne .Lap_managed_residency_end_poll
++    mov r15d, 1
++    inc r14d
++    inc rbx
++    jmp .Lap_managed_residency_end_check
++
++.Lap_managed_residency_end_check_not_started:
++    cmp dword ptr [r8 + 32], 0
++    jne .Lap_managed_residency_end_poll
++    cmp dword ptr [r8 + 48], 1
++    jne .Lap_managed_residency_end_poll
++    cmp qword ptr [r8 + 56], 9
++    jne .Lap_managed_residency_end_poll
++    mov r15d, 1
++    inc r14d
++    inc rbx
++    jmp .Lap_managed_residency_end_check
++
++.Lap_managed_residency_end_all_quiescent:
++    mov eax, r12d
++    dec eax
++    cmp r14d, eax
++    jne .Lap_managed_residency_end_poll
++    test r15d, r15d
++    jnz .Lap_managed_residency_end_failure
++    jmp .Lap_managed_residency_end_return
++
++.Lap_managed_residency_end_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r13
++    jb .Lap_managed_residency_end_wait
++    mov eax, -1
++    jmp .Lap_managed_residency_end_return
++
++.Lap_managed_residency_end_single:
++    xor eax, eax
++    jmp .Lap_managed_residency_end_return
++.Lap_managed_residency_end_failure:
++    mov eax, -3
++    jmp .Lap_managed_residency_end_return
++.Lap_managed_residency_end_invalid:
++    mov eax, -2
++.Lap_managed_residency_end_return:
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++
+ // int _native_x64_run_ap_timer_test(uint64_t cpuCount,
+ //                                    uint32_t initialCount,
+ //                                    uint64_t minimumTicks,
+@@ -2190,6 +2593,12 @@ _ap_managed_result: .zero 2048
+ // +4 managed enter/leave phase, +8 successful managed entry count.
+ _ap_scheduler_state: .zero 16384
+ 
++.balign 64
++// Stage-14 managed AP residency mailboxes. Each 64-byte record is:
++// +0 state (0=idle, 1=managed resident, 2=returned, 3=failure),
++// +4 release request, +8 heartbeat, +16 deterministic checksum.
++_ap_managed_residency_state: .zero 16384
++
+ .balign 64
+ // 256 cache-line-isolated records:
+ // request_epoch, ack_epoch, resume_epoch, state, padding,
+diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+index 79f361983f43fae62cfc57fdbb75258279942f77..363529ce03b312b6d9790a03738f1c73660dfa9e 100644
+--- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
++++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+@@ -120,6 +120,16 @@ internal class LibraryInitializer
+             {
+                 Cosmos.Kernel.Core.Panic.Halt("Stage 13 per-CPU scheduler foundation proof failed.");
+             }
++
++            // Stage 14: keep every AP in an allocation-free managed window
++            // while a real OrionGC collection stops and resumes it through
++            // the native rendezvous IPI. APs return to native HLT afterwards;
++            // managed scheduler dispatch remains disabled on APs.
++            Serial.WriteString("[SCHED-AP-RUNTIME] begin\n");
++            if (!SchedulerManager.RunManagedApGcResidencyProof())
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 14 managed AP GC residency proof failed.");
++            }
+         }
+     }
+ }
+

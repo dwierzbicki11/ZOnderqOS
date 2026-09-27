@@ -98,6 +98,17 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 9
   bash tools/prepare-cosmos-smt.sh --through-stage 10
   bash tools/prepare-cosmos-smt.sh --through-stage 11
+  bash tools/prepare-cosmos-smt.sh --through-stage 12
+  bash tools/prepare-cosmos-smt.sh --through-stage 13
+  bash tools/prepare-cosmos-smt.sh --through-stage 14
+  bash tools/prepare-cosmos-smt.sh --through-stage 15
+  bash tools/prepare-cosmos-smt.sh --through-stage 16
+  bash tools/prepare-cosmos-smt.sh --through-stage 17
+  bash tools/prepare-cosmos-smt.sh --through-stage 18
+  bash tools/prepare-cosmos-smt.sh --through-stage 19
+  bash tools/prepare-cosmos-smt.sh --through-stage 20
+  bash tools/prepare-cosmos-smt.sh --through-stage 21
+  bash tools/prepare-cosmos-smt.sh --through-stage 22
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -368,4 +379,48 @@ elif (( SELECTED_STAGE == 11 )); then
     echo "[SMT] Etap 11 podpina prawdziwy OrionGC pod native stop-the-world z etapu 10."
     echo "[SMT] GarbageCollector.Collect zatrzymuje wszystkie AP-y przed mark/sweep i wznawia je w finally."
     echo "[SMT] Boot proof wykonuje trzy realne kolekcje i sprawdza przezycie zarzadzanej referencji."
+elif (( SELECTED_STAGE == 12 )); then
+    echo "[SMT] Etap 12 budzi AP-y do pojedynczego, alokacji-bezplatnego eksportu C# bez schedulera."
+    echo "[SMT] Managed entry czyta GS-local CpuId, publikuje deterministyczny checksum i wraca do native HLT."
+    echo "[SMT] BSP waliduje wynik oraz brak pozostalej komendy; scheduler i managed Thread nadal nie sa wlaczane na AP-ach."
+elif (( SELECTED_STAGE == 13 )); then
+    echo "[SMT] Etap 13 wykonuje jednorazowy handshake per-CPU z juz zainicjalizowanym schedulerem."
+    echo "[SMT] BSP wykonuje enter/leave na kazdym PerCpuState, a kazdy AP waliduje swoja tozsamosc CPU-local i wraca do native HLT."
+    echo "[SMT] Nie jest to jeszcze pelny scheduler SMP, migracja watkow ani preempcja."
+elif (( SELECTED_STAGE == 14 )); then
+    echo "[SMT] Etap 14 utrzymuje AP-y w alokacji-bezplatnej petli managed z wlaczonymi przerwaniami."
+    echo "[SMT] Prawdziwy OrionGC zatrzymuje i wznawia te konteksty przez IPI 0xF3, a heartbeat potwierdza dalsze wykonanie po GC."
+    echo "[SMT] AP-y wracaja potem do native HLT; managed Thread, dispatch, migracja i preempcja nadal nie sa wlaczone."
+elif (( SELECTED_STAGE == 15 )); then
+    echo "[SMT] Etap 15 przypisuje natywne stosy bootstrap AP do zarejestrowanych watkow idle z jawnymi granicami."
+    echo "[SMT] OrionGC skanuje kazdy zdalny stos od RSP przechwyconego przez IPI 0xF3 i weryfikuje fingerprint kanarkow."
+    echo "[SMT] AP-y wracaja do native HLT; dispatch zwyklych watkow, migracja i preempcja nadal nie sa wlaczone."
+elif (( SELECTED_STAGE == 16 )); then
+    echo "[SMT] Etap 16 kolejkuje prawdziwy SchedulerThread osobno na kazdy AP i przelacza go przez zwykla sciezke IRQ."
+    echo "[SMT] Worker wykonuje sie na przydzielonym stosie, przechodzi pelny lifecycle exit i wraca timerem LAPIC do idle."
+    echo "[SMT] Dispatch jest jeszcze sekwencyjny; wspolbiezne kolejki, migracja i pelna preempcja beda utwardzane dalej."
+elif (( SELECTED_STAGE == 17 )); then
+    echo "[SMT] Etap 17 wywlaszcza zywy SchedulerThread timerem LAPIC osobno na kazdym AP."
+    echo "[SMT] Worker wraca do idle, jest ponownie wybierany i wznawia dokladnie zapisany kontekst przerwania."
+    echo "[SMT] Watki pozostaja przypiete; migracja, wspolbiezne kolejki i load balancing beda utwardzane dalej."
+elif (( SELECTED_STAGE == 18 )); then
+    echo "[SMT] Etap 18 uruchamia po dwa przypiete workery na kazdym AP jako jedna wspolbiezna generacje."
+    echo "[SMT] Per-CPU kolejki przechodza wielokrotna preempcje, a OrionGC zatrzymuje wszystkie aktywne AP-y."
+    echo "[SMT] Globalny rejestr watkow jest synchronizowany i musi wrocic do stanu wyjsciowego po tescie."
+elif (( SELECTED_STAGE == 19 )); then
+    echo "[SMT] Etap 19 tworzy niezbalansowana kolejke na AP1 i rozprowadza gotowe, nieprzypiete watki na wszystkie AP-y."
+    echo "[SMT] Kazdy zmigrowany worker musi wykonac sie na docelowym CPU, przejsc preempcje i wrocic do idle."
+    echo "[SMT] OrionGC zatrzymuje aktywna generacje po migracji, a rejestr watkow musi wrocic do stanu wyjsciowego."
+elif (( SELECTED_STAGE == 20 )); then
+    echo "[SMT] Etap 20 przechwytuje kontekst dzialajacego watku na timerze CPU zrodlowego i przekazuje go do innego AP."
+    echo "[SMT] IPI docelowe jest wysylane dopiero po opuszczeniu stosu migrowanego watku przez zrodlowy epilog IRQ."
+    echo "[SMT] Worker musi wznowic ten sam kontekst na kolejnych AP-ach, przejsc preempcje i realny OrionGC/STW."
+elif (( SELECTED_STAGE == 21 )); then
+    echo "[SMT] Etap 21 wybiera najmniej obciazony zaparkowany AP z owner-CPU snapshotow bez zdalnego odczytu aktywnej kolejki."
+    echo "[SMT] Atomowa rezerwacja celu, hysteresis i cooldown chronia przed thundering herd oraz ping-pongiem."
+    echo "[SMT] Dwa przeciazone CPU musza samodzielnie zainicjowac live handoffy pod timerem i OrionGC/STW."
+elif (( SELECTED_STAGE == 22 )); then
+    echo "[SMT] Etap 22 powtarza pelny cykl automatycznego balansowania, preempcji i OrionGC/STW przez osiem generacji."
+    echo "[SMT] Kazda generacja musi odtworzyc rejestr watkow, konteksty idle i natywne skrzynki AP przed nastepna runda."
+    echo "[SMT] Jest to koncowa bramka stress/stability roadmapy SMT/SMP."
 fi

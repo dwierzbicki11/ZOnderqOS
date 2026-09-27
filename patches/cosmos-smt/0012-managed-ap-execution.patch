@@ -1,0 +1,470 @@
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApNative.cs
+new file mode 100644
+index 000000000..1828646f1
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApNative.cs
+@@ -0,0 +1,60 @@
++#if ARCH_X64
++using System;
++using System.Runtime.InteropServices;
++using Cosmos.Kernel.Core.CPU;
++using Cosmos.Kernel.Core.Runtime;
++
++namespace Cosmos.Kernel.Core.Bridge;
++
++/// <summary>
++/// The Stage-12 reverse-P/Invoke entry used by the native AP proof. It is kept
++/// in the Core assembly because Cosmos emits its native managed exports from
++/// Core; HAL only owns the native command and result validation.
++/// </summary>
++internal static partial class ManagedApNative
++{
++    [LibraryImport("*", EntryPoint = "_native_x64_publish_managed_ap_result")]
++    [SuppressGCTransition]
++    private static partial int NativePublishResult(uint cpuId, ulong checksum);
++
++    /// <summary>
++    /// Executes a bounded managed operation on an AP and publishes its result.
++    /// No allocation, lock, scheduler operation or serial I/O is performed.
++    /// </summary>
++    [UnmanagedCallersOnly(EntryPoint = "__cosmos_smp_managed_ap_entry")]
++    public static uint Entry(uint expectedCpuId)
++    {
++        StartupCodeHelpers.RhpReversePInvoke(IntPtr.Zero);
++
++        uint cpuId = CpuLocal.CurrentCpuId;
++        uint status = 0;
++        if (cpuId == 0 || cpuId != expectedCpuId)
++        {
++            status = 1;
++        }
++        else
++        {
++            ulong checksum = ComputeChecksum(cpuId);
++            if (NativePublishResult(cpuId, checksum) != 0)
++            {
++                status = 2;
++            }
++        }
++
++        StartupCodeHelpers.RhpReversePInvokeReturn(IntPtr.Zero);
++        return status;
++    }
++
++    private static ulong ComputeChecksum(uint cpuId)
++    {
++        ulong checksum = 0xD6E8FEB86659FD93UL ^ cpuId;
++        for (uint round = 0; round < 1024; round++)
++        {
++            checksum ^= (ulong)(cpuId + round) * 0x9E3779B97F4A7C15UL;
++            checksum = (checksum << 13) | (checksum >> 51);
++        }
++
++        return checksum;
++    }
++}
++#endif
+diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+index f7d193ab6..942362337 100644
+--- a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
++++ b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+@@ -76,6 +76,18 @@ internal static unsafe partial class SmpApBootstrap
+     [SuppressGCTransition]
+     private static partial uint NativeGetCompletion(uint cpuId);
+ 
++    [LibraryImport("*", EntryPoint = "_native_x64_run_managed_ap_test")]
++    [SuppressGCTransition]
++    private static partial int NativeRunManagedApTest(ulong cpuCount, ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_managed_state")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetManagedState(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_managed_result")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetManagedResult(uint cpuId);
++
+     [LibraryImport("*", EntryPoint = "_native_x64_run_ap_timer_test")]
+     [SuppressGCTransition]
+     private static partial int NativeRunApTimerTest(
+@@ -119,6 +131,18 @@ internal static unsafe partial class SmpApBootstrap
+     [SuppressGCTransition]
+     private static partial ulong NativeGetGcSavedRflags(uint cpuId);
+ 
++    private static ulong ComputeManagedApChecksum(uint cpuId)
++    {
++        ulong checksum = 0xD6E8FEB86659FD93UL ^ cpuId;
++        for (uint round = 0; round < 1024; round++)
++        {
++            checksum ^= (ulong)(cpuId + round) * 0x9E3779B97F4A7C15UL;
++            checksum = (checksum << 13) | (checksum >> 51);
++        }
++
++        return checksum;
++    }
++
+     internal static bool StartAndParkApplicationProcessors()
+     {
+         LimineMpResponseX64* response = LimineMp.X64Response;
+@@ -535,6 +559,92 @@ internal static unsafe partial class SmpApBootstrap
+         return true;
+     }
+ 
++    internal static bool RunManagedApplicationProcessorProof()
++    {
++        const ulong ExpectedIpiCount = 8;
++        LimineMpResponseX64* response = LimineMp.X64Response;
++        if (response == null || response->Cpus == null || response->CpuCount == 0 ||
++            response->CpuCount > LimineMp.MaxXApicCpuCount)
++        {
++            Serial.WriteString("[SMP] WARNING: managed AP proof has no valid CPU topology.\n");
++            return false;
++        }
++
++        // Keep the 1-vCPU CI topology as a real regression test while making
++        // the AP-specific proof explicit: there is no AP to enter on it.
++        if (response->CpuCount == 1)
++        {
++            Serial.WriteString("[MANAGED-AP] no application processors; single-CPU regression\n");
++            Serial.WriteString("[MANAGED-AP-TEST] PASS\n");
++            return true;
++        }
++
++        long frequency = X64CpuOps.TscFrequency;
++        ulong timeoutTicks = frequency > 0
++            ? checked((ulong)frequency * ApReadyTimeoutSeconds)
++            : 5_000_000_000UL;
++        int expected = checked((int)response->CpuCount - 1);
++        int completed = NativeRunManagedApTest(response->CpuCount, timeoutTicks);
++        if (completed != expected)
++        {
++            Serial.WriteString("[SMP] WARNING: managed AP proof result=");
++            WriteSignedNumber(completed);
++            Serial.WriteString(" expected=");
++            Serial.WriteNumber((ulong)expected);
++            Serial.WriteString("\n");
++            DumpManagedApState(response->CpuCount);
++            return false;
++        }
++
++        for (uint cpuId = 1; cpuId < response->CpuCount; cpuId++)
++        {
++            uint state = NativeGetManagedState(cpuId);
++            ulong checksum = NativeGetManagedResult(cpuId);
++            uint command = NativeGetCommand(cpuId);
++            uint completion = NativeGetCompletion(cpuId);
++            ulong ipiCount = NativeGetIpiCount(cpuId);
++            ulong expectedChecksum = ComputeManagedApChecksum(cpuId);
++            if (state != 1 || checksum != expectedChecksum || command != 0 ||
++                completion != 1 || ipiCount != ExpectedIpiCount)
++            {
++                Serial.WriteString("[SMP] WARNING: managed AP state mismatch for CpuId=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString("\n");
++                DumpManagedApState(response->CpuCount);
++                return false;
++            }
++
++            Serial.WriteString("[MANAGED-AP] cpu=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" checksum=0x");
++            Serial.WriteHex(checksum);
++            Serial.WriteString(" state=returned-native-idle\n");
++        }
++
++        Serial.WriteString("[MANAGED-AP-TEST] PASS\n");
++        return true;
++    }
++
++    private static void DumpManagedApState(ulong cpuCount)
++    {
++        for (uint cpuId = 1; cpuId < cpuCount; cpuId++)
++        {
++            Serial.WriteString("[MANAGED-AP-DIAG] cpu=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" state=");
++            Serial.WriteNumber(NativeGetManagedState(cpuId));
++            Serial.WriteString(" result=0x");
++            Serial.WriteHex(NativeGetManagedResult(cpuId));
++            Serial.WriteString(" command=");
++            Serial.WriteNumber(NativeGetCommand(cpuId));
++            Serial.WriteString(" completion=");
++            Serial.WriteNumber(NativeGetCompletion(cpuId));
++            Serial.WriteString(" ipi=");
++            Serial.WriteNumber(NativeGetIpiCount(cpuId));
++            Serial.WriteString("\n");
++        }
++    }
++
+     private static void WriteSignedNumber(int value)
+     {
+         if (value < 0)
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+index 9940e852d..9029723c3 100644
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -157,6 +157,15 @@ internal class X64PlatformInitializer : IPlatformInitializer
+         // Stage 11: run the real OrionGC collection path while APs are online.
+         RunRealGcStopTheWorldIntegrationProof();
+ 
++        // Stage 12: cross from the native AP idle path into one bounded,
++        // allocation-free managed C# export. There is still no scheduler or
++        // managed thread on an AP; the entry returns to the native HLT loop
++        // and the BSP validates the GS-local CpuId/result mailbox.
++        if (!SmpApBootstrap.RunManagedApplicationProcessorProof())
++        {
++            Cosmos.Kernel.Core.Panic.Halt("Managed AP execution proof failed.");
++        }
++
+         // Initialize RTC
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new RTC();
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+index 1cd719785..df5d77042 100644
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -257,6 +257,7 @@
+ 
+ .global _native_x64_irq_table
+ .extern __managed__irq
++.extern __cosmos_smp_managed_ap_entry
+ 
+ .intel_syntax noprefix
+ 
+@@ -520,6 +521,8 @@ _native_x64_ap_entry:
+     je .Lap_park_command_timer_start
+     cmp eax, 4
+     je .Lap_park_command_timer_stop
++    cmp eax, 5
++    je .Lap_park_command_managed
+     jmp .Lap_park
+ 
+ .Lap_park_command_work:
+@@ -564,6 +567,34 @@ _native_x64_ap_entry:
+     xchg dword ptr [r14 + 48], eax
+     jmp .Lap_park
+ 
++.Lap_park_command_managed:
++    // Stage 12: enter exactly one allocation-free managed export, then return
++    // to this native HLT loop. The BSP has already cleared completion/state and
++    // published command 5 before waking this AP with vector 0xF1.
++    xor eax, eax
++    xchg dword ptr [r14 + 32], eax
++    cli
++    mov edi, r13d
++    call __cosmos_smp_managed_ap_entry
++    test eax, eax
++    jz .Lap_managed_entry_success
++
++    lea rcx, [rip + _ap_managed_state]
++    mov rax, r13
++    shl rax, 2
++    add rcx, rax
++    mov dword ptr [rcx], 2
++    mfence
++    mov eax, 2
++    xchg dword ptr [r14 + 48], eax
++    jmp .Lap_park
++
++.Lap_managed_entry_success:
++    mfence
++    mov eax, 1
++    xchg dword ptr [r14 + 48], eax
++    jmp .Lap_park
++
+ .macro AP_STATE_GETTER name, offset, width
+ .global \name
+ \name:
+@@ -594,6 +625,53 @@ AP_STATE_GETTER _native_x64_get_ap_command, 32, 4
+ AP_STATE_GETTER _native_x64_get_ap_completion, 48, 4
+ AP_STATE_GETTER _native_x64_get_ap_ipi_count, 56, 8
+ 
++.global _native_x64_get_ap_managed_state
++_native_x64_get_ap_managed_state:
++    cmp edi, 255
++    ja .Lap_managed_state_get_invalid
++    lea rcx, [rip + _ap_managed_state]
++    mov eax, edi
++    shl rax, 2
++    mov eax, dword ptr [rcx + rax]
++    ret
++.Lap_managed_state_get_invalid:
++    xor eax, eax
++    ret
++
++.global _native_x64_get_ap_managed_result
++_native_x64_get_ap_managed_result:
++    cmp edi, 255
++    ja .Lap_managed_result_get_invalid
++    lea rcx, [rip + _ap_managed_result]
++    mov eax, edi
++    shl rax, 3
++    mov rax, qword ptr [rcx + rax]
++    ret
++.Lap_managed_result_get_invalid:
++    xor eax, eax
++    ret
++
++.global _native_x64_publish_managed_ap_result
++_native_x64_publish_managed_ap_result:
++    cmp edi, 255
++    ja .Lap_managed_publish_invalid
++    cmp edi, dword ptr gs:[0]
++    jne .Lap_managed_publish_invalid
++    lea rcx, [rip + _ap_managed_result]
++    mov eax, edi
++    shl rax, 3
++    mov qword ptr [rcx + rax], rsi
++    mfence
++    lea rcx, [rip + _ap_managed_state]
++    mov eax, edi
++    shl rax, 2
++    mov dword ptr [rcx + rax], 1
++    xor eax, eax
++    ret
++.Lap_managed_publish_invalid:
++    mov eax, -1
++    ret
++
+ .global _native_x64_get_ap_timer_ticks
+ _native_x64_get_ap_timer_ticks:
+     cmp edi, 255
+@@ -1050,6 +1128,124 @@ _native_x64_run_ap_parked_command_test:
+     ret
+ 
+ 
++// int _native_x64_run_managed_ap_test(uint64_t cpuCount,
++//                                     uint64_t timeoutTscTicks)
++// Wakes each parked AP with vector 0xF1, asks it to execute the single managed
++// export behind command 5, and waits for its native completion mailbox. No
++// scheduler, managed Thread or AP-side allocation is involved.
++.global _native_x64_run_managed_ap_test
++_native_x64_run_managed_ap_test:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++    test rdi, rdi
++    jz .Lap_managed_test_invalid
++    cmp rdi, 256
++    ja .Lap_managed_test_invalid
++    test rsi, rsi
++    jz .Lap_managed_test_invalid
++    mov r12, rdi
++    mov r13, rsi
++    call .Lap_read_lapic_base
++    test rax, rax
++    jz .Lap_managed_test_invalid
++    mov qword ptr [rip + _native_x64_lapic_base], rax
++    mov r15, rax
++    xor r14d, r14d
++    mov ebx, 1
++
++.Lap_managed_test_cpu_loop:
++    cmp rbx, r12
++    jae .Lap_managed_test_success
++    lea r8, [rip + _ap_boot_state]
++    mov rax, rbx
++    shl rax, 6
++    add r8, rax
++    cmp dword ptr [r8 + 0], 1
++    jne .Lap_managed_test_invalid
++    cmp dword ptr [r8 + 32], 0
++    jne .Lap_managed_test_invalid
++    cmp dword ptr [r8 + 48], 1
++    jne .Lap_managed_test_invalid
++    cmp qword ptr [r8 + 56], 7
++    jne .Lap_managed_test_invalid
++
++    lea r9, [rip + _ap_managed_state]
++    mov rax, rbx
++    shl rax, 2
++    add r9, rax
++    cmp dword ptr [r9], 0
++    jne .Lap_managed_test_invalid
++    mov dword ptr [r9], 0
++    lea r10, [rip + _ap_managed_result]
++    mov rax, rbx
++    shl rax, 3
++    add r10, rax
++    mov qword ptr [r10], 0
++    mfence
++
++    xor eax, eax
++    xchg dword ptr [r8 + 48], eax
++    cmp eax, 1
++    jne .Lap_managed_test_invalid
++    mov eax, 5
++    xchg dword ptr [r8 + 32], eax
++    test eax, eax
++    jne .Lap_managed_test_invalid
++
++    mov edx, dword ptr [r8 + 8]
++    shl edx, 24
++    mov dword ptr [r15 + 0x310], edx
++    mov dword ptr [r15 + 0x300], 0x000000F1
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++
++.Lap_managed_test_wait:
++    cmp dword ptr [r9], 2
++    je .Lap_managed_test_failure
++    cmp dword ptr [r9], 1
++    jne .Lap_managed_test_poll
++    cmp dword ptr [r8 + 48], 1
++    jne .Lap_managed_test_poll
++    cmp dword ptr [r8 + 32], 0
++    jne .Lap_managed_test_poll
++    cmp qword ptr [r8 + 56], 8
++    jne .Lap_managed_test_poll
++    inc r14
++    inc rbx
++    jmp .Lap_managed_test_cpu_loop
++
++.Lap_managed_test_poll:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r13
++    jb .Lap_managed_test_wait
++    jmp .Lap_managed_test_failure
++
++.Lap_managed_test_success:
++    mov eax, r14d
++    jmp .Lap_managed_test_return
++.Lap_managed_test_failure:
++    mov eax, -3
++    jmp .Lap_managed_test_return
++.Lap_managed_test_invalid:
++    mov eax, -2
++.Lap_managed_test_return:
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++
+ // int _native_x64_run_ap_timer_test(uint64_t cpuCount,
+ //                                    uint32_t initialCount,
+ //                                    uint64_t minimumTicks,
+@@ -1767,6 +1963,13 @@ _native_x64_lapic_base: .quad 0
+ _ap_timer_ticks: .zero 2048
+ _ap_timer_initial_count: .long 0
+ 
++.balign 64
++// Stage-12 managed AP result mailboxes. State is 0=idle, 1=managed return
++// published, 2=managed entry failure. Results are written before state=1.
++_ap_managed_state: .zero 1024
++.balign 64
++_ap_managed_result: .zero 2048
++
+ .balign 64
+ // 256 cache-line-isolated records:
+ // request_epoch, ack_epoch, resume_epoch, state, padding,
