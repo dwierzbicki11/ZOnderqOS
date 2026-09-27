@@ -133,7 +133,7 @@ index c16e9d9..c0df531 100644
 +    private const ulong AutomaticBalanceCooldownNs = 50_000_000;
 +    private const uint AutomaticBalanceHysteresis = 2;
 +    private const ulong Stage21TimeoutSeconds = 15;
-+    private const uint Stage21WorkersPerSource = 4;
++    private const uint Stage21WorkersPerSource = 3;
 
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
@@ -574,7 +574,7 @@ index c16e9d9..c0df531 100644
      // ========== Thread Entry Dispatch ==========
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
-@@ -2770,6 +3148,14 @@ public static partial class SchedulerManager
+@@ -2770,5 +3148,13 @@ public static partial class SchedulerManager
              return;
          }
 
@@ -588,4 +588,3 @@ index c16e9d9..c0df531 100644
 +
          // Check and wake up sleeping threads whose timeout has expired
          CheckSleepingThreads(cpuId, elapsedNs);
-
