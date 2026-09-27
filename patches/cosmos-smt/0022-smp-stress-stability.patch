@@ -16,18 +16,6 @@ index 21dcd5f..18641b2 100644
      }
  }
 
-diff --git a/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs b/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs
---- a/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs
-+++ b/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs
-@@ -543,7 +543,7 @@ public class StrideScheduler : IScheduler
-                 continue;
-             }
- 
--            if (threadData.Pass <= otherData.Pass)
-+            if (threadData.Pass < otherData.Pass)
-             {
-                 break;
-             }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 index c0df531..2fa5f7b 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
@@ -48,7 +36,8 @@ index c0df531..2fa5f7b 100644
      private const uint AutomaticBalanceHysteresis = 2;
 -    private const ulong Stage21TimeoutSeconds = 15;
 +    private const ulong Stage21TimeoutSeconds = 60;
-     private const uint Stage21WorkersPerSource = 4;
+-    private const uint Stage21WorkersPerSource = 4;
++    private const uint Stage21WorkersPerSource = 3;
 +    private const uint Stage22StressRounds = 8;
 
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
@@ -281,7 +270,7 @@ index c0df531..2fa5f7b 100644
 +                int migrations = Volatile.Read(ref s_stage21Migrations);
 +                int preemptions = Volatile.Read(ref s_stage21Preemptions);
 +                int resumes = Volatile.Read(ref s_stage21Resumes);
-+                if (migrations < 4 || preemptions < 16 || resumes < 8)
++                if (migrations < 4 || preemptions < 12 || resumes < 6)
 +                {
 +                    return false;
 +                }
