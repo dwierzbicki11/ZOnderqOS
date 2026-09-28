@@ -1,40 +1,28 @@
 diff --git a/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs b/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs
-new file mode 100644
---- /dev/null
+--- a/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs
 +++ b/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs
-@@ -0,0 +1,22 @@
+@@ -1,4 +1,6 @@
 +using Cosmos.Kernel.Core.IO;
 +using Cosmos.Kernel.Core.Scheduler;
 +
-+namespace Cosmos.Kernel.System.Diagnostics;
-+
-+/// <summary>
-+/// Production SMP activation/verification entry points for kernels built on
-+/// the Stage-23 scheduler series. Kept separate from SchedulerInfo so older
-+/// compatibility shims cannot shadow this API.
-+/// </summary>
-+public static class SmpRuntime
-+{
-+    /// <summary>
-+    /// Runs the ordinary System.Threading.Thread distribution proof after the
-+    /// kernel runtime is fully initialized.
-+    /// </summary>
-+    public static bool VerifyAllLogicalProcessors()
-+    {
-+        Serial.WriteString("[SCHED-PRODUCTION-SMP] begin\n");
+ namespace Cosmos.Kernel.System.Diagnostics;
+ 
+ /// <summary>
+@@ -6,10 +8,12 @@ namespace Cosmos.Kernel.System.Diagnostics;
+ /// Historical SMT stages intentionally implement this as a no-op; Stage 23
+ /// replaces the body once ordinary managed threads can run on every CPU.
+ /// </summary>
+ public static class SmpRuntime
+ {
+-    /// <summary>Returns true until the production SMP scheduler is enabled.</summary>
++    /// <summary>Verifies that ordinary managed threads execute across all logical CPUs.</summary>
+     public static bool VerifyAllLogicalProcessors()
+     {
+-        return true;
++        Serial.WriteString("[SCHED-PRODUCTION-SMP] begin\\n");
 +        return SchedulerManager.RunManagedThreadDistributionProof();
-+    }
-+}
-diff --git a/src/Cosmos.Kernel.System/PublicAPI.Unshipped.txt b/src/Cosmos.Kernel.System/PublicAPI.Unshipped.txt
---- a/src/Cosmos.Kernel.System/PublicAPI.Unshipped.txt
-+++ b/src/Cosmos.Kernel.System/PublicAPI.Unshipped.txt
-@@ -1,4 +1,6 @@
- #nullable enable
-+Cosmos.Kernel.System.Diagnostics.SmpRuntime
-+static Cosmos.Kernel.System.Diagnostics.SmpRuntime.VerifyAllLogicalProcessors() -> bool
- abstract Cosmos.Kernel.System.Graphics.Canvas3D.ClearScene(System.Drawing.Color color, float depth = 1) -> void
- abstract Cosmos.Kernel.System.Graphics.Canvas3D.CreateTexture(Cosmos.Kernel.System.Graphics.Image! image) -> Cosmos.Kernel.System.Graphics.Texture!
- abstract Cosmos.Kernel.System.Graphics.Canvas3D.DrawMesh(Cosmos.Kernel.System.Graphics.Mesh! mesh, in System.Numerics.Matrix4x4 world) -> void
+     }
+ }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
