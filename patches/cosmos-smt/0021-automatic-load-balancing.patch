@@ -1,3 +1,27 @@
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs
+new file mode 100644
+index 0000000000000000000000000000000000000000..ab964d96e497d03965945edd2501a664a998c4fb
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs
+@@ -0,0 +1,18 @@
++using System.Runtime.InteropServices;
++using Cosmos.Kernel.Core.CPU;
++using Cosmos.Kernel.Core.Scheduler;
++
++namespace Cosmos.Kernel.Core.Bridge;
++
++internal static class ManagedApAutomaticBalanceThreadNative
++{
++    [UnmanagedCallersOnly]
++    internal static void Entry(uint token)
++    {
++        SchedulerManager.RunStage21AutomaticBalanceThread(token);
++        while (true)
++        {
++            InternalCpu.Halt();
++        }
++    }
++}
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 index 27b7ad7f98e662ad231bebda90a7d6ab4d6e57d9..600bc362aa3aa8032634f57ab0c237816e015d58 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
@@ -16,7 +40,7 @@ index 27b7ad7f98e662ad231bebda90a7d6ab4d6e57d9..600bc362aa3aa8032634f57ab0c23781
 @@ -367,6 +371,49 @@ public sealed class PerCpuState : SchedulerExtensible
      internal ulong Stage20Checksum => Volatile.Read(ref _stage20Checksum);
      internal int Stage20PendingMigration => Volatile.Read(ref _pendingMigrationTargetPlusOne);
-
+ 
 +    /// <summary>
 +    /// Owner-CPU snapshot of runnable non-idle work. Remote CPUs may read the
 +    /// snapshot when choosing a balancing target, but never inspect or mutate
@@ -82,7 +106,7 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
 +    private static int s_stage21Migrations;
 +    private static int s_stage21SourceMask;
 +    private static int s_stage21TargetMask;
-
+ 
      /// <summary>
      /// The interval the boot path asks the platform to arm the scheduler
 @@ -96,6 +107,10 @@ public static partial class SchedulerManager
@@ -93,13 +117,13 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
 +    private const uint AutomaticBalanceHysteresis = 2;
 +    private const ulong Stage21TimeoutSeconds = 60;
 +    private const uint Stage21WorkersPerSource = 3;
-
+ 
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
 @@ -1958,6 +1973,257 @@ public static partial class SchedulerManager
      private static ulong ComputeStage20Checksum(uint threadId, uint hopCount, uint cpuId) =>
          0x534D_5031_4000_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)hopCount << 24) ^ threadId;
-
+ 
 +    internal static unsafe bool RunAutomaticApplicationProcessorLoadBalancingProof()
 +    {
 +        if (!s_enabled || s_currentScheduler is null || s_cpuStates is null ||
@@ -362,7 +386,7 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
 +        {
 +            Interlocked.Increment(ref s_stage21Preemptions);
 +        }
-
+ 
          nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
  #if ARCH_X64
 @@ -2009,15 +2279,20 @@ public static partial class SchedulerManager
@@ -381,14 +405,14 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
          {
              return false;
          }
-
+ 
          if (targetCpuId == 0 || targetCpuId >= s_cpuCount || targetCpuId == cpuId)
          {
 -            Volatile.Write(ref s_stage20Failure, 11);
 +            RecordMigrationFailure(explicitlyRequested, 11);
              return false;
          }
-
+ 
 @@ -2025,19 +2300,52 @@ public static partial class SchedulerManager
          SchedulerThread? replacement = s_currentScheduler.PickNext(source) ?? source.IdleThread;
          if (replacement is null || NativeDisarmSchedulerTimer() != 1)
@@ -415,7 +439,7 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
 +            RecordMigrationFailure(explicitlyRequested, 15);
              return false;
          }
-
+ 
          outgoing.StackPointer = currentRsp;
          outgoing.State = SchedulerThreadState.Ready;
          s_currentScheduler.OnThreadMigrate(outgoing, source, destination);
@@ -442,18 +466,18 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
 +                SetStage21CpuBit(ref s_stage21TargetMask, destination.CpuId);
 +            }
 +        }
-
+ 
          source.CurrentThread = replacement;
          bool isNewThread = replacement.State == SchedulerThreadState.Created;
 @@ -2046,7 +2354,7 @@ public static partial class SchedulerManager
-
+ 
          if (NativeStageSchedulerHandoff(targetCpuId) != 1)
          {
 -            Volatile.Write(ref s_stage20Failure, 14);
 +            RecordMigrationFailure(explicitlyRequested, 14);
              return false;
          }
-
+ 
 @@ -2054,8 +2362,123 @@ public static partial class SchedulerManager
          ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
          return true;
@@ -528,7 +552,7 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
 +        }
 +    }
  #endif
-
+ 
 +    private static ulong AddNanosecondsToTimestamp(ulong timestamp, ulong nanoseconds)
 +    {
 +        long frequency = Stopwatch.Frequency;
@@ -581,7 +605,7 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
 @@ -2776,6 +3199,14 @@ public static partial class SchedulerManager
              return;
          }
-
+ 
 +        // Only the owner CPU touches its scheduler run queue. Publish a
 +        // compact load snapshot for Stage 21 target selection instead of
 +        // allowing another CPU to enumerate a List<T> that an IRQ can mutate.
@@ -592,7 +616,7 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
 +
          // Check and wake up sleeping threads whose timeout has expired
          CheckSleepingThreads(cpuId, elapsedNs);
-
+ 
 diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 index 0483577488168689a8cbbcb1fb6eb45af107fe66..21dcd5f31d8fa14e295a61538b557839b6d2a9b8 100644
 --- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
@@ -610,28 +634,3 @@ index 0483577488168689a8cbbcb1fb6eb45af107fe66..21dcd5f31d8fa14e295a61538b557839
          }
      }
  }
-
-diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs
-new file mode 100644
-index 0000000..ab964d9
---- /dev/null
-+++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs
-@@ -0,0 +1,18 @@
-+using System.Runtime.InteropServices;
-+using Cosmos.Kernel.Core.CPU;
-+using Cosmos.Kernel.Core.Scheduler;
-+
-+namespace Cosmos.Kernel.Core.Bridge;
-+
-+internal static class ManagedApAutomaticBalanceThreadNative
-+{
-+    [UnmanagedCallersOnly]
-+    internal static void Entry(uint token)
-+    {
-+        SchedulerManager.RunStage21AutomaticBalanceThread(token);
-+        while (true)
-+        {
-+            InternalCpu.Halt();
-+        }
-+    }
-+}
