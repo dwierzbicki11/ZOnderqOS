@@ -6,7 +6,14 @@ namespace ZonderqOS
 {
     public static class PermissionManager
     {
-        private static string AclPath = @"/etc/acl.map";
+        private const string AclPath = "/etc/acl.map";
+        private const string AclTempPath = "/etc/acl.map.new";
+        private const string AclBackupPath = "/etc/acl.map.bak";
+        private const long MaxAclBytes = 256 * 1024;
+        private const int MaxAclEntries = 4096;
+        private const int MaxPathLength = 512;
+        private const int MaxOwnerLength = 64;
+
         private static readonly Dictionary<string, (string Owner, int Perms)> _aclCache = new Dictionary<string, (string, int)>();
         private static readonly object _aclLock = new object();
 
@@ -16,6 +23,15 @@ namespace ZonderqOS
             {
                 if (!Directory.Exists("/etc"))
                     Directory.CreateDirectory("/etc");
+
+                // Recover the last complete ACL if power was lost after the
+                // old file was renamed but before the new file was committed.
+                if (!File.Exists(AclPath) && File.Exists(AclBackupPath))
+                    File.Move(AclBackupPath, AclPath);
+
+                // A temp file is never authoritative across boots.
+                if (File.Exists(AclTempPath))
+                    File.Delete(AclTempPath);
 
                 if (!File.Exists(AclPath))
                 {
@@ -42,17 +58,44 @@ namespace ZonderqOS
                 _aclCache.Clear();
                 try
                 {
-                    string[] lines = File.ReadAllLines(AclPath);
-                    foreach (var line in lines)
+                    if (!File.Exists(AclPath))
+                        return;
+
+                    FileInfo info = new FileInfo(AclPath);
+                    if (info.Length < 0 || info.Length > MaxAclBytes)
                     {
-                        string[] parts = line.Split('|');
-                        if (parts.Length == 3 &&
-                            !string.IsNullOrEmpty(parts[0]) &&
-                            !string.IsNullOrEmpty(parts[1]) &&
-                            int.TryParse(parts[2], out int perms) &&
-                            IsValidPermissionMode(perms))
+                        WriteMessage.WriteError("ACL file size is invalid; using fail-closed defaults.", "SEC");
+                        return;
+                    }
+
+                    using (StreamReader reader = new StreamReader(AclPath))
+                    {
+                        string line;
+                        int parsed = 0;
+
+                        while ((line = reader.ReadLine()) != null)
                         {
-                            _aclCache[NormalizePath(parts[0])] = (parts[1], perms);
+                            if (parsed >= MaxAclEntries)
+                            {
+                                WriteMessage.WriteError("ACL entry limit exceeded; remaining entries ignored.", "SEC");
+                                break;
+                            }
+
+                            string[] parts = line.Split('|');
+                            if (parts.Length != 3)
+                                continue;
+
+                            string path = NormalizePath(parts[0]);
+                            string owner = parts[1];
+
+                            int perms;
+                            if (!IsValidAclIdentity(path, owner) ||
+                                !int.TryParse(parts[2], out perms) ||
+                                !IsValidPermissionMode(perms))
+                                continue;
+
+                            _aclCache[path] = (owner, perms);
+                            parsed++;
                         }
                     }
                 }
@@ -73,7 +116,7 @@ namespace ZonderqOS
 
         public static void SetPermission(string path, string owner, int perms)
         {
-            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(owner) || !IsValidPermissionMode(perms))
+            if (!IsValidAclIdentity(NormalizePath(path), owner) || !IsValidPermissionMode(perms))
             {
                 WriteMessage.WriteError("Invalid ACL entry.", "SEC");
                 return;
@@ -81,7 +124,14 @@ namespace ZonderqOS
 
             lock (_aclLock)
             {
-                _aclCache[NormalizePath(path)] = (owner, perms);
+                string normalized = NormalizePath(path);
+                if (!_aclCache.ContainsKey(normalized) && _aclCache.Count >= MaxAclEntries)
+                {
+                    WriteMessage.WriteError("ACL entry limit reached.", "SEC");
+                    return;
+                }
+
+                _aclCache[normalized] = (owner, perms);
                 SaveAclLocked();
             }
         }
@@ -227,6 +277,26 @@ namespace ZonderqOS
             return (othersPerms & 2) == 2;
         }
 
+        private static bool IsValidAclIdentity(string path, string owner)
+        {
+            if (string.IsNullOrEmpty(path) || path.Length > MaxPathLength)
+                return false;
+
+            if (path[0] != '/')
+                return false;
+
+            if (string.IsNullOrEmpty(owner) || owner.Length > MaxOwnerLength)
+                return false;
+
+            if (path.IndexOf('|') >= 0 || path.IndexOf('\r') >= 0 || path.IndexOf('\n') >= 0)
+                return false;
+
+            if (owner.IndexOf('|') >= 0 || owner.IndexOf('\r') >= 0 || owner.IndexOf('\n') >= 0)
+                return false;
+
+            return true;
+        }
+
         private static bool IsValidPermissionMode(int perms)
         {
             if (perms < 0 || perms > 777)
@@ -272,15 +342,69 @@ namespace ZonderqOS
         {
             try
             {
+                if (_aclCache.Count > MaxAclEntries)
+                {
+                    WriteMessage.WriteError("ACL cache exceeds safety limit; refusing to persist.", "SEC");
+                    return;
+                }
+
                 var lines = new List<string>(_aclCache.Count);
                 foreach (var kvp in _aclCache)
-                    lines.Add($"{kvp.Key}|{kvp.Value.Owner}|{kvp.Value.Perms}");
+                {
+                    if (!IsValidAclIdentity(kvp.Key, kvp.Value.Owner) ||
+                        !IsValidPermissionMode(kvp.Value.Perms))
+                        continue;
 
-                File.WriteAllText(AclPath, lines.Count == 0 ? string.Empty : string.Join("\n", lines) + "\n");
+                    lines.Add(kvp.Key + "|" + kvp.Value.Owner + "|" + kvp.Value.Perms);
+                }
+
+                lines.Sort(StringComparer.Ordinal);
+                string payload = lines.Count == 0
+                    ? string.Empty
+                    : string.Join("\n", lines) + "\n";
+
+                if (payload.Length > MaxAclBytes)
+                {
+                    WriteMessage.WriteError("ACL payload exceeds safety limit; refusing to persist.", "SEC");
+                    return;
+                }
+
+                if (File.Exists(AclTempPath))
+                    File.Delete(AclTempPath);
+
+                File.WriteAllText(AclTempPath, payload);
+
+                if (File.Exists(AclBackupPath))
+                    File.Delete(AclBackupPath);
+
+                if (File.Exists(AclPath))
+                    File.Move(AclPath, AclBackupPath);
+
+                try
+                {
+                    File.Move(AclTempPath, AclPath);
+                }
+                catch
+                {
+                    if (!File.Exists(AclPath) && File.Exists(AclBackupPath))
+                        File.Move(AclBackupPath, AclPath);
+                    throw;
+                }
+
+                if (File.Exists(AclBackupPath))
+                    File.Delete(AclBackupPath);
             }
             catch (Exception ex)
             {
+                try
+                {
+                    if (File.Exists(AclTempPath))
+                        File.Delete(AclTempPath);
+                }
+                catch { }
+
                 WriteMessage.WriteError($"ACL save failed: {ex.Message}", "SEC");
+                SystemLogger.Log(SystemLogLevel.Error, "ACL", "ACL save failed: " + ex.Message);
             }
         }
     }
