@@ -26,13 +26,14 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel
 index 8c42b6c..9329fc4 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-@@ -32,7 +32,13 @@ public sealed class PerCpuState : SchedulerExtensible
+@@ -32,7 +32,14 @@ public sealed class PerCpuState : SchedulerExtensible
      /// Thread currently executing on this CPU, or <see langword="null"/>
      /// before the scheduler has run.
      /// </summary>
 -    public SchedulerThread? CurrentThread { get; internal set; }
 +    private SchedulerThread? _currentThread;
 +
++    /// <summary>Gets or sets the thread currently published as executing on this CPU.</summary>
 +    public SchedulerThread? CurrentThread
 +    {
 +        get => Volatile.Read(ref _currentThread);
@@ -41,7 +42,7 @@ index 8c42b6c..9329fc4 100644
 
      /// <summary>
      /// This CPU's idle thread, scheduled when no other thread is runnable, or
-@@ -71,6 +77,14 @@ public sealed class PerCpuState : SchedulerExtensible
+@@ -71,6 +78,14 @@ public sealed class PerCpuState : SchedulerExtensible
      private int _stage17ResumeCount;
      private uint _stage17ThreadId;
      private ulong _stage17Checksum;
@@ -56,7 +57,7 @@ index 8c42b6c..9329fc4 100644
 
      /// <summary>
      /// Stage-13 per-CPU scheduler foundation phase: 0=not entered,
-@@ -196,4 +210,89 @@ public sealed class PerCpuState : SchedulerExtensible
+@@ -196,4 +211,89 @@ public sealed class PerCpuState : SchedulerExtensible
          Interlocked.Increment(ref _stage17ResumeCount);
          return Interlocked.CompareExchange(ref _stage17PreemptionState, 4, 3) == 3;
      }
@@ -157,13 +158,14 @@ index 9fc46a1..ae2e7fe 100644
  using Cosmos.Kernel.Core.Memory.GarbageCollector;
 
  namespace Cosmos.Kernel.Core.Scheduler;
-@@ -34,7 +35,13 @@ public sealed unsafe class SchedulerThread : SchedulerExtensible
+@@ -34,7 +35,14 @@ public sealed unsafe class SchedulerThread : SchedulerExtensible
      /// <summary>
      /// CPU this thread is assigned to.
      /// </summary>
 -    public uint CpuId { get; internal set; }
 +    private uint _cpuId;
 +
++    /// <summary>Gets or sets the CPU assignment with cross-CPU publication.</summary>
 +    public uint CpuId
 +    {
 +        get => Volatile.Read(ref _cpuId);
@@ -172,13 +174,14 @@ index 9fc46a1..ae2e7fe 100644
 
      // ===== State =====
 
-@@ -43,7 +50,13 @@ public sealed unsafe class SchedulerThread : SchedulerExtensible
+@@ -43,7 +51,14 @@ public sealed unsafe class SchedulerThread : SchedulerExtensible
      /// <see cref="SchedulerManager"/>; schedulers observe the state but do
      /// not change it.
      /// </summary>
 -    public SchedulerThreadState State { get; internal set; }
 +    private int _state;
 +
++    /// <summary>Gets or sets the lifecycle state with cross-CPU publication.</summary>
 +    public SchedulerThreadState State
 +    {
 +        get => (SchedulerThreadState)Volatile.Read(ref _state);
