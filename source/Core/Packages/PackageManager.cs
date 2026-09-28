@@ -11,8 +11,15 @@ namespace ZonderqOS.SystemCore.Packages
     /// </summary>
     public static class PackageManager
     {
+#if ZPKG_HOST_TESTS
+        // The host integration gate runs the real installer against disposable
+        // directories. This branch is never compiled into the kernel.
+        public static readonly string RegistryRoot = Path.Combine(Environment.GetEnvironmentVariable("ZPKG_TEST_ROOT"), "registry");
+        public static readonly string StoreRoot = Path.Combine(Environment.GetEnvironmentVariable("ZPKG_TEST_ROOT"), "store");
+#else
         public const string RegistryRoot = "/var/lib/zpkg";
         public const string StoreRoot = "/opt/zpkg";
+#endif
         public const string ManifestFileName = "package.zpkg";
         public const string PayloadDirectoryName = "payload";
 
@@ -477,8 +484,9 @@ namespace ZonderqOS.SystemCore.Packages
             error = string.Empty;
             try
             {
-                if (!Directory.Exists("/var/lib"))
-                    Directory.CreateDirectory("/var/lib");
+                string registryParent = Path.GetDirectoryName(RegistryRoot);
+                if (!Directory.Exists(registryParent))
+                    Directory.CreateDirectory(registryParent);
 
                 if (!Directory.Exists(RegistryRoot))
                 {
