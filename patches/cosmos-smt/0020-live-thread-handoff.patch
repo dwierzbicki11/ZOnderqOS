@@ -334,7 +334,7 @@ index 4a28a6d..c16e9d9 100644
 +            : 30_000_000_000UL;
 +        int startedAps = NativeBeginSchedulerCpu(1);
 +        if (startedAps != 1 ||
-+            !WaitForStage20Cpu(worker, 1, 0, timeoutTicks))
++            !WaitForStage20Cpu(worker, 1, s_cpuCount == 2 ? Stage20RequiredPreemptionsPerCpu : 0, timeoutTicks))
 +        {
 +            Serial.WriteString("[SCHED-LIVE-MIGRATE-CHECK] phase=start started="); Serial.WriteNumber((ulong)startedAps);
 +            Serial.WriteString(" worker-cpu="); Serial.WriteNumber(worker.CpuId);
