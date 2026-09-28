@@ -7,6 +7,7 @@ on:
       - 'source/Shell/Commands/CmdZpkg.cs'
       - 'source/Shell/Command.cs'
       - 'tests/PackageManifestSmoke/**'
+      - 'tests/PackageInstallerSmoke/**'
       - 'docs/package-manager-roadmap.md'
       - 'ZonderqOS.csproj'
       - '.github/workflows/package-manager.yml'
@@ -18,6 +19,7 @@ on:
       - 'source/Shell/Commands/CmdZpkg.cs'
       - 'source/Shell/Command.cs'
       - 'tests/PackageManifestSmoke/**'
+      - 'tests/PackageInstallerSmoke/**'
       - 'docs/package-manager-roadmap.md'
       - 'ZonderqOS.csproj'
       - '.github/workflows/package-manager.yml'
@@ -52,3 +54,6 @@ jobs:
 
       - name: Manifest validation smoke test
         run: dotnet run --project tests/PackageManifestSmoke/PackageManifestSmoke.csproj -c Release
+
+      - name: Local installer integration smoke test
+        run: dotnet run --project tests/PackageInstallerSmoke/PackageInstallerSmoke.csproj -c Release
