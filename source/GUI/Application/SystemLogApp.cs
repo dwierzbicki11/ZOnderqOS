@@ -5,6 +5,7 @@ using System.IO;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Keyboard;
 using ZonderqOS.GUI.Icons;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -114,24 +115,24 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
-                fileBytes = new FileInfo(path).Length;
-                string[] ring = new string[MaxCachedLines];
-                int totalLines = 0;
+                string error;
+                lineCount = LogQuery.ReadTail(
+                    path,
+                    cachedLines,
+                    MaxCachedLines,
+                    string.Empty,
+                    out fileBytes,
+                    out error);
 
-                using (var reader = new StreamReader(path))
+                if (!string.IsNullOrEmpty(error))
                 {
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
-                    {
-                        ring[totalLines % MaxCachedLines] = line;
-                        totalLines++;
-                    }
+                    global::ZonderqOS.SystemLogger.Log(
+                        global::ZonderqOS.SystemLogLevel.Warning,
+                        "LOGVIEW",
+                        "GUI log query failed: " + error);
+                    lineCount = 0;
+                    fileBytes = 0;
                 }
-
-                int keep = System.Math.Min(totalLines, MaxCachedLines);
-                int start = totalLines > MaxCachedLines ? totalLines % MaxCachedLines : 0;
-                for (int i = 0; i < keep; i++)
-                    cachedLines[lineCount++] = ring[(start + i) % MaxCachedLines];
 
                 scrollOffset = System.Math.Max(0, lineCount - 20);
             }
