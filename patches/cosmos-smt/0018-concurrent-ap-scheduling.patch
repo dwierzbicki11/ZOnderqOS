@@ -26,7 +26,22 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel
 index 8c42b6c..9329fc4 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-@@ -71,6 +71,14 @@ public sealed class PerCpuState : SchedulerExtensible
+@@ -32,7 +32,13 @@ public sealed class PerCpuState : SchedulerExtensible
+     /// Thread currently executing on this CPU, or <see langword="null"/>
+     /// before the scheduler has run.
+     /// </summary>
+-    public SchedulerThread? CurrentThread { get; internal set; }
++    private SchedulerThread? _currentThread;
++
++    public SchedulerThread? CurrentThread
++    {
++        get => Volatile.Read(ref _currentThread);
++        internal set => Volatile.Write(ref _currentThread, value);
++    }
+
+     /// <summary>
+     /// This CPU's idle thread, scheduled when no other thread is runnable, or
+@@ -71,6 +77,14 @@ public sealed class PerCpuState : SchedulerExtensible
      private int _stage17ResumeCount;
      private uint _stage17ThreadId;
      private ulong _stage17Checksum;
@@ -38,10 +53,10 @@ index 8c42b6c..9329fc4 100644
 +    private uint _stage18ThreadId1;
 +    private ulong _stage18Checksum0;
 +    private ulong _stage18Checksum1;
- 
+
      /// <summary>
      /// Stage-13 per-CPU scheduler foundation phase: 0=not entered,
-@@ -196,4 +204,89 @@ public sealed class PerCpuState : SchedulerExtensible
+@@ -196,4 +210,89 @@ public sealed class PerCpuState : SchedulerExtensible
          Interlocked.Increment(ref _stage17ResumeCount);
          return Interlocked.CompareExchange(ref _stage17PreemptionState, 4, 3) == 3;
      }
@@ -131,6 +146,47 @@ index 8c42b6c..9329fc4 100644
 +        }
 +    }
  }
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
+index 9fc46a1..ae2e7fe 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
+@@ -1,5 +1,6 @@
+ using System.Diagnostics.CodeAnalysis;
+ using System.Runtime.InteropServices;
++using System.Threading;
+ using Cosmos.Kernel.Core.Memory.GarbageCollector;
+
+ namespace Cosmos.Kernel.Core.Scheduler;
+@@ -34,7 +35,13 @@ public sealed unsafe class SchedulerThread : SchedulerExtensible
+     /// <summary>
+     /// CPU this thread is assigned to.
+     /// </summary>
+-    public uint CpuId { get; internal set; }
++    private uint _cpuId;
++
++    public uint CpuId
++    {
++        get => Volatile.Read(ref _cpuId);
++        internal set => Volatile.Write(ref _cpuId, value);
++    }
+
+     // ===== State =====
+
+@@ -43,7 +50,13 @@ public sealed unsafe class SchedulerThread : SchedulerExtensible
+     /// <see cref="SchedulerManager"/>; schedulers observe the state but do
+     /// not change it.
+     /// </summary>
+-    public SchedulerThreadState State { get; internal set; }
++    private int _state;
++
++    public SchedulerThreadState State
++    {
++        get => (SchedulerThreadState)Volatile.Read(ref _state);
++        internal set => Volatile.Write(ref _state, (int)value);
++    }
+
+     /// <summary>
+     /// Thread attribute flags.
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 index ab897cb..33a92b1 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
@@ -141,7 +197,7 @@ index ab897cb..33a92b1 100644
      private static bool s_enabled;
 -    private static uint s_nextThreadId;
 +    private static int s_nextThreadId;
- 
+
      // Global thread registry: tracks ALL live threads across all states
      // (Running, Ready, Blocked, Sleeping). Used by GC to scan all thread stacks.
 @@ -35,6 +35,9 @@ public static partial class SchedulerManager
@@ -151,17 +207,17 @@ index ab897cb..33a92b1 100644
 +    private static int s_stage18StartedWorkers;
 +    private static int s_stage18ReleaseWorkers;
 +    private static int s_stage18ExpectedWorkers;
- 
+
      /// <summary>
      /// The interval the boot path asks the platform to arm the scheduler
 @@ -79,6 +82,9 @@ public static partial class SchedulerManager
- 
+
      /// <summary>Bound for each half of the Stage-17 preempt/resume proof.</summary>
      private const ulong Stage17TimeoutSeconds = 5;
 +    private const ulong Stage18TimeoutSeconds = 30;
 +    private const uint Stage18WorkersPerApplicationProcessor = 2;
 +    private const uint Stage18RequiredPreemptionsPerWorker = 2;
- 
+
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
 @@ -165,6 +171,14 @@ public static partial class SchedulerManager
@@ -177,7 +233,7 @@ index ab897cb..33a92b1 100644
 +    [SuppressGCTransition]
 +    private static partial int NativeWaitConcurrentSchedulerTest(ulong cpuCount, ulong timeoutTscTicks);
  #endif
- 
+
      /// <summary>
 @@ -885,7 +899,7 @@ public static partial class SchedulerManager
      /// <summary>
@@ -185,13 +241,13 @@ index ab897cb..33a92b1 100644
      /// </summary>
 -    internal static uint AllocateThreadId() => s_nextThreadId++;
 +    internal static uint AllocateThreadId() => checked((uint)(Interlocked.Increment(ref s_nextThreadId) - 1));
- 
+
      /// <summary>
      /// Creates one real scheduler thread per AP, enqueues it in that CPU's
 @@ -1186,6 +1200,215 @@ public static partial class SchedulerManager
      private static ulong ComputeStage17Checksum(uint cpuId, uint threadId) =>
          0x534D_5031_3700_0000UL ^ ((ulong)cpuId << 32) ^ threadId;
- 
+
 +    internal static unsafe bool RunConcurrentApplicationProcessorSchedulingProof()
 +    {
 +        if (!s_enabled || s_currentScheduler is null || s_cpuStates is null || s_cpuCount == 0 || !GarbageCollector.IsEnabled)
@@ -412,7 +468,7 @@ index ab897cb..33a92b1 100644
 +        {
 +            _ = state.TryRecordStage18Preemption(cpuId, thread.Id);
 +        }
- 
+
          nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
          OnTimerInterrupt(cpuId, currentRsp, DefaultQuantumNs);
 @@ -1355,7 +1582,7 @@ public static partial class SchedulerManager
@@ -421,7 +477,7 @@ index ab897cb..33a92b1 100644
      /// </summary>
 -    internal static int ThreadCount => s_allThreadCount;
 +    internal static int ThreadCount => Volatile.Read(ref s_allThreadCount);
- 
+
      /// <summary>
      /// Returns the dense CPU ID currently executing this code path. On x64
 @@ -1378,7 +1605,7 @@ public static partial class SchedulerManager
@@ -436,7 +492,7 @@ index ab897cb..33a92b1 100644
 @@ -1431,7 +1658,7 @@ public static partial class SchedulerManager
              return;
          }
- 
+
 -        using (CPU.InternalCpu.DisableInterruptsScope())
 +        using (s_globalLock.AcquireIrqSafe())
          {
@@ -445,7 +501,7 @@ index ab897cb..33a92b1 100644
 @@ -1469,17 +1696,20 @@ public static partial class SchedulerManager
              return;
          }
- 
+
 -        for (int i = 0; i < s_allThreads.Length; i++)
 +        using (s_globalLock.AcquireIrqSafe())
          {
@@ -472,11 +528,11 @@ index ab897cb..33a92b1 100644
      }
 @@ -1925,7 +2155,7 @@ public static partial class SchedulerManager
          }
- 
+
          // Check and wake up sleeping threads whose timeout has expired
 -        CheckSleepingThreads(elapsedNs);
 +        CheckSleepingThreads(cpuId, elapsedNs);
- 
+
          // A blocked, sleeping or dead current thread can never continue after
          // this IRQ. Force the scheduler path even when the policy run queue is
 @@ -1946,7 +2176,7 @@ public static partial class SchedulerManager
@@ -498,7 +554,7 @@ index ab897cb..33a92b1 100644
                  continue;
              }
 @@ -1972,7 +2202,7 @@ public static partial class SchedulerManager
- 
+
                  // Wake the thread by marking it as ready
                  thread.WakeupTime = 0;
 -                ReadyThread(thread.CpuId, thread);
@@ -508,7 +564,7 @@ index ab897cb..33a92b1 100644
      }
 @@ -2069,7 +2299,7 @@ public static partial class SchedulerManager
                  }
- 
+
                  // Put previous thread back in run queue if still runnable
 -                if (prev.State == SchedulerThreadState.Ready)
 +                if (prev.State == SchedulerThreadState.Ready && !ReferenceEquals(prev, state.IdleThread))
@@ -521,8 +577,8 @@ index b517ab3..742c355 100644
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 @@ -2328,6 +2328,158 @@ _native_x64_end_idle_stack_test:
      ret
- 
- 
+
+
 +.global _native_x64_begin_concurrent_scheduler_test
 +_native_x64_begin_concurrent_scheduler_test:
 +    push rbx
@@ -695,4 +751,3 @@ index 3bc4783..9092c69 100644
          }
      }
  }
-
