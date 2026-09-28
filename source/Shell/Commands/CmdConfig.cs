@@ -31,6 +31,70 @@ namespace ZonderqOS.Commands
                 return;
             }
 
+
+            if (action == "backup")
+            {
+                string path = args.Length > 2
+                    ? PathResolver.GetAbsolutePath(currentPath, args[2])
+                    : PathResolver.GetAbsolutePath(currentPath, "settings-backup.conf");
+
+                string error;
+                if (!SystemSettings.BackupTo(path, out error))
+                {
+                    WriteMessage.WriteError(error, "CFG");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                WriteMessage.WriteOK("Settings backup written: " + path, "CFG");
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
+            if (action == "check-backup")
+            {
+                if (args.Length < 3)
+                {
+                    WriteMessage.WriteError("Usage: config check-backup <path>", "CFG");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                string path = PathResolver.GetAbsolutePath(currentPath, args[2]);
+                string summary;
+                bool ok = SystemSettings.ValidateBackupFile(path, out summary);
+                if (ok)
+                    WriteMessage.WriteOK("Backup valid: " + summary, "CFG");
+                else
+                    WriteMessage.WriteError("Backup invalid: " + summary, "CFG");
+
+                CommandIO.LastCommandSuccess = ok;
+                return;
+            }
+
+            if (action == "restore")
+            {
+                if (args.Length < 3)
+                {
+                    WriteMessage.WriteError("Usage: config restore <path>", "CFG");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                string path = PathResolver.GetAbsolutePath(currentPath, args[2]);
+                string error;
+                if (!SystemSettings.RestoreFrom(path, out error))
+                {
+                    WriteMessage.WriteError(error, "CFG");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                WriteMessage.WriteOK("Settings restored from: " + path, "CFG");
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
             if (action == "repair")
             {
                 if (!SecurityContext.IsAuthenticated ||
@@ -90,6 +154,9 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("Usage:");
             CommandIO.WriteLine("  config validate");
             CommandIO.WriteLine("  config repair   (root only)");
+            CommandIO.WriteLine("  config backup [path]");
+            CommandIO.WriteLine("  config check-backup <path>");
+            CommandIO.WriteLine("  config restore <path>   (root only)");
         }
     }
 }
