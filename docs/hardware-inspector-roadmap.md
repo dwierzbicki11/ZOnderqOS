@@ -21,7 +21,9 @@ Status: implemented on this branch.
 The existing advanced-kernel panel now has a third `HARDWARE` page backed by the shared `HardwareSnapshot`. CPUID/memory logic remains outside the GUI.
 
 ## Stage H3 - report/export
-Add a stable plain-text diagnostic report that can be written to disk and attached to bug reports. Keep serial numbers, MAC addresses and other identifiers out unless explicitly requested.
+Status: implemented on this branch.
+
+`sysreport [path]` exports a stable plain-text diagnostic report with hardware, memory, scheduler, storage and recent system-log state. Serial numbers, MAC addresses, user identity and command history are deliberately excluded.
 
 ## Non-goals
 PCI enumeration, storage-controller probing and USB device binding belong to the driver-stack roadmap and must not be duplicated here.
