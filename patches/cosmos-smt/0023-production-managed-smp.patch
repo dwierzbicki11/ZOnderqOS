@@ -44,7 +44,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs 
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,286 @@
+@@ -0,0 +1,309 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
@@ -82,9 +82,16 @@ new file mode 100644
 +        }
 +
 +        uint ticket = unchecked((uint)Interlocked.Increment(ref s_managedPlacementTicket));
++        if (ticket == 1)
++        {
++            // Start CoreLib once on the BSP before any AP can race through
++            // the first ThreadStatic-root initialization.
++            return 0;
++        }
++
 +        for (uint offset = 0; offset < cpuCount - 1; offset++)
 +        {
-+            uint candidate = 1 + ((ticket - 1 + offset) % (cpuCount - 1));
++            uint candidate = 1 + ((ticket - 2 + offset) % (cpuCount - 1));
 +            PerCpuState state = s_cpuStates[candidate];
 +
 +            if (NativeGetApplicationProcessorCommand(candidate) != 0 ||
@@ -167,10 +174,9 @@ new file mode 100644
 +
 +#if ARCH_X64
 +        int initialThreadCount = ThreadCount;
-+        int workerCount = checked((int)s_cpuCount - 1);
-+        int[] cpuHits = new int[checked((int)s_cpuCount)];
++        int workerCount = checked((int)s_cpuCount);
++        int[] cpuHits = new int[workerCount];
 +        s_stage23CpuHits = cpuHits;
-+        cpuHits[0] = 1;
 +
 +        Volatile.Write(ref s_managedPlacementTicket, 0);
 +        Volatile.Write(ref s_stage23StartedWorkers, 0);
@@ -180,18 +186,35 @@ new file mode 100644
 +        Volatile.Write(ref s_stage23FailureCpu, -1);
 +        Volatile.Write(ref s_stage23FailureHit, -1);
 +
-+        for (int index = 0; index < workerCount; index++)
++        long frequency = Stopwatch.Frequency;
++        ulong timeoutTicks = frequency > 0
++            ? checked((ulong)frequency * Stage23TimeoutSeconds)
++            : 30_000_000_000UL;
++
++        // Complete one ordinary CoreLib startup on CPU0 before allowing the
++        // remaining workers to initialize their per-thread storage on APs.
++        SysThread firstWorker = new(Stage23ManagedWorker);
++        firstWorker.Start();
++        ulong start = (ulong)Stopwatch.GetTimestamp();
++        while (Volatile.Read(ref s_stage23StartedWorkers) != 1)
++        {
++            if (Volatile.Read(ref s_stage23Failure) != 0 ||
++                (ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
++            {
++                Volatile.Write(ref s_stage23ReleaseWorkers, 1);
++                WriteStage23FailureDiagnostics("cpu0-start");
++                return false;
++            }
++            SysThread.SpinWait(64);
++        }
++
++        for (int index = 1; index < workerCount; index++)
 +        {
 +            SysThread worker = new(Stage23ManagedWorker);
 +            worker.Start();
 +        }
 +
-+        long frequency = Stopwatch.Frequency;
-+        ulong timeoutTicks = frequency > 0
-+            ? checked((ulong)frequency * Stage23TimeoutSeconds)
-+            : 30_000_000_000UL;
-+        ulong start = (ulong)Stopwatch.GetTimestamp();
-+
++        start = (ulong)Stopwatch.GetTimestamp();
 +        while (Volatile.Read(ref s_stage23StartedWorkers) != workerCount)
 +        {
 +            if (Volatile.Read(ref s_stage23Failure) != 0 ||
