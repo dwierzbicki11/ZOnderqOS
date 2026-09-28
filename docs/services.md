@@ -21,13 +21,21 @@ service list
 service status diskwatch
 service stop diskwatch
 service start diskwatch
+service restart diskwatch
+service enable diskwatch
+service disable diskwatch
 service reload
 ```
 
 `start`, `stop` and `reload` require an authenticated root session. Editing a
 configuration requires file permission; use `service reload` to apply it.
+`enable` and `disable` require root, persist `enabled=` in the service's `.conf`
+file and apply it immediately. A backup is kept for recovery if power fails
+between the old and new configuration file rename.
 `enabled=true` starts a service at boot or on reload. A stopped service can be
 started manually even if its configuration says `enabled=false`.
+Changing a running service's type or interval and reloading restarts it with
+the new definition; an unchanged running service keeps its process.
 
 Invalid configuration aborts reload without replacing the previous valid
 definitions. Service names use ASCII letters, digits, `_` and `-`, start with a

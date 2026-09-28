@@ -100,6 +100,41 @@ namespace ZonderqOS.SystemCore.Services
             return true;
         }
 
+        public static bool TrySetEnabled(string name, string content, bool enabled,
+            out string updated, out string error)
+        {
+            updated = null;
+            ServiceDefinition existing;
+            if (!TryParse(name, content, out existing, out error))
+                return false;
+
+            string[] lines = content.Replace("\r", string.Empty).Split('\n');
+            bool replaced = false;
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string line = lines[i].Trim();
+                int separator = line.IndexOf('=');
+                if (separator > 0 && line.Substring(0, separator).Trim() == "enabled")
+                {
+                    lines[i] = "enabled=" + (enabled ? "true" : "false");
+                    replaced = true;
+                }
+            }
+
+            updated = string.Join("\n", lines);
+            if (!replaced)
+                updated += (updated.EndsWith("\n", StringComparison.Ordinal) ? "" : "\n") +
+                    "enabled=" + (enabled ? "true" : "false") + "\n";
+
+            ServiceDefinition replacement;
+            if (!TryParse(name, updated, out replacement, out error))
+            {
+                updated = null;
+                return false;
+            }
+            return true;
+        }
+
         private static bool IsAsciiLetterOrDigit(char c)
         {
             return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||

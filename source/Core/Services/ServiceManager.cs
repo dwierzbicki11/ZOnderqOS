@@ -26,8 +26,13 @@ namespace ZonderqOS.SystemCore.Services
 
     public static class ServiceManager
     {
+#if ZSRV_HOST_TESTS
+        public static readonly string ConfigRoot = Path.Combine(Environment.GetEnvironmentVariable("ZSRV_TEST_ROOT"), "etc", "zservices");
+        private static readonly string LogRoot = Path.Combine(Environment.GetEnvironmentVariable("ZSRV_TEST_ROOT"), "var", "log", "zservices");
+#else
         public const string ConfigRoot = "/etc/zservices";
         private const string LogRoot = "/var/log/zservices";
+#endif
         private const int MaxServices = 64;
         private static readonly object Sync = new object();
         private static readonly Dictionary<string, ServiceDefinition> Definitions =
@@ -40,6 +45,7 @@ namespace ZonderqOS.SystemCore.Services
             try
             {
                 Directory.CreateDirectory(ConfigRoot);
+                RecoverInterruptedConfigWrites();
                 if (!File.Exists(ConfigRoot + "/heartbeat.conf"))
                     File.WriteAllText(ConfigRoot + "/heartbeat.conf",
                         "# Edit and run: service reload\n" +
@@ -68,6 +74,8 @@ namespace ZonderqOS.SystemCore.Services
                     error = "Service configuration directory does not exist.";
                     return false;
                 }
+
+                RecoverInterruptedConfigWrites();
 
                 string[] files = Directory.GetFiles(ConfigRoot);
                 for (int i = 0; i < files.Length; i++)
@@ -105,12 +113,21 @@ namespace ZonderqOS.SystemCore.Services
             lock (Sync)
             {
                 // Preserve the old valid configuration if even one file is bad.
+                var keptRunning = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var existing in Definitions)
                 {
                     ServiceDefinition replacement;
-                    if ((!next.TryGetValue(existing.Key, out replacement) || !replacement.Enabled) &&
-                        IsRunningLocked(existing.Key))
-                        ProcessManager.Kill(Pids[existing.Key]);
+                    bool keepRunning = next.TryGetValue(existing.Key, out replacement) &&
+                        replacement.Enabled &&
+                        replacement.Type == existing.Value.Type &&
+                        replacement.IntervalSeconds == existing.Value.IntervalSeconds;
+                    if (IsRunningLocked(existing.Key))
+                    {
+                        if (keepRunning)
+                            keptRunning.Add(existing.Key);
+                        else
+                            ProcessManager.Kill(Pids[existing.Key]);
+                    }
                 }
 
                 Definitions.Clear();
@@ -118,8 +135,25 @@ namespace ZonderqOS.SystemCore.Services
                     Definitions.Add(item.Key, item.Value);
 
                 foreach (var item in next)
-                    if (item.Value.Enabled && !IsRunningLocked(item.Key))
-                        StartLocked(item.Value, out error);
+                {
+                    if (!item.Value.Enabled)
+                        continue;
+                    if (keptRunning.Contains(item.Key))
+                        continue;
+
+                    // A cancelled service can still be finishing its current loop.
+                    // Wait for it to exit before starting the replacement.
+                    for (int i = 0; i < 200 && IsRunningLocked(item.Key); i++)
+                        Thread.Sleep(10);
+                    if (!IsRunningLocked(item.Key))
+                    {
+                        string startError;
+                        if (!StartLocked(item.Value, out startError) && error.Length == 0)
+                            error = startError;
+                    }
+                    else if (error.Length == 0)
+                        error = "Service is still stopping: " + item.Key;
+                }
             }
             return string.IsNullOrEmpty(error);
         }
@@ -154,6 +188,85 @@ namespace ZonderqOS.SystemCore.Services
                     return false;
                 }
                 return true;
+            }
+        }
+
+        public static bool Restart(string name, out string error)
+        {
+            if (!ProcessManager.IsRunning("svc-" + name))
+                return Start(name, out error);
+            if (!Stop(name, out error))
+                return false;
+
+            // Cancellation is cooperative; never launch a second copy before
+            // the original thread has actually left the process registry.
+            for (int i = 0; i < 200; i++)
+            {
+                if (!ProcessManager.IsRunning("svc-" + name))
+                    return Start(name, out error);
+                Thread.Sleep(10);
+            }
+            error = "Service did not stop within two seconds.";
+            return false;
+        }
+
+        public static bool SetEnabled(string name, bool enabled, out string error)
+        {
+            error = string.Empty;
+            if (!SecurityContext.IsAuthenticated || SecurityContext.CurrentUid != 0)
+            {
+                error = "Only authenticated root can change service configuration.";
+                return false;
+            }
+            if (!ServiceDefinition.IsSafeName(name))
+            {
+                error = "Invalid service name.";
+                return false;
+            }
+
+            lock (Sync)
+            {
+                ServiceDefinition definition;
+                if (!Definitions.TryGetValue(name, out definition))
+                {
+                    error = "Unknown service.";
+                    return false;
+                }
+
+                name = definition.Name;
+                string path = ConfigRoot + "/" + name + ".conf";
+                string temp = path + ".new";
+                string backup = path + ".bak";
+                try
+                {
+                    string updated;
+                    if (!ServiceDefinition.TrySetEnabled(name, ReadBounded(path), enabled,
+                        out updated, out error))
+                        return false;
+
+                    File.WriteAllText(temp, updated);
+                    if (File.Exists(backup))
+                        File.Delete(backup);
+                    File.Move(path, backup);
+                    try
+                    {
+                        File.Move(temp, path);
+                    }
+                    catch
+                    {
+                        if (!File.Exists(path))
+                            File.Move(backup, path);
+                        throw;
+                    }
+
+                    PermissionManager.SetPermission(path, "root", 644);
+                    return Reload(out error);
+                }
+                catch (Exception ex)
+                {
+                    error = "Could not update service: " + ex.Message;
+                    return false;
+                }
             }
         }
 
@@ -244,6 +357,24 @@ namespace ZonderqOS.SystemCore.Services
                 if (count > 2048)
                     throw new InvalidOperationException("Service configuration exceeds 2048 characters.");
                 return new string(buffer, 0, count);
+            }
+        }
+
+        private static void RecoverInterruptedConfigWrites()
+        {
+            string[] files = Directory.GetFiles(ConfigRoot);
+            for (int i = 0; i < files.Length; i++)
+            {
+                string backup = files[i];
+                if (!backup.EndsWith(".conf.bak", StringComparison.OrdinalIgnoreCase))
+                    continue;
+                string name = Path.GetFileName(backup);
+                name = name.Substring(0, name.Length - ".conf.bak".Length);
+                if (!ServiceDefinition.IsSafeName(name))
+                    continue;
+                string original = ConfigRoot + "/" + name + ".conf";
+                if (!File.Exists(original))
+                    File.Move(backup, original);
             }
         }
     }

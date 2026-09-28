@@ -50,7 +50,8 @@ namespace ZonderqOS.Commands
                 return;
             }
 
-            if (action != "reload" && action != "start" && action != "stop")
+            if (action != "reload" && action != "start" && action != "stop" &&
+                action != "restart" && action != "enable" && action != "disable")
             {
                 Help();
                 CommandIO.LastCommandSuccess = false;
@@ -73,14 +74,17 @@ namespace ZonderqOS.Commands
             string error;
             bool ok = action == "reload" ? ServiceManager.Reload(out error) :
                 action == "start" ? ServiceManager.Start(args[2], out error) :
-                ServiceManager.Stop(args[2], out error);
+                action == "stop" ? ServiceManager.Stop(args[2], out error) :
+                action == "restart" ? ServiceManager.Restart(args[2], out error) :
+                ServiceManager.SetEnabled(args[2], action == "enable", out error);
             CommandIO.WriteLine(ok ? "Service operation completed." : "[ERROR] " + error);
             CommandIO.LastCommandSuccess = ok;
         }
 
         private static void Help()
         {
-            CommandIO.WriteLine("service list | status <name> | start <name> | stop <name> | reload");
+            CommandIO.WriteLine("service list | status <name> | start/stop/restart <name>");
+            CommandIO.WriteLine("service enable/disable <name> | reload");
             CommandIO.WriteLine("Edit /etc/zservices/<name>.conf, then run service reload as root.");
         }
     }

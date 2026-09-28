@@ -18,6 +18,16 @@ internal static class ServiceConfigSmoke
         Reject("example", "type=memory\nenabled=true\nenabled=false\n");
         Reject("example", "type=memory\ncommand=rm\n");
         Reject("example", "type=memory\n" + new string('#', 2049));
+        string updated;
+        Check(ServiceDefinition.TrySetEnabled("example", "# keep me\ntype=heartbeat\nenabled=false\n",
+            true, out updated, out error), error);
+        Check(updated.Contains("# keep me") && updated.Contains("enabled=true") &&
+            !updated.Contains("enabled=false"), "Enable did not preserve and update configuration.");
+        Check(ServiceDefinition.TrySetEnabled("example", "type=heartbeat\n", false,
+            out updated, out error) && updated.Contains("enabled=false"),
+            "Missing enabled setting was not added.");
+        Check(!ServiceDefinition.TrySetEnabled("example", "type=shell\n", true,
+            out updated, out error), "Invalid service was enabled.");
         Console.WriteLine("[SERVICE-CONFIG] PASS");
         return 0;
     }
