@@ -4,16 +4,15 @@ on:
   pull_request:
     paths:
       - 'source/Core/HardwareSnapshot.cs'
-      - 'source/Shell/Commands/CmdSysReport.cs'
-      - 'source/Shell/Commands/CmdSysReport.cs'
-      - 'source/Core/DiagnosticReportBuilder.cs'
       - 'source/Core/DiagnosticReportBuilder.cs'
       - 'source/Shell/Commands/CmdHwInfo.cs'
+      - 'source/Shell/Commands/CmdSysReport.cs'
       - 'source/Shell/Command.cs'
       - 'source/Platform/**'
       - 'source/GUI/Application/KernelAdvancedApp.cs'
       - 'source/GUI/Application/SettingsApp.cs'
       - 'source/GUI/Application/TaskManagerModernApp.cs'
+      - 'docs/hardware-inspector-roadmap.md'
       - 'ZonderqOS.csproj'
       - '.github/workflows/hardware-inspector.yml'
   push:
@@ -21,12 +20,15 @@ on:
       - 'feature/hardware-inspector-foundation'
     paths:
       - 'source/Core/HardwareSnapshot.cs'
+      - 'source/Core/DiagnosticReportBuilder.cs'
       - 'source/Shell/Commands/CmdHwInfo.cs'
+      - 'source/Shell/Commands/CmdSysReport.cs'
       - 'source/Shell/Command.cs'
       - 'source/Platform/**'
       - 'source/GUI/Application/KernelAdvancedApp.cs'
       - 'source/GUI/Application/SettingsApp.cs'
       - 'source/GUI/Application/TaskManagerModernApp.cs'
+      - 'docs/hardware-inspector-roadmap.md'
       - 'ZonderqOS.csproj'
       - '.github/workflows/hardware-inspector.yml'
 
