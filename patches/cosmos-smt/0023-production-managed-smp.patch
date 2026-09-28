@@ -1,10 +1,10 @@
 diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 --- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 +++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-@@ -189,6 +189,12 @@ internal class LibraryInitializer
-             {
-                 Cosmos.Kernel.Core.Panic.Halt("Stage 22 SMP scheduler stress/stability proof failed.");
-             }
+@@ -54,6 +54,12 @@ internal class LibraryInitializer
+             // time against DefaultQuantumNs, so the two have to agree.
+             initializer.StartSchedulerTimer(
+                 (uint)(SchedulerManager.DefaultQuantumNs / SchedulerManager.NanosecondsPerMillisecond));
 +
 +            Serial.WriteString("[SCHED-PRODUCTION-SMP] begin\n");
 +            if (!SchedulerManager.RunManagedThreadDistributionProof())
@@ -13,7 +13,7 @@ diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializ
 +            }
          }
      }
- }
+
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
