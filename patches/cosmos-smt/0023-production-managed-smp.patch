@@ -1,7 +1,7 @@
 diff --git a/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs b/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs
 --- a/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs
 +++ b/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs
-@@ -1,4 +1,6 @@
+@@ -1,4 +1,7 @@
 +using Cosmos.Kernel.Core.IO;
 +using Cosmos.Kernel.Core.Scheduler;
 +
