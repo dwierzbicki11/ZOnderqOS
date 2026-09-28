@@ -44,7 +44,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs 
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,334 @@
+@@ -0,0 +1,336 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
@@ -335,7 +335,10 @@ new file mode 100644
 +        {
 +            for (int index = 0; index < phases.Length; index++)
 +            {
-+                if (index != 0) Serial.WriteString(",");
++                if (index != 0)
++                {
++                    Serial.WriteString(",");
++                }
 +                Serial.WriteNumber((ulong)(uint)Volatile.Read(ref phases[index]));
 +            }
 +        }
