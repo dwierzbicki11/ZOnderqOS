@@ -1,6 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;
+using System.Threading;\nusing Cosmos.Kernel.Core.Scheduler;
 
 namespace ZonderqOS.SystemCore
 {
@@ -56,6 +56,7 @@ namespace ZonderqOS.SystemCore
                 {
                     try
                     {
+                        SchedulerManager.EnableCurrentCpuManagedPreemption();
                         startMethod(cts.Token);
                     }
                     catch (Exception ex)
