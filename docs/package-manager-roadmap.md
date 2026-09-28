@@ -33,8 +33,10 @@ Status: implemented on this branch.
 - installed payload lives only under `/opt/zpkg/<name>/<version>`
 - package registry lives under `/var/lib/zpkg`
 - install/remove require authenticated root
-- max 4096 files, 32 directory levels and 256 MiB per package
-- installs use a same-filesystem staging directory and publish registry metadata only after the payload is committed
+- max 4096 total files/directories, 32 directory levels and 256 MiB per package
+- manifests are limited to 4096 characters
+- concurrent package mutations are serialized
+- installs use same-filesystem staging for payload and registry metadata, publishing metadata only after the payload is committed
 - stale interrupted staging directories are cleaned on the next install attempt
 - package scripts are not supported
 - package payload is never copied into `/bin`, `/lib` or kernel directories
