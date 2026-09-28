@@ -1,19 +1,28 @@
-diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
---- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-+++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-@@ -189,6 +189,12 @@ internal class LibraryInitializer
-             {
-                 Cosmos.Kernel.Core.Panic.Halt("Stage 22 SMP scheduler stress/stability proof failed.");
-             }
+diff --git a/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs b/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs
+@@ -0,0 +1,20 @@
++using Cosmos.Kernel.Core.Scheduler;
 +
-+            Serial.WriteString("[SCHED-PRODUCTION-SMP] begin\n");
-+            if (!SchedulerManager.RunManagedThreadDistributionProof())
-+            {
-+                Cosmos.Kernel.Core.Panic.Halt("Stage 23 production managed SMP proof failed.");
-+            }
-         }
-     }
- }
++namespace Cosmos.Kernel.System.Diagnostics;
++
++/// <summary>
++/// Production SMP activation/verification entry points for kernels built on
++/// the Stage-23 scheduler series. Kept separate from SchedulerInfo so older
++/// compatibility shims cannot shadow this API.
++/// </summary>
++public static class SmpRuntime
++{
++    /// <summary>
++    /// Runs the ordinary System.Threading.Thread distribution proof after the
++    /// kernel runtime is fully initialized.
++    /// </summary>
++    public static bool VerifyAllLogicalProcessors()
++    {
++        return SchedulerManager.RunManagedThreadDistributionProof();
++    }
++}
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
@@ -44,7 +53,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs 
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,285 @@
+@@ -0,0 +1,286 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
@@ -167,9 +176,10 @@ new file mode 100644
 +
 +#if ARCH_X64
 +        int initialThreadCount = ThreadCount;
-+        int workerCount = checked((int)s_cpuCount);
++        int workerCount = checked((int)s_cpuCount - 1);
 +        int[] cpuHits = new int[checked((int)s_cpuCount)];
 +        s_stage23CpuHits = cpuHits;
++        cpuHits[0] = 1;
 +
 +        Volatile.Write(ref s_managedPlacementTicket, 0);
 +        Volatile.Write(ref s_stage23StartedWorkers, 0);
