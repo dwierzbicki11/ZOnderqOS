@@ -18,12 +18,6 @@ namespace ZonderqOS
             try
             {
                 Console.Clear();
-
-                if (!Cosmos.Kernel.System.Diagnostics.SmpRuntime.VerifyAllLogicalProcessors())
-                {
-                    throw new InvalidOperationException("Production SMP verification failed.");
-                }
-
                 Disk.Initialize();
                 UserManager.Initialize();
                 Command.Initialize();
