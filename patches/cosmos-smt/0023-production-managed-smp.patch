@@ -366,7 +366,7 @@ new file mode 100644
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
-@@ -92,6 +92,16 @@ public sealed unsafe class SchedulerThread : SchedulerExtensible
+@@ -92,5 +92,15 @@ public sealed unsafe class SchedulerThread : SchedulerExtensible
      private object[][]? _threadStaticStorage;
  
 +    private int _managedPreemptionEnabled;
