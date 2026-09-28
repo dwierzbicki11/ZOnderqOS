@@ -18,7 +18,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 @@ -93,6 +93,7 @@ public sealed class PerCpuState : SchedulerExtensible
-     private int _automaticBalanceNotBefore;
+     private long _automaticBalanceNotBefore;
      private int _automaticMigrationOutCount;
      private int _automaticMigrationInCount;
 +    private int _managedDispatchReservation;
