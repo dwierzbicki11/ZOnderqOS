@@ -360,15 +360,19 @@ index c16e9d9..c0df531 100644
 +
 +        using (InternalCpu.DisableInterruptsScope())
 +        {
-+            Interlocked.Increment(ref s_stage21CompletedWorkers);
 +            ExitThread(GetCurrentCpuId(), thread);
 +#if ARCH_X64
 +            if (NativeArmSchedulerTimer() != 1)
 +            {
 +                Volatile.Write(ref s_stage21Failure, 4);
 +                Panic.Halt("Stage 21 completion timer could not be armed.");
++                return;
 +            }
 +#endif
++            // Publish completion only after ExitThread has retired the worker
++            // and the timer needed to return this AP to idle is armed.  The
++            // BSP uses this counter as a release/acquire lifecycle barrier.
++            Interlocked.Increment(ref s_stage21CompletedWorkers);
 +        }
 +    }
 +
