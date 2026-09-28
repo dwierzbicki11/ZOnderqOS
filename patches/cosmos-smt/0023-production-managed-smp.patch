@@ -465,7 +465,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.K
 diff --git a/src/Cosmos.Kernel.Core/Runtime/Thread.cs b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
 --- a/src/Cosmos.Kernel.Core/Runtime/Thread.cs
 +++ b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
-@@ -96,5 +96,23 @@ internal class Thread
+@@ -96,3 +96,21 @@ internal class Thread
      // tested against every historical SMT prefix.
      [RuntimeExport("RhEnableCurrentCpuManagedPreemption")]
 -    internal static void RhEnableCurrentCpuManagedPreemption() { }
@@ -488,8 +488,6 @@ diff --git a/src/Cosmos.Kernel.Core/Runtime/Thread.cs b/src/Cosmos.Kernel.Core/R
 +        _ = root;
 +        _ = module;
 +    }
- 
-     [RuntimeExport("RhYield")]
 diff --git a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs b/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
 --- a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
 +++ b/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
