@@ -38,15 +38,7 @@ permissions:
 jobs:
   compile:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: x64
-            rid: linux-x64
-          - arch: arm64
-            rid: linux-arm64
+    timeout-minutes: 45
 
     steps:
       - uses: actions/checkout@v4
@@ -55,20 +47,15 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      - name: Restore
-        run: >
-          dotnet restore ZonderqOS.csproj
-          -r ${{ matrix.rid }}
-          -p:CosmosArch=${{ matrix.arch }}
-          --force
-          --no-cache
+      - name: Compile x64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --force --no-cache
+          dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false --no-incremental --no-restore
 
-      - name: Compile managed kernel
-        run: >
-          dotnet build ZonderqOS.csproj
-          -c Release
-          -r ${{ matrix.rid }}
-          -p:CosmosArch=${{ matrix.arch }}
-          -p:GeneratePackageOnBuild=false
-          --no-incremental
-          --no-restore
+      - name: Clean architecture outputs
+        run: rm -rf bin obj
+
+      - name: Compile ARM64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --force --no-cache
+          dotnet build ZonderqOS.csproj -c Release -r linux-arm64 -p:CosmosArch=arm64 -p:GeneratePackageOnBuild=false --no-incremental --no-restore
