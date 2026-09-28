@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Cosmos.Kernel.Core.Memory;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS
 {
@@ -59,6 +61,10 @@ namespace ZonderqOS
                     {
                         int count = ParseCount(parts, 12, MaxLogLines);
                         ShowRecentLogs(count);
+                    }
+                    else if (command == "doctor")
+                    {
+                        ShowDoctor();
                     }
                     else if (command == "ls")
                     {
@@ -165,6 +171,7 @@ namespace ZonderqOS
             Console.WriteLine("help                 Show this command list");
             Console.WriteLine("status               Show boot, RAM, network and logger state");
             Console.WriteLine("logs [count]         Show recent in-memory system log entries");
+            Console.WriteLine("doctor               Run read-only kernel health checks");
             Console.WriteLine("disk                 List detected block devices");
             Console.WriteLine("net                  Show network interfaces if initialized");
             Console.WriteLine("clear                Clear the recovery console");
@@ -204,6 +211,36 @@ namespace ZonderqOS
 
             if (cause != null)
                 Console.WriteLine("Failure         : " + cause.GetType().Name + ": " + cause.Message);
+        }
+
+        private static void ShowDoctor()
+        {
+            List<SystemCheckResult> results = new List<SystemCheckResult>(16);
+            int failures = SystemDoctor.Run(results);
+            int warnings = 0;
+
+            Console.WriteLine("SYSTEM DOCTOR");
+            Console.WriteLine("------------------------------------------------------------");
+            for (int i = 0; i < results.Count; i++)
+            {
+                SystemCheckResult result = results[i];
+                string level = result.Severity == SystemCheckSeverity.Fail
+                    ? "FAIL"
+                    : result.Severity == SystemCheckSeverity.Warning
+                        ? "WARN"
+                        : "PASS";
+
+                if (result.Severity == SystemCheckSeverity.Warning)
+                    warnings++;
+
+                Console.WriteLine("[" + level + "] " + result.Name + ": " + result.Message);
+            }
+
+            Console.WriteLine("------------------------------------------------------------");
+            Console.WriteLine(
+                "checks=" + results.Count +
+                " warnings=" + warnings +
+                " failures=" + failures);
         }
 
         private static void ShowRecentLogs(int requested)
