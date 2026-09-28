@@ -365,17 +365,149 @@ namespace ZonderqOS
 
         public static bool ValidatePersistedFile(out string summary)
         {
+            return ValidateSettingsFile(SettingsPath, true, out summary);
+        }
+
+        public static bool ValidateBackupFile(string path, out string summary)
+        {
+            return ValidateSettingsFile(path, false, out summary);
+        }
+
+        public static bool BackupTo(string destinationPath, out string error)
+        {
+            error = string.Empty;
+            try
+            {
+                if (string.IsNullOrWhiteSpace(destinationPath))
+                {
+                    error = "Backup destination path is empty.";
+                    return false;
+                }
+
+                if (!File.Exists(SettingsPath))
+                {
+                    error = "Persistent settings file does not exist yet.";
+                    return false;
+                }
+
+                string parent = Path.GetDirectoryName(destinationPath);
+                if (!string.IsNullOrEmpty(parent) && !Directory.Exists(parent))
+                    Directory.CreateDirectory(parent);
+
+                File.Copy(SettingsPath, destinationPath, true);
+                PermissionManager.SetPermission(destinationPath, SecurityContext.CurrentUser, 600);
+
+                string summary;
+                if (!ValidateSettingsFile(destinationPath, false, out summary))
+                {
+                    try { File.Delete(destinationPath); } catch { }
+                    error = "Backup validation failed: " + summary;
+                    return false;
+                }
+
+                SystemLogger.Log(SystemLogLevel.Info, "CFG", "Settings backup written to " + destinationPath + ".");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "Backup failed: " + ex.Message;
+                return false;
+            }
+        }
+
+        public static bool RestoreFrom(string sourcePath, out string error)
+        {
+            error = string.Empty;
+
+            if (!SecurityContext.IsAuthenticated ||
+                SecurityContext.CurrentUid != 0 ||
+                !string.Equals(SecurityContext.CurrentUser, "root", StringComparison.Ordinal))
+            {
+                error = "Settings restore requires authenticated root.";
+                return false;
+            }
+
+            string summary;
+            if (!ValidateSettingsFile(sourcePath, false, out summary))
+            {
+                error = "Backup is invalid: " + summary;
+                return false;
+            }
+
+            try
+            {
+                if (!Directory.Exists(SettingsDirectory))
+                    Directory.CreateDirectory(SettingsDirectory);
+
+                if (File.Exists(SettingsTempPath))
+                    File.Delete(SettingsTempPath);
+
+                File.Copy(sourcePath, SettingsTempPath, true);
+                PermissionManager.SetPermission(SettingsTempPath, "root", 600);
+
+                if (File.Exists(SettingsBackupPath))
+                    File.Delete(SettingsBackupPath);
+
+                if (File.Exists(SettingsPath))
+                    File.Move(SettingsPath, SettingsBackupPath);
+
+                try
+                {
+                    File.Move(SettingsTempPath, SettingsPath);
+                }
+                catch
+                {
+                    if (!File.Exists(SettingsPath) && File.Exists(SettingsBackupPath))
+                        File.Move(SettingsBackupPath, SettingsPath);
+                    throw;
+                }
+
+                PermissionManager.SetPermission(SettingsPath, "root", 600);
+                if (File.Exists(SettingsBackupPath))
+                    File.Delete(SettingsBackupPath);
+
+                loaded = false;
+                Load();
+
+                SystemLogger.Log(SystemLogLevel.Warning, "CFG", "Persistent settings restored from backup.");
+                SecurityLogger.LogEvent("INFO", "Root restored persistent system settings from backup.");
+                return true;
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    if (File.Exists(SettingsTempPath))
+                        File.Delete(SettingsTempPath);
+                }
+                catch { }
+
+                error = "Restore failed: " + ex.Message;
+                return false;
+            }
+        }
+
+        private static bool ValidateSettingsFile(string path, bool missingIsValid, out string summary)
+        {
             summary = string.Empty;
 
             try
             {
-                if (!File.Exists(SettingsPath))
+                if (string.IsNullOrWhiteSpace(path))
                 {
-                    summary = "settings file does not exist; defaults are active";
-                    return true;
+                    summary = "settings path is empty";
+                    return false;
                 }
 
-                FileInfo info = new FileInfo(SettingsPath);
+                if (!File.Exists(path))
+                {
+                    summary = missingIsValid
+                        ? "settings file does not exist; defaults are active"
+                        : "settings file does not exist";
+                    return missingIsValid;
+                }
+
+                FileInfo info = new FileInfo(path);
                 if (info.Length < 0 || info.Length > MaxSettingsBytes)
                 {
                     summary = "settings file size is invalid";
@@ -387,7 +519,7 @@ namespace ZonderqOS
                 int malformed = 0;
                 int schema = 0;
 
-                using (StreamReader reader = new StreamReader(SettingsPath))
+                using (StreamReader reader = new StreamReader(path))
                 {
                     string line;
                     while ((line = reader.ReadLine()) != null)
@@ -451,6 +583,7 @@ namespace ZonderqOS
                 return false;
             }
         }
+
 
         public static bool RepairPersistedFile()
         {
