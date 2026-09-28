@@ -88,14 +88,15 @@ index 27b7ad7..600bc36 100644
      {
          if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 4ac22c7..37113e5 100644
+index 4ac22c7..d9e1c93 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-@@ -44,6 +44,17 @@ public static partial class SchedulerManager
+@@ -44,6 +44,18 @@ public static partial class SchedulerManager
      private static int s_stage20ReleaseWorker;
      private static int s_stage20Failure;
      private static uint s_stage20WorkerThreadId;
 +    private static int s_automaticLoadBalancingEnabled;
++    private static int s_automaticMigrationsInFlight;
 +    private static SchedulerThread?[]? s_stage21Workers;
 +    private static int s_stage21ReleaseWorkers;
 +    private static int s_stage21Failure;
@@ -109,7 +110,7 @@ index 4ac22c7..37113e5 100644
  
      /// <summary>
      /// The interval the boot path asks the platform to arm the scheduler
-@@ -96,6 +107,10 @@ public static partial class SchedulerManager
+@@ -96,6 +108,10 @@ public static partial class SchedulerManager
      private const uint Stage19RequiredPreemptionsPerWorker = 2;
      private const ulong Stage20TimeoutSeconds = 30;
      private const uint Stage20RequiredPreemptionsPerCpu = 2;
@@ -120,7 +121,7 @@ index 4ac22c7..37113e5 100644
  
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
-@@ -1958,6 +1973,257 @@ public static partial class SchedulerManager
+@@ -1958,6 +1974,281 @@ public static partial class SchedulerManager
      private static ulong ComputeStage20Checksum(uint threadId, uint hopCount, uint cpuId) =>
          0x534D_5031_4000_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)hopCount << 24) ^ threadId;
  
@@ -156,6 +157,7 @@ index 4ac22c7..37113e5 100644
 +        s_stage21Workers = workers;
 +        Volatile.Write(ref s_stage21ReleaseWorkers, 0);
 +        Volatile.Write(ref s_stage21Failure, 0);
++        Volatile.Write(ref s_automaticMigrationsInFlight, 0);
 +        Volatile.Write(ref s_stage21StartedWorkers, 0);
 +        Volatile.Write(ref s_stage21CompletedWorkers, 0);
 +        Volatile.Write(ref s_stage21Preemptions, 0);
@@ -207,9 +209,7 @@ index 4ac22c7..37113e5 100644
 +            Volatile.Read(ref s_stage21Migrations) < (s_cpuCount >= 8 ? 4 : 1) ||
 +            (Volatile.Read(ref s_stage21SourceMask) & requiredSourceMask) != requiredSourceMask ||
 +            CountStage21CpuBits(Volatile.Read(ref s_stage21TargetMask)) < (s_cpuCount >= 8 ? 3 : 1) ||
-+            Volatile.Read(ref s_stage21Preemptions) < workerCount * 2 ||
-+            Volatile.Read(ref s_stage21Resumes) <
-+                workerCount + Volatile.Read(ref s_stage21Migrations))
++            Volatile.Read(ref s_stage21Preemptions) < workerCount * 2)
 +        {
 +            if (startedAps != expectedStartedAps ||
 +                Volatile.Read(ref s_stage21Failure) != 0 ||
@@ -222,6 +222,31 @@ index 4ac22c7..37113e5 100644
 +                Serial.WriteString(" migrations="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21Migrations));
 +                Serial.WriteString(" source-mask="); Serial.WriteHexWithPrefix((ulong)(uint)Volatile.Read(ref s_stage21SourceMask));
 +                Serial.WriteString(" target-mask="); Serial.WriteHexWithPrefix((ulong)(uint)Volatile.Read(ref s_stage21TargetMask));
++                Serial.WriteString(" failure="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21Failure));
++                Serial.WriteString("\n");
++                return false;
++            }
++            SysThread.SpinWait(64);
++        }
++
++        // Stop new automatic migrations, then account for any interrupt that
++        // passed the enable check before the stop. The source publishes the
++        // migration count before leaving its IRQ; the target publishes its
++        // resume after restoring that worker. This barrier keeps the proof's
++        // final counters consistent instead of racing a last in-flight move.
++        Volatile.Write(ref s_automaticLoadBalancingEnabled, 0);
++        start = (ulong)Stopwatch.GetTimestamp();
++        while (Volatile.Read(ref s_automaticMigrationsInFlight) != 0 ||
++            Volatile.Read(ref s_stage21Resumes) <
++                workerCount + Volatile.Read(ref s_stage21Migrations))
++        {
++            if (Volatile.Read(ref s_stage21Failure) != 0 ||
++                (ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
++            {
++                Volatile.Write(ref s_stage21ReleaseWorkers, 1);
++                Serial.WriteString("[SCHED-AUTO-BALANCE-CONTINUATION-CHECK] in-flight="); Serial.WriteNumber((ulong)Volatile.Read(ref s_automaticMigrationsInFlight));
++                Serial.WriteString(" migrations="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21Migrations));
++                Serial.WriteString(" resumes="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21Resumes));
 +                Serial.WriteString(" failure="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21Failure));
 +                Serial.WriteString("\n");
 +                return false;
@@ -378,7 +403,7 @@ index 4ac22c7..37113e5 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1986,6 +2252,10 @@ public static partial class SchedulerManager
+@@ -1986,6 +2277,10 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage20Preemption(thread.Id);
          }
@@ -389,31 +414,48 @@ index 4ac22c7..37113e5 100644
  
          nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
  #if ARCH_X64
-@@ -2009,15 +2279,20 @@ public static partial class SchedulerManager
+@@ -2009,15 +2304,37 @@ public static partial class SchedulerManager
          SchedulerThread? outgoing = source.CurrentThread;
          if (outgoing is null || outgoing.State != SchedulerThreadState.Running ||
              ReferenceEquals(outgoing, source.IdleThread) ||
 -            (outgoing.Flags & SchedulerThreadFlags.Pinned) != 0 ||
 -            !source.TryTakeMigrationTarget(outgoing.Id, out uint targetCpuId))
 +            (outgoing.Flags & SchedulerThreadFlags.Pinned) != 0)
-+        {
-+            return false;
-+        }
-+
-+        bool explicitlyRequested = source.TryTakeMigrationTarget(outgoing.Id, out uint targetCpuId);
-+        if (!explicitlyRequested && !TrySelectAutomaticMigrationTarget(source, out targetCpuId))
          {
              return false;
          }
  
++        bool explicitlyRequested = source.TryTakeMigrationTarget(outgoing.Id, out uint targetCpuId);
++        bool automaticMigrationInFlight = false;
++        if (!explicitlyRequested)
++        {
++            if (Volatile.Read(ref s_automaticLoadBalancingEnabled) == 0)
++            {
++                return false;
++            }
++            Interlocked.Increment(ref s_automaticMigrationsInFlight);
++            automaticMigrationInFlight = true;
++            if (Volatile.Read(ref s_automaticLoadBalancingEnabled) == 0 ||
++                !TrySelectAutomaticMigrationTarget(source, out targetCpuId))
++            {
++                CompleteAutomaticMigration(automaticMigrationInFlight);
++                return false;
++            }
++        }
++
          if (targetCpuId == 0 || targetCpuId >= s_cpuCount || targetCpuId == cpuId)
          {
 -            Volatile.Write(ref s_stage20Failure, 11);
++            if (automaticMigrationInFlight && targetCpuId < s_cpuCount)
++            {
++                s_cpuStates[targetCpuId].ReleaseIncomingRunnableReservation();
++            }
++            CompleteAutomaticMigration(automaticMigrationInFlight);
 +            RecordMigrationFailure(explicitlyRequested, 11);
              return false;
          }
  
-@@ -2025,19 +2300,53 @@ public static partial class SchedulerManager
+@@ -2025,19 +2342,55 @@ public static partial class SchedulerManager
          SchedulerThread? replacement = s_currentScheduler.PickNext(source) ?? source.IdleThread;
          if (replacement is null || NativeDisarmSchedulerTimer() != 1)
          {
@@ -422,6 +464,7 @@ index 4ac22c7..37113e5 100644
 +            {
 +                destination.ReleaseIncomingRunnableReservation();
 +            }
++            CompleteAutomaticMigration(automaticMigrationInFlight);
 +            RecordMigrationFailure(explicitlyRequested, 12);
 +            return false;
 +        }
@@ -437,6 +480,7 @@ index 4ac22c7..37113e5 100644
 +            {
 +                destination.ReleaseIncomingRunnableReservation();
 +            }
++            CompleteAutomaticMigration(automaticMigrationInFlight);
 +            RecordMigrationFailure(explicitlyRequested, 15);
              return false;
          }
@@ -470,17 +514,19 @@ index 4ac22c7..37113e5 100644
  
          source.CurrentThread = replacement;
          bool isNewThread = replacement.State == SchedulerThreadState.Created;
-@@ -2046,7 +2355,7 @@ public static partial class SchedulerManager
+@@ -2046,16 +2399,141 @@ public static partial class SchedulerManager
  
          if (NativeStageSchedulerHandoff(targetCpuId) != 1)
          {
 -            Volatile.Write(ref s_stage20Failure, 14);
++            CompleteAutomaticMigration(automaticMigrationInFlight);
 +            RecordMigrationFailure(explicitlyRequested, 14);
              return false;
          }
  
-@@ -2054,8 +2363,123 @@ public static partial class SchedulerManager
+         ContextSwitchNative.SetContextSwitchNewThread(isNewThread ? 1 : 0);
          ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
++        CompleteAutomaticMigration(automaticMigrationInFlight);
          return true;
      }
 +
@@ -552,6 +598,14 @@ index 4ac22c7..37113e5 100644
 +            Volatile.Write(ref s_stage21Failure, code);
 +        }
 +    }
++
++    private static void CompleteAutomaticMigration(bool automaticMigrationInFlight)
++    {
++        if (automaticMigrationInFlight)
++        {
++            Interlocked.Decrement(ref s_automaticMigrationsInFlight);
++        }
++    }
  #endif
  
 +    private static ulong AddNanosecondsToTimestamp(ulong timestamp, ulong nanoseconds)
@@ -603,7 +657,7 @@ index 4ac22c7..37113e5 100644
      // ========== Thread Entry Dispatch ==========
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
-@@ -2776,6 +3200,14 @@ public static partial class SchedulerManager
+@@ -2776,6 +3254,14 @@ public static partial class SchedulerManager
              return;
          }
  
