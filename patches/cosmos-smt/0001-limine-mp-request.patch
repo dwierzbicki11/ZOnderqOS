@@ -268,7 +268,7 @@ new file mode 100644
 diff --git a/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt b/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt
 --- a/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt
 +++ b/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt
-@@ -53,6 +53,7 @@
+@@ -53,5 +53,6 @@
  [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.GetPriority(Cosmos.Kernel.Core.Scheduler.SchedulerThread! thread) -> long
  [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.IsReady.get -> bool
 +[COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.EnableCurrentCpuManagedPreemption() -> void
