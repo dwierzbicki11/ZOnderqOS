@@ -62,6 +62,10 @@ namespace ZonderqOS
                         int count = ParseCount(parts, 12, MaxLogLines);
                         ShowRecentLogs(count);
                     }
+                    else if (command == "last-crash")
+                    {
+                        ShowLastCrash();
+                    }
                     else if (command == "doctor")
                     {
                         ShowDoctor();
@@ -179,6 +183,7 @@ namespace ZonderqOS
             Console.WriteLine("help                 Show this command list");
             Console.WriteLine("status               Show boot, RAM, network and logger state");
             Console.WriteLine("logs [count]         Show recent in-memory system log entries");
+            Console.WriteLine("last-crash           Show last persistent kernel panic report");
             Console.WriteLine("doctor               Run read-only kernel health checks");
             Console.WriteLine("disk                 List detected block devices");
             Console.WriteLine("net                  Show network interfaces if initialized");
@@ -251,6 +256,19 @@ namespace ZonderqOS
                 "checks=" + results.Count +
                 " warnings=" + warnings +
                 " failures=" + failures);
+        }
+
+        private static void ShowLastCrash()
+        {
+            string report;
+            string error;
+            if (!CrashReportStore.TryRead(out report, out error))
+            {
+                Console.WriteLine("[CRASH] " + error);
+                return;
+            }
+
+            Console.WriteLine(report);
         }
 
         private static void ShowRecentLogs(int requested)
