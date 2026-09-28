@@ -44,7 +44,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs 
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,337 @@
+@@ -0,0 +1,353 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
@@ -343,6 +343,22 @@ new file mode 100644
 +            }
 +        }
 +        Serial.WriteString("\n");
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            PerCpuState state = s_cpuStates![cpuId];
++            SchedulerThread? current = state.CurrentThread;
++            Serial.WriteString("[SCHED-PRODUCTION-SMP-CHECK] ap=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" thread=");
++            Serial.WriteNumber(current?.Id ?? 0);
++            Serial.WriteString(" state=");
++            Serial.WriteNumber((ulong)(current?.State ?? SchedulerThreadState.Created));
++            Serial.WriteString(" command=");
++            Serial.WriteNumber((ulong)NativeGetApplicationProcessorCommand(cpuId));
++            Serial.WriteString(" completion=");
++            Serial.WriteNumber((ulong)NativeGetApplicationProcessorCompletion(cpuId));
++            Serial.WriteString("\n");
++        }
 +    }
 +
 +    private static void Stage23ManagedWorker()
