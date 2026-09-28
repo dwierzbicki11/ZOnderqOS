@@ -1,0 +1,93 @@
+# VMM / real-process roadmap
+
+This roadmap gates the migration from managed kernel tasks to real isolated processes. A stage is complete only when the exact PR-head SHA has green required GitHub Actions and, for runtime stages, a real QEMU proof. Compilation alone is not runtime proof. Do not advance on a red gate.
+
+## V1 — truthful process model and lifecycle
+
+Status: **COMPLETE — green CI on PR head ancestry**.
+
+Criteria:
+- existing `ProcessManager.Start` objects are explicitly kernel tasks, not isolated processes;
+- PID allocation and lifecycle live in process-specific abstractions;
+- shared kernel address space is represented explicitly;
+- x86_64 and ARM64 builds remain regression-free.
+
+Gate: `VMM stage V1 process model`. No runtime-isolation claim is made in V1.
+
+## V2 — architecture-neutral VMM contracts
+
+Status: **COMPLETE — green `VMM stage V2 contracts` on `49d9b4e981dbf7994313bbaa200d57857fba9c62`**.
+
+Criteria:
+- page size/alignment and mapping contracts;
+- map/unmap/protect/query semantics and permission flags;
+- user/kernel virtual-range validation;
+- no CR3-specific API leaks into architecture-neutral process code;
+- contract/unit/static tests in CI.
+
+## V3 — x86_64 page-table backend
+
+Status: **IN PROGRESS — encoding/index validation checkpoint green; hardware mapping is blocked on an allocator boundary that must be solved without fabricating physical pages**.
+
+Checkpoint:
+- `X64PageTableModel` defines 4 KiB leaf-entry encoding, Present/RW/User/NX permissions, physical-address masking, canonical-address validation and PML4/PDPT/PD/PT index extraction;
+- the model is deliberately fail-closed and performs no privileged CR3/TLB operation;
+- `VMM stage V3 x64 page tables` gates this foundation separately; a green result does **not** complete V3 because runtime mapping/query/unmapping proof is mandatory.
+
+Verified allocator dependency (Cosmos Gen 3 / SDK 3.0.85 line):
+- Cosmos already owns physical-page allocation through `Cosmos.Kernel.Core.Memory.PageAllocator`, backed by the Limine memory map and HHDM;
+- `PageAllocator.AllocPages(PageType, ulong, bool)` is public, but the containing `PageAllocator` type and `PageType` are `internal` to `Cosmos.Kernel.Core`, so ZonderqOS cannot legally call this implementation through the package API;
+- allocating managed/unmanaged virtual memory and treating its address as a physical frame is forbidden: V3 needs a real physical frame identity suitable for PTEs;
+- do not duplicate a second allocator over the Limine memory map: that would race Cosmos ownership/RAT bookkeeping and can allocate frames already owned by the runtime, GC, heap, DMA, or page directories;
+- therefore the next implementation step is a narrow supported Cosmos kernel API for page-table frame allocation/free + virtual/HHDM access (or an equivalent existing public API if one is found), followed by the ZonderqOS x64 adapter. Until that boundary exists, V3 remains blocked rather than using a fake allocator.
+
+Criteria:
+- controlled PML4 root creation/destruction;
+- kernel mappings inherited/shared intentionally, user mappings isolated;
+- safe page-table walking and permission updates;
+- TLB invalidation rules documented and implemented;
+- QEMU proof for mapping/query/unmapping.
+
+ARM64 must remain behind the common VMM contract; x86 CR3 semantics must not be forced onto it.
+
+## V4 — process address-space ownership and CR3 switching
+
+Status: blocked by V3.
+
+Criteria:
+- a `UserProcess` owns a real isolated address space;
+- scheduler/context-switch path switches address spaces safely on x86_64;
+- kernel tasks continue to use the shared kernel address space;
+- QEMU alternation test proves mappings do not leak between two address spaces.
+
+## V5 — controlled page-fault isolation
+
+Status: blocked by V4.
+
+Criteria:
+- faults are attributed to the current process/address space;
+- invalid user access terminates/faults that process rather than panicking the whole kernel where recovery is valid;
+- kernel faults remain fatal/diagnostic rather than being hidden;
+- QEMU negative tests include unmapped access and cross-process mapping access.
+
+## V6 — user-process resources and loader-facing contract
+
+Status: blocked by V5.
+
+Criteria:
+- process-owned mapping/resource bookkeeping and deterministic cleanup;
+- loader-facing API can construct a process image without bypassing VMM permissions;
+- lifecycle covers create/run/stop/fault/exit and releases resources;
+- CI + QEMU lifecycle/regression tests.
+
+## V7 — isolation stress/regression
+
+Status: blocked by V6.
+
+Criteria:
+- repeated process/address-space create/destroy and context switches;
+- no cross-process writable-memory leakage;
+- no regression in boot/storage/GUI and existing SMP/GC gates;
+- x86_64 QEMU runtime proof plus available ARM64 compile/boot regression.
+
+Only after V7 is green may this VMM/process foundation be called complete. Ring-3/syscall work may consume only contracts whose corresponding VMM stage is green.

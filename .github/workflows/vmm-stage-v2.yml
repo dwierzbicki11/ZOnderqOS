@@ -1,0 +1,37 @@
+name: VMM stage V2 contracts
+
+on:
+  pull_request:
+    paths:
+      - 'source/Core/Processes/VirtualMemoryContracts.cs'
+      - '.github/workflows/vmm-stage-v2.yml'
+      - 'docs/vmm-process-roadmap.md'
+  workflow_dispatch:
+
+jobs:
+  validate-v2-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate architecture-neutral VMM contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          f=source/Core/Processes/VirtualMemoryContracts.cs
+          test -f "$f"
+          grep -q 'interface IVirtualMemoryManager' "$f"
+          grep -q 'TryMap' "$f"
+          grep -q 'TryUnmap' "$f"
+          grep -q 'TryProtect' "$f"
+          grep -q 'TryQuery' "$f"
+          grep -q 'IsValidUserRange' "$f"
+          grep -q 'VirtualMemoryPermissions' "$f"
+          grep -q 'last < address' "$f"
+          if grep -Eq '\bCR3\b|\bPML4\b' "$f"; then
+            # Architecture names are allowed in explanatory comments only, never in API members.
+            if grep -E '^[[:space:]]*(public|internal|protected).*\b(CR3|PML4)\b' "$f"; then
+              echo 'V2 API leaks x86-specific CR3/PML4 semantics.' >&2
+              exit 1
+            fi
+          fi
+          echo 'V2 contract validated.'

@@ -1,0 +1,36 @@
+name: VMM stage V1 process model
+
+on:
+  pull_request:
+    paths:
+      - 'source/Core/ProcessManager.cs'
+      - 'source/Core/Processes/**'
+      - 'docs/vmm-process-roadmap.md'
+      - '.github/workflows/vmm-stage-v1.yml'
+  workflow_dispatch:
+
+jobs:
+  validate-v1-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate truthful process model
+        shell: bash
+        run: |
+          set -euo pipefail
+          model=source/Core/Processes/ProcessModel.cs
+          manager=source/Core/ProcessManager.cs
+          test -f "$model"
+          test -f "$manager"
+          grep -q 'KernelTask = 0' "$model"
+          grep -q 'UserProcess = 1' "$model"
+          grep -q 'ProcessAddressSpace.Kernel' "$model"
+          grep -q 'RootPageTablePhysicalAddress' "$model"
+          grep -q 'ProcessRegistry' "$manager"
+          grep -q 'System.Threading' "$manager"
+          grep -q 'does not create a protected Ring-3 process' "$manager"
+          if grep -Eq 'new ProcessAddressSpace\([^0][^,]*, *false\)' "$manager"; then
+            echo 'V1 must not fabricate an isolated address space before VMM exists.' >&2
+            exit 1
+          fi
+          echo 'V1 static contract validated: managed execution is explicitly a kernel task; isolated user address spaces remain gated.'

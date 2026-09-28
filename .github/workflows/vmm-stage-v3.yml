@@ -1,0 +1,40 @@
+name: VMM stage V3 x64 page tables
+
+on:
+  pull_request:
+    paths:
+      - 'source/Core/Processes/X64PageTableModel.cs'
+      - 'source/Core/Processes/VirtualMemoryContracts.cs'
+      - 'docs/vmm-process-roadmap.md'
+      - '.github/workflows/vmm-stage-v3.yml'
+  workflow_dispatch:
+
+jobs:
+  validate-v3-foundation:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate fail-closed x64 page-table foundation
+        shell: bash
+        run: |
+          set -euo pipefail
+          f=source/Core/Processes/X64PageTableModel.cs
+          test -f "$f"
+          grep -q 'AddressMask = 0x000FFFFFFFFFF000UL' "$f"
+          grep -q 'Present = 1UL << 0' "$f"
+          grep -q 'Writable = 1UL << 1' "$f"
+          grep -q 'User = 1UL << 2' "$f"
+          grep -q 'NoExecute = 1UL << 63' "$f"
+          grep -q 'TryCreateLeafEntry' "$f"
+          grep -q 'VirtualMemoryPermissions.Read' "$f"
+          grep -q 'VirtualMemoryPermissions.Execute' "$f"
+          grep -q 'IsCanonical' "$f"
+          grep -q 'Pml4Index' "$f"
+          grep -q 'PdptIndex' "$f"
+          grep -q 'PdIndex' "$f"
+          grep -q 'PtIndex' "$f"
+          if grep -Eq 'write_cr3|mov[[:space:]].*cr3|invlpg' "$f"; then
+            echo 'V3 foundation must not pretend to perform privileged page-table activation.' >&2
+            exit 1
+          fi
+          echo 'V3 encoding foundation validated; hardware mapping/runtime proof is still required.'
