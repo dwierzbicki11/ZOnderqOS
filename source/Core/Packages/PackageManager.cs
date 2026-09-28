@@ -18,6 +18,7 @@ namespace ZonderqOS.SystemCore.Packages
 
         private const int MaxDepth = 32;
         private const int MaxFiles = 4096;
+        private const int MaxManifestCharacters = 4096;
         private const ulong MaxPackageBytes = 256UL * 1024UL * 1024UL;
 
         public static bool VerifySource(
@@ -57,7 +58,7 @@ namespace ZonderqOS.SystemCore.Packages
             try
             {
                 string parseError;
-                if (!PackageManifest.TryParse(File.ReadAllText(manifestPath), out manifest, out parseError))
+                if (!PackageManifest.TryParse(ReadManifest(manifestPath), out manifest, out parseError))
                 {
                     error = parseError;
                     return false;
@@ -209,7 +210,7 @@ namespace ZonderqOS.SystemCore.Packages
             string parseError;
             try
             {
-                if (!PackageManifest.TryParse(File.ReadAllText(registryPath), out manifest, out parseError))
+                if (!PackageManifest.TryParse(ReadManifest(registryPath), out manifest, out parseError))
                 {
                     error = "Installed package metadata is corrupt: " + parseError;
                     return false;
@@ -300,7 +301,7 @@ namespace ZonderqOS.SystemCore.Packages
             {
                 PackageManifest manifest;
                 string parseError;
-                if (!PackageManifest.TryParse(File.ReadAllText(registryPath), out manifest, out parseError))
+                if (!PackageManifest.TryParse(ReadManifest(registryPath), out manifest, out parseError))
                 {
                     error = "Installed package metadata is corrupt: " + parseError;
                     return false;
@@ -350,7 +351,18 @@ namespace ZonderqOS.SystemCore.Packages
 
                     PackageManifest manifest;
                     string parseError;
-                    if (!PackageManifest.TryParse(File.ReadAllText(file), out manifest, out parseError))
+                    string content;
+                    try
+                    {
+                        content = ReadManifest(file);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // One oversized registry entry must not hide valid packages.
+                        continue;
+                    }
+
+                    if (!PackageManifest.TryParse(content, out manifest, out parseError))
                         continue;
 
                     string registryName = Path.GetFileNameWithoutExtension(file);
@@ -400,6 +412,26 @@ namespace ZonderqOS.SystemCore.Packages
             {
                 error = "Cannot initialize package database: " + ex.Message;
                 return false;
+            }
+        }
+
+        private static string ReadManifest(string path)
+        {
+            char[] characters = new char[MaxManifestCharacters + 1];
+            using (StreamReader reader = new StreamReader(path))
+            {
+                int count = 0;
+                while (count < characters.Length)
+                {
+                    int read = reader.Read(characters, count, characters.Length - count);
+                    if (read == 0)
+                        break;
+                    count += read;
+                }
+
+                if (count > MaxManifestCharacters)
+                    throw new InvalidOperationException("Package manifest is too large.");
+                return new string(characters, 0, count);
             }
         }
 
