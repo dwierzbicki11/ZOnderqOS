@@ -63,6 +63,25 @@ if expected == 1:
     print("[SMT21-QEMU][OK] single-CPU fallback preserved the scheduler and registry")
     raise SystemExit(0)
 
+if expected == 2:
+    if any((migrations, sources, targets, preemptions, resumes, scanned)):
+        fail("single-AP Stage-21 fallback reported impossible AP-to-AP balancing work")
+    print("[SMT21-QEMU][OK] single-AP topology correctly skipped impossible AP-to-AP balancing")
+    raise SystemExit(0)
+
+if expected == 4:
+    required_sources = 1 << 1
+    if migrations < 2 or sources & required_sources != required_sources:
+        fail(f"automatic balancing did not drain the imbalanced AP owner: migrations={migrations} sources=0x{sources:x}")
+    if targets & 1 or targets.bit_count() < 2:
+        fail(f"automatic balancing did not reserve both available AP targets: 0x{targets:x}")
+    if preemptions < 6 or resumes < 3 + migrations:
+        fail(f"timer/context continuation proof too weak: preemptions={preemptions} resumes={resumes} migrations={migrations}")
+    if scanned != 3:
+        fail(f"OrionGC scanned {scanned} AP stacks instead of 3")
+    print(f"[SMT21-QEMU][OK] {migrations} owner-driven migrations reached both available AP targets with timer, GC and registry proof")
+    raise SystemExit(0)
+
 if expected != 8:
     fail(f"unsupported Stage-21 topology: {expected} CPUs")
 required_sources = (1 << 1) | (1 << 7)
