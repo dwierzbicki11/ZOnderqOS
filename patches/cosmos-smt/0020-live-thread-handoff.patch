@@ -250,10 +250,10 @@ index 4a28a6d..c16e9d9 100644
      /// <summary>
      /// The interval the boot path asks the platform to arm the scheduler
 @@ -91,6 +94,8 @@ public static partial class SchedulerManager
-     private const ulong Stage19TimeoutSeconds = 10;
+     private const ulong Stage19TimeoutSeconds = 30;
      private const uint Stage19WorkersPerApplicationProcessor = 2;
      private const uint Stage19RequiredPreemptionsPerWorker = 2;
-+    private const ulong Stage20TimeoutSeconds = 10;
++    private const ulong Stage20TimeoutSeconds = 30;
 +    private const uint Stage20RequiredPreemptionsPerCpu = 2;
 
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
@@ -331,7 +331,7 @@ index 4a28a6d..c16e9d9 100644
 +        long frequency = Stopwatch.Frequency;
 +        ulong timeoutTicks = frequency > 0
 +            ? checked((ulong)frequency * Stage20TimeoutSeconds)
-+            : 10_000_000_000UL;
++            : 30_000_000_000UL;
 +        int startedAps = NativeBeginSchedulerCpu(1);
 +        if (startedAps != 1 ||
 +            !WaitForStage20Cpu(worker, 1, 0, timeoutTicks))
