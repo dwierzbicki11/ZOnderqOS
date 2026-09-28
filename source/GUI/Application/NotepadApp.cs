@@ -697,6 +697,13 @@ namespace ZonderqOS.GUI.Apps
                     return false;
                 }
 
+                if (!global::ZonderqOS.PermissionManager.CanRead(path,
+                    global::ZonderqOS.SecurityContext.CurrentUser))
+                {
+                    status = "Brak uprawnien do odczytu: " + path;
+                    return false;
+                }
+
                 string content = File.ReadAllText(path).Replace("\r", "");
                 string[] loaded = content.Split('\n');
 
@@ -746,6 +753,14 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
+                string permissionPath = File.Exists(path) ? path : Path.GetDirectoryName(path);
+                if (!global::ZonderqOS.PermissionManager.CanWrite(permissionPath,
+                    global::ZonderqOS.SecurityContext.CurrentUser))
+                {
+                    status = "Brak uprawnien do zapisu: " + path;
+                    return false;
+                }
+
                 // Document content has no artificial character/size cap.
                 File.WriteAllText(path, string.Join("\n", lines));
                 filePath = path;

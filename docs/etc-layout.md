@@ -2,6 +2,10 @@
 
 These files are created when missing and are used by the running system. Existing
 files are preserved across boots. Root can edit text configuration with `nano`.
+The built-in **Konfiguracja /etc** app is available in App Center and the app
+search. It opens supported files in Notepad, cycles through service definitions
+with the left/right arrows and applies hostname, profile and service changes.
+Editing and applying root-owned settings requires an authenticated root session.
 
 | Path | Used for |
 | --- | --- |
