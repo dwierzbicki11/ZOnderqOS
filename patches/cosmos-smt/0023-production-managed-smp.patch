@@ -385,6 +385,7 @@ diff --git a/src/Cosmos.Kernel.Core/Runtime/Thread.cs b/src/Cosmos.Kernel.Core/R
 +    [RuntimeExport("RhRegisterInlinedThreadStaticRoot")]
 +    internal static void RhRegisterInlinedThreadStaticRoot(ref object? root, IntPtr module)
 +    {
++        Serial.WriteString("[SCHED-PRODUCTION-SMP-STARTUP] thread-static-register\\n");
 +        _ = root;
 +        _ = module;
 +    }
