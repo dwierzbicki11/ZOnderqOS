@@ -343,13 +343,28 @@ new file mode 100644
 diff --git a/src/Cosmos.Kernel.Core/Runtime/Thread.cs b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
 --- a/src/Cosmos.Kernel.Core/Runtime/Thread.cs
 +++ b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
-@@ -96,5 +96,8 @@ internal class Thread
+@@ -96,5 +96,23 @@ internal class Thread
      // tested against every historical SMT prefix.
      [RuntimeExport("RhEnableCurrentCpuManagedPreemption")]
 -    internal static void RhEnableCurrentCpuManagedPreemption() { }
 +    internal static void RhEnableCurrentCpuManagedPreemption()
 +    {
 +        SchedulerManager.EnableCurrentCpuManagedPreemption();
++    }
++
++    /// <summary>
++    /// CoreLib registers inlined thread-static roots with the native runtime
++    /// during its startup handshake. Cosmos keeps the backing object graph on
++    /// <see cref="SchedulerThread"/>, which is already rooted and scanned by
++    /// OrionGC, so no additional native ThreadStore registration is required.
++    /// Providing this managed runtime export also keeps a fresh scheduler
++    /// thread from entering NativeAOT's unattached native-thread path.
++    /// </summary>
++    [RuntimeExport("RhRegisterInlinedThreadStaticRoot")]
++    internal static void RhRegisterInlinedThreadStaticRoot(ref object? root, IntPtr module)
++    {
++        _ = root;
++        _ = module;
 +    }
  
      [RuntimeExport("RhYield")]
