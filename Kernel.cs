@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using ZonderqOS.SystemCore;
+using ZonderqOS.SystemCore.Services;
 using Sys = Cosmos.Kernel.System;
 
 namespace ZonderqOS
@@ -28,6 +29,7 @@ namespace ZonderqOS
                 BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
+                ServiceManager.Initialize();
 
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
