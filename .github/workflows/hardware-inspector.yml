@@ -1,0 +1,62 @@
+name: Hardware Inspector compile gate
+
+on:
+  pull_request:
+    paths:
+      - 'source/Core/HardwareSnapshot.cs'
+      - 'source/Core/DiagnosticReportBuilder.cs'
+      - 'source/Shell/Commands/CmdHwInfo.cs'
+      - 'source/Shell/Commands/CmdSysReport.cs'
+      - 'source/Shell/Command.cs'
+      - 'source/Platform/**'
+      - 'source/GUI/Application/KernelAdvancedApp.cs'
+      - 'source/GUI/Application/SettingsApp.cs'
+      - 'source/GUI/Application/TaskManagerModernApp.cs'
+      - 'docs/hardware-inspector-roadmap.md'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/hardware-inspector.yml'
+  push:
+    branches:
+      - 'feature/hardware-inspector-foundation'
+    paths:
+      - 'source/Core/HardwareSnapshot.cs'
+      - 'source/Core/DiagnosticReportBuilder.cs'
+      - 'source/Shell/Commands/CmdHwInfo.cs'
+      - 'source/Shell/Commands/CmdSysReport.cs'
+      - 'source/Shell/Command.cs'
+      - 'source/Platform/**'
+      - 'source/GUI/Application/KernelAdvancedApp.cs'
+      - 'source/GUI/Application/SettingsApp.cs'
+      - 'source/GUI/Application/TaskManagerModernApp.cs'
+      - 'docs/hardware-inspector-roadmap.md'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/hardware-inspector.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compile x64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false
+
+      - name: Clean architecture outputs
+        run: rm -rf bin obj
+
+      - name: Compile ARM64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-arm64 -p:CosmosArch=arm64 -p:GeneratePackageOnBuild=false
+

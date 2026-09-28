@@ -2,7 +2,7 @@ using System;
 using System.Runtime.Intrinsics.X86;
 using System.Text;
 
-namespace ZonderqOS.GUI.Apps
+namespace ZonderqOS.Platform
 {
     /// <summary>
     /// x86_64 CPU discovery. This file is compiled only for the x64 Cosmos target.
