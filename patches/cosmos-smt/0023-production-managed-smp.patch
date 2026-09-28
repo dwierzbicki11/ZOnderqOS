@@ -2,7 +2,8 @@ diff --git a/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs b/src/Cosmos.Ker
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,22 @@
++using Cosmos.Kernel.Core.IO;
 +using Cosmos.Kernel.Core.Scheduler;
 +
 +namespace Cosmos.Kernel.System.Diagnostics;
@@ -20,6 +21,7 @@ new file mode 100644
 +    /// </summary>
 +    public static bool VerifyAllLogicalProcessors()
 +    {
++        Serial.WriteString("[SCHED-PRODUCTION-SMP] begin\n");
 +        return SchedulerManager.RunManagedThreadDistributionProof();
 +    }
 +}
