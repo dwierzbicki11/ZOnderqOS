@@ -246,32 +246,19 @@ index d80881e..0000000 100644
          /// <summary>
          /// Returns the MethodTable* for System.Array. This is used by the runtime when
          /// it needs to determine the base type of array types.
-diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.ProductionCompatibility.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.ProductionCompatibility.cs
-new file mode 100644
---- /dev/null
-+++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.ProductionCompatibility.cs
-@@ -0,0 +1,14 @@
-+namespace Cosmos.Kernel.Core.Scheduler;
+diff --git a/src/Cosmos.Kernel.Core/Runtime/Thread.cs b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
+--- a/src/Cosmos.Kernel.Core/Runtime/Thread.cs
++++ b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
+@@ -91,6 +91,13 @@ internal class Thread
+         }
+     }
+ 
++    // Stable ZonderqOS production-SMP hook. Until Stage 23 this intentionally
++    // remains a no-op so current application sources can still be built and
++    // tested against every historical SMT prefix.
++    [RuntimeExport("RhEnableCurrentCpuManagedPreemption")]
++    internal static void RhEnableCurrentCpuManagedPreemption() { }
 +
-+public static partial class SchedulerManager
-+{
-+    /// <summary>
-+    /// Compatibility hook for ZonderqOS process entry. Stages 1-22 keep this
-+    /// deliberately inert so the application source can be built against any
-+    /// historical SMT prefix. Stage 23 replaces only this implementation with
-+    /// the real AP scheduler-timer activation.
-+    /// </summary>
-+    public static void EnableCurrentCpuManagedPreemption()
-+    {
-+    }
-+}
-diff --git a/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt b/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt
---- a/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt
-+++ b/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt
-@@ -53,5 +53,6 @@
- [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.GetPriority(Cosmos.Kernel.Core.Scheduler.SchedulerThread! thread) -> long
- [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.IsReady.get -> bool
-+[COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.EnableCurrentCpuManagedPreemption() -> void
- [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.MaskInterrupts() -> Cosmos.Kernel.Core.Scheduler.InterruptMaskScope
- [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.SetPriority(uint cpuId, Cosmos.Kernel.Core.Scheduler.SchedulerThread! thread, long priority) -> void
- [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.SetScheduler(Cosmos.Kernel.Core.Scheduler.IScheduler! scheduler) -> void
+     [RuntimeExport("RhYield")]
+     internal static int RhYield()
+     {
