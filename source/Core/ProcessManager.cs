@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 namespace ZonderqOS.SystemCore
@@ -21,12 +22,16 @@ namespace ZonderqOS.SystemCore
         }
     }
 
-    public static class ProcessManager
+    public static partial class ProcessManager
     {
         private static readonly Dictionary<int, KernelProcess> _processes = new Dictionary<int, KernelProcess>();
         private static readonly List<int> _deadPidScratch = new List<int>(16);
         private static int _nextPid = 1;
         private static readonly object _registryLock = new object();
+
+        [LibraryImport("*", EntryPoint = "RhEnableCurrentCpuManagedPreemption")]
+        [SuppressGCTransition]
+        private static partial void EnableCurrentCpuManagedPreemptionNative();
 
         public static int Start(string name, Action<CancellationToken> startMethod)
         {
@@ -56,7 +61,7 @@ namespace ZonderqOS.SystemCore
                 {
                     try
                     {
-                        Cosmos.Kernel.Core.Scheduler.SchedulerManager.EnableCurrentCpuManagedPreemption();
+                        EnableCurrentCpuManagedPreemptionNative();
                         startMethod(cts.Token);
                     }
                     catch (Exception ex)
