@@ -1,26 +1,17 @@
-diff --git a/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs b/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs
---- a/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs
-+++ b/src/Cosmos.Kernel.System/Diagnostics/SmpRuntime.cs
-@@ -1,4 +1,7 @@
-+using Cosmos.Kernel.Core.IO;
-+using Cosmos.Kernel.Core.Scheduler;
+diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+--- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
++++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+@@ -189,6 +189,12 @@ internal class LibraryInitializer
+             {
+                 Cosmos.Kernel.Core.Panic.Halt("Stage 22 SMP scheduler stress/stability proof failed.");
+             }
 +
- namespace Cosmos.Kernel.System.Diagnostics;
- 
- /// <summary>
-@@ -6,10 +8,12 @@ namespace Cosmos.Kernel.System.Diagnostics;
- /// Historical SMT stages intentionally implement this as a no-op; Stage 23
- /// replaces the body once ordinary managed threads can run on every CPU.
- /// </summary>
- public static class SmpRuntime
- {
--    /// <summary>Returns true until the production SMP scheduler is enabled.</summary>
-+    /// <summary>Verifies that ordinary managed threads execute across all logical CPUs.</summary>
-     public static bool VerifyAllLogicalProcessors()
-     {
--        return true;
-+        Serial.WriteString("[SCHED-PRODUCTION-SMP] begin\\n");
-+        return SchedulerManager.RunManagedThreadDistributionProof();
++            Serial.WriteString("[SCHED-PRODUCTION-SMP] begin\n");
++            if (!SchedulerManager.RunManagedThreadDistributionProof())
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 23 production managed SMP proof failed.");
++            }
+         }
      }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
