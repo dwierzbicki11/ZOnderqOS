@@ -67,6 +67,17 @@ if expected == 1:
     print("[SMT20-QEMU][OK] single-CPU fallback preserved the scheduler and registry")
     raise SystemExit(0)
 
+if expected == 2:
+    thread_id = checksum ^ 0x534D503140000000 ^ (1 << 32)
+    if hops or hop_count != 0:
+        fail("single-AP Stage-20 proof reported an impossible AP-to-AP handoff")
+    if thread_id <= 0 or thread_id > 0xFFFFFFFF:
+        fail(f"single-AP Stage-20 checksum decodes an invalid managed thread id: {thread_id}")
+    if collection <= 0 or scanned != 1:
+        fail("single-AP Stage-20 GC/registry summary mismatch")
+    print(f"[SMT20-QEMU][OK] thread {thread_id} retained its live context through timer preemption and GC on the only AP")
+    raise SystemExit(0)
+
 if expected != 8:
     fail(f"unsupported Stage-20 topology: {expected} CPUs")
 if hop_count != 6:
