@@ -44,7 +44,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs 
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,236 @@
+@@ -0,0 +1,277 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
@@ -61,6 +61,8 @@ new file mode 100644
 +    private static int s_stage23CompletedWorkers;
 +    private static int s_stage23ReleaseWorkers;
 +    private static int s_stage23Failure;
++    private static int s_stage23FailureCpu;
++    private static int s_stage23FailureHit;
 +    private static int[]? s_stage23CpuHits;
 +
 +    private const ulong Stage23TimeoutSeconds = 30;
@@ -175,6 +177,8 @@ new file mode 100644
 +        Volatile.Write(ref s_stage23CompletedWorkers, 0);
 +        Volatile.Write(ref s_stage23ReleaseWorkers, 0);
 +        Volatile.Write(ref s_stage23Failure, 0);
++        Volatile.Write(ref s_stage23FailureCpu, -1);
++        Volatile.Write(ref s_stage23FailureHit, -1);
 +
 +        for (int index = 0; index < workerCount; index++)
 +        {
@@ -194,6 +198,7 @@ new file mode 100644
 +                (ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
 +            {
 +                Volatile.Write(ref s_stage23ReleaseWorkers, 1);
++                WriteStage23FailureDiagnostics("start");
 +                return false;
 +            }
 +            SysThread.SpinWait(64);
@@ -207,6 +212,7 @@ new file mode 100644
 +            if (Volatile.Read(ref s_stage23Failure) != 0 ||
 +                (ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
 +            {
++                WriteStage23FailureDiagnostics("completion");
 +                return false;
 +            }
 +            SysThread.SpinWait(64);
@@ -251,6 +257,36 @@ new file mode 100644
 +        return true;
 +    }
 +
++    private static void WriteStage23FailureDiagnostics(string phase)
++    {
++        Serial.WriteString("[SCHED-PRODUCTION-SMP-CHECK] phase=");
++        Serial.WriteString(phase);
++        Serial.WriteString(" started=");
++        Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage23StartedWorkers));
++        Serial.WriteString(" completed=");
++        Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage23CompletedWorkers));
++        Serial.WriteString(" failure=");
++        Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage23Failure));
++        Serial.WriteString(" cpu=");
++        Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage23FailureCpu));
++        Serial.WriteString(" hit=");
++        Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage23FailureHit));
++        Serial.WriteString(" hits=");
++        int[]? hits = s_stage23CpuHits;
++        if (hits is not null)
++        {
++            for (int index = 0; index < hits.Length; index++)
++            {
++                if (index != 0)
++                {
++                    Serial.WriteString(",");
++                }
++                Serial.WriteNumber((ulong)(uint)Volatile.Read(ref hits[index]));
++            }
++        }
++        Serial.WriteString("\n");
++    }
++
 +    private static void Stage23ManagedWorker()
 +    {
 +        // We are now inside the real ThreadStart delegate, so CoreLib has
@@ -261,12 +297,17 @@ new file mode 100644
 +        uint cpuId = GetCurrentCpuId();
 +        if (hits is null || cpuId >= checked((uint)hits.Length))
 +        {
++            Volatile.Write(ref s_stage23FailureCpu, checked((int)cpuId));
++            Volatile.Write(ref s_stage23FailureHit, -1);
 +            Volatile.Write(ref s_stage23Failure, 1);
 +            return;
 +        }
 +
-+        if (Interlocked.Increment(ref hits[checked((int)cpuId)]) != 1)
++        int hit = Interlocked.Increment(ref hits[checked((int)cpuId)]);
++        if (hit != 1)
 +        {
++            Volatile.Write(ref s_stage23FailureCpu, checked((int)cpuId));
++            Volatile.Write(ref s_stage23FailureHit, hit);
 +            Volatile.Write(ref s_stage23Failure, 2);
 +            return;
 +        }
