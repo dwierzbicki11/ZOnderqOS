@@ -105,6 +105,14 @@ namespace ZonderqOS
                         Console.Clear();
                         DrawBanner(safeReason, cause, authenticatedAdmin);
                     }
+                    else if (command == "check-settings")
+                    {
+                        CheckSettings();
+                    }
+                    else if (command == "repair-settings")
+                    {
+                        RepairSettings(parts, authenticatedAdmin);
+                    }
                     else if (command == "reset-settings")
                     {
                         ResetSettings(parts, authenticatedAdmin);
@@ -180,6 +188,8 @@ namespace ZonderqOS
                 Console.WriteLine("ls [path]            List a directory (bounded)");
                 Console.WriteLine("cd [path]            Change recovery working directory");
                 Console.WriteLine("view <path>          Read first " + MaxViewLines + " lines of a text file");
+                Console.WriteLine("check-settings       Validate persistent system settings");
+                Console.WriteLine("repair-settings CONFIRM  Rewrite settings in canonical schema");
                 Console.WriteLine("reset-settings CONFIRM  Remove saved system settings");
                 Console.WriteLine("exit                 Return to the authenticated shell");
             }
@@ -347,6 +357,45 @@ namespace ZonderqOS
             {
                 WriteRecoveryError("Network subsystem unavailable: " + ex.Message);
             }
+        }
+
+        private static void CheckSettings()
+        {
+            string summary;
+            bool ok = SystemSettings.ValidatePersistedFile(out summary);
+            Console.WriteLine((ok ? "[OK] " : "[INVALID] ") + summary);
+        }
+
+        private static void RepairSettings(string[] parts, bool authenticatedAdmin)
+        {
+            if (!authenticatedAdmin || !SecurityContext.IsAuthenticated ||
+                SecurityContext.CurrentUid != 0 || SecurityContext.CurrentUser != "root")
+            {
+                WriteRecoveryError("repair-settings requires an authenticated root session.");
+                return;
+            }
+
+            if (parts.Length < 2 || parts[1] != "CONFIRM")
+            {
+                Console.WriteLine("This rewrites currently loaded validated values into canonical settings schema.");
+                Console.WriteLine("Run: repair-settings CONFIRM");
+                return;
+            }
+
+            if (!SystemSettings.RepairPersistedFile())
+            {
+                WriteRecoveryError("Could not repair persistent settings.");
+                return;
+            }
+
+            string summary;
+            bool ok = SystemSettings.ValidatePersistedFile(out summary);
+            Console.WriteLine((ok ? "Settings repaired: " : "Repair completed but validation failed: ") + summary);
+
+            SystemLogger.Log(
+                ok ? SystemLogLevel.Warning : SystemLogLevel.Error,
+                "CFG",
+                "Settings repair from recovery mode: " + summary);
         }
 
         private static void ResetSettings(string[] parts, bool authenticatedAdmin)

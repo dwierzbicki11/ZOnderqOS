@@ -11,6 +11,9 @@ namespace ZonderqOS
     {
         private const string SettingsDirectory = "/etc/zonderq";
         private const string SettingsPath = SettingsDirectory + "/settings.conf";
+        private const string SettingsTempPath = SettingsDirectory + "/settings.conf.new";
+        private const string SettingsBackupPath = SettingsDirectory + "/settings.conf.bak";
+        private const int SettingsSchemaVersion = 1;
         private const long MaxSettingsBytes = 64 * 1024;
         private const int MaxSettingsLines = 128;
 
@@ -192,6 +195,7 @@ namespace ZonderqOS
 
                 string content =
                     "# ZOnderqOS Gen3 system settings\n" +
+                    "schema=" + SettingsSchemaVersion + "\n" +
                     "performance=" + PerformanceProfile + "\n" +
                     "clock_seconds=" + BoolValue(ShowClockSeconds) + "\n" +
                     "taskbar_date=" + BoolValue(ShowTaskbarDate) + "\n" +
@@ -207,14 +211,55 @@ namespace ZonderqOS
                     "static_gateway=" + StaticGateway + "\n" +
                     "dns_server=" + DnsServer + "\n";
 
-                File.WriteAllText(SettingsPath, content);
+                // Write-then-rename prevents a reset or filesystem error during
+                // serialization from truncating the last known-good configuration.
+                if (File.Exists(SettingsTempPath))
+                    File.Delete(SettingsTempPath);
+
+                File.WriteAllText(SettingsTempPath, content);
+                PermissionManager.SetPermission(SettingsTempPath, "root", 600);
+
+                if (File.Exists(SettingsBackupPath))
+                    File.Delete(SettingsBackupPath);
+
+                if (File.Exists(SettingsPath))
+                    File.Move(SettingsPath, SettingsBackupPath);
+
+                try
+                {
+                    File.Move(SettingsTempPath, SettingsPath);
+                }
+                catch
+                {
+                    // Best-effort rollback: retain the previous complete file.
+                    if (!File.Exists(SettingsPath) && File.Exists(SettingsBackupPath))
+                        File.Move(SettingsBackupPath, SettingsPath);
+                    throw;
+                }
+
                 PermissionManager.SetPermission(SettingsPath, "root", 600);
-                SecurityLogger.LogEvent("INFO", "System settings updated from GUI.");
+
+                if (File.Exists(SettingsBackupPath))
+                    File.Delete(SettingsBackupPath);
+
+                PermissionManager.RemovePermission(SettingsTempPath);
+                PermissionManager.RemovePermission(SettingsBackupPath);
+
+                SecurityLogger.LogEvent("INFO", "System settings updated atomically.");
                 return true;
             }
             catch (Exception ex)
             {
+                try
+                {
+                    if (File.Exists(SettingsTempPath))
+                        File.Delete(SettingsTempPath);
+                    PermissionManager.RemovePermission(SettingsTempPath);
+                }
+                catch { }
+
                 WriteMessage.WriteError($"Settings save failed: {ex.Message}", "CFG");
+                SystemLogger.Log(SystemLogLevel.Error, "CFG", "Settings save failed: " + ex.Message);
                 return false;
             }
         }
@@ -317,6 +362,168 @@ namespace ZonderqOS
             Save();
         }
 
+
+        public static bool ValidatePersistedFile(out string summary)
+        {
+            summary = string.Empty;
+
+            try
+            {
+                if (!File.Exists(SettingsPath))
+                {
+                    summary = "settings file does not exist; defaults are active";
+                    return true;
+                }
+
+                FileInfo info = new FileInfo(SettingsPath);
+                if (info.Length < 0 || info.Length > MaxSettingsBytes)
+                {
+                    summary = "settings file size is invalid";
+                    return false;
+                }
+
+                int lines = 0;
+                int recognized = 0;
+                int malformed = 0;
+                int schema = 0;
+
+                using (StreamReader reader = new StreamReader(SettingsPath))
+                {
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        lines++;
+                        if (lines > MaxSettingsLines)
+                        {
+                            summary = "settings file exceeds line limit";
+                            return false;
+                        }
+
+                        line = line.Trim();
+                        if (line.Length == 0 || line[0] == '#')
+                            continue;
+
+                        int split = line.IndexOf('=');
+                        if (split <= 0 || split >= line.Length - 1)
+                        {
+                            malformed++;
+                            continue;
+                        }
+
+                        string key = line.Substring(0, split).Trim();
+                        string value = line.Substring(split + 1).Trim();
+
+                        if (key == "schema")
+                        {
+                            int parsedSchema;
+                            if (!int.TryParse(value, out parsedSchema) || parsedSchema < 1)
+                                malformed++;
+                            else
+                            {
+                                schema = parsedSchema;
+                                recognized++;
+                            }
+                        }
+                        else if (IsKnownKey(key))
+                        {
+                            if (IsValidPersistedValue(key, value))
+                                recognized++;
+                            else
+                                malformed++;
+                        }
+                    }
+                }
+
+                if (malformed > 0)
+                {
+                    summary = "malformed entries=" + malformed + ", recognized=" + recognized;
+                    return false;
+                }
+
+                summary = "schema=" + (schema == 0 ? "legacy" : schema.ToString()) +
+                          ", recognized=" + recognized +
+                          ", lines=" + lines;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                summary = "validation failed: " + ex.Message;
+                return false;
+            }
+        }
+
+        public static bool RepairPersistedFile()
+        {
+            if (!SecurityContext.IsAuthenticated ||
+                SecurityContext.CurrentUid != 0 ||
+                !string.Equals(SecurityContext.CurrentUser, "root", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            // Rewrites the currently loaded, already range-validated values into
+            // the canonical schema. This does not invent values from malformed input.
+            return Save();
+        }
+
+
+        private static bool IsValidPersistedValue(string key, string value)
+        {
+            int number;
+            switch (key)
+            {
+                case "performance":
+                    return int.TryParse(value, out number) && number >= 0 && number <= 2;
+                case "clock_seconds":
+                case "taskbar_date":
+                case "tray_status":
+                case "desktop_icons":
+                case "network_dhcp":
+                    return value == "0" || value == "1" ||
+                           value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
+                           value.Equals("false", StringComparison.OrdinalIgnoreCase);
+                case "timezone":
+                    return int.TryParse(value, out number) && number >= -12 && number <= 14;
+                case "desktop_background":
+                case "accent_theme":
+                    return int.TryParse(value, out number) && number >= 0 && number <= 2;
+                case "auto_lock_minutes":
+                    return int.TryParse(value, out number) && IsAutoLockPreset(number);
+                case "static_ip":
+                case "static_gateway":
+                case "dns_server":
+                    return IsValidIPv4(value);
+                case "static_mask":
+                    return IsValidSubnetMask(value);
+                default:
+                    return false;
+            }
+        }
+
+        private static bool IsKnownKey(string key)
+        {
+            switch (key)
+            {
+                case "performance":
+                case "clock_seconds":
+                case "taskbar_date":
+                case "tray_status":
+                case "desktop_icons":
+                case "timezone":
+                case "desktop_background":
+                case "accent_theme":
+                case "auto_lock_minutes":
+                case "network_dhcp":
+                case "static_ip":
+                case "static_mask":
+                case "static_gateway":
+                case "dns_server":
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         private static void RestoreDefaultsInternal()
         {
             PerformanceProfile = 1;
@@ -340,6 +547,10 @@ namespace ZonderqOS
             int number;
             switch (key)
             {
+                case "schema":
+                    // Schema 1 is the current format. Newer schemas are ignored
+                    // field-by-field instead of failing boot.
+                    break;
                 case "performance":
                     if (int.TryParse(value, out number) && number >= 0 && number <= 2)
                         PerformanceProfile = number;
