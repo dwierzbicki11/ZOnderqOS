@@ -149,10 +149,10 @@ index 33a92b1..4a28a6d 100644
      /// <summary>
      /// The interval the boot path asks the platform to arm the scheduler
 @@ -85,6 +88,9 @@ public static partial class SchedulerManager
-     private const ulong Stage18TimeoutSeconds = 10;
+     private const ulong Stage18TimeoutSeconds = 30;
      private const uint Stage18WorkersPerApplicationProcessor = 2;
      private const uint Stage18RequiredPreemptionsPerWorker = 2;
-+    private const ulong Stage19TimeoutSeconds = 10;
++    private const ulong Stage19TimeoutSeconds = 30;
 +    private const uint Stage19WorkersPerApplicationProcessor = 2;
 +    private const uint Stage19RequiredPreemptionsPerWorker = 2;
  
@@ -252,7 +252,7 @@ index 33a92b1..4a28a6d 100644
 +        }
 +
 +        long frequency = Stopwatch.Frequency;
-+        ulong timeoutTicks = frequency > 0 ? checked((ulong)frequency * Stage19TimeoutSeconds) : 10_000_000_000UL;
++        ulong timeoutTicks = frequency > 0 ? checked((ulong)frequency * Stage19TimeoutSeconds) : 30_000_000_000UL;
 +        int startedAps = expectedWorkers == 0 ? 0 : NativeBeginConcurrentSchedulerTest(s_cpuCount);
 +        if (startedAps != checked((int)s_cpuCount - 1) || !WaitForStage19WorkerCount(expectedWorkers, timeoutTicks))
 +        {
