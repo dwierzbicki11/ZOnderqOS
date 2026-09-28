@@ -69,7 +69,16 @@ namespace ZonderqOS.SystemCore
                 });
 
                 _processes.Add(pid, new KernelProcess(pid, processName, thread, cts));
-                thread.Start();
+                try
+                {
+                    thread.Start();
+                }
+                catch
+                {
+                    _processes.Remove(pid);
+                    cts.Dispose();
+                    throw;
+                }
             }
 
             return pid;
@@ -85,6 +94,7 @@ namespace ZonderqOS.SystemCore
 
         public static bool Kill(int pid)
         {
+            CancellationTokenSource cts;
             lock (_registryLock)
             {
                 if (!_processes.TryGetValue(pid, out var process))
@@ -97,8 +107,20 @@ namespace ZonderqOS.SystemCore
                     return false;
                 }
 
-                process.Cts.Cancel();
+                cts = process.Cts;
+            }
+
+            // Cancellation invokes callbacks synchronously. A callback may inspect
+            // the registry, so it must never run while the registry lock is held.
+            try
+            {
+                cts.Cancel();
                 return true;
+            }
+            catch (ObjectDisposedException)
+            {
+                // The process exited and disposed its token between lookup and cancel.
+                return false;
             }
         }
 
