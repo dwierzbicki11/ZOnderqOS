@@ -4,6 +4,10 @@ on:
   pull_request:
     paths:
       - 'source/Core/HardwareSnapshot.cs'
+      - 'source/Shell/Commands/CmdSysReport.cs'
+      - 'source/Shell/Commands/CmdSysReport.cs'
+      - 'source/Core/DiagnosticReportBuilder.cs'
+      - 'source/Core/DiagnosticReportBuilder.cs'
       - 'source/Shell/Commands/CmdHwInfo.cs'
       - 'source/Shell/Command.cs'
       - 'source/Platform/**'
