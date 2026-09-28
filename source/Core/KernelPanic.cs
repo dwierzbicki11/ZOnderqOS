@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using Cosmos.Kernel.Core.Memory;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS
 {
@@ -21,6 +22,22 @@ namespace ZonderqOS
 
             SystemLogger.Log(SystemLogLevel.Critical, "PANIC",
                 safePhase + ": " + typeName + ": " + message);
+
+            try
+            {
+                string crashError;
+                if (!CrashReportStore.TryPersist(exception, safePhase, out crashError))
+                {
+                    SystemLogger.Log(
+                        SystemLogLevel.Warning,
+                        "PANIC",
+                        "Persistent crash report unavailable: " + crashError);
+                }
+            }
+            catch
+            {
+                // Panic persistence is best-effort only.
+            }
 
             if (!allowContinue && string.Equals(safePhase, "BOOT", StringComparison.OrdinalIgnoreCase))
             {
