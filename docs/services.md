@@ -46,3 +46,24 @@ duplicate settings are rejected.
 Custom services currently select one of the supported built-in tasks. The
 configuration file cannot launch arbitrary shell commands or programs: that
 requires a safe executable loader, process isolation and service credentials.
+
+## QEMU persistence check
+
+Build the x64 ISO with the patched Cosmos toolchain and boot it with the same
+writable FAT disk image attached on two consecutive boots. The normal launcher
+uses `zonder_disk.img` when present. After initial root password setup and root
+login, check:
+
+1. `service list` shows `heartbeat` running and `ps` shows `svc-heartbeat`.
+2. `service disable heartbeat`, then `service status heartbeat` reports
+   `enabled=False`; `/etc/zservices/heartbeat.conf` contains `enabled=false`.
+3. Reboot without replacing the disk image. `service status heartbeat` should
+   still report `enabled=False` and stopped.
+4. Run `service enable heartbeat`, `service restart heartbeat`, then check
+   `service status heartbeat`, `ps` and `/var/log/zservices/heartbeat.log`.
+5. Create `/etc/zservices/custom.conf` with `type=memory`, `enabled=true` and
+   `interval_seconds=5`; run `service reload` and check `svc-custom` and its log.
+
+The host integration test exercises these manager transitions with real files
+and managed threads. A successful compile or host test alone does not prove
+that the QEMU boot mount and FAT writes survive a reboot.
