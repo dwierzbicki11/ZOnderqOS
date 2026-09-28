@@ -44,7 +44,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs 
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,277 @@
+@@ -0,0 +1,285 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
@@ -223,6 +223,10 @@ new file mode 100644
 +            : NativeWaitConcurrentSchedulerTest(s_cpuCount, timeoutTicks);
 +        if (parkedAps != workerCount)
 +        {
++            Volatile.Write(ref s_stage23FailureCpu, parkedAps);
++            Volatile.Write(ref s_stage23FailureHit, workerCount);
++            Volatile.Write(ref s_stage23Failure, 3);
++            WriteStage23FailureDiagnostics("parked");
 +            return false;
 +        }
 +
@@ -232,6 +236,10 @@ new file mode 100644
 +        {
 +            if (cpuHits[checked((int)cpuId)] != 1)
 +            {
++                Volatile.Write(ref s_stage23FailureCpu, checked((int)cpuId));
++                Volatile.Write(ref s_stage23FailureHit, cpuHits[checked((int)cpuId)]);
++                Volatile.Write(ref s_stage23Failure, 4);
++                WriteStage23FailureDiagnostics("hits");
 +                return false;
 +            }
 +
