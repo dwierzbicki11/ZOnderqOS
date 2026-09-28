@@ -28,8 +28,14 @@ static class Program
         private static string Key(byte b, byte d, byte f, byte o) => b + ":" + d + ":" + f + ":" + o;
         public void Set8(byte b, byte d, byte f, byte o, byte value) => values[Key(b,d,f,o)] = value;
         public void Set16(byte b, byte d, byte f, byte o, ushort value) => values[Key(b,d,f,o)] = value;
+        public void Set32(byte b, byte d, byte f, byte o, uint value) => values[Key(b,d,f,o)] = value;
         public byte Read8(byte b, byte d, byte f, byte o) => values.TryGetValue(Key(b,d,f,o), out uint v) ? (byte)v : (byte)0;
         public ushort Read16(byte b, byte d, byte f, byte o) => values.TryGetValue(Key(b,d,f,o), out uint v) ? (ushort)v : (ushort)0xFFFF;
+        public uint Read32(byte b, byte d, byte f, byte o)
+        {
+            if ((o & 3) != 0) throw new ArgumentOutOfRangeException(nameof(o));
+            return values.TryGetValue(Key(b,d,f,o), out uint v) ? v : 0xFFFFFFFFu;
+        }
     }
 
     static void Require(bool condition, string message) { if (!condition) throw new Exception(message); }
@@ -72,6 +78,25 @@ static class Program
             Require(topology.Count == 4, "topology walker must discover root, multifunction and bridged functions");
             Require(topology[0].Id.Address == "00:01.0" && topology[1].Id.Address == "00:02.0" && topology[2].Id.Address == "00:02.1" && topology[3].Id.Address == "02:00.0", "topology discovery BDF mismatch");
 
+            config.Set32(0, 2, 0, 0x10, 0xFEDC0004u);
+            Require(config.Read32(0, 2, 0, 0x10) == 0xFEDC0004u, "PCI dword config read mismatch");
+            bool unalignedDwordRejected = false;
+            try { _ = config.Read32(0, 2, 0, 0x11); } catch (ArgumentOutOfRangeException) { unalignedDwordRejected = true; }
+            Require(unalignedDwordRejected, "unaligned PCI dword read must be rejected");
+
+            // D2.2: controller-specific BAR selection remains read-only and fail-closed.
+            var ahciFn = new PciFunctionSnapshot(0, 31, 2, 0x8086, 0x2922, 0x01, 0x06, 0x01);
+            config.Set32(0,31,2,0x24,0xFEBF0000u);
+            Require(StorageControllerBars.TryReadAhciAbar(config, ahciFn, out PciMemoryBar abar) && abar.Address == 0xFEBF0000u && abar.Kind == PciMemoryBarKind.Memory32, "AHCI ABAR5 decode mismatch");
+            config.Set32(0,31,2,0x24,0xFEBF0004u);
+            Require(!StorageControllerBars.TryReadAhciAbar(config, ahciFn, out _), "AHCI BAR5 must reject impossible 64-bit low half");
+
+            var nvmeFn = new PciFunctionSnapshot(0, 4, 0, 0x1B36, 0x0010, 0x01, 0x08, 0x02);
+            config.Set32(0,4,0,0x10,0x34567004u); config.Set32(0,4,0,0x14,0x00000012u);
+            Require(StorageControllerBars.TryReadNvmeBar0(config, nvmeFn, out PciMemoryBar nvmeBar) && nvmeBar.Address == 0x0000001234567000ul && nvmeBar.Kind == PciMemoryBarKind.Memory64, "NVMe BAR0/1 decode mismatch");
+            var wrongFn = new PciFunctionSnapshot(0, 5, 0, 0x1234, 0x5678, 0x02, 0, 0);
+            Require(!StorageControllerBars.TryReadNvmeBar0(config, wrongFn, out _), "non-NVMe function must not expose NVMe BAR");
+
             var multiRoot = new ConfigAccessor();
             AddFunction(multiRoot, 0, 0, 0, 0x8086, 0x1000, 0x06, 0x00, 0, 0x80);
             AddFunction(multiRoot, 0, 0, 2, 0x8086, 0x1002, 0x06, 0x00, 0);
@@ -89,7 +114,22 @@ static class Program
             Require(registry.TryBind(devices[0], out IDeviceDriver rebound) && object.ReferenceEquals(bound, rebound), "rebinding must be stable");
             Require(fallback.BindCalls == 1, "already-bound device must not bind twice");
 
-            Console.WriteLine("D1 hardware model tests passed");
+            var ahci = new DeviceDescriptor(new DeviceId("pci", "00:1F.2"), 0x8086, 0x2922, 0x01, 0x06, 0x01);
+            var nvme = new DeviceDescriptor(new DeviceId("pci", "00:04.0"), 0x1B36, 0x0010, 0x01, 0x08, 0x02);
+            var legacySata = new DeviceDescriptor(new DeviceId("pci", "00:1F.1"), 0x8086, 0x1234, 0x01, 0x06, 0x00);
+            var unknownNvm = new DeviceDescriptor(new DeviceId("pci", "00:05.0"), 0x1234, 0x5678, 0x01, 0x08, 0x00);
+            Require(StorageControllerClassifier.TryClassify(ahci, out StorageControllerKind ahciKind) && ahciKind == StorageControllerKind.Ahci, "AHCI class/subclass/PI must classify");
+            Require(StorageControllerClassifier.TryClassify(nvme, out StorageControllerKind nvmeKind) && nvmeKind == StorageControllerKind.Nvme, "NVMe class/subclass/PI must classify");
+            Require(!StorageControllerClassifier.TryClassify(legacySata, out _), "non-AHCI SATA PI must not bind as AHCI");
+            Require(!StorageControllerClassifier.TryClassify(unknownNvm, out _), "unknown NVM PI must not bind as NVMe");
+            var storageRegistry = new DriverRegistry();
+            storageRegistry.Register(new AhciControllerDriver()); storageRegistry.Register(new NvmeControllerDriver());
+            Require(storageRegistry.TryBind(ahci, out IDeviceDriver ahciDriver) && ahciDriver.Name == "ahci", "AHCI binding mismatch");
+            Require(storageRegistry.TryBind(nvme, out IDeviceDriver nvmeDriver) && nvmeDriver.Name == "nvme", "NVMe binding mismatch");
+            Require(!storageRegistry.TryBind(legacySata, out _), "legacy SATA must remain unbound in D2.1");
+            Require(!storageRegistry.TryBind(unknownNvm, out _), "unknown NVM must remain unbound in D2.1");
+
+            Console.WriteLine("D1/D2.1/D2.2 hardware model tests passed");
             return 0;
         }
         catch (Exception ex) { Console.Error.WriteLine(ex); return 1; }
