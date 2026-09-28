@@ -44,7 +44,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs 
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,318 @@
+@@ -0,0 +1,334 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
@@ -64,6 +64,7 @@ new file mode 100644
 +    private static int s_stage23FailureCpu;
 +    private static int s_stage23FailureHit;
 +    private static int[]? s_stage23CpuHits;
++    private static int[]? s_stage23WorkerPhases;
 +
 +    private const ulong Stage23TimeoutSeconds = 30;
 +
@@ -186,6 +187,7 @@ new file mode 100644
 +        int workerCount = checked((int)s_cpuCount);
 +        int[] cpuHits = new int[workerCount];
 +        s_stage23CpuHits = cpuHits;
++        s_stage23WorkerPhases = new int[workerCount];
 +
 +        Volatile.Write(ref s_managedPlacementTicket, 0);
 +        Volatile.Write(ref s_stage23StartedWorkers, 0);
@@ -291,6 +293,7 @@ new file mode 100644
 +        Serial.WriteHexWithPrefix(cpuMask);
 +        Serial.WriteString(" registry=restored aps=parked\n");
 +        s_stage23CpuHits = null;
++        s_stage23WorkerPhases = null;
 +#else
 +        Serial.WriteString("[SCHED-PRODUCTION-SMP] workers=0 unique-cpus=1 cpu-mask=0x1 registry=restored aps=parked\n");
 +#endif
@@ -326,6 +329,17 @@ new file mode 100644
 +            }
 +        }
 +        Serial.WriteString("\n");
++        Serial.WriteString("[SCHED-PRODUCTION-SMP-CHECK] worker-phases=");
++        int[]? phases = s_stage23WorkerPhases;
++        if (phases is not null)
++        {
++            for (int index = 0; index < phases.Length; index++)
++            {
++                if (index != 0) Serial.WriteString(",");
++                Serial.WriteNumber((ulong)(uint)Volatile.Read(ref phases[index]));
++            }
++        }
++        Serial.WriteString("\n");
 +    }
 +
 +    private static void Stage23ManagedWorker()
@@ -354,12 +368,14 @@ new file mode 100644
 +        }
 +
 +        Interlocked.Increment(ref s_stage23StartedWorkers);
++        Volatile.Write(ref s_stage23WorkerPhases![checked((int)cpuId)], 1);
 +        while (Volatile.Read(ref s_stage23ReleaseWorkers) == 0 &&
 +            Volatile.Read(ref s_stage23Failure) == 0)
 +        {
 +            SysThread.SpinWait(64);
 +        }
 +
++        Volatile.Write(ref s_stage23WorkerPhases![checked((int)cpuId)], 2);
 +        Interlocked.Increment(ref s_stage23CompletedWorkers);
 +    }
 +}
