@@ -35,8 +35,7 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
      private const uint Stage20RequiredPreemptionsPerCpu = 2;
      private const ulong AutomaticBalanceCooldownNs = 50_000_000;
      private const uint AutomaticBalanceHysteresis = 2;
--    private const ulong Stage21TimeoutSeconds = 15;
-+    private const ulong Stage21TimeoutSeconds = 60;
+     private const ulong Stage21TimeoutSeconds = 60;
      private const uint Stage21WorkersPerSource = 3;
 +    private const uint Stage22StressRounds = 8;
 
