@@ -18,8 +18,10 @@ namespace ZonderqOS.SystemCore.Packages
 
         private const int MaxDepth = 32;
         private const int MaxFiles = 4096;
+        private const int MaxEntries = 4096;
         private const int MaxManifestCharacters = 4096;
         private const ulong MaxPackageBytes = 256UL * 1024UL * 1024UL;
+        private static readonly object MutationLock = new object();
 
         public static bool VerifySource(
             string packageDirectory,
@@ -34,6 +36,11 @@ namespace ZonderqOS.SystemCore.Packages
             error = string.Empty;
 
             string sourceRoot = NormalizePath(packageDirectory);
+            if (HasParentSegment(sourceRoot))
+            {
+                error = "Package path contains a parent directory segment.";
+                return false;
+            }
             if (string.IsNullOrEmpty(sourceRoot) || !Directory.Exists(sourceRoot))
             {
                 error = "Package directory does not exist.";
@@ -64,7 +71,8 @@ namespace ZonderqOS.SystemCore.Packages
                     return false;
                 }
 
-                ScanTree(payloadPath, 0, ref fileCount, ref totalBytes);
+                int entryCount = 0;
+                ScanTree(payloadPath, 0, ref fileCount, ref entryCount, ref totalBytes);
                 return true;
             }
             catch (Exception ex)
@@ -79,6 +87,12 @@ namespace ZonderqOS.SystemCore.Packages
 
         public static bool Install(string packageDirectory, out InstalledPackage installed, out string error)
         {
+            lock (MutationLock)
+                return InstallLocked(packageDirectory, out installed, out error);
+        }
+
+        private static bool InstallLocked(string packageDirectory, out InstalledPackage installed, out string error)
+        {
             installed = null;
             error = string.Empty;
 
@@ -86,6 +100,11 @@ namespace ZonderqOS.SystemCore.Packages
                 return false;
 
             string sourceRoot = NormalizePath(packageDirectory);
+            if (HasParentSegment(sourceRoot))
+            {
+                error = "Package path contains a parent directory segment.";
+                return false;
+            }
             if (IsSameOrChildPath(sourceRoot, StoreRoot))
             {
                 error = "Refusing to install a package from the package store itself.";
@@ -104,6 +123,7 @@ namespace ZonderqOS.SystemCore.Packages
                 return false;
 
             string registryPath = GetRegistryPath(manifest.Name);
+            string registryStagingPath = registryPath + ".installing";
             string packageRoot = Combine(Combine(StoreRoot, manifest.Name), manifest.Version);
             string stagingRoot = packageRoot + ".installing";
 
@@ -120,6 +140,7 @@ namespace ZonderqOS.SystemCore.Packages
             }
 
             int fileCount = 0;
+            int entryCount = 0;
             ulong totalBytes = 0;
             bool committedPayload = false;
 
@@ -135,9 +156,14 @@ namespace ZonderqOS.SystemCore.Packages
                         throw new IOException("Cannot clean stale package staging directory.");
                 }
 
+                // A reset can also interrupt metadata publication. This file is
+                // never a valid installed package until its final rename.
+                if (File.Exists(registryStagingPath))
+                    File.Delete(registryStagingPath);
+
                 Directory.CreateDirectory(stagingRoot);
 
-                CopyTree(payloadPath, stagingRoot, 0, ref fileCount, ref totalBytes);
+                CopyTree(payloadPath, stagingRoot, 0, ref fileCount, ref entryCount, ref totalBytes);
                 if (fileCount != verifiedFileCount || totalBytes != verifiedBytes)
                     throw new InvalidOperationException("Package payload changed while it was being installed.");
 
@@ -147,7 +173,10 @@ namespace ZonderqOS.SystemCore.Packages
                 committedPayload = true;
                 PermissionManager.SetPermission(packageRoot, "root", 755);
 
-                File.WriteAllText(registryPath, manifest.Serialize());
+                File.WriteAllText(registryStagingPath, manifest.Serialize());
+                PermissionManager.SetPermission(registryStagingPath, "root", 644);
+                File.Move(registryStagingPath, registryPath);
+                PermissionManager.RemovePermission(registryStagingPath);
                 PermissionManager.SetPermission(registryPath, "root", 644);
 
                 installed = new InstalledPackage(
@@ -174,6 +203,8 @@ namespace ZonderqOS.SystemCore.Packages
 
                 try
                 {
+                    if (File.Exists(registryStagingPath))
+                        File.Delete(registryStagingPath);
                     if (File.Exists(registryPath))
                         File.Delete(registryPath);
                 }
@@ -181,12 +212,19 @@ namespace ZonderqOS.SystemCore.Packages
 
                 PermissionManager.RemovePermissionsUnder(stagingRoot);
                 PermissionManager.RemovePermissionsUnder(packageRoot);
+                PermissionManager.RemovePermission(registryStagingPath);
                 PermissionManager.RemovePermission(registryPath);
                 return false;
             }
         }
 
         public static bool Remove(string packageName, out string error)
+        {
+            lock (MutationLock)
+                return RemoveLocked(packageName, out error);
+        }
+
+        private static bool RemoveLocked(string packageName, out string error)
         {
             error = string.Empty;
 
@@ -454,6 +492,7 @@ namespace ZonderqOS.SystemCore.Packages
             string source,
             int depth,
             ref int fileCount,
+            ref int entryCount,
             ref ulong totalBytes)
         {
             if (depth > MaxDepth)
@@ -466,8 +505,8 @@ namespace ZonderqOS.SystemCore.Packages
                 ValidatePathSegment(name);
 
                 fileCount++;
-                if (fileCount > MaxFiles)
-                    throw new InvalidOperationException("Package contains too many files.");
+                entryCount++;
+                CheckEntryLimits(fileCount, entryCount);
 
                 long length = new FileInfo(files[i]).Length;
                 if (length < 0)
@@ -485,7 +524,9 @@ namespace ZonderqOS.SystemCore.Packages
             {
                 string name = Path.GetFileName(directories[i]);
                 ValidatePathSegment(name);
-                ScanTree(directories[i], depth + 1, ref fileCount, ref totalBytes);
+                entryCount++;
+                CheckEntryLimits(fileCount, entryCount);
+                ScanTree(directories[i], depth + 1, ref fileCount, ref entryCount, ref totalBytes);
             }
         }
 
@@ -494,6 +535,7 @@ namespace ZonderqOS.SystemCore.Packages
             string destination,
             int depth,
             ref int fileCount,
+            ref int entryCount,
             ref ulong totalBytes)
         {
             if (depth > MaxDepth)
@@ -509,8 +551,8 @@ namespace ZonderqOS.SystemCore.Packages
                 ValidatePathSegment(name);
 
                 fileCount++;
-                if (fileCount > MaxFiles)
-                    throw new InvalidOperationException("Package contains too many files.");
+                entryCount++;
+                CheckEntryLimits(fileCount, entryCount);
 
                 long length = new FileInfo(files[i]).Length;
                 if (length < 0)
@@ -547,13 +589,30 @@ namespace ZonderqOS.SystemCore.Packages
             {
                 string name = Path.GetFileName(directories[i]);
                 ValidatePathSegment(name);
+                entryCount++;
+                CheckEntryLimits(fileCount, entryCount);
                 string target = Combine(destination, name);
 
                 if (File.Exists(target))
                     throw new InvalidOperationException("Payload directory collides with a file: " + name);
 
-                CopyTree(directories[i], target, depth + 1, ref fileCount, ref totalBytes);
+                CopyTree(directories[i], target, depth + 1, ref fileCount, ref entryCount, ref totalBytes);
             }
+        }
+
+        private static void CheckEntryLimits(int fileCount, int entryCount)
+        {
+            if (fileCount > MaxFiles || entryCount > MaxEntries)
+                throw new InvalidOperationException("Package contains too many files or directories.");
+        }
+
+        private static bool HasParentSegment(string path)
+        {
+            string[] segments = (path ?? string.Empty).Split('/');
+            for (int i = 0; i < segments.Length; i++)
+                if (segments[i] == "..")
+                    return true;
+            return false;
         }
 
         private static void ValidatePathSegment(string name)
