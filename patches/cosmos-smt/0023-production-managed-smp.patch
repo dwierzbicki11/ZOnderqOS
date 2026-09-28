@@ -1,7 +1,7 @@
 diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 --- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 +++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-@@ -54,6 +54,12 @@ internal class LibraryInitializer
+@@ -54,5 +54,11 @@ internal class LibraryInitializer
              // time against DefaultQuantumNs, so the two have to agree.
              initializer.StartSchedulerTimer(
                  (uint)(SchedulerManager.DefaultQuantumNs / SchedulerManager.NanosecondsPerMillisecond));
