@@ -18,7 +18,7 @@ diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/SmpManagedThreadNative.cs b/sr
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Bridge/Export/SmpManagedThreadNative.cs
-@@ -0,0 +1,20 @@
+@@ -0,0 +1,21 @@
 +using System;
 +using System.Runtime.InteropServices;
 +using Cosmos.Kernel.Core.Scheduler;
@@ -44,7 +44,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs 
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,207 @@
+@@ -0,0 +1,231 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
@@ -279,7 +279,7 @@ new file mode 100644
 diff --git a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs b/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
 --- a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
 +++ b/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
-@@ -126,12 +126,13 @@ internal static unsafe partial class libSystemNative
+@@ -126,10 +126,11 @@ internal static unsafe partial class libSystemNative
              // Create scheduler thread with SchedulerThreadFlags.Managed set.
              // SchedulerManager.InvokeCurrentThreadStart evaluates it to
              // call the managed startup or not.
@@ -301,7 +301,7 @@ diff --git a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs b/src/Cosm
  #if ARCH_X64
              ushort cs = (ushort)GetCurrentCodeSelector();
              thread.InitializeStack(entryPoint, cs, (nuint)parameter, size);
-@@ -146,13 +147,21 @@ internal static unsafe partial class libSystemNative
+@@ -146,12 +147,19 @@ internal static unsafe partial class libSystemNative
              // ARM64: no code selector needed, use 0.
              thread.InitializeStack(entryPoint, 0, (nuint)parameter, size);
  #endif
