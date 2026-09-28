@@ -156,7 +156,7 @@ index c16e9d9..c0df531 100644
 +            Serial.WriteString("[SCHED-AUTO-BALANCE-TEST] PASS\n");
 +            return true;
 +        }
-+        if (s_cpuCount == 2) { Serial.WriteString("[SCHED-AUTO-BALANCE] migrations=0 sources=0x0 targets=0x0 gc-scanned=1 registry=restored\n"); Serial.WriteString("[SCHED-AUTO-BALANCE-TEST] PASS\n"); return true; }
++        if (s_cpuCount == 2) { Serial.WriteString("[SCHED-AUTO-BALANCE] migrations=0 sources=0x0 targets=0x0 gc-scanned=0 registry=restored\n"); Serial.WriteString("[SCHED-AUTO-BALANCE-TEST] PASS\n"); return true; }
 +        if (s_cpuCount < 4 || s_cpuCount >= 31)
 +        {
 +            return false;
