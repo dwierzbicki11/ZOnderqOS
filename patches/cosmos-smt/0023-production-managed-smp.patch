@@ -490,7 +490,7 @@ diff --git a/src/Cosmos.Kernel.Core/Runtime/Thread.cs b/src/Cosmos.Kernel.Core/R
 +    }
  
      [RuntimeExport("RhYield")]
- diff --git a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs b/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs b/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
 --- a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
 +++ b/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
 @@ -126,10 +126,11 @@ internal static unsafe partial class libSystemNative
