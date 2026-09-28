@@ -44,7 +44,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs 
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,238 @@
+@@ -0,0 +1,214 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
@@ -126,30 +126,6 @@ new file mode 100644
 +        return activated;
 +#else
 +        return false;
-+#endif
-+    }
-+
-+    /// <summary>
-+    /// Enables periodic AP preemption only after CoreLib has finished the
-+    /// Thread.Start bootstrap and entered the real process/delegate body.
-+    /// This avoids preempting a Created managed thread before CoreLib has
-+    /// published its current-thread state.
-+    /// </summary>
-+    public static void EnableCurrentCpuManagedPreemption()
-+    {
-+#if ARCH_X64
-+        if (GetCurrentCpuId() == 0)
-+        {
-+            return;
-+        }
-+
-+        using (InternalCpu.DisableInterruptsScope())
-+        {
-+            if (NativeArmSchedulerTimer() != 1)
-+            {
-+                Cosmos.Kernel.Core.Panic.Halt("Production AP scheduler timer could not be armed.");
-+            }
-+        }
 +#endif
 +    }
 +
@@ -283,6 +259,35 @@ new file mode 100644
 +        Interlocked.Increment(ref s_stage23CompletedWorkers);
 +    }
 +}
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.ProductionCompatibility.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.ProductionCompatibility.cs
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.ProductionCompatibility.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.ProductionCompatibility.cs
+@@ -6,9 +6,24 @@ public static partial class SchedulerManager
+     /// Compatibility hook for ZonderqOS process entry. Stages 1-22 keep this
+     /// deliberately inert so the application source can be built against any
+     /// historical SMT prefix. Stage 23 replaces only this implementation with
+-    /// the real AP scheduler-timer activation.
++    /// the real AP scheduler-timer activation after CoreLib Thread.Start has
++    /// entered the actual process/delegate body.
+     /// </summary>
+     public static void EnableCurrentCpuManagedPreemption()
+     {
++#if ARCH_X64
++        if (GetCurrentCpuId() == 0)
++        {
++            return;
++        }
++
++        using (Cosmos.Kernel.Core.CPU.InternalCpu.DisableInterruptsScope())
++        {
++            if (NativeArmSchedulerTimer() != 1)
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Production AP scheduler timer could not be armed.");
++            }
++        }
++#endif
+     }
+ }
 diff --git a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs b/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
 --- a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
 +++ b/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
