@@ -90,16 +90,17 @@ if expected == 4:
     print(f"[SMT21-QEMU][OK] {migrations} owner-driven migrations reached an available AP target with timer, GC and registry proof")
     raise SystemExit(0)
 
-if expected != 8:
+if expected not in (8, 16):
     fail(f"unsupported Stage-21 topology: {expected} CPUs")
-required_sources = (1 << 1) | (1 << 7)
+high_source = expected - 1
+required_sources = (1 << 1) | (1 << high_source)
 if migrations < 4 or sources & required_sources != required_sources:
     fail(f"automatic balancing did not run from both imbalanced owners: migrations={migrations} sources=0x{sources:x}")
 if targets & 1 or targets.bit_count() < 3:
     fail(f"automatic balancing did not reserve at least three AP targets: 0x{targets:x}")
 if preemptions < 12 or resumes < 6 + migrations:
     fail(f"timer/context continuation proof too weak: preemptions={preemptions} resumes={resumes} migrations={migrations}")
-if scanned != 7:
-    fail(f"OrionGC scanned {scanned} AP stacks instead of 7")
+if scanned != expected - 1:
+    fail(f"OrionGC scanned {scanned} AP stacks instead of {expected - 1}")
 print(f"[SMT21-QEMU][OK] {migrations} owner-driven migrations from both edge APs reached {targets.bit_count()} targets with timer, GC and registry proof")
 PY

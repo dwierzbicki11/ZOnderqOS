@@ -92,9 +92,9 @@ if expected == 1:
     print("[SMT22-QEMU][OK] eight single-CPU stress generations preserved scheduler state")
     raise SystemExit(0)
 
-if expected not in (4, 8):
+if expected not in (4, 8, 16):
     fail(f"unsupported Stage-22 topology: {expected} CPUs")
-required_sources = (1 << 1) | ((1 << 7) if expected >= 8 else 0)
+required_sources = (1 << 1) | ((1 << (expected - 1)) if expected >= 8 else 0)
 min_migrations = 4 if expected >= 8 else 1
 min_targets = 3 if expected >= 8 else 1
 min_preemptions = 16 if expected >= 8 else 6

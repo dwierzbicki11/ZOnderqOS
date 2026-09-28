@@ -75,7 +75,7 @@ if expected == 1:
     print("[SMT20-QEMU][OK] single-CPU fallback preserved the scheduler and registry")
     raise SystemExit(0)
 
-if expected not in (4, 8):
+if expected not in (4, 8, 16):
     fail(f"unsupported Stage-20 topology: {expected} CPUs")
 required_hops = expected - 2
 last_cpu = expected - 1

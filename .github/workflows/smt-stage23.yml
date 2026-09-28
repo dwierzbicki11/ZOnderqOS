@@ -3,9 +3,9 @@ name: SMT stage 23 production all-CPU scheduling
 on:
   push:
     branches: [ main, 'smp/stage23-production-all-cpus' ]
-    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage21-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
   pull_request:
-    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage21-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
   workflow_dispatch:
 
 permissions:
@@ -36,6 +36,9 @@ jobs:
             threads: 1
           - cpus: 8
             cores: 4
+            threads: 2
+          - cpus: 16
+            cores: 8
             threads: 2
 
     steps:
