@@ -1,46 +1,5 @@
-diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-index 0483577..21dcd5f 100644
---- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-+++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-@@ -177,6 +177,12 @@ internal class LibraryInitializer
-             {
-                 Cosmos.Kernel.Core.Panic.Halt("Stage 20 live AP migration proof failed.");
-             }
-+
-+            Serial.WriteString("[SCHED-AUTO-BALANCE] begin\n");
-+            if (!SchedulerManager.RunAutomaticApplicationProcessorLoadBalancingProof())
-+            {
-+                Cosmos.Kernel.Core.Panic.Halt("Stage 21 automatic AP load-balancing proof failed.");
-+            }
-         }
-     }
- }
-diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs
-new file mode 100644
-index 0000000..ab964d9
---- /dev/null
-+++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs
-@@ -0,0 +1,18 @@
-+using System.Runtime.InteropServices;
-+using Cosmos.Kernel.Core.CPU;
-+using Cosmos.Kernel.Core.Scheduler;
-+
-+namespace Cosmos.Kernel.Core.Bridge;
-+
-+internal static class ManagedApAutomaticBalanceThreadNative
-+{
-+    [UnmanagedCallersOnly]
-+    internal static void Entry(uint token)
-+    {
-+        SchedulerManager.RunStage21AutomaticBalanceThread(token);
-+        while (true)
-+        {
-+            InternalCpu.Halt();
-+        }
-+    }
-+}
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-index 27b7ad7..600bc36 100644
+index 27b7ad7f98e662ad231bebda90a7d6ab4d6e57d9..600bc362aa3aa8032634f57ab0c237816e015d58 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 @@ -89,6 +89,10 @@ public sealed class PerCpuState : SchedulerExtensible
@@ -105,7 +64,7 @@ index 27b7ad7..600bc36 100644
      {
          if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index c16e9d9..c0df531 100644
+index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad401d0f3337 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -44,6 +44,17 @@ public static partial class SchedulerManager
@@ -137,7 +96,7 @@ index c16e9d9..c0df531 100644
 
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
-@@ -1952,6 +1967,257 @@ public static partial class SchedulerManager
+@@ -1958,6 +1973,257 @@ public static partial class SchedulerManager
      private static ulong ComputeStage20Checksum(uint threadId, uint hopCount, uint cpuId) =>
          0x534D_5031_4000_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)hopCount << 24) ^ threadId;
 
@@ -395,7 +354,7 @@ index c16e9d9..c0df531 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1980,6 +2215,10 @@ public static partial class SchedulerManager
+@@ -1986,6 +2252,10 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage20Preemption(thread.Id);
          }
@@ -406,7 +365,7 @@ index c16e9d9..c0df531 100644
 
          nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
  #if ARCH_X64
-@@ -2003,15 +2242,20 @@ public static partial class SchedulerManager
+@@ -2009,15 +2279,20 @@ public static partial class SchedulerManager
          SchedulerThread? outgoing = source.CurrentThread;
          if (outgoing is null || outgoing.State != SchedulerThreadState.Running ||
              ReferenceEquals(outgoing, source.IdleThread) ||
@@ -430,7 +389,7 @@ index c16e9d9..c0df531 100644
              return false;
          }
 
-@@ -2019,19 +2263,38 @@ public static partial class SchedulerManager
+@@ -2025,19 +2300,52 @@ public static partial class SchedulerManager
          SchedulerThread? replacement = s_currentScheduler.PickNext(source) ?? source.IdleThread;
          if (replacement is null || NativeDisarmSchedulerTimer() != 1)
          {
@@ -440,6 +399,20 @@ index c16e9d9..c0df531 100644
 +                destination.ReleaseIncomingRunnableReservation();
 +            }
 +            RecordMigrationFailure(explicitlyRequested, 12);
++            return false;
++        }
++
++        // Keep the source scheduler timer armed when it switches to another
++        // queued worker. Migration disarms the AP-local timer; without this
++        // re-arm, that replacement cannot be preempted for another handoff.
++        if (!ReferenceEquals(replacement, source.IdleThread) &&
++            NativeArmSchedulerTimer() != 1)
++        {
++            if (!explicitlyRequested)
++            {
++                destination.ReleaseIncomingRunnableReservation();
++            }
++            RecordMigrationFailure(explicitlyRequested, 15);
              return false;
          }
 
@@ -472,7 +445,7 @@ index c16e9d9..c0df531 100644
 
          source.CurrentThread = replacement;
          bool isNewThread = replacement.State == SchedulerThreadState.Created;
-@@ -2040,7 +2303,7 @@ public static partial class SchedulerManager
+@@ -2046,7 +2354,7 @@ public static partial class SchedulerManager
 
          if (NativeStageSchedulerHandoff(targetCpuId) != 1)
          {
@@ -481,7 +454,7 @@ index c16e9d9..c0df531 100644
              return false;
          }
 
-@@ -2048,8 +2311,123 @@ public static partial class SchedulerManager
+@@ -2054,8 +2362,123 @@ public static partial class SchedulerManager
          ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
          return true;
      }
@@ -605,7 +578,7 @@ index c16e9d9..c0df531 100644
      // ========== Thread Entry Dispatch ==========
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
-@@ -2770,6 +3148,14 @@ public static partial class SchedulerManager
+@@ -2776,6 +3199,14 @@ public static partial class SchedulerManager
              return;
          }
 
@@ -620,3 +593,20 @@ index c16e9d9..c0df531 100644
          // Check and wake up sleeping threads whose timeout has expired
          CheckSleepingThreads(cpuId, elapsedNs);
 
+diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+index 0483577488168689a8cbbcb1fb6eb45af107fe66..21dcd5f31d8fa14e295a61538b557839b6d2a9b8 100644
+--- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
++++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+@@ -177,6 +177,12 @@ internal class LibraryInitializer
+             {
+                 Cosmos.Kernel.Core.Panic.Halt("Stage 20 live AP migration proof failed.");
+             }
++
++            Serial.WriteString("[SCHED-AUTO-BALANCE] begin\n");
++            if (!SchedulerManager.RunAutomaticApplicationProcessorLoadBalancingProof())
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 21 automatic AP load-balancing proof failed.");
++            }
+         }
+     }
+ }
