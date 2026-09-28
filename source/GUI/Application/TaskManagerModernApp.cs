@@ -10,6 +10,7 @@ using Cosmos.Kernel.System.Storage;
 using ZonderqOS.GUI.Icons;
 using ZonderqOS.SystemCore;
 using CosmosGc = Cosmos.Kernel.Core.Memory.GarbageCollector.GarbageCollector;
+using ZonderqOS.Platform;
 
 namespace ZonderqOS.GUI.Apps
 {

@@ -6,6 +6,7 @@ using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Storage;
 using ZonderqOS.GUI.Icons;
 using CosmosGc = Cosmos.Kernel.Core.Memory.GarbageCollector.GarbageCollector;
+using ZonderqOS.Platform;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -24,8 +25,9 @@ namespace ZonderqOS.GUI.Apps
         private ulong gcPinned;
         private ulong gcCollections;
         private ulong uptimeSeconds;
+        private HardwareSnapshot hardwareSnapshot;
 
-        private int pageMode; // 0 kernel, 1 memory/gc
+        private int pageMode; // 0 kernel, 1 memory/gc, 2 hardware
 
         public KernelAdvancedApp(int x, int y)
             : base("Panel kernela", "Zaawansowany kernel - ZOnderqOS", x, y, 960, 620)
@@ -36,14 +38,17 @@ namespace ZonderqOS.GUI.Apps
 
         protected override void RenderContent(Canvas canvas)
         {
+            string pageName = pageMode == 0 ? "KERNEL" : pageMode == 1 ? "PAMIEC / GC" : "HARDWARE";
             DrawRow(canvas, 0, IconType.Settings,
-                "WIDOK", "Kliknij aby przelaczyc kernel / pamiec i OrionGC",
-                pageMode == 0 ? "KERNEL" : "PAMIEC / GC", Accent);
+                "WIDOK", "Kliknij aby przelaczyc kernel / pamiec / hardware",
+                pageName, Accent);
 
             if (pageMode == 0)
                 RenderKernel(canvas);
-            else
+            else if (pageMode == 1)
                 RenderMemory(canvas);
+            else
+                RenderHardware(canvas);
         }
 
         private void RenderKernel(Canvas canvas)
@@ -76,6 +81,42 @@ namespace ZonderqOS.GUI.Apps
                 "PINNED OBJECTS", "Obiekty przypiete raportowane przez OrionGC", gcPinned, "");
             DrawNumericRow(canvas, 6, IconType.Refresh,
                 "KOLEKCJE GC", "Automatyczne kolekcje wykonane przez runtime", gcCollections, "");
+        }
+
+
+        private void RenderHardware(Canvas canvas)
+        {
+            HardwareSnapshot info = hardwareSnapshot ?? HardwareSnapshot.Capture();
+            DrawRow(canvas, 1, IconType.Settings,
+                "ARCHITEKTURA", "Backend platformy", info.Architecture, Text);
+            DrawRow(canvas, 2, IconType.Settings,
+                "CPU", info.CpuVendor, info.CpuBrand, Text);
+            DrawRow(canvas, 3, IconType.Settings,
+                "TOPOLOGIA", "Rdzenie / logiczne / watki na rdzen",
+                info.PhysicalCores + " / " + info.LogicalProcessors + " / " + info.ThreadsPerCore, Text);
+            DrawRow(canvas, 4, IconType.Settings,
+                "CACHE", "L1 / L2 / L3",
+                FormatHardwareBytes(info.L1Bytes) + " / " +
+                FormatHardwareBytes(info.L2Bytes) + " / " +
+                FormatHardwareBytes(info.L3Bytes), Text);
+            DrawRow(canvas, 5, IconType.Settings,
+                "WIRTUALIZACJA",
+                info.HypervisorPresent ? "Wykryto hypervisor" : "Brak wykrytego hypervisora",
+                info.VirtualizationSupported ? "SUPPORTED" : "N/A", Text);
+            DrawRow(canvas, 6, IconType.Settings,
+                "FEATURES", "Flagi CPU raportowane przez backend platformy",
+                info.CpuFeatures, Text);
+        }
+
+        private static string FormatHardwareBytes(ulong bytes)
+        {
+            const ulong KiB = 1024UL;
+            const ulong MiB = 1024UL * KiB;
+            if (bytes >= MiB)
+                return (bytes / MiB) + " MB";
+            if (bytes >= KiB)
+                return (bytes / KiB) + " KB";
+            return bytes + " B";
         }
 
         protected override void RefreshData()
@@ -138,10 +179,14 @@ namespace ZonderqOS.GUI.Apps
                 uptimeSeconds = 0;
             }
 
-            SetStatus(pageMode == 0
-                ? "KERNEL: ODCZYT TYLKO - BRAK RYZYKOWNYCH ZMIAN SCHEDULERA"
-                : "ORIONGC: COMMITTED " + gcCommittedMb + " MB; RECZNE COLLECT ZABLOKOWANE",
-                pageMode == 0 ? Good : Warning);
+            hardwareSnapshot = HardwareSnapshot.Capture();
+
+            if (pageMode == 0)
+                SetStatus("KERNEL: ODCZYT TYLKO - BRAK RYZYKOWNYCH ZMIAN SCHEDULERA", Good);
+            else if (pageMode == 1)
+                SetStatus("ORIONGC: COMMITTED " + gcCommittedMb + " MB; RECZNE COLLECT ZABLOKOWANE", Warning);
+            else
+                SetStatus("HARDWARE: SNAPSHOT TYLKO DO ODCZYTU", Good);
         }
 
         protected override void OnClick(int mouseX, int mouseY)
@@ -149,7 +194,7 @@ namespace ZonderqOS.GUI.Apps
             int row = HitRow(mouseX, mouseY, 7);
             if (row == 0)
             {
-                pageMode = pageMode == 0 ? 1 : 0;
+                pageMode = (pageMode + 1) % 3;
                 RefreshData();
                 return;
             }

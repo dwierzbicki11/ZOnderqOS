@@ -1,0 +1,68 @@
+name: Hardware Inspector compile gate
+
+on:
+  pull_request:
+    paths:
+      - 'source/Core/HardwareSnapshot.cs'
+      - 'source/Shell/Commands/CmdHwInfo.cs'
+      - 'source/Shell/Command.cs'
+      - 'source/Platform/**'
+      - 'source/GUI/Application/KernelAdvancedApp.cs'
+      - 'source/GUI/Application/SettingsApp.cs'
+      - 'source/GUI/Application/TaskManagerModernApp.cs'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/hardware-inspector.yml'
+  push:
+    branches:
+      - 'feature/hardware-inspector-foundation'
+    paths:
+      - 'source/Core/HardwareSnapshot.cs'
+      - 'source/Shell/Commands/CmdHwInfo.cs'
+      - 'source/Shell/Command.cs'
+      - 'source/Platform/**'
+      - 'source/GUI/Application/KernelAdvancedApp.cs'
+      - 'source/GUI/Application/SettingsApp.cs'
+      - 'source/GUI/Application/TaskManagerModernApp.cs'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/hardware-inspector.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            rid: linux-x64
+          - arch: arm64
+            rid: linux-arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: >
+          dotnet restore ZonderqOS.csproj
+          -r ${{ matrix.rid }}
+          -p:CosmosArch=${{ matrix.arch }}
+          --force
+          --no-cache
+
+      - name: Compile managed kernel
+        run: >
+          dotnet build ZonderqOS.csproj
+          -c Release
+          -r ${{ matrix.rid }}
+          -p:CosmosArch=${{ matrix.arch }}
+          -p:GeneratePackageOnBuild=false
+          --no-incremental
+          --no-restore
