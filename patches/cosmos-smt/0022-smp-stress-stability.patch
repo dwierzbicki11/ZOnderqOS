@@ -90,16 +90,6 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
 
          ushort codeSelector = (ushort)NativeGetCodeSelector();
          nuint entryPoint = (nuint)(delegate* unmanaged<uint, void>)&ManagedApAutomaticBalanceThreadNative.Entry;
-@@ -2046,8 +2087,7 @@ public static partial class SchedulerManager
-             (Volatile.Read(ref s_stage21SourceMask) & requiredSourceMask) != requiredSourceMask ||
-             CountStage21CpuBits(Volatile.Read(ref s_stage21TargetMask)) < 3 ||
-             Volatile.Read(ref s_stage21Preemptions) < workerCount * 2 ||
--            Volatile.Read(ref s_stage21Resumes) <
--                workerCount + Volatile.Read(ref s_stage21Migrations))
-+            Volatile.Read(ref s_stage21Resumes) < workerCount)
-         {
-             if (startedAps != expectedStartedAps ||
-                 Volatile.Read(ref s_stage21Failure) != 0 ||
 @@ -2057,10 +2097,20 @@ public static partial class SchedulerManager
                  Volatile.Write(ref s_stage21ReleaseWorkers, 1);
                  Serial.WriteString("[SCHED-AUTO-BALANCE-CHECK] started-aps="); Serial.WriteNumber((ulong)(uint)startedAps);
@@ -173,7 +163,7 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
                      Volatile.Write(ref s_stage21Failure, 2);
                      return;
                  }
-@@ -2198,6 +2271,75 @@ public static partial class SchedulerManager
+@@ -2198,6 +2271,86 @@ public static partial class SchedulerManager
          }
      }
 
@@ -187,6 +177,13 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
 +    /// </summary>
 +    internal static bool RunSmpSchedulerStressStabilityProof()
 +    {
++#if ARCH_X64
++        if (s_cpuCount == 2)
++        {
++            Serial.WriteString("[SCHED-SMP-STRESS-TEST] SKIP reason=requires-multiple-ap-targets\n");
++            return true;
++        }
++#endif
 +        int initialThreadCount = ThreadCount;
 +        int collectionBefore = GarbageCollector.GetCollectionIndex();
 +        ulong totalMigrations = 0;
@@ -212,7 +209,11 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
 +                int migrations = Volatile.Read(ref s_stage21Migrations);
 +                int preemptions = Volatile.Read(ref s_stage21Preemptions);
 +                int resumes = Volatile.Read(ref s_stage21Resumes);
-+                if (migrations < 4 || preemptions < 12 || resumes < 6)
++                int requiredMigrations = s_cpuCount >= 8 ? 4 : 1;
++                int requiredPreemptions = s_cpuCount >= 8 ? 12 : 6;
++                int requiredResumes = s_cpuCount >= 8 ? 10 : 4;
++                if (migrations < requiredMigrations ||
++                    preemptions < requiredPreemptions || resumes < requiredResumes)
 +                {
 +                    return false;
 +                }

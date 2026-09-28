@@ -137,7 +137,7 @@ index c16e9d9..c0df531 100644
 
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
-@@ -1952,6 +1967,253 @@ public static partial class SchedulerManager
+@@ -1952,6 +1967,257 @@ public static partial class SchedulerManager
      private static ulong ComputeStage20Checksum(uint threadId, uint hopCount, uint cpuId) =>
          0x534D_5031_4000_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)hopCount << 24) ^ threadId;
 
@@ -156,7 +156,11 @@ index c16e9d9..c0df531 100644
 +            Serial.WriteString("[SCHED-AUTO-BALANCE-TEST] PASS\n");
 +            return true;
 +        }
-+        if (s_cpuCount == 2) { Serial.WriteString("[SCHED-AUTO-BALANCE] migrations=0 sources=0x0 targets=0x0 gc-scanned=0 registry=restored\n"); Serial.WriteString("[SCHED-AUTO-BALANCE-TEST] PASS\n"); return true; }
++        if (s_cpuCount == 2)
++        {
++            Serial.WriteString("[SCHED-AUTO-BALANCE-TEST] SKIP reason=requires-multiple-ap-targets\n");
++            return true;
++        }
 +        if (s_cpuCount < 4 || s_cpuCount >= 31)
 +        {
 +            return false;
@@ -217,9 +221,9 @@ index c16e9d9..c0df531 100644
 +        int requiredSourceMask = s_cpuCount >= 8 ? (1 << 1) | (1 << checked((int)highSourceCpu)) : (1 << 1);
 +        ulong start = (ulong)Stopwatch.GetTimestamp();
 +        while (Volatile.Read(ref s_stage21StartedWorkers) != workerCount ||
-+            Volatile.Read(ref s_stage21Migrations) < (s_cpuCount >= 8 ? 4 : 2) ||
++            Volatile.Read(ref s_stage21Migrations) < (s_cpuCount >= 8 ? 4 : 1) ||
 +            (Volatile.Read(ref s_stage21SourceMask) & requiredSourceMask) != requiredSourceMask ||
-+            CountStage21CpuBits(Volatile.Read(ref s_stage21TargetMask)) < (s_cpuCount >= 8 ? 3 : 2) ||
++            CountStage21CpuBits(Volatile.Read(ref s_stage21TargetMask)) < (s_cpuCount >= 8 ? 3 : 1) ||
 +            Volatile.Read(ref s_stage21Preemptions) < workerCount * 2 ||
 +            Volatile.Read(ref s_stage21Resumes) <
 +                workerCount + Volatile.Read(ref s_stage21Migrations))

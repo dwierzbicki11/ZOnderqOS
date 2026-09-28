@@ -40,7 +40,15 @@ def fail(message):
 
 begins = [i for i, line in enumerate(lines) if line == "[SCHED-LIVE-MIGRATE] begin"]
 passes = [i for i, line in enumerate(lines) if line == "[SCHED-LIVE-MIGRATE-TEST] PASS"]
-if len(begins) != 1 or len(passes) != 1 or begins[0] >= passes[0]:
+skips = [i for i, line in enumerate(lines) if line == "[SCHED-LIVE-MIGRATE-TEST] SKIP reason=single-ap-no-migration-target"]
+if expected == 2:
+    if len(begins) != 1 or len(passes) != 0 or len(skips) != 1 or begins[0] >= skips[0]:
+        fail("single-AP Stage-20 must explicitly skip the impossible AP-to-AP migration proof")
+    if any("[SCHED-LIVE-MIGRATE] thread=" in line or "[SCHED-LIVE-MIGRATE] gc-collection=" in line for line in lines):
+        fail("single-AP Stage-20 skip emitted migration evidence")
+    print("[SMT20-QEMU][OK] one AP correctly skipped the AP-to-AP migration proof")
+    raise SystemExit(0)
+if len(begins) != 1 or len(passes) != 1 or len(skips) != 0 or begins[0] >= passes[0]:
     fail("missing or duplicated Stage-20 proof markers")
 begin, passed = begins[0], passes[0]
 
@@ -67,21 +75,12 @@ if expected == 1:
     print("[SMT20-QEMU][OK] single-CPU fallback preserved the scheduler and registry")
     raise SystemExit(0)
 
-if expected == 2:
-    thread_id = checksum ^ 0x534D503140000000 ^ (1 << 32)
-    if hops or hop_count != 0:
-        fail("single-AP Stage-20 proof reported an impossible AP-to-AP handoff")
-    if thread_id <= 0 or thread_id > 0xFFFFFFFF:
-        fail(f"single-AP Stage-20 checksum decodes an invalid managed thread id: {thread_id}")
-    if collection <= 0 or scanned != 1:
-        fail("single-AP Stage-20 GC/registry summary mismatch")
-    print(f"[SMT20-QEMU][OK] thread {thread_id} retained its live context through timer preemption and GC on the only AP")
-    raise SystemExit(0)
-
-if expected != 8:
+if expected not in (4, 8):
     fail(f"unsupported Stage-20 topology: {expected} CPUs")
-if hop_count != 6:
-    fail(f"kernel summary reported {hop_count} live context handoffs instead of 6")
+required_hops = expected - 2
+last_cpu = expected - 1
+if hop_count != required_hops:
+    fail(f"kernel summary reported {hop_count} live context handoffs instead of {required_hops}")
 
 # SMP CPUs share one serial stream, so an unrelated CPU can interleave output
 # between the individual WriteString/WriteNumber calls that form a diagnostic
@@ -90,7 +89,7 @@ if hop_count != 6:
 # Derive the thread id from that validated summary and treat each intact hop
 # line as additional evidence rather than making log formatting part of the
 # scheduler correctness contract.
-thread_id = checksum ^ 0x534D503140000000 ^ (7 << 32) ^ (6 << 24)
+thread_id = checksum ^ 0x534D503140000000 ^ (last_cpu << 32) ^ (required_hops << 24)
 if thread_id <= 0 or thread_id > 0xFFFFFFFF:
     fail(f"Stage-20 checksum decodes an invalid managed thread id: {thread_id}")
 
@@ -99,7 +98,7 @@ for hop in hops:
     tid, source, target, source_out, target_in, preemptions = hop
     if tid != thread_id:
         fail(f"handoff changed managed thread identity: {hop}")
-    if source < 1 or source > 6 or target != source + 1:
+    if source < 1 or source >= last_cpu or target != source + 1:
         fail(f"broken AP handoff chain record: {hop}")
     if target in seen_targets:
         fail(f"duplicated AP handoff target in serial evidence: {target}")
@@ -107,8 +106,8 @@ for hop in hops:
     if source_out != 1 or target_in != 1 or preemptions < 2:
         fail(f"handoff lacks queue ownership/preemption proof: {hop}")
 
-expected_checksum = 0x534D503140000000 ^ (7 << 32) ^ (6 << 24) ^ thread_id
+expected_checksum = 0x534D503140000000 ^ (last_cpu << 32) ^ (required_hops << 24) ^ thread_id
 if collection <= 0 or scanned != expected_aps or checksum != expected_checksum:
     fail("Stage-20 GC/checksum/registry summary mismatch")
-print(f"[SMT20-QEMU][OK] thread {thread_id} retained its live context across 6 AP handoffs, timer preemption, GC scan and retirement ({len(hops)} intact diagnostic hop lines)")
+print(f"[SMT20-QEMU][OK] thread {thread_id} retained its live context across {required_hops} AP handoffs, timer preemption, GC scan and retirement ({len(hops)} intact diagnostic hop lines)")
 PY
