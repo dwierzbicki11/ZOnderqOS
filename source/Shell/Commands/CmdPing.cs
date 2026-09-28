@@ -1,7 +1,7 @@
 using System;
 using Cosmos.Kernel.System.Network;
 using Cosmos.Kernel.System.Network.IPv4;
-using CosmosEndPoint = Cosmos.Kernel.System.Network.IPv4.EndPoint;
+using CosmosEndPoint = Cosmos.Kernel.System.Network.EndPoint;
 
 namespace ZonderqOS.Commands
 {
@@ -126,7 +126,7 @@ namespace ZonderqOS.Commands
                 using (var client = new IcmpClient())
                 {
                     client.Connect(target);
-                    CosmosEndPoint source = new CosmosEndPoint(target, 0);
+                    CosmosEndPoint source = new CosmosEndPoint(Address4.Zero, 0);
                     client.SendEcho(1, sequence);
                     return client.Receive(ref source, timeoutMs);
                 }

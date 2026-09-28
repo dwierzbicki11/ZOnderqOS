@@ -15,6 +15,11 @@ namespace ZonderqOS
 
         protected override void BeforeRun()
         {
+#if ZONDERQ_NETWORK_N3_PROBE
+            Console.WriteLine("[NETWORK-N3] starting ARP request/reply/cache probe");
+            ArpStageProbe.Run();
+            return;
+#else
             try
             {
                 Console.Clear();
@@ -29,6 +34,13 @@ namespace ZonderqOS
                 SystemSettings.Load();
 
                 UserManager.PrepareLogin();
+#if ZONDERQ_NETWORK_N9_GUI_REGRESSION
+                // CI-only regression path: execute the real GUI initialization and first
+                // RenderFrame after the normal boot/storage initializers. GuiManager exits
+                // on its first loop because there is deliberately no authenticated session;
+                // the framebuffer remains available for QEMU screendump validation.
+                new global::ZonderqOS.GUI.GuiManager().Run();
+#endif
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
                 Console.WriteLine();
                 Console.WriteLine("Starting ZOnderqOS console login...");
@@ -38,62 +50,50 @@ namespace ZonderqOS
             {
                 KernelPanic.Show(ex, "BOOT", false);
             }
+#endif
         }
 
         protected override void Run()
         {
+#if ZONDERQ_NETWORK_N3_PROBE
+            Thread.Sleep(1000);
+            return;
+#else
             try
             {
                 if (!SecurityContext.IsAuthenticated)
                 {
                     sessionUser = null;
-
-                    // Keep first-boot hardening entirely in the console path so GUI
-                    // failures can never block access to the shell.
                     if (UserManager.RequiresInitialRootPasswordSetup())
                     {
                         RunInitialRootSetupPrompt();
                         return;
                     }
-
                     RunLoginPrompt();
                     return;
                 }
 
                 SynchronizeSession();
-
                 string user = EnvironmentManager.Get("USER");
-                if (string.IsNullOrEmpty(user))
-                    user = SecurityContext.CurrentUser;
-
+                if (string.IsNullOrEmpty(user)) user = SecurityContext.CurrentUser;
                 string host = EnvironmentManager.Get("HOSTNAME");
-                if (string.IsNullOrEmpty(host))
-                    host = "ZonderqOS";
-
+                if (string.IsNullOrEmpty(host)) host = "ZonderqOS";
                 string prompt = user + "@" + host + ":" + path + "$ ";
                 Console.Write(prompt);
                 string command = ReadLineWithHistory(prompt);
-
                 if (!string.IsNullOrWhiteSpace(command))
                 {
                     Command.Run(command, ref path);
-
-                    // Password-bearing account commands are deliberately excluded from
-                    // history even when they appear in a later ';', '&&' or pipeline segment.
-                    // History is also cleared whenever the authenticated user changes.
                     if (SecurityContext.IsAuthenticated && !IsSensitiveCommand(command) &&
                         (history.Count == 0 || history[history.Count - 1] != command))
                     {
                         history.Add(command);
-                        while (history.Count > MaxHistoryEntries)
-                            history.RemoveAt(0);
+                        while (history.Count > MaxHistoryEntries) history.RemoveAt(0);
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                KernelPanic.Show(ex, "RUNTIME", true);
-            }
+            catch (Exception ex) { KernelPanic.Show(ex, "RUNTIME", true); }
+#endif
         }
 
         private void RunInitialRootSetupPrompt()
@@ -101,116 +101,41 @@ namespace ZonderqOS
             Console.Clear();
             Console.WriteLine("ZOnderqOS INITIAL SECURITY SETUP");
             Console.WriteLine("The factory root/root credential must be replaced before login.");
-            Console.WriteLine(PasswordPolicy.Summary);
-            Console.WriteLine();
-
-            Console.Write("new root password: ");
-            string first = ReadPassword();
-
+            Console.WriteLine(PasswordPolicy.Summary); Console.WriteLine();
+            Console.Write("new root password: "); string first = ReadPassword();
             string reason;
-            if (!PasswordPolicy.Validate(first, out reason))
-            {
-                first = null;
-                Console.WriteLine(reason);
-                Thread.Sleep(900);
-                return;
-            }
-
-            Console.Write("confirm password: ");
-            string second = ReadPassword();
-            if (first != second)
-            {
-                first = null;
-                second = null;
-                Console.WriteLine("Passwords do not match.");
-                Thread.Sleep(900);
-                return;
-            }
-
-            bool ok = UserManager.CompleteInitialRootPasswordSetup(first);
-            first = null;
-            second = null;
-
-            if (!ok)
-            {
-                Console.WriteLine("Could not save the new root credential. Setup will retry.");
-                Thread.Sleep(1000);
-                return;
-            }
-
-            UserManager.PrepareLogin();
-            Console.WriteLine("Root password changed. Secure login is ready.");
-            Thread.Sleep(600);
+            if (!PasswordPolicy.Validate(first, out reason)) { first = null; Console.WriteLine(reason); Thread.Sleep(900); return; }
+            Console.Write("confirm password: "); string second = ReadPassword();
+            if (first != second) { first = null; second = null; Console.WriteLine("Passwords do not match."); Thread.Sleep(900); return; }
+            bool ok = UserManager.CompleteInitialRootPasswordSetup(first); first = null; second = null;
+            if (!ok) { Console.WriteLine("Could not save the new root credential. Setup will retry."); Thread.Sleep(1000); return; }
+            UserManager.PrepareLogin(); Console.WriteLine("Root password changed. Secure login is ready."); Thread.Sleep(600);
         }
 
         private void RunLoginPrompt()
         {
-            // Never allow the recovery console to bypass first-boot hardening.
-            if (UserManager.RequiresInitialRootPasswordSetup())
-            {
-                RunInitialRootSetupPrompt();
-                return;
-            }
-
-            Console.Write("login: ");
-            string username = Console.ReadLine();
-            if (username != null)
-                username = username.Trim();
-
+            if (UserManager.RequiresInitialRootPasswordSetup()) { RunInitialRootSetupPrompt(); return; }
+            Console.Write("login: "); string username = Console.ReadLine(); if (username != null) username = username.Trim();
             int retryAfter;
-            if (!AuthenticationGuard.CanAttempt(username, out retryAfter))
-            {
-                Console.WriteLine("Authentication temporarily blocked. Retry in " + retryAfter + " s.");
-                Thread.Sleep(System.Math.Min(2000, retryAfter * 250));
-                return;
-            }
-
-            Console.Write("password: ");
-            string password = ReadPassword();
-
+            if (!AuthenticationGuard.CanAttempt(username, out retryAfter)) { Console.WriteLine("Authentication temporarily blocked. Retry in " + retryAfter + " s."); Thread.Sleep(System.Math.Min(2000, retryAfter * 250)); return; }
+            Console.Write("password: "); string password = ReadPassword();
             if (UserManager.TryStartSession(username, password))
             {
-                AuthenticationGuard.RecordSuccess(username);
-                password = null;
-                history.Clear();
-                sessionUser = SecurityContext.CurrentUser;
-                path = SecurityContext.CurrentHome;
-                if (string.IsNullOrEmpty(path))
-                    path = "/";
-
-                Console.WriteLine("Welcome, " + SecurityContext.CurrentUser + ".");
-                Console.WriteLine("Type 'gui' to start the graphical desktop.");
-                Console.WriteLine();
-                return;
+                AuthenticationGuard.RecordSuccess(username); password = null; history.Clear(); sessionUser = SecurityContext.CurrentUser; path = SecurityContext.CurrentHome; if (string.IsNullOrEmpty(path)) path = "/";
+                Console.WriteLine("Welcome, " + SecurityContext.CurrentUser + "."); Console.WriteLine("Type 'gui' to start the graphical desktop."); Console.WriteLine(); return;
             }
-
-            password = null;
-            AuthenticationGuard.RecordFailure(username);
-            retryAfter = AuthenticationGuard.GetRetryAfterSeconds(username);
-            Console.WriteLine(retryAfter > 0
-                ? "Authentication failed. Temporary delay: " + retryAfter + " s."
-                : "Authentication failed.");
-
+            password = null; AuthenticationGuard.RecordFailure(username); retryAfter = AuthenticationGuard.GetRetryAfterSeconds(username);
+            Console.WriteLine(retryAfter > 0 ? "Authentication failed. Temporary delay: " + retryAfter + " s." : "Authentication failed.");
             Thread.Sleep(retryAfter > 0 ? System.Math.Min(2500, retryAfter * 300) : 600);
         }
 
         private void SynchronizeSession()
         {
-            string currentUser = SecurityContext.CurrentUser ?? string.Empty;
-            if (sessionUser == currentUser)
-                return;
-
-            history.Clear();
-            sessionUser = currentUser;
-            path = SecurityContext.CurrentHome;
-            if (string.IsNullOrEmpty(path))
-                path = "/";
+            string currentUser = SecurityContext.CurrentUser ?? string.Empty; if (sessionUser == currentUser) return;
+            history.Clear(); sessionUser = currentUser; path = SecurityContext.CurrentHome; if (string.IsNullOrEmpty(path)) path = "/";
         }
 
-        private static bool IsSensitiveCommand(string command)
-        {
-            return SensitiveCommandPolicy.ContainsPasswordBearingCommand(command);
-        }
+        private static bool IsSensitiveCommand(string command) { return SensitiveCommandPolicy.ContainsPasswordBearingCommand(command); }
 
         private string ReadPassword()
         {
@@ -218,174 +143,49 @@ namespace ZonderqOS
             while (true)
             {
                 ConsoleKeyInfo keyInfo = Console.ReadKey(true);
-                if (keyInfo.Key == ConsoleKey.Enter)
-                {
-                    Console.WriteLine();
-                    return password;
-                }
-
-                if (keyInfo.Key == ConsoleKey.Backspace)
-                {
-                    if (password.Length > 0)
-                    {
-                        password = password.Substring(0, password.Length - 1);
-                        Console.Write("\b \b");
-                    }
-                    continue;
-                }
-
-                if (keyInfo.KeyChar >= 32 && keyInfo.KeyChar <= 126 && password.Length < PasswordPolicy.MaxLength)
-                {
-                    password += keyInfo.KeyChar;
-                    Console.Write('*');
-                }
+                if (keyInfo.Key == ConsoleKey.Enter) { Console.WriteLine(); return password; }
+                if (keyInfo.Key == ConsoleKey.Backspace) { if (password.Length > 0) { password = password.Substring(0, password.Length - 1); Console.Write("\b \b"); } continue; }
+                if (keyInfo.KeyChar >= 32 && keyInfo.KeyChar <= 126 && password.Length < PasswordPolicy.MaxLength) { password += keyInfo.KeyChar; Console.Write('*'); }
             }
         }
 
         private string ReadLineWithHistory(string prompt)
         {
-            string currentInput = "";
-            int cursorPosition = 0;
-            int historyIndex = history.Count;
-            int startLeft = Console.CursorLeft;
-            int startTop = Console.CursorTop;
-
+            string currentInput = ""; int cursorPosition = 0; int historyIndex = history.Count; int startLeft = Console.CursorLeft; int startTop = Console.CursorTop;
             while (true)
             {
                 var keyInfo = Console.ReadKey(true);
-
-                if (keyInfo.Key == ConsoleKey.Enter)
-                {
-                    Console.WriteLine();
-                    break;
-                }
-                else if (keyInfo.Key == ConsoleKey.Backspace)
-                {
-                    if (cursorPosition > 0 && currentInput.Length > 0)
-                    {
-                        currentInput = currentInput.Remove(cursorPosition - 1, 1);
-                        cursorPosition--;
-                        RefreshLine(startLeft, startTop, currentInput, cursorPosition);
-                    }
-                }
-                else if (keyInfo.Key == ConsoleKey.Delete)
-                {
-                    if (cursorPosition < currentInput.Length)
-                    {
-                        currentInput = currentInput.Remove(cursorPosition, 1);
-                        RefreshLine(startLeft, startTop, currentInput, cursorPosition);
-                    }
-                }
-                else if (keyInfo.Key == ConsoleKey.LeftArrow)
-                {
-                    if (cursorPosition > 0)
-                    {
-                        cursorPosition--;
-                        SetConsoleCursor(startLeft, startTop, cursorPosition);
-                    }
-                }
-                else if (keyInfo.Key == ConsoleKey.RightArrow)
-                {
-                    if (cursorPosition < currentInput.Length)
-                    {
-                        cursorPosition++;
-                        SetConsoleCursor(startLeft, startTop, cursorPosition);
-                    }
-                }
-                else if (keyInfo.Key == ConsoleKey.UpArrow)
-                {
-                    if (history.Count > 0 && historyIndex > 0)
-                    {
-                        historyIndex--;
-                        currentInput = history[historyIndex];
-                        cursorPosition = currentInput.Length;
-                        RefreshLine(startLeft, startTop, currentInput, cursorPosition);
-                    }
-                }
-                else if (keyInfo.Key == ConsoleKey.DownArrow)
-                {
-                    if (history.Count > 0 && historyIndex < history.Count - 1)
-                    {
-                        historyIndex++;
-                        currentInput = history[historyIndex];
-                        cursorPosition = currentInput.Length;
-                        RefreshLine(startLeft, startTop, currentInput, cursorPosition);
-                    }
-                    else if (historyIndex >= history.Count - 1)
-                    {
-                        historyIndex = history.Count;
-                        currentInput = "";
-                        cursorPosition = 0;
-                        RefreshLine(startLeft, startTop, currentInput, cursorPosition);
-                    }
-                }
+                if (keyInfo.Key == ConsoleKey.Enter) { Console.WriteLine(); break; }
+                else if (keyInfo.Key == ConsoleKey.Backspace) { if (cursorPosition > 0 && currentInput.Length > 0) { currentInput = currentInput.Remove(cursorPosition - 1, 1); cursorPosition--; RefreshLine(startLeft, startTop, currentInput, cursorPosition); } }
+                else if (keyInfo.Key == ConsoleKey.Delete) { if (cursorPosition < currentInput.Length) { currentInput = currentInput.Remove(cursorPosition, 1); RefreshLine(startLeft, startTop, currentInput, cursorPosition); } }
+                else if (keyInfo.Key == ConsoleKey.LeftArrow) { if (cursorPosition > 0) { cursorPosition--; SetConsoleCursor(startLeft, startTop, cursorPosition); } }
+                else if (keyInfo.Key == ConsoleKey.RightArrow) { if (cursorPosition < currentInput.Length) { cursorPosition++; SetConsoleCursor(startLeft, startTop, cursorPosition); } }
+                else if (keyInfo.Key == ConsoleKey.UpArrow) { if (history.Count > 0 && historyIndex > 0) { historyIndex--; currentInput = history[historyIndex]; cursorPosition = currentInput.Length; RefreshLine(startLeft, startTop, currentInput, cursorPosition); } }
+                else if (keyInfo.Key == ConsoleKey.DownArrow) { if (history.Count > 0 && historyIndex < history.Count - 1) { historyIndex++; currentInput = history[historyIndex]; cursorPosition = currentInput.Length; RefreshLine(startLeft, startTop, currentInput, cursorPosition); } else if (historyIndex >= history.Count - 1) { historyIndex = history.Count; currentInput = ""; cursorPosition = 0; RefreshLine(startLeft, startTop, currentInput, cursorPosition); } }
                 else if (keyInfo.Key == ConsoleKey.Tab)
                 {
                     ShellCompletionResult result = ShellCompletion.Complete(currentInput, cursorPosition, path);
-                    if (result.Changed)
-                    {
-                        currentInput = result.Text;
-                        cursorPosition = result.CursorPosition;
-                        RefreshLine(startLeft, startTop, currentInput, cursorPosition);
-                    }
-                    else if (result.Matches.Length > 1)
-                    {
-                        SetConsoleCursor(startLeft, startTop, currentInput.Length);
-                        Console.WriteLine();
-                        Console.WriteLine(string.Join("  ", result.Matches));
-                        Console.Write(prompt);
-                        startLeft = Console.CursorLeft;
-                        startTop = Console.CursorTop;
-                        RefreshLine(startLeft, startTop, currentInput, cursorPosition);
-                    }
+                    if (result.Changed) { currentInput = result.Text; cursorPosition = result.CursorPosition; RefreshLine(startLeft, startTop, currentInput, cursorPosition); }
+                    else if (result.Matches.Length > 1) { SetConsoleCursor(startLeft, startTop, currentInput.Length); Console.WriteLine(); Console.WriteLine(string.Join("  ", result.Matches)); Console.Write(prompt); startLeft = Console.CursorLeft; startTop = Console.CursorTop; RefreshLine(startLeft, startTop, currentInput, cursorPosition); }
                 }
-                else if (keyInfo.KeyChar >= 32 && keyInfo.KeyChar <= 126)
-                {
-                    currentInput = currentInput.Insert(cursorPosition, keyInfo.KeyChar.ToString());
-                    cursorPosition++;
-                    RefreshLine(startLeft, startTop, currentInput, cursorPosition);
-                }
+                else if (keyInfo.KeyChar >= 32 && keyInfo.KeyChar <= 126) { currentInput = currentInput.Insert(cursorPosition, keyInfo.KeyChar.ToString()); cursorPosition++; RefreshLine(startLeft, startTop, currentInput, cursorPosition); }
             }
-
             return currentInput;
         }
 
         private void RefreshLine(int startLeft, int startTop, string currentInput, int cursorPosition)
         {
-            try
-            {
-                Console.SetCursorPosition(startLeft, startTop);
-                Console.Write(currentInput + " ");
-                SetConsoleCursor(startLeft, startTop, cursorPosition);
-            }
-            catch
-            {
-            }
+            try { Console.SetCursorPosition(startLeft, startTop); Console.Write(currentInput + " "); SetConsoleCursor(startLeft, startTop, cursorPosition); } catch { }
         }
 
         private void SetConsoleCursor(int startLeft, int startTop, int cursorPosition)
         {
             try
             {
-                int targetLeft = startLeft + cursorPosition;
-                int windowWidth = 80;
-                try
-                {
-                    windowWidth = Console.WindowWidth;
-                }
-                catch
-                {
-                }
-
-                if (windowWidth <= 0)
-                    windowWidth = 80;
-                int targetTop = startTop + (targetLeft / windowWidth);
-                targetLeft %= windowWidth;
-                Console.SetCursorPosition(targetLeft, targetTop);
+                int targetLeft = startLeft + cursorPosition; int windowWidth = 80; try { windowWidth = Console.WindowWidth; } catch { }
+                if (windowWidth <= 0) windowWidth = 80; int targetTop = startTop + (targetLeft / windowWidth); targetLeft %= windowWidth; Console.SetCursorPosition(targetLeft, targetTop);
             }
-            catch
-            {
-            }
+            catch { }
         }
     }
 }

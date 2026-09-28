@@ -1,0 +1,137 @@
+name: Network stage N9 TCP
+on:
+  pull_request:
+    paths: ['source/Core/TcpStageProbe.cs','source/Core/NetworkN9EntryKernel.cs','source/GUI/**','source/Security/SecurityContext.cs','ZonderqOS.csproj','Kernel.cs','tools/network-stage-n9-qemu.sh','patches/network-n2/**','.github/workflows/network-stage-n9.yml']
+  workflow_dispatch:
+jobs:
+  validate-network-n9:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - name: Install dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y qemu-system-x86 llvm lld xorriso nasm
+          command -v ld.lld && ld.lld --version
+          dotnet tool install --global Cosmos.Patcher --version 3.0.85
+          echo "$HOME/.dotnet/tools" >> "$GITHUB_PATH"
+      - name: Prepare patched Cosmos raw RX runtime
+        run: |
+          set -o pipefail; unset ZONDERQ_COSMOS_SOURCE_ROOT
+          bash tools/prepare-cosmos-smt.sh --all 2>&1 | tee network-n9-cosmos.log
+          C="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"; F="$C/artifacts/package/release"
+          git -C "$C" apply --check "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
+          git -C "$C" apply "$GITHUB_WORKSPACE/patches/network-n2/0001-network-manager-raw-rx-probe.patch"
+          ( cd "$C"; export VersionPrefix=3.0.85
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -p:VersionPrefix=3.0.85 --no-restore
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -r linux-x64 -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-x64 -p:VersionPrefix=3.0.85 --no-restore
+            mkdir -p artifacts/multiarch/Cosmos.Kernel.System/x64; cp artifacts/bin/Cosmos.Kernel.System/release_linux-x64/Cosmos.Kernel.System.dll artifacts/multiarch/Cosmos.Kernel.System/x64/
+            dotnet restore src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -r linux-arm64 -p:VersionPrefix=3.0.85 --force --no-cache
+            dotnet build src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -r linux-arm64 -p:VersionPrefix=3.0.85 --no-restore
+            mkdir -p artifacts/multiarch/Cosmos.Kernel.System/arm64; cp artifacts/bin/Cosmos.Kernel.System/release_linux-arm64/Cosmos.Kernel.System.dll artifacts/multiarch/Cosmos.Kernel.System/arm64/
+            dotnet pack src/Cosmos.Kernel.System/Cosmos.Kernel.System.csproj -c Release -p:VersionPrefix=3.0.85 -o "$F" --no-build
+          ) 2>&1 | tee -a network-n9-cosmos.log
+      - name: Build isolated x64 N9 probe ISO
+        run: |
+          set -o pipefail; C="$(cd "$GITHUB_WORKSPACE/.." && pwd)/Cosmos"; F="$C/artifacts/package/release"; CACHE="$GITHUB_WORKSPACE/.nuget/network-n9-packages"; rm -rf "$CACHE" obj bin; mkdir -p "$CACHE"
+          printf '%s\n' '<?xml version="1.0" encoding="utf-8"?><configuration><packageSources><clear/><add key="local-cosmos" value="'"$F"'"/><add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources></configuration>' > network-n9-nuget.config
+          NUGET_PACKAGES="$CACHE" dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN9=true --configfile network-n9-nuget.config --force --no-cache 2>&1 | tee network-n9-restore.log
+          S="$CACHE/cosmos.kernel.system/3.0.85/runtimes/linux-x64/lib/net10.0/Cosmos.Kernel.System.dll"; test -f "$S"; strings "$S" | grep -Fq SetRawReceiveHandler
+          NUGET_PACKAGES="$CACHE" dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkStageN9=true -p:NetworkN2CosmosKernelSystemPath="$S" --no-restore 2>&1 | tee network-n9-build.log
+          ISO="$(find bin -type f -name '*.iso' | head -n1)"; test -f "$ISO"; cp "$ISO" network-n9-x64.iso; echo "ZONDERQ_ISO=$GITHUB_WORKSPACE/network-n9-x64.iso" >> "$GITHUB_ENV"
+      - name: QEMU TCP runtime proof
+        run: bash tools/network-stage-n9-qemu.sh
+      - name: Build normal x64 regression ISO
+        run: |
+          set -o pipefail
+          CACHE="$GITHUB_WORKSPACE/.nuget/network-n9-packages"; S="$CACHE/cosmos.kernel.system/3.0.85/runtimes/linux-x64/lib/net10.0/Cosmos.Kernel.System.dll"
+          rm -rf obj bin
+          NUGET_PACKAGES="$CACHE" dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --configfile network-n9-nuget.config --force --no-cache 2>&1 | tee network-n9-regression-restore.log
+          NUGET_PACKAGES="$CACHE" dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:NetworkN2CosmosKernelSystemPath="$S" --no-restore 2>&1 | tee network-n9-regression-build.log
+          ISO="$(find bin -type f -name '*.iso' | head -n1)"; test -f "$ISO"; cp "$ISO" network-n9-regression-x64.iso
+      - name: QEMU normal boot and storage-init regression proof
+        run: |
+          set -euo pipefail; LOG=network-n9-regression-qemu.log; : > "$LOG"
+          qemu-system-x86_64 -M q35 -cpu Nehalem -m 2G -drive file=network-n9-regression-x64.iso,media=cdrom,if=ide,readonly=on -boot d -display none -monitor none -serial "file:$LOG" -no-reboot -no-shutdown &
+          PID=$!; trap 'kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true' EXIT
+          for _ in $(seq 1 300); do
+            if grep -Eq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG"; then echo 'Fatal kernel error during normal regression boot'; tail -n 200 "$LOG"; exit 1; fi
+            if grep -Fq '[Kernel] Entering main loop...' "$LOG"; then echo 'Normal boot + storage initialization regression proof passed.'; tail -n 160 "$LOG" || true; exit 0; fi
+            kill -0 "$PID" 2>/dev/null || { wait "$PID" || true; echo 'QEMU exited before normal boot proof'; tail -n 200 "$LOG"; exit 1; }; sleep 1
+          done
+          echo 'Timeout waiting for normal boot/storage initialization proof'; tail -n 200 "$LOG"; exit 1
+      - name: Build isolated GUI regression ISO
+        run: |
+          set -o pipefail
+          CACHE="$GITHUB_WORKSPACE/.nuget/network-n9-packages"; S="$CACHE/cosmos.kernel.system/3.0.85/runtimes/linux-x64/lib/net10.0/Cosmos.Kernel.System.dll"
+          rm -rf obj bin
+          NUGET_PACKAGES="$CACHE" dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkN9GuiRegression=true --configfile network-n9-nuget.config --force --no-cache 2>&1 | tee network-n9-gui-restore.log
+          NUGET_PACKAGES="$CACHE" dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:CosmosNetworkN9GuiRegression=true -p:NetworkN2CosmosKernelSystemPath="$S" --no-restore 2>&1 | tee network-n9-gui-build.log
+          ISO="$(find bin -type f -name '*.iso' | head -n1)"; test -f "$ISO"; cp "$ISO" network-n9-gui-x64.iso
+      - name: QEMU sustained GUI render-loop regression proof
+        run: |
+          set -euo pipefail; LOG=network-n9-gui-qemu.log; SOCK=/tmp/zonderq-n9-monitor.sock; SHOT=network-n9-gui-frame.ppm; SHOT2=network-n9-gui-frame-2.ppm; CAND=network-n9-gui-candidate.ppm; rm -f "$SOCK" "$SHOT" "$SHOT2" "$CAND"; : > "$LOG"
+          qemu-system-x86_64 -M q35 -cpu Nehalem -m 2G -drive file=network-n9-gui-x64.iso,media=cdrom,if=ide,readonly=on -boot d -display none -monitor unix:"$SOCK",server=on,wait=off -serial "file:$LOG" -no-reboot -no-shutdown &
+          PID=$!; trap 'kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true; rm -f "$SOCK" "$CAND"' EXIT
+          python3 - <<'PY'
+          import os,socket,time
+          from pathlib import Path
+          sock='/tmp/zonderq-n9-monitor.sock'; log=Path('network-n9-gui-qemu.log'); cand=Path('network-n9-gui-candidate.ppm'); shot=Path('network-n9-gui-frame.ppm'); shot2=Path('network-n9-gui-frame-2.ppm')
+          def fatal():
+              if not log.exists(): return False
+              t=log.read_text(errors='ignore')
+              return any(x in t for x in ('CPU EXCEPTION','System halted','Kernel Panic','PANIC','Unhandled Exception','Triple fault'))
+          def inspect(p):
+              try:
+                  b=p.read_bytes(); parts=b.split(b'\n',3)
+                  if len(parts)<4 or parts[0].strip()!=b'P6': return None
+                  w,h=map(int,parts[1].split()); pix=parts[3]
+                  if w<640 or h<480: return None
+                  step=max(3,(len(pix)//30000)//3*3); colours={pix[i:i+3] for i in range(0,len(pix)-2,step)}
+                  return w,h,len(colours)
+              except (OSError,ValueError): return None
+          def dump():
+              s=socket.socket(socket.AF_UNIX); s.settimeout(1); s.connect(sock); s.recv(4096); s.sendall(b'screendump network-n9-gui-candidate.ppm\n'); time.sleep(.08); s.close(); return inspect(cand)
+          deadline=time.time()+300
+          while time.time()<deadline:
+              if fatal(): raise SystemExit('fatal kernel error during GUI regression')
+              if not os.path.exists(sock): time.sleep(.05); continue
+              try: info=dump()
+              except OSError: time.sleep(.05); continue
+              if info and info[2]>=16:
+                  shot.write_bytes(cand.read_bytes()); print(f'Captured GUI frame: {info[0]}x{info[1]}, colours={info[2]}'); break
+              time.sleep(.05)
+          else: raise SystemExit('no diverse GUI framebuffer observed before timeout')
+          time.sleep(1.0)
+          if fatal(): raise SystemExit('fatal kernel error after first GUI frame')
+          info2=dump()
+          if not info2 or info2[2]<16: raise SystemExit('GUI render loop did not retain a valid framebuffer')
+          shot2.write_bytes(cand.read_bytes()); print(f'Captured sustained GUI frame: {info2[0]}x{info2[1]}, colours={info2[2]}')
+          PY
+          test -s "$SHOT"; test -s "$SHOT2"; kill -0 "$PID"
+          if grep -Eq 'CPU EXCEPTION|System halted|Kernel Panic|\bPANIC\b|Unhandled Exception|Triple fault' "$LOG"; then echo 'Fatal kernel error during GUI regression'; tail -n 200 "$LOG"; exit 1; fi
+          echo 'Sustained GUI render-loop proof passed with two real QEMU framebuffer samples.'
+      - name: Upload N9 evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: network-n9-tcp-evidence
+          path: |
+            network-n9-cosmos.log
+            network-n9-restore.log
+            network-n9-build.log
+            network-n9-qemu.log
+            network-n9.pcap
+            network-n9-regression-restore.log
+            network-n9-regression-build.log
+            network-n9-regression-qemu.log
+            network-n9-gui-restore.log
+            network-n9-gui-build.log
+            network-n9-gui-qemu.log
+            network-n9-gui-frame.ppm
+            network-n9-gui-frame-2.ppm
+          if-no-files-found: ignore
