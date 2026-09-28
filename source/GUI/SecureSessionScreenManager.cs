@@ -282,11 +282,11 @@ namespace ZonderqOS.GUI
                 }
                 else if (index == 3)
                 {
-                    Cosmos.Kernel.System.Power.Reboot();
+                    global::ZonderqOS.SystemCore.SystemPower.Reboot("gui-reboot");
                 }
                 else if (index == 4)
                 {
-                    Cosmos.Kernel.System.Power.Shutdown();
+                    global::ZonderqOS.SystemCore.SystemPower.Shutdown("gui-shutdown");
                 }
             }
         }

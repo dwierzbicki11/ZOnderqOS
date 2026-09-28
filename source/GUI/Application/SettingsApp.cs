@@ -678,9 +678,9 @@ namespace ZonderqOS.GUI.Apps
             if (IsPowerArmed(action))
             {
                 if (action == 1)
-                    Cosmos.Kernel.System.Power.Reboot();
+                    global::ZonderqOS.SystemCore.SystemPower.Reboot("gui-reboot");
                 else
-                    Cosmos.Kernel.System.Power.Shutdown();
+                    global::ZonderqOS.SystemCore.SystemPower.Shutdown("gui-shutdown");
                 return;
             }
 

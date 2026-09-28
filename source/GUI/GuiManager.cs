@@ -80,8 +80,8 @@ namespace ZonderqOS.GUI
                 PopulateStartMenu();
 
                 startMenu.SetPowerActions(
-                    () => Cosmos.Kernel.System.Power.Reboot(),
-                    () => Cosmos.Kernel.System.Power.Shutdown(),
+                    () => global::ZonderqOS.SystemCore.SystemPower.Reboot("gui-reboot"),
+                    () => global::ZonderqOS.SystemCore.SystemPower.Shutdown("gui-shutdown"),
                     LogoutSession);
                 startMenu.SetLockAction(RequestLockSession);
 

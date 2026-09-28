@@ -25,6 +25,7 @@ namespace ZonderqOS
                 SecurityLogger.Initialize();
                 PermissionManager.Initialize();
                 SystemLogger.Initialize();
+                BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
 
