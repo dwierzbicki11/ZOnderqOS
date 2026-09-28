@@ -83,6 +83,22 @@ namespace ZonderqOS
                 return _vars.Remove(key);
         }
 
+        public static void CopyTo(List<KeyValuePair<string, string>> destination)
+        {
+            if (destination == null)
+                throw new ArgumentNullException(nameof(destination));
+
+            lock (_varsLock)
+            {
+                destination.Clear();
+                foreach (var pair in _vars)
+                    destination.Add(pair);
+            }
+
+            destination.Sort((a, b) =>
+                string.Compare(a.Key, b.Key, StringComparison.Ordinal));
+        }
+
         public static string Get(string key)
         {
             if (string.IsNullOrEmpty(key))
