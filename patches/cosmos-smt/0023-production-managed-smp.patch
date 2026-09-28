@@ -15,36 +15,36 @@ diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializ
      }
  }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-+--- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-++++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-+@@ -93,6 +93,7 @@ public sealed class PerCpuState : SchedulerExtensible
-+     private int _automaticBalanceNotBefore;
-+     private int _automaticMigrationOutCount;
-+     private int _automaticMigrationInCount;
-++    private int _managedDispatchReservation;
-+     private int _stage20ResumeCount;
-+     private int _stage20PreemptionCount;
-+     private int _stage20MigrationOutCount;
-+@@ -414,6 +415,14 @@ public sealed class PerCpuState : SchedulerExtensible
-+     internal void RecordAutomaticMigrationOut() => Interlocked.Increment(ref _automaticMigrationOutCount);
-+     internal void RecordAutomaticMigrationIn() => Interlocked.Increment(ref _automaticMigrationInCount);
-+ 
-++    internal bool TryReserveManagedDispatch() =>
-++        Interlocked.CompareExchange(ref _managedDispatchReservation, 1, 0) == 0;
-++
-++    internal void ReleaseManagedDispatchReservation()
-++    {
-++        Volatile.Write(ref _managedDispatchReservation, 0);
-++    }
-++
-+     internal bool TryRequestMigration(uint threadId, uint targetCpuId)
-+     {
-+         if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
-+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
+--- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+@@ -93,6 +93,7 @@ public sealed class PerCpuState : SchedulerExtensible
+     private int _automaticBalanceNotBefore;
+     private int _automaticMigrationOutCount;
+     private int _automaticMigrationInCount;
++    private int _managedDispatchReservation;
+     private int _stage20ResumeCount;
+     private int _stage20PreemptionCount;
+     private int _stage20MigrationOutCount;
+@@ -414,6 +415,14 @@ public sealed class PerCpuState : SchedulerExtensible
+     internal void RecordAutomaticMigrationOut() => Interlocked.Increment(ref _automaticMigrationOutCount);
+     internal void RecordAutomaticMigrationIn() => Interlocked.Increment(ref _automaticMigrationInCount);
+ 
++    internal bool TryReserveManagedDispatch() =>
++        Interlocked.CompareExchange(ref _managedDispatchReservation, 1, 0) == 0;
++
++    internal void ReleaseManagedDispatchReservation()
++    {
++        Volatile.Write(ref _managedDispatchReservation, 0);
++    }
++
+     internal bool TryRequestMigration(uint threadId, uint targetCpuId)
+     {
+         if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,231 @@
+@@ -0,0 +1,238 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
@@ -66,31 +66,47 @@ new file mode 100644
 +    private const ulong Stage23TimeoutSeconds = 30;
 +
 +    /// <summary>
-+    /// Chooses the initial owner for an ordinary System.Threading.Thread.
-+    /// Placement is an atomic round-robin over every logical CPU. This avoids
-+    /// remotely enumerating another CPU's live run queue while still spreading
-+    /// newly created work across the whole topology deterministically.
++    /// Selects and reserves a parked AP for a new ordinary managed thread.
++    /// Remote Stride run queues are only mutated while their owner is in the
++    /// native parked loop. CPU0 remains the safe fallback when every AP is busy.
 +    /// </summary>
 +    internal static uint SelectManagedThreadCpu()
 +    {
 +#if ARCH_X64
 +        uint cpuCount = s_cpuCount;
-+        if (cpuCount <= 1)
++        if (cpuCount <= 1 || s_cpuStates is null)
 +        {
 +            return 0;
 +        }
 +
 +        uint ticket = unchecked((uint)Interlocked.Increment(ref s_managedPlacementTicket));
-+        return ticket % cpuCount;
-+#else
-+        return 0;
++        for (uint offset = 0; offset < cpuCount - 1; offset++)
++        {
++            uint candidate = 1 + ((ticket - 1 + offset) % (cpuCount - 1));
++            PerCpuState state = s_cpuStates[candidate];
++
++            if (NativeGetApplicationProcessorCommand(candidate) != 0 ||
++                NativeGetApplicationProcessorCompletion(candidate) != 1 ||
++                !state.TryReserveManagedDispatch())
++            {
++                continue;
++            }
++
++            // Close the race between mailbox observation and the managed CAS.
++            if (NativeGetApplicationProcessorCommand(candidate) == 0 &&
++                NativeGetApplicationProcessorCompletion(candidate) == 1)
++            {
++                return candidate;
++            }
++
++            state.ReleaseManagedDispatchReservation();
++        }
 +#endif
++        return 0;
 +    }
 +
 +    /// <summary>
-+    /// Ensures an AP that owns newly queued managed work is executing command
-+    /// 9's normal scheduler path. An already-active AP is also a success: its
-+    /// periodic scheduler timer will observe the newly queued runnable thread.
++    /// Wakes a reserved parked AP after its managed thread has been queued.
 +    /// </summary>
 +    internal static bool ActivateManagedThreadCpu(uint cpuId)
 +    {
@@ -100,39 +116,26 @@ new file mode 100644
 +        }
 +
 +#if ARCH_X64
-+        if (cpuId >= s_cpuCount)
++        if (s_cpuStates is null || cpuId >= s_cpuCount)
 +        {
 +            return false;
 +        }
 +
-+        if (NativeBeginSchedulerCpu(cpuId) == 1)
-+        {
-+            return true;
-+        }
-+
-+        uint completion = NativeGetApplicationProcessorCompletion(cpuId);
-+        uint command = NativeGetApplicationProcessorCommand(cpuId);
-+        if (completion == 2)
-+        {
-+            return false;
-+        }
-+
-+        // completion==0 means the AP is inside a command-9 generation.
-+        // A nonzero command means another creator is currently waking it.
-+        return completion == 0 || command != 0;
++        bool activated = NativeBeginSchedulerCpu(cpuId) == 1;
++        s_cpuStates[cpuId].ReleaseManagedDispatchReservation();
++        return activated;
 +#else
 +        return false;
 +#endif
 +    }
 +
 +    /// <summary>
-+    /// Called by the production managed-thread entry before CoreLib starts.
-+    /// BSP scheduling already uses the platform timer. APs use the private
-+    /// vector 0xEF proven by Stages 17-22; keeping it periodic makes normal
-+    /// managed threads preemptible and guarantees a dead/blocking thread can
-+    /// be switched back to idle or the next runnable thread.
++    /// Enables periodic AP preemption only after CoreLib has finished the
++    /// Thread.Start bootstrap and entered the real process/delegate body.
++    /// This avoids preempting a Created managed thread before CoreLib has
++    /// published its current-thread state.
 +    /// </summary>
-+    internal static void PrepareManagedThreadExecution()
++    public static void EnableCurrentCpuManagedPreemption()
 +    {
 +#if ARCH_X64
 +        if (GetCurrentCpuId() == 0)
@@ -151,11 +154,9 @@ new file mode 100644
 +    }
 +
 +    /// <summary>
-+    /// Runtime proof for the production path. Unlike Stages 16-22 this creates
-+    /// ordinary System.Threading.Thread instances and therefore exercises
-+    /// SystemNative_CreateThread, normal CoreLib startup/exit, AP activation,
-+    /// timer preemption and the global scheduler registry exactly as ZonderqOS
-+    /// processes will use them after boot.
++    /// Production-path proof: ordinary System.Threading.Thread instances must
++    /// execute on every AP, enter through normal CoreLib startup/exit, and
++    /// restore the registry and native AP park state afterwards.
 +    /// </summary>
 +    internal static bool RunManagedThreadDistributionProof()
 +    {
@@ -169,7 +170,7 @@ new file mode 100644
 +        int workerCount = checked((int)s_cpuCount - 1);
 +        int[] cpuHits = new int[checked((int)s_cpuCount)];
 +        s_stage23CpuHits = cpuHits;
-+        cpuHits[0] = 1; // BSP is the boot execution context.
++        cpuHits[0] = 1;
 +
 +        Volatile.Write(ref s_managedPlacementTicket, 0);
 +        Volatile.Write(ref s_stage23StartedWorkers, 0);
@@ -229,6 +230,7 @@ new file mode 100644
 +            {
 +                return false;
 +            }
++
 +            uniqueCpus++;
 +            if (cpuId < 64)
 +            {
@@ -253,7 +255,10 @@ new file mode 100644
 +
 +    private static void Stage23ManagedWorker()
 +    {
++        // We are now inside the real ThreadStart delegate, so CoreLib has
++        // completed its startup handshake and AP preemption is safe to arm.
 +        EnableCurrentCpuManagedPreemption();
++
 +        int[]? hits = s_stage23CpuHits;
 +        uint cpuId = GetCurrentCpuId();
 +        if (hits is null || cpuId >= checked((uint)hits.Length))
@@ -274,6 +279,7 @@ new file mode 100644
 +        {
 +            SysThread.SpinWait(64);
 +        }
++
 +        Interlocked.Increment(ref s_stage23CompletedWorkers);
 +    }
 +}
@@ -293,15 +299,6 @@ diff --git a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs b/src/Cosm
                  State = SchedulerThreadState.Created,
                  Flags = SchedulerThreadFlags.Managed,
                  // CoreLib's handle in `parameter` lives only until the thread
-@@ -138,7 +139,7 @@ internal static unsafe partial class libSystemNative
-                 _managedThread = new GCHandle<SysThread>(GCHandle<SysThread>.FromIntPtr(parameter).Target)
-             };
- 
--            nuint entryPoint = (nuint)(delegate* unmanaged<IntPtr, void>)&ThreadNative.EntryPointStub;
-+            nuint entryPoint = (nuint)(delegate* unmanaged<IntPtr, void>)&ThreadNative.EntryPointStub;
- #if ARCH_X64
-             ushort cs = (ushort)GetCurrentCodeSelector();
-             thread.InitializeStack(entryPoint, cs, (nuint)parameter, size);
 @@ -146,12 +147,19 @@ internal static unsafe partial class libSystemNative
              // ARM64: no code selector needed, use 0.
              thread.InitializeStack(entryPoint, 0, (nuint)parameter, size);
