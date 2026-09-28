@@ -47,7 +47,6 @@ namespace ZonderqOS.SystemCore
 
                 string filter = NormalizeFilter(contains);
                 int matched = 0;
-                string[] ring = new string[maxLines];
 
                 using (StreamReader reader = new StreamReader(path))
                 {
@@ -57,15 +56,22 @@ namespace ZonderqOS.SystemCore
                         if (!Matches(line, filter))
                             continue;
 
-                        ring[matched % maxLines] = line;
+                        destination[matched % maxLines] = line;
                         matched++;
                     }
                 }
 
                 int keep = Math.Min(matched, maxLines);
-                int start = matched > maxLines ? matched % maxLines : 0;
-                for (int i = 0; i < keep; i++)
-                    destination[i] = ring[(start + i) % maxLines];
+                if (matched > maxLines)
+                {
+                    int start = matched % maxLines;
+                    if (start != 0)
+                    {
+                        Reverse(destination, 0, start - 1);
+                        Reverse(destination, start, maxLines - 1);
+                        Reverse(destination, 0, maxLines - 1);
+                    }
+                }
 
                 return keep;
             }
@@ -116,6 +122,19 @@ namespace ZonderqOS.SystemCore
                     return true;
                 default:
                     return false;
+            }
+        }
+
+
+        private static void Reverse(string[] values, int left, int right)
+        {
+            while (left < right)
+            {
+                string temp = values[left];
+                values[left] = values[right];
+                values[right] = temp;
+                left++;
+                right--;
             }
         }
 
