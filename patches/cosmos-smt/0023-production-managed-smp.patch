@@ -14,33 +14,33 @@ diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializ
          }
      }
  }
-diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/SmpManagedThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/SmpManagedThreadNative.cs
-new file mode 100644
---- /dev/null
-+++ b/src/Cosmos.Kernel.Core/Bridge/Export/SmpManagedThreadNative.cs
-@@ -0,0 +1,21 @@
-+using System;
-+using System.Runtime.InteropServices;
-+using Cosmos.Kernel.Core.Scheduler;
-+
-+namespace Cosmos.Kernel.Core.Bridge;
-+
-+/// <summary>
-+/// Production managed-thread entry used once SMP scheduling is enabled.
-+/// AP threads arm their private scheduler timer before entering CoreLib so
-+/// normal Thread exit, blocking and preemption can return the CPU to idle or
-+/// another runnable thread without Stage-specific worker glue.
-+/// </summary>
-+internal static class SmpManagedThreadNative
-+{
-+    [UnmanagedCallersOnly]
-+    public static void EntryPointStub(IntPtr parameter)
-+    {
-+        SchedulerManager.PrepareManagedThreadExecution();
-+        SchedulerManager.InvokeCurrentThreadStart(parameter);
-+    }
-+}
-diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
++--- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+++++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
++@@ -93,6 +93,7 @@ public sealed class PerCpuState : SchedulerExtensible
++     private int _automaticBalanceNotBefore;
++     private int _automaticMigrationOutCount;
++     private int _automaticMigrationInCount;
+++    private int _managedDispatchReservation;
++     private int _stage20ResumeCount;
++     private int _stage20PreemptionCount;
++     private int _stage20MigrationOutCount;
++@@ -414,6 +415,14 @@ public sealed class PerCpuState : SchedulerExtensible
++     internal void RecordAutomaticMigrationOut() => Interlocked.Increment(ref _automaticMigrationOutCount);
++     internal void RecordAutomaticMigrationIn() => Interlocked.Increment(ref _automaticMigrationInCount);
++ 
+++    internal bool TryReserveManagedDispatch() =>
+++        Interlocked.CompareExchange(ref _managedDispatchReservation, 1, 0) == 0;
+++
+++    internal void ReleaseManagedDispatchReservation()
+++    {
+++        Volatile.Write(ref _managedDispatchReservation, 0);
+++    }
+++
++     internal bool TryRequestMigration(uint threadId, uint targetCpuId)
++     {
++         if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
++diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
@@ -253,6 +253,7 @@ new file mode 100644
 +
 +    private static void Stage23ManagedWorker()
 +    {
++        EnableCurrentCpuManagedPreemption();
 +        int[]? hits = s_stage23CpuHits;
 +        uint cpuId = GetCurrentCpuId();
 +        if (hits is null || cpuId >= checked((uint)hits.Length))
@@ -297,7 +298,7 @@ diff --git a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs b/src/Cosm
              };
  
 -            nuint entryPoint = (nuint)(delegate* unmanaged<IntPtr, void>)&ThreadNative.EntryPointStub;
-+            nuint entryPoint = (nuint)(delegate* unmanaged<IntPtr, void>)&global::Cosmos.Kernel.Core.Bridge.SmpManagedThreadNative.EntryPointStub;
++            nuint entryPoint = (nuint)(delegate* unmanaged<IntPtr, void>)&ThreadNative.EntryPointStub;
  #if ARCH_X64
              ushort cs = (ushort)GetCurrentCodeSelector();
              thread.InitializeStack(entryPoint, cs, (nuint)parameter, size);
