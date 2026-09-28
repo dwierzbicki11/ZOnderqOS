@@ -20,6 +20,10 @@ namespace ZonderqOS.Commands
                                 info.LogicalProcessors + "T discovered");
             CommandIO.WriteLine("  Online CPUs:     " + info.OnlineCpuCount);
             CommandIO.WriteLine("  Scheduler:       " + info.SchedulerName);
+            CommandIO.WriteLine("  Guardian:        " +
+                                (SystemGuardian.IsRunning ? "running" : "stopped") +
+                                ", free=" + SystemGuardian.LastFreePercent + "%" +
+                                ", faults=" + SystemGuardian.FaultCount);
             CommandIO.WriteLine("  Memory:          " + FormatMiB(info.UsedMemoryBytes) + " / " +
                                 FormatMiB(info.TotalMemoryBytes) + " used");
             CommandIO.WriteLine("  Storage:         " + info.StorageDeviceCount + " device(s), " +
