@@ -1,6 +1,6 @@
 diff --git a/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs
 new file mode 100644
-index 0000000000000000000000000000000000000000..ab964d96e497d03965945edd2501a664a998c4fb
+index 0000000..ab964d9
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApAutomaticBalanceThreadNative.cs
 @@ -0,0 +1,18 @@
@@ -23,7 +23,7 @@ index 0000000000000000000000000000000000000000..ab964d96e497d03965945edd2501a664
 +    }
 +}
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
-index 27b7ad7f98e662ad231bebda90a7d6ab4d6e57d9..600bc362aa3aa8032634f57ab0c237816e015d58 100644
+index 27b7ad7..600bc36 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
 @@ -89,6 +89,10 @@ public sealed class PerCpuState : SchedulerExtensible
@@ -88,7 +88,7 @@ index 27b7ad7f98e662ad231bebda90a7d6ab4d6e57d9..600bc362aa3aa8032634f57ab0c23781
      {
          if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad401d0f3337 100644
+index 4ac22c7..37113e5 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -44,6 +44,17 @@ public static partial class SchedulerManager
@@ -413,7 +413,7 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
              return false;
          }
  
-@@ -2025,19 +2300,52 @@ public static partial class SchedulerManager
+@@ -2025,19 +2300,53 @@ public static partial class SchedulerManager
          SchedulerThread? replacement = s_currentScheduler.PickNext(source) ?? source.IdleThread;
          if (replacement is null || NativeDisarmSchedulerTimer() != 1)
          {
@@ -426,11 +426,12 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
 +            return false;
 +        }
 +
-+        // Keep the source scheduler timer armed when it switches to another
-+        // queued worker. Migration disarms the AP-local timer; without this
-+        // re-arm, that replacement cannot be preempted for another handoff.
-+        if (!ReferenceEquals(replacement, source.IdleThread) &&
-+            NativeArmSchedulerTimer() != 1)
++        // Keep the source scheduler timer armed after every migration,
++        // including when it switches to idle. A later remote handoff can add
++        // runnable work while an idle AP is in its native park loop; periodic
++        // owner-side ticks provide a second wake path if that IPI is consumed
++        // before the managed scheduler observes the queued thread.
++        if (NativeArmSchedulerTimer() != 1)
 +        {
 +            if (!explicitlyRequested)
 +            {
@@ -469,7 +470,7 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
  
          source.CurrentThread = replacement;
          bool isNewThread = replacement.State == SchedulerThreadState.Created;
-@@ -2046,7 +2354,7 @@ public static partial class SchedulerManager
+@@ -2046,7 +2355,7 @@ public static partial class SchedulerManager
  
          if (NativeStageSchedulerHandoff(targetCpuId) != 1)
          {
@@ -478,7 +479,7 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
              return false;
          }
  
-@@ -2054,8 +2362,123 @@ public static partial class SchedulerManager
+@@ -2054,8 +2363,123 @@ public static partial class SchedulerManager
          ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
          return true;
      }
@@ -602,7 +603,7 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
      // ========== Thread Entry Dispatch ==========
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
-@@ -2776,6 +3199,14 @@ public static partial class SchedulerManager
+@@ -2776,6 +3200,14 @@ public static partial class SchedulerManager
              return;
          }
  
@@ -618,7 +619,7 @@ index 4ac22c782b277c1366e01f2a4ebe386b24822ba7..00a5a6b8c072530730c5f9a8a5d3ad40
          CheckSleepingThreads(cpuId, elapsedNs);
  
 diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-index 0483577488168689a8cbbcb1fb6eb45af107fe66..21dcd5f31d8fa14e295a61538b557839b6d2a9b8 100644
+index 0483577..21dcd5f 100644
 --- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 +++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 @@ -177,6 +177,12 @@ internal class LibraryInitializer
