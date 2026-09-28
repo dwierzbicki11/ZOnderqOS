@@ -1,0 +1,43 @@
+name: Config Backup compile gate
+
+on:
+  pull_request:
+    paths:
+      - 'source/Core/SystemSettings.cs'
+      - 'source/Shell/Commands/CmdConfig.cs'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/config-backup.yml'
+  push:
+    branches:
+      - 'feature/config-backup'
+    paths:
+      - 'source/Core/SystemSettings.cs'
+      - 'source/Shell/Commands/CmdConfig.cs'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/config-backup.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compile x64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --force --no-cache
+          dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false --no-incremental --no-restore
+
+      - name: Clean architecture outputs
+        run: rm -rf bin obj
+
+      - name: Compile ARM64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --force --no-cache
+          dotnet build ZonderqOS.csproj -c Release -r linux-arm64 -p:CosmosArch=arm64 -p:GeneratePackageOnBuild=false --no-incremental --no-restore
