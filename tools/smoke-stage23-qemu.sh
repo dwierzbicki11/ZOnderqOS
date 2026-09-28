@@ -57,7 +57,7 @@ workers = int(match.group(1))
 unique = int(match.group(2))
 mask = int(match.group(3), 16)
 
-expected_workers = max(expected - 1, 0)
+expected_workers = expected
 expected_mask = (1 << min(expected, 64)) - 1 if expected > 0 else 0
 
 if workers != expected_workers:

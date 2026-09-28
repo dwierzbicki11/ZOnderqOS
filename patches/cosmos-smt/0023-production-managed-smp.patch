@@ -167,10 +167,9 @@ new file mode 100644
 +
 +#if ARCH_X64
 +        int initialThreadCount = ThreadCount;
-+        int workerCount = checked((int)s_cpuCount - 1);
++        int workerCount = checked((int)s_cpuCount);
 +        int[] cpuHits = new int[checked((int)s_cpuCount)];
 +        s_stage23CpuHits = cpuHits;
-+        cpuHits[0] = 1;
 +
 +        Volatile.Write(ref s_managedPlacementTicket, 0);
 +        Volatile.Write(ref s_stage23StartedWorkers, 0);
@@ -218,13 +217,14 @@ new file mode 100644
 +            SysThread.SpinWait(64);
 +        }
 +
-+        int parkedAps = workerCount == 0
++        int expectedParkedAps = checked((int)s_cpuCount - 1);
++        int parkedAps = expectedParkedAps == 0
 +            ? 0
 +            : NativeWaitConcurrentSchedulerTest(s_cpuCount, timeoutTicks);
-+        if (parkedAps != workerCount)
++        if (parkedAps != expectedParkedAps)
 +        {
 +            Volatile.Write(ref s_stage23FailureCpu, parkedAps);
-+            Volatile.Write(ref s_stage23FailureHit, workerCount);
++            Volatile.Write(ref s_stage23FailureHit, expectedParkedAps);
 +            Volatile.Write(ref s_stage23Failure, 3);
 +            WriteStage23FailureDiagnostics("parked");
 +            return false;
