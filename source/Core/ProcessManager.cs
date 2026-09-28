@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Threading;\nusing Cosmos.Kernel.Core.Scheduler;
+using System.Threading;
+using Cosmos.Kernel.Core.Scheduler;
 
 namespace ZonderqOS.SystemCore
 {
