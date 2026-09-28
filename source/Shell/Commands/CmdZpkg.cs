@@ -117,6 +117,28 @@ namespace ZonderqOS.Commands
                 return;
             }
 
+            if (action == "repair")
+            {
+                if (args.Length != 4)
+                {
+                    WriteMessage.WriteError("Usage: zpkg repair <name> <version>", "PKG");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                string error;
+                if (!PackageManager.RepairInterruptedInstall(args[2], args[3], out error))
+                {
+                    WriteMessage.WriteError(error, "PKG");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                WriteMessage.WriteOK("Cleared interrupted install for " + args[2] + " " + args[3] + ".", "PKG");
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
             if (action == "help" || action == "-h" || action == "--help")
             {
                 PrintHelp();
@@ -182,6 +204,7 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("  zpkg verify <package-directory>");
             CommandIO.WriteLine("  zpkg install <package-directory>");
             CommandIO.WriteLine("  zpkg remove <name>");
+            CommandIO.WriteLine("  zpkg repair <name> <version>");
             CommandIO.WriteLine("");
             CommandIO.WriteLine("Package directory format:");
             CommandIO.WriteLine("  package.zpkg");
