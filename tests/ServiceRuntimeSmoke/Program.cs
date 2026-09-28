@@ -28,6 +28,7 @@ internal static class ServiceRuntimeSmoke
             ServiceManager.Initialize();
             Check(!Find("heartbeat").Running, "Disabled service started during another boot initialization.");
 
+            File.Delete(config + ".bak");
             File.Move(config, config + ".bak");
             Check(ServiceManager.Reload(out error) && File.Exists(config),
                 "Interrupted configuration write was not recovered: " + error);
