@@ -442,6 +442,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.K
 +        // That context returns to the park loop and disarms the AP timer, so
 +        // the worker would otherwise remain ready with no interrupt to resume it.
 +        bool suppressManagedIdleSwitch =
++            GetCurrentCpuId() != 0 &&
 +            currentThread.State == SchedulerThreadState.Running &&
 +            (currentThread.Flags & SchedulerThreadFlags.Managed) != 0 &&
 +            currentThread.ManagedPreemptionEnabled &&
