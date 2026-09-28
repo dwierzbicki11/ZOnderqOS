@@ -385,9 +385,9 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs b/src/Cosmos.Ke
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-@@ -2180,6 +2180,14 @@ public static partial class SchedulerManager
-             return;
-         }
+@@ -3290,6 +3290,14 @@ public static partial class SchedulerManager
+             !ReferenceEquals(state.CurrentThread, state.IdleThread) &&
+                 state.CurrentThread.State == SchedulerThreadState.Running);
  
 +        SchedulerThread currentThread = state.CurrentThread;
 +        if ((currentThread.Flags & SchedulerThreadFlags.Managed) != 0 &&
