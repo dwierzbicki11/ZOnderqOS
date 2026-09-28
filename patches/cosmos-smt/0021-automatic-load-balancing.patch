@@ -128,16 +128,16 @@ index c16e9d9..c0df531 100644
      /// The interval the boot path asks the platform to arm the scheduler
 @@ -96,6 +107,10 @@ public static partial class SchedulerManager
      private const uint Stage19RequiredPreemptionsPerWorker = 2;
-     private const ulong Stage20TimeoutSeconds = 10;
+     private const ulong Stage20TimeoutSeconds = 30;
      private const uint Stage20RequiredPreemptionsPerCpu = 2;
 +    private const ulong AutomaticBalanceCooldownNs = 50_000_000;
 +    private const uint AutomaticBalanceHysteresis = 2;
-+    private const ulong Stage21TimeoutSeconds = 15;
-+    private const uint Stage21WorkersPerSource = 4;
++    private const ulong Stage21TimeoutSeconds = 60;
++    private const uint Stage21WorkersPerSource = 3;
 
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
-@@ -1952,6 +1967,226 @@ public static partial class SchedulerManager
+@@ -1952,6 +1967,252 @@ public static partial class SchedulerManager
      private static ulong ComputeStage20Checksum(uint threadId, uint hopCount, uint cpuId) =>
          0x534D_5031_4000_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)hopCount << 24) ^ threadId;
 
@@ -308,45 +308,71 @@ index c16e9d9..c0df531 100644
 +            return;
 +        }
 +
-+        Interlocked.Increment(ref s_stage21StartedWorkers);
-+        uint lastCpuId = uint.MaxValue;
-+        while (Volatile.Read(ref s_stage21ReleaseWorkers) == 0)
++        uint lastCpuId;
++        using (InternalCpu.DisableInterruptsScope())
 +        {
 +            uint cpuId = GetCurrentCpuId();
 +            PerCpuState? state = CurrentCpuState;
 +            if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) || thread.CpuId != cpuId)
 +            {
 +                Volatile.Write(ref s_stage21Failure, 2);
-+                Panic.Halt("Stage 21 worker resumed without scheduler ownership.");
 +                return;
 +            }
-+            if (cpuId != lastCpuId)
-+            {
-+                lastCpuId = cpuId;
-+                Interlocked.Increment(ref s_stage21Resumes);
++            lastCpuId = cpuId;
++            Interlocked.Increment(ref s_stage21Resumes);
 +#if ARCH_X64
-+                if (NativeArmSchedulerTimer() != 1)
++            if (NativeArmSchedulerTimer() != 1)
++            {
++                Volatile.Write(ref s_stage21Failure, 3);
++                Panic.Halt("Stage 21 scheduler timer could not be armed after initial resume.");
++                return;
++            }
++#endif
++        }
++        Interlocked.Increment(ref s_stage21StartedWorkers);
++        while (Volatile.Read(ref s_stage21ReleaseWorkers) == 0)
++        {
++            using (InternalCpu.DisableInterruptsScope())
++            {
++                uint cpuId = GetCurrentCpuId();
++                PerCpuState? state = CurrentCpuState;
++                if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) || thread.CpuId != cpuId)
 +                {
-+                    Volatile.Write(ref s_stage21Failure, 3);
-+                    Panic.Halt("Stage 21 scheduler timer could not be armed after resume.");
++                    Volatile.Write(ref s_stage21Failure, 2);
 +                    return;
 +                }
++                if (cpuId != lastCpuId)
++                {
++                    lastCpuId = cpuId;
++                    Interlocked.Increment(ref s_stage21Resumes);
++#if ARCH_X64
++                    if (NativeArmSchedulerTimer() != 1)
++                    {
++                        Volatile.Write(ref s_stage21Failure, 3);
++                        Panic.Halt("Stage 21 scheduler timer could not be armed after resume.");
++                        return;
++                    }
 +#endif
++                }
 +            }
 +            SysThread.SpinWait(64);
 +        }
 +
 +        using (InternalCpu.DisableInterruptsScope())
 +        {
-+            Interlocked.Increment(ref s_stage21CompletedWorkers);
 +            ExitThread(GetCurrentCpuId(), thread);
 +#if ARCH_X64
 +            if (NativeArmSchedulerTimer() != 1)
 +            {
 +                Volatile.Write(ref s_stage21Failure, 4);
 +                Panic.Halt("Stage 21 completion timer could not be armed.");
++                return;
 +            }
 +#endif
++            // Publish completion only after ExitThread has retired the worker
++            // and the timer needed to return this AP to idle is armed.  The
++            // BSP uses this counter as a release/acquire lifecycle barrier.
++            Interlocked.Increment(ref s_stage21CompletedWorkers);
 +        }
 +    }
 +
