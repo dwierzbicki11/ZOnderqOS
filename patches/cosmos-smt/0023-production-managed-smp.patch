@@ -144,7 +144,7 @@ new file mode 100644
 +        {
 +            if (NativeArmSchedulerTimer() != 1)
 +            {
-+                Panic.Halt("Production AP scheduler timer could not be armed.");
++                Cosmos.Kernel.Core.Panic.Halt("Production AP scheduler timer could not be armed.");
 +            }
 +        }
 +#endif
@@ -225,7 +225,7 @@ new file mode 100644
 +        ulong cpuMask = 0;
 +        for (uint cpuId = 0; cpuId < s_cpuCount; cpuId++)
 +        {
-+            if (cpuHits[cpuId] != 1)
++            if (cpuHits[checked((int)cpuId)] != 1)
 +            {
 +                return false;
 +            }
@@ -297,7 +297,7 @@ diff --git a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs b/src/Cosm
              };
  
 -            nuint entryPoint = (nuint)(delegate* unmanaged<IntPtr, void>)&ThreadNative.EntryPointStub;
-+            nuint entryPoint = (nuint)(delegate* unmanaged<IntPtr, void>)&SmpManagedThreadNative.EntryPointStub;
++            nuint entryPoint = (nuint)(delegate* unmanaged<IntPtr, void>)&global::Cosmos.Kernel.Core.Bridge.SmpManagedThreadNative.EntryPointStub;
  #if ARCH_X64
              ushort cs = (ushort)GetCurrentCodeSelector();
              thread.InitializeStack(entryPoint, cs, (nuint)parameter, size);
