@@ -487,13 +487,27 @@ namespace ZonderqOS.SystemCore.Packages
                 ulong unsignedLength = (ulong)length;
                 if (unsignedLength > MaxPackageBytes || totalBytes > MaxPackageBytes - unsignedLength)
                     throw new InvalidOperationException("Package exceeds maximum installed size.");
-                totalBytes += unsignedLength;
 
                 string target = Combine(destination, name);
                 if (File.Exists(target) || Directory.Exists(target))
                     throw new InvalidOperationException("Duplicate payload target: " + name);
 
-                File.Copy(files[i], target);
+                // Recheck the limit while reading: the source can grow after
+                // FileInfo.Length was sampled above.
+                byte[] buffer = new byte[16 * 1024];
+                using (FileStream input = File.OpenRead(files[i]))
+                using (FileStream output = new FileStream(target, FileMode.CreateNew, FileAccess.Write))
+                {
+                    int read;
+                    while ((read = input.Read(buffer, 0, buffer.Length)) > 0)
+                    {
+                        if ((ulong)read > MaxPackageBytes - totalBytes)
+                            throw new InvalidOperationException("Package exceeds maximum installed size.");
+
+                        output.Write(buffer, 0, read);
+                        totalBytes += (ulong)read;
+                    }
+                }
             }
 
             string[] directories = Directory.GetDirectories(source);
