@@ -224,6 +224,54 @@ namespace ZonderqOS.SystemCore.Packages
                 return RemoveLocked(packageName, out error);
         }
 
+        public static bool RepairInterruptedInstall(string packageName, string version, out string error)
+        {
+            lock (MutationLock)
+            {
+                error = string.Empty;
+                if (!RequireRoot(out error))
+                    return false;
+
+                if (!PackageManifest.IsSafeToken(packageName, 64) ||
+                    !PackageManifest.IsSafeToken(version, 64))
+                {
+                    error = "Invalid package name or version.";
+                    return false;
+                }
+
+                string registryPath = GetRegistryPath(packageName);
+                if (File.Exists(registryPath))
+                {
+                    error = "Package registry exists; refusing to remove installed package data.";
+                    return false;
+                }
+
+                string packageRoot = Combine(Combine(StoreRoot, packageName), version);
+                string stagingRoot = packageRoot + ".installing";
+                string registryStagingPath = registryPath + ".installing";
+                try
+                {
+                    if (Directory.Exists(stagingRoot))
+                        Directory.Delete(stagingRoot, true);
+                    if (Directory.Exists(packageRoot))
+                        Directory.Delete(packageRoot, true);
+                    if (File.Exists(registryStagingPath))
+                        File.Delete(registryStagingPath);
+
+                    PermissionManager.RemovePermissionsUnder(stagingRoot);
+                    PermissionManager.RemovePermissionsUnder(packageRoot);
+                    PermissionManager.RemovePermission(registryStagingPath);
+                    SecurityLogger.LogEvent("INFO", "Repaired interrupted install " + packageName + " " + version + ".");
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    error = "Package repair failed: " + ex.Message;
+                    return false;
+                }
+            }
+        }
+
         private static bool RemoveLocked(string packageName, out string error)
         {
             error = string.Empty;
