@@ -1,0 +1,47 @@
+name: Shell Session compile gate
+
+on:
+  pull_request:
+    paths:
+      - 'source/Shell/**'
+      - 'source/Common/EnvironmentManager.cs'
+      - 'source/Common/EnvironmentExpander.cs'
+      - 'source/GUI/Application/Terminal.cs'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/shell-session.yml'
+  push:
+    branches:
+      - 'feature/shell-session'
+    paths:
+      - 'source/Shell/**'
+      - 'source/Common/EnvironmentManager.cs'
+      - 'source/Common/EnvironmentExpander.cs'
+      - 'source/GUI/Application/Terminal.cs'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/shell-session.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compile x64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false
+
+      - name: Clean architecture outputs
+        run: rm -rf bin obj
+
+      - name: Compile ARM64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-arm64 -p:CosmosArch=arm64 -p:GeneratePackageOnBuild=false

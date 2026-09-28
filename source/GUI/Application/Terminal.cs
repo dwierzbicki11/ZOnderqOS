@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using Cosmos.Kernel.System.Keyboard;
 using ZonderqOS.SystemCore;
 
@@ -10,6 +11,8 @@ namespace ZonderqOS.GUI.Apps
         private readonly TerminalBox terminalBox;
         private string currentPath;
         private Action<string> nanoLauncher;
+        private readonly List<string> historyCache = new List<string>(128);
+        private int historyIndex = -1;
 
         public TerminalApp(int x, int y, Action onClose) : base("Terminal CLI")
         {
@@ -91,6 +94,18 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleKeyboard(KeyEvent key)
         {
+            if (key.Key == ConsoleKeyEx.UpArrow)
+            {
+                NavigateHistory(-1);
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.DownArrow)
+            {
+                NavigateHistory(1);
+                return;
+            }
+
             if (key.Key == ConsoleKeyEx.Tab)
             {
                 CompleteInput();
@@ -107,6 +122,8 @@ namespace ZonderqOS.GUI.Apps
 
             if (string.IsNullOrEmpty(command))
                 return;
+
+            historyIndex = -1;
 
             CommandIO.StartRedirection();
             CommandIO.BeginGraphicalCommand();
@@ -125,6 +142,31 @@ namespace ZonderqOS.GUI.Apps
                 PrintCommandOutput(output);
                 UpdatePrompt();
             }
+        }
+
+
+        private void NavigateHistory(int direction)
+        {
+            ShellHistory.CopyTo(historyCache);
+            if (historyCache.Count == 0)
+                return;
+
+            if (historyIndex < 0)
+                historyIndex = historyCache.Count;
+
+            historyIndex += direction;
+            if (historyIndex < 0)
+                historyIndex = 0;
+            if (historyIndex > historyCache.Count)
+                historyIndex = historyCache.Count;
+
+            if (historyIndex == historyCache.Count)
+            {
+                terminalBox.SetInput(string.Empty);
+                return;
+            }
+
+            terminalBox.SetInput(historyCache[historyIndex]);
         }
 
         private void CompleteInput()

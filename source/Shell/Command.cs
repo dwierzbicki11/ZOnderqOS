@@ -67,6 +67,10 @@ namespace ZonderqOS
             _commands.Add(new CmdKill());
             _commands.Add(new CmdEnv());
             _commands.Add(new CmdExport());
+            _commands.Add(new CmdUnset());
+            _commands.Add(new CmdUnalias());
+            _commands.Add(new CmdAlias());
+            _commands.Add(new CmdHistory());
         }
 
         internal static string[] GetCommandNames()
@@ -82,6 +86,7 @@ namespace ZonderqOS
             if (string.IsNullOrWhiteSpace(fullInput))
                 return;
 
+            ShellHistory.Add(fullInput);
             fullInput = EnvironmentExpander.Expand(fullInput, currentPath);
             List<string> semiCommands = SplitOutsideQuotes(fullInput, ";");
 
@@ -149,6 +154,8 @@ namespace ZonderqOS
 
         private static void ExecuteSingleCommandWithRedirection(string commandLine, ref string currentPath)
         {
+            commandLine = AliasManager.ExpandLeadingAlias(commandLine);
+
             string redirectPath = null;
             bool appendMode;
             int redirectIndex = FindRedirection(commandLine, out appendMode);
