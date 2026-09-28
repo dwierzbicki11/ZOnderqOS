@@ -128,7 +128,7 @@ index c16e9d9..c0df531 100644
      /// The interval the boot path asks the platform to arm the scheduler
 @@ -96,6 +107,10 @@ public static partial class SchedulerManager
      private const uint Stage19RequiredPreemptionsPerWorker = 2;
-     private const ulong Stage20TimeoutSeconds = 10;
+     private const ulong Stage20TimeoutSeconds = 30;
      private const uint Stage20RequiredPreemptionsPerCpu = 2;
 +    private const ulong AutomaticBalanceCooldownNs = 50_000_000;
 +    private const uint AutomaticBalanceHysteresis = 2;
