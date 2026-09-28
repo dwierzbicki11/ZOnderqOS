@@ -265,14 +265,13 @@ new file mode 100644
 +    {
 +    }
 +}
-+diff --git a/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt b/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt
-+--- a/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt
-++++ b/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt
-+@@ -53,6 +53,7 @@
-+ [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.GetPriority(Cosmos.Kernel.Core.Scheduler.SchedulerThread! thread) -> long
-+ [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.IsReady.get -> bool
-++[COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.EnableCurrentCpuManagedPreemption() -> void
-+ [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.MaskInterrupts() -> Cosmos.Kernel.Core.Scheduler.InterruptMaskScope
-+ [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.SetPriority(uint cpuId, Cosmos.Kernel.Core.Scheduler.SchedulerThread! thread, long priority) -> void
-+ [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.SetScheduler(Cosmos.Kernel.Core.Scheduler.IScheduler! scheduler) -> void
-+
+diff --git a/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt b/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt
+--- a/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt
++++ b/src/Cosmos.Kernel.Core/PublicAPI.Unshipped.txt
+@@ -53,6 +53,7 @@
+ [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.GetPriority(Cosmos.Kernel.Core.Scheduler.SchedulerThread! thread) -> long
+ [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.IsReady.get -> bool
++[COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.EnableCurrentCpuManagedPreemption() -> void
+ [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.MaskInterrupts() -> Cosmos.Kernel.Core.Scheduler.InterruptMaskScope
+ [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.SetPriority(uint cpuId, Cosmos.Kernel.Core.Scheduler.SchedulerThread! thread, long priority) -> void
+ [COSMOS0001]static Cosmos.Kernel.Core.Scheduler.SchedulerManager.SetScheduler(Cosmos.Kernel.Core.Scheduler.IScheduler! scheduler) -> void
