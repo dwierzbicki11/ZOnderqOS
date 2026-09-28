@@ -249,7 +249,7 @@ index d80881e..0000000 100644
 diff --git a/src/Cosmos.Kernel.Core/Runtime/Thread.cs b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
 --- a/src/Cosmos.Kernel.Core/Runtime/Thread.cs
 +++ b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
-@@ -91,6 +91,13 @@ internal class Thread
+@@ -91,6 +91,12 @@ internal class Thread
          }
      }
  
