@@ -67,6 +67,22 @@ namespace ZonderqOS
             }
         }
 
+        public static bool TryUnset(string key)
+        {
+            if (!IsValidKey(key))
+                return false;
+
+            // Core identity/runtime variables must always exist.
+            if (string.Equals(key, "USER", StringComparison.Ordinal) ||
+                string.Equals(key, "HOME", StringComparison.Ordinal) ||
+                string.Equals(key, "HOSTNAME", StringComparison.Ordinal) ||
+                string.Equals(key, "PATH", StringComparison.Ordinal))
+                return false;
+
+            lock (_varsLock)
+                return _vars.Remove(key);
+        }
+
         public static string Get(string key)
         {
             if (string.IsNullOrEmpty(key))
