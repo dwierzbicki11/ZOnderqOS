@@ -32,7 +32,7 @@ jobs:
       - name: Compile x64
         run: |
           dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --force --no-cache
-          dotnet build ZonderqOS.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false --no-incremental --no-restore
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false
 
       - name: Clean architecture outputs
         run: rm -rf bin obj
@@ -40,4 +40,4 @@ jobs:
       - name: Compile ARM64
         run: |
           dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --force --no-cache
-          dotnet build ZonderqOS.csproj -c Release -r linux-arm64 -p:CosmosArch=arm64 -p:GeneratePackageOnBuild=false --no-incremental --no-restore
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-arm64 -p:CosmosArch=arm64 -p:GeneratePackageOnBuild=false
