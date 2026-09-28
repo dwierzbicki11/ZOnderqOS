@@ -288,12 +288,12 @@ namespace ZonderqOS.GUI
 
                 if (Hit(mouseX, mouseY, screenWidth - 226, screenHeight - 66, 92, 42))
                 {
-                    Cosmos.Kernel.System.Power.Reboot();
+                    global::ZonderqOS.SystemCore.SystemPower.Reboot("gui-reboot");
                     return;
                 }
 
                 if (Hit(mouseX, mouseY, screenWidth - 124, screenHeight - 66, 100, 42))
-                    Cosmos.Kernel.System.Power.Shutdown();
+                    global::ZonderqOS.SystemCore.SystemPower.Shutdown("gui-shutdown");
             }
 
             public void Render(Canvas canvas)
