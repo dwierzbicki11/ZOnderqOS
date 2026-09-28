@@ -420,7 +420,7 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs b/src/Cosmos.Ke
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-@@ -3290,6 +3290,14 @@ public static partial class SchedulerManager
+@@ -3290,16 +3290,33 @@ public static partial class SchedulerManager
              !ReferenceEquals(state.CurrentThread, state.IdleThread) &&
                  state.CurrentThread.State == SchedulerThreadState.Running);
  
@@ -435,6 +435,31 @@ diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.K
          // Check and wake up sleeping threads whose timeout has expired
          CheckSleepingThreads(cpuId, elapsedNs);
  
++        // A runnable production managed thread must not be switched to the
++        // native AP idle context when there is no alternative runnable work.
++        // That context returns to the park loop and disarms the AP timer, so
++        // the worker would otherwise remain ready with no interrupt to resume it.
++        bool suppressManagedIdleSwitch =
++            currentThread.State == SchedulerThreadState.Running &&
++            (currentThread.Flags & SchedulerThreadFlags.Managed) != 0 &&
++            currentThread.ManagedPreemptionEnabled &&
++            s_currentScheduler.GetRunQueueCount(state) == 0;
++
+         // A blocked, sleeping or dead current thread can never continue after
+         // this IRQ. Force the scheduler path even when the policy run queue is
+         // empty so ScheduleFromInterrupt can fall back to the per-CPU idle
+         // thread. Policy OnTick only decides quantum preemption for a thread
+         // that is still runnable.
+         bool needsReschedule = state.CurrentThread.State != SchedulerThreadState.Running ||
+             s_currentScheduler.OnTick(state, state.CurrentThread, elapsedNs);
+ 
++        if (suppressManagedIdleSwitch && needsReschedule)
++        {
++            needsReschedule = false;
++        }
++
+         if (needsReschedule)
+         {
 diff --git a/src/Cosmos.Kernel.Core/Runtime/Thread.cs b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
 --- a/src/Cosmos.Kernel.Core/Runtime/Thread.cs
 +++ b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
