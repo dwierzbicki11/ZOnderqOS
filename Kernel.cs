@@ -29,6 +29,7 @@ namespace ZonderqOS
                 BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
+                SystemIdentity.Initialize();
                 ServiceManager.Initialize();
 
                 UserManager.PrepareLogin();
@@ -155,6 +156,9 @@ namespace ZonderqOS
                 return;
             }
 
+            string issue = SystemIdentity.ReadIssue();
+            if (!string.IsNullOrEmpty(issue))
+                Console.Write(issue);
             Console.Write("login: ");
             string username = Console.ReadLine();
             if (username != null)
@@ -182,6 +186,9 @@ namespace ZonderqOS
                     path = "/";
 
                 Console.WriteLine("Welcome, " + SecurityContext.CurrentUser + ".");
+                string motd = SystemIdentity.ReadMotd();
+                if (!string.IsNullOrEmpty(motd))
+                    Console.Write(motd);
                 Console.WriteLine("Type 'gui' to start the graphical desktop.");
                 Console.WriteLine();
                 return;
