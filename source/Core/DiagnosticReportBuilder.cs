@@ -50,6 +50,18 @@ namespace ZonderqOS.SystemCore
             text.AppendLine("ThreadSlots=" + info.SchedulerThreadSlots);
             text.AppendLine();
 
+            text.AppendLine("[GUARDIAN]");
+            text.AppendLine("Running=" + Bool(SystemGuardian.IsRunning));
+            text.AppendLine("Cycles=" + SystemGuardian.CycleCount);
+            text.AppendLine("LastCheck=" + Sanitize(SystemGuardian.LastCheckTime, 96));
+            text.AppendLine("FreeMemoryPercent=" + SystemGuardian.LastFreePercent);
+            text.AppendLine("Warnings=" + SystemGuardian.WarningCount);
+            text.AppendLine("CriticalAlerts=" + SystemGuardian.CriticalCount);
+            text.AppendLine("LogTruncations=" + SystemGuardian.LogTruncationCount);
+            text.AppendLine("Faults=" + SystemGuardian.FaultCount);
+            text.AppendLine("LastFault=" + Sanitize(SystemGuardian.LastFault, 160));
+            text.AppendLine();
+
             text.AppendLine("[STORAGE]");
             text.AppendLine("BlockDevices=" + info.StorageDeviceCount);
             text.AppendLine("Partitions=" + info.StoragePartitionCount);
