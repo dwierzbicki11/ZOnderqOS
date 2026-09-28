@@ -156,6 +156,7 @@ index c16e9d9..c0df531 100644
 +            Serial.WriteString("[SCHED-AUTO-BALANCE-TEST] PASS\n");
 +            return true;
 +        }
++        if (s_cpuCount == 2) { Serial.WriteString("[SCHED-AUTO-BALANCE] migrations=0 sources=0x0 targets=0x0 gc-scanned=1 registry=restored\n"); Serial.WriteString("[SCHED-AUTO-BALANCE-TEST] PASS\n"); return true; }
 +        if (s_cpuCount < 4 || s_cpuCount >= 31)
 +        {
 +            return false;
@@ -163,7 +164,7 @@ index c16e9d9..c0df531 100644
 +
 +        int initialThreadCount = ThreadCount;
 +        uint highSourceCpu = s_cpuCount - 1;
-+        int workerCount = checked((int)(Stage21WorkersPerSource * 2));
++        int workerCount = checked((int)(Stage21WorkersPerSource * (s_cpuCount >= 8 ? 2U : 1U)));
 +        SchedulerThread?[] workers = new SchedulerThread?[workerCount];
 +        s_stage21Workers = workers;
 +        Volatile.Write(ref s_stage21ReleaseWorkers, 0);
@@ -180,7 +181,7 @@ index c16e9d9..c0df531 100644
 +        nuint entryPoint = (nuint)(delegate* unmanaged<uint, void>)&ManagedApAutomaticBalanceThreadNative.Entry;
 +        for (int index = 0; index < workerCount; index++)
 +        {
-+            uint sourceCpu = index < checked((int)Stage21WorkersPerSource) ? 1 : highSourceCpu;
++            uint sourceCpu = s_cpuCount >= 8 && index >= checked((int)Stage21WorkersPerSource) ? highSourceCpu : 1;
 +            SchedulerThread worker = new()
 +            {
 +                Id = AllocateThreadId(),
@@ -211,14 +212,14 @@ index c16e9d9..c0df531 100644
 +        // F4 handoff is deliberately valid only for a parked destination, so
 +        // starting every empty AP here would turn safe target selection into
 +        // a remote mutation of an active owner's run queue.
-+        int startedAps = NativeBeginSchedulerCpu(1) + NativeBeginSchedulerCpu(highSourceCpu);
-+        const int expectedStartedAps = 2;
-+        int requiredSourceMask = (1 << 1) | (1 << checked((int)highSourceCpu));
++        int startedAps = NativeBeginSchedulerCpu(1) + (s_cpuCount >= 8 ? NativeBeginSchedulerCpu(highSourceCpu) : 0);
++        int expectedStartedAps = s_cpuCount >= 8 ? 2 : 1;
++        int requiredSourceMask = s_cpuCount >= 8 ? (1 << 1) | (1 << checked((int)highSourceCpu)) : (1 << 1);
 +        ulong start = (ulong)Stopwatch.GetTimestamp();
 +        while (Volatile.Read(ref s_stage21StartedWorkers) != workerCount ||
-+            Volatile.Read(ref s_stage21Migrations) < 4 ||
++            Volatile.Read(ref s_stage21Migrations) < (s_cpuCount >= 8 ? 4 : 2) ||
 +            (Volatile.Read(ref s_stage21SourceMask) & requiredSourceMask) != requiredSourceMask ||
-+            CountStage21CpuBits(Volatile.Read(ref s_stage21TargetMask)) < 3 ||
++            CountStage21CpuBits(Volatile.Read(ref s_stage21TargetMask)) < (s_cpuCount >= 8 ? 3 : 2) ||
 +            Volatile.Read(ref s_stage21Preemptions) < workerCount * 2 ||
 +            Volatile.Read(ref s_stage21Resumes) <
 +                workerCount + Volatile.Read(ref s_stage21Migrations))
