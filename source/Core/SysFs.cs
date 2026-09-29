@@ -3,15 +3,11 @@ using System.Collections.Generic;
 using Cosmos.Kernel.System.Diagnostics;
 using Cosmos.Kernel.System.Storage;
 using ZonderqOS.Hardware;
-using ZonderqOS.Platform;
 
 namespace ZonderqOS.SystemCore
 {
     public static class SysFs
     {
-        private static List<DeviceDescriptor> pciDevices;
-        private static bool pciDiscoveryAttempted;
-
         public static bool IsSysPath(string path)
         {
             string normalized = Normalize(path);
@@ -222,6 +218,12 @@ namespace ZonderqOS.SystemCore
                     content = "0x" + device.ProgrammingInterface.ToString("X2") + "\n";
                 else if (pciLeaf == "modalias")
                     content = BuildPciModalias(device) + "\n";
+                else if (pciLeaf == "driver")
+                {
+                    string driverName;
+                    HardwareDeviceManager.TryGetDriver(device.Id, out driverName);
+                    content = driverName + "\n";
+                }
                 else
                     return false;
 
@@ -403,7 +405,7 @@ namespace ZonderqOS.SystemCore
                 if (FindPciDevice(pciAddress) == null)
                     return false;
 
-                entries = new[] { "vendor", "device", "class", "subclass", "programming_interface", "modalias" };
+                entries = new[] { "vendor", "device", "class", "subclass", "programming_interface", "modalias", "driver" };
                 return true;
             }
 
@@ -469,33 +471,12 @@ namespace ZonderqOS.SystemCore
 
         private static List<DeviceDescriptor> GetPciDevices()
         {
-            if (pciDiscoveryAttempted)
-                return pciDevices ?? new List<DeviceDescriptor>();
-
-            pciDiscoveryAttempted = true;
-            List<DeviceDescriptor> discovered;
-            if (PciSysfsProvider.TryDiscover(out discovered) && discovered != null)
-                pciDevices = discovered;
-            else
-                pciDevices = new List<DeviceDescriptor>();
-
-            return pciDevices;
+            return HardwareDeviceManager.GetDevicesSnapshot();
         }
 
         private static DeviceDescriptor FindPciDevice(string address)
         {
-            if (string.IsNullOrEmpty(address))
-                return null;
-
-            List<DeviceDescriptor> devices = GetPciDevices();
-            for (int i = 0; i < devices.Count; i++)
-            {
-                DeviceDescriptor device = devices[i];
-                if (device != null && string.Equals(device.Id.Address, address, StringComparison.OrdinalIgnoreCase))
-                    return device;
-            }
-
-            return null;
+            return HardwareDeviceManager.FindPci(address);
         }
 
         private static bool TryParsePciDeviceDirectory(string path, out string address)
