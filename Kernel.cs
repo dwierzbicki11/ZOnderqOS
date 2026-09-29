@@ -4,6 +4,7 @@ using System.Threading;
 using ZonderqOS.SystemCore;
 using ZonderqOS.SystemCore.Services;
 using ZonderqOS.GUI;
+using ZonderqOS.Hardware;
 using Sys = Cosmos.Kernel.System;
 
 namespace ZonderqOS
@@ -26,6 +27,7 @@ namespace ZonderqOS
                 HtopSmokeTest.Run();
 #endif
                 Disk.Initialize();
+                DriverManager.Initialize();
                 UserManager.Initialize();
                 Command.Initialize();
                 EnvironmentManager.Initialize();
