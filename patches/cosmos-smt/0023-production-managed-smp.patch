@@ -12,7 +12,10 @@ index 59cc924..f51dfa8 100644
 +        // Diagnostics are BSP-owned; AP timer writes would interleave boot
 +        // records and race this shared counter on every logical processor.
          uint cpuId = SchedulerManager.GetCurrentCpuId();
-+        if (cpuId == 0) s_timerTickCount++;
++        if (cpuId == 0)
++        {
++            s_timerTickCount++;
++        }
  
          // Calculate RSP pointing to saved context for context switching
          nuint contextPtr = (nuint)Unsafe.AsPointer(ref context);
