@@ -1,32 +1,10 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Cosmos.Kernel.System.Diagnostics;
 
 namespace ZonderqOS.SystemCore
 {
-    internal static partial class SchedulerTelemetry
-    {
-        [LibraryImport("*", EntryPoint = "RhGetCurrentSchedulerThreadId")]
-        [SuppressGCTransition]
-        internal static partial uint CurrentThreadId();
-
-        [LibraryImport("*", EntryPoint = "RhSchedulerCpuAccountingAvailable")]
-        [SuppressGCTransition]
-        private static partial int AccountingAvailable();
-
-        [LibraryImport("*", EntryPoint = "RhGetSchedulerCpuBusyTicks")]
-        [SuppressGCTransition]
-        internal static partial long CpuBusyTicks(uint cpuId);
-
-        [LibraryImport("*", EntryPoint = "RhEnableCurrentCpuManagedPreemption")]
-        [SuppressGCTransition]
-        internal static partial void EnableCurrentManagedPreemption();
-
-        internal static bool HasCpuAccounting => AccountingAvailable() == 1;
-    }
-
     internal sealed class HtopMonitor
     {
         private struct PreviousThread
@@ -78,10 +56,10 @@ namespace ZonderqOS.SystemCore
             lines.Add("CPU usage: scheduled work per logical CPU (1 second samples)");
             ActiveCpuMask = 0;
             ulong totalBusyDelta = 0;
-            bool hasAccounting = SchedulerTelemetry.HasCpuAccounting;
+            bool hasAccounting = SchedulerInfo.CpuAccountingAvailable;
             for (int cpu = 0; cpu < count; cpu++)
             {
-                long busy = hasAccounting ? SchedulerTelemetry.CpuBusyTicks((uint)cpu) : 0;
+                long busy = hasAccounting ? SchedulerInfo.GetCpuBusyTicks((uint)cpu) : 0;
                 ulong delta = busy >= previousCpu[cpu] ? (ulong)(busy - previousCpu[cpu]) : 0;
                 if (warm && delta > 0 && cpu < 64)
                 {
