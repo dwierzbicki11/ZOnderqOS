@@ -20,16 +20,16 @@ namespace ZonderqOS.Commands
 
             string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
 
-            if (ProcFs.IsProcPath(path))
+            if (VirtualFs.IsReadOnlyPath(path))
             {
-                if (ProcFs.TryRead(path, out string virtualContent))
+                if (VirtualFs.TryRead(path, out string virtualContent))
                 {
                     CommandIO.Write(virtualContent);
                     CommandIO.LastCommandSuccess = true;
                 }
                 else
                 {
-                    WriteMessage.WriteError($"procfs entry does not exist: {path}", "CMD");
+                    WriteMessage.WriteError($"virtual filesystem entry does not exist: {path}", "CMD");
                     CommandIO.LastCommandSuccess = false;
                 }
                 return;
