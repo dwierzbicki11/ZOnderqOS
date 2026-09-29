@@ -86,7 +86,7 @@ namespace ZonderqOS.SystemCore
                 try
                 {
                     ulong blocks;
-                    uint blockSize;
+                    ulong blockSize;
 
                     if (partition)
                     {
@@ -96,7 +96,7 @@ namespace ZonderqOS.SystemCore
 
                         var part = partitions[index];
                         blocks = part.BlockCount;
-                        blockSize = part.BlockSize;
+                        blockSize = (ulong)part.BlockSize;
                     }
                     else
                     {
@@ -105,7 +105,7 @@ namespace ZonderqOS.SystemCore
 
                         var device = StorageManager.GetDevice(index);
                         blocks = device.BlockCount;
-                        blockSize = device.BlockSize;
+                        blockSize = (ulong)device.BlockSize;
                     }
 
                     if (blockLeaf == "blocks")
