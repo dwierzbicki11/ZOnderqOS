@@ -47,6 +47,12 @@ namespace ZonderqOS.SystemCore
                 return true;
             }
 
+            if (normalized == "/proc/stat")
+            {
+                content = BuildStat();
+                return true;
+            }
+
             if (TryParsePidPath(normalized, out int pid, out string leaf))
             {
                 KernelProcess process = FindProcess(pid);
@@ -83,13 +89,14 @@ namespace ZonderqOS.SystemCore
             if (normalized == "/proc")
             {
                 List<KernelProcess> processes = ProcessManager.GetActiveProcesses();
-                entries = new string[4 + processes.Count];
+                entries = new string[5 + processes.Count];
                 entries[0] = "cpuinfo";
                 entries[1] = "meminfo";
                 entries[2] = "uptime";
                 entries[3] = "version";
+                entries[4] = "stat";
                 for (int i = 0; i < processes.Count; i++)
-                    entries[4 + i] = processes[i].PID.ToString();
+                    entries[5 + i] = processes[i].PID.ToString();
                 return true;
             }
 
@@ -173,6 +180,66 @@ namespace ZonderqOS.SystemCore
             ulong idleTicks = totalCapacity >= busyTicks ? totalCapacity - busyTicks : 0;
             double idleSeconds = (double)idleTicks / Stopwatch.Frequency;
             return uptimeSeconds.ToString("0.00") + " " + idleSeconds.ToString("0.00") + "\n";
+        }
+
+
+        private static string BuildStat()
+        {
+            var sb = new StringBuilder();
+            int cpuCount = checked((int)SchedulerInfo.CpuCount);
+            long uptimeTicks = BootTelemetry.UptimeTicks;
+            bool accounting = SchedulerTelemetry.HasCpuAccounting;
+
+            ulong totalBusy = 0;
+            ulong totalIdle = 0;
+
+            for (int cpu = 0; cpu < cpuCount; cpu++)
+            {
+                if (!accounting)
+                {
+                    sb.Append("cpu").Append(cpu).Append(" busy=N/A idle=N/A\n");
+                    continue;
+                }
+
+                long busyRaw = SchedulerTelemetry.CpuBusyTicks((uint)cpu);
+                ulong busy = busyRaw > 0 ? (ulong)busyRaw : 0UL;
+                ulong capacity = uptimeTicks > 0 ? (ulong)uptimeTicks : 0UL;
+                ulong idle = capacity >= busy ? capacity - busy : 0UL;
+
+                totalBusy = AddSaturated(totalBusy, busy);
+                totalIdle = AddSaturated(totalIdle, idle);
+
+                sb.Append("cpu").Append(cpu)
+                  .Append(" busy=").Append(busy)
+                  .Append(" idle=").Append(idle)
+                  .Append('\n');
+            }
+
+            if (accounting)
+            {
+                sb.Insert(0, "cpu busy=" + totalBusy + " idle=" + totalIdle + "\n");
+            }
+            else
+            {
+                sb.Insert(0, "cpu busy=N/A idle=N/A\n");
+            }
+
+            List<KernelProcess> processes = ProcessManager.GetActiveProcesses();
+            int running = 0;
+            for (int i = 0; i < processes.Count; i++)
+            {
+                if (processes[i].IsRunning)
+                    running++;
+            }
+
+            sb.Append("processes ").Append(processes.Count).Append('\n');
+            sb.Append("procs_running ").Append(running).Append('\n');
+            return sb.ToString();
+        }
+
+        private static ulong AddSaturated(ulong left, ulong right)
+        {
+            return left > ulong.MaxValue - right ? ulong.MaxValue : left + right;
         }
 
         private static ulong SaturatingMultiply(ulong left, ulong right)
