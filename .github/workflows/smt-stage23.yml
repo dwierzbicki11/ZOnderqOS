@@ -107,6 +107,7 @@ jobs:
         env:
           NUGET_PACKAGES: ${{ runner.temp }}/zonderq-stage23-packages
           LOCAL_COSMOS_FEED: ${{ github.workspace }}/cosmos/artifacts/package/release
+          ZonderqHtopSmokeTest: 'true'
         run: |
           set -o pipefail
           export PATH="$HOME/.dotnet/tools:$PATH"

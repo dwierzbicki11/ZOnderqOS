@@ -262,3 +262,24 @@ diff --git a/src/Cosmos.Kernel.Core/Runtime/Thread.cs b/src/Cosmos.Kernel.Core/R
      [RuntimeExport("RhYield")]
      internal static int RhYield()
      {
+diff --git a/src/Cosmos.Kernel.Core/Runtime/SchedulerDiagnostics.cs b/src/Cosmos.Kernel.Core/Runtime/SchedulerDiagnostics.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Runtime/SchedulerDiagnostics.cs
+@@ -0,0 +1,16 @@
++using System.Runtime;
++using Cosmos.Kernel.Core.Scheduler;
++
++namespace Cosmos.Kernel.Core.Runtime;
++
++internal static class SchedulerDiagnostics
++{
++    [RuntimeExport("RhGetCurrentSchedulerThreadId")]
++    internal static uint CurrentThreadId() => SchedulerManager.CurrentCpuState?.CurrentThread?.Id ?? uint.MaxValue;
++
++    [RuntimeExport("RhSchedulerCpuAccountingAvailable")]
++    internal static int CpuAccountingAvailable() => 0;
++
++    [RuntimeExport("RhGetSchedulerCpuBusyTicks")]
++    internal static long CpuBusyTicks(uint cpuId) => 0;
++}

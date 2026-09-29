@@ -11,6 +11,9 @@ namespace ZonderqOS.SystemCore
         public string Name { get; }
         public Thread ExecutionThread { get; }
         public CancellationTokenSource Cts { get; }
+        private uint kernelThreadId = uint.MaxValue;
+        public uint KernelThreadId => Volatile.Read(ref kernelThreadId);
+        internal void BindKernelThread() => Volatile.Write(ref kernelThreadId, SchedulerTelemetry.CurrentThreadId());
         public bool IsRunning => ExecutionThread != null && ExecutionThread.IsAlive;
 
         public KernelProcess(int pid, string name, Thread thread, CancellationTokenSource cts)
@@ -42,6 +45,7 @@ namespace ZonderqOS.SystemCore
             int pid;
             CancellationTokenSource cts;
             Thread thread;
+            KernelProcess process = null;
 
             lock (_registryLock)
             {
@@ -61,6 +65,7 @@ namespace ZonderqOS.SystemCore
                 {
                     try
                     {
+                        process.BindKernelThread();
                         EnableCurrentCpuManagedPreemptionNative();
                         startMethod(cts.Token);
                     }
@@ -74,7 +79,8 @@ namespace ZonderqOS.SystemCore
                     }
                 });
 
-                _processes.Add(pid, new KernelProcess(pid, processName, thread, cts));
+                process = new KernelProcess(pid, processName, thread, cts);
+                _processes.Add(pid, process);
                 thread.Start();
             }
 

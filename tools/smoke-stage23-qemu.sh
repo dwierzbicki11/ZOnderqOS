@@ -67,6 +67,13 @@ if unique != expected:
 if mask != expected_mask:
     fail(f"kernel CPU mask is 0x{mask:x}, expected 0x{expected_mask:x}")
 
+htop = [line for line in lines if line.startswith("[HTOP-TEST]")]
+expected_htop = f"[HTOP-TEST] PASS cpus={expected} mask=0x{expected_mask:X} processes=restored"
+if htop != [expected_htop]:
+    fail(f"htop runtime verification missing or failed: {htop}")
+
+print(
+    f"[SMT23-QEMU][OK] htop measured every logical CPU and restored processes")
 print(
     f"[SMT23-QEMU][OK] ordinary managed threads executed across "
     f"{unique} logical CPUs (mask=0x{mask:x}); registry and AP idle state restored")
