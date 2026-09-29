@@ -19,16 +19,23 @@ namespace ZonderqOS.Commands
 
             string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
 
-            if (RunFs.IsRunPath(path))
+            if (RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path))
             {
-                if (RunFs.DirectoryExists(path))
+                bool directory = RunFs.IsRunPath(path)
+                    ? RunFs.DirectoryExists(path)
+                    : TmpFs.DirectoryExists(path);
+                bool file = RunFs.IsRunPath(path)
+                    ? RunFs.FileExists(path)
+                    : TmpFs.FileExists(path);
+
+                if (directory)
                 {
                     WriteMessage.WriteError($"Path is a directory: {path}", "FS");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
 
-                if (RunFs.FileExists(path))
+                if (file)
                 {
                     CommandIO.LastCommandSuccess = true;
                     return;
