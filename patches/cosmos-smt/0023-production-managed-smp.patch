@@ -140,10 +140,10 @@ index 600bc36..655c4f9 100644
          if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
 new file mode 100644
-index 0000000..7c182f5
+index 0000000..fd99993
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,391 @@
+@@ -0,0 +1,397 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
@@ -170,7 +170,9 @@ index 0000000..7c182f5
 +    {
 +        if (s_cpuBusyTicks is null || s_cpuAccountingTimestamp is null ||
 +            s_cpuStates is null || cpuId >= s_cpuCount)
++        {
 +            return;
++        }
 +        long now = Stopwatch.GetTimestamp();
 +        long previous = s_cpuAccountingTimestamp[cpuId];
 +        s_cpuAccountingTimestamp[cpuId] = now;
@@ -178,7 +180,9 @@ index 0000000..7c182f5
 +        SchedulerThread? current = state.CurrentThread;
 +        if (now > previous && current is not null &&
 +            !ReferenceEquals(current, state.IdleThread))
++        {
 +            Volatile.Write(ref s_cpuBusyTicks[cpuId], s_cpuBusyTicks[cpuId] + now - previous);
++        }
 +    }
 +
 +    private static int s_stage23StartedWorkers;
@@ -317,7 +321,9 @@ index 0000000..7c182f5
 +        s_cpuAccountingTimestamp = new long[s_cpuCount];
 +        long accountingStart = Stopwatch.GetTimestamp();
 +        for (uint cpuId = 0; cpuId < s_cpuCount; cpuId++)
++        {
 +            s_cpuAccountingTimestamp[cpuId] = accountingStart;
++        }
 +        int initialThreadCount = ThreadCount;
 +        int workerCount = checked((int)s_cpuCount);
 +        int[] cpuHits = new int[workerCount];
