@@ -1,0 +1,62 @@
+name: Driver D2.2 read-only storage BAR foundation
+
+on:
+  push:
+    branches: [ drivers/d2-mainline-storage-foundation ]
+    paths:
+      - 'source/Hardware/PciBarDecoder.cs'
+      - 'source/Hardware/StorageControllerDrivers.cs'
+      - 'source/Hardware/StorageControllerBars.cs'
+      - 'source/Hardware/PciConfigDiscoverySource.cs'
+      - 'source/Platform/X64/PciConfigIoAccessor.cs'
+      - 'source/Core/HardwareSnapshot.cs'
+      - 'source/Shell/Commands/CmdHwInfo.cs'
+      - 'tests/HardwareModel.Tests/**'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/driver-stage-d2.yml'
+  pull_request:
+    paths:
+      - 'source/Hardware/PciBarDecoder.cs'
+      - 'source/Hardware/StorageControllerDrivers.cs'
+      - 'source/Hardware/StorageControllerBars.cs'
+      - 'source/Hardware/PciConfigDiscoverySource.cs'
+      - 'source/Platform/X64/PciConfigIoAccessor.cs'
+      - 'source/Core/HardwareSnapshot.cs'
+      - 'source/Shell/Commands/CmdHwInfo.cs'
+      - 'tests/HardwareModel.Tests/**'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/driver-stage-d2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  storage-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run D1 plus D2.1 deterministic hardware tests
+        run: dotnet run --project tests/HardwareModel.Tests/HardwareModel.Tests.csproj -c Release
+      - name: ARM64 portable storage-model compile regression
+        run: |
+          dotnet restore tests/HardwareModel.Tests/HardwareModel.Tests.csproj -r linux-arm64
+          dotnet build tests/HardwareModel.Tests/HardwareModel.Tests.csproj -c Release -r linux-arm64 --no-restore
+      - name: Verify read-only BAR access uses aligned PCI config dwords
+        run: |
+          grep -Fq 'uint Read32' source/Hardware/PciConfigDiscoverySource.cs
+          grep -Fq 'if ((offset & 3) != 0)' source/Platform/X64/PciConfigIoAccessor.cs
+          grep -Fq 'StorageControllerBars.TryReadAhciAbar' tests/HardwareModel.Tests/Program.cs
+          grep -Fq 'StorageControllerBars.TryReadNvmeBar0' tests/HardwareModel.Tests/Program.cs
+          grep -Fq 'StorageControllerClassifier.TryClassify' source/Core/HardwareSnapshot.cs
+      - name: Enforce safe D2.2 boundary
+        run: |
+          test ! -e source/Hardware/DmaPageAllocator.cs
+          test ! -e source/Platform/X64/PhysicalMmioReader.cs
+          test ! -e source/Platform/X64/PhysicalMmioWriter.cs
+          grep -Fq 'classification only' source/Hardware/StorageControllerDrivers.cs
+          grep -Fq 'rejects I/O BARs' source/Hardware/PciBarDecoder.cs

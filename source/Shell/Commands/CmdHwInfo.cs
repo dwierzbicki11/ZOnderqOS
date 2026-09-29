@@ -98,6 +98,8 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("[STORAGE]");
             CommandIO.WriteLine("  Block devices:    " + info.StorageDeviceCount);
             CommandIO.WriteLine("  Partitions:       " + info.StoragePartitionCount);
+            CommandIO.WriteLine("  AHCI controllers: " + info.AhciControllerCount);
+            CommandIO.WriteLine("  NVMe controllers: " + info.NvmeControllerCount);
         }
 
         private static void PrintPci(HardwareSnapshot info)
