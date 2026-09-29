@@ -6,6 +6,7 @@ using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Graphics.Fonts;
 using Cosmos.Kernel.System.Keyboard;
 using ZonderqOS.GUI.Icons;
+using ZonderqOS.SystemCore;
 using Font = Cosmos.Kernel.System.Graphics.Fonts.Font;
 
 namespace ZonderqOS.GUI.Apps
@@ -741,6 +742,12 @@ namespace ZonderqOS.GUI.Apps
             if (string.IsNullOrEmpty(path))
             {
                 status = "Sciezka nie moze byc pusta";
+                return false;
+            }
+
+            if (VirtualFs.IsReadOnlyPath(path))
+            {
+                status = "System plikow tylko do odczytu: " + path;
                 return false;
             }
 
