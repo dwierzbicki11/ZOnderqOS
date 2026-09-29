@@ -10,8 +10,8 @@ Editing and applying root-owned settings requires an authenticated root session.
 | Path | Used for |
 | --- | --- |
 | `/etc/hostname` | Persistent hostname shown in the shell prompt and `hostname`. After editing manually, run `hostname reload`. |
-| `/etc/issue` | Text displayed before a console login. |
-| `/etc/motd` | Text displayed after a successful console login. |
+| `/etc/issue` | Text displayed before a recovery-console login. |
+| `/etc/motd` | Text displayed after a successful recovery-console login. |
 | `/etc/os-release` | Human-readable Gen 3 identity for tools and inspection. |
 | `/etc/profile` | Existing shell environment exports, loaded during boot. |
 | `/etc/zservices/*.conf` | Background service definitions loaded at boot or with `service reload`. |

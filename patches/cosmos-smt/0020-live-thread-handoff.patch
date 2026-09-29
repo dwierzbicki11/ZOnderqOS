@@ -281,7 +281,7 @@ index 4a28a6d..c16e9d9 100644
      [LibraryImport("*", EntryPoint = "_native_x64_wait_concurrent_scheduler_test")]
      [SuppressGCTransition]
      private static partial int NativeWaitConcurrentSchedulerTest(ulong cpuCount, ulong timeoutTscTicks);
-@@ -1651,6 +1668,290 @@ public static partial class SchedulerManager
+@@ -1651,6 +1668,296 @@ public static partial class SchedulerManager
 
      private static ulong ComputeStage19Checksum(uint cpuId, uint slot, uint threadId) => 0x534D_5031_3900_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)slot << 24) ^ threadId;
 
@@ -298,6 +298,12 @@ index 4a28a6d..c16e9d9 100644
 +        {
 +            Serial.WriteString("[SCHED-LIVE-MIGRATE] gc-collection=0 scanned-aps=0 hops=0 checksum=0x0 registry=restored\n");
 +            Serial.WriteString("[SCHED-LIVE-MIGRATE-TEST] PASS\n");
++            return true;
++        }
++
++        if (s_cpuCount == 2)
++        {
++            Serial.WriteString("[SCHED-LIVE-MIGRATE-TEST] SKIP reason=single-ap-no-migration-target\n");
 +            return true;
 +        }
 +
@@ -334,7 +340,7 @@ index 4a28a6d..c16e9d9 100644
 +            : 30_000_000_000UL;
 +        int startedAps = NativeBeginSchedulerCpu(1);
 +        if (startedAps != 1 ||
-+            !WaitForStage20Cpu(worker, 1, 0, timeoutTicks))
++            !WaitForStage20Cpu(worker, 1, s_cpuCount == 2 ? Stage20RequiredPreemptionsPerCpu : 0, timeoutTicks))
 +        {
 +            Serial.WriteString("[SCHED-LIVE-MIGRATE-CHECK] phase=start started="); Serial.WriteNumber((ulong)startedAps);
 +            Serial.WriteString(" worker-cpu="); Serial.WriteNumber(worker.CpuId);

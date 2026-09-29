@@ -122,6 +122,12 @@ namespace ZonderqOS
 
 namespace ZonderqOS.SystemCore
 {
+    internal static class SchedulerTelemetry
+    {
+        internal static uint CurrentThreadId() => 1u;
+        internal static void EnableCurrentManagedPreemption() { }
+    }
+
     public enum SystemLogLevel { Warning }
 
     public static class SystemLogger

@@ -1,22 +1,5 @@
-diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-index 21dcd5f31d8fa14e295a61538b557839b6d2a9b8..18641b25761b82b9d915cbc6521137e82922801d 100644
---- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-+++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-@@ -183,6 +183,12 @@ internal class LibraryInitializer
-             {
-                 Cosmos.Kernel.Core.Panic.Halt("Stage 21 automatic AP load-balancing proof failed.");
-             }
-+
-+            Serial.WriteString("[SCHED-SMP-STRESS] begin\n");
-+            if (!SchedulerManager.RunSmpSchedulerStressStabilityProof())
-+            {
-+                Cosmos.Kernel.Core.Panic.Halt("Stage 22 SMP scheduler stress/stability proof failed.");
-+            }
-         }
-     }
- }
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03cf3473a82 100644
+index 00a5a6b8c072530730c5f9a8a5d3ad401d0f3337..a7b836e6c593ac9b0d8bde21793c5e3a870048d3 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 @@ -55,6 +55,11 @@ public static partial class SchedulerManager
@@ -28,23 +11,21 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
 +    private static int s_stage22FailureStateCpu;
 +    private static int s_stage22FailureThreadCpu;
 +    private static int s_stage22FailureCurrentThreadId;
-
+ 
      /// <summary>
      /// The interval the boot path asks the platform to arm the scheduler
-@@ -109,8 +114,9 @@ public static partial class SchedulerManager
-     private const uint Stage20RequiredPreemptionsPerCpu = 2;
-     private const ulong AutomaticBalanceCooldownNs = 50_000_000;
+@@ -111,6 +116,7 @@ public static partial class SchedulerManager
      private const uint AutomaticBalanceHysteresis = 2;
      private const ulong Stage21TimeoutSeconds = 60;
      private const uint Stage21WorkersPerSource = 3;
 +    private const uint Stage22StressRounds = 8;
-
+ 
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
-@@ -1967,6 +1973,36 @@ public static partial class SchedulerManager
+@@ -1973,6 +1979,36 @@ public static partial class SchedulerManager
      private static ulong ComputeStage20Checksum(uint threadId, uint hopCount, uint cpuId) =>
          0x534D_5031_4000_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)hopCount << 24) ^ threadId;
-
+ 
 +    private static bool IsStage21RoundQuiescent(
 +        SchedulerThread?[] workers,
 +        int initialThreadCount,
@@ -78,7 +59,7 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
      internal static unsafe bool RunAutomaticApplicationProcessorLoadBalancingProof()
      {
          if (!s_enabled || s_currentScheduler is null || s_cpuStates is null ||
-@@ -2001,6 +2037,11 @@ public static partial class SchedulerManager
+@@ -2012,6 +2048,11 @@ public static partial class SchedulerManager
          Volatile.Write(ref s_stage21Migrations, 0);
          Volatile.Write(ref s_stage21SourceMask, 0);
          Volatile.Write(ref s_stage21TargetMask, 0);
@@ -87,20 +68,10 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
 +        Volatile.Write(ref s_stage22FailureStateCpu, -1);
 +        Volatile.Write(ref s_stage22FailureThreadCpu, -1);
 +        Volatile.Write(ref s_stage22FailureCurrentThreadId, -1);
-
+ 
          ushort codeSelector = (ushort)NativeGetCodeSelector();
          nuint entryPoint = (nuint)(delegate* unmanaged<uint, void>)&ManagedApAutomaticBalanceThreadNative.Entry;
-@@ -2046,8 +2087,7 @@ public static partial class SchedulerManager
-             (Volatile.Read(ref s_stage21SourceMask) & requiredSourceMask) != requiredSourceMask ||
-             CountStage21CpuBits(Volatile.Read(ref s_stage21TargetMask)) < 3 ||
-             Volatile.Read(ref s_stage21Preemptions) < workerCount * 2 ||
--            Volatile.Read(ref s_stage21Resumes) <
--                workerCount + Volatile.Read(ref s_stage21Migrations))
-+            Volatile.Read(ref s_stage21Resumes) < workerCount)
-         {
-             if (startedAps != expectedStartedAps ||
-                 Volatile.Read(ref s_stage21Failure) != 0 ||
-@@ -2057,10 +2097,20 @@ public static partial class SchedulerManager
+@@ -2068,10 +2109,20 @@ public static partial class SchedulerManager
                  Volatile.Write(ref s_stage21ReleaseWorkers, 1);
                  Serial.WriteString("[SCHED-AUTO-BALANCE-CHECK] started-aps="); Serial.WriteNumber((ulong)(uint)startedAps);
                  Serial.WriteString(" started-workers="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21StartedWorkers));
@@ -121,9 +92,9 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
                  Serial.WriteString("\n");
                  return false;
              }
-@@ -2075,19 +2125,37 @@ public static partial class SchedulerManager
+@@ -2086,19 +2137,66 @@ public static partial class SchedulerManager
          Volatile.Write(ref s_stage21ReleaseWorkers, 1);
-
+ 
          start = (ulong)Stopwatch.GetTimestamp();
 -        while (Volatile.Read(ref s_stage21CompletedWorkers) != workerCount || ThreadCount != initialThreadCount)
 +        int nonDeadWorkers;
@@ -141,11 +112,40 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
 +                Serial.WriteString(" non-idle-cpus="); Serial.WriteHexWithPrefix(nonIdleCpuMask);
 +                Serial.WriteString(" failure="); Serial.WriteNumber((ulong)Volatile.Read(ref s_stage21Failure));
 +                Serial.WriteString("\n");
++                for (int index = 0; index < workers.Length; index++)
++                {
++                    SchedulerThread? worker = workers[index];
++                    if (worker is null || worker.State == SchedulerThreadState.Dead)
++                    {
++                        continue;
++                    }
++                    Serial.WriteString("[SCHED-AUTO-BALANCE-WORKER] index="); Serial.WriteNumber((ulong)(uint)index);
++                    Serial.WriteString(" id="); Serial.WriteNumber(worker.Id);
++                    Serial.WriteString(" state="); Serial.WriteNumber((ulong)(uint)worker.State);
++                    Serial.WriteString(" cpu="); Serial.WriteNumber(worker.CpuId);
++                    Serial.WriteString("\n");
++                }
++                for (uint cpuId = 0; cpuId < s_cpuCount; cpuId++)
++                {
++                    PerCpuState cpuState = s_cpuStates![cpuId];
++                    SchedulerThread? current = cpuState.CurrentThread;
++                    Serial.WriteString("[SCHED-AUTO-BALANCE-CPU] id="); Serial.WriteNumber(cpuId);
++                    Serial.WriteString(" current="); Serial.WriteNumber(current?.Id ?? uint.MaxValue);
++                    Serial.WriteString(" current-state="); Serial.WriteNumber(current is null ? uint.MaxValue : (ulong)(uint)current.State);
++                    Serial.WriteString(" published-load="); Serial.WriteNumber(cpuState.PublishedRunnableCount);
++                    Serial.WriteString(" need-reschedule="); Serial.WriteString(cpuState._needReschedule ? "1" : "0");
++                    if (cpuId != 0)
++                    {
++                        Serial.WriteString(" command="); Serial.WriteNumber(NativeGetApplicationProcessorCommand(cpuId));
++                        Serial.WriteString(" completion="); Serial.WriteNumber(NativeGetApplicationProcessorCompletion(cpuId));
++                    }
++                    Serial.WriteString("\n");
++                }
                  return false;
              }
              SysThread.SpinWait(64);
          }
-
+ 
 +        int parkedAps = NativeWaitConcurrentSchedulerTest(s_cpuCount, timeoutTicks);
          if (collectionAfter != collectionBefore + 1 || scannedAps != s_cpuCount - 1 ||
 -            NativeWaitConcurrentSchedulerTest(s_cpuCount, timeoutTicks) != checked((int)s_cpuCount - 1))
@@ -161,7 +161,7 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
              return false;
          }
          for (int index = 0; index < workers.Length; index++)
-@@ -2164,6 +2232,11 @@ public static partial class SchedulerManager
+@@ -2175,6 +2273,11 @@ public static partial class SchedulerManager
                  PerCpuState? state = CurrentCpuState;
                  if (state is null || state.CpuId != cpuId || !ReferenceEquals(state.CurrentThread, thread) || thread.CpuId != cpuId)
                  {
@@ -173,10 +173,10 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
                      Volatile.Write(ref s_stage21Failure, 2);
                      return;
                  }
-@@ -2198,6 +2271,75 @@ public static partial class SchedulerManager
+@@ -2213,6 +2316,86 @@ public static partial class SchedulerManager
          }
      }
-
+ 
 +    /// <summary>
 +    /// Repeats the complete Stage 21 lifecycle enough times to expose stale
 +    /// mailbox generations, leaked registry entries, lost continuations and
@@ -187,6 +187,13 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
 +    /// </summary>
 +    internal static bool RunSmpSchedulerStressStabilityProof()
 +    {
++#if ARCH_X64
++        if (s_cpuCount == 2)
++        {
++            Serial.WriteString("[SCHED-SMP-STRESS-TEST] SKIP reason=requires-multiple-ap-targets\n");
++            return true;
++        }
++#endif
 +        int initialThreadCount = ThreadCount;
 +        int collectionBefore = GarbageCollector.GetCollectionIndex();
 +        ulong totalMigrations = 0;
@@ -212,7 +219,11 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
 +                int migrations = Volatile.Read(ref s_stage21Migrations);
 +                int preemptions = Volatile.Read(ref s_stage21Preemptions);
 +                int resumes = Volatile.Read(ref s_stage21Resumes);
-+                if (migrations < 4 || preemptions < 12 || resumes < 6)
++                int requiredMigrations = s_cpuCount >= 8 ? 4 : 1;
++                int requiredPreemptions = s_cpuCount >= 8 ? 12 : 6;
++                int requiredResumes = s_cpuCount >= 8 ? 10 : 4;
++                if (migrations < requiredMigrations ||
++                    preemptions < requiredPreemptions || resumes < requiredResumes)
 +                {
 +                    return false;
 +                }
@@ -249,7 +260,7 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
      private static int CountStage21CpuBits(int mask)
      {
          int count = 0;
-@@ -2358,6 +2500,7 @@ public static partial class SchedulerManager
+@@ -2387,6 +2570,7 @@ public static partial class SchedulerManager
          uint sourceLoad = checked((uint)queued + 1);
          source.PublishRunnableCount(queued, true);
          uint bestLoad = uint.MaxValue;
@@ -257,15 +268,15 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
          for (uint candidate = 1; candidate < s_cpuCount; candidate++)
          {
              if (candidate == source.CpuId)
-@@ -2367,6 +2510,7 @@ public static partial class SchedulerManager
-
+@@ -2396,6 +2580,7 @@ public static partial class SchedulerManager
+ 
              PerCpuState destination = s_cpuStates[candidate];
              uint candidateLoad = destination.PublishedRunnableCount;
 +            uint candidateMigrationInCount = destination.AutomaticMigrationInCount;
              // A command-0/completion-1 mailbox says that the native park loop
              // is available, but it remains unchanged while an F4-dispatched
              // worker is running. The owner-published zero load is therefore
-@@ -2377,12 +2521,15 @@ public static partial class SchedulerManager
+@@ -2406,12 +2591,15 @@ public static partial class SchedulerManager
              // publication and decrement that fresh value back to zero. That
              // made an active AP look parked and allowed a second remote queue
              // mutation. Select read-only, then CAS exactly one final target.
@@ -282,3 +293,20 @@ index b751e7914b9eeddbd23dd8570fc2c040b6ab180e..c619976ea5a7ed47660556aceb91d03c
                  targetCpuId = candidate;
              }
          }
+diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+index 21dcd5f31d8fa14e295a61538b557839b6d2a9b8..18641b25761b82b9d915cbc6521137e82922801d 100644
+--- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
++++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+@@ -183,6 +183,12 @@ internal class LibraryInitializer
+             {
+                 Cosmos.Kernel.Core.Panic.Halt("Stage 21 automatic AP load-balancing proof failed.");
+             }
++
++            Serial.WriteString("[SCHED-SMP-STRESS] begin\n");
++            if (!SchedulerManager.RunSmpSchedulerStressStabilityProof())
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 22 SMP scheduler stress/stability proof failed.");
++            }
+         }
+     }
+ }

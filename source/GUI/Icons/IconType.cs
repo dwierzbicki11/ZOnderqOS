@@ -38,6 +38,16 @@ namespace ZonderqOS.GUI.Icons
         Wifi,
         Ethernet,
         Install,
-        Play
+        Play,
+        HardDisk,
+        List,
+        FileBmp,
+        FileDoc,
+        FileDocx,
+        FileJpg,
+        FilePdf,
+        FilePng,
+        FileSvg,
+        FileTxt
     }
 }

@@ -8,7 +8,7 @@ namespace ZonderqOS.GUI.Icons
     {
         private const int IconSize = 18;
         private const int LargeIconSize = 40;
-        private const int IconCount = (int)IconType.Play + 1;
+        private const int IconCount = (int)IconType.FileTxt + 1;
         private const int MaxScaledCacheEntries = 256;
         private const string CacheDirectory = "/root/.zonderq-icons";
 
@@ -286,6 +286,16 @@ namespace ZonderqOS.GUI.Icons
                 case IconType.Ethernet: return IconResources.Ethernet;
                 case IconType.Install: return IconResources.Install;
                 case IconType.Play: return IconResources.Play;
+                case IconType.HardDisk: return IconResources.HardDisk;
+                case IconType.List: return IconResources.List;
+                case IconType.FileBmp: return IconResources.FileBmp;
+                case IconType.FileDoc: return IconResources.FileDoc;
+                case IconType.FileDocx: return IconResources.FileDocx;
+                case IconType.FileJpg: return IconResources.FileJpg;
+                case IconType.FilePdf: return IconResources.FilePdf;
+                case IconType.FilePng: return IconResources.FilePng;
+                case IconType.FileSvg: return IconResources.FileSvg;
+                case IconType.FileTxt: return IconResources.FileTxt;
                 default: return null;
             }
         }
@@ -329,6 +339,16 @@ namespace ZonderqOS.GUI.Icons
                 case IconType.Ethernet: return "ethernet.png";
                 case IconType.Install: return "install.png";
                 case IconType.Play: return "play.png";
+                case IconType.HardDisk: return "Hard-Disk--Streamline-Flex-Remix.png";
+                case IconType.List: return "list.png";
+                case IconType.FileBmp: return "file-type-bmp.png";
+                case IconType.FileDoc: return "file-type-doc.png";
+                case IconType.FileDocx: return "file-type-docx.png";
+                case IconType.FileJpg: return "file-type-jpg.png";
+                case IconType.FilePdf: return "file-type-pdf.png";
+                case IconType.FilePng: return "file-type-png.png";
+                case IconType.FileSvg: return "file-type-svg.png";
+                case IconType.FileTxt: return "file-type-txt.png";
                 default: return "icon.png";
             }
         }

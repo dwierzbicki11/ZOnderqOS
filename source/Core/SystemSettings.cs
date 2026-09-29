@@ -25,6 +25,7 @@ namespace ZonderqOS
         public static bool ShowTaskbarDate { get; private set; } = true;
         public static bool ShowTrayStatus { get; private set; } = true;
         public static bool ShowDesktopIcons { get; private set; } = true;
+        public static bool BootToGui { get; private set; } = true;
         public static int TimeZoneOffsetHours { get; private set; } = 2;
 
         // Desktop background: 0 = embedded wallpaper, 1 = graphite, 2 = Cosmos navy.
@@ -201,6 +202,7 @@ namespace ZonderqOS
                     "taskbar_date=" + BoolValue(ShowTaskbarDate) + "\n" +
                     "tray_status=" + BoolValue(ShowTrayStatus) + "\n" +
                     "desktop_icons=" + BoolValue(ShowDesktopIcons) + "\n" +
+                    "boot_gui=" + BoolValue(BootToGui) + "\n" +
                     "timezone=" + TimeZoneOffsetHours + "\n" +
                     "desktop_background=" + DesktopBackgroundMode + "\n" +
                     "accent_theme=" + AccentTheme + "\n" +
@@ -294,6 +296,12 @@ namespace ZonderqOS
         {
             ShowDesktopIcons = !ShowDesktopIcons;
             Save();
+        }
+
+        public static bool SetBootToGui(bool enabled)
+        {
+            BootToGui = enabled;
+            return Save();
         }
 
         public static void CycleDesktopBackground()
@@ -611,6 +619,7 @@ namespace ZonderqOS
                 case "taskbar_date":
                 case "tray_status":
                 case "desktop_icons":
+                case "boot_gui":
                 case "network_dhcp":
                     return value == "0" || value == "1" ||
                            value.Equals("true", StringComparison.OrdinalIgnoreCase) ||
@@ -642,6 +651,7 @@ namespace ZonderqOS
                 case "taskbar_date":
                 case "tray_status":
                 case "desktop_icons":
+                case "boot_gui":
                 case "timezone":
                 case "desktop_background":
                 case "accent_theme":
@@ -664,6 +674,7 @@ namespace ZonderqOS
             ShowTaskbarDate = true;
             ShowTrayStatus = true;
             ShowDesktopIcons = true;
+            BootToGui = true;
             TimeZoneOffsetHours = 2;
             DesktopBackgroundMode = 0;
             AccentTheme = 0;
@@ -699,6 +710,9 @@ namespace ZonderqOS
                     break;
                 case "desktop_icons":
                     ShowDesktopIcons = ParseBool(value, ShowDesktopIcons);
+                    break;
+                case "boot_gui":
+                    BootToGui = ParseBool(value, BootToGui);
                     break;
                 case "timezone":
                     if (int.TryParse(value, out number) && number >= -12 && number <= 14)

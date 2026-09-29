@@ -6,6 +6,7 @@ using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Graphics.Fonts;
 using Cosmos.Kernel.System.Keyboard;
 using ZonderqOS.GUI.Icons;
+using ZonderqOS.SystemCore;
 using Font = Cosmos.Kernel.System.Graphics.Fonts.Font;
 
 namespace ZonderqOS.GUI.Apps
@@ -751,9 +752,16 @@ namespace ZonderqOS.GUI.Apps
                 return false;
             }
 
+            if (VirtualFs.IsReadOnlyPath(path))
+            {
+                status = "System plikow tylko do odczytu: " + path;
+                return false;
+            }
+
             try
             {
-                string permissionPath = File.Exists(path) ? path : Path.GetDirectoryName(path);
+                bool existed = File.Exists(path);
+                string permissionPath = existed ? path : Path.GetDirectoryName(path);
                 if (!global::ZonderqOS.PermissionManager.CanWrite(permissionPath,
                     global::ZonderqOS.SecurityContext.CurrentUser))
                 {
@@ -763,6 +771,9 @@ namespace ZonderqOS.GUI.Apps
 
                 // Document content has no artificial character/size cap.
                 File.WriteAllText(path, string.Join("\n", lines));
+                if (!existed)
+                    global::ZonderqOS.PermissionManager.SetPermission(path,
+                        global::ZonderqOS.SecurityContext.CurrentUser, 644);
                 filePath = path;
                 dirty = false;
                 status = "Zapisano: " + path;

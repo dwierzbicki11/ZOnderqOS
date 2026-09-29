@@ -33,13 +33,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y qemu-system-x86 lld xorriso nasm binutils fdisk dosfstools mtools
-      - name: Build patched Cosmos 3.0.85 through Stage 22
+      - name: Build patched Cosmos 3.0.85 through Stage 23
         env:
           ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
         run: |
           set -o pipefail
           bash -n zonderq/tools/smoke-services-qemu.sh
-          bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 22 2>&1 | tee zonderq/services-cosmos-build.log
+          bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 23 2>&1 | tee zonderq/services-cosmos-build.log
       - name: Restore project only from patched local Cosmos packages
         run: |
           cat > zonderq/NuGet.Config <<EOF

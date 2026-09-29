@@ -1,5 +1,5 @@
 using System;
-using System.Collections.Generic;
+using System.Diagnostics;
 using Cosmos.Kernel.System.Keyboard;
 using ZonderqOS.SystemCore;
 
@@ -11,8 +11,8 @@ namespace ZonderqOS.GUI.Apps
         private readonly TerminalBox terminalBox;
         private string currentPath;
         private Action<string> nanoLauncher;
-        private readonly List<string> historyCache = new List<string>(128);
-        private int historyIndex = -1;
+        private HtopMonitor htop;
+        private long htopRefreshAt;
 
         public TerminalApp(int x, int y, Action onClose) : base("Terminal CLI")
         {
@@ -57,6 +57,19 @@ namespace ZonderqOS.GUI.Apps
         public override void Update()
         {
             UpdateLayout();
+            if (htop != null && Stopwatch.GetTimestamp() >= htopRefreshAt)
+            {
+                htop.Refresh();
+                terminalBox.ShowMonitor(htop.Lines, htop.Scroll);
+                htopRefreshAt = Stopwatch.GetTimestamp() + Stopwatch.Frequency;
+            }
+        }
+
+        private void StartHtop()
+        {
+            htop = new HtopMonitor();
+            htopRefreshAt = 0;
+            terminalBox.Prompt = "htop > ";
         }
 
         public override void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
@@ -94,18 +107,34 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleKeyboard(KeyEvent key)
         {
-            if (key.Key == ConsoleKeyEx.UpArrow)
+            if (htop != null)
             {
-                NavigateHistory(-1);
+                if (key.Key == ConsoleKeyEx.Q || key.Key == ConsoleKeyEx.Escape)
+                {
+                    htop = null;
+                    terminalBox.ClearOutput();
+                    UpdatePrompt();
+                    return;
+                }
+                if (key.Key == ConsoleKeyEx.C)
+                {
+                    htop.SortByCpu = true;
+                }
+                if (key.Key == ConsoleKeyEx.P)
+                {
+                    htop.SortByCpu = false;
+                }
+                if (key.Key == ConsoleKeyEx.UpArrow)
+                {
+                    htop.Scroll = Math.Max(0, htop.Scroll - 1);
+                }
+                if (key.Key == ConsoleKeyEx.DownArrow)
+                {
+                    htop.Scroll = Math.Min(Math.Max(0, htop.Lines.Count - 1), htop.Scroll + 1);
+                }
+                htopRefreshAt = 0;
                 return;
             }
-
-            if (key.Key == ConsoleKeyEx.DownArrow)
-            {
-                NavigateHistory(1);
-                return;
-            }
-
             if (key.Key == ConsoleKeyEx.Tab)
             {
                 CompleteInput();
@@ -123,8 +152,8 @@ namespace ZonderqOS.GUI.Apps
             if (string.IsNullOrEmpty(command))
                 return;
 
-            historyIndex = -1;
-
+            Action previousHtopLauncher = CommandIO.HtopLauncher;
+            CommandIO.HtopLauncher = StartHtop;
             CommandIO.StartRedirection();
             CommandIO.BeginGraphicalCommand();
             try
@@ -137,36 +166,15 @@ namespace ZonderqOS.GUI.Apps
             }
             finally
             {
+                CommandIO.HtopLauncher = previousHtopLauncher;
                 CommandIO.EndGraphicalCommand();
                 string output = CommandIO.EndRedirection();
                 PrintCommandOutput(output);
-                UpdatePrompt();
+                if (htop == null)
+                {
+                    UpdatePrompt();
+                }
             }
-        }
-
-
-        private void NavigateHistory(int direction)
-        {
-            ShellHistory.CopyTo(historyCache);
-            if (historyCache.Count == 0)
-                return;
-
-            if (historyIndex < 0)
-                historyIndex = historyCache.Count;
-
-            historyIndex += direction;
-            if (historyIndex < 0)
-                historyIndex = 0;
-            if (historyIndex > historyCache.Count)
-                historyIndex = historyCache.Count;
-
-            if (historyIndex == historyCache.Count)
-            {
-                terminalBox.SetInput(string.Empty);
-                return;
-            }
-
-            terminalBox.SetInput(historyCache[historyIndex]);
         }
 
         private void CompleteInput()

@@ -109,6 +109,7 @@ Przyklady:
   bash tools/prepare-cosmos-smt.sh --through-stage 20
   bash tools/prepare-cosmos-smt.sh --through-stage 21
   bash tools/prepare-cosmos-smt.sh --through-stage 22
+  bash tools/prepare-cosmos-smt.sh --through-stage 23
   bash tools/prepare-cosmos-smt.sh --all
 EOF
 }
@@ -423,4 +424,9 @@ elif (( SELECTED_STAGE == 22 )); then
     echo "[SMT] Etap 22 powtarza pelny cykl automatycznego balansowania, preempcji i OrionGC/STW przez osiem generacji."
     echo "[SMT] Kazda generacja musi odtworzyc rejestr watkow, konteksty idle i natywne skrzynki AP przed nastepna runda."
     echo "[SMT] Jest to koncowa bramka stress/stability roadmapy SMT/SMP."
+elif (( SELECTED_STAGE == 23 )); then
+    echo "[SMT] Etap 23 wlacza produkcyjne SMP dla zwyklych System.Threading.Thread na x64."
+    echo "[SMT] Nowe managed thready sa rozkladane round-robin po wszystkich logicznych CPU, a zaparkowany AP jest budzony sciezka schedulera command-9."
+    echo "[SMT] Kazdy managed thread na AP uzbraja prywatny timer schedulera, dzieki czemu zwykla preempcja, exit i powrot do idle dzialaja bez testowego worker glue."
+    echo "[SMT] Boot proof uruchamia prawdziwe managed Thread na wszystkich AP i wymaga pelnej maski logicznych CPU oraz odtworzonego registry/idle."
 fi

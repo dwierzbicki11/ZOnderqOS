@@ -51,8 +51,8 @@ requires a safe executable loader, process isolation and service credentials.
 
 Build the x64 ISO with the patched Cosmos toolchain and boot it with the same
 writable FAT disk image attached on two consecutive boots. The normal launcher
-uses `zonder_disk.img` when present. After initial root password setup and root
-login, check:
+uses `zonder_disk.img` when present. After graphical initial root password
+setup and root login, open Terminal (or use the recovery console) and check:
 
 1. `service list` shows `heartbeat` running and `ps` shows `svc-heartbeat`.
 2. `service disable heartbeat`, then `service status heartbeat` reports
@@ -65,5 +65,8 @@ login, check:
    `interval_seconds=5`; run `service reload` and check `svc-custom` and its log.
 
 The host integration test exercises these manager transitions with real files
-and managed threads. A successful compile or host test alone does not prove
-that the QEMU boot mount and FAT writes survive a reboot.
+and managed threads. The `services-qemu.yml` workflow builds a real ISO using
+the patched Cosmos Stage 23 packages, boots twice using one writable FAT image,
+then verifies `/etc/zservices/heartbeat.conf` and appended heartbeat/memory
+samples in `/var/log/zservices/heartbeat.log`. The interactive commands and
+GUI editing still need the manual check above.

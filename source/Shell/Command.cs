@@ -18,6 +18,7 @@ namespace ZonderqOS
             _commands.Add(new CmdPwd());
             _commands.Add(new CmdCd());
             _commands.Add(new CmdLs());
+            _commands.Add(new CmdLspci());
             _commands.Add(new CmdMkdir());
             _commands.Add(new CmdRmdir());
             _commands.Add(new CmdCat());
@@ -35,26 +36,23 @@ namespace ZonderqOS
             _commands.Add(new CmdStat());
             _commands.Add(new CmdHexdump());
             _commands.Add(new CmdViewLog());
+            _commands.Add(new CmdDmesg());
             _commands.Add(new CmdClear());
             _commands.Add(new CmdSysInfo());
-            _commands.Add(new CmdBootStatus());
-            _commands.Add(new CmdCrashInfo());
-            _commands.Add(new CmdConfig());
-            _commands.Add(new CmdSysDoctor());
-            _commands.Add(new CmdZpkg());
-            _commands.Add(new CmdSysReport());
-            _commands.Add(new CmdHwInfo());
+            _commands.Add(new CmdLscpu());
+            _commands.Add(new CmdNproc());
             _commands.Add(new CmdRecovery());
             _commands.Add(new CmdGrep());
             _commands.Add(new CmdHead());
-            _commands.Add(new CmdFind());
-            _commands.Add(new CmdWhich());
-            _commands.Add(new CmdWc());
-            _commands.Add(new CmdTail());
             _commands.Add(new CmdEcho());
             _commands.Add(new CmdWhoami());
-            _commands.Add(new CmdHostname());
+            _commands.Add(new CmdTty());
             _commands.Add(new CmdGui());
+            _commands.Add(new CmdBootMode());
+            _commands.Add(new CmdDf());
+            _commands.Add(new CmdHostname());
+            _commands.Add(new CmdService());
+            _commands.Add(new CmdSystemctl());
             _commands.Add(new CmdHelp(_commands));
             _commands.Add(new CmdMkpart());
             _commands.Add(new CmdShutDown());
@@ -67,16 +65,18 @@ namespace ZonderqOS
             _commands.Add(new CmdNano());
             _commands.Add(new CmdChmod());
             _commands.Add(new CmdFree());
+            _commands.Add(new CmdUptime());
+            _commands.Add(new CmdUname());
             _commands.Add(new CmdPs());
+            _commands.Add(new CmdPidof());
+            _commands.Add(new CmdPgrep());
+            _commands.Add(new CmdKillall());
+            _commands.Add(new CmdHtop());
+            _commands.Add(new CmdSmtCheck());
             _commands.Add(new CmdSysmond());
-            _commands.Add(new CmdService());
             _commands.Add(new CmdKill());
             _commands.Add(new CmdEnv());
             _commands.Add(new CmdExport());
-            _commands.Add(new CmdUnset());
-            _commands.Add(new CmdUnalias());
-            _commands.Add(new CmdAlias());
-            _commands.Add(new CmdHistory());
         }
 
         internal static string[] GetCommandNames()
@@ -92,7 +92,6 @@ namespace ZonderqOS
             if (string.IsNullOrWhiteSpace(fullInput))
                 return;
 
-            ShellHistory.Add(fullInput);
             fullInput = EnvironmentExpander.Expand(fullInput, currentPath);
             List<string> semiCommands = SplitOutsideQuotes(fullInput, ";");
 
@@ -160,8 +159,6 @@ namespace ZonderqOS
 
         private static void ExecuteSingleCommandWithRedirection(string commandLine, ref string currentPath)
         {
-            commandLine = AliasManager.ExpandLeadingAlias(commandLine);
-
             string redirectPath = null;
             bool appendMode;
             int redirectIndex = FindRedirection(commandLine, out appendMode);

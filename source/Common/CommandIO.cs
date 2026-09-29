@@ -21,6 +21,8 @@ namespace ZonderqOS
         // GUI applications can provide native interactive handlers for commands
         // that historically owned the Console (for example nano).
         public static Action<string> NanoLauncher { get; set; }
+        public static Action HtopLauncher { get; set; }
+        public static bool IsOutputRedirected => _outBuffers.Count > (IsGraphicalCommand ? 1 : 0);
 
         /// <summary>
         /// True while a command (including nested shell scripts) is executing inside the

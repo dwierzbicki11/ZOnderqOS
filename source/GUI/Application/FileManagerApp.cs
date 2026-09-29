@@ -9,6 +9,7 @@ using Cosmos.Kernel.System.Storage;
 using ZonderqOS.GUI.Icons;
 using Font = Cosmos.Kernel.System.Graphics.Fonts.Font;
 
+using ZonderqOS.SystemCore;
 namespace ZonderqOS.GUI.Apps
 {
     public class FileManagerApp : Application
@@ -619,6 +620,14 @@ namespace ZonderqOS.GUI.Apps
             }
 
             string path = Path.Combine(currentPath, name).Replace('\\', '/');
+            if (VirtualFs.IsReadOnlyPath(path))
+            {
+                status = "Read-only virtual filesystem";
+                dialogMode = 0;
+                dialogName = "";
+                return;
+            }
+
             try
             {
                 if (File.Exists(path) || Directory.Exists(path))
@@ -721,17 +730,17 @@ namespace ZonderqOS.GUI.Apps
                         string label = i == 0 ? "System" : "Partition " + i;
                         string detail = FormatCapacity(bytes) + (mounted ? "  MOUNTED" : "  READY");
 
-                        sidebarEntries.Add(SidebarEntry.Volume(label, i, mountPoint, IconType.FileManager, detail, mounted));
+                        sidebarEntries.Add(SidebarEntry.Volume(label, i, mountPoint, IconType.HardDisk, detail, mounted));
                     }
                 }
                 else
                 {
-                    sidebarEntries.Add(SidebarEntry.Device("No volumes", IconType.FileManager, "NONE DETECTED"));
+                    sidebarEntries.Add(SidebarEntry.Device("No volumes", IconType.HardDisk, "NONE DETECTED"));
                 }
             }
             catch
             {
-                sidebarEntries.Add(SidebarEntry.Device("System", IconType.FileManager, "STORAGE READY"));
+                sidebarEntries.Add(SidebarEntry.Device("System", IconType.HardDisk, "STORAGE READY"));
             }
 
             sidebarEntries.Add(SidebarEntry.Section("DEVICES"));
@@ -743,16 +752,16 @@ namespace ZonderqOS.GUI.Apps
                 {
                     var device = StorageManager.GetDevice(i);
                     ulong bytes = (ulong)device.BlockCount * (ulong)device.BlockSize;
-                    sidebarEntries.Add(SidebarEntry.Device("Disk " + i, IconType.Settings,
+                    sidebarEntries.Add(SidebarEntry.Device("Disk " + i, IconType.HardDisk,
                         FormatCapacity(bytes) + "  DEVICE"));
                 }
 
                 if (deviceCount == 0)
-                    sidebarEntries.Add(SidebarEntry.Device("No disks", IconType.Settings, "NONE DETECTED"));
+                    sidebarEntries.Add(SidebarEntry.Device("No disks", IconType.HardDisk, "NONE DETECTED"));
             }
             catch
             {
-                sidebarEntries.Add(SidebarEntry.Device("Storage", IconType.Settings, "UNAVAILABLE"));
+                sidebarEntries.Add(SidebarEntry.Device("Storage", IconType.HardDisk, "UNAVAILABLE"));
             }
         }
 
@@ -875,7 +884,7 @@ namespace ZonderqOS.GUI.Apps
 
         public static SidebarEntry Section(string label)
         {
-            return new SidebarEntry(label, null, IconType.Folder, "", false, true, false, -1, false);
+            return new SidebarEntry(label, null, IconType.List, "", false, true, false, -1, false);
         }
 
         public static SidebarEntry Location(string label, string path, IconType icon, string detail)
@@ -991,8 +1000,9 @@ namespace ZonderqOS.GUI.Apps
 
                 if (entry.IsSection)
                 {
-                    SmallTextRenderer.DrawClipped(canvas, entry.Label, x + 10, itemY + 7,
-                        width - 20, Color.FromArgb(104, 130, 151));
+                    IconManager.DrawScaled(canvas, entry.Icon, x + 10, itemY + 4, 14, 14);
+                    SmallTextRenderer.DrawClipped(canvas, entry.Label, x + 30, itemY + 7,
+                        width - 40, Color.FromArgb(104, 130, 151));
                     itemY += rowHeight;
                     continue;
                 }
@@ -1099,7 +1109,7 @@ namespace ZonderqOS.GUI.Apps
 
                 int iconX = tileX + (FileManagerApp.TileWidth - iconSize) / 2;
                 canvas.DrawFilledRectangle(Color.FromArgb(34, 40, 47), iconX - 5, tileY + 3, iconSize + 10, iconSize + 8);
-                IconManager.DrawScaled(canvas, entry.IsDirectory ? IconType.Folder : IconType.File,
+                IconManager.DrawScaled(canvas, ResolveEntryIcon(entry),
                     iconX, tileY + 7, iconSize, iconSize);
 
                 DrawWrappedName(canvas, entry.Name ?? "",
@@ -1108,6 +1118,43 @@ namespace ZonderqOS.GUI.Apps
                     labelWidth,
                     labelHeight,
                     index == app.SelectedIndex ? Color.WhiteSmoke : MainText);
+            }
+        }
+
+        private static IconType ResolveEntryIcon(FileEntry entry)
+        {
+            if (entry == null)
+                return IconType.File;
+            if (entry.IsDirectory)
+                return IconType.Folder;
+
+            string extension;
+            try
+            {
+                extension = Path.GetExtension(entry.Name ?? "").ToLowerInvariant();
+            }
+            catch
+            {
+                return IconType.File;
+            }
+
+            switch (extension)
+            {
+                case ".bmp": return IconType.FileBmp;
+                case ".doc": return IconType.FileDoc;
+                case ".docx": return IconType.FileDocx;
+                case ".jpg":
+                case ".jpeg": return IconType.FileJpg;
+                case ".pdf": return IconType.FilePdf;
+                case ".png": return IconType.FilePng;
+                case ".svg": return IconType.FileSvg;
+                case ".txt":
+                case ".log":
+                case ".md":
+                case ".cfg":
+                case ".conf":
+                case ".ini": return IconType.FileTxt;
+                default: return IconType.File;
             }
         }
 
