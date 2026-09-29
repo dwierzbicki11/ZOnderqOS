@@ -42,6 +42,22 @@ namespace ZonderqOS.SystemCore
                 return true;
             }
 
+            if (normalized == "/sys/kernel/hostname")
+            {
+                string hostname = global::ZonderqOS.EnvironmentManager.Get("HOSTNAME");
+                content = (string.IsNullOrWhiteSpace(hostname) ? "ZonderqOS" : hostname) + "\n";
+                return true;
+            }
+
+            if (normalized == "/sys/kernel/uptime_seconds")
+            {
+                ulong seconds = BootTelemetry.UptimeSeconds <= 0d
+                    ? 0UL
+                    : (ulong)BootTelemetry.UptimeSeconds;
+                content = seconds.ToString() + "\n";
+                return true;
+            }
+
             if (normalized == "/sys/devices/system/cpu/logical_count")
             {
                 content = SchedulerInfo.CpuCount.ToString() + "\n";
@@ -63,6 +79,65 @@ namespace ZonderqOS.SystemCore
             if (normalized == "/sys/devices/system/cpu/accounting_available")
             {
                 content = (SchedulerTelemetry.HasCpuAccounting ? "1" : "0") + "\n";
+                return true;
+            }
+
+            if (normalized.StartsWith("/sys/devices/system/cpu/topology/", StringComparison.Ordinal))
+            {
+                HardwareSnapshot hardware = HardwareSnapshot.Capture();
+                string leaf = normalized.Substring("/sys/devices/system/cpu/topology/".Length);
+
+                if (leaf == "physical_cores")
+                    content = hardware.PhysicalCores.ToString() + "\n";
+                else if (leaf == "logical_processors")
+                    content = hardware.LogicalProcessors.ToString() + "\n";
+                else if (leaf == "threads_per_core")
+                    content = hardware.ThreadsPerCore.ToString() + "\n";
+                else
+                    return false;
+
+                return true;
+            }
+
+            if (normalized.StartsWith("/sys/devices/system/cpu/identity/", StringComparison.Ordinal))
+            {
+                HardwareSnapshot hardware = HardwareSnapshot.Capture();
+                string leaf = normalized.Substring("/sys/devices/system/cpu/identity/".Length);
+
+                if (leaf == "vendor")
+                    content = hardware.CpuVendor + "\n";
+                else if (leaf == "brand")
+                    content = hardware.CpuBrand + "\n";
+                else if (leaf == "features")
+                    content = hardware.CpuFeatures + "\n";
+                else if (leaf == "base_mhz")
+                    content = hardware.BaseMHz.ToString() + "\n";
+                else if (leaf == "max_mhz")
+                    content = hardware.MaxMHz.ToString() + "\n";
+                else if (leaf == "hypervisor_present")
+                    content = (hardware.HypervisorPresent ? "1" : "0") + "\n";
+                else if (leaf == "virtualization_supported")
+                    content = (hardware.VirtualizationSupported ? "1" : "0") + "\n";
+                else
+                    return false;
+
+                return true;
+            }
+
+            if (normalized.StartsWith("/sys/devices/system/cpu/cache/", StringComparison.Ordinal))
+            {
+                HardwareSnapshot hardware = HardwareSnapshot.Capture();
+                string leaf = normalized.Substring("/sys/devices/system/cpu/cache/".Length);
+
+                if (leaf == "l1_bytes")
+                    content = hardware.L1Bytes.ToString() + "\n";
+                else if (leaf == "l2_bytes")
+                    content = hardware.L2Bytes.ToString() + "\n";
+                else if (leaf == "l3_bytes")
+                    content = hardware.L3Bytes.ToString() + "\n";
+                else
+                    return false;
+
                 return true;
             }
 
@@ -167,6 +242,13 @@ namespace ZonderqOS.SystemCore
                         content = SaturatingMultiply(blocks, blockSize).ToString() + "\n";
                         return true;
                     }
+
+                    if (!partition && blockLeaf == "name")
+                    {
+                        var device = StorageManager.GetDevice(index);
+                        content = (device?.Name ?? ("disk" + index)) + "\n";
+                        return true;
+                    }
                 }
                 catch
                 {
@@ -190,7 +272,7 @@ namespace ZonderqOS.SystemCore
 
             if (normalized == "/sys/kernel")
             {
-                entries = new[] { "ostype", "osrelease", "architecture", "scheduler" };
+                entries = new[] { "ostype", "osrelease", "architecture", "scheduler", "hostname", "uptime_seconds" };
                 return true;
             }
 
@@ -215,13 +297,37 @@ namespace ZonderqOS.SystemCore
             if (normalized == "/sys/devices/system/cpu")
             {
                 int cpuCount = checked((int)SchedulerInfo.CpuCount);
-                entries = new string[4 + cpuCount];
+                entries = new string[7 + cpuCount];
                 entries[0] = "logical_count";
                 entries[1] = "online";
                 entries[2] = "scheduler";
                 entries[3] = "accounting_available";
+                entries[4] = "topology";
+                entries[5] = "identity";
+                entries[6] = "cache";
                 for (int i = 0; i < cpuCount; i++)
-                    entries[4 + i] = "cpu" + i;
+                    entries[7 + i] = "cpu" + i;
+                return true;
+            }
+
+            if (normalized == "/sys/devices/system/cpu/topology")
+            {
+                entries = new[] { "physical_cores", "logical_processors", "threads_per_core" };
+                return true;
+            }
+
+            if (normalized == "/sys/devices/system/cpu/identity")
+            {
+                entries = new[] {
+                    "vendor", "brand", "features", "base_mhz", "max_mhz",
+                    "hypervisor_present", "virtualization_supported"
+                };
+                return true;
+            }
+
+            if (normalized == "/sys/devices/system/cpu/cache")
+            {
+                entries = new[] { "l1_bytes", "l2_bytes", "l3_bytes" };
                 return true;
             }
 
@@ -279,7 +385,9 @@ namespace ZonderqOS.SystemCore
                         return false;
                     }
 
-                    entries = new[] { "blocks", "block_size", "size_bytes" };
+                    entries = partition
+                        ? new[] { "blocks", "block_size", "size_bytes" }
+                        : new[] { "name", "blocks", "block_size", "size_bytes" };
                     return true;
                 }
                 catch
