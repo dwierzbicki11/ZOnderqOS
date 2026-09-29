@@ -1,7 +1,7 @@
 using System;
 using Cosmos.Kernel.System.Diagnostics;
 
-namespace ZonderqOS.GUI.Apps
+namespace ZonderqOS.Platform
 {
     /// <summary>
     /// ARM64/QEMU virt CPU discovery. This file is compiled only for the ARM64

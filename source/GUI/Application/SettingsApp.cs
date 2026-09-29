@@ -11,6 +11,7 @@ using Cosmos.Kernel.System.Network.Config;
 using Cosmos.Kernel.System.Storage;
 using ZonderqOS.GUI.Icons;
 using CosmosGc = Cosmos.Kernel.Core.Memory.GarbageCollector.GarbageCollector;
+using ZonderqOS.Platform;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -677,9 +678,9 @@ namespace ZonderqOS.GUI.Apps
             if (IsPowerArmed(action))
             {
                 if (action == 1)
-                    Cosmos.Kernel.System.Power.Reboot();
+                    global::ZonderqOS.SystemCore.SystemPower.Reboot("gui-reboot");
                 else
-                    Cosmos.Kernel.System.Power.Shutdown();
+                    global::ZonderqOS.SystemCore.SystemPower.Shutdown("gui-shutdown");
                 return;
             }
 

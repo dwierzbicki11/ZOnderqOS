@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using Cosmos.Kernel.Core.Memory;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS
 {
@@ -60,6 +62,14 @@ namespace ZonderqOS
                         int count = ParseCount(parts, 12, MaxLogLines);
                         ShowRecentLogs(count);
                     }
+                    else if (command == "last-crash")
+                    {
+                        ShowLastCrash();
+                    }
+                    else if (command == "doctor")
+                    {
+                        ShowDoctor();
+                    }
                     else if (command == "ls")
                     {
                         if (!RequireAdminFilesystem(authenticatedAdmin))
@@ -98,6 +108,14 @@ namespace ZonderqOS
                     {
                         Console.Clear();
                         DrawBanner(safeReason, cause, authenticatedAdmin);
+                    }
+                    else if (command == "check-settings")
+                    {
+                        CheckSettings();
+                    }
+                    else if (command == "repair-settings")
+                    {
+                        RepairSettings(parts, authenticatedAdmin);
                     }
                     else if (command == "reset-settings")
                     {
@@ -165,6 +183,8 @@ namespace ZonderqOS
             Console.WriteLine("help                 Show this command list");
             Console.WriteLine("status               Show boot, RAM, network and logger state");
             Console.WriteLine("logs [count]         Show recent in-memory system log entries");
+            Console.WriteLine("last-crash           Show last persistent kernel panic report");
+            Console.WriteLine("doctor               Run read-only kernel health checks");
             Console.WriteLine("disk                 List detected block devices");
             Console.WriteLine("net                  Show network interfaces if initialized");
             Console.WriteLine("clear                Clear the recovery console");
@@ -173,6 +193,8 @@ namespace ZonderqOS
                 Console.WriteLine("ls [path]            List a directory (bounded)");
                 Console.WriteLine("cd [path]            Change recovery working directory");
                 Console.WriteLine("view <path>          Read first " + MaxViewLines + " lines of a text file");
+                Console.WriteLine("check-settings       Validate persistent system settings");
+                Console.WriteLine("repair-settings CONFIRM  Rewrite settings in canonical schema");
                 Console.WriteLine("reset-settings CONFIRM  Remove saved system settings");
                 Console.WriteLine("exit                 Return to the authenticated shell");
             }
@@ -204,6 +226,49 @@ namespace ZonderqOS
 
             if (cause != null)
                 Console.WriteLine("Failure         : " + cause.GetType().Name + ": " + cause.Message);
+        }
+
+        private static void ShowDoctor()
+        {
+            List<SystemCheckResult> results = new List<SystemCheckResult>(16);
+            int failures = SystemDoctor.Run(results);
+            int warnings = 0;
+
+            Console.WriteLine("SYSTEM DOCTOR");
+            Console.WriteLine("------------------------------------------------------------");
+            for (int i = 0; i < results.Count; i++)
+            {
+                SystemCheckResult result = results[i];
+                string level = result.Severity == SystemCheckSeverity.Fail
+                    ? "FAIL"
+                    : result.Severity == SystemCheckSeverity.Warning
+                        ? "WARN"
+                        : "PASS";
+
+                if (result.Severity == SystemCheckSeverity.Warning)
+                    warnings++;
+
+                Console.WriteLine("[" + level + "] " + result.Name + ": " + result.Message);
+            }
+
+            Console.WriteLine("------------------------------------------------------------");
+            Console.WriteLine(
+                "checks=" + results.Count +
+                " warnings=" + warnings +
+                " failures=" + failures);
+        }
+
+        private static void ShowLastCrash()
+        {
+            string report;
+            string error;
+            if (!CrashReportStore.TryRead(out report, out error))
+            {
+                Console.WriteLine("[CRASH] " + error);
+                return;
+            }
+
+            Console.WriteLine(report);
         }
 
         private static void ShowRecentLogs(int requested)
@@ -310,6 +375,45 @@ namespace ZonderqOS
             {
                 WriteRecoveryError("Network subsystem unavailable: " + ex.Message);
             }
+        }
+
+        private static void CheckSettings()
+        {
+            string summary;
+            bool ok = SystemSettings.ValidatePersistedFile(out summary);
+            Console.WriteLine((ok ? "[OK] " : "[INVALID] ") + summary);
+        }
+
+        private static void RepairSettings(string[] parts, bool authenticatedAdmin)
+        {
+            if (!authenticatedAdmin || !SecurityContext.IsAuthenticated ||
+                SecurityContext.CurrentUid != 0 || SecurityContext.CurrentUser != "root")
+            {
+                WriteRecoveryError("repair-settings requires an authenticated root session.");
+                return;
+            }
+
+            if (parts.Length < 2 || parts[1] != "CONFIRM")
+            {
+                Console.WriteLine("This rewrites currently loaded validated values into canonical settings schema.");
+                Console.WriteLine("Run: repair-settings CONFIRM");
+                return;
+            }
+
+            if (!SystemSettings.RepairPersistedFile())
+            {
+                WriteRecoveryError("Could not repair persistent settings.");
+                return;
+            }
+
+            string summary;
+            bool ok = SystemSettings.ValidatePersistedFile(out summary);
+            Console.WriteLine((ok ? "Settings repaired: " : "Repair completed but validation failed: ") + summary);
+
+            SystemLogger.Log(
+                ok ? SystemLogLevel.Warning : SystemLogLevel.Error,
+                "CFG",
+                "Settings repair from recovery mode: " + summary);
         }
 
         private static void ResetSettings(string[] parts, bool authenticatedAdmin)

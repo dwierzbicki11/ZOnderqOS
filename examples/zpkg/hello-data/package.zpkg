@@ -1,0 +1,3 @@
+name=hello-data
+version=1.0.0
+description=Example local data package for zpkg Stage P1

@@ -27,16 +27,19 @@ namespace ZonderqOS
     }
 
     /// <summary>
-    /// Session-local notification store. A fixed ring buffer keeps memory bounded and
-    /// avoids background allocations. Entries are created only when an actual event is
-    /// posted; the GUI reads them without cloning collections every frame.
+    /// Session-local, bounded and thread-safe notification store.
     /// </summary>
     public static class NotificationService
     {
         public const int Capacity = 64;
         private const int ToastSeconds = 6;
+        private const int MaxSourceLength = 24;
+        private const int MaxTitleLength = 96;
+        private const int MaxMessageLength = 240;
 
+        private static readonly object Sync = new object();
         private static readonly NotificationEntry[] entries = new NotificationEntry[Capacity];
+
         private static int writeIndex;
         private static int count;
         private static int unreadCount;
@@ -46,114 +49,119 @@ namespace ZonderqOS
         private static ulong latestId;
         private static long latestTimestamp;
 
-        public static int Count { get { return count; } }
-        public static int UnreadCount { get { return unreadCount; } }
-        public static int Version { get { return version; } }
+        public static int Count
+        {
+            get { lock (Sync) return count; }
+        }
+
+        public static int UnreadCount
+        {
+            get { lock (Sync) return unreadCount; }
+        }
+
+        public static int Version
+        {
+            get { lock (Sync) return version; }
+        }
+
         public static bool DoNotDisturb
         {
-            get { return doNotDisturb; }
+            get { lock (Sync) return doNotDisturb; }
             set
             {
-                if (doNotDisturb == value)
-                    return;
-                doNotDisturb = value;
-                version++;
+                lock (Sync)
+                {
+                    if (doNotDisturb == value)
+                        return;
+                    doNotDisturb = value;
+                    version++;
+                }
             }
         }
 
         public static void ResetForSession()
         {
-            for (int i = 0; i < entries.Length; i++)
-                entries[i] = default(NotificationEntry);
+            lock (Sync)
+            {
+                for (int i = 0; i < entries.Length; i++)
+                    entries[i] = default(NotificationEntry);
 
-            writeIndex = 0;
-            count = 0;
-            unreadCount = 0;
-            latestId = 0;
-            latestTimestamp = 0;
-            doNotDisturb = false;
-            version++;
+                writeIndex = 0;
+                count = 0;
+                unreadCount = 0;
+                latestId = 0;
+                latestTimestamp = 0;
+                doNotDisturb = false;
+                version++;
+            }
         }
 
         public static ulong Post(NotificationKind kind, string source, string title, string message)
         {
-            if (string.IsNullOrEmpty(title))
-                title = "Powiadomienie";
-            if (source == null)
-                source = "SYSTEM";
-            if (message == null)
-                message = string.Empty;
-
-            if (count == Capacity)
+            lock (Sync)
             {
-                NotificationEntry overwritten = entries[writeIndex];
-                if (!overwritten.IsRead && !overwritten.IsDismissed && unreadCount > 0)
-                    unreadCount--;
+                source = Normalize(source, "SYSTEM", MaxSourceLength);
+                title = Normalize(title, "Powiadomienie", MaxTitleLength);
+                message = Normalize(message, string.Empty, MaxMessageLength);
+
+                if (count == Capacity)
+                {
+                    NotificationEntry overwritten = entries[writeIndex];
+                    if (!overwritten.IsRead && !overwritten.IsDismissed && unreadCount > 0)
+                        unreadCount--;
+                }
+                else
+                {
+                    count++;
+                }
+
+                DateTime localTime = DateTime.UtcNow.AddHours(SystemSettings.TimeZoneOffsetHours);
+                ulong id = nextId++;
+                if (nextId == 0)
+                    nextId = 1;
+
+                entries[writeIndex] = new NotificationEntry
+                {
+                    Id = id,
+                    Kind = kind,
+                    Source = source,
+                    Title = title,
+                    Message = message,
+                    TimeText = localTime.ToString("HH:mm"),
+                    IsRead = false,
+                    IsDismissed = false
+                };
+
+                writeIndex++;
+                if (writeIndex >= Capacity)
+                    writeIndex = 0;
+
+                unreadCount++;
+                latestId = id;
+                latestTimestamp = Stopwatch.GetTimestamp();
+                version++;
+                return id;
             }
-            else
-            {
-                count++;
-            }
-
-            DateTime localTime = DateTime.UtcNow.AddHours(SystemSettings.TimeZoneOffsetHours);
-            ulong id = nextId++;
-            if (nextId == 0)
-                nextId = 1;
-
-            entries[writeIndex] = new NotificationEntry
-            {
-                Id = id,
-                Kind = kind,
-                Source = source,
-                Title = title,
-                Message = message,
-                TimeText = localTime.ToString("HH:mm"),
-                IsRead = false,
-                IsDismissed = false
-            };
-
-            writeIndex++;
-            if (writeIndex >= Capacity)
-                writeIndex = 0;
-
-            unreadCount++;
-            latestId = id;
-            latestTimestamp = Stopwatch.GetTimestamp();
-            version++;
-            return id;
         }
 
         public static bool TryGetNewest(int newestOffset, out NotificationEntry entry)
         {
-            entry = default(NotificationEntry);
-            if (newestOffset < 0 || newestOffset >= count)
-                return false;
+            lock (Sync)
+            {
+                entry = default(NotificationEntry);
+                if (newestOffset < 0 || newestOffset >= count)
+                    return false;
 
-            int index = writeIndex - 1 - newestOffset;
-            while (index < 0)
-                index += Capacity;
-
-            entry = entries[index];
-            return entry.Id != 0;
+                int index = NormalizeIndex(writeIndex - 1 - newestOffset);
+                entry = entries[index];
+                return entry.Id != 0;
+            }
         }
 
         public static bool TryGetById(ulong id, out NotificationEntry entry)
         {
-            entry = default(NotificationEntry);
-            if (id == 0)
-                return false;
-
-            for (int i = 0; i < count; i++)
-            {
-                int index = writeIndex - 1 - i;
-                while (index < 0)
-                    index += Capacity;
-                if (entries[index].Id != id)
-                    continue;
-                entry = entries[index];
-                return true;
-            }
-            return false;
+            lock (Sync)
+                return TryGetByIdLocked(id, out entry);
         }
 
         public static void MarkRead(ulong id)
@@ -161,48 +169,51 @@ namespace ZonderqOS
             if (id == 0)
                 return;
 
-            for (int i = 0; i < count; i++)
+            lock (Sync)
             {
-                int index = writeIndex - 1 - i;
-                while (index < 0)
-                    index += Capacity;
-
-                NotificationEntry entry = entries[index];
-                if (entry.Id != id)
-                    continue;
-                if (!entry.IsRead && !entry.IsDismissed)
+                for (int i = 0; i < count; i++)
                 {
-                    entry.IsRead = true;
-                    entries[index] = entry;
-                    if (unreadCount > 0)
-                        unreadCount--;
-                    version++;
+                    int index = NormalizeIndex(writeIndex - 1 - i);
+                    NotificationEntry entry = entries[index];
+                    if (entry.Id != id)
+                        continue;
+
+                    if (!entry.IsRead && !entry.IsDismissed)
+                    {
+                        entry.IsRead = true;
+                        entries[index] = entry;
+                        if (unreadCount > 0)
+                            unreadCount--;
+                        version++;
+                    }
+                    return;
                 }
-                return;
             }
         }
 
         public static void MarkAllRead()
         {
-            bool changed = false;
-            for (int i = 0; i < count; i++)
+            lock (Sync)
             {
-                int index = writeIndex - 1 - i;
-                while (index < 0)
-                    index += Capacity;
+                bool changed = false;
+                for (int i = 0; i < count; i++)
+                {
+                    int index = NormalizeIndex(writeIndex - 1 - i);
+                    NotificationEntry entry = entries[index];
+                    if (entry.Id == 0 || entry.IsRead || entry.IsDismissed)
+                        continue;
 
-                NotificationEntry entry = entries[index];
-                if (entry.Id == 0 || entry.IsRead || entry.IsDismissed)
-                    continue;
-                entry.IsRead = true;
-                entries[index] = entry;
-                changed = true;
+                    entry.IsRead = true;
+                    entries[index] = entry;
+                    changed = true;
+                }
+
+                if (!changed)
+                    return;
+
+                unreadCount = 0;
+                version++;
             }
-
-            if (!changed)
-                return;
-            unreadCount = 0;
-            version++;
         }
 
         public static void Dismiss(ulong id)
@@ -210,53 +221,102 @@ namespace ZonderqOS
             if (id == 0)
                 return;
 
-            for (int i = 0; i < count; i++)
+            lock (Sync)
             {
-                int index = writeIndex - 1 - i;
-                while (index < 0)
-                    index += Capacity;
-
-                NotificationEntry entry = entries[index];
-                if (entry.Id != id)
-                    continue;
-                if (!entry.IsDismissed)
+                for (int i = 0; i < count; i++)
                 {
-                    if (!entry.IsRead && unreadCount > 0)
-                        unreadCount--;
-                    entry.IsRead = true;
-                    entry.IsDismissed = true;
-                    entries[index] = entry;
-                    version++;
+                    int index = NormalizeIndex(writeIndex - 1 - i);
+                    NotificationEntry entry = entries[index];
+                    if (entry.Id != id)
+                        continue;
+
+                    if (!entry.IsDismissed)
+                    {
+                        if (!entry.IsRead && unreadCount > 0)
+                            unreadCount--;
+                        entry.IsRead = true;
+                        entry.IsDismissed = true;
+                        entries[index] = entry;
+                        version++;
+                    }
+                    return;
                 }
-                return;
             }
         }
 
         public static void ClearAll()
         {
-            for (int i = 0; i < entries.Length; i++)
-                entries[i] = default(NotificationEntry);
-            writeIndex = 0;
-            count = 0;
-            unreadCount = 0;
-            latestId = 0;
-            latestTimestamp = 0;
-            version++;
+            lock (Sync)
+            {
+                for (int i = 0; i < entries.Length; i++)
+                    entries[i] = default(NotificationEntry);
+
+                writeIndex = 0;
+                count = 0;
+                unreadCount = 0;
+                latestId = 0;
+                latestTimestamp = 0;
+                version++;
+            }
         }
 
         public static bool TryGetActiveToast(out NotificationEntry entry)
         {
+            lock (Sync)
+            {
+                entry = default(NotificationEntry);
+
+                if (doNotDisturb || latestId == 0 || latestTimestamp <= 0 || Stopwatch.Frequency <= 0)
+                    return false;
+
+                long elapsed = Stopwatch.GetTimestamp() - latestTimestamp;
+                if (elapsed < 0 || elapsed > Stopwatch.Frequency * ToastSeconds)
+                    return false;
+
+                if (!TryGetByIdLocked(latestId, out entry))
+                    return false;
+
+                return !entry.IsDismissed;
+            }
+        }
+
+        private static bool TryGetByIdLocked(ulong id, out NotificationEntry entry)
+        {
             entry = default(NotificationEntry);
-            if (doNotDisturb || latestId == 0 || latestTimestamp <= 0 || Stopwatch.Frequency <= 0)
+            if (id == 0)
                 return false;
 
-            long elapsed = Stopwatch.GetTimestamp() - latestTimestamp;
-            if (elapsed < 0 || elapsed > Stopwatch.Frequency * ToastSeconds)
-                return false;
+            for (int i = 0; i < count; i++)
+            {
+                int index = NormalizeIndex(writeIndex - 1 - i);
+                if (entries[index].Id != id)
+                    continue;
 
-            if (!TryGetById(latestId, out entry))
-                return false;
-            return !entry.IsDismissed;
+                entry = entries[index];
+                return true;
+            }
+
+            return false;
+        }
+
+        private static int NormalizeIndex(int index)
+        {
+            while (index < 0)
+                index += Capacity;
+            while (index >= Capacity)
+                index -= Capacity;
+            return index;
+        }
+
+        private static string Normalize(string value, string fallback, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value))
+                value = fallback;
+
+            value = value.Replace('\r', ' ').Replace('\n', ' ').Trim();
+            if (value.Length > maxLength)
+                value = value.Substring(0, maxLength);
+            return value;
         }
     }
 }

@@ -1,0 +1,54 @@
+name: Persistent crash report compile gate
+
+on:
+  pull_request:
+    paths:
+      - 'source/Core/CrashReportStore.cs'
+      - 'source/Core/KernelPanic.cs'
+      - 'source/Core/RecoveryMode.cs'
+      - 'source/Shell/Commands/CmdCrashInfo.cs'
+      - 'source/Shell/Command.cs'
+      - 'docs/persistent-crash-report.md'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/persistent-crash-report.yml'
+  push:
+    branches:
+      - 'feature/persistent-crash-report'
+    paths:
+      - 'source/Core/CrashReportStore.cs'
+      - 'source/Core/KernelPanic.cs'
+      - 'source/Core/RecoveryMode.cs'
+      - 'source/Shell/Commands/CmdCrashInfo.cs'
+      - 'source/Shell/Command.cs'
+      - 'docs/persistent-crash-report.md'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/persistent-crash-report.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Compile x64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false
+
+      - name: Clean architecture outputs
+        run: rm -rf bin obj
+
+      - name: Compile ARM64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-arm64 -p:CosmosArch=arm64 -p:GeneratePackageOnBuild=false
+

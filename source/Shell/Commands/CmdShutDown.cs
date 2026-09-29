@@ -8,6 +8,6 @@ public class CmdShutDown : ICommand
 
     public void Execute(string[] args, ref string currentPath)
     {
-        Cosmos.Kernel.System.Power.Shutdown();
+        ZonderqOS.SystemCore.SystemPower.Shutdown("shell-shutdown");
     }
 }

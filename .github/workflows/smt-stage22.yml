@@ -3,9 +3,9 @@ name: SMT stage 22 SMP stress and stability
 on:
   push:
     branches: [ main ]
-    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage12-qemu.sh', 'tools/smoke-stage14-qemu.sh', 'tools/smoke-stage19-qemu.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage22.yml' ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage12-qemu.sh', 'tools/smoke-stage14-qemu.sh', 'tools/smoke-stage19-qemu.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', '.github/workflows/smt-stage22.yml' ]
   pull_request:
-    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage12-qemu.sh', 'tools/smoke-stage14-qemu.sh', 'tools/smoke-stage19-qemu.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage22.yml' ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage12-qemu.sh', 'tools/smoke-stage14-qemu.sh', 'tools/smoke-stage19-qemu.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', '.github/workflows/smt-stage22.yml' ]
   workflow_dispatch:
 
 permissions:
