@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
@@ -15,6 +16,22 @@ namespace ZonderqOS.Commands
                 try
                 {
                     if (newPath == "/" || newPath == "") { currentPath = "/"; CommandIO.LastCommandSuccess = true; return; }
+
+                    if (VirtualFs.IsVirtualPath(newPath))
+                    {
+                        if (VirtualFs.TryList(newPath, out _))
+                        {
+                            currentPath = newPath;
+                            CommandIO.LastCommandSuccess = true;
+                        }
+                        else
+                        {
+                            WriteMessage.WriteError($"Virtual directory does not exist: {newPath}", "CMD");
+                            CommandIO.LastCommandSuccess = false;
+                        }
+                        return;
+                    }
+
                     if (Directory.Exists(newPath)) 
                     {
                         currentPath = newPath;
