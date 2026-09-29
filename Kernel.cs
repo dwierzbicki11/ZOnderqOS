@@ -222,6 +222,10 @@ namespace ZonderqOS
                 return;
             }
 
+            string issue = SystemIdentity.ReadIssue();
+            if (!string.IsNullOrEmpty(issue))
+                Console.Write(issue);
+
             Console.Write("login: ");
             string username = Console.ReadLine();
             if (username != null)
@@ -249,6 +253,9 @@ namespace ZonderqOS
                     path = "/";
 
                 Console.WriteLine("Welcome, " + SecurityContext.CurrentUser + ".");
+                string motd = SystemIdentity.ReadMotd();
+                if (!string.IsNullOrEmpty(motd))
+                    Console.Write(motd);
                 Console.WriteLine("Recovery console active. Type 'gui' to retry the graphical desktop manually.");
                 Console.WriteLine();
                 return;
