@@ -1,10 +1,11 @@
-name: RunFs runtime filesystem gate
+name: RAM runtime filesystems gate
 
 on:
   push:
     branches: [ feature/devfs-runtime-v3 ]
     paths:
       - 'source/Core/RunFs.cs'
+      - 'source/Core/TmpFs.cs'
       - 'source/Core/VirtualFs.cs'
       - 'source/Storage/Disk.cs'
       - 'source/Shell/Commands/CmdCd.cs'
@@ -15,10 +16,12 @@ on:
       - 'source/Shell/Commands/CmdMkdir.cs'
       - 'source/Shell/Commands/CmdRmdir.cs'
       - 'tests/RunFs.Tests/**'
+      - 'tests/TmpFs.Tests/**'
       - '.github/workflows/runfs.yml'
   pull_request:
     paths:
       - 'source/Core/RunFs.cs'
+      - 'source/Core/TmpFs.cs'
       - 'source/Core/VirtualFs.cs'
       - 'source/Storage/Disk.cs'
       - 'source/Shell/Commands/CmdCd.cs'
@@ -29,6 +32,7 @@ on:
       - 'source/Shell/Commands/CmdMkdir.cs'
       - 'source/Shell/Commands/CmdRmdir.cs'
       - 'tests/RunFs.Tests/**'
+      - 'tests/TmpFs.Tests/**'
       - '.github/workflows/runfs.yml'
 
 permissions:
@@ -45,3 +49,5 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Run deterministic RunFs tests
         run: dotnet run --project tests/RunFs.Tests/RunFs.Tests.csproj -c Release
+      - name: Run deterministic TmpFs tests
+        run: dotnet run --project tests/TmpFs.Tests/TmpFs.Tests.csproj -c Release
