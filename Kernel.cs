@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using ZonderqOS.SystemCore;
 using ZonderqOS.GUI;
+using ZonderqOS.Hardware;
 using Sys = Cosmos.Kernel.System;
 
 namespace ZonderqOS
@@ -31,6 +32,13 @@ namespace ZonderqOS
                 SecurityLogger.Initialize();
                 PermissionManager.Initialize();
                 SystemLogger.Initialize();
+
+                HardwareDeviceRegistry.Initialize();
+                if (string.IsNullOrEmpty(HardwareDeviceRegistry.LastError))
+                    WriteMessage.WriteOK("Hardware registry initialized: " + HardwareDeviceRegistry.PciDeviceCount + " PCI device(s).", "HW");
+                else
+                    WriteMessage.WriteError("PCI discovery degraded: " + HardwareDeviceRegistry.LastError, "HW");
+
                 BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();

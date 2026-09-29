@@ -30,6 +30,7 @@ namespace ZonderqOS
             _commands.Add(new CmdSpace());
             _commands.Add(new CmdFormat());
             _commands.Add(new CmdLsblk());
+            _commands.Add(new CmdLspci());
             _commands.Add(new CmdMount());
             _commands.Add(new CmdUmount());
             _commands.Add(new CmdStat());

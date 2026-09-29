@@ -3,6 +3,7 @@ using Cosmos.Kernel.Core.Memory;
 using Cosmos.Kernel.System.Diagnostics;
 using Cosmos.Kernel.System.Storage;
 using ZonderqOS.Platform;
+using ZonderqOS.Hardware;
 
 namespace ZonderqOS.SystemCore
 {
@@ -34,6 +35,7 @@ namespace ZonderqOS.SystemCore
         public int SchedulerThreadSlots { get; private set; }
         public int StorageDeviceCount { get; private set; }
         public int StoragePartitionCount { get; private set; }
+        public int PciDeviceCount { get; private set; }
 
         public ulong TotalMemoryBytes { get; private set; }
         public ulong FreeMemoryBytes { get; private set; }
@@ -81,6 +83,17 @@ namespace ZonderqOS.SystemCore
             {
                 snapshot.OnlineCpuCount = 0;
                 snapshot.SchedulerThreadSlots = 0;
+            }
+
+            try
+            {
+                snapshot.PciDeviceCount = HardwareDeviceRegistry.IsInitialized
+                    ? Math.Max(0, HardwareDeviceRegistry.PciDeviceCount)
+                    : 0;
+            }
+            catch
+            {
+                snapshot.PciDeviceCount = 0;
             }
 
             try
