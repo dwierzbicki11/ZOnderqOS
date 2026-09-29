@@ -13,7 +13,7 @@ namespace ZonderqOS.Commands
                 ? PathResolver.GetAbsolutePath(currentPath, args[1])
                 : currentPath;
 
-            if (VirtualFs.IsReadOnlyPath(path))
+            if (VirtualFs.IsVirtualPath(path))
             {
                 if (!VirtualFs.TryList(path, out string[] entries))
                 {
