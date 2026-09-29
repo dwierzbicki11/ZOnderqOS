@@ -25,11 +25,13 @@ namespace ZonderqOS.SystemCore
                 int initialProcesses = ProcessManager.GetActiveProcesses().Count;
                 long deadline = Stopwatch.GetTimestamp() + 30 * Stopwatch.Frequency;
                 for (int index = 0; index < cpuCount; index++)
+                {
                     ProcessManager.Start("htop-smoke-" + index, () =>
                     {
                         Interlocked.Increment(ref started);
                         while (Volatile.Read(ref release) == 0) Thread.SpinWait(64);
                     });
+                }
                 while (Volatile.Read(ref started) != cpuCount)
                 {
                     Require(Stopwatch.GetTimestamp() < deadline, "process startup timeout");
@@ -43,19 +45,37 @@ namespace ZonderqOS.SystemCore
                 Require(monitor.CpuCount == cpuCount, "CPU count");
                 Require(monitor.ActiveCpuMask == expected, "busy CPU mask=" + monitor.ActiveCpuMask.ToString("X"));
                 int names = 0;
-                foreach (string line in monitor.Lines) if (line.Contains("htop-smoke-")) names++;
+                foreach (string line in monitor.Lines)
+                {
+                    if (line.Contains("htop-smoke-"))
+                    {
+                        names++;
+                    }
+                }
                 Require(names == cpuCount, "process/thread identity");
 
                 string path = "/";
                 Command.Initialize();
                 CommandIO.StartRedirection();
                 string output;
-                try { Command.Run("htop --once", ref path); }
-                finally { output = CommandIO.EndRedirection(); }
+                try
+                {
+                    Command.Run("htop --once", ref path);
+                }
+                finally
+                {
+                    output = CommandIO.EndRedirection();
+                }
                 Require(CommandIO.LastCommandSuccess && output.Contains("htop-smoke-") && output.Contains("CPU%"), "htop --once");
                 CommandIO.StartRedirection();
-                try { Command.Run("htop", ref path); }
-                finally { output = CommandIO.EndRedirection(); }
+                try
+                {
+                    Command.Run("htop", ref path);
+                }
+                finally
+                {
+                    output = CommandIO.EndRedirection();
+                }
                 Require(CommandIO.LastCommandSuccess && output.Contains("Mem:"), "redirected htop");
 
                 Volatile.Write(ref release, 1);
@@ -78,7 +98,10 @@ namespace ZonderqOS.SystemCore
 
         private static void Require(bool valid, string reason)
         {
-            if (!valid) throw new InvalidOperationException(reason);
+            if (!valid)
+            {
+                throw new InvalidOperationException(reason);
+            }
         }
     }
 }

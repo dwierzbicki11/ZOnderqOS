@@ -116,10 +116,22 @@ namespace ZonderqOS.GUI.Apps
                     UpdatePrompt();
                     return;
                 }
-                if (key.Key == ConsoleKeyEx.C) htop.SortByCpu = true;
-                if (key.Key == ConsoleKeyEx.P) htop.SortByCpu = false;
-                if (key.Key == ConsoleKeyEx.UpArrow) htop.Scroll = Math.Max(0, htop.Scroll - 1);
-                if (key.Key == ConsoleKeyEx.DownArrow) htop.Scroll = Math.Min(Math.Max(0, htop.Lines.Count - 1), htop.Scroll + 1);
+                if (key.Key == ConsoleKeyEx.C)
+                {
+                    htop.SortByCpu = true;
+                }
+                if (key.Key == ConsoleKeyEx.P)
+                {
+                    htop.SortByCpu = false;
+                }
+                if (key.Key == ConsoleKeyEx.UpArrow)
+                {
+                    htop.Scroll = Math.Max(0, htop.Scroll - 1);
+                }
+                if (key.Key == ConsoleKeyEx.DownArrow)
+                {
+                    htop.Scroll = Math.Min(Math.Max(0, htop.Lines.Count - 1), htop.Scroll + 1);
+                }
                 htopRefreshAt = 0;
                 return;
             }
@@ -158,7 +170,10 @@ namespace ZonderqOS.GUI.Apps
                 CommandIO.EndGraphicalCommand();
                 string output = CommandIO.EndRedirection();
                 PrintCommandOutput(output);
-                if (htop == null) UpdatePrompt();
+                if (htop == null)
+                {
+                    UpdatePrompt();
+                }
             }
         }
 

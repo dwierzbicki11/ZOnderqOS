@@ -75,7 +75,10 @@ namespace ZonderqOS.SystemCore
             {
                 long busy = hasAccounting ? SchedulerTelemetry.CpuBusyTicks((uint)cpu) : 0;
                 ulong delta = busy >= previousCpu[cpu] ? (ulong)(busy - previousCpu[cpu]) : 0;
-                if (warm && delta > 0 && cpu < 64) ActiveCpuMask |= 1UL << cpu;
+                if (warm && delta > 0 && cpu < 64)
+                {
+                    ActiveCpuMask |= 1UL << cpu;
+                }
                 int usage = warm && hasAccounting ? Percent(delta, (ulong)elapsed) : 0;
                 string value = !hasAccounting ? "N/A" : !warm ? "..." : usage + "%";
                 lines.Add("CPU " + cpu.ToString().PadLeft(3) + " [" + new string('|', usage / 5).PadRight(20) + "] " + value);
@@ -90,7 +93,10 @@ namespace ZonderqOS.SystemCore
             lines.Add("  PID    TID  CPU  STATE       CPU%  NAME");
 
             int slots = SchedulerInfo.ThreadSlotCount;
-            if (previousThreads.Length < slots) Array.Resize(ref previousThreads, slots);
+            if (previousThreads.Length < slots)
+            {
+                Array.Resize(ref previousThreads, slots);
+            }
             rows.Clear();
             ulong elapsedNs = elapsed > 0 && Stopwatch.Frequency > 0
                 ? (ulong)((double)elapsed * 1000000000d / Stopwatch.Frequency) : 0;
@@ -105,12 +111,18 @@ namespace ZonderqOS.SystemCore
                 ulong delta = warm && previous.Valid && previous.Id == info.Id && info.TotalRuntimeNs >= previous.Runtime
                     ? info.TotalRuntimeNs - previous.Runtime : 0;
                 previousThreads[slot] = new PreviousThread { Id = info.Id, Runtime = info.TotalRuntimeNs, Valid = true };
-                if (info.IsIdle) continue;
+                if (info.IsIdle)
+                {
+                    continue;
+                }
                 int pid = 0;
                 string name = info.IsManaged ? "managed thread" : "kernel thread";
                 for (int index = 0; index < processes.Count; index++)
                 {
-                    if (processes[index].KernelThreadId != info.Id) continue;
+                    if (processes[index].KernelThreadId != info.Id)
+                    {
+                        continue;
+                    }
                     pid = processes[index].PID;
                     name = processes[index].Name;
                     break;
@@ -127,8 +139,18 @@ namespace ZonderqOS.SystemCore
             foreach (KernelProcess process in processes)
             {
                 bool found = false;
-                foreach (Row row in rows) if (row.Pid == process.PID) { found = true; break; }
-                if (!found) lines.Add(process.PID.ToString().PadLeft(5) + "      -    -  START/EXIT    -   " + process.Name);
+                foreach (Row row in rows)
+                {
+                    if (row.Pid == process.PID)
+                    {
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    lines.Add(process.PID.ToString().PadLeft(5) + "      -    -  START/EXIT    -   " + process.Name);
+                }
             }
             previousTimestamp = now;
             Scroll = Math.Max(0, Math.Min(Scroll, Math.Max(0, lines.Count - 1)));
@@ -142,8 +164,14 @@ namespace ZonderqOS.SystemCore
 
         internal static int Percent(ulong busy, ulong elapsed)
         {
-            if (elapsed == 0) return 0;
-            if (busy >= elapsed) return 100;
+            if (elapsed == 0)
+            {
+                return 0;
+            }
+            if (busy >= elapsed)
+            {
+                return 100;
+            }
             return (int)((double)busy * 100d / elapsed);
         }
     }

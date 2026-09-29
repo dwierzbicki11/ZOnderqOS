@@ -54,11 +54,26 @@ namespace ZonderqOS.Commands
                     if (Console.KeyAvailable)
                     {
                         ConsoleKey key = Console.ReadKey(true).Key;
-                        if (key == ConsoleKey.Q || key == ConsoleKey.Escape) break;
-                        if (key == ConsoleKey.C) monitor.SortByCpu = true;
-                        if (key == ConsoleKey.P) monitor.SortByCpu = false;
-                        if (key == ConsoleKey.UpArrow) monitor.Scroll = Math.Max(0, monitor.Scroll - 1);
-                        if (key == ConsoleKey.DownArrow) monitor.Scroll = Math.Min(Math.Max(0, monitor.Lines.Count - 1), monitor.Scroll + 1);
+                        if (key == ConsoleKey.Q || key == ConsoleKey.Escape)
+                        {
+                            break;
+                        }
+                        if (key == ConsoleKey.C)
+                        {
+                            monitor.SortByCpu = true;
+                        }
+                        if (key == ConsoleKey.P)
+                        {
+                            monitor.SortByCpu = false;
+                        }
+                        if (key == ConsoleKey.UpArrow)
+                        {
+                            monitor.Scroll = Math.Max(0, monitor.Scroll - 1);
+                        }
+                        if (key == ConsoleKey.DownArrow)
+                        {
+                            monitor.Scroll = Math.Min(Math.Max(0, monitor.Lines.Count - 1), monitor.Scroll + 1);
+                        }
                         nextRefresh = 0;
                     }
                     Thread.Sleep(25);
@@ -82,7 +97,10 @@ namespace ZonderqOS.Commands
             {
                 int index = monitor.Scroll + row;
                 string line = index < monitor.Lines.Count ? monitor.Lines[index] : "";
-                if (line.Length > width) line = line.Substring(0, width);
+                if (line.Length > width)
+                {
+                    line = line.Substring(0, width);
+                }
                 Console.WriteLine(line.PadRight(width));
             }
         }
