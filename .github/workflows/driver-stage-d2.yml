@@ -9,6 +9,8 @@ on:
       - 'source/Hardware/StorageControllerBars.cs'
       - 'source/Hardware/PciConfigDiscoverySource.cs'
       - 'source/Platform/X64/PciConfigIoAccessor.cs'
+      - 'source/Core/HardwareSnapshot.cs'
+      - 'source/Shell/Commands/CmdHwInfo.cs'
       - 'tests/HardwareModel.Tests/**'
       - 'ZonderqOS.csproj'
       - '.github/workflows/driver-stage-d2.yml'
@@ -19,6 +21,8 @@ on:
       - 'source/Hardware/StorageControllerBars.cs'
       - 'source/Hardware/PciConfigDiscoverySource.cs'
       - 'source/Platform/X64/PciConfigIoAccessor.cs'
+      - 'source/Core/HardwareSnapshot.cs'
+      - 'source/Shell/Commands/CmdHwInfo.cs'
       - 'tests/HardwareModel.Tests/**'
       - 'ZonderqOS.csproj'
       - '.github/workflows/driver-stage-d2.yml'
@@ -48,6 +52,7 @@ jobs:
           grep -Fq 'if ((offset & 3) != 0)' source/Platform/X64/PciConfigIoAccessor.cs
           grep -Fq 'StorageControllerBars.TryReadAhciAbar' tests/HardwareModel.Tests/Program.cs
           grep -Fq 'StorageControllerBars.TryReadNvmeBar0' tests/HardwareModel.Tests/Program.cs
+          grep -Fq 'StorageControllerClassifier.TryClassify' source/Core/HardwareSnapshot.cs
       - name: Enforce safe D2.2 boundary
         run: |
           test ! -e source/Hardware/DmaPageAllocator.cs
