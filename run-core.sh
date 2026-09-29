@@ -108,6 +108,9 @@ prepare_patched_cosmos() {
     local package_feed="$cosmos_root/artifacts/package/release"
     local package_cache="$ROOT_DIR/.nuget/smt-local-packages-$arch"
     local kernel_package=""
+    local core_package=""
+    local runtime_thread="$cosmos_root/src/Cosmos.Kernel.Core/Runtime/Thread.cs"
+    local scheduler_diag="$cosmos_root/src/Cosmos.Kernel.Core/Runtime/SchedulerDiagnostics.cs"
     local rebuild=0
 
     git -C "$cosmos_root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || \
@@ -117,15 +120,34 @@ prepare_patched_cosmos() {
     [[ -x "$ROOT_DIR/tools/prepare-cosmos-smt.sh" || -f "$ROOT_DIR/tools/prepare-cosmos-smt.sh" ]] || \
         fail "Brak tools/prepare-cosmos-smt.sh"
 
-    if ! grep -Fq 'RuntimeExport("RhWaitForPendingFinalizers")' "$runtime_source"; then
+    if ! grep -Fq 'RuntimeExport("RhWaitForPendingFinalizers")' "$runtime_source" ||
+       [[ ! -f "$runtime_thread" ]] ||
+       ! grep -Fq 'RuntimeExport("RhEnableCurrentCpuManagedPreemption")' "$runtime_thread" ||
+       [[ ! -f "$scheduler_diag" ]] ||
+       ! grep -Fq 'RuntimeExport("RhGetCurrentSchedulerThreadId")' "$scheduler_diag" ||
+       ! grep -Fq 'RuntimeExport("RhSchedulerCpuAccountingAvailable")' "$scheduler_diag" ||
+       ! grep -Fq 'RuntimeExport("RhGetSchedulerCpuBusyTicks")' "$scheduler_diag"; then
         rebuild=1
     fi
 
     if [[ -d "$package_feed" ]]; then
         kernel_package="$(find "$package_feed" -maxdepth 1 -type f -iname 'Cosmos.Kernel.3.0.85.nupkg' -print -quit 2>/dev/null || true)"
+        core_package="$(find "$package_feed" -maxdepth 1 -type f -iname 'Cosmos.Kernel.Core.3.0.85.nupkg' -print -quit 2>/dev/null || true)"
     fi
 
-    if [[ -z "$kernel_package" || "$runtime_source" -nt "$kernel_package" ]]; then
+    if [[ -z "$kernel_package" || -z "$core_package" ||
+          "$runtime_source" -nt "$core_package" ||
+          "$runtime_thread" -nt "$core_package" ||
+          "$scheduler_diag" -nt "$core_package" ]]; then
+        rebuild=1
+    fi
+
+    if [[ -n "$core_package" ]] &&
+       find "$ROOT_DIR/patches/cosmos-smt" -type f -newer "$core_package" -print -quit 2>/dev/null | grep -q .; then
+        rebuild=1
+    fi
+
+    if [[ -n "$core_package" && "$ROOT_DIR/tools/prepare-cosmos-smt.sh" -nt "$core_package" ]]; then
         rebuild=1
     fi
 
@@ -134,7 +156,9 @@ prepare_patched_cosmos() {
         ZONDERQ_COSMOS_SOURCE_ROOT="$cosmos_root" \
             bash "$ROOT_DIR/tools/prepare-cosmos-smt.sh" --all
         kernel_package="$(find "$package_feed" -maxdepth 1 -type f -iname 'Cosmos.Kernel.3.0.85.nupkg' -print -quit 2>/dev/null || true)"
+        core_package="$(find "$package_feed" -maxdepth 1 -type f -iname 'Cosmos.Kernel.Core.3.0.85.nupkg' -print -quit 2>/dev/null || true)"
         [[ -n "$kernel_package" ]] || fail "Po buildzie Cosmos nadal brakuje Cosmos.Kernel.3.0.85.nupkg w $package_feed"
+        [[ -n "$core_package" ]] || fail "Po buildzie Cosmos nadal brakuje Cosmos.Kernel.Core.3.0.85.nupkg w $package_feed"
     else
         echo "[SMT] Lokalne patched Cosmos 3.0.85 sa aktualne."
     fi
