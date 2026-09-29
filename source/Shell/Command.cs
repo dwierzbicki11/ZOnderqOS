@@ -29,7 +29,6 @@ namespace ZonderqOS
             _commands.Add(new CmdMv());
             _commands.Add(new CmdRm());
             _commands.Add(new CmdSpace());
-            _commands.Add(new CmdDf());
             _commands.Add(new CmdFormat());
             _commands.Add(new CmdLsblk());
             _commands.Add(new CmdMount());
@@ -37,6 +36,7 @@ namespace ZonderqOS
             _commands.Add(new CmdStat());
             _commands.Add(new CmdHexdump());
             _commands.Add(new CmdViewLog());
+            _commands.Add(new CmdDmesg());
             _commands.Add(new CmdClear());
             _commands.Add(new CmdSysInfo());
             _commands.Add(new CmdLscpu());
@@ -49,6 +49,7 @@ namespace ZonderqOS
             _commands.Add(new CmdTty());
             _commands.Add(new CmdGui());
             _commands.Add(new CmdBootMode());
+            _commands.Add(new CmdDf());
             _commands.Add(new CmdHelp(_commands));
             _commands.Add(new CmdMkpart());
             _commands.Add(new CmdShutDown());
