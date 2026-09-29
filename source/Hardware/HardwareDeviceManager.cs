@@ -28,6 +28,15 @@ namespace ZonderqOS.Hardware
             }
         }
 
+        public static int DriverCount
+        {
+            get
+            {
+                lock (Sync)
+                    return Drivers.Count;
+            }
+        }
+
         public static int DeviceCount
         {
             get
@@ -84,6 +93,36 @@ namespace ZonderqOS.Hardware
                 available
                     ? "Hardware inventory initialized; PCI devices=" + discoveredCount + "."
                     : "Hardware inventory initialized without a production PCI discovery backend.");
+        }
+
+        public static bool Rescan()
+        {
+            bool available;
+            int discoveredCount;
+
+            lock (Sync)
+            {
+                List<DeviceDescriptor> discovered;
+                available = PciSysfsProvider.TryDiscover(out discovered);
+
+                Devices.Clear();
+                if (available && discovered != null)
+                    Devices.AddRange(discovered);
+
+                discoveryAvailable = available;
+                initialized = true;
+                RebuildBindingsLocked();
+                discoveredCount = Devices.Count;
+            }
+
+            SystemLogger.Log(
+                SystemLogLevel.Info,
+                "DEVICE",
+                available
+                    ? "Hardware inventory rescanned; PCI devices=" + discoveredCount + "."
+                    : "Hardware inventory rescan found no production PCI discovery backend.");
+
+            return available;
         }
 
         public static void RegisterDriver(IDeviceDriver driver)
