@@ -146,7 +146,7 @@ new file mode 100644
 index 0000000..fd99993
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,410 @@
+@@ -0,0 +1,423 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
@@ -717,7 +717,7 @@ diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializ
 index 18641b2..d69bd2a 100644
 --- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 +++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
-@@ -54,6 +54,15 @@ internal class LibraryInitializer
+@@ -54,6 +54,17 @@ internal class LibraryInitializer
              // time against DefaultQuantumNs, so the two have to agree.
              initializer.StartSchedulerTimer(
                  (uint)(SchedulerManager.DefaultQuantumNs / SchedulerManager.NanosecondsPerMillisecond));
