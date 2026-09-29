@@ -266,7 +266,7 @@ namespace ZonderqOS
 
         public static void DeleteFile(string path)
         {
-            if (RunFs.IsRunPath(path))
+            if (RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path))
             {
                 if (VirtualFs.TryDeleteFile(path, out string virtualError))
                 {
@@ -302,7 +302,7 @@ namespace ZonderqOS
 
         public static void CreateDir(string path)
         {
-            if (RunFs.IsRunPath(path))
+            if (RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path))
             {
                 if (VirtualFs.TryCreateDirectory(path, out string virtualError))
                 {
@@ -333,7 +333,7 @@ namespace ZonderqOS
 
         public static void DeleteDir(string path, bool recursive = true)
         {
-            if (RunFs.IsRunPath(path))
+            if (RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path))
             {
                 if (VirtualFs.TryDeleteDirectory(path, recursive, out string virtualError))
                 {
