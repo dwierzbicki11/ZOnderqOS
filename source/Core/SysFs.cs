@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Cosmos.Kernel.System.Diagnostics;
 using Cosmos.Kernel.System.Storage;
+using ZonderqOS.Hardware;
 
 namespace ZonderqOS.SystemCore
 {
@@ -198,6 +199,53 @@ namespace ZonderqOS.SystemCore
                 return false;
             }
 
+            if (TryParsePciDevicePath(normalized, out string pciAddress, out string pciLeaf))
+            {
+                if (!HardwareDeviceRegistry.TryGetPciDevice(pciAddress, out DeviceDescriptor device))
+                    return false;
+
+                if (pciLeaf == "vendor")
+                {
+                    content = "0x" + device.VendorId.ToString("X4") + "\n";
+                    return true;
+                }
+
+                if (pciLeaf == "device")
+                {
+                    content = "0x" + device.DeviceId.ToString("X4") + "\n";
+                    return true;
+                }
+
+                if (pciLeaf == "class")
+                {
+                    uint value = ((uint)device.ClassCode << 16) |
+                                 ((uint)device.Subclass << 8) |
+                                 device.ProgrammingInterface;
+                    content = "0x" + value.ToString("X6") + "\n";
+                    return true;
+                }
+
+                if (pciLeaf == "subclass")
+                {
+                    content = "0x" + device.Subclass.ToString("X2") + "\n";
+                    return true;
+                }
+
+                if (pciLeaf == "programming_interface")
+                {
+                    content = "0x" + device.ProgrammingInterface.ToString("X2") + "\n";
+                    return true;
+                }
+
+                if (pciLeaf == "address")
+                {
+                    content = device.Id.Address + "\n";
+                    return true;
+                }
+
+                return false;
+            }
+
             if (TryParseBlockPath(normalized, out bool partition, out int index, out string blockLeaf))
             {
                 try
@@ -266,7 +314,7 @@ namespace ZonderqOS.SystemCore
 
             if (normalized == "/sys")
             {
-                entries = new[] { "kernel", "devices", "class" };
+                entries = new[] { "kernel", "devices", "class", "bus" };
                 return true;
             }
 
@@ -337,6 +385,40 @@ namespace ZonderqOS.SystemCore
                     return false;
 
                 entries = new[] { "online", "index", "busy_ticks" };
+                return true;
+            }
+
+            if (normalized == "/sys/bus")
+            {
+                entries = new[] { "pci" };
+                return true;
+            }
+
+            if (normalized == "/sys/bus/pci")
+            {
+                entries = new[] { "devices" };
+                return true;
+            }
+
+            if (normalized == "/sys/bus/pci/devices")
+            {
+                var devices = new List<DeviceDescriptor>();
+                HardwareDeviceRegistry.CopyPciDevices(devices);
+                entries = new string[devices.Count];
+                for (int i = 0; i < devices.Count; i++)
+                    entries[i] = devices[i].Id.Address;
+                return true;
+            }
+
+            if (TryParsePciDeviceDirectory(normalized, out string pciAddress))
+            {
+                if (!HardwareDeviceRegistry.TryGetPciDevice(pciAddress, out _))
+                    return false;
+
+                entries = new[] {
+                    "vendor", "device", "class", "subclass",
+                    "programming_interface", "address"
+                };
                 return true;
             }
 
