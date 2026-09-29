@@ -66,6 +66,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Compile Remove="tests/**/*.cs" />
     <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" />
     <Compile Remove="**/CosmosGen3DiagnosticsCompat.cs" />
   </ItemGroup>
