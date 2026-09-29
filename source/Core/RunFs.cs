@@ -413,9 +413,9 @@ namespace ZonderqOS.SystemCore
                 error = "path too long";
                 return false;
             }
-            if (path.Contains("/../", StringComparison.Ordinal) ||
+            if (path.IndexOf("/../", StringComparison.Ordinal) >= 0 ||
                 path.EndsWith("/..", StringComparison.Ordinal) ||
-                path.Contains("/./", StringComparison.Ordinal) ||
+                path.IndexOf("/./", StringComparison.Ordinal) >= 0 ||
                 path.EndsWith("/.", StringComparison.Ordinal))
             {
                 error = "relative path components are not allowed";
@@ -436,8 +436,8 @@ namespace ZonderqOS.SystemCore
                 return "/";
 
             string value = path.Replace('\\', '/').Trim();
-            while (value.Contains("//", StringComparison.Ordinal))
-                value = value.Replace("//", "/", StringComparison.Ordinal);
+            while (value.IndexOf("//", StringComparison.Ordinal) >= 0)
+                value = value.Replace("//", "/");
             while (value.Length > 1 && value.EndsWith("/", StringComparison.Ordinal))
                 value = value.Substring(0, value.Length - 1);
             return value;
