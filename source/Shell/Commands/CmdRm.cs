@@ -19,7 +19,7 @@ namespace ZonderqOS.Commands
 
             string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
 
-            if (RunFs.IsRunPath(path))
+            if (RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path))
             {
                 Disk.DeleteFile(path);
                 return;
