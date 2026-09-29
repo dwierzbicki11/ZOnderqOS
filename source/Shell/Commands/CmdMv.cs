@@ -20,25 +20,30 @@ namespace ZonderqOS.Commands
             string source = PathResolver.GetAbsolutePath(currentPath, args[1]);
             string destination = PathResolver.GetAbsolutePath(currentPath, args[2]);
 
-            if (RunFs.IsRunPath(source))
+            if (IsRamFsPath(source))
             {
-                if (!RunFs.FileExists(source))
+                if (!VirtualFs.TryRead(source, out string content))
                 {
                     WriteMessage.WriteError($"Source file does not exist: {source}", "FS");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
 
-                if (RunFs.IsRunPath(destination))
+                if (IsRamFsPath(destination))
                 {
-                    if (RunFs.TryMoveFile(source, destination, out string runError))
+                    if (VirtualEntryExists(destination))
                     {
-                        CommandIO.LastCommandSuccess = true;
+                        WriteMessage.WriteError($"Destination already exists: {destination}", "FS");
+                        CommandIO.LastCommandSuccess = false;
                         return;
                     }
 
-                    WriteMessage.WriteError($"Move failed: {runError}", "FS");
-                    CommandIO.LastCommandSuccess = false;
+                    Disk.CreateFile(destination, content);
+                    if (!CommandIO.LastCommandSuccess)
+                        return;
+
+                    VirtualFs.TryDeleteFile(source, out _);
+                    CommandIO.LastCommandSuccess = true;
                     return;
                 }
 
@@ -56,17 +61,12 @@ namespace ZonderqOS.Commands
                     return;
                 }
 
-                if (!RunFs.TryRead(source, out string runtimeContent))
-                {
-                    CommandIO.LastCommandSuccess = false;
-                    return;
-                }
-
-                Disk.CreateFile(destination, runtimeContent);
+                Disk.CreateFile(destination, content);
                 if (!CommandIO.LastCommandSuccess)
                     return;
 
-                RunFs.TryDeleteFile(source, out _);
+                VirtualFs.TryDeleteFile(source, out _);
+                CommandIO.LastCommandSuccess = true;
                 return;
             }
 
@@ -92,9 +92,9 @@ namespace ZonderqOS.Commands
                 return;
             }
 
-            if (RunFs.IsRunPath(destination))
+            if (IsRamFsPath(destination))
             {
-                if (RunFs.FileExists(destination) || RunFs.DirectoryExists(destination))
+                if (VirtualEntryExists(destination))
                 {
                     WriteMessage.WriteError($"Destination already exists: {destination}", "FS");
                     CommandIO.LastCommandSuccess = false;
@@ -135,6 +135,20 @@ namespace ZonderqOS.Commands
 
             PermissionManager.MovePermissionsUnder(source, destination);
             CommandIO.LastCommandSuccess = true;
+        }
+
+        private static bool IsRamFsPath(string path)
+        {
+            return RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path);
+        }
+
+        private static bool VirtualEntryExists(string path)
+        {
+            if (RunFs.IsRunPath(path))
+                return RunFs.FileExists(path) || RunFs.DirectoryExists(path);
+            if (TmpFs.IsTmpPath(path))
+                return TmpFs.FileExists(path) || TmpFs.DirectoryExists(path);
+            return false;
         }
     }
 }
