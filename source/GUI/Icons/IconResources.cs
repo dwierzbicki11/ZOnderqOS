@@ -44,6 +44,16 @@ namespace ZonderqOS.GUI.Icons
         public static byte[] Ethernet { get { return Load("ethernet.png"); } }
         public static byte[] Install { get { return Load("install.png"); } }
         public static byte[] Play { get { return Load("play.png"); } }
+        public static byte[] HardDisk { get { return Load("Hard-Disk--Streamline-Flex-Remix.png"); } }
+        public static byte[] List { get { return Load("list.png"); } }
+        public static byte[] FileBmp { get { return Load("file-type-bmp.png"); } }
+        public static byte[] FileDoc { get { return Load("file-type-doc.png"); } }
+        public static byte[] FileDocx { get { return Load("file-type-docx.png"); } }
+        public static byte[] FileJpg { get { return Load("file-type-jpg.png"); } }
+        public static byte[] FilePdf { get { return Load("file-type-pdf.png"); } }
+        public static byte[] FilePng { get { return Load("file-type-png.png"); } }
+        public static byte[] FileSvg { get { return Load("file-type-svg.png"); } }
+        public static byte[] FileTxt { get { return Load("file-type-txt.png"); } }
 
         private static byte[] Load(string fileName)
         {
