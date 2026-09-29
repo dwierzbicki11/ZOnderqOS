@@ -49,12 +49,6 @@ namespace ZonderqOS.SystemCore
                 return true;
             }
 
-            if (normalized == "/proc/loadavg")
-            {
-                content = BuildLoadAverage();
-                return true;
-            }
-
             if (TryParsePidPath(normalized, out int pid, out string leaf))
             {
                 KernelProcess process = FindProcess(pid);
@@ -91,14 +85,13 @@ namespace ZonderqOS.SystemCore
             if (normalized == "/proc")
             {
                 List<KernelProcess> processes = ProcessManager.GetActiveProcesses();
-                entries = new string[5 + processes.Count];
+                entries = new string[4 + processes.Count];
                 entries[0] = "cpuinfo";
                 entries[1] = "meminfo";
                 entries[2] = "uptime";
                 entries[3] = "version";
-                entries[4] = "loadavg";
                 for (int i = 0; i < processes.Count; i++)
-                    entries[5 + i] = processes[i].PID.ToString();
+                    entries[4 + i] = processes[i].PID.ToString();
                 return true;
             }
 
@@ -157,23 +150,6 @@ namespace ZonderqOS.SystemCore
             long delta = now >= BootTimestamp ? now - BootTimestamp : 0;
             double seconds = Stopwatch.Frequency > 0 ? (double)delta / Stopwatch.Frequency : 0d;
             return seconds.ToString("0.00") + " " + seconds.ToString("0.00") + "\n";
-        }
-
-        private static string BuildLoadAverage()
-        {
-            int runnable = 0;
-            int slots = SchedulerInfo.ThreadSlotCount;
-            for (int slot = 0; slot < slots; slot++)
-            {
-                if (!SchedulerInfo.TryGetThreadInSlot(slot, out KernelThreadInfo info))
-                    continue;
-                if (!info.IsIdle)
-                    runnable++;
-            }
-
-            int processes = ProcessManager.GetActiveProcesses().Count;
-            return runnable + ".00 " + runnable + ".00 " + runnable + ".00 " +
-                   runnable + "/" + Math.Max(runnable, 1) + " " + processes + "\n";
         }
 
         private static string BuildProcessStatus(KernelProcess process)
