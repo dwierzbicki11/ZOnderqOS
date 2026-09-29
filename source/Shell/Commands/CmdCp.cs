@@ -1,4 +1,5 @@
 using System.IO;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
@@ -19,6 +20,43 @@ namespace ZonderqOS.Commands
             string source = PathResolver.GetAbsolutePath(currentPath, args[1]);
             string destination = PathResolver.GetAbsolutePath(currentPath, args[2]);
 
+            bool sourceVirtual = VirtualFs.IsVirtualPath(source);
+            bool destinationVirtual = VirtualFs.IsVirtualPath(destination);
+
+            if (sourceVirtual)
+            {
+                if (!VirtualFs.TryRead(source, out string virtualContent))
+                {
+                    WriteMessage.WriteError($"Virtual source is not a readable file: {source}", "FS");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                if (destinationVirtual && !RunFs.IsRunPath(destination) && !DeviceFs.IsDevicePath(destination))
+                {
+                    WriteMessage.WriteError($"Destination is not writable: {destination}", "FS");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                if (RunFs.IsRunPath(destination) && (RunFs.FileExists(destination) || RunFs.DirectoryExists(destination)))
+                {
+                    WriteMessage.WriteError($"Destination already exists: {destination}", "FS");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                if (!destinationVirtual && File.Exists(destination))
+                {
+                    WriteMessage.WriteError($"Destination already exists: {destination}", "FS");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                Disk.CreateFile(destination, virtualContent);
+                return;
+            }
+
             if (!File.Exists(source))
             {
                 WriteMessage.WriteError($"Source file does not exist: {source}", "FS");
@@ -30,6 +68,27 @@ namespace ZonderqOS.Commands
             {
                 WriteMessage.WriteError($"Permission denied: Cannot read {source}", "SEC");
                 SecurityLogger.LogEvent("WARN", $"Unauthorized copy attempt on {source} by {SecurityContext.CurrentUser}");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
+            if (RunFs.IsRunPath(destination))
+            {
+                if (RunFs.FileExists(destination) || RunFs.DirectoryExists(destination))
+                {
+                    WriteMessage.WriteError($"Destination already exists: {destination}", "FS");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                string content = File.ReadAllText(source);
+                Disk.CreateFile(destination, content);
+                return;
+            }
+
+            if (VirtualFs.IsVirtualPath(destination))
+            {
+                WriteMessage.WriteError($"Destination is not writable: {destination}", "FS");
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
