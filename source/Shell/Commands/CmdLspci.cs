@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using ZonderqOS.Hardware;
-using ZonderqOS.Platform;
 
 namespace ZonderqOS.Commands
 {
@@ -12,21 +11,35 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
-            bool verbose = args.Length == 2 && (args[1] == "-v" || args[1] == "--verbose");
-            if (args.Length > 2 || (args.Length == 2 && !verbose))
+            bool verbose = false;
+            bool showKernelDriver = false;
+
+            for (int i = 1; i < args.Length; i++)
             {
-                CommandIO.WriteLine("Usage: lspci [-v|--verbose]");
-                CommandIO.LastCommandSuccess = false;
-                return;
+                string arg = args[i];
+                if (arg == "-v" || arg == "--verbose")
+                    verbose = true;
+                else if (arg == "-k" || arg == "--kernel")
+                    showKernelDriver = true;
+                else
+                {
+                    CommandIO.WriteLine("Usage: lspci [-v|--verbose] [-k|--kernel]");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
             }
 
-            List<DeviceDescriptor> devices;
-            if (!PciSysfsProvider.TryDiscover(out devices) || devices == null)
+            DriverManager.Initialize();
+
+            if (!DriverManager.PciDiscoveryAvailable)
             {
                 CommandIO.WriteLine("lspci: PCI discovery is not available on this architecture/backend.");
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
+
+            var devices = new List<DeviceDescriptor>();
+            DriverManager.FillDevices(devices);
 
             if (devices.Count == 0)
             {
@@ -51,9 +64,18 @@ namespace ZonderqOS.Commands
                     CommandIO.WriteLine("        prog-if=0x" + d.ProgrammingInterface.ToString("X2"));
                     CommandIO.WriteLine("        modalias=" + BuildModalias(d));
                 }
+
+                if (showKernelDriver)
+                {
+                    string driverName;
+                    bool bound = DriverManager.TryGetBinding(d.Id, out driverName);
+                    CommandIO.WriteLine("        Kernel driver in use: " + (bound ? driverName : "unbound"));
+                }
             }
 
-            CommandIO.WriteLine("PCI devices: " + devices.Count);
+            CommandIO.WriteLine("PCI devices: " + devices.Count +
+                " | bound: " + DriverManager.BoundDeviceCount +
+                " | unbound: " + (devices.Count - DriverManager.BoundDeviceCount));
             CommandIO.LastCommandSuccess = true;
         }
 
