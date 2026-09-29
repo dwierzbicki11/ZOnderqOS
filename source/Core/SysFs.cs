@@ -66,6 +66,29 @@ namespace ZonderqOS.SystemCore
                 return true;
             }
 
+            if (normalized == "/sys/devices/system/memory/page_size")
+            {
+                content = MemoryInfo.PageSizeBytes.ToString() + "\n";
+                return true;
+            }
+
+            if (normalized == "/sys/devices/system/memory/total_pages")
+            {
+                content = MemoryInfo.TotalPages.ToString() + "\n";
+                return true;
+            }
+
+            if (normalized == "/sys/devices/system/memory/free_pages")
+            {
+                ulong totalPages = MemoryInfo.TotalPages;
+                ulong freePages = MemoryInfo.FreePages;
+                if (freePages > totalPages)
+                    freePages = totalPages;
+
+                content = freePages.ToString() + "\n";
+                return true;
+            }
+
             if (TryParseCpuPath(normalized, out int cpuIndex, out string cpuLeaf))
             {
                 uint count = SchedulerInfo.CpuCount;
@@ -179,7 +202,13 @@ namespace ZonderqOS.SystemCore
 
             if (normalized == "/sys/devices/system")
             {
-                entries = new[] { "cpu" };
+                entries = new[] { "cpu", "memory" };
+                return true;
+            }
+
+            if (normalized == "/sys/devices/system/memory")
+            {
+                entries = new[] { "page_size", "total_pages", "free_pages" };
                 return true;
             }
 
