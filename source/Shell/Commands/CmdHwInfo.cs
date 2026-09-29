@@ -18,7 +18,7 @@ namespace ZonderqOS.Commands
                 return;
             }
 
-            if (section != "all" && section != "cpu" && section != "memory" && section != "scheduler" && section != "storage")
+            if (section != "all" && section != "cpu" && section != "memory" && section != "scheduler" && section != "storage" && section != "pci")
             {
                 CommandIO.WriteLine("hwinfo: unknown section '" + section + "'");
                 PrintHelp();
@@ -37,6 +37,8 @@ namespace ZonderqOS.Commands
                 PrintScheduler(info);
             if (section == "all" || section == "storage")
                 PrintStorage(info);
+            if (section == "all" || section == "pci")
+                PrintPci(info);
 
             CommandIO.LastCommandSuccess = true;
         }
@@ -98,9 +100,16 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("  Partitions:       " + info.StoragePartitionCount);
         }
 
+        private static void PrintPci(HardwareSnapshot info)
+        {
+            CommandIO.WriteLine("[PCI]");
+            CommandIO.WriteLine("  Functions:        " + info.PciDeviceCount);
+            CommandIO.WriteLine("  Details:          run 'lspci'");
+        }
+
         private static void PrintHelp()
         {
-            CommandIO.WriteLine("Usage: hwinfo [all|cpu|memory|scheduler|storage]");
+            CommandIO.WriteLine("Usage: hwinfo [all|cpu|memory|scheduler|storage|pci]");
         }
 
         private static string YesNo(bool value) => value ? "yes" : "no";

@@ -28,6 +28,7 @@ namespace ZonderqOS.Commands
                                 FormatMiB(info.TotalMemoryBytes) + " used");
             CommandIO.WriteLine("  Storage:         " + info.StorageDeviceCount + " device(s), " +
                                 info.StoragePartitionCount + " partition(s)");
+            CommandIO.WriteLine("  PCI functions:   " + info.PciDeviceCount);
             CommandIO.WriteLine("  File System:     VFS over FAT32 / HAL Block Devices");
             CommandIO.WriteLine("  Current Root:    " + currentPath);
 
