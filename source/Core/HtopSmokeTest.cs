@@ -21,6 +21,10 @@ namespace ZonderqOS.SystemCore
             try
             {
                 int cpuCount = checked((int)SchedulerInfo.CpuCount);
+                Require(cpuCount > 0, "scheduler reported no CPUs");
+                Require(SchedulerTelemetry.HasCpuAccounting, "CPU accounting unavailable");
+                Require(MemoryInfo.TotalPages > 0, "physical memory total unavailable");
+                Require(MemoryInfo.FreePages <= MemoryInfo.TotalPages, "physical memory counters invalid");
                 int initialThreads = SchedulerInfo.ThreadCount;
                 int initialProcesses = ProcessManager.GetActiveProcesses().Count;
                 long deadline = Stopwatch.GetTimestamp() + 30 * Stopwatch.Frequency;
@@ -44,6 +48,13 @@ namespace ZonderqOS.SystemCore
                 ulong expected = (1UL << cpuCount) - 1;
                 Require(monitor.CpuCount == cpuCount, "CPU count");
                 Require(monitor.ActiveCpuMask == expected, "busy CPU mask=" + monitor.ActiveCpuMask.ToString("X"));
+                Require(monitor.TotalCpuPercent > 0 && monitor.TotalCpuPercent <= 100,
+                    "aggregate CPU usage=" + monitor.TotalCpuPercent);
+                for (int cpu = 0; cpu < cpuCount; cpu++)
+                {
+                    Require(monitor.CpuUsagePercent[cpu] > 0 && monitor.CpuUsagePercent[cpu] <= 100,
+                        "CPU " + cpu + " usage=" + monitor.CpuUsagePercent[cpu]);
+                }
                 int names = 0;
                 foreach (string line in monitor.Lines)
                 {
