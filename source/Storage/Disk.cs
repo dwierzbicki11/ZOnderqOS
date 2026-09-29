@@ -322,10 +322,12 @@ namespace ZonderqOS
             {
                 Directory.CreateDirectory(path);
                 WriteMessage.WriteOK($"Directory created: {path}", "FS");
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
                 WriteMessage.WriteError($"Error creating directory: {ex.Message}", "FS");
+                CommandIO.LastCommandSuccess = false;
             }
         }
 
@@ -358,10 +360,12 @@ namespace ZonderqOS
             {
                 Directory.Delete(path, recursive);
                 WriteMessage.WriteOK($"Directory deleted: {path}", "FS");
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
                 WriteMessage.WriteError($"Error deleting directory: {ex.Message}", "FS");
+                CommandIO.LastCommandSuccess = false;
             }
         }
 
