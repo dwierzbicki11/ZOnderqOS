@@ -60,6 +60,12 @@ namespace ZonderqOS.SystemCore
                 return true;
             }
 
+            if (normalized == "/sys/devices/system/cpu/accounting_available")
+            {
+                content = (SchedulerTelemetry.HasCpuAccounting ? "1" : "0") + "\n";
+                return true;
+            }
+
             if (TryParseCpuPath(normalized, out int cpuIndex, out string cpuLeaf))
             {
                 uint count = SchedulerInfo.CpuCount;
@@ -75,6 +81,19 @@ namespace ZonderqOS.SystemCore
                 if (cpuLeaf == "index")
                 {
                     content = cpuIndex.ToString() + "\n";
+                    return true;
+                }
+
+                if (cpuLeaf == "busy_ticks")
+                {
+                    if (!SchedulerTelemetry.HasCpuAccounting)
+                    {
+                        content = "N/A\n";
+                        return true;
+                    }
+
+                    long busy = SchedulerTelemetry.CpuBusyTicks((uint)cpuIndex);
+                    content = (busy < 0 ? 0 : busy).ToString() + "\n";
                     return true;
                 }
 
@@ -167,12 +186,13 @@ namespace ZonderqOS.SystemCore
             if (normalized == "/sys/devices/system/cpu")
             {
                 int cpuCount = checked((int)SchedulerInfo.CpuCount);
-                entries = new string[3 + cpuCount];
+                entries = new string[4 + cpuCount];
                 entries[0] = "logical_count";
                 entries[1] = "online";
                 entries[2] = "scheduler";
+                entries[3] = "accounting_available";
                 for (int i = 0; i < cpuCount; i++)
-                    entries[3 + i] = "cpu" + i;
+                    entries[4 + i] = "cpu" + i;
                 return true;
             }
 
@@ -181,7 +201,7 @@ namespace ZonderqOS.SystemCore
                 if (cpuIndex < 0 || (uint)cpuIndex >= SchedulerInfo.CpuCount)
                     return false;
 
-                entries = new[] { "online", "index" };
+                entries = new[] { "online", "index", "busy_ticks" };
                 return true;
             }
 
