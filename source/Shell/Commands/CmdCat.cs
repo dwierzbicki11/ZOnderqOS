@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
@@ -18,6 +19,22 @@ namespace ZonderqOS.Commands
             }
 
             string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
+
+            if (ProcFs.IsProcPath(path))
+            {
+                if (ProcFs.TryRead(path, out string virtualContent))
+                {
+                    CommandIO.Write(virtualContent);
+                    CommandIO.LastCommandSuccess = true;
+                }
+                else
+                {
+                    WriteMessage.WriteError($"procfs entry does not exist: {path}", "CMD");
+                    CommandIO.LastCommandSuccess = false;
+                }
+                return;
+            }
+
             if (!File.Exists(path))
             {
                 WriteMessage.WriteError($"File does not exist: {path}", "CMD");
