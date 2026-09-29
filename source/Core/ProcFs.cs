@@ -12,8 +12,6 @@ namespace ZonderqOS.SystemCore
     /// </summary>
     public static class ProcFs
     {
-        private static readonly long BootTimestamp = Stopwatch.GetTimestamp();
-
         public static bool IsProcPath(string path)
         {
             string normalized = Normalize(path);
@@ -146,10 +144,44 @@ namespace ZonderqOS.SystemCore
 
         private static string BuildUptime()
         {
-            long now = Stopwatch.GetTimestamp();
-            long delta = now >= BootTimestamp ? now - BootTimestamp : 0;
-            double seconds = Stopwatch.Frequency > 0 ? (double)delta / Stopwatch.Frequency : 0d;
-            return seconds.ToString("0.00") + " " + seconds.ToString("0.00") + "\n";
+            long uptimeTicks = BootTelemetry.UptimeTicks;
+            double uptimeSeconds = Stopwatch.Frequency > 0
+                ? (double)uptimeTicks / Stopwatch.Frequency
+                : 0d;
+
+            if (!SchedulerTelemetry.HasCpuAccounting || Stopwatch.Frequency <= 0)
+                return uptimeSeconds.ToString("0.00") + " N/A\n";
+
+            int cpuCount = checked((int)SchedulerInfo.CpuCount);
+            ulong totalCapacity = cpuCount > 0 && uptimeTicks > 0
+                ? SaturatingMultiply((ulong)uptimeTicks, (ulong)cpuCount)
+                : 0;
+
+            ulong busyTicks = 0;
+            for (int cpu = 0; cpu < cpuCount; cpu++)
+            {
+                long busy = SchedulerTelemetry.CpuBusyTicks((uint)cpu);
+                if (busy <= 0)
+                    continue;
+
+                ulong value = (ulong)busy;
+                busyTicks = busyTicks > ulong.MaxValue - value
+                    ? ulong.MaxValue
+                    : busyTicks + value;
+            }
+
+            ulong idleTicks = totalCapacity >= busyTicks ? totalCapacity - busyTicks : 0;
+            double idleSeconds = (double)idleTicks / Stopwatch.Frequency;
+            return uptimeSeconds.ToString("0.00") + " " + idleSeconds.ToString("0.00") + "\n";
+        }
+
+        private static ulong SaturatingMultiply(ulong left, ulong right)
+        {
+            if (left == 0 || right == 0)
+                return 0;
+            if (left > ulong.MaxValue / right)
+                return ulong.MaxValue;
+            return left * right;
         }
 
         private static string BuildProcessStatus(KernelProcess process)
