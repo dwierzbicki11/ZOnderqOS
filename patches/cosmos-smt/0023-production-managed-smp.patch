@@ -167,6 +167,25 @@ index 0000000..fd99993
 +        s_cpuBusyTicks is not null && cpuId < s_cpuCount
 +            ? Volatile.Read(ref s_cpuBusyTicks[cpuId]) : 0;
 +
++    internal static void InitializeProductionCpuAccounting()
++    {
++        if (s_cpuCount == 0 || s_cpuBusyTicks is not null)
++        {
++            return;
++        }
++
++        long[] busy = new long[s_cpuCount];
++        long[] timestamps = new long[s_cpuCount];
++        long now = Stopwatch.GetTimestamp();
++        for (uint cpuId = 0; cpuId < s_cpuCount; cpuId++)
++        {
++            timestamps[cpuId] = now;
++        }
++
++        s_cpuBusyTicks = busy;
++        s_cpuAccountingTimestamp = timestamps;
++    }
++
 +    // Monotonic counters belong to CPUs, so migration and thread exit never
 +    // move or erase previously charged CPU time. Only the owner writes.
 +    private static void RecordCpuAccounting(uint cpuId)
@@ -333,13 +352,7 @@ index 0000000..fd99993
 +
 +#if ARCH_X64
 +        NativeSetPersistentSchedulerTimer(1);
-+        s_cpuBusyTicks = new long[s_cpuCount];
-+        s_cpuAccountingTimestamp = new long[s_cpuCount];
-+        long accountingStart = Stopwatch.GetTimestamp();
-+        for (uint cpuId = 0; cpuId < s_cpuCount; cpuId++)
-+        {
-+            s_cpuAccountingTimestamp[cpuId] = accountingStart;
-+        }
++        InitializeProductionCpuAccounting();
 +        int initialThreadCount = ThreadCount;
 +        int workerCount = checked((int)s_cpuCount);
 +        int[] cpuHits = new int[workerCount];
@@ -708,6 +721,8 @@ index 18641b2..d69bd2a 100644
              // time against DefaultQuantumNs, so the two have to agree.
              initializer.StartSchedulerTimer(
                  (uint)(SchedulerManager.DefaultQuantumNs / SchedulerManager.NanosecondsPerMillisecond));
++
++            SchedulerManager.InitializeProductionCpuAccounting();
 +
 +            using (Cosmos.Kernel.Core.CPU.InternalCpu.DisableInterruptsScope())
 +            {
