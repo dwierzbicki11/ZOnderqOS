@@ -67,6 +67,29 @@ namespace ZonderqOS.Hardware
             }
         }
 
+        public static bool TryGetPciDevice(string address, out DeviceDescriptor device)
+        {
+            device = null;
+            if (string.IsNullOrEmpty(address))
+                return false;
+
+            lock (Gate)
+            {
+                for (int i = 0; i < PciDevices.Count; i++)
+                {
+                    DeviceDescriptor candidate = PciDevices[i];
+                    if (candidate != null &&
+                        string.Equals(candidate.Id.Address, address, StringComparison.OrdinalIgnoreCase))
+                    {
+                        device = candidate;
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
         static partial void PlatformDiscoverPci(List<DeviceDescriptor> destination);
     }
 }
