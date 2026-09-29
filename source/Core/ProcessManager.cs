@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cosmos.Kernel.System.Diagnostics;
 
 namespace ZonderqOS.SystemCore
 {
@@ -13,7 +12,7 @@ namespace ZonderqOS.SystemCore
         public CancellationTokenSource Cts { get; }
         private uint kernelThreadId = uint.MaxValue;
         public uint KernelThreadId => Volatile.Read(ref kernelThreadId);
-        internal void BindKernelThread() => Volatile.Write(ref kernelThreadId, SchedulerInfo.CurrentThreadId);
+        internal void BindKernelThread() => Volatile.Write(ref kernelThreadId, SchedulerTelemetry.CurrentThreadId());
         public bool IsRunning => ExecutionThread != null && ExecutionThread.IsAlive;
 
         public KernelProcess(int pid, string name, Thread thread, CancellationTokenSource cts)
@@ -62,7 +61,7 @@ namespace ZonderqOS.SystemCore
                     try
                     {
                         process.BindKernelThread();
-                        SchedulerInfo.EnableCurrentManagedThreadPreemption();
+                        SchedulerTelemetry.EnableCurrentManagedPreemption();
                         startMethod(cts.Token);
                     }
                     catch (Exception ex)
