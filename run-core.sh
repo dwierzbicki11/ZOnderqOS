@@ -101,16 +101,17 @@ clean_build_cache() {
     rm -rf "$ROOT_DIR/obj" "$ROOT_DIR/bin" "$ROOT_DIR/output-$arch"
 }
 
-prepare_patched_cosmos_x64() {
+prepare_patched_cosmos() {
+    local arch="$1"
     local cosmos_root="${ZONDERQ_COSMOS_SOURCE_ROOT:-$(cd "$ROOT_DIR/.." && pwd)}"
     local runtime_source="$cosmos_root/src/Cosmos.Kernel.Core/Runtime/Stdllib.cs"
     local package_feed="$cosmos_root/artifacts/package/release"
-    local package_cache="$ROOT_DIR/.nuget/smt-local-packages"
+    local package_cache="$ROOT_DIR/.nuget/smt-local-packages-$arch"
     local kernel_package=""
     local rebuild=0
 
     git -C "$cosmos_root" rev-parse --is-inside-work-tree >/dev/null 2>&1 || \
-        fail "x64 SMT wymaga checkoutu Cosmos albo ZONDERQ_COSMOS_SOURCE_ROOT. Brak poprawnego repo: $cosmos_root"
+        fail "$arch wymaga checkoutu Cosmos albo ZONDERQ_COSMOS_SOURCE_ROOT. Brak poprawnego repo: $cosmos_root"
     [[ -f "$runtime_source" ]] || \
         fail "Brak Cosmos runtime source: $runtime_source"
     [[ -x "$ROOT_DIR/tools/prepare-cosmos-smt.sh" || -f "$ROOT_DIR/tools/prepare-cosmos-smt.sh" ]] || \
@@ -162,10 +163,11 @@ prepare_patched_cosmos_x64() {
 </configuration>
 EOF_NUGET
 
-    echo "[SMT] Restore x64 z lokalnych paczek Cosmos (izolowany cache)..."
+    local rid="linux-$arch"
+    echo "[SMT] Restore $arch z lokalnych paczek Cosmos (izolowany cache)..."
     NUGET_PACKAGES="$package_cache" dotnet restore "$ROOT_DIR/ZonderqOS.csproj" \
-        -r linux-x64 \
-        -p:CosmosArch=x64 \
+        -r "$rid" \
+        -p:CosmosArch="$arch" \
         --configfile "$nuget_config" \
         --force \
         --no-cache
@@ -185,10 +187,8 @@ build_iso() {
     label="$(printf '%s' "$arch" | tr '[:lower:]' '[:upper:]')"
 
     require_command cosmos
-    if [[ "$arch" == "x64" ]]; then
-        require_command dotnet
-        prepare_patched_cosmos_x64
-    fi
+    require_command dotnet
+    prepare_patched_cosmos "$arch"
     clean_build_cache "$arch"
 
     echo "[$label] Budowanie ZonderqOS..."
