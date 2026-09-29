@@ -522,6 +522,39 @@ namespace ZonderqOS.SystemCore
             return leaf.IndexOf('/') < 0;
         }
 
+        private static bool TryParsePciDeviceDirectory(string path, out string address)
+        {
+            address = string.Empty;
+            const string prefix = "/sys/bus/pci/devices/";
+            if (!path.StartsWith(prefix, StringComparison.Ordinal))
+                return false;
+
+            string tail = path.Substring(prefix.Length);
+            if (tail.Length == 0 || tail.IndexOf('/') >= 0)
+                return false;
+
+            address = tail;
+            return true;
+        }
+
+        private static bool TryParsePciDevicePath(string path, out string address, out string leaf)
+        {
+            address = string.Empty;
+            leaf = string.Empty;
+            const string prefix = "/sys/bus/pci/devices/";
+            if (!path.StartsWith(prefix, StringComparison.Ordinal))
+                return false;
+
+            string tail = path.Substring(prefix.Length);
+            int slash = tail.IndexOf('/');
+            if (slash <= 0 || slash >= tail.Length - 1)
+                return false;
+
+            address = tail.Substring(0, slash);
+            leaf = tail.Substring(slash + 1);
+            return leaf.IndexOf('/') < 0;
+        }
+
         private static bool TryParseBlockDirectory(string path, out bool partition, out int index)
         {
             partition = false;
