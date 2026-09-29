@@ -33,15 +33,26 @@ namespace ZonderqOS.SystemCore
                 long deadline = Stopwatch.GetTimestamp() + 30 * Stopwatch.Frequency;
                 for (int index = 0; index < cpuCount; index++)
                 {
+                    int workerIndex = index;
                     ProcessManager.Start("htop-smoke-" + index, () =>
                     {
                         Interlocked.Increment(ref started);
 
-                        // Keep the thread genuinely CPU-active, but periodically block.
-                        // A permanently spinning worker that lands on CPU0 can keep the
-                        // BSP/user-kernel context from regaining control long enough to
-                        // take the second htop sample. Sleeping also exercises the real
-                        // Running -> Sleeping -> Ready scheduler path used by processes.
+                        // Stage 23 placement fills parked APs before falling back
+                        // to CPU0. Keep the first N-1 workers runnable so an AP
+                        // cannot become parked/reusable while the remaining
+                        // workers are still being created. The final worker is
+                        // therefore the BSP fallback and must periodically block
+                        // so BeforeRun can regain CPU0 and sample htop.
+                        if (workerIndex < cpuCount - 1)
+                        {
+                            while (Volatile.Read(ref release) == 0)
+                            {
+                                Thread.SpinWait(64);
+                            }
+                            return;
+                        }
+
                         long burstTicks = Math.Max(1L, Stopwatch.Frequency / 200L); // ~5 ms
                         while (Volatile.Read(ref release) == 0)
                         {
