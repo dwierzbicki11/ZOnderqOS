@@ -19,6 +19,7 @@ namespace ZonderqOS
         {
             try
             {
+                BootTelemetry.Initialize();
                 Console.Clear();
 #if ZONDERQ_HTOP_SMOKE_TEST
                 HtopSmokeTest.Run();
