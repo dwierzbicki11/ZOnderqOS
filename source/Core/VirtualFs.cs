@@ -4,7 +4,7 @@ namespace ZonderqOS.SystemCore
     {
         public static bool IsVirtualPath(string path)
         {
-            return ProcFs.IsProcPath(path) || SysFs.IsSysPath(path) || DeviceFs.IsDevicePath(path) || RunFs.IsRunPath(path);
+            return ProcFs.IsProcPath(path) || SysFs.IsSysPath(path) || DeviceFs.IsDevicePath(path) || RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path);
         }
 
         public static bool IsReadOnlyPath(string path)
@@ -26,6 +26,9 @@ namespace ZonderqOS.SystemCore
             if (RunFs.IsRunPath(path))
                 return RunFs.TryRead(path, out content);
 
+            if (TmpFs.IsTmpPath(path))
+                return TmpFs.TryRead(path, out content);
+
             content = null;
             return false;
         }
@@ -43,6 +46,9 @@ namespace ZonderqOS.SystemCore
 
             if (RunFs.IsRunPath(path))
                 return RunFs.TryList(path, out entries);
+
+            if (TmpFs.IsTmpPath(path))
+                return TmpFs.TryList(path, out entries);
 
             entries = null;
             return false;
@@ -63,6 +69,9 @@ namespace ZonderqOS.SystemCore
             if (RunFs.IsRunPath(path))
                 return RunFs.TryWrite(path, content, append, out error);
 
+            if (TmpFs.IsTmpPath(path))
+                return TmpFs.TryWrite(path, content, append, out error);
+
             return false;
         }
 
@@ -70,6 +79,9 @@ namespace ZonderqOS.SystemCore
         {
             if (RunFs.IsRunPath(path))
                 return RunFs.TryCreateDirectory(path, out error);
+
+            if (TmpFs.IsTmpPath(path))
+                return TmpFs.TryCreateDirectory(path, out error);
 
             error = null;
             return false;
@@ -80,6 +92,9 @@ namespace ZonderqOS.SystemCore
             if (RunFs.IsRunPath(path))
                 return RunFs.TryDeleteFile(path, out error);
 
+            if (TmpFs.IsTmpPath(path))
+                return TmpFs.TryDeleteFile(path, out error);
+
             error = null;
             return false;
         }
@@ -88,6 +103,9 @@ namespace ZonderqOS.SystemCore
         {
             if (RunFs.IsRunPath(path))
                 return RunFs.TryDeleteDirectory(path, recursive, out error);
+
+            if (TmpFs.IsTmpPath(path))
+                return TmpFs.TryDeleteDirectory(path, recursive, out error);
 
             error = null;
             return false;
