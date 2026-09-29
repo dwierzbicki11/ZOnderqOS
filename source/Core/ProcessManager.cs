@@ -81,7 +81,23 @@ namespace ZonderqOS.SystemCore
 
                 process = new KernelProcess(pid, processName, thread, cts);
                 _processes.Add(pid, process);
+            }
+
+            // Never enter CoreLib's thread-start handshake while holding the
+            // process registry lock. On SMP the new thread can run immediately
+            // on another CPU and may need this lock during cleanup.
+            try
+            {
                 thread.Start();
+            }
+            catch
+            {
+                lock (_registryLock)
+                {
+                    if (_processes.Remove(pid))
+                        cts.Dispose();
+                }
+                throw;
             }
 
             return pid;
