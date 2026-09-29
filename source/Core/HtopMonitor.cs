@@ -1,26 +1,15 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using Cosmos.Kernel.System.Diagnostics;
 
 namespace ZonderqOS.SystemCore
 {
-    internal static partial class SchedulerTelemetry
+    internal static class SchedulerTelemetry
     {
-        [LibraryImport("*", EntryPoint = "RhGetCurrentSchedulerThreadId")]
-        [SuppressGCTransition]
-        internal static partial uint CurrentThreadId();
-
-        [LibraryImport("*", EntryPoint = "RhSchedulerCpuAccountingAvailable")]
-        [SuppressGCTransition]
-        private static partial int AccountingAvailable();
-
-        [LibraryImport("*", EntryPoint = "RhGetSchedulerCpuBusyTicks")]
-        [SuppressGCTransition]
-        internal static partial long CpuBusyTicks(uint cpuId);
-
-        internal static bool HasCpuAccounting => AccountingAvailable() == 1;
+        internal static uint CurrentThreadId() => SchedulerInfo.CurrentThreadId;
+        internal static long CpuBusyTicks(uint cpuId) => SchedulerInfo.GetCpuBusyTicks(cpuId);
+        internal static bool HasCpuAccounting => SchedulerInfo.CpuAccountingAvailable;
     }
 
     internal sealed class HtopMonitor

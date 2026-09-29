@@ -618,6 +618,67 @@ index 688bb57..0c1fb0b 100644
          if (needsReschedule)
          {
              ScheduleFromInterrupt(cpuId, currentRsp);
+diff --git a/src/Cosmos.Kernel.System/Diagnostics/SchedulerInfo.cs b/src/Cosmos.Kernel.System/Diagnostics/SchedulerInfo.cs
+index 4939566..8a23f2a 100644
+--- a/src/Cosmos.Kernel.System/Diagnostics/SchedulerInfo.cs
++++ b/src/Cosmos.Kernel.System/Diagnostics/SchedulerInfo.cs
+@@ -75,8 +75,31 @@ public static class SchedulerInfo
+     /// Total busy CPU time in nanoseconds, summed over all CPUs and all
+     /// non-idle threads since boot. Monotonic across thread exits; sample
+     /// it over a wall-clock window to derive CPU utilization.
+     /// </summary>
+     public static ulong BusyCpuTimeNs => SchedulerManager.GetBusyCpuTimeNs();
++
++    /// <summary>Whether per-logical-CPU accounting counters are available.</summary>
++    public static bool CpuAccountingAvailable => SchedulerManager.CpuAccountingAvailable;
++
++    /// <summary>
++    /// Monotonic busy-time counter for one logical CPU, in Stopwatch timestamp ticks.
++    /// Sample it over a Stopwatch window to derive utilization.
++    /// </summary>
++    public static long GetCpuBusyTicks(uint cpuId) => SchedulerManager.GetCpuBusyTicks(cpuId);
++
++    /// <summary>
++    /// Kernel scheduler thread ID currently executing on the calling CPU,
++    /// or uint.MaxValue when the caller is not a scheduled thread.
++    /// </summary>
++    public static uint CurrentThreadId =>
++        SchedulerManager.CurrentCpuState?.CurrentThread?.Id ?? uint.MaxValue;
++
++    /// <summary>
++    /// Enables periodic preemption for the current production managed thread.
++    /// This is called after CoreLib has completed the ThreadStart handshake.
++    /// </summary>
++    public static void EnableCurrentManagedThreadPreemption() =>
++        SchedulerManager.EnableCurrentCpuManagedPreemption();
+ 
+     /// <summary>
+     /// Number of live threads in the registry. This is a population count,
+diff --git a/src/Cosmos.Kernel.System/PublicAPI.Unshipped.txt b/src/Cosmos.Kernel.System/PublicAPI.Unshipped.txt
+index c2d5c1e..a7e7724 100644
+--- a/src/Cosmos.Kernel.System/PublicAPI.Unshipped.txt
++++ b/src/Cosmos.Kernel.System/PublicAPI.Unshipped.txt
+@@ -624,16 +624,20 @@ static Cosmos.Kernel.System.Diagnostics.MemoryInfo.TotalCollections.get -> int
+ static Cosmos.Kernel.System.Diagnostics.MemoryInfo.TotalObjectsFreed.get -> int
+ static Cosmos.Kernel.System.Diagnostics.MemoryInfo.TotalPages.get -> ulong
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.BusyCpuTimeNs.get -> ulong
++static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.CpuAccountingAvailable.get -> bool
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.CpuCount.get -> uint
++static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.CurrentThreadId.get -> uint
++static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.EnableCurrentManagedThreadPreemption() -> void
++static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.GetCpuBusyTicks(uint cpuId) -> long
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.GetRunQueueCount(uint cpuId) -> int
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.IsInitialized.get -> bool
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.IsRunning.get -> bool
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.IsSupported.get -> bool
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.RequestKill(uint threadId) -> Cosmos.Kernel.System.Diagnostics.ThreadKillResult
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.SchedulerName.get -> string?
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.ThreadCount.get -> int
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.ThreadSlotCount.get -> int
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.TickPeriodNs.get -> ulong
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.TryGetCurrentThread(uint cpuId, out Cosmos.Kernel.System.Diagnostics.KernelThreadInfo info) -> bool
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.TryGetRunQueueThread(uint cpuId, int index, out Cosmos.Kernel.System.Diagnostics.KernelThreadInfo info) -> bool
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.TryGetThreadInSlot(int slot, out Cosmos.Kernel.System.Diagnostics.KernelThreadInfo info) -> bool
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
 index a740444..779cc08 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
