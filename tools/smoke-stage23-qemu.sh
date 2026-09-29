@@ -69,8 +69,13 @@ if mask != expected_mask:
 
 htop = [line for line in lines if line.startswith("[HTOP-TEST]")]
 expected_htop = f"[HTOP-TEST] PASS cpus={expected} mask=0x{expected_mask:X} processes=restored"
-if htop != [expected_htop]:
-    fail(f"htop runtime verification missing or failed: {htop}")
+begins = [line for line in htop if line == "[HTOP-TEST] BEGIN"]
+passes = [line for line in htop if line.startswith("[HTOP-TEST] PASS ")]
+failures = [line for line in htop if line.startswith("[HTOP-TEST] FAIL ")]
+if begins != ["[HTOP-TEST] BEGIN"] or passes != [expected_htop] or failures:
+    fail(
+        f"htop runtime verification missing or failed: "
+        f"begins={begins} passes={passes} failures={failures}")
 
 print(
     f"[SMT23-QEMU][OK] htop measured every logical CPU and restored processes")
