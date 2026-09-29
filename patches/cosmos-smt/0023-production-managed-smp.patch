@@ -188,6 +188,18 @@ index 0000000..fd99993
 +        }
 +    }
 +
++    // A parked AP has no scheduler timer ticks. Reset its accounting baseline
++    // immediately before wakeup, otherwise the first busy tick would charge
++    // the entire time spent in native HLT as CPU work.
++    private static void ResetCpuAccountingTimestamp(uint cpuId)
++    {
++        if (s_cpuAccountingTimestamp is null || cpuId >= s_cpuCount)
++        {
++            return;
++        }
++        Volatile.Write(ref s_cpuAccountingTimestamp[cpuId], Stopwatch.GetTimestamp());
++    }
++
 +    private static int s_stage23StartedWorkers;
 +    private static int s_stage23CompletedWorkers;
 +    private static int s_stage23ReleaseWorkers;
@@ -266,6 +278,7 @@ index 0000000..fd99993
 +            return false;
 +        }
 +
++        ResetCpuAccountingTimestamp(cpuId);
 +        bool activated = NativeBeginSchedulerCpu(cpuId) == 1;
 +        NativeExitSchedulerQueue(cpuId);
 +        s_cpuStates[cpuId].ReleaseManagedDispatchReservation();
