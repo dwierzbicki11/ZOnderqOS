@@ -1,6 +1,7 @@
 using System;
 using System.IO;
 
+using ZonderqOS.SystemCore;
 namespace ZonderqOS.GUI
 {
     public static class FileClipboard
@@ -68,6 +69,12 @@ namespace ZonderqOS.GUI
             string source = Normalize(sourcePath);
             string destinationRoot = Normalize(destinationDirectory);
             string user = SecurityContext.CurrentUser ?? "root";
+
+            if (VirtualFs.IsReadOnlyPath(source) || VirtualFs.IsReadOnlyPath(destinationRoot))
+            {
+                error = "Read-only virtual filesystem";
+                return false;
+            }
 
             if (!Directory.Exists(destinationRoot))
             {
