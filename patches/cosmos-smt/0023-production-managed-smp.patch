@@ -2,7 +2,7 @@ diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs b/src/Cosmos.Kernel.Cor
 index 59cc924..f51dfa8 100644
 --- a/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs
 +++ b/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs
-@@ -402,10 +402,12 @@ public static class LocalApic
+@@ -402,10 +402,13 @@ public static class LocalApic
      private static uint s_timerTickCount;
      private static unsafe void HandleTimerInterrupt(ref IRQContext context)
      {
@@ -146,7 +146,7 @@ new file mode 100644
 index 0000000..fd99993
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
-@@ -0,0 +1,397 @@
+@@ -0,0 +1,410 @@
 +using System;
 +using System.Diagnostics;
 +using System.Threading;
