@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <DefineConstants>$(DefineConstants);ZPKG_HOST_TESTS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../source/Core/Packages/PackageManifest.cs" Link="PackageManifest.cs" />
+    <Compile Include="../../source/Core/Packages/PackageManager.cs" Link="PackageManager.cs" />
+  </ItemGroup>
+</Project>
