@@ -48,6 +48,7 @@ namespace ZonderqOS
             _commands.Add(new CmdHead());
             _commands.Add(new CmdEcho());
             _commands.Add(new CmdWhoami());
+            _commands.Add(new CmdHostname());
             _commands.Add(new CmdTty());
             _commands.Add(new CmdGui());
             _commands.Add(new CmdBootMode());
