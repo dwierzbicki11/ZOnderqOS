@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
-using Cosmos.Kernel.System.Diagnostics;
 
 namespace ZonderqOS.SystemCore
 {
@@ -62,7 +61,7 @@ namespace ZonderqOS.SystemCore
                     try
                     {
                         process.BindKernelThread();
-                        SchedulerInfo.EnableCurrentManagedThreadPreemption();
+                        SchedulerTelemetry.EnableCurrentManagedPreemption();
                         startMethod(cts.Token);
                     }
                     catch (Exception ex)
