@@ -4,6 +4,7 @@ using Cosmos.Kernel.System.Vfs;
 using Cosmos.Kernel.System.Filesystems.Fat;
 using Cosmos.Kernel.HAL.Vfs;
 using Cosmos.Kernel.System.Storage;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS
 {
@@ -89,8 +90,23 @@ namespace ZonderqOS
             }
         }
 
+        private static bool RejectVirtualMutation(string path, string operation)
+        {
+            if (!ProcFs.IsProcPath(path))
+                return false;
+
+            WriteMessage.WriteError($"Read-only virtual filesystem: {operation} is not allowed on {path}", "FS");
+            SecurityLogger.LogEvent("WARN",
+                $"Rejected {operation} on virtual procfs path {path} by {SecurityContext.CurrentUser}");
+            CommandIO.LastCommandSuccess = false;
+            return true;
+        }
+
         public static void CreateFile(string path, string content)
         {
+            if (RejectVirtualMutation(path, "write"))
+                return;
+
             if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
             {
                 WriteMessage.WriteError($"Permission denied: Cannot modify {path}", "SEC");
@@ -113,6 +129,9 @@ namespace ZonderqOS
 
         public static void AppendFile(string path, string content)
         {
+            if (RejectVirtualMutation(path, "append"))
+                return;
+
             if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
             {
                 WriteMessage.WriteError($"Permission denied: Cannot modify {path}", "SEC");
@@ -133,6 +152,16 @@ namespace ZonderqOS
 
         public static void CopyFile(string sourcePath, string destinationPath)
         {
+            if (ProcFs.IsProcPath(sourcePath))
+            {
+                WriteMessage.WriteError($"Virtual procfs entries cannot be copied through the physical FAT backend: {sourcePath}", "FS");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
+            if (RejectVirtualMutation(destinationPath, "copy destination"))
+                return;
+
             if (!File.Exists(sourcePath))
             {
                 WriteMessage.WriteError($"Copy source does not exist: {sourcePath}", "FS");
@@ -160,6 +189,10 @@ namespace ZonderqOS
 
         public static void MoveFile(string sourcePath, string destinationPath)
         {
+            if (RejectVirtualMutation(sourcePath, "move source") ||
+                RejectVirtualMutation(destinationPath, "move destination"))
+                return;
+
             if (!File.Exists(sourcePath))
             {
                 WriteMessage.WriteError($"Move source does not exist: {sourcePath}", "FS");
@@ -207,6 +240,9 @@ namespace ZonderqOS
 
         public static void DeleteFile(string path)
         {
+            if (RejectVirtualMutation(path, "delete"))
+                return;
+
             if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
             {
                 WriteMessage.WriteError($"Permission denied: Cannot delete {path}", "SEC");
@@ -227,6 +263,9 @@ namespace ZonderqOS
 
         public static void CreateDir(string path)
         {
+            if (RejectVirtualMutation(path, "mkdir"))
+                return;
+
             try
             {
                 Directory.CreateDirectory(path);
@@ -240,6 +279,9 @@ namespace ZonderqOS
 
         public static void DeleteDir(string path, bool recursive = true)
         {
+            if (RejectVirtualMutation(path, "rmdir"))
+                return;
+
             if (Directory.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
             {
                 WriteMessage.WriteError($"Permission denied: Cannot delete directory {path}", "SEC");

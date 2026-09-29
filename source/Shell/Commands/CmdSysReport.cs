@@ -15,6 +15,13 @@ namespace ZonderqOS.Commands
                 ? PathResolver.GetAbsolutePath(currentPath, args[1])
                 : PathResolver.GetAbsolutePath(currentPath, "zonderq-diagnostic.txt");
 
+            if (ProcFs.IsProcPath(path))
+            {
+                WriteMessage.WriteError("sysreport: /proc is a read-only virtual filesystem.", "FS");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             bool existed = File.Exists(path);
             if (existed && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
             {
