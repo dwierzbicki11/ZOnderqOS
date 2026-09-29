@@ -32,14 +32,14 @@ namespace ZonderqOS.Commands
                     return;
                 }
 
-                if (destinationVirtual && !RunFs.IsRunPath(destination) && !DeviceFs.IsDevicePath(destination))
+                if (destinationVirtual && !IsWritableVirtualTarget(destination))
                 {
                     WriteMessage.WriteError($"Destination is not writable: {destination}", "FS");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
 
-                if (RunFs.IsRunPath(destination) && (RunFs.FileExists(destination) || RunFs.DirectoryExists(destination)))
+                if (IsRamFsPath(destination) && VirtualEntryExists(destination))
                 {
                     WriteMessage.WriteError($"Destination already exists: {destination}", "FS");
                     CommandIO.LastCommandSuccess = false;
@@ -72,9 +72,9 @@ namespace ZonderqOS.Commands
                 return;
             }
 
-            if (RunFs.IsRunPath(destination))
+            if (IsRamFsPath(destination))
             {
-                if (RunFs.FileExists(destination) || RunFs.DirectoryExists(destination))
+                if (VirtualEntryExists(destination))
                 {
                     WriteMessage.WriteError($"Destination already exists: {destination}", "FS");
                     CommandIO.LastCommandSuccess = false;
@@ -86,7 +86,7 @@ namespace ZonderqOS.Commands
                 return;
             }
 
-            if (VirtualFs.IsVirtualPath(destination))
+            if (destinationVirtual)
             {
                 WriteMessage.WriteError($"Destination is not writable: {destination}", "FS");
                 CommandIO.LastCommandSuccess = false;
@@ -109,6 +109,25 @@ namespace ZonderqOS.Commands
 
             PermissionManager.CopyPermissionsUnder(source, destination, SecurityContext.CurrentUser);
             CommandIO.LastCommandSuccess = true;
+        }
+
+        private static bool IsRamFsPath(string path)
+        {
+            return RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path);
+        }
+
+        private static bool IsWritableVirtualTarget(string path)
+        {
+            return IsRamFsPath(path) || DeviceFs.IsDevicePath(path);
+        }
+
+        private static bool VirtualEntryExists(string path)
+        {
+            if (RunFs.IsRunPath(path))
+                return RunFs.FileExists(path) || RunFs.DirectoryExists(path);
+            if (TmpFs.IsTmpPath(path))
+                return TmpFs.FileExists(path) || TmpFs.DirectoryExists(path);
+            return false;
         }
     }
 }
