@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using ZonderqOS.SystemCore;
 using ZonderqOS.GUI;
+using ZonderqOS.Hardware;
 using Sys = Cosmos.Kernel.System;
 
 namespace ZonderqOS
@@ -31,6 +32,7 @@ namespace ZonderqOS
                 SecurityLogger.Initialize();
                 PermissionManager.Initialize();
                 SystemLogger.Initialize();
+                HardwareDeviceManager.Initialize();
                 BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
