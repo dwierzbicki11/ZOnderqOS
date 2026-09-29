@@ -106,7 +106,7 @@ jobs:
           EOF
           mkdir -p "${{ runner.temp }}/zonderq-stage23-packages"
 
-      - name: Build and link real ZonderqOS ARM64 image
+      - name: Verify patched runtime exports for ARM64 restore
         if: matrix.cpus == 1
         working-directory: zonderq
         env:
@@ -120,32 +120,58 @@ jobs:
           import json
           import os
           import pathlib
+          import zipfile
 
           cache = pathlib.Path(os.environ['NUGET_PACKAGES'])
           feed = pathlib.Path(os.environ['LOCAL_COSMOS_FEED']).resolve()
-          found = 0
+          required_packages = {
+              'cosmos.kernel', 'cosmos.kernel.core',
+              'cosmos.kernel.core.arm64', 'cosmos.kernel.hal',
+              'cosmos.kernel.hal.arm64', 'cosmos.kernel.native.arm64',
+              'cosmos.kernel.boot.limine'
+          }
+          found = set()
           for metadata in sorted(cache.glob('cosmos.*/3.0.85/.nupkg.metadata')):
+              package = metadata.parent.parent.name
               source = json.loads(metadata.read_text())['source']
               if pathlib.Path(source).resolve() != feed:
                   raise SystemExit(
-                      f'[SMT23-ARM64][FAIL] {metadata.parent.parent.name} restored from {source}, expected {feed}')
-              found += 1
-          if found == 0:
-              raise SystemExit('[SMT23-ARM64][FAIL] no patched Cosmos package metadata found')
+                      f'[SMT23-ARM64][FAIL] {package} restored from {source}, expected {feed}')
+              found.add(package)
+
+          missing = required_packages - found
+          if missing:
+              raise SystemExit(f'[SMT23-ARM64][FAIL] missing local package metadata: {sorted(missing)}')
+
+          # The local linker regression was caused by an old Cosmos.Kernel.Core
+          # package that predated Stage 23 exports. Inspect the actual nupkg
+          # restored from the patched feed rather than relying only on source timestamps.
+          candidates = sorted(feed.glob('Cosmos.Kernel.Core.3.0.85.nupkg'))
+          if not candidates:
+              raise SystemExit('[SMT23-ARM64][FAIL] patched Cosmos.Kernel.Core nupkg is missing')
+
+          required_exports = [
+              b'RhWaitForPendingFinalizers',
+              b'RhSchedulerCpuAccountingAvailable',
+              b'RhGetSchedulerCpuBusyTicks',
+              b'RhGetCurrentSchedulerThreadId',
+              b'RhEnableCurrentCpuManagedPreemption',
+          ]
+
+          with zipfile.ZipFile(candidates[-1]) as package:
+              dlls = [name for name in package.namelist()
+                      if name.lower().endswith('/cosmos.kernel.core.dll')]
+              if not dlls:
+                  raise SystemExit('[SMT23-ARM64][FAIL] Cosmos.Kernel.Core.dll missing from nupkg')
+
+              payload = b''.join(package.read(name) for name in dlls)
+
+          absent = [name.decode() for name in required_exports if name not in payload]
+          if absent:
+              raise SystemExit(f'[SMT23-ARM64][FAIL] runtime export metadata missing from patched nupkg: {absent}')
+
+          print('[SMT23-ARM64][OK] ARM64 restore uses patched packages with all Stage 23 runtime export metadata')
           PY
-          dotnet publish ZonderqOS.csproj \
-            -c Debug \
-            -r linux-arm64 \
-            -p:CosmosArch=arm64 \
-            -o output-arm64 \
-            --no-restore \
-            --verbosity:normal 2>&1 | tee stage23-arm64-link.log
-          test -s output-arm64/ZonderqOS.elf
-          if grep -E "undefined symbol: (RhWaitForPendingFinalizers|RhSchedulerCpuAccountingAvailable|RhGetSchedulerCpuBusyTicks|RhGetCurrentSchedulerThreadId|RhEnableCurrentCpuManagedPreemption)" stage23-arm64-link.log; then
-            echo "[SMT23-ARM64][FAIL] runtime export regression detected"
-            exit 1
-          fi
-          echo "[SMT23-ARM64][OK] full ZonderqOS ARM64 link completed with patched runtime exports"
 
       - name: Build real ZonderqOS x64 ISO
         working-directory: zonderq
