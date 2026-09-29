@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
-using Cosmos.Kernel.Core.Memory;
 using Cosmos.Kernel.System.Diagnostics;
 
 namespace ZonderqOS.SystemCore
@@ -46,11 +45,14 @@ namespace ZonderqOS.SystemCore
         private readonly List<string> lines = new List<string>();
         private PreviousThread[] previousThreads = Array.Empty<PreviousThread>();
         private long[] previousCpu = Array.Empty<long>();
+        private int[] cpuUsage = Array.Empty<int>();
         private long previousTimestamp;
         internal bool SortByCpu = true;
         internal int Scroll;
         internal int CpuCount { get; private set; }
+        internal int TotalCpuPercent { get; private set; }
         internal ulong ActiveCpuMask { get; private set; }
+        internal IReadOnlyList<int> CpuUsagePercent => cpuUsage;
         internal IReadOnlyList<string> Lines => lines;
 
         internal void Refresh()
@@ -62,6 +64,7 @@ namespace ZonderqOS.SystemCore
             if (previousCpu.Length != count)
             {
                 previousCpu = new long[count];
+                cpuUsage = new int[count];
                 warm = false;
             }
             CpuCount = count;
@@ -70,6 +73,7 @@ namespace ZonderqOS.SystemCore
             lines.Add("Q/Esc: exit  C: sort CPU  P: sort PID  Up/Down: scroll");
             lines.Add("CPU usage: scheduled work per logical CPU (1 second samples)");
             ActiveCpuMask = 0;
+            ulong totalBusyDelta = 0;
             bool hasAccounting = SchedulerTelemetry.HasCpuAccounting;
             for (int cpu = 0; cpu < count; cpu++)
             {
@@ -79,14 +83,24 @@ namespace ZonderqOS.SystemCore
                 {
                     ActiveCpuMask |= 1UL << cpu;
                 }
+                if (warm && hasAccounting)
+                {
+                    totalBusyDelta += delta;
+                }
                 int usage = warm && hasAccounting ? Percent(delta, (ulong)elapsed) : 0;
+                cpuUsage[cpu] = usage;
                 string value = !hasAccounting ? "N/A" : !warm ? "..." : usage + "%";
                 lines.Add("CPU " + cpu.ToString().PadLeft(3) + " [" + new string('|', usage / 5).PadRight(20) + "] " + value);
                 previousCpu[cpu] = busy;
             }
-            ulong total = PageAllocator.TotalPageCount;
-            ulong free = Math.Min(total, PageAllocator.FreePageCount);
-            ulong pageSize = PageAllocator.PageSize;
+            ulong totalCapacity = warm && count > 0 ? (ulong)elapsed * (ulong)count : 0;
+            TotalCpuPercent = warm && hasAccounting ? Percent(totalBusyDelta, totalCapacity) : 0;
+            lines.Add("CPU total: " + (!hasAccounting ? "N/A" : !warm ? "..." : TotalCpuPercent + "%"));
+
+            // These are Cosmos' real physical page-allocator figures, not GC heap estimates.
+            ulong total = MemoryInfo.TotalPages;
+            ulong free = Math.Min(total, MemoryInfo.FreePages);
+            ulong pageSize = MemoryInfo.PageSizeBytes;
             lines.Add("Mem: " + ((total - free) * pageSize / 1048576UL) + " / " + (total * pageSize / 1048576UL) + " MiB");
             ProcessManager.FillActiveProcesses(processes);
             lines.Add("Processes: " + processes.Count + "  Threads: " + SchedulerInfo.ThreadCount);
