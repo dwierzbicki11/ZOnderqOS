@@ -87,6 +87,8 @@ namespace ZonderqOS
                     {
                         GuiManager manager = new GuiManager();
                         manager.Run();
+                        if (manager.Failed)
+                            EnterConsoleRecovery("desktop manager crashed");
                         return;
                     }
                     catch (Exception ex)
