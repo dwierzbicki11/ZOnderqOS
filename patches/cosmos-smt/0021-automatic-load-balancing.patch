@@ -87,11 +87,68 @@ index 27b7ad7..600bc36 100644
      internal bool TryRequestMigration(uint threadId, uint targetCpuId)
      {
          if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.QueueGate.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.QueueGate.cs
+new file mode 100644
+index 0000000..e8ed2b0
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.QueueGate.cs
+@@ -0,0 +1,51 @@
++using System;
++using System.Runtime.InteropServices;
++using SysThread = System.Threading.Thread;
++
++namespace Cosmos.Kernel.Core.Scheduler;
++
++public static partial class SchedulerManager
++{
++#if ARCH_X64
++    [LibraryImport("*", EntryPoint = "_native_x64_try_enter_scheduler_queue")]
++    [SuppressGCTransition]
++    private static partial int NativeTryEnterSchedulerQueue(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_exit_scheduler_queue")]
++    [SuppressGCTransition]
++    private static partial void NativeExitSchedulerQueue(uint cpuId);
++#endif
++
++    // Callers mask their own interrupts before taking a queue gate. Timer
++    // callbacks never spin: a reserved incoming handoff is retried next tick.
++    private static SchedulerQueueScope EnterSchedulerQueue(uint cpuId)
++    {
++#if ARCH_X64
++        while (NativeTryEnterSchedulerQueue(cpuId) != 1)
++        {
++            SysThread.SpinWait(1);
++        }
++#endif
++        return new SchedulerQueueScope(cpuId);
++    }
++
++    private static bool TryEnterSchedulerQueue(uint cpuId, out SchedulerQueueScope scope)
++    {
++        scope = new SchedulerQueueScope(cpuId);
++#if ARCH_X64
++        return NativeTryEnterSchedulerQueue(cpuId) == 1;
++#else
++        return true;
++#endif
++    }
++
++    private readonly struct SchedulerQueueScope(uint cpuId) : IDisposable
++    {
++        public void Dispose()
++        {
++#if ARCH_X64
++            NativeExitSchedulerQueue(cpuId);
++#endif
++        }
++    }
++}
 diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-index 4ac22c7..ff1d022 100644
+index 4ac22c7..93bef58 100644
 --- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
 +++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
-@@ -44,6 +44,18 @@ public static partial class SchedulerManager
+@@ -44,6 +44,19 @@ public static partial class SchedulerManager
      private static int s_stage20ReleaseWorker;
      private static int s_stage20Failure;
      private static uint s_stage20WorkerThreadId;
@@ -104,13 +161,14 @@ index 4ac22c7..ff1d022 100644
 +    private static int s_stage21CompletedWorkers;
 +    private static int s_stage21Preemptions;
 +    private static int s_stage21Resumes;
++    private static int[]? s_stage21ObservedCpu;
 +    private static int s_stage21Migrations;
 +    private static int s_stage21SourceMask;
 +    private static int s_stage21TargetMask;
  
      /// <summary>
      /// The interval the boot path asks the platform to arm the scheduler
-@@ -96,6 +108,10 @@ public static partial class SchedulerManager
+@@ -96,6 +109,10 @@ public static partial class SchedulerManager
      private const uint Stage19RequiredPreemptionsPerWorker = 2;
      private const ulong Stage20TimeoutSeconds = 30;
      private const uint Stage20RequiredPreemptionsPerCpu = 2;
@@ -121,7 +179,7 @@ index 4ac22c7..ff1d022 100644
  
      /// <summary>Private AP reschedule IPI routed through the common IRQ path.</summary>
      private const byte Stage16DispatchVector = 0xF4;
-@@ -183,6 +199,10 @@ public static partial class SchedulerManager
+@@ -183,6 +200,10 @@ public static partial class SchedulerManager
      [SuppressGCTransition]
      private static partial int NativeArmSchedulerTimer();
  
@@ -132,7 +190,7 @@ index 4ac22c7..ff1d022 100644
      [LibraryImport("*", EntryPoint = "_native_x64_disarm_scheduler_timer")]
      [SuppressGCTransition]
      private static partial int NativeDisarmSchedulerTimer();
-@@ -1958,6 +1978,283 @@ public static partial class SchedulerManager
+@@ -1958,12 +1979,305 @@ public static partial class SchedulerManager
      private static ulong ComputeStage20Checksum(uint threadId, uint hopCount, uint cpuId) =>
          0x534D_5031_4000_0000UL ^ ((ulong)cpuId << 32) ^ ((ulong)hopCount << 24) ^ threadId;
  
@@ -168,6 +226,7 @@ index 4ac22c7..ff1d022 100644
 +        int workerCount = checked((int)(Stage21WorkersPerSource * (s_cpuCount >= 8 ? 2U : 1U)));
 +        SchedulerThread?[] workers = new SchedulerThread?[workerCount];
 +        s_stage21Workers = workers;
++        s_stage21ObservedCpu = new int[workerCount];
 +        Volatile.Write(ref s_stage21ReleaseWorkers, 0);
 +        Volatile.Write(ref s_stage21Failure, 0);
 +        Volatile.Write(ref s_automaticMigrationsInFlight, 0);
@@ -199,6 +258,7 @@ index 4ac22c7..ff1d022 100644
 +        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
 +        {
 +            PerCpuState state = s_cpuStates[cpuId];
++            using SchedulerQueueScope queueScope = EnterSchedulerQueue(cpuId);
 +            state.PublishRunnableCount(
 +                s_currentScheduler.GetRunQueueCount(state),
 +                !ReferenceEquals(state.CurrentThread, state.IdleThread) &&
@@ -346,6 +406,7 @@ index 4ac22c7..ff1d022 100644
 +            }
 +            lastCpuId = cpuId;
 +            Interlocked.Increment(ref s_stage21Resumes);
++            Volatile.Write(ref s_stage21ObservedCpu![checked((int)token)], checked((int)cpuId + 1));
 +#if ARCH_X64
 +            if (NativeArmSchedulerTimer() != 1)
 +            {
@@ -371,6 +432,7 @@ index 4ac22c7..ff1d022 100644
 +                {
 +                    lastCpuId = cpuId;
 +                    Interlocked.Increment(ref s_stage21Resumes);
++                    Volatile.Write(ref s_stage21ObservedCpu![checked((int)token)], checked((int)cpuId + 1));
 +#if ARCH_X64
 +                    if (NativeArmSchedulerTimer() != 1)
 +                    {
@@ -416,7 +478,25 @@ index 4ac22c7..ff1d022 100644
      private static void Stage16DispatchInterrupt(ref IRQContext context)
      {
          _ = context;
-@@ -1986,6 +2283,10 @@ public static partial class SchedulerManager
+     }
+ 
+     private static unsafe void Stage16TimerInterrupt(ref IRQContext context)
++    {
++        if (!TryEnterSchedulerQueue(GetCurrentCpuId(), out SchedulerQueueScope queueScope))
++        {
++            return;
++        }
++        using (queueScope)
++        {
++            Stage16TimerInterruptCore(ref context);
++        }
++    }
++
++    private static unsafe void Stage16TimerInterruptCore(ref IRQContext context)
+     {
+         uint cpuId = GetCurrentCpuId();
+         PerCpuState? state = CurrentCpuState;
+@@ -1986,6 +2300,10 @@ public static partial class SchedulerManager
          {
              _ = state.TryRecordStage20Preemption(thread.Id);
          }
@@ -427,7 +507,7 @@ index 4ac22c7..ff1d022 100644
  
          nuint currentRsp = (nuint)Unsafe.AsPointer(ref context) - Stage16XmmSaveAreaSizeBytes;
  #if ARCH_X64
-@@ -2009,15 +2310,37 @@ public static partial class SchedulerManager
+@@ -2009,35 +2327,93 @@ public static partial class SchedulerManager
          SchedulerThread? outgoing = source.CurrentThread;
          if (outgoing is null || outgoing.State != SchedulerThreadState.Running ||
              ReferenceEquals(outgoing, source.IdleThread) ||
@@ -461,22 +541,24 @@ index 4ac22c7..ff1d022 100644
 -            Volatile.Write(ref s_stage20Failure, 11);
 +            if (automaticMigrationInFlight && targetCpuId < s_cpuCount)
 +            {
-+                s_cpuStates[targetCpuId].ReleaseIncomingRunnableReservation();
++                NativeExitSchedulerQueue(targetCpuId);
 +            }
 +            CompleteAutomaticMigration(automaticMigrationInFlight);
 +            RecordMigrationFailure(explicitlyRequested, 11);
              return false;
          }
  
-@@ -2025,19 +2348,55 @@ public static partial class SchedulerManager
+         PerCpuState destination = s_cpuStates[targetCpuId];
++        if (explicitlyRequested && NativeTryEnterSchedulerQueue(targetCpuId) != 1)
++        {
++            _ = source.TryRequestMigration(outgoing.Id, targetCpuId);
++            return false;
++        }
          SchedulerThread? replacement = s_currentScheduler.PickNext(source) ?? source.IdleThread;
          if (replacement is null || NativeDisarmSchedulerTimer() != 1)
          {
 -            Volatile.Write(ref s_stage20Failure, 12);
-+            if (!explicitlyRequested)
-+            {
-+                destination.ReleaseIncomingRunnableReservation();
-+            }
++            NativeExitSchedulerQueue(targetCpuId);
 +            CompleteAutomaticMigration(automaticMigrationInFlight);
 +            RecordMigrationFailure(explicitlyRequested, 12);
 +            return false;
@@ -489,10 +571,7 @@ index 4ac22c7..ff1d022 100644
 +        // before the managed scheduler observes the queued thread.
 +        if (NativeArmSchedulerTimer() != 1)
 +        {
-+            if (!explicitlyRequested)
-+            {
-+                destination.ReleaseIncomingRunnableReservation();
-+            }
++            NativeExitSchedulerQueue(targetCpuId);
 +            CompleteAutomaticMigration(automaticMigrationInFlight);
 +            RecordMigrationFailure(explicitlyRequested, 15);
              return false;
@@ -507,6 +586,7 @@ index 4ac22c7..ff1d022 100644
 +            (!source.TryRecordStage20MigrationOut(outgoing.Id) ||
 +             !destination.TryRecordStage20MigrationIn(outgoing.Id)))
          {
++            NativeExitSchedulerQueue(targetCpuId);
              Volatile.Write(ref s_stage20Failure, 13);
              return false;
          }
@@ -527,11 +607,12 @@ index 4ac22c7..ff1d022 100644
  
          source.CurrentThread = replacement;
          bool isNewThread = replacement.State == SchedulerThreadState.Created;
-@@ -2046,16 +2405,141 @@ public static partial class SchedulerManager
+@@ -2046,16 +2422,170 @@ public static partial class SchedulerManager
  
          if (NativeStageSchedulerHandoff(targetCpuId) != 1)
          {
 -            Volatile.Write(ref s_stage20Failure, 14);
++            NativeExitSchedulerQueue(targetCpuId);
 +            CompleteAutomaticMigration(automaticMigrationInFlight);
 +            RecordMigrationFailure(explicitlyRequested, 14);
              return false;
@@ -540,8 +621,8 @@ index 4ac22c7..ff1d022 100644
          ContextSwitchNative.SetContextSwitchNewThread(isNewThread ? 1 : 0);
          ContextSwitchNative.SetContextSwitchSp(replacement.StackPointer);
 +        CompleteAutomaticMigration(automaticMigrationInFlight);
-         return true;
-     }
++        return true;
++    }
 +
 +    private static bool TrySelectAutomaticMigrationTarget(PerCpuState source, out uint targetCpuId)
 +    {
@@ -552,6 +633,19 @@ index 4ac22c7..ff1d022 100644
 +            return false;
 +        }
 +
++        SchedulerThread?[]? workers = s_stage21Workers;
++        int[]? observed = s_stage21ObservedCpu;
++        if (workers is not null && observed is not null)
++        {
++            for (int index = 0; index < workers.Length; index++)
++            {
++                if (ReferenceEquals(workers[index], source.CurrentThread) &&
++                    Volatile.Read(ref observed[index]) != checked((int)source.CpuId + 1))
++                {
++                    return false;
++                }
++            }
++        }
 +        ulong now = GetTimestamp();
 +        if (!source.CanAutomaticallyBalance(now))
 +        {
@@ -596,9 +690,24 @@ index 4ac22c7..ff1d022 100644
 +            }
 +        }
 +
-+        return targetCpuId != uint.MaxValue &&
-+            s_cpuStates[targetCpuId].TryReserveIncomingRunnable(bestLoad);
-+    }
++        if (targetCpuId == uint.MaxValue || NativeTryEnterSchedulerQueue(targetCpuId) != 1)
++        {
++            return false;
++        }
++        PerCpuState target = s_cpuStates[targetCpuId];
++        if (!ReferenceEquals(target.CurrentThread, target.IdleThread) ||
++            s_currentScheduler.GetRunQueueCount(target) != 0 ||
++            NativeGetApplicationProcessorCommand(targetCpuId) != 0 ||
++            NativeGetApplicationProcessorCompletion(targetCpuId) != 1)
++        {
++            NativeExitSchedulerQueue(targetCpuId);
++            return false;
++        }
++        target.PublishRunnableCount(1, false);
++        // Held through the native source-stack switch, then released by the
++        // IRQ epilogue immediately before the destination's F4 wake.
+         return true;
+     }
 +
 +    private static void RecordMigrationFailure(bool explicitlyRequested, int code)
 +    {
@@ -670,7 +779,99 @@ index 4ac22c7..ff1d022 100644
      // ========== Thread Entry Dispatch ==========
      [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "StartThread")]
      private static extern void StartThread(SysThread aThis, IntPtr parameter);
-@@ -2776,6 +3260,14 @@ public static partial class SchedulerManager
+@@ -2373,6 +2903,7 @@ public static partial class SchedulerManager
+         Serial.WriteString("[SCHED] CreateThread: entering\n");
+         RegisterThread(thread);
+         using (CPU.InternalCpu.DisableInterruptsScope())
++        using (EnterSchedulerQueue(cpuId))
+         {
+             var state = s_cpuStates[cpuId];
+             s_currentScheduler.OnThreadCreate(state, thread);
+@@ -2387,6 +2918,7 @@ public static partial class SchedulerManager
+         ThrowIfSchedulerNotSet();
+ 
+         using (CPU.InternalCpu.DisableInterruptsScope())
++        using (EnterSchedulerQueue(cpuId))
+         {
+             var state = s_cpuStates[cpuId];
+ 
+@@ -2419,6 +2951,7 @@ public static partial class SchedulerManager
+         ThrowIfSchedulerNotSet();
+ 
+         using (CPU.InternalCpu.DisableInterruptsScope())
++        using (EnterSchedulerQueue(cpuId))
+         {
+             PerCpuState state = s_cpuStates[cpuId];
+ 
+@@ -2488,6 +3021,7 @@ public static partial class SchedulerManager
+         Serial.WriteString("\n");
+ 
+         using (CPU.InternalCpu.DisableInterruptsScope())
++        using (EnterSchedulerQueue(cpuId))
+         {
+             PerCpuState state = s_cpuStates[cpuId];
+ 
+@@ -2515,6 +3049,7 @@ public static partial class SchedulerManager
+         ThrowIfSchedulerNotSet();
+ 
+         using (CPU.InternalCpu.DisableInterruptsScope())
++        using (EnterSchedulerQueue(cpuId))
+         {
+             PerCpuState state = s_cpuStates[cpuId];
+ 
+@@ -2555,6 +3090,7 @@ public static partial class SchedulerManager
+         ThrowIfSchedulerNotSet();
+ 
+         using (InternalCpu.DisableInterruptsScope())
++        using (EnterSchedulerQueue(cpuId))
+         {
+             PerCpuState cpuState = s_cpuStates[cpuId];
+ 
+@@ -2730,6 +3266,18 @@ public static partial class SchedulerManager
+     /// <param name="currentRsp">Current RSP from IRQ context (pointer to saved context).</param>
+     /// <param name="elapsedNs">Nanoseconds since last tick.</param>
+     internal static void OnTimerInterrupt(uint cpuId, nuint currentRsp, ulong elapsedNs)
++    {
++        if (!TryEnterSchedulerQueue(cpuId, out SchedulerQueueScope queueScope))
++        {
++            return;
++        }
++        using (queueScope)
++        {
++            OnTimerInterruptCore(cpuId, currentRsp, elapsedNs);
++        }
++    }
++
++    private static void OnTimerInterruptCore(uint cpuId, nuint currentRsp, ulong elapsedNs)
+     {
+         s_tickCount++;
+ 
+@@ -2743,23 +3291,13 @@ public static partial class SchedulerManager
+         // Refresh the debug-live snapshot every 10 ticks (~100ms at 100Hz)
+         // so the host-side QMP poller sees fresh thread state without
+         // pausing the kernel.
+-        if ((s_tickCount % SnapshotRefreshTickInterval) == 0)
++        if (cpuId == 0 && (s_tickCount % SnapshotRefreshTickInterval) == 0)
+         {
+             Cosmos.Kernel.Core.Runtime.DebugLiveSnapshot.Update();
+             Cosmos.Kernel.Core.Runtime.DebugLiveGCSnapshot.Update();
+             Cosmos.Kernel.Core.Runtime.DebugLiveMemorySnapshot.Update();
+         }
+ 
+-        // Log first 10 ticks and then every 50 ticks
+-        if (s_tickCount <= InitialTickLogCount || s_tickCount % TickLogInterval == 0)
+-        {
+-            Serial.WriteString("[SCHED] Tick ");
+-            Serial.WriteNumber(s_tickCount);
+-            Serial.WriteString(" enabled=");
+-            Serial.WriteString(s_enabled ? "1" : "0");
+-            Serial.WriteString("\n");
+-        }
+-
+         if (!s_enabled || s_currentScheduler is null || s_cpuStates is null)
+         {
+             return;
+@@ -2776,6 +3314,14 @@ public static partial class SchedulerManager
              return;
          }
  
@@ -685,11 +886,61 @@ index 4ac22c7..ff1d022 100644
          // Check and wake up sleeping threads whose timeout has expired
          CheckSleepingThreads(cpuId, elapsedNs);
  
+@@ -2842,6 +3388,18 @@ public static partial class SchedulerManager
+     /// <param name="cpuId">Current CPU ID.</param>
+     /// <param name="currentRsp">Current RSP (pointer to saved context on stack).</param>
+     internal static void ReschedulePendingFromIrq(uint cpuId, nuint currentRsp)
++    {
++        if (!TryEnterSchedulerQueue(cpuId, out SchedulerQueueScope queueScope))
++        {
++            return;
++        }
++        using (queueScope)
++        {
++            ReschedulePendingFromIrqCore(cpuId, currentRsp);
++        }
++    }
++
++    private static void ReschedulePendingFromIrqCore(uint cpuId, nuint currentRsp)
+     {
+         if (!s_enabled || s_currentScheduler is null || s_cpuStates is null || cpuId >= s_cpuCount)
+         {
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs b/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs
+index 2780151..5f42b3b 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/Stride/StrideScheduler.cs
+@@ -298,16 +298,6 @@ internal class StrideScheduler : IScheduler
+ 
+         UpdateGlobalPass(cpuData);
+ 
+-        // Log every 100 ticks
+-        if (s_onTickLogCount % 100 == 0)
+-        {
+-            Cosmos.Kernel.Core.IO.Serial.WriteString("[STRIDE] OnTick: current=");
+-            Cosmos.Kernel.Core.IO.Serial.WriteNumber(current.Id);
+-            Cosmos.Kernel.Core.IO.Serial.WriteString(" runQ=");
+-            Cosmos.Kernel.Core.IO.Serial.WriteNumber((uint)cpuData.RunQueue.Count);
+-            Cosmos.Kernel.Core.IO.Serial.WriteString("\n");
+-        }
+-
+         // Check for preemption
+         if (cpuData.RunQueue.Count > 0)
+         {
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-index 485c42d..61bace5 100644
+index 485c42d..fd676dc 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-@@ -736,12 +736,17 @@ _native_x64_ap_entry:
+@@ -307,6 +307,9 @@ _native_x64_init_percpu:
+     mov qword ptr [r8 + 16], 0
+     mov qword ptr [r8 + 24], 0
+     mov qword ptr [r8 + 32], 0
++    mov qword ptr [r8 + 40], 0
++    mov qword ptr [r8 + 48], 0
++    mov qword ptr [r8 + 56], 0
+ 
+     // IA32_GS_BASE = 0xC0000101, value in EDX:EAX.
+     mov rax, r8
+@@ -736,12 +739,17 @@ _native_x64_ap_entry:
      hlt
      cli
  
@@ -709,7 +960,7 @@ index 485c42d..61bace5 100644
      mov eax, 1
      xchg dword ptr [r14 + 48], eax
      jmp .Lap_park
-@@ -774,6 +779,14 @@ _native_x64_arm_scheduler_timer:
+@@ -774,6 +782,14 @@ _native_x64_arm_scheduler_timer:
      xor eax, eax
      ret
  
@@ -724,7 +975,53 @@ index 485c42d..61bace5 100644
  // int _native_x64_disarm_scheduler_timer()
  // Masks the current CPU's private scheduler timer before a live thread is
  // handed to another CPU. Without this, the old owner would keep receiving
-@@ -3383,6 +3396,7 @@ _native_x64_lapic_base: .quad 0
+@@ -792,6 +808,45 @@ _native_x64_disarm_scheduler_timer:
+     xor eax, eax
+     ret
+ 
++// Queue gate: owner CpuId+1 at +48, recursion depth at +56.
++// The caller has local interrupts masked. A remote migration keeps this
++// gate until its IRQ epilogue has switched off the outgoing stack.
++.global _native_x64_try_enter_scheduler_queue
++_native_x64_try_enter_scheduler_queue:
++    lea rcx, [rip + _percpu_slots]
++    mov eax, edi
++    shl rax, 6
++    add rcx, rax
++    mov edx, dword ptr gs:[0]
++    inc edx
++    cmp dword ptr [rcx + 48], edx
++    je .Lqueue_gate_nested
++    xor eax, eax
++    lock cmpxchg dword ptr [rcx + 48], edx
++    jne .Lqueue_gate_busy
++    mov dword ptr [rcx + 56], 1
++    mov eax, 1
++    ret
++.Lqueue_gate_nested:
++    inc dword ptr [rcx + 56]
++    mov eax, 1
++    ret
++.Lqueue_gate_busy:
++    xor eax, eax
++    ret
++
++.global _native_x64_exit_scheduler_queue
++_native_x64_exit_scheduler_queue:
++    lea rcx, [rip + _percpu_slots]
++    mov eax, edi
++    shl rax, 6
++    add rcx, rax
++    dec dword ptr [rcx + 56]
++    jnz .Lqueue_gate_exit_done
++    mov dword ptr [rcx + 48], 0
++.Lqueue_gate_exit_done:
++    ret
++
+ // int _native_x64_stage_scheduler_handoff(uint32_t cpuId)
+ // Records a destination for the common IRQ epilogue. The epilogue sends the
+ // scheduler IPI only after it has left the outgoing thread's stack, preventing
+@@ -3383,6 +3438,7 @@ _native_x64_lapic_base: .quad 0
  .balign 64
  _ap_timer_ticks: .zero 2048
  _ap_timer_initial_count: .long 0
@@ -732,6 +1029,23 @@ index 485c42d..61bace5 100644
  
  .balign 64
  // Stage-12 managed AP result mailboxes. State is 0=idle, 1=managed return
+@@ -3847,8 +3903,15 @@ irq\n\()_stub:
+     jz .Lno_handoff_kick\n
+     mov qword ptr gs:[40], 0
+     dec r8
+-    lea r9, [rip + _ap_boot_state]
+     shl r8, 6
++    lea r9, [rip + _percpu_slots]
++    add r9, r8
++    // Publish the finished context before allowing any destination timer
++    // or scheduler IPI to dequeue the migrated worker.
++    mov dword ptr [r9 + 56], 0
++    mfence
++    mov dword ptr [r9 + 48], 0
++    lea r9, [rip + _ap_boot_state]
+     add r9, r8
+     mov r8d, dword ptr [r9 + 8]
+     shl r8d, 24
 diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
 index 0483577..21dcd5f 100644
 --- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
