@@ -197,6 +197,13 @@ namespace ZonderqOS.SystemCore
             else
                 sb.Append(process.KernelThreadId);
             sb.Append('\n');
+            sb.Append("LastSignal:\t");
+            if (process.LastSignal == 0)
+                sb.Append("none");
+            else
+                sb.Append(process.LastSignal).Append(" (")
+                  .Append(ProcessSignalNames.Name((ProcessSignal)process.LastSignal)).Append(')');
+            sb.Append('\n');
             return sb.ToString();
         }
 
