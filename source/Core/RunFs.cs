@@ -32,6 +32,27 @@ namespace ZonderqOS.SystemCore
             return normalized == "/run" || normalized.StartsWith("/run/", StringComparison.Ordinal);
         }
 
+        public static bool FileExists(string path)
+        {
+            string normalized = Normalize(path);
+            lock (Sync)
+            {
+                EnsureInitialized();
+                Entry entry = Find(normalized);
+                return entry != null && !entry.Directory;
+            }
+        }
+
+        public static bool DirectoryExists(string path)
+        {
+            string normalized = Normalize(path);
+            lock (Sync)
+            {
+                EnsureInitialized();
+                return IsDirectory(normalized);
+            }
+        }
+
         public static bool TryRead(string path, out string content)
         {
             string normalized = Normalize(path);
@@ -179,6 +200,86 @@ namespace ZonderqOS.SystemCore
                 }
 
                 Entries.Add(new Entry { Path = normalized, Directory = true, Content = null });
+                return true;
+            }
+        }
+
+        public static bool TryCopyFile(string sourcePath, string destinationPath, out string error)
+        {
+            string source = Normalize(sourcePath);
+            string destination = Normalize(destinationPath);
+            error = null;
+
+            lock (Sync)
+            {
+                EnsureInitialized();
+                Entry sourceEntry = Find(source);
+                if (sourceEntry == null || sourceEntry.Directory)
+                {
+                    error = "source file does not exist";
+                    return false;
+                }
+
+                if (Find(destination) != null)
+                {
+                    error = "destination already exists";
+                    return false;
+                }
+
+                if (!IsDirectory(ParentOf(destination)))
+                {
+                    error = "destination parent directory does not exist";
+                    return false;
+                }
+
+                if (Entries.Count >= MaxEntries)
+                {
+                    error = "runtime filesystem entry limit reached";
+                    return false;
+                }
+
+                string value = sourceEntry.Content ?? string.Empty;
+                if (totalChars + value.Length > MaxTotalChars)
+                {
+                    error = "runtime filesystem memory limit reached";
+                    return false;
+                }
+
+                Entries.Add(new Entry { Path = destination, Directory = false, Content = value });
+                totalChars += value.Length;
+                return true;
+            }
+        }
+
+        public static bool TryMoveFile(string sourcePath, string destinationPath, out string error)
+        {
+            string source = Normalize(sourcePath);
+            string destination = Normalize(destinationPath);
+            error = null;
+
+            lock (Sync)
+            {
+                EnsureInitialized();
+                Entry sourceEntry = Find(source);
+                if (sourceEntry == null || sourceEntry.Directory)
+                {
+                    error = "source file does not exist";
+                    return false;
+                }
+
+                if (Find(destination) != null)
+                {
+                    error = "destination already exists";
+                    return false;
+                }
+
+                if (!IsDirectory(ParentOf(destination)))
+                {
+                    error = "destination parent directory does not exist";
+                    return false;
+                }
+
+                sourceEntry.Path = destination;
                 return true;
             }
         }
