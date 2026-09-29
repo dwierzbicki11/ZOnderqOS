@@ -137,7 +137,20 @@ jobs:
               raise SystemExit(
                   f'[SMT23-CI][FAIL] missing local package metadata: {sorted(required - found)}')
           PY
-          cosmos build -a x64 -v 2>&1 | tee stage23-build.log
+          # Cosmos.Tools v3.0.85 invokes dotnet publish with a global
+          # DefineConstants=ARCH_X64 property, which intentionally overrides
+          # project-local DefineConstants additions. Invoke the same publish
+          # pipeline directly here so the runtime-only htop smoke symbol is
+          # guaranteed to be present in the ISO under test.
+          dotnet publish ZonderqOS.csproj \
+            -c Debug \
+            -r linux-x64 \
+            -p:CosmosArch=x64 \
+            "-p:DefineConstants=ARCH_X64;ZONDERQ_NETWORK_DISABLED;ZONDERQ_HTOP_SMOKE_TEST" \
+            -o output-x64 \
+            --no-restore \
+            --verbosity:normal 2>&1 | tee stage23-build.log
+          grep -F "ZONDERQ_HTOP_SMOKE_TEST" stage23-build.log >/dev/null
           test -s output-x64/ZonderqOS.iso
           sha256sum output-x64/ZonderqOS.iso | tee stage23-iso.sha256
 
