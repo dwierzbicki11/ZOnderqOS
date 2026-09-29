@@ -7,9 +7,9 @@ concurrency:
 on:
   push:
     branches: [ main, 'smp/stage23-production-all-cpus' ]
-    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage21-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage21-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'run-core.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
   pull_request:
-    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage21-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage21-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'run-core.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
   workflow_dispatch:
 
 permissions:
@@ -105,6 +105,47 @@ jobs:
           </configuration>
           EOF
           mkdir -p "${{ runner.temp }}/zonderq-stage23-packages"
+
+      - name: Build and link real ZonderqOS ARM64 image
+        if: matrix.cpus == 1
+        working-directory: zonderq
+        env:
+          NUGET_PACKAGES: ${{ runner.temp }}/zonderq-stage23-arm64-packages
+          LOCAL_COSMOS_FEED: ${{ github.workspace }}/cosmos/artifacts/package/release
+        run: |
+          set -o pipefail
+          mkdir -p "$NUGET_PACKAGES"
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --configfile NuGet.Config --force --no-cache 2>&1 | tee stage23-arm64-restore.log
+          python3 - <<'PY' | tee stage23-arm64-package-sources.log
+          import json
+          import os
+          import pathlib
+
+          cache = pathlib.Path(os.environ['NUGET_PACKAGES'])
+          feed = pathlib.Path(os.environ['LOCAL_COSMOS_FEED']).resolve()
+          found = 0
+          for metadata in sorted(cache.glob('cosmos.*/3.0.85/.nupkg.metadata')):
+              source = json.loads(metadata.read_text())['source']
+              if pathlib.Path(source).resolve() != feed:
+                  raise SystemExit(
+                      f'[SMT23-ARM64][FAIL] {metadata.parent.parent.name} restored from {source}, expected {feed}')
+              found += 1
+          if found == 0:
+              raise SystemExit('[SMT23-ARM64][FAIL] no patched Cosmos package metadata found')
+          PY
+          dotnet publish ZonderqOS.csproj \
+            -c Debug \
+            -r linux-arm64 \
+            -p:CosmosArch=arm64 \
+            -o output-arm64 \
+            --no-restore \
+            --verbosity:normal 2>&1 | tee stage23-arm64-link.log
+          test -s output-arm64/ZonderqOS.elf
+          if grep -E "undefined symbol: (RhWaitForPendingFinalizers|RhSchedulerCpuAccountingAvailable|RhGetSchedulerCpuBusyTicks|RhGetCurrentSchedulerThreadId|RhEnableCurrentCpuManagedPreemption)" stage23-arm64-link.log; then
+            echo "[SMT23-ARM64][FAIL] runtime export regression detected"
+            exit 1
+          fi
+          echo "[SMT23-ARM64][OK] full ZonderqOS ARM64 link completed with patched runtime exports"
 
       - name: Build real ZonderqOS x64 ISO
         working-directory: zonderq
