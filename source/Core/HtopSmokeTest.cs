@@ -20,6 +20,9 @@ namespace ZonderqOS.SystemCore
         {
             try
             {
+                using (SchedulerManager.MaskInterrupts())
+                    WriteSerial("[HTOP-TEST] BEGIN\n");
+
                 int cpuCount = checked((int)SchedulerInfo.CpuCount);
                 Require(cpuCount > 0, "scheduler reported no CPUs");
                 Require(SchedulerTelemetry.HasCpuAccounting, "CPU accounting unavailable");
@@ -33,7 +36,27 @@ namespace ZonderqOS.SystemCore
                     ProcessManager.Start("htop-smoke-" + index, () =>
                     {
                         Interlocked.Increment(ref started);
-                        while (Volatile.Read(ref release) == 0) Thread.SpinWait(64);
+
+                        // Keep the thread genuinely CPU-active, but periodically block.
+                        // A permanently spinning worker that lands on CPU0 can keep the
+                        // BSP/user-kernel context from regaining control long enough to
+                        // take the second htop sample. Sleeping also exercises the real
+                        // Running -> Sleeping -> Ready scheduler path used by processes.
+                        long burstTicks = Math.Max(1L, Stopwatch.Frequency / 200L); // ~5 ms
+                        while (Volatile.Read(ref release) == 0)
+                        {
+                            long burstEnd = Stopwatch.GetTimestamp() + burstTicks;
+                            while (Volatile.Read(ref release) == 0 &&
+                                   Stopwatch.GetTimestamp() < burstEnd)
+                            {
+                                Thread.SpinWait(64);
+                            }
+
+                            if (Volatile.Read(ref release) == 0)
+                            {
+                                Thread.Sleep(1);
+                            }
+                        }
                     });
                 }
                 while (Volatile.Read(ref started) != cpuCount)
