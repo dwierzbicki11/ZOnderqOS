@@ -29,7 +29,9 @@ namespace ZonderqOS.Commands
                 foreach (VfsManager.VfsMount mount in VfsManager.Mounts)
                     mounts.Add(mount);
 
-                CommandIO.WriteLine("Filesystem   Size       Used       Avail      Use%  Mounted on");
+                CommandIO.WriteLine(human
+                    ? "Filesystem   Size       Used       Avail      Use%  Mounted on"
+                    : "Filesystem   1K-blocks  Used       Available  Use%  Mounted on");
 
                 for (int i = 0; i < mounts.Count; i++)
                 {
@@ -47,7 +49,7 @@ namespace ZonderqOS.Commands
                     ulong available = totalBytes >= usedBytes ? totalBytes - usedBytes : 0;
                     string percent = totalBytes == 0
                         ? "N/A"
-                        : ((usedBytes * 100UL) / totalBytes).ToString() + "%";
+                        : ((int)((double)usedBytes * 100d / totalBytes)).ToString() + "%";
 
                     CommandIO.WriteLine(
                         (mount.Source ?? "?").PadRight(12) +
