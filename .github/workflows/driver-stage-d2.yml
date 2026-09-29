@@ -1,0 +1,45 @@
+name: Driver D2.1 storage foundation
+
+on:
+  push:
+    branches: [ drivers/d2-mainline-storage-foundation ]
+    paths:
+      - 'source/Hardware/PciBarDecoder.cs'
+      - 'source/Hardware/StorageControllerDrivers.cs'
+      - 'tests/HardwareModel.Tests/**'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/driver-stage-d2.yml'
+  pull_request:
+    paths:
+      - 'source/Hardware/PciBarDecoder.cs'
+      - 'source/Hardware/StorageControllerDrivers.cs'
+      - 'tests/HardwareModel.Tests/**'
+      - 'ZonderqOS.csproj'
+      - '.github/workflows/driver-stage-d2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  storage-model:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run D1 plus D2.1 deterministic hardware tests
+        run: dotnet run --project tests/HardwareModel.Tests/HardwareModel.Tests.csproj -c Release
+      - name: ARM64 portable storage-model compile regression
+        run: |
+          dotnet restore tests/HardwareModel.Tests/HardwareModel.Tests.csproj -r linux-arm64
+          dotnet build tests/HardwareModel.Tests/HardwareModel.Tests.csproj -c Release -r linux-arm64 --no-restore
+      - name: Enforce safe D2.1 boundary
+        run: |
+          test ! -e source/Hardware/DmaPageAllocator.cs
+          test ! -e source/Platform/X64/PhysicalMmioReader.cs
+          test ! -e source/Platform/X64/PhysicalMmioWriter.cs
+          grep -Fq 'classification only' source/Hardware/StorageControllerDrivers.cs
+          grep -Fq 'rejects I/O BARs' source/Hardware/PciBarDecoder.cs
