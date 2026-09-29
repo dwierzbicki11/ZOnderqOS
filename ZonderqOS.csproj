@@ -66,6 +66,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Test projects are built independently. Never let SDK wildcard compile
+         test entry points into the production kernel assembly. -->
+    <Compile Remove="tests/**/*.cs" />
     <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" />
     <Compile Remove="**/CosmosGen3DiagnosticsCompat.cs" />
   </ItemGroup>
