@@ -1,4 +1,5 @@
 using System.IO;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
@@ -17,6 +18,20 @@ namespace ZonderqOS.Commands
             }
 
             string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
+
+            if (RunFs.IsRunPath(path))
+            {
+                Disk.DeleteFile(path);
+                return;
+            }
+
+            if (VirtualFs.IsVirtualPath(path))
+            {
+                WriteMessage.WriteError($"Cannot remove virtual node: {path}", "FS");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             if (!File.Exists(path))
             {
                 WriteMessage.WriteError($"File does not exist: {path}", "FS");
