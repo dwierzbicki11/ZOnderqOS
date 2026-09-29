@@ -20,7 +20,7 @@ namespace ZonderqOS.SystemCore
         {
             try
             {
-                using (SchedulerManager.MaskInterrupts())
+                using (global::Cosmos.Kernel.Core.Scheduler.SchedulerManager.MaskInterrupts())
                     WriteSerial("[HTOP-TEST] BEGIN\n");
 
                 int cpuCount = checked((int)SchedulerInfo.CpuCount);
@@ -118,13 +118,13 @@ namespace ZonderqOS.SystemCore
                     Require(Stopwatch.GetTimestamp() < deadline, "process exit timeout");
                     Thread.Sleep(10);
                 }
-                using (SchedulerManager.MaskInterrupts())
+                using (global::Cosmos.Kernel.Core.Scheduler.SchedulerManager.MaskInterrupts())
                     WriteSerial("[HTOP-TEST] PASS cpus=" + cpuCount + " mask=0x" + expected.ToString("X") + " processes=restored\n");
             }
             catch (Exception ex)
             {
                 Volatile.Write(ref release, 1);
-                using (SchedulerManager.MaskInterrupts())
+                using (global::Cosmos.Kernel.Core.Scheduler.SchedulerManager.MaskInterrupts())
                     WriteSerial("[HTOP-TEST] FAIL " + ex.Message + "\n");
                 throw;
             }
