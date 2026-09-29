@@ -92,12 +92,12 @@ namespace ZonderqOS
 
         private static bool RejectVirtualMutation(string path, string operation)
         {
-            if (!ProcFs.IsProcPath(path))
+            if (!VirtualFs.IsReadOnlyPath(path))
                 return false;
 
             WriteMessage.WriteError($"Read-only virtual filesystem: {operation} is not allowed on {path}", "FS");
             SecurityLogger.LogEvent("WARN",
-                $"Rejected {operation} on virtual procfs path {path} by {SecurityContext.CurrentUser}");
+                $"Rejected {operation} on read-only virtual path {path} by {SecurityContext.CurrentUser}");
             CommandIO.LastCommandSuccess = false;
             return true;
         }
@@ -152,9 +152,9 @@ namespace ZonderqOS
 
         public static void CopyFile(string sourcePath, string destinationPath)
         {
-            if (ProcFs.IsProcPath(sourcePath))
+            if (VirtualFs.IsReadOnlyPath(sourcePath))
             {
-                WriteMessage.WriteError($"Virtual procfs entries cannot be copied through the physical FAT backend: {sourcePath}", "FS");
+                WriteMessage.WriteError($"Virtual filesystem entries cannot be copied through the physical FAT backend: {sourcePath}", "FS");
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
