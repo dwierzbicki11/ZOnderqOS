@@ -11,8 +11,11 @@ namespace ZonderqOS.SystemCore
         public Thread ExecutionThread { get; }
         public CancellationTokenSource Cts { get; }
         private uint kernelThreadId = uint.MaxValue;
+        private int lastSignalNumber;
         public uint KernelThreadId => Volatile.Read(ref kernelThreadId);
+        public int LastSignalNumber => Volatile.Read(ref lastSignalNumber);
         internal void BindKernelThread() => Volatile.Write(ref kernelThreadId, SchedulerTelemetry.CurrentThreadId());
+        internal void RecordSignal(ProcessSignal signal) => Volatile.Write(ref lastSignalNumber, (int)signal);
         public bool IsRunning => ExecutionThread != null && ExecutionThread.IsAlive;
 
         public KernelProcess(int pid, string name, Thread thread, CancellationTokenSource cts)
@@ -108,9 +111,20 @@ namespace ZonderqOS.SystemCore
 
         public static bool Kill(int pid)
         {
+            return SendSignal(pid, ProcessSignal.Terminate);
+        }
+
+        public static bool SendSignal(int pid, ProcessSignal signal)
+        {
+            if (!ProcessSignals.IsSupported(signal))
+                return false;
+
+            CancellationTokenSource cts;
+            KernelProcess process;
+
             lock (_registryLock)
             {
-                if (!_processes.TryGetValue(pid, out var process))
+                if (!_processes.TryGetValue(pid, out process))
                     return false;
 
                 if (!process.IsRunning)
@@ -120,8 +134,21 @@ namespace ZonderqOS.SystemCore
                     return false;
                 }
 
-                process.Cts.Cancel();
+                process.RecordSignal(signal);
+                cts = process.Cts;
+            }
+
+            // Cancellation callbacks execute synchronously and may inspect the
+            // process registry. Never invoke them while holding _registryLock.
+            try
+            {
+                cts.Cancel();
                 return true;
+            }
+            catch (ObjectDisposedException)
+            {
+                // Process exited and disposed its token between lookup and cancel.
+                return false;
             }
         }
 
