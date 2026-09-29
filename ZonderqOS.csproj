@@ -66,6 +66,9 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- Host smoke projects own their Program and stub types. Never compile
+         test sources into the kernel's default recursive Compile glob. -->
+    <Compile Remove="tests/**/*.cs" />
     <Compile Remove="source/Core/CosmosGen3DiagnosticsCompat.cs" />
     <Compile Remove="**/CosmosGen3DiagnosticsCompat.cs" />
   </ItemGroup>
