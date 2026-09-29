@@ -9,9 +9,6 @@ namespace ZonderqOS.SystemCore
 {
     public static class SysFs
     {
-        private static List<DeviceDescriptor> pciDevices;
-        private static bool pciDiscoveryAttempted;
-
         public static bool IsSysPath(string path)
         {
             string normalized = Normalize(path);
@@ -60,6 +57,27 @@ namespace ZonderqOS.SystemCore
                     ? 0UL
                     : (ulong)BootTelemetry.UptimeSeconds;
                 content = seconds.ToString() + "\n";
+                return true;
+            }
+
+            if (normalized == "/sys/kernel/drivers/devices")
+            {
+                DriverManager.Initialize();
+                content = DriverManager.DeviceCount.ToString() + "\n";
+                return true;
+            }
+
+            if (normalized == "/sys/kernel/drivers/bound")
+            {
+                DriverManager.Initialize();
+                content = DriverManager.BoundDeviceCount.ToString() + "\n";
+                return true;
+            }
+
+            if (normalized == "/sys/kernel/drivers/pci_available")
+            {
+                DriverManager.Initialize();
+                content = (DriverManager.PciDiscoveryAvailable ? "1" : "0") + "\n";
                 return true;
             }
 
@@ -222,6 +240,15 @@ namespace ZonderqOS.SystemCore
                     content = "0x" + device.ProgrammingInterface.ToString("X2") + "\n";
                 else if (pciLeaf == "modalias")
                     content = BuildPciModalias(device) + "\n";
+                else if (pciLeaf == "driver")
+                {
+                    string driverName;
+                    content = (DriverManager.TryGetBinding(device.Id, out driverName)
+                        ? driverName
+                        : "unbound") + "\n";
+                }
+                else if (pciLeaf == "driver_bound")
+                    content = (DriverManager.TryGetBinding(device.Id, out _) ? "1" : "0") + "\n";
                 else
                     return false;
 
@@ -302,7 +329,13 @@ namespace ZonderqOS.SystemCore
 
             if (normalized == "/sys/kernel")
             {
-                entries = new[] { "ostype", "osrelease", "architecture", "scheduler", "hostname", "uptime_seconds" };
+                entries = new[] { "ostype", "osrelease", "architecture", "scheduler", "hostname", "uptime_seconds", "drivers" };
+                return true;
+            }
+
+            if (normalized == "/sys/kernel/drivers")
+            {
+                entries = new[] { "devices", "bound", "pci_available" };
                 return true;
             }
 
@@ -403,7 +436,7 @@ namespace ZonderqOS.SystemCore
                 if (FindPciDevice(pciAddress) == null)
                     return false;
 
-                entries = new[] { "vendor", "device", "class", "subclass", "programming_interface", "modalias" };
+                entries = new[] { "vendor", "device", "class", "subclass", "programming_interface", "modalias", "driver", "driver_bound" };
                 return true;
             }
 
@@ -469,17 +502,10 @@ namespace ZonderqOS.SystemCore
 
         private static List<DeviceDescriptor> GetPciDevices()
         {
-            if (pciDiscoveryAttempted)
-                return pciDevices ?? new List<DeviceDescriptor>();
-
-            pciDiscoveryAttempted = true;
-            List<DeviceDescriptor> discovered;
-            if (PciSysfsProvider.TryDiscover(out discovered) && discovered != null)
-                pciDevices = discovered;
-            else
-                pciDevices = new List<DeviceDescriptor>();
-
-            return pciDevices;
+            DriverManager.Initialize();
+            var devices = new List<DeviceDescriptor>();
+            DriverManager.FillDevices(devices);
+            return devices;
         }
 
         private static DeviceDescriptor FindPciDevice(string address)
@@ -487,15 +513,10 @@ namespace ZonderqOS.SystemCore
             if (string.IsNullOrEmpty(address))
                 return null;
 
-            List<DeviceDescriptor> devices = GetPciDevices();
-            for (int i = 0; i < devices.Count; i++)
-            {
-                DeviceDescriptor device = devices[i];
-                if (device != null && string.Equals(device.Id.Address, address, StringComparison.OrdinalIgnoreCase))
-                    return device;
-            }
-
-            return null;
+            DriverManager.Initialize();
+            return DriverManager.TryGetDevice(address, out DeviceDescriptor device)
+                ? device
+                : null;
         }
 
         private static bool TryParsePciDeviceDirectory(string path, out string address)
