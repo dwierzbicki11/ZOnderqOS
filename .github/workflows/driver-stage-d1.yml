@@ -3,9 +3,9 @@ name: Driver D1 mainline PCI registry
 on:
   push:
     branches: [ drivers/d1-mainline ]
-    paths: [ 'source/Hardware/**', 'source/Platform/X64/**', 'source/Platform/Arm64/**', 'Kernel.cs', 'source/Shell/Commands/CmdLspci.cs', 'source/Shell/Command.cs', 'tests/DriverD1.Runtime/**', 'tests/HardwareModel.Tests/**', '.github/workflows/driver-stage-d1.yml' ]
+    paths: [ 'source/Hardware/**', 'source/Platform/X64/**', 'source/Platform/Arm64/**', 'Kernel.cs', 'source/Core/HardwareSnapshot.cs', 'source/Core/SysFs.cs', 'source/GUI/Application/DeviceManagerApp.cs', 'source/Shell/Commands/CmdLspci.cs', 'source/Shell/Commands/CmdHwInfo.cs', 'source/Shell/Commands/CmdSysInfo.cs', 'source/Shell/Command.cs', 'tests/DriverD1.Runtime/**', 'tests/HardwareModel.Tests/**', '.github/workflows/driver-stage-d1.yml' ]
   pull_request:
-    paths: [ 'source/Hardware/**', 'source/Platform/X64/**', 'source/Platform/Arm64/**', 'Kernel.cs', 'source/Shell/Commands/CmdLspci.cs', 'source/Shell/Command.cs', 'tests/DriverD1.Runtime/**', 'tests/HardwareModel.Tests/**', '.github/workflows/driver-stage-d1.yml' ]
+    paths: [ 'source/Hardware/**', 'source/Platform/X64/**', 'source/Platform/Arm64/**', 'Kernel.cs', 'source/Core/HardwareSnapshot.cs', 'source/Core/SysFs.cs', 'source/GUI/Application/DeviceManagerApp.cs', 'source/Shell/Commands/CmdLspci.cs', 'source/Shell/Commands/CmdHwInfo.cs', 'source/Shell/Commands/CmdSysInfo.cs', 'source/Shell/Command.cs', 'tests/DriverD1.Runtime/**', 'tests/HardwareModel.Tests/**', '.github/workflows/driver-stage-d1.yml' ]
   workflow_dispatch:
 
 permissions:
@@ -26,6 +26,8 @@ jobs:
         run: |
           grep -Fq 'HardwareDeviceRegistry.Initialize();' Kernel.cs
           grep -Fq 'HardwareDeviceRegistry.CopyPciDevices' source/Shell/Commands/CmdLspci.cs
+          grep -Fq 'HardwareDeviceRegistry.TryGetPciDevice' source/Core/SysFs.cs
+          grep -Fq 'HardwareDeviceRegistry.CopyPciDevices' source/GUI/Application/DeviceManagerApp.cs
           grep -Fq 'HardwareDeviceRegistry.Initialize();' tests/DriverD1.Runtime/DriverD1EntryKernel.cs
       - name: Verify privileged x64 backend uses the tested mechanism-1 codec
         run: |
