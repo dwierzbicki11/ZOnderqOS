@@ -43,7 +43,8 @@ namespace ZonderqOS.Commands
                     "vendor=" + d.VendorId.ToString("X4") + " " +
                     "device=" + d.DeviceId.ToString("X4") + " " +
                     "class=" + d.ClassCode.ToString("X2") + ":" +
-                    d.Subclass.ToString("X2"));
+                    d.Subclass.ToString("X2") + " " +
+                    ClassName(d.ClassCode));
 
                 if (verbose)
                 {
@@ -54,6 +55,24 @@ namespace ZonderqOS.Commands
 
             CommandIO.WriteLine("PCI devices: " + devices.Count);
             CommandIO.LastCommandSuccess = true;
+        }
+
+        private static string ClassName(byte classCode)
+        {
+            switch (classCode)
+            {
+                case 0x01: return "Mass storage";
+                case 0x02: return "Network controller";
+                case 0x03: return "Display controller";
+                case 0x04: return "Multimedia";
+                case 0x05: return "Memory controller";
+                case 0x06: return "Bridge";
+                case 0x07: return "Communication";
+                case 0x08: return "System peripheral";
+                case 0x09: return "Input controller";
+                case 0x0C: return "Serial bus";
+                default: return "Other";
+            }
         }
 
         private static string BuildModalias(DeviceDescriptor device)
