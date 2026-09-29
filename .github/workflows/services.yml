@@ -1,0 +1,44 @@
+name: Configured services compile gate
+
+on:
+  pull_request:
+    paths:
+      - 'source/Core/Services/**'
+      - 'source/Shell/Commands/CmdService.cs'
+      - 'source/Shell/Command.cs'
+      - 'Kernel.cs'
+      - 'source/GUI/Application/ConfigManagerApp.cs'
+      - 'source/GUI/Application/NotepadApp.cs'
+      - 'source/GUI/Application/AppRegistry.cs'
+      - 'source/GUI/GuiManager.cs'
+      - 'tests/ServiceConfigSmoke/**'
+      - 'tests/ServiceRuntimeSmoke/**'
+      - 'docs/services.md'
+      - '.github/workflows/services.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile x64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false
+      - name: Clean architecture outputs
+        run: rm -rf bin obj
+      - name: Compile ARM64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-arm64 -p:CosmosArch=arm64 -p:GeneratePackageOnBuild=false
+      - name: Validate service configuration
+        run: dotnet run --project tests/ServiceConfigSmoke/ServiceConfigSmoke.csproj -c Release
+      - name: Exercise service lifecycle with persistent host files
+        run: dotnet run --project tests/ServiceRuntimeSmoke/ServiceRuntimeSmoke.csproj -c Release
