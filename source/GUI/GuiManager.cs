@@ -14,6 +14,8 @@ namespace ZonderqOS.GUI
 {
     public class GuiManager
     {
+        public bool Failed { get; private set; }
+
         private Canvas canvas;
         private Canvas wallpaperCanvas;
         private Taskbar taskbar;
@@ -40,6 +42,7 @@ namespace ZonderqOS.GUI
 
         public void Run()
         {
+            Failed = false;
             try
             {
                 Console.WriteLine("[GUI] Inicjalizacja trybu graficznego...");
@@ -338,6 +341,7 @@ namespace ZonderqOS.GUI
             }
             catch (Exception ex)
             {
+                Failed = true;
                 WriteMessage.WriteError($"Błąd w pętli GUI: {ex.Message}", "GUI");
             }
         }

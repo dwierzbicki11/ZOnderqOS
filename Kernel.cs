@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using ZonderqOS.SystemCore;
+using ZonderqOS.GUI;
 using Sys = Cosmos.Kernel.System;
 
 namespace ZonderqOS
@@ -12,6 +13,7 @@ namespace ZonderqOS
         private string path = "/root";
         private readonly List<string> history = new List<string>();
         private string sessionUser;
+        private bool graphicalStartupFailed;
 
         protected override void BeforeRun()
         {
@@ -35,8 +37,8 @@ namespace ZonderqOS
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
                 Console.WriteLine();
-                Console.WriteLine("Starting ZOnderqOS console login...");
-                Console.WriteLine("Type 'gui' after login to start the desktop.");
+                Console.WriteLine("Starting ZOnderqOS graphical session...");
+                Console.WriteLine("Console login is used only as a recovery fallback if GUI startup fails.");
             }
             catch (Exception ex)
             {
@@ -48,12 +50,59 @@ namespace ZonderqOS
         {
             try
             {
+                if (SystemSettings.BootToGui && !graphicalStartupFailed)
+                {
+                    if (!SecurityContext.IsAuthenticated)
+                    {
+                        sessionUser = null;
+
+                        if (UserManager.RequiresInitialRootPasswordSetup())
+                        {
+                            if (!InitialSetupManager.Run())
+                            {
+                                EnterConsoleRecovery("graphical initial setup failed");
+                                return;
+                            }
+
+                            UserManager.PrepareLogin();
+                            return;
+                        }
+
+                        if (!LoginScreenManager.Run())
+                        {
+                            EnterConsoleRecovery("graphical login failed");
+                            return;
+                        }
+
+                        if (!SecurityContext.IsAuthenticated)
+                        {
+                            EnterConsoleRecovery("graphical login returned without an authenticated session");
+                            return;
+                        }
+                    }
+
+                    SynchronizeSession();
+
+                    try
+                    {
+                        GuiManager manager = new GuiManager();
+                        manager.Run();
+                        if (manager.Failed)
+                            EnterConsoleRecovery("desktop manager crashed");
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        WriteMessage.WriteError("Automatic GUI session failed: " + ex.Message, "GUI");
+                        EnterConsoleRecovery("desktop manager crashed");
+                        return;
+                    }
+                }
+
                 if (!SecurityContext.IsAuthenticated)
                 {
                     sessionUser = null;
 
-                    // Keep first-boot hardening entirely in the console path so GUI
-                    // failures can never block access to the shell.
                     if (UserManager.RequiresInitialRootPasswordSetup())
                     {
                         RunInitialRootSetupPrompt();
@@ -98,6 +147,19 @@ namespace ZonderqOS
             {
                 KernelPanic.Show(ex, "RUNTIME", true);
             }
+        }
+
+        private void EnterConsoleRecovery(string reason)
+        {
+            graphicalStartupFailed = true;
+
+            if (!SecurityContext.IsAuthenticated)
+                UserManager.PrepareLogin();
+
+            Console.Clear();
+            WriteMessage.WriteError("GUI startup unavailable: " + reason + ".", "GUI");
+            Console.WriteLine("Entering recovery console. Reboot the system to retry the graphical boot path.");
+            Console.WriteLine();
         }
 
         private void RunInitialRootSetupPrompt()
@@ -183,7 +245,7 @@ namespace ZonderqOS
                     path = "/";
 
                 Console.WriteLine("Welcome, " + SecurityContext.CurrentUser + ".");
-                Console.WriteLine("Type 'gui' to start the graphical desktop.");
+                Console.WriteLine("Recovery console active. Type 'gui' to retry the graphical desktop manually.");
                 Console.WriteLine();
                 return;
             }
