@@ -36,6 +36,7 @@ namespace ZonderqOS
             _commands.Add(new CmdStat());
             _commands.Add(new CmdHexdump());
             _commands.Add(new CmdViewLog());
+            _commands.Add(new CmdDmesg());
             _commands.Add(new CmdClear());
             _commands.Add(new CmdSysInfo());
             _commands.Add(new CmdLscpu());
@@ -45,12 +46,12 @@ namespace ZonderqOS
             _commands.Add(new CmdHead());
             _commands.Add(new CmdEcho());
             _commands.Add(new CmdWhoami());
-            _commands.Add(new CmdHostname());
-            _commands.Add(new CmdService());
-            _commands.Add(new CmdSystemctl());
             _commands.Add(new CmdTty());
             _commands.Add(new CmdGui());
             _commands.Add(new CmdBootMode());
+            _commands.Add(new CmdHostname());
+            _commands.Add(new CmdService());
+            _commands.Add(new CmdSystemctl());
             _commands.Add(new CmdHelp(_commands));
             _commands.Add(new CmdMkpart());
             _commands.Add(new CmdShutDown());
