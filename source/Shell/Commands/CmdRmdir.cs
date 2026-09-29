@@ -9,7 +9,6 @@ namespace ZonderqOS.Commands
             if (args.Length > 1) 
             {
                 Disk.DeleteDir(PathResolver.GetAbsolutePath(currentPath, args[1]));
-                CommandIO.LastCommandSuccess = true;
             }
             else 
             {
