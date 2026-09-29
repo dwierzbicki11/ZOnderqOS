@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using ZonderqOS.SystemCore;
+using ZonderqOS.SystemCore.Services;
 using ZonderqOS.GUI;
 using Sys = Cosmos.Kernel.System;
 
@@ -34,6 +35,8 @@ namespace ZonderqOS
                 BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
+                SystemIdentity.Initialize();
+                ServiceManager.Initialize();
 
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
@@ -219,6 +222,10 @@ namespace ZonderqOS
                 return;
             }
 
+            string issue = SystemIdentity.ReadIssue();
+            if (!string.IsNullOrEmpty(issue))
+                Console.Write(issue);
+
             Console.Write("login: ");
             string username = Console.ReadLine();
             if (username != null)
@@ -246,6 +253,9 @@ namespace ZonderqOS
                     path = "/";
 
                 Console.WriteLine("Welcome, " + SecurityContext.CurrentUser + ".");
+                string motd = SystemIdentity.ReadMotd();
+                if (!string.IsNullOrEmpty(motd))
+                    Console.Write(motd);
                 Console.WriteLine("Recovery console active. Type 'gui' to retry the graphical desktop manually.");
                 Console.WriteLine();
                 return;

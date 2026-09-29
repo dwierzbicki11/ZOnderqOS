@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+    <DefineConstants>$(DefineConstants);ZSRV_HOST_TESTS</DefineConstants>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../source/Core/Services/ServiceDefinition.cs" Link="ServiceDefinition.cs" />
+    <Compile Include="../../source/Core/Services/ServiceManager.cs" Link="ServiceManager.cs" />
+    <Compile Include="../../source/Core/ProcessManager.cs" Link="ProcessManager.cs" />
+  </ItemGroup>
+</Project>
