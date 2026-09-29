@@ -1,4 +1,5 @@
 using System.IO;
+using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
@@ -17,6 +18,33 @@ namespace ZonderqOS.Commands
             }
 
             string path = PathResolver.GetAbsolutePath(currentPath, args[1]);
+
+            if (RunFs.IsRunPath(path))
+            {
+                if (RunFs.DirectoryExists(path))
+                {
+                    WriteMessage.WriteError($"Path is a directory: {path}", "FS");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                if (RunFs.FileExists(path))
+                {
+                    CommandIO.LastCommandSuccess = true;
+                    return;
+                }
+
+                Disk.CreateFile(path, string.Empty);
+                return;
+            }
+
+            if (VirtualFs.IsVirtualPath(path))
+            {
+                WriteMessage.WriteError($"Cannot touch virtual node: {path}", "FS");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             if (File.Exists(path))
             {
                 if (!PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
