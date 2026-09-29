@@ -50,7 +50,7 @@ namespace ZonderqOS
         {
             try
             {
-                if (!graphicalStartupFailed)
+                if (SystemSettings.BootToGui && !graphicalStartupFailed)
                 {
                     if (!SecurityContext.IsAuthenticated)
                     {
