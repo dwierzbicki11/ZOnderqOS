@@ -9,6 +9,7 @@ using Cosmos.Kernel.System.Storage;
 using ZonderqOS.GUI.Icons;
 using Font = Cosmos.Kernel.System.Graphics.Fonts.Font;
 
+using ZonderqOS.SystemCore;
 namespace ZonderqOS.GUI.Apps
 {
     public class FileManagerApp : Application
@@ -619,6 +620,14 @@ namespace ZonderqOS.GUI.Apps
             }
 
             string path = Path.Combine(currentPath, name).Replace('\\', '/');
+            if (VirtualFs.IsReadOnlyPath(path))
+            {
+                status = "Read-only virtual filesystem";
+                dialogMode = 0;
+                dialogName = "";
+                return;
+            }
+
             try
             {
                 if (File.Exists(path) || Directory.Exists(path))
