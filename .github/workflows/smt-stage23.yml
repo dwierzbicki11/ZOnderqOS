@@ -146,7 +146,7 @@ jobs:
             -c Debug \
             -r linux-x64 \
             -p:CosmosArch=x64 \
-            "-p:DefineConstants=ARCH_X64;ZONDERQ_NETWORK_DISABLED;ZONDERQ_HTOP_SMOKE_TEST" \
+            -p:DefineConstants=ARCH_X64%3BZONDERQ_NETWORK_DISABLED%3BZONDERQ_HTOP_SMOKE_TEST \
             -o output-x64 \
             --no-restore \
             --verbosity:normal 2>&1 | tee stage23-build.log
