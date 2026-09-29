@@ -2,11 +2,16 @@ using System;
 using System.Collections.Generic;
 using Cosmos.Kernel.System.Diagnostics;
 using Cosmos.Kernel.System.Storage;
+using ZonderqOS.Hardware;
+using ZonderqOS.Platform;
 
 namespace ZonderqOS.SystemCore
 {
     public static class SysFs
     {
+        private static List<DeviceDescriptor> pciDevices;
+        private static bool pciDiscoveryAttempted;
+
         public static bool IsSysPath(string path)
         {
             string normalized = Normalize(path);
@@ -198,6 +203,31 @@ namespace ZonderqOS.SystemCore
                 return false;
             }
 
+
+            if (TryParsePciDevicePath(normalized, out string pciAddress, out string pciLeaf))
+            {
+                DeviceDescriptor device = FindPciDevice(pciAddress);
+                if (device == null)
+                    return false;
+
+                if (pciLeaf == "vendor")
+                    content = "0x" + device.VendorId.ToString("X4") + "\n";
+                else if (pciLeaf == "device")
+                    content = "0x" + device.DeviceId.ToString("X4") + "\n";
+                else if (pciLeaf == "class")
+                    content = "0x" + device.ClassCode.ToString("X2") + "\n";
+                else if (pciLeaf == "subclass")
+                    content = "0x" + device.Subclass.ToString("X2") + "\n";
+                else if (pciLeaf == "programming_interface")
+                    content = "0x" + device.ProgrammingInterface.ToString("X2") + "\n";
+                else if (pciLeaf == "modalias")
+                    content = BuildPciModalias(device) + "\n";
+                else
+                    return false;
+
+                return true;
+            }
+
             if (TryParseBlockPath(normalized, out bool partition, out int index, out string blockLeaf))
             {
                 try
@@ -266,7 +296,7 @@ namespace ZonderqOS.SystemCore
 
             if (normalized == "/sys")
             {
-                entries = new[] { "kernel", "devices", "class" };
+                entries = new[] { "kernel", "devices", "class", "bus" };
                 return true;
             }
 
@@ -340,6 +370,43 @@ namespace ZonderqOS.SystemCore
                 return true;
             }
 
+
+            if (normalized == "/sys/bus")
+            {
+                entries = GetPciDevices().Count > 0 ? new[] { "pci" } : new string[0];
+                return true;
+            }
+
+            if (normalized == "/sys/bus/pci")
+            {
+                if (GetPciDevices().Count == 0)
+                    return false;
+
+                entries = new[] { "devices" };
+                return true;
+            }
+
+            if (normalized == "/sys/bus/pci/devices")
+            {
+                List<DeviceDescriptor> devices = GetPciDevices();
+                if (devices.Count == 0)
+                    return false;
+
+                entries = new string[devices.Count];
+                for (int i = 0; i < devices.Count; i++)
+                    entries[i] = devices[i].Id.Address;
+                return true;
+            }
+
+            if (TryParsePciDeviceDirectory(normalized, out string pciAddress))
+            {
+                if (FindPciDevice(pciAddress) == null)
+                    return false;
+
+                entries = new[] { "vendor", "device", "class", "subclass", "programming_interface", "modalias" };
+                return true;
+            }
+
             if (normalized == "/sys/class")
             {
                 entries = new[] { "block" };
@@ -397,6 +464,80 @@ namespace ZonderqOS.SystemCore
             }
 
             return false;
+        }
+
+
+        private static List<DeviceDescriptor> GetPciDevices()
+        {
+            if (pciDiscoveryAttempted)
+                return pciDevices ?? new List<DeviceDescriptor>();
+
+            pciDiscoveryAttempted = true;
+            List<DeviceDescriptor> discovered;
+            if (PciSysfsProvider.TryDiscover(out discovered) && discovered != null)
+                pciDevices = discovered;
+            else
+                pciDevices = new List<DeviceDescriptor>();
+
+            return pciDevices;
+        }
+
+        private static DeviceDescriptor FindPciDevice(string address)
+        {
+            if (string.IsNullOrEmpty(address))
+                return null;
+
+            List<DeviceDescriptor> devices = GetPciDevices();
+            for (int i = 0; i < devices.Count; i++)
+            {
+                DeviceDescriptor device = devices[i];
+                if (device != null && string.Equals(device.Id.Address, address, StringComparison.OrdinalIgnoreCase))
+                    return device;
+            }
+
+            return null;
+        }
+
+        private static bool TryParsePciDeviceDirectory(string path, out string address)
+        {
+            address = string.Empty;
+            const string prefix = "/sys/bus/pci/devices/";
+            if (!path.StartsWith(prefix, StringComparison.Ordinal))
+                return false;
+
+            string tail = path.Substring(prefix.Length);
+            if (tail.Length == 0 || tail.IndexOf('/') >= 0)
+                return false;
+
+            address = tail;
+            return true;
+        }
+
+        private static bool TryParsePciDevicePath(string path, out string address, out string leaf)
+        {
+            address = string.Empty;
+            leaf = string.Empty;
+            const string prefix = "/sys/bus/pci/devices/";
+            if (!path.StartsWith(prefix, StringComparison.Ordinal))
+                return false;
+
+            string tail = path.Substring(prefix.Length);
+            int slash = tail.IndexOf('/');
+            if (slash <= 0 || slash >= tail.Length - 1)
+                return false;
+
+            address = tail.Substring(0, slash);
+            leaf = tail.Substring(slash + 1);
+            return leaf.IndexOf('/') < 0;
+        }
+
+        private static string BuildPciModalias(DeviceDescriptor device)
+        {
+            return "pci:v0000" + device.VendorId.ToString("X4") +
+                   "d0000" + device.DeviceId.ToString("X4") +
+                   "sv*sd*bc" + device.ClassCode.ToString("X2") +
+                   "sc" + device.Subclass.ToString("X2") +
+                   "i" + device.ProgrammingInterface.ToString("X2");
         }
 
         private static string BuildCpuRange(uint count)
