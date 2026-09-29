@@ -30,6 +30,7 @@ namespace ZonderqOS.GUI.Apps
         public const string DiskManager = "disk-manager";
         public const string TaskManager = "task-manager";
         public const string Settings = "settings";
+        public const string ConfigManager = "config-manager";
         public const string Diagnostics = "diagnostics";
         public const string About = "about";
         public const string AppCenter = "app-center";

@@ -425,6 +425,12 @@ namespace ZonderqOS.GUI
                 StartMenuPlacement.Pinned, 4, 3, true));
 
             appRegistry.Register(new AppDescriptor(
+                AppIds.ConfigManager, "Konfiguracja /etc", "Konfiguracja", "Konfiguracja",
+                "Pliki /etc, nazwa hosta i uslugi w tle",
+                AppCategory.System, IconType.Settings, () => LaunchConfigManager(130, 85),
+                StartMenuPlacement.None, -1, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
                 AppIds.Diagnostics, "Diagnostyka", "Diagnostyka", "Diagnostyka",
                 "Szybki podglad stanu komponentow systemowych",
                 AppCategory.System, IconType.About, () => LaunchDiagnostics(150, 120),
@@ -769,6 +775,12 @@ namespace ZonderqOS.GUI
         private void LaunchSettings(int x, int y)
         {
             applicationManager.Launch(new SettingsApp(x, y, applicationManager, null));
+        }
+
+        private void LaunchConfigManager(int x, int y)
+        {
+            applicationManager.Launch(new ConfigManagerApp(x, y,
+                path => LaunchNotepad(155, 95, path)));
         }
 
         private void LaunchDiagnostics(int x, int y)
