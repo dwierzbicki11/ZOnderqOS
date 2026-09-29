@@ -104,6 +104,12 @@ namespace ZonderqOS
 
         public static void CreateFile(string path, string content)
         {
+            if (VirtualFs.TryWrite(path, content))
+            {
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
             if (RejectVirtualMutation(path, "write"))
                 return;
 
@@ -129,6 +135,12 @@ namespace ZonderqOS
 
         public static void AppendFile(string path, string content)
         {
+            if (VirtualFs.TryWrite(path, content))
+            {
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
             if (RejectVirtualMutation(path, "append"))
                 return;
 
