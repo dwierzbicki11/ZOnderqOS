@@ -10,6 +10,9 @@ namespace ZonderqOS.SystemCore
         public string Name { get; }
         public Thread ExecutionThread { get; }
         public CancellationTokenSource Cts { get; }
+        private uint kernelThreadId = uint.MaxValue;
+        public uint KernelThreadId => Volatile.Read(ref kernelThreadId);
+        internal void BindKernelThread() => Volatile.Write(ref kernelThreadId, SchedulerTelemetry.CurrentThreadId());
         public bool IsRunning => ExecutionThread != null && ExecutionThread.IsAlive;
 
         public KernelProcess(int pid, string name, Thread thread, CancellationTokenSource cts)
@@ -21,7 +24,7 @@ namespace ZonderqOS.SystemCore
         }
     }
 
-    public static class ProcessManager
+    public static partial class ProcessManager
     {
         private static readonly Dictionary<int, KernelProcess> _processes = new Dictionary<int, KernelProcess>();
         private static readonly List<int> _deadPidScratch = new List<int>(16);
@@ -37,6 +40,7 @@ namespace ZonderqOS.SystemCore
             int pid;
             CancellationTokenSource cts;
             Thread thread;
+            KernelProcess process = null;
 
             lock (_registryLock)
             {
@@ -56,6 +60,8 @@ namespace ZonderqOS.SystemCore
                 {
                     try
                     {
+                        process.BindKernelThread();
+                        SchedulerTelemetry.EnableCurrentManagedPreemption();
                         startMethod(cts.Token);
                     }
                     catch (Exception ex)
@@ -68,8 +74,25 @@ namespace ZonderqOS.SystemCore
                     }
                 });
 
-                _processes.Add(pid, new KernelProcess(pid, processName, thread, cts));
+                process = new KernelProcess(pid, processName, thread, cts);
+                _processes.Add(pid, process);
+            }
+
+            // Never enter CoreLib's thread-start handshake while holding the
+            // process registry lock. On SMP the new thread can run immediately
+            // on another CPU and may need this lock during cleanup.
+            try
+            {
                 thread.Start();
+            }
+            catch
+            {
+                lock (_registryLock)
+                {
+                    if (_processes.Remove(pid))
+                        cts.Dispose();
+                }
+                throw;
             }
 
             return pid;

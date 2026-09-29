@@ -25,6 +25,10 @@
     <DefaultItemExcludes>$(DefaultItemExcludes);source/Core/CosmosGen3DiagnosticsCompat.cs;**/CosmosGen3DiagnosticsCompat.cs</DefaultItemExcludes>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(ZonderqHtopSmokeTest)' == 'true'">
+    <DefineConstants>$(DefineConstants);ZONDERQ_HTOP_SMOKE_TEST</DefineConstants>
+  </PropertyGroup>
+
   <!-- Keep architecture selection deterministic even when the project is
        restored/published directly instead of only through cosmos build. -->
   <PropertyGroup Condition="'$(CosmosArch)' == '' and '$(RuntimeIdentifier)' == 'linux-x64'">

@@ -246,3 +246,40 @@ index d80881e..0000000 100644
          /// <summary>
          /// Returns the MethodTable* for System.Array. This is used by the runtime when
          /// it needs to determine the base type of array types.
+diff --git a/src/Cosmos.Kernel.Core/Runtime/Thread.cs b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
+--- a/src/Cosmos.Kernel.Core/Runtime/Thread.cs
++++ b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
+@@ -91,6 +91,12 @@ internal class Thread
+         }
+     }
+ 
++    // Stable ZonderqOS production-SMP hook. Until Stage 23 this intentionally
++    // remains a no-op so current application sources can still be built and
++    // tested against every historical SMT prefix.
++    [RuntimeExport("RhEnableCurrentCpuManagedPreemption")]
++    internal static void RhEnableCurrentCpuManagedPreemption() { }
++
+     [RuntimeExport("RhYield")]
+     internal static int RhYield()
+     {
+diff --git a/src/Cosmos.Kernel.Core/Runtime/SchedulerDiagnostics.cs b/src/Cosmos.Kernel.Core/Runtime/SchedulerDiagnostics.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Runtime/SchedulerDiagnostics.cs
+@@ -0,0 +1,16 @@
++using System.Runtime;
++using Cosmos.Kernel.Core.Scheduler;
++
++namespace Cosmos.Kernel.Core.Runtime;
++
++internal static class SchedulerDiagnostics
++{
++    [RuntimeExport("RhGetCurrentSchedulerThreadId")]
++    internal static uint CurrentThreadId() => SchedulerManager.CurrentCpuState?.CurrentThread?.Id ?? uint.MaxValue;
++
++    [RuntimeExport("RhSchedulerCpuAccountingAvailable")]
++    internal static int CpuAccountingAvailable() => 0;
++
++    [RuntimeExport("RhGetSchedulerCpuBusyTicks")]
++    internal static long CpuBusyTicks(uint cpuId) => 0;
++}

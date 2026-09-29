@@ -37,20 +37,9 @@ namespace ZonderqOS
             _commands.Add(new CmdViewLog());
             _commands.Add(new CmdClear());
             _commands.Add(new CmdSysInfo());
-            _commands.Add(new CmdBootStatus());
-            _commands.Add(new CmdCrashInfo());
-            _commands.Add(new CmdConfig());
-            _commands.Add(new CmdSysDoctor());
-            _commands.Add(new CmdZpkg());
-            _commands.Add(new CmdSysReport());
-            _commands.Add(new CmdHwInfo());
             _commands.Add(new CmdRecovery());
             _commands.Add(new CmdGrep());
             _commands.Add(new CmdHead());
-            _commands.Add(new CmdFind());
-            _commands.Add(new CmdWhich());
-            _commands.Add(new CmdWc());
-            _commands.Add(new CmdTail());
             _commands.Add(new CmdEcho());
             _commands.Add(new CmdWhoami());
             _commands.Add(new CmdGui());
@@ -67,14 +56,11 @@ namespace ZonderqOS
             _commands.Add(new CmdChmod());
             _commands.Add(new CmdFree());
             _commands.Add(new CmdPs());
+            _commands.Add(new CmdHtop());
             _commands.Add(new CmdSysmond());
             _commands.Add(new CmdKill());
             _commands.Add(new CmdEnv());
             _commands.Add(new CmdExport());
-            _commands.Add(new CmdUnset());
-            _commands.Add(new CmdUnalias());
-            _commands.Add(new CmdAlias());
-            _commands.Add(new CmdHistory());
         }
 
         internal static string[] GetCommandNames()
@@ -90,7 +76,6 @@ namespace ZonderqOS
             if (string.IsNullOrWhiteSpace(fullInput))
                 return;
 
-            ShellHistory.Add(fullInput);
             fullInput = EnvironmentExpander.Expand(fullInput, currentPath);
             List<string> semiCommands = SplitOutsideQuotes(fullInput, ";");
 
@@ -158,8 +143,6 @@ namespace ZonderqOS
 
         private static void ExecuteSingleCommandWithRedirection(string commandLine, ref string currentPath)
         {
-            commandLine = AliasManager.ExpandLeadingAlias(commandLine);
-
             string redirectPath = null;
             bool appendMode;
             int redirectIndex = FindRedirection(commandLine, out appendMode);

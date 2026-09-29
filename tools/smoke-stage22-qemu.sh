@@ -39,8 +39,6 @@ def fail(message):
 
 begins = [i for i, line in enumerate(lines) if line == "[SCHED-AUTO-BALANCE] begin"]
 passes = [i for i, line in enumerate(lines) if line == "[SCHED-AUTO-BALANCE-TEST] PASS"]
-if len(begins) != 9 or len(passes) != 9 or any(begin >= passed for begin, passed in zip(begins, passes)):
-    fail(f"expected nine ordered Stage-21 generations, got begins={len(begins)} passes={len(passes)}")
 
 summary_re = re.compile(
     r"\[SCHED-AUTO-BALANCE\] migrations=(\d+) sources=0x([0-9a-fA-F]+) "
@@ -59,19 +57,33 @@ for begin, passed in zip(begins, passes):
 
 stress_begins = [i for i, line in enumerate(lines) if line == "[SCHED-SMP-STRESS] begin"]
 stress_passes = [i for i, line in enumerate(lines) if line == "[SCHED-SMP-STRESS-TEST] PASS"]
+stage21_skips = [i for i, line in enumerate(lines) if line == "[SCHED-AUTO-BALANCE-TEST] SKIP reason=requires-multiple-ap-targets"]
+stage22_skips = [i for i, line in enumerate(lines) if line == "[SCHED-SMP-STRESS-TEST] SKIP reason=requires-multiple-ap-targets"]
 stress_re = re.compile(
     r"\[SCHED-SMP-STRESS\] rounds=(\d+) migrations=(\d+) preemptions=(\d+) resumes=(\d+) "
     r"sources=0x([0-9a-fA-F]+) targets=0x([0-9a-fA-F]+) gc-collections=(\d+) "
     r"registry=restored idle=restored")
 stress_matches = [stress_re.fullmatch(line) for line in lines]
 stress_matches = [match for match in stress_matches if match]
-if len(stress_begins) != 1 or len(stress_passes) != 1 or len(stress_matches) != 1 or not (stress_begins[0] < stress_passes[0]):
-    fail("missing or duplicated Stage-22 stress markers")
 
-stress = tuple(int(value, 16) if index in (4, 5) else int(value)
-               for index, value in enumerate(stress_matches[0].groups()))
+stress = (tuple(int(value, 16) if index in (4, 5) else int(value)
+                 for index, value in enumerate(stress_matches[0].groups()))
+           if stress_matches else (0, 0, 0, 0, 0, 0, 0))
 rounds, migrations, preemptions, resumes, sources, targets, collections = stress
 stress_rounds = summaries[1:]
+if expected == 2:
+    if (len(begins) != 1 or len(passes) != 0 or len(stage21_skips) != 1 or
+        begins[0] >= stage21_skips[0] or len(summaries) != 0):
+        fail("single-AP Stage-21 proof was not explicitly skipped")
+    if (len(stress_begins) != 1 or len(stress_passes) != 0 or len(stage22_skips) != 1 or
+        not (stage21_skips[0] < stress_begins[0] < stage22_skips[0]) or len(stress_matches) != 0):
+        fail("single-AP Stage-22 stress proof was not explicitly skipped")
+    print("[SMT22-QEMU][OK] single-AP topology explicitly skipped AP-to-AP balancing stress")
+    raise SystemExit(0)
+if len(begins) != 9 or len(passes) != 9 or any(begin >= passed for begin, passed in zip(begins, passes)):
+    fail(f"expected nine ordered Stage-21 generations, got begins={len(begins)} passes={len(passes)}")
+if len(stress_begins) != 1 or len(stress_passes) != 1 or len(stress_matches) != 1 or not (stress_begins[0] < stress_passes[0]):
+    fail("missing or duplicated Stage-22 stress markers")
 if expected == 1:
     if rounds != 8 or collections != 0 or any((migrations, sources, targets, preemptions, resumes)):
         fail("single-CPU Stage-22 fallback reported AP work")
@@ -80,19 +92,23 @@ if expected == 1:
     print("[SMT22-QEMU][OK] eight single-CPU stress generations preserved scheduler state")
     raise SystemExit(0)
 
-if expected != 8:
+if expected not in (4, 8, 16):
     fail(f"unsupported Stage-22 topology: {expected} CPUs")
-required_sources = (1 << 1) | (1 << 7)
+required_sources = (1 << 1) | ((1 << (expected - 1)) if expected >= 8 else 0)
+min_migrations = 4 if expected >= 8 else 1
+min_targets = 3 if expected >= 8 else 1
+min_preemptions = 16 if expected >= 8 else 6
+source_base_resumes = 6 if expected >= 8 else 3
 for index, (generation_migrations, generation_sources, generation_targets,
             generation_preemptions, generation_resumes, generation_scanned) in enumerate(summaries, 1):
-    if generation_migrations < 4 or generation_sources & required_sources != required_sources:
-        fail(f"generation {index} did not balance from both edge APs")
-    if generation_targets & 1 or generation_targets.bit_count() < 3:
+    if generation_migrations < min_migrations or generation_sources & required_sources != required_sources:
+        fail(f"generation {index} did not meet topology-specific balancing requirements")
+    if generation_targets & 1 or generation_targets.bit_count() < min_targets:
         fail(f"generation {index} reached too few targets: 0x{generation_targets:x}")
-    if generation_preemptions < 16 or generation_resumes < 8:
+    if generation_preemptions < min_preemptions or generation_resumes < source_base_resumes + generation_migrations:
         fail(f"generation {index} has incomplete timer/context continuation evidence")
-    if generation_scanned != 7:
-        fail(f"generation {index} scanned {generation_scanned} AP stacks instead of 7")
+    if generation_scanned != expected - 1:
+        fail(f"generation {index} scanned {generation_scanned} AP stacks instead of {expected - 1}")
 
 if rounds != 8 or collections != 8:
     fail(f"stress aggregate reports rounds={rounds} collections={collections}, expected 8/8")
@@ -102,9 +118,10 @@ if preemptions != sum(summary[3] for summary in stress_rounds):
     fail("stress preemption aggregate does not equal its eight generations")
 if resumes != sum(summary[4] for summary in stress_rounds):
     fail("stress resume aggregate does not equal its eight generations")
-if sources != 0x82 or sources != __import__('functools').reduce(lambda value, summary: value | summary[1], stress_rounds, 0):
+expected_source_mask = required_sources
+if sources != expected_source_mask or sources != __import__('functools').reduce(lambda value, summary: value | summary[1], stress_rounds, 0):
     fail(f"stress source aggregate is invalid: 0x{sources:x}")
-if targets & 1 or targets.bit_count() < 3 or targets != __import__('functools').reduce(lambda value, summary: value | summary[2], stress_rounds, 0):
+if targets & 1 or targets.bit_count() < min_targets or targets != __import__('functools').reduce(lambda value, summary: value | summary[2], stress_rounds, 0):
     fail(f"stress target aggregate is invalid: 0x{targets:x}")
 print(f"[SMT22-QEMU][OK] {rounds} stress generations completed {migrations} live migrations, {preemptions} preemptions, {resumes} resumes and {collections} OrionGC/STW cycles")
 PY

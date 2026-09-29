@@ -1,0 +1,737 @@
+diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs b/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs
+index 59cc924..f51dfa8 100644
+--- a/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs
++++ b/src/Cosmos.Kernel.Core.X64/Cpu/LocalApic.cs
+@@ -402,10 +402,13 @@ public static class LocalApic
+     private static uint s_timerTickCount;
+     private static unsafe void HandleTimerInterrupt(ref IRQContext context)
+     {
+-        s_timerTickCount++;
+-
+-        // Scheduler CPU IDs are dense and independent from hardware APIC IDs.
++        // Diagnostics are BSP-owned; AP timer writes would interleave boot
++        // records and race this shared counter on every logical processor.
+         uint cpuId = SchedulerManager.GetCurrentCpuId();
++        if (cpuId == 0)
++        {
++            s_timerTickCount++;
++        }
+ 
+         // Calculate RSP pointing to saved context for context switching
+         nuint contextPtr = (nuint)Unsafe.AsPointer(ref context);
+@@ -421,7 +421,7 @@ public static class LocalApic
+         }
+ 
+         // Log first few and then periodically
+-        if (s_timerTickCount <= TimerLogInitialTicks || s_timerTickCount % TimerLogPeriodTicks == 0)
++        if (cpuId == 0 && (s_timerTickCount <= TimerLogInitialTicks || s_timerTickCount % TimerLogPeriodTicks == 0))
+         {
+             Serial.Write("[LAPIC] Timer tick ", s_timerTickCount, " RSP=");
+             Serial.WriteHex((ulong)currentRsp);
+diff --git a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs b/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
+index eaa2653..15a57df 100644
+--- a/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
++++ b/src/Cosmos.Kernel.Core/Bridge/Interop/libSystemNative.cs
+@@ -126,10 +126,11 @@ internal static unsafe partial class libSystemNative
+             // Create scheduler thread with SchedulerThreadFlags.Managed set.
+             // SchedulerManager.InvokeCurrentThreadStart evaluates it to
+             // call the managed startup or not.
++            uint targetCpuId = SchedulerManager.SelectManagedThreadCpu();
+             SchedulerThread thread = new SchedulerThread
+             {
+                 Id = SchedulerManager.AllocateThreadId(),
+-                CpuId = 0,
++                CpuId = targetCpuId,
+                 State = SchedulerThreadState.Created,
+                 Flags = SchedulerThreadFlags.Managed,
+                 // CoreLib's handle in `parameter` lives only until the thread
+@@ -146,12 +147,19 @@ internal static unsafe partial class libSystemNative
+             // ARM64: no code selector needed, use 0.
+             thread.InitializeStack(entryPoint, 0, (nuint)parameter, size);
+ #endif
+-            SchedulerManager.CreateThread(0, thread);
+-            SchedulerManager.ReadyThread(0, thread);
++            SchedulerManager.CreateThread(targetCpuId, thread);
++            SchedulerManager.ReadyThread(targetCpuId, thread);
++
++            if (!SchedulerManager.ActivateManagedThreadCpu(targetCpuId))
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Managed SMP thread target could not be activated.");
++            }
+ 
+             Serial.WriteString("[libSystemNative] Thread ");
+             Serial.WriteNumber(thread.Id);
+-            Serial.WriteString(" scheduled, stack ");
++            Serial.WriteString(" scheduled on CPU ");
++            Serial.WriteNumber(targetCpuId);
++            Serial.WriteString(", stack ");
+             Serial.WriteNumber((ulong)size);
+             Serial.WriteString(" bytes\n");
+         }
+diff --git a/src/Cosmos.Kernel.Core/Runtime/SchedulerDiagnostics.cs b/src/Cosmos.Kernel.Core/Runtime/SchedulerDiagnostics.cs
+index 8c06d78..4b7fc49 100644
+--- a/src/Cosmos.Kernel.Core/Runtime/SchedulerDiagnostics.cs
++++ b/src/Cosmos.Kernel.Core/Runtime/SchedulerDiagnostics.cs
+@@ -9,8 +9,8 @@ internal static class SchedulerDiagnostics
+     internal static uint CurrentThreadId() => SchedulerManager.CurrentCpuState?.CurrentThread?.Id ?? uint.MaxValue;
+ 
+     [RuntimeExport("RhSchedulerCpuAccountingAvailable")]
+-    internal static int CpuAccountingAvailable() => 0;
++    internal static int CpuAccountingAvailable() => SchedulerManager.CpuAccountingAvailable ? 1 : 0;
+ 
+     [RuntimeExport("RhGetSchedulerCpuBusyTicks")]
+-    internal static long CpuBusyTicks(uint cpuId) => 0;
++    internal static long CpuBusyTicks(uint cpuId) => SchedulerManager.GetCpuBusyTicks(cpuId);
+ }
+diff --git a/src/Cosmos.Kernel.Core/Runtime/Thread.cs b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
+index 29ca533..35437f5 100644
+--- a/src/Cosmos.Kernel.Core/Runtime/Thread.cs
++++ b/src/Cosmos.Kernel.Core/Runtime/Thread.cs
+@@ -93,7 +93,25 @@ internal class Thread
+     // remains a no-op so current application sources can still be built and
+     // tested against every historical SMT prefix.
+     [RuntimeExport("RhEnableCurrentCpuManagedPreemption")]
+-    internal static void RhEnableCurrentCpuManagedPreemption() { }
++    internal static void RhEnableCurrentCpuManagedPreemption()
++    {
++        SchedulerManager.EnableCurrentCpuManagedPreemption();
++    }
++
++    /// <summary>
++    /// CoreLib registers inlined thread-static roots with the native runtime
++    /// during its startup handshake. Cosmos keeps the backing object graph on
++    /// <see cref="SchedulerThread"/>, which is already rooted and scanned by
++    /// OrionGC, so no additional native ThreadStore registration is required.
++    /// Providing this managed runtime export also keeps a fresh scheduler
++    /// thread from entering NativeAOT's unattached native-thread path.
++    /// </summary>
++    [RuntimeExport("RhRegisterInlinedThreadStaticRoot")]
++    internal static void RhRegisterInlinedThreadStaticRoot(ref object? root, IntPtr module)
++    {
++        _ = root;
++        _ = module;
++    }
+ 
+     [RuntimeExport("RhYield")]
+     internal static int RhYield()
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+index 600bc36..655c4f9 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/PerCpuState.cs
+@@ -93,6 +93,7 @@ public sealed class PerCpuState : SchedulerExtensible
+     private long _automaticBalanceNotBefore;
+     private int _automaticMigrationOutCount;
+     private int _automaticMigrationInCount;
++    private int _managedDispatchReservation;
+     private int _stage20ResumeCount;
+     private int _stage20PreemptionCount;
+     private int _stage20MigrationOutCount;
+@@ -414,6 +415,14 @@ public sealed class PerCpuState : SchedulerExtensible
+     internal void RecordAutomaticMigrationOut() => Interlocked.Increment(ref _automaticMigrationOutCount);
+     internal void RecordAutomaticMigrationIn() => Interlocked.Increment(ref _automaticMigrationInCount);
+ 
++    internal bool TryReserveManagedDispatch() =>
++        Interlocked.CompareExchange(ref _managedDispatchReservation, 1, 0) == 0;
++
++    internal void ReleaseManagedDispatchReservation()
++    {
++        Volatile.Write(ref _managedDispatchReservation, 0);
++    }
++
+     internal bool TryRequestMigration(uint threadId, uint targetCpuId)
+     {
+         if (threadId == 0 || targetCpuId == CpuId || targetCpuId == uint.MaxValue)
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
+new file mode 100644
+index 0000000..fd99993
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.SmpProduction.cs
+@@ -0,0 +1,423 @@
++using System;
++using System.Diagnostics;
++using System.Threading;
++using Cosmos.Kernel.Core.CPU;
++using Cosmos.Kernel.Core.IO;
++using SysThread = System.Threading.Thread;
++
++namespace Cosmos.Kernel.Core.Scheduler;
++
++public static partial class SchedulerManager
++{
++    private static int s_managedPlacementTicket;
++    private static long[]? s_cpuBusyTicks;
++    private static long[]? s_cpuAccountingTimestamp;
++
++    internal static bool CpuAccountingAvailable => s_cpuBusyTicks is not null;
++    internal static long GetCpuBusyTicks(uint cpuId) =>
++        s_cpuBusyTicks is not null && cpuId < s_cpuCount
++            ? Volatile.Read(ref s_cpuBusyTicks[cpuId]) : 0;
++
++    internal static void InitializeProductionCpuAccounting()
++    {
++        if (s_cpuCount == 0 || s_cpuBusyTicks is not null)
++        {
++            return;
++        }
++
++        long[] busy = new long[s_cpuCount];
++        long[] timestamps = new long[s_cpuCount];
++        long now = Stopwatch.GetTimestamp();
++        for (uint cpuId = 0; cpuId < s_cpuCount; cpuId++)
++        {
++            timestamps[cpuId] = now;
++        }
++
++        s_cpuBusyTicks = busy;
++        s_cpuAccountingTimestamp = timestamps;
++    }
++
++    // Monotonic counters belong to CPUs, so migration and thread exit never
++    // move or erase previously charged CPU time. Only the owner writes.
++    private static void RecordCpuAccounting(uint cpuId)
++    {
++        if (s_cpuBusyTicks is null || s_cpuAccountingTimestamp is null ||
++            s_cpuStates is null || cpuId >= s_cpuCount)
++        {
++            return;
++        }
++        long now = Stopwatch.GetTimestamp();
++        long previous = s_cpuAccountingTimestamp[cpuId];
++        s_cpuAccountingTimestamp[cpuId] = now;
++        PerCpuState state = s_cpuStates[cpuId];
++        SchedulerThread? current = state.CurrentThread;
++        if (now > previous && current is not null &&
++            !ReferenceEquals(current, state.IdleThread))
++        {
++            Volatile.Write(ref s_cpuBusyTicks[cpuId], s_cpuBusyTicks[cpuId] + now - previous);
++        }
++    }
++
++    // A parked AP has no scheduler timer ticks. Reset its accounting baseline
++    // immediately before wakeup, otherwise the first busy tick would charge
++    // the entire time spent in native HLT as CPU work.
++    private static void ResetCpuAccountingTimestamp(uint cpuId)
++    {
++        if (s_cpuAccountingTimestamp is null || cpuId >= s_cpuCount)
++        {
++            return;
++        }
++        Volatile.Write(ref s_cpuAccountingTimestamp[cpuId], Stopwatch.GetTimestamp());
++    }
++
++    private static int s_stage23StartedWorkers;
++    private static int s_stage23CompletedWorkers;
++    private static int s_stage23ReleaseWorkers;
++    private static int s_stage23Failure;
++    private static int s_stage23FailureCpu;
++    private static int s_stage23FailureHit;
++    private static int[]? s_stage23CpuHits;
++    private static int[]? s_stage23WorkerPhases;
++
++    private const ulong Stage23TimeoutSeconds = 30;
++
++    /// <summary>
++    /// Selects and reserves a parked AP for a new ordinary managed thread.
++    /// Remote Stride run queues are only mutated while their owner is in the
++    /// native parked loop. CPU0 remains the safe fallback when every AP is busy.
++    /// </summary>
++    internal static uint SelectManagedThreadCpu()
++    {
++#if ARCH_X64
++        uint cpuCount = s_cpuCount;
++        if (cpuCount <= 1 || s_cpuStates is null)
++        {
++            return 0;
++        }
++
++        uint ticket = unchecked((uint)Interlocked.Increment(ref s_managedPlacementTicket));
++        if (ticket == 1)
++        {
++            // Start CoreLib once on the BSP before any AP can race through
++            // the first ThreadStatic-root initialization.
++            return 0;
++        }
++
++        for (uint offset = 0; offset < cpuCount - 1; offset++)
++        {
++            uint candidate = 1 + ((ticket - 2 + offset) % (cpuCount - 1));
++            PerCpuState state = s_cpuStates[candidate];
++
++            if (NativeGetApplicationProcessorCommand(candidate) != 0 ||
++                NativeGetApplicationProcessorCompletion(candidate) != 1 ||
++                !state.TryReserveManagedDispatch())
++            {
++                continue;
++            }
++
++            if (NativeTryEnterSchedulerQueue(candidate) == 1)
++            {
++                if (ReferenceEquals(state.CurrentThread, state.IdleThread) &&
++                    s_currentScheduler!.GetRunQueueCount(state) == 0 &&
++                    NativeGetApplicationProcessorCommand(candidate) == 0 &&
++                    NativeGetApplicationProcessorCompletion(candidate) == 1)
++                {
++                    return candidate;
++                }
++                NativeExitSchedulerQueue(candidate);
++            }
++            state.ReleaseManagedDispatchReservation();
++        }
++#endif
++        return 0;
++    }
++
++    /// <summary>
++    /// Wakes a reserved parked AP after its managed thread has been queued.
++    /// </summary>
++    internal static bool ActivateManagedThreadCpu(uint cpuId)
++    {
++        if (cpuId == 0)
++        {
++            return true;
++        }
++
++#if ARCH_X64
++        if (s_cpuStates is null || cpuId >= s_cpuCount)
++        {
++            return false;
++        }
++
++        ResetCpuAccountingTimestamp(cpuId);
++        bool activated = NativeBeginSchedulerCpu(cpuId) == 1;
++        NativeExitSchedulerQueue(cpuId);
++        s_cpuStates[cpuId].ReleaseManagedDispatchReservation();
++        return activated;
++#else
++        return false;
++#endif
++    }
++
++    /// <summary>
++    /// Arms the periodic scheduler timer once CoreLib has entered the actual
++    /// ZonderqOS process/delegate body. CPU0 already owns the platform timer.
++    /// </summary>
++    internal static void EnableCurrentCpuManagedPreemption()
++    {
++#if ARCH_X64
++        PerCpuState? currentState = CurrentCpuState;
++        SchedulerThread? currentThread = currentState?.CurrentThread;
++        if (currentThread is null ||
++            (currentThread.Flags & SchedulerThreadFlags.Managed) == 0)
++        {
++            Cosmos.Kernel.Core.Panic.Halt("Managed preemption hook has no managed current thread.");
++        }
++
++        currentThread.EnableManagedPreemption();
++        if (GetCurrentCpuId() == 0)
++        {
++            return;
++        }
++
++        using (InternalCpu.DisableInterruptsScope())
++        {
++            if (NativeArmSchedulerTimer() != 1)
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Production AP scheduler timer could not be armed.");
++            }
++        }
++#endif
++    }
++
++    /// <summary>
++    /// Production-path proof: ordinary System.Threading.Thread instances must
++    /// execute on every AP, enter through normal CoreLib startup/exit, and
++    /// restore the registry and native AP park state afterwards.
++    /// </summary>
++    internal static bool RunManagedThreadDistributionProof()
++    {
++        if (!s_enabled || s_currentScheduler is null || s_cpuStates is null || s_cpuCount == 0)
++        {
++            return false;
++        }
++
++#if ARCH_X64
++        NativeSetPersistentSchedulerTimer(1);
++        InitializeProductionCpuAccounting();
++        int initialThreadCount = ThreadCount;
++        int workerCount = checked((int)s_cpuCount);
++        int[] cpuHits = new int[workerCount];
++        s_stage23CpuHits = cpuHits;
++        s_stage23WorkerPhases = new int[workerCount];
++
++        Volatile.Write(ref s_managedPlacementTicket, 0);
++        Volatile.Write(ref s_stage23StartedWorkers, 0);
++        Volatile.Write(ref s_stage23CompletedWorkers, 0);
++        Volatile.Write(ref s_stage23ReleaseWorkers, 0);
++        Volatile.Write(ref s_stage23Failure, 0);
++        Volatile.Write(ref s_stage23FailureCpu, -1);
++        Volatile.Write(ref s_stage23FailureHit, -1);
++
++        long frequency = Stopwatch.Frequency;
++        ulong timeoutTicks = frequency > 0
++            ? checked((ulong)frequency * Stage23TimeoutSeconds)
++            : 30_000_000_000UL;
++
++        // Complete one ordinary CoreLib startup on CPU0 before allowing the
++        // remaining workers to initialize their per-thread storage on APs.
++        SysThread firstWorker = new(Stage23ManagedWorker);
++        firstWorker.Start();
++        ulong start = (ulong)Stopwatch.GetTimestamp();
++        while (Volatile.Read(ref s_stage23StartedWorkers) != 1)
++        {
++            if (Volatile.Read(ref s_stage23Failure) != 0 ||
++                (ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
++            {
++                Volatile.Write(ref s_stage23ReleaseWorkers, 1);
++                WriteStage23FailureDiagnostics("cpu0-start");
++                return false;
++            }
++            SysThread.SpinWait(64);
++        }
++
++        for (int index = 1; index < workerCount; index++)
++        {
++            SysThread worker = new(Stage23ManagedWorker);
++            worker.Start();
++        }
++
++        start = (ulong)Stopwatch.GetTimestamp();
++        while (Volatile.Read(ref s_stage23StartedWorkers) != workerCount)
++        {
++            if (Volatile.Read(ref s_stage23Failure) != 0 ||
++                (ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
++            {
++                Volatile.Write(ref s_stage23ReleaseWorkers, 1);
++                WriteStage23FailureDiagnostics("start");
++                return false;
++            }
++            SysThread.SpinWait(64);
++        }
++
++        Volatile.Write(ref s_stage23ReleaseWorkers, 1);
++        start = (ulong)Stopwatch.GetTimestamp();
++        while (Volatile.Read(ref s_stage23CompletedWorkers) != workerCount ||
++            ThreadCount != initialThreadCount)
++        {
++            if (Volatile.Read(ref s_stage23Failure) != 0 ||
++                (ulong)Stopwatch.GetTimestamp() - start >= timeoutTicks)
++            {
++                WriteStage23FailureDiagnostics("completion");
++                return false;
++            }
++            SysThread.SpinWait(64);
++        }
++
++        int expectedParkedAps = checked((int)s_cpuCount - 1);
++        int parkedAps = expectedParkedAps == 0
++            ? 0
++            : NativeWaitConcurrentSchedulerTest(s_cpuCount, timeoutTicks);
++        if (parkedAps != expectedParkedAps)
++        {
++            Volatile.Write(ref s_stage23FailureCpu, parkedAps);
++            Volatile.Write(ref s_stage23FailureHit, expectedParkedAps);
++            Volatile.Write(ref s_stage23Failure, 3);
++            WriteStage23FailureDiagnostics("parked");
++            return false;
++        }
++
++        int uniqueCpus = 0;
++        ulong cpuMask = 0;
++        for (uint cpuId = 0; cpuId < s_cpuCount; cpuId++)
++        {
++            if (cpuHits[checked((int)cpuId)] != 1)
++            {
++                Volatile.Write(ref s_stage23FailureCpu, checked((int)cpuId));
++                Volatile.Write(ref s_stage23FailureHit, cpuHits[checked((int)cpuId)]);
++                Volatile.Write(ref s_stage23Failure, 4);
++                WriteStage23FailureDiagnostics("hits");
++                return false;
++            }
++
++            uniqueCpus++;
++            if (cpuId < 64)
++            {
++                cpuMask |= 1UL << checked((int)cpuId);
++            }
++        }
++
++        Serial.WriteString("[SCHED-PRODUCTION-SMP] workers=");
++        Serial.WriteNumber((ulong)(uint)workerCount);
++        Serial.WriteString(" unique-cpus=");
++        Serial.WriteNumber((ulong)(uint)uniqueCpus);
++        Serial.WriteString(" cpu-mask=");
++        Serial.WriteHexWithPrefix(cpuMask);
++        Serial.WriteString(" registry=restored aps=parked\n");
++        s_stage23CpuHits = null;
++        s_stage23WorkerPhases = null;
++#else
++        Serial.WriteString("[SCHED-PRODUCTION-SMP] workers=0 unique-cpus=1 cpu-mask=0x1 registry=restored aps=parked\n");
++#endif
++        Serial.WriteString("[SCHED-PRODUCTION-SMP-TEST] PASS\n");
++        return true;
++    }
++
++    private static void WriteStage23FailureDiagnostics(string phase)
++    {
++        Serial.WriteString("[SCHED-PRODUCTION-SMP-CHECK] phase=");
++        Serial.WriteString(phase);
++        Serial.WriteString(" started=");
++        Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage23StartedWorkers));
++        Serial.WriteString(" completed=");
++        Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage23CompletedWorkers));
++        Serial.WriteString(" failure=");
++        Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage23Failure));
++        Serial.WriteString(" cpu=");
++        Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage23FailureCpu));
++        Serial.WriteString(" hit=");
++        Serial.WriteNumber((ulong)(uint)Volatile.Read(ref s_stage23FailureHit));
++        Serial.WriteString(" hits=");
++        int[]? hits = s_stage23CpuHits;
++        if (hits is not null)
++        {
++            for (int index = 0; index < hits.Length; index++)
++            {
++                if (index != 0)
++                {
++                    Serial.WriteString(",");
++                }
++                Serial.WriteNumber((ulong)(uint)Volatile.Read(ref hits[index]));
++            }
++        }
++        Serial.WriteString("\n");
++        Serial.WriteString("[SCHED-PRODUCTION-SMP-CHECK] worker-phases=");
++        int[]? phases = s_stage23WorkerPhases;
++        if (phases is not null)
++        {
++            for (int index = 0; index < phases.Length; index++)
++            {
++                if (index != 0)
++                {
++                    Serial.WriteString(",");
++                }
++                Serial.WriteNumber((ulong)(uint)Volatile.Read(ref phases[index]));
++            }
++        }
++        Serial.WriteString("\n");
++#if ARCH_X64
++        for (uint cpuId = 1; cpuId < s_cpuCount; cpuId++)
++        {
++            PerCpuState state = s_cpuStates![cpuId];
++            SchedulerThread? current = state.CurrentThread;
++            Serial.WriteString("[SCHED-PRODUCTION-SMP-CHECK] ap=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" thread=");
++            Serial.WriteNumber(current?.Id ?? 0);
++            Serial.WriteString(" state=");
++            Serial.WriteNumber((ulong)(current?.State ?? SchedulerThreadState.Created));
++            Serial.WriteString(" command=");
++            Serial.WriteNumber((ulong)NativeGetApplicationProcessorCommand(cpuId));
++            Serial.WriteString(" completion=");
++            Serial.WriteNumber((ulong)NativeGetApplicationProcessorCompletion(cpuId));
++            Serial.WriteString("\n");
++        }
++#endif
++    }
++
++    private static void Stage23ManagedWorker()
++    {
++        // We are now inside the real ThreadStart delegate, so CoreLib has
++        // completed its startup handshake and AP preemption is safe to arm.
++        EnableCurrentCpuManagedPreemption();
++
++        int[]? hits = s_stage23CpuHits;
++        uint cpuId = GetCurrentCpuId();
++        if (hits is null || cpuId >= checked((uint)hits.Length))
++        {
++            Volatile.Write(ref s_stage23FailureCpu, checked((int)cpuId));
++            Volatile.Write(ref s_stage23FailureHit, -1);
++            Volatile.Write(ref s_stage23Failure, 1);
++            return;
++        }
++
++        int hit = Interlocked.Increment(ref hits[checked((int)cpuId)]);
++        if (hit != 1)
++        {
++            Volatile.Write(ref s_stage23FailureCpu, checked((int)cpuId));
++            Volatile.Write(ref s_stage23FailureHit, hit);
++            Volatile.Write(ref s_stage23Failure, 2);
++            return;
++        }
++
++        Interlocked.Increment(ref s_stage23StartedWorkers);
++        Volatile.Write(ref s_stage23WorkerPhases![checked((int)cpuId)], 1);
++        while (Volatile.Read(ref s_stage23ReleaseWorkers) == 0 &&
++            Volatile.Read(ref s_stage23Failure) == 0)
++        {
++            SysThread.SpinWait(64);
++        }
++
++        Volatile.Write(ref s_stage23WorkerPhases![checked((int)cpuId)], 2);
++        Interlocked.Increment(ref s_stage23CompletedWorkers);
++    }
++}
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+index 688bb57..0c1fb0b 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerManager.cs
+@@ -2463,6 +2463,7 @@ public static partial class SchedulerManager
+     private static unsafe void Stage16TimerInterruptCore(ref IRQContext context)
+     {
+         uint cpuId = GetCurrentCpuId();
++        RecordCpuAccounting(cpuId);
+         PerCpuState? state = CurrentCpuState;
+         SchedulerThread? thread = state?.CurrentThread;
+         if (state is not null && thread is not null &&
+@@ -3467,6 +3468,7 @@ public static partial class SchedulerManager
+ 
+     private static void OnTimerInterruptCore(uint cpuId, nuint currentRsp, ulong elapsedNs)
+     {
++        RecordCpuAccounting(cpuId);
+         s_tickCount++;
+ 
+         // Recorded before the early returns below, so the period is readable
+@@ -3510,9 +3512,28 @@ public static partial class SchedulerManager
+             !ReferenceEquals(state.CurrentThread, state.IdleThread) &&
+                 state.CurrentThread.State == SchedulerThreadState.Running);
+ 
++        SchedulerThread currentThread = state.CurrentThread;
++        if ((currentThread.Flags & SchedulerThreadFlags.Managed) != 0 &&
++            !currentThread.ManagedPreemptionEnabled)
++        {
++            // CoreLib has not entered the real ThreadStart delegate yet.
++            return;
++        }
++
+         // Check and wake up sleeping threads whose timeout has expired
+         CheckSleepingThreads(cpuId, elapsedNs);
+ 
++        // A runnable production managed thread must not be switched to the
++        // native AP idle context when there is no alternative runnable work.
++        // That context returns to the park loop and disarms the AP timer, so
++        // the worker would otherwise remain ready with no interrupt to resume it.
++        bool suppressManagedIdleSwitch =
++            GetCurrentCpuId() != 0 &&
++            currentThread.State == SchedulerThreadState.Running &&
++            (currentThread.Flags & SchedulerThreadFlags.Managed) != 0 &&
++            currentThread.ManagedPreemptionEnabled &&
++            s_currentScheduler.GetRunQueueCount(state) == 0;
++
+         // A blocked, sleeping or dead current thread can never continue after
+         // this IRQ. Force the scheduler path even when the policy run queue is
+         // empty so ScheduleFromInterrupt can fall back to the per-CPU idle
+@@ -3521,6 +3542,11 @@ public static partial class SchedulerManager
+         bool needsReschedule = state.CurrentThread.State != SchedulerThreadState.Running ||
+             s_currentScheduler.OnTick(state, state.CurrentThread, elapsedNs);
+ 
++        if (suppressManagedIdleSwitch && needsReschedule)
++        {
++            needsReschedule = false;
++        }
++
+         if (needsReschedule)
+         {
+             ScheduleFromInterrupt(cpuId, currentRsp);
+diff --git a/src/Cosmos.Kernel.System/Diagnostics/SchedulerInfo.cs b/src/Cosmos.Kernel.System/Diagnostics/SchedulerInfo.cs
+index 4939566..8a23f2a 100644
+--- a/src/Cosmos.Kernel.System/Diagnostics/SchedulerInfo.cs
++++ b/src/Cosmos.Kernel.System/Diagnostics/SchedulerInfo.cs
+@@ -75,8 +75,31 @@ public static class SchedulerInfo
+     /// Total busy CPU time in nanoseconds, summed over all CPUs and all
+     /// non-idle threads since boot. Monotonic across thread exits; sample
+     /// it over a wall-clock window to derive CPU utilization.
+     /// </summary>
+     public static ulong BusyCpuTimeNs => SchedulerManager.GetBusyCpuTimeNs();
++
++    /// <summary>Whether per-logical-CPU accounting counters are available.</summary>
++    public static bool CpuAccountingAvailable => SchedulerManager.CpuAccountingAvailable;
++
++    /// <summary>
++    /// Monotonic busy-time counter for one logical CPU, in Stopwatch timestamp ticks.
++    /// Sample it over a Stopwatch window to derive utilization.
++    /// </summary>
++    public static long GetCpuBusyTicks(uint cpuId) => SchedulerManager.GetCpuBusyTicks(cpuId);
++
++    /// <summary>
++    /// Kernel scheduler thread ID currently executing on the calling CPU,
++    /// or uint.MaxValue when the caller is not a scheduled thread.
++    /// </summary>
++    public static uint CurrentThreadId =>
++        SchedulerManager.CurrentCpuState?.CurrentThread?.Id ?? uint.MaxValue;
++
++    /// <summary>
++    /// Enables periodic preemption for the current production managed thread.
++    /// This is called after CoreLib has completed the ThreadStart handshake.
++    /// </summary>
++    public static void EnableCurrentManagedThreadPreemption() =>
++        SchedulerManager.EnableCurrentCpuManagedPreemption();
+ 
+     /// <summary>
+     /// Number of live threads in the registry. This is a population count,
+diff --git a/src/Cosmos.Kernel.System/PublicAPI.Unshipped.txt b/src/Cosmos.Kernel.System/PublicAPI.Unshipped.txt
+index c2d5c1e..a7e7724 100644
+--- a/src/Cosmos.Kernel.System/PublicAPI.Unshipped.txt
++++ b/src/Cosmos.Kernel.System/PublicAPI.Unshipped.txt
+@@ -624,16 +624,20 @@ static Cosmos.Kernel.System.Diagnostics.MemoryInfo.TotalCollections.get -> int
+ static Cosmos.Kernel.System.Diagnostics.MemoryInfo.TotalObjectsFreed.get -> int
+ static Cosmos.Kernel.System.Diagnostics.MemoryInfo.TotalPages.get -> ulong
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.BusyCpuTimeNs.get -> ulong
++static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.CpuAccountingAvailable.get -> bool
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.CpuCount.get -> uint
++static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.CurrentThreadId.get -> uint
++static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.EnableCurrentManagedThreadPreemption() -> void
++static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.GetCpuBusyTicks(uint cpuId) -> long
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.GetRunQueueCount(uint cpuId) -> int
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.IsInitialized.get -> bool
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.IsRunning.get -> bool
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.IsSupported.get -> bool
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.RequestKill(uint threadId) -> Cosmos.Kernel.System.Diagnostics.ThreadKillResult
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.SchedulerName.get -> string?
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.ThreadCount.get -> int
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.ThreadSlotCount.get -> int
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.TickPeriodNs.get -> ulong
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.TryGetCurrentThread(uint cpuId, out Cosmos.Kernel.System.Diagnostics.KernelThreadInfo info) -> bool
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.TryGetRunQueueThread(uint cpuId, int index, out Cosmos.Kernel.System.Diagnostics.KernelThreadInfo info) -> bool
+ static Cosmos.Kernel.System.Diagnostics.SchedulerInfo.TryGetThreadInSlot(int slot, out Cosmos.Kernel.System.Diagnostics.KernelThreadInfo info) -> bool
+diff --git a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs b/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
+index a740444..779cc08 100644
+--- a/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
++++ b/src/Cosmos.Kernel.Core/Scheduler/SchedulerThread.cs
+@@ -121,6 +121,16 @@ public sealed unsafe class SchedulerThread : SchedulerExtensible
+     /// </summary>
+     private object[][]? _threadStaticStorage;
+ 
++    private int _managedPreemptionEnabled;
++
++    internal bool ManagedPreemptionEnabled =>
++        Volatile.Read(ref _managedPreemptionEnabled) != 0;
++
++    internal void EnableManagedPreemption()
++    {
++        Volatile.Write(ref _managedPreemptionEnabled, 1);
++    }
++
+     /// <summary>
+     /// Default stack size for new threads (256KB). Must stay above CoreLib's
+     /// 128KB MinExecutionStackSize (64-bit) or
+diff --git a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+index 18641b2..d69bd2a 100644
+--- a/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
++++ b/src/Cosmos.Kernel/Internal/Runtime/CompilerHelpers/LibraryInitializer.cs
+@@ -54,6 +54,17 @@ internal class LibraryInitializer
+             // time against DefaultQuantumNs, so the two have to agree.
+             initializer.StartSchedulerTimer(
+                 (uint)(SchedulerManager.DefaultQuantumNs / SchedulerManager.NanosecondsPerMillisecond));
++
++            SchedulerManager.InitializeProductionCpuAccounting();
++
++            using (Cosmos.Kernel.Core.CPU.InternalCpu.DisableInterruptsScope())
++            {
++                Serial.WriteString("[SCHED-PRODUCTION-SMP] begin\n");
++            }
++            if (!SchedulerManager.RunManagedThreadDistributionProof())
++            {
++                Cosmos.Kernel.Core.Panic.Halt("Stage 23 production managed SMP proof failed.");
++            }
+         }
+     }
+ 

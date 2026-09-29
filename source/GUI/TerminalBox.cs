@@ -113,6 +113,18 @@ namespace ZonderqOS.GUI
             UpdateScrollBar();
         }
 
+        internal void ShowMonitor(IReadOnlyList<string> lines, int firstLine)
+        {
+            ClearOutput();
+            int width = GetMaxChars();
+            int count = Math.Max(1, GetVisibleLines() - 1);
+            for (int index = Math.Max(0, firstLine); index < lines.Count && count > 0; index++, count--)
+            {
+                string line = lines[index];
+                AddOutputLine(line.Length > width ? line.Substring(0, width) : line);
+            }
+        }
+
         private int GetCharWidth()
         {
             if (Font == null || Font.Width <= 0)

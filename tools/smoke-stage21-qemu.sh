@@ -39,7 +39,15 @@ def fail(message):
 
 begins = [i for i, line in enumerate(lines) if line == "[SCHED-AUTO-BALANCE] begin"]
 passes = [i for i, line in enumerate(lines) if line == "[SCHED-AUTO-BALANCE-TEST] PASS"]
-if len(begins) != 1 or len(passes) != 1 or begins[0] >= passes[0]:
+skips = [i for i, line in enumerate(lines) if line == "[SCHED-AUTO-BALANCE-TEST] SKIP reason=requires-multiple-ap-targets"]
+if expected == 2:
+    if len(begins) != 1 or len(passes) != 0 or len(skips) != 1 or begins[0] >= skips[0]:
+        fail("single-AP Stage-21 must explicitly skip AP-to-AP balancing")
+    if any(line.startswith("[SCHED-AUTO-BALANCE] migrations=") for line in lines):
+        fail("single-AP Stage-21 skip emitted balancing evidence")
+    print("[SMT21-QEMU][OK] one AP correctly skipped AP-to-AP balancing")
+    raise SystemExit(0)
+if len(begins) != 1 or len(passes) != 1 or len(skips) != 0 or begins[0] >= passes[0]:
     fail("missing or duplicated Stage-21 proof markers")
 
 summary_re = re.compile(
@@ -63,16 +71,36 @@ if expected == 1:
     print("[SMT21-QEMU][OK] single-CPU fallback preserved the scheduler and registry")
     raise SystemExit(0)
 
-if expected != 8:
+if expected == 2:
+    if any((migrations, sources, targets, preemptions, resumes, scanned)):
+        fail("single-AP Stage-21 fallback reported impossible AP-to-AP balancing work")
+    print("[SMT21-QEMU][OK] single-AP topology correctly skipped impossible AP-to-AP balancing")
+    raise SystemExit(0)
+
+if expected == 4:
+    required_sources = 1 << 1
+    if migrations < 1 or sources & required_sources != required_sources:
+        fail(f"automatic balancing did not drain the imbalanced AP owner: migrations={migrations} sources=0x{sources:x}")
+    if targets & 1 or targets.bit_count() < 1:
+        fail(f"automatic balancing did not reserve an available AP target: 0x{targets:x}")
+    if preemptions < 6 or resumes < 3 + migrations:
+        fail(f"timer/context continuation proof too weak: preemptions={preemptions} resumes={resumes} migrations={migrations}")
+    if scanned != 3:
+        fail(f"OrionGC scanned {scanned} AP stacks instead of 3")
+    print(f"[SMT21-QEMU][OK] {migrations} owner-driven migrations reached an available AP target with timer, GC and registry proof")
+    raise SystemExit(0)
+
+if expected not in (8, 16):
     fail(f"unsupported Stage-21 topology: {expected} CPUs")
-required_sources = (1 << 1) | (1 << 7)
+high_source = expected - 1
+required_sources = (1 << 1) | (1 << high_source)
 if migrations < 4 or sources & required_sources != required_sources:
     fail(f"automatic balancing did not run from both imbalanced owners: migrations={migrations} sources=0x{sources:x}")
 if targets & 1 or targets.bit_count() < 3:
     fail(f"automatic balancing did not reserve at least three AP targets: 0x{targets:x}")
 if preemptions < 12 or resumes < 6 + migrations:
     fail(f"timer/context continuation proof too weak: preemptions={preemptions} resumes={resumes} migrations={migrations}")
-if scanned != 7:
-    fail(f"OrionGC scanned {scanned} AP stacks instead of 7")
+if scanned != expected - 1:
+    fail(f"OrionGC scanned {scanned} AP stacks instead of {expected - 1}")
 print(f"[SMT21-QEMU][OK] {migrations} owner-driven migrations from both edge APs reached {targets.bit_count()} targets with timer, GC and registry proof")
 PY

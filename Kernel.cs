@@ -18,6 +18,9 @@ namespace ZonderqOS
             try
             {
                 Console.Clear();
+#if ZONDERQ_HTOP_SMOKE_TEST
+                HtopSmokeTest.Run();
+#endif
                 Disk.Initialize();
                 UserManager.Initialize();
                 Command.Initialize();
