@@ -36,6 +36,8 @@ namespace ZonderqOS.SystemCore
         public int StorageDeviceCount { get; private set; }
         public int StoragePartitionCount { get; private set; }
         public int PciDeviceCount { get; private set; }
+        public int AhciControllerCount { get; private set; }
+        public int NvmeControllerCount { get; private set; }
 
         public ulong TotalMemoryBytes { get; private set; }
         public ulong FreeMemoryBytes { get; private set; }
@@ -90,10 +92,28 @@ namespace ZonderqOS.SystemCore
                 snapshot.PciDeviceCount = HardwareDeviceRegistry.IsInitialized
                     ? Math.Max(0, HardwareDeviceRegistry.PciDeviceCount)
                     : 0;
+
+                if (HardwareDeviceRegistry.IsInitialized)
+                {
+                    var pciDevices = new System.Collections.Generic.List<DeviceDescriptor>();
+                    HardwareDeviceRegistry.CopyPciDevices(pciDevices);
+                    for (int i = 0; i < pciDevices.Count; i++)
+                    {
+                        if (!StorageControllerClassifier.TryClassify(pciDevices[i], out StorageControllerKind kind))
+                            continue;
+
+                        if (kind == StorageControllerKind.Ahci)
+                            snapshot.AhciControllerCount++;
+                        else if (kind == StorageControllerKind.Nvme)
+                            snapshot.NvmeControllerCount++;
+                    }
+                }
             }
             catch
             {
                 snapshot.PciDeviceCount = 0;
+                snapshot.AhciControllerCount = 0;
+                snapshot.NvmeControllerCount = 0;
             }
 
             try
