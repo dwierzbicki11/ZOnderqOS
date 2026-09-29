@@ -1,5 +1,9 @@
 name: SMT stage 23 production all-CPU scheduling
 
+concurrency:
+  group: smt-stage23-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [ main, 'smp/stage23-production-all-cpus' ]
