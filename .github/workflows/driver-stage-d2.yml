@@ -1,4 +1,4 @@
-name: Driver D2.1 storage foundation
+name: Driver D2.2 read-only storage BAR foundation
 
 on:
   push:
@@ -6,6 +6,9 @@ on:
     paths:
       - 'source/Hardware/PciBarDecoder.cs'
       - 'source/Hardware/StorageControllerDrivers.cs'
+      - 'source/Hardware/StorageControllerBars.cs'
+      - 'source/Hardware/PciConfigDiscoverySource.cs'
+      - 'source/Platform/X64/PciConfigIoAccessor.cs'
       - 'tests/HardwareModel.Tests/**'
       - 'ZonderqOS.csproj'
       - '.github/workflows/driver-stage-d2.yml'
@@ -13,6 +16,9 @@ on:
     paths:
       - 'source/Hardware/PciBarDecoder.cs'
       - 'source/Hardware/StorageControllerDrivers.cs'
+      - 'source/Hardware/StorageControllerBars.cs'
+      - 'source/Hardware/PciConfigDiscoverySource.cs'
+      - 'source/Platform/X64/PciConfigIoAccessor.cs'
       - 'tests/HardwareModel.Tests/**'
       - 'ZonderqOS.csproj'
       - '.github/workflows/driver-stage-d2.yml'
@@ -36,7 +42,13 @@ jobs:
         run: |
           dotnet restore tests/HardwareModel.Tests/HardwareModel.Tests.csproj -r linux-arm64
           dotnet build tests/HardwareModel.Tests/HardwareModel.Tests.csproj -c Release -r linux-arm64 --no-restore
-      - name: Enforce safe D2.1 boundary
+      - name: Verify read-only BAR access uses aligned PCI config dwords
+        run: |
+          grep -Fq 'uint Read32' source/Hardware/PciConfigDiscoverySource.cs
+          grep -Fq 'if ((offset & 3) != 0)' source/Platform/X64/PciConfigIoAccessor.cs
+          grep -Fq 'StorageControllerBars.TryReadAhciAbar' tests/HardwareModel.Tests/Program.cs
+          grep -Fq 'StorageControllerBars.TryReadNvmeBar0' tests/HardwareModel.Tests/Program.cs
+      - name: Enforce safe D2.2 boundary
         run: |
           test ! -e source/Hardware/DmaPageAllocator.cs
           test ! -e source/Platform/X64/PhysicalMmioReader.cs
