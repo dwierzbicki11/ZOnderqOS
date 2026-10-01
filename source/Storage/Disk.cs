@@ -104,14 +104,21 @@ namespace ZonderqOS
 
         public static void CreateFile(string path, string content)
         {
-            if (VirtualFs.TryWrite(path, content))
+            if (VirtualFs.IsVirtualPath(path))
             {
-                CommandIO.LastCommandSuccess = true;
+                if (VirtualFs.TryWrite(path, content, false, out string virtualError))
+                {
+                    CommandIO.LastCommandSuccess = true;
+                    return;
+                }
+
+                string message = string.IsNullOrEmpty(virtualError)
+                    ? "virtual filesystem does not support writing this path"
+                    : virtualError;
+                WriteMessage.WriteError($"Write rejected for {path}: {message}", "FS");
+                CommandIO.LastCommandSuccess = false;
                 return;
             }
-
-            if (RejectVirtualMutation(path, "write"))
-                return;
 
             if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
             {
@@ -135,14 +142,21 @@ namespace ZonderqOS
 
         public static void AppendFile(string path, string content)
         {
-            if (VirtualFs.TryWrite(path, content))
+            if (VirtualFs.IsVirtualPath(path))
             {
-                CommandIO.LastCommandSuccess = true;
+                if (VirtualFs.TryWrite(path, content + "\n", true, out string virtualError))
+                {
+                    CommandIO.LastCommandSuccess = true;
+                    return;
+                }
+
+                string message = string.IsNullOrEmpty(virtualError)
+                    ? "virtual filesystem does not support appending this path"
+                    : virtualError;
+                WriteMessage.WriteError($"Append rejected for {path}: {message}", "FS");
+                CommandIO.LastCommandSuccess = false;
                 return;
             }
-
-            if (RejectVirtualMutation(path, "append"))
-                return;
 
             if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
             {
@@ -252,6 +266,19 @@ namespace ZonderqOS
 
         public static void DeleteFile(string path)
         {
+            if (RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path))
+            {
+                if (VirtualFs.TryDeleteFile(path, out string virtualError))
+                {
+                    CommandIO.LastCommandSuccess = true;
+                    return;
+                }
+
+                WriteMessage.WriteError($"Delete failed for {path}: {virtualError}", "FS");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             if (RejectVirtualMutation(path, "delete"))
                 return;
 
@@ -275,6 +302,19 @@ namespace ZonderqOS
 
         public static void CreateDir(string path)
         {
+            if (RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path))
+            {
+                if (VirtualFs.TryCreateDirectory(path, out string virtualError))
+                {
+                    CommandIO.LastCommandSuccess = true;
+                    return;
+                }
+
+                WriteMessage.WriteError($"mkdir failed for {path}: {virtualError}", "FS");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             if (RejectVirtualMutation(path, "mkdir"))
                 return;
 
@@ -282,15 +322,30 @@ namespace ZonderqOS
             {
                 Directory.CreateDirectory(path);
                 WriteMessage.WriteOK($"Directory created: {path}", "FS");
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
                 WriteMessage.WriteError($"Error creating directory: {ex.Message}", "FS");
+                CommandIO.LastCommandSuccess = false;
             }
         }
 
         public static void DeleteDir(string path, bool recursive = true)
         {
+            if (RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path))
+            {
+                if (VirtualFs.TryDeleteDirectory(path, recursive, out string virtualError))
+                {
+                    CommandIO.LastCommandSuccess = true;
+                    return;
+                }
+
+                WriteMessage.WriteError($"rmdir failed for {path}: {virtualError}", "FS");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             if (RejectVirtualMutation(path, "rmdir"))
                 return;
 
@@ -305,10 +360,12 @@ namespace ZonderqOS
             {
                 Directory.Delete(path, recursive);
                 WriteMessage.WriteOK($"Directory deleted: {path}", "FS");
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
                 WriteMessage.WriteError($"Error deleting directory: {ex.Message}", "FS");
+                CommandIO.LastCommandSuccess = false;
             }
         }
 
