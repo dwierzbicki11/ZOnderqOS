@@ -10,7 +10,7 @@ namespace ZonderqOS.Commands
         private const int MaxVisitedDirectories = 1024;
 
         public string Name => "find";
-        public string Description => "Find files/directories by name with bounded recursion";
+        public string Description => "Find files/directories by name with bounded traversal";
 
         public void Execute(string[] args, ref string currentPath)
         {
@@ -40,12 +40,12 @@ namespace ZonderqOS.Commands
                 return;
             }
 
-            int results = 0;
-            int visited = 0;
-
             try
             {
-                Search(root, pattern, 0, ref results, ref visited);
+                int results;
+                int visited;
+                SearchIterative(root, pattern, out results, out visited);
+
                 if (results == MaxResults)
                     CommandIO.WriteLine("[find] result limit reached (" + MaxResults + ")");
                 if (visited == MaxVisitedDirectories)
@@ -60,60 +60,80 @@ namespace ZonderqOS.Commands
             }
         }
 
-        private static void Search(
-            string path,
-            string pattern,
-            int depth,
-            ref int results,
-            ref int visited)
+        private static void SearchIterative(string root, string pattern, out int results, out int visited)
         {
-            if (depth > MaxDepth || results >= MaxResults || visited >= MaxVisitedDirectories)
-                return;
+            // The traversal stack is explicitly bounded by the same directory budget as
+            // the scan itself. This avoids consuming the managed call stack on deep or
+            // adversarial directory trees while keeping memory use deterministic.
+            string[] paths = new string[MaxVisitedDirectories];
+            int[] depths = new int[MaxVisitedDirectories];
+            int pending = 1;
+            paths[0] = root;
+            depths[0] = 0;
 
-            visited++;
+            results = 0;
+            visited = 0;
 
-            string[] directories;
-            string[] files;
-            try
+            while (pending > 0 && results < MaxResults && visited < MaxVisitedDirectories)
             {
-                directories = Directory.GetDirectories(path);
-                files = Directory.GetFiles(path);
-            }
-            catch
-            {
-                return;
-            }
+                pending--;
+                string path = paths[pending];
+                int depth = depths[pending];
+                paths[pending] = null;
 
-            for (int i = 0; i < directories.Length && results < MaxResults; i++)
-            {
-                string name = BaseName(directories[i]);
-                if (Matches(name, pattern))
-                {
-                    CommandIO.WriteLine(directories[i]);
-                    results++;
-                }
-            }
-
-            for (int i = 0; i < files.Length && results < MaxResults; i++)
-            {
-                if (!PermissionManager.CanRead(files[i], SecurityContext.CurrentUser))
+                if (depth > MaxDepth)
                     continue;
 
-                string name = BaseName(files[i]);
-                if (Matches(name, pattern))
-                {
-                    CommandIO.WriteLine(files[i]);
-                    results++;
-                }
-            }
+                visited++;
 
-            for (int i = 0;
-                 i < directories.Length &&
-                 results < MaxResults &&
-                 visited < MaxVisitedDirectories;
-                 i++)
-            {
-                Search(directories[i], pattern, depth + 1, ref results, ref visited);
+                string[] directories;
+                string[] files;
+                try
+                {
+                    directories = Directory.GetDirectories(path);
+                    files = Directory.GetFiles(path);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                for (int i = 0; i < directories.Length && results < MaxResults; i++)
+                {
+                    string name = BaseName(directories[i]);
+                    if (Matches(name, pattern))
+                    {
+                        CommandIO.WriteLine(directories[i]);
+                        results++;
+                    }
+                }
+
+                for (int i = 0; i < files.Length && results < MaxResults; i++)
+                {
+                    if (!PermissionManager.CanRead(files[i], SecurityContext.CurrentUser))
+                        continue;
+
+                    string name = BaseName(files[i]);
+                    if (Matches(name, pattern))
+                    {
+                        CommandIO.WriteLine(files[i]);
+                        results++;
+                    }
+                }
+
+                if (depth >= MaxDepth)
+                    continue;
+
+                // Push in reverse order so traversal remains compatible with the old
+                // depth-first recursive implementation for deterministic shell output.
+                for (int i = directories.Length - 1;
+                     i >= 0 && pending < MaxVisitedDirectories;
+                     i--)
+                {
+                    paths[pending] = directories[i];
+                    depths[pending] = depth + 1;
+                    pending++;
+                }
             }
         }
 
