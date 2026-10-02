@@ -4,7 +4,7 @@ namespace ZonderqOS.Commands
 {
     public sealed class CmdAlias : ICommand
     {
-        private readonly List<KeyValuePair<string,string>> aliases = new List<KeyValuePair<string,string>>(64);
+        private readonly KeyValuePair<string,string>[] aliases = new KeyValuePair<string,string>[AliasManager.Capacity];
         public string Name => "alias";
         public string Description => "List or define shell aliases";
 
@@ -12,9 +12,12 @@ namespace ZonderqOS.Commands
         {
             if (args.Length == 1)
             {
-                AliasManager.CopyTo(aliases);
-                for (int i = 0; i < aliases.Count; i++)
+                int count = AliasManager.CopyTo(aliases);
+                for (int i = 0; i < count; i++)
+                {
                     CommandIO.WriteLine(aliases[i].Key + "='" + aliases[i].Value + "'");
+                    aliases[i] = default(KeyValuePair<string,string>);
+                }
                 CommandIO.LastCommandSuccess = true;
                 return;
             }
