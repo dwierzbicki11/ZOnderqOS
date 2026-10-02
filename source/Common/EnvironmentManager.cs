@@ -7,7 +7,7 @@ namespace ZonderqOS
     public static class EnvironmentManager
     {
         private const long MaxProfileBytes = 64 * 1024;
-        private const int MaxVariables = 128;
+        public const int MaxVariables = 128;
         private const int MaxKeyLength = 64;
         private const int MaxValueLength = 4096;
 
@@ -83,20 +83,34 @@ namespace ZonderqOS
                 return _vars.Remove(key);
         }
 
-        public static void CopyTo(List<KeyValuePair<string, string>> destination)
+        public static int CopyTo(KeyValuePair<string, string>[] destination)
         {
             if (destination == null)
                 throw new ArgumentNullException(nameof(destination));
+            if (destination.Length < MaxVariables)
+                throw new ArgumentException("Environment snapshot buffer is too small.", nameof(destination));
 
+            int count = 0;
             lock (_varsLock)
             {
-                destination.Clear();
                 foreach (var pair in _vars)
-                    destination.Add(pair);
+                    destination[count++] = pair;
             }
 
-            destination.Sort((a, b) =>
-                string.Compare(a.Key, b.Key, StringComparison.Ordinal));
+            // Keep env output deterministic without allocating a temporary List or comparer.
+            for (int i = 1; i < count; i++)
+            {
+                KeyValuePair<string, string> current = destination[i];
+                int j = i - 1;
+                while (j >= 0 && string.Compare(destination[j].Key, current.Key, StringComparison.Ordinal) > 0)
+                {
+                    destination[j + 1] = destination[j];
+                    j--;
+                }
+                destination[j + 1] = current;
+            }
+
+            return count;
         }
 
         public static string Get(string key)
