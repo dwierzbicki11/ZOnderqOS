@@ -1,10 +1,12 @@
 using System;
-using System.Collections.Generic;
 
 namespace ZonderqOS.Commands
 {
     public sealed class CmdDmesg : ICommand
     {
+        private const int MaxEntries = 96;
+        private readonly SystemLogEntry[] _buffer = new SystemLogEntry[MaxEntries];
+
         public string Name => "dmesg";
         public string Description => "Show recent in-memory kernel/system log entries";
 
@@ -26,7 +28,7 @@ namespace ZonderqOS.Commands
 
                 if (arg == "-n" || arg == "--lines")
                 {
-                    if (i + 1 >= args.Length || !int.TryParse(args[++i], out limit) || limit < 1 || limit > 96)
+                    if (i + 1 >= args.Length || !int.TryParse(args[++i], out limit) || limit < 1 || limit > MaxEntries)
                     {
                         Usage();
                         CommandIO.LastCommandSuccess = false;
@@ -58,10 +60,10 @@ namespace ZonderqOS.Commands
                 return;
             }
 
-            var selected = new List<SystemLogEntry>();
-            int available = SystemLogger.Count;
+            int selectedCount = 0;
+            int available = Math.Min(SystemLogger.Count, MaxEntries);
 
-            for (int offset = 0; offset < available && selected.Count < limit; offset++)
+            for (int offset = 0; offset < available && selectedCount < limit; offset++)
             {
                 SystemLogEntry entry;
                 if (!SystemLogger.TryGetRecent(offset, out entry))
@@ -70,13 +72,13 @@ namespace ZonderqOS.Commands
                 if (entry.Level < minimumLevel)
                     continue;
 
-                selected.Add(entry);
+                _buffer[selectedCount++] = entry;
             }
 
-            for (int i = selected.Count - 1; i >= 0; i--)
-                CommandIO.WriteLine(SystemLogger.Format(selected[i]));
+            for (int i = selectedCount - 1; i >= 0; i--)
+                CommandIO.WriteLine(SystemLogger.Format(_buffer[i]));
 
-            if (selected.Count == 0)
+            if (selectedCount == 0)
                 CommandIO.WriteLine("dmesg: no matching in-memory log entries.");
 
             if (clearAfter)
