@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 
 namespace ZonderqOS.Commands
 {
@@ -9,6 +10,7 @@ namespace ZonderqOS.Commands
         public string Description => "Output first lines of a file or pipe ([file] [lines])";
 
         private const int MaxHeadLines = 10000;
+        private const int MaxLineChars = 16 * 1024;
 
         public void Execute(string[] args, ref string currentPath)
         {
@@ -90,10 +92,47 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine($"--- First up to {lineCount} lines ---");
 
             int printed = 0;
-            string line;
-            while (printed < lineCount && (line = reader.ReadLine()) != null)
+            var line = new StringBuilder(Math.Min(MaxLineChars, 256));
+            while (printed < lineCount)
             {
-                CommandIO.WriteLine(line);
+                line.Clear();
+                bool sawAny = false;
+
+                while (true)
+                {
+                    int value = reader.Read();
+                    if (value < 0)
+                    {
+                        if (!sawAny)
+                        {
+                            CommandIO.LastCommandSuccess = true;
+                            return;
+                        }
+                        break;
+                    }
+
+                    sawAny = true;
+                    char ch = (char)value;
+                    if (ch == '\n')
+                        break;
+                    if (ch == '\r')
+                    {
+                        if (reader.Peek() == '\n')
+                            reader.Read();
+                        break;
+                    }
+
+                    if (line.Length >= MaxLineChars)
+                    {
+                        WriteMessage.WriteError($"head: line exceeds safety limit ({MaxLineChars} characters).", "CMD");
+                        CommandIO.LastCommandSuccess = false;
+                        return;
+                    }
+
+                    line.Append(ch);
+                }
+
+                CommandIO.WriteLine(line.ToString());
                 printed++;
             }
 
