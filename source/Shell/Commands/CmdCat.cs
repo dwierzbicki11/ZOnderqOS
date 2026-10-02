@@ -1,11 +1,15 @@
 using System;
 using System.IO;
+using System.Text;
 using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
     public class CmdCat : ICommand
     {
+        private const int MaxLineLength = 16 * 1024;
+        private const int MaxCharacters = 8 * 1024 * 1024;
+
         public string Name => "cat";
         public string Description => "Read text file contents";
 
@@ -54,9 +58,38 @@ namespace ZonderqOS.Commands
             {
                 using (var reader = new StreamReader(path))
                 {
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
-                        CommandIO.WriteLine(line);
+                    var line = new StringBuilder(256);
+                    int total = 0;
+                    int value;
+
+                    while ((value = reader.Read()) >= 0)
+                    {
+                        total++;
+                        if (total > MaxCharacters)
+                            throw new InvalidOperationException("cat input limit reached (8 Mi characters)");
+
+                        char ch = (char)value;
+                        if (ch == '\n')
+                        {
+                            if (line.Length > 0 && line[line.Length - 1] == '\r')
+                                line.Length--;
+                            CommandIO.WriteLine(line.ToString());
+                            line.Clear();
+                            continue;
+                        }
+
+                        if (line.Length >= MaxLineLength)
+                            throw new InvalidOperationException("cat line limit reached (16 KiB)");
+
+                        line.Append(ch);
+                    }
+
+                    if (line.Length > 0)
+                    {
+                        if (line[line.Length - 1] == '\r')
+                            line.Length--;
+                        CommandIO.Write(line.ToString());
+                    }
                 }
 
                 CommandIO.LastCommandSuccess = true;
