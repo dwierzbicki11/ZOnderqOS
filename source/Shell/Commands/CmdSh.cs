@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 
 namespace ZonderqOS.Commands
 {
@@ -11,6 +12,7 @@ namespace ZonderqOS.Commands
         private const long MaxScriptBytes = 256 * 1024;
         private const int MaxScriptCommands = 4096;
         private const int MaxScriptDepth = 8;
+        private const int MaxScriptLineChars = 16 * 1024;
 
         [ThreadStatic]
         private static int executionDepth;
@@ -61,29 +63,37 @@ namespace ZonderqOS.Commands
                 executionDepth++;
                 try
                 {
-                    string content = File.ReadAllText(scriptPath);
-                    string[] lines = content.Split(new char[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-
                     CommandIO.WriteLine($"--- Executing script: {scriptPath} ---");
                     int executedCommands = 0;
                     bool lastResult = true;
+                    var lineBuffer = new StringBuilder(Math.Min(MaxScriptLineChars, 256));
 
-                    foreach (string rawLine in lines)
+                    using (var reader = new StreamReader(scriptPath))
                     {
-                        string line = rawLine.Trim();
-                        if (string.IsNullOrEmpty(line) || line.StartsWith("#"))
-                            continue;
-
-                        if (executedCommands >= MaxScriptCommands)
+                        while (TryReadBoundedLine(reader, lineBuffer, out bool lineTooLong))
                         {
-                            WriteMessage.WriteError($"Script command limit ({MaxScriptCommands}) exceeded.", "CMD");
-                            CommandIO.LastCommandSuccess = false;
-                            return;
-                        }
+                            if (lineTooLong)
+                            {
+                                WriteMessage.WriteError($"Script line is too long. Limit: {MaxScriptLineChars} characters.", "CMD");
+                                CommandIO.LastCommandSuccess = false;
+                                return;
+                            }
 
-                        Command.Run(line, ref currentPath);
-                        lastResult = CommandIO.LastCommandSuccess;
-                        executedCommands++;
+                            string line = lineBuffer.ToString().Trim();
+                            if (string.IsNullOrEmpty(line) || line.StartsWith("#"))
+                                continue;
+
+                            if (executedCommands >= MaxScriptCommands)
+                            {
+                                WriteMessage.WriteError($"Script command limit ({MaxScriptCommands}) exceeded.", "CMD");
+                                CommandIO.LastCommandSuccess = false;
+                                return;
+                            }
+
+                            Command.Run(line, ref currentPath);
+                            lastResult = CommandIO.LastCommandSuccess;
+                            executedCommands++;
+                        }
                     }
 
                     CommandIO.LastCommandSuccess = lastResult;
@@ -97,6 +107,35 @@ namespace ZonderqOS.Commands
             {
                 WriteMessage.WriteError($"Script execution error: {ex.Message}", "CMD");
                 CommandIO.LastCommandSuccess = false;
+            }
+        }
+
+        private static bool TryReadBoundedLine(StreamReader reader, StringBuilder buffer, out bool lineTooLong)
+        {
+            buffer.Clear();
+            lineTooLong = false;
+            bool readAny = false;
+
+            while (true)
+            {
+                int value = reader.Read();
+                if (value < 0)
+                    return readAny;
+
+                readAny = true;
+                char ch = (char)value;
+                if (ch == '\n')
+                    return true;
+                if (ch == '\r')
+                    continue;
+
+                if (buffer.Length >= MaxScriptLineChars)
+                {
+                    lineTooLong = true;
+                    return true;
+                }
+
+                buffer.Append(ch);
             }
         }
     }
