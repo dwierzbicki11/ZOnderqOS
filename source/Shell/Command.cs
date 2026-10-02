@@ -19,6 +19,7 @@ namespace ZonderqOS
             _commands.Add(new CmdCd());
             _commands.Add(new CmdLs());
             _commands.Add(new CmdLspci());
+            _commands.Add(new CmdDriverCtl());
             _commands.Add(new CmdMkdir());
             _commands.Add(new CmdRmdir());
             _commands.Add(new CmdCat());
