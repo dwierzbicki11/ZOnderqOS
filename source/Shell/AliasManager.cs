@@ -5,7 +5,7 @@ namespace ZonderqOS
 {
     public static class AliasManager
     {
-        private const int MaxAliases = 64;
+        public const int Capacity = 64;
         private const int MaxNameLength = 32;
         private const int MaxValueLength = 256;
         private static readonly Dictionary<string,string> Aliases =
@@ -24,7 +24,7 @@ namespace ZonderqOS
 
             lock (Sync)
             {
-                if (!Aliases.ContainsKey(name) && Aliases.Count >= MaxAliases)
+                if (!Aliases.ContainsKey(name) && Aliases.Count >= Capacity)
                     return false;
                 Aliases[name] = value.Trim();
                 return true;
@@ -67,13 +67,21 @@ namespace ZonderqOS
             return current;
         }
 
-        public static void CopyTo(List<KeyValuePair<string,string>> destination)
+        public static int CopyTo(KeyValuePair<string,string>[] destination)
         {
+            if (destination == null)
+                return 0;
+
             lock (Sync)
             {
-                destination.Clear();
+                int count = 0;
                 foreach (var pair in Aliases)
-                    destination.Add(pair);
+                {
+                    if (count >= destination.Length)
+                        break;
+                    destination[count++] = pair;
+                }
+                return count;
             }
         }
     }
