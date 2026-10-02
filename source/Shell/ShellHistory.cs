@@ -1,12 +1,12 @@
-using System.Collections.Generic;
-
 namespace ZonderqOS
 {
     public static class ShellHistory
     {
         private const int Capacity = 128;
-        private static readonly List<string> Entries = new List<string>(Capacity);
+        private static readonly string[] Entries = new string[Capacity];
         private static readonly object Sync = new object();
+        private static int start;
+        private static int count;
 
         public static void Add(string command)
         {
@@ -16,27 +16,44 @@ namespace ZonderqOS
 
             lock (Sync)
             {
-                if (Entries.Count > 0 && Entries[Entries.Count - 1] == command)
+                if (count > 0 && Entries[(start + count - 1) % Capacity] == command)
                     return;
-                if (Entries.Count >= Capacity)
-                    Entries.RemoveAt(0);
-                Entries.Add(command);
+
+                if (count < Capacity)
+                {
+                    Entries[(start + count) % Capacity] = command;
+                    count++;
+                    return;
+                }
+
+                Entries[start] = command;
+                start = (start + 1) % Capacity;
             }
         }
 
-        public static void CopyTo(List<string> destination)
+        public static int CopyTo(string[] destination)
         {
+            if (destination == null)
+                return 0;
+
             lock (Sync)
             {
-                destination.Clear();
-                destination.AddRange(Entries);
+                int copyCount = count < destination.Length ? count : destination.Length;
+                for (int i = 0; i < copyCount; i++)
+                    destination[i] = Entries[(start + i) % Capacity];
+                return copyCount;
             }
         }
 
         public static void Clear()
         {
             lock (Sync)
-                Entries.Clear();
+            {
+                for (int i = 0; i < count; i++)
+                    Entries[(start + i) % Capacity] = null;
+                start = 0;
+                count = 0;
+            }
         }
     }
 }
