@@ -8,6 +8,7 @@ namespace ZonderqOS
     public static class CommandIO
     {
         private const int MaxCapturedCharacters = 256 * 1024;
+        private const int MaxRedirectionDepth = 8;
         private const string TruncatedMarker = "\n[output truncated]\n";
 
         private static readonly Stack<CaptureBuffer> _outBuffers = new Stack<CaptureBuffer>();
@@ -60,6 +61,14 @@ namespace ZonderqOS
 
         public static void StartRedirection()
         {
+            // Redirection can nest through pipelines, GUI capture and shell scripts.
+            // Keep the stack bounded so malformed/nested command execution cannot grow
+            // capture buffers and Console writer state without limit.
+            if (_outBuffers.Count >= MaxRedirectionDepth ||
+                _captureWriters.Count >= MaxRedirectionDepth ||
+                _consoleWriters.Count >= MaxRedirectionDepth)
+                throw new InvalidOperationException("Maximum output redirection depth exceeded.");
+
             _outBuffers.Push(new CaptureBuffer(MaxCapturedCharacters));
 
             TextWriter previous = Console.Out;
