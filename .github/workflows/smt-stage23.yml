@@ -7,9 +7,9 @@ concurrency:
 on:
   push:
     branches: [ main, 'smp/stage23-production-all-cpus' ]
-    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage21-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage21-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'run-core.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
   pull_request:
-    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage21-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
+    paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage21-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'run-core.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
   workflow_dispatch:
 
 permissions:
@@ -105,6 +105,73 @@ jobs:
           </configuration>
           EOF
           mkdir -p "${{ runner.temp }}/zonderq-stage23-packages"
+
+      - name: Verify patched runtime exports for ARM64 restore
+        if: matrix.cpus == 1
+        working-directory: zonderq
+        env:
+          NUGET_PACKAGES: ${{ runner.temp }}/zonderq-stage23-arm64-packages
+          LOCAL_COSMOS_FEED: ${{ github.workspace }}/cosmos/artifacts/package/release
+        run: |
+          set -o pipefail
+          mkdir -p "$NUGET_PACKAGES"
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --configfile NuGet.Config --force --no-cache 2>&1 | tee stage23-arm64-restore.log
+          python3 - <<'PY' | tee stage23-arm64-package-sources.log
+          import json
+          import os
+          import pathlib
+          import zipfile
+
+          cache = pathlib.Path(os.environ['NUGET_PACKAGES'])
+          feed = pathlib.Path(os.environ['LOCAL_COSMOS_FEED']).resolve()
+          required_packages = {
+              'cosmos.kernel', 'cosmos.kernel.core',
+              'cosmos.kernel.core.arm64', 'cosmos.kernel.hal',
+              'cosmos.kernel.hal.arm64', 'cosmos.kernel.native.arm64',
+              'cosmos.kernel.boot.limine'
+          }
+          found = set()
+          for metadata in sorted(cache.glob('cosmos.*/3.0.85/.nupkg.metadata')):
+              package = metadata.parent.parent.name
+              source = json.loads(metadata.read_text())['source']
+              if pathlib.Path(source).resolve() != feed:
+                  raise SystemExit(
+                      f'[SMT23-ARM64][FAIL] {package} restored from {source}, expected {feed}')
+              found.add(package)
+
+          missing = required_packages - found
+          if missing:
+              raise SystemExit(f'[SMT23-ARM64][FAIL] missing local package metadata: {sorted(missing)}')
+
+          # The local linker regression was caused by an old Cosmos.Kernel.Core
+          # package that predated Stage 23 exports. Inspect the actual nupkg
+          # restored from the patched feed rather than relying only on source timestamps.
+          candidates = sorted(feed.glob('Cosmos.Kernel.Core.3.0.85.nupkg'))
+          if not candidates:
+              raise SystemExit('[SMT23-ARM64][FAIL] patched Cosmos.Kernel.Core nupkg is missing')
+
+          required_exports = [
+              b'RhWaitForPendingFinalizers',
+              b'RhSchedulerCpuAccountingAvailable',
+              b'RhGetSchedulerCpuBusyTicks',
+              b'RhGetCurrentSchedulerThreadId',
+              b'RhEnableCurrentCpuManagedPreemption',
+          ]
+
+          with zipfile.ZipFile(candidates[-1]) as package:
+              dlls = [name for name in package.namelist()
+                      if name.lower().endswith('/cosmos.kernel.core.dll')]
+              if not dlls:
+                  raise SystemExit('[SMT23-ARM64][FAIL] Cosmos.Kernel.Core.dll missing from nupkg')
+
+              payload = b''.join(package.read(name) for name in dlls)
+
+          absent = [name.decode() for name in required_exports if name not in payload]
+          if absent:
+              raise SystemExit(f'[SMT23-ARM64][FAIL] runtime export metadata missing from patched nupkg: {absent}')
+
+          print('[SMT23-ARM64][OK] ARM64 restore uses patched packages with all Stage 23 runtime export metadata')
+          PY
 
       - name: Build real ZonderqOS x64 ISO
         working-directory: zonderq
