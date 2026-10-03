@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Text;
 
 namespace ZonderqOS.Commands
 {
@@ -10,6 +11,7 @@ namespace ZonderqOS.Commands
 
         private const int DefaultDisplayCount = 15;
         private const int MaxDisplayCount = 500;
+        private const int MaxPhysicalLineLength = 16 * 1024;
 
         public void Execute(string[] args, ref string currentPath)
         {
@@ -47,8 +49,8 @@ namespace ZonderqOS.Commands
 
                 using (var reader = new StreamReader(logPath))
                 {
-                    string line;
-                    while ((line = reader.ReadLine()) != null)
+                    var lineBuffer = new StringBuilder(Math.Min(256, MaxPhysicalLineLength));
+                    while (TryReadBoundedLine(reader, lineBuffer, out string line))
                     {
                         recent[totalLines % displayCount] = line;
                         totalLines++;
@@ -68,10 +70,47 @@ namespace ZonderqOS.Commands
 
                 CommandIO.LastCommandSuccess = true;
             }
+            catch (InvalidDataException ex)
+            {
+                WriteMessage.WriteError($"Audit log rejected: {ex.Message}", "SEC");
+                CommandIO.LastCommandSuccess = false;
+            }
             catch (Exception ex)
             {
                 WriteMessage.WriteError($"Audit error: {ex.Message}", "SEC");
                 CommandIO.LastCommandSuccess = false;
+            }
+        }
+
+        private static bool TryReadBoundedLine(StreamReader reader, StringBuilder buffer, out string line)
+        {
+            buffer.Clear();
+            bool readAny = false;
+
+            while (true)
+            {
+                int value = reader.Read();
+                if (value < 0)
+                {
+                    line = readAny ? buffer.ToString() : null;
+                    return readAny;
+                }
+
+                readAny = true;
+                char ch = (char)value;
+                if (ch == '\n')
+                {
+                    line = buffer.ToString();
+                    return true;
+                }
+
+                if (ch == '\r')
+                    continue;
+
+                if (buffer.Length >= MaxPhysicalLineLength)
+                    throw new InvalidDataException($"physical line exceeds {MaxPhysicalLineLength} characters");
+
+                buffer.Append(ch);
             }
         }
     }
