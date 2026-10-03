@@ -1,9 +1,12 @@
 using System.IO;
+using System.Text;
 
 namespace ZonderqOS.Commands
 {
     public class CmdWrite : ICommand
     {
+        private const int MaxContentCharacters = 65536;
+
         public string Name => "write";
         public string Description => "Create or overwrite file with content";
 
@@ -26,9 +29,12 @@ namespace ZonderqOS.Commands
                 return;
             }
 
-            string content = args.Length > 2
-                ? string.Join(" ", args, 2, args.Length - 2).Replace("\\n", "\n")
-                : string.Empty;
+            if (!TryBuildContent(args, out string content))
+            {
+                WriteMessage.WriteError($"Content exceeds {MaxContentCharacters} characters.", "CMD");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
 
             Disk.CreateFile(path, content);
 
@@ -42,6 +48,46 @@ namespace ZonderqOS.Commands
                 PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
 
             CommandIO.LastCommandSuccess = true;
+        }
+
+        private static bool TryBuildContent(string[] args, out string content)
+        {
+            var builder = new StringBuilder(System.Math.Min(256, MaxContentCharacters));
+            for (int i = 2; i < args.Length; i++)
+            {
+                string value = args[i] ?? string.Empty;
+                if (i > 2)
+                {
+                    if (builder.Length == MaxContentCharacters)
+                    {
+                        content = string.Empty;
+                        return false;
+                    }
+                    builder.Append(' ');
+                }
+
+                for (int j = 0; j < value.Length; j++)
+                {
+                    if (builder.Length == MaxContentCharacters)
+                    {
+                        content = string.Empty;
+                        return false;
+                    }
+
+                    if (value[j] == '\\' && j + 1 < value.Length && value[j + 1] == 'n')
+                    {
+                        builder.Append('\n');
+                        j++;
+                    }
+                    else
+                    {
+                        builder.Append(value[j]);
+                    }
+                }
+            }
+
+            content = builder.ToString();
+            return true;
         }
     }
 }
