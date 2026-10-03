@@ -1,11 +1,13 @@
 using System;
 using System.IO;
+using System.Text;
 
 namespace ZonderqOS.Commands
 {
     public sealed class CmdTail : ICommand
     {
         private const int MaxTailLines = 10000;
+        private const int MaxPhysicalLineChars = 16 * 1024;
 
         public string Name => "tail";
         public string Description => "Output last lines of a file or pipe ([file] [lines])";
@@ -91,11 +93,18 @@ namespace ZonderqOS.Commands
             string[] ring = new string[lineCount];
             int write = 0;
             int count = 0;
+            var line = new StringBuilder(Math.Min(256, MaxPhysicalLineChars));
 
-            string line;
-            while ((line = reader.ReadLine()) != null)
+            while (TryReadBoundedLine(reader, line, out bool tooLong))
             {
-                ring[write] = line;
+                if (tooLong)
+                {
+                    WriteMessage.WriteError("tail: physical line exceeds safety limit (" + MaxPhysicalLineChars + " characters).", "CMD");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                ring[write] = line.ToString();
                 write = (write + 1) % lineCount;
                 if (count < lineCount)
                     count++;
@@ -107,6 +116,35 @@ namespace ZonderqOS.Commands
                 CommandIO.WriteLine(ring[(start + i) % lineCount]);
 
             CommandIO.LastCommandSuccess = true;
+        }
+
+        private static bool TryReadBoundedLine(TextReader reader, StringBuilder line, out bool tooLong)
+        {
+            line.Clear();
+            tooLong = false;
+            bool sawAny = false;
+
+            while (true)
+            {
+                int value = reader.Read();
+                if (value < 0)
+                    return sawAny;
+
+                sawAny = true;
+                char ch = (char)value;
+                if (ch == '\n')
+                    return true;
+                if (ch == '\r')
+                    continue;
+
+                if (line.Length >= MaxPhysicalLineChars)
+                {
+                    tooLong = true;
+                    return true;
+                }
+
+                line.Append(ch);
+            }
         }
     }
 }
