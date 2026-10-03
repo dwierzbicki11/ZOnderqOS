@@ -1,9 +1,11 @@
 using System.Collections.Generic;
+using System.Text;
 
 namespace ZonderqOS.Commands
 {
     public sealed class CmdAlias : ICommand
     {
+        private const int MaxAssignmentCharacters = 4096;
         private readonly KeyValuePair<string,string>[] aliases = new KeyValuePair<string,string>[AliasManager.Capacity];
         public string Name => "alias";
         public string Description => "List or define shell aliases";
@@ -22,7 +24,13 @@ namespace ZonderqOS.Commands
                 return;
             }
 
-            string assignment = string.Join(" ", args, 1, args.Length - 1);
+            if (!TryBuildAssignment(args, out string assignment))
+            {
+                WriteMessage.WriteError($"Alias assignment exceeds {MaxAssignmentCharacters} characters.", "ALIAS");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
             int eq = assignment.IndexOf('=');
             if (eq <= 0)
             {
@@ -41,6 +49,28 @@ namespace ZonderqOS.Commands
             }
 
             CommandIO.LastCommandSuccess = true;
+        }
+
+        private static bool TryBuildAssignment(string[] args, out string assignment)
+        {
+            var builder = new StringBuilder(System.Math.Min(256, MaxAssignmentCharacters));
+            for (int i = 1; i < args.Length; i++)
+            {
+                string value = args[i] ?? string.Empty;
+                int separator = i > 1 ? 1 : 0;
+                if (value.Length > MaxAssignmentCharacters - builder.Length - separator)
+                {
+                    assignment = string.Empty;
+                    return false;
+                }
+
+                if (separator != 0)
+                    builder.Append(' ');
+                builder.Append(value);
+            }
+
+            assignment = builder.ToString();
+            return true;
         }
     }
 }
