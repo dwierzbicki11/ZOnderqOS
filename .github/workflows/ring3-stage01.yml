@@ -1,0 +1,58 @@
+name: Ring3 stage R1 ABI foundation
+
+on:
+  pull_request:
+    paths:
+      - 'source/Core/UserKernelAbi.cs'
+      - 'source/Core/SyscallDispatcher.cs'
+      - 'docs/ring3-syscall-roadmap.md'
+      - '.github/workflows/ring3-stage01.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  abi-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate R1 ABI and fail-closed invariants
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          abi = Path('source/Core/UserKernelAbi.cs').read_text(encoding='utf-8')
+          dispatcher = Path('source/Core/SyscallDispatcher.cs').read_text(encoding='utf-8')
+
+          expected = {
+              'Exit': 0, 'Write': 1, 'Read': 2, 'Open': 3, 'Close': 4,
+              'MemoryMap': 5, 'MemoryUnmap': 6, 'GetProcessId': 7, 'Yield': 8,
+          }
+          assert 'public const uint AbiVersion = 1;' in abi
+          for name, number in expected.items():
+              assert re.search(rf'\b{name}\s*=\s*{number}\b', abi), f'ABI number changed: {name}'
+
+          # R1 must remain fail-closed until VMM supplies a configured process range.
+          assert 'if (!processUserRange.IsConfigured || length == 0)' in abi
+          assert 'if (!IsCanonicalLowerHalf(pointer) || pointer < processUserRange.Start)' in abi
+          assert 'ulong end = pointer + length;' in abi
+          assert 'if (end < pointer)' in abi
+          assert 'if (end > processUserRange.EndExclusive)' in abi
+          assert 'processUserRange.EndExclusive - 1 > X64LowerCanonicalMax' in abi
+
+          # Every pointer-bearing ABI operation must be routed through validation.
+          # Write and Read intentionally share one switch body, so validate structure
+          # rather than incorrectly requiring one textual call site per syscall.
+          assert 'case UserKernelAbi.Syscall.Write:' in dispatcher
+          assert 'case UserKernelAbi.Syscall.Read:' in dispatcher
+          assert 'case UserKernelAbi.Syscall.Open:' in dispatcher
+          assert dispatcher.count('TryValidateUserRange') >= 2, 'dispatcher pointer validation missing'
+          io_block = dispatcher.split('case UserKernelAbi.Syscall.Write:', 1)[1].split('case UserKernelAbi.Syscall.Open:', 1)[0]
+          open_block = dispatcher.split('case UserKernelAbi.Syscall.Open:', 1)[1].split('case UserKernelAbi.Syscall.Exit:', 1)[0]
+          assert 'case UserKernelAbi.Syscall.Read:' in io_block
+          assert 'TryValidateUserRange(arg1, arg2, context.UserRange' in io_block
+          assert 'TryValidateUserRange(arg0, arg1, context.UserRange' in open_block
+          assert 'Result.NotSupported' in dispatcher
+          print('R1 ABI contract and fail-closed invariants verified')
