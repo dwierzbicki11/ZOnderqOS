@@ -11,8 +11,11 @@ namespace ZonderqOS.SystemCore
         public Thread ExecutionThread { get; }
         public CancellationTokenSource Cts { get; }
         private uint kernelThreadId = uint.MaxValue;
+        private int lastSignal;
         public uint KernelThreadId => Volatile.Read(ref kernelThreadId);
+        public int LastSignal => Volatile.Read(ref lastSignal);
         internal void BindKernelThread() => Volatile.Write(ref kernelThreadId, SchedulerTelemetry.CurrentThreadId());
+        internal void RecordSignal(ProcessSignal signal) => Volatile.Write(ref lastSignal, (int)signal);
         public bool IsRunning => ExecutionThread != null && ExecutionThread.IsAlive;
 
         public KernelProcess(int pid, string name, Thread thread, CancellationTokenSource cts)
@@ -108,20 +111,52 @@ namespace ZonderqOS.SystemCore
 
         public static bool Kill(int pid)
         {
+            return SendSignal(pid, ProcessSignal.Terminate) == ProcessSignalResult.Sent;
+        }
+
+        public static ProcessSignalResult SendSignal(int pid, ProcessSignal signal)
+        {
+            CancellationTokenSource cts = null;
+            KernelProcess process = null;
+
             lock (_registryLock)
             {
-                if (!_processes.TryGetValue(pid, out var process))
-                    return false;
+                if (!_processes.TryGetValue(pid, out process))
+                    return ProcessSignalResult.NotFound;
 
                 if (!process.IsRunning)
                 {
                     _processes.Remove(pid);
                     process.Cts.Dispose();
-                    return false;
+                    return ProcessSignalResult.NotFound;
                 }
 
-                process.Cts.Cancel();
-                return true;
+                if (signal == ProcessSignal.Check)
+                    return ProcessSignalResult.Exists;
+
+                // Managed CoreLib currently has no safe asynchronous hard-abort
+                // primitive. Do not pretend SIGKILL exists by mapping it to
+                // cooperative cancellation.
+                if (signal == ProcessSignal.Kill)
+                    return ProcessSignalResult.Unsupported;
+
+                if (signal != ProcessSignal.Terminate && signal != ProcessSignal.Interrupt)
+                    return ProcessSignalResult.Unsupported;
+
+                process.RecordSignal(signal);
+                cts = process.Cts;
+            }
+
+            // Cancellation callbacks run synchronously and may query the process
+            // registry, so never invoke them while _registryLock is held.
+            try
+            {
+                cts.Cancel();
+                return ProcessSignalResult.Sent;
+            }
+            catch (ObjectDisposedException)
+            {
+                return ProcessSignalResult.NotFound;
             }
         }
 

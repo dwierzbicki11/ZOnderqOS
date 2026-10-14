@@ -3,39 +3,89 @@ using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
-    public class CmdKill : ICommand
+    public sealed class CmdKill : ICommand
     {
-        public string Name { get; } = "kill";
-        public string Description { get; } = "Terminate a background process by PID: kill <pid>";
+        public string Name => "kill";
+        public string Description => "Send a process signal: kill [-TERM|-INT|-0] <pid>";
 
         public void Execute(string[] args, ref string currentPath)
         {
-            if (args.Length < 2)
+            if (args.Length == 2 && args[1] == "-l")
             {
-                CommandIO.WriteLine("Użycie: kill <PID>");
+                CommandIO.WriteLine("0 CHECK");
+                CommandIO.WriteLine("2 INT");
+                CommandIO.WriteLine("15 TERM");
+                CommandIO.WriteLine("9 KILL (unsupported: no safe managed hard-abort primitive)");
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
+            ProcessSignal signal = ProcessSignal.Terminate;
+            string pidText;
+
+            if (args.Length == 2)
+            {
+                pidText = args[1];
+            }
+            else if (args.Length == 3)
+            {
+                string signalText = args[1];
+                if (!signalText.StartsWith("-", StringComparison.Ordinal) ||
+                    !ProcessSignalNames.TryParse(signalText.Substring(1), out signal))
+                {
+                    PrintUsage();
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                pidText = args[2];
+            }
+            else
+            {
+                PrintUsage();
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
 
-            if (int.TryParse(args[1], out int pid))
+            if (!int.TryParse(pidText, out int pid) || pid <= 0)
             {
-                bool success = ProcessManager.Kill(pid);
-                if (success)
-                {
-                    CommandIO.WriteLine($"[OK] Wysłano sygnał zamknięcia do procesu PID {pid}.");
-                    CommandIO.LastCommandSuccess = true;
-                }
-                else
-                {
-                    CommandIO.WriteLine($"[ERROR] Nie znaleziono aktywnego procesu o PID {pid}.");
-                    CommandIO.LastCommandSuccess = false;
-                }
-            }
-            else
-            {
-                CommandIO.WriteLine("[ERROR] Nieprawidłowy format PID.");
+                CommandIO.WriteLine("kill: invalid PID: " + pidText);
                 CommandIO.LastCommandSuccess = false;
+                return;
             }
+
+            ProcessSignalResult result = ProcessManager.SendSignal(pid, signal);
+            switch (result)
+            {
+                case ProcessSignalResult.Sent:
+                    CommandIO.WriteLine("kill: sent SIG" + ProcessSignalNames.Name(signal) + " to PID " + pid);
+                    CommandIO.LastCommandSuccess = true;
+                    break;
+
+                case ProcessSignalResult.Exists:
+                    CommandIO.LastCommandSuccess = true;
+                    break;
+
+                case ProcessSignalResult.Unsupported:
+                    CommandIO.WriteLine("kill: SIG" + ProcessSignalNames.Name(signal) +
+                        " is not safely supported by the current managed runtime.");
+                    CommandIO.LastCommandSuccess = false;
+                    break;
+
+                default:
+                    CommandIO.WriteLine("kill: process " + pid + " does not exist.");
+                    CommandIO.LastCommandSuccess = false;
+                    break;
+            }
+        }
+
+        private static void PrintUsage()
+        {
+            CommandIO.WriteLine("Usage: kill <pid>");
+            CommandIO.WriteLine("       kill -TERM <pid>");
+            CommandIO.WriteLine("       kill -INT <pid>");
+            CommandIO.WriteLine("       kill -0 <pid>");
+            CommandIO.WriteLine("       kill -l");
         }
     }
 }
