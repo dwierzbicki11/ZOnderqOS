@@ -5,7 +5,6 @@ using System.Drawing;
 using Cosmos.Kernel.Core.Memory;
 using Cosmos.Kernel.System.Diagnostics;
 using Cosmos.Kernel.System.Graphics;
-using Cosmos.Kernel.System.Keyboard;
 using Cosmos.Kernel.System.Storage;
 using ZonderqOS.GUI.Icons;
 using ZonderqOS.SystemCore;
