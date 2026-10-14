@@ -23,6 +23,7 @@ project="$ROOT_DIR/ZonderqOS.csproj"
 
 # The project must use the *same* Cosmos release for MSBuild SDK and runtime.
 require_literal "ZonderqOS.csproj" "<Project Sdk=\"Cosmos.Sdk/$BASE_VERSION\">"
+require_literal "ZonderqOS.csproj" "<ZonderqCosmosKeyboardApi>Legacy</ZonderqCosmosKeyboardApi>"
 require_literal "ZonderqOS.csproj" "Include=\"Cosmos.Kernel\" Version=\"$BASE_VERSION\""
 require_literal "ZonderqOS.csproj" "Include=\"Cosmos.Kernel.System\" Version=\"$BASE_VERSION\""
 

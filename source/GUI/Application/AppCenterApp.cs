@@ -1,7 +1,6 @@
 using System;
 using System.Drawing;
 using Cosmos.Kernel.System.Graphics;
-using Cosmos.Kernel.System.Keyboard;
 using ZonderqOS.GUI.Icons;
 
 namespace ZonderqOS.GUI.Apps

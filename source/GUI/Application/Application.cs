@@ -1,5 +1,4 @@
 using Cosmos.Kernel.System.Graphics;
-using Cosmos.Kernel.System.Keyboard;
 
 namespace ZonderqOS.GUI.Apps
 {
