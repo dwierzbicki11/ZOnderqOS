@@ -163,6 +163,7 @@ install_cosmos_wrapper() {
     export -f cosmos
 }
 
+bash "$ROOT_DIR/tools/verify-cosmos-compat.sh"
 cleanup_generated_tracked_changes
 cleanup_generated_untracked_cache
 
