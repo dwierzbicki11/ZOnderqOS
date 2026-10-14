@@ -1,0 +1,33 @@
+name: Cosmos KeyEvent API compile (3.0.85 / 3.0.94)
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'source/Common/CosmosKeyboardApiCompat.cs'
+      - 'ZonderqOS.csproj'
+      - 'tests/KeyboardApiSmoke/**'
+      - '.github/workflows/keyboard-api-smoke.yml'
+  pull_request:
+    paths:
+      - 'source/Common/CosmosKeyboardApiCompat.cs'
+      - 'ZonderqOS.csproj'
+      - 'tests/KeyboardApiSmoke/**'
+      - '.github/workflows/keyboard-api-smoke.yml'
+  workflow_dispatch:
+
+jobs:
+  compile:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        cosmos-version: ['3.0.85', '3.0.94']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build against Cosmos ${{ matrix.cosmos-version }} KeyEvent contract
+        run: |
+          dotnet build tests/KeyboardApiSmoke/KeyboardApiSmoke.csproj -c Release -p:CosmosApiTestVersion=${{ matrix.cosmos-version }} --nologo
