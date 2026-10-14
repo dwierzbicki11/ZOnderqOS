@@ -1,4 +1,4 @@
-<Project Sdk="Cosmos.Sdk/3.0.85">
+<Project Sdk="Cosmos.Sdk/3.0.94">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -51,8 +51,8 @@
          Cosmos.Sdk 3.0.85 imports Cosmos.Architecture.props, which already adds
          both HAL.X64 and HAL.ARM64 at the matching Cosmos package version.
          Re-declaring those HAL references here creates NU1504 duplicates. -->
-    <PackageReference Include="Cosmos.Kernel" Version="3.0.85" />
-    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" />
+    <PackageReference Include="Cosmos.Kernel" Version="3.0.94" />
+    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.94" />
   </ItemGroup>
 
   <!-- Platform architecture boundary: Common is always compiled. Exactly one
