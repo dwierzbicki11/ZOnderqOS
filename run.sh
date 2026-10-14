@@ -5,9 +5,85 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 COSMOS_TAG="v3.0.85"
 COSMOS_REPO="https://github.com/CosmosOS/Cosmos.git"
 
+# Version pin protects the locally patched Stage 23 SMP runtime and htop.
+# Cosmos v3.0.94 changed the keyboard API; a complete 3.0.94 runtime patch
+# port is required before this pin (and SDK, CI and NuGet feed) can move.
+COSMOS_VERSION="${COSMOS_TAG#v}"
+
 fail() {
     echo "[BLAD] $*" >&2
     exit 1
+}
+
+print_help() {
+    cat <<'EOF_HELP'
+ZonderqOS Gen3 — launcher x64 / arm64 + QEMU
+
+  ./run.sh                    interaktywny wybor CPU i RAM
+  ./run.sh x64                uruchom x86_64
+  ./run.sh arm64              uruchom ARM64
+  ./run.sh x64 --cpu EPYC-Milan --cores 24 --threads 2 --ram 8G
+  ./run.sh --check            sprawdz wersje SDK/SMT i checkout Cosmos, bez budowania
+  ./run.sh --status           to samo co --check
+  ./run.sh --help             pomoc bez pobierania Cosmos
+
+Wazne: system nadal uzywa lokalnie patchowanego Cosmos v3.0.85 z
+produkcynym SMT/htop. Obsluga API KeyEvent z 3.0.94 jest przygotowana
+w kodzie, ale pelna migracja kernela na 3.0.94 wymaga przeniesienia
+patchy i testow QEMU. Nie zmieniaj samego COSMOS_TAG.
+EOF_HELP
+}
+
+verify_cosmos_checkout_revision() {
+    local checkout="$1"
+    local expected actual
+
+    expected="$(git -C "$checkout" rev-list -n 1 "$COSMOS_TAG" 2>/dev/null || true)"
+    [[ -n "$expected" ]] || \
+        fail "Checkout Cosmos w $checkout nie zawiera taga $COSMOS_TAG. Nie zmieniam HEAD ani lokalnych plikow."
+
+    actual="$(git -C "$checkout" rev-parse HEAD 2>/dev/null || true)"
+    [[ "$actual" == "$expected" ]] || \
+        fail "Cosmos ma HEAD=${actual:-unknown}, ale SMT wymaga $COSMOS_TAG ($expected). Nie wykonuje automatycznego resetu. Zrob backup lokalnych zmian i przelacz Cosmos na $COSMOS_TAG. Cosmos 3.0.94 wymaga osobnej migracji patchy."
+}
+
+# Read-only diagnostics: no git pull, cache deletion, clone or SDK install.
+run_preflight() {
+    local checkout=""
+    echo "[COSMOS] ZonderqOS Gen3 / runtime SMT: $COSMOS_TAG (wersja paczek $COSMOS_VERSION)"
+    echo "[COSMOS] KeyEvent dla 3.0.94: kompatybilnosc API gotowa, pelny runtime jeszcze niezmigrowany."
+    bash "$ROOT_DIR/tools/verify-cosmos-compat.sh" ||
+        fail "Niezgodne wersje SDK, paczek lub SMT. Nie buduj systemu."
+
+    if [[ -n "${ZONDERQ_COSMOS_SOURCE_ROOT:-}" ]]; then
+        checkout="$ZONDERQ_COSMOS_SOURCE_ROOT"
+        is_cosmos_checkout "$checkout" ||
+            fail "Nieprawidlowy ZONDERQ_COSMOS_SOURCE_ROOT: $checkout"
+    elif is_cosmos_checkout "$ROOT_DIR/../Cosmos"; then
+        checkout="$ROOT_DIR/../Cosmos"
+    elif is_cosmos_checkout "$ROOT_DIR/.."; then
+        checkout="$ROOT_DIR/.."
+    fi
+
+    if [[ -n "$checkout" ]]; then
+        verify_cosmos_checkout_revision "$checkout"
+        echo "[COSMOS] Checkout: $checkout ($COSMOS_TAG)"
+    else
+        echo "[COSMOS] Brak lokalnego checkoutu; normalny start sprobuje pobrac $COSMOS_TAG."
+    fi
+
+    if command -v dotnet >/dev/null 2>&1; then
+        echo "[TOOLS] dotnet: $(dotnet --version)"
+    else
+        echo "[TOOLS] Brak dotnet w PATH (wymagany do budowania)."
+    fi
+    if type -P cosmos >/dev/null 2>&1; then
+        echo "[TOOLS] cosmos: $(type -P cosmos)"
+    else
+        echo "[TOOLS] Brak cosmos CLI w PATH (wymagany do budowania)."
+    fi
+
+    echo "[COSMOS] Preflight PASS (to nie jest test ISO ani QEMU)."
 }
 
 cleanup_generated_tracked_changes() {
@@ -145,12 +221,12 @@ install_cosmos_wrapper() {
                 --force \
                 --no-cache || return $?
 
-            if [[ ! -d "$package_cache/cosmos.kernel.hal.arm64/3.0.85" ]]; then
-                echo "[BLAD] Restore ARM64 nie pobral Cosmos.Kernel.HAL.ARM64 3.0.85." >&2
+            if [[ ! -d "$package_cache/cosmos.kernel.hal.arm64/$COSMOS_VERSION" ]]; then
+                echo "[BLAD] Restore ARM64 nie pobral Cosmos.Kernel.HAL.ARM64 $COSMOS_VERSION." >&2
                 return 1
             fi
-            if [[ ! -d "$package_cache/cosmos.kernel.native.arm64/3.0.85" ]]; then
-                echo "[BLAD] Restore ARM64 nie pobral Cosmos.Kernel.Native.ARM64 3.0.85." >&2
+            if [[ ! -d "$package_cache/cosmos.kernel.native.arm64/$COSMOS_VERSION" ]]; then
+                echo "[BLAD] Restore ARM64 nie pobral Cosmos.Kernel.Native.ARM64 $COSMOS_VERSION." >&2
                 return 1
             fi
 
@@ -163,13 +239,21 @@ install_cosmos_wrapper() {
     export -f cosmos
 }
 
+# These commands deliberately bypass checkout/bootstrap and disk mutations.
+case "${1:-}" in
+    -h|--help) print_help; exit 0 ;;
+    --check|--status) run_preflight; exit 0 ;;
+esac
+
 cleanup_generated_tracked_changes
-cleanup_generated_untracked_cache
 
 cosmos_root="$(resolve_cosmos_root)" || exit $?
 [[ -n "$cosmos_root" ]] || fail "Nie udalo sie ustalic katalogu Cosmos."
+verify_cosmos_checkout_revision "$cosmos_root"
+# Clear caches only after confirming the correct version of Cosmos.
+cleanup_generated_untracked_cache
 export ZONDERQ_COSMOS_SOURCE_ROOT="$cosmos_root"
-echo "[SMT] Cosmos source: $ZONDERQ_COSMOS_SOURCE_ROOT"
+echo "[SMT] Cosmos source: $ZONDERQ_COSMOS_SOURCE_ROOT ($COSMOS_TAG)"
 
 install_cosmos_wrapper
 exec bash "$ROOT_DIR/run-core.sh" "$@"

@@ -18,3 +18,15 @@ PS/2/virtio/USB press, navigation keys, Shift/CapsLock, Ctrl+Alt+Del,
 Ctrl+Alt+L, terminal editing and history, Notepad, Nano, login/lock
 screens and focus/event routing. Current PR does not claim Cosmos
 3.0.94 ISO or SMP passed; the patched 3.0.94 feed is still outstanding.
+
+## Bezpieczny launcher (run.sh)
+
+- `./run.sh --help` pokazuje opcje bez pobierania plikow.
+- `./run.sh --check` lub `./run.sh --status` sprawdza wersje
+  Cosmos SDK / SMP i lokalny checkout bez `git pull`, usuwania cache
+  ani klonowania repozytorium.
+- Normalny start odrzuca checkout z niewlasciwego taga zamiast
+  automatycznie resetowac cudze modyfikacje.
+- ARM64 sprawdza wersje pakietow przez `COSMOS_VERSION`.
+- Cosmos v3.0.85 pozostaje przypiety dla produkcyjnego SMT, dopoki
+  kompletna seria patchy nie przejdzie walidacji z v3.0.94.

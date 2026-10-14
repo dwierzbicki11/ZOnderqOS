@@ -6,12 +6,16 @@ on:
     paths:
       - 'source/Common/CosmosKeyboardApiCompat.cs'
       - 'ZonderqOS.csproj'
+      - 'run.sh'
+      - 'tools/verify-cosmos-compat.sh'
       - 'tests/KeyboardApiSmoke/**'
       - '.github/workflows/keyboard-api-smoke.yml'
   pull_request:
     paths:
       - 'source/Common/CosmosKeyboardApiCompat.cs'
       - 'ZonderqOS.csproj'
+      - 'run.sh'
+      - 'tools/verify-cosmos-compat.sh'
       - 'tests/KeyboardApiSmoke/**'
       - '.github/workflows/keyboard-api-smoke.yml'
   workflow_dispatch:
@@ -28,6 +32,11 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Check launcher syntax and non-mutating preflight
+        run: |
+          bash -n run.sh
+          bash run.sh --help | grep -Fq -- '--check'
+          bash run.sh --check | grep -Fq 'Preflight PASS'
       - name: Build against Cosmos ${{ matrix.cosmos-version }} KeyEvent contract
         run: |
           dotnet build tests/KeyboardApiSmoke/KeyboardApiSmoke.csproj -c Release -p:CosmosApiTestVersion=${{ matrix.cosmos-version }} --nologo
