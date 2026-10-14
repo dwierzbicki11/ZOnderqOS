@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Drawing;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Graphics.Fonts;
-using Cosmos.Kernel.System.Keyboard;
 using ZonderqOS.GUI.Icons;
 
 namespace ZonderqOS.GUI
