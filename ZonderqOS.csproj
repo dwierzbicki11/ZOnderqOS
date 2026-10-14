@@ -4,6 +4,11 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
+    <!-- Keep the old keyboard API until the full SMP-patched Cosmos 3.0.94
+         migration is complete. Set Input along with the new SDK/packages. -->
+    <ZonderqCosmosKeyboardApi>Legacy</ZonderqCosmosKeyboardApi>
+    <DefineConstants Condition="'$(ZonderqCosmosKeyboardApi)' == 'Input'">$(DefineConstants);ZONDERQ_COSMOS_INPUT_API</DefineConstants>
+
     <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
 
     <!-- Keep one feature profile for both architectures. Architecture-specific

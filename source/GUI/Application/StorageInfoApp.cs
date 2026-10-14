@@ -143,14 +143,14 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
-        protected override void OnKeyboard(Cosmos.Kernel.System.Keyboard.KeyEvent key)
+        protected override void OnKeyboard(KeyEvent key)
         {
-            if (key.Key == Cosmos.Kernel.System.Keyboard.ConsoleKeyEx.RightArrow)
+            if (key.Key == ConsoleKeyEx.RightArrow)
             {
                 if (offset + 6 < itemCount)
                     offset++;
             }
-            else if (key.Key == Cosmos.Kernel.System.Keyboard.ConsoleKeyEx.LeftArrow)
+            else if (key.Key == ConsoleKeyEx.LeftArrow)
             {
                 if (offset > 0)
                     offset--;

@@ -6,7 +6,6 @@ using Cosmos.Kernel.Core.Memory;
 using Cosmos.Kernel.Core.Scheduler;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Graphics.Fonts;
-using Cosmos.Kernel.System.Keyboard;
 using Cosmos.Kernel.System.Network.Config;
 using Cosmos.Kernel.System.Storage;
 using ZonderqOS.GUI.Icons;

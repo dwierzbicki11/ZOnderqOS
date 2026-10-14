@@ -3,7 +3,6 @@ using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using Cosmos.Kernel.System.Graphics;
-using Cosmos.Kernel.System.Keyboard;
 using ZonderqOS.GUI.Icons;
 
 namespace ZonderqOS.GUI.Apps
