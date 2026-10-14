@@ -1,4 +1,4 @@
-<Project Sdk="Cosmos.Sdk/3.0.94">
+<Project Sdk="Cosmos.Sdk/3.0.85">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -47,12 +47,15 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- SDK/runtime packages must stay on the exact same Cosmos release.
+    <!-- Stage 23 SMP/htop uses a locally patched Cosmos 3.0.85 runtime.
+         Never upgrade the SDK/package references alone: port the 23 patches,
+         launcher, NuGet feed and CI together, then prove QEMU SMP first.
+         SDK/runtime packages must stay on the exact same Cosmos release.
          Cosmos.Sdk 3.0.85 imports Cosmos.Architecture.props, which already adds
          both HAL.X64 and HAL.ARM64 at the matching Cosmos package version.
          Re-declaring those HAL references here creates NU1504 duplicates. -->
-    <PackageReference Include="Cosmos.Kernel" Version="3.0.94" />
-    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.94" />
+    <PackageReference Include="Cosmos.Kernel" Version="3.0.85" />
+    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" />
   </ItemGroup>
 
   <!-- Platform architecture boundary: Common is always compiled. Exactly one

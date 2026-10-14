@@ -388,6 +388,9 @@ run_arm64() {
 
 print_header
 sync_repo
+# Run version guard after fetching latest main; otherwise a locally stale
+# checkout cannot auto-recover from a mismatched SDK bump.
+bash "$ROOT_DIR/tools/verify-cosmos-compat.sh"
 choice="${1:-}"
 if [[ -z "$choice" ]]; then echo "1) x86_64 - full ZonderqOS + QEMU"; echo "2) ARM64  - full ZonderqOS + QEMU virt"; echo; read -r -p "Wybierz [1/2]: " choice; else shift; fi
 case "$choice" in
