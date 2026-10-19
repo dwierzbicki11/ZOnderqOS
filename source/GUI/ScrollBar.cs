@@ -59,7 +59,7 @@ namespace ZonderqOS.GUI
             if (contentItems <= visibleItems || Height <= 0)
                 return Height;
 
-            int thumb = (Height * visibleItems) / contentItems;
+            int thumb = (int)(((long)Height * visibleItems) / contentItems);
             return Math.Max(22, Math.Min(Height, thumb));
         }
 
@@ -68,7 +68,7 @@ namespace ZonderqOS.GUI
             int travel = Height - GetThumbHeight();
             if (travel <= 0 || MaxValue <= 0)
                 return Y;
-            return Y + (Value * travel) / MaxValue;
+            return Y + (int)(((long)Value * travel) / MaxValue);
         }
 
         public bool HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
@@ -109,7 +109,7 @@ namespace ZonderqOS.GUI
                 if (travel > 0)
                 {
                     int newY = Math.Max(Y, Math.Min(Y + travel, mouseY - dragOffset));
-                    Value = ((newY - Y) * MaxValue) / travel;
+                    Value = (int)(((long)(newY - Y) * MaxValue) / travel);
                 }
                 return true;
             }
