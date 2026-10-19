@@ -14,13 +14,14 @@ namespace ZonderqOS.Commands
             {
                 var processes = ProcessManager.GetActiveProcesses();
 
-                CommandIO.WriteLine("PID    STATE      NAME");
-                CommandIO.WriteLine("----------------------------------------");
+                CommandIO.WriteLine("PID    STATE      SIGNAL   NAME");
+                CommandIO.WriteLine("------------------------------------------------");
 
                 foreach (var p in processes)
                 {
                     string state = p.IsRunning ? "RUNNING" : "ZOMBIE";
-                    CommandIO.WriteLine($"{p.PID,-6} {state,-10} {p.Name}");
+                    string signal = p.LastSignalNumber == 0 ? "-" : p.LastSignalNumber.ToString();
+                    CommandIO.WriteLine($"{p.PID,-6} {state,-10} {signal,-8} {p.Name}");
                 }
                 CommandIO.LastCommandSuccess = true;
             }

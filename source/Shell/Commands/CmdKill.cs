@@ -3,39 +3,80 @@ using ZonderqOS.SystemCore;
 
 namespace ZonderqOS.Commands
 {
-    public class CmdKill : ICommand
+    public sealed class CmdKill : ICommand
     {
-        public string Name { get; } = "kill";
-        public string Description { get; } = "Terminate a background process by PID: kill <pid>";
+        public string Name => "kill";
+        public string Description => "Send cooperative SIGTERM or SIGINT to a process";
 
         public void Execute(string[] args, ref string currentPath)
         {
-            if (args.Length < 2)
+            if (args == null || args.Length == 0)
             {
-                CommandIO.WriteLine("Użycie: kill <PID>");
+                Usage();
                 CommandIO.LastCommandSuccess = false;
                 return;
             }
 
-            if (int.TryParse(args[1], out int pid))
+            if (args.Length == 2 && args[1] == "-l")
             {
-                bool success = ProcessManager.Kill(pid);
-                if (success)
+                CommandIO.WriteLine(" 2  SIGINT   cooperative interrupt");
+                CommandIO.WriteLine("15  SIGTERM  cooperative termination");
+                CommandIO.WriteLine(" 9  SIGKILL  unavailable (no safe forced thread termination)");
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
+            ProcessSignal signal = ProcessSignal.Terminate;
+            string pidText;
+
+            if (args.Length == 2)
+            {
+                pidText = args[1];
+            }
+            else if (args.Length == 3)
+            {
+                if (args[1] == "-9" ||
+                    args[1].Equals("-KILL", StringComparison.OrdinalIgnoreCase) ||
+                    args[1].Equals("-SIGKILL", StringComparison.OrdinalIgnoreCase))
                 {
-                    CommandIO.WriteLine($"[OK] Wysłano sygnał zamknięcia do procesu PID {pid}.");
-                    CommandIO.LastCommandSuccess = true;
-                }
-                else
-                {
-                    CommandIO.WriteLine($"[ERROR] Nie znaleziono aktywnego procesu o PID {pid}.");
+                    CommandIO.WriteLine("kill: SIGKILL is not supported; managed threads cannot be forcibly terminated safely.");
                     CommandIO.LastCommandSuccess = false;
+                    return;
                 }
+
+                if (!ProcessSignals.TryParse(args[1], out signal))
+                {
+                    Usage();
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+                pidText = args[2];
             }
             else
             {
-                CommandIO.WriteLine("[ERROR] Nieprawidłowy format PID.");
+                Usage();
                 CommandIO.LastCommandSuccess = false;
+                return;
             }
+
+            if (!int.TryParse(pidText, out int pid) || pid <= 0)
+            {
+                CommandIO.WriteLine("kill: invalid PID.");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
+            bool success = ProcessManager.SendSignal(pid, signal);
+            CommandIO.WriteLine(success
+                ? "kill: sent " + ProcessSignals.Name(signal) + " to PID " + pid + "."
+                : "kill: no active process with PID " + pid + ".");
+            CommandIO.LastCommandSuccess = success;
+        }
+
+        private static void Usage()
+        {
+            CommandIO.WriteLine("Usage: kill [-TERM|-15|-INT|-2] <pid>");
+            CommandIO.WriteLine("       kill -l");
         }
     }
 }

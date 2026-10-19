@@ -11,8 +11,11 @@ namespace ZonderqOS.SystemCore
         public Thread ExecutionThread { get; }
         public CancellationTokenSource Cts { get; }
         private uint kernelThreadId = uint.MaxValue;
+        private int lastSignalNumber;
         public uint KernelThreadId => Volatile.Read(ref kernelThreadId);
+        public int LastSignalNumber => Volatile.Read(ref lastSignalNumber);
         internal void BindKernelThread() => Volatile.Write(ref kernelThreadId, SchedulerTelemetry.CurrentThreadId());
+        internal void RecordSignal(ProcessSignal signal) => Volatile.Write(ref lastSignalNumber, (int)signal);
         public bool IsRunning => ExecutionThread != null && ExecutionThread.IsAlive;
 
         public KernelProcess(int pid, string name, Thread thread, CancellationTokenSource cts)
@@ -106,8 +109,21 @@ namespace ZonderqOS.SystemCore
             return Start(name, _ => startMethod());
         }
 
-        public static bool Kill(int pid)
+        /// <summary>
+        /// Request cooperative termination. This does not forcibly stop a managed thread.
+        /// </summary>
+        public static bool Kill(int pid) => SendSignal(pid, ProcessSignal.Terminate);
+
+        /// <summary>
+        /// Send SIGINT or SIGTERM. Cancellation callbacks execute synchronously, so
+        /// they must run outside the process registry lock to avoid SMP deadlocks.
+        /// </summary>
+        public static bool SendSignal(int pid, ProcessSignal signal)
         {
+            if (pid <= 0 || !ProcessSignals.IsSupported(signal))
+                return false;
+
+            CancellationTokenSource cts;
             lock (_registryLock)
             {
                 if (!_processes.TryGetValue(pid, out var process))
@@ -120,7 +136,26 @@ namespace ZonderqOS.SystemCore
                     return false;
                 }
 
-                process.Cts.Cancel();
+                process.RecordSignal(signal);
+                cts = process.Cts;
+            }
+
+            try
+            {
+                // Cancel() runs callbacks on the caller's thread.
+                // Another thread can concurrently exit and dispose the source.
+                cts.Cancel();
+                return true;
+            }
+            catch (ObjectDisposedException)
+            {
+                return false;
+            }
+            catch (AggregateException ex)
+            {
+                // Cancel() already sets the token state before dispatching callbacks.
+                // Misbehaving callbacks must not terminate the shell or service manager.
+                WriteMessage.WriteError("PID " + pid + " cancellation callback failed: " + ex.Message, "PROC");
                 return true;
             }
         }

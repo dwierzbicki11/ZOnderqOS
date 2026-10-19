@@ -264,6 +264,7 @@ namespace ZonderqOS.SystemCore
             else
                 sb.Append(process.KernelThreadId);
             sb.Append('\n');
+            sb.Append("LastSignal:\t").Append(process.LastSignalNumber).Append('\n');
             return sb.ToString();
         }
 
