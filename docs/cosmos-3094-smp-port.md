@@ -97,3 +97,16 @@ wrappers therefore belong in `Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs`
 (an assembly which explicitly permits unsafe code). The HAL initializer only
 calls the Core.X64 helper through its established internal friend assembly
 access. This preserves the HAL's safe-code rule rather than weakening it.
+
+## Stage 5: actual native work command (not yet QEMU-proven)
+
+After all APs report READY in Stage 4, the BSP sends command 1 to
+each per-CPU cache-line mailbox. Each AP performs exactly 100,000
+atomic increments of its own counter, publishes DONE, then parks with
+interrupts disabled. The BSP verifies all DONE bits and exact counters
+using one bounded TSC deadline. The mailbox is validated in a separate
+preflight pass before any command is sent.
+
+This is native code only, not C#/managed scheduling. Passing the new
+stage-5 CI proves patch application, native assembly and x64/ARM64
+compilation; **runtime AP execution requires real QEMU boot/serial logs**.
