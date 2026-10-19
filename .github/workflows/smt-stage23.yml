@@ -11,6 +11,8 @@ on:
   pull_request:
     paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage21-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'tools/smoke-stage23-qemu.sh', 'Kernel.cs', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', 'source/**', '.github/workflows/smt-stage23.yml' ]
   workflow_dispatch:
+  schedule:
+    - cron: '50 2 * * *'
 
 permissions:
   contents: read

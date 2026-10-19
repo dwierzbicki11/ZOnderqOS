@@ -35,6 +35,7 @@ ZonderqOS before testing them with the local scheduler and graphics stack.
 ## Migration acceptance gates
 
 1. Create a dedicated upgrade branch starting from current `main`.
+   Recommended naming: `smp/cosmos-3094-stageX`.
 2. Checkout Cosmos v3.0.94 and inspect changed scheduler/GC/HAL,
    NativeAOT exports and drivers before applying *any* local patches.
 3. Rebase or replace the Stage 23 patch series in small increments.
@@ -53,3 +54,11 @@ ZonderqOS before testing them with the local scheduler and graphics stack.
    services smoke tests against actual release artifacts before merging.
 
 Do not auto-merge if any required CI test is red or missing.
+
+## Branch and release-line isolation
+
+- Keep `main` pinned to v3.0.85 while migration work is in progress.
+- Run migration validation only from migration branches; do not partially switch
+  SDK/package pins in `main`.
+- Merge to `main` only as one reviewed release-line switch after Stage 22/23 and
+  functional regression gates are fully green on the exact migration revision.

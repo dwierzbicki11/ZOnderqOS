@@ -7,6 +7,8 @@ on:
   pull_request:
     paths: [ 'patches/cosmos-smt/**', 'tools/prepare-cosmos-smt.sh', 'tools/smoke-stage12-qemu.sh', 'tools/smoke-stage14-qemu.sh', 'tools/smoke-stage19-qemu.sh', 'tools/smoke-stage20-qemu.sh', 'tools/smoke-stage22-qemu.sh', 'ZonderqOS.csproj', 'NuGet.Config', 'Bootloader/limine.conf', '.github/workflows/smt-stage22.yml' ]
   workflow_dispatch:
+  schedule:
+    - cron: '20 2 * * *'
 
 permissions:
   contents: read
@@ -14,7 +16,7 @@ permissions:
 jobs:
   validate-stage22:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
     strategy:
       fail-fast: false
       matrix:
@@ -22,8 +24,23 @@ jobs:
           - cpus: 1
             cores: 1
             threads: 1
+          - cpus: 2
+            cores: 2
+            threads: 1
+          - cpus: 4
+            cores: 4
+            threads: 1
+          - cpus: 4
+            cores: 2
+            threads: 2
+          - cpus: 8
+            cores: 8
+            threads: 1
           - cpus: 8
             cores: 4
+            threads: 2
+          - cpus: 16
+            cores: 8
             threads: 2
     steps:
       - uses: actions/checkout@v4
