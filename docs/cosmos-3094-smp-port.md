@@ -135,3 +135,15 @@ The BSP emits Stage 7 serial evidence; no AP enters C#/GC/scheduler yet.
 Acceptance requires a full, isolated Cosmos 3.0.94 package build and
 real QEMU matrix on 1, 2, 4, 8, 16 logical CPUs. Never update the
 production Cosmos 3.0.85 SDK/runtime pins before managed SMT is ported.
+
+## Stage 8 — reusable native rendezvous foundation
+
+`patches/cosmos-3094/0008-native-rendezvous.patch` adds a private
+AP vector F2 and 4-generation native rendezvous test. The BSP checks
+all per-CPU arrivals before advancing the release epoch, then checks
+every exit. Per-CPU state tracks entry epoch, exit epoch, the release
+epoch sampled on arrival, and handler hit count. Uses physical LAPIC
+IDs, per-core GS storage, bounded 10-second total deadline and native
+interrupts only. Tested via the isolated full SDK ISO/QEMU 1–16 vCPU
+matrix, not the production ZonderqOS 3.0.85 kernel. Managed scheduler,
+timers and GC residency are separate future migration gates.

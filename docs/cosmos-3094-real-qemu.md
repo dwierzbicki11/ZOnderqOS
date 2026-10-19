@@ -67,3 +67,29 @@ The real ISO/QEMU matrix rebuilds patched Cosmos 3.0.94 with patches
 1–7 and boots with 1/2/4/8/16 logical CPUs.
 
 Stage 7 remains **native-only**, not managed preemption or GC.
+
+## Stage 8 — native IPI multi-CPU rendezvous (NOT managed STW)
+
+Stage 8 adds a **separate fixed IPI vector F2** to the private AP-only
+IDT, without changing the existing F1 stress test. Each AP enters its
+own interrupt handler, publishes an **arrival epoch**, and remains blocked
+inside native code until the BSP has verified **every AP arrived**.
+Only then does the BSP publish one global release epoch. Each AP sends
+EOI, publishes its exit epoch, and resumes its native STI/HLT loop.
+
+There are **4 sequential barrier generations** per QEMU boot. All state
+lives in per-AP cache-line-aligned BSS slots and two shared epoch words.
+The BSP validates every CPU's previous state before sending an IPI,
+targets Limine **physical** LAPIC IDs, and applies **one bounded
+10-second deadline** to all four rounds and all CPUs. It validates
+arrival, no early exit, no early release, exactly one handler hit and
+eventual exit. Failure halts the isolated boot probe.
+
+The updated strict serial verifier expects one
+`[SMP3094-BARRIER] CPU=... LAPIC=... rounds=4 enter=4 exit=4 hits=4`
+per secondary CPU between Stage 7 and Stage 8 PASS, before BOOT.
+The real QEMU matrix (1/2/4/8/16 CPUs) remains the merge gate.
+
+**Scope:** this proves only a native cross-CPU rendezvous primitive.
+It does not yet stop managed mutator threads, synchronize the NativeAOT
+GC, implement IPIs on ARM64 or schedule managed threads on APs.
