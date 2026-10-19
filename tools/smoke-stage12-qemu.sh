@@ -280,7 +280,8 @@ fi
 command -v qemu-system-x86_64 >/dev/null || fail 'qemu-system-x86_64 not found'
 [[ -f "$ISO" ]] || fail "ISO not found: $ISO"
 models="$(qemu-system-x86_64 -cpu help)" || fail 'cannot list QEMU CPU models'
-awk -v model="$CPU_MODEL" '$2 == model { found=1 } END { exit !found }' <<< "$models" || \
+# QEMU lists models either as "x86 NAME ..." or "NAME ...".
+awk -v model="$CPU_MODEL" '($1 == "x86" ? $2 : $1) == model { found=1 } END { exit !found }' <<< "$models" || \
   fail "QEMU CPU model '$CPU_MODEL' is not available"
 
 : > "$LOG"
