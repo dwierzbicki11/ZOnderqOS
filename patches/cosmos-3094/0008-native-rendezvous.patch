@@ -613,7 +613,7 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Ke
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-@@ -690,414 +690,740 @@
+@@ -690,414 +690,742 @@
      mov edi, 255
      lea rsi, [rip + _smp6_ap_spurious_handler]
      call _smp6_set_gate
@@ -1587,22 +1587,22 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    cmp qword ptr [r9 + 0], rax
 +    jne .Lsmp8_not_arrived
 +    cmp qword ptr [r9 + 24], rax
-+    jne .Lsmp8_invalid
++    jne .Lsmp8_retry_arrive
 +    mov edx, eax
 +    dec rdx
 +    cmp qword ptr [r9 + 16], rdx
-+    jne .Lsmp8_invalid
++    jne .Lsmp8_retry_arrive
 +    inc r11d
 +    jmp .Lsmp8_arrive_check_exit
 +.Lsmp8_not_arrived:
 +    dec rax
 +    cmp qword ptr [r9 + 0], rax
-+    jne .Lsmp8_invalid
++    jne .Lsmp8_retry_arrive
 +.Lsmp8_arrive_check_exit:
 +    mov eax, dword ptr [rsp]
 +    dec rax
 +    cmp qword ptr [r9 + 8], rax
-+    jne .Lsmp8_invalid
++    jne .Lsmp8_retry_arrive
 +.Lsmp8_arrive_next:
 +    inc rbx
 +    jmp .Lsmp8_scan_arrive
@@ -1611,6 +1611,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    dec rax
 +    cmp r11, rax
 +    je .Lsmp8_release
++.Lsmp8_retry_arrive:
 +    pause
 +    rdtsc
 +    shl rdx, 32
@@ -1640,14 +1641,14 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    add r9, rcx
 +    mov eax, dword ptr [rsp]
 +    cmp qword ptr [r9 + 0], rax
-+    jne .Lsmp8_invalid
++    jne .Lsmp8_retry_exit
 +    cmp qword ptr [r9 + 24], rax
-+    jne .Lsmp8_invalid
++    jne .Lsmp8_retry_exit
 +    cmp qword ptr [r9 + 8], rax
 +    je .Lsmp8_exit_count
 +    dec rax
 +    cmp qword ptr [r9 + 8], rax
-+    jne .Lsmp8_invalid
++    jne .Lsmp8_retry_exit
 +    jmp .Lsmp8_exit_next
 +.Lsmp8_exit_count:
 +    inc r11d
@@ -1659,6 +1660,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    dec rax
 +    cmp r11, rax
 +    je .Lsmp8_next_round
++.Lsmp8_retry_exit:
 +    pause
 +    rdtsc
 +    shl rdx, 32

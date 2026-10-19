@@ -93,3 +93,14 @@ The real QEMU matrix (1/2/4/8/16 CPUs) remains the merge gate.
 **Scope:** this proves only a native cross-CPU rendezvous primitive.
 It does not yet stop managed mutator threads, synchronize the NativeAOT
 GC, implement IPIs on ARM64 or schedule managed threads on APs.
+
+### Stage 8 concurrency hardening
+
+The first full QEMU matrix caught premature `invalid-state` rejection
+for 2- and 4-core machines. Serial state snapshots showed that APs were
+in the correct generation with no early exits, but the BSP had rejected
+an in-flight state sample. Arrival and exit scans now retry transiently
+inconsistent concurrent snapshots using the **same global 10-second
+bound**, and still require exact arrival/hit/exit counters before release.
+The boot smoke runner now emits panic context immediately instead of
+waiting for its full timeout after an explicit guest panic.
