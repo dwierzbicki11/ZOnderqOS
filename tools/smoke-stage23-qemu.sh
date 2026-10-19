@@ -76,6 +76,8 @@ if begins != ["[HTOP-TEST] BEGIN"] or passes != [expected_htop] or failures:
     fail(
         f"htop runtime verification missing or failed: "
         f"begins={begins} passes={passes} failures={failures}")
+if htop.index("[HTOP-TEST] BEGIN") >= htop.index(expected_htop):
+    fail("htop runtime verification markers are out of order")
 
 print(
     f"[SMT23-QEMU][OK] htop measured every logical CPU and restored processes")
