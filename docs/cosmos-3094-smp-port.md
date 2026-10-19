@@ -65,3 +65,26 @@ multi-CPU auditing before the native AP bootstrap can be enabled.
 Stage 3 CI compiles x64 Core/HAL, ARM64 Core/HAL, and checks native
 assembly symbols after applying stages 1-3 sequentially.
 Passing this CI is not a QEMU boot proof.
+
+## Stage 4: native x64 AP entry / READY / park
+
+Stage 4 ports the original 3.0.85 native AP bootstrap with a new patch based
+on upstream v3.0.94 and the sequentially applied 1–3 series. The x64 HAL:
+
+- Revalidates MP descriptors and dense CPU IDs.
+- Checks 16 KiB per-AP stacks prepared in stage 3.
+- Publishes native entry pointers for APs waiting in Limine, with preflight
+  validation of all descriptors before any AP is released.
+- Waits for the AP READY counters with **one bounded TSC deadline**.
+- Checks observed LAPIC ID, GS CPU ID, stack alignment and interrupts disabled.
+
+The AP assembly changes its own stack, initializes its own GS base, records
+native state and parks in a CLI/HLT loop. No managed C#, heap allocation, GC
+or scheduler work is allowed on APs yet. Boot deliberately fails closed if
+all expected APs cannot be validated. The production system remains on the
+patched Cosmos 3.0.85.
+
+The CI validates sequential patch application and native exports and compiles
+x64 Core/HAL plus ARM64 Core/HAL. **This is not a runtime QEMU AP-execution
+proof**. Building a real v3.0.94 ISO and QEMU serial smoke logs is a further
+required gate before we treat AP bootstrap as operational.
