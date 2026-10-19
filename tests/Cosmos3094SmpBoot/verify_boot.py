@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Strict serial evidence checker for real Cosmos 3.0.94 Stage 4/5 QEMU boots."""
+"""Strict serial evidence checker for real Cosmos 3.0.94 Stage 4–6 QEMU boots."""
 from __future__ import annotations
 
 import argparse
@@ -9,8 +9,10 @@ from pathlib import Path
 
 AP = re.compile(r"\[SMP3094\] AP READY CpuId=(\d+) LAPIC=(\d+)")
 WORK = re.compile(r"\[SMP3094-WORK\] CPU=(\d+) counter=(\d+)")
+IPI = re.compile(r"\[SMP3094-IPI\] CPU=(\d+) LAPIC=(\d+) count=(\d+)")
 STAGE4 = "[SMP3094-STAGE4] PASS"
 STAGE5 = "[SMP3094-STAGE5] PASS"
+STAGE6 = "[SMP3094-STAGE6] PASS"
 BOOT = "[SMP3094-PROBE] BOOT"
 FATAL = re.compile(
     r"\bpanic\b|\btriple[ -]fault\b|\bCPU\s+EXCEPTION(?!\s+handlers\s+registered)\b|"
@@ -38,14 +40,16 @@ def check(text: str, cpus: int) -> str:
             raise BootProofError(f"expected one {token}, observed {len(hits)}")
         return hits[0]
 
-    stage4, stage5, boot = marker(STAGE4), marker(STAGE5), marker(BOOT)
-    if not stage4 < stage5 < boot:
-        raise BootProofError("Stage4 / Stage5 / kernel BOOT markers out of order")
+    stage4, stage5, stage6, boot = marker(STAGE4), marker(STAGE5), marker(STAGE6), marker(BOOT)
+    if not stage4 < stage5 < stage6 < boot:
+        raise BootProofError("Stage4 / Stage5 / Stage6 / kernel BOOT markers out of order")
 
     ap_ids: dict[int, int] = {}
     work_ids: dict[int, int] = {}
+    ipi_ids: dict[int, tuple[int, int]] = {}
     ap_pos: list[int] = []
     work_pos: list[int] = []
+    ipi_pos: list[int] = []
     for idx, line in enumerate(lines):
         a = AP.fullmatch(line)
         if a:
@@ -67,24 +71,35 @@ def check(text: str, cpus: int) -> str:
             work_pos.append(idx)
         elif line.startswith("[SMP3094-WORK]"):
             raise BootProofError("malformed work proof line")
+        z = IPI.fullmatch(line)
+        if z:
+            cpu_id, lapic_id, count = map(int, z.groups())
+            if cpu_id in ipi_ids or cpu_id == 0 or cpu_id >= cpus:
+                raise BootProofError("duplicated / invalid AP IPI CpuId")
+            ipi_ids[cpu_id] = (lapic_id, count)
+            ipi_pos.append(idx)
+        elif line.startswith("[SMP3094-IPI]"):
+            raise BootProofError("malformed native IPI proof line")
 
     required = set(range(1, cpus))
-    if set(ap_ids) != required or set(work_ids) != required:
+    if set(ap_ids) != required or set(work_ids) != required or set(ipi_ids) != required:
         raise BootProofError(
-            f"wrong AP masks: READY={sorted(ap_ids)} WORK={sorted(work_ids)}, "
+            f"wrong AP masks: READY={sorted(ap_ids)} WORK={sorted(work_ids)} IPI={sorted(ipi_ids)}, "
             f"expected {sorted(required)}")
+    if any(ipi_ids[cpu_id] != (ap_ids[cpu_id], 1) for cpu_id in required):
+        raise BootProofError("IPI LAPIC ID or acknowledgement count incorrect")
     if any(value != 100_000 for value in work_ids.values()):
         raise BootProofError("AP work counter did not reach exactly 100000")
     if any(index >= stage4 for index in ap_pos) or any(
         index <= stage4 or index >= stage5 for index in work_pos
-    ):
+    ) or any(index <= stage5 or index >= stage6 for index in ipi_pos):
         raise BootProofError("AP READY / work markers out of order")
     if not any(
         line == f"[SMP3094] Stage 4 complete: {cpus - 1} native APs ready and parked; no AP scheduler or GC."
         for line in lines
     ):
         raise BootProofError("Stage4 native AP count is incorrect")
-    return f"[SMP3094-QEMU] PASS cpus={cpus} native_aps={cpus - 1} work_per_ap=100000"
+    return f"[SMP3094-QEMU] PASS cpus={cpus} native_aps={cpus - 1} work_per_ap=100000 ipi_per_ap=1"
 
 
 def self_test() -> None:
@@ -95,6 +110,8 @@ def self_test() -> None:
             STAGE4,
             *[f"[SMP3094-WORK] CPU={i} counter=100000" for i in range(1, count)],
             STAGE5,
+            *[f"[SMP3094-IPI] CPU={i} LAPIC={i} count=1" for i in range(1, count)],
+            STAGE6,
             BOOT,
         ]) + "\n"
 
@@ -105,6 +122,10 @@ def self_test() -> None:
     corrupt = [
         (good(4).replace("counter=100000", "counter=99999", 1), 4),
         (good(4).replace(BOOT, ""), 4),
+        (good(4).replace("count=1", "count=0", 1), 4),
+        (good(4).replace("LAPIC=2 count=1", "LAPIC=7 count=1", 1), 4),
+        (good(4).replace(STAGE6, ""), 4),
+        (good(4).replace("[SMP3094-IPI] CPU=2", "[SMP3094-IPI] CPU=1", 1), 4),
         (good(4).replace(STAGE5, STAGE4), 4),
         (good(4).replace("CpuId=2", "CpuId=1", 1), 4),
         (good(4).replace("LAPIC=2", "LAPIC=1", 1), 4),

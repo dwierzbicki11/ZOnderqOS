@@ -110,3 +110,16 @@ preflight pass before any command is sent.
 This is native code only, not C#/managed scheduling. Passing the new
 stage-5 CI proves patch application, native assembly and x64/ARM64
 compilation; **runtime AP execution requires real QEMU boot/serial logs**.
+
+## Stage 6 — x64 fixed IPI native proof
+Patch `0006-fixed-ipi-proof.patch` ports the old 3.0.85 fixed
+IPI test to the Cosmos 3.0.94 Core.X64 unsafe architecture boundary.
+A BSP-prepared native AP-only IDT accepts vector 0xF1; APs expose
+an IPI_ARMED state and use STI/HLT to avoid lost interrupts.
+The BSP sends the IPI to each **hardware LAPIC ID**, waits for one
+acknowledgement from each AP with a bounded global TSC deadline,
+and validates per-CPU counters. AP timers, LINT0/1 and errors are
+masked. Neither the AP IDT nor native callback enters Core managed
+interrupt dispatch, GC or the scheduler.
+
+The separate real QEMU matrix is the runtime acceptance gate.
