@@ -10,5 +10,6 @@
     <Compile Include="../../source/Core/Services/ServiceDefinition.cs" Link="ServiceDefinition.cs" />
     <Compile Include="../../source/Core/Services/ServiceManager.cs" Link="ServiceManager.cs" />
     <Compile Include="../../source/Core/ProcessManager.cs" Link="ProcessManager.cs" />
+    <Compile Include="../../source/Core/ProcessSignals.cs" Link="ProcessSignals.cs" />
   </ItemGroup>
 </Project>
