@@ -1,0 +1,1766 @@
+diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs b/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
+--- a/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
++++ b/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
+@@ -65,240 +65,357 @@
+         LimineMpInfoX64** descriptors, ulong count,
+         ulong deadlineTicks, uint rounds);
+ 
+-    internal static bool StartAndParkApplicationProcessors()
+-    {
+-        if (!LimineMp.TryAssignDenseX64CpuIds(out ulong cpuCount) ||
+-            cpuCount == 0 || cpuCount > LimineMp.MaxXApicCpuCount ||
+-            !CpuLocal.ValidateApStacks((uint)cpuCount))
+-        {
+-            Serial.WriteString("[SMP3094] Invalid topology or AP stack reservation.\n");
+-            return false;
+-        }
+-
+-        LimineMpResponseX64* response = (LimineMpResponseX64*)Limine.MP.Response;
+-        long frequency = X64CpuOps.TscFrequency;
+-        ulong deadlineTicks = frequency > 0 &&
+-            (ulong)frequency <= ulong.MaxValue / ReadyTimeoutSeconds
+-            ? (ulong)frequency * ReadyTimeoutSeconds
+-            : 5_000_000_000UL;
+-
+-        // Construct the AP-only IDT before releasing CPUs from Limine.
+-        // Native APs never execute Cosmos managed interrupt dispatch.
+-        if (!LocalApic.IsInitialized || NativePrepareIpi(LocalApic.BaseAddress) != 1)
+-        {
+-            Serial.WriteString("[SMP3094] Stage 6 native IPI IDT preparation failed.\n");
+-            return false;
+-        }
+-
+-        // AP code runs only native instructions, with interrupts disabled.
+-        // A single shared deadline bounds waiting for all APs.
+-        int started = NativeStartAps(response->Cpus, cpuCount, deadlineTicks);
+-        int expected = checked((int)cpuCount - 1);
+-        if (started != expected)
+-        {
+-            Serial.WriteString("[SMP3094] AP startup failed or READY timeout.\n");
+-            return false;
+-        }
+-
+-        for (ulong tableIndex = 0; tableIndex < cpuCount; tableIndex++)
+-        {
+-            LimineMpInfoX64* desc = response->Cpus[tableIndex];
+-            uint id = checked((uint)desc->ExtraArgument);
+-            if (id == 0)
+-            {
+-                if (desc->LapicId != response->BspLapicId)
+-                {
+-                    return false;
+-                }
+-
+-                continue;
+-            }
+-
+-            ulong stack = NativeGetStack(id);
+-            if (NativeGetReady(id) != 1 ||
+-                NativeGetLapicId(id) != desc->LapicId ||
+-                NativeGetGsId(id) != id ||
+-                stack == 0 || (stack & 15UL) != 0 ||
+-                (NativeGetRflags(id) & (1UL << 9)) != 0)
+-            {
+-                Serial.WriteString("[SMP3094] AP bootstrap validation failed: CpuId=");
+-                Serial.WriteNumber(id);
+-                Serial.WriteString("\n");
+-                return false;
+-            }
+-
+-            Serial.WriteString("[SMP3094] AP READY CpuId=");
+-            Serial.WriteNumber(id);
+-            Serial.WriteString(" LAPIC=");
+-            Serial.WriteNumber(desc->LapicId);
+-            Serial.WriteString("\n");
+-        }
+-
+-        Serial.WriteString("[SMP3094] Stage 4 complete: ");
+-        Serial.WriteNumber((ulong)expected);
+-        Serial.WriteString(" native APs ready and parked; no AP scheduler or GC.\n");
+-        Serial.WriteString("[SMP3094-STAGE4] PASS\n");
+-        return true;
+-    }
+-
+-    /// <summary>Proves that each AP performs native work after READY.</summary>
+-    internal static bool RunNativeWorkProof()
+-    {
+-        const ulong ExpectedCounter = 100_000UL;
+-        if (!LimineMp.TryValidateX64(out ulong count, out _) ||
+-            count == 0 || count > LimineMp.MaxXApicCpuCount)
+-        {
+-            return false;
+-        }
+-
+-        long frequency = X64CpuOps.TscFrequency;
+-        ulong timeoutTicks = frequency > 0 &&
+-            (ulong)frequency <= ulong.MaxValue / ReadyTimeoutSeconds
+-            ? (ulong)frequency * ReadyTimeoutSeconds
+-            : 5_000_000_000UL;
+-
+-        int completed = NativeRunApWorkTest(count, timeoutTicks);
+-        if (completed != (int)count - 1)
+-        {
+-            Serial.WriteString("[SMP3094] Stage 5 AP native work timed out.\n");
+-            return false;
+-        }
+-
+-        for (uint id = 1; id < count; id++)
+-        {
+-            ulong actual = NativeGetWorkCounter(id);
+-            if (actual != ExpectedCounter)
+-            {
+-                Serial.WriteString("[SMP3094] Invalid native work counter for CPU ");
+-                Serial.WriteNumber(id);
+-                Serial.WriteString("\n");
+-                return false;
+-            }
+-
+-            Serial.WriteString("[SMP3094-WORK] CPU=");
+-            Serial.WriteNumber(id);
+-            Serial.WriteString(" counter=");
+-            Serial.WriteNumber(actual);
+-            Serial.WriteString("\n");
+-        }
+-
+-        Serial.WriteString("[SMP3094-STAGE5] PASS\n");
+-        return true;
+-    }
+-
+-    /// <summary>
+-    /// Check one real fixed-delivery Local APIC IPI per secondary processor.
+-    /// The native dispatcher uses each Limine descriptor's physical LAPIC ID,
+-    /// not its dense scheduler CPU ID.
+-    /// </summary>
+-    internal static bool RunNativeIpiProof()
+-    {
+-        if (!LimineMp.TryValidateX64(out ulong count, out _) ||
+-            count == 0 || count > LimineMp.MaxXApicCpuCount)
+-        {
+-            return false;
+-        }
+-
+-        LimineMpResponseX64* response = (LimineMpResponseX64*)Limine.MP.Response;
+-        long frequency = X64CpuOps.TscFrequency;
+-        ulong timeoutTicks = frequency > 0 &&
+-            (ulong)frequency <= ulong.MaxValue / ReadyTimeoutSeconds
+-            ? (ulong)frequency * ReadyTimeoutSeconds
+-            : 5_000_000_000UL;
+-
+-        int received = NativeRunIpiTest(response->Cpus, count, timeoutTicks);
+-        if (received != (int)count - 1)
+-        {
+-            Serial.WriteString("[SMP3094] Stage 6 IPI timeout or AP IDT failure.\n");
+-            return false;
+-        }
+-
+-        for (ulong i = 0; i < count; i++)
+-        {
+-            LimineMpInfoX64* cpu = response->Cpus[i];
+-            uint cpuId = (uint)cpu->ExtraArgument;
+-            if (cpuId == 0)
+-            {
+-                continue;
+-            }
+-
+-            ulong observed = NativeGetIpiCount(cpuId);
+-            if (observed != 1UL)
+-            {
+-                Serial.WriteString("[SMP3094] Stage 6 wrong IPI count for CPU ");
+-                Serial.WriteNumber(cpuId);
+-                Serial.WriteString("\n");
+-                return false;
+-            }
+-
+-            Serial.WriteString("[SMP3094-IPI] CPU=");
+-            Serial.WriteNumber(cpuId);
+-            Serial.WriteString(" LAPIC=");
+-            Serial.WriteNumber(cpu->LapicId);
+-            Serial.WriteString(" count=");
+-            Serial.WriteNumber(observed);
+-            Serial.WriteString("\n");
+-        }
+-
+-        Serial.WriteString("[SMP3094-STAGE6] PASS\n");
+-        return true;
+-    }
+-
+-    /// <summary>
+-    /// Sends 32 sequential fixed-IPIs to each secondary CPU after Stage 6.
+-    /// Per-round acknowledgement must advance strictly by one.
+-    /// </summary>
+-    internal static bool RunNativeIpiStressProof()
+-    {
+-        const uint Rounds = 32;
+-        const ulong TimeoutSeconds = 15;
+-        if (!LimineMp.TryValidateX64(out ulong count, out _) ||
+-            count == 0 || count > LimineMp.MaxXApicCpuCount)
+-        {
+-            return false;
+-        }
+-
+-        LimineMpResponseX64* response = (LimineMpResponseX64*)Limine.MP.Response;
+-        long frequency = X64CpuOps.TscFrequency;
+-        ulong deadline = frequency > 0 &&
+-            (ulong)frequency <= ulong.MaxValue / TimeoutSeconds
+-            ? (ulong)frequency * TimeoutSeconds
+-            : 15_000_000_000UL;
+-        int completed = NativeRunIpiStress(response->Cpus, count, deadline, Rounds);
+-        if (completed != (int)count - 1)
+-        {
+-            Serial.WriteString("[SMP3094] Stage 7 repeated IPI failed or timed out.\n");
+-            return false;
+-        }
+-
+-        for (ulong i = 0; i < count; i++)
+-        {
+-            LimineMpInfoX64* descriptor = response->Cpus[i];
+-            uint cpuId = (uint)descriptor->ExtraArgument;
+-            if (cpuId == 0)
+-            {
+-                continue;
+-            }
+-
+-            ulong observed = NativeGetIpiCount(cpuId);
+-            if (observed != Rounds + 1UL)
+-            {
+-                Serial.WriteString("[SMP3094] Stage 7 incorrect IPI counter.\n");
+-                return false;
+-            }
+-
+-            Serial.WriteString("[SMP3094-IPI-STRESS] CPU=");
+-            Serial.WriteNumber(cpuId);
+-            Serial.WriteString(" LAPIC=");
+-            Serial.WriteNumber(descriptor->LapicId);
+-            Serial.WriteString(" rounds=");
+-            Serial.WriteNumber(Rounds);
+-            Serial.WriteString(" count=");
+-            Serial.WriteNumber(observed);
+-            Serial.WriteString("\n");
+-        }
+-
+-        Serial.WriteString("[SMP3094-STAGE7] PASS\n");
++    [LibraryImport("*", EntryPoint = "_native_x64_run_ap_rendezvous")]
++    [SuppressGCTransition]
++    private static partial int NativeRunRendezvous(
++        LimineMpInfoX64** descriptors, ulong count,
++        ulong timeoutTicks, uint rounds);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_barrier_enter")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetBarrierEnter(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_barrier_exit")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetBarrierExit(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_barrier_hits")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetBarrierHits(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_barrier_sample")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetBarrierSample(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_barrier_request")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetBarrierRequest();
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_barrier_release")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetBarrierRelease();
++
++    internal static bool StartAndParkApplicationProcessors()
++    {
++        if (!LimineMp.TryAssignDenseX64CpuIds(out ulong cpuCount) ||
++            cpuCount == 0 || cpuCount > LimineMp.MaxXApicCpuCount ||
++            !CpuLocal.ValidateApStacks((uint)cpuCount))
++        {
++            Serial.WriteString("[SMP3094] Invalid topology or AP stack reservation.\n");
++            return false;
++        }
++
++        LimineMpResponseX64* response = (LimineMpResponseX64*)Limine.MP.Response;
++        long frequency = X64CpuOps.TscFrequency;
++        ulong deadlineTicks = frequency > 0 &&
++            (ulong)frequency <= ulong.MaxValue / ReadyTimeoutSeconds
++            ? (ulong)frequency * ReadyTimeoutSeconds
++            : 5_000_000_000UL;
++
++        // Construct the AP-only IDT before releasing CPUs from Limine.
++        // Native APs never execute Cosmos managed interrupt dispatch.
++        if (!LocalApic.IsInitialized || NativePrepareIpi(LocalApic.BaseAddress) != 1)
++        {
++            Serial.WriteString("[SMP3094] Stage 6 native IPI IDT preparation failed.\n");
++            return false;
++        }
++
++        // AP code runs only native instructions, with interrupts disabled.
++        // A single shared deadline bounds waiting for all APs.
++        int started = NativeStartAps(response->Cpus, cpuCount, deadlineTicks);
++        int expected = checked((int)cpuCount - 1);
++        if (started != expected)
++        {
++            Serial.WriteString("[SMP3094] AP startup failed or READY timeout.\n");
++            return false;
++        }
++
++        for (ulong tableIndex = 0; tableIndex < cpuCount; tableIndex++)
++        {
++            LimineMpInfoX64* desc = response->Cpus[tableIndex];
++            uint id = checked((uint)desc->ExtraArgument);
++            if (id == 0)
++            {
++                if (desc->LapicId != response->BspLapicId)
++                {
++                    return false;
++                }
++
++                continue;
++            }
++
++            ulong stack = NativeGetStack(id);
++            if (NativeGetReady(id) != 1 ||
++                NativeGetLapicId(id) != desc->LapicId ||
++                NativeGetGsId(id) != id ||
++                stack == 0 || (stack & 15UL) != 0 ||
++                (NativeGetRflags(id) & (1UL << 9)) != 0)
++            {
++                Serial.WriteString("[SMP3094] AP bootstrap validation failed: CpuId=");
++                Serial.WriteNumber(id);
++                Serial.WriteString("\n");
++                return false;
++            }
++
++            Serial.WriteString("[SMP3094] AP READY CpuId=");
++            Serial.WriteNumber(id);
++            Serial.WriteString(" LAPIC=");
++            Serial.WriteNumber(desc->LapicId);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[SMP3094] Stage 4 complete: ");
++        Serial.WriteNumber((ulong)expected);
++        Serial.WriteString(" native APs ready and parked; no AP scheduler or GC.\n");
++        Serial.WriteString("[SMP3094-STAGE4] PASS\n");
++        return true;
++    }
++
++    /// <summary>Proves that each AP performs native work after READY.</summary>
++    internal static bool RunNativeWorkProof()
++    {
++        const ulong ExpectedCounter = 100_000UL;
++        if (!LimineMp.TryValidateX64(out ulong count, out _) ||
++            count == 0 || count > LimineMp.MaxXApicCpuCount)
++        {
++            return false;
++        }
++
++        long frequency = X64CpuOps.TscFrequency;
++        ulong timeoutTicks = frequency > 0 &&
++            (ulong)frequency <= ulong.MaxValue / ReadyTimeoutSeconds
++            ? (ulong)frequency * ReadyTimeoutSeconds
++            : 5_000_000_000UL;
++
++        int completed = NativeRunApWorkTest(count, timeoutTicks);
++        if (completed != (int)count - 1)
++        {
++            Serial.WriteString("[SMP3094] Stage 5 AP native work timed out.\n");
++            return false;
++        }
++
++        for (uint id = 1; id < count; id++)
++        {
++            ulong actual = NativeGetWorkCounter(id);
++            if (actual != ExpectedCounter)
++            {
++                Serial.WriteString("[SMP3094] Invalid native work counter for CPU ");
++                Serial.WriteNumber(id);
++                Serial.WriteString("\n");
++                return false;
++            }
++
++            Serial.WriteString("[SMP3094-WORK] CPU=");
++            Serial.WriteNumber(id);
++            Serial.WriteString(" counter=");
++            Serial.WriteNumber(actual);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[SMP3094-STAGE5] PASS\n");
++        return true;
++    }
++
++    /// <summary>
++    /// Check one real fixed-delivery Local APIC IPI per secondary processor.
++    /// The native dispatcher uses each Limine descriptor's physical LAPIC ID,
++    /// not its dense scheduler CPU ID.
++    /// </summary>
++    internal static bool RunNativeIpiProof()
++    {
++        if (!LimineMp.TryValidateX64(out ulong count, out _) ||
++            count == 0 || count > LimineMp.MaxXApicCpuCount)
++        {
++            return false;
++        }
++
++        LimineMpResponseX64* response = (LimineMpResponseX64*)Limine.MP.Response;
++        long frequency = X64CpuOps.TscFrequency;
++        ulong timeoutTicks = frequency > 0 &&
++            (ulong)frequency <= ulong.MaxValue / ReadyTimeoutSeconds
++            ? (ulong)frequency * ReadyTimeoutSeconds
++            : 5_000_000_000UL;
++
++        int received = NativeRunIpiTest(response->Cpus, count, timeoutTicks);
++        if (received != (int)count - 1)
++        {
++            Serial.WriteString("[SMP3094] Stage 6 IPI timeout or AP IDT failure.\n");
++            return false;
++        }
++
++        for (ulong i = 0; i < count; i++)
++        {
++            LimineMpInfoX64* cpu = response->Cpus[i];
++            uint cpuId = (uint)cpu->ExtraArgument;
++            if (cpuId == 0)
++            {
++                continue;
++            }
++
++            ulong observed = NativeGetIpiCount(cpuId);
++            if (observed != 1UL)
++            {
++                Serial.WriteString("[SMP3094] Stage 6 wrong IPI count for CPU ");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString("\n");
++                return false;
++            }
++
++            Serial.WriteString("[SMP3094-IPI] CPU=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" LAPIC=");
++            Serial.WriteNumber(cpu->LapicId);
++            Serial.WriteString(" count=");
++            Serial.WriteNumber(observed);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[SMP3094-STAGE6] PASS\n");
++        return true;
++    }
++
++    /// <summary>
++    /// Sends 32 sequential fixed-IPIs to each secondary CPU after Stage 6.
++    /// Per-round acknowledgement must advance strictly by one.
++    /// </summary>
++    internal static bool RunNativeIpiStressProof()
++    {
++        const uint Rounds = 32;
++        const ulong TimeoutSeconds = 15;
++        if (!LimineMp.TryValidateX64(out ulong count, out _) ||
++            count == 0 || count > LimineMp.MaxXApicCpuCount)
++        {
++            return false;
++        }
++
++        LimineMpResponseX64* response = (LimineMpResponseX64*)Limine.MP.Response;
++        long frequency = X64CpuOps.TscFrequency;
++        ulong deadline = frequency > 0 &&
++            (ulong)frequency <= ulong.MaxValue / TimeoutSeconds
++            ? (ulong)frequency * TimeoutSeconds
++            : 15_000_000_000UL;
++        int completed = NativeRunIpiStress(response->Cpus, count, deadline, Rounds);
++        if (completed != (int)count - 1)
++        {
++            Serial.WriteString("[SMP3094] Stage 7 repeated IPI failed or timed out.\n");
++            return false;
++        }
++
++        for (ulong i = 0; i < count; i++)
++        {
++            LimineMpInfoX64* descriptor = response->Cpus[i];
++            uint cpuId = (uint)descriptor->ExtraArgument;
++            if (cpuId == 0)
++            {
++                continue;
++            }
++
++            ulong observed = NativeGetIpiCount(cpuId);
++            if (observed != Rounds + 1UL)
++            {
++                Serial.WriteString("[SMP3094] Stage 7 incorrect IPI counter.\n");
++                return false;
++            }
++
++            Serial.WriteString("[SMP3094-IPI-STRESS] CPU=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" LAPIC=");
++            Serial.WriteNumber(descriptor->LapicId);
++            Serial.WriteString(" rounds=");
++            Serial.WriteNumber(Rounds);
++            Serial.WriteString(" count=");
++            Serial.WriteNumber(observed);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[SMP3094-STAGE7] PASS\n");
++        return true;
++    }
++
++    /// <summary>
++    /// Stage 8 native IPI rendezvous: every AP enters each generation,
++    /// stays inside the interrupt handler until the BSP releases all CPUs,
++    /// and confirms its exit. Does not suspend managed execution or GC.
++    /// </summary>
++    internal static bool RunNativeRendezvousProof()
++    {
++        const uint Rounds = 4;
++        const ulong TimeoutSeconds = 10;
++        if (!LimineMp.TryValidateX64(out ulong count, out _) ||
++            count == 0 || count > LimineMp.MaxXApicCpuCount)
++        {
++            return false;
++        }
++
++        LimineMpResponseX64* response = (LimineMpResponseX64*)Limine.MP.Response;
++        long frequency = X64CpuOps.TscFrequency;
++        ulong deadline = frequency > 0 &&
++            (ulong)frequency <= ulong.MaxValue / TimeoutSeconds
++            ? (ulong)frequency * TimeoutSeconds
++            : 10_000_000_000UL;
++
++        int completed = NativeRunRendezvous(response->Cpus, count, deadline, Rounds);
++        if (completed != (int)count - 1)
++        {
++            Serial.WriteString("[SMP3094-DIAG] stage8 result=");
++            Serial.WriteString(completed == -1 ? "timeout" : "invalid-state");
++            Serial.WriteString(" requested=");
++            Serial.WriteNumber(NativeGetBarrierRequest());
++            Serial.WriteString(" released=");
++            Serial.WriteNumber(NativeGetBarrierRelease());
++            Serial.WriteString("\n");
++            for (uint id = 1; id < count; id++)
++            {
++                Serial.WriteString("[SMP3094-DIAG] cpu=");
++                Serial.WriteNumber(id);
++                Serial.WriteString(" entered=");
++                Serial.WriteNumber(NativeGetBarrierEnter(id));
++                Serial.WriteString(" exited=");
++                Serial.WriteNumber(NativeGetBarrierExit(id));
++                Serial.WriteString(" sampledRelease=");
++                Serial.WriteNumber(NativeGetBarrierSample(id));
++                Serial.WriteString(" hits=");
++                Serial.WriteNumber(NativeGetBarrierHits(id));
++                Serial.WriteString("\n");
++            }
++            Serial.WriteString("[SMP3094] Stage 8 rendezvous failed or timed out.\n");
++            return false;
++        }
++
++        for (ulong i = 0; i < count; i++)
++        {
++            LimineMpInfoX64* descriptor = response->Cpus[i];
++            uint cpuId = (uint)descriptor->ExtraArgument;
++            if (cpuId == 0)
++            {
++                continue;
++            }
++
++            ulong entered = NativeGetBarrierEnter(cpuId);
++            ulong exited = NativeGetBarrierExit(cpuId);
++            ulong hits = NativeGetBarrierHits(cpuId);
++            if (entered != Rounds || exited != Rounds || hits != Rounds)
++            {
++                Serial.WriteString("[SMP3094] Stage 8 per-CPU rendezvous counters invalid.\n");
++                return false;
++            }
++
++            Serial.WriteString("[SMP3094-BARRIER] CPU=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" LAPIC=");
++            Serial.WriteNumber(descriptor->LapicId);
++            Serial.WriteString(" rounds=");
++            Serial.WriteNumber(Rounds);
++            Serial.WriteString(" enter=");
++            Serial.WriteNumber(entered);
++            Serial.WriteString(" exit=");
++            Serial.WriteNumber(exited);
++            Serial.WriteString(" hits=");
++            Serial.WriteNumber(hits);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[SMP3094-STAGE8] PASS\n");
+         return true;
+     }
+ }
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -174,6 +174,13 @@
+             Cosmos.Kernel.Core.Panic.Halt("SMP3094 stage 7: repeated IPI proof failed.");
+         }
+ 
++        // Stage 8: native rendezvous. All APs must enter a barrier before
++        // the BSP releases any; managed GC/scheduler still remain on the BSP.
++        if (!SmpApBootstrap.RunNativeRendezvousProof())
++        {
++            Cosmos.Kernel.Core.Panic.Halt("SMP3094 stage 8: native rendezvous failed.");
++        }
++
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new CmosRtc();
+         _rtc.Initialize();
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -690,414 +690,742 @@
+     mov edi, 255
+     lea rsi, [rip + _smp6_ap_spurious_handler]
+     call _smp6_set_gate
+-    mov eax, 1
+-    ret
+-.Lsmp6_prep_bad:
+-    xor eax, eax
+-    ret
+-
+-// edi = vector, rsi = handler virtual address. BSP only, before AP release.
+-_smp6_set_gate:
+-    lea rcx, [rip + _smp6_ap_idt]
+-    mov eax, edi
+-    shl rax, 4
+-    add rcx, rax
+-    mov word ptr [rcx + 0], si
+-    mov ax, cs
+-    mov word ptr [rcx + 2], ax
+-    mov byte ptr [rcx + 4], 0
+-    mov byte ptr [rcx + 5], 0x8E
+-    mov rax, rsi
+-    shr rax, 16
+-    mov word ptr [rcx + 6], ax
+-    shr rax, 16
+-    mov dword ptr [rcx + 8], eax
+-    mov dword ptr [rcx + 12], 0
+-    ret
+-
+-// AP only. The BSP initialized _smp6_lapic_base and native IDTR.
+-// APs never enter managed interrupt handlers before full runtime port.
+-_smp6_arm_ap_ipi:
+-    lidt [rip + _smp6_ap_idtr]
+-    mov ecx, 0x1B
+-    rdmsr
+-    or eax, 0x800
+-    wrmsr
+-    mov rax, qword ptr [rip + _smp6_lapic_base]
+-    mov dword ptr [rax + 0x80], 0          // TPR: accept fixed interrupts
+-    mov dword ptr [rax + 0x320], 0x10000   // mask timer
+-    mov dword ptr [rax + 0x350], 0x10000   // mask LINT0
+-    mov dword ptr [rax + 0x360], 0x10000   // mask LINT1
+-    mov dword ptr [rax + 0x370], 0x10000   // mask error
+-    mov dword ptr [rax + 0xF0], 0x1FF      // enable LAPIC, vector FF
+-    ret
+-
+-// Real interrupt handler: GS points to the current AP's cache line.
+-// Preserve clobbered registers, acknowledge LAPIC and return with IRETQ.
+-// All other interrupt vectors remain disabled / unconfigured at Stage 6.
+-.global _smp6_ap_ipi_handler
+-_smp6_ap_ipi_handler:
+-    push rax
+-    push rdx
+-    mov eax, dword ptr gs:[0]
+-    cmp eax, 255
+-    ja .Lsmp6_handler_eoi
+-    lea rdx, [rip + _smp3094_ap_boot_state]
+-    shl rax, 6
+-    add rdx, rax
+-    lock inc qword ptr [rdx + 56]
+-.Lsmp6_handler_eoi:
+-    mov rax, qword ptr [rip + _smp6_lapic_base]
+-    mov dword ptr [rax + 0xB0], 0
+-    pop rdx
+-    pop rax
+-    iretq
+-
+-// A spurious APIC interrupt must NOT issue EOI.
+-.global _smp6_ap_spurious_handler
+-_smp6_ap_spurious_handler:
+-    iretq
+-
+-SMP4_STATE_GETTER _native_x64_get_ap_ipi_count, 56, 8
+-
+-// IPI proof: rdi descriptor table, rsi CPU count, rdx total TSC deadline.
+-// Stage 6 uses physical LAPIC IDs from Limine descriptors, never dense IDs.
+-// Returns n-1 on success, -1 timeout, -2 invalid topology/state.
+-.global _native_x64_run_ap_ipi_test
+-_native_x64_run_ap_ipi_test:
+-    push rbx
+-    push r12
+-    push r13
+-    push r14
+-    push r15
+-    test rdi, rdi
+-    jz .Lsmp6_invalid
+-    test rsi, rsi
+-    jz .Lsmp6_invalid
+-    cmp rsi, 256
+-    ja .Lsmp6_invalid
+-    test rdx, rdx
+-    jz .Lsmp6_invalid
+-    mov r12, rdi
+-    mov r13, rsi
+-    mov r14, rdx
+-    rdtsc
+-    shl rdx, 32
+-    or rax, rdx
+-    mov r15, rax
+-
+-// Wait for ALL APs to install their IDTs and LAPIC before sending IPI.
+-// The shared deadline applies to the entire preflight + dispatch.
+-.Lsmp6_preflight:
+-    mov ebx, 0
+-.Lsmp6_check:
+-    cmp rbx, r13
+-    jae .Lsmp6_send_begin
+-    mov r8, qword ptr [r12 + rbx * 8]
+-    test r8, r8
+-    jz .Lsmp6_invalid
+-    mov rcx, qword ptr [r8 + 24]  // dense CPU ID
+-    cmp rcx, r13
+-    jae .Lsmp6_invalid
+-    test rcx, rcx
+-    jz .Lsmp6_check_next
+-    mov eax, dword ptr [r8 + 4]   // physical LAPIC ID
+-    cmp eax, 255
+-    ja .Lsmp6_invalid
+-    lea r9, [rip + _smp3094_ap_boot_state]
+-    shl rcx, 6
+-    add r9, rcx
+-    cmp dword ptr [r9 + 52], 1    // AP's IPI_ARMED bit
+-    jne .Lsmp6_not_armed
+-    cmp qword ptr [r9 + 56], 0
+-    jne .Lsmp6_invalid
+-.Lsmp6_check_next:
+-    inc rbx
+-    jmp .Lsmp6_check
+-.Lsmp6_not_armed:
+-    pause
+-    rdtsc
+-    shl rdx, 32
+-    or rax, rdx
+-    sub rax, r15
+-    cmp rax, r14
+-    jae .Lsmp6_timeout
+-    jmp .Lsmp6_preflight
+-
+-.Lsmp6_send_begin:
+-    mov ebx, 0
+-.Lsmp6_send:
+-    cmp rbx, r13
+-    jae .Lsmp6_success
+-    mov r8, qword ptr [r12 + rbx * 8]
+-    mov rcx, qword ptr [r8 + 24]
+-    test rcx, rcx
+-    jz .Lsmp6_send_next
+-    lea r10, [rip + _smp3094_ap_boot_state]
+-    shl rcx, 6
+-    add r10, rcx
+-    mov edx, dword ptr [r8 + 4]  // physical LAPIC, not logical CPU ID
+-    shl edx, 24
+-    mov r9, qword ptr [rip + _smp6_lapic_base]
+-    // ICR busy gate: do not overwrite an outstanding delivery command.
+-.Lsmp6_icr_idle:
+-    mov eax, dword ptr [r9 + 0x300]
+-    test eax, 0x1000
+-    jz .Lsmp6_icr_send
+-    pause
+-    rdtsc
+-    shl rdx, 32
+-    or rax, rdx
+-    sub rax, r15
+-    cmp rax, r14
+-    jae .Lsmp6_timeout
+-    jmp .Lsmp6_icr_idle
+-.Lsmp6_icr_send:
+-    mov edx, dword ptr [r8 + 4]
+-    shl edx, 24
+-    mov dword ptr [r9 + 0x310], edx
+-    mov dword ptr [r9 + 0x300], 0x000000F1
+-.Lsmp6_wait_ack:
+-    cmp qword ptr [r10 + 56], 1
+-    je .Lsmp6_send_next
+-    cmp qword ptr [r10 + 56], 1
+-    ja .Lsmp6_invalid
+-    pause
+-    rdtsc
+-    shl rdx, 32
+-    or rax, rdx
+-    sub rax, r15
+-    cmp rax, r14
+-    jae .Lsmp6_timeout
+-    jmp .Lsmp6_wait_ack
+-.Lsmp6_send_next:
+-    inc rbx
+-    jmp .Lsmp6_send
+-
+-.Lsmp6_success:
+-    mov eax, r13d
+-    dec eax
+-    jmp .Lsmp6_return
+-.Lsmp6_timeout:
+-    mov eax, -1
+-    jmp .Lsmp6_return
+-.Lsmp6_invalid:
+-    mov eax, -2
+-.Lsmp6_return:
+-    pop r15
+-    pop r14
+-    pop r13
+-    pop r12
+-    pop rbx
+-    ret
+-
+-// Stage 7 native AP IPI stress. All APs have received Stage 6 IPI #1.
+-// Inputs: rdi=Limine descriptors**, rsi=CPU count, rdx=total TSC
+-// deadline, ecx=number of additional rounds. Return n-1, -1, or -2.
+-// Each AP is targeted by its physical LAPIC ID, not dense scheduler ID.
+-.global _native_x64_run_ap_ipi_stress
+-_native_x64_run_ap_ipi_stress:
+-    push rbx
+-    push r12
+-    push r13
+-    push r14
+-    push r15
+-    sub rsp, 16
+-    test rdi, rdi
+-    jz .Lsmp7_invalid
+-    test rsi, rsi
+-    jz .Lsmp7_invalid
+-    cmp rsi, 256
+-    ja .Lsmp7_invalid
+-    test rdx, rdx
+-    jz .Lsmp7_invalid
+-    test ecx, ecx
+-    jz .Lsmp7_invalid
+-    cmp ecx, 128
+-    ja .Lsmp7_invalid
+-    mov r12, rdi
+-    mov r13, rsi
+-    mov r14, rdx
+-    mov dword ptr [rsp], ecx
+-    mov dword ptr [rsp + 8], 1
+-    rdtsc
+-    shl rdx, 32
+-    or rax, rdx
+-    mov r15, rax
+-
+-// Preflight every AP before sending a new IPI.
+-    xor ebx, ebx
+-.Lsmp7_preflight:
+-    cmp rbx, r13
+-    jae .Lsmp7_round_start
+-    mov r8, qword ptr [r12 + rbx * 8]
+-    test r8, r8
+-    jz .Lsmp7_invalid
+-    mov rcx, qword ptr [r8 + 24]
+-    cmp rcx, r13
+-    jae .Lsmp7_invalid
+-    test rcx, rcx
+-    jz .Lsmp7_preflight_next
+-    mov eax, dword ptr [r8 + 4]
+-    cmp eax, 255
+-    ja .Lsmp7_invalid
+-    lea r10, [rip + _smp3094_ap_boot_state]
+-    shl rcx, 6
+-    add r10, rcx
+-    cmp dword ptr [r10 + 52], 1
+-    jne .Lsmp7_invalid
+-    cmp qword ptr [r10 + 56], 1
+-    jne .Lsmp7_invalid
+-.Lsmp7_preflight_next:
+-    inc rbx
+-    jmp .Lsmp7_preflight
+-
+-.Lsmp7_round_start:
+-    mov eax, dword ptr [rsp + 8]
+-    cmp eax, dword ptr [rsp]
+-    ja .Lsmp7_success
+-    xor ebx, ebx
+-.Lsmp7_each_ap:
+-    cmp rbx, r13
+-    jae .Lsmp7_round_complete
+-    mov r8, qword ptr [r12 + rbx * 8]
+-    mov rcx, qword ptr [r8 + 24]
+-    test rcx, rcx
+-    jz .Lsmp7_next_ap
+-    lea r10, [rip + _smp3094_ap_boot_state]
+-    shl rcx, 6
+-    add r10, rcx
+-    mov eax, dword ptr [rsp + 8]
+-    cmp qword ptr [r10 + 56], rax
+-    jne .Lsmp7_invalid
+-    mov r9, qword ptr [rip + _smp6_lapic_base]
+-    test r9, r9
+-    jz .Lsmp7_invalid
+-
+-// Wait for previous ICR delivery status to clear.
+-.Lsmp7_icr_idle:
+-    mov eax, dword ptr [r9 + 0x300]
+-    test eax, 0x1000
+-    jz .Lsmp7_send
+-    pause
+-    rdtsc
+-    shl rdx, 32
+-    or rax, rdx
+-    sub rax, r15
+-    cmp rax, r14
+-    jae .Lsmp7_timeout
+-    jmp .Lsmp7_icr_idle
+-
+-.Lsmp7_send:
+-    mov edx, dword ptr [r8 + 4]
+-    shl edx, 24
+-    mov dword ptr [r9 + 0x310], edx
+-    mov dword ptr [r9 + 0x300], 0x000000F1
+-
+-// Must see exactly one new acknowledgement, not zero or two.
+-.Lsmp7_wait:
+-    mov eax, dword ptr [rsp + 8]
+-    inc eax
+-    cmp qword ptr [r10 + 56], rax
+-    je .Lsmp7_next_ap
+-    jb .Lsmp7_pending
+-    jmp .Lsmp7_invalid
+-.Lsmp7_pending:
+-    pause
+-    rdtsc
+-    shl rdx, 32
+-    or rax, rdx
+-    sub rax, r15
+-    cmp rax, r14
+-    jae .Lsmp7_timeout
+-    jmp .Lsmp7_wait
+-
+-.Lsmp7_next_ap:
+-    inc rbx
+-    jmp .Lsmp7_each_ap
+-.Lsmp7_round_complete:
+-    inc dword ptr [rsp + 8]
+-    jmp .Lsmp7_round_start
+-.Lsmp7_success:
+-    mov eax, r13d
+-    dec eax
+-    jmp .Lsmp7_exit
+-.Lsmp7_timeout:
+-    mov eax, -1
+-    jmp .Lsmp7_exit
+-.Lsmp7_invalid:
+-    mov eax, -2
+-.Lsmp7_exit:
+-    add rsp, 16
+-    pop r15
+-    pop r14
+-    pop r13
+-    pop r12
+-    pop rbx
+-    ret
+-
+-// void _native_set_context_switch_sp(nuint newSp)
+-// Sets the target SP for context switch. Called from managed code
+-// during timer interrupt to request a context switch.
+-// rdi = new RSP to switch to (pointing to saved context)
+-.global _native_set_context_switch_sp
+-_native_set_context_switch_sp:
+-    mov [rip + _context_switch_target_rsp], rdi
+-    ret
+-
+-// nuint _native_get_context_switch_sp()
+-// Gets the current context switch target SP (for debugging)
+-.global _native_get_context_switch_sp
+-_native_get_context_switch_sp:
+-    mov rax, [rip + _context_switch_target_rsp]
+-    ret
+-
+-// nuint _native_get_sp()
+-// Gets the current SP value
+-.global _native_get_sp
+-_native_get_sp:
+-    mov rax, rsp
+-    ret
+-
+-// uint64_t _native_x64_get_last_error_code()
+-// Returns the error code stashed by the most recent error-code exception
+-// stub (vectors 8, 10-14, 17, 21, 29, 30). Only meaningful while handling
+-// that exception; a nested error-code exception overwrites it.
+-.global _native_x64_get_last_error_code
+-_native_x64_get_last_error_code:
+-    mov rax, [rip + _irq_last_error_code]
+-    ret
+-
+-// void _native_set_context_switch_new_thread(int isNew)
+-// Sets whether the target thread is NEW (1) or RESUMED (0)
+-// rdi = isNew flag
+-.global _native_set_context_switch_new_thread
+-_native_set_context_switch_new_thread:
+-    mov [rip + _context_switch_is_new_thread], rdi
+-    ret
+-
+-.bss
+-// x64 cacheline-sized identity/context reservation for 256 logical CPUs.
+-.balign 64
+-_smp3094_cpu_slots: .zero 16384
+-
+-// 256 AP stacks of 16KiB each; 4MiB zero-initialized BSS.
+-// Stacks are not used until a separate AP bootstrap patch is validated.
+-.balign 4096
+-_smp3094_ap_stacks: .zero 4194304
+-
+-// 256 cache-line records: READY, logical ID, physical APIC ID,
+-// GS identity, stack pointer and interrupt flag observation.
+-.balign 64
+-_smp3094_ap_boot_state: .zero 16384
+-
+-// AP-only native interrupt table: fixed IPI vector F1 and spurious FF.
+-// Built by the BSP before AP publication and immutable after that.
+-.balign 16
+-_smp6_ap_idt: .zero 4096
+-_smp6_ap_idtr: .zero 10
+-.balign 8
+-_smp6_lapic_base: .quad 0
++    mov edi, 242
++    lea rsi, [rip + _smp8_ap_rendezvous_handler]
++    call _smp6_set_gate
++    mov eax, 1
++    ret
++.Lsmp6_prep_bad:
++    xor eax, eax
++    ret
++
++// edi = vector, rsi = handler virtual address. BSP only, before AP release.
++_smp6_set_gate:
++    lea rcx, [rip + _smp6_ap_idt]
++    mov eax, edi
++    shl rax, 4
++    add rcx, rax
++    mov word ptr [rcx + 0], si
++    mov ax, cs
++    mov word ptr [rcx + 2], ax
++    mov byte ptr [rcx + 4], 0
++    mov byte ptr [rcx + 5], 0x8E
++    mov rax, rsi
++    shr rax, 16
++    mov word ptr [rcx + 6], ax
++    shr rax, 16
++    mov dword ptr [rcx + 8], eax
++    mov dword ptr [rcx + 12], 0
++    ret
++
++// AP only. The BSP initialized _smp6_lapic_base and native IDTR.
++// APs never enter managed interrupt handlers before full runtime port.
++_smp6_arm_ap_ipi:
++    lidt [rip + _smp6_ap_idtr]
++    mov ecx, 0x1B
++    rdmsr
++    or eax, 0x800
++    wrmsr
++    mov rax, qword ptr [rip + _smp6_lapic_base]
++    mov dword ptr [rax + 0x80], 0          // TPR: accept fixed interrupts
++    mov dword ptr [rax + 0x320], 0x10000   // mask timer
++    mov dword ptr [rax + 0x350], 0x10000   // mask LINT0
++    mov dword ptr [rax + 0x360], 0x10000   // mask LINT1
++    mov dword ptr [rax + 0x370], 0x10000   // mask error
++    mov dword ptr [rax + 0xF0], 0x1FF      // enable LAPIC, vector FF
++    ret
++
++// Real interrupt handler: GS points to the current AP's cache line.
++// Preserve clobbered registers, acknowledge LAPIC and return with IRETQ.
++// All other interrupt vectors remain disabled / unconfigured at Stage 6.
++.global _smp6_ap_ipi_handler
++_smp6_ap_ipi_handler:
++    push rax
++    push rdx
++    mov eax, dword ptr gs:[0]
++    cmp eax, 255
++    ja .Lsmp6_handler_eoi
++    lea rdx, [rip + _smp3094_ap_boot_state]
++    shl rax, 6
++    add rdx, rax
++    lock inc qword ptr [rdx + 56]
++.Lsmp6_handler_eoi:
++    mov rax, qword ptr [rip + _smp6_lapic_base]
++    mov dword ptr [rax + 0xB0], 0
++    pop rdx
++    pop rax
++    iretq
++
++// A spurious APIC interrupt must NOT issue EOI.
++.global _smp6_ap_spurious_handler
++_smp6_ap_spurious_handler:
++    iretq
++
++SMP4_STATE_GETTER _native_x64_get_ap_ipi_count, 56, 8
++
++// IPI proof: rdi descriptor table, rsi CPU count, rdx total TSC deadline.
++// Stage 6 uses physical LAPIC IDs from Limine descriptors, never dense IDs.
++// Returns n-1 on success, -1 timeout, -2 invalid topology/state.
++.global _native_x64_run_ap_ipi_test
++_native_x64_run_ap_ipi_test:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++    test rdi, rdi
++    jz .Lsmp6_invalid
++    test rsi, rsi
++    jz .Lsmp6_invalid
++    cmp rsi, 256
++    ja .Lsmp6_invalid
++    test rdx, rdx
++    jz .Lsmp6_invalid
++    mov r12, rdi
++    mov r13, rsi
++    mov r14, rdx
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r15, rax
++
++// Wait for ALL APs to install their IDTs and LAPIC before sending IPI.
++// The shared deadline applies to the entire preflight + dispatch.
++.Lsmp6_preflight:
++    mov ebx, 0
++.Lsmp6_check:
++    cmp rbx, r13
++    jae .Lsmp6_send_begin
++    mov r8, qword ptr [r12 + rbx * 8]
++    test r8, r8
++    jz .Lsmp6_invalid
++    mov rcx, qword ptr [r8 + 24]  // dense CPU ID
++    cmp rcx, r13
++    jae .Lsmp6_invalid
++    test rcx, rcx
++    jz .Lsmp6_check_next
++    mov eax, dword ptr [r8 + 4]   // physical LAPIC ID
++    cmp eax, 255
++    ja .Lsmp6_invalid
++    lea r9, [rip + _smp3094_ap_boot_state]
++    shl rcx, 6
++    add r9, rcx
++    cmp dword ptr [r9 + 52], 1    // AP's IPI_ARMED bit
++    jne .Lsmp6_not_armed
++    cmp qword ptr [r9 + 56], 0
++    jne .Lsmp6_invalid
++.Lsmp6_check_next:
++    inc rbx
++    jmp .Lsmp6_check
++.Lsmp6_not_armed:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r15
++    cmp rax, r14
++    jae .Lsmp6_timeout
++    jmp .Lsmp6_preflight
++
++.Lsmp6_send_begin:
++    mov ebx, 0
++.Lsmp6_send:
++    cmp rbx, r13
++    jae .Lsmp6_success
++    mov r8, qword ptr [r12 + rbx * 8]
++    mov rcx, qword ptr [r8 + 24]
++    test rcx, rcx
++    jz .Lsmp6_send_next
++    lea r10, [rip + _smp3094_ap_boot_state]
++    shl rcx, 6
++    add r10, rcx
++    mov edx, dword ptr [r8 + 4]  // physical LAPIC, not logical CPU ID
++    shl edx, 24
++    mov r9, qword ptr [rip + _smp6_lapic_base]
++    // ICR busy gate: do not overwrite an outstanding delivery command.
++.Lsmp6_icr_idle:
++    mov eax, dword ptr [r9 + 0x300]
++    test eax, 0x1000
++    jz .Lsmp6_icr_send
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r15
++    cmp rax, r14
++    jae .Lsmp6_timeout
++    jmp .Lsmp6_icr_idle
++.Lsmp6_icr_send:
++    mov edx, dword ptr [r8 + 4]
++    shl edx, 24
++    mov dword ptr [r9 + 0x310], edx
++    mov dword ptr [r9 + 0x300], 0x000000F1
++.Lsmp6_wait_ack:
++    cmp qword ptr [r10 + 56], 1
++    je .Lsmp6_send_next
++    cmp qword ptr [r10 + 56], 1
++    ja .Lsmp6_invalid
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r15
++    cmp rax, r14
++    jae .Lsmp6_timeout
++    jmp .Lsmp6_wait_ack
++.Lsmp6_send_next:
++    inc rbx
++    jmp .Lsmp6_send
++
++.Lsmp6_success:
++    mov eax, r13d
++    dec eax
++    jmp .Lsmp6_return
++.Lsmp6_timeout:
++    mov eax, -1
++    jmp .Lsmp6_return
++.Lsmp6_invalid:
++    mov eax, -2
++.Lsmp6_return:
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++// Stage 7 native AP IPI stress. All APs have received Stage 6 IPI #1.
++// Inputs: rdi=Limine descriptors**, rsi=CPU count, rdx=total TSC
++// deadline, ecx=number of additional rounds. Return n-1, -1, or -2.
++// Each AP is targeted by its physical LAPIC ID, not dense scheduler ID.
++.global _native_x64_run_ap_ipi_stress
++_native_x64_run_ap_ipi_stress:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++    sub rsp, 16
++    test rdi, rdi
++    jz .Lsmp7_invalid
++    test rsi, rsi
++    jz .Lsmp7_invalid
++    cmp rsi, 256
++    ja .Lsmp7_invalid
++    test rdx, rdx
++    jz .Lsmp7_invalid
++    test ecx, ecx
++    jz .Lsmp7_invalid
++    cmp ecx, 128
++    ja .Lsmp7_invalid
++    mov r12, rdi
++    mov r13, rsi
++    mov r14, rdx
++    mov dword ptr [rsp], ecx
++    mov dword ptr [rsp + 8], 1
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r15, rax
++
++// Preflight every AP before sending a new IPI.
++    xor ebx, ebx
++.Lsmp7_preflight:
++    cmp rbx, r13
++    jae .Lsmp7_round_start
++    mov r8, qword ptr [r12 + rbx * 8]
++    test r8, r8
++    jz .Lsmp7_invalid
++    mov rcx, qword ptr [r8 + 24]
++    cmp rcx, r13
++    jae .Lsmp7_invalid
++    test rcx, rcx
++    jz .Lsmp7_preflight_next
++    mov eax, dword ptr [r8 + 4]
++    cmp eax, 255
++    ja .Lsmp7_invalid
++    lea r10, [rip + _smp3094_ap_boot_state]
++    shl rcx, 6
++    add r10, rcx
++    cmp dword ptr [r10 + 52], 1
++    jne .Lsmp7_invalid
++    cmp qword ptr [r10 + 56], 1
++    jne .Lsmp7_invalid
++.Lsmp7_preflight_next:
++    inc rbx
++    jmp .Lsmp7_preflight
++
++.Lsmp7_round_start:
++    mov eax, dword ptr [rsp + 8]
++    cmp eax, dword ptr [rsp]
++    ja .Lsmp7_success
++    xor ebx, ebx
++.Lsmp7_each_ap:
++    cmp rbx, r13
++    jae .Lsmp7_round_complete
++    mov r8, qword ptr [r12 + rbx * 8]
++    mov rcx, qword ptr [r8 + 24]
++    test rcx, rcx
++    jz .Lsmp7_next_ap
++    lea r10, [rip + _smp3094_ap_boot_state]
++    shl rcx, 6
++    add r10, rcx
++    mov eax, dword ptr [rsp + 8]
++    cmp qword ptr [r10 + 56], rax
++    jne .Lsmp7_invalid
++    mov r9, qword ptr [rip + _smp6_lapic_base]
++    test r9, r9
++    jz .Lsmp7_invalid
++
++// Wait for previous ICR delivery status to clear.
++.Lsmp7_icr_idle:
++    mov eax, dword ptr [r9 + 0x300]
++    test eax, 0x1000
++    jz .Lsmp7_send
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r15
++    cmp rax, r14
++    jae .Lsmp7_timeout
++    jmp .Lsmp7_icr_idle
++
++.Lsmp7_send:
++    mov edx, dword ptr [r8 + 4]
++    shl edx, 24
++    mov dword ptr [r9 + 0x310], edx
++    mov dword ptr [r9 + 0x300], 0x000000F1
++
++// Must see exactly one new acknowledgement, not zero or two.
++.Lsmp7_wait:
++    mov eax, dword ptr [rsp + 8]
++    inc eax
++    cmp qword ptr [r10 + 56], rax
++    je .Lsmp7_next_ap
++    jb .Lsmp7_pending
++    jmp .Lsmp7_invalid
++.Lsmp7_pending:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r15
++    cmp rax, r14
++    jae .Lsmp7_timeout
++    jmp .Lsmp7_wait
++
++.Lsmp7_next_ap:
++    inc rbx
++    jmp .Lsmp7_each_ap
++.Lsmp7_round_complete:
++    inc dword ptr [rsp + 8]
++    jmp .Lsmp7_round_start
++.Lsmp7_success:
++    mov eax, r13d
++    dec eax
++    jmp .Lsmp7_exit
++.Lsmp7_timeout:
++    mov eax, -1
++    jmp .Lsmp7_exit
++.Lsmp7_invalid:
++    mov eax, -2
++.Lsmp7_exit:
++    add rsp, 16
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++// Stage 8: native multi-CPU rendezvous using fixed IPI vector F2.
++// The handler publishes ARRIVED for its generation, waits until the BSP
++// releases ALL APs, sends LAPIC EOI, then publishes EXITED.
++// While inside the handler IF=0, no managed GC or scheduler is entered.
++.global _smp8_ap_rendezvous_handler
++_smp8_ap_rendezvous_handler:
++    push rax
++    push rcx
++    push rdx
++    mov eax, dword ptr gs:[0]
++    test eax, eax
++    jz .Lsmp8_ap_eoi
++    cmp eax, 255
++    ja .Lsmp8_ap_eoi
++    lea rdx, [rip + _smp8_barrier_state]
++    shl rax, 6
++    add rdx, rax
++    mov rcx, qword ptr [rip + _smp8_request_generation]
++    mov rax, qword ptr [rip + _smp8_release_generation]
++    mov qword ptr [rdx + 16], rax
++    lock inc qword ptr [rdx + 24]
++    mov rax, rcx
++    xchg qword ptr [rdx + 0], rax
++.Lsmp8_ap_wait_release:
++    cmp qword ptr [rip + _smp8_release_generation], rcx
++    jae .Lsmp8_ap_release
++    pause
++    jmp .Lsmp8_ap_wait_release
++.Lsmp8_ap_release:
++    mov rax, qword ptr [rip + _smp6_lapic_base]
++    mov dword ptr [rax + 0xB0], 0
++    mov rax, rcx
++    xchg qword ptr [rdx + 8], rax
++    jmp .Lsmp8_ap_return
++.Lsmp8_ap_eoi:
++    mov rax, qword ptr [rip + _smp6_lapic_base]
++    mov dword ptr [rax + 0xB0], 0
++.Lsmp8_ap_return:
++    pop rdx
++    pop rcx
++    pop rax
++    iretq
++
++.macro SMP8_BARRIER_GETTER name, offset
++.global \name
++\name:
++    test edi, edi
++    jz .Lsmp8_get_bad_\@
++    cmp edi, 255
++    ja .Lsmp8_get_bad_\@
++    lea rcx, [rip + _smp8_barrier_state]
++    mov eax, edi
++    shl rax, 6
++    add rcx, rax
++    mov rax, qword ptr [rcx + \offset]
++    ret
++.Lsmp8_get_bad_\@:
++    xor eax, eax
++    ret
++.endm
++
++SMP8_BARRIER_GETTER _native_x64_get_ap_barrier_enter, 0
++SMP8_BARRIER_GETTER _native_x64_get_ap_barrier_exit, 8
++SMP8_BARRIER_GETTER _native_x64_get_ap_barrier_hits, 24
++SMP8_BARRIER_GETTER _native_x64_get_ap_barrier_sample, 16
++
++// Read-only BSP-side diagnostics for a failed barrier proof.
++.global _native_x64_get_ap_barrier_request
++_native_x64_get_ap_barrier_request:
++    mov rax, qword ptr [rip + _smp8_request_generation]
++    ret
++.global _native_x64_get_ap_barrier_release
++_native_x64_get_ap_barrier_release:
++    mov rax, qword ptr [rip + _smp8_release_generation]
++    ret
++
++// BSP: rdi=Limine CPU descriptors, rsi=count, rdx=single global TSC
++// deadline, ecx=number of generation rounds (1..16).
++// For each round: preflight all APs, send F2 IPI to physical LAPIC IDs,
++// confirm EVERY AP arrived and its observed release epoch is still prior,
++// release all APs at once, then confirm every AP exited.
++// Return # APs or -1 timeout / -2 corrupt state.
++.global _native_x64_run_ap_rendezvous
++_native_x64_run_ap_rendezvous:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++    sub rsp, 16
++    test rdi, rdi
++    jz .Lsmp8_invalid
++    test rsi, rsi
++    jz .Lsmp8_invalid
++    cmp rsi, 256
++    ja .Lsmp8_invalid
++    test rdx, rdx
++    jz .Lsmp8_invalid
++    test ecx, ecx
++    jz .Lsmp8_invalid
++    cmp ecx, 16
++    ja .Lsmp8_invalid
++    mov r12, rdi
++    mov r13, rsi
++    mov r14, rdx
++    mov dword ptr [rsp + 8], ecx // total generations
++    mov dword ptr [rsp], 1       // current generation, starts at 1
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r15, rax
++
++.Lsmp8_round:
++    mov eax, dword ptr [rsp]
++    cmp eax, dword ptr [rsp + 8]
++    ja .Lsmp8_success
++    mov r10d, eax
++    dec r10
++    cmp qword ptr [rip + _smp8_release_generation], r10
++    jne .Lsmp8_invalid
++
++// Check whole descriptor set BEFORE any IPI is sent in this generation.
++    xor ebx, ebx
++.Lsmp8_preflight:
++    cmp rbx, r13
++    jae .Lsmp8_preflight_done
++    mov r8, qword ptr [r12 + rbx * 8]
++    test r8, r8
++    jz .Lsmp8_invalid
++    mov rcx, qword ptr [r8 + 24]
++    cmp rcx, r13
++    jae .Lsmp8_invalid
++    test rcx, rcx
++    jz .Lsmp8_preflight_next
++    mov eax, dword ptr [r8 + 4]
++    cmp eax, 255
++    ja .Lsmp8_invalid
++    lea r9, [rip + _smp3094_ap_boot_state]
++    shl rcx, 6
++    add r9, rcx
++    cmp dword ptr [r9 + 52], 1
++    jne .Lsmp8_invalid
++    cmp qword ptr [r9 + 56], 33
++    jne .Lsmp8_invalid
++    lea r9, [rip + _smp8_barrier_state]
++    mov rcx, qword ptr [r8 + 24]
++    shl rcx, 6
++    add r9, rcx
++    mov eax, dword ptr [rsp]
++    dec rax
++    cmp qword ptr [r9 + 0], rax
++    jne .Lsmp8_invalid
++    cmp qword ptr [r9 + 8], rax
++    jne .Lsmp8_invalid
++    cmp qword ptr [r9 + 24], rax
++    jne .Lsmp8_invalid
++.Lsmp8_preflight_next:
++    inc rbx
++    jmp .Lsmp8_preflight
++
++.Lsmp8_preflight_done:
++    mov eax, dword ptr [rsp]
++    xchg qword ptr [rip + _smp8_request_generation], rax
++    xor ebx, ebx
++
++// Send exactly one fixed vector F2 IPI to each armed AP.
++.Lsmp8_send:
++    cmp rbx, r13
++    jae .Lsmp8_wait_all_arrive
++    mov r8, qword ptr [r12 + rbx * 8]
++    mov rcx, qword ptr [r8 + 24]
++    test rcx, rcx
++    jz .Lsmp8_next_send
++    mov r9, qword ptr [rip + _smp6_lapic_base]
++.Lsmp8_icr_idle:
++    mov eax, dword ptr [r9 + 0x300]
++    test eax, 0x1000
++    jz .Lsmp8_icr_go
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r15
++    cmp rax, r14
++    jae .Lsmp8_timeout
++    jmp .Lsmp8_icr_idle
++.Lsmp8_icr_go:
++    mov edx, dword ptr [r8 + 4]
++    shl edx, 24
++    mov dword ptr [r9 + 0x310], edx
++    mov dword ptr [r9 + 0x300], 0x000000F2
++.Lsmp8_next_send:
++    inc rbx
++    jmp .Lsmp8_send
++
++// Scan ALL APs; they must stay in the handler before release.
++.Lsmp8_wait_all_arrive:
++    xor ebx, ebx
++    xor r11d, r11d
++.Lsmp8_scan_arrive:
++    cmp rbx, r13
++    jae .Lsmp8_arrive_checked
++    mov r8, qword ptr [r12 + rbx * 8]
++    mov rcx, qword ptr [r8 + 24]
++    test rcx, rcx
++    jz .Lsmp8_arrive_next
++    lea r9, [rip + _smp8_barrier_state]
++    shl rcx, 6
++    add r9, rcx
++    mov eax, dword ptr [rsp]
++    cmp qword ptr [r9 + 0], rax
++    jne .Lsmp8_not_arrived
++    cmp qword ptr [r9 + 24], rax
++    jne .Lsmp8_retry_arrive
++    mov edx, eax
++    dec rdx
++    cmp qword ptr [r9 + 16], rdx
++    jne .Lsmp8_retry_arrive
++    inc r11d
++    jmp .Lsmp8_arrive_check_exit
++.Lsmp8_not_arrived:
++    dec rax
++    cmp qword ptr [r9 + 0], rax
++    jne .Lsmp8_retry_arrive
++.Lsmp8_arrive_check_exit:
++    mov eax, dword ptr [rsp]
++    dec rax
++    cmp qword ptr [r9 + 8], rax
++    jne .Lsmp8_retry_arrive
++.Lsmp8_arrive_next:
++    inc rbx
++    jmp .Lsmp8_scan_arrive
++.Lsmp8_arrive_checked:
++    mov rax, r13
++    dec rax
++    cmp r11, rax
++    je .Lsmp8_release
++.Lsmp8_retry_arrive:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r15
++    cmp rax, r14
++    jae .Lsmp8_timeout
++    jmp .Lsmp8_wait_all_arrive
++
++// Global release only occurs once every AP has confirmed entry.
++.Lsmp8_release:
++    mov eax, dword ptr [rsp]
++    xchg qword ptr [rip + _smp8_release_generation], rax
++
++.Lsmp8_wait_all_exit:
++    xor ebx, ebx
++    xor r11d, r11d
++.Lsmp8_scan_exit:
++    cmp rbx, r13
++    jae .Lsmp8_exit_checked
++    mov r8, qword ptr [r12 + rbx * 8]
++    mov rcx, qword ptr [r8 + 24]
++    test rcx, rcx
++    jz .Lsmp8_exit_next
++    lea r9, [rip + _smp8_barrier_state]
++    shl rcx, 6
++    add r9, rcx
++    mov eax, dword ptr [rsp]
++    cmp qword ptr [r9 + 0], rax
++    jne .Lsmp8_retry_exit
++    cmp qword ptr [r9 + 24], rax
++    jne .Lsmp8_retry_exit
++    cmp qword ptr [r9 + 8], rax
++    je .Lsmp8_exit_count
++    dec rax
++    cmp qword ptr [r9 + 8], rax
++    jne .Lsmp8_retry_exit
++    jmp .Lsmp8_exit_next
++.Lsmp8_exit_count:
++    inc r11d
++.Lsmp8_exit_next:
++    inc rbx
++    jmp .Lsmp8_scan_exit
++.Lsmp8_exit_checked:
++    mov rax, r13
++    dec rax
++    cmp r11, rax
++    je .Lsmp8_next_round
++.Lsmp8_retry_exit:
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r15
++    cmp rax, r14
++    jae .Lsmp8_timeout
++    jmp .Lsmp8_wait_all_exit
++
++.Lsmp8_next_round:
++    inc dword ptr [rsp]
++    jmp .Lsmp8_round
++
++.Lsmp8_success:
++    mov eax, r13d
++    dec eax
++    jmp .Lsmp8_return
++.Lsmp8_timeout:
++    mov eax, -1
++    jmp .Lsmp8_return
++.Lsmp8_invalid:
++    mov eax, -2
++.Lsmp8_return:
++    add rsp, 16
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++// void _native_set_context_switch_sp(nuint newSp)
++// Sets the target SP for context switch. Called from managed code
++// during timer interrupt to request a context switch.
++// rdi = new RSP to switch to (pointing to saved context)
++.global _native_set_context_switch_sp
++_native_set_context_switch_sp:
++    mov [rip + _context_switch_target_rsp], rdi
++    ret
++
++// nuint _native_get_context_switch_sp()
++// Gets the current context switch target SP (for debugging)
++.global _native_get_context_switch_sp
++_native_get_context_switch_sp:
++    mov rax, [rip + _context_switch_target_rsp]
++    ret
++
++// nuint _native_get_sp()
++// Gets the current SP value
++.global _native_get_sp
++_native_get_sp:
++    mov rax, rsp
++    ret
++
++// uint64_t _native_x64_get_last_error_code()
++// Returns the error code stashed by the most recent error-code exception
++// stub (vectors 8, 10-14, 17, 21, 29, 30). Only meaningful while handling
++// that exception; a nested error-code exception overwrites it.
++.global _native_x64_get_last_error_code
++_native_x64_get_last_error_code:
++    mov rax, [rip + _irq_last_error_code]
++    ret
++
++// void _native_set_context_switch_new_thread(int isNew)
++// Sets whether the target thread is NEW (1) or RESUMED (0)
++// rdi = isNew flag
++.global _native_set_context_switch_new_thread
++_native_set_context_switch_new_thread:
++    mov [rip + _context_switch_is_new_thread], rdi
++    ret
++
++.bss
++// x64 cacheline-sized identity/context reservation for 256 logical CPUs.
++.balign 64
++_smp3094_cpu_slots: .zero 16384
++
++// 256 AP stacks of 16KiB each; 4MiB zero-initialized BSS.
++// Stacks are not used until a separate AP bootstrap patch is validated.
++.balign 4096
++_smp3094_ap_stacks: .zero 4194304
++
++// 256 cache-line records: READY, logical ID, physical APIC ID,
++// GS identity, stack pointer and interrupt flag observation.
++.balign 64
++_smp3094_ap_boot_state: .zero 16384
++
++// AP-only native interrupt table: fixed IPI vector F1 and spurious FF.
++// Built by the BSP before AP publication and immutable after that.
++.balign 16
++_smp6_ap_idt: .zero 4096
++_smp6_ap_idtr: .zero 10
++.balign 8
++_smp6_lapic_base: .quad 0
++
++// Stage 8 native rendezvous (256 cachelines, 16 KiB) and epoch controls.
++.balign 64
++_smp8_barrier_state: .zero 16384
++.balign 8
++_smp8_request_generation: .quad 0
++_smp8_release_generation: .quad 0
+ // Per-CPU context switch target RSP (0 = no switch, non-zero = switch to this RSP)
+ // For SMP, this would be per-CPU, but for now single-CPU
+ .global _context_switch_target_rsp
