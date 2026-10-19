@@ -101,7 +101,7 @@ def self_test() -> None:
     for count in (1, 2, 4, 8, 16):
         check(good(count), count)
         # The normal exception handler registration banner is not a CPU fault.
-        check("[ExceptionHandler] CPU exception handlers registered\\n" + good(count), count)
+        check("[ExceptionHandler] CPU exception handlers registered\n" + good(count), count)
     corrupt = [
         (good(4).replace("counter=100000", "counter=99999", 1), 4),
         (good(4).replace(BOOT, ""), 4),
