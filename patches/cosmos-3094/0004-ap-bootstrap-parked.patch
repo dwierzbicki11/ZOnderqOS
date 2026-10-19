@@ -1,0 +1,450 @@
+diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs b/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
+new file mode 100644
+--- /dev/null
++++ b/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
+@@ -0,0 +1,108 @@
++using System.Runtime.InteropServices;
++using Cosmos.Kernel.Boot.Limine;
++using Cosmos.Kernel.Core.CPU;
++using Cosmos.Kernel.Core.IO;
++
++namespace Cosmos.Kernel.Core.X64.Cpu;
++
++/// <summary>
++/// Stage-4 x64 MP bootstrap. Native APs each bind GS, record readiness,
++/// and halt with interrupts disabled. Managed threads/GC are BSP-only.
++/// </summary>
++internal static unsafe partial class SmpApBootstrap
++{
++    private const ulong ReadyTimeoutSeconds = 5;
++
++    [LibraryImport("*", EntryPoint = "_native_x64_start_aps")]
++    [SuppressGCTransition]
++    private static partial int NativeStartAps(
++        LimineMpInfoX64** descriptors, ulong cpuCount, ulong timeoutTscTicks);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_ready")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetReady(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_lapic_id")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetLapicId(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_gs_id")]
++    [SuppressGCTransition]
++    private static partial uint NativeGetGsId(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_stack")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetStack(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_rflags")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetRflags(uint cpuId);
++
++    internal static bool StartAndParkApplicationProcessors()
++    {
++        if (!LimineMp.TryAssignDenseX64CpuIds(out ulong cpuCount) ||
++            cpuCount == 0 || cpuCount > LimineMp.MaxXApicCpuCount ||
++            !CpuLocal.ValidateApStacks((uint)cpuCount))
++        {
++            Serial.WriteString("[SMP3094] Invalid topology or AP stack reservation.\n");
++            return false;
++        }
++
++        LimineMpResponseX64* response = (LimineMpResponseX64*)Limine.MP.Response;
++        long frequency = X64CpuOps.TscFrequency;
++        ulong deadlineTicks = frequency > 0 &&
++            (ulong)frequency <= ulong.MaxValue / ReadyTimeoutSeconds
++            ? (ulong)frequency * ReadyTimeoutSeconds
++            : 5_000_000_000UL;
++
++        // AP code runs only native instructions, with interrupts disabled.
++        // A single shared deadline bounds waiting for all APs.
++        int started = NativeStartAps(response->Cpus, cpuCount, deadlineTicks);
++        int expected = checked((int)cpuCount - 1);
++        if (started != expected)
++        {
++            Serial.WriteString("[SMP3094] AP startup failed or READY timeout.\n");
++            return false;
++        }
++
++        for (ulong tableIndex = 0; tableIndex < cpuCount; tableIndex++)
++        {
++            LimineMpInfoX64* desc = response->Cpus[tableIndex];
++            uint id = checked((uint)desc->ExtraArgument);
++            if (id == 0)
++            {
++                if (desc->LapicId != response->BspLapicId)
++                {
++                    return false;
++                }
++
++                continue;
++            }
++
++            ulong stack = NativeGetStack(id);
++            if (NativeGetReady(id) != 1 ||
++                NativeGetLapicId(id) != desc->LapicId ||
++                NativeGetGsId(id) != id ||
++                stack == 0 || (stack & 15UL) != 0 ||
++                (NativeGetRflags(id) & (1UL << 9)) != 0)
++            {
++                Serial.WriteString("[SMP3094] AP bootstrap validation failed: CpuId=");
++                Serial.WriteNumber(id);
++                Serial.WriteString("\n");
++                return false;
++            }
++
++            Serial.WriteString("[SMP3094] AP READY CpuId=");
++            Serial.WriteNumber(id);
++            Serial.WriteString(" LAPIC=");
++            Serial.WriteNumber(desc->LapicId);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[SMP3094] Stage 4 complete: ");
++        Serial.WriteNumber((ulong)expected);
++        Serial.WriteString(" native APs ready and parked; no AP scheduler or GC.\n");
++        Serial.WriteString("[SMP3094-STAGE4] PASS\n");
++        return true;
++    }
++}
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -148,6 +148,12 @@
+         Serial.WriteNumber((ulong)X64CpuOps.TscFrequency);
+         Serial.WriteString(" Hz\n");
+ 
++        // APs execute native bootstrap only; managed scheduling remains BSP-only.
++        if (!SmpApBootstrap.StartAndParkApplicationProcessors())
++        {
++            Cosmos.Kernel.Core.Panic.Halt("SMP3094 stage 4: failed to park all application processors.");
++        }
++
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new CmosRtc();
+         _rtc.Initialize();
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -332,55 +332,268 @@
+     xor eax, eax
+     ret
+ 
+-// void _native_set_context_switch_sp(nuint newSp)
+-// Sets the target SP for context switch. Called from managed code
+-// during timer interrupt to request a context switch.
+-// rdi = new RSP to switch to (pointing to saved context)
+-.global _native_set_context_switch_sp
+-_native_set_context_switch_sp:
+-    mov [rip + _context_switch_target_rsp], rdi
+-    ret
+-
+-// nuint _native_get_context_switch_sp()
+-// Gets the current context switch target SP (for debugging)
+-.global _native_get_context_switch_sp
+-_native_get_context_switch_sp:
+-    mov rax, [rip + _context_switch_target_rsp]
+-    ret
+-
+-// nuint _native_get_sp()
+-// Gets the current SP value
+-.global _native_get_sp
+-_native_get_sp:
+-    mov rax, rsp
+-    ret
+-
+-// uint64_t _native_x64_get_last_error_code()
+-// Returns the error code stashed by the most recent error-code exception
+-// stub (vectors 8, 10-14, 17, 21, 29, 30). Only meaningful while handling
+-// that exception; a nested error-code exception overwrites it.
+-.global _native_x64_get_last_error_code
+-_native_x64_get_last_error_code:
+-    mov rax, [rip + _irq_last_error_code]
+-    ret
+-
+-// void _native_set_context_switch_new_thread(int isNew)
+-// Sets whether the target thread is NEW (1) or RESUMED (0)
+-// rdi = isNew flag
+-.global _native_set_context_switch_new_thread
+-_native_set_context_switch_new_thread:
+-    mov [rip + _context_switch_is_new_thread], rdi
+-    ret
+-
+-.bss
+-// x64 cacheline-sized identity/context reservation for 256 logical CPUs.
+-.balign 64
+-_smp3094_cpu_slots: .zero 16384
+-
+-// 256 AP stacks of 16KiB each; 4MiB zero-initialized BSS.
+-// Stacks are not used until a separate AP bootstrap patch is validated.
+-.balign 4096
+-_smp3094_ap_stacks: .zero 4194304
++// Stage 4: start APs parked by Limine. System V AMD64 calling convention.
++// Args: rdi=descriptor table, rsi=count, rdx=bounded TSC delta.
++// Stage 3 owns the reserved stacks and GS storage. Never enter managed code.
++.global _native_x64_start_aps
++_native_x64_start_aps:
++    push rbx
++    push r12
++    push r13
++    push r14
++    push r15
++
++    test rdi, rdi
++    jz .Lsmp4_invalid
++    test rsi, rsi
++    jz .Lsmp4_invalid
++    cmp rsi, 256
++    ja .Lsmp4_invalid
++    test rdx, rdx
++    jz .Lsmp4_invalid
++
++    mov r12, rdi
++    mov r13, rsi
++    mov r14, rdx
++    xor r15d, r15d
++    xor ebx, ebx
++
++// Preflight the WHOLE descriptor table before releasing any AP.
++// Limine GotoAddress must still be null and IDs must be dense/valid.
++.Lsmp4_preflight:
++    cmp rbx, r13
++    jae .Lsmp4_prepare
++    mov r8, qword ptr [r12 + rbx * 8]
++    test r8, r8
++    jz .Lsmp4_invalid
++    mov rcx, qword ptr [r8 + 24]
++    cmp rcx, 255
++    ja .Lsmp4_invalid
++    test rcx, rcx
++    jz .Lsmp4_preflight_next
++    cmp qword ptr [r8 + 16], 0
++    jne .Lsmp4_invalid
++    inc r15d
++.Lsmp4_preflight_next:
++    inc rbx
++    jmp .Lsmp4_preflight
++
++.Lsmp4_prepare:
++    xor ebx, ebx
++.Lsmp4_publish_loop:
++    cmp rbx, r13
++    jae .Lsmp4_publish_done
++    mov r8, qword ptr [r12 + rbx * 8]
++    mov rcx, qword ptr [r8 + 24]
++    test rcx, rcx
++    jz .Lsmp4_publish_next
++
++    lea r9, [rip + _smp3094_ap_boot_state]
++    shl rcx, 6
++    add r9, rcx
++    xor eax, eax
++    mov qword ptr [r9 + 0], rax
++    mov qword ptr [r9 + 8], rax
++    mov qword ptr [r9 + 16], rax
++    mov qword ptr [r9 + 24], rax
++
++    // Atomic publication of the entry pointer activates the waiting AP.
++    xor eax, eax
++    lea rdx, [rip + _native_x64_ap_entry]
++    lock cmpxchg qword ptr [r8 + 16], rdx
++    test rax, rax
++    jnz .Lsmp4_invalid
++
++.Lsmp4_publish_next:
++    inc rbx
++    jmp .Lsmp4_publish_loop
++
++.Lsmp4_publish_done:
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r10, rax
++
++// All-AP deadline (not one timeout per CPU).
++.Lsmp4_poll:
++    xor r11d, r11d
++    xor ebx, ebx
++.Lsmp4_poll_loop:
++    cmp rbx, r13
++    jae .Lsmp4_poll_end
++    mov r8, qword ptr [r12 + rbx * 8]
++    mov rcx, qword ptr [r8 + 24]
++    test rcx, rcx
++    jz .Lsmp4_poll_next
++    lea r9, [rip + _smp3094_ap_boot_state]
++    shl rcx, 6
++    add r9, rcx
++    cmp dword ptr [r9 + 0], 1
++    jne .Lsmp4_poll_next
++    inc r11d
++.Lsmp4_poll_next:
++    inc rbx
++    jmp .Lsmp4_poll_loop
++
++.Lsmp4_poll_end:
++    cmp r11d, r15d
++    je .Lsmp4_success
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r10
++    cmp rax, r14
++    jb .Lsmp4_poll
++    mov eax, -1
++    jmp .Lsmp4_return
++
++.Lsmp4_invalid:
++    mov eax, -2
++    jmp .Lsmp4_return
++.Lsmp4_success:
++    mov eax, r15d
++.Lsmp4_return:
++    pop r15
++    pop r14
++    pop r13
++    pop r12
++    pop rbx
++    ret
++
++// Limine enters with RDI = LimineMpInfoX64*.
++// No C#/GC/TLS/IRQ on the AP; its private stack is installed first.
++.global _native_x64_ap_entry
++_native_x64_ap_entry:
++    cli
++    cld
++    mov r12, rdi
++    test r12, r12
++    jz .Lsmp4_park
++    mov r13, qword ptr [r12 + 24]
++    test r13, r13
++    jz .Lsmp4_park
++    cmp r13, 255
++    ja .Lsmp4_park
++
++    // Stage 3 reserved top = base + CpuId*16384 + 16384.
++    lea rsp, [rip + _smp3094_ap_stacks]
++    mov rax, r13
++    shl rax, 14
++    add rsp, rax
++    add rsp, 16384
++    and rsp, -16
++
++    mov edi, r13d
++    call _native_x64_init_percpu
++
++    lea r14, [rip + _smp3094_ap_boot_state]
++    mov rax, r13
++    shl rax, 6
++    add r14, rax
++
++    mov eax, 1
++    cpuid
++    shr ebx, 24
++    mov dword ptr [r14 + 4], r13d
++    mov dword ptr [r14 + 8], ebx
++    mov eax, dword ptr gs:[0]
++    mov dword ptr [r14 + 12], eax
++    mov qword ptr [r14 + 16], rsp
++    pushfq
++    pop rax
++    mov qword ptr [r14 + 24], rax
++
++    // Publish READY with full memory barrier; BSP reads state afterwards.
++    mfence
++    mov eax, 1
++    xchg dword ptr [r14 + 0], eax
++
++.Lsmp4_park:
++    cli
++    hlt
++    jmp .Lsmp4_park
++
++.macro SMP4_STATE_GETTER name, offset, width
++.global \name
++\name:
++    cmp edi, 255
++    ja .Lsmp4_bad_get_\@
++    lea rcx, [rip + _smp3094_ap_boot_state]
++    mov eax, edi
++    shl rax, 6
++    add rcx, rax
++    .if \width == 4
++        mov eax, dword ptr [rcx + \offset]
++    .else
++        mov rax, qword ptr [rcx + \offset]
++    .endif
++    ret
++.Lsmp4_bad_get_\@:
++    xor eax, eax
++    ret
++.endm
++
++SMP4_STATE_GETTER _native_x64_get_ap_ready, 0, 4
++SMP4_STATE_GETTER _native_x64_get_ap_lapic_id, 8, 4
++SMP4_STATE_GETTER _native_x64_get_ap_gs_id, 12, 4
++SMP4_STATE_GETTER _native_x64_get_ap_stack, 16, 8
++SMP4_STATE_GETTER _native_x64_get_ap_rflags, 24, 8
++
++// void _native_set_context_switch_sp(nuint newSp)
++// Sets the target SP for context switch. Called from managed code
++// during timer interrupt to request a context switch.
++// rdi = new RSP to switch to (pointing to saved context)
++.global _native_set_context_switch_sp
++_native_set_context_switch_sp:
++    mov [rip + _context_switch_target_rsp], rdi
++    ret
++
++// nuint _native_get_context_switch_sp()
++// Gets the current context switch target SP (for debugging)
++.global _native_get_context_switch_sp
++_native_get_context_switch_sp:
++    mov rax, [rip + _context_switch_target_rsp]
++    ret
++
++// nuint _native_get_sp()
++// Gets the current SP value
++.global _native_get_sp
++_native_get_sp:
++    mov rax, rsp
++    ret
++
++// uint64_t _native_x64_get_last_error_code()
++// Returns the error code stashed by the most recent error-code exception
++// stub (vectors 8, 10-14, 17, 21, 29, 30). Only meaningful while handling
++// that exception; a nested error-code exception overwrites it.
++.global _native_x64_get_last_error_code
++_native_x64_get_last_error_code:
++    mov rax, [rip + _irq_last_error_code]
++    ret
++
++// void _native_set_context_switch_new_thread(int isNew)
++// Sets whether the target thread is NEW (1) or RESUMED (0)
++// rdi = isNew flag
++.global _native_set_context_switch_new_thread
++_native_set_context_switch_new_thread:
++    mov [rip + _context_switch_is_new_thread], rdi
++    ret
++
++.bss
++// x64 cacheline-sized identity/context reservation for 256 logical CPUs.
++.balign 64
++_smp3094_cpu_slots: .zero 16384
++
++// 256 AP stacks of 16KiB each; 4MiB zero-initialized BSS.
++// Stacks are not used until a separate AP bootstrap patch is validated.
++.balign 4096
++_smp3094_ap_stacks: .zero 4194304
++
++// 256 cache-line records: READY, logical ID, physical APIC ID,
++// GS identity, stack pointer and interrupt flag observation.
++.balign 64
++_smp3094_ap_boot_state: .zero 16384
+ // Per-CPU context switch target RSP (0 = no switch, non-zero = switch to this RSP)
+ // For SMP, this would be per-CPU, but for now single-CPU
+ .global _context_switch_target_rsp
