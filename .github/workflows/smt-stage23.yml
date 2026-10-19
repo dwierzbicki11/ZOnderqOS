@@ -158,6 +158,13 @@ jobs:
           test -s output-x64/ZonderqOS.iso
           sha256sum output-x64/ZonderqOS.iso | tee stage23-iso.sha256
 
+      - uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: ai-zonderq-stage23-${{ matrix.cpus }}cpu-${{ matrix.cores }}c${{ matrix.threads }}t
+          path: zonderq/output-x64/ZonderqOS.iso
+          if-no-files-found: error
+          retention-days: 3
       - name: QEMU Stage 0-22 regression plus production all-CPU managed scheduling
         working-directory: zonderq
         env:
