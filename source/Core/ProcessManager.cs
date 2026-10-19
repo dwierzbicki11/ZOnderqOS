@@ -67,6 +67,11 @@ namespace ZonderqOS.SystemCore
                         SchedulerTelemetry.EnableCurrentManagedPreemption();
                         startMethod(cts.Token);
                     }
+                    catch (OperationCanceledException ex) when (
+                        cts.IsCancellationRequested && ex.CancellationToken == cts.Token)
+                    {
+                        // Cooperative signal cancellation is a normal process exit.
+                    }
                     catch (Exception ex)
                     {
                         WriteMessage.WriteError($"Proces {processName} (PID {pid}) zakończył się błędem: {ex.Message}", "PROC");

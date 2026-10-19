@@ -13,6 +13,7 @@ internal static class Program
         {
             CheckParsing();
             CheckInvalidCommands();
+            CheckCooperativeCancellationExit();
             CheckCancelRunsOutsideRegistryLock();
             CheckShellCommandsAndStatus();
             Console.WriteLine("[PROCESS-SIGNALS] PASS");
@@ -61,6 +62,40 @@ internal static class Program
         Check(!CommandIO.LastCommandSuccess, "malformed kill accepted");
         Check(!ProcessManager.SendSignal(999999, ProcessSignal.Interrupt),
             "missing PID was signaled");
+    }
+
+    private static void CheckCooperativeCancellationExit()
+    {
+        foreach (bool foreignToken in new[] { false, true })
+        {
+            using var ready = new ManualResetEventSlim(false);
+            using var foreign = new CancellationTokenSource();
+            foreign.Cancel();
+            int errorsBefore = WriteMessage.ErrorCount;
+            int pid = ProcessManager.Start("cancel-exit-smoke", token =>
+            {
+                ready.Set();
+                while (!token.IsCancellationRequested)
+                    Thread.Sleep(2);
+                (foreignToken ? foreign.Token : token).ThrowIfCancellationRequested();
+            });
+
+            try
+            {
+                Check(ready.Wait(3000), "cancellation test process did not start");
+                string path = "/";
+                new CmdKill().Execute(new[] { "kill", pid.ToString() }, ref path);
+                WaitUntil(() => Find(pid) == null, "cancelled process was not removed");
+                Check(WriteMessage.ErrorCount == errorsBefore + (foreignToken ? 1 : 0),
+                    foreignToken ? "foreign token cancellation was hidden" :
+                    "cooperative cancellation was logged as a process failure");
+            }
+            finally
+            {
+                ProcessManager.Kill(pid);
+                WaitUntil(() => Find(pid) == null, "cancellation test cleanup did not finish");
+            }
+        }
     }
 
     private static void CheckCancelRunsOutsideRegistryLock()
@@ -201,7 +236,10 @@ namespace ZonderqOS
 {
     public static class WriteMessage
     {
-        public static void WriteError(string message, string category) { }
+        private static int errorCount;
+        public static int ErrorCount => Volatile.Read(ref errorCount);
+        public static void WriteError(string message, string category) =>
+            Interlocked.Increment(ref errorCount);
     }
 
     public static class CommandIO
