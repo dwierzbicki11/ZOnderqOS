@@ -272,8 +272,10 @@ PY
 }
 
 if (( CHECK_LOG )); then
-  [[ -f "$ISO" ]] || fail "serial log not found: $ISO"
-  check_serial "$ISO"
+  # Wrappers pass ISO LOG; direct validation also accepts just LOG.
+  SERIAL_LOG="${2:-$ISO}"
+  [[ -f "$SERIAL_LOG" ]] || fail "serial log not found: $SERIAL_LOG"
+  check_serial "$SERIAL_LOG"
   exit $?
 fi
 
