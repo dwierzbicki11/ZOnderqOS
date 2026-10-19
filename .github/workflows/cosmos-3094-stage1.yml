@@ -1,0 +1,43 @@
+name: Cosmos 3.0.94 SMP port stage 1
+
+on:
+  pull_request:
+    paths:
+      - 'patches/cosmos-3094/**'
+      - 'tools/check-cosmos-3094-stage1.sh'
+      - '.github/workflows/cosmos-3094-stage1.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stage1:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zonderq
+      - uses: actions/checkout@v4
+        with:
+          repository: CosmosOS/Cosmos
+          ref: v3.0.94
+          path: cosmos
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validate and apply read-only MP discovery port
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+        run: |
+          bash -n zonderq/tools/check-cosmos-3094-stage1.sh
+          bash zonderq/tools/check-cosmos-3094-stage1.sh --apply
+          git -C cosmos diff --check
+      - name: Compile Cosmos 3.0.94 Limine boot protocol
+        working-directory: cosmos
+        run: dotnet build src/Cosmos.Kernel.Boot.Limine/Cosmos.Kernel.Boot.Limine.csproj -c Release --nologo
+      - name: Compile Cosmos 3.0.94 x64 HAL stage 1
+        working-directory: cosmos
+        run: dotnet build src/Cosmos.Kernel.HAL.X64/Cosmos.Kernel.HAL.X64.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false --nologo
