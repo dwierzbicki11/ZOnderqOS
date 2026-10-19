@@ -1,0 +1,58 @@
+name: Cosmos 3.0.94 SMP port stage 7
+
+on:
+  pull_request:
+    paths:
+      - 'patches/cosmos-3094/**'
+      - 'tests/Cosmos3094SmpBoot/verify_boot.py'
+      - '.github/workflows/cosmos-3094-stage7.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stage7:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: zonderq }
+      - uses: actions/checkout@v4
+        with:
+          repository: CosmosOS/Cosmos
+          ref: v3.0.94
+          path: cosmos
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - name: Validate serial evidence parser
+        run: python3 zonderq/tests/Cosmos3094SmpBoot/verify_boot.py --self-test
+      - name: Apply isolated patches stages 1–7
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+        run: |
+          set -euo pipefail
+          bash zonderq/tools/check-cosmos-3094-stage1.sh --apply
+          for n in 0002 0003 0004 0005 0006 0007; do
+            p="$(find zonderq/patches/cosmos-3094 -maxdepth 1 -name "${n}-*.patch" -print -quit)"
+            test -n "$p"
+            git -C cosmos apply --check "../$p"
+            git -C cosmos apply "../$p"
+          done
+          git -C cosmos diff --check
+          git -C cosmos apply --reverse --check ../zonderq/patches/cosmos-3094/0007-repeated-ipi-stress.patch
+      - name: Assemble native IPI stress symbol
+        run: |
+          sed -E 's,//.*$,,' cosmos/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s | as --64 -o /tmp/smp3094-stage7.o -
+          nm -g /tmp/smp3094-stage7.o | grep -Fq '_native_x64_run_ap_ipi_stress'
+      - name: Compile x64 Core + HAL
+        working-directory: cosmos
+        run: |
+          dotnet build src/Cosmos.Kernel.Core.X64/Cosmos.Kernel.Core.X64.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false --nologo
+          dotnet build src/Cosmos.Kernel.HAL.X64/Cosmos.Kernel.HAL.X64.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false --nologo
+      - name: Compile ARM64 HAL regression
+        working-directory: cosmos
+        run: |
+          rm -rf src/Cosmos.Kernel.Core/obj src/Cosmos.Kernel.Core/bin
+          dotnet build src/Cosmos.Kernel.HAL.ARM64/Cosmos.Kernel.HAL.ARM64.csproj -c Release -r linux-arm64 -p:CosmosArch=arm64 -p:GeneratePackageOnBuild=false --nologo
