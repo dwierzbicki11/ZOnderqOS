@@ -123,3 +123,15 @@ masked. Neither the AP IDT nor native callback enters Core managed
 interrupt dispatch, GC or the scheduler.
 
 The separate real QEMU matrix is the runtime acceptance gate.
+
+## Stage 7 — repeated x64 IPI stress
+
+`patches/cosmos-3094/0007-repeated-ipi-stress.patch` introduces 32
+sequential fixed-IPI rounds for every AP after Stage 6. It validates
+the previous count before each send, the next count after each delivery,
+ICR busy state, hardware LAPIC destinations, and a total bounded timeout.
+The BSP emits Stage 7 serial evidence; no AP enters C#/GC/scheduler yet.
+
+Acceptance requires a full, isolated Cosmos 3.0.94 package build and
+real QEMU matrix on 1, 2, 4, 8, 16 logical CPUs. Never update the
+production Cosmos 3.0.85 SDK/runtime pins before managed SMT is ported.

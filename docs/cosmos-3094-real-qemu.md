@@ -51,3 +51,19 @@ misordered markers, and boot failures. Existing stability window remains.
 Passing CI/assembly compilation alone is insufficient: **runtime QEMU
 checks must pass before merging the Stage 6 patch**. This still
 does **not** prove GC/scheduler managed preemption on APs.
+
+## Stage 7 — repeated IPI delivery stress
+
+After Stage 6's verified single native IPI, the BSP delivers **32 further
+fixed IPIs per AP**. The native sender checks that every per-AP counter
+advances by exactly one per message, waits for xAPIC ICR delivery status,
+targets the physical LAPIC ID, and uses one 15-second global TSC deadline.
+All CPUs must finish with exactly **33 acknowledgements** (1 + 32).
+
+The serial validator rejects a missing/duplicate Stage 7 marker, wrong
+physical LAPIC ID, wrong round count, wrong final counter, missing AP,
+early output and kernel faults. Self-tests exercise those negative cases.
+The real ISO/QEMU matrix rebuilds patched Cosmos 3.0.94 with patches
+1–7 and boots with 1/2/4/8/16 logical CPUs.
+
+Stage 7 remains **native-only**, not managed preemption or GC.
