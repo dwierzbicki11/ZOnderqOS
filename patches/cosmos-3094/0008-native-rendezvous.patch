@@ -1,7 +1,7 @@
 diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs b/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
 --- a/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
 +++ b/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
-@@ -65,240 +65,324 @@
+@@ -65,240 +65,357 @@
          LimineMpInfoX64** descriptors, ulong count,
          ulong deadlineTicks, uint rounds);
  
@@ -256,6 +256,18 @@ diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs b/src/Cosmos.Kerne
 +    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_barrier_hits")]
 +    [SuppressGCTransition]
 +    private static partial ulong NativeGetBarrierHits(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_barrier_sample")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetBarrierSample(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_barrier_request")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetBarrierRequest();
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_barrier_release")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetBarrierRelease();
 +
 +    internal static bool StartAndParkApplicationProcessors()
 +    {
@@ -519,6 +531,27 @@ diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs b/src/Cosmos.Kerne
 +        int completed = NativeRunRendezvous(response->Cpus, count, deadline, Rounds);
 +        if (completed != (int)count - 1)
 +        {
++            Serial.WriteString("[SMP3094-DIAG] stage8 result=");
++            Serial.WriteString(completed == -1 ? "timeout" : "invalid-state");
++            Serial.WriteString(" requested=");
++            Serial.WriteNumber(NativeGetBarrierRequest());
++            Serial.WriteString(" released=");
++            Serial.WriteNumber(NativeGetBarrierRelease());
++            Serial.WriteString("\n");
++            for (uint id = 1; id < count; id++)
++            {
++                Serial.WriteString("[SMP3094-DIAG] cpu=");
++                Serial.WriteNumber(id);
++                Serial.WriteString(" entered=");
++                Serial.WriteNumber(NativeGetBarrierEnter(id));
++                Serial.WriteString(" exited=");
++                Serial.WriteNumber(NativeGetBarrierExit(id));
++                Serial.WriteString(" sampledRelease=");
++                Serial.WriteNumber(NativeGetBarrierSample(id));
++                Serial.WriteString(" hits=");
++                Serial.WriteNumber(NativeGetBarrierHits(id));
++                Serial.WriteString("\n");
++            }
 +            Serial.WriteString("[SMP3094] Stage 8 rendezvous failed or timed out.\n");
 +            return false;
 +        }
@@ -580,7 +613,7 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Ke
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-@@ -690,414 +690,729 @@
+@@ -690,414 +690,740 @@
      mov edi, 255
      lea rsi, [rip + _smp6_ap_spurious_handler]
      call _smp6_set_gate
@@ -1405,6 +1438,17 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +SMP8_BARRIER_GETTER _native_x64_get_ap_barrier_enter, 0
 +SMP8_BARRIER_GETTER _native_x64_get_ap_barrier_exit, 8
 +SMP8_BARRIER_GETTER _native_x64_get_ap_barrier_hits, 24
++SMP8_BARRIER_GETTER _native_x64_get_ap_barrier_sample, 16
++
++// Read-only BSP-side diagnostics for a failed barrier proof.
++.global _native_x64_get_ap_barrier_request
++_native_x64_get_ap_barrier_request:
++    mov rax, qword ptr [rip + _smp8_request_generation]
++    ret
++.global _native_x64_get_ap_barrier_release
++_native_x64_get_ap_barrier_release:
++    mov rax, qword ptr [rip + _smp8_release_generation]
++    ret
 +
 +// BSP: rdi=Limine CPU descriptors, rsi=count, rdx=single global TSC
 +// deadline, ecx=number of generation rounds (1..16).
