@@ -1,4 +1,4 @@
-name: Cosmos 3.0.94 real native AP QEMU boot
+name: Cosmos 3.0.94 real AP IPI QEMU boot
 
 on:
   pull_request:
@@ -39,7 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           bash zonderq/tools/check-cosmos-3094-stage1.sh --apply
-          for stage in 0002 0003 0004 0005; do
+          for stage in 0002 0003 0004 0005 0006; do
             p="$(find zonderq/patches/cosmos-3094 -maxdepth 1 -name "${stage}-*.patch" -print -quit)"
             test -n "$p"
             git -C cosmos apply --check "../$p"
@@ -104,7 +104,7 @@ jobs:
           sha256sum zonderq/tests/Cosmos3094SmpBoot/output-x64/Cosmos3094SmpBoot.iso
       - uses: actions/upload-artifact@v4
         with:
-          name: smp3094-stage5-native-qemu-iso
+          name: smp3094-stage6-ipi-qemu-iso
           path: zonderq/tests/Cosmos3094SmpBoot/output-x64/Cosmos3094SmpBoot.iso
           if-no-files-found: error
           retention-days: 3
@@ -132,7 +132,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: smp3094-stage5-native-qemu-iso
+          name: smp3094-stage6-ipi-qemu-iso
           path: boot-iso
       - name: Install QEMU
         run: |
