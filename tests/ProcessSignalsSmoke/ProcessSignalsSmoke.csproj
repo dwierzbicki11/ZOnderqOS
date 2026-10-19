@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../source/Core/ProcessManager.cs" Link="ProcessManager.cs" />
+    <Compile Include="../../source/Core/ProcessSignals.cs" Link="ProcessSignals.cs" />
+    <Compile Include="../../source/Shell/Commands/ICommand.cs" Link="ICommand.cs" />
+    <Compile Include="../../source/Shell/Commands/CmdKill.cs" Link="CmdKill.cs" />
+    <Compile Include="../../source/Shell/Commands/CmdKillall.cs" Link="CmdKillall.cs" />
+    <Compile Include="../../source/Shell/Commands/CmdPs.cs" Link="CmdPs.cs" />
+  </ItemGroup>
+</Project>

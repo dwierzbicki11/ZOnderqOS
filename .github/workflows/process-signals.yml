@@ -1,0 +1,61 @@
+name: Process signals and lifecycle
+
+on:
+  pull_request:
+    paths:
+      - 'source/Core/ProcessManager.cs'
+      - 'source/Core/ProcessSignals.cs'
+      - 'source/Core/ProcFs.cs'
+      - 'source/Shell/Commands/CmdKill.cs'
+      - 'source/Shell/Commands/CmdKillall.cs'
+      - 'source/Shell/Commands/CmdPs.cs'
+      - 'tests/ProcessSignalsSmoke/**'
+      - '.github/workflows/process-signals.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'source/Core/ProcessManager.cs'
+      - 'source/Core/ProcessSignals.cs'
+      - 'source/Core/ProcFs.cs'
+      - 'source/Shell/Commands/CmdKill.cs'
+      - 'source/Shell/Commands/CmdKillall.cs'
+      - 'source/Shell/Commands/CmdPs.cs'
+      - 'tests/ProcessSignalsSmoke/**'
+      - '.github/workflows/process-signals.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Exercise process signals and inter-thread registry lock
+        run: dotnet run --project tests/ProcessSignalsSmoke/ProcessSignalsSmoke.csproj -c Release
+      - name: Exercise existing service lifecycle (uses same ProcessManager)
+        run: dotnet run --project tests/ServiceRuntimeSmoke/ServiceRuntimeSmoke.csproj -c Release
+
+  kernel-compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile x64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false
+      - name: Clean architecture outputs
+        run: rm -rf bin obj
+      - name: Compile ARM64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-arm64 -p:CosmosArch=arm64 -p:GeneratePackageOnBuild=false
