@@ -46,7 +46,7 @@ while (( SECONDS - started < TIMEOUT )); do
     # Fail as soon as the kernel explicitly panics, rather than burning
     # the full BOOT timeout while QEMU stays alive in its native panic loop.
     # Preserve a useful serial tail in the GitHub Actions job output.
-    if grep -Eq '^KERNEL PANIC|^System halted\\.|^\\[SMP3094\\].*(failed|timeout)' "$LOG"; then
+    if grep -Eq '^KERNEL PANIC|^System halted\.|^\[SMP3094\].*(failed|timeout)' "$LOG"; then
         echo "[SMP3094-QEMU] Guest failure evidence:" >&2
         tail -n 80 "$LOG" >&2
         fail "Guest failed before BOOT; check serial evidence"
