@@ -51,3 +51,17 @@ assigns BSP CPU 0 and then contiguous IDs to all other logical CPUs through
 It never touches `GotoAddress` and never starts APs.
 The dedicated stage-2 CI checks sequential patch application and compiles
 the boot library and x64 HAL. A passing build is not a runtime SMP proof.
+
+## Stage 3 — BSP GS and reserved AP stacks
+`patches/cosmos-3094/0003-percpu-gs-and-ap-stacks.patch` initializes
+an x64 BSP GS base before IRQ setup and adds a guard to return CPU0
+before GS is initialized. Native assembly reserves 256 cache-line
+CPU-local records and 256×16KiB AP stacks (4MiB BSS, no AP execution).
+The BSP validates GS identity; ARM64 remains BSP-only.
+
+This deliberately **does not** migrate interrupt context-switch scratch
+state or enable AP IRQ/GC/scheduler activity: they need dedicated
+multi-CPU auditing before the native AP bootstrap can be enabled.
+Stage 3 CI compiles x64 Core/HAL, ARM64 Core/HAL, and checks native
+assembly symbols after applying stages 1-3 sequentially.
+Passing this CI is not a QEMU boot proof.
