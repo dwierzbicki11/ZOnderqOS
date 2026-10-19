@@ -14,7 +14,7 @@ diff --git a/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs b/src/Cosmos.Kernel.Boot.
 new file mode 100644
 --- /dev/null
 +++ b/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
-@@ -0,0 +1,79 @@
+@@ -0,0 +1,89 @@
 +using System.Runtime.InteropServices;
 +
 +namespace Cosmos.Kernel.Boot.Limine;
@@ -66,28 +66,38 @@ new file mode 100644
 +        if (response == null || response->Cpus == null ||
 +            response->CpuCount == 0 || response->CpuCount > MaxXApicCpuCount ||
 +            (response->Flags & 1u) != 0)
++        {
 +            return false;
++        }
 +
 +        ulong bspCount = 0;
 +        for (ulong i = 0; i < response->CpuCount; i++)
 +        {
 +            LimineMpInfoX64* cpu = response->Cpus[i];
 +            if (cpu == null || cpu->LapicId >= MaxXApicCpuCount)
++            {
 +                return false;
++            }
 +
 +            if (cpu->LapicId == response->BspLapicId)
++            {
 +                bspCount++;
++            }
 +
 +            for (ulong j = 0; j < i; j++)
 +            {
 +                LimineMpInfoX64* previous = response->Cpus[j];
 +                if (previous == null || previous->LapicId == cpu->LapicId)
++                {
 +                    return false;
++                }
 +            }
 +        }
 +
 +        if (bspCount != 1)
++        {
 +            return false;
++        }
 +
 +        cpuCount = response->CpuCount;
 +        bspLapicId = response->BspLapicId;
