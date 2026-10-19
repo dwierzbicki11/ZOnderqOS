@@ -41,3 +41,13 @@ checkout must not affect the existing 3.0.85 build and QEMU workflows.
 
 The migration is complete only when the final production Stage 23
 regressions pass on 3.0.94. Stage 1 alone is not a production upgrade.
+
+## Stage 2: dense logical CPU IDs (development only)
+
+`patches/cosmos-3094/0002-dense-cpu-topology.patch` is applied **after**
+stage 1 on an isolated v3.0.94 checkout. It validates the Limine topology,
+assigns BSP CPU 0 and then contiguous IDs to all other logical CPUs through
+`ExtraArgument`, without assuming hardware LAPIC IDs are dense.
+It never touches `GotoAddress` and never starts APs.
+The dedicated stage-2 CI checks sequential patch application and compiles
+the boot library and x64 HAL. A passing build is not a runtime SMP proof.

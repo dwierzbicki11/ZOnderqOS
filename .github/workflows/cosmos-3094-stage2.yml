@@ -1,0 +1,43 @@
+name: Cosmos 3.0.94 SMP port stage 2
+
+on:
+  pull_request:
+    paths:
+      - 'patches/cosmos-3094/**'
+      - '.github/workflows/cosmos-3094-stage2.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stage2:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zonderq
+      - uses: actions/checkout@v4
+        with:
+          repository: CosmosOS/Cosmos
+          ref: v3.0.94
+          path: cosmos
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Apply stage 1 against clean v3.0.94 checkout
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+        run: bash zonderq/tools/check-cosmos-3094-stage1.sh --apply
+      - name: Validate and apply stage 2 dense topology patch
+        run: |
+          git -C cosmos apply --check ../zonderq/patches/cosmos-3094/0002-dense-cpu-topology.patch
+          git -C cosmos apply ../zonderq/patches/cosmos-3094/0002-dense-cpu-topology.patch
+          git -C cosmos diff --check
+      - name: Build Cosmos 3.0.94 boot and x64 HAL
+        working-directory: cosmos
+        run: |
+          dotnet build src/Cosmos.Kernel.Boot.Limine/Cosmos.Kernel.Boot.Limine.csproj -c Release --nologo
+          dotnet build src/Cosmos.Kernel.HAL.X64/Cosmos.Kernel.HAL.X64.csproj -c Release -r linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false --nologo

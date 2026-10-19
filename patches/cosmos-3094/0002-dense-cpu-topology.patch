@@ -1,0 +1,66 @@
+diff --git a/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs b/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+--- a/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
++++ b/src/Cosmos.Kernel.Boot.Limine/LimineMp.cs
+@@ -86,4 +86,42 @@
+         bspLapicId = response->BspLapicId;
+         return true;
+     }
++
++    /// <summary>
++    /// Assign scheduler-neutral, dense IDs while all APs are still parked.
++    /// BSP is CPU 0; the other descriptors are numbered 1..N-1.
++    /// This only updates Limine ExtraArgument fields, never GotoAddress.
++    /// </summary>
++    public static bool TryAssignDenseX64CpuIds(out ulong cpuCount)
++    {
++        cpuCount = 0;
++        if (!TryValidateX64(out ulong validatedCount, out uint bspLapicId))
++        {
++            return false;
++        }
++
++        LimineMpResponseX64* response = (LimineMpResponseX64*)Limine.MP.Response;
++        ulong nextId = 1;
++        for (ulong i = 0; i < validatedCount; i++)
++        {
++            LimineMpInfoX64* cpu = response->Cpus[i];
++            if (cpu->LapicId == bspLapicId)
++            {
++                cpu->ExtraArgument = 0;
++            }
++            else
++            {
++                cpu->ExtraArgument = nextId;
++                nextId++;
++            }
++        }
++
++        if (nextId != validatedCount)
++        {
++            return false;
++        }
++
++        cpuCount = validatedCount;
++        return true;
++    }
+ }
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -123,6 +123,16 @@
+             Serial.WriteString(" CPU(s), BSP LAPIC=");
+             Serial.WriteNumber(bspLapicId);
+             Serial.WriteString("; application processors remain parked.\n");
++            if (LimineMp.TryAssignDenseX64CpuIds(out ulong mappedCount) && mappedCount == cpuCount)
++            {
++                Serial.WriteString("[SMP3094] Dense CPU map assigned: BSP=0, CPU ids 0..");
++                Serial.WriteNumber(mappedCount - 1);
++                Serial.WriteString("; APs still parked.\n");
++            }
++            else
++            {
++                Serial.WriteString("[SMP3094] WARNING: dense CPU map assignment failed.\n");
++            }
+         }
+         else
+         {
