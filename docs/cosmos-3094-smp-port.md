@@ -88,3 +88,12 @@ The CI validates sequential patch application and native exports and compiles
 x64 Core/HAL plus ARM64 Core/HAL. **This is not a runtime QEMU AP-execution
 proof**. Building a real v3.0.94 ISO and QEMU serial smoke logs is a further
 required gate before we treat AP bootstrap as operational.
+
+### Architecture boundary fix
+
+The upstream Cosmos 3.0.94 `Cosmos.Kernel.HAL.X64` assembly enforces
+`AllowUnsafeBlocks=false`. The Limine pointer traversal and native call
+wrappers therefore belong in `Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs`
+(an assembly which explicitly permits unsafe code). The HAL initializer only
+calls the Core.X64 helper through its established internal friend assembly
+access. This preserves the HAL's safe-code rule rather than weakening it.

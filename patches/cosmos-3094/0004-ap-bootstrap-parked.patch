@@ -1,16 +1,14 @@
-diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
+diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs b/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
 new file mode 100644
 --- /dev/null
-+++ b/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs
-@@ -0,0 +1,110 @@
-+using System;
++++ b/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
+@@ -0,0 +1,108 @@
 +using System.Runtime.InteropServices;
 +using Cosmos.Kernel.Boot.Limine;
 +using Cosmos.Kernel.Core.CPU;
 +using Cosmos.Kernel.Core.IO;
-+using Cosmos.Kernel.Core.X64.Cpu;
 +
-+namespace Cosmos.Kernel.HAL.X64;
++namespace Cosmos.Kernel.Core.X64.Cpu;
 +
 +/// <summary>
 +/// Stage-4 x64 MP bootstrap. Native APs each bind GS, record readiness,
