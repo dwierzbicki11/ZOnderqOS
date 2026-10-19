@@ -13,7 +13,7 @@ STAGE4 = "[SMP3094-STAGE4] PASS"
 STAGE5 = "[SMP3094-STAGE5] PASS"
 BOOT = "[SMP3094-PROBE] BOOT"
 FATAL = re.compile(
-    r"\bpanic\b|\btriple[ -]fault\b|\bCPU\s+EXCEPTION\b|"
+    r"\bpanic\b|\btriple[ -]fault\b|\bCPU\s+EXCEPTION(?!\s+handlers\s+registered)\b|"
     r"Unhandled Exception|System halted|\[SMP3094\].*(?:WARNING|failed|invalid|timeout)|"
     r"general protection fault|page fault",
     re.IGNORECASE,
@@ -100,6 +100,8 @@ def self_test() -> None:
 
     for count in (1, 2, 4, 8, 16):
         check(good(count), count)
+        # The normal exception handler registration banner is not a CPU fault.
+        check("[ExceptionHandler] CPU exception handlers registered\\n" + good(count), count)
     corrupt = [
         (good(4).replace("counter=100000", "counter=99999", 1), 4),
         (good(4).replace(BOOT, ""), 4),
@@ -108,6 +110,7 @@ def self_test() -> None:
         (good(4).replace("LAPIC=2", "LAPIC=1", 1), 4),
         (good(4) + BOOT + "\n", 4),
         (good(4) + "Kernel panic\n", 4),
+        (good(4) + "CPU EXCEPTION #13\n", 4),
         (good(4), 8),
     ]
     for serial, count in corrupt:
