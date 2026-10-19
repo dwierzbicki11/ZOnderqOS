@@ -192,6 +192,7 @@ def self_test() -> None:
         (good(4) + BOOT + "\n", 4),
         (good(4) + "Kernel panic\n", 4),
         (good(4) + "CPU EXCEPTION #13\n", 4),
+        (good(4) + "Triple fault\n", 4),
         (good(4), 8),
     ]
     for serial, count in corrupt:
