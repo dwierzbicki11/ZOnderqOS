@@ -302,9 +302,25 @@ if [[ "${ZONDERQ_SMT_CLEAN_WORKTREE:-0}" == "1" ]]; then
     # avoid downloading the huge dotnet/runtime repository repeatedly.
     # -c overrides only this git process; it never changes shared git config.
     submodule_options=()
+    runtime_clone=""
     if git -C "$cosmos_root/dotnet/runtime" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-        submodule_options+=(-c "protocol.file.allow=always" -c "submodule.dotnet/runtime.url=$cosmos_root/dotnet/runtime")
-        echo "[SMT] dotnet/runtime: lokalny checkout Cosmos (bez pobierania z GitHub)."
+        runtime_clone="$cosmos_root/dotnet/runtime"
+    else
+        # A prior isolated worktree may already contain the large runtime clone
+        # even when the original Cosmos checkout has no initialized submodule.
+        for candidate in "$smt_parent"/.cosmos-smt-????????????; do
+            [[ -d "$candidate" && "$candidate" != "$smt_worktree" ]] || continue
+            candidate_common="$(git -C "$candidate" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+            [[ "$candidate_common" == "$source_common" ]] || continue
+            if git -C "$candidate/dotnet/runtime" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+                runtime_clone="$candidate/dotnet/runtime"
+                break
+            fi
+        done
+    fi
+    if [[ -n "$runtime_clone" ]]; then
+        submodule_options+=(-c "protocol.file.allow=always" -c "submodule.dotnet/runtime.url=$runtime_clone")
+        echo "[SMT] dotnet/runtime: ponowne uzycie lokalnych danych z $runtime_clone"
     fi
     if git -C "$cosmos_root/src/Cosmos.Kernel.Native.MultiArch/ACPI/lai" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         submodule_options+=(-c "protocol.file.allow=always" -c "submodule.src/Cosmos.Kernel.Native.MultiArch/lai.url=$cosmos_root/src/Cosmos.Kernel.Native.MultiArch/ACPI/lai")
