@@ -22,7 +22,7 @@ namespace ZonderqOS.SystemCore
         private const int MaxMessageLength = 512;
         private const int MaxReportChars = 16 * 1024;
 
-        public static bool TryPersist(Exception exception, string phase, out string error)
+        public static bool TryPersist(Exception? exception, string phase, out string error)
         {
             error = string.Empty;
 
@@ -141,7 +141,7 @@ namespace ZonderqOS.SystemCore
             }
         }
 
-        private static string BuildReport(Exception exception, string phase)
+        private static string BuildReport(Exception? exception, string phase)
         {
             StringBuilder text = new StringBuilder(4096);
 
