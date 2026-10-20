@@ -1,8 +1,8 @@
 using System;
 using System.IO;
-using Cosmos.Kernel.System.Vfs;
-using Cosmos.Kernel.System.Filesystems.Fat;
-using Cosmos.Kernel.HAL.Vfs;
+using Cosmos.Kernel.System.FileSystem;
+using Cosmos.Kernel.System.FileSystem.Fat;
+
 using Cosmos.Kernel.System.Storage;
 using ZonderqOS.SystemCore;
 
@@ -10,15 +10,15 @@ namespace ZonderqOS
 {
     public static class Disk
     {
-        private static FatFilesystemType fat;
-        private static VfsManager.VfsMount _currentMount;
+        private static FatFileSystemType fat;
+        private static VfsMount _currentMount;
 
         public static void Initialize()
         {
             try
             {
-                fat = new FatFilesystemType();
-                VfsManager.RegisterFilesystem("fat", fat);
+                fat = new FatFileSystemType();
+                VfsManager.RegisterFileSystem("fat", fat);
 
                 if (VfsManager.TryMount("fat", "0", MountFlags.None, "/", out var mount))
                 {

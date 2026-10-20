@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Cosmos.Kernel.HAL.Vfs;
+
 using Cosmos.Kernel.System.Storage;
-using Cosmos.Kernel.System.Vfs;
+using Cosmos.Kernel.System.FileSystem;
 
 namespace ZonderqOS.GUI
 {
@@ -84,7 +84,7 @@ namespace ZonderqOS.GUI
                     return false;
                 }
 
-                VfsManager.VfsMount mount;
+                VfsMount mount;
                 if (!VfsManager.TryMount("fat", partitionIndex.ToString(), MountFlags.None, mountPoint, out mount))
                 {
                     mountPoint = null;
@@ -169,7 +169,7 @@ namespace ZonderqOS.GUI
 
             try
             {
-                foreach (VfsManager.VfsMount mount in VfsManager.Mounts)
+                foreach (VfsMount mount in VfsManager.Mounts)
                 {
                     if (mount.Source == source)
                         return mount.MountPoint;
@@ -222,7 +222,7 @@ namespace ZonderqOS.GUI
         {
             try
             {
-                foreach (VfsManager.VfsMount mount in VfsManager.Mounts)
+                foreach (VfsMount mount in VfsManager.Mounts)
                 {
                     if (mount.MountPoint == mountPoint)
                         return true;

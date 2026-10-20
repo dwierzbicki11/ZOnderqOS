@@ -1,7 +1,7 @@
 using System;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Storage;
-using Cosmos.Kernel.System.Vfs;
+using Cosmos.Kernel.System.FileSystem;
 using ZonderqOS.GUI.Icons;
 
 namespace ZonderqOS.GUI.Apps
@@ -110,7 +110,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void LoadMounts()
         {
-            foreach (VfsManager.VfsMount mount in VfsManager.Mounts)
+            foreach (VfsMount mount in VfsManager.Mounts)
             {
                 if (itemCount >= MaxItems)
                     break;
