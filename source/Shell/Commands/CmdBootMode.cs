@@ -12,6 +12,9 @@ namespace ZonderqOS.Commands
             if (args.Length == 1 || (args.Length == 2 && string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase)))
             {
                 CommandIO.WriteLine("Default boot mode: " + (SystemSettings.BootToGui ? "gui" : "console"));
+#if ZONDERQ_INPUT_DIAGNOSTIC_BOOT
+                CommandIO.WriteLine("Diagnostic image override: CONSOLE (ignores saved GUI preference).");
+#endif
                 CommandIO.LastCommandSuccess = true;
                 return;
             }
@@ -51,7 +54,11 @@ namespace ZonderqOS.Commands
             }
 
             CommandIO.WriteLine("Default boot mode set to: " + (enabled ? "gui" : "console"));
+#if ZONDERQ_INPUT_DIAGNOSTIC_BOOT
+            CommandIO.WriteLine("Note: this image still forces console mode for hardware diagnostics.");
+#else
             CommandIO.WriteLine("The change will apply after reboot.");
+#endif
             CommandIO.LastCommandSuccess = true;
         }
 
