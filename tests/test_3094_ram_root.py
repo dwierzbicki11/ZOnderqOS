@@ -37,6 +37,9 @@ class RamRootContract(unittest.TestCase):
         self.assertIn('#if ZONDERQ_3094_RAM_ROOT', DISK)
         self.assertIn('RamRootVolume.TryCreate(out Partition data)', DISK)
         self.assertIn('refusing host-disk fallback', DISK)
+        self.assertIn('VfsManager.TryMount("ramfat", ReadOnlySpan<char>.Empty', DISK)
+        self.assertIn('new FatFileSystemType(data)', DISK)
+        self.assertIn('Host-disk fallback prohibited.', DISK)
         self.assertIn('VfsManager.TryMount("fat", data', DISK)
     def test_no_physical_secondary_mounts(self):
         self.assertIn('return RamRootVolume.IsRamPartition(partition)', POLICY)
