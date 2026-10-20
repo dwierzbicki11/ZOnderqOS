@@ -9,7 +9,9 @@ mounted FAT partition index 0 as `/`. That is explicitly forbidden now.
 The **3.0.94 USB mouse diagnostic image** retains
 `ZonderqReadOnlyHardwareProbe=true`. It does **not** mount any filesystem,
 initialize user accounts or run startup services. Its commands are
-`inputscan`, `mouse`, `help`.
+`inputscan`, `mouse`, `volumes`, `help`. The `volumes` command inspects
+Cosmos 3.0.94 block devices and checks data-volume eligibility without
+mounting or modifying host partitions.
 
 In a *non-probe* 3.0.94 build (`-p:ZonderqReadOnlyHardwareProbe=false`),
 persistent boot is allowed **only** if storage probing finds exactly one
