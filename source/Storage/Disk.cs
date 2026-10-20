@@ -13,27 +13,41 @@ namespace ZonderqOS
         private static FatFileSystemType fat;
         private static VfsMount _currentMount;
 
-        public static void Initialize()
+        public static bool Initialize()
         {
             try
             {
                 fat = new FatFileSystemType();
-                VfsManager.RegisterFileSystem("fat", fat);
+                if (!VfsManager.RegisterFileSystem("fat", fat))
+                {
+                    WriteMessage.WriteError("Could not register FAT filesystem.", "VFS");
+                    return false;
+                }
 
-                if (VfsManager.TryMount("fat", "0", MountFlags.None, "/", out var mount))
+                // Cosmos 3.0.94: the partition order can change when a USB disk
+                // appears. Never mount numeric source "0" (it was Kali's ESP).
+                // Require a unique explicitly labelled data FAT32 partition.
+                if (!DataVolumePolicy.TryFindDataPartition(out Partition data, out string error))
                 {
-                    _currentMount = mount;
-                    WriteMessage.WriteOK($"Mounted root filesystem at '/' (Source: {mount.Source})", "VFS");
-                    CreateStandardHierarchy();
+                    WriteMessage.WriteError(error, "VFS");
+                    return false;
                 }
-                else
+
+                if (!VfsManager.TryMount("fat", data, MountFlags.None, "/", out var mount))
                 {
-                    WriteMessage.WriteError("Failed to mount root FAT partition.", "VFS");
+                    WriteMessage.WriteError("Failed to mount approved ZonderqOS data volume.", "VFS");
+                    return false;
                 }
+
+                _currentMount = mount;
+                WriteMessage.WriteOK($"Mounted dedicated ZONDERQDATA at '/' (Source: {mount.Source})", "VFS");
+                CreateStandardHierarchy();
+                return true;
             }
             catch (Exception ex)
             {
-                WriteMessage.WriteError($"Critical initialization exception: {ex.Message}", "VFS");
+                WriteMessage.WriteError($"Storage init failed closed: {ex.Message}", "VFS");
+                return false;
             }
         }
 
@@ -426,105 +440,16 @@ namespace ZonderqOS
 
         public static void FormatPartition(string targetId = "0")
         {
-            try
-            {
-                int id = int.Parse(targetId);
-                int partitionCount = Cosmos.Kernel.System.Storage.StorageManager.Partitions.Count;
-                if (id < 0 || id >= partitionCount)
-                {
-                    WriteMessage.WriteError($"Partition index [{targetId}] out of range. Max index is {partitionCount - 1}.", "FS");
-                    CommandIO.LastCommandSuccess = false;
-                    return;
-                }
-
-                if (targetId == "0") VfsManager.TryUnmount("/");
-
-                FatFormatOptions options = new()
-                {
-                    Type = FatType.Fat32,
-                    VolumeLabel = "ZONDERQ",
-                };
-
-                if (!VfsManager.TryFormat("fat", targetId, options))
-                {
-                    WriteMessage.WriteError($"Format failed for target: {targetId}", "FS");
-                    CommandIO.LastCommandSuccess = false;
-                }
-                else
-                {
-                    WriteMessage.WriteOK($"Partition {targetId} successfully formatted to FAT32.", "FS");
-                    CommandIO.LastCommandSuccess = true;
-                }
-
-                if (targetId == "0" && VfsManager.TryMount("fat", "0", MountFlags.None, "/", out var mount))
-                {
-                    _currentMount = mount;
-                    WriteMessage.WriteOK($"Mounted root partition {mount.Name} at {mount.MountPoint}", "VFS");
-                    CreateStandardHierarchy();
-                }
-            }
-            catch (Exception ex)
-            {
-                WriteMessage.WriteError($"Formatting exception: {ex.Message}", "FS");
-                CommandIO.LastCommandSuccess = false;
-            }
+            // No implicit or interactive disk formatting in the 3.0.94
+            // bare-metal build. Provision data on the host, not in-kernel.
+            WriteMessage.WriteError("format is disabled for bare-metal data safety (Cosmos 3.0.94).", "FS");
+            CommandIO.LastCommandSuccess = false;
         }
 
         public static void PartitionDisk(int diskId)
         {
-            try
-            {
-                int deviceCount = Cosmos.Kernel.System.Storage.StorageManager.DeviceCount;
-                if (diskId < 0 || diskId >= deviceCount)
-                {
-                    WriteMessage.WriteError($"Disk ID [{diskId}] out of range (0-{deviceCount - 1}).", "HW");
-                    CommandIO.LastCommandSuccess = false;
-                    return;
-                }
-
-                var device = Cosmos.Kernel.System.Storage.StorageManager.GetDevice(diskId);
-                const uint startLba = 2048;
-                if (device.BlockSize < 512 || device.BlockCount <= startLba)
-                {
-                    WriteMessage.WriteError("Disk is too small or has an unsupported block size for MBR partitioning.", "HW");
-                    CommandIO.LastCommandSuccess = false;
-                    return;
-                }
-
-                ulong availableBlocks = device.BlockCount - startLba;
-                if (availableBlocks > uint.MaxValue)
-                {
-                    WriteMessage.WriteError("Disk is too large for the current MBR partition layout.", "HW");
-                    CommandIO.LastCommandSuccess = false;
-                    return;
-                }
-
-                byte[] mbr = new byte[device.BlockSize];
-                Array.Clear(mbr, 0, mbr.Length);
-                int offset = 446;
-                mbr[offset + 0] = 0x80;
-                mbr[offset + 1] = 0x00;
-                mbr[offset + 2] = 0x02;
-                mbr[offset + 3] = 0x00;
-                mbr[offset + 4] = 0x0B;
-                mbr[offset + 5] = 0xFF;
-                mbr[offset + 6] = 0xFF;
-                mbr[offset + 7] = 0xFF;
-
-                BitConverter.GetBytes(startLba).CopyTo(mbr, offset + 8);
-                BitConverter.GetBytes((uint)availableBlocks).CopyTo(mbr, offset + 12);
-                mbr[510] = 0x55;
-                mbr[511] = 0xAA;
-
-                device.WriteBlock(0, 1, mbr);
-                WriteMessage.WriteOK($"MBR successfully written to Drive [{diskId}]. Reboot system to register new partition.", "HW");
-                CommandIO.LastCommandSuccess = true;
-            }
-            catch (Exception ex)
-            {
-                WriteMessage.WriteError($"Partitioning exception: {ex.Message}", "HW");
-                CommandIO.LastCommandSuccess = false;
-            }
+            WriteMessage.WriteError("mkpart is disabled for bare-metal data safety (Cosmos 3.0.94).", "FS");
+            CommandIO.LastCommandSuccess = false;
         }
 
         public static void ListDisks()
@@ -564,31 +489,52 @@ namespace ZonderqOS
 
         public static void MountPartition(string partitionId, string mountPoint)
         {
-            try
+            if (!int.TryParse(partitionId, out int index))
             {
-                if (VfsManager.TryMount("fat", partitionId, MountFlags.None, mountPoint, out var mount))
-                    WriteMessage.WriteOK($"Partition '{partitionId}' mounted successfully at {mountPoint}", "VFS");
-                else
-                    WriteMessage.WriteError($"Failed to mount partition '{partitionId}' at {mountPoint}.", "VFS");
+                WriteMessage.WriteError("Invalid partition index.", "VFS");
+                CommandIO.LastCommandSuccess = false;
+                return;
             }
-            catch (Exception ex)
+
+            var partitions = StorageManager.Partitions;
+            if (index < 0 || index >= partitions.Count ||
+                !DataVolumePolicy.IsSelectedDataPartition(partitions[index]))
             {
-                WriteMessage.WriteError($"Mount exception: {ex.Message}", "VFS");
+                WriteMessage.WriteError("Only the uniquely labelled ZONDERQDATA volume can be mounted.", "VFS");
+                CommandIO.LastCommandSuccess = false;
+                return;
+            }
+
+            if (VfsManager.TryMount("fat", partitions[index], MountFlags.None, mountPoint, out var mount))
+            {
+                WriteMessage.WriteOK($"Mounted data volume at {mount.MountPoint}", "VFS");
+                CommandIO.LastCommandSuccess = true;
+            }
+            else
+            {
+                WriteMessage.WriteError("Failed to mount approved data volume.", "VFS");
+                CommandIO.LastCommandSuccess = false;
             }
         }
 
         public static void UnmountPartition(string mountPoint)
         {
-            try
+            if (mountPoint == "/")
             {
-                if (VfsManager.TryUnmount(mountPoint))
-                    WriteMessage.WriteOK($"Node {mountPoint} successfully unmounted.", "VFS");
-                else
-                    WriteMessage.WriteError($"Could not unmount {mountPoint}. Check if path exists.", "VFS");
+                WriteMessage.WriteError("Cannot unmount the active data root.", "VFS");
+                CommandIO.LastCommandSuccess = false;
+                return;
             }
-            catch (Exception ex)
+
+            if (VfsManager.TryUnmount(mountPoint))
             {
-                WriteMessage.WriteError($"Unmount error: {ex.Message}", "VFS");
+                WriteMessage.WriteOK($"Unmounted {mountPoint}", "VFS");
+                CommandIO.LastCommandSuccess = true;
+            }
+            else
+            {
+                WriteMessage.WriteError($"Cannot unmount {mountPoint}", "VFS");
+                CommandIO.LastCommandSuccess = false;
             }
         }
 
