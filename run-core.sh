@@ -137,18 +137,24 @@ prepare_patched_cosmos_x64() {
         rebuild=1
     fi
 
-    # The patched runtime is compiled from the *entire* patch series, not just
-    # Stdllib.cs. A newer Stage 10/11 GC patch must invalidate local packages,
-    # otherwise the ISO silently contains an older kernel despite a clean git pull.
-    local smt_patch
-    if [[ -n "$kernel_package" ]]; then
-        for smt_patch in "$ROOT_DIR"/patches/cosmos-smt/*.patch; do
-            if [[ "$smt_patch" -nt "$kernel_package" ]]; then
-                echo "[SMT] Zmieniony patch SMP: ${smt_patch##*/} — wymagam przebudowy Cosmos."
-                rebuild=1
-                break
-            fi
-        done
+    # Timestamps are not a reliable indicator of the SMP patch revision.
+    # Switching git branches can restore older mtimes, silently reusing a
+    # kernel built with unsafe APIC / OrionGC logic. Record *content hashes*
+    # of every patch and the package builder, and validate the built kernel.
+    require_command sha256sum
+    local patch_stamp="$package_feed/.zonderq-smt-patches.sha256"
+    local patch_digest recorded_patch_digest="" recorded_kernel_digest=""
+    local kernel_digest="" stamp_tmp
+    patch_digest="$(cd "$ROOT_DIR" && sha256sum patches/cosmos-smt/*.patch tools/prepare-cosmos-smt.sh | sha256sum | awk '{print $1}')"
+
+    if [[ -n "$kernel_package" && -f "$patch_stamp" ]]; then
+        read -r recorded_patch_digest recorded_kernel_digest < "$patch_stamp" || true
+        kernel_digest="$(sha256sum "$kernel_package" | awk '{print $1}')"
+    fi
+    if [[ "$patch_digest" != "$recorded_patch_digest" ||
+          -z "$kernel_digest" || "$kernel_digest" != "$recorded_kernel_digest" ]]; then
+        echo "[SMT] Patch digest lub kernel package nie pasuje do potwierdzonego builda — przebudowa."
+        rebuild=1
     fi
 
     if (( rebuild )); then
@@ -157,8 +163,13 @@ prepare_patched_cosmos_x64() {
             bash "$ROOT_DIR/tools/prepare-cosmos-smt.sh" --all
         kernel_package="$(find "$package_feed" -maxdepth 1 -type f -iname 'Cosmos.Kernel.3.0.85.nupkg' -print -quit 2>/dev/null || true)"
         [[ -n "$kernel_package" ]] || fail "Po buildzie Cosmos nadal brakuje Cosmos.Kernel.3.0.85.nupkg w $package_feed"
+        # Only mark a digest as trusted after the complete build succeeded.
+        kernel_digest="$(sha256sum "$kernel_package" | awk '{print $1}')"
+        stamp_tmp="$(mktemp "$package_feed/.zonderq-smt-patches.XXXXXXXX")"
+        printf '%s %s\n' "$patch_digest" "$kernel_digest" > "$stamp_tmp"
+        mv -f "$stamp_tmp" "$patch_stamp"
     else
-        echo "[SMT] Lokalne patched Cosmos 3.0.85 sa aktualne."
+        echo "[SMT] Lokalne patched Cosmos 3.0.85 zgodne z hashami patchy i paczki kernela."
     fi
 
     rm -rf "$package_cache"
