@@ -41,11 +41,13 @@ download_artifact() {
     command -v gh >/dev/null || die "GitHub CLI (gh) required. Use the Actions webpage to download manually."
     command -v jq >/dev/null || die "jq required to validate workflow commit."
     local runs run_id temp
-    runs="$(gh run list --repo "$REPO" --workflow "$WORKFLOW" --branch "$BRANCH" --limit 40 \
-        --json databaseId,headSha,conclusion)" ||
+    # Use workflow display-name filtering, not --workflow filename: the
+    # experimental workflow has not reached the default branch yet.
+    runs="$(gh run list --repo "$REPO" --branch "$BRANCH" --limit 100 \
+        --json databaseId,headSha,conclusion,name)" ||
         die "Cannot obtain GitHub Actions runs (check gh auth status)."
     run_id="$(printf '%s' "$runs" | jq -r --arg sha "$SHA" \
-        '[.[] | select(.conclusion == "success" and .headSha == $sha)] | .[0].databaseId // empty')"
+        '[.[] | select(.name == "Experimental ZonderqOS Cosmos 3.0.94 USB input" and .conclusion == "success" and .headSha == $sha)] | .[0].databaseId // empty')"
     [[ -n "$run_id" ]] ||
         die "No successful 3.0.94 workflow for exact HEAD. Review GitHub Actions; cannot use stale ISO."
     temp="$(mktemp -d)"
