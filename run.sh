@@ -259,7 +259,7 @@ verify_cosmos_checkout_revision "$cosmos_root"
 # to the SMT patch CONTENT, not the ZonderqOS commit. Launcher/docs/CI changes
 # must not trigger a fresh dotnet/runtime checkout.
 if [[ "${ZONDERQ_SMT_CLEAN_WORKTREE:-0}" == "1" ]]; then
-    require_command sha256sum
+    command -v sha256sum >/dev/null 2>&1 || fail "Brak sha256sum w PATH."
     smt_parent="$(cd "$ROOT_DIR/.." && pwd)"
     smt_patch_digest="$(cd "$ROOT_DIR" && sha256sum patches/cosmos-smt/*.patch tools/prepare-cosmos-smt.sh | sha256sum | awk '{print $1}')"
     smt_worktree="$smt_parent/.cosmos-smt-${smt_patch_digest:0:12}"
