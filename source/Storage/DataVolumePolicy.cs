@@ -126,6 +126,11 @@ namespace ZonderqOS
 
         public static bool IsSelectedDataPartition(Partition partition)
         {
+#if ZONDERQ_3094_RAM_ROOT
+            // RAM-only GUI must not permit manual mounting of any host disk
+            // even if its FAT label is spoofed to ZONDERQDATA.
+            return RamRootVolume.IsRamPartition(partition);
+#else
             if (partition == null || !IsApprovedDataPartition(partition))
                 return false;
 
@@ -133,6 +138,7 @@ namespace ZonderqOS
                 return false;
 
             return object.ReferenceEquals(partition, selected);
+#endif
         }
     }
 }
