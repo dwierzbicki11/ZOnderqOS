@@ -6,6 +6,7 @@ ROOT=Path(__file__).resolve().parents[1]
 PROJECT=(ROOT/"ZonderqOS.csproj").read_text()
 RAM=(ROOT/"source/Storage/RamRootVolume.cs").read_text()
 DISK=(ROOT/"source/Storage/Disk.cs").read_text()
+POLICY=(ROOT/"source/Storage/DataVolumePolicy.cs").read_text()
 WORKFLOW=(ROOT/".github/workflows/experimental-cosmos-3094-usb.yml").read_text()
 class RamRootContract(unittest.TestCase):
     def test_3094_only_and_explicit_profile(self):
@@ -37,6 +38,10 @@ class RamRootContract(unittest.TestCase):
         self.assertIn('RamRootVolume.TryCreate(out Partition data)', DISK)
         self.assertIn('refusing host-disk fallback', DISK)
         self.assertIn('VfsManager.TryMount("fat", data', DISK)
+    def test_no_physical_secondary_mounts(self):
+        self.assertIn('return RamRootVolume.IsRamPartition(partition)', POLICY)
+        self.assertIn('object.ReferenceEquals(partition.Host, disk)', RAM)
+
     def test_efi_write_gate(self):
         self.assertIn('QEMU RAM GUI boot - prove EFI canary unchanged', WORKFLOW)
         self.assertIn('sha256sum --check "$canary.sha256"', WORKFLOW)
