@@ -27,20 +27,51 @@ namespace ZonderqOS
                 // Cosmos 3.0.94: the partition order can change when a USB disk
                 // appears. Never mount numeric source "0" (it was Kali's ESP).
                 // Require a unique explicitly labelled data FAT32 partition.
+#if ZONDERQ_3094_RAM_ROOT
+                // Full GUI can boot safely without ANY partition writes.
+                // This memory-only partition is created and FAT32-formatted
+                // inside private RAM, never from StorageManager's disk index.
+                if (!RamRootVolume.TryCreate(out Partition data))
+                {
+                    WriteMessage.WriteError("RAM-only root could not be prepared; refusing host-disk fallback.", "VFS");
+                    return false;
+                }
+#else
                 if (!DataVolumePolicy.TryFindDataPartition(out Partition data, out string error))
                 {
                     WriteMessage.WriteError(error, "VFS");
                     return false;
                 }
+#endif
 
+#if ZONDERQ_3094_RAM_ROOT
+                // Bind this filesystem to the explicit RAM partition object.
+                // Unlike an index-based FAT mount, even a concurrent hotplug
+                // cannot redirect a write to the laptop's physical disk.
+                if (!VfsManager.RegisterFileSystem("ramfat", new FatFileSystemType(data)))
+                {
+                    WriteMessage.WriteError("Could not register RAM-only FAT.", "VFS");
+                    return false;
+                }
+                if (!VfsManager.TryMount("ramfat", ReadOnlySpan<char>.Empty, MountFlags.None, "/", out var mount))
+                {
+                    WriteMessage.WriteError("Failed to mount RAM-only root. Host-disk fallback prohibited.", "VFS");
+                    return false;
+                }
+#else
                 if (!VfsManager.TryMount("fat", data, MountFlags.None, "/", out var mount))
                 {
                     WriteMessage.WriteError("Failed to mount approved ZonderqOS data volume.", "VFS");
                     return false;
                 }
+#endif
 
                 _currentMount = mount;
+#if ZONDERQ_3094_RAM_ROOT
+                WriteMessage.WriteOK("Mounted ephemeral ZonderqOS FAT32 RAM root at '/' (no physical writes).", "VFS");
+#else
                 WriteMessage.WriteOK($"Mounted dedicated ZONDERQDATA at '/' (Source: {mount.Source})", "VFS");
+#endif
                 CreateStandardHierarchy();
                 return true;
             }

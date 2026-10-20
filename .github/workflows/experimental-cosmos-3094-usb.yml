@@ -9,6 +9,7 @@ on:
       - 'feat/3094-readonly-desktop-usb'
       - 'fix/3094-usb-mouse-gui'
       - 'feat/3094-native-resolution-normal-gui'
+      - 'feat/3094-fullgui-ram-root'
 
 # Avoid rebuilding Cosmos from source twice for the same PR commit.
 # A newer candidate supersedes the older experiment.
@@ -43,6 +44,7 @@ jobs:
           python3 zonderq/tests/test_3094_mouse_gui.py
           python3 zonderq/tests/test_3094_readonly_desktop.py
           python3 zonderq/tests/test_3094_display_gui.py
+          python3 zonderq/tests/test_3094_ram_root.py
           bash -n zonderq/run-3094.sh
       - name: Install Cosmos native dependencies
         run: |
@@ -209,6 +211,61 @@ jobs:
         with:
           name: zonderq-3094-NORMAL-GUI-REQUIRES-ZONDERQDATA
           path: zonderq/experimental3094-full-gui/ZonderqOS.iso
+          retention-days: 4
+          if-no-files-found: error
+      - name: Build FULL graphical session with FAT32 RAM root (no host writes)
+        run: |
+          set -euo pipefail
+          dotnet publish zonderq/ZonderqOS.csproj \
+            -c Debug -r linux-x64 -p:CosmosArch=x64 \
+            -p:ZonderqReadOnlyHardwareProbe=false \
+            -p:ZonderqInputDiagnosticBoot=false \
+            -p:ZonderqRamRoot=true \
+            -o zonderq/experimental3094-ram-gui --no-restore \
+            --verbosity:minimal 2>&1 | tee zonderq/publish-ram-gui-3094.log
+          test -s zonderq/experimental3094-ram-gui/ZonderqOS.iso
+          sha256sum zonderq/experimental3094-ram-gui/ZonderqOS.iso
+      - name: QEMU RAM GUI boot - prove EFI canary unchanged
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          canary=zonderq/experimental3094-efi-canary.img
+          sha256sum --check "$canary.sha256"
+          serial=zonderq/ram3094-gui-qemu.serial.log
+          : > "$serial"
+          qemu-system-x86_64 \
+            -machine q35 -cpu Nehalem -smp 1 -m 2048M \
+            -cdrom zonderq/experimental3094-ram-gui/ZonderqOS.iso -boot d \
+            -drive "file=$canary,format=raw,if=ide" \
+            -vga std -display none -monitor none \
+            -device qemu-xhci,id=xhci \
+            -device usb-mouse,bus=xhci.0 \
+            -serial "file:$serial" -no-reboot -no-shutdown \
+            2> "$serial.stderr" &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 35); do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              tail -n 100 "$serial" >&2
+              cat "$serial.stderr" >&2
+              exit 1
+            fi
+            if grep -Eqi 'kernel panic|fatal: exception|page fault' "$serial"; then
+              tail -n 100 "$serial" >&2
+              echo "Full RAM GUI panicked" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          kill "$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          sha256sum --check "$canary.sha256"
+          echo "RAM GUI basic 35-second boot without EFI writes: PASS (not GUI interaction proof)"
+      - name: Upload full GUI ephemeral RAM-root ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-3094-FULL-GUI-RAM-ONLY
+          path: zonderq/experimental3094-ram-gui/ZonderqOS.iso
           retention-days: 4
           if-no-files-found: error
       - name: Upload failure diagnostics
