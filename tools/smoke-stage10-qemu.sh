@@ -217,9 +217,20 @@ fi
 
 command -v qemu-system-x86_64 >/dev/null || fail 'qemu-system-x86_64 not found'
 [[ -f "$ISO" ]] || fail "ISO not found: $ISO"
+# QEMU can accept unversioned CPU aliases even when -cpu help only lists
+# versioned models (e.g. Nehalem-v1). Rejecting them here is a false-negative.
+# Use the explicit -v1 spelling where present; otherwise let QEMU validate
+# the requested model when launching, so actual errors reach CI diagnostics.
 models="$(qemu-system-x86_64 -cpu help)" || fail 'cannot list QEMU CPU models'
-awk -v model="$CPU_MODEL" '$2 == model { found=1 } END { exit !found }' <<< "$models" || \
-  fail "QEMU CPU model '$CPU_MODEL' is not available"
+if ! awk -v model="$CPU_MODEL" '$2 == model { found=1 } END { exit !found }' <<< "$models"; then
+  versioned_model="$(awk -v model="$CPU_MODEL" '$2 == model "-v1" { print $2; exit }' <<< "$models")"
+  if [[ -n "$versioned_model" ]]; then
+    echo "[QEMU] Resolving CPU alias $CPU_MODEL to $versioned_model"
+    CPU_MODEL="$versioned_model"
+  else
+    echo "[QEMU] CPU model $CPU_MODEL not listed verbatim; QEMU will validate it at startup."
+  fi
+fi
 
 : > "$LOG"
 QEMU_STDERR="${LOG}.stderr"
