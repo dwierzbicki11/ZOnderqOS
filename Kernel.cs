@@ -33,7 +33,7 @@ namespace ZonderqOS
                 Console.WriteLine();
                 InputBusDiagnostics.PrintReport();
                 Console.WriteLine();
-                Console.WriteLine("Commands: inputscan | mouse | help");
+                Console.WriteLine("Commands: inputscan | mouse | volumes | help");
                 Console.WriteLine("The USB mouse should be reported as a bound pointer.");
                 return;
 #endif
@@ -206,6 +206,13 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "volumes" || command == "lsblk")
+            {
+                // Read-only: never create a VFS mount or mutate an on-disk BPB.
+                PrintReadOnlyVolumes();
+                return;
+            }
+
             if (command == "mouse")
             {
                 // Access the static class through fully qualified member names
@@ -244,6 +251,7 @@ namespace ZonderqOS
             {
                 Console.WriteLine("inputscan - read-only PCI, USB node and pointer-driver report");
                 Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");
+                Console.WriteLine("volumes   - inspect disks and validate dedicated FAT32 data policy (read-only)");
                 Console.WriteLine("help      - print this help");
                 Console.WriteLine("No storage writes or privileged shell commands are enabled.");
                 return;
@@ -251,6 +259,38 @@ namespace ZonderqOS
 
             if (command.Length != 0)
                 Console.WriteLine("Unknown/blocked diagnostic command. Type help.");
+        }
+        private static void PrintReadOnlyVolumes()
+        {
+            try
+            {
+                var devices = Cosmos.Kernel.System.Storage.StorageManager.Devices;
+                var partitions = Cosmos.Kernel.System.Storage.StorageManager.Partitions;
+                Console.WriteLine("READ-ONLY disk inspection: NO mounts, writes or formatting.");
+                Console.WriteLine("Devices: " + devices.Count + ", partitions: " + partitions.Count);
+                int count = partitions.Count < 32 ? partitions.Count : 32;
+                for (int i = 0; i < count; i++)
+                {
+                    var p = partitions[i];
+                    ulong sizeMiB = p.BlockSize == 0 ? 0 :
+                        (p.BlockCount / 1024UL) * p.BlockSize / 1024UL;
+                    bool approved = DataVolumePolicy.IsApprovedDataPartition(p);
+                    Console.WriteLine("  part" + i + " " + p.Name +
+                        " " + sizeMiB + " MiB  writable-root-candidate=" +
+                        (approved ? "YES" : "NO"));
+                }
+                if (partitions.Count > count)
+                    Console.WriteLine("... additional partitions omitted");
+
+                if (DataVolumePolicy.TryFindDataPartition(out var data, out string error))
+                    Console.WriteLine("Selected data volume: " + data.Name + " (not mounted).");
+                else
+                    Console.WriteLine("No writable root selected: " + error);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Read-only volume inspection failed: " + ex.Message);
+            }
         }
 #endif
 
