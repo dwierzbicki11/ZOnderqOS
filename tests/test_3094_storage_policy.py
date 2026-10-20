@@ -69,6 +69,14 @@ class StorageSafetyRegression(unittest.TestCase):
         self.assertIn("LastCommandSuccess = false", fmt)
         self.assertIn("LastCommandSuccess = false", part)
 
+    def test_readonly_probe_allows_only_bounded_diagnostics(self):
+        self.assertIn('command == "volumes" || command == "lsblk"', KERNEL)
+        probe = method(KERNEL, "private static void PrintReadOnlyVolumes()")
+        self.assertIn("DataVolumePolicy.IsApprovedDataPartition", probe)
+        self.assertIn("DataVolumePolicy.TryFindDataPartition", probe)
+        self.assertNotIn("WriteBlock(", probe)
+        self.assertNotIn("TryMount(", probe)
+
     def test_interactive_mounts_require_policy(self):
         mount = method(DISK, "public static void MountPartition(")
         self.assertIn("DataVolumePolicy.IsSelectedDataPartition", mount)
