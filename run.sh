@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # ZonderqOS Gen 3 entrypoint: Cosmos 3.0.94 exclusively.
 #
-# Do not call the previous 3.0.85 SMP patch launcher from main: old
-# Cosmos packages are incompatible with the 3.0.94 project and USB drivers.
+# Do not call the obsolete SMP patch launcher from main: old packages
+# are incompatible with the active Cosmos 3.0.94 project and USB drivers.
 set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
