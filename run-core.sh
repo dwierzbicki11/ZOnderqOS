@@ -137,6 +137,20 @@ prepare_patched_cosmos_x64() {
         rebuild=1
     fi
 
+    # The patched runtime is compiled from the *entire* patch series, not just
+    # Stdllib.cs. A newer Stage 10/11 GC patch must invalidate local packages,
+    # otherwise the ISO silently contains an older kernel despite a clean git pull.
+    local smt_patch
+    if [[ -n "$kernel_package" ]]; then
+        for smt_patch in "$ROOT_DIR"/patches/cosmos-smt/*.patch; do
+            if [[ "$smt_patch" -nt "$kernel_package" ]]; then
+                echo "[SMT] Zmieniony patch SMP: ${smt_patch##*/} — wymagam przebudowy Cosmos."
+                rebuild=1
+                break
+            fi
+        done
+    fi
+
     if (( rebuild )); then
         echo "[SMT] Przygotowuje lokalne paczki Cosmos z aktualna seria patchy..."
         ZONDERQ_COSMOS_SOURCE_ROOT="$cosmos_root" \
