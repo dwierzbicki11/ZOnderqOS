@@ -747,7 +747,7 @@ diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs b/src/Cosm
              return;
          }
  
-@@ -107,30 +107,56 @@
+@@ -107,29 +107,55 @@
      private static bool HasErrorCode(ulong interrupt) =>
          interrupt is 8 or (>= 10 and <= 14) or 17 or 21 or 29 or 30;
  
@@ -828,4 +828,3 @@ diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs b/src/Cosm
 +        while (true) { }
 +    }
  }
- 
