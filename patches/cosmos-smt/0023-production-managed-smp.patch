@@ -734,6 +734,7 @@ index 18641b2..d69bd2a 100644
 +            }
          }
      }
+ 
 diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs b/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs
 --- a/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs
 +++ b/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs
