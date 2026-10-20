@@ -104,6 +104,59 @@ jobs:
             --verbosity:minimal 2>&1 | tee zonderq/publish-3094.log
           test -s zonderq/experimental3094-output/ZonderqOS.iso
           sha256sum zonderq/experimental3094-output/ZonderqOS.iso
+      - name: QEMU xHCI USB boot-mouse enumeration smoke (1 BSP)
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y qemu-system-x86
+          serial=zonderq/experimental3094-usb-qemu.serial.log
+          : > "$serial"
+          qemu-system-x86_64 \
+            -machine q35 -cpu Nehalem -smp 1 -m 2048M \
+            -cdrom zonderq/experimental3094-output/ZonderqOS.iso -boot d \
+            -vga std -display none -monitor none \
+            -device qemu-xhci,id=xhci \
+            -device usb-mouse,bus=xhci.0 \
+            -serial "file:$serial" -no-reboot -no-shutdown \
+            2> "$serial.stderr" &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          reached=0
+          for i in $(seq 1 85); do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              cat "$serial.stderr" >&2
+              tail -n 100 "$serial" >&2
+              exit 1
+            fi
+            if grep -Eqi 'kernel panic|fatal: exception|page fault' "$serial"; then
+              tail -n 100 "$serial" >&2
+              echo "Guest kernel panic during USB enumeration" >&2
+              exit 1
+            fi
+            if grep -Fq '[Kernel] Calling BeforeRun()...' "$serial" &&
+               grep -Fq 'UsbMouseDriver published pointer' "$serial"; then
+              reached=1
+              break
+            fi
+            sleep 1
+          done
+          if (( reached != 1 )); then
+            tail -n 100 "$serial" >&2
+            echo "USB HID boot mouse did not bind before timeout" >&2
+            exit 1
+          fi
+          grep -F '[MouseManager] Registered mouse' "$serial"
+          echo 'Experimental USB mouse: QEMU 1-vCPU boot and HID binding PASS'
+      - name: Upload QEMU serial logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-3094-usb-qemu-serial
+          path: |
+            zonderq/experimental3094-usb-qemu.serial.log
+            zonderq/experimental3094-usb-qemu.serial.log.stderr
+          if-no-files-found: ignore
       - name: Upload isolated experimental ISO
         uses: actions/upload-artifact@v4
         with:
