@@ -57,7 +57,7 @@ diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs 
      // --- Properties ---
  
      /// <summary>
-@@ -256,66 +311,108 @@ internal static unsafe partial class GarbageCollector
+@@ -256,66 +311,110 @@ internal static unsafe partial class GarbageCollector
              return 0;
          }
  
@@ -195,7 +195,9 @@ diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs 
 +                if (rendezvousEpoch != 0)
 +                {
 +                    int resumed = NativeGcResumeWorld(rendezvousEpoch);
-+                    if (resumed < 0)
++                    ulong cpuCount = NativeGcGetCpuCount();
++                    if (resumed < 0 || cpuCount <= 1 || cpuCount > 256 ||
++                        (ulong)resumed != cpuCount - 1)
 +                    {
 +                        Serial.WriteString("[GC-SMP] ERROR: failed to resume all application processors.\n");
 +                        LogGcRendezvousFailure();
