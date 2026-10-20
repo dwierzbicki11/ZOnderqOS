@@ -18,12 +18,16 @@ require_literal() {
 
 require_literal ZonderqOS.csproj "<Project Sdk=\"Cosmos.Sdk/$VERSION\">"
 require_literal ZonderqOS.csproj "<ZonderqCosmosKeyboardApi>Input</ZonderqCosmosKeyboardApi>"
+require_literal ZonderqOS.csproj "<ZonderqInputDiagnosticBoot Condition=\"'\$(ZonderqInputDiagnosticBoot)' == ''\">false</ZonderqInputDiagnosticBoot>"
+require_literal ZonderqOS.csproj "<ZonderqReadOnlyHardwareProbe Condition=\"'\$(ZonderqReadOnlyHardwareProbe)' == ''\">false</ZonderqReadOnlyHardwareProbe>"
 require_literal ZonderqOS.csproj "Include=\"Cosmos.Kernel\" Version=\"$VERSION\""
 require_literal ZonderqOS.csproj "Include=\"Cosmos.Kernel.System\" Version=\"$VERSION\""
 
 require_literal run.sh 'run-3094.sh'
 require_literal run-3094.sh 'Sdk="Cosmos.Sdk/3.0.94"'
 require_literal .github/workflows/experimental-cosmos-3094-usb.yml "ref: v$VERSION"
+require_literal .github/workflows/experimental-cosmos-3094-usb.yml 'ZonderqReadOnlyHardwareProbe=true'
+require_literal .github/workflows/experimental-cosmos-3094-usb.yml 'ZonderqInputDiagnosticBoot=true'
 require_literal .github/workflows/experimental-cosmos-3094-usb.yml "VersionPrefix: '$VERSION'"
 require_literal .github/workflows/experimental-cosmos-3094-usb.yml 'ZonderqRamRoot=false'
 require_literal .github/workflows/experimental-cosmos-3094-usb.yml 'QEMU persistent FAT32 data volume'
