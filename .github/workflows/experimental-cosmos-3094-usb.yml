@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - 'experiment/cosmos-3094-usb-input'
+      - 'fix/3094-safe-data-volume'
 
 # Avoid rebuilding Cosmos from source twice for the same PR commit.
 # A newer candidate supersedes the older experiment.
@@ -32,6 +33,10 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Guard persistent storage against EFI writes (3.0.94)
+        run: |
+          set -euo pipefail
+          python3 zonderq/tests/test_3094_storage_policy.py
       - name: Install Cosmos native dependencies
         run: |
           sudo apt-get update
