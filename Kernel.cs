@@ -33,7 +33,7 @@ namespace ZonderqOS
                 Console.WriteLine();
                 InputBusDiagnostics.PrintReport();
                 Console.WriteLine();
-                Console.WriteLine("Commands: inputscan | mouse | mousegui | volumes | help");
+                Console.WriteLine("Commands: desktop | inputscan | mouse | mousegui | volumes | help");
                 Console.WriteLine("The USB mouse should be reported as a bound pointer.");
                 return;
 #endif
@@ -213,6 +213,22 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "desktop" || command == "gui")
+            {
+                try
+                {
+                    // Use the existing Gen3 Window/Button/Cursor widgets on a
+                    // diskless 3.0.94 desktop. Never call GuiManager.Run():
+                    // full authenticated GUI loads settings, icons and writes.
+                    global::ZonderqOS.GUI.ReadOnlyDesktop.Run();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("desktop: " + ex.Message);
+                }
+                return;
+            }
+
             if (command == "mousegui" || command == "cursor")
             {
                 // Full-screen pointer demo without mounting Kali's EFI.
@@ -266,6 +282,7 @@ namespace ZonderqOS
                 Console.WriteLine("inputscan - read-only PCI, USB node and pointer-driver report");
                 Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");
                 Console.WriteLine("mousegui  - read-only fullscreen cursor and button test (ESC to exit)");
+                Console.WriteLine("desktop   - read-only Gen3 desktop with draggable windows, buttons and USB pointer");
                 Console.WriteLine("volumes   - inspect disks and validate dedicated FAT32 data policy (read-only)");
                 Console.WriteLine("help      - print this help");
                 Console.WriteLine("No storage writes or privileged shell commands are enabled.");
