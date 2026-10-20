@@ -18,6 +18,10 @@ FAT32 volume with the on-disk 11-character FAT label **ZONDERQDATA**.
 - A missing label, a failed sector read, malformed FAT BPB or two matching
   partitions causes **fail-closed boot before filesystem/account writes**.
 - A FAT12/FAT16 EFI System Partition does not qualify.
+- Even a FAT32 volume with the matching label is rejected if its partition
+  table describes a GPT ESP or MBR EFI (0xEF) entry. Approved partition
+  types are GPT Basic Data and primary MBR FAT32 (0x0B or 0x0C) only.
+  Unknown, extended and damaged table layouts are rejected by default.
 - The selected `Partition` object is passed to Cosmos 3.0.94's partition
   overload of `VfsManager.TryMount` rather than trusting integer index 0.
 - GUI and shell secondary mounting routes enforce the same policy.
