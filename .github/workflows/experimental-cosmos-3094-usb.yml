@@ -41,6 +41,7 @@ jobs:
           set -euo pipefail
           grep -Fq 'Sdk="Cosmos.Sdk/3.0.94"' zonderq/ZonderqOS.csproj
           grep -Fq '<CosmosEnableUsb>true</CosmosEnableUsb>' zonderq/ZonderqOS.csproj
+          grep -Fq '<ZonderqReadOnlyHardwareProbe Condition=' zonderq/ZonderqOS.csproj
           grep -Fq '<ZonderqCosmosKeyboardApi>Input</ZonderqCosmosKeyboardApi>' zonderq/ZonderqOS.csproj
           grep -Fq 'Version="3.0.94"' zonderq/ZonderqOS.csproj
           test "$(git -C cosmos rev-parse HEAD)" = "$(git -C cosmos rev-list -n 1 v3.0.94)"
@@ -134,7 +135,7 @@ jobs:
               echo "Guest kernel panic during USB enumeration" >&2
               exit 1
             fi
-            if grep -Fq '[Kernel] Calling BeforeRun()...' "$serial" &&
+            if grep -Fq '[Kernel] Entering main loop...' "$serial" &&
                grep -Fq 'UsbMouseDriver published pointer' "$serial"; then
               reached=1
               break
