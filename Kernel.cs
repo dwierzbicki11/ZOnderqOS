@@ -11,6 +11,11 @@ namespace ZonderqOS
     public class Kernel : Sys.Kernel
     {
         private const int MaxHistoryEntries = 100;
+#if ZONDERQ_INPUT_DIAGNOSTIC_BOOT
+        private const bool DiagnosticConsoleBoot = true;
+#else
+        private const bool DiagnosticConsoleBoot = false;
+#endif
         private string path = "/root";
         private readonly List<string> history = new List<string>();
         private string sessionUser;
@@ -35,14 +40,29 @@ namespace ZonderqOS
                 BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
+                if (DiagnosticConsoleBoot)
+                {
+                    Console.WriteLine("ZOnderqOS - physical hardware input diagnostics");
+                    Console.WriteLine("Console-only test boot; graphical auto-start is disabled in this build.");
+                    InputBusDiagnostics.PrintReport();
+                    Console.WriteLine();
+                }
                 SystemIdentity.Initialize();
                 ServiceManager.Initialize();
 
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
                 Console.WriteLine();
-                Console.WriteLine("Starting ZOnderqOS graphical session...");
-                Console.WriteLine("Console login is used only as a recovery fallback if GUI startup fails.");
+                if (DiagnosticConsoleBoot)
+                {
+                    Console.WriteLine("Starting diagnostic login console.");
+                    Console.WriteLine("After login use: inputscan, lspci -v, dmesg");
+                }
+                else
+                {
+                    Console.WriteLine("Starting ZOnderqOS graphical session...");
+                    Console.WriteLine("Console login is used only as a recovery fallback if GUI startup fails.");
+                }
             }
             catch (Exception ex)
             {
@@ -54,7 +74,7 @@ namespace ZonderqOS
         {
             try
             {
-                if (SystemSettings.BootToGui && !graphicalStartupFailed)
+                if (!DiagnosticConsoleBoot && SystemSettings.BootToGui && !graphicalStartupFailed)
                 {
                     if (!SecurityContext.IsAuthenticated)
                     {
@@ -256,7 +276,9 @@ namespace ZonderqOS
                 string motd = SystemIdentity.ReadMotd();
                 if (!string.IsNullOrEmpty(motd))
                     Console.Write(motd);
-                Console.WriteLine("Recovery console active. Type 'gui' to retry the graphical desktop manually.");
+                Console.WriteLine(DiagnosticConsoleBoot
+                    ? "Diagnostic console active. GUI auto-start disabled for this build."
+                    : "Recovery console active. Type 'gui' to retry the graphical desktop manually.");
                 Console.WriteLine();
                 return;
             }
