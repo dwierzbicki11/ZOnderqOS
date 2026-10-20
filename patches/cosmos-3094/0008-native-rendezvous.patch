@@ -613,7 +613,7 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Ke
 diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-@@ -690,414 +690,742 @@
+@@ -690,414 +690,750 @@
      mov edi, 255
      lea rsi, [rip + _smp6_ap_spurious_handler]
      call _smp6_set_gate
@@ -1679,10 +1679,18 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    dec eax
 +    jmp .Lsmp8_return
 +.Lsmp8_timeout:
-+    mov eax, -1
-+    jmp .Lsmp8_return
++    mov r10d, -1
++    jmp .Lsmp8_abort
 +.Lsmp8_invalid:
-+    mov eax, -2
++    mov r10d, -2
++.Lsmp8_abort:
++    // Abort-release is mandatory: do not leave APs spinning in the F2 ISR.
++    mov rax, qword ptr [rip + _smp8_request_generation]
++    cmp rax, qword ptr [rip + _smp8_release_generation]
++    jbe .Lsmp8_abort_complete
++    xchg qword ptr [rip + _smp8_release_generation], rax
++.Lsmp8_abort_complete:
++    mov eax, r10d
 +.Lsmp8_return:
 +    add rsp, 16
 +    pop r15
