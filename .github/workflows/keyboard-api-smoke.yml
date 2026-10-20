@@ -1,4 +1,4 @@
-name: Cosmos KeyEvent API compile (3.0.85 / 3.0.94)
+name: Cosmos 3.0.94 KeyEvent API compile
 
 on:
   push:
@@ -26,17 +26,21 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        cosmos-version: ['3.0.85', '3.0.94']
+        cosmos-version: ['3.0.94']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Check launcher syntax and non-mutating preflight
+      - name: Validate version-pinned 3.0.94 launcher without downloads or builds
         run: |
+          set -euo pipefail
           bash -n run.sh
-          bash run.sh --help | grep -Fq -- '--check'
-          bash run.sh --check | grep -Fq 'Preflight PASS'
+          bash -n run-3094.sh
+          bash -n tools/verify-cosmos-compat.sh
+          bash run.sh --help | grep -Fq -- '--download-disk'
+          bash run.sh --check | tee version-check.log
+          grep -Fq 'active SDK, packages, launcher, input API, persistent GUI CI = 3.0.94' version-check.log
       - name: Build against Cosmos ${{ matrix.cosmos-version }} KeyEvent contract
         run: |
           dotnet build tests/KeyboardApiSmoke/KeyboardApiSmoke.csproj -c Release -p:CosmosApiTestVersion=${{ matrix.cosmos-version }} --nologo
