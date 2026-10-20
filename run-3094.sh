@@ -1,76 +1,88 @@
 #!/usr/bin/env bash
-# A 3.0.94-only launcher for the isolated, read-only USB diagnostic ISO.
-# Never invokes the legacy 3.0.85 run.sh, never writes a physical disk.
+# Cosmos 3.0.94 ONLY. Never run legacy 3.0.85 builder or write disks.
 set -euo pipefail
-
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="dwierzbicki11/ZOnderqOS"
-WORKFLOW="experimental-cosmos-3094-usb.yml"
-ARTIFACT="zonderq-3094-usb-input-EXPERIMENTAL"
-OUT="$ROOT/output-3094-usb"
+WORKFLOW="Experimental ZonderqOS Cosmos 3.0.94 USB input"
+OUT="$ROOT/output-3094"
+PROBE_ARTIFACT="zonderq-3094-usb-input-EXPERIMENTAL"
+DISK_ARTIFACT="zonderq-3094-NORMAL-GUI-REQUIRES-ZONDERQDATA"
 
 die() { printf '[3094][ERROR] %s\n' "$*" >&2; exit 1; }
+
 help() {
     cat <<'EOF'
-ZonderqOS / Cosmos 3.0.94 -- safe USB diagnostic runner
-  bash run-3094.sh --check      Verify pinned SDK, branch and workspace
-  bash run-3094.sh --download   Download ISO built by GitHub Actions for exact HEAD
-  bash run-3094.sh --qemu       Download and boot 1-vCPU QEMU with USB HID mouse
-  bash run-3094.sh --help       Show usage
+ZonderqOS Cosmos 3.0.94
+  bash run.sh --check            Verify pinned project, workspace and 3.0.94
+  bash run.sh --download         Download read-only USB diagnostic ISO
+  bash run.sh --download-disk    Download persistent full GUI ISO
+  bash run.sh --qemu             Run read-only USB probe in QEMU (1 CPU)
+  bash run.sh --help             Show this help
 
-This is the read-only input probe (inputscan | mouse | help), NOT full
-SMP/OrionGC/GUI production. It does NOT install or write to any physical disk.
+The persistent GUI image requires a dedicated FAT32 ZONDERQDATA partition,
+and is NOT a disk installer. NEVER format Kali's EFI or root partitions.
+Full managed SMP/OrionGC Stage23 is not yet certified on Cosmos 3.0.94.
 EOF
 }
 preflight() {
     grep -Fq 'Sdk="Cosmos.Sdk/3.0.94"' "$ROOT/ZonderqOS.csproj" ||
-        die "SDK must be Cosmos 3.0.94 -- refusing mixed versions."
+        die "SDK must be Cosmos 3.0.94."
     grep -Fq 'Version="3.0.94"' "$ROOT/ZonderqOS.csproj" ||
         die "Runtime must be Cosmos 3.0.94."
     grep -Fq '<ZonderqReadOnlyHardwareProbe Condition=' "$ROOT/ZonderqOS.csproj" ||
-        die "Read-only hardware probe is not configured."
-    command -v git >/dev/null || die "git not found"
+        die "Read-only input probe is missing."
+    command -v git >/dev/null || die "git is required"
     [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]] ||
-        die "Working tree has modified tracked files; commit/stash first."
+        die "Uncommitted tracked files: commit/stash before downloading a pinned image."
     BRANCH="$(git -C "$ROOT" branch --show-current)"
-    [[ -n "$BRANCH" ]] || die "Named branch required"
+    # GitHub pull-request checks intentionally use detached HEAD. Checking
+    # the active source version is safe there; downloading a branch-scoped
+    # artifact is NOT, so only enforce named branches on downloads.
+    [[ -n "$BRANCH" ]] || BRANCH="(detached-checkout)"
     SHA="$(git -C "$ROOT" rev-parse HEAD)"
-    echo "[3094] Verified SDK/runtime v3.0.94, branch=$BRANCH, commit=${SHA:0:12}"
+    echo "[3094] Pinned SDK/runtime v3.0.94, branch=$BRANCH, commit=${SHA:0:12}"
 }
 download_artifact() {
-    command -v gh >/dev/null || die "GitHub CLI (gh) required. Use the Actions webpage to download manually."
-    command -v jq >/dev/null || die "jq required to validate workflow commit."
-    local runs run_id temp
-    # Use workflow display-name filtering, not --workflow filename: the
-    # experimental workflow has not reached the default branch yet.
+    local artifact="$1" output_name="$2" runs run_id temp
+    [[ "$BRANCH" != "(detached-checkout)" ]] ||
+        die "Artifact download requires a named local branch; detached CI checkout is check-only."
+    command -v gh >/dev/null || die "Install gh CLI or download via GitHub Actions Artifacts browser."
+    command -v jq >/dev/null || die "Install jq to verify exact-commit provenance."
     runs="$(gh run list --repo "$REPO" --branch "$BRANCH" --limit 100 \
         --json databaseId,headSha,conclusion,name)" ||
-        die "Cannot obtain GitHub Actions runs (check gh auth status)."
-    run_id="$(printf '%s' "$runs" | jq -r --arg sha "$SHA" \
-        '[.[] | select(.name == "Experimental ZonderqOS Cosmos 3.0.94 USB input" and .conclusion == "success" and .headSha == $sha)] | .[0].databaseId // empty')"
+        die "Cannot get GitHub workflow runs (check gh auth)."
+    run_id="$(printf '%s' "$runs" | jq -r --arg sha "$SHA" --arg workflow "$WORKFLOW" \
+        '[.[] | select(.headSha == $sha and .conclusion == "success" and .name == $workflow)] | .[0].databaseId // empty')"
     [[ -n "$run_id" ]] ||
-        die "No successful 3.0.94 workflow for exact HEAD. Review GitHub Actions; cannot use stale ISO."
+        die "No successful ISOLATED Cosmos 3.0.94 workflow for exact commit. Refusing stale ISO."
     temp="$(mktemp -d)"
     trap 'rm -rf -- "$temp"' RETURN
-    gh run download "$run_id" --repo "$REPO" --name "$ARTIFACT" --dir "$temp" ||
-        die "Artifact download failed or artifact expired."
-    [[ -s "$temp/ZonderqOS.iso" ]] || die "Missing nonempty ISO."
+    gh run download "$run_id" --repo "$REPO" --name "$artifact" --dir "$temp" ||
+        die "ISO artifact unavailable or expired."
+    [[ -s "$temp/ZonderqOS.iso" ]] || die "No valid ISO in artifact."
     mkdir -p "$OUT"
-    cp -- "$temp/ZonderqOS.iso" "$OUT/ZonderqOS.iso"
-    printf '[3094] ISO: %s\n' "$OUT/ZonderqOS.iso"
-    sha256sum "$OUT/ZonderqOS.iso"
+    cp -- "$temp/ZonderqOS.iso" "$OUT/$output_name"
+    printf '[3094] ISO: %s\n' "$OUT/$output_name"
+    sha256sum "$OUT/$output_name"
 }
 case "${1:---help}" in
     --help|-h) help ;;
     --check) preflight ;;
-    --download) preflight; download_artifact ;;
+    --download)
+        preflight
+        download_artifact "$PROBE_ARTIFACT" "ZonderqOS-3094-usb.iso"
+        ;;
+    --download-disk)
+        preflight
+        download_artifact "$DISK_ARTIFACT" "ZonderqOS-3094-disk.iso"
+        ;;
     --qemu)
         preflight
-        download_artifact
+        download_artifact "$PROBE_ARTIFACT" "ZonderqOS-3094-usb.iso"
         command -v qemu-system-x86_64 >/dev/null || die "Install qemu-system-x86."
         qemu-system-x86_64 \
             -machine q35 -cpu Nehalem -smp 1 -m 2048M \
-            -cdrom "$OUT/ZonderqOS.iso" -boot d \
+            -cdrom "$OUT/ZonderqOS-3094-usb.iso" -boot d \
             -device qemu-xhci,id=xhci -device usb-mouse,bus=xhci.0 \
             -serial stdio -no-reboot
         ;;

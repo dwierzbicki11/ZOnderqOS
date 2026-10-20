@@ -1,41 +1,45 @@
 #!/usr/bin/env bash
-# Fail fast if the Cosmos SDK diverges from the locally patched Stage 23 runtime.
-# Update this guard only after the complete patch series has been ported and
-# the real QEMU/ARM64 compatibility checks pass on the target release.
+# Verify the active ZonderqOS project, launcher and dedicated CI path all
+# agree on Cosmos 3.0.94. This is NOT a managed Stage-23 SMP proof.
 set -euo pipefail
-
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BASE_VERSION="3.0.85"
+VERSION="3.0.94"
 
 fail() {
     printf '[COSMOS-VERSION][FAIL] %s\n' "$*" >&2
     exit 1
 }
-
 require_literal() {
-    local file="$1" literal="$2"
-    grep -Fq -- "$literal" "$ROOT_DIR/$file" ||
-        fail "$file does not contain required release anchor: $literal"
+    local relative="$1" literal="$2"
+    [[ -f "$ROOT_DIR/$relative" ]] || fail "Missing $relative"
+    grep -Fq -- "$literal" "$ROOT_DIR/$relative" ||
+        fail "$relative does not contain expected 3.0.94 anchor: $literal"
 }
 
-project="$ROOT_DIR/ZonderqOS.csproj"
-[[ -f "$project" ]] || fail "Missing ZonderqOS.csproj"
+require_literal ZonderqOS.csproj "<Project Sdk=\"Cosmos.Sdk/$VERSION\">"
+require_literal ZonderqOS.csproj "<ZonderqCosmosKeyboardApi>Input</ZonderqCosmosKeyboardApi>"
+require_literal ZonderqOS.csproj "<ZonderqInputDiagnosticBoot Condition=\"'\$(ZonderqInputDiagnosticBoot)' == ''\">false</ZonderqInputDiagnosticBoot>"
+require_literal ZonderqOS.csproj "<ZonderqReadOnlyHardwareProbe Condition=\"'\$(ZonderqReadOnlyHardwareProbe)' == ''\">false</ZonderqReadOnlyHardwareProbe>"
+require_literal ZonderqOS.csproj "Include=\"Cosmos.Kernel\" Version=\"$VERSION\""
+require_literal ZonderqOS.csproj "Include=\"Cosmos.Kernel.System\" Version=\"$VERSION\""
 
-# The project must use the *same* Cosmos release for MSBuild SDK and runtime.
-require_literal "ZonderqOS.csproj" "<Project Sdk=\"Cosmos.Sdk/$BASE_VERSION\">"
-require_literal "ZonderqOS.csproj" "<ZonderqCosmosKeyboardApi>Legacy</ZonderqCosmosKeyboardApi>"
-require_literal "ZonderqOS.csproj" "Include=\"Cosmos.Kernel\" Version=\"$BASE_VERSION\""
-require_literal "ZonderqOS.csproj" "Include=\"Cosmos.Kernel.System\" Version=\"$BASE_VERSION\""
+require_literal run.sh 'run-3094.sh'
+require_literal run-3094.sh 'Sdk="Cosmos.Sdk/3.0.94"'
+require_literal .github/workflows/experimental-cosmos-3094-usb.yml "ref: v$VERSION"
+require_literal .github/workflows/experimental-cosmos-3094-usb.yml 'ZonderqReadOnlyHardwareProbe=true'
+require_literal .github/workflows/experimental-cosmos-3094-usb.yml 'ZonderqInputDiagnosticBoot=true'
+require_literal .github/workflows/experimental-cosmos-3094-usb.yml "VersionPrefix: '$VERSION'"
+require_literal .github/workflows/experimental-cosmos-3094-usb.yml 'ZonderqRamRoot=false'
+require_literal .github/workflows/experimental-cosmos-3094-usb.yml 'QEMU persistent FAT32 data volume'
+require_literal .github/workflows/keyboard-api-smoke.yml "'$VERSION'"
+require_literal tests/KeyboardApiSmoke/KeyboardApiSmoke.csproj "<CosmosApiTestVersion Condition=\"'\$(CosmosApiTestVersion)' == ''\">$VERSION</CosmosApiTestVersion>"
 
-# These tools build a custom local NuGet feed with the Stage 23 SMP changes.
-# A new public SDK cannot use the old locally built packages.
-require_literal "run.sh" "COSMOS_TAG=\"v$BASE_VERSION\""
-require_literal "run-core.sh" "Cosmos.Kernel.$BASE_VERSION.nupkg"
-require_literal "tools/prepare-cosmos-smt.sh" "v$BASE_VERSION"
-require_literal "tools/prepare-cosmos-smt.sh" "VersionPrefix=$BASE_VERSION"
-require_literal ".github/workflows/smt-stage22.yml" "ref: v$BASE_VERSION"
-require_literal ".github/workflows/smt-stage23.yml" "ref: v$BASE_VERSION"
-require_literal ".github/workflows/smt-stage22.yml" "cosmos.*/$BASE_VERSION/"
-require_literal ".github/workflows/smt-stage23.yml" "cosmos.*/$BASE_VERSION/"
+# A compatibility check must not bless the outdated Stage-22/23 v3.0.85
+# patch series as if it were already ported. The separate, real production
+# managed SMP/OrionGC gate remains BLOCKED until the v3.0.94 port exists.
+if grep -Fq 'v3.0.85' "$ROOT_DIR/run.sh"; then
+    fail "Active main launcher still references incompatible Cosmos v3.0.85"
+fi
 
-printf '[COSMOS-VERSION] PASS: Cosmos SDK/packages, launcher, SMP patches and CI use %s\n' "$BASE_VERSION"
+printf '[COSMOS-VERSION] PASS: active SDK, packages, launcher, input API, persistent GUI CI = %s\n' "$VERSION"
+printf '[COSMOS-VERSION] NOTE: production managed SMP/OrionGC Stage 23 is NOT yet certified on %s.\n' "$VERSION"

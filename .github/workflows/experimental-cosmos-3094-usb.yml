@@ -4,6 +4,8 @@ on:
   workflow_dispatch:
   push:
     branches:
+      - 'main'
+      - 'fix/3094-ci-entrypoint-guard'
       - 'experiment/cosmos-3094-usb-input'
       - 'fix/3094-safe-data-volume'
       - 'feat/3094-readonly-desktop-usb'
@@ -117,6 +119,9 @@ jobs:
           PY
           dotnet publish zonderq/ZonderqOS.csproj \
             -c Debug -r linux-x64 -p:CosmosArch=x64 \
+            -p:ZonderqReadOnlyHardwareProbe=true \
+            -p:ZonderqInputDiagnosticBoot=true \
+            -p:ZonderqRamRoot=false \
             -o zonderq/experimental3094-output --no-restore \
             --verbosity:minimal 2>&1 | tee zonderq/publish-3094.log
           test -s zonderq/experimental3094-output/ZonderqOS.iso
@@ -204,6 +209,7 @@ jobs:
             -c Debug -r linux-x64 -p:CosmosArch=x64 \
             -p:ZonderqReadOnlyHardwareProbe=false \
             -p:ZonderqInputDiagnosticBoot=false \
+            -p:ZonderqRamRoot=false \
             -o zonderq/experimental3094-full-gui --no-restore \
             --verbosity:minimal 2>&1 | tee zonderq/publish-gui-3094.log
           test -s zonderq/experimental3094-full-gui/ZonderqOS.iso
