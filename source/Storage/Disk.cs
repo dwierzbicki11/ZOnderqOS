@@ -27,11 +27,22 @@ namespace ZonderqOS
                 // Cosmos 3.0.94: the partition order can change when a USB disk
                 // appears. Never mount numeric source "0" (it was Kali's ESP).
                 // Require a unique explicitly labelled data FAT32 partition.
+#if ZONDERQ_3094_RAM_ROOT
+                // Full GUI can boot safely without ANY partition writes.
+                // This memory-only partition is created and FAT32-formatted
+                // inside private RAM, never from StorageManager's disk index.
+                if (!RamRootVolume.TryCreate(out Partition data))
+                {
+                    WriteMessage.WriteError("RAM-only root could not be prepared; refusing host-disk fallback.", "VFS");
+                    return false;
+                }
+#else
                 if (!DataVolumePolicy.TryFindDataPartition(out Partition data, out string error))
                 {
                     WriteMessage.WriteError(error, "VFS");
                     return false;
                 }
+#endif
 
                 if (!VfsManager.TryMount("fat", data, MountFlags.None, "/", out var mount))
                 {
@@ -40,7 +51,11 @@ namespace ZonderqOS
                 }
 
                 _currentMount = mount;
+#if ZONDERQ_3094_RAM_ROOT
+                WriteMessage.WriteOK("Mounted ephemeral ZonderqOS FAT32 RAM root at '/' (no physical writes).", "VFS");
+#else
                 WriteMessage.WriteOK($"Mounted dedicated ZONDERQDATA at '/' (Source: {mount.Source})", "VFS");
+#endif
                 CreateStandardHierarchy();
                 return true;
             }
