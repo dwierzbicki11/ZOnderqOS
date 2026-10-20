@@ -2,6 +2,9 @@ using System;
 using System.Collections.Generic;
 using ZonderqOS.Hardware;
 using ZonderqOS.Platform;
+#if ZONDERQ_COSMOS_INPUT_API
+using Cosmos.Kernel.System.Diagnostics;
+#endif
 
 namespace ZonderqOS.SystemCore
 {
@@ -80,9 +83,73 @@ namespace ZonderqOS.SystemCore
             if (usbHosts == 0)
                 Write("[INPUT] No PCI USB host controller in this scan (not proof USB is absent).", shellOutput);
 
+#if ZONDERQ_COSMOS_INPUT_API
+            PrintDriverKitInputDevices(shellOutput);
+#endif
             PrintLimitations(shellOutput);
             return true;
         }
+
+#if ZONDERQ_COSMOS_INPUT_API
+        private static void PrintDriverKitInputDevices(bool shellOutput)
+        {
+            Write("[INPUT] Cosmos 3.0.94 driver kit: " +
+                (DriverDiagnostics.IsStarted ? "started" : "not started"), shellOutput);
+            int usbNodes = 0;
+            int xhciNodes = 0;
+            int boundUsbMouseInterfaces = 0;
+            int nodeCount = DriverDiagnostics.NodeCount;
+
+            for (int i = 0; i < nodeCount; i++)
+            {
+                DeviceNodeInfo node;
+                if (!DriverDiagnostics.TryGetNode(i, out node))
+                    continue;
+
+                bool usb = node.BusName == "usb";
+                bool xhci = node.DriverName == "XhciDriver" ||
+                    (node.Description != null && node.Description.Contains("xHCI"));
+                if (!usb && !xhci)
+                    continue;
+
+                string state = node.State == DeviceNodeState.Bound ? "BOUND" :
+                    node.State == DeviceNodeState.Pending ? "PENDING" :
+                    node.State == DeviceNodeState.Unbound ? "UNBOUND" : "RETRACTED";
+
+                if (usb)
+                {
+                    usbNodes++;
+                    if (node.DriverName == "UsbMouseDriver" && node.State == DeviceNodeState.Bound)
+                        boundUsbMouseInterfaces++;
+                }
+                if (xhci)
+                    xhciNodes++;
+                Write("[INPUT] KIT " + node.Path + " " + state +
+                    " driver=" + (node.DriverName ?? "none") +
+                    " " + (node.Description ?? ""), shellOutput);
+            }
+
+            int pointers = 0;
+            int deviceCount = DriverDiagnostics.DeviceCount;
+            for (int i = 0; i < deviceCount; i++)
+            {
+                PublishedDeviceInfo published;
+                if (!DriverDiagnostics.TryGetDevice(i, out published) ||
+                    published.Kind != PublishedDeviceKind.Pointer)
+                    continue;
+                pointers++;
+                Write("[INPUT] POINTER " + published.Name +
+                    " by=" + (published.DriverName ?? "unknown") +
+                    " from=" + (published.NodePath ?? "unknown") +
+                    " consumed=" + (published.IsConsumed ? "yes" : "no"), shellOutput);
+            }
+
+            Write("[INPUT] Driver-kit USB nodes=" + usbNodes +
+                " xHCI nodes=" + xhciNodes +
+                " bound USB mice=" + boundUsbMouseInterfaces +
+                " published pointers=" + pointers, shellOutput);
+        }
+#endif
 
         private static string UsbControllerType(byte progIf)
         {
@@ -100,8 +167,12 @@ namespace ZonderqOS.SystemCore
 
         private static void PrintLimitations(bool shellOutput)
         {
+#if ZONDERQ_COSMOS_INPUT_API
+            Write("[INPUT] USB HID identity: check KIT usb nodes and POINTER driver bindings above.", shellOutput);
+#else
             Write("[INPUT] USB mouse: NOT VERIFIED (Cosmos 3.0.85 has no USB HID mouse enumeration).", shellOutput);
-            Write("[INPUT] Touchpad: NOT VERIFIED (PS/2 or ACPI/I2C HID; no HID identity scan).", shellOutput);
+#endif
+            Write("[INPUT] Touchpad ELAN1000: NOT VERIFIED (ACPI/I2C HID driver not available).", shellOutput);
             Write("[INPUT] PCI USB host != connected USB mouse; PCI I2C candidate != touchpad.", shellOutput);
             Write("[INPUT] For PS/2 device init see early [PS2Controller]/[PS2Mouse] serial logs.", shellOutput);
             Write("[INPUT] After login: inputscan | lspci -v | dmesg", shellOutput);
