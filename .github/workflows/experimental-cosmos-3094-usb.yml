@@ -10,6 +10,7 @@ on:
       - 'fix/3094-usb-mouse-gui'
       - 'feat/3094-native-resolution-normal-gui'
       - 'feat/3094-fullgui-ram-root'
+      - 'test/3094-persistent-disk-qemu'
 
 # Avoid rebuilding Cosmos from source twice for the same PR commit.
 # A newer candidate supersedes the older experiment.
@@ -46,6 +47,7 @@ jobs:
           python3 zonderq/tests/test_3094_display_gui.py
           python3 zonderq/tests/test_3094_ram_root.py
           bash -n zonderq/run-3094.sh
+          bash -n zonderq/tests/qemu-3094-persistent-disk.sh
       - name: Install Cosmos native dependencies
         run: |
           sudo apt-get update
@@ -213,6 +215,13 @@ jobs:
           path: zonderq/experimental3094-full-gui/ZonderqOS.iso
           retention-days: 4
           if-no-files-found: error
+      - name: QEMU persistent FAT32 data volume — two boots, EFI unchanged
+        timeout-minutes: 6
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y mtools
+          bash zonderq/tests/qemu-3094-persistent-disk.sh \
+            zonderq/experimental3094-full-gui/ZonderqOS.iso
       - name: Build FULL graphical session with FAT32 RAM root (no host writes)
         run: |
           set -euo pipefail
