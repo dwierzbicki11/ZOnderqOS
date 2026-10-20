@@ -97,19 +97,30 @@ namespace ZonderqOS.GUI
 
         private static string FindMountPointInVfs(int partitionIndex)
         {
-            string source = partitionIndex.ToString();
-
             try
             {
+                var partitions = StorageManager.Partitions;
+                if (partitionIndex < 0 || partitionIndex >= partitions.Count)
+                    return null;
+
+                Partition selected = partitions[partitionIndex];
                 foreach (VfsMount mount in VfsManager.Mounts)
                 {
-                    if (mount.Source == source)
+                    if (object.ReferenceEquals(mount.Partition, selected))
                         return mount.MountPoint;
+
+                    // A bound FAT driver uses the empty source, deliberately
+                    // avoiding a mutable numeric index. The root's verified
+                    // partition is still shown as mounted at "/" in the GUI.
+                    if (mount.MountPoint == "/" &&
+                        (mount.Name == "rootfat" || mount.Name == "ramfat") &&
+                        global::ZonderqOS.DataVolumePolicy.IsSelectedDataPartition(selected))
+                        return "/";
                 }
             }
             catch
             {
-                // Keep the GUI usable even if mount-table inspection fails.
+                // Keep GUI functional if the backing device is withdrawn.
             }
 
             return null;
