@@ -53,6 +53,13 @@ namespace ZonderqOS
 
             try
             {
+                // A label is not an authorization boundary. On Cosmos 3.0.94
+                // also inspect the host partition table and explicitly reject
+                // GPT EFI System Partitions and MBR type 0xEF, even if someone
+                // relabels them ZONDERQDATA.
+                if (!IsDedicatedDataPartitionType(partition))
+                    return false;
+
                 byte[] sector = new byte[checked((int)partition.BlockSize)];
                 partition.ReadBlock(0UL, 1UL, sector);
                 if (!FatBootSector.TryParse(sector, out FatBootSector boot) ||
@@ -74,6 +81,47 @@ namespace ZonderqOS
                 // Unknown/failed reads must never authorize storage mutations.
                 return false;
             }
+        }
+
+        private static bool IsDedicatedDataPartitionType(Partition partition)
+        {
+            // Do not allow unpartitioned/raw volumes or unsupported partition
+            // table layouts to become writable roots.
+            if (partition.Host == null || partition.Host.BlockSize < 512)
+                return false;
+
+            if (Gpt.IsGpt(partition.Host))
+            {
+                List<GptPartitionEntry> entries = Gpt.Parse(partition.Host);
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    GptPartitionEntry entry = entries[i];
+                    if (entry.StartSector == partition.StartSector &&
+                        entry.SectorCount == partition.BlockCount)
+                        return entry.PartitionType == Gpt.BasicDataPartitionType;
+                }
+                return false;
+            }
+
+            if (!Mbr.IsMbr(partition.Host))
+                return false;
+
+            List<MbrPartitionEntry> primary = Mbr.Parse(partition.Host);
+            for (int i = 0; i < primary.Count; i++)
+            {
+                MbrPartitionEntry entry = primary[i];
+                if (entry.StartSector == partition.StartSector &&
+                    entry.SectorCount == partition.BlockCount)
+                {
+                    // FAT32 CHS/LBA only. This excludes 0xEF (EFI system),
+                    // GPT protective 0xEE, NTFS/exFAT and other host volumes.
+                    return entry.SystemId == 0x0B || entry.SystemId == 0x0C;
+                }
+            }
+
+            // Extended/logical and unknown schemes need separate audit before
+            // they can safely be used as a persistent root.
+            return false;
         }
 
         public static bool IsSelectedDataPartition(Partition partition)
