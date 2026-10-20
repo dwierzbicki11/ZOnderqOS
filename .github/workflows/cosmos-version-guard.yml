@@ -33,5 +33,6 @@ jobs:
         run: |
           bash -n tools/verify-cosmos-compat.sh
           bash -n run-core.sh
+          bash -n run.sh
       - name: Enforce SDK/runtime/CI release alignment
         run: bash tools/verify-cosmos-compat.sh
