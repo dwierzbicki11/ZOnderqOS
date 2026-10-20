@@ -35,76 +35,13 @@ namespace ZonderqOS.GUI
 
         public static bool TryMount(int partitionIndex, out string mountPoint, out string error)
         {
+            // Do not double-mount the writable root or resolve VFS sources
+            // through mutable partition indices while USB hotplug is active.
+            // The selected data volume is already mounted at / by Disk.
             mountPoint = null;
-            error = null;
-
-            try
-            {
-                int partitionCount = StorageManager.Partitions.Count;
-                if (partitionIndex < 0 || partitionIndex >= partitionCount)
-                {
-                    error = "Partition does not exist";
-                    NotifyFailure("Nie mozna zamontowac woluminu", error);
-                    return false;
-                }
-
-                // No filesystem access to arbitrary EFI/system partitions.
-                // Partition indices are unstable across hot-plug events.
-                if (!global::ZonderqOS.DataVolumePolicy.IsSelectedDataPartition(
-                    StorageManager.Partitions[partitionIndex]))
-                {
-                    error = "Only the uniquely labelled ZONDERQDATA partition may be mounted.";
-                    NotifyFailure("Montowanie zablokowane", error);
-                    return false;
-                }
-
-                string existingMountPoint = FindMountPointInVfs(partitionIndex);
-                if (!string.IsNullOrEmpty(existingMountPoint))
-                {
-                    mountPoint = existingMountPoint;
-                    mountedPartitions[partitionIndex] = existingMountPoint;
-                    return true;
-                }
-
-                // /mnt is a normal directory on the system volume. The mount target itself,
-                // however, must not be pre-created. Cosmos Gen3 VFS creates/owns the mount point.
-                if (!Directory.Exists("/mnt"))
-                    Directory.CreateDirectory("/mnt");
-
-                string baseMountPoint = "/mnt/volume" + partitionIndex;
-                mountPoint = FindFreeMountPoint(baseMountPoint);
-                if (string.IsNullOrEmpty(mountPoint))
-                {
-                    error = "No free mount point under /mnt";
-                    NotifyFailure("Nie mozna zamontowac woluminu", error);
-                    return false;
-                }
-
-                VfsMount mount;
-                if (!VfsManager.TryMount("fat", partitionIndex.ToString(), MountFlags.None, mountPoint, out mount))
-                {
-                    mountPoint = null;
-                    error = "Mount failed: volume must contain a Cosmos FAT12/16/32 filesystem";
-                    NotifyFailure("Montowanie nie powiodlo sie", error);
-                    return false;
-                }
-
-                mountPoint = mount.MountPoint;
-                mountedPartitions[partitionIndex] = mountPoint;
-                global::ZonderqOS.NotificationService.Post(
-                    global::ZonderqOS.NotificationKind.Storage,
-                    "MAGAZYN",
-                    "Wolumin zamontowany",
-                    mountPoint);
-                return true;
-            }
-            catch (Exception ex)
-            {
-                mountPoint = null;
-                error = "Mount exception: " + ex.Message;
-                NotifyFailure("Blad montowania woluminu", error);
-                return false;
-            }
+            error = "Manual mounts disabled in Cosmos 3.0.94; the approved data root is already mounted.";
+            NotifyFailure("Montowanie zablokowane", error);
+            return false;
         }
 
         public static bool TryUnmount(int partitionIndex, out string error)
