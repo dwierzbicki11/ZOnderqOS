@@ -32,9 +32,11 @@ jobs:
           - cpus: 4
             cores: 4
             threads: 1
+          # Mirrors the real ASUS i3-5005U (Broadwell, 2C/4T) smoke-test.
           - cpus: 4
             cores: 2
             threads: 2
+            cpu_model: Broadwell
           - cpus: 8
             cores: 8
             threads: 1
@@ -161,7 +163,7 @@ jobs:
       - name: QEMU Stage 0-22 regression plus production all-CPU managed scheduling
         working-directory: zonderq
         env:
-          STAGE23_QEMU_CPU_MODEL: Nehalem
+          STAGE23_QEMU_CPU_MODEL: ${{ matrix.cpu_model || 'Nehalem' }}
           STAGE23_QEMU_SOCKETS: 1
           STAGE23_QEMU_CPUS: ${{ matrix.cpus }}
           STAGE23_QEMU_CORES: ${{ matrix.cores }}
