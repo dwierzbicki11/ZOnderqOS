@@ -60,7 +60,10 @@ jobs:
           export PATH="$HOME/.dotnet/tools:$PATH"
           export NUGET_PACKAGES="${{ runner.temp }}/zonderq3094-nuget"
           mkdir -p "$NUGET_PACKAGES"
-          cat > zonderq/NuGet.3094.Config <<EOF
+          # The MSBuild SDK resolver reads a project-root NuGet.Config BEFORE
+          # the restore command's --configfile argument is applied.
+          # Without this, Cosmos.Sdk can be silently resolved from nuget.org.
+          cat > zonderq/NuGet.Config <<EOF
           <?xml version="1.0" encoding="utf-8"?>
           <configuration>
             <packageSources>
@@ -76,7 +79,7 @@ jobs:
           EOF
           dotnet restore zonderq/ZonderqOS.csproj \
             -r linux-x64 -p:CosmosArch=x64 \
-            --configfile zonderq/NuGet.3094.Config --force --no-cache \
+            --configfile zonderq/NuGet.Config --force --no-cache \
             2>&1 | tee zonderq/restore-3094.log
           python3 - <<'PY'
           import json, os, pathlib
@@ -86,9 +89,10 @@ jobs:
           cache = pathlib.Path(os.environ["NUGET_PACKAGES"])
           found = set()
           for p in cache.glob("cosmos.*/3.0.94/.nupkg.metadata"):
-              source = pathlib.Path(json.loads(p.read_text())["source"]).resolve()
+              raw_source = json.loads(p.read_text())["source"]
+              source = pathlib.Path(raw_source).resolve()
               if source != feed:
-                  raise SystemExit(f"Cosmos package not from pinned local feed: {p}: {source}")
+                  raise SystemExit(f"Cosmos package not from pinned local feed: {p}: {raw_source}")
               found.add(p.parent.parent.name)
           if required - found:
               raise SystemExit(f"Missing pinned 3.0.94 packages: {sorted(required - found)}")
