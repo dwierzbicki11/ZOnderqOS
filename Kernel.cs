@@ -40,7 +40,9 @@ namespace ZonderqOS
 #if ZONDERQ_HTOP_SMOKE_TEST
                 HtopSmokeTest.Run();
 #endif
-                Disk.Initialize();
+                if (!Disk.Initialize())
+                    throw new InvalidOperationException(
+                        "No approved ZONDERQDATA volume: refusing normal boot before any filesystem/user writes.");
                 UserManager.Initialize();
                 Command.Initialize();
                 EnvironmentManager.Initialize();
