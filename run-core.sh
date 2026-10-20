@@ -349,10 +349,30 @@ validate_hardware() {
 }
 
 verify_cpu_model() {
-    local arch="$1"; local emulator
+    local arch="$1"; local emulator models versioned_model
     if [[ "$arch" == "x64" ]]; then emulator="qemu-system-x86_64"; else emulator="qemu-system-aarch64"; fi
     require_command "$emulator"
-    "$emulator" -cpu help 2>/dev/null | grep -Fq "$HW_CPU_MODEL" || fail "QEMU nie zna modelu CPU '$HW_CPU_MODEL' dla $arch. Sprawdz: $emulator -cpu help"
+
+    # Do not grep -q on a live producer with pipefail: SIGPIPE can falsely
+    # reject a valid model. Capture once, then check the complete output.
+    models="$("$emulator" -cpu help 2>&1)" || fail "Nie mozna odczytac modeli CPU: $emulator"
+    if [[ "$arch" == "x64" ]]; then
+        if awk -v model="$HW_CPU_MODEL" '$2 == model { found=1 } END { exit !found }' <<< "$models"; then
+            return 0
+        fi
+        versioned_model="$(awk -v model="$HW_CPU_MODEL" '$2 == model "-v1" { print $2; exit }' <<< "$models")"
+        if [[ -n "$versioned_model" ]]; then
+            echo "[QEMU] Alias $HW_CPU_MODEL -> $versioned_model"
+            HW_CPU_MODEL="$versioned_model"
+            return 0
+        fi
+        # QEMU may accept an unlisted alias. The VM launch itself remains
+        # authoritative and will display any unsupported-model error.
+        echo "[QEMU] Model $HW_CPU_MODEL nie jest na liscie; QEMU zweryfikuje go przy starcie."
+        return 0
+    fi
+    grep -Fq -- "$HW_CPU_MODEL" <<< "$models" || \
+        fail "QEMU nie zna modelu CPU '$HW_CPU_MODEL' dla $arch. Sprawdz: $emulator -cpu help"
 }
 
 print_hardware_summary() {
