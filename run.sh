@@ -250,6 +250,33 @@ cleanup_generated_tracked_changes
 cosmos_root="$(resolve_cosmos_root)" || exit $?
 [[ -n "$cosmos_root" ]] || fail "Nie udalo sie ustalic katalogu Cosmos."
 verify_cosmos_checkout_revision "$cosmos_root"
+
+# An older SMP patch series can remain in the developer's Cosmos checkout.
+# Never reset/clean that checkout. An opt-in isolated git worktree, keyed by
+# this ZonderqOS commit, provides a pristine v3.0.85 base for reproducible
+# patch application without deleting or overwriting developer changes.
+if [[ "${ZONDERQ_SMT_CLEAN_WORKTREE:-0}" == "1" ]]; then
+    require_git_revision="$(git -C "$ROOT_DIR" rev-parse --short=12 HEAD)" || \
+        fail "Nie mozna ustalic rewizji ZonderqOS dla izolowanego SMT."
+    smt_worktree="$(cd "$ROOT_DIR/.." && pwd)/.cosmos-smt-${require_git_revision}"
+    if [[ ! -e "$smt_worktree" ]]; then
+        echo "[SMT] Tworze izolowany, czysty Cosmos $COSMOS_TAG: $smt_worktree"
+        git -C "$cosmos_root" worktree add --detach "$smt_worktree" "$COSMOS_TAG" || \
+            fail "Nie udalo sie utworzyc izolowanego worktree."
+    fi
+
+    [[ -d "$smt_worktree" ]] && is_cosmos_checkout "$smt_worktree" || \
+        fail "Docelowy katalog izolowanego Cosmos nie jest poprawnym checkoutem: $smt_worktree"
+    source_common="$(git -C "$cosmos_root" rev-parse --path-format=absolute --git-common-dir)"
+    worktree_common="$(git -C "$smt_worktree" rev-parse --path-format=absolute --git-common-dir)"
+    [[ "$source_common" == "$worktree_common" ]] || \
+        fail "Istniejacy worktree pochodzi z innego repo. Niczego nie nadpisuje: $smt_worktree"
+    verify_cosmos_checkout_revision "$smt_worktree"
+    git -C "$smt_worktree" submodule update --init --recursive || \
+        fail "Nie mozna zainicjalizowac submodulow izolowanego Cosmos."
+    echo "[SMT] Izolowany worktree: $smt_worktree (oryginal pozostal bez zmian)."
+    cosmos_root="$smt_worktree"
+fi
 # Clear caches only after confirming the correct version of Cosmos.
 cleanup_generated_untracked_cache
 export ZONDERQ_COSMOS_SOURCE_ROOT="$cosmos_root"
