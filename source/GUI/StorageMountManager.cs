@@ -12,11 +12,6 @@ namespace ZonderqOS.GUI
         // This cache is only a fast fallback. The VFS mount table remains the source of truth.
         private static readonly Dictionary<int, string> mountedPartitions = new Dictionary<int, string>();
 
-        static StorageMountManager()
-        {
-            mountedPartitions[0] = "/";
-        }
-
         public static bool IsMounted(int partitionIndex)
         {
             return !string.IsNullOrEmpty(GetMountPoint(partitionIndex));
@@ -33,9 +28,6 @@ namespace ZonderqOS.GUI
                 mountedPartitions[partitionIndex] = actualMountPoint;
                 return actualMountPoint;
             }
-
-            if (partitionIndex == 0)
-                return "/";
 
             mountedPartitions.Remove(partitionIndex);
             return null;
@@ -56,10 +48,14 @@ namespace ZonderqOS.GUI
                     return false;
                 }
 
-                if (partitionIndex == 0)
+                // No filesystem access to arbitrary EFI/system partitions.
+                // Partition indices are unstable across hot-plug events.
+                if (!global::ZonderqOS.DataVolumePolicy.IsSelectedDataPartition(
+                    StorageManager.Partitions[partitionIndex]))
                 {
-                    mountPoint = GetMountPoint(0) ?? "/";
-                    return true;
+                    error = "Only the uniquely labelled ZONDERQDATA partition may be mounted.";
+                    NotifyFailure("Montowanie zablokowane", error);
+                    return false;
                 }
 
                 string existingMountPoint = FindMountPointInVfs(partitionIndex);
@@ -117,14 +113,13 @@ namespace ZonderqOS.GUI
 
             try
             {
-                if (partitionIndex <= 0)
+                string mountPoint = GetMountPoint(partitionIndex);
+                if (mountPoint == "/")
                 {
-                    error = "System volume cannot be unmounted";
+                    error = "Active system root cannot be unmounted";
                     NotifyFailure("Odmontowanie zablokowane", error);
                     return false;
                 }
-
-                string mountPoint = GetMountPoint(partitionIndex);
                 if (string.IsNullOrEmpty(mountPoint))
                 {
                     mountedPartitions.Remove(partitionIndex);
