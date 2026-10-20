@@ -8,6 +8,7 @@ on:
       - 'fix/3094-safe-data-volume'
       - 'feat/3094-readonly-desktop-usb'
       - 'fix/3094-usb-mouse-gui'
+      - 'feat/3094-native-resolution-normal-gui'
 
 # Avoid rebuilding Cosmos from source twice for the same PR commit.
 # A newer candidate supersedes the older experiment.
@@ -41,6 +42,7 @@ jobs:
           python3 zonderq/tests/test_3094_storage_policy.py
           python3 zonderq/tests/test_3094_mouse_gui.py
           python3 zonderq/tests/test_3094_readonly_desktop.py
+          python3 zonderq/tests/test_3094_display_gui.py
           bash -n zonderq/run-3094.sh
       - name: Install Cosmos native dependencies
         run: |
@@ -186,6 +188,27 @@ jobs:
         with:
           name: zonderq-3094-usb-input-EXPERIMENTAL
           path: zonderq/experimental3094-output/ZonderqOS.iso
+          retention-days: 4
+          if-no-files-found: error
+      - name: Build separate authenticated GUI ISO (requires dedicated safe data volume)
+        run: |
+          set -euo pipefail
+          # THIS IS NOT THE READ-ONLY DIAGNOSTIC. Normal boot is fail-closed
+          # and requires exactly one GPT Basic Data/MBR FAT32 ZONDERQDATA
+          # partition before ANY root/account/settings data can be written.
+          dotnet publish zonderq/ZonderqOS.csproj \
+            -c Debug -r linux-x64 -p:CosmosArch=x64 \
+            -p:ZonderqReadOnlyHardwareProbe=false \
+            -p:ZonderqInputDiagnosticBoot=false \
+            -o zonderq/experimental3094-full-gui --no-restore \
+            --verbosity:minimal 2>&1 | tee zonderq/publish-gui-3094.log
+          test -s zonderq/experimental3094-full-gui/ZonderqOS.iso
+          sha256sum zonderq/experimental3094-full-gui/ZonderqOS.iso
+      - name: Upload full GUI candidate ISO (dedicated data volume REQUIRED)
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-3094-NORMAL-GUI-REQUIRES-ZONDERQDATA
+          path: zonderq/experimental3094-full-gui/ZonderqOS.iso
           retention-days: 4
           if-no-files-found: error
       - name: Upload failure diagnostics
