@@ -40,6 +40,11 @@ class StorageSafetyRegression(unittest.TestCase):
         self.assertIn('RequiredLabel = "ZONDERQDATA"', POLICY)
         self.assertIn("FatType.Fat32", POLICY)
         self.assertIn("FatBootSector.TryParse", POLICY)
+        # Relabelled EFI volumes must still be refused by partition-table type.
+        self.assertIn("IsDedicatedDataPartitionType(partition)", POLICY)
+        self.assertIn("Gpt.BasicDataPartitionType", POLICY)
+        self.assertIn("entry.SystemId == 0x0B || entry.SystemId == 0x0C", POLICY)
+        self.assertIn("entry.StartSector == partition.StartSector", POLICY)
         self.assertIn("Multiple FAT32 ZONDERQDATA volumes", POLICY)
         self.assertIn("refusing to write to EFI", POLICY)
 
