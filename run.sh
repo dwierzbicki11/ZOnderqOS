@@ -29,7 +29,7 @@ ZonderqOS Gen3 — launcher x64 / arm64 + QEMU
 
 Gdy lokalny Cosmos zawiera stare lub niepelne patche SMP:
   ZONDERQ_SMT_CLEAN_WORKTREE=1 ZONDERQ_ALLOW_TEST_BRANCH=1 ./run.sh x64
-  Tworzy osobny git worktree na v3.0.85, nie resetuje oryginalnego Cosmos.
+  Wykorzystuje izolowany git worktree i lokalne submoduly; nie rusza oryginalnego Cosmos.
 
 Wazne: system nadal uzywa lokalnie patchowanego Cosmos v3.0.85 z
 produkcynym SMT/htop. Obsluga API KeyEvent z 3.0.94 jest przygotowana
