@@ -79,6 +79,15 @@ sync_repo() {
 
     local current_branch
     current_branch="$(git branch --show-current)"
+    if [[ "${ZONDERQ_ALLOW_TEST_BRANCH:-0}" == "1" ]]; then
+        [[ -n "$current_branch" ]] || fail "Test branch wymaga nazwanego brancha, nie detached HEAD."
+        [[ -z "$(git status --porcelain --untracked-files=no)" ]] || \
+            fail "Sa lokalne zmiany w sledzonych plikach; commit/stash przed testem."
+        check_untracked_build_inputs
+        echo "[GIT] TEST BRANCH: $current_branch (bez aktualizacji main)."
+        echo
+        return 0
+    fi
     [[ "$current_branch" == "main" ]] || \
         fail "Launcher musi byc uruchomiony z brancha main (aktualnie: ${current_branch:-detached HEAD})."
 
