@@ -51,7 +51,8 @@ class StorageSafetyRegression(unittest.TestCase):
     def test_no_partition_zero_root_mount(self):
         init = method(DISK, "public static bool Initialize()")
         self.assertIn("DataVolumePolicy.TryFindDataPartition", init)
-        self.assertIn('VfsManager.TryMount("fat", data, MountFlags.None, "/"', init)
+        self.assertIn('new FatFileSystemType(data)', init)
+        self.assertIn('VfsManager.TryMount("rootfat", ReadOnlySpan<char>.Empty, MountFlags.None, "/"', init)
         self.assertNotIn('TryMount("fat", "0"', init)
         self.assertNotIn("CreateStandardHierarchy();\n                }", init)
 
@@ -79,8 +80,10 @@ class StorageSafetyRegression(unittest.TestCase):
 
     def test_interactive_mounts_require_policy(self):
         mount = method(DISK, "public static void MountPartition(")
-        self.assertIn("DataVolumePolicy.IsSelectedDataPartition", mount)
-        self.assertIn("DataVolumePolicy.IsSelectedDataPartition", GUI)
+        self.assertIn("Manual mounts disabled in Cosmos 3.0.94", mount)
+        self.assertIn("Manual mounts disabled in Cosmos 3.0.94", GUI)
+        self.assertNotIn('VfsManager.TryMount(', mount)
+        self.assertNotIn('VfsManager.TryMount(', GUI)
         self.assertNotIn('mountedPartitions[0] = "/"', GUI)
         self.assertNotIn('GetMountPoint(0) ?? "/"', GUI)
 

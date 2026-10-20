@@ -59,9 +59,18 @@ namespace ZonderqOS
                     return false;
                 }
 #else
-                if (!VfsManager.TryMount("fat", data, MountFlags.None, "/", out var mount))
+                // FAT's numeric partition source can be renumbered by USB
+                // hotplug. Bind the driver to the approved Partition itself
+                // and mount it with an EMPTY source. A later rescan cannot
+                // turn an ordinary filesystem write into a write to Kali's ESP.
+                if (!VfsManager.RegisterFileSystem("rootfat", new FatFileSystemType(data)))
                 {
-                    WriteMessage.WriteError("Failed to mount approved ZonderqOS data volume.", "VFS");
+                    WriteMessage.WriteError("Could not register bound persistent root FAT.", "VFS");
+                    return false;
+                }
+                if (!VfsManager.TryMount("rootfat", ReadOnlySpan<char>.Empty, MountFlags.None, "/", out var mount))
+                {
+                    WriteMessage.WriteError("Failed to mount bound ZONDERQDATA root.", "VFS");
                     return false;
                 }
 #endif
@@ -520,32 +529,11 @@ namespace ZonderqOS
 
         public static void MountPartition(string partitionId, string mountPoint)
         {
-            if (!int.TryParse(partitionId, out int index))
-            {
-                WriteMessage.WriteError("Invalid partition index.", "VFS");
-                CommandIO.LastCommandSuccess = false;
-                return;
-            }
-
-            var partitions = StorageManager.Partitions;
-            if (index < 0 || index >= partitions.Count ||
-                !DataVolumePolicy.IsSelectedDataPartition(partitions[index]))
-            {
-                WriteMessage.WriteError("Only the uniquely labelled ZONDERQDATA volume can be mounted.", "VFS");
-                CommandIO.LastCommandSuccess = false;
-                return;
-            }
-
-            if (VfsManager.TryMount("fat", partitions[index], MountFlags.None, mountPoint, out var mount))
-            {
-                WriteMessage.WriteOK($"Mounted data volume at {mount.MountPoint}", "VFS");
-                CommandIO.LastCommandSuccess = true;
-            }
-            else
-            {
-                WriteMessage.WriteError("Failed to mount approved data volume.", "VFS");
-                CommandIO.LastCommandSuccess = false;
-            }
+            // Additional mounts via index-based FAT are unsafe after USB
+            // hotplug and can double-mount the active writable root.
+            // Keep the approved persistent root mounted at / only.
+            WriteMessage.WriteError("Manual mounts disabled in Cosmos 3.0.94 pending stable device-bound secondary mounts.", "VFS");
+            CommandIO.LastCommandSuccess = false;
         }
 
         public static void UnmountPartition(string mountPoint)
