@@ -6,6 +6,7 @@ on:
     branches:
       - 'experiment/cosmos-3094-usb-input'
       - 'fix/3094-safe-data-volume'
+      - 'fix/3094-usb-mouse-gui'
 
 # Avoid rebuilding Cosmos from source twice for the same PR commit.
 # A newer candidate supersedes the older experiment.
@@ -37,6 +38,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 zonderq/tests/test_3094_storage_policy.py
+          python3 zonderq/tests/test_3094_mouse_gui.py
           bash -n zonderq/run-3094.sh
       - name: Install Cosmos native dependencies
         run: |
