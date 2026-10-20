@@ -1,7 +1,7 @@
 # Persistent ZonderqOS 3.0.94 on a physical disk (NOT RAM)
 
-**Primary supported prototype:** the `zonderq-3094-NORMAL-GUI-REQUIRES-ZONDERQDATA`
-ISO built from the Cosmos **v3.0.94** SDK. This image enables normal
+**Default project profile (Cosmos 3.0.94):** the `zonderq-3094-NORMAL-GUI-REQUIRES-ZONDERQDATA`
+ISO built from the Cosmos **v3.0.94** SDK. Both input diagnostic boot and\nread-only probe default to false; the dedicated read-only USB test ISO\nexplicitly overrides both to true during CI.  This image enables normal
 `InitialSetupManager`, `LoginScreenManager`, `GuiManager`, USB HID input
 and persistent FAT32 files. It is **not** the `FULL-GUI-RAM-ONLY` image.
 
