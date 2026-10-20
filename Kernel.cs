@@ -189,6 +189,11 @@ namespace ZonderqOS
         private void RunInitialRootSetupPrompt()
         {
             Console.Clear();
+            if (DiagnosticConsoleBoot)
+            {
+                InputBusDiagnostics.PrintReport();
+                Console.WriteLine();
+            }
             Console.WriteLine("ZOnderqOS INITIAL SECURITY SETUP");
             Console.WriteLine("The factory root/root credential must be replaced before login.");
             Console.WriteLine(PasswordPolicy.Summary);
