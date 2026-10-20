@@ -35,12 +35,17 @@ preflight() {
     [[ -z "$(git -C "$ROOT" status --porcelain --untracked-files=no)" ]] ||
         die "Uncommitted tracked files: commit/stash before downloading a pinned image."
     BRANCH="$(git -C "$ROOT" branch --show-current)"
-    [[ -n "$BRANCH" ]] || die "A named git branch is required"
+    # GitHub pull-request checks intentionally use detached HEAD. Checking
+    # the active source version is safe there; downloading a branch-scoped
+    # artifact is NOT, so only enforce named branches on downloads.
+    [[ -n "$BRANCH" ]] || BRANCH="(detached-checkout)"
     SHA="$(git -C "$ROOT" rev-parse HEAD)"
     echo "[3094] Pinned SDK/runtime v3.0.94, branch=$BRANCH, commit=${SHA:0:12}"
 }
 download_artifact() {
     local artifact="$1" output_name="$2" runs run_id temp
+    [[ "$BRANCH" != "(detached-checkout)" ]] ||
+        die "Artifact download requires a named local branch; detached CI checkout is check-only."
     command -v gh >/dev/null || die "Install gh CLI or download via GitHub Actions Artifacts browser."
     command -v jq >/dev/null || die "Install jq to verify exact-commit provenance."
     runs="$(gh run list --repo "$REPO" --branch "$BRANCH" --limit 100 \
