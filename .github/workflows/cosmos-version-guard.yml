@@ -29,7 +29,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate shell guard syntax
-        run: bash -n tools/verify-cosmos-compat.sh
+      - name: Validate shell guard and SMT launcher syntax
+        run: |
+          bash -n tools/verify-cosmos-compat.sh
+          bash -n run-core.sh
+          bash -n run.sh
       - name: Enforce SDK/runtime/CI release alignment
         run: bash tools/verify-cosmos-compat.sh

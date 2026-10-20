@@ -3,7 +3,7 @@ using System.Drawing;
 using System.Threading;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Graphics.Fonts;
-using Cosmos.Kernel.System.Mouse;
+using Cosmos.Kernel.System.Input;
 using ZonderqOS.GUI.Icons;
 
 namespace ZonderqOS.GUI
@@ -22,7 +22,7 @@ namespace ZonderqOS.GUI
 
             try
             {
-                Canvas canvas = Canvas.GetFullScreen();
+                Canvas canvas = DisplayModeSelector.OpenNativeOrBest();
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
                 IconManager.Preload();
 

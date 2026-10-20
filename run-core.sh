@@ -79,6 +79,15 @@ sync_repo() {
 
     local current_branch
     current_branch="$(git branch --show-current)"
+    if [[ "${ZONDERQ_ALLOW_TEST_BRANCH:-0}" == "1" ]]; then
+        [[ -n "$current_branch" ]] || fail "Test branch wymaga nazwanego brancha, nie detached HEAD."
+        [[ -z "$(git status --porcelain --untracked-files=no)" ]] || \
+            fail "Sa lokalne zmiany w sledzonych plikach; commit/stash przed testem."
+        check_untracked_build_inputs
+        echo "[GIT] TEST BRANCH: $current_branch (bez aktualizacji main)."
+        echo
+        return 0
+    fi
     [[ "$current_branch" == "main" ]] || \
         fail "Launcher musi byc uruchomiony z brancha main (aktualnie: ${current_branch:-detached HEAD})."
 
@@ -128,14 +137,39 @@ prepare_patched_cosmos_x64() {
         rebuild=1
     fi
 
+    # Timestamps are not a reliable indicator of the SMP patch revision.
+    # Switching git branches can restore older mtimes, silently reusing a
+    # kernel built with unsafe APIC / OrionGC logic. Record *content hashes*
+    # of every patch and the package builder, and validate the built kernel.
+    require_command sha256sum
+    local patch_stamp="$package_feed/.zonderq-smt-patches.sha256"
+    local patch_digest recorded_patch_digest="" recorded_kernel_digest=""
+    local kernel_digest="" stamp_tmp
+    patch_digest="$(cd "$ROOT_DIR" && sha256sum patches/cosmos-smt/*.patch tools/prepare-cosmos-smt.sh | sha256sum | awk '{print $1}')"
+
+    if [[ -n "$kernel_package" && -f "$patch_stamp" ]]; then
+        read -r recorded_patch_digest recorded_kernel_digest < "$patch_stamp" || true
+        kernel_digest="$(sha256sum "$kernel_package" | awk '{print $1}')"
+    fi
+    if [[ "$patch_digest" != "$recorded_patch_digest" ||
+          -z "$kernel_digest" || "$kernel_digest" != "$recorded_kernel_digest" ]]; then
+        echo "[SMT] Patch digest lub kernel package nie pasuje do potwierdzonego builda — przebudowa."
+        rebuild=1
+    fi
+
     if (( rebuild )); then
         echo "[SMT] Przygotowuje lokalne paczki Cosmos z aktualna seria patchy..."
         ZONDERQ_COSMOS_SOURCE_ROOT="$cosmos_root" \
             bash "$ROOT_DIR/tools/prepare-cosmos-smt.sh" --all
         kernel_package="$(find "$package_feed" -maxdepth 1 -type f -iname 'Cosmos.Kernel.3.0.85.nupkg' -print -quit 2>/dev/null || true)"
         [[ -n "$kernel_package" ]] || fail "Po buildzie Cosmos nadal brakuje Cosmos.Kernel.3.0.85.nupkg w $package_feed"
+        # Only mark a digest as trusted after the complete build succeeded.
+        kernel_digest="$(sha256sum "$kernel_package" | awk '{print $1}')"
+        stamp_tmp="$(mktemp "$package_feed/.zonderq-smt-patches.XXXXXXXX")"
+        printf '%s %s\n' "$patch_digest" "$kernel_digest" > "$stamp_tmp"
+        mv -f "$stamp_tmp" "$patch_stamp"
     else
-        echo "[SMT] Lokalne patched Cosmos 3.0.85 sa aktualne."
+        echo "[SMT] Lokalne patched Cosmos 3.0.85 zgodne z hashami patchy i paczki kernela."
     fi
 
     rm -rf "$package_cache"
@@ -326,10 +360,30 @@ validate_hardware() {
 }
 
 verify_cpu_model() {
-    local arch="$1"; local emulator
+    local arch="$1"; local emulator models versioned_model
     if [[ "$arch" == "x64" ]]; then emulator="qemu-system-x86_64"; else emulator="qemu-system-aarch64"; fi
     require_command "$emulator"
-    "$emulator" -cpu help 2>/dev/null | grep -Fq "$HW_CPU_MODEL" || fail "QEMU nie zna modelu CPU '$HW_CPU_MODEL' dla $arch. Sprawdz: $emulator -cpu help"
+
+    # Do not grep -q on a live producer with pipefail: SIGPIPE can falsely
+    # reject a valid model. Capture once, then check the complete output.
+    models="$("$emulator" -cpu help 2>&1)" || fail "Nie mozna odczytac modeli CPU: $emulator"
+    if [[ "$arch" == "x64" ]]; then
+        if awk -v model="$HW_CPU_MODEL" '$2 == model { found=1 } END { exit !found }' <<< "$models"; then
+            return 0
+        fi
+        versioned_model="$(awk -v model="$HW_CPU_MODEL" '$2 == model "-v1" { print $2; exit }' <<< "$models")"
+        if [[ -n "$versioned_model" ]]; then
+            echo "[QEMU] Alias $HW_CPU_MODEL -> $versioned_model"
+            HW_CPU_MODEL="$versioned_model"
+            return 0
+        fi
+        # QEMU may accept an unlisted alias. The VM launch itself remains
+        # authoritative and will display any unsupported-model error.
+        echo "[QEMU] Model $HW_CPU_MODEL nie jest na liscie; QEMU zweryfikuje go przy starcie."
+        return 0
+    fi
+    grep -Fq -- "$HW_CPU_MODEL" <<< "$models" || \
+        fail "QEMU nie zna modelu CPU '$HW_CPU_MODEL' dla $arch. Sprawdz: $emulator -cpu help"
 }
 
 print_hardware_summary() {

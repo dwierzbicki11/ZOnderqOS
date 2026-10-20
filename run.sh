@@ -27,6 +27,10 @@ ZonderqOS Gen3 — launcher x64 / arm64 + QEMU
   ./run.sh --status           to samo co --check
   ./run.sh --help             pomoc bez pobierania Cosmos
 
+Gdy lokalny Cosmos zawiera stare lub niepelne patche SMP:
+  ZONDERQ_SMT_CLEAN_WORKTREE=1 ZONDERQ_ALLOW_TEST_BRANCH=1 ./run.sh x64
+  Wykorzystuje izolowany git worktree i lokalne submoduly; nie rusza oryginalnego Cosmos.
+
 Wazne: system nadal uzywa lokalnie patchowanego Cosmos v3.0.85 z
 produkcynym SMT/htop. Obsluga API KeyEvent z 3.0.94 jest przygotowana
 w kodzie, ale pelna migracja kernela na 3.0.94 wymaga przeniesienia
@@ -250,6 +254,83 @@ cleanup_generated_tracked_changes
 cosmos_root="$(resolve_cosmos_root)" || exit $?
 [[ -n "$cosmos_root" ]] || fail "Nie udalo sie ustalic katalogu Cosmos."
 verify_cosmos_checkout_revision "$cosmos_root"
+
+# Keep the developer's Cosmos checkout untouched. Use a separate worktree keyed
+# to the SMT patch CONTENT, not the ZonderqOS commit. Launcher/docs/CI changes
+# must not trigger a fresh dotnet/runtime checkout.
+if [[ "${ZONDERQ_SMT_CLEAN_WORKTREE:-0}" == "1" ]]; then
+    command -v sha256sum >/dev/null 2>&1 || fail "Brak sha256sum w PATH."
+    smt_parent="$(cd "$ROOT_DIR/.." && pwd)"
+    smt_patch_digest="$(cd "$ROOT_DIR" && sha256sum patches/cosmos-smt/*.patch tools/prepare-cosmos-smt.sh | sha256sum | awk '{print $1}')"
+    smt_worktree="$smt_parent/.cosmos-smt-${smt_patch_digest:0:12}"
+    source_common="$(git -C "$cosmos_root" rev-parse --path-format=absolute --git-common-dir)"
+
+    # Reuse previous commit-keyed worktrees from older launchers. This also
+    # allows resuming a submodule clone interrupted on its first invocation.
+    if [[ ! -e "$smt_worktree" ]]; then
+        for candidate in "$smt_parent"/.cosmos-smt-????????????; do
+            [[ -d "$candidate" ]] || continue
+            candidate_rev="${candidate##*/.cosmos-smt-}"
+            [[ "$candidate_rev" =~ ^[0-9a-f]{12}$ ]] || continue
+            git -C "$ROOT_DIR" rev-parse --verify "${candidate_rev}^{commit}" >/dev/null 2>&1 || continue
+            git -C "$ROOT_DIR" diff --quiet "$candidate_rev" HEAD -- patches/cosmos-smt tools/prepare-cosmos-smt.sh || continue
+            is_cosmos_checkout "$candidate" || continue
+            candidate_common="$(git -C "$candidate" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+            [[ "$candidate_common" == "$source_common" ]] || continue
+            candidate_head="$(git -C "$candidate" rev-parse HEAD 2>/dev/null || true)"
+            [[ "$candidate_head" == "$(git -C "$cosmos_root" rev-list -n 1 "$COSMOS_TAG")" ]] || continue
+            smt_worktree="$candidate"
+            echo "[SMT] Ponownie uzywam istniejacego Cosmos: $smt_worktree"
+            break
+        done
+    fi
+
+    if [[ ! -e "$smt_worktree" ]]; then
+        echo "[SMT] Tworze izolowany Cosmos $COSMOS_TAG dla patch digest: $smt_worktree"
+        git -C "$cosmos_root" worktree add --detach "$smt_worktree" "$COSMOS_TAG" || \
+            fail "Nie udalo sie utworzyc izolowanego worktree."
+    fi
+
+    [[ -d "$smt_worktree" ]] && is_cosmos_checkout "$smt_worktree" || \
+        fail "Docelowy katalog nie jest poprawnym checkoutem Cosmos: $smt_worktree"
+    worktree_common="$(git -C "$smt_worktree" rev-parse --path-format=absolute --git-common-dir)"
+    [[ "$source_common" == "$worktree_common" ]] || \
+        fail "Istniejacy worktree pochodzi z innego repo. Niczego nie nadpisuje: $smt_worktree"
+    verify_cosmos_checkout_revision "$smt_worktree"
+
+    # Prefer local submodule clones from the original Cosmos checkout:
+    # avoid downloading the huge dotnet/runtime repository repeatedly.
+    # -c overrides only this git process; it never changes shared git config.
+    submodule_options=()
+    runtime_clone=""
+    if git -C "$cosmos_root/dotnet/runtime" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        runtime_clone="$cosmos_root/dotnet/runtime"
+    else
+        # A prior isolated worktree may already contain the large runtime clone
+        # even when the original Cosmos checkout has no initialized submodule.
+        for candidate in "$smt_parent"/.cosmos-smt-????????????; do
+            [[ -d "$candidate" && "$candidate" != "$smt_worktree" ]] || continue
+            candidate_common="$(git -C "$candidate" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
+            [[ "$candidate_common" == "$source_common" ]] || continue
+            if git -C "$candidate/dotnet/runtime" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+                runtime_clone="$candidate/dotnet/runtime"
+                break
+            fi
+        done
+    fi
+    if [[ -n "$runtime_clone" ]]; then
+        submodule_options+=(-c "protocol.file.allow=always" -c "submodule.dotnet/runtime.url=$runtime_clone")
+        echo "[SMT] dotnet/runtime: ponowne uzycie lokalnych danych z $runtime_clone"
+    fi
+    if git -C "$cosmos_root/src/Cosmos.Kernel.Native.MultiArch/ACPI/lai" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+        submodule_options+=(-c "protocol.file.allow=always" -c "submodule.src/Cosmos.Kernel.Native.MultiArch/lai.url=$cosmos_root/src/Cosmos.Kernel.Native.MultiArch/ACPI/lai")
+    fi
+    git -C "$smt_worktree" "${submodule_options[@]}" submodule update --init --recursive || \
+        fail "Nie mozna zainicjalizowac submodulow izolowanego Cosmos."
+
+    echo "[SMT] Izolowany worktree: $smt_worktree (oryginal pozostal bez zmian)."
+    cosmos_root="$smt_worktree"
+fi
 # Clear caches only after confirming the correct version of Cosmos.
 cleanup_generated_untracked_cache
 export ZONDERQ_COSMOS_SOURCE_ROOT="$cosmos_root"

@@ -735,3 +735,96 @@ index 18641b2..d69bd2a 100644
          }
      }
  
+diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs b/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs
+--- a/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs
++++ b/src/Cosmos.Kernel.Core.X64/Cpu/X64InterruptController.cs
+@@ -81,7 +81,7 @@
+         // No managed handler - for CPU exceptions (0-31), fall through to fatal halt
+         if (ctx.interrupt <= MaxCpuExceptionVector)
+         {
+-            HandleFatalException(ctx.interrupt, ctx.cpu_flags, ctx.fault_address);
++            HandleFatalException(ref ctx);
+             return;
+         }
+ 
+@@ -107,29 +107,55 @@
+     private static bool HasErrorCode(ulong interrupt) =>
+         interrupt is 8 or (>= 10 and <= 14) or 17 or 21 or 29 or 30;
+ 
+-    private static void HandleFatalException(ulong interrupt, ulong cpuFlags, ulong faultAddress)
+-    {
+-        Serial.Write("[INT] FATAL: Exception ", interrupt, "\n");
+-
+-        if (HasErrorCode(interrupt))
+-        {
+-            Serial.Write("[INT] Error code: 0x");
+-            Serial.WriteHex(Cosmos.Kernel.Core.X64.Bridge.IdtNative.GetLastErrorCode());
+-            Serial.Write("\n");
+-        }
+-
+-        Serial.Write("[INT] RFLAGS: 0x");
+-        Serial.WriteHex(cpuFlags);
+-        Serial.Write("\n");
+-
+-        // For page faults (#PF = 14), show the faulting address
+-        if (interrupt == PageFaultVector)
+-        {
+-            Serial.Write("[INT] Fault address (CR2): 0x");
+-            Serial.WriteHex(faultAddress);
+-            Serial.Write("\n");
+-        }
+-
+-        while (true) { }
+-    }
++    private static void HandleFatalException(ref IRQContext ctx)
++    {
++        ulong interrupt = ctx.interrupt;
++        ulong cpuFlags = ctx.cpu_flags;
++        ulong faultAddress = ctx.fault_address;
++        Serial.Write("[INT] FATAL: Exception ", interrupt, "\n");
++
++        if (HasErrorCode(interrupt))
++        {
++            Serial.Write("[INT] Error code: 0x");
++            Serial.WriteHex(Cosmos.Kernel.Core.X64.Bridge.IdtNative.GetLastErrorCode());
++            Serial.Write("\n");
++        }
++
++        Serial.Write("[INT] RFLAGS: 0x");
++        Serial.WriteHex(cpuFlags);
++        Serial.Write("\n");
++
++        // For page faults (#PF = 14), show the faulting address
++        if (interrupt == PageFaultVector)
++        {
++            Serial.Write("[INT] Fault address (CR2): 0x");
++            Serial.WriteHex(faultAddress);
++            Serial.Write("\n");
++        }
++
++        // Page faults at low addresses are not diagnosable from CR2 alone.
++        // Use the saved hardware interrupt frame to identify the instruction
++        // and captured GPRs, without allocating or walking a possibly bad stack.
++        Serial.Write("[INT] RIP: 0x");
++        Serial.WriteHex(ctx.rip);
++        Serial.Write(" RSP: 0x");
++        Serial.WriteHex(ctx.rsp);
++        Serial.Write("\n");
++        Serial.Write("[INT] RAX: 0x");
++        Serial.WriteHex(ctx.rax);
++        Serial.Write(" RCX: 0x");
++        Serial.WriteHex(ctx.rcx);
++        Serial.Write(" RDX: 0x");
++        Serial.WriteHex(ctx.rdx);
++        Serial.Write("\n");
++        Serial.Write("[INT] RDI: 0x");
++        Serial.WriteHex(ctx.rdi);
++        Serial.Write(" RSI: 0x");
++        Serial.WriteHex(ctx.rsi);
++        Serial.Write(" RBP: 0x");
++        Serial.WriteHex(ctx.rbp);
++        Serial.Write("\n");
++
++        while (true) { }
++    }
+ }

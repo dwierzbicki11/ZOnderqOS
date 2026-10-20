@@ -5,7 +5,7 @@ using System.IO;
 using System.Reflection;
 using System.Threading;
 using Cosmos.Kernel.System.Graphics;
-using Cosmos.Kernel.System.Mouse;
+using Cosmos.Kernel.System.Input;
 using ZonderqOS.GUI.Apps;
 using ZonderqOS.GUI.Icons;
 
@@ -45,7 +45,7 @@ namespace ZonderqOS.GUI
             try
             {
                 Console.WriteLine("[GUI] Inicjalizacja trybu graficznego...");
-                canvas = Canvas.GetFullScreen();
+                canvas = DisplayModeSelector.OpenNativeOrBest();
                 Console.WriteLine($"[GUI] Rzeczywista rozdzielczość Canvas: {canvas.Width}x{canvas.Height}");
                 Console.WriteLine("[GUI] Uruchamiam pulpit...");
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);

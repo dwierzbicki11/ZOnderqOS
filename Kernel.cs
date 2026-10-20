@@ -11,6 +11,11 @@ namespace ZonderqOS
     public class Kernel : Sys.Kernel
     {
         private const int MaxHistoryEntries = 100;
+#if ZONDERQ_INPUT_DIAGNOSTIC_BOOT
+        private const bool DiagnosticConsoleBoot = true;
+#else
+        private const bool DiagnosticConsoleBoot = false;
+#endif
         private string path = "/root";
         private readonly List<string> history = new List<string>();
         private string sessionUser;
@@ -22,10 +27,22 @@ namespace ZonderqOS
             {
                 BootTelemetry.Initialize();
                 Console.Clear();
+#if ZONDERQ_READONLY_HARDWARE_PROBE
+                Console.WriteLine("ZOnderqOS / Cosmos 3.0.94 - USB/PCI input probe");
+                Console.WriteLine("READ-ONLY diagnostic boot: no disk mount, no account setup.");
+                Console.WriteLine();
+                InputBusDiagnostics.PrintReport();
+                Console.WriteLine();
+                Console.WriteLine("Commands: desktop | inputscan | mouse | mousegui | volumes | help");
+                Console.WriteLine("The USB mouse should be reported as a bound pointer.");
+                return;
+#endif
 #if ZONDERQ_HTOP_SMOKE_TEST
                 HtopSmokeTest.Run();
 #endif
-                Disk.Initialize();
+                if (!Disk.Initialize())
+                    throw new InvalidOperationException(
+                        "No approved ZONDERQDATA volume: refusing normal boot before any filesystem/user writes.");
                 UserManager.Initialize();
                 Command.Initialize();
                 EnvironmentManager.Initialize();
@@ -35,14 +52,29 @@ namespace ZonderqOS
                 BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
+                if (DiagnosticConsoleBoot)
+                {
+                    Console.WriteLine("ZOnderqOS - physical hardware input diagnostics");
+                    Console.WriteLine("Console-only test boot; graphical auto-start is disabled in this build.");
+                    InputBusDiagnostics.PrintReport();
+                    Console.WriteLine();
+                }
                 SystemIdentity.Initialize();
                 ServiceManager.Initialize();
 
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
                 Console.WriteLine();
-                Console.WriteLine("Starting ZOnderqOS graphical session...");
-                Console.WriteLine("Console login is used only as a recovery fallback if GUI startup fails.");
+                if (DiagnosticConsoleBoot)
+                {
+                    Console.WriteLine("Starting diagnostic login console.");
+                    Console.WriteLine("After login use: inputscan, lspci -v, dmesg");
+                }
+                else
+                {
+                    Console.WriteLine("Starting ZOnderqOS graphical session...");
+                    Console.WriteLine("Console login is used only as a recovery fallback if GUI startup fails.");
+                }
             }
             catch (Exception ex)
             {
@@ -54,7 +86,11 @@ namespace ZonderqOS
         {
             try
             {
-                if (SystemSettings.BootToGui && !graphicalStartupFailed)
+#if ZONDERQ_READONLY_HARDWARE_PROBE
+                RunReadOnlyInputConsole();
+                return;
+#endif
+                if (!DiagnosticConsoleBoot && SystemSettings.BootToGui && !graphicalStartupFailed)
                 {
                     if (!SecurityContext.IsAuthenticated)
                     {
@@ -153,6 +189,143 @@ namespace ZonderqOS
             }
         }
 
+#if ZONDERQ_READONLY_HARDWARE_PROBE
+        // Completely isolated read-only diagnostic shell: no filesystem,
+        // authentication database, startup services or writes to host disks.
+        private static void RunReadOnlyInputConsole()
+        {
+            Console.Write("input-diag> ");
+            string command = Console.ReadLine();
+            if (command == null)
+                return;
+
+            command = command.Trim().ToLowerInvariant();
+            if (command == "inputscan" || command == "scan")
+            {
+                InputBusDiagnostics.PrintReport();
+                return;
+            }
+
+            if (command == "volumes" || command == "lsblk")
+            {
+                // Read-only: never create a VFS mount or mutate an on-disk BPB.
+                PrintReadOnlyVolumes();
+                return;
+            }
+
+            if (command == "desktop" || command == "gui")
+            {
+                try
+                {
+                    // Use the existing Gen3 Window/Button/Cursor widgets on a
+                    // diskless 3.0.94 desktop. Never call GuiManager.Run():
+                    // full authenticated GUI loads settings, icons and writes.
+                    global::ZonderqOS.GUI.ReadOnlyDesktop.Run();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("desktop: " + ex.Message);
+                }
+                return;
+            }
+
+            if (command == "mousegui" || command == "cursor")
+            {
+                // Full-screen pointer demo without mounting Kali's EFI.
+                try
+                {
+                    MouseGuiDiagnostic.Run();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("mousegui: " + ex.Message);
+                }
+                return;
+            }
+
+            if (command == "mouse")
+            {
+                // Access the static class through fully qualified member names
+                // rather than instantiating a pointer or guessing a device.
+                Console.WriteLine("Move/click the USB mouse for 6 seconds...");
+                int lastX = Cosmos.Kernel.System.Input.MouseManager.X;
+                int lastY = Cosmos.Kernel.System.Input.MouseManager.Y;
+                bool lastLeft = Cosmos.Kernel.System.Input.MouseManager.LeftButton;
+                bool lastRight = Cosmos.Kernel.System.Input.MouseManager.RightButton;
+                int events = 0;
+                for (int i = 0; i < 60; i++)
+                {
+                    Thread.Sleep(100);
+                    int x = Cosmos.Kernel.System.Input.MouseManager.X;
+                    int y = Cosmos.Kernel.System.Input.MouseManager.Y;
+                    bool left = Cosmos.Kernel.System.Input.MouseManager.LeftButton;
+                    bool right = Cosmos.Kernel.System.Input.MouseManager.RightButton;
+                    if (x != lastX || y != lastY || left != lastLeft || right != lastRight)
+                    {
+                        events++;
+                        lastX = x;
+                        lastY = y;
+                        lastLeft = left;
+                        lastRight = right;
+                    }
+                }
+                Console.WriteLine("Observed mouse state changes: " + events);
+                Console.WriteLine("Position: " + lastX + "," + lastY +
+                    "  buttons L=" + lastLeft + " R=" + lastRight);
+                if (events == 0)
+                    Console.WriteLine("No motion seen: verify driver binding via inputscan.");
+                return;
+            }
+
+            if (command == "help" || command == "?")
+            {
+                Console.WriteLine("inputscan - read-only PCI, USB node and pointer-driver report");
+                Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");
+                Console.WriteLine("mousegui  - read-only fullscreen cursor and button test (ESC to exit)");
+                Console.WriteLine("desktop   - read-only Gen3 desktop with draggable windows, buttons and USB pointer");
+                Console.WriteLine("volumes   - inspect disks and validate dedicated FAT32 data policy (read-only)");
+                Console.WriteLine("help      - print this help");
+                Console.WriteLine("No storage writes or privileged shell commands are enabled.");
+                return;
+            }
+
+            if (command.Length != 0)
+                Console.WriteLine("Unknown/blocked diagnostic command. Type help.");
+        }
+        private static void PrintReadOnlyVolumes()
+        {
+            try
+            {
+                var devices = Cosmos.Kernel.System.Storage.StorageManager.Devices;
+                var partitions = Cosmos.Kernel.System.Storage.StorageManager.Partitions;
+                Console.WriteLine("READ-ONLY disk inspection: NO mounts, writes or formatting.");
+                Console.WriteLine("Devices: " + devices.Count + ", partitions: " + partitions.Count);
+                int count = partitions.Count < 32 ? partitions.Count : 32;
+                for (int i = 0; i < count; i++)
+                {
+                    var p = partitions[i];
+                    ulong sizeMiB = p.BlockSize == 0 ? 0 :
+                        (p.BlockCount / 1024UL) * p.BlockSize / 1024UL;
+                    bool approved = DataVolumePolicy.IsApprovedDataPartition(p);
+                    Console.WriteLine("  part" + i + " " + p.Name +
+                        " " + sizeMiB + " MiB  writable-root-candidate=" +
+                        (approved ? "YES" : "NO"));
+                }
+                if (partitions.Count > count)
+                    Console.WriteLine("... additional partitions omitted");
+
+                if (DataVolumePolicy.TryFindDataPartition(out var data, out string error))
+                    Console.WriteLine("Selected data volume: " + data.Name + " (not mounted).");
+                else
+                    Console.WriteLine("No writable root selected: " + error);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("Read-only volume inspection failed: " + ex.Message);
+            }
+        }
+#endif
+
         private void EnterConsoleRecovery(string reason)
         {
             graphicalStartupFailed = true;
@@ -169,6 +342,11 @@ namespace ZonderqOS
         private void RunInitialRootSetupPrompt()
         {
             Console.Clear();
+            if (DiagnosticConsoleBoot)
+            {
+                InputBusDiagnostics.PrintReport();
+                Console.WriteLine();
+            }
             Console.WriteLine("ZOnderqOS INITIAL SECURITY SETUP");
             Console.WriteLine("The factory root/root credential must be replaced before login.");
             Console.WriteLine(PasswordPolicy.Summary);
@@ -256,7 +434,9 @@ namespace ZonderqOS
                 string motd = SystemIdentity.ReadMotd();
                 if (!string.IsNullOrEmpty(motd))
                     Console.Write(motd);
-                Console.WriteLine("Recovery console active. Type 'gui' to retry the graphical desktop manually.");
+                Console.WriteLine(DiagnosticConsoleBoot
+                    ? "Diagnostic console active. GUI auto-start disabled for this build."
+                    : "Recovery console active. Type 'gui' to retry the graphical desktop manually.");
                 Console.WriteLine();
                 return;
             }

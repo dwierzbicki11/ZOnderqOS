@@ -1,0 +1,287 @@
+name: Experimental ZonderqOS Cosmos 3.0.94 USB input
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'experiment/cosmos-3094-usb-input'
+      - 'fix/3094-safe-data-volume'
+      - 'feat/3094-readonly-desktop-usb'
+      - 'fix/3094-usb-mouse-gui'
+      - 'feat/3094-native-resolution-normal-gui'
+      - 'feat/3094-fullgui-ram-root'
+      - 'test/3094-persistent-disk-qemu'
+
+# Avoid rebuilding Cosmos from source twice for the same PR commit.
+# A newer candidate supersedes the older experiment.
+concurrency:
+  group: cosmos3094-usb-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-3094:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zonderq
+      - uses: actions/checkout@v4
+        with:
+          repository: CosmosOS/Cosmos
+          ref: v3.0.94
+          path: cosmos
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Guard persistent storage against EFI writes (3.0.94)
+        run: |
+          set -euo pipefail
+          python3 zonderq/tests/test_3094_storage_policy.py
+          python3 zonderq/tests/test_3094_mouse_gui.py
+          python3 zonderq/tests/test_3094_readonly_desktop.py
+          python3 zonderq/tests/test_3094_display_gui.py
+          python3 zonderq/tests/test_3094_ram_root.py
+          bash -n zonderq/run-3094.sh
+          bash -n zonderq/tests/qemu-3094-persistent-disk.sh
+      - name: Install Cosmos native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld nasm xorriso binutils
+      - name: Assert isolated 3.0.94 project and USB mouse support
+        run: |
+          set -euo pipefail
+          grep -Fq 'Sdk="Cosmos.Sdk/3.0.94"' zonderq/ZonderqOS.csproj
+          grep -Fq '<CosmosEnableUsb>true</CosmosEnableUsb>' zonderq/ZonderqOS.csproj
+          grep -Fq '<ZonderqReadOnlyHardwareProbe Condition=' zonderq/ZonderqOS.csproj
+          grep -Fq '<ZonderqCosmosKeyboardApi>Input</ZonderqCosmosKeyboardApi>' zonderq/ZonderqOS.csproj
+          grep -Fq 'Version="3.0.94"' zonderq/ZonderqOS.csproj
+          test "$(git -C cosmos rev-parse HEAD)" = "$(git -C cosmos rev-list -n 1 v3.0.94)"
+      - name: Build clean matching Cosmos 3.0.94 SDK and runtime packages
+        working-directory: cosmos
+        env:
+          VersionPrefix: '3.0.94'
+        run: |
+          set -o pipefail
+          bash .devcontainer/postCreateCommand.sh 2>&1 | tee ../zonderq/build-3094-packages.log
+          test -s artifacts/package/release/Cosmos.Sdk.3.0.94.nupkg
+          test -s artifacts/package/release/Cosmos.Kernel.3.0.94.nupkg
+          test -s artifacts/package/release/Cosmos.Kernel.System.3.0.94.nupkg
+      - name: Restore and compile complete experimental ZonderqOS
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          export NUGET_PACKAGES="${{ runner.temp }}/zonderq3094-nuget"
+          mkdir -p "$NUGET_PACKAGES"
+          # The MSBuild SDK resolver reads a project-root NuGet.Config BEFORE
+          # the restore command's --configfile argument is applied.
+          # Without this, Cosmos.Sdk can be silently resolved from nuget.org.
+          cat > zonderq/NuGet.Config <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear/>
+              <add key="patched" value="${{ github.workspace }}/cosmos/artifacts/package/release"/>
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json"/>
+            </packageSources>
+            <packageSourceMapping>
+              <packageSource key="patched"><package pattern="Cosmos.*"/></packageSource>
+              <packageSource key="nuget.org"><package pattern="*"/></packageSource>
+            </packageSourceMapping>
+          </configuration>
+          EOF
+          dotnet restore zonderq/ZonderqOS.csproj \
+            -r linux-x64 -p:CosmosArch=x64 \
+            --configfile zonderq/NuGet.Config --force --no-cache \
+            2>&1 | tee zonderq/restore-3094.log
+          python3 - <<'PY'
+          import json, os, pathlib
+          feed = pathlib.Path("cosmos/artifacts/package/release").resolve()
+          required = {"cosmos.sdk", "cosmos.kernel", "cosmos.kernel.system",
+                      "cosmos.kernel.core", "cosmos.kernel.hal.x64"}
+          cache = pathlib.Path(os.environ["NUGET_PACKAGES"])
+          found = set()
+          for p in cache.glob("cosmos.*/3.0.94/.nupkg.metadata"):
+              raw_source = json.loads(p.read_text())["source"]
+              source = pathlib.Path(raw_source).resolve()
+              if source != feed:
+                  raise SystemExit(f"Cosmos package not from pinned local feed: {p}: {raw_source}")
+              found.add(p.parent.parent.name)
+          if required - found:
+              raise SystemExit(f"Missing pinned 3.0.94 packages: {sorted(required - found)}")
+          print("Cosmos v3.0.94 package provenance: PASS")
+          PY
+          dotnet publish zonderq/ZonderqOS.csproj \
+            -c Debug -r linux-x64 -p:CosmosArch=x64 \
+            -o zonderq/experimental3094-output --no-restore \
+            --verbosity:minimal 2>&1 | tee zonderq/publish-3094.log
+          test -s zonderq/experimental3094-output/ZonderqOS.iso
+          sha256sum zonderq/experimental3094-output/ZonderqOS.iso
+      - name: QEMU xHCI USB boot-mouse enumeration smoke (1 BSP)
+        timeout-minutes: 5
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y qemu-system-x86 dosfstools fdisk
+          # An adversarial EFI System Partition labelled like ZonderqOS data:
+          # even this must remain byte-for-byte untouched by probe boots.
+          canary=zonderq/experimental3094-efi-canary.img
+          truncate -s 128M "$canary"
+          printf 'label: dos\nunit: sectors\n\nstart=2048, type=ef\n' | sfdisk "$canary"
+          mkfs.fat -F 32 -n ZONDERQDATA --offset=2048 "$canary"
+          sha256sum "$canary" > "$canary.sha256"
+          serial=zonderq/experimental3094-usb-qemu.serial.log
+          : > "$serial"
+          qemu-system-x86_64 \
+            -machine q35 -cpu Nehalem -smp 1 -m 2048M \
+            -cdrom zonderq/experimental3094-output/ZonderqOS.iso -boot d \
+            -drive "file=$canary,format=raw,if=ide" \
+            -vga std -display none -monitor none \
+            -device qemu-xhci,id=xhci \
+            -device usb-mouse,bus=xhci.0 \
+            -serial "file:$serial" -no-reboot -no-shutdown \
+            2> "$serial.stderr" &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          reached=0
+          for i in $(seq 1 85); do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              cat "$serial.stderr" >&2
+              tail -n 100 "$serial" >&2
+              exit 1
+            fi
+            if grep -Eqi 'kernel panic|fatal: exception|page fault' "$serial"; then
+              tail -n 100 "$serial" >&2
+              echo "Guest kernel panic during USB enumeration" >&2
+              exit 1
+            fi
+            if grep -Fq '[Kernel] Entering main loop...' "$serial" &&
+               grep -Fq 'UsbMouseDriver published pointer' "$serial"; then
+              reached=1
+              break
+            fi
+            sleep 1
+          done
+          if (( reached != 1 )); then
+            tail -n 100 "$serial" >&2
+            echo "USB HID boot mouse did not bind before timeout" >&2
+            exit 1
+          fi
+          grep -F '[MouseManager] Registered mouse' "$serial"
+          # Stop the guest before comparing, otherwise a write could race the hash.
+          kill "$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          sha256sum --check "$canary.sha256"
+          echo 'EFI canary: byte-for-byte unchanged (read-only probe) PASS'
+          echo 'Experimental USB mouse: QEMU 1-vCPU boot and HID binding PASS'
+      - name: Upload QEMU serial logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-3094-usb-qemu-serial
+          path: |
+            zonderq/experimental3094-usb-qemu.serial.log
+            zonderq/experimental3094-usb-qemu.serial.log.stderr
+          if-no-files-found: ignore
+      - name: Upload isolated experimental ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-3094-usb-input-EXPERIMENTAL
+          path: zonderq/experimental3094-output/ZonderqOS.iso
+          retention-days: 4
+          if-no-files-found: error
+      - name: Build separate authenticated GUI ISO (requires dedicated safe data volume)
+        run: |
+          set -euo pipefail
+          # THIS IS NOT THE READ-ONLY DIAGNOSTIC. Normal boot is fail-closed
+          # and requires exactly one GPT Basic Data/MBR FAT32 ZONDERQDATA
+          # partition before ANY root/account/settings data can be written.
+          dotnet publish zonderq/ZonderqOS.csproj \
+            -c Debug -r linux-x64 -p:CosmosArch=x64 \
+            -p:ZonderqReadOnlyHardwareProbe=false \
+            -p:ZonderqInputDiagnosticBoot=false \
+            -o zonderq/experimental3094-full-gui --no-restore \
+            --verbosity:minimal 2>&1 | tee zonderq/publish-gui-3094.log
+          test -s zonderq/experimental3094-full-gui/ZonderqOS.iso
+          sha256sum zonderq/experimental3094-full-gui/ZonderqOS.iso
+      - name: Upload full GUI candidate ISO (dedicated data volume REQUIRED)
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-3094-NORMAL-GUI-REQUIRES-ZONDERQDATA
+          path: zonderq/experimental3094-full-gui/ZonderqOS.iso
+          retention-days: 4
+          if-no-files-found: error
+      - name: QEMU persistent FAT32 data volume — two boots, EFI unchanged
+        timeout-minutes: 6
+        run: |
+          set -euo pipefail
+          sudo apt-get install -y mtools
+          bash zonderq/tests/qemu-3094-persistent-disk.sh \
+            zonderq/experimental3094-full-gui/ZonderqOS.iso
+      - name: Build FULL graphical session with FAT32 RAM root (no host writes)
+        run: |
+          set -euo pipefail
+          dotnet publish zonderq/ZonderqOS.csproj \
+            -c Debug -r linux-x64 -p:CosmosArch=x64 \
+            -p:ZonderqReadOnlyHardwareProbe=false \
+            -p:ZonderqInputDiagnosticBoot=false \
+            -p:ZonderqRamRoot=true \
+            -o zonderq/experimental3094-ram-gui --no-restore \
+            --verbosity:minimal 2>&1 | tee zonderq/publish-ram-gui-3094.log
+          test -s zonderq/experimental3094-ram-gui/ZonderqOS.iso
+          sha256sum zonderq/experimental3094-ram-gui/ZonderqOS.iso
+      - name: QEMU RAM GUI boot - prove EFI canary unchanged
+        timeout-minutes: 3
+        run: |
+          set -euo pipefail
+          canary=zonderq/experimental3094-efi-canary.img
+          sha256sum --check "$canary.sha256"
+          serial=zonderq/ram3094-gui-qemu.serial.log
+          : > "$serial"
+          qemu-system-x86_64 \
+            -machine q35 -cpu Nehalem -smp 1 -m 2048M \
+            -cdrom zonderq/experimental3094-ram-gui/ZonderqOS.iso -boot d \
+            -drive "file=$canary,format=raw,if=ide" \
+            -vga std -display none -monitor none \
+            -device qemu-xhci,id=xhci \
+            -device usb-mouse,bus=xhci.0 \
+            -serial "file:$serial" -no-reboot -no-shutdown \
+            2> "$serial.stderr" &
+          pid=$!
+          trap 'kill "$pid" 2>/dev/null || true; wait "$pid" 2>/dev/null || true' EXIT
+          for i in $(seq 1 35); do
+            if ! kill -0 "$pid" 2>/dev/null; then
+              tail -n 100 "$serial" >&2
+              cat "$serial.stderr" >&2
+              exit 1
+            fi
+            if grep -Eqi 'kernel panic|fatal: exception|page fault' "$serial"; then
+              tail -n 100 "$serial" >&2
+              echo "Full RAM GUI panicked" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          kill "$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          sha256sum --check "$canary.sha256"
+          echo "RAM GUI basic 35-second boot without EFI writes: PASS (not GUI interaction proof)"
+      - name: Upload full GUI ephemeral RAM-root ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-3094-FULL-GUI-RAM-ONLY
+          path: zonderq/experimental3094-ram-gui/ZonderqOS.iso
+          retention-days: 4
+          if-no-files-found: error
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-3094-build-logs
+          path: |
+            zonderq/*-3094.log
+          if-no-files-found: ignore

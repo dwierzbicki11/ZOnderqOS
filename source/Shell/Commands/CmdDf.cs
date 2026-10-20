@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Cosmos.Kernel.System.Storage;
-using Cosmos.Kernel.System.Vfs;
+using Cosmos.Kernel.System.FileSystem;
 
 namespace ZonderqOS.Commands
 {
@@ -25,8 +25,8 @@ namespace ZonderqOS.Commands
 
             try
             {
-                var mounts = new List<VfsManager.VfsMount>();
-                foreach (VfsManager.VfsMount mount in VfsManager.Mounts)
+                var mounts = new List<VfsMount>();
+                foreach (VfsMount mount in VfsManager.Mounts)
                     mounts.Add(mount);
 
                 CommandIO.WriteLine(human
@@ -35,7 +35,7 @@ namespace ZonderqOS.Commands
 
                 for (int i = 0; i < mounts.Count; i++)
                 {
-                    VfsManager.VfsMount mount = mounts[i];
+                    VfsMount mount = mounts[i];
                     ulong totalBytes = ResolveTotalBytes(mount.Source);
                     ulong usedBytes = CalculateMountUsage(
                         Normalize(mount.MountPoint),
@@ -90,7 +90,7 @@ namespace ZonderqOS.Commands
 
         private static ulong CalculateMountUsage(
             string path,
-            List<VfsManager.VfsMount> mounts,
+            List<VfsMount> mounts,
             string rootMountPoint,
             int depth)
         {
@@ -132,7 +132,7 @@ namespace ZonderqOS.Commands
 
         private static bool IsNestedMountPoint(
             string path,
-            List<VfsManager.VfsMount> mounts,
+            List<VfsMount> mounts,
             string rootMountPoint)
         {
             for (int i = 0; i < mounts.Count; i++)

@@ -519,7 +519,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 index b517ab3..742c355 100644
 --- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
 +++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
-@@ -2328,6 +2328,158 @@ _native_x64_end_idle_stack_test:
+@@ -2328,6 +2328,175 @@ _native_x64_end_idle_stack_test:
      ret
  
  
@@ -589,6 +589,23 @@ index b517ab3..742c355 100644
 +    shl edx, 24
 +    mov dword ptr [r14 + 0x310], edx
 +    mov dword ptr [r14 + 0x300], 0x000000F1
++    // The concurrent command-wake path must not overwrite an in-flight ICR.
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++.Lap_concurrent_begin_delivery_wait:
++    test dword ptr [r14 + 0x300], 0x00001000
++    jz .Lap_concurrent_begin_delivery_done
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, qword ptr [rip + _smp_gc_timeout_tsc_ticks]
++    jb .Lap_concurrent_begin_delivery_wait
++    jmp .Lap_concurrent_begin_invalid
++.Lap_concurrent_begin_delivery_done:
 +    inc r13
 +    jmp .Lap_concurrent_begin_wake
 +.Lap_concurrent_begin_success:

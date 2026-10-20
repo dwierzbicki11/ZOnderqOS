@@ -346,11 +346,24 @@ namespace ZonderqOS.GUI
                 minimizeX + 21, buttonY + 18);
 
             DrawCaptionButton(canvas, maximizeX, buttonY, 2);
+#if ZONDERQ_READONLY_HARDWARE_PROBE
+            // The Gen3 PNG icon cache uses File.WriteAllBytes. Never invoke it
+            // from a diskless read-only desktop on bare-metal 3.0.94.
+            canvas.DrawRectangle(Color.White, maximizeX + 8, buttonY + 7, 14, 13);
+#else
             IconManager.DrawScaled(canvas, IsMaximized ? IconType.Restore : IconType.Maximize,
                 maximizeX + 7, buttonY + 6, 16, 16);
+#endif
 
             DrawCaptionButton(canvas, closeX, buttonY, 3);
+#if ZONDERQ_READONLY_HARDWARE_PROBE
+            canvas.DrawLine(Color.White, closeX + 9, buttonY + 9,
+                closeX + 21, buttonY + 21);
+            canvas.DrawLine(Color.White, closeX + 21, buttonY + 9,
+                closeX + 9, buttonY + 21);
+#else
             IconManager.DrawScaled(canvas, IconType.Close, closeX + 7, buttonY + 6, 16, 16);
+#endif
 
             if (!IsMaximized && hoveredResizeMode != 0)
                 DrawResizeHint(canvas, hoveredResizeMode);

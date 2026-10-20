@@ -507,7 +507,7 @@ index 33988f6bc516eec765299b99cbda7d62bc68d737..01d78a1aa40a0241a51134502b4c7f91
  .global _native_x64_get_ap_timer_ticks
  _native_x64_get_ap_timer_ticks:
      cmp edi, 255
-@@ -1460,6 +1578,291 @@ _native_x64_run_percpu_scheduler_test:
+@@ -1460,6 +1578,308 @@ _native_x64_run_percpu_scheduler_test:
      ret
  
  
@@ -589,6 +589,23 @@ index 33988f6bc516eec765299b99cbda7d62bc68d737..01d78a1aa40a0241a51134502b4c7f91
 +    shl edx, 24
 +    mov dword ptr [r15 + 0x310], edx
 +    mov dword ptr [r15 + 0x300], 0x000000F1
++    // Serialize xAPIC ICR delivery before selecting another AP.
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    mov r11, rax
++.Lresidency_begin_delivery_wait:
++    test dword ptr [r15 + 0x300], 0x00001000
++    jz .Lresidency_begin_delivery_done
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r13
++    jb .Lresidency_begin_delivery_wait
++    jmp .Lap_managed_residency_begin_failure
++.Lresidency_begin_delivery_done:
 +    inc rbx
 +    jmp .Lap_managed_residency_begin_send
 +
@@ -799,7 +816,7 @@ index 33988f6bc516eec765299b99cbda7d62bc68d737..01d78a1aa40a0241a51134502b4c7f91
  // int _native_x64_run_ap_timer_test(uint64_t cpuCount,
  //                                    uint32_t initialCount,
  //                                    uint64_t minimumTicks,
-@@ -2190,6 +2593,12 @@ _ap_managed_result: .zero 2048
+@@ -2190,6 +2610,12 @@ _ap_managed_result: .zero 2048
  // +4 managed enter/leave phase, +8 successful managed entry count.
  _ap_scheduler_state: .zero 16384
  

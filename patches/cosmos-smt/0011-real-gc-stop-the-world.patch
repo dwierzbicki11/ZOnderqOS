@@ -1,7 +1,7 @@
 diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs
 --- a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs
 +++ b/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs
-@@ -184,6 +189,16 @@ internal static unsafe partial class GarbageCollector
+@@ -184,6 +189,55 @@ internal static unsafe partial class GarbageCollector
      /// </summary>
      private static ulong s_deadThreadsNonAllocBytes;
  
@@ -13,12 +13,51 @@ diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs 
 +    [LibraryImport("*", EntryPoint = "_native_x64_gc_resume_world")]
 +    [SuppressGCTransition]
 +    private static partial int NativeGcResumeWorld(ulong epoch);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_gc_get_cpu_count")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGcGetCpuCount();
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_gc_ack_epoch")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGcGetAckEpoch(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_gc_resume_epoch")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGcGetResumeEpoch(uint cpuId);
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_gc_state")]
++    [SuppressGCTransition]
++    private static partial uint NativeGcGetState(uint cpuId);
++
++    private static void LogGcRendezvousFailure()
++    {
++        ulong count = NativeGcGetCpuCount();
++        if (count <= 1 || count > 256)
++        {
++            Serial.WriteString("[GC-SMP-FAIL] invalid CPU count\n");
++            return;
++        }
++
++        for (uint cpu = 1; cpu < count; cpu++)
++        {
++            Serial.WriteString("[GC-SMP-FAIL] cpu=");
++            Serial.WriteNumber(cpu);
++            Serial.WriteString(" ack=");
++            Serial.WriteNumber(NativeGcGetAckEpoch(cpu));
++            Serial.WriteString(" resume=");
++            Serial.WriteNumber(NativeGcGetResumeEpoch(cpu));
++            Serial.WriteString(" state=");
++            Serial.WriteNumber(NativeGcGetState(cpu));
++            Serial.WriteString("\n");
++        }
++    }
 +#endif
 +
      // --- Properties ---
  
      /// <summary>
-@@ -256,66 +272,106 @@ internal static unsafe partial class GarbageCollector
+@@ -256,66 +311,110 @@ internal static unsafe partial class GarbageCollector
              return 0;
          }
  
@@ -50,6 +89,7 @@ diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs 
              {
 -                s_freeLists[i] = null;
 +                Serial.WriteString("[GC-SMP] ERROR: failed to stop all application processors.\n");
++                LogGcRendezvousFailure();
 +                Cosmos.Kernel.Core.Panic.Halt("SMP GC stop-the-world rendezvous failed.");
 +                return 0;
              }
@@ -155,9 +195,12 @@ diff --git a/src/Cosmos.Kernel.Core/Memory/GarbageCollector/GarbageCollector.cs 
 +                if (rendezvousEpoch != 0)
 +                {
 +                    int resumed = NativeGcResumeWorld(rendezvousEpoch);
-+                    if (resumed < 0)
++                    ulong cpuCount = NativeGcGetCpuCount();
++                    if (resumed < 0 || cpuCount <= 1 || cpuCount > 256 ||
++                        (ulong)resumed != cpuCount - 1)
 +                    {
 +                        Serial.WriteString("[GC-SMP] ERROR: failed to resume all application processors.\n");
++                        LogGcRendezvousFailure();
 +                        Cosmos.Kernel.Core.Panic.Halt("SMP GC resume rendezvous failed.");
 +                    }
 +
@@ -257,8 +300,14 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
  
      mov r12, rdi
      mov r13, rsi
-@@ -1226,4 +1227,212 @@ GC_STATE_GETTER _native_x64_get_gc_saved_rflags, 48, 8
+@@ -1226,4 +1227,236 @@ GC_STATE_GETTER _native_x64_get_gc_saved_rflags, 48, 8
  
++// Expose the registered topology to fail-closed GC diagnostics.
++.global _native_x64_gc_get_cpu_count
++_native_x64_gc_get_cpu_count:
++    mov rax, qword ptr [rip + _smp_cpu_count]
++    ret
++
 +// long _native_x64_gc_stop_world()
 +// Returns 0 before SMP is active / on a single CPU, a positive rendezvous
 +// epoch after every AP is parked, or a negative error code.
@@ -341,6 +390,24 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    shl edx, 24
 +    mov dword ptr [r15 + 0x310], edx
 +    mov dword ptr [r15 + 0x300], 0x000000F3
++    // The ICR delivery-status bit must clear before selecting the next AP.
++.Lgc_runtime_delivery_wait:
++    test dword ptr [r15 + 0x300], 0x00001000
++    jz .Lgc_runtime_delivery_done
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r14
++    jb .Lgc_runtime_delivery_wait
++    // Release any APs already stopped before panicking in managed GC.
++    mov rax, r13
++    xchg qword ptr [rip + _gc_release_epoch], rax
++    mfence
++    mov rax, -1
++    jmp .Lgc_runtime_stop_return
++.Lgc_runtime_delivery_done:
 +    inc rbx
 +    jmp .Lgc_runtime_send
 +
@@ -470,7 +537,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
  // int _native_x64_run_gc_rendezvous_test(uint64_t cpuCount,
  //                                         uint64_t rounds,
  //                                         uint64_t timeoutTscTicks)
-@@ -1603,5 +1807,7 @@ _gc_rendezvous_state: .zero 16384
+@@ -1603,5 +1831,7 @@ _gc_rendezvous_state: .zero 16384
  _gc_release_epoch: .quad 0
 +_smp_cpu_count: .quad 0
 +_smp_gc_timeout_tsc_ticks: .quad 0

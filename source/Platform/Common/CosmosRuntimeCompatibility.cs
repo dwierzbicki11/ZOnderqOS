@@ -1,4 +1,9 @@
 using System;
+#if ZONDERQ_COSMOS_INPUT_API
+using RuntimeMemoryInfo = Cosmos.Kernel.System.Diagnostics.MemoryDiagnostics;
+#else
+using RuntimeMemoryInfo = Cosmos.Kernel.System.Diagnostics.MemoryInfo;
+#endif
 
 #pragma warning disable COSMOS0001
 
@@ -13,22 +18,22 @@ namespace Cosmos.Kernel.Core.Memory
     {
         public static ulong TotalPageCount
         {
-            get { try { return global::Cosmos.Kernel.System.Diagnostics.MemoryInfo.TotalPages; } catch { return 0UL; } }
+            get { try { return RuntimeMemoryInfo.TotalPages; } catch { return 0UL; } }
         }
 
         public static ulong FreePageCount
         {
-            get { try { return global::Cosmos.Kernel.System.Diagnostics.MemoryInfo.FreePages; } catch { return 0UL; } }
+            get { try { return RuntimeMemoryInfo.FreePages; } catch { return 0UL; } }
         }
 
         public static ulong PageSize
         {
-            get { try { return global::Cosmos.Kernel.System.Diagnostics.MemoryInfo.PageSizeBytes; } catch { return 4096UL; } }
+            get { try { return RuntimeMemoryInfo.PageSizeBytes; } catch { return 4096UL; } }
         }
 
         public static ulong RamSize
         {
-            get { try { return global::Cosmos.Kernel.System.Diagnostics.MemoryInfo.RamSizeBytes; } catch { return 0UL; } }
+            get { try { return RuntimeMemoryInfo.RamSizeBytes; } catch { return 0UL; } }
         }
     }
 }
@@ -43,7 +48,14 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
         {
             try
             {
+#if ZONDERQ_COSMOS_INPUT_API
+                // Stock v3.0.94 does not export RhWaitForPendingFinalizers,
+                // which GC.GetTotalMemory() would reference at NativeAOT link.
+                // Use a real (possibly last-GC) BCL heap snapshot instead.
+                long live = GC.GetGCMemoryInfo().HeapSizeBytes;
+#else
                 long live = GC.GetTotalMemory(forceFullCollection: false);
+#endif
                 return live > 0 ? (ulong)live : 0UL;
             }
             catch
@@ -99,7 +111,7 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
 
         public static int GetCollectionIndex()
         {
-            try { return global::Cosmos.Kernel.System.Diagnostics.MemoryInfo.TotalCollections; }
+            try { return RuntimeMemoryInfo.TotalCollections; }
             catch { return 0; }
         }
     }
