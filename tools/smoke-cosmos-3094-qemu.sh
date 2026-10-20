@@ -7,6 +7,7 @@ LOG="${2:?usage: smoke-cosmos-3094-qemu.sh ISO SERIAL-LOG}"
 CPUS="${SMP3094_QEMU_CPUS:-4}"
 CORES="${SMP3094_QEMU_CORES:-$CPUS}"
 THREADS="${SMP3094_QEMU_THREADS:-1}"
+CPU_MODEL="${SMP3094_QEMU_CPU_MODEL:-Nehalem}"
 TIMEOUT="${SMP3094_QEMU_TIMEOUT:-180}"
 STABLE="${SMP3094_QEMU_STABLE:-8}"
 
@@ -16,13 +17,20 @@ for value in "$CPUS" "$CORES" "$THREADS" "$TIMEOUT" "$STABLE"; do
 done
 (( CPUS >= 1 && CPUS <= 256 )) || fail "CPU count out of range"
 (( CORES * THREADS == CPUS )) || fail "cores * threads must equal vCPU count"
+# Keep CPU profiles explicit so this regression tests the hardware model
+# requested by the matrix, rather than silently falling back to Nehalem.
+case "$CPU_MODEL" in
+    Nehalem|Broadwell|EPYC-Rome|EPYC-Milan) ;;
+    *) fail "Unsupported QEMU CPU model for reproducible SMP evidence: $CPU_MODEL" ;;
+esac
 [[ -s "$ISO" ]] || fail "ISO missing or empty: $ISO"
 command -v qemu-system-x86_64 >/dev/null || fail "Missing QEMU x86_64"
 
+echo "[SMP3094-QEMU] model=$CPU_MODEL vCPUs=$CPUS cores=$CORES threads=$THREADS"
 mkdir -p "$(dirname "$LOG")"
 : > "$LOG"
 # Avoid silently reusing a serial file from an earlier, successful boot.
-qemu-system-x86_64 -machine q35 -cpu Nehalem \
+qemu-system-x86_64 -machine q35 -cpu "$CPU_MODEL" \
     -smp "$CPUS,sockets=1,cores=$CORES,threads=$THREADS" \
     -m 1024M -boot d -cdrom "$ISO" \
     -vga std -display none -monitor none \

@@ -38,6 +38,14 @@ def check(text: str, cpus: int) -> str:
     for line in lines:
         if FATAL.search(line):
             raise BootProofError("kernel error in serial log: " + line)
+        # Only exact proof markers can be accepted. Ignore arbitrary serial
+        # chatter but reject partial/forged markers with the reserved prefix.
+        if line.startswith("[SMP3094-STAGE") and line not in {
+            STAGE4, STAGE5, STAGE6, STAGE7, STAGE8
+        }:
+            raise BootProofError("unrecognized SMP stage marker: " + line)
+        if line.startswith("[SMP3094-PROBE] BOOT") and line != BOOT:
+            raise BootProofError("malformed boot proof marker")
 
     def marker(token: str) -> int:
         hits = [idx for idx, line in enumerate(lines) if line == token]
@@ -65,6 +73,8 @@ def check(text: str, cpus: int) -> str:
         a = AP.fullmatch(line)
         if a:
             cpu_id, lapic_id = map(int, a.groups())
+            if lapic_id > 255:
+                raise BootProofError("xAPIC physical ID outside 8-bit range")
             if cpu_id in ap_ids or cpu_id == 0 or cpu_id >= cpus:
                 raise BootProofError("duplicated / invalid AP CpuId")
             if lapic_id in ap_ids.values():
@@ -160,15 +170,23 @@ def self_test() -> None:
             BOOT,
         ]) + "\n"
 
-    for count in (1, 2, 4, 8, 16):
+    for count in (1, 2, 4, 8, 16, 32, 56):
         check(good(count), count)
         # The normal exception handler registration banner is not a CPU fault.
         check("[ExceptionHandler] CPU exception handlers registered\n" + good(count), count)
+    # Native work uses dense CpuId indices but IPI routing uses *physical*
+    # xAPIC IDs. A valid, noncontiguous physical mapping must be accepted.
+    check(good(4).replace("LAPIC=2", "LAPIC=27"), 4)
     corrupt = [
         (good(4).replace("counter=100000", "counter=99999", 1), 4),
         (good(4).replace(BOOT, ""), 4),
         (good(4).replace("count=1", "count=0", 1), 4),
         (good(4).replace("LAPIC=2 count=1", "LAPIC=7 count=1", 1), 4),
+        (good(4).replace("AP READY CpuId=2 LAPIC=2", "AP READY CpuId=2 LAPIC=512"), 4),
+        (good(4).replace("AP READY CpuId=2 LAPIC=2", "AP READY CpuId=2 LAPIC=1"), 4),
+        (good(4).replace(STAGE8, STAGE8 + " STALE", 1), 4),
+        (good(4).replace(BOOT, BOOT + " not-confirmed", 1), 4),
+        (good(4) + "[SMP3094-STAGE9] PASS\n", 4),
         (good(4).replace(STAGE6, ""), 4),
         (good(4).replace(STAGE7, ""), 4),
         (good(4).replace(STAGE8, ""), 4),
