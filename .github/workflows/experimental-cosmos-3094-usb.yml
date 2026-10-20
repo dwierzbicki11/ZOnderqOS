@@ -1,0 +1,117 @@
+name: Experimental ZonderqOS Cosmos 3.0.94 USB input
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - 'ZonderqOS.csproj'
+      - 'Kernel.cs'
+      - 'source/**'
+      - '.github/workflows/experimental-cosmos-3094-usb.yml'
+  push:
+    branches:
+      - 'experiment/cosmos-3094-usb-input'
+
+permissions:
+  contents: read
+
+jobs:
+  build-3094:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zonderq
+      - uses: actions/checkout@v4
+        with:
+          repository: CosmosOS/Cosmos
+          ref: v3.0.94
+          path: cosmos
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install Cosmos native dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld nasm xorriso binutils
+      - name: Assert isolated 3.0.94 project and USB mouse support
+        run: |
+          set -euo pipefail
+          grep -Fq 'Sdk="Cosmos.Sdk/3.0.94"' zonderq/ZonderqOS.csproj
+          grep -Fq '<CosmosEnableUsb>true</CosmosEnableUsb>' zonderq/ZonderqOS.csproj
+          grep -Fq '<ZonderqCosmosKeyboardApi>Input</ZonderqCosmosKeyboardApi>' zonderq/ZonderqOS.csproj
+          grep -Fq 'Version="3.0.94"' zonderq/ZonderqOS.csproj
+          test "$(git -C cosmos rev-parse HEAD)" = "$(git -C cosmos rev-list -n 1 v3.0.94)"
+      - name: Build clean matching Cosmos 3.0.94 SDK and runtime packages
+        working-directory: cosmos
+        env:
+          VersionPrefix: '3.0.94'
+        run: |
+          set -o pipefail
+          bash .devcontainer/postCreateCommand.sh 2>&1 | tee ../zonderq/build-3094-packages.log
+          test -s artifacts/package/release/Cosmos.Sdk.3.0.94.nupkg
+          test -s artifacts/package/release/Cosmos.Kernel.3.0.94.nupkg
+          test -s artifacts/package/release/Cosmos.Kernel.System.3.0.94.nupkg
+      - name: Restore and compile complete experimental ZonderqOS
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          export NUGET_PACKAGES="${{ runner.temp }}/zonderq3094-nuget"
+          mkdir -p "$NUGET_PACKAGES"
+          cat > zonderq/NuGet.3094.Config <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear/>
+              <add key="patched" value="${{ github.workspace }}/cosmos/artifacts/package/release"/>
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json"/>
+            </packageSources>
+            <packageSourceMapping>
+              <packageSource key="patched"><package pattern="Cosmos.*"/></packageSource>
+              <packageSource key="nuget.org"><package pattern="*"/></packageSource>
+            </packageSourceMapping>
+          </configuration>
+          EOF
+          dotnet restore zonderq/ZonderqOS.csproj \
+            -r linux-x64 -p:CosmosArch=x64 \
+            --configfile zonderq/NuGet.3094.Config --force --no-cache \
+            2>&1 | tee zonderq/restore-3094.log
+          python3 - <<'PY'
+          import json, os, pathlib
+          feed = pathlib.Path("cosmos/artifacts/package/release").resolve()
+          required = {"cosmos.sdk", "cosmos.kernel", "cosmos.kernel.system",
+                      "cosmos.kernel.core", "cosmos.kernel.hal.x64"}
+          cache = pathlib.Path(os.environ["NUGET_PACKAGES"])
+          found = set()
+          for p in cache.glob("cosmos.*/3.0.94/.nupkg.metadata"):
+              source = pathlib.Path(json.loads(p.read_text())["source"]).resolve()
+              if source != feed:
+                  raise SystemExit(f"Cosmos package not from pinned local feed: {p}: {source}")
+              found.add(p.parent.parent.name)
+          if required - found:
+              raise SystemExit(f"Missing pinned 3.0.94 packages: {sorted(required - found)}")
+          print("Cosmos v3.0.94 package provenance: PASS")
+          PY
+          dotnet publish zonderq/ZonderqOS.csproj \
+            -c Debug -r linux-x64 -p:CosmosArch=x64 \
+            -o zonderq/experimental3094-output --no-restore \
+            --verbosity:minimal 2>&1 | tee zonderq/publish-3094.log
+          test -s zonderq/experimental3094-output/ZonderqOS.iso
+          sha256sum zonderq/experimental3094-output/ZonderqOS.iso
+      - name: Upload isolated experimental ISO
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-3094-usb-input-EXPERIMENTAL
+          path: zonderq/experimental3094-output/ZonderqOS.iso
+          retention-days: 4
+          if-no-files-found: error
+      - name: Upload failure diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-3094-build-logs
+          path: |
+            zonderq/*-3094.log
+          if-no-files-found: ignore
