@@ -75,6 +75,12 @@ namespace ZonderqOS
     {
         private static RamRootBlockDevice disk;
 
+        internal static bool IsRamPartition(Partition partition)
+        {
+            return disk != null && partition != null &&
+                object.ReferenceEquals(partition.Host, disk);
+        }
+
         internal static bool TryCreate(out Partition selected)
         {
             selected = null;
