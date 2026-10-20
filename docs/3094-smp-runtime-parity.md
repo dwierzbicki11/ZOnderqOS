@@ -9,6 +9,12 @@ This is **Cosmos v3.0.94 only**. Do not use or silently apply the old
 per-CPU GS/stack setup, native AP parking/work, real fixed IPI,
 32-round IPI stress and a 4-epoch native F2 rendezvous.
 
+The Stage 8 implementation now also publishes a **monotonic atomic release
+epoch on all BSP failure paths** (timeout and invalid state) before returning
+an error. This prevents APs which already received F2 from remaining trapped
+forever in the native spin loop during an aborted proof. The BSP still fails
+the proof; it must never log a false Stage 8 PASS after an abort.
+
 Stage 8 only proves APs enter and leave a native barrier under IPI;
 **it does not dispatch ordinary System.Threading.Thread managed code on
 multiple CPUs, preempt them, or stop the world for OrionGC**. It must not
