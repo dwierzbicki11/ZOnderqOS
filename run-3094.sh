@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cosmos 3.0.94 ONLY. Never run legacy 3.0.85 builder or write disks.
 set -euo pipefail
-ROOT="$(cd "$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="dwierzbicki11/ZOnderqOS"
 WORKFLOW="Experimental ZonderqOS Cosmos 3.0.94 USB input"
 OUT="$ROOT/output-3094"
@@ -37,7 +37,7 @@ preflight() {
     BRANCH="$(git -C "$ROOT" branch --show-current)"
     [[ -n "$BRANCH" ]] || die "A named git branch is required"
     SHA="$(git -C "$ROOT" rev-parse HEAD)"
-    echo "[3094] Pinned SDK/runtime v3.0.94, branch=$BRANCH, commit=\${SHA:0:12}"
+    echo "[3094] Pinned SDK/runtime v3.0.94, branch=$BRANCH, commit=${SHA:0:12}"
 }
 download_artifact() {
     local artifact="$1" output_name="$2" runs run_id temp
@@ -60,7 +60,7 @@ download_artifact() {
     printf '[3094] ISO: %s\n' "$OUT/$output_name"
     sha256sum "$OUT/$output_name"
 }
-case "\${1:---help}" in
+case "${1:---help}" in
     --help|-h) help ;;
     --check) preflight ;;
     --download)
