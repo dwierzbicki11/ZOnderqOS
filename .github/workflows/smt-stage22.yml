@@ -77,6 +77,17 @@ jobs:
           </configuration>
           EOF
           mkdir -p "${{ runner.temp }}/zonderq-stage22-packages"
+      - name: Require matching Cosmos SDK before production Stage 22 ISO
+        working-directory: zonderq
+        run: |
+          set -euo pipefail
+          active="$(sed -n 's/.*<Project Sdk="Cosmos.Sdk\/\([0-9.]*\)">.*/\1/p' ZonderqOS.csproj | head -n1)"
+          legacy="3.0.85"
+          if [[ "$active" != "$legacy" ]]; then
+            echo "::error title=Stage22 runtime mismatch::Stage22 patches produce Cosmos $legacy, but ZonderqOS targets Cosmos $active. Port the native SMP and runtime patches to $active before claiming a production Stage22 PASS."
+            exit 1
+          fi
+
       - name: Build real ZonderqOS x64 ISO
         working-directory: zonderq
         env:
