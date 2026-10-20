@@ -2,15 +2,15 @@ name: Experimental ZonderqOS Cosmos 3.0.94 USB input
 
 on:
   workflow_dispatch:
-  pull_request:
-    paths:
-      - 'ZonderqOS.csproj'
-      - 'Kernel.cs'
-      - 'source/**'
-      - '.github/workflows/experimental-cosmos-3094-usb.yml'
   push:
     branches:
       - 'experiment/cosmos-3094-usb-input'
+
+# Avoid rebuilding Cosmos from source twice for the same PR commit.
+# A newer candidate supersedes the older experiment.
+concurrency:
+  group: cosmos3094-usb-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
