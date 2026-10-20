@@ -13,10 +13,10 @@ die() { printf '[3094][ERROR] %s\n' "$*" >&2; exit 1; }
 help() {
     cat <<'EOF'
 ZonderqOS / Cosmos 3.0.94 -- safe USB diagnostic runner
-  ./run-3094.sh --check      Verify pinned SDK, branch and workspace
-  ./run-3094.sh --download   Download ISO built by GitHub Actions for exact HEAD
-  ./run-3094.sh --qemu       Download and boot 1-vCPU QEMU with USB HID mouse
-  ./run-3094.sh --help       Show usage
+  bash run-3094.sh --check      Verify pinned SDK, branch and workspace
+  bash run-3094.sh --download   Download ISO built by GitHub Actions for exact HEAD
+  bash run-3094.sh --qemu       Download and boot 1-vCPU QEMU with USB HID mouse
+  bash run-3094.sh --help       Show usage
 
 This is the read-only input probe (inputscan | mouse | help), NOT full
 SMP/OrionGC/GUI production. It does NOT install or write to any physical disk.
