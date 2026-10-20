@@ -2,7 +2,6 @@
 using System;
 using System.Drawing;
 using System.Threading;
-using Cosmos.Kernel.Core.IO;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Graphics.Fonts;
 using Cosmos.Kernel.System.Input;
@@ -39,7 +38,7 @@ namespace ZonderqOS.SystemCore
             bool exit = false;
             bool first = true;
 
-            Serial.WriteString("[MOUSE-GUI] START Cosmos 3.0.94 framebuffer cursor test; no disk writes.\n");
+            Console.Write("[MOUSE-GUI] START Cosmos 3.0.94 framebuffer cursor test; no disk writes.\n");
             while (!exit)
             {
                 while (KeyboardManager.TryReadKey(out KeyEvent key))
@@ -78,9 +77,9 @@ namespace ZonderqOS.SystemCore
                 }
 
                 if (moved && moves == 1)
-                    Serial.WriteString("[MOUSE-GUI] FIRST MOVEMENT OBSERVED\n");
+                    Console.Write("[MOUSE-GUI] FIRST MOVEMENT OBSERVED\n");
                 if (changedButtons && presses == 1)
-                    Serial.WriteString("[MOUSE-GUI] FIRST BUTTON EVENT OBSERVED\n");
+                    Console.Write("[MOUSE-GUI] FIRST BUTTON EVENT OBSERVED\n");
 
                 first = false;
                 lastX = x;
@@ -91,11 +90,11 @@ namespace ZonderqOS.SystemCore
                 Thread.Sleep(40);
             }
 
-            Serial.WriteString("[MOUSE-GUI] EXIT moves=");
-            Serial.WriteNumber((uint)moves);
-            Serial.WriteString(" button-events=");
-            Serial.WriteNumber((uint)presses);
-            Serial.WriteString("\n");
+            Console.Write("[MOUSE-GUI] EXIT moves=");
+            Console.Write((uint)moves);
+            Console.Write(" button-events=");
+            Console.Write((uint)presses);
+            Console.Write("\n");
 
             // Cosmos 3.0.94 has no guaranteed text-mode restoration after a
             // framebuffer hand-off. Return to console logically; the user
