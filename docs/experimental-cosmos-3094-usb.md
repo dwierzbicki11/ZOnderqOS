@@ -12,7 +12,7 @@ This branch is intentionally **not** the production ZonderqOS 3.0.85 release.
 - This workflow builds matching Cosmos 3.0.94 SDK and runtime packages, validates local NuGet provenance, and attempts to publish an experimental ISO.
 - After CI succeeds, its `zonderq-3094-usb-input-EXPERIMENTAL` artifact is a **test-only** ISO; do not use `run.sh` from this branch because that launcher is intentionally pinned to production 3.0.85.
 - Do **not** flash to the laptop until the ISO build succeeds and QEMU boot is verified.
-- The test image enables `ZONDERQ_READONLY_HARDWARE_PROBE`: it does **not mount disks**, initialize users or start services. It presents a minimal console with `inputscan`, `mouse` (6-second real movement/button sampling), and `help`. Only allowlisted diagnostic commands are accepted.
+- The test image enables `ZONDERQ_READONLY_HARDWARE_PROBE`: it does **not mount disks**, initialize users or start services. It presents a minimal console with `inputscan`, `mouse` (6-second real movement/button sampling), `volumes` (read-only disk validation), and `help`. Only allowlisted diagnostic commands are accepted.
 - The `ZONDERQ_INPUT_DIAGNOSTIC_BOOT` flag remains for ordinary console startup when the read-only probe is disabled.
 - `inputscan` reports both raw PCI controller classes and real `DriverDiagnostics` USB nodes / bound pointer devices. It does not mistake finding a USB host for finding a mouse.
 - On real hardware, verify keyboard, `inputscan` PCI xHCI, USB HID mouse response, storage, and system logs. No touchpad support is claimed.
