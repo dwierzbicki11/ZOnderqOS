@@ -33,7 +33,7 @@ namespace ZonderqOS
                 Console.WriteLine();
                 InputBusDiagnostics.PrintReport();
                 Console.WriteLine();
-                Console.WriteLine("Commands: inputscan | mouse | volumes | help");
+                Console.WriteLine("Commands: inputscan | mouse | mousegui | volumes | help");
                 Console.WriteLine("The USB mouse should be reported as a bound pointer.");
                 return;
 #endif
@@ -213,6 +213,20 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "mousegui" || command == "cursor")
+            {
+                // Full-screen pointer demo without mounting Kali's EFI.
+                try
+                {
+                    MouseGuiDiagnostic.Run();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("mousegui: " + ex.Message);
+                }
+                return;
+            }
+
             if (command == "mouse")
             {
                 // Access the static class through fully qualified member names
@@ -251,6 +265,7 @@ namespace ZonderqOS
             {
                 Console.WriteLine("inputscan - read-only PCI, USB node and pointer-driver report");
                 Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");
+                Console.WriteLine("mousegui  - read-only fullscreen cursor and button test (ESC to exit)");
                 Console.WriteLine("volumes   - inspect disks and validate dedicated FAT32 data policy (read-only)");
                 Console.WriteLine("help      - print this help");
                 Console.WriteLine("No storage writes or privileged shell commands are enabled.");
