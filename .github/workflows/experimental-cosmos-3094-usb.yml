@@ -119,6 +119,9 @@ jobs:
           PY
           dotnet publish zonderq/ZonderqOS.csproj \
             -c Debug -r linux-x64 -p:CosmosArch=x64 \
+            -p:ZonderqReadOnlyHardwareProbe=true \
+            -p:ZonderqInputDiagnosticBoot=true \
+            -p:ZonderqRamRoot=false \
             -o zonderq/experimental3094-output --no-restore \
             --verbosity:minimal 2>&1 | tee zonderq/publish-3094.log
           test -s zonderq/experimental3094-output/ZonderqOS.iso
