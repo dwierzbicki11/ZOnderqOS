@@ -17,7 +17,7 @@ namespace ZonderqOS.SystemCore
     {
         internal static void Run()
         {
-            Canvas canvas = Canvas.GetFullScreen();
+            Canvas canvas = global::ZonderqOS.GUI.DisplayModeSelector.OpenNativeOrBest();
             int width = canvas.Width;
             int height = canvas.Height;
             if (width < 320 || height < 200)

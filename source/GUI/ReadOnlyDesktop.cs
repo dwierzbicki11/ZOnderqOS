@@ -22,7 +22,7 @@ namespace ZonderqOS.GUI
 
         internal static void Run()
         {
-            Canvas canvas = Canvas.GetFullScreen();
+            Canvas canvas = DisplayModeSelector.OpenNativeOrBest();
             int width = canvas.Width;
             int height = canvas.Height;
             if (width < 480 || height < 360)

@@ -45,7 +45,7 @@ namespace ZonderqOS.GUI
             try
             {
                 Console.WriteLine("[GUI] Inicjalizacja trybu graficznego...");
-                canvas = Canvas.GetFullScreen();
+                canvas = DisplayModeSelector.OpenNativeOrBest();
                 Console.WriteLine($"[GUI] Rzeczywista rozdzielczość Canvas: {canvas.Width}x{canvas.Height}");
                 Console.WriteLine("[GUI] Uruchamiam pulpit...");
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);

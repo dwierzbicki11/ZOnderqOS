@@ -20,7 +20,7 @@ namespace ZonderqOS.GUI
         {
             try
             {
-                Canvas canvas = Canvas.GetFullScreen();
+                Canvas canvas = DisplayModeSelector.OpenNativeOrBest();
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
                 IconManager.Preload();
 
