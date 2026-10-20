@@ -32,7 +32,9 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang lld nasm xorriso binutils
       - name: Test strict serial evidence parser
-        run: python3 zonderq/tests/Cosmos3094SmpBoot/verify_boot.py --self-test
+        run: |
+          python3 zonderq/tests/Cosmos3094SmpBoot/verify_boot.py --self-test
+          python3 -m unittest discover -s zonderq/tests/Cosmos3094SmpBoot -p 'test_abort_release.py' -v
       - name: Apply isolated Cosmos 3.0.94 patches 1-8
         env:
           ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
