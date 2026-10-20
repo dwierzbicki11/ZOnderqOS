@@ -1,12 +1,11 @@
-<Project Sdk="Cosmos.Sdk/3.0.85">
+<Project Sdk="Cosmos.Sdk/3.0.94">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
     <RuntimeIdentifiers>linux-x64;linux-arm64</RuntimeIdentifiers>
-    <!-- Keep the old keyboard API until the full SMP-patched Cosmos 3.0.94
-         migration is complete. Set Input along with the new SDK/packages. -->
-    <ZonderqCosmosKeyboardApi>Legacy</ZonderqCosmosKeyboardApi>
+    <!-- Experimental branch only. The v3.0.94 input API has Key / Input.KeyEvent. -->
+    <ZonderqCosmosKeyboardApi>Input</ZonderqCosmosKeyboardApi>
     <!-- Temporary bare-metal diagnostic image: boot console and scan input buses.
          Override with -p:ZonderqInputDiagnosticBoot=false to restore GUI boot. -->
     <ZonderqInputDiagnosticBoot Condition="'$(ZonderqInputDiagnosticBoot)' == ''">true</ZonderqInputDiagnosticBoot>
@@ -20,6 +19,8 @@
     <CosmosEnableNetwork>false</CosmosEnableNetwork>
     <CosmosEnableStorage>true</CosmosEnableStorage>
     <CosmosEnableMouse>true</CosmosEnableMouse>
+    <CosmosEnablePCI>true</CosmosEnablePCI>
+    <CosmosEnableUsb>true</CosmosEnableUsb>
     <CosmosEnableKeyboard>true</CosmosEnableKeyboard>
     <CosmosEnableGraphics>true</CosmosEnableGraphics>
     <CosmosEnableScheduler>true</CosmosEnableScheduler>
@@ -56,15 +57,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <!-- Stage 23 SMP/htop uses a locally patched Cosmos 3.0.85 runtime.
-         Never upgrade the SDK/package references alone: port the 23 patches,
-         launcher, NuGet feed and CI together, then prove QEMU SMP first.
-         SDK/runtime packages must stay on the exact same Cosmos release.
-         Cosmos.Sdk 3.0.85 imports Cosmos.Architecture.props, which already adds
-         both HAL.X64 and HAL.ARM64 at the matching Cosmos package version.
-         Re-declaring those HAL references here creates NU1504 duplicates. -->
-    <PackageReference Include="Cosmos.Kernel" Version="3.0.85" />
-    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.85" />
+    <!-- Experimental Cosmos v3.0.94 USB-input compatibility build.
+         This is NOT the production Stage-23 SMP runtime. Production stays
+         isolated in the v3.0.85 branch until the remaining scheduler/GC
+         patches have been ported and real hardware has been tested. -->
+    <PackageReference Include="Cosmos.Kernel" Version="3.0.94" />
+    <PackageReference Include="Cosmos.Kernel.System" Version="3.0.94" />
   </ItemGroup>
 
   <!-- Platform architecture boundary: Common is always compiled. Exactly one
