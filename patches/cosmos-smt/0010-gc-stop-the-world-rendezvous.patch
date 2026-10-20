@@ -488,3 +488,34 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
  .data
  _native_x64_irq_table:
  .quad irq0_stub
+diff --git a/src/Cosmos.Kernel.HAL.X64/Devices/Clock/RTC.cs b/src/Cosmos.Kernel.HAL.X64/Devices/Clock/RTC.cs
+--- a/src/Cosmos.Kernel.HAL.X64/Devices/Clock/RTC.cs
++++ b/src/Cosmos.Kernel.HAL.X64/Devices/Clock/RTC.cs
+@@ -77,18 +77,17 @@
+ 
+         // Capture current TSC as boot reference
+         BootTsc = X64CpuOps.ReadTSC();
+ 
+-        // Priority 1: EFI Runtime Services GetTime
+-        if (EfiRtc.TryGetTime(out long efiTicks))
+-        {
+-            BootTimeTicks = efiTicks;
+-            IsInitialized = true;
+-            Serial.Write("[RTC] Initialized\n");
+-            return;
+-        }
+-
+-        // Priority 2: Limine boot time
++        // x64 EFI RuntimeServices.GetTime uses Microsoft x64 EFIAPI, whereas
++        // the unmanaged function pointer in EfiRtc currently emits the host
++        // SysV ABI. Calling it can corrupt firmware arguments on real UEFI
++        // machines (and requires valid EFI runtime memory mappings). Until
++        // an audited MS-ABI native thunk is available, do not call firmware
++        // directly. Limine's boot time, then CMOS, are safe alternatives.
++        Serial.Write("[RTC] x64 firmware GetTime skipped (EFIABI); using Limine or CMOS\n");
++
++        // Priority 1: Limine boot time
+         if (Limine.BootTime.Response != null)
+         {
+             long unixSecs = Limine.BootTime.Response->BootTime;
+             if (unixSecs > 0)
