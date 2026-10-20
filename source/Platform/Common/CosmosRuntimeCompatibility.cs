@@ -48,7 +48,14 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
         {
             try
             {
+#if ZONDERQ_COSMOS_INPUT_API
+                // Stock v3.0.94 does not export RhWaitForPendingFinalizers,
+                // which GC.GetTotalMemory() would reference at NativeAOT link.
+                // Use a real (possibly last-GC) BCL heap snapshot instead.
+                long live = GC.GetGCMemoryInfo().HeapSizeBytes;
+#else
                 long live = GC.GetTotalMemory(forceFullCollection: false);
+#endif
                 return live > 0 ? (ulong)live : 0UL;
             }
             catch

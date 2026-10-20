@@ -6,6 +6,29 @@ using Cosmos.Kernel.System.Diagnostics;
 
 namespace ZonderqOS.SystemCore
 {
+#if ZONDERQ_COSMOS_INPUT_API
+    // Upstream 3.0.94's stock scheduler has real global BusyCpuTimeNs but
+    // does not expose Stage-23 per-logical-CPU accounting or the private
+    // RhScheduler* exports. Do not invent per-core load measurements.
+    internal static class SchedulerTelemetry
+    {
+        internal static bool HasCpuAccounting => false;
+        internal static long CpuBusyTicks(uint cpuId) => 0;
+
+        internal static uint CurrentThreadId()
+        {
+            // The unpatched v3.0.94 test release runs on its BSP.
+            return SchedulerDiagnostics.TryGetCurrentThread(0, out KernelThreadInfo thread)
+                ? thread.Id : uint.MaxValue;
+        }
+
+        internal static void EnableCurrentManagedPreemption()
+        {
+            // Stock v3.0.94 scheduler owns preemption; private Stage-23
+            // managed-AP entry is not present and must not be called.
+        }
+    }
+#else
     internal static partial class SchedulerTelemetry
     {
         [LibraryImport("*", EntryPoint = "RhGetCurrentSchedulerThreadId")]
@@ -26,6 +49,7 @@ namespace ZonderqOS.SystemCore
 
         internal static bool HasCpuAccounting => AccountingAvailable() == 1;
     }
+#endif
 
     internal sealed class HtopMonitor
     {
