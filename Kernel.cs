@@ -27,6 +27,16 @@ namespace ZonderqOS
             {
                 BootTelemetry.Initialize();
                 Console.Clear();
+#if ZONDERQ_READONLY_HARDWARE_PROBE
+                Console.WriteLine("ZOnderqOS / Cosmos 3.0.94 - USB/PCI input probe");
+                Console.WriteLine("READ-ONLY diagnostic boot: no disk mount, no account setup.");
+                Console.WriteLine();
+                InputBusDiagnostics.PrintReport();
+                Console.WriteLine();
+                Console.WriteLine("Commands: inputscan | mouse | help");
+                Console.WriteLine("The USB mouse should be reported as a bound pointer.");
+                return;
+#endif
 #if ZONDERQ_HTOP_SMOKE_TEST
                 HtopSmokeTest.Run();
 #endif
@@ -74,6 +84,10 @@ namespace ZonderqOS
         {
             try
             {
+#if ZONDERQ_READONLY_HARDWARE_PROBE
+                RunReadOnlyInputConsole();
+                return;
+#endif
                 if (!DiagnosticConsoleBoot && SystemSettings.BootToGui && !graphicalStartupFailed)
                 {
                     if (!SecurityContext.IsAuthenticated)
@@ -172,6 +186,71 @@ namespace ZonderqOS
                 KernelPanic.Show(ex, "RUNTIME", true);
             }
         }
+
+#if ZONDERQ_READONLY_HARDWARE_PROBE
+        // Completely isolated read-only diagnostic shell: no filesystem,
+        // authentication database, startup services or writes to host disks.
+        private static void RunReadOnlyInputConsole()
+        {
+            Console.Write("input-diag> ");
+            string command = Console.ReadLine();
+            if (command == null)
+                return;
+
+            command = command.Trim().ToLowerInvariant();
+            if (command == "inputscan" || command == "scan")
+            {
+                InputBusDiagnostics.PrintReport();
+                return;
+            }
+
+            if (command == "mouse")
+            {
+                // Access the static class through fully qualified member names
+                // rather than instantiating a pointer or guessing a device.
+                Console.WriteLine("Move/click the USB mouse for 6 seconds...");
+                int lastX = Cosmos.Kernel.System.Input.MouseManager.X;
+                int lastY = Cosmos.Kernel.System.Input.MouseManager.Y;
+                bool lastLeft = Cosmos.Kernel.System.Input.MouseManager.LeftButton;
+                bool lastRight = Cosmos.Kernel.System.Input.MouseManager.RightButton;
+                int events = 0;
+                for (int i = 0; i < 60; i++)
+                {
+                    Thread.Sleep(100);
+                    int x = Cosmos.Kernel.System.Input.MouseManager.X;
+                    int y = Cosmos.Kernel.System.Input.MouseManager.Y;
+                    bool left = Cosmos.Kernel.System.Input.MouseManager.LeftButton;
+                    bool right = Cosmos.Kernel.System.Input.MouseManager.RightButton;
+                    if (x != lastX || y != lastY || left != lastLeft || right != lastRight)
+                    {
+                        events++;
+                        lastX = x;
+                        lastY = y;
+                        lastLeft = left;
+                        lastRight = right;
+                    }
+                }
+                Console.WriteLine("Observed mouse state changes: " + events);
+                Console.WriteLine("Position: " + lastX + "," + lastY +
+                    "  buttons L=" + lastLeft + " R=" + lastRight);
+                if (events == 0)
+                    Console.WriteLine("No motion seen: verify driver binding via inputscan.");
+                return;
+            }
+
+            if (command == "help" || command == "?")
+            {
+                Console.WriteLine("inputscan - read-only PCI, USB node and pointer-driver report");
+                Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");
+                Console.WriteLine("help      - print this help");
+                Console.WriteLine("No storage writes or privileged shell commands are enabled.");
+                return;
+            }
+
+            if (command.Length != 0)
+                Console.WriteLine("Unknown/blocked diagnostic command. Type help.");
+        }
+#endif
 
         private void EnterConsoleRecovery(string reason)
         {
