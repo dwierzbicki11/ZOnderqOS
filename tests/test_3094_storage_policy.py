@@ -48,6 +48,14 @@ class StorageSafetyRegression(unittest.TestCase):
         self.assertIn("Multiple FAT32 ZONDERQDATA volumes", POLICY)
         self.assertIn("refusing to write to EFI", POLICY)
 
+    def test_normal_disk_gui_is_default_and_diagnostics_are_explicit(self):
+        self.assertIn("<ZonderqInputDiagnosticBoot Condition=", CSPROJ)
+        self.assertIn(">false</ZonderqInputDiagnosticBoot>", CSPROJ)
+        self.assertIn("<ZonderqReadOnlyHardwareProbe Condition=", CSPROJ)
+        self.assertIn(">false</ZonderqReadOnlyHardwareProbe>", CSPROJ)
+        self.assertIn("<ZonderqRamRoot Condition=", CSPROJ)
+        self.assertIn(">false</ZonderqRamRoot>", CSPROJ)
+
     def test_no_partition_zero_root_mount(self):
         init = method(DISK, "public static bool Initialize()")
         self.assertIn("DataVolumePolicy.TryFindDataPartition", init)
