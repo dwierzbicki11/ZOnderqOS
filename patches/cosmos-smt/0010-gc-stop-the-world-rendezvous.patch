@@ -39,7 +39,7 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL
      internal static bool StartAndParkApplicationProcessors()
      {
          LimineMpResponseX64* response = LimineMp.X64Response;
-@@ -439,6 +467,71 @@ internal static unsafe partial class SmpApBootstrap
+@@ -439,6 +467,85 @@ internal static unsafe partial class SmpApBootstrap
          return true;
      }
  
@@ -67,6 +67,20 @@ diff --git a/src/Cosmos.Kernel.HAL.X64/SmpApBootstrap.cs b/src/Cosmos.Kernel.HAL
 +            Serial.WriteString(" expected=");
 +            Serial.WriteNumber(Rounds);
 +            Serial.WriteString("\n");
++            // A timeout does not identify which AP missed the rendezvous.
++            // Expose native stop/resume epochs before the fail-closed panic.
++            for (uint cpuId = 1; cpuId < response->CpuCount; cpuId++)
++            {
++                Serial.WriteString("[GC-RDV-FAIL] cpu=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString(" ack=");
++                Serial.WriteNumber(NativeGetGcAckEpoch(cpuId));
++                Serial.WriteString(" resume=");
++                Serial.WriteNumber(NativeGetGcResumeEpoch(cpuId));
++                Serial.WriteString(" state=");
++                Serial.WriteNumber(NativeGetGcState(cpuId));
++                Serial.WriteString("\n");
++            }
 +            return false;
 +        }
 +
@@ -242,7 +256,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
  // int _native_x64_run_ap_ipi_test(uint64_t cpuCount, uint64_t timeoutTscTicks)
  .global _native_x64_run_ap_ipi_test
  _native_x64_run_ap_ipi_test:
-@@ -1120,6 +1226,198 @@ _native_x64_run_ap_timer_test:
+@@ -1120,6 +1226,213 @@ _native_x64_run_ap_timer_test:
      pop rbx
      ret
  
@@ -354,6 +368,21 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
 +    shl edx, 24
 +    mov dword ptr [r15 + 0x310], edx
 +    mov dword ptr [r15 + 0x300], 0x000000F3
++    // On xAPIC, delivery may still be pending after the ICR write.
++    // Wait before changing the destination for the next sibling AP.
++.Lgc_send_delivery_wait:
++    test dword ptr [r15 + 0x300], 0x00001000
++    jz .Lgc_send_delivered
++    pause
++    rdtsc
++    shl rdx, 32
++    or rax, rdx
++    sub rax, r11
++    cmp rax, r14
++    jb .Lgc_send_delivery_wait
++    mov eax, -1
++    jmp .Lgc_test_return
++.Lgc_send_delivered:
 +    inc r10
 +    jmp .Lgc_send_loop
 +
@@ -441,7 +470,7 @@ diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.N
  
  // int _native_x64_run_ap_work_test(uint64_t cpuCount,
  //                                  uint64_t timeoutTscTicks)
-@@ -1269,5 +1603,12 @@ _ap_timer_ticks: .zero 2048
+@@ -1269,5 +1618,12 @@ _ap_timer_ticks: .zero 2048
  _ap_timer_initial_count: .long 0
  
 +.balign 64
