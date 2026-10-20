@@ -44,11 +44,27 @@ namespace ZonderqOS
                 }
 #endif
 
+#if ZONDERQ_3094_RAM_ROOT
+                // Bind this filesystem to the explicit RAM partition object.
+                // Unlike an index-based FAT mount, even a concurrent hotplug
+                // cannot redirect a write to the laptop's physical disk.
+                if (!VfsManager.RegisterFileSystem("ramfat", new FatFileSystemType(data)))
+                {
+                    WriteMessage.WriteError("Could not register RAM-only FAT.", "VFS");
+                    return false;
+                }
+                if (!VfsManager.TryMount("ramfat", ReadOnlySpan<char>.Empty, MountFlags.None, "/", out var mount))
+                {
+                    WriteMessage.WriteError("Failed to mount RAM-only root. Host-disk fallback prohibited.", "VFS");
+                    return false;
+                }
+#else
                 if (!VfsManager.TryMount("fat", data, MountFlags.None, "/", out var mount))
                 {
                     WriteMessage.WriteError("Failed to mount approved ZonderqOS data volume.", "VFS");
                     return false;
                 }
+#endif
 
                 _currentMount = mount;
 #if ZONDERQ_3094_RAM_ROOT
