@@ -110,7 +110,7 @@ index 26330e4..c519e59 100644
      hlt
      jmp .Lap_park
  
-@@ -535,6 +539,139 @@ AP_STATE_GETTER _native_x64_get_ap_gs_id, 12, 4
+@@ -535,6 +539,149 @@ AP_STATE_GETTER _native_x64_get_ap_gs_id, 12, 4
  AP_STATE_GETTER _native_x64_get_ap_stack, 16, 8
  AP_STATE_GETTER _native_x64_get_ap_rflags, 24, 8
  AP_STATE_GETTER _native_x64_get_ap_work_counter, 40, 8
@@ -242,15 +242,25 @@ index 26330e4..c519e59 100644
 +.Lap_read_lapic_base:
 +    mov ecx, 0x1B
 +    rdmsr
++    // APIC_BASE MSR bit 11 = global APIC enable; bit 10 = x2APIC mode.
++    // All of these native SMP IPI paths use legacy xAPIC MMIO registers.
++    // Accessing that MMIO address in x2APIC mode can fault on bare metal.
++    test eax, 0x00000800
++    jz .Lap_no_legacy_xapic
++    test eax, 0x00000400
++    jnz .Lap_no_legacy_xapic
 +    shl rdx, 32
 +    or rax, rdx
 +    and rax, 0xFFFFFFFFFFFFF000
++    ret
++.Lap_no_legacy_xapic:
++    xor eax, eax
 +    ret
 +
  
  // int _native_x64_run_ap_work_test(uint64_t cpuCount,
  //                                  uint64_t timeoutTscTicks)
-@@ -682,6 +819,11 @@ _ap_boot_state: .zero 16384
+@@ -682,6 +829,11 @@ _ap_boot_state: .zero 16384
  .balign 4096
  _ap_stacks: .zero 4194304
  
