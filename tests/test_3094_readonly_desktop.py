@@ -27,7 +27,7 @@ class Gen3UsbDesktop(unittest.TestCase):
                         "help.Render(canvas)", "Cursor.Draw(canvas,",
                         "MouseManager.X", "MouseManager.Y",
                         "MouseManager.LeftButton", "MouseManager.RightButton",
-                        "KeyboardManager.TryReadKey", "Canvas.GetFullScreen()",
+                        "KeyboardManager.TryReadKey", "DisplayModeSelector.OpenNativeOrBest()",
                         "canvas.Display()"):
             self.assertIn(feature, DESKTOP)
 
