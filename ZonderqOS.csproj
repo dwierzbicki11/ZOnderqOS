@@ -13,6 +13,10 @@
     <!-- Bare-metal USB testing must never mount, format or populate laptop disks. -->
     <ZonderqReadOnlyHardwareProbe Condition="'$(ZonderqReadOnlyHardwareProbe)' == ''">true</ZonderqReadOnlyHardwareProbe>
     <DefineConstants Condition="'$(ZonderqReadOnlyHardwareProbe)' == 'true'">$(DefineConstants);ZONDERQ_READONLY_HARDWARE_PROBE</DefineConstants>
+    <!-- Optional *ephemeral* full-GUI profile: FAT32 on private RAM device.
+         No host disk can receive a write from root setup or icon caches. -->
+    <ZonderqRamRoot Condition="'$(ZonderqRamRoot)' == ''">false</ZonderqRamRoot>
+    <DefineConstants Condition="'$(ZonderqRamRoot)' == 'true'">$(DefineConstants);ZONDERQ_3094_RAM_ROOT</DefineConstants>
     <DefineConstants Condition="'$(ZonderqCosmosKeyboardApi)' == 'Input'">$(DefineConstants);ZONDERQ_COSMOS_INPUT_API</DefineConstants>
 
     <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
@@ -101,5 +105,12 @@
       <LogicalName>Wallpapers.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
+
+  <Target Name="GuardRamRootProfile" BeforeTargets="CoreCompile">
+    <Error Condition="'$(ZonderqRamRoot)' == 'true' and '$(ZonderqReadOnlyHardwareProbe)' == 'true'"
+           Text="RAM-root GUI and read-only probe are mutually exclusive." />
+    <Error Condition="'$(ZonderqRamRoot)' == 'true' and '$(ZonderqInputDiagnosticBoot)' == 'true'"
+           Text="RAM-root GUI needs the normal graphical startup profile." />
+  </Target>
 
 </Project>
