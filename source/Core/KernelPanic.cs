@@ -14,7 +14,7 @@ namespace ZonderqOS
     {
         private const int RecentLogLines = 10;
 
-        public static bool Show(Exception exception, string phase, bool allowContinue)
+        public static bool Show(Exception? exception, string phase, bool allowContinue)
         {
             string safePhase = string.IsNullOrEmpty(phase) ? "KERNEL" : phase;
             string message = exception == null ? "Unknown fatal error." : exception.Message;
