@@ -115,12 +115,20 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update -qq
-          sudo apt-get install -y qemu-system-x86
+          sudo apt-get install -y qemu-system-x86 dosfstools fdisk
+          # An adversarial EFI System Partition labelled like ZonderqOS data:
+          # even this must remain byte-for-byte untouched by probe boots.
+          canary=zonderq/experimental3094-efi-canary.img
+          truncate -s 128M "$canary"
+          printf 'label: dos\nunit: sectors\n\nstart=2048, type=ef\n' | sfdisk "$canary"
+          mkfs.fat -F 32 -n ZONDERQDATA --offset=2048 "$canary"
+          sha256sum "$canary" > "$canary.sha256"
           serial=zonderq/experimental3094-usb-qemu.serial.log
           : > "$serial"
           qemu-system-x86_64 \
             -machine q35 -cpu Nehalem -smp 1 -m 2048M \
             -cdrom zonderq/experimental3094-output/ZonderqOS.iso -boot d \
+            -drive "file=$canary,format=raw,if=ide" \
             -vga std -display none -monitor none \
             -device qemu-xhci,id=xhci \
             -device usb-mouse,bus=xhci.0 \
@@ -153,6 +161,11 @@ jobs:
             exit 1
           fi
           grep -F '[MouseManager] Registered mouse' "$serial"
+          # Stop the guest before comparing, otherwise a write could race the hash.
+          kill "$pid" 2>/dev/null || true
+          wait "$pid" 2>/dev/null || true
+          sha256sum --check "$canary.sha256"
+          echo 'EFI canary: byte-for-byte unchanged (read-only probe) PASS'
           echo 'Experimental USB mouse: QEMU 1-vCPU boot and HID binding PASS'
       - name: Upload QEMU serial logs on failure
         if: failure()
