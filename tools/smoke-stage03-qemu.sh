@@ -27,8 +27,16 @@ EXPECTED_CPUS=$((SOCKETS * CORES * THREADS))
 [[ "$CPUS" -eq "$EXPECTED_CPUS" ]] || \
   fail "invalid topology: cpus=$CPUS but sockets*cores*threads=${SOCKETS}*${CORES}*${THREADS}=$EXPECTED_CPUS"
 
-if ! qemu-system-x86_64 -cpu help 2>/dev/null | grep -Eq "(^|[[:space:]])${CPU_MODEL}([[:space:]]|$)"; then
-  fail "QEMU CPU model '$CPU_MODEL' is not available on this host"
+# Unversioned aliases may be omitted by QEMU's model listing.
+models="$(qemu-system-x86_64 -cpu help)" || fail 'cannot list QEMU CPU models'
+if ! awk -v model="$CPU_MODEL" '$2 == model { found=1 } END { exit !found }' <<< "$models"; then
+  versioned_model="$(awk -v model="$CPU_MODEL" '$2 == model "-v1" { print $2; exit }' <<< "$models")"
+  if [[ -n "$versioned_model" ]]; then
+    echo "[QEMU] Resolving CPU alias $CPU_MODEL to $versioned_model"
+    CPU_MODEL="$versioned_model"
+  else
+    echo "[QEMU] CPU model $CPU_MODEL not listed verbatim; validating at launch."
+  fi
 fi
 
 : > "$LOG"
