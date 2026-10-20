@@ -7,6 +7,10 @@
     <!-- Keep the old keyboard API until the full SMP-patched Cosmos 3.0.94
          migration is complete. Set Input along with the new SDK/packages. -->
     <ZonderqCosmosKeyboardApi>Legacy</ZonderqCosmosKeyboardApi>
+    <!-- Temporary bare-metal diagnostic image: boot console and scan input buses.
+         Override with -p:ZonderqInputDiagnosticBoot=false to restore GUI boot. -->
+    <ZonderqInputDiagnosticBoot Condition="'$(ZonderqInputDiagnosticBoot)' == ''">true</ZonderqInputDiagnosticBoot>
+    <DefineConstants Condition="'$(ZonderqInputDiagnosticBoot)' == 'true'">$(DefineConstants);ZONDERQ_INPUT_DIAGNOSTIC_BOOT</DefineConstants>
     <DefineConstants Condition="'$(ZonderqCosmosKeyboardApi)' == 'Input'">$(DefineConstants);ZONDERQ_COSMOS_INPUT_API</DefineConstants>
 
     <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>
