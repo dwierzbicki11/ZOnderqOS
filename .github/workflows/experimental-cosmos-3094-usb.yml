@@ -2,6 +2,13 @@ name: Experimental ZonderqOS Cosmos 3.0.94 USB input
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - 'Kernel.cs'
+      - 'source/Common/WriteMessage.cs'
+      - 'source/GUI/BootSplash.cs'
+      - 'tests/test_3094_boot_splash.py'
+      - '.github/workflows/experimental-cosmos-3094-usb.yml'
   push:
     branches:
       - 'main'
@@ -47,6 +54,7 @@ jobs:
           python3 zonderq/tests/test_3094_mouse_gui.py
           python3 zonderq/tests/test_3094_readonly_desktop.py
           python3 zonderq/tests/test_3094_display_gui.py
+          python3 zonderq/tests/test_3094_boot_splash.py
           python3 zonderq/tests/test_3094_ram_root.py
           bash -n zonderq/run-3094.sh
           bash -n zonderq/tests/qemu-3094-persistent-disk.sh
