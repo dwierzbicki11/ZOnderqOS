@@ -17,15 +17,25 @@ CALENDAR = code("source/GUI/Application/CalendarApp.cs")
 TYPOGRAPHY = code("source/GUI/UiTypography.cs")
 FILE_MANAGER = code("source/GUI/Application/FileManagerApp.cs")
 NOTEPAD = code("source/GUI/Application/NotepadApp.cs")
+APP_CENTER = code("source/GUI/Application/AppCenterApp.cs")
+DISK_MANAGER = code("source/GUI/Application/DiskManagerApp.cs")
+TASK_MANAGER = code("source/GUI/Application/TaskManagerModernApp.cs")
 PROJECT = code("ZonderqOS.csproj")
 
 
 def fit_window(x, y, width, height, screen_width, screen_height):
     desktop_height = screen_height - 44
-    width = max(min(320, screen_width), min(width, screen_width))
-    height = max(min(220, desktop_height), min(height, desktop_height))
-    return (max(0, min(x, screen_width - width)),
-            max(0, min(y, desktop_height - height)), width, height)
+    margin = 12 if screen_width >= 1000 and desktop_height >= 700 else 0
+    available_width, available_height = screen_width - 2 * margin, desktop_height - 2 * margin
+    width = max(min(320, available_width), min(width, available_width))
+    height = max(min(220, available_height), min(height, available_height))
+    return (max(margin, min(x, screen_width - width - margin)),
+            max(margin, min(y, desktop_height - height - margin)), width, height)
+
+
+def visible_rows(window_height, list_top, bottom_offset, row_height, row_gap):
+    action_top = window_height - bottom_offset
+    return max(1, min(6, (action_top - list_top - 8 + row_gap) // (row_height + row_gap)))
 
 
 class ResponsiveGui3094(unittest.TestCase):
@@ -37,9 +47,10 @@ class ResponsiveGui3094(unittest.TestCase):
 
     def test_window_fit_does_not_fake_actual_display_resolution(self):
         self.assertIn("desktopWidth - Width", WINDOW)
-        self.assertIn("desktopHeight - Height", WINDOW)
-        self.assertIn("System.Math.Min(Width, desktopWidth)", WINDOW)
-        self.assertIn("System.Math.Min(Height, desktopHeight)", WINDOW)
+        self.assertIn("desktopHeight - Height - margin", WINDOW)
+        self.assertIn("System.Math.Min(Width, desktopWidth - margin * 2)", WINDOW)
+        self.assertIn("System.Math.Min(Height, desktopHeight - margin * 2)", WINDOW)
+        self.assertIn("int margin = desktopWidth >= 1000 && desktopHeight >= 700 ? 12 : 0;", WINDOW)
         self.assertIn("DisplayModeSelector.OpenNativeOrBest()", DESKTOP)
         self.assertIn("MouseManager.SetScreenSize(canvas.Width, canvas.Height)", DESKTOP)
         for width, height in ((800, 600), (1366, 768), (1920, 1080)):
@@ -60,6 +71,59 @@ class ResponsiveGui3094(unittest.TestCase):
         # With six tools, the last row ends at 360+50+42 = 452.
         # The footer starts at 540-76=464: no overlapping controls.
         self.assertLess(452, menu_height - 76)
+
+    def test_app_center_list_actions_and_details_fit(self):
+        self.assertIn("private int ListWidth => ShowDetails ? 640", APP_CENTER)
+        self.assertIn("private int ActionY => Window.Y + Window.Height - ActionBottomOffset", APP_CENTER)
+        self.assertIn("int width = ListWidth;", APP_CENTER)
+        self.assertIn("if (ShowDetails)", APP_CENTER)
+        self.assertIn("Hit(mouseX, mouseY, listX, ry, ListWidth, RowHeight)", APP_CENTER)
+        self.assertIn("Window.X + 28 + buttonWidth, ActionY, buttonWidth", APP_CENTER)
+        self.assertNotIn("int actionY = Window.Y + 593", APP_CENTER)
+        for screen_w, screen_h in ((800, 600), (1366, 768), (1920, 1080)):
+            x, y, w, h = fit_window(150, 90, 1040, 700, screen_w, screen_h)
+            rows = visible_rows(h, 207, 107, 57, 6)
+            action_top = h - 107
+            last_row_bottom = 207 + (rows - 1) * 63 + 57
+            self.assertLessEqual(last_row_bottom + 8, action_top)
+            show_details = w >= 920 and h >= 690
+            list_width = 640 if show_details else w - 36
+            self.assertLessEqual(list_width + 36, w)
+            if show_details:
+                detail_width = w - list_width - 49
+                self.assertGreaterEqual(detail_width, 200)
+                self.assertLessEqual(207 + 372, action_top)
+            self.assertLessEqual(action_top + 42, h - 42)
+            self.assertLessEqual(18 + (w - 46) // 2 * 2 + 10, w - 18)
+
+    def test_disk_manager_list_actions_and_details_fit(self):
+        self.assertIn("private int ListWidth => ShowDetails ? 650", DISK_MANAGER)
+        self.assertIn("private int ActionY => Window.Y + Window.Height - ActionBottomOffset", DISK_MANAGER)
+        self.assertIn("int width = ListWidth;", DISK_MANAGER)
+        self.assertIn("if (ShowDetails)", DISK_MANAGER)
+        self.assertIn("Hit(mouseX, mouseY, listX, y, ListWidth, RowHeight)", DISK_MANAGER)
+        self.assertNotIn("int actionY = Window.Y + 558", DISK_MANAGER)
+        for screen_w, screen_h in ((800, 600), (1366, 768), (1920, 1080)):
+            _, _, w, h = fit_window(150, 90, 1040, 700, screen_w, screen_h)
+            rows = visible_rows(h, 162, 142, 58, 7)
+            action_top = h - 142
+            last_row_bottom = 162 + (rows - 1) * 65 + 58
+            self.assertLessEqual(last_row_bottom + 8, action_top)
+            show_details = w >= 920 and h >= 690
+            list_width = 650 if show_details else w - 36
+            self.assertLessEqual(list_width + 36, w)
+            if show_details:
+                detail_width = w - list_width - 50
+                self.assertGreaterEqual(detail_width, 200)
+                self.assertLessEqual(162 + 382, action_top)
+            self.assertLessEqual(action_top + 48, h - 43)
+
+    def test_embedded_views_never_exceed_parent_window(self):
+        self.assertIn("view.Width = Math.Max(1, Window.Width - 20);", FILE_MANAGER)
+        self.assertIn("view.Height = Math.Max(1, Window.Height - 50);", FILE_MANAGER)
+        self.assertIn("view.Width = Math.Max(1, Window.Width - 20);", TASK_MANAGER)
+        self.assertIn("view.Height = Math.Max(1, Window.Height - 50);", TASK_MANAGER)
+        self.assertIn("int contentWidth = System.Math.Max(1, Window.Width - sidebarWidth);", SETTINGS)
 
     def test_calculator_seventh_row_visible_on_800x600(self):
         self.assertIn("UiPainter.RoundedPanel(", CALC)

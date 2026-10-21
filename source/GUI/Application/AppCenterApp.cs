@@ -11,9 +11,20 @@ namespace ZonderqOS.GUI.Apps
     /// </summary>
     public sealed class AppCenterApp : Application
     {
-        private const int VisibleRows = 6;
+        private const int MaxVisibleRows = 6;
         private const int RowHeight = 57;
         private const int RowGap = 6;
+        private const int ListTopOffset = 207;
+        private const int ActionBottomOffset = 107;
+
+        // Calculate from the live window geometry, not a hardcoded 1040x700.
+        // Rendering, hit testing and keyboard scrolling must share these values.
+        private bool ShowDetails => Window.Width >= 920 && Window.Height >= 690;
+        private int ListWidth => ShowDetails ? 640 : Math.Max(1, Window.Width - 36);
+        private int ActionY => Window.Y + Window.Height - ActionBottomOffset;
+        private int ActionWidth => Math.Max(1, (Window.Width - 46) / 2);
+        private int VisibleRows => Math.Max(1, Math.Min(MaxVisibleRows,
+            (ActionY - (Window.Y + ListTopOffset) - 8 + RowGap) / (RowHeight + RowGap)));
 
         // AppCategory values intentionally map to these tab indexes.
         private static readonly string[] CategoryLabels =
@@ -192,8 +203,10 @@ namespace ZonderqOS.GUI.Apps
             RenderHeader(canvas);
             RenderTabs(canvas);
             RenderSearch(canvas);
+            KeepSelectionVisible();
             RenderList(canvas);
-            RenderDetails(canvas);
+            if (ShowDetails)
+                RenderDetails(canvas);
             RenderActions(canvas);
             RenderStatus(canvas);
         }
@@ -210,8 +223,11 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "APP CENTER", x + 55, y + 13, Text);
             SmallTextRenderer.Draw(canvas, "LOKALNY KATALOG WBUDOWANYCH APLIKACJI ZONDERQOS", x + 55, y + 32, Muted);
 
-            SmallTextRenderer.Draw(canvas, "ZAINSTALOWANE", x + width - 190, y + 14, Muted);
-            SmallTextRenderer.DrawUInt(canvas, (ulong)registry.AppCenterCount, x + width - 70, y + 14, Text);
+            if (Window.Width >= 950)
+            {
+                SmallTextRenderer.Draw(canvas, "ZAINSTALOWANE", x + width - 190, y + 14, Muted);
+                SmallTextRenderer.DrawUInt(canvas, (ulong)registry.AppCenterCount, x + width - 70, y + 14, Text);
+            }
         }
 
         private void RenderTabs(Canvas canvas)
@@ -269,7 +285,7 @@ namespace ZonderqOS.GUI.Apps
         {
             int x = Window.X + 18;
             int y = Window.Y + 207;
-            const int width = 640;
+            int width = ListWidth;
 
             for (int row = 0; row < VisibleRows; row++)
             {
@@ -298,8 +314,10 @@ namespace ZonderqOS.GUI.Apps
                 if (selected)
                     canvas.DrawFilledRectangle(SystemTheme.Accent, x, ry + 5, 3, RowHeight - 10);
                 IconManager.DrawScaled(canvas, app.Icon, x + 14, ry + 15, 25, 25);
-                SmallTextRenderer.DrawClipped(canvas, app.Name, x + 52, ry + 14, 300, Text);
-                SmallTextRenderer.DrawClipped(canvas, app.Description, x + 52, ry + 34, 450, Muted);
+                SmallTextRenderer.DrawClipped(canvas, app.Name, x + 52, ry + 14,
+                    Math.Max(20, width - 190), Text);
+                SmallTextRenderer.DrawClipped(canvas, app.Description, x + 52, ry + 34,
+                    Math.Max(20, width - 190), Muted);
 
                 int chipX = x + width - 119;
                 canvas.DrawFilledRectangle(Color.FromArgb(23, 31, 37), chipX, ry + 13, 104, 30);
@@ -311,9 +329,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderDetails(Canvas canvas)
         {
-            int x = Window.X + 671;
-            int y = Window.Y + 207;
-            int width = Window.Width - 689;
+            int x = Window.X + 18 + ListWidth + 13;
+            int y = Window.Y + ListTopOffset;
+            int width = Window.Width - ListWidth - 49;
             const int height = 372;
             canvas.DrawFilledRectangle(Panel, x, y, width, height);
             canvas.DrawRectangle(Border, x, y, width, height);
@@ -364,12 +382,12 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderActions(Canvas canvas)
         {
-            int y = Window.Y + 593;
-            DrawAction(canvas, 0, Window.X + 18, y, 200, "URUCHOM", IconType.Play,
+            int y = ActionY;
+            int buttonWidth = ActionWidth;
+            DrawAction(canvas, 0, Window.X + 18, y, buttonWidth, "URUCHOM", IconType.Play,
                 visibleCount > 0 ? SystemTheme.Accent : Muted);
-            DrawAction(canvas, 1, Window.X + 228, y, 220, "WYCZYSC FILTR", IconType.Refresh, Text);
-            SmallTextRenderer.Draw(canvas, "ENTER URUCHAMIA  |  DELETE CZYSCI FILTR  |  ESC ZAMYKA",
-                Window.X + 470, y + 17, Muted);
+            DrawAction(canvas, 1, Window.X + 18 + buttonWidth + 10, y, buttonWidth,
+                "WYCZYSC FILTR", IconType.Refresh, Text);
         }
 
         private void DrawAction(Canvas canvas, int index, int x, int y, int width, string label,
@@ -426,17 +444,17 @@ namespace ZonderqOS.GUI.Apps
                 if (visibleIndex >= visibleCount)
                     break;
                 int ry = listY + row * (RowHeight + RowGap);
-                if (Hit(mouseX, mouseY, listX, ry, 640, RowHeight))
+                if (Hit(mouseX, mouseY, listX, ry, ListWidth, RowHeight))
                 {
                     hoveredRow = row;
                     return;
                 }
             }
 
-            int actionY = Window.Y + 593;
-            if (Hit(mouseX, mouseY, Window.X + 18, actionY, 200, 42))
+            int buttonWidth = ActionWidth;
+            if (Hit(mouseX, mouseY, Window.X + 18, ActionY, buttonWidth, 42))
                 hoveredAction = 0;
-            else if (Hit(mouseX, mouseY, Window.X + 228, actionY, 220, 42))
+            else if (Hit(mouseX, mouseY, Window.X + 28 + buttonWidth, ActionY, buttonWidth, 42))
                 hoveredAction = 1;
         }
 

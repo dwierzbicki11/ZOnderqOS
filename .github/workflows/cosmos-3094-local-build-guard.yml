@@ -6,6 +6,9 @@ on:
       - 'run-3094.sh'
       - 'Bootloader/limine.conf'
       - 'tests/test_3094_display_gui.py'
+      - 'tests/test_3094_responsive_gui.py'
+      - 'source/GUI/Window.cs'
+      - 'source/GUI/Application/**'
       - 'tools/update-3094-one-usb.py'
       - 'tests/test_3094_one_usb_safe_update.py'
       - 'tools/build-cosmos-3094-local.sh'
@@ -17,6 +20,9 @@ on:
       - 'run-3094.sh'
       - 'Bootloader/limine.conf'
       - 'tests/test_3094_display_gui.py'
+      - 'tests/test_3094_responsive_gui.py'
+      - 'source/GUI/Window.cs'
+      - 'source/GUI/Application/**'
       - 'tools/update-3094-one-usb.py'
       - 'tests/test_3094_one_usb_safe_update.py'
       - 'tools/build-cosmos-3094-local.sh'
@@ -38,5 +44,6 @@ jobs:
         run: |
           python3 tests/test_3094_local_build_contract.py
           python3 tests/test_3094_display_gui.py
+          python3 tests/test_3094_responsive_gui.py
           python3 tests/test_3094_one_usb_safe_update.py
           bash run.sh --help | grep -F -- '--build'

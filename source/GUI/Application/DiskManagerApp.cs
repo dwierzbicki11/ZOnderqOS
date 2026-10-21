@@ -17,9 +17,18 @@ namespace ZonderqOS.GUI.Apps
         private const int MaxDevices = 8;
         private const int MaxPartitions = 24;
         private const int MaxMounts = 24;
-        private const int VisibleRows = 6;
+        private const int MaxVisibleRows = 6;
         private const int RowHeight = 58;
         private const int RowGap = 7;
+        private const int ListTopOffset = 162;
+        private const int ActionBottomOffset = 142;
+
+        // Derived from the actual window size, shared by draw and hit-testing.
+        private bool ShowDetails => Window.Width >= 920 && Window.Height >= 690;
+        private int ListWidth => ShowDetails ? 650 : System.Math.Max(1, Window.Width - 36);
+        private int ActionY => Window.Y + Window.Height - ActionBottomOffset;
+        private int VisibleRows => System.Math.Max(1, System.Math.Min(MaxVisibleRows,
+            (ActionY - (Window.Y + ListTopOffset) - 8 + RowGap) / (RowHeight + RowGap)));
 
         private static readonly string[] TabLabels = { "DYSKI", "PARTYCJE", "MONTOWANIA" };
         private static readonly Color Surface = Color.FromArgb(19, 24, 30);
@@ -213,8 +222,10 @@ namespace ZonderqOS.GUI.Apps
 
             RenderHeader(canvas);
             RenderTabs(canvas);
+            KeepSelectionVisible();
             RenderList(canvas);
-            RenderDetails(canvas);
+            if (ShowDetails)
+                RenderDetails(canvas);
             RenderActions(canvas);
             RenderStatus(canvas);
         }
@@ -231,13 +242,16 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "MENEDZER DYSKOW", x + 55, y + 13, Text);
             SmallTextRenderer.Draw(canvas, "F5 ODSWIEZ  |  STRZALKI WYBOR  |  ENTER/M MONTUJ", x + 55, y + 32, Muted);
 
-            int countX = x + width - 250;
-            SmallTextRenderer.Draw(canvas, "DYSKI", countX, y + 15, Muted);
-            SmallTextRenderer.DrawUInt(canvas, (ulong)deviceCount, countX + 49, y + 15, Text);
-            SmallTextRenderer.Draw(canvas, "PART", countX + 90, y + 15, Muted);
-            SmallTextRenderer.DrawUInt(canvas, (ulong)partitionCount, countX + 132, y + 15, Text);
-            SmallTextRenderer.Draw(canvas, "VFS", countX + 174, y + 15, Muted);
-            SmallTextRenderer.DrawUInt(canvas, (ulong)mountCount, countX + 205, y + 15, Text);
+            if (Window.Width >= 1000)
+            {
+                int countX = x + width - 250;
+                SmallTextRenderer.Draw(canvas, "DYSKI", countX, y + 15, Muted);
+                SmallTextRenderer.DrawUInt(canvas, (ulong)deviceCount, countX + 49, y + 15, Text);
+                SmallTextRenderer.Draw(canvas, "PART", countX + 90, y + 15, Muted);
+                SmallTextRenderer.DrawUInt(canvas, (ulong)partitionCount, countX + 132, y + 15, Text);
+                SmallTextRenderer.Draw(canvas, "VFS", countX + 174, y + 15, Muted);
+                SmallTextRenderer.DrawUInt(canvas, (ulong)mountCount, countX + 205, y + 15, Text);
+            }
         }
 
         private void RenderTabs(Canvas canvas)
@@ -267,7 +281,7 @@ namespace ZonderqOS.GUI.Apps
         {
             int x = Window.X + 18;
             int y = Window.Y + 162;
-            int width = 650;
+            int width = ListWidth;
 
             for (int row = 0; row < VisibleRows; row++)
             {
@@ -336,9 +350,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderDetails(Canvas canvas)
         {
-            int x = Window.X + 682;
-            int y = Window.Y + 162;
-            int width = Window.Width - 700;
+            int x = Window.X + 18 + ListWidth + 14;
+            int y = Window.Y + ListTopOffset;
+            int width = Window.Width - ListWidth - 50;
             int height = 382;
             canvas.DrawFilledRectangle(Panel, x, y, width, height);
             canvas.DrawRectangle(Border, x, y, width, height);
@@ -412,7 +426,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderActions(Canvas canvas)
         {
-            int y = Window.Y + 558;
+            int y = ActionY;
             int x = Window.X + 18;
             int width = Window.Width - 36;
             int gap = 10;
@@ -501,14 +515,14 @@ namespace ZonderqOS.GUI.Apps
             for (int row = 0; row < VisibleRows; row++)
             {
                 int y = listY + row * (RowHeight + RowGap);
-                if (Hit(mouseX, mouseY, listX, y, 650, RowHeight))
+                if (Hit(mouseX, mouseY, listX, y, ListWidth, RowHeight))
                 {
                     hoveredRow = row;
                     return;
                 }
             }
 
-            int actionY = Window.Y + 558;
+            int actionY = ActionY;
             int actionWidth = (Window.Width - 36 - 10) / 2;
             if (Hit(mouseX, mouseY, Window.X + 18, actionY, actionWidth, 48))
                 hoveredAction = 0;

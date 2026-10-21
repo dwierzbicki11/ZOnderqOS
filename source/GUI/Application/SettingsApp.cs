@@ -226,7 +226,7 @@ namespace ZonderqOS.GUI.Apps
             int clientHeight = System.Math.Max(1, Window.Height - 40);
             int sidebarWidth = System.Math.Min(SidebarWidth, System.Math.Max(180, Window.Width - 520));
             int contentX = Window.X + sidebarWidth;
-            int contentWidth = System.Math.Max(260, Window.Width - sidebarWidth);
+            int contentWidth = System.Math.Max(1, Window.Width - sidebarWidth);
 
             canvas.DrawFilledRectangle(Surface, Window.X + 1, clientTop, Window.Width - 2, clientHeight);
             canvas.DrawFilledRectangle(Sidebar, Window.X + 1, clientTop, sidebarWidth - 1, clientHeight);
@@ -847,7 +847,7 @@ namespace ZonderqOS.GUI.Apps
         {
             int sidebarWidth = System.Math.Min(SidebarWidth, System.Math.Max(180, Window.Width - 520));
             int contentX = Window.X + sidebarWidth;
-            int contentWidth = System.Math.Max(260, Window.Width - sidebarWidth);
+            int contentWidth = System.Math.Max(1, Window.Width - sidebarWidth);
             int x = GetRowX(contentX);
             int width = GetRowWidth(contentX, contentWidth);
             for (int i = 0; i < 6; i++)
