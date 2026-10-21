@@ -141,7 +141,9 @@ def core(src: str, path: Path) -> str:
             {
                 state = NativeGetManagedProofState(cpuId);
                 if (state == 1 || state == 2)
+                {
                     break;
+                }
             } while (X64CpuOps.ReadTSC() - start < timeoutTicks);
 
             ulong observed = NativeGetManagedProofChecksum(cpuId);
