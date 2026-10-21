@@ -51,7 +51,9 @@ internal static partial class ManagedApNative
                 checksum = (checksum << 13) | (checksum >> 51);
             }
             if (Publish(cpuId, checksum) != 0)
+            {
                 status = 2;
+            }
         }
         StartupCodeHelpers.RhpReversePInvokeReturn(IntPtr.Zero);
         return status;
@@ -104,7 +106,9 @@ def core(src: str, path: Path) -> str:
         const ulong TimeoutSeconds = 8;
         if (!LimineMp.TryValidateX64(out ulong count, out _) ||
             count == 0 || count > LimineMp.MaxXApicCpuCount)
+        {
             return false;
+        }
 
         if (count == 1)
         {
@@ -115,7 +119,9 @@ def core(src: str, path: Path) -> str:
         long frequency = X64CpuOps.TscFrequency;
         ulong perSecond = frequency > 0 ? (ulong)frequency : 1_000_000_000UL;
         if (perSecond > ulong.MaxValue / TimeoutSeconds)
+        {
             return false;
+        }
         ulong timeoutTicks = perSecond * TimeoutSeconds;
         LimineMpResponseX64* response = (LimineMpResponseX64*)Limine.MP.Response;
 
