@@ -17,6 +17,8 @@ namespace ZonderqOS.GUI
 
         private Canvas canvas;
         private Canvas wallpaperCanvas;
+        private CursorDamageRenderer cursorDamageRenderer;
+        private bool sceneHasToast;
         private Taskbar taskbar;
         private StartMenu startMenu;
         private NotificationCenter notificationCenter;
@@ -49,6 +51,7 @@ namespace ZonderqOS.GUI
                 Console.WriteLine($"[GUI] Rzeczywista rozdzielczość Canvas: {canvas.Width}x{canvas.Height}");
                 Console.WriteLine("[GUI] Uruchamiam pulpit...");
                 MouseManager.SetScreenSize(canvas.Width, canvas.Height);
+                cursorDamageRenderer = new CursorDamageRenderer(canvas);
 
                 // Settings are read once. Later GUI decisions use only primitive fields,
                 // so no configuration-file IO happens in the render loop.
@@ -320,6 +323,8 @@ namespace ZonderqOS.GUI
                             currentRightButtonState, previousRightButtonState);
                     }
 
+                    int priorMouseX = previousMouseX;
+                    int priorMouseY = previousMouseY;
                     previousLeftButtonState = currentLeftButtonState;
                     previousRightButtonState = currentRightButtonState;
                     previousMouseX = mouseX;
@@ -337,7 +342,20 @@ namespace ZonderqOS.GUI
                     // A few extra frames after actual UI interaction (roughly
                     // 30 FPS). Idle desktops keep their configurable heartbeat.
                     bool animationFrame = UiAnimator.NeedsRedraw && (frameCounter % 2 == 0);
-                    if (keyboardActivity || pointerMoved || buttonChanged || heartbeat || animationFrame)
+                    bool cursorOnly = pointerMoved && !keyboardActivity && !buttonChanged &&
+                        !currentLeftButtonState && !currentRightButtonState &&
+                        !heartbeat && !UiAnimator.NeedsRedraw &&
+                        CanMoveCursorWithoutSceneRedraw(priorMouseX, priorMouseY, mouseX, mouseY);
+
+                    // A full frame remains mandatory for UI changes, interactions,
+                    // animations, toasts, telemetry and periodic clock updates.
+                    if (cursorOnly && cursorDamageRenderer != null &&
+                        cursorDamageRenderer.TryMove(mouseX, mouseY))
+                    {
+                        // Only two 24x28 underlay rectangles were repainted
+                        // in software; Canvas.Display still flushes full screen.
+                    }
+                    else if (keyboardActivity || pointerMoved || buttonChanged || heartbeat || animationFrame)
                         RenderFrame(mouseX, mouseY);
 
                     Thread.Sleep(15);
@@ -355,6 +373,7 @@ namespace ZonderqOS.GUI
 
         private void RenderFrame(int mouseX, int mouseY)
         {
+            cursorDamageRenderer?.Reset();
             RenderDesktop();
             RenderDesktopShortcuts();
             applicationManager.Render(canvas);
@@ -363,9 +382,85 @@ namespace ZonderqOS.GUI
             desktopContextMenu?.Render(canvas);
             notificationCenter?.Render(canvas);
             commandPalette?.Render(canvas);
-            Cursor.Draw(canvas, mouseX, mouseY);
+            // Save pixels beneath the cursor only AFTER all desktop layers
+            // have been drawn. Full-screen redraw invalidates the old snapshot.
+            if (cursorDamageRenderer != null)
+                cursorDamageRenderer.DrawAfterScene(mouseX, mouseY);
+            else
+                Cursor.Draw(canvas, mouseX, mouseY);
             canvas.Display();
             UiAnimator.FrameRendered();
+            NotificationEntry toast;
+            sceneHasToast = global::ZonderqOS.NotificationService.TryGetActiveToast(out toast);
+        }
+
+        /// <summary>
+        /// Conservative fast path: the pointer must stay away from interactive
+        /// hit targets AND their visual halos at both positions. No desktop
+        /// widgets are allowed to change state while their paint is skipped.
+        /// </summary>
+        private bool CanMoveCursorWithoutSceneRedraw(int oldX, int oldY, int x, int y)
+        {
+            if (oldX < 0 || oldY < 0 || startMenu == null || taskbar == null ||
+                applicationManager == null || sceneHasToast)
+                return false;
+
+            if (startMenu.Visible || (desktopContextMenu != null && desktopContextMenu.Visible) ||
+                (notificationCenter != null && notificationCenter.Visible) ||
+                (commandPalette != null && commandPalette.Visible) ||
+                applicationManager.HasLiveTelemetryWindow)
+                return false;
+
+            NotificationEntry toast;
+            if (global::ZonderqOS.NotificationService.TryGetActiveToast(out toast))
+                return false;
+
+            return IsQuietCursorPosition(oldX, oldY) && IsQuietCursorPosition(x, y);
+        }
+
+        private bool IsQuietCursorPosition(int x, int y)
+        {
+            // Keep a margin around the panel boundary, caption buttons,
+            // shadows, shortcuts and taskbar. A 24x28 cursor damage box must
+            // not touch controls with pointer-dependent rendering.
+            const int margin = 24;
+            if (x < 0 || y < 0 || x >= (int)canvas.Width ||
+                y >= (int)canvas.Height - TaskbarHeight - margin)
+                return false;
+
+            var apps = applicationManager.Applications;
+            for (int i = 0; i < apps.Count; i++)
+            {
+                Application app = apps[i];
+                if (app == null || !app.IsRunning || app.Window == null ||
+                    !app.Window.Visible || app.Window.IsMinimized)
+                    continue;
+
+                Window window = app.Window;
+                if (IsNearRect(x, y, window.X, window.Y, window.Width, window.Height, margin))
+                    return false;
+            }
+
+            if (desktopShortcuts != null && global::ZonderqOS.SystemSettings.ShowDesktopIcons)
+            {
+                for (int i = 0; i < desktopShortcuts.Length; i++)
+                {
+                    DesktopShortcut shortcut = desktopShortcuts[i];
+                    if (IsNearRect(x, y, shortcut.X, shortcut.Y,
+                        shortcut.Width, shortcut.Height, margin))
+                        return false;
+                }
+            }
+
+            return true;
+        }
+
+        private static bool IsNearRect(int x, int y, int left, int top,
+            int width, int height, int margin)
+        {
+            return x >= left - margin && y >= top - margin &&
+                (long)x < (long)left + width + margin &&
+                (long)y < (long)top + height + margin;
         }
 
         private void InitializeAppRegistry()
