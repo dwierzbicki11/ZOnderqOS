@@ -11,7 +11,8 @@ required = (
     "Cosmos.Kernel.SourceGenerators.DriverManifestGenerator",
     "Microsoft.Interop.LibraryImportGenerator",
 )
-target = next((x for x in project.findall("Target") if x.get("Name") == "PrepareRoslynGeneratedOutput"), None)
+targets = ET.parse(ROOT / "Directory.Build.targets").getroot()
+target = next((x for x in targets.findall("Target") if x.get("Name") == "PrepareRoslynGeneratedOutput"), None)
 assert target is not None, "CS0016: missing source-generator output directory preparation target"
 assert target.get("BeforeTargets") == "CoreCompile"
 dirs = ";".join(x.get("Directories", "") for x in target.findall("MakeDir"))
