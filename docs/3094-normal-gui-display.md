@@ -79,6 +79,46 @@ partition/files and verify partition boundaries and the new image size. Do not
 assume a simple `dd` upgrade preserves the persistent root. For first-time
 provisioning use the separately documented storage-safety process.
 
+## A real HD 1366x768 laptop still boots at 800x600
+
+The per-entry Limine `resolution: 1366x768x32` request did not upgrade the
+physical laptop from 800x600. The request is best-effort and may be refused by
+BIOS/VBE or UEFI/GOP; changing `Canvas.Width` in C# cannot create the missing
+physical framebuffer. Cosmos v3.0.94's Broadwell IntelGraphicsDriver currently
+takes over the firmware-programmed mode rather than performing a complete
+panel modeset. A real Intel iGPU modeset would require validated register
+timings/PLL/link programming and EDID/panel data; do not fabricate modes.
+
+**Read-only physical troubleshooting** (normal ZOnderqOS GUI terminal):
+
+```text
+displayinfo
+lspci -v
+```
+
+`displayinfo` reports the actual Cosmos display provider (for example
+`intel-graphics` versus `firmware framebuffer`), real framebuffer size,
+refresh rate and the display driver's enumerated modes. It does **not**
+reprogram the framebuffer or mount any disk.
+
+Try the **UEFI: SanDisk** boot entry (not Legacy USB / CSM) when offered; GOP
+may expose an LCD-native mode not available through VBE. If both still show
+only 800x600, diagnose firmware modes and Intel modeset support before
+claiming HD is fixed.
+
+Read-only validation that the new Limine config is actually installed on
+the USB stick from Kali Linux:
+
+```bash
+sudo mkdir -p /mnt/zonderq-iso
+sudo mount -t iso9660 -o ro /dev/sdb /mnt/zonderq-iso
+grep -n 'resolution:' /mnt/zonderq-iso/boot/limine/limine.conf
+sudo umount /mnt/zonderq-iso
+```
+
+Expected is `resolution: 1366x768x32`; if absent, an older ISO is still
+installed on the USB. This does not verify whether UEFI selected the mode.
+
 ## Test gates
 
 ```sh
