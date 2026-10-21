@@ -1,0 +1,32 @@
+name: Cosmos 3.0.94 local build guard
+
+on:
+  pull_request:
+    paths:
+      - 'run-3094.sh'
+      - 'tools/build-cosmos-3094-local.sh'
+      - 'tests/test_3094_local_build_contract.py'
+      - '.github/workflows/cosmos-3094-local-build-guard.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'run-3094.sh'
+      - 'tools/build-cosmos-3094-local.sh'
+      - 'tests/test_3094_local_build_contract.py'
+      - '.github/workflows/cosmos-3094-local-build-guard.yml'
+  workflow_dispatch:
+
+jobs:
+  source-and-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify shell syntax
+        run: |
+          bash -n run.sh
+          bash -n run-3094.sh
+          bash -n tools/build-cosmos-3094-local.sh
+      - name: Verify pinned package provenance and safe launcher contract
+        run: |
+          python3 tests/test_3094_local_build_contract.py
+          bash run.sh --help | grep -F -- '--build'
