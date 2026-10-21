@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - 'run-3094.sh'
+      - 'Bootloader/limine.conf'
+      - 'tests/test_3094_display_gui.py'
       - 'tools/build-cosmos-3094-local.sh'
       - 'tests/test_3094_local_build_contract.py'
       - '.github/workflows/cosmos-3094-local-build-guard.yml'
@@ -11,6 +13,8 @@ on:
     branches: [main]
     paths:
       - 'run-3094.sh'
+      - 'Bootloader/limine.conf'
+      - 'tests/test_3094_display_gui.py'
       - 'tools/build-cosmos-3094-local.sh'
       - 'tests/test_3094_local_build_contract.py'
       - '.github/workflows/cosmos-3094-local-build-guard.yml'
@@ -29,4 +33,5 @@ jobs:
       - name: Verify pinned package provenance and safe launcher contract
         run: |
           python3 tests/test_3094_local_build_contract.py
+          python3 tests/test_3094_display_gui.py
           bash run.sh --help | grep -F -- '--build'
