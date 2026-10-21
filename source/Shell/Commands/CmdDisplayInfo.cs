@@ -51,7 +51,7 @@ namespace ZonderqOS.Commands
                 if (current.Width == 800 && current.Height == 600)
                 {
                     CommandIO.WriteLine("[DISPLAY3094] The physical framebuffer is still 800x600.");
-                    if (!nativeAdvertised)
+                    if (!nativeAdvertised && advertised.Count <= limit)
                     {
                         CommandIO.WriteLine("[DISPLAY3094] 1366x768 is not in the current display's");
                         CommandIO.WriteLine("  reported modes. Limine's 1366x768 request fell back.");
@@ -59,10 +59,15 @@ namespace ZonderqOS.Commands
                         CommandIO.WriteLine("  If UEFI also reports 800x600, native Intel panel");
                         CommandIO.WriteLine("  modesetting (not GUI scaling) is required.");
                     }
+                    else if (nativeAdvertised)
+                    {
+                        CommandIO.WriteLine("[DISPLAY3094] 1366x768 is reported: investigate");
+                        CommandIO.WriteLine("  why the advertised mode was not selected.");
+                    }
                     else
                     {
-                        CommandIO.WriteLine("[DISPLAY3094] 1366x768 is reported: this requires");
-                        CommandIO.WriteLine("  investigating why display-mode negotiation failed.");
+                        CommandIO.WriteLine("[DISPLAY3094] Mode list truncated: cannot yet");
+                        CommandIO.WriteLine("  determine whether 1366x768 is advertised.");
                     }
                 }
 
