@@ -93,7 +93,9 @@ def patch_core(text: str, path: Path) -> str:
         ulong quietTicks = tscPerSecond * QuietMilliseconds / 1000UL;
         uint initialCount = LocalApic.TicksPerMs * PeriodMs;
         if (quietTicks == 0 || initialCount == 0)
+        {
             return false;
+        }
 
         LimineMpResponseX64* response = (LimineMpResponseX64*)Limine.MP.Response;
         for (uint cpuId = 1; cpuId < count; cpuId++)
