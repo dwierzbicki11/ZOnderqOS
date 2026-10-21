@@ -14,6 +14,8 @@ help() {
     cat <<'EOF'
 ZonderqOS Cosmos 3.0.94
   bash run.sh --check            Verify pinned project, workspace and 3.0.94
+  bash run.sh --build            Build persistent GUI ISO from exact Cosmos 3.0.94 tag
+  bash run.sh --build-probe      Build read-only USB diagnostic ISO locally
   bash run.sh --download         Download read-only USB diagnostic ISO
   bash run.sh --download-disk    Download persistent full GUI ISO
   bash run.sh --qemu             Run read-only USB probe in QEMU (1 CPU)
@@ -68,6 +70,14 @@ download_artifact() {
 case "${1:---help}" in
     --help|-h) help ;;
     --check) preflight ;;
+    --build)
+        preflight
+        bash "$ROOT/tools/build-cosmos-3094-local.sh" disk
+        ;;
+    --build-probe)
+        preflight
+        bash "$ROOT/tools/build-cosmos-3094-local.sh" probe
+        ;;
     --download)
         preflight
         download_artifact "$PROBE_ARTIFACT" "ZonderqOS-3094-usb.iso"
