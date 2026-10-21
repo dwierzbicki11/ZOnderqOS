@@ -9,6 +9,7 @@ on:
       - 'source/GUI/**'
       - 'tests/test_3094_boot_splash.py'
       - 'tests/test_3094_modern_ui.py'
+      - 'tests/test_3094_ui_polish.py'
       - '.github/workflows/experimental-cosmos-3094-usb.yml'
   push:
     branches:
@@ -57,6 +58,7 @@ jobs:
           python3 zonderq/tests/test_3094_display_gui.py
           python3 zonderq/tests/test_3094_boot_splash.py
           python3 zonderq/tests/test_3094_modern_ui.py
+          python3 zonderq/tests/test_3094_ui_polish.py
           python3 zonderq/tests/test_3094_ram_root.py
           bash -n zonderq/run-3094.sh
           bash -n zonderq/tests/qemu-3094-persistent-disk.sh
