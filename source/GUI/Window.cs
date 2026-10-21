@@ -70,12 +70,17 @@ namespace ZonderqOS.GUI
             // Never invent a display resolution: this is only a GUI layout cap.
             if (desktopWidth > 0 && desktopHeight > 0)
             {
-                int minW = System.Math.Min(MinWidth, desktopWidth);
-                int minH = System.Math.Min(MinHeight, desktopHeight);
-                Width = System.Math.Max(minW, System.Math.Min(Width, desktopWidth));
-                Height = System.Math.Max(minH, System.Math.Min(Height, desktopHeight));
-                X = System.Math.Max(0, System.Math.Min(X, desktopWidth - Width));
-                Y = System.Math.Max(0, System.Math.Min(Y, desktopHeight - Height));
+                // Leave a little desktop breathing room at HD and above.
+                // On 800x600 use all available pixels instead of clipping apps.
+                int margin = desktopWidth >= 1000 && desktopHeight >= 700 ? 12 : 0;
+                int availableWidth = desktopWidth - margin * 2;
+                int availableHeight = desktopHeight - margin * 2;
+                int minW = System.Math.Min(MinWidth, availableWidth);
+                int minH = System.Math.Min(MinHeight, availableHeight);
+                Width = System.Math.Max(minW, System.Math.Min(Width, desktopWidth - margin * 2));
+                Height = System.Math.Max(minH, System.Math.Min(Height, desktopHeight - margin * 2));
+                X = System.Math.Max(margin, System.Math.Min(X, desktopWidth - Width - margin));
+                Y = System.Math.Max(margin, System.Math.Min(Y, desktopHeight - Height - margin));
             }
             UiAnimator.RequestFrames();
         }
