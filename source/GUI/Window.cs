@@ -374,7 +374,8 @@ namespace ZonderqOS.GUI
 
             canvas.DrawLine(Color.FromArgb(48, 57, 67), X + 1, Y + TitleBarHeight,
                 X + Width - 2, Y + TitleBarHeight);
-            canvas.DrawString(Title, PCScreenFont.DefaultFont, titleText, X + 12, Y + 4);
+            UiTypography.Heading(canvas, Title, X + 12, Y + 4,
+                System.Math.Max(30, Width - 3 * ButtonSize - 28), titleText);
 
             int closeX = X + Width - RightPadding - ButtonSize;
             int maximizeX = closeX - ButtonSize;
