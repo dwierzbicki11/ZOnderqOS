@@ -27,3 +27,7 @@ Status: implemented on this branch.
 
 ## Non-goals
 PCI enumeration, storage-controller probing and USB device binding belong to the driver-stack roadmap and must not be duplicated here.
+
+## Build note
+
+The shared Directory.Build.targets prepares source-generator output paths for both compile-only architecture gates.
