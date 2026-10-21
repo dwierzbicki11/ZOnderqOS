@@ -51,8 +51,12 @@ def check_timer(text: str, cpus: int) -> str:
                 raise TimerReadinessError("AP sample outside Stage 9a proof window")
             samples[cpu] = lvt
         elif line.startswith(("[SMP3094-TIMER-", "[SMP3094-STAGE9")):
-            if line != PASS:
-                raise TimerReadinessError("unknown or failed Stage 9a evidence: " + line)
+            # Stage9b has a separate strict parser. Only its exact PASS
+            # marker and properly prefixed per-CPU records may coexist
+            # with Stage9a; failures/unknown records remain forbidden.
+            if (line not in (PASS, "[SMP3094-STAGE9B] PASS") and
+                    not line.startswith("[SMP3094-TIMER-B] CPU=")):
+                raise TimerReadinessError("unknown or failed Stage 9a/9b evidence: " + line)
 
     if len(base) != 1:
         raise TimerReadinessError("required exactly one BSP timer calibration")
