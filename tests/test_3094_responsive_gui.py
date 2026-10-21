@@ -13,6 +13,7 @@ DESKTOP = code("source/GUI/GuiManager.cs")
 CALC = code("source/GUI/Application/CalculatorApp.cs")
 SETTINGS = code("source/GUI/Application/SettingsApp.cs")
 ABOUT = code("source/GUI/Application/AboutApp.cs")
+CALENDAR = code("source/GUI/Application/CalendarApp.cs")
 TYPOGRAPHY = code("source/GUI/UiTypography.cs")
 FILE_MANAGER = code("source/GUI/Application/FileManagerApp.cs")
 NOTEPAD = code("source/GUI/Application/NotepadApp.cs")
@@ -75,6 +76,20 @@ class ResponsiveGui3094(unittest.TestCase):
         effective_height = 68 if height >= 650 else 50
         sixth_end = 142 + 5 * (effective_height + 6) + effective_height
         self.assertLess(sixth_end, height - 42)
+
+    def test_calendar_grid_and_hitboxes_fit_800x600(self):
+        self.assertIn("MonthGridWidth", CALENDAR)
+        self.assertIn("MonthCellHeight", CALENDAR)
+        self.assertIn("if (ShowSidePanel)", CALENDAR)
+        self.assertGreaterEqual(CALENDAR.count("int cellHeight = MonthCellHeight;"), 2)
+        self.assertGreaterEqual(CALENDAR.count("int gridWidth = MonthGridWidth;") +
+                                CALENDAR.count("int width = MonthGridWidth;"), 2)
+        for desktop_width, desktop_height in ((800, 556), (1366, 724)):
+            has_sidebar = desktop_width >= 860 and desktop_height >= 630
+            grid_width = 614 if has_sidebar else max(220, desktop_width - 36)
+            cell_height = max(28, min(58, (desktop_height - 250 - 6 * 5) // 6))
+            self.assertLessEqual(grid_width + 36 if not has_sidebar else 646, desktop_width)
+            self.assertLessEqual(200 + 6 * cell_height + 5 * 6, desktop_height - 42)
 
     def test_typography_and_editor_shared_styles(self):
         self.assertIn("PCScreenFont.DefaultFont", TYPOGRAPHY)
