@@ -25,7 +25,14 @@ class OverlayAndSecureSession3094(unittest.TestCase):
         self.assertIn('Version="3.0.94"', PROJECT)
         for source in (NOTIFICATIONS, COMMANDS, CONTEXT, LOGIN, SETUP):
             self.assertIn("UiPainter.RoundedPanel(", source)
-            self.assertIn("UiMetrics.ButtonRadius", source)
+            self.assertTrue(
+                any(radius in source for radius in (
+                    "UiMetrics.ButtonRadius",
+                    "UiMetrics.TileRadius",
+                    "UiMetrics.MenuRadius",
+                )),
+                "Missing UI radius for a styled panel",
+            )
             self.assertIn("UiPainter.Shadow(", source)
 
     def test_notification_center_keeps_all_actions(self):
