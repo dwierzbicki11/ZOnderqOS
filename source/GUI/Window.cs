@@ -64,6 +64,19 @@ namespace ZonderqOS.GUI
         public Window(int x, int y, int width, int height, string title) : base(x, y, width, height)
         {
             Title = title;
+            // Application defaults can be larger than the actual framebuffer
+            // (Settings 1080x720, Calculator 500x690). Fit the initial window
+            // before creating child controls so click coordinates stay aligned.
+            // Never invent a display resolution: this is only a GUI layout cap.
+            if (desktopWidth > 0 && desktopHeight > 0)
+            {
+                int minW = System.Math.Min(MinWidth, desktopWidth);
+                int minH = System.Math.Min(MinHeight, desktopHeight);
+                Width = System.Math.Max(minW, System.Math.Min(Width, desktopWidth));
+                Height = System.Math.Max(minH, System.Math.Min(Height, desktopHeight));
+                X = System.Math.Max(0, System.Math.Min(X, desktopWidth - Width));
+                Y = System.Math.Max(0, System.Math.Min(Y, desktopHeight - Height));
+            }
             UiAnimator.RequestFrames();
         }
 
