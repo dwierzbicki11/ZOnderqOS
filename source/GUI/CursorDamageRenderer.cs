@@ -24,6 +24,7 @@ namespace ZonderqOS.GUI
         private int previousX;
         private int previousY;
         private bool valid;
+        private bool readbackSupported = true;
 
         internal CursorDamageRenderer(Canvas canvas)
         {
@@ -40,10 +41,23 @@ namespace ZonderqOS.GUI
         /// <summary>Called after a fully composed scene, before Display().</summary>
         internal void DrawAfterScene(int x, int y)
         {
-            Capture(x, y);
-            previousX = x;
-            previousY = y;
-            valid = true;
+            // Some future 3D/accelerated Canvas implementations may lack a
+            // readable CPU back buffer. In that case keep ordinary rendering.
+            if (readbackSupported)
+            {
+                try
+                {
+                    Capture(x, y);
+                    previousX = x;
+                    previousY = y;
+                    valid = true;
+                }
+                catch
+                {
+                    readbackSupported = false;
+                    valid = false;
+                }
+            }
             Cursor.Draw(canvas, x, y);
         }
 
@@ -54,19 +68,30 @@ namespace ZonderqOS.GUI
         /// </summary>
         internal bool TryMove(int x, int y)
         {
-            if (!valid || canvas == null)
+            if (!valid || !readbackSupported || canvas == null)
                 return false;
 
             if (x == previousX && y == previousY)
                 return true;
 
-            Restore(previousX, previousY);
-            Capture(x, y);
-            previousX = x;
-            previousY = y;
-            Cursor.Draw(canvas, x, y);
-            canvas.Display();
-            return true;
+            try
+            {
+                Restore(previousX, previousY);
+                Capture(x, y);
+                previousX = x;
+                previousY = y;
+                Cursor.Draw(canvas, x, y);
+                canvas.Display();
+                return true;
+            }
+            catch
+            {
+                // An unsupported readback must never take down the desktop.
+                // The caller repaints the complete scene immediately.
+                valid = false;
+                readbackSupported = false;
+                return false;
+            }
         }
 
         private void Capture(int x, int y)
