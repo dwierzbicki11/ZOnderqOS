@@ -11,6 +11,7 @@ MAIN = (ROOT/"source/GUI/GuiManager.cs").read_text()
 LOGIN = (ROOT/"source/GUI/LoginScreenManager.cs").read_text()
 INITIAL = (ROOT/"source/GUI/InitialSetupManager.cs").read_text()
 PROBE = (ROOT/"source/GUI/ReadOnlyDesktop.cs").read_text()
+LIMINE = (ROOT/"Bootloader/limine.conf").read_text()
 
 class NativeResolution3094(unittest.TestCase):
     def test_version(self):
@@ -30,6 +31,17 @@ class NativeResolution3094(unittest.TestCase):
         for source in (MAIN, LOGIN, INITIAL, PROBE):
             self.assertIn('DisplayModeSelector.OpenNativeOrBest()', source)
         self.assertIn('MouseManager.SetScreenSize(canvas.Width, canvas.Height)', MAIN)
+
+    def test_1366x768_framebuffer_requested_by_bootloader(self):
+        # Limine v10's per-entry "resolution", NOT "interface_resolution".
+        # An unsupported mode falls back to firmware/driver's real mode.
+        self.assertIn('protocol: limine', LIMINE)
+        self.assertIn('resolution: 1366x768x32', LIMINE)
+        self.assertIn('path: boot():/boot/ZonderqOS.elf', LIMINE)
+        self.assertNotIn('interface_resolution:', LIMINE)
+        self.assertNotIn('resolution: 800x600', LIMINE)
+        self.assertIn('canvas.Width', SELECTOR)
+        self.assertIn('canvas.Height', SELECTOR)
 
     def test_full_desktop_never_falls_back_to_efi(self):
         self.assertIn('if (!Disk.Initialize())', KERNEL)
