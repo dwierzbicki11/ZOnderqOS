@@ -10,15 +10,28 @@ namespace ZonderqOS.GUI
         public string Text { get; set; }
         public Color BackgroundColor { get; set; }
         public Color TextColor { get; set; }
-        public bool IsHovered { get; set; } = false;
+        private bool hovered;
+        private float hoverProgress;
+        private float clickProgress;
+        public bool IsHovered
+        {
+            get => hovered;
+            set
+            {
+                if (hovered == value)
+                    return;
+                hovered = value;
+                UiAnimator.RequestFrames();
+            }
+        }
         public Action OnClick { get; set; }
         public Font Font { get; set; }
 
         public Button(int x, int y, int width, int height, string text, Action onClick = null) : base(x, y, width, height)
         {
             Text = text;
-            BackgroundColor = Color.FromArgb(43, 50, 58);
-            TextColor = Color.FromArgb(232, 236, 240);
+            BackgroundColor = UiPalette.SurfaceRaised;
+            TextColor = UiPalette.Text;
             OnClick = onClick;
             Font = PCScreenFont.DefaultFont;
 
@@ -31,11 +44,14 @@ namespace ZonderqOS.GUI
         {
             if (!Visible) return;
 
-            Color bg = IsHovered ? Color.FromArgb(55, 91, 125) : BackgroundColor;
-            Color border = IsHovered ? Color.FromArgb(75, 145, 205) : Color.FromArgb(70, 78, 88);
-            canvas.DrawFilledRectangle(bg, X, Y, Width, Height);
-            canvas.DrawRectangle(border, X, Y, Width, Height);
-            TextHelper.DrawCenteredString(canvas, Text, Font, TextColor, X, Y, Width, Height);
+            hoverProgress = UiAnimator.Approach(hoverProgress, hovered ? 1f : 0f, 0.24f);
+            clickProgress = UiAnimator.Approach(clickProgress, 0f, 0.20f);
+            Color fill = UiAnimator.Blend(BackgroundColor, UiPalette.SurfaceHover, hoverProgress * 0.80f);
+            fill = UiAnimator.Blend(fill, UiPalette.SurfacePressed, clickProgress * 0.8f);
+            Color edge = UiAnimator.Blend(UiPalette.Border, UiPalette.AccentBorder, hoverProgress);
+            UiPainter.RoundedPanel(canvas, X, Y, Width, Height, UiMetrics.ButtonRadius, fill, edge);
+            TextHelper.DrawCenteredString(canvas, Text, Font, TextColor,
+                X, Y + (clickProgress > 0.5f ? 1 : 0), Width, Height);
         }
 
         public bool Contains(int mouseX, int mouseY)
@@ -45,6 +61,8 @@ namespace ZonderqOS.GUI
 
         public void InvokeClick()
         {
+            clickProgress = 1f;
+            UiAnimator.RequestFrames(7);
             OnClick?.Invoke();
         }
     }

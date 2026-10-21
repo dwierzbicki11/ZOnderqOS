@@ -329,7 +329,10 @@ namespace ZonderqOS.GUI
                         heartbeatFrames = 1;
                     bool heartbeat = frameCounter % heartbeatFrames == 0;
 
-                    if (keyboardActivity || pointerMoved || buttonChanged || heartbeat)
+                    // A few extra frames after actual UI interaction (roughly
+                    // 30 FPS). Idle desktops keep their configurable heartbeat.
+                    bool animationFrame = UiAnimator.NeedsRedraw && (frameCounter % 2 == 0);
+                    if (keyboardActivity || pointerMoved || buttonChanged || heartbeat || animationFrame)
                         RenderFrame(mouseX, mouseY);
 
                     Thread.Sleep(15);
@@ -357,6 +360,7 @@ namespace ZonderqOS.GUI
             commandPalette?.Render(canvas);
             Cursor.Draw(canvas, mouseX, mouseY);
             canvas.Display();
+            UiAnimator.FrameRendered();
         }
 
         private void InitializeAppRegistry()

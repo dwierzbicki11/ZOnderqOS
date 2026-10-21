@@ -27,6 +27,8 @@ namespace ZonderqOS.GUI
         private Button rebootButton;
         private Button shutdownButton;
         private string searchText = string.Empty;
+        private bool wasDrawnOpen;
+        private int openingFrames;
 
         private const int Padding = 14;
         private const int HeaderHeight = 66;
@@ -226,13 +228,22 @@ namespace ZonderqOS.GUI
         public override void Render(Canvas canvas)
         {
             if (!Visible)
+            {
+                wasDrawnOpen = false;
                 return;
+            }
 
+            if (!wasDrawnOpen)
+            {
+                openingFrames = 8;
+                wasDrawnOpen = true;
+                UiAnimator.RequestFrames(8);
+            }
             UpdateLayout();
 
-            canvas.DrawFilledRectangle(Color.FromArgb(11, 14, 18), X + 7, Y + 8, Width, Height);
-            canvas.DrawFilledRectangle(Background, X, Y, Width, Height);
-            canvas.DrawRectangle(Border, X, Y, Width, Height);
+            UiPainter.Shadow(canvas, X, Y, Width, Height, UiMetrics.MenuRadius);
+            UiPainter.RoundedPanel(canvas, X, Y, Width, Height,
+                UiMetrics.MenuRadius, UiPalette.Surface, UiPalette.Border);
 
             RenderHeader(canvas);
             RenderSearch(canvas);
@@ -243,8 +254,12 @@ namespace ZonderqOS.GUI
 
         private void RenderHeader(Canvas canvas)
         {
-            canvas.DrawFilledRectangle(Header, X + 1, Y + 1, Width - 2, HeaderHeight - 1);
-            canvas.DrawFilledRectangle(Accent, X + 1, Y + 1, 4, HeaderHeight - 1);
+            UiPainter.RoundedTop(canvas, X + 1, Y + 1, Width - 2,
+                HeaderHeight - 1, UiMetrics.MenuRadius - 1, Header);
+            canvas.DrawFilledRectangle(Accent, X + 12, Y + 3,
+                Math.Max(1, (Width - 24) * (8 - openingFrames) / 8), 2);
+            if (openingFrames > 0)
+                openingFrames--;
             IconManager.DrawScaled(canvas, IconType.Start, X + 17, Y + 13, 30, 30);
             canvas.DrawString("ZOnderqOS", PCScreenFont.DefaultFont, Text, X + 58, Y + 7);
             SmallTextRenderer.Draw(canvas, "COSMOS GEN3 DESKTOP", X + 60, Y + 43, Muted);
@@ -256,9 +271,9 @@ namespace ZonderqOS.GUI
             int searchX = X + Padding;
             int searchY = Y + SearchTop;
             int searchWidth = Width - Padding * 2;
-            canvas.DrawFilledRectangle(Color.FromArgb(28, 35, 42), searchX, searchY, searchWidth, SearchHeight);
-            canvas.DrawRectangle(string.IsNullOrEmpty(searchText) ? Border : Accent,
-                searchX, searchY, searchWidth, SearchHeight);
+            UiPainter.RoundedPanel(canvas, searchX, searchY, searchWidth, SearchHeight,
+                UiMetrics.ButtonRadius, UiPalette.SurfaceRaised,
+                string.IsNullOrEmpty(searchText) ? UiPalette.Border : Accent);
             IconManager.DrawScaled(canvas, IconType.Search, searchX + 10, searchY + 9, 20, 20);
 
             if (string.IsNullOrEmpty(searchText))
@@ -287,8 +302,8 @@ namespace ZonderqOS.GUI
 
                 Color background = button.IsHovered ? PanelHover : Panel;
                 Color border = button.IsHovered ? SystemTheme.AccentBorder : Border;
-                canvas.DrawFilledRectangle(background, button.X, button.Y, button.Width, button.Height);
-                canvas.DrawRectangle(border, button.X, button.Y, button.Width, button.Height);
+                UiPainter.RoundedPanel(canvas, button.X, button.Y, button.Width, button.Height,
+                    UiMetrics.TileRadius, background, border);
                 if (button.IsHovered)
                     canvas.DrawFilledRectangle(Accent, button.X, button.Y, button.Width, 2);
 
@@ -312,10 +327,9 @@ namespace ZonderqOS.GUI
                 if (!button.Visible)
                     continue;
 
-                canvas.DrawFilledRectangle(button.IsHovered ? PanelHover : Panel,
-                    button.X, button.Y, button.Width, button.Height);
-                canvas.DrawRectangle(button.IsHovered ? SystemTheme.AccentBorder : Border,
-                    button.X, button.Y, button.Width, button.Height);
+                UiPainter.RoundedPanel(canvas, button.X, button.Y, button.Width, button.Height,
+                    UiMetrics.TileRadius, button.IsHovered ? PanelHover : Panel,
+                    button.IsHovered ? UiPalette.AccentBorder : Border);
                 IconManager.DrawScaled(canvas, toolIcons[i], button.X + 9, button.Y + 10, 20, 20);
                 SmallTextRenderer.DrawClipped(canvas, toolLabels[i], button.X + 36, button.Y + 17,
                     Math.Max(18, button.Width - 43), Text);
@@ -325,7 +339,8 @@ namespace ZonderqOS.GUI
         private void RenderFooter(Canvas canvas)
         {
             int footerY = Y + Height - FooterHeight;
-            canvas.DrawFilledRectangle(Color.FromArgb(20, 25, 31), X + 1, footerY, Width - 2, FooterHeight - 1);
+            UiPainter.RoundedFill(canvas, X + 2, footerY, Width - 4, FooterHeight - 3,
+                UiMetrics.ButtonRadius, Color.FromArgb(20, 27, 36));
             canvas.DrawLine(Color.FromArgb(49, 61, 72), X + 1, footerY, X + Width - 2, footerY);
 
             IconManager.DrawScaled(canvas, IconType.Start, X + Padding, footerY + 21, 24, 24);
@@ -361,8 +376,9 @@ namespace ZonderqOS.GUI
             Color normal = danger ? Color.FromArgb(57, 38, 43) : Color.FromArgb(31, 39, 47);
             Color hover = danger ? Color.FromArgb(86, 45, 52) : SystemTheme.AccentSoft;
             Color border = danger ? Color.FromArgb(112, 61, 69) : Color.FromArgb(61, 80, 96);
-            canvas.DrawFilledRectangle(button.IsHovered ? hover : normal, button.X, button.Y, button.Width, button.Height);
-            canvas.DrawRectangle(button.IsHovered ? Accent : border, button.X, button.Y, button.Width, button.Height);
+            UiPainter.RoundedPanel(canvas, button.X, button.Y, button.Width, button.Height,
+                UiMetrics.ButtonRadius, button.IsHovered ? hover : normal,
+                button.IsHovered ? (danger ? UiPalette.DangerBorder : Accent) : border);
             IconManager.DrawScaled(canvas, icon, button.X + 8, button.Y + 11, 20, 20);
             SmallTextRenderer.DrawClipped(canvas, label, button.X + 34, button.Y + 18,
                 Math.Max(16, button.Width - 40), Text);
