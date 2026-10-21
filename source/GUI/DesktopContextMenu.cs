@@ -50,6 +50,7 @@ namespace ZonderqOS.GUI
             Y = Math.Max(6, Math.Min(y, desktopHeight - Height - 6));
             hoveredIndex = -1;
             Visible = true;
+            UiAnimator.RequestFrames(6);
         }
 
         public bool UpdateInteractions(int mouseX, int mouseY, bool left, bool oldLeft)
@@ -92,23 +93,24 @@ namespace ZonderqOS.GUI
             if (!Visible)
                 return;
 
-            canvas.DrawFilledRectangle(Color.FromArgb(10, 14, 18), X + 4, Y + 4, Width, Height);
-            canvas.DrawFilledRectangle(Color.FromArgb(31, 37, 44), X, Y, Width, Height);
-            canvas.DrawRectangle(Color.FromArgb(76, 90, 104), X, Y, Width, Height);
-            canvas.DrawFilledRectangle(Color.FromArgb(65, 140, 200), X, Y, 3, Height);
+            UiPainter.Shadow(canvas, X, Y, Width, Height, UiMetrics.MenuRadius);
+            UiPainter.RoundedPanel(canvas, X, Y, Width, Height, UiMetrics.MenuRadius,
+                UiPalette.Surface, UiPalette.Border);
 
             for (int i = 0; i < entries.Length; i++)
             {
                 int itemY = Y + Padding + i * ItemHeight;
                 if (i == hoveredIndex)
                 {
-                    canvas.DrawFilledRectangle(Color.FromArgb(42, 61, 79), X + Padding, itemY,
-                        Width - Padding * 2, ItemHeight - 1);
-                    canvas.DrawFilledRectangle(Color.FromArgb(65, 140, 200), X + Padding, itemY, 3,
-                        ItemHeight - 1);
+                    UiPainter.RoundedFill(canvas, X + Padding, itemY,
+                        Width - Padding * 2, ItemHeight - 1, UiMetrics.TileRadius,
+                        UiPalette.SurfaceHover);
+                    canvas.DrawFilledRectangle(SystemTheme.Accent, X + Padding + 6,
+                        itemY + ItemHeight - 4, Width - Padding * 2 - 12, 2);
                 }
 
-                canvas.DrawFilledRectangle(Color.FromArgb(39, 46, 54), X + 14, itemY + 6, 24, 24);
+                UiPainter.RoundedFill(canvas, X + 14, itemY + 6, 24, 24,
+                    UiMetrics.TileRadius, UiPalette.SurfaceRaised);
                 IconManager.DrawScaled(canvas, entries[i].Icon, X + 17, itemY + 9, 18, 18);
                 SmallTextRenderer.DrawClipped(canvas, entries[i].Label, X + 48, itemY + 15,
                     Width - 60, i == hoveredIndex ? Color.WhiteSmoke : Color.FromArgb(221, 228, 234));
