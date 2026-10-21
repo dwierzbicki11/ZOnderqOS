@@ -105,6 +105,8 @@ EOF
 rm -rf -- "$PROJECT_CACHE"
 mkdir -p "$PROJECT_CACHE"
 export NUGET_PACKAGES="$PROJECT_CACHE"
+# Use the tooling that was just built from the exact same Cosmos tag.
+export PATH="$ISOLATED_HOME/.dotnet/tools:$PATH"
 export ZONDERQ_LOCAL_FEED="$FEED"
 export ZONDERQ_PACKAGE_VERSION="$VERSION"
 
@@ -138,6 +140,10 @@ if missing := required - found:
     sys.exit(f"[3094-BUILD][ERROR] Missing pinned Cosmos packages: {sorted(missing)}")
 print("[3094-BUILD] Package provenance: PASS (upstream tag, private local feed)")
 PY
+
+echo "[3094-BUILD] Compiling the actual 3.0.94 keyboard contract first..."
+dotnet build "$STAGE/tests/KeyboardApiSmoke/KeyboardApiSmoke.csproj" \
+  -c Release -p:CosmosApiTestVersion="$VERSION" --nologo
 
 output="$STAGE/output"
 case "$MODE" in
