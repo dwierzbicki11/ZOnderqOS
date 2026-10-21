@@ -70,3 +70,7 @@ the patched Cosmos Stage 23 packages, boots twice using one writable FAT image,
 then verifies `/etc/zservices/heartbeat.conf` and appended heartbeat/memory
 samples in `/var/log/zservices/heartbeat.log`. The interactive commands and
 GUI editing still need the manual check above.
+
+## Build note
+
+Directory.Build.targets prepares Roslyn source-generator directories for compile-only builds.
