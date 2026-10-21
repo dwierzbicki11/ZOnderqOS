@@ -48,6 +48,37 @@ initial setup, login, USB mouse GUI and diskless desktop.
   when its firmware exposes only a smaller framebuffer. Inspect the
   `[DISPLAY3094]` diagnostic output and the actual screen geometry.
 
+## Physical laptop 800x600 fallback / 1366x768 request
+
+A laptop with an actual 1366x768 (HD/768p) panel has been observed to boot the
+normal disk-backed ZOnderqOS GUI at only **800x600**. That is a framebuffer
+mode-selection problem, not the Recovery GUI. Cosmos cannot simply change
+`canvas.Width` to fake more pixels: the bootloader and graphics hardware must
+provide a backing framebuffer with matching pitch and allocated memory.
+
+`Bootloader/limine.conf` now includes the **Limine v10 per-entry**
+`resolution: 1366x768x32` for the **kernel** (not the menu
+`interface_resolution`). Limine falls back to a mode the BIOS/VBE or UEFI/GOP
+supports if the request cannot be fulfilled. The Cosmos display selector still
+honours `Canvas.AvailableModes` and checks the actual framebuffer size rather
+than assuming the request succeeded.
+
+When testing on a UEFI-capable laptop choose the **UEFI** entry for the USB
+stick if available; Legacy/CSM video firmware may not expose 1366x768. If the
+desktop still reports 800x600, inspect `[DISPLAY3094]` output, `canvas.Name`
+(driver vs firmware framebuffer) and advertised modes to locate the missing
+graphics capability. No claim is made that forcing the bootloader request
+provides EDID detection or a working Intel native modeset.
+
+**USB data preservation:** the user can have a separate FAT32 `ZONDERQDATA`
+partition after the hybrid boot ISO on the same stick. Reflashing a newer ISO
+with `dd of=/dev/sdb` rewrites the stick's MBR and removes its partition-table
+entry (even if the FAT32 data sectors survive). A new ISO can also grow into
+those data sectors. Before reflashing, back up the entire `ZONDERQDATA`
+partition/files and verify partition boundaries and the new image size. Do not
+assume a simple `dd` upgrade preserves the persistent root. For first-time
+provisioning use the separately documented storage-safety process.
+
 ## Test gates
 
 ```sh
