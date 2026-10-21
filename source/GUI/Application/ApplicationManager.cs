@@ -115,6 +115,90 @@ namespace ZonderqOS.GUI.Apps
             SetActiveStates(null);
         }
 
+        /// <summary>
+        /// Rotate through running desktop windows without allocating a switcher list.
+        /// Minimized windows participate, and are restored only when selected.
+        /// Reverse = Alt+Shift+Tab, forward = Alt+Tab.
+        /// </summary>
+        public bool CycleWindow(bool reverse)
+        {
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+                return false;
+
+            Application current = ActiveApplication;
+            if (current == null)
+            {
+                // The user may have minimized every window.
+                for (int i = applications.Count - 1; i >= 0; i--)
+                {
+                    Application candidate = applications[i];
+                    if (CanSwitchTo(candidate))
+                    {
+                        Activate(candidate);
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            int currentIndex = applications.IndexOf(current);
+            int count = applications.Count;
+            for (int distance = 1; distance < count; distance++)
+            {
+                int nextIndex = (currentIndex + (reverse ? distance : count - distance)) % count;
+                Application candidate = applications[nextIndex];
+                if (!CanSwitchTo(candidate))
+                    continue;
+
+                if (!reverse)
+                {
+                    // Push the former foreground window to the bottom of the
+                    // MRU ring before selecting the next one. Otherwise repeated
+                    // Alt+Tab bounces between the same two windows.
+                    applications.RemoveAt(currentIndex);
+                    applications.Insert(0, current);
+                }
+
+                Activate(candidate);
+                return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Requests a normal title-bar close, preserving app-specific unsaved
+        /// document confirmation (e.g. Notepad). Never bypass CloseAction.
+        /// </summary>
+        public bool RequestCloseActiveWindow()
+        {
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+                return false;
+
+            Application active = ActiveApplication;
+            if (active == null)
+                return false;
+
+            if (active.Window.CloseAction != null)
+                active.Window.CloseAction();
+            else
+                active.Close();
+
+            // Keep the application in the list if it opened a confirmation
+            // dialog instead of closing, just like a mouse title-bar click.
+            if (!active.IsRunning)
+            {
+                applications.Remove(active);
+                SetActiveStates(ActiveApplication);
+            }
+            return true;
+        }
+
+        private static bool CanSwitchTo(Application application)
+        {
+            return application != null && application.IsRunning && application.Window != null &&
+                (application.Window.Visible || application.Window.IsMinimized);
+        }
+
         public void HandleKeyboard(KeyEvent key)
         {
             if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
