@@ -1,7 +1,7 @@
 using System;
 using System.Drawing;
 using Cosmos.Kernel.System.Graphics;
-using Cosmos.Kernel.System.Graphics.Fonts;
+using ZonderqOS.GUI.Icons;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -12,13 +12,13 @@ namespace ZonderqOS.GUI.Apps
         public AboutApp(int x, int y, Action onClose) : base("O Systemie")
         {
             closeCallback = onClose;
-            Window = new Window(x, y, 560, 300, "O ZonderqOS");
+            Window = new Window(x, y, 560, 300, "O ZOnderqOS");
             Window.CloseAction = Close;
         }
 
         public override void HandleKeyboard(KeyEvent key)
         {
-            if (key.Key == ConsoleKeyEx.Escape)
+            if (key != null && key.Key == ConsoleKeyEx.Escape)
                 Close();
         }
 
@@ -30,14 +30,32 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Render(Canvas canvas)
         {
-            if (!Window.Visible) return;
+            if (Window == null || !Window.Visible || Window.IsMinimized)
+                return;
 
             base.Render(canvas);
-            canvas.DrawString("ZonderqOS", PCScreenFont.DefaultFont, Color.MidnightBlue, Window.X + 28, Window.Y + 55);
-            canvas.DrawString("Cosmos Kernel - Gen3", PCScreenFont.DefaultFont, Color.DimGray, Window.X + 28, Window.Y + 100);
-            canvas.DrawString("GUI desktop / Application Manager", PCScreenFont.DefaultFont, Color.DimGray, Window.X + 28, Window.Y + 135);
-            canvas.DrawString("Terminal, Nano i kolejne aplikacje sa uruchamiane", PCScreenFont.DefaultFont, Color.Black, Window.X + 28, Window.Y + 180);
-            canvas.DrawString("jako niezalezne okna systemu.", PCScreenFont.DefaultFont, Color.Black, Window.X + 28, Window.Y + 205);
+
+            int x = Window.X + 18;
+            int y = Window.Y + 54;
+            int width = System.Math.Max(1, Window.Width - 36);
+            int height = System.Math.Max(1, Window.Height - 72);
+
+            UiPainter.RoundedPanel(canvas, x, y, width, height,
+                UiMetrics.WindowRadius, UiPalette.SurfaceRaised, UiPalette.Border);
+
+            IconManager.DrawScaled(canvas, IconType.Start, x + 18, y + 18, 42, 42);
+            UiTypography.Heading(canvas, "ZOnderqOS", x + 78, y + 13,
+                System.Math.Max(40, width - 94), UiPalette.Text);
+            UiTypography.Caption(canvas, "COSMOS KERNEL GEN 3  /  SDK 3.0.94",
+                x + 78, y + 43, System.Math.Max(40, width - 94));
+
+            canvas.DrawLine(UiPalette.Border, x + 18, y + 78, x + width - 18, y + 78);
+            UiTypography.Caption(canvas, "NATYWNY SYSTEM OPERACYJNY X86_64",
+                x + 18, y + 96, System.Math.Max(32, width - 36));
+            UiTypography.Caption(canvas, "PULPIT  /  TERMINAL  /  APLIKACJE",
+                x + 18, y + 124, System.Math.Max(32, width - 36));
+            UiTypography.Caption(canvas, "WINDOWS, NATIVE GUI, COSMOS RUNTIME",
+                x + 18, y + 152, System.Math.Max(32, width - 36));
         }
     }
 }
