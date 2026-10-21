@@ -12,6 +12,9 @@ on:
       - 'tests/test_3094_ui_polish.py'
       - 'tests/test_3094_responsive_gui.py'
       - 'tests/test_3094_cursor_damage.py'
+      - 'tests/test_3094_auto_usb.py'
+      - 'tools/auto-update-3094-usb.py'
+      - 'tools/update-3094-one-usb.py'
       - '.github/workflows/experimental-cosmos-3094-usb.yml'
   push:
     branches:
@@ -63,6 +66,7 @@ jobs:
           python3 zonderq/tests/test_3094_ui_polish.py
           python3 zonderq/tests/test_3094_responsive_gui.py
           python3 zonderq/tests/test_3094_cursor_damage.py
+          python3 zonderq/tests/test_3094_auto_usb.py
           python3 zonderq/tests/test_3094_ram_root.py
           bash -n zonderq/run-3094.sh
           bash -n zonderq/tests/qemu-3094-persistent-disk.sh
@@ -235,7 +239,7 @@ jobs:
         with:
           name: zonderq-3094-NORMAL-GUI-REQUIRES-ZONDERQDATA
           path: zonderq/experimental3094-full-gui/ZonderqOS.iso
-          retention-days: 4
+          retention-days: 30
           if-no-files-found: error
       - name: QEMU persistent FAT32 data volume — two boots, EFI unchanged
         timeout-minutes: 6
