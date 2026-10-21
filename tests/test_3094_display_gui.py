@@ -12,6 +12,8 @@ LOGIN = (ROOT/"source/GUI/LoginScreenManager.cs").read_text()
 INITIAL = (ROOT/"source/GUI/InitialSetupManager.cs").read_text()
 PROBE = (ROOT/"source/GUI/ReadOnlyDesktop.cs").read_text()
 LIMINE = (ROOT/"Bootloader/limine.conf").read_text()
+DISPLAY_INFO = (ROOT/"source/Shell/Commands/CmdDisplayInfo.cs").read_text()
+COMMANDS = (ROOT/"source/Shell/Command.cs").read_text()
 
 class NativeResolution3094(unittest.TestCase):
     def test_version(self):
@@ -42,6 +44,17 @@ class NativeResolution3094(unittest.TestCase):
         self.assertNotIn('resolution: 800x600', LIMINE)
         self.assertIn('canvas.Width', SELECTOR)
         self.assertIn('canvas.Height', SELECTOR)
+
+    def test_readonly_physical_display_diagnostics(self):
+        self.assertIn('class CmdDisplayInfo : ICommand', DISPLAY_INFO)
+        self.assertIn('Canvas.GetFullScreen()', DISPLAY_INFO)
+        self.assertIn('canvas.Name', DISPLAY_INFO)
+        self.assertIn('canvas.AvailableModes', DISPLAY_INFO)
+        self.assertIn('current.Width', DISPLAY_INFO)
+        self.assertIn('current.Height', DISPLAY_INFO)
+        self.assertNotIn('Canvas.GetFullScreen(new Mode(', DISPLAY_INFO)
+        self.assertNotIn('canvas.Mode =', DISPLAY_INFO)
+        self.assertIn('new CmdDisplayInfo()', COMMANDS)
 
     def test_full_desktop_never_falls_back_to_efi(self):
         self.assertIn('if (!Disk.Initialize())', KERNEL)
