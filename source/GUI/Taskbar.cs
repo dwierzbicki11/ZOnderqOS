@@ -11,7 +11,7 @@ namespace ZonderqOS.GUI
     public class Taskbar : Widget
     {
         public List<Widget> Children { get; } = new List<Widget>();
-        public Color BackgroundColor { get; set; } = Color.FromArgb(22, 27, 33);
+        public Color BackgroundColor { get; set; } = UiPalette.Surface;
 
         private readonly ApplicationManager applicationManager;
         private readonly Action notificationClick;
@@ -47,7 +47,7 @@ namespace ZonderqOS.GUI
             applicationManager = manager;
             notificationClick = onNotificationClick;
 
-            var startButton = new Button(0, Y, StartButtonWidth, height, "", onStartClick);
+            var startButton = new Button(4, Y + 4, StartButtonWidth - 8, height - 8, "", onStartClick);
             startButton.BackgroundColor = Color.FromArgb(27, 34, 42);
             startButton.TextColor = Color.White;
             Children.Add(startButton);
@@ -145,8 +145,8 @@ namespace ZonderqOS.GUI
                         ? SystemTheme.AccentBorder
                         : hovered ? Color.FromArgb(61, 76, 90) : Color.FromArgb(38, 47, 56);
 
-                    canvas.DrawFilledRectangle(bg, appX, Y + 3, AppButtonSize, Height - 6);
-                    canvas.DrawRectangle(border, appX, Y + 3, AppButtonSize, Height - 6);
+                    UiPainter.RoundedPanel(canvas, appX, Y + 3, AppButtonSize, Height - 6,
+                        UiMetrics.TileRadius, bg, border);
                     IconManager.DrawScaled(canvas, GetApplicationIcon(app), appX + 9, Y + 9, 22, 22);
 
                     if (active && !minimized)
@@ -280,8 +280,8 @@ namespace ZonderqOS.GUI
                 ? SystemTheme.AccentBorder
                 : Color.FromArgb(49, 58, 67);
 
-            canvas.DrawFilledRectangle(background, x, Y + 6, width, Height - 12);
-            canvas.DrawRectangle(border, x, Y + 6, width, Height - 12);
+            UiPainter.RoundedPanel(canvas, x, Y + 6, width, Height - 12,
+                UiMetrics.TileRadius, background, border);
             IconManager.DrawScaled(canvas, IconType.About, x + 8, Y + 13, 16, 16);
 
             if (unread > 0)
@@ -305,8 +305,8 @@ namespace ZonderqOS.GUI
             Color border = ready ? SystemTheme.AccentBorder : Color.FromArgb(49, 58, 67);
             Color indicator = ready ? Color.FromArgb(72, 173, 118) : Color.FromArgb(111, 119, 127);
 
-            canvas.DrawFilledRectangle(background, x, Y + 6, width, Height - 12);
-            canvas.DrawRectangle(border, x, Y + 6, width, Height - 12);
+            UiPainter.RoundedPanel(canvas, x, Y + 6, width, Height - 12,
+                UiMetrics.TileRadius, background, border);
             IconManager.DrawScaled(canvas, icon, x + 6, Y + 13, 14, 14);
             SmallTextRenderer.DrawClipped(canvas, label, x + 25, Y + 18,
                 System.Math.Max(8, width - 32), Color.FromArgb(207, 216, 224));
