@@ -323,6 +323,8 @@ namespace ZonderqOS.GUI
                             currentRightButtonState, previousRightButtonState);
                     }
 
+                    int priorMouseX = previousMouseX;
+                    int priorMouseY = previousMouseY;
                     previousLeftButtonState = currentLeftButtonState;
                     previousRightButtonState = currentRightButtonState;
                     previousMouseX = mouseX;
@@ -343,7 +345,7 @@ namespace ZonderqOS.GUI
                     bool cursorOnly = pointerMoved && !keyboardActivity && !buttonChanged &&
                         !currentLeftButtonState && !currentRightButtonState &&
                         !heartbeat && !UiAnimator.NeedsRedraw &&
-                        CanMoveCursorWithoutSceneRedraw(previousMouseX, previousMouseY, mouseX, mouseY);
+                        CanMoveCursorWithoutSceneRedraw(priorMouseX, priorMouseY, mouseX, mouseY);
 
                     // A full frame remains mandatory for UI changes, interactions,
                     // animations, toasts, telemetry and periodic clock updates.
