@@ -1,0 +1,12 @@
+<Project>
+  <!-- -t:Compile bypasses SDK directory preparation, but Csc still writes
+       emitted Cosmos/Interop generated sources. Keep generators enabled. -->
+  <Target Name="PrepareRoslynGeneratedOutput"
+          BeforeTargets="CoreCompile"
+          Condition="'$(MSBuildProjectName)' == 'ZonderqOS' and '$(CompilerGeneratedFilesOutputPath)' != ''">
+    <MakeDir Directories="$(CompilerGeneratedFilesOutputPath);
+      $(CompilerGeneratedFilesOutputPath)/Cosmos.Kernel.SourceGenerators/Cosmos.Kernel.SourceGenerators.CosmosEntryPointGenerator;
+      $(CompilerGeneratedFilesOutputPath)/Cosmos.Kernel.SourceGenerators/Cosmos.Kernel.SourceGenerators.DriverManifestGenerator;
+      $(CompilerGeneratedFilesOutputPath)/Microsoft.Interop.LibraryImportGenerator/Microsoft.Interop.LibraryImportGenerator" />
+  </Target>
+</Project>
