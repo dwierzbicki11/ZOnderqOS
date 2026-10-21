@@ -15,6 +15,12 @@ namespace ZonderqOS.GUI.Apps
         private const int GridColumns = 7;
         private const int GridRows = 6;
         private const int CellGap = 6;
+        // Preserve a spacious two-column calendar on large displays; use one
+        // full-width month grid on 800x600 or a low-height framebuffer.
+        private bool ShowSidePanel => Window.Width >= 860 && Window.Height >= 630;
+        private int MonthGridWidth => ShowSidePanel ? 614 : System.Math.Max(220, Window.Width - 36);
+        private int MonthCellHeight => System.Math.Max(28, System.Math.Min(58,
+            (Window.Height - 250 - CellGap * (GridRows - 1)) / GridRows));
 
         private static readonly string[] MonthNames =
         {
@@ -156,7 +162,8 @@ namespace ZonderqOS.GUI.Apps
 
             RenderHeader(canvas);
             RenderCalendar(canvas);
-            RenderSidePanel(canvas);
+            if (ShowSidePanel)
+                RenderSidePanel(canvas);
             RenderStatus(canvas);
         }
 
@@ -165,9 +172,9 @@ namespace ZonderqOS.GUI.Apps
             int x = Window.X + 18;
             int y = Window.Y + 50;
             int width = Window.Width - 36;
-            canvas.DrawFilledRectangle(Header, x, y, width, 62);
-            canvas.DrawRectangle(Border, x, y, width, 62);
-            canvas.DrawFilledRectangle(SystemTheme.Accent, x, y, 4, 62);
+            UiPainter.RoundedPanel(canvas, x, y, width, 62, UiMetrics.ButtonRadius,
+                Header, Border);
+            canvas.DrawFilledRectangle(SystemTheme.Accent, x + 12, y + 2, width - 24, 2);
             IconManager.DrawScaled(canvas, IconType.Calendar, x + 15, y + 17, 28, 28);
             SmallTextRenderer.Draw(canvas, "KALENDARZ", x + 55, y + 16, Text);
             SmallTextRenderer.Draw(canvas, "STRZALKI MIESIAC  |  T DZISIAJ  |  F5 ODSWIEZ", x + 55, y + 37, Muted);
@@ -180,8 +187,8 @@ namespace ZonderqOS.GUI.Apps
         private void DrawControl(Canvas canvas, int index, int x, int y, int width, int height, string label)
         {
             bool hover = hoveredControl == index;
-            canvas.DrawFilledRectangle(hover ? PanelHover : Panel, x, y, width, height);
-            canvas.DrawRectangle(hover ? SystemTheme.AccentBorder : Border, x, y, width, height);
+            UiPainter.RoundedPanel(canvas, x, y, width, height, UiMetrics.TileRadius,
+                hover ? PanelHover : Panel, hover ? SystemTheme.AccentBorder : Border);
             if (hover)
                 canvas.DrawFilledRectangle(SystemTheme.Accent, x, y + height - 2, width, 2);
             SmallTextRenderer.DrawCentered(canvas, label, x + 4, y + 15, width - 8, hover ? Text : Muted);
@@ -191,13 +198,13 @@ namespace ZonderqOS.GUI.Apps
         {
             int x = Window.X + 18;
             int y = Window.Y + 124;
-            int width = 614;
+            int width = MonthGridWidth;
             int gridY = y + 76;
             int cellWidth = (width - CellGap * (GridColumns - 1)) / GridColumns;
-            int cellHeight = 58;
+            int cellHeight = MonthCellHeight;
 
-            canvas.DrawFilledRectangle(Panel, x, y, width, 58);
-            canvas.DrawRectangle(Border, x, y, width, 58);
+            UiPainter.RoundedPanel(canvas, x, y, width, 58,
+                UiMetrics.TileRadius, Panel, Border);
             SmallTextRenderer.Draw(canvas, MonthNames[displayMonth - 1], x + 18, y + 17, Text);
             SmallTextRenderer.DrawInt(canvas, displayYear, x + 18 + SmallTextRenderer.Width(MonthNames[displayMonth - 1]) + 12, y + 17, Muted);
 
@@ -220,9 +227,9 @@ namespace ZonderqOS.GUI.Apps
                     bool today = day > 0 && displayYear == todayYear && displayMonth == todayMonth && day == todayDay;
 
                     Color bg = selected ? PanelSelected : hovered ? PanelHover : Panel;
-                    canvas.DrawFilledRectangle(bg, cx, cy, cellWidth, cellHeight);
-                    canvas.DrawRectangle(selected || hovered || today ? SystemTheme.AccentBorder : Border,
-                        cx, cy, cellWidth, cellHeight);
+                    UiPainter.RoundedPanel(canvas, cx, cy, cellWidth, cellHeight,
+                        UiMetrics.TileRadius, bg,
+                        selected || hovered || today ? SystemTheme.AccentBorder : Border);
 
                     if (selected)
                         canvas.DrawFilledRectangle(SystemTheme.Accent, cx, cy + cellHeight - 3, cellWidth, 3);
@@ -371,9 +378,9 @@ namespace ZonderqOS.GUI.Apps
 
             int gridX = Window.X + 18;
             int gridY = Window.Y + 200;
-            int gridWidth = 614;
+            int gridWidth = MonthGridWidth;
             int cellWidth = (gridWidth - CellGap * (GridColumns - 1)) / GridColumns;
-            int cellHeight = 58;
+            int cellHeight = MonthCellHeight;
             int relativeX = mouseX - gridX;
             int relativeY = mouseY - gridY;
             if (relativeX < 0 || relativeY < 0)
