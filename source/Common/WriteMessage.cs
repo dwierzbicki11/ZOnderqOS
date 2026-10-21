@@ -11,6 +11,18 @@ namespace ZonderqOS
         {
             SystemLogger.Log(logLevel, module, message);
 
+            // Normal graphical boots show the animated logo, not a scroll of
+            // messages. Keep every entry in /var/log/system.log and dmesg.
+            // On errors return to the text console immediately so that a
+            // storage/security failure can never remain hidden by the splash.
+            if (global::ZonderqOS.GUI.BootSplash.IsActive)
+            {
+                if (logLevel >= SystemLogLevel.Error)
+                    global::ZonderqOS.GUI.BootSplash.Abort();
+                else
+                    return;
+            }
+
             // Draw module tag if provided
             if (!string.IsNullOrEmpty(module))
             {
