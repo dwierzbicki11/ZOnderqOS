@@ -22,6 +22,7 @@ STAGE8 = "[SMP3094-STAGE8] PASS"
 STAGE9A = "[SMP3094-STAGE9A] PASS"
 STAGE9B = "[SMP3094-STAGE9B] PASS"
 STAGE10A = "[SMP3094-STAGE10A] PASS"
+STAGE12 = "[SMP3094-STAGE12] PASS"
 BOOT = "[SMP3094-PROBE] BOOT"
 FATAL = re.compile(
     r"\bpanic\b|\btriple[ -]fault\b|\bCPU\s+EXCEPTION(?!\s+handlers\s+registered)\b|"
@@ -45,7 +46,7 @@ def check(text: str, cpus: int) -> str:
         # Only exact proof markers can be accepted. Ignore arbitrary serial
         # chatter but reject partial/forged markers with the reserved prefix.
         if line.startswith("[SMP3094-STAGE") and line not in {
-            STAGE4, STAGE5, STAGE6, STAGE7, STAGE8, STAGE9A, STAGE9B, STAGE10A
+            STAGE4, STAGE5, STAGE6, STAGE7, STAGE8, STAGE9A, STAGE9B, STAGE10A, STAGE12
         }:
             raise BootProofError("unrecognized SMP stage marker: " + line)
         if line.startswith("[SMP3094-PROBE] BOOT") and line != BOOT:

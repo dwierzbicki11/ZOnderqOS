@@ -1,0 +1,228 @@
+name: Cosmos 3.0.94 SMP Stage 12 bounded managed AP code
+
+on:
+  pull_request:
+    paths:
+      - 'patches/cosmos-3094/**'
+      - 'tests/Cosmos3094SmpBoot/**'
+      - 'tools/smoke-cosmos-3094-qemu.sh'
+      - 'tests/Cosmos3094SmpBoot/verify_timer_ready.py'
+      - '.github/workflows/cosmos-3094-stage12.yml'
+      - 'tools/port-cosmos-3094-stage9b.py'
+      - 'tools/port-cosmos-3094-stage10a.py'
+      - 'tools/port-cosmos-3094-stage12.py'
+      - 'tests/Cosmos3094SmpBoot/verify_managed_oneshot.py'
+      - 'tests/Cosmos3094SmpBoot/verify_native_context.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  iso:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: zonderq }
+      - uses: actions/checkout@v4
+        with:
+          repository: CosmosOS/Cosmos
+          ref: v3.0.94
+          path: cosmos
+          submodules: recursive
+      - uses: actions/setup-dotnet@v4
+        with: { dotnet-version: '10.0.x' }
+      - name: Install native linker, boot tools and ISO creation prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld nasm xorriso binutils
+      - name: Test strict serial evidence parser
+        run: |
+          python3 zonderq/tests/Cosmos3094SmpBoot/verify_boot.py --self-test
+          python3 -m unittest discover -s zonderq/tests/Cosmos3094SmpBoot -p 'test_abort_release.py' -v
+          python3 zonderq/tests/Cosmos3094SmpBoot/verify_timer_ready.py --self-test
+          python3 zonderq/tests/Cosmos3094SmpBoot/verify_periodic_timer.py --self-test
+          python3 -m py_compile zonderq/tools/port-cosmos-3094-stage9b.py
+          python3 -m py_compile zonderq/tools/port-cosmos-3094-stage10a.py
+          python3 zonderq/tests/Cosmos3094SmpBoot/verify_native_context.py --self-test
+          python3 -m py_compile zonderq/tools/port-cosmos-3094-stage12.py
+          python3 zonderq/tests/Cosmos3094SmpBoot/verify_managed_oneshot.py --self-test
+      - name: Apply isolated Cosmos 3.0.94 patches 1-9a and stage9b native periodic IRQ
+        env:
+          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+        run: |
+          set -euo pipefail
+          bash zonderq/tools/check-cosmos-3094-stage1.sh --apply
+          for stage in 0002 0003 0004 0005 0006 0007 0008; do
+            p="$(find zonderq/patches/cosmos-3094 -maxdepth 1 -name "${stage}-*.patch" -print -quit)"
+            test -n "$p"
+            git -C cosmos apply --check "../$p"
+            git -C cosmos apply "../$p"
+          done
+          # This is a NEW patch against the fully applied v3.0.94 Stage8
+          # sources; never replay an old v3.0.85 timer patch.
+          git -C cosmos apply --check ../zonderq/patches/cosmos-3094/0009-ap-timer-readiness.patch
+          git -C cosmos apply ../zonderq/patches/cosmos-3094/0009-ap-timer-readiness.patch
+          git -C cosmos apply --reverse --check ../zonderq/patches/cosmos-3094/0009-ap-timer-readiness.patch
+          # Apply exact-anchor Stage9b port against *this* 3.0.94 source.
+          python3 zonderq/tools/port-cosmos-3094-stage9b.py cosmos
+          # Native context-capture stage10a: strictly after the Stage9b port.
+          python3 zonderq/tools/port-cosmos-3094-stage10a.py cosmos
+          # Stage12 proof must use native-to-managed code only in isolated test ISO.
+          python3 zonderq/tools/port-cosmos-3094-stage12.py cosmos
+          test -s cosmos/src/Cosmos.Kernel.Core/Bridge/Export/ManagedApNative.cs
+          git -C cosmos diff --check
+          git -C cosmos diff > zonderq/smp3094-stage12-source.patch
+          test -s zonderq/smp3094-stage12-source.patch
+      - name: Assemble native Stage12 F1 managed dispatch and native proof mailbox
+        run: |
+          set -euo pipefail
+          sed -E 's,//.*$,,' cosmos/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s |
+            as --64 -o /tmp/smp3094-stage12.o -
+          nm -g /tmp/smp3094-stage12.o | grep -Fq '_native_x64_timer_command'
+          nm -g /tmp/smp3094-stage12.o | grep -Fq '_native_x64_timer_wait_ticks'
+          nm -g /tmp/smp3094-stage12.o | grep -Fq '_native_x64_timer_wait_quiet'
+          nm -g /tmp/smp3094-stage12.o | grep -Fq '_smp9_ap_timer_handler'
+          nm -g /tmp/smp3094-stage12.o | grep -Fq '_native_x64_get_ap_snapshot_rsp'
+          nm -g /tmp/smp3094-stage12.o | grep -Fq '_native_x64_get_ap_snapshot_rip'
+          nm -g /tmp/smp3094-stage12.o | grep -Fq '_native_x64_get_ap_snapshot_rflags'
+          nm -g /tmp/smp3094-stage12.o | grep -Fq '_native_x64_get_ap_snapshot_epoch'
+          nm -g /tmp/smp3094-stage12.o | grep -Fq '_native_x64_publish_smp12_checksum'
+          nm -g /tmp/smp3094-stage12.o | grep -Fq '__cosmos_smp3094_managed_ap_entry'
+      - name: Build complete patched 3.0.94 local SDK/runtime packages
+        working-directory: cosmos
+        env:
+          VersionPrefix: '3.0.94'
+        run: |
+          set -o pipefail
+          bash .devcontainer/postCreateCommand.sh 2>&1 | tee ../zonderq/smp3094-packages.log
+          test -s artifacts/package/release/Cosmos.Sdk.3.0.94.nupkg
+          test -s artifacts/package/release/Cosmos.Kernel.3.0.94.nupkg
+          test -s artifacts/package/release/Cosmos.Kernel.System.3.0.94.nupkg
+      - name: Restore and publish isolated Cosmos 3.0.94 boot probe ISO
+        run: |
+          set -euo pipefail
+          export PATH="$HOME/.dotnet/tools:$PATH"
+          export NUGET_PACKAGES="${{ runner.temp }}/smp3094-packages"
+          mkdir -p "$NUGET_PACKAGES"
+          cat > zonderq/tests/Cosmos3094SmpBoot/NuGet.Config <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear/>
+              <add key="patched" value="${{ github.workspace }}/cosmos/artifacts/package/release"/>
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json"/>
+            </packageSources>
+            <packageSourceMapping>
+              <packageSource key="patched"><package pattern="Cosmos.*"/></packageSource>
+              <packageSource key="nuget.org"><package pattern="*"/></packageSource>
+            </packageSourceMapping>
+          </configuration>
+          EOF
+          dotnet restore zonderq/tests/Cosmos3094SmpBoot/Cosmos3094SmpBoot.csproj \
+            -r linux-x64 -p:CosmosArch=x64 \
+            --configfile zonderq/tests/Cosmos3094SmpBoot/NuGet.Config --force --no-cache
+          python3 - <<'PY'
+          import json, os, pathlib
+          cache = pathlib.Path(os.environ["NUGET_PACKAGES"])
+          feed = pathlib.Path("cosmos/artifacts/package/release").resolve()
+          required = {"cosmos.sdk", "cosmos.kernel", "cosmos.kernel.system",
+                      "cosmos.kernel.core", "cosmos.kernel.core.x64",
+                      "cosmos.kernel.hal.x64", "cosmos.kernel.boot.limine"}
+          found = set()
+          for path in cache.glob("cosmos.*/3.0.94/.nupkg.metadata"):
+              source = pathlib.Path(json.loads(path.read_text())["source"]).resolve()
+              if source != feed:
+                  raise SystemExit(f"[SMP3094][FAIL] {path} sourced from {source} not {feed}")
+              found.add(path.parent.parent.name)
+          if required - found:
+              raise SystemExit(f"[SMP3094][FAIL] missing local packages: {sorted(required - found)}")
+          print("[SMP3094] Pinned patched package origin verified")
+          PY
+          dotnet publish zonderq/tests/Cosmos3094SmpBoot/Cosmos3094SmpBoot.csproj \
+            -c Debug -r linux-x64 -p:CosmosArch=x64 \
+            -o zonderq/tests/Cosmos3094SmpBoot/output-x64 --no-restore \
+            --verbosity:normal 2>&1 | tee zonderq/smp3094-publish.log
+          test -s zonderq/tests/Cosmos3094SmpBoot/output-x64/Cosmos3094SmpBoot.iso
+          sha256sum zonderq/tests/Cosmos3094SmpBoot/output-x64/Cosmos3094SmpBoot.iso
+      - uses: actions/upload-artifact@v4
+        with:
+          name: smp3094-stage12-managed-oneshot-qemu-iso
+          path: zonderq/tests/Cosmos3094SmpBoot/output-x64/Cosmos3094SmpBoot.iso
+          if-no-files-found: error
+          retention-days: 3
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smp3094-stage12-source-diff
+          path: zonderq/smp3094-stage12-source.patch
+          retention-days: 5
+          if-no-files-found: ignore
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: smp3094-build-diagnostics
+          path: zonderq/smp3094-*.log
+          if-no-files-found: ignore
+
+  qemu:
+    needs: iso
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { cpus: 1, cores: 1, threads: 1, cpu_model: Nehalem, repeats: 1, timeout: 210 }
+          - { cpus: 2, cores: 2, threads: 1, cpu_model: Nehalem, repeats: 1, timeout: 210 }
+          - { cpus: 4, cores: 4, threads: 1, cpu_model: Nehalem, repeats: 1, timeout: 210 }
+          # User's Intel Core i3-5005U: Broadwell, 2 cores and 2 SMT threads/core.
+          - { cpus: 4, cores: 2, threads: 2, cpu_model: Broadwell, repeats: 2, timeout: 240 }
+          - { cpus: 8, cores: 4, threads: 2, cpu_model: Nehalem, repeats: 1, timeout: 240 }
+          - { cpus: 16, cores: 8, threads: 2, cpu_model: Nehalem, repeats: 1, timeout: 270 }
+          - { cpus: 32, cores: 16, threads: 2, cpu_model: EPYC-Rome, repeats: 1, timeout: 360 }
+          - { cpus: 56, cores: 28, threads: 2, cpu_model: EPYC-Rome, repeats: 2, timeout: 450 }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: smp3094-stage12-managed-oneshot-qemu-iso
+          path: boot-iso
+      - name: Install QEMU
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86
+      - name: Boot real patched Cosmos 3.0.94 ISO on QEMU
+        env:
+          SMP3094_QEMU_CPUS: ${{ matrix.cpus }}
+          SMP3094_QEMU_CORES: ${{ matrix.cores }}
+          SMP3094_QEMU_THREADS: ${{ matrix.threads }}
+          SMP3094_QEMU_CPU_MODEL: ${{ matrix.cpu_model }}
+          SMP3094_QEMU_TIMEOUT: ${{ matrix.timeout }}
+          SMP3094_QEMU_STABLE: '8'
+          SMP3094_QEMU_REPEATS: ${{ matrix.repeats }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 "$SMP3094_QEMU_REPEATS"); do
+            echo "[SMP3094-MATRIX] model=$SMP3094_QEMU_CPU_MODEL logical=$SMP3094_QEMU_CPUS attempt=$attempt/$SMP3094_QEMU_REPEATS"
+            serial="smp3094-${{ matrix.cpu_model }}-${{ matrix.cpus }}cpu-attempt${attempt}.serial.log"
+            bash tools/smoke-cosmos-3094-qemu.sh \
+              boot-iso/Cosmos3094SmpBoot.iso "$serial"
+            # This is an additional, strict proof. Stage8's parser alone
+            # never certifies a timer or a managed AP scheduler.
+            python3 tests/Cosmos3094SmpBoot/verify_periodic_timer.py "$serial" \
+              --cpus "$SMP3094_QEMU_CPUS"
+            python3 tests/Cosmos3094SmpBoot/verify_native_context.py "$serial" \
+              --cpus "$SMP3094_QEMU_CPUS"
+            python3 tests/Cosmos3094SmpBoot/verify_managed_oneshot.py "$serial" \
+              --cpus "$SMP3094_QEMU_CPUS"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: smp3094-stage12-${{ matrix.cpu_model }}-${{ matrix.cpus }}cpu-serial
+          path: |
+            smp3094-*.serial.log
+            smp3094-*.serial.log.stderr
+          if-no-files-found: ignore
