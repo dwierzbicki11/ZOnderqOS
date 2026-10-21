@@ -76,9 +76,14 @@ namespace ZonderqOS.GUI
                     RefreshDesktop,
                     () => LaunchRegisteredApp(AppIds.Settings));
 
-                int menuWidth = 480;
-                int menuHeight = 560;
-                startMenu = new StartMenu(8, (int)canvas.Height - TaskbarHeight - menuHeight - 8, menuWidth, menuHeight);
+                // Use the real framebuffer dimensions. On 800x600 the old
+                // 560px menu was partly above the screen (-12px).
+                int availableDesktopHeight = System.Math.Max(1, (int)canvas.Height - TaskbarHeight);
+                int menuWidth = System.Math.Min(480, System.Math.Max(1, (int)canvas.Width - 16));
+                int menuHeight = System.Math.Min(560, System.Math.Max(1, availableDesktopHeight - 16));
+                int menuX = System.Math.Min(8, System.Math.Max(0, (int)canvas.Width - menuWidth));
+                int menuY = System.Math.Max(0, availableDesktopHeight - menuHeight - 8);
+                startMenu = new StartMenu(menuX, menuY, menuWidth, menuHeight);
                 PopulateStartMenu();
 
                 startMenu.SetPowerActions(
