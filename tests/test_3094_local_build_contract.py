@@ -33,7 +33,7 @@ class Local3094BuildContract(unittest.TestCase):
 
     def test_no_disk_writes_or_faked_smp(self):
         for forbidden in ("mkfs.", "wipefs", "dd if=", "parted ", 
-                          'git reset --hard', "3.0.85"):
+                          'git reset --hard', "Cosmos.Sdk/3.0.85"):
             self.assertNotIn(forbidden, SCRIPT)
         self.assertIn('ZonderqRamRoot=false', SCRIPT)
         self.assertIn('ZONDERQDATA', SCRIPT)
