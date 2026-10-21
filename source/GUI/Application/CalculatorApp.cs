@@ -180,9 +180,9 @@ namespace ZonderqOS.GUI.Apps
             int displayX = x + 4;
             int displayY = y + 98;
             int displayWidth = System.Math.Max(100, width - 8);
-            canvas.DrawFilledRectangle(Panel, displayX, displayY, displayWidth, 86);
-            canvas.DrawRectangle(errorState ? Color.FromArgb(135, 67, 76) : SystemTheme.AccentBorder,
-                displayX, displayY, displayWidth, 86);
+            UiPainter.RoundedPanel(canvas, displayX, displayY, displayWidth, 86,
+                UiMetrics.ButtonRadius, Panel,
+                errorState ? Color.FromArgb(135, 67, 76) : SystemTheme.AccentBorder);
 
             if (memory != 0.0)
             {
@@ -227,8 +227,8 @@ namespace ZonderqOS.GUI.Apps
                     border = SystemTheme.AccentBorder;
                 }
 
-                canvas.DrawFilledRectangle(background, x, y, buttonWidth, buttonHeight);
-                canvas.DrawRectangle(border, x, y, buttonWidth, buttonHeight);
+                UiPainter.RoundedPanel(canvas, x, y, buttonWidth, buttonHeight,
+                    UiMetrics.ButtonRadius, background, border);
                 if (hovered)
                     canvas.DrawFilledRectangle(SystemTheme.Accent, x, y, buttonWidth, 2);
 
@@ -257,10 +257,12 @@ namespace ZonderqOS.GUI.Apps
             int availableWidth = System.Math.Max(300, Window.Width - SideMargin * 2 - ButtonGap * (Columns - 1));
             buttonWidth = System.Math.Max(68, availableWidth / Columns);
 
-            int availableHeight = System.Math.Max(308,
-                Window.Height - GridTopOffset - 16 - ButtonGap * (Rows - 1));
-            buttonHeight = availableHeight / Rows;
-            buttonHeight = System.Math.Max(42, System.Math.Min(58, buttonHeight));
+            // Small displays need compact keys, not a fixed minimum of 42px:
+            // at 800x600 the previous seventh row was below the taskbar.
+            int availableHeight = Window.Height - GridTopOffset - 16 -
+                ButtonGap * (Rows - 1);
+            buttonHeight = System.Math.Max(28, System.Math.Min(58,
+                availableHeight / Rows));
         }
 
         private int HitButton(int mouseX, int mouseY)
