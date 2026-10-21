@@ -51,6 +51,32 @@ artifact for debugging.
 No test can claim native timer interrupts, GC safepoints, true parallel
 managed work or physical Broadwell reliability from these proofs alone.
 
+## Stage 9a — AP-local timer *readiness* (new isolation gate)
+
+The independent `0009-ap-timer-readiness.patch` builds on the validated
+3.0.94 Stage8 patch, without replaying the older 3.0.85 Stage9 native code.
+While executing an F2 rendezvous on **each actual AP**, its handler samples
+the LAPIC Timer LVT register (offset `0x320`) into the AP's own 64-byte
+barrier record. The BSP reads that real hardware sample through a native
+getter **after Stage8 has published EXITED**. It rejects unmasked or
+periodic timer configurations, verifies its already-calibrated LAPIC
+timer has a bounded nonzero 10ms interval count, and emits
+`[SMP3094-TIMER-BASE]`, `[SMP3094-TIMER-READY]` for each AP, followed
+by `[SMP3094-STAGE9A] PASS` only on success.
+
+The new CI workflow `cosmos-3094-stage9a.yml` applies Stage1..8 + Stage9a
+in a fresh **v3.0.94** checkout, assembles native x64 code, builds pinned
+SDK/runtime packages and a standalone QEMU ISO. It requires both the
+existing strict Stage8 serial proof and the new Stage9a parser, including
+negative cases for duplicate CPU IDs, wrong calibration, unknown markers
+and unmasked/periodic AP timer.
+
+**Stage9a is NOT complete Stage9.** It has NOT enabled AP LAPIC periodic
+timer interrupts, run timer ISRs, dispatched ordinary managed threads,
+preempted AP threads, stopped OrionGC, or passed a production SMP soak.
+The next Stage9b must add a native F3 timer vector with bounded
+AP-local periodic tick observation and explicit stop/cleanup on failure.
+
 ## Remaining hard blockers before a production 3.0.94 Stage 23 gate
 
 1. **Native AP LAPIC periodic timer (Stage 9)**. Port the timer vector
