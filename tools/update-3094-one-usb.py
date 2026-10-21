@@ -108,7 +108,12 @@ def copy_exact(source, dest, count: int) -> None:
         chunk = source.read(min(COPY_CHUNK, pending))
         if not chunk:
             refuse("Unexpected EOF while updating ISO area.")
-        dest.write(chunk)
+        offset = 0
+        while offset < len(chunk):
+            written = dest.write(chunk[offset:])
+            if written is None or written <= 0:
+                refuse("Short write while updating USB block device or backup.")
+            offset += written
         pending -= len(chunk)
 
 
@@ -181,7 +186,8 @@ def main() -> None:
         # This commit point installs new BIOS loader + MBR entries in a
         # single sector, preserving partition 4.
         disk.seek(0)
-        disk.write(merged_mbr)
+        if disk.write(merged_mbr) != SECTOR:
+            refuse("Short MBR write while updating bootloader.")
         os.fsync(disk.fileno())
 
     with iso.open("rb") as src, open(device, "rb", buffering=0) as disk:
