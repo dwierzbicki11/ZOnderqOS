@@ -967,9 +967,8 @@ namespace ZonderqOS.GUI.Apps
 
             int pathX = X + 180;
             int pathW = Math.Max(120, Width - 188);
-            canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), pathX, Y + 9, pathW, 30);
-            canvas.DrawRectangle(Color.FromArgb(82, 94, 108), pathX, Y + 9, pathW, 30);
-            canvas.DrawFilledRectangle(Accent, pathX, Y + 9, 3, 30);
+            UiPainter.RoundedPanel(canvas, pathX, Y + 9, pathW, 30,
+                UiMetrics.ButtonRadius, UiPalette.Surface, UiPalette.AccentBorder);
 
             SmallTextRenderer.DrawClipped(canvas, app.CurrentPath, pathX + 10, Y + 20,
                 Math.Max(20, pathW - 20), MainText);
@@ -1203,8 +1202,8 @@ namespace ZonderqOS.GUI.Apps
         private void ToolbarButton(Canvas canvas, IconType type, int offset)
         {
             int buttonX = X + offset;
-            canvas.DrawFilledRectangle(Color.FromArgb(51, 59, 68), buttonX, Y + 7, 36, 30);
-            canvas.DrawRectangle(Color.FromArgb(83, 96, 110), buttonX, Y + 7, 36, 30);
+            UiPainter.RoundedPanel(canvas, buttonX, Y + 7, 36, 30,
+                UiMetrics.TileRadius, UiPalette.SurfaceRaised, UiPalette.Border);
             IconManager.Draw(canvas, type, buttonX + 9, Y + 11, Color.WhiteSmoke);
         }
 
@@ -1213,12 +1212,11 @@ namespace ZonderqOS.GUI.Apps
             int x = X + app.ContextMenuX;
             int y = Y + app.ContextMenuY;
 
-            canvas.DrawFilledRectangle(Color.FromArgb(20, 24, 29), x + 3, y + 3,
-                FileManagerApp.ContextMenuWidth, FileManagerApp.ContextMenuHeight);
-            canvas.DrawFilledRectangle(Color.FromArgb(40, 47, 55), x, y,
-                FileManagerApp.ContextMenuWidth, FileManagerApp.ContextMenuHeight);
-            canvas.DrawRectangle(Color.FromArgb(85, 102, 118), x, y,
-                FileManagerApp.ContextMenuWidth, FileManagerApp.ContextMenuHeight);
+            UiPainter.Shadow(canvas, x, y, FileManagerApp.ContextMenuWidth,
+                FileManagerApp.ContextMenuHeight, UiMetrics.MenuRadius);
+            UiPainter.RoundedPanel(canvas, x, y, FileManagerApp.ContextMenuWidth,
+                FileManagerApp.ContextMenuHeight, UiMetrics.MenuRadius,
+                UiPalette.SurfaceRaised, UiPalette.Border);
 
             bool selected = app.SelectedIndex >= 0 && app.SelectedIndex < app.Entries.Count;
             DrawMenuItem(canvas, "Copy", "Ctrl+C", x, y + 0 * FileManagerApp.ContextMenuItemHeight, selected);

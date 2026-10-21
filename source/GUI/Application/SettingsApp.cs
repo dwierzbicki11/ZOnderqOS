@@ -36,6 +36,9 @@ namespace ZonderqOS.GUI.Apps
         private const int RowsTop = 142;
         private const int RowHeight = 68;
         private const int RowGap = 6;
+        // Six rows must fit above the status bar on a physical 800x600
+        // framebuffer; only their visual height changes, not action indices.
+        private int EffectiveRowHeight => Window.Height >= 650 ? RowHeight : 50;
 
         private static readonly string[] PageNames =
         {
@@ -261,9 +264,8 @@ namespace ZonderqOS.GUI.Apps
                 Color bg = selected ? global::ZonderqOS.GUI.SystemTheme.AccentSoft : hover ? Color.FromArgb(31, 40, 49) : Sidebar;
                 Color edge = selected ? Accent : hover ? Border : Sidebar;
 
-                canvas.DrawFilledRectangle(bg, x + 8, y, sidebarWidth - 16, SidebarItemHeight - 4);
-                if (selected || hover)
-                    canvas.DrawRectangle(edge, x + 8, y, sidebarWidth - 16, SidebarItemHeight - 4);
+                UiPainter.RoundedPanel(canvas, x + 8, y, sidebarWidth - 16,
+                    SidebarItemHeight - 4, UiMetrics.TileRadius, bg, edge);
                 if (selected)
                     canvas.DrawFilledRectangle(Accent, x + 8, y + 5, 3, SidebarItemHeight - 14);
 
@@ -275,8 +277,8 @@ namespace ZonderqOS.GUI.Apps
             int cardY = Window.Y + Window.Height - 100;
             if (cardY > Window.Y + SidebarTop + PageNames.Length * SidebarItemHeight + 8)
             {
-                canvas.DrawFilledRectangle(Color.FromArgb(27, 34, 41), x + 10, cardY, sidebarWidth - 20, 66);
-                canvas.DrawRectangle(Border, x + 10, cardY, sidebarWidth - 20, 66);
+                UiPainter.RoundedPanel(canvas, x + 10, cardY, sidebarWidth - 20, 66,
+                    UiMetrics.ButtonRadius, UiPalette.SurfaceRaised, Border);
                 SmallTextRenderer.Draw(canvas, "PROFIL GUI", x + 22, cardY + 14, Muted);
                 SmallTextRenderer.DrawClipped(canvas, global::ZonderqOS.SystemSettings.PerformanceProfileName,
                     x + 22, cardY + 34, System.Math.Max(40, sidebarWidth - 44), Text);
@@ -287,7 +289,8 @@ namespace ZonderqOS.GUI.Apps
         {
             int x = contentX + 24;
             int maxWidth = System.Math.Max(120, contentWidth - 48);
-            canvas.DrawString(PageNames[selectedPage], PCScreenFont.DefaultFont, Text, x, Window.Y + 51);
+            UiTypography.Heading(canvas, PageNames[selectedPage], x, Window.Y + 51,
+                maxWidth, UiPalette.Text);
             SmallTextRenderer.DrawClipped(canvas, PageSubtitles[selectedPage], x, Window.Y + 88, maxWidth, Muted);
             canvas.DrawLine(Border, x, Window.Y + 112, Window.X + Window.Width - 24, Window.Y + 112);
             SmallTextRenderer.Draw(canvas, "F5 ODSWIEZ  |  ESC ZAMKNIJ  |  STRZALKI: SEKCJE",
@@ -450,7 +453,7 @@ namespace ZonderqOS.GUI.Apps
             DrawRow(canvas, contentX, contentWidth, 0, IconType.Start,
                 "SYSTEM", "Nazwa i generacja srodowiska", "ZONDERQOS GEN3", Accent);
             DrawRow(canvas, contentX, contentWidth, 1, IconType.About,
-                "COSMOS SDK", "Wersja pakietow kernel i kernel.system", "3.0.82", Good);
+                "COSMOS SDK", "Wersja pakietow kernel i kernel.system", "3.0.94", Good);
             DrawRow(canvas, contentX, contentWidth, 2, IconType.Settings,
                 "ARCHITEKTURA", "Architektura wykryta przez CPUID", cpuInfo.Architecture, Text);
             DrawRow(canvas, contentX, contentWidth, 3, IconType.Settings,
@@ -470,10 +473,11 @@ namespace ZonderqOS.GUI.Apps
             int width = GetRowWidth(contentX, contentWidth);
             bool hover = Hit(lastMouseX, lastMouseY, x, y, width, RowHeight);
 
-            canvas.DrawFilledRectangle(hover ? PanelHover : Panel, x, y, width, RowHeight);
-            canvas.DrawRectangle(hover ? Accent : Border, x, y, width, RowHeight);
+            int rowHeight = EffectiveRowHeight;
+            UiPainter.RoundedPanel(canvas, x, y, width, rowHeight, UiMetrics.TileRadius,
+                hover ? PanelHover : Panel, hover ? Accent : Border);
             if (hover)
-                canvas.DrawFilledRectangle(Accent, x, y + 5, 3, RowHeight - 10);
+                canvas.DrawFilledRectangle(Accent, x + 9, y + 2, width - 18, 2);
 
             IconManager.DrawScaled(canvas, icon, x + 14, y + 20, 24, 24);
             int valueWidth = System.Math.Min(188, System.Math.Max(92, width / 4));
@@ -483,8 +487,8 @@ namespace ZonderqOS.GUI.Apps
 
             int chipX = x + width - valueWidth - 14;
             int chipY = y + 16;
-            canvas.DrawFilledRectangle(Color.FromArgb(24, 30, 36), chipX, chipY, valueWidth, 34);
-            canvas.DrawRectangle(Border, chipX, chipY, valueWidth, 34);
+            UiPainter.RoundedPanel(canvas, chipX, chipY, valueWidth, 34,
+                UiMetrics.TileRadius, UiPalette.Surface, Border);
             SmallTextRenderer.DrawCentered(canvas, value ?? string.Empty, chipX + 8, chipY + 14,
                 System.Math.Max(20, valueWidth - 16), valueColor);
         }
@@ -558,8 +562,8 @@ namespace ZonderqOS.GUI.Apps
             int x = contentX + 18;
             int y = Window.Y + Window.Height - 42;
             int width = System.Math.Max(100, contentWidth - 36);
-            canvas.DrawFilledRectangle(Color.FromArgb(20, 25, 31), x, y, width, 28);
-            canvas.DrawRectangle(Border, x, y, width, 28);
+            UiPainter.RoundedPanel(canvas, x, y, width, 28,
+                UiMetrics.TileRadius, UiPalette.Surface, Border);
             canvas.DrawFilledRectangle(statusColor, x + 9, y + 11, 5, 5);
             SmallTextRenderer.DrawClipped(canvas, statusMessage, x + 24, y + 11,
                 System.Math.Max(40, width - 34), statusColor);
@@ -849,7 +853,7 @@ namespace ZonderqOS.GUI.Apps
             for (int i = 0; i < 6; i++)
             {
                 int y = GetRowY(i);
-                if (Hit(mouseX, mouseY, x, y, width, RowHeight))
+                if (Hit(mouseX, mouseY, x, y, width, EffectiveRowHeight))
                     return i;
             }
             return -1;
@@ -877,7 +881,7 @@ namespace ZonderqOS.GUI.Apps
 
         private int GetRowY(int index)
         {
-            return Window.Y + RowsTop + index * (RowHeight + RowGap);
+            return Window.Y + RowsTop + index * (EffectiveRowHeight + RowGap);
         }
 
         private int GetRowWidth(int contentX, int contentWidth)
