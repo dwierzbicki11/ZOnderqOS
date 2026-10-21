@@ -239,7 +239,7 @@ jobs:
         with:
           name: zonderq-3094-NORMAL-GUI-REQUIRES-ZONDERQDATA
           path: zonderq/experimental3094-full-gui/ZonderqOS.iso
-          retention-days: 4
+          retention-days: 30
           if-no-files-found: error
       - name: QEMU persistent FAT32 data volume — two boots, EFI unchanged
         timeout-minutes: 6
