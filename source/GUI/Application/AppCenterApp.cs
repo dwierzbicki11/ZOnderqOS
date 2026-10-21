@@ -19,7 +19,7 @@ namespace ZonderqOS.GUI.Apps
 
         // Calculate from the live window geometry, not a hardcoded 1040x700.
         // Rendering, hit testing and keyboard scrolling must share these values.
-        private bool ShowDetails => Window.Width >= 920 && Window.Height >= 650;
+        private bool ShowDetails => Window.Width >= 920 && Window.Height >= 690;
         private int ListWidth => ShowDetails ? 640 : Math.Max(1, Window.Width - 36);
         private int ActionY => Window.Y + Window.Height - ActionBottomOffset;
         private int ActionWidth => Math.Max(1, (Window.Width - 46) / 2);
