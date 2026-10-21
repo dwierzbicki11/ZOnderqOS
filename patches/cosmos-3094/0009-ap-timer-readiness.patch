@@ -1,0 +1,105 @@
+diff --git a/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs b/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
+--- a/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
++++ b/src/Cosmos.Kernel.Core.X64/Cpu/SmpApBootstrap.cs
+@@ -94,6 +94,10 @@
+     [LibraryImport("*", EntryPoint = "_native_x64_get_ap_barrier_release")]
+     [SuppressGCTransition]
+     private static partial ulong NativeGetBarrierRelease();
++
++    [LibraryImport("*", EntryPoint = "_native_x64_get_ap_timer_lvt")]
++    [SuppressGCTransition]
++    private static partial ulong NativeGetApTimerLvt(uint cpuId);
+ 
+     internal static bool StartAndParkApplicationProcessors()
+     {
+@@ -418,4 +422,50 @@
+         Serial.WriteString("[SMP3094-STAGE8] PASS\n");
+         return true;
+     }
++
++    /// <summary>
++    /// Stage 9a read-only preflight. BSP LAPIC timer is calibrated and all
++    /// AP timers are masked. Samples come from the native Stage 8 F2 IRQ.
++    /// No periodic AP timer IRQ, managed execution or OrionGC participation.
++    /// </summary>
++    internal static bool VerifyApTimerReadiness()
++    {
++        const uint IntervalMs = 10;
++        if (!LocalApic.IsInitialized || !LocalApic.IsTimerCalibrated ||
++            LocalApic.TicksPerMs == 0 || LocalApic.TicksPerMs > uint.MaxValue / IntervalMs ||
++            !LimineMp.TryValidateX64(out ulong count, out _) ||
++            count == 0 || count > LimineMp.MaxXApicCpuCount)
++        {
++            Serial.WriteString("[SMP3094-TIMER-READY] invalid topology or LAPIC calibration.\n");
++            return false;
++        }
++
++        ulong ticks = (ulong)LocalApic.TicksPerMs * IntervalMs;
++        Serial.WriteString("[SMP3094-TIMER-BASE] ticksPerMs=");
++        Serial.WriteNumber(LocalApic.TicksPerMs);
++        Serial.WriteString(" intervalTicks=");
++        Serial.WriteNumber(ticks);
++        Serial.WriteString("\n");
++        for (uint cpuId = 1; cpuId < count; cpuId++)
++        {
++            ulong lvt = NativeGetApTimerLvt(cpuId);
++            if ((lvt & 0x0001_0000UL) == 0 || (lvt & 0x0002_0000UL) != 0)
++            {
++                Serial.WriteString("[SMP3094-TIMER-READY] unmasked/periodic AP timer CPU=");
++                Serial.WriteNumber(cpuId);
++                Serial.WriteString(" lvt=");
++                Serial.WriteNumber(lvt);
++                Serial.WriteString("\n");
++                return false;
++            }
++            Serial.WriteString("[SMP3094-TIMER-READY] CPU=");
++            Serial.WriteNumber(cpuId);
++            Serial.WriteString(" masked=1 lvt=");
++            Serial.WriteNumber(lvt);
++            Serial.WriteString("\n");
++        }
++
++        Serial.WriteString("[SMP3094-STAGE9A] PASS\n");
++        return true;
++    }
+ }
+diff --git a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+--- a/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
++++ b/src/Cosmos.Kernel.HAL.X64/X64PlatformInitializer.cs
+@@ -181,6 +181,13 @@
+             Cosmos.Kernel.Core.Panic.Halt("SMP3094 stage 8: native rendezvous failed.");
+         }
+ 
++        // Stage 9a: read AP-local LVT state after native rendezvous.
++        // Managed scheduler and OrionGC still remain BSP-only.
++        if (!SmpApBootstrap.VerifyApTimerReadiness())
++        {
++            Cosmos.Kernel.Core.Panic.Halt("SMP3094 stage 9a: AP timer readiness failed.");
++        }
++
+         Serial.WriteString("[X64HAL] Initializing RTC...\n");
+         _rtc = new CmosRtc();
+         _rtc.Initialize();
+diff --git a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+--- a/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
++++ b/src/Cosmos.Kernel.Native.X64/CPU/Interrupts.s
+@@ -1070,6 +1070,10 @@
+ .Lsmp8_ap_release:
+     mov rax, qword ptr [rip + _smp6_lapic_base]
+     mov dword ptr [rax + 0xB0], 0
++    // Sample actual AP-local masked LVT before publishing barrier EXITED.
++    mov rax, qword ptr [rip + _smp6_lapic_base]
++    mov eax, dword ptr [rax + 0x320]
++    mov dword ptr [rdx + 32], eax
+     mov rax, rcx
+     xchg qword ptr [rdx + 8], rax
+     jmp .Lsmp8_ap_return
+@@ -1104,6 +1108,8 @@
+ SMP8_BARRIER_GETTER _native_x64_get_ap_barrier_exit, 8
+ SMP8_BARRIER_GETTER _native_x64_get_ap_barrier_hits, 24
+ SMP8_BARRIER_GETTER _native_x64_get_ap_barrier_sample, 16
++// Stage 9a: read the 32-bit AP-local LVT sample from reserved bytes.
++SMP8_BARRIER_GETTER _native_x64_get_ap_timer_lvt, 32
+ 
+ // Read-only BSP-side diagnostics for a failed barrier proof.
+ .global _native_x64_get_ap_barrier_request
