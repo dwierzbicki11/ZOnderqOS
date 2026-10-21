@@ -199,6 +199,9 @@ namespace ZonderqOS.GUI
                             continue;
                         }
 
+                        if (HandleWindowShortcut(key))
+                            continue;
+
                         if (commandPalette != null && commandPalette.Visible)
                         {
                             commandPalette.HandleKeyboard(key);
@@ -769,6 +772,56 @@ namespace ZonderqOS.GUI
             bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
             bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
             return alt && !control;
+        }
+
+        /// <summary>
+        /// Desktop shortcuts run before application key handlers. They must not
+        /// leak into a text editor or a terminal, and must respect visible overlays.
+        /// Cosmos 3.0.94 delivers modifier state on KeyEvent (key-down).
+        /// </summary>
+        private bool HandleWindowShortcut(KeyEvent key)
+        {
+            if (key == null)
+                return false;
+
+            bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+            bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+            if (!alt || control)
+                return false;
+
+            if (key.Key == ConsoleKeyEx.Tab)
+            {
+                // A window switch always returns to the desktop, including
+                // when Start, notifications, or the command palette were open.
+                commandPalette?.Close();
+                notificationCenter?.Close();
+                if (startMenu != null)
+                    startMenu.Visible = false;
+                if (desktopContextMenu != null)
+                    desktopContextMenu.Visible = false;
+
+                bool reverse = (key.Modifiers & ConsoleModifiers.Shift) == ConsoleModifiers.Shift;
+                applicationManager?.CycleWindow(reverse);
+                return true;
+            }
+
+            if (key.Key != ConsoleKeyEx.F4)
+                return false;
+
+            // Alt+F4 first dismisses whichever transient panel currently owns
+            // keyboard focus. The underlying app must not close accidentally.
+            if (commandPalette != null && commandPalette.Visible)
+                commandPalette.Close();
+            else if (notificationCenter != null && notificationCenter.Visible)
+                notificationCenter.Close();
+            else if (startMenu != null && startMenu.Visible)
+                startMenu.Visible = false;
+            else if (desktopContextMenu != null && desktopContextMenu.Visible)
+                desktopContextMenu.Visible = false;
+            else
+                applicationManager?.RequestCloseActiveWindow();
+
+            return true;
         }
 
         private void LogoutSession()
