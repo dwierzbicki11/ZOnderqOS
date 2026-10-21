@@ -44,6 +44,7 @@ namespace ZonderqOS.GUI
         private int hoveredDismissRow = -1;
         private int hoveredAction = -1;
         private bool toastHovered;
+        private int openingFrames;
 
         public NotificationCenter(int screenWidth, int screenHeight, int taskbarHeight)
             : base(screenWidth - 472, 10, 462, screenHeight - taskbarHeight - 20)
@@ -60,6 +61,8 @@ namespace ZonderqOS.GUI
             Visible = !Visible;
             if (Visible)
             {
+                openingFrames = 8;
+                UiAnimator.RequestFrames(8);
                 EnsureFresh();
                 KeepSelectionVisible();
             }
@@ -262,9 +265,9 @@ namespace ZonderqOS.GUI
             }
 
             EnsureFresh();
-            canvas.DrawFilledRectangle(Color.FromArgb(10, 13, 17), X + 6, Y + 7, Width, Height);
-            canvas.DrawFilledRectangle(Background, X, Y, Width, Height);
-            canvas.DrawRectangle(Border, X, Y, Width, Height);
+            UiPainter.Shadow(canvas, X, Y, Width, Height, UiMetrics.MenuRadius);
+            UiPainter.RoundedPanel(canvas, X, Y, Width, Height,
+                UiMetrics.MenuRadius, Background, Border);
 
             RenderHeader(canvas);
             RenderFilters(canvas);
@@ -274,16 +277,21 @@ namespace ZonderqOS.GUI
 
         private void RenderHeader(Canvas canvas)
         {
-            canvas.DrawFilledRectangle(Header, X + 1, Y + 1, Width - 2, 72);
-            canvas.DrawFilledRectangle(SystemTheme.Accent, X + 1, Y + 1, 4, 72);
+            UiPainter.RoundedTop(canvas, X + 1, Y + 1, Width - 2, 72,
+                UiMetrics.MenuRadius - 1, Header);
+            canvas.DrawFilledRectangle(SystemTheme.Accent, X + 13, Y + 2,
+                Math.Max(1, (Width - 26) * (8 - openingFrames) / 8), 2);
+            if (openingFrames > 0)
+                openingFrames--;
             IconManager.DrawScaled(canvas, IconType.About, X + 18, Y + 19, 28, 28);
             SmallTextRenderer.Draw(canvas, "CENTRUM POWIADOMIEN", X + 58, Y + 20, Text);
             SmallTextRenderer.Draw(canvas, "CTRL+ALT+N  |  D DND  |  R PRZECZYTANE", X + 58, Y + 41, Muted);
 
             int unread = NotificationService.UnreadCount;
             int badgeX = X + Width - 82;
-            canvas.DrawFilledRectangle(unread > 0 ? SystemTheme.AccentSoft : Panel, badgeX, Y + 17, 60, 36);
-            canvas.DrawRectangle(unread > 0 ? SystemTheme.AccentBorder : Border, badgeX, Y + 17, 60, 36);
+            UiPainter.RoundedPanel(canvas, badgeX, Y + 17, 60, 36, UiMetrics.ButtonRadius,
+                unread > 0 ? SystemTheme.AccentSoft : Panel,
+                unread > 0 ? SystemTheme.AccentBorder : Border);
             if (unread > 99)
                 SmallTextRenderer.DrawCentered(canvas, "99+", badgeX + 4, Y + 31, 52, Text);
             else
@@ -307,10 +315,9 @@ namespace ZonderqOS.GUI
                 int tx = startX + i * (tabWidth + gap);
                 bool selected = filter == i;
                 bool hovered = hoveredFilter == i;
-                canvas.DrawFilledRectangle(selected ? PanelUnread : hovered ? PanelHover : Panel,
-                    tx, y, tabWidth, 36);
-                canvas.DrawRectangle(selected || hovered ? SystemTheme.AccentBorder : Border,
-                    tx, y, tabWidth, 36);
+                UiPainter.RoundedPanel(canvas, tx, y, tabWidth, 36, UiMetrics.ButtonRadius,
+                    selected ? PanelUnread : hovered ? PanelHover : Panel,
+                    selected || hovered ? SystemTheme.AccentBorder : Border);
                 if (selected)
                     canvas.DrawFilledRectangle(SystemTheme.Accent, tx, y + 33, tabWidth, 3);
                 SmallTextRenderer.DrawCentered(canvas, FilterLabels[i], tx + 4, y + 15,
@@ -335,8 +342,8 @@ namespace ZonderqOS.GUI
                 {
                     if (row == 0 && visibleCount == 0)
                     {
-                        canvas.DrawFilledRectangle(Panel, cardX, cy, cardWidth, 92);
-                        canvas.DrawRectangle(Border, cardX, cy, cardWidth, 92);
+                        UiPainter.RoundedPanel(canvas, cardX, cy, cardWidth, 92,
+                            UiMetrics.TileRadius, Panel, Border);
                         IconManager.DrawScaled(canvas, IconType.About, cardX + 18, cy + 27, 28, 28);
                         SmallTextRenderer.Draw(canvas, "BRAK POWIADOMIEN", cardX + 60, cy + 29, Text);
                         SmallTextRenderer.Draw(canvas, "System nie ma nic nowego do pokazania.", cardX + 60, cy + 50, Muted);
@@ -355,9 +362,9 @@ namespace ZonderqOS.GUI
                 if (selected)
                     background = Color.FromArgb(38, 54, 66);
 
-                canvas.DrawFilledRectangle(background, cardX, cy, cardWidth, CardHeight);
-                canvas.DrawRectangle(selected || hovered ? SystemTheme.AccentBorder : Border,
-                    cardX, cy, cardWidth, CardHeight);
+                UiPainter.RoundedPanel(canvas, cardX, cy, cardWidth, CardHeight,
+                    UiMetrics.TileRadius, background,
+                    selected || hovered ? SystemTheme.AccentBorder : Border);
                 Color kindColor = KindColor(entry.Kind);
                 canvas.DrawFilledRectangle(kindColor, cardX, cy + 6, 3, CardHeight - 12);
                 IconManager.DrawScaled(canvas, KindIcon(entry.Kind), cardX + 14, cy + 15, 24, 24);
@@ -373,9 +380,10 @@ namespace ZonderqOS.GUI
                 int dismissX = cardX + cardWidth - 35;
                 int dismissY = cy + 9;
                 bool dismissHover = hoveredDismissRow == row;
-                canvas.DrawFilledRectangle(dismissHover ? Color.FromArgb(68, 43, 48) : Color.FromArgb(34, 40, 47),
-                    dismissX, dismissY, 24, 24);
-                canvas.DrawRectangle(dismissHover ? Danger : Border, dismissX, dismissY, 24, 24);
+                UiPainter.RoundedPanel(canvas, dismissX, dismissY, 24, 24,
+                    UiMetrics.TileRadius,
+                    dismissHover ? Color.FromArgb(68, 43, 48) : Color.FromArgb(34, 40, 47),
+                    dismissHover ? Danger : Border);
                 IconManager.DrawScaled(canvas, IconType.Close, dismissX + 5, dismissY + 5, 14, 14);
 
                 if (unread)
@@ -386,7 +394,8 @@ namespace ZonderqOS.GUI
         private void RenderFooter(Canvas canvas)
         {
             int y = Y + Height - 57;
-            canvas.DrawFilledRectangle(Header, X + 1, y, Width - 2, 56);
+            UiPainter.RoundedFill(canvas, X + 2, y, Width - 4, 54,
+                UiMetrics.ButtonRadius, Header);
             canvas.DrawLine(Border, X + 1, y, X + Width - 2, y);
 
             DrawFooterButton(canvas, 0, X + 14, y + 9, 126, "PRZECZYTANE", IconType.About);
@@ -399,10 +408,9 @@ namespace ZonderqOS.GUI
         {
             bool hovered = hoveredAction == index;
             bool dndActive = index == 2 && NotificationService.DoNotDisturb;
-            canvas.DrawFilledRectangle(dndActive ? Color.FromArgb(58, 47, 32) : hovered ? PanelHover : Panel,
-                x, y, width, 38);
-            canvas.DrawRectangle(dndActive ? Warning : hovered ? SystemTheme.AccentBorder : Border,
-                x, y, width, 38);
+            UiPainter.RoundedPanel(canvas, x, y, width, 38, UiMetrics.ButtonRadius,
+                dndActive ? Color.FromArgb(58, 47, 32) : hovered ? PanelHover : Panel,
+                dndActive ? Warning : hovered ? SystemTheme.AccentBorder : Border);
             IconManager.DrawScaled(canvas, icon, x + 9, y + 10, 18, 18);
             SmallTextRenderer.DrawClipped(canvas, label, x + 35, y + 16,
                 System.Math.Max(20, width - 43), dndActive ? Warning : Text);
@@ -420,9 +428,10 @@ namespace ZonderqOS.GUI
             const int height = 98;
             Color kindColor = KindColor(entry.Kind);
 
-            canvas.DrawFilledRectangle(Color.FromArgb(9, 12, 15), x + 5, y + 6, width, height);
-            canvas.DrawFilledRectangle(toastHovered ? PanelHover : Header, x, y, width, height);
-            canvas.DrawRectangle(toastHovered ? SystemTheme.AccentBorder : Border, x, y, width, height);
+            UiPainter.Shadow(canvas, x, y, width, height, UiMetrics.MenuRadius);
+            UiPainter.RoundedPanel(canvas, x, y, width, height, UiMetrics.MenuRadius,
+                toastHovered ? PanelHover : Header,
+                toastHovered ? SystemTheme.AccentBorder : Border);
             canvas.DrawFilledRectangle(kindColor, x, y + 7, 4, height - 14);
             IconManager.DrawScaled(canvas, KindIcon(entry.Kind), x + 16, y + 17, 28, 28);
             SmallTextRenderer.DrawClipped(canvas, entry.Title, x + 57, y + 17, width - 92, Text);

@@ -242,10 +242,12 @@ namespace ZonderqOS.GUI
                 const int cardWidth = 650;
                 const int cardHeight = 480;
 
-                canvas.DrawFilledRectangle(Color.FromArgb(5, 9, 14), cardX + 8, cardY + 9, cardWidth, cardHeight);
-                canvas.DrawFilledRectangle(Card, cardX, cardY, cardWidth, cardHeight);
-                canvas.DrawRectangle(Border, cardX, cardY, cardWidth, cardHeight);
-                canvas.DrawFilledRectangle(SystemTheme.Accent, cardX, cardY, 5, cardHeight);
+                UiPainter.Shadow(canvas, cardX, cardY, cardWidth, cardHeight,
+                    UiMetrics.MenuRadius);
+                UiPainter.RoundedPanel(canvas, cardX, cardY, cardWidth, cardHeight,
+                    UiMetrics.MenuRadius, Card, Border);
+                canvas.DrawFilledRectangle(SystemTheme.Accent, cardX + 16, cardY + 2,
+                    cardWidth - 32, 2);
 
                 IconManager.DrawScaled(canvas, IconType.Settings, cardX + 36, cardY + 34, 48, 48);
                 canvas.DrawString("Pierwsza konfiguracja", PCScreenFont.DefaultFont, Text,
@@ -254,8 +256,8 @@ namespace ZonderqOS.GUI
                     "FABRYCZNE HASLO ROOT MUSI ZOSTAC ZMIENIONE PRZED URUCHOMIENIEM PULPITU",
                     cardX + 106, cardY + 73, Warning);
 
-                canvas.DrawFilledRectangle(CardAlt, cardX + 48, cardY + 112, 554, 48);
-                canvas.DrawRectangle(Border, cardX + 48, cardY + 112, 554, 48);
+                UiPainter.RoundedPanel(canvas, cardX + 48, cardY + 112, 554, 48,
+                    UiMetrics.ButtonRadius, CardAlt, Border);
                 SmallTextRenderer.Draw(canvas, "KONTO", cardX + 64, cardY + 132, Muted);
                 SmallTextRenderer.Draw(canvas, "root", cardX + 150, cardY + 132, Text);
                 SmallTextRenderer.Draw(canvas, PasswordPolicy.Summary, cardX + 260, cardY + 132, Muted);
@@ -270,14 +272,14 @@ namespace ZonderqOS.GUI
 
                 bool ready = passwordLength >= PasswordPolicy.MinLength && confirmationLength > 0;
                 Color applyColor = ready ? SystemTheme.Accent : Color.FromArgb(54, 67, 79);
-                canvas.DrawFilledRectangle(applyColor, cardX + 48, cardY + 338, 554, 52);
-                canvas.DrawRectangle(SystemTheme.AccentBorder, cardX + 48, cardY + 338, 554, 52);
+                UiPainter.RoundedPanel(canvas, cardX + 48, cardY + 338, 554, 52,
+                    UiMetrics.ButtonRadius, applyColor, SystemTheme.AccentBorder);
                 IconManager.DrawScaled(canvas, IconType.Save, cardX + 66, cardY + 353, 22, 22);
                 SmallTextRenderer.DrawCentered(canvas, "ZAPISZ HASLO I PRZEJDZ DO LOGOWANIA",
                     cardX + 104, cardY + 360, 468, Text);
 
-                canvas.DrawFilledRectangle(CardAlt, cardX + 48, cardY + 405, 554, 44);
-                canvas.DrawRectangle(Border, cardX + 48, cardY + 405, 554, 44);
+                UiPainter.RoundedPanel(canvas, cardX + 48, cardY + 405, 554, 44,
+                    UiMetrics.ButtonRadius, CardAlt, Border);
                 canvas.DrawFilledRectangle(statusColor, cardX + 63, cardY + 423, 6, 6);
                 SmallTextRenderer.DrawClipped(canvas, status, cardX + 81, cardY + 422, 500, statusColor);
 
@@ -294,11 +296,11 @@ namespace ZonderqOS.GUI
                 int fieldIndex, char[] buffer, int length)
             {
                 bool active = activeField == fieldIndex;
-                canvas.DrawFilledRectangle(active ? Color.FromArgb(31, 42, 51) : CardAlt,
-                    x, y, width, height);
-                canvas.DrawRectangle(active ? SystemTheme.AccentBorder : Border, x, y, width, height);
+                UiPainter.RoundedPanel(canvas, x, y, width, height, UiMetrics.ButtonRadius,
+                    active ? Color.FromArgb(31, 42, 51) : CardAlt,
+                    active ? SystemTheme.AccentBorder : Border);
                 if (active)
-                    canvas.DrawFilledRectangle(SystemTheme.Accent, x, y, 3, height);
+                    canvas.DrawFilledRectangle(SystemTheme.Accent, x + 12, y + 2, width - 24, 2);
 
                 if (length <= 0)
                 {
@@ -409,8 +411,8 @@ namespace ZonderqOS.GUI
             {
                 Color bg = danger ? Color.FromArgb(57, 38, 43) : Color.FromArgb(27, 35, 43);
                 Color border = danger ? Color.FromArgb(112, 61, 69) : Border;
-                canvas.DrawFilledRectangle(bg, x, y, width, 42);
-                canvas.DrawRectangle(border, x, y, width, 42);
+                UiPainter.RoundedPanel(canvas, x, y, width, 42,
+                    UiMetrics.ButtonRadius, bg, border);
                 IconManager.DrawScaled(canvas, icon, x + 9, y + 10, 20, 20);
                 SmallTextRenderer.DrawClipped(canvas, label, x + 36, y + 17, width - 42, Text);
             }

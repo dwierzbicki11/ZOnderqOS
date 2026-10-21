@@ -35,6 +35,7 @@ namespace ZonderqOS.GUI
         private int resultCount;
         private int selectedIndex;
         private int firstVisibleIndex;
+        private int openingFrames;
 
         public CommandPalette(int screenWidth, int screenHeight, AppRegistry appRegistry)
             : base(0, 0, 680, HeaderHeight + SearchHeight + MaxVisibleResults * RowHeight + FooterHeight + 30)
@@ -58,6 +59,8 @@ namespace ZonderqOS.GUI
             selectedIndex = 0;
             firstVisibleIndex = 0;
             RebuildResults();
+            openingFrames = 8;
+            UiAnimator.RequestFrames(8);
             Visible = true;
         }
 
@@ -168,9 +171,9 @@ namespace ZonderqOS.GUI
             if (!Visible || canvas == null)
                 return;
 
-            canvas.DrawFilledRectangle(Color.FromArgb(7, 10, 13), X + 8, Y + 9, Width, Height);
-            canvas.DrawFilledRectangle(Surface, X, Y, Width, Height);
-            canvas.DrawRectangle(SystemTheme.AccentBorder, X, Y, Width, Height);
+            UiPainter.Shadow(canvas, X, Y, Width, Height, UiMetrics.MenuRadius);
+            UiPainter.RoundedPanel(canvas, X, Y, Width, Height,
+                UiMetrics.MenuRadius, Surface, SystemTheme.AccentBorder);
 
             RenderHeader(canvas);
             RenderSearch(canvas);
@@ -180,8 +183,12 @@ namespace ZonderqOS.GUI
 
         private void RenderHeader(Canvas canvas)
         {
-            canvas.DrawFilledRectangle(Header, X + 1, Y + 1, Width - 2, HeaderHeight - 1);
-            canvas.DrawFilledRectangle(SystemTheme.Accent, X + 1, Y + 1, 4, HeaderHeight - 1);
+            UiPainter.RoundedTop(canvas, X + 1, Y + 1, Width - 2, HeaderHeight - 1,
+                UiMetrics.MenuRadius - 1, Header);
+            canvas.DrawFilledRectangle(SystemTheme.Accent, X + 13, Y + 2,
+                System.Math.Max(1, (Width - 26) * (8 - openingFrames) / 8), 2);
+            if (openingFrames > 0)
+                openingFrames--;
             IconManager.DrawScaled(canvas, IconType.Search, X + 16, Y + 13, 26, 26);
             SmallTextRenderer.Draw(canvas, "COMMAND PALETTE", X + 54, Y + 14, Text);
             SmallTextRenderer.Draw(canvas, "ALT+SPACE", X + Width - 82, Y + 14, Muted);
@@ -193,9 +200,9 @@ namespace ZonderqOS.GUI
             int x = X + 14;
             int y = Y + HeaderHeight + 10;
             int width = Width - 28;
-            canvas.DrawFilledRectangle(SearchSurface, x, y, width, SearchHeight - 8);
-            canvas.DrawRectangle(string.IsNullOrEmpty(query) ? Border : SystemTheme.AccentBorder,
-                x, y, width, SearchHeight - 8);
+            UiPainter.RoundedPanel(canvas, x, y, width, SearchHeight - 8,
+                UiMetrics.ButtonRadius, SearchSurface,
+                string.IsNullOrEmpty(query) ? Border : SystemTheme.AccentBorder);
 
             string display = string.IsNullOrEmpty(query) ? "Wpisz np. terminal, settings, disk..." : query;
             Color color = string.IsNullOrEmpty(query) ? Muted : Text;
@@ -230,9 +237,9 @@ namespace ZonderqOS.GUI
 
                 int y = listY + row * RowHeight;
                 bool selected = resultIndex == selectedIndex;
-                canvas.DrawFilledRectangle(selected ? RowSelected : Row, X + 14, y, Width - 28, RowHeight - 4);
-                canvas.DrawRectangle(selected ? SystemTheme.AccentBorder : Border,
-                    X + 14, y, Width - 28, RowHeight - 4);
+                UiPainter.RoundedPanel(canvas, X + 14, y, Width - 28, RowHeight - 4,
+                    UiMetrics.TileRadius, selected ? RowSelected : Row,
+                    selected ? SystemTheme.AccentBorder : Border);
                 if (selected)
                     canvas.DrawFilledRectangle(SystemTheme.Accent, X + 14, y + 5, 3, RowHeight - 14);
 
