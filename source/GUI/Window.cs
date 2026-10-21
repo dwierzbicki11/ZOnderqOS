@@ -12,7 +12,20 @@ namespace ZonderqOS.GUI
         public List<Widget> Children { get; } = new List<Widget>();
         public bool IsMaximized { get; private set; }
         public bool IsMinimized { get; private set; }
-        public bool IsActive { get; set; }
+        private bool isActive;
+        private float focusProgress;
+        private int openingFrames = 8;
+        public bool IsActive
+        {
+            get => isActive;
+            set
+            {
+                if (isActive == value)
+                    return;
+                isActive = value;
+                UiAnimator.RequestFrames();
+            }
+        }
         public System.Action CloseAction { get; set; }
 
         private int restoreX, restoreY, restoreWidth, restoreHeight;
@@ -51,6 +64,7 @@ namespace ZonderqOS.GUI
         public Window(int x, int y, int width, int height, string title) : base(x, y, width, height)
         {
             Title = title;
+            UiAnimator.RequestFrames();
         }
 
         public void AddChild(Widget widget)
@@ -91,6 +105,8 @@ namespace ZonderqOS.GUI
         {
             IsMinimized = false;
             Visible = true;
+            openingFrames = 8;
+            UiAnimator.RequestFrames();
         }
 
         public void ToggleMinimize()
@@ -151,6 +167,7 @@ namespace ZonderqOS.GUI
             int minimizeX = maximizeX - ButtonSize;
             bool inControlsY = mouseY >= Y + ButtonTop && mouseY < Y + ButtonTop + ButtonSize;
 
+            int previousHoveredControl = hoveredControl;
             hoveredControl = 0;
             if (inControlsY)
             {
@@ -162,6 +179,8 @@ namespace ZonderqOS.GUI
                     hoveredControl = 1;
             }
 
+            if (previousHoveredControl != hoveredControl)
+                UiAnimator.RequestFrames();
             hoveredResizeMode = hoveredControl == 0 && !IsMaximized
                 ? GetResizeMode(mouseX, mouseY)
                 : 0;
@@ -314,23 +333,31 @@ namespace ZonderqOS.GUI
             if (!Visible || IsMinimized)
                 return;
 
-            Color surface = Color.FromArgb(29, 34, 40);
-            Color border = IsActive ? SystemTheme.AccentBorder : Color.FromArgb(58, 66, 75);
-            Color titleBar = IsActive ? Color.FromArgb(27, 34, 42) : Color.FromArgb(31, 36, 42);
-            Color titleText = IsActive ? Color.FromArgb(242, 246, 250) : Color.FromArgb(196, 203, 210);
+            focusProgress = UiAnimator.Approach(focusProgress, IsActive ? 1f : 0f, 0.22f);
+            Color border = UiAnimator.Blend(UiPalette.Border, UiPalette.AccentBorder, focusProgress);
+            Color titleBar = UiAnimator.Blend(UiPalette.SurfaceRaised, UiPalette.AccentSoft, focusProgress * 0.45f);
+            Color titleText = UiAnimator.Blend(UiPalette.TextMuted, UiPalette.Text, focusProgress);
 
             if (!IsMaximized)
+                UiPainter.Shadow(canvas, X, Y, Width, Height, UiMetrics.WindowRadius);
+
+            UiPainter.RoundedPanel(canvas, X, Y, Width, Height,
+                IsMaximized ? 0 : UiMetrics.WindowRadius, UiPalette.Surface, border);
+            if (IsMaximized)
+                canvas.DrawFilledRectangle(titleBar, X + 1, Y + 1, Width - 2, TitleBarHeight - 1);
+            else
+                UiPainter.RoundedTop(canvas, X + 1, Y + 1, Width - 2,
+                    TitleBarHeight - 1, UiMetrics.WindowRadius - 1, titleBar);
+
+            if (openingFrames > 0)
+                openingFrames--;
+            if (focusProgress > 0f)
             {
-                canvas.DrawFilledRectangle(Color.FromArgb(16, 19, 23), X + 5, Y + 6, Width, Height);
-                canvas.DrawFilledRectangle(Color.FromArgb(20, 23, 28), X + 3, Y + 4, Width, Height);
+                int width = Width - 24;
+                int reveal = openingFrames > 0 ? width * (8 - openingFrames) / 8 : width;
+                canvas.DrawFilledRectangle(UiPalette.Accent, X + 12, Y + 2,
+                    System.Math.Max(1, reveal), 2);
             }
-
-            canvas.DrawFilledRectangle(surface, X, Y, Width, Height);
-            canvas.DrawRectangle(border, X, Y, Width, Height);
-            canvas.DrawFilledRectangle(titleBar, X + 1, Y + 1, Width - 2, TitleBarHeight - 1);
-
-            if (IsActive)
-                canvas.DrawFilledRectangle(SystemTheme.Accent, X + 1, Y + 1, Width - 2, 2);
 
             canvas.DrawLine(Color.FromArgb(48, 57, 67), X + 1, Y + TitleBarHeight,
                 X + Width - 2, Y + TitleBarHeight);
@@ -397,8 +424,8 @@ namespace ZonderqOS.GUI
                 ? Color.FromArgb(215, 78, 84)
                 : SystemTheme.AccentBorder;
 
-            canvas.DrawFilledRectangle(hover, x, y, ButtonSize, ButtonSize);
-            canvas.DrawRectangle(edge, x, y, ButtonSize, ButtonSize);
+            UiPainter.RoundedPanel(canvas, x, y, ButtonSize, ButtonSize,
+                UiMetrics.TileRadius, hover, edge);
         }
     }
 }
