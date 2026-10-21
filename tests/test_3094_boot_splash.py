@@ -32,7 +32,7 @@ class BootSplash3094(unittest.TestCase):
         self.assertIn("BootSplash.Advance(27", KERNEL)
         self.assertIn("BootSplash.Complete(handOffToGui);", KERNEL)
         self.assertIn("BootSplash.Abort();", KERNEL)
-        self.assertLess(KERNEL.index("RunReadOnlyInputConsole()"), KERNEL.index("BootSplash.Start();"))
+        self.assertLess(KERNEL.index("InputBusDiagnostics.PrintReport();"), KERNEL.index("BootSplash.Start();"))
         self.assertLess(KERNEL.index("BootSplash.Start();"), KERNEL.index("if (!Disk.Initialize())"))
         self.assertIn("!DiagnosticConsoleBoot && SystemSettings.BootToGui", KERNEL)
         self.assertIn("KernelPanic.Show(ex, \"BOOT\", false);", KERNEL)
