@@ -63,8 +63,8 @@ namespace ZonderqOS.GUI.Apps
             frameCounter++;
             view.X = Window.X + 10;
             view.Y = Window.Y + 40;
-            view.Width = Math.Max(480, Window.Width - 20);
-            view.Height = Math.Max(260, Window.Height - 50);
+            view.Width = Math.Max(1, Window.Width - 20);
+            view.Height = Math.Max(1, Window.Height - 50);
         }
 
         public override void HandleMouse(int x, int y, bool clicked, bool wasClicked)
