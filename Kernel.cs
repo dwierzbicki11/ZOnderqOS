@@ -40,18 +40,28 @@ namespace ZonderqOS
 #if ZONDERQ_HTOP_SMOKE_TEST
                 HtopSmokeTest.Run();
 #endif
+                // Hardware-probe and input-diagnostic ISOs stay console-only.
+                if (!DiagnosticConsoleBoot)
+                {
+                    BootSplash.Start();
+                    BootSplash.Advance(8, "SPRAWDZANIE PAMIECI I DYSKOW");
+                }
                 if (!Disk.Initialize())
                     throw new InvalidOperationException(
                         "No approved ZONDERQDATA volume: refusing normal boot before any filesystem/user writes.");
+                BootSplash.Advance(27, "DYSK GOTOWY");
                 UserManager.Initialize();
                 Command.Initialize();
+                BootSplash.Advance(43, "URUCHAMIANIE POWLOKI");
                 EnvironmentManager.Initialize();
                 SecurityLogger.Initialize();
                 PermissionManager.Initialize();
                 SystemLogger.Initialize();
+                BootSplash.Advance(60, "LADOWANIE USLUG SYSTEMOWYCH");
                 BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
+                BootSplash.Advance(72, "WCZYTYWANIE USTAWIEN");
                 if (DiagnosticConsoleBoot)
                 {
                     Console.WriteLine("ZOnderqOS - physical hardware input diagnostics");
@@ -61,23 +71,28 @@ namespace ZonderqOS
                 }
                 SystemIdentity.Initialize();
                 ServiceManager.Initialize();
+                BootSplash.Advance(90, "PRZYGOTOWYWANIE SESJI");
 
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
-                Console.WriteLine();
                 if (DiagnosticConsoleBoot)
                 {
+                    Console.WriteLine();
                     Console.WriteLine("Starting diagnostic login console.");
                     Console.WriteLine("After login use: inputscan, lspci -v, dmesg");
                 }
                 else
                 {
-                    Console.WriteLine("Starting ZOnderqOS graphical session...");
-                    Console.WriteLine("Console login is used only as a recovery fallback if GUI startup fails.");
+                    bool handOffToGui = SystemSettings.BootToGui;
+                    BootSplash.Complete(handOffToGui);
+                    if (!handOffToGui)
+                        Console.WriteLine("ZOnderqOS console mode. Use 'gui' to launch the desktop.");
                 }
             }
             catch (Exception ex)
             {
+                // Fatal errors must never be hidden behind a graphical splash.
+                BootSplash.Abort();
                 KernelPanic.Show(ex, "BOOT", false);
             }
         }
@@ -333,6 +348,8 @@ namespace ZonderqOS
             if (!SecurityContext.IsAuthenticated)
                 UserManager.PrepareLogin();
 
+            try { Cosmos.Kernel.System.Graphics.Canvas.DisableFullScreen(); }
+            catch { }
             Console.Clear();
             WriteMessage.WriteError("GUI startup unavailable: " + reason + ".", "GUI");
             Console.WriteLine("Entering recovery console. Reboot the system to retry the graphical boot path.");
