@@ -26,3 +26,7 @@ It reports:
 ## Deliberate exception
 
 `KernelPanic` and `RecoveryMode` keep using raw Cosmos power operations. A reboot from a failed boot or panic must not rewrite the failed session as a clean normal shutdown.
+
+## Build note
+
+The source-generator output directories are prepared by Directory.Build.targets before CoreCompile.
