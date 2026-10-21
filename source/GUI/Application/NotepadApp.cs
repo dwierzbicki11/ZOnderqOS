@@ -1041,8 +1041,8 @@ namespace ZonderqOS.GUI.Apps
         private void DrawToolbarButton(Canvas canvas, int offset, int width, IconType icon, string label)
         {
             int x = X + offset;
-            canvas.DrawFilledRectangle(Color.FromArgb(49, 57, 66), x, Y + 7, width, 29);
-            canvas.DrawRectangle(Color.FromArgb(83, 96, 110), x, Y + 7, width, 29);
+            UiPainter.RoundedPanel(canvas, x, Y + 7, width, 29,
+                UiMetrics.TileRadius, UiPalette.SurfaceRaised, UiPalette.Border);
             IconManager.DrawScaled(canvas, icon, x + 6, Y + 13, 16, 16);
             SmallTextRenderer.DrawClipped(canvas, label, x + 27, Y + 18,
                 Math.Max(10, width - 32), Color.FromArgb(226, 232, 238));
@@ -1169,10 +1169,9 @@ namespace ZonderqOS.GUI.Apps
             int x = X + (Width - width) / 2;
             int y = Y + (Height - height) / 2;
 
-            canvas.DrawFilledRectangle(Color.FromArgb(12, 16, 20), x + 4, y + 4, width, height);
-            canvas.DrawFilledRectangle(Color.FromArgb(39, 46, 54), x, y, width, height);
-            canvas.DrawRectangle(Accent, x, y, width, height);
-            canvas.DrawFilledRectangle(Accent, x, y, 3, height);
+            UiPainter.Shadow(canvas, x, y, width, height, UiMetrics.MenuRadius);
+            UiPainter.RoundedPanel(canvas, x, y, width, height, UiMetrics.MenuRadius,
+                UiPalette.SurfaceRaised, Accent);
 
             if (app.DialogMode == 3)
             {
@@ -1187,8 +1186,8 @@ namespace ZonderqOS.GUI.Apps
             int fieldX = x + 14;
             int fieldY = y + 50;
             int fieldW = width - 28;
-            canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), fieldX, fieldY, fieldW, 34);
-            canvas.DrawRectangle(Color.FromArgb(82, 96, 110), fieldX, fieldY, fieldW, 34);
+            UiPainter.RoundedPanel(canvas, fieldX, fieldY, fieldW, 34,
+                UiMetrics.ButtonRadius, UiPalette.Surface, UiPalette.Border);
 
             int maxChars = Math.Max(1, (fieldW - 20) / CharWidth);
             string value = app.DialogText ?? "";
@@ -1214,10 +1213,9 @@ namespace ZonderqOS.GUI.Apps
             int x = X + localX;
             int y = Y + localY;
 
-            canvas.DrawFilledRectangle(Color.FromArgb(11, 15, 19), x + 5, y + 5, width, height);
-            canvas.DrawFilledRectangle(Color.FromArgb(35, 42, 49), x, y, width, height);
-            canvas.DrawRectangle(Accent, x, y, width, height);
-            canvas.DrawFilledRectangle(Accent, x, y, 3, height);
+            UiPainter.Shadow(canvas, x, y, width, height, UiMetrics.MenuRadius);
+            UiPainter.RoundedPanel(canvas, x, y, width, height, UiMetrics.MenuRadius,
+                UiPalette.SurfaceRaised, Accent);
 
             canvas.DrawString("Otworz plik", font, Color.WhiteSmoke, x + 14, y + 10);
 
