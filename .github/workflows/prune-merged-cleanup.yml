@@ -1,57 +1,56 @@
-name: Delete merged cleanup branches safely
+name: Prune merged feature branches after safe main integration
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/prune-merged-cleanup.yml'
   pull_request:
     types: [closed]
 
 permissions:
   contents: write
 
+concurrency:
+  group: zonderq-prune-merged-head
+  cancel-in-progress: false
+
 jobs:
-  prune-merged-cleanup:
+  prune-merged-head:
     if: >-
       github.repository == 'dwierzbicki11/ZOnderqOS' &&
-      (github.event_name == 'push' ||
-      (github.event.pull_request.merged == true &&
-       github.event.pull_request.head.repo.full_name == github.repository &&
-       github.event.pull_request.base.ref == 'main'))
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.base.ref == 'main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: true
-      - name: Delete only safely integrated cleanup heads
+      - name: Delete head only if PR tip is in main and branch has not moved
         env:
           MERGED_HEAD: ${{ github.event.pull_request.head.ref }}
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha }}
         run: |
           set -euo pipefail
-          git fetch origin main:refs/remotes/origin/main
-
-          if [[ "$GITHUB_EVENT_NAME" == 'push' ]]; then
-            # Seed cleanup for the PR #186 merged before this workflow existed.
-            branches=(cleanup/3094-cs0016-build-fix)
-          else
-            branches=("$MERGED_HEAD")
+          branch="$MERGED_HEAD"
+          case "$branch" in
+            feat/*|feature/*|fix/*|cleanup/*|docs/*|test/*|chore/*) ;;
+            *) echo "[PRUNE] Branch not in allowed feature namespaces: $branch"; exit 0 ;;
+          esac
+          [[ "$branch" != "main" ]] || exit 1
+          [[ "$EXPECTED_HEAD" =~ ^[0-9a-f]{40}$ ]] || exit 1
+          git fetch origin '+refs/heads/main:refs/remotes/origin/main'
+          actual="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+          if [[ -z "$actual" ]]; then
+            echo "[PRUNE] Already absent: $branch"
+            exit 0
           fi
-
-          for branch in "${branches[@]}"; do
-            [[ "$branch" == cleanup/* ]] || continue
-            [[ "$branch" != "main" ]] || continue
-            expected="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
-            if [[ -z "$expected" ]]; then
-              echo "[PRUNE] Already absent: $branch"
-              continue
-            fi
-            git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch"
-            if ! git merge-base --is-ancestor "$expected" refs/remotes/origin/main; then
-              echo "[PRUNE] Kept unmerged or changed branch $branch"
-              continue
-            fi
-            git push --force-with-lease="refs/heads/$branch:$expected" origin ":refs/heads/$branch"
-            echo "[PRUNE] Deleted integrated branch: $branch"
-          done
+          if [[ "$actual" != "$EXPECTED_HEAD" ]]; then
+            echo "[PRUNE] Branch has new commits; preserving $branch"
+            exit 0
+          fi
+          git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+          if ! git merge-base --is-ancestor "$EXPECTED_HEAD" refs/remotes/origin/main; then
+            echo "[PRUNE] Tip not reachable from main; leaving $branch untouched"
+            exit 0
+          fi
+          git push --force-with-lease="refs/heads/$branch:$EXPECTED_HEAD" origin ":refs/heads/$branch"
+          echo "[PRUNE] Removed already-merged feature branch: $branch"
