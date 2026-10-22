@@ -79,6 +79,34 @@ partition/files and verify partition boundaries and the new image size. Do not
 assume a simple `dd` upgrade preserves the persistent root. For first-time
 provisioning use the separately documented storage-safety process.
 
+## Diagnostic command after migration of PR #174
+
+The `displayinfo` command was ported from the older diagnostics branch
+into the current Cosmos 3.0.94 codebase through PR #185. In the ZonderqOS
+terminal, run:
+
+```text
+displayinfo
+```
+
+This reports the actual Canvas provider, the framebuffer dimensions and
+depth, refresh rate, and advertised modes (up to 64 entries). The command
+does not explicitly assign a new mode or format/mount storage. However,
+`Canvas.GetFullScreen()` is a driver API call and might initialize a
+graphics canvas; the absence of explicit mode writes is **not** proof of
+side-effect-free execution on every physical GPU.
+
+A bootloader `resolution: 1366x768x32` request is best effort, not Intel
+HD 5500/Broadwell native modesetting. If the reported framebuffer is still
+800x600, try the UEFI boot entry if supported and inspect the advertised
+modes. Do not fake `canvas.Width` or attempt register-level modesetting
+without a proven graphics driver. No successful native 1366x768 hardware
+switch has been established by these source-level tests.
+
+When inspecting a USB boot image from Kali, positively identify the USB device
+first with `lsblk` before a read-only mount; do not assume a particular
+`/dev/sdX` name and never format the internal Kali EFI partition.
+
 ## Test gates
 
 ```sh
