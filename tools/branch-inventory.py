@@ -35,7 +35,7 @@ def audit(main, name, prs):
             proposed = result.stdout.splitlines()[0]
             modified = one("diff", "--name-only", main_tree, proposed).splitlines()
             state = "NEEDS_PORT_AND_TEST" if modified else "MERGE_NO_CHANGE"
-    unsafe = ("Kernel.cs", "ZonderqOS.csproj", "NuGet.Config", "Bootloader/",
+    unsafe = ("Kernel.cs", "ZonderqOS.csproj", "NuGet.Config", "Directory.Build.", "global.json", "Bootloader/",
               ".github/workflows/", "patches/", "source/Core/", "source/Drivers/",
               "source/Processes/", "source/Security/", "source/Storage/")
     if "Cosmos.Sdk/3.0.94" not in project:
