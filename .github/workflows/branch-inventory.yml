@@ -1,0 +1,66 @@
+name: ZonderqOS remaining-branch inventory
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - tools/branch-inventory.py
+      - .github/workflows/branch-inventory.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: zonderq-branch-inventory
+  cancel-in-progress: false
+
+jobs:
+  audit-branches:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    if: github.repository == 'dwierzbicki11/ZOnderqOS'
+    steps:
+      - name: Fetch full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Fetch all remote heads
+        run: git fetch --prune origin '+refs/heads/*:refs/remotes/origin/*'
+      - name: Verify audit script syntax and Cosmos baseline
+        run: |
+          python3 -m py_compile tools/branch-inventory.py
+          bash tools/verify-cosmos-compat.sh
+      - name: Capture open PR mappings
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr list --repo "$GITHUB_REPOSITORY" --state open --limit 300 \
+            --json number,headRefName,url,isDraft > /tmp/zonderq-open-prs.json
+      - name: Classify remaining branches without rewriting them
+        run: |
+          python3 tools/branch-inventory.py \
+            --prs /tmp/zonderq-open-prs.json \
+            --markdown docs/branch-consolidation-status.md \
+            --json /tmp/zonderq-branch-inventory.json
+      - name: Upload full machine-readable inventory
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-branch-inventory
+          path: |
+            docs/branch-consolidation-status.md
+            /tmp/zonderq-branch-inventory.json
+      - name: Commit audit report to main if changed
+        run: |
+          if git diff --quiet -- docs/branch-consolidation-status.md && \
+             test -z "$(git ls-files --others --exclude-standard docs/branch-consolidation-status.md)"; then
+            echo "No changes to inventory"
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add docs/branch-consolidation-status.md
+          git commit -m 'docs: classify outstanding ZonderqOS branches for safe consolidation'
+          git push origin HEAD:main
