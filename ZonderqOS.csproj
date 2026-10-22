@@ -25,6 +25,11 @@
     <!-- Keep one feature profile for both architectures. Architecture-specific
          hardware setup belongs in Cosmos/HAL adapters, not throughout the app. -->
     <CosmosEnableNetwork>false</CosmosEnableNetwork>
+    <!-- Exactly one opt-in x64 QEMU proof, never the production desktop. -->
+    <ZonderqNetworkN1Probe Condition="'$(ZonderqNetworkN1Probe)' == ''">false</ZonderqNetworkN1Probe>
+    <CosmosEnableNetwork Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">true</CosmosEnableNetwork>
+    <CosmosKernelClass Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">ZonderqOS.NetworkN1ProbeKernel</CosmosKernelClass>
+    <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N1_PROBE</DefineConstants>
     <CosmosEnableStorage>true</CosmosEnableStorage>
     <CosmosEnableMouse>true</CosmosEnableMouse>
     <CosmosEnablePCI>true</CosmosEnablePCI>
@@ -89,7 +94,7 @@
     <Compile Remove="**/CosmosGen3DiagnosticsCompat.cs" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true'">
+  <ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true' or '$(ZonderqNetworkN1Probe)' == 'true'">
     <!-- Network commands directly consume the Cosmos networking API. Keep them
          out until the feature is re-enabled and backed by a real platform NIC. -->
     <Compile Remove="source/Shell/Commands/CmdNetwork.cs" />
@@ -106,6 +111,15 @@
       <LogicalName>Wallpapers.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
+
+  <Target Name="GuardNetworkN1Probe" BeforeTargets="CoreCompile">
+    <Error Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' != 'x64'"
+           Text="Network N1 proof is x64-only until ARM64 is independently validated." />
+    <Error Condition="'$(ZonderqNetworkN1Probe)' == 'true' and ('$(ZonderqReadOnlyHardwareProbe)' == 'true' or '$(ZonderqRamRoot)' == 'true' or '$(ZonderqInputDiagnosticBoot)' == 'true')"
+           Text="Network N1 proof must use its isolated kernel, not the GUI, RAM root or USB probe." />
+    <Error Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosEnableNetwork)' != 'true'"
+           Text="Network N1 proof requires an enabled Cosmos 3.0.94 network manager." />
+  </Target>
 
   <Target Name="GuardRamRootProfile" BeforeTargets="CoreCompile">
     <Error Condition="'$(ZonderqRamRoot)' == 'true' and '$(ZonderqReadOnlyHardwareProbe)' == 'true'"
