@@ -33,7 +33,7 @@ namespace ZonderqOS
                 Console.WriteLine();
                 InputBusDiagnostics.PrintReport();
                 Console.WriteLine();
-                Console.WriteLine("Commands: desktop | inputscan | mouse | mousegui | volumes | help");
+                Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
                 Console.WriteLine("The USB mouse should be reported as a bound pointer.");
                 return;
 #endif
@@ -221,6 +221,12 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "nicdiag")
+            {
+                NetworkPciDiagnostics.PrintReport(false);
+                return;
+            }
+
             if (command == "volumes" || command == "lsblk")
             {
                 // Read-only: never create a VFS mount or mutate an on-disk BPB.
@@ -295,6 +301,7 @@ namespace ZonderqOS
             if (command == "help" || command == "?")
             {
                 Console.WriteLine("inputscan - read-only PCI, USB node and pointer-driver report");
+                Console.WriteLine("nicdiag   - read-only PCI Ethernet/Wi-Fi inventory; no driver or DHCP");
                 Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");
                 Console.WriteLine("mousegui  - read-only fullscreen cursor and button test (ESC to exit)");
                 Console.WriteLine("desktop   - read-only Gen3 desktop with draggable windows, buttons and USB pointer");
