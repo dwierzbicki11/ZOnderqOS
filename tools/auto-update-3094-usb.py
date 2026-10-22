@@ -19,6 +19,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -37,6 +38,10 @@ MAX_ISO_SIZE = 65536 * 512
 
 class Refused(RuntimeError):
     """Safety or provenance check failed; no USB write is permitted."""
+
+
+class BuildPending(Refused):
+    """The matching main build is not complete; no device operation allowed."""
 
 
 def fail(message: str) -> None:
@@ -179,12 +184,24 @@ def select_artifact(gh: Github) -> tuple[int, dict, str]:
         fail("Brak wiarygodnego SHA gałęzi main.")
     runs = gh.json(API + "/actions/workflows/" + WORKFLOW +
                    "/runs?branch=main&per_page=50")
-    matches = [run for run in runs.get("workflow_runs", [])
-               if run.get("head_branch") == "main" and run.get("head_sha") == head
-               and run.get("status") == "completed" and run.get("conclusion") == "success"
-               and run.get("event") in ("push", "workflow_dispatch")]
+    relevant = [run for run in runs.get("workflow_runs", [])
+                if run.get("head_branch") == "main" and run.get("head_sha") == head
+                and run.get("event") in ("push", "workflow_dispatch")]
+    matches = [run for run in relevant
+               if run.get("status") == "completed" and run.get("conclusion") == "success"]
     if not matches:
-        fail("Nie ma jeszcze udanego builda Cosmos 3.0.94 z aktualnego main. Nie używam starego ISO.")
+        if not relevant:
+            raise BuildPending(f"Workflow 3.0.94 dla main {head[:12]} jeszcze nie pojawil sie w GitHub Actions.")
+        latest = max(relevant, key=lambda x: x.get("id", 0))
+        run_id = latest.get("id")
+        state = latest.get("status", "unknown")
+        if state in ("queued", "requested", "waiting", "pending", "in_progress"):
+            raise BuildPending(
+                f"Build main {head[:12]} (run {run_id}) trwa: {state}. "
+                f"https://github.com/{REPO}/actions/runs/{run_id}")
+        fail(f"Build main {head[:12]} (run {run_id}) zakonczyl sie wynikiem "
+             f"{latest.get('conclusion')}; nie zapisuje starszego ISO. "
+             f"https://github.com/{REPO}/actions/runs/{run_id}")
     run = max(matches, key=lambda x: x.get("id", 0))
     rid = run.get("id")
     if not isinstance(rid, int) or rid < 1:
@@ -196,6 +213,38 @@ def select_artifact(gh: Github) -> tuple[int, dict, str]:
     if len(selected) != 1 or not isinstance(selected[0].get("id"), int):
         fail("Brak jednego ważnego artefaktu pełnego GUI (ZONDERQDATA). Nie używam RAM-ONLY.")
     return rid, selected[0], head
+
+
+def wait_for_artifact(gh: Github, wait_minutes: int = 120,
+                      *, pause=time.sleep, clock=time.monotonic) -> tuple[int, dict, str]:
+    """Poll safely for current main CI; never choose a build from another SHA.
+
+    At most 40 unauthenticated requests/hour for the two metadata endpoints.
+    Pause/clock injection allows fast deterministic tests without networking.
+    """
+    deadline = clock() + wait_minutes * 60
+    last_message = None
+    while True:
+        try:
+            return select_artifact(gh)
+        except BuildPending as exc:
+            remaining = deadline - clock()
+            if remaining <= 0:
+                fail(f"{exc} Brak gotowego ISO po okresie sprawdzania; pendrive bez zmian.")
+            if str(exc) != last_message:
+                print("[AUTO] " + str(exc), flush=True)
+                print("[AUTO] Sprawdzam automatycznie kolejny wynik CI; Ctrl+C przerywa bez zapisu.",
+                      flush=True)
+                last_message = str(exc)
+            pause(min(90, remaining))
+
+
+def assert_current_main(gh: Github, sha: str) -> None:
+    """Fail closed if main moved after an ISO was selected."""
+    head = gh.json(API + "/branches/main").get("commit", {}).get("sha")
+    if head != sha:
+        fail("Main zmienil sie podczas pobierania ISO. Nie zapisuje starszej wersji; "
+             "uruchom aktualizator jeszcze raz.")
 
 
 def verify_zip_digest(path: Path, artifact: dict) -> None:
@@ -282,7 +331,11 @@ def updater_call(iso: Path, apply: bool) -> None:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Pobierz z main i zaktualizuj ZOnderqOS USB bez dd.")
     parser.add_argument("--dry-run", action="store_true", help="Pobierz ISO i sprawdź, ale niczego nie zapisuj.")
+    parser.add_argument("--wait-minutes", type=int, default=120,
+                        help="Maksymalny czas lokalnego sprawdzania CI (0 = bez ponawiania).")
     args = parser.parse_args(argv)
+    if args.wait_minutes < 0 or args.wait_minutes > 120:
+        fail("Dozwolony zakres --wait-minutes: 0..120.")
     if os.geteuid() == 0:
         fail("Uruchom jako zwykły użytkownik (bez sudo); skrypt sam użyje sudo tylko do USB.")
     if not Path(__file__).resolve().with_name("update-3094-one-usb.py").exists():
@@ -291,10 +344,11 @@ def main(argv: list[str] | None = None) -> int:
     mounts = check_usb()
     print("[AUTO] SanDisk /dev/sdb, FAT32 ZONDERQDATA: wstępna identyfikacja PASS.")
     gh = Github(get_token())
-    run_id, artifact, head = select_artifact(gh)
+    run_id, artifact, head = wait_for_artifact(gh, args.wait_minutes)
     print(f"[AUTO] Udany build main: {head[:12]}, GitHub Actions run {run_id}.")
     iso = download_and_extract(gh, artifact, head,
                                Path.home() / "Pobrane" / "ZOnderqOS-3094")
+    assert_current_main(gh, head)
 
     if mounts:
         if args.dry_run:
@@ -310,6 +364,7 @@ def main(argv: list[str] | None = None) -> int:
     if args.dry_run:
         print("[AUTO] DRY RUN PASS. Nic nie zapisano na pendrivie.")
         return 0
+    assert_current_main(gh, head)
     updater_call(iso, apply=True)  # Original updater asks for exact UPDATE /dev/sdb.
     print("[AUTO] SUKCES: aktualny obraz main jest na USB, FAT32 ZONDERQDATA zachowana.")
     return 0
