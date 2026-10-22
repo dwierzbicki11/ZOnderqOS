@@ -1,0 +1,37 @@
+name: Archive and prune fully ported historical PR branches
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/archive-ported-branches.sh'
+      - '.github/workflows/archive-ported-branches.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+concurrency:
+  group: archive-ported-3094-pr-branches
+  cancel-in-progress: false
+
+jobs:
+  audit-tag-and-prune:
+    runs-on: ubuntu-latest
+    if: github.repository == 'dwierzbicki11/ZOnderqOS'
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Check script and SDK invariants
+        run: |
+          bash -n tools/archive-ported-branches.sh
+          bash tools/verify-cosmos-compat.sh
+      - name: Preserve precise old head and remove only verified obsolete ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash tools/archive-ported-branches.sh --execute
