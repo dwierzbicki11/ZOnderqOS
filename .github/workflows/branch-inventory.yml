@@ -6,6 +6,9 @@ on:
     paths:
       - tools/branch-inventory.py
       - .github/workflows/branch-inventory.yml
+      - tools/archive-ported-branches.sh
+      - .github/workflows/archive-ported-branches.yml
+      - .github/workflows/prune-merged-cleanup.yml
   workflow_dispatch:
 
 permissions:
