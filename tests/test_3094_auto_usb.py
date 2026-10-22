@@ -93,12 +93,12 @@ class AutomatedUsbTests(unittest.TestCase):
 
     def test_wait_timeout_never_invokes_writer(self):
         with mock.patch.object(mod, "select_artifact",
-                               side_effect=mod.BuildPending("Build running")), \\
-             mock.patch.object(mod, "updater_call") as writer:
-            with self.assertRaises(mod.Refused):
-                mod.wait_for_artifact(object(), wait_minutes=0, pause=lambda _: None,
-                                      clock=lambda: 1)
-            writer.assert_not_called()
+                               side_effect=mod.BuildPending("Build running")):
+            with mock.patch.object(mod, "updater_call") as writer:
+                with self.assertRaises(mod.Refused):
+                    mod.wait_for_artifact(object(), wait_minutes=0, pause=lambda _: None,
+                                          clock=lambda: 1)
+                writer.assert_not_called()
 
     def test_new_main_sha_blocks_using_old_iso(self):
         class ChangedMain:
