@@ -236,7 +236,7 @@ def wait_for_artifact(gh: Github, wait_minutes: int = 120,
                 print("[AUTO] Sprawdzam automatycznie kolejny wynik CI; Ctrl+C przerywa bez zapisu.",
                       flush=True)
                 last_message = str(exc)
-            pause(min(90, remaining))
+            pause(min(180, remaining))
 
 
 def assert_current_main(gh: Github, sha: str) -> None:
