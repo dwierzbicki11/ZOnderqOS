@@ -9,6 +9,19 @@ odczyta SHA aktualnego main i znajdzie udany build GitHub Actions
 experimental-cosmos-3094-usb.yml dla tego samego SHA.
 Nie pobierze starego ISO, obrazu diagnostycznego ani RAM-ONLY.
 
+Jesli aktualny build main jeszcze trwa, automat sam sprawdza jego
+wynik (maksymalnie 120 minut), pozostajac w tym samym terminalu.
+Ctrl+C bezpiecznie przerwie aktualizacje bez zapisania USB.
+Zielony build powoduje dalsze pobieranie; czerwony zatrzymuje program
+z linkiem do logow GitHub Actions.
+
+Nie chcesz sprawdzania w petli? Uzyj:
+
+    python3 tools/auto-update-3094-usb.py --wait-minutes 0
+
+Mozesz ustawic inny limit w przedziale 0..120, np. --wait-minutes 30.
+Jesli main zmieni sie podczas pobierania, program nie zapisze starego ISO.
+
 Pobierany artefakt:
 zonderq-3094-NORMAL-GUI-REQUIRES-ZONDERQDATA
 
