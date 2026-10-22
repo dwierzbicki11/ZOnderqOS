@@ -37,7 +37,7 @@ class Nic3094Safety(unittest.TestCase):
         for label in ('RTL810xE', 'RTL8723BE', 'E1000', 'E1000E'):
             self.assertIn(label, DIAG)
         self.assertIn('link=UNKNOWN', DIAG)
-        self.assertIn('driver=NOT_BOUND', DIAG)
+        self.assertIn('driver=UNVERIFIED', DIAG)
         self.assertIn('ip=UNASSIGNED', DIAG)
 
     def test_no_mutating_network_or_disk_io(self):
