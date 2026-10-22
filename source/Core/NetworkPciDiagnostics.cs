@@ -36,7 +36,7 @@ namespace ZonderqOS.SystemCore
                     "] class=" + d.ClassCode.ToString("X2") + ":" +
                     d.Subclass.ToString("X2") + " " +
                     DescribeDevice(d.VendorId, d.DeviceId, d.Subclass), shellOutput);
-                Write("[NIC3094] driver=NOT_BOUND link=UNKNOWN mac=UNKNOWN ip=UNASSIGNED", shellOutput);
+                Write("[NIC3094] driver=UNVERIFIED link=UNKNOWN mac=UNKNOWN ip=UNASSIGNED", shellOutput);
             }
 
             Write("[NIC3094] Discovered PCI network functions: " + found, shellOutput);
