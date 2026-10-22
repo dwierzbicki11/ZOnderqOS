@@ -1,0 +1,79 @@
+name: Cosmos 3.0.94 isolated E1000E NIC/link QEMU proof
+
+on:
+  pull_request:
+    paths:
+      - 'ZonderqOS.csproj'
+      - 'source/Core/NetworkN1ProbeKernel.cs'
+      - 'tools/build-cosmos-3094-local.sh'
+      - 'tools/smoke-network-n1-3094-qemu.sh'
+      - 'tests/test_3094_network_n1_contract.py'
+      - 'tests/verify_3094_network_n1.py'
+      - '.github/workflows/3094-network-n1-qemu.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zonderq3094-network-n1-${${ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  network-n1-real-qemu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zonderq
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Contract tests and script syntax, no 3.0.85 SDK
+        run: |
+          set -euo pipefail
+          bash zonderq/tools/verify-cosmos-compat.sh
+          python3 zonderq/tests/test_3094_network_n1_contract.py
+          python3 zonderq/tests/verify_3094_network_n1.py --self-test
+          python3 zonderq/tests/test_3094_storage_policy.py
+          bash -n zonderq/tools/build-cosmos-3094-local.sh
+          bash -n zonderq/tools/smoke-network-n1-3094-qemu.sh
+      - name: Install exact Cosmos 3.0.94 toolchain prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 tar clang lld nasm xorriso binutils qemu-system-x86
+      - name: Build isolated 3.0.94 SDK and E1000E N1 probe ISO
+        working-directory: zonderq
+        env:
+          ZONDERQ_3094_WORK_DIR: ${${ runner.temp }}/without-downgrade
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3094-local.sh network-n1
+          test -s output-3094/ZonderqOS-3094-network-n1.iso
+          sha256sum output-3094/ZonderqOS-3094-network-n1.iso
+      - name: Boot real QEMU E1000E with bounded link/MAC evidence
+        working-directory: zonderq
+        env:
+          NET3094_N1_TIMEOUT: '170'
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-n1-3094-qemu.sh \
+            output-3094/ZonderqOS-3094-network-n1.iso network-n1-3094.serial.log
+      - name: Upload serial evidence for audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3094-network-n1-e1000e-serial
+          path: |
+            zonderq/network-n1-3094.serial.log
+            zonderq/network-n1-3094.serial.log.stderr
+          if-no-files-found: ignore
+      - name: Retain QEMU-only NIC proof ISO
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3094-network-n1-QEMU-ONLY
+          path: zonderq/output-3094/ZonderqOS-3094-network-n1.iso
+          retention-days: 4
+          if-no-files-found: error
