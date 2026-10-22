@@ -1,0 +1,47 @@
+name: Archive all stale ZonderqOS branches, then prune refs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/prune-branch-archive.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+concurrency:
+  group: zonderq-archive-all-branches-20261022
+  cancel-in-progress: false
+
+jobs:
+  archive-before-delete:
+    if: github.repository == 'dwierzbicki11/ZOnderqOS'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Clone full git history and all tags
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: true
+      - name: Validate cleanup script and pinned Cosmos SDK
+        run: |
+          set -euo pipefail
+          bash -n tools/prune-branch-archive.sh
+          bash tools/verify-cosmos-compat.sh
+          test "$(git branch --show-current)" = main
+      - name: Archive every head and remove only lease-protected refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: bash tools/prune-branch-archive.sh --execute
+      - name: Save archived-ref to original SHA manifest
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-pruned-branch-archive-manifest
+          path: ${{ runner.temp }}/zonderq-branch-prune-report.tsv
+          if-no-files-found: ignore
