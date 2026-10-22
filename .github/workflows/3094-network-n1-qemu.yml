@@ -16,7 +16,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: zonderq3094-network-n1-${${ github.ref }}
+  group: zonderq3094-network-n1-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -46,7 +46,7 @@ jobs:
       - name: Build isolated 3.0.94 SDK and E1000E N1 probe ISO
         working-directory: zonderq
         env:
-          ZONDERQ_3094_WORK_DIR: ${${ runner.temp }}/without-downgrade
+          ZONDERQ_3094_WORK_DIR: ${{ runner.temp }}/without-downgrade
         run: |
           set -euo pipefail
           bash tools/build-cosmos-3094-local.sh network-n1
