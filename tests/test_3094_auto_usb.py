@@ -60,6 +60,54 @@ class AutomatedUsbTests(unittest.TestCase):
             with self.assertRaises(mod.Refused):
                 mod.select_artifact(GithubFake(**cfg))
 
+    def test_build_in_progress_has_explicit_state(self):
+        class InProgress(GithubFake):
+            def json(self, url):
+                if "/workflows/" in url:
+                    return {"workflow_runs": [{"id": 39740062588,
+                        "status": "in_progress", "conclusion": None,
+                        "head_branch": "main", "head_sha": MAIN_SHA,
+                        "event": "push"}]}
+                return super().json(url)
+
+        with self.assertRaises(mod.BuildPending) as context:
+            mod.select_artifact(InProgress())
+        self.assertIn("39740062588", str(context.exception))
+
+    def test_wait_for_main_build_then_select_exact_sha(self):
+        done = (321, {"id": 777, "name": mod.ARTIFACT}, MAIN_SHA)
+        now = [0]
+        sleeps = []
+
+        def pause(seconds):
+            sleeps.append(seconds)
+            now[0] += seconds
+
+        with mock.patch.object(mod, "select_artifact",
+                side_effect=[mod.BuildPending("Build queued"),
+                             mod.BuildPending("Build running"), done]):
+            self.assertEqual(
+                mod.wait_for_artifact(object(), wait_minutes=10,
+                                      pause=pause, clock=lambda: now[0]), done)
+        self.assertEqual(sleeps, [180, 180])
+
+    def test_wait_timeout_never_invokes_writer(self):
+        with mock.patch.object(mod, "select_artifact",
+                               side_effect=mod.BuildPending("Build running")):
+            with mock.patch.object(mod, "updater_call") as writer:
+                with self.assertRaises(mod.Refused):
+                    mod.wait_for_artifact(object(), wait_minutes=0, pause=lambda _: None,
+                                          clock=lambda: 1)
+                writer.assert_not_called()
+
+    def test_new_main_sha_blocks_using_old_iso(self):
+        class ChangedMain:
+            def json(self, url):
+                return {"commit": {"sha": "b" * 40}}
+        with self.assertRaises(mod.Refused):
+            mod.assert_current_main(ChangedMain(), MAIN_SHA)
+        mod.assert_current_main(GithubFake(), MAIN_SHA)
+
     def test_iso_validity_and_reserved_fourth_partition(self):
         with tempfile.TemporaryDirectory() as temp:
             p = Path(temp) / "ZonderqOS.iso"
