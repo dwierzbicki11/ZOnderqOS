@@ -1,0 +1,47 @@
+name: Cosmos 3.0.94 displayinfo portable compile and safety gate
+
+on:
+  pull_request:
+    paths:
+      - 'source/Shell/Commands/CmdDisplayInfo.cs'
+      - 'source/Shell/Command.cs'
+      - 'tests/test_3094_display_gui.py'
+      - '.github/workflows/3094-displayinfo-gate.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'source/Shell/Commands/CmdDisplayInfo.cs'
+      - 'source/Shell/Command.cs'
+      - 'tests/test_3094_display_gui.py'
+      - '.github/workflows/3094-displayinfo-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  compile-and-display-regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Guard SDK and display + storage contracts
+        run: |
+          set -euo pipefail
+          bash tools/verify-cosmos-compat.sh
+          python3 tests/test_3094_generated_output_dirs.py
+          python3 tests/test_3094_display_gui.py
+          python3 tests/test_3094_storage_policy.py
+      - name: Full Roslyn compile x64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false
+      - name: Clear architecture outputs
+        run: rm -rf bin obj
+      - name: Full Roslyn compile ARM64
+        run: |
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-arm64 -p:CosmosArch=arm64 -p:GeneratePackageOnBuild=false
