@@ -89,7 +89,7 @@ class AutomatedUsbTests(unittest.TestCase):
             self.assertEqual(
                 mod.wait_for_artifact(object(), wait_minutes=10,
                                       pause=pause, clock=lambda: now[0]), done)
-        self.assertEqual(sleeps, [90, 90])
+        self.assertEqual(sleeps, [180, 180])
 
     def test_wait_timeout_never_invokes_writer(self):
         with mock.patch.object(mod, "select_artifact",
