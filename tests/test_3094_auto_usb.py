@@ -3,6 +3,7 @@
 import importlib.util
 import hashlib
 import io
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -109,6 +110,46 @@ class AutomatedUsbTests(unittest.TestCase):
                  mod.DATA_START, "vfat", "ZONDERQDATA",
                  '{"blockdevices":[{"path":"/dev/sdb","mountpoints":[],"children":'
                  '[{"path":"/dev/sdb4","type":"part","mountpoints":["/"]}]}]}'
+             ]):
+            with self.assertRaises(mod.Refused):
+                mod.check_usb()
+
+    def test_lsblk_json_explicit_tree_and_only_own_mounts(self):
+        # On Kali/util-linux JSON without NAME or --tree may return
+        # sdb1..sdb4 as additional roots instead of sdb.children.
+        tree = {
+            "blockdevices": [{
+                "name": "sdb", "path": "/dev/sdb",
+                "type": "disk", "mountpoints": [None],
+                "children": [
+                    {"name": "sdb1", "path": "/dev/sdb1", "type": "part", "mountpoints": [None]},
+                    {"name": "sdb2", "path": "/dev/sdb2", "type": "part", "mountpoints": [None]},
+                    {"name": "sdb3", "path": "/dev/sdb3", "type": "part", "mountpoints": [None]},
+                    {"name": "sdb4", "path": "/dev/sdb4", "type": "part",
+                     "mountpoints": ["/media/zonderq/ZONDERQDATA"]},
+                ],
+            }]
+        }
+        with mock.patch.object(mod.Path, "exists", return_value=True), \
+             mock.patch.object(mod, "cmd", side_effect=[
+                 "disk", "usb", "SanDisk Ultra", str(mod.EXPECTED_BYTES),
+                 mod.DATA_START, "vfat", "ZONDERQDATA", json.dumps(tree),
+             ]) as call:
+            self.assertEqual(mod.check_usb(), ["/dev/sdb4"])
+            self.assertEqual(call.call_args_list[-1].args, (
+                "lsblk", "--json", "--tree", "-o",
+                "NAME,PATH,TYPE,MOUNTPOINTS", "/dev/sdb"
+            ))
+
+    def test_lsblk_flat_tree_refused(self):
+        flat = {"blockdevices": [
+            {"name": "sdb", "path": "/dev/sdb", "type": "disk", "mountpoints": [None]},
+            {"name": "sdb4", "path": "/dev/sdb4", "type": "part", "mountpoints": [None]},
+        ]}
+        with mock.patch.object(mod.Path, "exists", return_value=True), \
+             mock.patch.object(mod, "cmd", side_effect=[
+                 "disk", "usb", "SanDisk Ultra", str(mod.EXPECTED_BYTES),
+                 mod.DATA_START, "vfat", "ZONDERQDATA", json.dumps(flat),
              ]):
             with self.assertRaises(mod.Refused):
                 mod.check_usb()

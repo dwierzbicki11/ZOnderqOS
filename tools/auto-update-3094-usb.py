@@ -76,12 +76,16 @@ def check_usb(device: str = EXPECTED_DEVICE) -> list[str]:
 
     # Only this known stick's mounted partitions may be unmounted.
     try:
-        info = json.loads(cmd("lsblk", "-J", "-o", "PATH,TYPE,MOUNTPOINTS", device))
+        # lsblk JSON may flatten partitions into separate root objects when
+        # NAME is absent and tree mode is not forced. Both NAME and --tree
+        # ensure we get one disk with nested children before unmounting.
+        info = json.loads(cmd("lsblk", "--json", "--tree",
+                              "-o", "NAME,PATH,TYPE,MOUNTPOINTS", device))
     except ValueError:
         fail("Nieprawidłowy wynik lsblk JSON.")
     nodes = info.get("blockdevices", [])
     if len(nodes) != 1 or nodes[0].get("path") != device:
-        fail("Nieoczekiwane drzewo urządzeń lsblk.")
+        fail("Nieoczekiwane drzewo urządzeń lsblk (oczekiwano jednego /dev/sdb z podpartycjami).")
     result: list[str] = []
 
     def visit(node: dict) -> None:
