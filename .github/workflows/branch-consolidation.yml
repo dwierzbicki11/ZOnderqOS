@@ -1,0 +1,40 @@
+name: Consolidate already-integrated ZonderqOS branches
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/branch-consolidation.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: zonderqos-branch-consolidation
+  cancel-in-progress: false
+
+jobs:
+  consolidate-no-change-branches:
+    name: Safe history consolidation and branch cleanup
+    runs-on: ubuntu-latest
+    if: github.repository == 'dwierzbicki11/ZOnderqOS'
+    timeout-minutes: 90
+    steps:
+      - name: Checkout all history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Consolidate redundant branches (Cosmos 3.0.94 protected)
+        env:
+          BRANCH_CONSOLIDATION_REPORT: ${{ runner.temp }}/zonderq-branches-skipped.txt
+        run: |
+          bash tools/consolidate-branches.sh --execute
+      - name: Preserve branches requiring code review
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-branches-requiring-review
+          path: ${{ runner.temp }}/zonderq-branches-skipped.txt
+          if-no-files-found: ignore
