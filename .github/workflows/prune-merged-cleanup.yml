@@ -1,0 +1,57 @@
+name: Delete merged cleanup branches safely
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/prune-merged-cleanup.yml'
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  prune-merged-cleanup:
+    if: >-
+      github.repository == 'dwierzbicki11/ZOnderqOS' &&
+      (github.event_name == 'push' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.head.repo.full_name == github.repository &&
+       github.event.pull_request.base.ref == 'main'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Delete only safely integrated cleanup heads
+        env:
+          MERGED_HEAD: ${{ github.event.pull_request.head.ref }}
+        run: |
+          set -euo pipefail
+          git fetch origin main:refs/remotes/origin/main
+
+          if [[ "$GITHUB_EVENT_NAME" == 'push' ]]; then
+            # Seed cleanup for the PR #186 merged before this workflow existed.
+            branches=(cleanup/3094-cs0016-build-fix)
+          else
+            branches=("$MERGED_HEAD")
+          fi
+
+          for branch in "${branches[@]}"; do
+            [[ "$branch" == cleanup/* ]] || continue
+            [[ "$branch" != "main" ]] || continue
+            expected="$(git ls-remote origin "refs/heads/$branch" | cut -f1)"
+            if [[ -z "$expected" ]]; then
+              echo "[PRUNE] Already absent: $branch"
+              continue
+            fi
+            git fetch origin "+refs/heads/$branch:refs/remotes/origin/$branch"
+            if ! git merge-base --is-ancestor "$expected" refs/remotes/origin/main; then
+              echo "[PRUNE] Kept unmerged or changed branch $branch"
+              continue
+            fi
+            git push --force-with-lease="refs/heads/$branch:$expected" origin ":refs/heads/$branch"
+            echo "[PRUNE] Deleted integrated branch: $branch"
+          done
