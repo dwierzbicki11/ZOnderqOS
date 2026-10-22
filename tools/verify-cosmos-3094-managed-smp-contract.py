@@ -62,7 +62,7 @@ def self_test() -> None:
         sample.replace("dispatch=3", "dispatch=0"),
         sample + "\n" + FINISH,
         sample + "\n[PANIC] simulated OrionGC failure",
-        sample.replace(GC + "\n", "").replace(TIMER + "\n", TIMER + "\n" + " [SMP3094-ORIONGC-STW] PASS" + "\n"),
+        sample.replace(TIMER + "\n" + GC, GC + "\n" + TIMER),
         sample.replace(GC + "\n", " [SMP3094-MANAGED] cpu=0 thread=1 dispatch=2 gc_ack=1 gc_resume=1 preempt=1\n" + GC + "\n"),
         sample + "\n[SMP3094-MANAGED] cpu=2 thread=3 dispatch=2 gc_ack=1 gc_resume=1 preempt=1",
     ]
@@ -71,7 +71,7 @@ def self_test() -> None:
             verify(text, 2)
         except ValueError:
             continue
-        raise AssertionError("accepted forged/unsafe managed SMP evidence")
+        raise AssertionError("accepted forged/unsafe managed SMP evidence: " + repr(text))
     print("[SMP3094-MANAGED-CONTRACT] PASS positive and negative cases")
 
 
