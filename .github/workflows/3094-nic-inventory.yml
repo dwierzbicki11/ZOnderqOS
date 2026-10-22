@@ -1,0 +1,58 @@
+name: Cosmos 3.0.94 read-only PCI NIC inventory
+
+on:
+  pull_request:
+    paths:
+      - 'source/Core/NetworkPciDiagnostics.cs'
+      - 'source/Shell/Commands/CmdNicDiag.cs'
+      - 'source/Shell/Command.cs'
+      - 'Kernel.cs'
+      - 'tests/test_3094_nic_pci_inventory.py'
+      - '.github/workflows/3094-nic-inventory.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'source/Core/NetworkPciDiagnostics.cs'
+      - 'source/Shell/Commands/CmdNicDiag.cs'
+      - 'source/Shell/Command.cs'
+      - 'Kernel.cs'
+      - 'tests/test_3094_nic_pci_inventory.py'
+      - '.github/workflows/3094-nic-inventory.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pci-nic-source-and-compile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Verify pinned Cosmos 3.0.94 and fail-closed safety
+        run: |
+          set -euo pipefail
+          bash tools/verify-cosmos-compat.sh
+          python3 tests/test_3094_generated_output_dirs.py
+          python3 tests/test_3094_nic_pci_inventory.py
+          python3 tests/test_3094_storage_policy.py
+      - name: x64 production shell + PCI inventory compile
+        run: |
+          set -euo pipefail
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-x64 -p:CosmosArch=x64 -p:GeneratePackageOnBuild=false
+      - name: Compile diskless x64 NIC diagnostic profile
+        run: |
+          set -euo pipefail
+          rm -rf bin obj
+          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 -p:ZonderqReadOnlyHardwareProbe=true --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-x64 -p:CosmosArch=x64 -p:ZonderqReadOnlyHardwareProbe=true -p:GeneratePackageOnBuild=false
+      - name: Compile ARM64 (PCI ECAM must stay unavailable)
+        run: |
+          set -euo pipefail
+          rm -rf bin obj
+          dotnet restore ZonderqOS.csproj -r linux-arm64 -p:CosmosArch=arm64 --force --no-cache
+          dotnet msbuild ZonderqOS.csproj -t:Compile -p:Configuration=Release -p:RuntimeIdentifier=linux-arm64 -p:CosmosArch=arm64 -p:GeneratePackageOnBuild=false
