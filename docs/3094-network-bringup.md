@@ -25,7 +25,7 @@ then prints actual PCI class 02 network functions and hardware IDs:
 - QEMU example **8086:100E** E1000 and **8086:10D3** E1000E.
 
 Class and device ID are detected, not proof that a driver has bound. The
-command always reports `driver=NOT_BOUND`, `link=UNKNOWN`,
+command always reports `driver=UNVERIFIED`, `link=UNKNOWN`,
 `ip=UNASSIGNED` while the networking subsystem is disabled.
 On ARM64 the existing PCI ECAM backend explicitly declines enumeration,
 so N0 reports unavailable instead of inventing a NIC.
