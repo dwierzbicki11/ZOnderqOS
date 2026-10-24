@@ -114,7 +114,7 @@ def git(root: Path, *args: str) -> str:
     if p.returncode:
         fail(f"git {' '.join(args)}: {p.stderr.strip()}")
     # Preserve the leading status column from 'git status --porcelain'.
-    return p.stdout.rstrip("\\n")
+    return p.stdout.rstrip("\n")
 
 def source_at_head(root: Path, path: Path) -> str:
     """Read unmodified content from the pinned git commit, not the worktree."""
