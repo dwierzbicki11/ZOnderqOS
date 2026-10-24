@@ -6,12 +6,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="3.0.95"
 UPSTREAM="https://github.com/CosmosOS/Cosmos.git"
+STAGE1="${ZONDERQ_3095_NATIVE_STAGE1:-false}"
 WORK_ROOT="${ZONDERQ_3095_WORK_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/zonderqos-cosmos-3095}"
 if [[ "$STAGE1" == true ]]; then
   # Always use a separate private clone, feed and NuGet cache from stock 3.0.95.
   WORK_ROOT="${WORK_ROOT}-native-stage1"
 fi
-STAGE1="${ZONDERQ_3095_NATIVE_STAGE1:-false}"
 [[ "$STAGE1" == false || "$STAGE1" == true ]] || { echo "Invalid native Stage1 flag" >&2; exit 2; }
 MODE="${1:-disk}"
 case "$MODE" in
