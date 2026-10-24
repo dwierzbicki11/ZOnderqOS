@@ -54,3 +54,35 @@ python3 tests/verify_3095_managed_smp.py /path/to/real-qemu-serial.log --cpus 8
 proof additionally requires review of instrumented kernel code, true current
 CPU reads, timer/preemption/GC traces and provenance of raw guest serial logs.
 It never upgrades a synthetic `--self-test` to an actual SMP pass.
+
+
+## Stage 2: real dense logical CPU mapping (experimental)
+
+Stage1 QEMU passed on the user's machine for **1 and 8 CPUs** (5s main
+loop stability in both cases). Those actual serial logs showed
+`AP_NOT_STARTED`; this is not an AP execution proof.
+
+Stage2 adds `LimineMp.TryAssignDenseX64CpuIds` to a separate
+**v3.0.95-only, QEMU-only** source overlay. The BSP always gets logical
+ID 0 and valid AP descriptors get consecutive IDs 1..N-1. A complete
+descriptor preflight refuses any already-published `GotoAddress`
+before making changes. No AP is started or managed code executed on APs.
+
+### Build and run
+
+```bash
+cd /mnt/Magazyn/ZOnderqOS
+git pull --ff-only
+ZONDERQ_3095_NATIVE_STAGE1=true ZONDERQ_3095_NATIVE_STAGE2=true \
+    bash tools/build-cosmos-3095-local.sh probe
+ZONDERQ_3095_REQUIRE_DENSE=true \
+    bash tools/smoke-smp-3095-stage1-qemu.sh \
+    output-3095/ZonderqOS-3095-smp-stage2-probe.iso \
+    smp3095-stage2-8cpu.log 8
+```
+
+Stage1 and Stage2 have different Cosmos clones, package caches and ISO
+filenames. The separate `cosmos-3095-smp-stage2.yml` workflow checks
+real serial evidence at 1/8 CPU, not synthetic results alone. This still
+**does not** validate GS, AP stacks, native AP entry, IPI, timer ISR,
+managed Thread.Start(), preemptive scheduling or stop-the-world GC.
