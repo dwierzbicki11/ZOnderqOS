@@ -74,21 +74,29 @@ public static unsafe class LimineMp
         {
             LimineMpInfoX64* cpu = response->Cpus[i];
             if (cpu == null || cpu->LapicId >= MaxXApicCpuCount)
+            {
                 return false;
+            }
 
             if (cpu->LapicId == response->BspLapicId)
+            {
                 bspCount++;
+            }
 
             for (ulong j = 0; j < i; j++)
             {
                 LimineMpInfoX64* previous = response->Cpus[j];
                 if (previous == null || previous->LapicId == cpu->LapicId)
+                {
                     return false;
+                }
             }
         }
 
         if (bspCount != 1)
+        {
             return false;
+        }
 
         cpuCount = response->CpuCount;
         bspLapicId = response->BspLapicId;
