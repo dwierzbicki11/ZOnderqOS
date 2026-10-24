@@ -7,11 +7,21 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="3.0.95"
 UPSTREAM="https://github.com/CosmosOS/Cosmos.git"
 WORK_ROOT="${ZONDERQ_3095_WORK_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/zonderqos-cosmos-3095}"
+if [[ "$STAGE1" == true ]]; then
+  # Always use a separate private clone, feed and NuGet cache from stock 3.0.95.
+  WORK_ROOT="${WORK_ROOT}-native-stage1"
+fi
+STAGE1="${ZONDERQ_3095_NATIVE_STAGE1:-false}"
+[[ "$STAGE1" == false || "$STAGE1" == true ]] || { echo "Invalid native Stage1 flag" >&2; exit 2; }
 MODE="${1:-disk}"
 case "$MODE" in
   disk|probe) ;;
   *) echo "[3095-BUILD][ERROR] Expected disk or probe" >&2; exit 2 ;;
 esac
+if [[ "$STAGE1" == true && "$MODE" != probe ]]; then
+  echo "[SMP3095-STAGE1][FAIL] isolated native probe only; disk profile forbidden" >&2
+  exit 2
+fi
 if [[ $# -gt 1 ]]; then
   echo "[3095-BUILD][ERROR] Unexpected additional arguments" >&2
   exit 2
@@ -51,6 +61,16 @@ head_sha="$(git -C "$SOURCE" rev-parse HEAD)"
 [[ -z "$(git -C "$SOURCE" status --porcelain --untracked-files=no)" ]] ||
   die "Cosmos tracked files have changes. Will not build a modified tag."
 
+# Stage 1 is an explicit and isolated source overlay, not a vanilla tag package.
+# Never replay an older SMP patch or package cache.
+stamp_value="$tag_sha"
+if [[ "$STAGE1" == true ]]; then
+  python3 "$ROOT/tools/port-cosmos-3095-stage1.py" "$SOURCE" --apply
+  overlay_hash="$(sha256sum "$ROOT/tools/port-cosmos-3095-stage1.py" | cut -d' ' -f1)"
+  stamp_value="$tag_sha:smp3095-native-stage1:$overlay_hash"
+  echo "[SMP3095-STAGE1] Applied reviewed overlay to disposable 3.0.95 source; APs remain parked."
+fi
+
 # The upstream builder changes HOME/.nuget and installs global tools.
 # Sandbox HOME and the source NuGet cache so Kali's real SDK and caches remain untouched.
 required=(
@@ -58,7 +78,7 @@ required=(
   Cosmos.Kernel.Core Cosmos.Kernel.HAL.X64
 )
 rebuild=0
-[[ -f "$STAMP" && "$(cat "$STAMP")" == "$tag_sha" ]] || rebuild=1
+[[ -f "$STAMP" && "$(cat "$STAMP")" == "$stamp_value" ]] || rebuild=1
 for package in "${required[@]}"; do
   [[ -s "$FEED/$package.$VERSION.nupkg" ]] || rebuild=1
 done
@@ -76,7 +96,7 @@ if (( rebuild )); then
     [[ -s "$FEED/$package.$VERSION.nupkg" ]] ||
       die "Upstream packaging did not produce $package.$VERSION.nupkg."
   done
-  printf '%s\n' "$tag_sha" > "$STAMP"
+  printf '%s\n' "$stamp_value" > "$STAMP"
 else
   echo "[3095-BUILD] Reusing packages built from the verified upstream tag."
 fi
@@ -156,6 +176,7 @@ case "$MODE" in
     read_only=true
     diagnostic=true
     output_file="ZonderqOS-3095-usb.iso"
+    if [[ "$STAGE1" == true ]]; then output_file="ZonderqOS-3095-smp-stage1-probe.iso"; fi
     ;;
 esac
 echo "[3095-BUILD] Publishing $MODE x64 ISO (no older Cosmos versions, no RAM root)..."
