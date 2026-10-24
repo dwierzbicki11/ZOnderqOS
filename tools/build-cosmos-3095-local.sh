@@ -8,11 +8,14 @@ VERSION="3.0.95"
 UPSTREAM="https://github.com/CosmosOS/Cosmos.git"
 STAGE1="${ZONDERQ_3095_NATIVE_STAGE1:-false}"
 STAGE2="${ZONDERQ_3095_NATIVE_STAGE2:-false}"
+STAGE3="${ZONDERQ_3095_NATIVE_STAGE3:-false}"
 # Build variants have independent source worktrees and NuGet package feeds,
 # but can borrow already-downloaded objects of the exact pinned runtime.
 BASE_WORK_ROOT="${ZONDERQ_3095_WORK_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/zonderqos-cosmos-3095}"
 WORK_ROOT="$BASE_WORK_ROOT"
-if [[ "$STAGE2" == true ]]; then
+if [[ "$STAGE3" == true ]]; then
+  WORK_ROOT="${WORK_ROOT}-native-stage3"
+elif [[ "$STAGE2" == true ]]; then
   WORK_ROOT="${WORK_ROOT}-native-stage2"
 elif [[ "$STAGE1" == true ]]; then
   # Always use a separate private clone, feed and NuGet cache from stock 3.0.95.
@@ -20,6 +23,10 @@ elif [[ "$STAGE1" == true ]]; then
 fi
 [[ "$STAGE1" == false || "$STAGE1" == true ]] || { echo "Invalid native Stage1 flag" >&2; exit 2; }
 [[ "$STAGE2" == false || "$STAGE2" == true ]] || { echo "Invalid native Stage2 flag" >&2; exit 2; }
+[[ "$STAGE3" == false || "$STAGE3" == true ]] || { echo "Invalid native Stage3 flag" >&2; exit 2; }
+if [[ "$STAGE3" == true && "$STAGE2" != true ]]; then
+  echo "Stage3 requires ZONDERQ_3095_NATIVE_STAGE2=true" >&2; exit 2
+fi
 if [[ "$STAGE2" == true && "$STAGE1" != true ]]; then
   echo "Stage2 requires ZONDERQ_3095_NATIVE_STAGE1=true" >&2; exit 2
 fi
@@ -77,10 +84,10 @@ echo "[3095-BUILD] Checking pinned upstream submodules..."
 git -C "$SOURCE" submodule sync --recursive ||
   die "Cannot synchronize pinned Cosmos submodules."
 
-# Stage2 shares the downloaded object database of the exact Stage1 runtime
+# Stage2 and Stage3 share the downloaded object database of the exact Stage1 runtime
 # but NOT its working tree or patched Cosmos assemblies.
 # Git verifies and checks out the gitlink from the official v3.0.95 tag.
-if [[ "$STAGE2" == true ]]; then
+if [[ "$STAGE2" == true || "$STAGE3" == true ]]; then
   expected_runtime="$(git -C "$SOURCE" rev-parse 'HEAD:dotnet/runtime')" ||
     die "Exact Cosmos tag has no dotnet/runtime gitlink."
   runtime_donor="$BASE_WORK_ROOT-native-stage1/Cosmos/dotnet/runtime"
@@ -143,7 +150,12 @@ fi
 # Stage 1 is an explicit and isolated source overlay, not a vanilla tag package.
 # Never replay an older SMP patch or package cache.
 stamp_value="$tag_sha"
-if [[ "$STAGE2" == true ]]; then
+if [[ "$STAGE3" == true ]]; then
+  python3 "$ROOT/tools/port-cosmos-3095-stage3.py" "$SOURCE" --apply
+  overlay_hash="$(sha256sum "$ROOT/tools/port-cosmos-3095-stage1.py" "$ROOT/tools/port-cosmos-3095-stage2.py" "$ROOT/tools/port-cosmos-3095-stage3.py" | sha256sum | cut -d\' \' -f1)"
+  stamp_value="$tag_sha:smp3095-native-stage3:$overlay_hash"
+  echo "[SMP3095-STAGE3] BSP GS identity + native AP stack reservations, no AP startup."
+elif [[ "$STAGE2" == true ]]; then
   python3 "$ROOT/tools/port-cosmos-3095-stage2.py" "$SOURCE" --apply
   overlay_hash="$(sha256sum "$ROOT/tools/port-cosmos-3095-stage1.py" "$ROOT/tools/port-cosmos-3095-stage2.py" | sha256sum | cut -d' ' -f1)"
   stamp_value="$tag_sha:smp3095-native-stage2:$overlay_hash"
@@ -260,7 +272,9 @@ case "$MODE" in
     read_only=true
     diagnostic=true
     output_file="ZonderqOS-3095-usb.iso"
-    if [[ "$STAGE2" == true ]]; then
+    if [[ "$STAGE3" == true ]]; then
+      output_file="ZonderqOS-3095-smp-stage3-probe.iso"
+    elif [[ "$STAGE2" == true ]]; then
       output_file="ZonderqOS-3095-smp-stage2-probe.iso"
     elif [[ "$STAGE1" == true ]]; then
       output_file="ZonderqOS-3095-smp-stage1-probe.iso"
