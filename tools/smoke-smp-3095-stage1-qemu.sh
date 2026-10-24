@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Diskless real-QEMU Cosmos 3.0.95 Limine MP discovery (Stage 1 only).
 set -euo pipefail
-ROOT="$(cd "$(dirname "\${BASH_SOURCE[0]}")/.." && pwd)"
-ISO="\${1:?usage: smoke-smp-3095-stage1-qemu.sh ISO LOG CPUS}"
-LOG="\${2:?missing serial log path}"
-CPUS="\${3:?missing expected CPU count}"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+ISO="${1:?usage: smoke-smp-3095-stage1-qemu.sh ISO LOG CPUS}"
+LOG="${2:?missing serial log path}"
+CPUS="${3:?missing expected CPU count}"
 case "$CPUS" in
   1) TOPOLOGY=1 ;;
   2) TOPOLOGY=sockets=1,cores=1,threads=2 ;;
