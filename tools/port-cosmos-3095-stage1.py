@@ -127,7 +127,7 @@ def calculate(root: Path) -> dict[Path, str]:
     hal = replace_exact(hal, "using Cosmos.Kernel.Core;\n",
         "using Cosmos.Kernel.Boot.Limine;\nusing Cosmos.Kernel.Core;\n", str(HAL))
     anchor = "        AcpiMadt.DisplayMadtInfo();"
-    proof = '''
+    proof = r'''
         // SMP Stage 1: read-only Limine topology. APs remain parked.
         if (LimineMp.TryValidateX64(out ulong count, out uint bsp))
         {
@@ -135,15 +135,13 @@ def calculate(root: Path) -> dict[Path, str]:
             Serial.WriteNumber(count);
             Serial.WriteString(" bsp_apic=");
             Serial.WriteNumber(bsp);
-            Serial.WriteString(" AP_NOT_STARTED\\\\n");
+            Serial.WriteString(" AP_NOT_STARTED\n");
         }
         else
         {
-            Serial.WriteString("[SMP3095-STAGE1] UNAVAILABLE AP_NOT_STARTED\\\\n");
+            Serial.WriteString("[SMP3095-STAGE1] UNAVAILABLE AP_NOT_STARTED\n");
         }
 '''
-    # Generate actual C# \n escape, not a literal newline in a string constant.
-    proof = proof.replace('\\\\n"', '\\n"') if False else proof.replace('\\\\\\\\n', '\\\\n')
     hal = replace_exact(hal, anchor, anchor + "\n" + proof, str(HAL))
     return {BOOT: boot, HAL: hal, MP: MP_SOURCE}
 
