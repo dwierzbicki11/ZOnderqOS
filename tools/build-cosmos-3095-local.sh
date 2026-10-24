@@ -63,8 +63,16 @@ head_sha="$(git -C "$SOURCE" rev-parse HEAD)"
 echo "[3095-BUILD] Checking pinned upstream submodules..."
 git -C "$SOURCE" submodule sync --recursive ||
   die "Cannot synchronize pinned Cosmos submodules."
-git -C "$SOURCE" submodule update --init --recursive --checkout ||
-  die "Cannot populate pinned upstream submodules; check Git/network access."
+if ! git -C "$SOURCE" submodule update --init --recursive --checkout; then
+  if [[ "$STAGE1" != true ]]; then
+    die "Cannot populate pinned upstream submodules; refusing automatic recovery outside the Stage1 private workspace."
+  fi
+  echo "[3095-BUILD] Submodule initialization failed; checking for broken dotnet/runtime HEAD..."
+  bash "$ROOT/tools/repair-cosmos-3095-runtime-submodule.sh" "$SOURCE" "$WORK_ROOT" ||
+    die "Safe submodule repair refused or failed; preserved cached files and did not reset any repository."
+  git -C "$SOURCE" submodule update --init --recursive --checkout ||
+    die "Pinned upstream submodules still unavailable after runtime repair."
+fi
 submodule_state="$(git -C "$SOURCE" submodule status --recursive)" ||
   die "Cannot inspect pinned submodule status."
 if printf '%s\n' "$submodule_state" | grep -Eq '^[-+U]'; then
