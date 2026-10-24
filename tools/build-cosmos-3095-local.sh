@@ -78,6 +78,17 @@ required_runtime_sources=(
   dotnet/runtime/src/coreclr/nativeaot/Common/src/Internal/Runtime/MethodTable.cs
 )
 for runtime_file in "${required_runtime_sources[@]}"; do
+  if [[ ! -f "$SOURCE/$runtime_file" ]]; then
+    # A prior interrupted checkout can leave tracked submodule files missing
+    # even when git submodule update sees the correct commit. Restore ONLY
+    # these absent paths from the submodule's pinned HEAD, never reset --hard.
+    relative="${runtime_file#dotnet/runtime/}"
+    git -C "$SOURCE/dotnet/runtime" cat-file -e "HEAD:$relative" ||
+      die "Pinned dotnet/runtime commit does not contain $relative"
+    echo "[3095-BUILD] Restoring missing pinned runtime source: $relative"
+    git -C "$SOURCE/dotnet/runtime" restore --source=HEAD -- "$relative" ||
+      die "Cannot safely restore missing runtime source: $relative"
+  fi
   [[ -f "$SOURCE/$runtime_file" ]] ||
     die "Pinned dotnet/runtime is incomplete: missing $runtime_file"
 done
