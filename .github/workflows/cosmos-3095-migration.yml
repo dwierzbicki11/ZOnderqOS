@@ -26,6 +26,7 @@ jobs:
           grep -Fq 'Include="Cosmos.Kernel.System" Version="3.0.95"' ZonderqOS.csproj
           grep -Fq '<CosmosEnableNetwork>false</CosmosEnableNetwork>' ZonderqOS.csproj
           bash -n tools/build-cosmos-3095-local.sh
+          bash tools/verify-cosmos-3095-migration.sh
       - name: Install build prerequisites
         run: |
           sudo apt-get update
