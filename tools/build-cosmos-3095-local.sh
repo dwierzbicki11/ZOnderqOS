@@ -152,7 +152,7 @@ fi
 stamp_value="$tag_sha"
 if [[ "$STAGE3" == true ]]; then
   python3 "$ROOT/tools/port-cosmos-3095-stage3.py" "$SOURCE" --apply
-  overlay_hash="$(sha256sum "$ROOT/tools/port-cosmos-3095-stage1.py" "$ROOT/tools/port-cosmos-3095-stage2.py" "$ROOT/tools/port-cosmos-3095-stage3.py" | sha256sum | cut -d\' \' -f1)"
+  overlay_hash="$(sha256sum "$ROOT/tools/port-cosmos-3095-stage1.py" "$ROOT/tools/port-cosmos-3095-stage2.py" "$ROOT/tools/port-cosmos-3095-stage3.py" | sha256sum | cut -d' ' -f1)"
   stamp_value="$tag_sha:smp3095-native-stage3:$overlay_hash"
   echo "[SMP3095-STAGE3] BSP GS identity + native AP stack reservations, no AP startup."
 elif [[ "$STAGE2" == true ]]; then
