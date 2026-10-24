@@ -58,8 +58,35 @@ tag_sha="$(git -C "$SOURCE" rev-parse "v$VERSION^{commit}")" ||
 head_sha="$(git -C "$SOURCE" rev-parse HEAD)"
 [[ "$head_sha" == "$tag_sha" ]] ||
   die "Cosmos checkout does not point at v$VERSION. Will not mix runtime versions."
-[[ -z "$(git -C "$SOURCE" status --porcelain --untracked-files=no)" ]] ||
-  die "Cosmos tracked files have changes. Will not build a modified tag."
+# Check and repair incomplete submodule checkouts BEFORE building packages.
+# A cached clone may exist even when dotnet/runtime was never fully populated.
+echo "[3095-BUILD] Checking pinned upstream submodules..."
+git -C "$SOURCE" submodule sync --recursive ||
+  die "Cannot synchronize pinned Cosmos submodules."
+git -C "$SOURCE" submodule update --init --recursive --checkout ||
+  die "Cannot populate pinned upstream submodules; check Git/network access."
+submodule_state="$(git -C "$SOURCE" submodule status --recursive)" ||
+  die "Cannot inspect pinned submodule status."
+if printf '%s\n' "$submodule_state" | grep -Eq '^[-+U]'; then
+  die "A Cosmos submodule is uninitialized, not pinned, or conflicted."
+fi
+required_runtime_sources=(
+  dotnet/runtime/src/coreclr/nativeaot/System.Private.StackTraceMetadata/src/Internal/StackTraceMetadata/MethodNameFormatter.cs
+  dotnet/runtime/src/coreclr/tools/Common/Internal/Runtime/MetadataBlob.cs
+  dotnet/runtime/src/coreclr/tools/Common/Internal/Runtime/MethodTable.Constants.cs
+  dotnet/runtime/src/coreclr/tools/Common/Internal/Runtime/RuntimeConstants.cs
+  dotnet/runtime/src/coreclr/nativeaot/Common/src/Internal/Runtime/MethodTable.cs
+)
+for runtime_file in "${required_runtime_sources[@]}"; do
+  [[ -f "$SOURCE/$runtime_file" ]] ||
+    die "Pinned dotnet/runtime is incomplete: missing $runtime_file"
+done
+echo "[3095-BUILD] Pinned dotnet/runtime sources: PASS"
+
+if [[ "$STAGE1" != true ]]; then
+  [[ -z "$(git -C "$SOURCE" status --porcelain --untracked-files=no)" ]] ||
+    die "Cosmos tracked files have changes. Will not build a modified tag."
+fi
 
 # Stage 1 is an explicit and isolated source overlay, not a vanilla tag package.
 # Never replay an older SMP patch or package cache.
