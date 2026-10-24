@@ -89,7 +89,7 @@ if [[ "$STAGE2" == true ]]; then
         git -C "$runtime_donor" cat-file -e "$expected_runtime^{commit}" 2>/dev/null; then
     echo "[3095-BUILD] Reusing pinned dotnet/runtime Git objects from Stage1 cache (no full redownload)."
     git -C "$SOURCE" submodule update --init --checkout \
-      --reference-if-able "$runtime_donor" -- dotnet/runtime ||
+      --reference "$runtime_donor" -- dotnet/runtime ||
       die "Cannot initialize Stage2 runtime from cached pinned objects."
     echo "[3095-BUILD] Stage2 runtime uses Git alternates from Stage1; keep Stage1 cache available."
   else
