@@ -3,8 +3,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <CosmosApiTestVersion Condition="'$(CosmosApiTestVersion)' == ''">3.0.94</CosmosApiTestVersion>
-    <DefineConstants Condition="'$(CosmosApiTestVersion)' == '3.0.94'">$(DefineConstants);ZONDERQ_COSMOS_INPUT_API</DefineConstants>
+    <CosmosApiTestVersion Condition="'$(CosmosApiTestVersion)' == ''">3.0.95</CosmosApiTestVersion>
+    <DefineConstants Condition="'$(CosmosApiTestVersion)' == '3.0.95'">$(DefineConstants);ZONDERQ_COSMOS_INPUT_API</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Cosmos.Kernel.System" Version="$(CosmosApiTestVersion)" />
