@@ -24,7 +24,7 @@ ACCEPT = re.compile(r"^\[NET3094-N1\] PASS READY_LINK=(\d+)$")
 
 def validate(data: str) -> str:
     lines = [s.strip() for s in data.replace("\r", "").splitlines()]
-    if any(re.search(r"kernel panic|fatal:\\s*exception|page fault", line, re.I)
+    if any(re.search(r"kernel panic|fatal:\s*exception|page fault", line, re.I)
            or "[NET3094-N1][FAIL]" in line
            or "[SMP3094-MANAGED-STAGE23] PASS" in line for line in lines):
         raise ValueError("kernel panic, N1 failure or unrelated SMP proof found")
