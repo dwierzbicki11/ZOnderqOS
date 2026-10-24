@@ -14,7 +14,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: smp3095-native-stage1-\${{ github.ref }}
+  group: smp3095-native-stage1-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -42,7 +42,7 @@ jobs:
       - name: Build instrumented exact-tag 3.0.95 isolated read-only probe ISO
         env:
           ZONDERQ_3095_NATIVE_STAGE1: 'true'
-          ZONDERQ_3095_WORK_DIR: \${{ runner.temp }}/cosmos-3095-smp-probe
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/cosmos-3095-smp-probe
         run: |
           set -euo pipefail
           bash tools/build-cosmos-3095-local.sh probe
