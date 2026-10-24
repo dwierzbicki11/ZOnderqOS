@@ -96,7 +96,7 @@ def expected(root: Path) -> tuple[dict[Path, str], dict[Path, str]]:
         fail("Stage1 LimineMp.cs tail anchor changed")
     patched_mp = mp_source.replace(anchor, "        return true;\n    }\n" + METHOD + "}\n", 1)
     hal_source = pristine_stage1[hal]
-    stage1_anchor = "        // Stage 1: read-only Limine topology. APs remain parked."
+    stage1_anchor = "        // SMP Stage 1: read-only Limine topology. APs remain parked."
     if hal_source.count(stage1_anchor) != 1:
         fail("Stage1 HAL anchor changed")
     patched_hal = hal_source.replace(stage1_anchor, PROOF + "\n" + stage1_anchor, 1)
