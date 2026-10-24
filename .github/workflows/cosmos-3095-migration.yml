@@ -1,0 +1,46 @@
+name: Cosmos 3.0.95 isolated migration smoke
+on:
+  pull_request:
+    paths:
+      - 'ZonderqOS.csproj'
+      - 'tools/build-cosmos-3095-local.sh'
+      - '.github/workflows/cosmos-3095-migration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  build-probe-3095:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Enforce precise Cosmos 3.0.95 project pin
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -Fq 'Sdk="Cosmos.Sdk/3.0.95"' ZonderqOS.csproj
+          grep -Fq 'Include="Cosmos.Kernel" Version="3.0.95"' ZonderqOS.csproj
+          grep -Fq 'Include="Cosmos.Kernel.System" Version="3.0.95"' ZonderqOS.csproj
+          grep -Fq '<CosmosEnableNetwork>false</CosmosEnableNetwork>' ZonderqOS.csproj
+          bash -n tools/build-cosmos-3095-local.sh
+      - name: Install build prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 tar clang lld nasm xorriso binutils
+      - name: Build exact-tag v3.0.95 Cosmos and diskless probe ISO
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
+        run: |
+          bash tools/build-cosmos-3095-local.sh probe
+          test -s output-3095/ZonderqOS-3095-usb.iso
+          sha256sum output-3095/ZonderqOS-3095-usb.iso
+      - name: Upload test ISO (QEMU only; no bare metal certification)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq-3095-probe-QEMU-ONLY
+          path: output-3095/ZonderqOS-3095-usb.iso
+          retention-days: 3
