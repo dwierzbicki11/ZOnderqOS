@@ -24,8 +24,9 @@ ACCEPT = re.compile(r"^\[NET3094-N1\] PASS READY_LINK=(\d+)$")
 
 def validate(data: str) -> str:
     lines = [s.strip() for s in data.replace("\r", "").splitlines()]
-    if any("KERNEL PANIC" in s or "[NET3094-N1][FAIL]" in s
-           or "[SMP3094-MANAGED-STAGE23] PASS" in s for s in lines):
+    if any(re.search(r"kernel panic|fatal:\\s*exception|page fault", line, re.I)
+           or "[NET3094-N1][FAIL]" in line
+           or "[SMP3094-MANAGED-STAGE23] PASS" in line for line in lines):
         raise ValueError("kernel panic, N1 failure or unrelated SMP proof found")
     if lines.count(BOOT) != 1 or lines.count(END) != 1:
         raise ValueError("missing or repeated N1 boot/end marker")
@@ -44,7 +45,7 @@ def validate(data: str) -> str:
     if len(evidence) != 1 or int(evidence[0].group(1)) >= n:
         raise ValueError("missing or duplicated actual e1000e ready/link evidence")
     mac = evidence[0].group(2).lower()
-    if mac in ("00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff"):
+    if mac in ("00:00:00:00:00:00", "ff:ff:ff:ff:ff:ff") or (int(mac[:2], 16) & 1):
         raise ValueError("null/broadcast MAC address is invalid")
     # Reject fabricated PASS before device discovery, and success before
     # reporting that no DHCP/address configuration has taken place.
@@ -79,6 +80,10 @@ def self_test() -> None:
         valid.replace(END, ""),
         valid + "\n[NET3094-N1][FAIL] unexpected",
         valid + "\nKERNEL PANIC",
+        valid + "\nKernel Panic: unhandled fault",
+        valid + "\nFatal: exception 14 (cr2 0xC)",
+        valid + "\npage fault while idle",
+        valid.replace("mac=52:54:00:12:34:56", "mac=53:54:00:12:34:56"),
         valid.replace("[NET3094-N1] discovered=1\n", ""),
         valid.replace("[NET3094-N1] PASS READY_LINK=1\n", ""),
         valid.replace("discovered=1\n", "discovered=1\n" + END + "\n"),
