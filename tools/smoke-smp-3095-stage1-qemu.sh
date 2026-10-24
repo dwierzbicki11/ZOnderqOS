@@ -17,6 +17,9 @@ gate_flags=()
 if [[ "${ZONDERQ_3095_REQUIRE_DENSE:-false}" == true ]]; then
   gate_flags=(--require-dense)
 fi
+if [[ "${ZONDERQ_3095_REQUIRE_GS:-false}" == true ]]; then
+  gate_flags=(--require-gs)
+fi
 command -v qemu-system-x86_64 >/dev/null || { echo "QEMU not installed" >&2; exit 2; }
 mkdir -p "$(dirname "$LOG")"
 : > "$LOG"
