@@ -27,7 +27,7 @@ donor="$tmp/cache/native-stage1/Cosmos/dotnet/runtime"
 wanted="$(git -C "$stage2" rev-parse 'HEAD:dotnet/runtime')"
 git -C "$donor" cat-file -e "$wanted^{commit}"
 git -C "$stage2" submodule update --init --checkout \
-  --reference-if-able "$donor" -- dotnet/runtime
+  --reference "$donor" -- dotnet/runtime
 actual="$(git -C "$stage2/dotnet/runtime" rev-parse HEAD)"
 [[ "$actual" == "$wanted" ]] || { echo "Wrong runtime revision" >&2; exit 1; }
 
