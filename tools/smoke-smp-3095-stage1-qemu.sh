@@ -13,6 +13,10 @@ case "$CPUS" in
   *) echo "[SMP3095-STAGE1][FAIL] supported CPUs: 1 2 4 8" >&2; exit 2 ;;
 esac
 [[ -s "$ISO" ]] || { echo "Missing probe ISO: $ISO" >&2; exit 2; }
+gate_flags=()
+if [[ "${ZONDERQ_3095_REQUIRE_DENSE:-false}" == true ]]; then
+  gate_flags=(--require-dense)
+fi
 command -v qemu-system-x86_64 >/dev/null || { echo "QEMU not installed" >&2; exit 2; }
 mkdir -p "$(dirname "$LOG")"
 : > "$LOG"
@@ -42,11 +46,11 @@ while (( SECONDS < deadline )); do
     exit 1
   fi
   if grep -Fq '[Kernel] Calling Run()...' "$LOG"; then
-    python3 "$ROOT/tests/verify_3095_native_stage1.py" "$LOG" --cpus "$CPUS"
+    python3 "$ROOT/tests/verify_3095_native_stage1.py" "$LOG" --cpus "$CPUS" "${gate_flags[@]}"
     sleep 5
     kill -0 "$pid" 2>/dev/null || { echo "[SMP3095-STAGE1][FAIL] guest exited" >&2; exit 1; }
-    python3 "$ROOT/tests/verify_3095_native_stage1.py" "$LOG" --cpus "$CPUS"
-    echo "[SMP3095-STAGE1-QEMU] PASS real topology discovery and 5s kernel stability; APs NOT started"
+    python3 "$ROOT/tests/verify_3095_native_stage1.py" "$LOG" --cpus "$CPUS" "${gate_flags[@]}"
+    echo "[SMP3095-NATIVE-QEMU] PASS verified topology and 5s stability; APs NOT started"
     exit 0
   fi
   sleep 1
