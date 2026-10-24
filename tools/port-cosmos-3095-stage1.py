@@ -115,19 +115,27 @@ def git(root: Path, *args: str) -> str:
         fail(f"git {' '.join(args)}: {p.stderr.strip()}")
     return p.stdout.strip()
 
+def source_at_head(root: Path, path: Path) -> str:
+    """Read unmodified content from the pinned git commit, not the worktree."""
+    p = subprocess.run(
+        ["git", "-C", str(root), "show", f"HEAD:{path.as_posix()}"],
+        text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    if p.returncode:
+        fail(f"cannot read pristine upstream {path}: {p.stderr.strip()}")
+    return p.stdout
+
+
 def replace_exact(text: str, original: str, replacement: str, name: str) -> str:
     if text.count(original) != 1:
         fail(f"{name}: expected one exact v3.0.95 anchor; found {text.count(original)}")
     return text.replace(original, replacement, 1)
 
 def calculate(root: Path) -> dict[Path, str]:
-    if (root / MP).exists():
-        fail("LimineMp.cs already exists; refuse partial or repeated patch")
-    try:
-        boot = (root / BOOT).read_text()
-        hal = (root / HAL).read_text()
-    except OSError as ex:
-        fail(f"source file missing: {ex}")
+    # Always derive expected files from the exact upstream git tag; this also
+    # makes a previously applied patch verifiable without overwriting anything.
+    boot = source_at_head(root, BOOT)
+    hal = source_at_head(root, HAL)
 
     anchor = "    public static readonly LimineStackSizeRequest StackSize = new(LimineStackSizeRequest.DefaultRequestedSize);"
     boot = replace_exact(boot, anchor,
@@ -166,13 +174,28 @@ def main() -> None:
     head = git(root, "rev-parse", "HEAD")
     if head != tagsha:
         fail(f"HEAD is not exact {TAG}")
-    if git(root, "status", "--porcelain", "--untracked-files=all"):
-        fail("upstream checkout must be completely clean")
     edits = calculate(root)
-    if a.apply:
+    modified = git(root, "status", "--porcelain", "--untracked-files=all").splitlines()
+    base = {path: source_at_head(root, path) for path in (BOOT, HAL)}
+    exists = (root / MP).is_file()
+    pristine = not exists and not modified and all(
+        (root / path).read_text() == content for path, content in base.items()
+    )
+    already_applied = exists and all(
+        (root / path).is_file() and (root / path).read_text() == content
+        for path, content in edits.items()
+    )
+    permitted = {f" M {BOOT}", f" M {HAL}", f"?? {MP}"}
+    if already_applied and set(modified) != permitted:
+        fail("Stage1 source matches, but other unexpected changes exist")
+    if not pristine and not already_applied:
+        fail("unexpected source changes or partially applied overlay; refusing overwrite")
+    if a.apply and pristine:
         for name, data in edits.items():
             (root / name).write_text(data)
         print("[SMP3095-STAGE1] PATCHED exact Cosmos v3.0.95 isolated checkout")
+    elif already_applied:
+        print("[SMP3095-STAGE1] REUSED verified exact overlay after interrupted build")
     else:
         print("[SMP3095-STAGE1] CHECK PASS upstream anchors; no files modified")
     print("[SMP3095-STAGE1] NOT a managed SMP or AP-start runtime proof")
