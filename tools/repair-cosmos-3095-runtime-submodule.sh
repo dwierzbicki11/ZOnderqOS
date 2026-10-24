@@ -28,7 +28,12 @@ module="$SOURCE/.git/modules/dotnet/runtime"
 
 current=""
 if [[ -d "$sub" ]]; then
-  current="$(git -C "$sub" rev-parse --verify 'HEAD^{commit}' 2>/dev/null || true)"
+  # Without its own .git, git -C "$sub" silently climbs to the Cosmos
+  # superproject and reports the WRONG HEAD. Guard the actual worktree root.
+  runtime_top="$(git -C "$sub" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [[ "$runtime_top" == "$sub" ]]; then
+    current="$(git -C "$sub" rev-parse --verify 'HEAD^{commit}' 2>/dev/null || true)"
+  fi
 fi
 if [[ "$current" == "$expected" ]]; then
   fail "runtime HEAD is already pinned ($expected); preserve worktree and inspect missing files"
