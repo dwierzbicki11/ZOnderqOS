@@ -7,12 +7,19 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="3.0.95"
 UPSTREAM="https://github.com/CosmosOS/Cosmos.git"
 STAGE1="${ZONDERQ_3095_NATIVE_STAGE1:-false}"
+STAGE2="${ZONDERQ_3095_NATIVE_STAGE2:-false}"
 WORK_ROOT="${ZONDERQ_3095_WORK_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/zonderqos-cosmos-3095}"
-if [[ "$STAGE1" == true ]]; then
+if [[ "$STAGE2" == true ]]; then
+  WORK_ROOT="${WORK_ROOT}-native-stage2"
+elif [[ "$STAGE1" == true ]]; then
   # Always use a separate private clone, feed and NuGet cache from stock 3.0.95.
   WORK_ROOT="${WORK_ROOT}-native-stage1"
 fi
 [[ "$STAGE1" == false || "$STAGE1" == true ]] || { echo "Invalid native Stage1 flag" >&2; exit 2; }
+[[ "$STAGE2" == false || "$STAGE2" == true ]] || { echo "Invalid native Stage2 flag" >&2; exit 2; }
+if [[ "$STAGE2" == true && "$STAGE1" != true ]]; then
+  echo "Stage2 requires ZONDERQ_3095_NATIVE_STAGE1=true" >&2; exit 2
+fi
 MODE="${1:-disk}"
 case "$MODE" in
   disk|probe) ;;
@@ -110,7 +117,12 @@ fi
 # Stage 1 is an explicit and isolated source overlay, not a vanilla tag package.
 # Never replay an older SMP patch or package cache.
 stamp_value="$tag_sha"
-if [[ "$STAGE1" == true ]]; then
+if [[ "$STAGE2" == true ]]; then
+  python3 "$ROOT/tools/port-cosmos-3095-stage2.py" "$SOURCE" --apply
+  overlay_hash="$(sha256sum "$ROOT/tools/port-cosmos-3095-stage1.py" "$ROOT/tools/port-cosmos-3095-stage2.py" | sha256sum | cut -d' ' -f1)"
+  stamp_value="$tag_sha:smp3095-native-stage2:$overlay_hash"
+  echo "[SMP3095-STAGE2] Dense logical IDs diagnostic; APs remain parked."
+elif [[ "$STAGE1" == true ]]; then
   python3 "$ROOT/tools/port-cosmos-3095-stage1.py" "$SOURCE" --apply
   overlay_hash="$(sha256sum "$ROOT/tools/port-cosmos-3095-stage1.py" | cut -d' ' -f1)"
   stamp_value="$tag_sha:smp3095-native-stage1:$overlay_hash"
@@ -222,7 +234,11 @@ case "$MODE" in
     read_only=true
     diagnostic=true
     output_file="ZonderqOS-3095-usb.iso"
-    if [[ "$STAGE1" == true ]]; then output_file="ZonderqOS-3095-smp-stage1-probe.iso"; fi
+    if [[ "$STAGE2" == true ]]; then
+      output_file="ZonderqOS-3095-smp-stage2-probe.iso"
+    elif [[ "$STAGE1" == true ]]; then
+      output_file="ZonderqOS-3095-smp-stage1-probe.iso"
+    fi
     ;;
 esac
 echo "[3095-BUILD] Publishing $MODE x64 ISO (no older Cosmos versions, no RAM root)..."
