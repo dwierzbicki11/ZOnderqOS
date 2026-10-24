@@ -86,3 +86,37 @@ filenames. The separate `cosmos-3095-smp-stage2.yml` workflow checks
 real serial evidence at 1/8 CPU, not synthetic results alone. This still
 **does not** validate GS, AP stacks, native AP entry, IPI, timer ISR,
 managed Thread.Start(), preemptive scheduling or stop-the-world GC.
+
+## Stage 3: x64 BSP GS identity and reserved AP stacks (experimental)
+
+The isolated `tools/port-cosmos-3095-stage3.py` builds from exact
+Cosmos v3.0.95, with the Stage1/Stage2 overlays composed from the
+pristine tag, rather than replaying older patch files. It adds a
+native `_native_x64_init_percpu` entry and `CpuLocal.CurrentCpuId`
+for the **BSP only**, plus 256 reserved 16 KiB AP stacks.
+
+The diagnostic `[SMP3095-STAGE3] BSP_GS=0 cpus=N
+AP_STACKS_RESERVED AP_NOT_STARTED` proves BSP GS and stack-reservation
+consistency, **not AP bootstrap, real per-AP stack use, or managed
+Thread.Start scheduling**. Never treat Stage3 as Stage23. Hardware
+testing must wait for AP bootstrap and full runtime validation.
+
+```bash
+cd /mnt/Magazyn/ZOnderqOS
+git pull --ff-only
+ZONDERQ_3095_NATIVE_STAGE1=true \
+ZONDERQ_3095_NATIVE_STAGE2=true \
+ZONDERQ_3095_NATIVE_STAGE3=true \
+  bash tools/build-cosmos-3095-local.sh probe
+
+ZONDERQ_3095_REQUIRE_GS=true \
+  bash tools/smoke-smp-3095-stage1-qemu.sh \
+  output-3095/ZonderqOS-3095-smp-stage3-probe.iso \
+  smp3095-stage3-8cpu.log 8
+```
+
+Stage3 uses a separate isolated Cosmos workspace, NuGet package feed
+and ISO; when the previously built Stage1 runtime clone contains the
+exact tag's pinned runtime Git commit, it shares its Git object storage
+to avoid re-downloading dotnet/runtime. This dependency is checked,
+never assumed. Stage1 and Stage2 images are not overwritten.
