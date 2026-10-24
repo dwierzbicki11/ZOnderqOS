@@ -13,9 +13,10 @@ DISCOVERY = re.compile(
 )
 ACPI = re.compile(r"^\[ACPI\] Found (\d+) CPU\(s\)$")
 DENSE = re.compile(r"^\[SMP3095-STAGE2\] cpus=(\d+) dense=0\.\.(\d+) AP_NOT_STARTED$")
+STAGE3 = re.compile(r"^\[SMP3095-STAGE3\] BSP_GS=0 cpus=(\d+) AP_STACKS_RESERVED AP_NOT_STARTED$")
 PANIC = re.compile(r"kernel panic|fatal:\s*exception|triple.fault|page fault", re.I)
 
-def validate(log: str, cpus: int, require_dense: bool = False) -> str:
+def validate(log: str, cpus: int, require_dense: bool = False, require_gs: bool = False) -> str:
     if not 1 <= cpus <= 256:
         raise ValueError("invalid requested CPU count")
     lines = [line.strip() for line in log.replace("\r", "").splitlines()]
@@ -31,6 +32,13 @@ def validate(log: str, cpus: int, require_dense: bool = False) -> str:
         raise ValueError("invalid BSP APIC ID")
     if not any("[Kernel] Calling Run()..." in s for s in lines):
         raise ValueError("guest did not enter kernel main loop")
+    if require_gs:
+        require_dense = True
+        evidence = [m for line in lines if (m := STAGE3.fullmatch(line))]
+        if len(evidence) != 1 or int(evidence[0][1]) != cpus:
+            raise ValueError("missing, duplicated or mismatched BSP GS / AP stack evidence")
+        if any("[SMP3095-STAGE3] FAIL" in line for line in lines):
+            raise ValueError("Stage3 per-CPU validation failed")
     if require_dense:
         dense = [x for line in lines if (x := DENSE.fullmatch(line))]
         if len(dense) != 1 or int(dense[0][1]) != cpus or int(dense[0][2]) != cpus - 1:
@@ -39,7 +47,7 @@ def validate(log: str, cpus: int, require_dense: bool = False) -> str:
             raise ValueError("Stage2 runtime rejected CPU topology")
     if any("[SMP3095-STAGE23] PASS" in s for s in lines):
         raise ValueError("unrelated fabricated Stage 23 evidence")
-    stage = 2 if require_dense else 1
+    stage = 3 if require_gs else 2 if require_dense else 1
     return f"[SMP3095-STAGE{stage}-GATE] PASS discovery cpus={cpus}; AP_NOT_STARTED"
 
 def selftest() -> None:
@@ -75,6 +83,20 @@ def selftest() -> None:
         except ValueError:
             continue
         raise AssertionError(f"accepted bad Stage2 CPU mapping: {dense_bad!r}")
+    gs_good = dense_good + "\n[SMP3095-STAGE3] BSP_GS=0 cpus=8 AP_STACKS_RESERVED AP_NOT_STARTED"
+    assert "STAGE3-GATE" in validate(gs_good, 8, require_gs=True)
+    for gs_bad in (
+        dense_good,
+        gs_good.replace("BSP_GS=0", "BSP_GS=1"),
+        gs_good.replace("STAGE3] BSP_GS=0 cpus=8", "STAGE3] BSP_GS=0 cpus=4"),
+        gs_good + "\n[SMP3095-STAGE3] BSP_GS=0 cpus=8 AP_STACKS_RESERVED AP_NOT_STARTED",
+        gs_good + "\n[SMP3095-STAGE3] FAIL AP_NOT_STARTED",
+    ):
+        try:
+            validate(gs_bad, 8, require_gs=True)
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted forged Stage3 evidence: {gs_bad!r}")
     for case in bad:
         try:
             validate(case, 8)
@@ -89,12 +111,13 @@ if __name__ == "__main__":
     parser.add_argument("--cpus", type=int, default=8)
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--require-dense", action="store_true", help="require native Stage2 0..N-1 mapping proof")
+    parser.add_argument("--require-gs", action="store_true", help="require native Stage3 BSP GS and AP stack probe")
     args = parser.parse_args()
     if args.self_test:
         selftest()
     elif args.log:
         try:
-            print(validate(args.log.read_text(errors="replace"), args.cpus, args.require_dense))
+            print(validate(args.log.read_text(errors="replace"), args.cpus, args.require_dense, args.require_gs))
         except ValueError as e:
             parser.exit(1, f"[SMP3095-STAGE1-GATE][FAIL] {e}\n")
     else:
