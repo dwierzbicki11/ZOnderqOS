@@ -218,7 +218,16 @@ cat > "$STAGE/NuGet.Config" <<EOF
 </configuration>
 EOF
 
-rm -rf -- "$PROJECT_CACHE"
+# The project package cache is private to this exact 3.0.95 build variant.
+# Keep it when the pinned Cosmos packages are unchanged. Rebuilding packages
+# under the same NuGet version *must* invalidate their previously extracted
+# copies, otherwise restore could silently reuse stale native assemblies.
+if (( rebuild )); then
+  echo "[3095-BUILD] Cosmos packages rebuilt; invalidating isolated project NuGet cache."
+  rm -rf -- "$PROJECT_CACHE"
+else
+  echo "[3095-BUILD] Reusing isolated project NuGet cache (pinned packages unchanged)."
+fi
 mkdir -p "$PROJECT_CACHE"
 export NUGET_PACKAGES="$PROJECT_CACHE"
 # Use the tooling that was just built from the exact same Cosmos tag.
@@ -229,7 +238,7 @@ export ZONDERQ_PACKAGE_VERSION="$VERSION"
 echo "[3095-BUILD] Restoring only from pinned local Cosmos packages..."
 dotnet restore "$STAGE/ZonderqOS.csproj" \
   -r linux-x64 -p:CosmosArch=x64 \
-  --configfile "$STAGE/NuGet.Config" --force --no-cache
+  --configfile "$STAGE/NuGet.Config"
 
 # Never trust the package version alone: nuget.org published an API-incompatible
 # assembly with the same version. Check EVERY resolved Cosmos package's origin.
