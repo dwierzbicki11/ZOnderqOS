@@ -9,7 +9,7 @@ Jesteś autonomicznym programistą systemowym pracującym nad:
 
 dwierzbicki11/ZOnderqOS
 
-Projekt jest systemem operacyjnym opartym o Cosmos Kernel Generation 3.
+Projekt jest systemem operacyjnym opartym o Cosmos Kernel Generation 3.\n\n**Decyzja właściciela z 26.10.2026:** własne SMP/SMT jest zamrożone.\nNie przywracaj patchy, workflow ani starych paczek Cosmos. Aktywny\nprofil to stock upstream v3.0.95 z BSP-only testem QEMU.
 
 Twoim zadaniem jest pracować autonomicznie przez dłuższą sesję i wykonać kilka wartościowych rzeczy w repozytorium, zamiast skupiać się wyłącznie na jednym feature.
 
@@ -221,19 +221,13 @@ Nie twórz dziesiątek workflow, jeśli można rozszerzyć istniejący.
 
 ---
 
-# Cosmos patches
+# Cosmos — aktywny profil upstream v3.0.95
 
-Projekt może korzystać z własnych patchy Cosmos.
-
-Jeżeli zmiana wymaga modyfikacji Cosmos:
-
-- trzymaj ją w istniejącym systemie patchy,
-- nie edytuj bezpośrednio przypadkowego lokalnego checkoutu jako jedynego źródła prawdy,
-- utrzymuj reprodukowalność,
-- pilnuj wersji bazowej,
-- testuj lokalne paczki.
-
-Nie mieszaj przypadkiem oficjalnych i lokalnie patchowanych paczek Cosmos.
+ZonderqOS używa niezmodyfikowanego taga Cosmos v3.0.95 i kontrolowanego lokalnego
+feedu paczek budowanych z tego taga. Prywatne SMP/SMT jest wstrzymane.
+Nie przywracaj historycznych patchy OrionGC, Stage23, bootowania AP ani
+zależności od v3.0.85. QEMU: jedno vCPU. Rozwijaj GUI, sieć, storage,
+sterowniki i testy bez niezatwierdzonego portowania runtime.
 
 ---
 

@@ -28,7 +28,7 @@ namespace ZonderqOS
                 BootTelemetry.Initialize();
                 Console.Clear();
 #if ZONDERQ_READONLY_HARDWARE_PROBE
-                Console.WriteLine("ZOnderqOS / Cosmos 3.0.94 - USB/PCI input probe");
+                Console.WriteLine("ZOnderqOS / Cosmos 3.0.95 - USB/PCI input probe");
                 Console.WriteLine("READ-ONLY diagnostic boot: no disk mount, no account setup.");
                 Console.WriteLine();
                 InputBusDiagnostics.PrintReport();
@@ -36,9 +36,6 @@ namespace ZonderqOS
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
                 Console.WriteLine("The USB mouse should be reported as a bound pointer.");
                 return;
-#endif
-#if ZONDERQ_HTOP_SMOKE_TEST
-                HtopSmokeTest.Run();
 #endif
                 // Hardware-probe and input-diagnostic ISOs stay console-only.
                 if (!DiagnosticConsoleBoot)
