@@ -21,7 +21,8 @@ DISK="$OUT/services-fat.img"
 # FAT filesystem placed directly on an otherwise unpartitioned block device.
 truncate -s 256M "$DISK"
 printf 'label: dos\nunit: sectors\nstart=2048, type=c\n' | sfdisk "$DISK" > "$OUT/partition.log"
-mkfs.vfat -I -F 32 -h 2048 --offset 2048 "$DISK" > "$OUT/mkfs.log"
+# Exactly the dedicated FAT32 volume label required by DataVolumePolicy.
+mkfs.vfat -I -F 32 -n ZONDERQDATA -h 2048 --offset 2048 "$DISK" > "$OUT/mkfs.log"
 MTOOLS_IMAGE="$DISK@@1048576"
 QEMU_PID=""
 

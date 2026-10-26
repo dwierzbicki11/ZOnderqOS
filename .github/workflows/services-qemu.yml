@@ -1,4 +1,4 @@
-name: Configured services persistent QEMU boot
+name: Configured services persistent QEMU boot (stock Cosmos 3.0.95)
 
 on:
   pull_request:
@@ -7,6 +7,8 @@ on:
       - 'source/Core/SystemIdentity.cs'
       - 'source/Storage/Disk.cs'
       - 'Kernel.cs'
+      - 'ZonderqOS.csproj'
+      - 'tools/build-cosmos-3095-local.sh'
       - 'tools/smoke-services-qemu.sh'
       - '.github/workflows/services-qemu.yml'
   workflow_dispatch:
@@ -17,68 +19,47 @@ permissions:
 jobs:
   persistent-fat-boot:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 110
     steps:
       - uses: actions/checkout@v4
-        with: { path: zonderq }
-      - uses: actions/checkout@v4
-        with:
-          repository: CosmosOS/Cosmos
-          ref: v3.0.85
-          path: cosmos
-          submodules: recursive
       - uses: actions/setup-dotnet@v4
-        with: { dotnet-version: '10.0.x' }
-      - name: Install QEMU, FAT tools and native build dependencies
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install exact-tag Cosmos, QEMU and FAT build prerequisites
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 lld xorriso nasm binutils fdisk dosfstools mtools
-      - name: Build patched Cosmos 3.0.85 through Stage 23
+          sudo apt-get install -y git python3 tar clang lld nasm xorriso binutils \
+            qemu-system-x86 fdisk dosfstools mtools
+      - name: Validate unpatched upstream runtime
+        run: |
+          set -euo pipefail
+          bash run.sh --check
+          bash -n tools/smoke-services-qemu.sh
+      - name: Build stock v3.0.95 disk-backed ISO (no Stage23 patches)
         env:
-          ZONDERQ_COSMOS_SOURCE_ROOT: ${{ github.workspace }}/cosmos
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
         run: |
-          set -o pipefail
-          bash -n zonderq/tools/smoke-services-qemu.sh
-          bash zonderq/tools/prepare-cosmos-smt.sh --through-stage 23 2>&1 | tee zonderq/services-cosmos-build.log
-      - name: Restore project only from patched local Cosmos packages
-        run: |
-          cat > zonderq/NuGet.Config <<EOF
-          <?xml version="1.0" encoding="utf-8"?>
-          <configuration>
-            <packageSources><clear /><add key="local-cosmos" value="${{ github.workspace }}/cosmos/artifacts/package/release" /><add key="nuget.org" value="https://api.nuget.org/v3/index.json" /></packageSources>
-            <packageSourceMapping><packageSource key="local-cosmos"><package pattern="Cosmos.*" /></packageSource><packageSource key="nuget.org"><package pattern="*" /></packageSource></packageSourceMapping>
-          </configuration>
-          EOF
-          mkdir -p "${{ runner.temp }}/zonderq-services-packages"
-      - name: Build real x64 ISO
-        working-directory: zonderq
+          bash tools/build-cosmos-3095-local.sh disk
+          test -s output-3095/ZonderqOS-3095-disk.iso
+      - name: Boot twice with one dedicated ZONDERQDATA FAT32 image (1 vCPU)
         env:
-          NUGET_PACKAGES: ${{ runner.temp }}/zonderq-services-packages
+          SERVICE_QEMU_BOOT_SECONDS: '100'
         run: |
-          set -o pipefail
-          export PATH="$HOME/.dotnet/tools:$PATH"
-          dotnet restore ZonderqOS.csproj -r linux-x64 -p:CosmosArch=x64 --configfile NuGet.Config --force --no-cache 2>&1 | tee services-restore.log
-          cosmos build -a x64 -v 2>&1 | tee services-iso-build.log
-          test -s output-x64/ZonderqOS.iso
-      - name: Boot twice with one writable FAT image
-        working-directory: zonderq
-        run: |
-          set -o pipefail
-          bash tools/smoke-services-qemu.sh output-x64/ZonderqOS.iso services-qemu-output 2>&1 | tee services-qemu-smoke.log
+          bash tools/smoke-services-qemu.sh \
+            output-3095/ZonderqOS-3095-disk.iso services-qemu-output \
+            2>&1 | tee services-qemu-smoke.log
       - name: Diagnostics
         if: always()
-        working-directory: zonderq
         run: |
-          tail -n 250 services-iso-build.log 2>/dev/null || true
           cat services-qemu-smoke.log 2>/dev/null || true
           tail -n 150 services-qemu-output/first.serial.log services-qemu-output/second.serial.log 2>/dev/null || true
           cat services-qemu-output/first.stderr.log services-qemu-output/second.stderr.log 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: services-persistent-qemu-diagnostics
+          name: services-3095-stock-persistent-qemu-diagnostics
           if-no-files-found: ignore
           path: |
-            zonderq/services-*.log
-            zonderq/services-qemu-output/*.log
-            zonderq/services-qemu-output/*.conf
+            services-qemu-smoke.log
+            services-qemu-output/*.log
+            services-qemu-output/*.conf
