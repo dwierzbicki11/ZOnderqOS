@@ -14,9 +14,10 @@ DISCOVERY = re.compile(
 ACPI = re.compile(r"^\[ACPI\] Found (\d+) CPU\(s\)$")
 DENSE = re.compile(r"^\[SMP3095-STAGE2\] cpus=(\d+) dense=0\.\.(\d+) AP_NOT_STARTED$")
 STAGE3 = re.compile(r"^\[SMP3095-STAGE3\] BSP_GS=0 cpus=(\d+) AP_STACKS_RESERVED AP_NOT_STARTED$")
+STAGE4 = re.compile(r"^\[SMP3095-STAGE4\] cpus=(\d+) native_ap_online=(\d+) AP_PARKED MANAGED_OFF$")
 PANIC = re.compile(r"kernel panic|fatal:\s*exception|triple.fault|page fault", re.I)
 
-def validate(log: str, cpus: int, require_dense: bool = False, require_gs: bool = False) -> str:
+def validate(log: str, cpus: int, require_dense: bool = False, require_gs: bool = False, require_native_ap: bool = False) -> str:
     if not 1 <= cpus <= 256:
         raise ValueError("invalid requested CPU count")
     lines = [line.strip() for line in log.replace("\r", "").splitlines()]
@@ -32,6 +33,8 @@ def validate(log: str, cpus: int, require_dense: bool = False, require_gs: bool 
         raise ValueError("invalid BSP APIC ID")
     if not any("[Kernel] Calling Run()..." in s for s in lines):
         raise ValueError("guest did not enter kernel main loop")
+    if require_native_ap:
+        require_gs = True
     if require_gs:
         require_dense = True
         evidence = [m for line in lines if (m := STAGE3.fullmatch(line))]
@@ -45,10 +48,18 @@ def validate(log: str, cpus: int, require_dense: bool = False, require_gs: bool 
             raise ValueError("missing, duplicate or malformed dense CPU topology proof")
         if any("[SMP3095-STAGE2] UNAVAILABLE" in line for line in lines):
             raise ValueError("Stage2 runtime rejected CPU topology")
+    if require_native_ap:
+        ap = [m for line in lines if (m := STAGE4.fullmatch(line))]
+        if len(ap) != 1 or int(ap[0][1]) != cpus or int(ap[0][2]) != cpus - 1:
+            raise ValueError("missing or forged native AP online evidence")
+        if any("[SMP3095-STAGE4] FAIL" in line for line in lines):
+            raise ValueError("Stage4 AP native start failed")
     if any("[SMP3095-STAGE23] PASS" in s for s in lines):
         raise ValueError("unrelated fabricated Stage 23 evidence")
-    stage = 3 if require_gs else 2 if require_dense else 1
-    return f"[SMP3095-STAGE{stage}-GATE] PASS discovery cpus={cpus}; AP_NOT_STARTED"
+    stage = 4 if require_native_ap else 3 if require_gs else 2 if require_dense else 1
+    status = ("native APs online then parked; managed OFF" if require_native_ap
+              else "AP_NOT_STARTED")
+    return f"[SMP3095-STAGE{stage}-GATE] PASS discovery cpus={cpus}; {status}"
 
 def selftest() -> None:
     good = "\n".join((
@@ -97,6 +108,21 @@ def selftest() -> None:
         except ValueError:
             continue
         raise AssertionError(f"accepted forged Stage3 evidence: {gs_bad!r}")
+    ap_good = gs_good + "\n[SMP3095-STAGE4] cpus=8 native_ap_online=7 AP_PARKED MANAGED_OFF"
+    assert "STAGE4-GATE" in validate(ap_good, 8, require_native_ap=True)
+    for ap_bad in (
+        gs_good,
+        ap_good.replace("native_ap_online=7", "native_ap_online=0"),
+        ap_good.replace("STAGE4] cpus=8", "STAGE4] cpus=4"),
+        ap_good.replace(" AP_PARKED MANAGED_OFF", " AP_NOT_STARTED"),
+        ap_good + "\n[SMP3095-STAGE4] cpus=8 native_ap_online=7 AP_PARKED MANAGED_OFF",
+        ap_good + "\n[SMP3095-STAGE4] FAIL AP_TIMEOUT MANAGED_OFF",
+    ):
+        try:
+            validate(ap_bad, 8, require_native_ap=True)
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted forged Stage4 native AP evidence: {ap_bad!r}")
     for case in bad:
         try:
             validate(case, 8)
@@ -112,12 +138,13 @@ if __name__ == "__main__":
     parser.add_argument("--self-test", action="store_true")
     parser.add_argument("--require-dense", action="store_true", help="require native Stage2 0..N-1 mapping proof")
     parser.add_argument("--require-gs", action="store_true", help="require native Stage3 BSP GS and AP stack probe")
+    parser.add_argument("--require-native-ap", action="store_true", help="require actual Stage4 native AP rendezvous proof")
     args = parser.parse_args()
     if args.self_test:
         selftest()
     elif args.log:
         try:
-            print(validate(args.log.read_text(errors="replace"), args.cpus, args.require_dense, args.require_gs))
+            print(validate(args.log.read_text(errors="replace"), args.cpus, args.require_dense, args.require_gs, args.require_native_ap))
         except ValueError as e:
             parser.exit(1, f"[SMP3095-STAGE1-GATE][FAIL] {e}\n")
     else:
