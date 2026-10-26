@@ -8,6 +8,7 @@ on:
       - 'tools/smoke-smp-3095-stage1-qemu.sh'
       - 'tests/verify_3095_native_stage1.py'
       - 'tests/test_3095_runtime_object_reuse.sh'
+      - 'tests/test_3095_project_nuget_cache.py'
       - '.github/workflows/cosmos-3095-smp-stage2.yml'
   workflow_dispatch:
 
@@ -35,6 +36,7 @@ jobs:
           python3 tests/verify_3095_native_stage1.py --self-test
           bash -n tests/test_3095_runtime_object_reuse.sh
           bash tests/test_3095_runtime_object_reuse.sh
+          python3 tests/test_3095_project_nuget_cache.py
           bash -n tools/build-cosmos-3095-local.sh
           bash -n tools/smoke-smp-3095-stage1-qemu.sh
       - name: Install Cosmos build and QEMU dependencies
