@@ -146,3 +146,45 @@ python3 tests/test_3095_project_nuget_cache.py
 A fresh GitHub-hosted CI runner has no retained local workspace by default,
 so separate workflows can still each download the upstream runtime. This
 local-build optimization does not assert cross-run CI cache persistence.
+
+
+## Stage 4: native AP entry and parked rendezvous (experimental, QEMU ONLY)
+
+`ZONDERQ_3095_NATIVE_STAGE4=true` requires Stages 1–3 to be explicitly
+enabled. Stage4 is an independent 3.0.95 exact-tag Cosmos overlay. Its
+native x64 Limine `GotoAddress` entry obtains the already-validated dense
+logical CPU ID from `ExtraArgument`, switches to the reserved 16 KiB AP
+stack, installs its private GS base, publishes a per-CPU ready flag, and
+parks the AP with interrupts disabled (`cli; hlt`).
+
+The BSP checks **each** AP readiness flag by logical CPU ID, rather than
+inferring progress from the ACPI count. A missing AP causes a bounded
+rendezvous failure and a diagnostic halt. A Stage4 parser must see the
+actual guest serial marker
+`[SMP3095-STAGE4] cpus=8 native_ap_online=7 AP_PARKED MANAGED_OFF`
+plus Stage1/2/3 proof and stable QEMU main-loop execution.
+
+This does **not** install an AP IDT or per-AP timers/IPIs, does not run the
+scheduler on APs, does not implement OrionGC stop-the-world, and must
+**never** be interpreted as Stage23 managed SMP or production readiness.
+This native rendezvous has not yet been accepted until the dedicated
+real-QEMU CI run is green. Never flash this experimental ISO onto a
+physical disk or merge Stage4 into `main` without later runtime evidence.
+
+```bash
+cd /mnt/Magazyn/ZOnderqOS
+git switch feat/cosmos-3095-managed-smp-stage23
+git pull --ff-only
+python3 tests/verify_3095_native_stage1.py --self-test
+
+ZONDERQ_3095_NATIVE_STAGE1=true \
+ZONDERQ_3095_NATIVE_STAGE2=true \
+ZONDERQ_3095_NATIVE_STAGE3=true \
+ZONDERQ_3095_NATIVE_STAGE4=true \
+  bash tools/build-cosmos-3095-local.sh probe
+
+ZONDERQ_3095_REQUIRE_NATIVE_AP=true \
+  bash tools/smoke-smp-3095-stage1-qemu.sh \
+    output-3095/ZonderqOS-3095-smp-stage4-probe.iso \
+    smp3095-stage4-8cpu.log 8
+```
