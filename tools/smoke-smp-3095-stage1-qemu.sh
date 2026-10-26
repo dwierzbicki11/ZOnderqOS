@@ -20,6 +20,9 @@ fi
 if [[ "${ZONDERQ_3095_REQUIRE_GS:-false}" == true ]]; then
   gate_flags=(--require-gs)
 fi
+if [[ "${ZONDERQ_3095_REQUIRE_NATIVE_AP:-false}" == true ]]; then
+  gate_flags=(--require-native-ap)
+fi
 command -v qemu-system-x86_64 >/dev/null || { echo "QEMU not installed" >&2; exit 2; }
 mkdir -p "$(dirname "$LOG")"
 : > "$LOG"
@@ -53,7 +56,11 @@ while (( SECONDS < deadline )); do
     sleep 5
     kill -0 "$pid" 2>/dev/null || { echo "[SMP3095-STAGE1][FAIL] guest exited" >&2; exit 1; }
     python3 "$ROOT/tests/verify_3095_native_stage1.py" "$LOG" --cpus "$CPUS" "${gate_flags[@]}"
-    echo "[SMP3095-NATIVE-QEMU] PASS verified topology and 5s stability; APs NOT started"
+    if [[ "${ZONDERQ_3095_REQUIRE_NATIVE_AP:-false}" == true ]]; then
+      echo "[SMP3095-STAGE4-QEMU] PASS native AP rendezvous and 5s stability; APs parked, managed OFF"
+    else
+      echo "[SMP3095-NATIVE-QEMU] PASS verified topology and 5s stability; APs NOT started"
+    fi
     exit 0
   fi
   sleep 1
