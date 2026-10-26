@@ -1,0 +1,86 @@
+name: Cosmos v3.0.95 SMP Stage4 native AP rendezvous
+on:
+  pull_request:
+    paths:
+      - 'tools/port-cosmos-3095-stage1.py'
+      - 'tools/port-cosmos-3095-stage2.py'
+      - 'tools/port-cosmos-3095-stage3.py'
+      - 'tools/port-cosmos-3095-stage4.py'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/smoke-smp-3095-stage1-qemu.sh'
+      - 'tests/verify_3095_native_stage1.py'
+      - 'tests/test_3095_project_nuget_cache.py'
+      - '.github/workflows/cosmos-3095-smp-stage4.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: smp3095-native-stage4-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native-stage4-real-qemu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Exact-tag checks and negative serial gate
+        run: |
+          set -euo pipefail
+          bash tools/verify-cosmos-3095-migration.sh
+          python3 -m py_compile tools/port-cosmos-3095-stage1.py tools/port-cosmos-3095-stage2.py tools/port-cosmos-3095-stage3.py tools/port-cosmos-3095-stage4.py
+          python3 tests/verify_3095_native_stage1.py --self-test
+          python3 tests/test_3095_project_nuget_cache.py
+          bash -n tools/build-cosmos-3095-local.sh
+          bash -n tools/smoke-smp-3095-stage1-qemu.sh
+      - name: Install exact-tag Cosmos and QEMU build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang lld nasm xorriso binutils qemu-system-x86
+      - name: Build Stage4 QEMU-only AP bootstrap probe
+        env:
+          ZONDERQ_3095_NATIVE_STAGE1: 'true'
+          ZONDERQ_3095_NATIVE_STAGE2: 'true'
+          ZONDERQ_3095_NATIVE_STAGE3: 'true'
+          ZONDERQ_3095_NATIVE_STAGE4: 'true'
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/cosmos-3095-smp-stage4
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh probe
+          test -s output-3095/ZonderqOS-3095-smp-stage4-probe.iso
+          sha256sum output-3095/ZonderqOS-3095-smp-stage4-probe.iso
+      - name: QEMU 1 CPU native no-AP regression
+        env:
+          ZONDERQ_3095_REQUIRE_NATIVE_AP: 'true'
+        run: |
+          bash tools/smoke-smp-3095-stage1-qemu.sh \
+            output-3095/ZonderqOS-3095-smp-stage4-probe.iso \
+            smp3095-stage4-1cpu.log 1
+      - name: QEMU 8 CPUs native AP stack/GS online and parked
+        env:
+          ZONDERQ_3095_REQUIRE_NATIVE_AP: 'true'
+        run: |
+          bash tools/smoke-smp-3095-stage1-qemu.sh \
+            output-3095/ZonderqOS-3095-smp-stage4-probe.iso \
+            smp3095-stage4-8cpu.log 8
+      - name: Preserve serial evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smp3095-stage4-native-ap-real-serial
+          if-no-files-found: ignore
+          path: |
+            smp3095-stage4-1cpu.log*
+            smp3095-stage4-8cpu.log*
+      - name: Upload experimental Stage4 ISO for QEMU only
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-stage4-native-ap-QEMU-ONLY
+          path: output-3095/ZonderqOS-3095-smp-stage4-probe.iso
+          retention-days: 3
