@@ -120,3 +120,29 @@ and ISO; when the previously built Stage1 runtime clone contains the
 exact tag's pinned runtime Git commit, it shares its Git object storage
 to avoid re-downloading dotnet/runtime. This dependency is checked,
 never assumed. Stage1 and Stage2 images are not overwritten.
+
+
+## Build cache: avoid redundant Cosmos runtime downloads
+
+Keep `ZONDERQ_3095_WORK_DIR` stable across local builds. The builder retains
+the exact-tag Cosmos checkout, the pinned `dotnet/runtime` Git objects, and
+the locally packaged SDK. Stage2/Stage3 borrow the Stage1 runtime Git objects
+when available; their **patched package feeds remain separate**.
+
+The **project NuGet package cache** is now preserved when the exact-tag
+package stamp and all required packages are unchanged. If upstream packages
+are rebuilt (same version but different overlay), the private project cache
+is discarded before restoring to prevent stale NativeAOT/Cosmos binaries.
+The per-package `.nupkg.metadata` source check still rejects nonlocal Cosmos
+packages. No system-wide NuGet cache, production `main` packages or installed
+SDKs are deleted.
+
+To validate cache behavior without a Cosmos rebuild:
+
+```bash
+python3 tests/test_3095_project_nuget_cache.py
+```
+
+A fresh GitHub-hosted CI runner has no retained local workspace by default,
+so separate workflows can still each download the upstream runtime. This
+local-build optimization does not assert cross-run CI cache persistence.
