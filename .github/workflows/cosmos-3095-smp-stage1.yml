@@ -7,6 +7,7 @@ on:
       - 'tools/smoke-smp-3095-stage1-qemu.sh'
       - 'tests/verify_3095_native_stage1.py'
       - 'tests/test_3095_runtime_submodule_recovery.sh'
+      - 'tests/test_3095_project_nuget_cache.py'
       - 'tools/repair-cosmos-3095-runtime-submodule.sh'
       - '.github/workflows/cosmos-3095-smp-stage1.yml'
       - 'ZonderqOS.csproj'
@@ -38,6 +39,7 @@ jobs:
           bash -n tools/repair-cosmos-3095-runtime-submodule.sh
           bash -n tests/test_3095_runtime_submodule_recovery.sh
           bash tests/test_3095_runtime_submodule_recovery.sh
+          python3 tests/test_3095_project_nuget_cache.py
           bash -n tools/build-cosmos-3095-local.sh
           bash -n tools/smoke-smp-3095-stage1-qemu.sh
       - name: Install independent 3.0.95 build and QEMU dependencies
