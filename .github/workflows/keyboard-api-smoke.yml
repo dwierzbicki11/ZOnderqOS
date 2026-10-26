@@ -1,13 +1,11 @@
-name: Cosmos 3.0.94 KeyEvent API compile
-
+name: Cosmos 3.0.95 keyboard and stock runtime contract
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
       - 'source/Common/CosmosKeyboardApiCompat.cs'
       - 'ZonderqOS.csproj'
       - 'run.sh'
-      - 'tools/verify-cosmos-compat.sh'
       - 'tests/KeyboardApiSmoke/**'
       - '.github/workflows/keyboard-api-smoke.yml'
   pull_request:
@@ -15,32 +13,20 @@ on:
       - 'source/Common/CosmosKeyboardApiCompat.cs'
       - 'ZonderqOS.csproj'
       - 'run.sh'
-      - 'tools/verify-cosmos-compat.sh'
       - 'tests/KeyboardApiSmoke/**'
       - '.github/workflows/keyboard-api-smoke.yml'
   workflow_dispatch:
-
+permissions:
+  contents: read
 jobs:
-  compile:
+  verify:
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        cosmos-version: ['3.0.94']
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-      - name: Validate version-pinned 3.0.94 launcher without downloads or builds
+      - name: Version and keyboard API inputs
         run: |
           set -euo pipefail
-          bash -n run.sh
-          bash -n run-3094.sh
-          bash -n tools/verify-cosmos-compat.sh
-          bash run.sh --help | grep -Fq -- '--download-disk'
-          bash run.sh --check | tee version-check.log
-          grep -Fq 'active SDK, packages, launcher, input API, persistent GUI CI = 3.0.94' version-check.log
-      - name: Build against Cosmos ${{ matrix.cosmos-version }} KeyEvent contract
-        run: |
-          dotnet build tests/KeyboardApiSmoke/KeyboardApiSmoke.csproj -c Release -p:CosmosApiTestVersion=${{ matrix.cosmos-version }} --nologo
+          bash run.sh --check
+          grep -Fq 'CosmosApiTestVersion' tests/KeyboardApiSmoke/KeyboardApiSmoke.csproj
+          grep -Fq '>3.0.95</CosmosApiTestVersion>' tests/KeyboardApiSmoke/KeyboardApiSmoke.csproj
+          # Exact-tag keyboard contract is compiled by cosmos-3095-migration.yml.

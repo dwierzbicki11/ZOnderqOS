@@ -3,6 +3,14 @@
 # This is intentionally separate from the older SMT patch builder.
 set -euo pipefail
 
+# Fail closed: archived AP/SMT experiments must never be enabled here.
+for flag in ZONDERQ_3095_NATIVE_STAGE1 ZONDERQ_3095_NATIVE_STAGE2 ZONDERQ_3095_NATIVE_STAGE3 ZONDERQ_3095_NATIVE_STAGE4 ZONDERQ_COSMOS_ALLOW_UNPINNED; do
+  if [[ "${!flag:-}" == "1" || "${!flag:-}" == "true" ]]; then
+    echo "[3095-BUILD][ERROR] Archived SMP or unpinned runtime flag $flag is forbidden in the stock build." >&2
+    exit 2
+  fi
+done
+
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 VERSION="3.0.95"
 UPSTREAM="https://github.com/CosmosOS/Cosmos.git"
@@ -63,6 +71,8 @@ for package in "${required[@]}"; do
   [[ -s "$FEED/$package.$VERSION.nupkg" ]] || rebuild=1
 done
 if (( rebuild )); then
+  # The private cache is invalid only when the exact-tag packages change.
+  rm -rf -- "$PROJECT_CACHE"
   echo "[3095-BUILD] Building the matching Cosmos SDK/runtime from v$VERSION..."
   (
     cd "$SOURCE"
@@ -102,7 +112,6 @@ cat > "$STAGE/NuGet.Config" <<EOF
 </configuration>
 EOF
 
-rm -rf -- "$PROJECT_CACHE"
 mkdir -p "$PROJECT_CACHE"
 export NUGET_PACKAGES="$PROJECT_CACHE"
 # Use the tooling that was just built from the exact same Cosmos tag.
@@ -113,7 +122,7 @@ export ZONDERQ_PACKAGE_VERSION="$VERSION"
 echo "[3095-BUILD] Restoring only from pinned local Cosmos packages..."
 dotnet restore "$STAGE/ZonderqOS.csproj" \
   -r linux-x64 -p:CosmosArch=x64 \
-  --configfile "$STAGE/NuGet.Config" --force --no-cache
+  --configfile "$STAGE/NuGet.Config"
 
 # Never trust the package version alone: nuget.org published an API-incompatible
 # assembly with the same version. Check EVERY resolved Cosmos package's origin.

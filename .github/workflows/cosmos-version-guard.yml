@@ -1,38 +1,34 @@
-name: Cosmos patched runtime version guard
-
+name: Cosmos 3.0.95 stock upstream and SMP-free guard
 on:
   push:
-    branches: [ main ]
+    branches: [main]
     paths:
-      - ZonderqOS.csproj
-      - run.sh
-      - run-core.sh
-      - tools/prepare-cosmos-smt.sh
-      - tools/verify-cosmos-compat.sh
-      - .github/workflows/smt-stage22.yml
-      - .github/workflows/smt-stage23.yml
-      - .github/workflows/cosmos-version-guard.yml
+      - 'ZonderqOS.csproj'
+      - 'run.sh'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/verify-cosmos-compat.sh'
+      - 'tools/verify-cosmos-3095-migration.sh'
+      - 'tests/test_upstream_smp_disabled.py'
+      - '.github/workflows/cosmos-version-guard.yml'
   pull_request:
     paths:
-      - ZonderqOS.csproj
-      - run.sh
-      - run-core.sh
-      - tools/prepare-cosmos-smt.sh
-      - tools/verify-cosmos-compat.sh
-      - .github/workflows/smt-stage22.yml
-      - .github/workflows/smt-stage23.yml
-      - .github/workflows/cosmos-version-guard.yml
+      - 'ZonderqOS.csproj'
+      - 'run.sh'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/verify-cosmos-compat.sh'
+      - 'tests/test_upstream_smp_disabled.py'
+      - '.github/workflows/cosmos-version-guard.yml'
   workflow_dispatch:
-
+permissions:
+  contents: read
 jobs:
-  validate-patched-cosmos:
+  stock-runtime:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Validate shell guard and SMT launcher syntax
+      - name: Validate launcher and pinned runtime
         run: |
-          bash -n tools/verify-cosmos-compat.sh
-          bash -n run-core.sh
-          bash -n run.sh
-      - name: Enforce SDK/runtime/CI release alignment
-        run: bash tools/verify-cosmos-compat.sh
+          set -euo pipefail
+          bash -n run.sh tools/verify-cosmos-compat.sh tools/verify-cosmos-3095-migration.sh tools/build-cosmos-3095-local.sh
+          bash run.sh --check
+          python3 tests/test_upstream_smp_disabled.py

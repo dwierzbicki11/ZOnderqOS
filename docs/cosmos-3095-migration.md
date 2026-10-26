@@ -1,37 +1,42 @@
-# Cosmos 3.0.95 migration — deliberately unmerged
+# ZonderqOS Gen3: stock Cosmos 3.0.95 / własne SMP wstrzymane (26.10.2026)
 
-This branch is an **integration staging branch**, not a verified bootable release.
-It pins `Cosmos.Sdk`, `Cosmos.Kernel` and `Cosmos.Kernel.System` to **3.0.95**
-in `ZonderqOS.csproj`. Do **not** merge or deploy to physical disks yet.
+**Status:** kod własnego SMP/SMT został usunięty z aktywnego drzewa.
+Pełne źródła i historię zachowano w gałęzi
+[`archive/smp-paused-2026-10-26`](https://github.com/dwierzbicki11/ZOnderqOS/tree/archive/smp-paused-2026-10-26)
+(commit `596067d498472b2611a678eefe257a1a48a3375d`).
 
-## Required follow-up gates
+## Zasady
 
-1. Confirm the upstream `CosmosOS/Cosmos` tag `v3.0.95` and package origins.
-   Never resolve SDK 3.0.95 against runtime 3.0.94 or legacy 3.0.85.
-2. Migrate the *whole* isolated build and packaging chain
-   (`tools/build-cosmos-3094-local.sh`, `run-3094.sh`, version compatibility
-   guards, dedicated CI, keyboard smoke tests) to an exact-tag 3.0.95 toolchain.
-   Keep the 3.0.94 path available for rollback until 3.0.95 is proven.
-3. Pass actual x64 and ARM64 C# compilation, verify USB HID/xHCI and keyboard
-   input APIs, storage safety guards, QEMU boot and two-boot persistence.
-4. Validate managed SMP/OrionGC Stage 23 independently; passing a version guard
-   is not proof of SMP behavior.
-5. Rebase the isolated E1000E N1 QEMU proof from PR #189 only after the
-   3.0.95 build path works. Require real serial MAC/link evidence. Do not
-   claim DHCP or IP assignment from PCI enumeration or link state.
-6. Keep production `CosmosEnableNetwork=false`; never write Kali EFI
-   or mount arbitrary FAT32 partitions. Test bare metal only after CI is green.
+- Projekt i dwa bezpośrednie pakiety są przypięte do `Cosmos.Sdk/3.0.95`;
+  pakiety kompilowane są wyłącznie z oryginalnego taga `CosmosOS/Cosmos/v3.0.95`,
+  z kontrolą źródła pakietów NuGet.
+- **Nie aplikujemy** `patches/cosmos-smt/`, `patches/cosmos-3094/`, overlay
+  Stage1–4 ani prywatnego schedulera/OrionGC. Aktywny projekt korzysta
+  z *niezmodyfikowanego* upstream runtime.
+- `CosmosEnableScheduler=true` zostaje — scheduler jedno-CPU jest potrzebny
+  zwykłym wątkom; nie oznacza, że mamy własne SMP.
+- QEMU używa bezwarunkowo **jednego vCPU** (`-smp 1`).
+  Przez to test nie dowodzi gotowości SMP ani SMT.
+- Na fizycznym sprzęcie nie startujemy AP przez nasz kod. To **nie jest dowód**,
+  że upstream nie uruchomi innych procesorów w innych konfiguracjach.
+- Nie instalujemy jeszcze na dysku: trwa weryfikacja boot / USB / storage /
+  GUI oraz persystencji po migracji 3.0.95. Nie dotykać EFI hosta.
 
-The 3.0.94-specific verification workflow and scripts are intentionally
-unchanged in this first commit. They are **expected to fail or be inapplicable**
-when pointed at the 3.0.95 project: do not paper over those failures by
-removing version assertions.
+## Budowanie i testowanie
 
-## Current result
+```bash
+git switch main
+git pull --ff-only
+./run.sh --check
+./run.sh --build-probe       # stock Cosmos v3.0.95, izolowany cache
+./run.sh --qemu              # 1 vCPU
+./run.sh --build            # GUI ISO; wymaga osobnego FAT32 ZONDERQDATA
+```
 
-- [x] Isolated migration branch created from main.
-- [x] SDK / two direct package versions updated in project.
-- [ ] Exact 3.0.95 package build and provenance audit.
-- [ ] Full build/CI and launcher migration.
-- [ ] Real QEMU and hardware results.
-- [ ] Merge approved.
+`--qemu` nie buduje automatycznie ani nie modyfikuje dysków.
+Artefakt read-only z GitHub Actions służy do diagnostyki, a nie do instalacji.
+Wszelkie istniejące obrazy ISO w folderach output ze starych wersji należy
+traktować jako **stare** i nie używać zamiast 3.0.95.
+
+**Powrót do SMP:** tylko po oficjalnej obsłudze upstream przez Cosmos i po
+osobnym dowodzie kompilacji, QEMU, GC/Thread i testów na realnym sprzęcie.
