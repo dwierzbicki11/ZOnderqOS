@@ -23,6 +23,8 @@ assert re.search(r"(?<!\w)-smp\s+1(?!\w)", launcher), "QEMU needs exactly 1 vCPU
 assert 'build-cosmos-3095-local.sh' in launcher
 assert 'prepare-cosmos-smt.sh' not in launcher
 cmd = (ROOT / "source/Shell/Commands/CmdSmtCheck.cs").read_text()
+assert "HtopSmokeTest" not in (ROOT / "Kernel.cs").read_text()
+assert "ZONDERQ_HTOP_SMOKE_TEST" not in project
 assert "[SMTCHECK] DISABLED" in cmd
 assert "PASS: scheduler" not in cmd
 assert 'VERSION="3.0.95"' in builder
