@@ -62,6 +62,11 @@ internal static partial class CpuLocal
     internal static uint CurrentCpuId =>
         Volatile.Read(ref s_initialized) == 0 ? 0 : NativeGetCurrentCpuId();
 
+    // A zero ID alone is not proof: CurrentCpuId falls back to BSP (0)
+    // before GS has been installed. The Stage3 gate must reject that case.
+    internal static bool IsBspGsInitialized =>
+        Volatile.Read(ref s_initialized) != 0 && NativeGetCurrentCpuId() == 0;
+
     internal static bool ValidateApStacks(uint cpuCount)
     {
         if (cpuCount == 0 || cpuCount > 256)
@@ -87,6 +92,7 @@ internal static partial class CpuLocal
 #else
     internal static bool InitializeBsp() => true;
     internal static uint CurrentCpuId => 0;
+    internal static bool IsBspGsInitialized => true;
     internal static bool ValidateApStacks(uint cpuCount) => cpuCount > 0;
 #endif
 }
@@ -157,7 +163,7 @@ INIT_NEW = r'''        if (InterruptManager.IsEnabled)
 HAL_PROOF = r'''
         // AP stacks are reserved, but must not be used before Stage4.
         if (LimineMp.TryValidateX64(out ulong gsCount, out _) &&
-            CpuLocal.CurrentCpuId == 0 &&
+            CpuLocal.IsBspGsInitialized &&
             CpuLocal.ValidateApStacks((uint)gsCount))
         {
             Serial.WriteString("[SMP3095-STAGE3] BSP_GS=0 cpus=");
