@@ -17,14 +17,14 @@ namespace ZonderqOS.SystemCore
 
         internal static uint CurrentThreadId()
         {
-            // The unpatched v3.0.94 test release runs on its BSP.
+            // The unpatched v3.0.95 test release runs on its BSP.
             return SchedulerDiagnostics.TryGetCurrentThread(0, out KernelThreadInfo thread)
                 ? thread.Id : uint.MaxValue;
         }
 
         internal static void EnableCurrentManagedPreemption()
         {
-            // Stock v3.0.94 scheduler owns preemption; private Stage-23
+            // Stock v3.0.95 scheduler owns preemption; private Stage-23
             // managed-AP entry is not present and must not be called.
         }
     }

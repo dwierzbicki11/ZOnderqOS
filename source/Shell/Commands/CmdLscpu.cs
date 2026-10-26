@@ -24,6 +24,7 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("Core(s):                  " + h.PhysicalCores);
             CommandIO.WriteLine("Thread(s) per core:       " + h.ThreadsPerCore);
             CommandIO.WriteLine("Scheduler:                " + h.SchedulerName);
+            CommandIO.WriteLine("Custom SMP/SMT:           disabled (upstream Cosmos 3.0.95)");
             CommandIO.WriteLine("Scheduler thread slots:   " + h.SchedulerThreadSlots);
             CommandIO.WriteLine("Base MHz:                 " + ValueOrUnknown(h.BaseMHz));
             CommandIO.WriteLine("Max MHz:                  " + ValueOrUnknown(h.MaxMHz));

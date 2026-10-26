@@ -7,6 +7,7 @@ obsolete = (
     "patches/cosmos-smt", "patches/cosmos-3094",
     "tools/prepare-cosmos-smt.sh", "tools/verify-smt-local.sh",
     "run-3094.sh", "run-core.sh",
+    "source/Core/HtopSmokeTest.cs",
     ".github/workflows/smt-stage22.yml",
     ".github/workflows/smt-stage23.yml",
 )
@@ -21,6 +22,9 @@ assert "<CosmosEnableScheduler>true</CosmosEnableScheduler>" in project
 assert re.search(r"(?<!\w)-smp\s+1(?!\w)", launcher), "QEMU needs exactly 1 vCPU"
 assert 'build-cosmos-3095-local.sh' in launcher
 assert 'prepare-cosmos-smt.sh' not in launcher
+cmd = (ROOT / "source/Shell/Commands/CmdSmtCheck.cs").read_text()
+assert "[SMTCHECK] DISABLED" in cmd
+assert "PASS: scheduler" not in cmd
 assert 'VERSION="3.0.95"' in builder
 assert 'ZONDERQ_3095_NATIVE_STAGE4' in builder, "stage4 must be rejected"
 assert "--force --no-cache" not in builder, "NuGet cache must be reusable"
