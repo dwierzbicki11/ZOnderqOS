@@ -923,17 +923,39 @@ namespace ZonderqOS.GUI.Apps
 
         private void Sort()
         {
-            for (int i = 1; i < entries.Count; i++)
+            // A large directory used to freeze the GUI with insertion sort
+            // (quadratic comparisons). Stable bottom-up merge sort avoids
+            // recursion and does not depend on Cosmos List<T>.Sort support.
+            int count = entries.Count;
+            if (count < 2)
+                return;
+
+            FileEntry[] scratch = new FileEntry[count];
+            for (int run = 1; run < count; run = run > count / 2 ? count : run * 2)
             {
-                FileEntry value = entries[i];
-                int j = i - 1;
-                while (j >= 0 && Compare(entries[j], value) > 0)
+                int start = 0;
+                while (start < count)
                 {
-                    entries[j + 1] = entries[j];
-                    j--;
+                    int middle = Math.Min(count, start + run);
+                    int end = Math.Min(count, middle + run);
+                    int left = start;
+                    int right = middle;
+
+                    for (int write = start; write < end; write++)
+                    {
+                        // Equal names retain their original order.
+                        if (left < middle && (right >= end ||
+                            Compare(entries[left], entries[right]) <= 0))
+                            scratch[write] = entries[left++];
+                        else
+                            scratch[write] = entries[right++];
+                    }
+
+                    start = end;
                 }
 
-                entries[j + 1] = value;
+                for (int i = 0; i < count; i++)
+                    entries[i] = scratch[i];
             }
         }
 
