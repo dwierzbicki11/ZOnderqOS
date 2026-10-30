@@ -16,6 +16,19 @@ namespace ZonderqOS.GUI
         private const int CardHeight = 82;
         private const int CardGap = 7;
 
+        // The list ends 72px above the panel bottom and begins at Y+130.
+        // Eight cards do not fit at 800x600; use the same row count for
+        // painting, hit testing and keyboard selection/scrolling.
+        private int VisibleRowCount
+        {
+            get
+            {
+                int availableHeight = System.Math.Max(0, Height - 130 - 72);
+                int rows = (availableHeight + CardGap) / (CardHeight + CardGap);
+                return System.Math.Max(1, System.Math.Min(VisibleRows, rows));
+            }
+        }
+
         private static readonly string[] FilterLabels = { "WSZYSTKIE", "NIEPRZECZYTANE", "WAZNE" };
         private static readonly Color Background = Color.FromArgb(20, 25, 31);
         private static readonly Color Header = Color.FromArgb(27, 34, 42);
@@ -331,7 +344,7 @@ namespace ZonderqOS.GUI
             int cardWidth = Width - 28;
             int cardX = X + 14;
 
-            for (int row = 0; row < VisibleRows; row++)
+            for (int row = 0; row < VisibleRowCount; row++)
             {
                 int visibleIndex = offset + row;
                 int cy = startY + row * (CardHeight + CardGap);
@@ -465,7 +478,7 @@ namespace ZonderqOS.GUI
             int startY = Y + 130;
             int cardWidth = Width - 28;
             int cardX = X + 14;
-            for (int row = 0; row < VisibleRows; row++)
+            for (int row = 0; row < VisibleRowCount; row++)
             {
                 int visibleIndex = offset + row;
                 if (visibleIndex >= visibleCount)
@@ -559,10 +572,10 @@ namespace ZonderqOS.GUI
         {
             if (selectedIndex < offset)
                 offset = selectedIndex;
-            else if (selectedIndex >= offset + VisibleRows)
-                offset = selectedIndex - VisibleRows + 1;
+            else if (selectedIndex >= offset + VisibleRowCount)
+                offset = selectedIndex - VisibleRowCount + 1;
 
-            int maxOffset = System.Math.Max(0, visibleCount - VisibleRows);
+            int maxOffset = System.Math.Max(0, visibleCount - VisibleRowCount);
             if (offset > maxOffset)
                 offset = maxOffset;
             if (offset < 0)
