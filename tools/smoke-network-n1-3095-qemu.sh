@@ -11,9 +11,15 @@ PCAP="${NET3095_N1_PCAP:-$LOG.pcap}"
 }
 [[ -s "$ISO" ]] || { echo "[NET3095-N1][FAIL] Missing ISO" >&2; exit 1; }
 command -v qemu-system-x86_64 >/dev/null || exit 1
+# Fail closed: do not follow symlinks or erase an existing capture.
+[[ ! -L "$LOG" && ! -L "$LOG.stderr" ]] || {
+  echo "[NET3095-N1][FAIL] Refusing symlinked serial output" >&2; exit 1;
+}
+[[ ! -e "$PCAP" && ! -L "$PCAP" ]] || {
+  echo "[NET3095-N1][FAIL] Refusing to overwrite existing PCAP" >&2; exit 1;
+}
 mkdir -p "$(dirname "$LOG")" "$(dirname "$PCAP")"
 : > "$LOG"
-rm -f -- "$PCAP"
 qemu-system-x86_64 \
   -machine q35 -cpu Nehalem -smp 1 -m 2048M \
   -boot d -cdrom "$ISO" \
