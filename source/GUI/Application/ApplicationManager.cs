@@ -59,7 +59,10 @@ namespace ZonderqOS.GUI.Apps
             if (application == null || !application.IsRunning || application.Window == null)
                 return;
 
-            application.Window.RestoreFromMinimized();
+            // Focusing an already-visible window must not restart its opening
+            // animation or reset its layout on every mouse click.
+            if (application.Window.IsMinimized)
+                application.Window.RestoreFromMinimized();
             applications.Remove(application);
             applications.Add(application);
             SetActiveStates(application);
@@ -72,7 +75,7 @@ namespace ZonderqOS.GUI.Apps
 
             if (application.Window.IsMinimized)
             {
-                application.Window.RestoreFromMinimized();
+                // Activate performs the restore exactly once.
                 Activate(application);
                 return;
             }
