@@ -29,6 +29,8 @@
     <ZonderqNetworkN1Probe Condition="'$(ZonderqNetworkN1Probe)' == ''">false</ZonderqNetworkN1Probe>
     <!-- N2 runs DHCP only after the N1 raw TX proof, in the same QEMU-only kernel. -->
     <ZonderqNetworkN2Dhcp Condition="'$(ZonderqNetworkN2Dhcp)' == ''">false</ZonderqNetworkN2Dhcp>
+    <ZonderqNetworkN3Icmp Condition="'$(ZonderqNetworkN3Icmp)' == ''">false</ZonderqNetworkN3Icmp>
+    <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(ZonderqNetworkN2Dhcp)' == 'true' and '$(ZonderqNetworkN3Icmp)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N3_ICMP</DefineConstants>
     <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(ZonderqNetworkN2Dhcp)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N2_DHCP</DefineConstants>
     <CosmosEnableNetwork Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">true</CosmosEnableNetwork>
     <CosmosKernelClass Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">ZonderqOS.NetworkN1ProbeKernel</CosmosKernelClass>
@@ -119,6 +121,8 @@
   <Target Name="GuardNetworkN1Probe" BeforeTargets="CoreCompile">
     <Error Condition="'$(ZonderqNetworkN2Dhcp)' == 'true' and '$(ZonderqNetworkN1Probe)' != 'true'"
            Text="Network N2 DHCP proof requires the isolated N1 probe." />
+    <Error Condition="'$(ZonderqNetworkN3Icmp)' == 'true' and '$(ZonderqNetworkN2Dhcp)' != 'true'"
+           Text="Network N3 ICMP proof requires the isolated N2 DHCP probe." />
     <Error Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' != 'x64'"
            Text="Network N1 probe is x64-only." />
     <Error Condition="'$(ZonderqNetworkN1Probe)' == 'true' and ('$(ZonderqRamRoot)' == 'true' or '$(ZonderqReadOnlyHardwareProbe)' == 'true' or '$(ZonderqInputDiagnosticBoot)' == 'true')"
