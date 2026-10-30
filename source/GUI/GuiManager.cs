@@ -297,8 +297,18 @@ namespace ZonderqOS.GUI
 
                     if (!paletteCaptured && !notificationCaptured)
                     {
-                        applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
-                            currentRightButtonState, previousRightButtonState);
+                        // Overlay menus own clicks inside their bounds. Dispatching
+                        // to the application first would also click the obscured
+                        // window (including destructive File Manager actions).
+                        bool startMenuCaptures = startMenu.Visible &&
+                            mouseX >= startMenu.X && mouseX < startMenu.X + startMenu.Width &&
+                            mouseY >= startMenu.Y && mouseY < startMenu.Y + startMenu.Height;
+                        bool desktopMenuCaptures = desktopContextMenu != null && desktopContextMenu.Visible &&
+                            mouseX >= desktopContextMenu.X && mouseX < desktopContextMenu.X + desktopContextMenu.Width &&
+                            mouseY >= desktopContextMenu.Y && mouseY < desktopContextMenu.Y + desktopContextMenu.Height;
+                        if (!startMenuCaptures && !desktopMenuCaptures)
+                            applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
+                                currentRightButtonState, previousRightButtonState);
                         startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
 
                         // A lock requested from Start must take over before the taskbar or desktop
