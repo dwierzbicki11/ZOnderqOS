@@ -210,6 +210,54 @@ namespace ZonderqOS
                     return;
                 }
 #endif
+#if ZONDERQ_NETWORK_N6_HTTP
+                // N6 proves HTTP/1.0 request/response over a second TCP socket.
+                // This is deliberately cleartext HTTP, not HTTPS/TLS.
+                Log("[NET3095-N6] HTTP_ATTEMPT=START");
+                try
+                {
+                    using (var http = new System.Net.Sockets.TcpClient())
+                    {
+                        http.Connect(System.Net.IPAddress.Parse("10.0.2.2"), 18096);
+                        http.Client.ReceiveTimeout = 5000;
+                        http.Client.SendTimeout = 5000;
+                        System.Net.Sockets.NetworkStream stream = http.GetStream();
+                        byte[] request = System.Text.Encoding.ASCII.GetBytes(
+                            "GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n\r\n");
+                        byte[] expected = System.Text.Encoding.ASCII.GetBytes(
+                            "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 20\r\nConnection: close\r\n\r\nZONDERQ3095-HTTP-OK\n");
+                        stream.Write(request, 0, request.Length);
+                        byte[] response = new byte[expected.Length];
+                        int received = 0;
+                        while (received < response.Length)
+                        {
+                            int read = stream.Read(response, received, response.Length - received);
+                            if (read <= 0)
+                                break;
+                            received += read;
+                        }
+                        if (received != expected.Length)
+                        {
+                            Log("[NET3095-N6][FAIL] HTTP response truncated");
+                            return;
+                        }
+                        for (int i = 0; i < expected.Length; i++)
+                        {
+                            if (response[i] != expected[i])
+                            {
+                                Log("[NET3095-N6][FAIL] HTTP status/headers/body mismatch");
+                                return;
+                            }
+                        }
+                        Log("[NET3095-N6] HTTP=PASS from=10.0.2.2 port=18096 bytes=" + received);
+                    }
+                }
+                catch (Exception httpException)
+                {
+                    Log("[NET3095-N6][FAIL] HTTP exception " + httpException.GetType().Name);
+                    return;
+                }
+#endif
             }
             catch (Exception ex)
             {
