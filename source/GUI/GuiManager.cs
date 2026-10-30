@@ -300,9 +300,18 @@ namespace ZonderqOS.GUI
                         // Overlay menus own clicks inside their bounds. Dispatching
                         // to the application first would also click the obscured
                         // window (including destructive File Manager actions).
-                        bool startMenuCaptures = startMenu.Visible &&
+                        bool startMenuWasVisible = startMenu.Visible;
+                        bool startMenuInside = startMenuWasVisible &&
                             mouseX >= startMenu.X && mouseX < startMenu.X + startMenu.Width &&
                             mouseY >= startMenu.Y && mouseY < startMenu.Y + startMenu.Height;
+                        // Clicking outside Start dismisses it, but must not
+                        // click a window or desktop shortcut underneath.
+                        // Taskbar clicks still work, including Start toggling.
+                        bool startMenuOutsideClick = startMenuWasVisible && !startMenuInside &&
+                            currentLeftButtonState && !previousLeftButtonState && mouseY < taskbar.Y;
+                        bool startMenuCaptures = startMenuInside || startMenuOutsideClick;
+                        if (startMenuOutsideClick)
+                            startMenu.Visible = false;
                         // Handle the desktop menu before applications, regardless of
                         // whether desktop shortcuts are enabled. A click outside an
                         // open menu dismisses it without also activating a hidden
