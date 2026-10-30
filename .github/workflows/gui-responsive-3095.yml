@@ -1,0 +1,25 @@
+name: ZonderqOS Gen3 responsive GUI contract (Cosmos 3.0.95)
+
+on:
+  pull_request:
+    paths:
+      - 'source/GUI/**'
+      - 'ZonderqOS.csproj'
+      - 'tests/test_3094_responsive_gui.py'
+      - 'tests/test_3094_storage_policy.py'
+      - '.github/workflows/gui-responsive-3095.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  responsive-gui-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate 3.0.95 GUI layout and desktop bounds (source/math only)
+        run: python3 tests/test_3094_responsive_gui.py
+      - name: Preserve protected FAT32 storage policy
+        run: python3 tests/test_3094_storage_policy.py
