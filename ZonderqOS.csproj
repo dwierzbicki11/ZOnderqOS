@@ -32,8 +32,10 @@
     <ZonderqNetworkN3Icmp Condition="'$(ZonderqNetworkN3Icmp)' == ''">false</ZonderqNetworkN3Icmp>
     <ZonderqNetworkN4Tcp Condition="'$(ZonderqNetworkN4Tcp)' == ''">false</ZonderqNetworkN4Tcp>
     <ZonderqNetworkN5Dns Condition="'$(ZonderqNetworkN5Dns)' == ''">false</ZonderqNetworkN5Dns>
+    <ZonderqNetworkN6Http Condition="'$(ZonderqNetworkN6Http)' == ''">false</ZonderqNetworkN6Http>
     <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(ZonderqNetworkN2Dhcp)' == 'true' and '$(ZonderqNetworkN3Icmp)' == 'true' and '$(ZonderqNetworkN4Tcp)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N4_TCP</DefineConstants>
     <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(ZonderqNetworkN2Dhcp)' == 'true' and '$(ZonderqNetworkN3Icmp)' == 'true' and '$(ZonderqNetworkN4Tcp)' == 'true' and '$(ZonderqNetworkN5Dns)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N5_DNS</DefineConstants>
+    <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(ZonderqNetworkN2Dhcp)' == 'true' and '$(ZonderqNetworkN3Icmp)' == 'true' and '$(ZonderqNetworkN4Tcp)' == 'true' and '$(ZonderqNetworkN5Dns)' == 'true' and '$(ZonderqNetworkN6Http)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N6_HTTP</DefineConstants>
     <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(ZonderqNetworkN2Dhcp)' == 'true' and '$(ZonderqNetworkN3Icmp)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N3_ICMP</DefineConstants>
     <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(ZonderqNetworkN2Dhcp)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N2_DHCP</DefineConstants>
     <CosmosEnableNetwork Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">true</CosmosEnableNetwork>
@@ -129,6 +131,8 @@
            Text="Network N3 ICMP proof requires the isolated N2 DHCP probe." />
     <Error Condition="'$(ZonderqNetworkN4Tcp)' == 'true' and '$(ZonderqNetworkN3Icmp)' != 'true'"
            Text="Network N4 TCP proof requires the isolated N3 ICMP probe." />
+    <Error Condition="'$(ZonderqNetworkN6Http)' == 'true' and '$(ZonderqNetworkN5Dns)' != 'true'"
+           Text="Network N6 HTTP proof requires the isolated N5 DNS probe." />
     <Error Condition="'$(ZonderqNetworkN5Dns)' == 'true' and '$(ZonderqNetworkN4Tcp)' != 'true'"
            Text="Network N5 DNS proof requires the isolated N4 TCP probe." />
     <Error Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' != 'x64'"
