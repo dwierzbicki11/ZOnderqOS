@@ -184,6 +184,32 @@ namespace ZonderqOS
                     return;
                 }
 #endif
+#if ZONDERQ_NETWORK_N5_DNS
+                // Query the built-in QEMU SLIRP DNS proxy. The 'localhost'
+                // answer is deterministic on the CI host, so this proof
+                // needs no external DNS connectivity or privileged listener.
+                Log("[NET3095-N5] DNS_ATTEMPT=START");
+                try
+                {
+                    using (var dns = new DnsClient())
+                    {
+                        dns.Connect(new Address4(10, 0, 2, 3));
+                        dns.SendQuery("localhost");
+                        Address answer = dns.Receive(5000);
+                        if (answer == null || answer.ToString() != "127.0.0.1")
+                        {
+                            Log("[NET3095-N5][FAIL] DNS response missing or unexpected");
+                            return;
+                        }
+                        Log("[NET3095-N5] DNS=PASS host=localhost ip=127.0.0.1 server=10.0.2.3");
+                    }
+                }
+                catch (Exception dnsException)
+                {
+                    Log("[NET3095-N5][FAIL] DNS exception " + dnsException.GetType().Name);
+                    return;
+                }
+#endif
             }
             catch (Exception ex)
             {
