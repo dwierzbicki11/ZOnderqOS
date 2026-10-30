@@ -17,8 +17,8 @@ UPSTREAM="https://github.com/CosmosOS/Cosmos.git"
 WORK_ROOT="${ZONDERQ_3095_WORK_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/zonderqos-cosmos-3095}"
 MODE="${1:-disk}"
 case "$MODE" in
-  disk|probe) ;;
-  *) echo "[3095-BUILD][ERROR] Expected disk or probe" >&2; exit 2 ;;
+  disk|probe|network-n1) ;;
+  *) echo "[3095-BUILD][ERROR] Expected disk, probe or network-n1" >&2; exit 2 ;;
 esac
 if [[ $# -gt 1 ]]; then
   echo "[3095-BUILD][ERROR] Unexpected additional arguments" >&2
@@ -159,12 +159,20 @@ case "$MODE" in
   disk)
     read_only=false
     diagnostic=false
+    network_n1=false
     output_file="ZonderqOS-3095-disk.iso"
     ;;
   probe)
     read_only=true
     diagnostic=true
+    network_n1=false
     output_file="ZonderqOS-3095-usb.iso"
+    ;;
+  network-n1)
+    read_only=false
+    diagnostic=false
+    network_n1=true
+    output_file="ZonderqOS-3095-network-n1.iso"
     ;;
 esac
 echo "[3095-BUILD] Publishing $MODE x64 ISO (no older Cosmos versions, no RAM root)..."
@@ -174,6 +182,7 @@ dotnet publish "$STAGE/ZonderqOS.csproj" \
   -p:ZonderqReadOnlyHardwareProbe="$read_only" \
   -p:ZonderqInputDiagnosticBoot="$diagnostic" \
   -p:ZonderqRamRoot=false \
+  -p:ZonderqNetworkN1Probe="$network_n1" \
   -o "$output" --no-restore
 
 [[ -s "$output/ZonderqOS.iso" ]] || die "Publish finished without an ISO."
@@ -184,4 +193,8 @@ sha256sum "$ROOT/output-3095/$output_file"
 if [[ "$MODE" == disk ]]; then
   echo "[3095-BUILD] WARNING: The full GUI needs its own approved FAT32 ZONDERQDATA volume."
   echo "[3095-BUILD] Never format or mount Kali's EFI partition as ZONDERQDATA."
+fi
+
+if [[ "$MODE" == network-n1 ]]; then
+  echo "[3095-BUILD] Isolated QEMU NIC probe only; not production networking."
 fi
