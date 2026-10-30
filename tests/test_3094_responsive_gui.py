@@ -40,16 +40,16 @@ def visible_rows(window_height, list_top, bottom_offset, row_height, row_gap):
 
 class ResponsiveGui3094(unittest.TestCase):
     def test_sdk_version_still_pinned(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', PROJECT)
-        self.assertIn('Version="3.0.94"', PROJECT)
-        self.assertIn('"3.0.94", Good', SETTINGS)
-        self.assertNotIn('"3.0.82", Good', SETTINGS)
+        self.assertIn('Sdk="Cosmos.Sdk/3.0.95"', PROJECT)
+        self.assertIn('Version="3.0.95"', PROJECT)
+        self.assertIn('"3.0.95", Good', SETTINGS)
+        self.assertNotIn('"3.0.94", Good', SETTINGS)
 
     def test_window_fit_does_not_fake_actual_display_resolution(self):
-        self.assertIn("desktopWidth - Width", WINDOW)
+        self.assertIn("desktopWidth - Width - margin", WINDOW)
         self.assertIn("desktopHeight - Height - margin", WINDOW)
-        self.assertIn("System.Math.Min(Width, desktopWidth - margin * 2)", WINDOW)
-        self.assertIn("System.Math.Min(Height, desktopHeight - margin * 2)", WINDOW)
+        self.assertIn("System.Math.Min(Width, availableWidth)", WINDOW)
+        self.assertIn("System.Math.Min(Height, availableHeight)", WINDOW)
         self.assertIn("int margin = desktopWidth >= 1000 && desktopHeight >= 700 ? 12 : 0;", WINDOW)
         self.assertIn("DisplayModeSelector.OpenNativeOrBest()", DESKTOP)
         self.assertIn("MouseManager.SetScreenSize(canvas.Width, canvas.Height)", DESKTOP)
@@ -59,6 +59,29 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertGreaterEqual(y, 0)
             self.assertLessEqual(x + w, width)
             self.assertLessEqual(y + h, height - 44)
+
+    def test_window_restore_and_resize_stay_within_desktop(self):
+        self.assertIn("private void ConstrainToDesktop()", WINDOW)
+        self.assertGreaterEqual(WINDOW.count("ConstrainToDesktop();"), 3)
+        self.assertIn("int maxWidth = System.Math.Max(1, desktopWidth - resizeStartX);", WINDOW)
+        self.assertIn("int maxHeight = System.Math.Max(1, desktopHeight - resizeStartY);", WINDOW)
+        self.assertIn("int minWidth = System.Math.Min(MinWidth, maxWidth);", WINDOW)
+        self.assertIn("int minHeight = System.Math.Min(MinHeight, maxHeight);", WINDOW)
+
+        # Restoring a window saved at FHD must not leave it off-screen at 800x600.
+        for screen_width, screen_height in ((800, 600), (1366, 768), (1920, 1080)):
+            x, y, width, height = fit_window(1550, 700, 1080, 720, screen_width, screen_height)
+            self.assertGreaterEqual(x, 0)
+            self.assertGreaterEqual(y, 0)
+            self.assertLessEqual(x + width, screen_width)
+            self.assertLessEqual(y + height, screen_height - 44)
+
+            for start_x in (0, 50, screen_width - 320):
+                max_width = max(1, screen_width - start_x)
+                min_width = min(320, max_width)
+                for delta in (-1000, 0, 1000):
+                    resized_width = max(min_width, min(500 + delta, max_width))
+                    self.assertLessEqual(start_x + resized_width, screen_width)
 
     def test_start_menu_stays_inside_800x600(self):
         self.assertIn("System.Math.Min(560", DESKTOP)
