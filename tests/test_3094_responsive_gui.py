@@ -232,6 +232,37 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertLessEqual(x + menu_w + 4, width)
             self.assertLessEqual(y + menu_h + 24 + 4, height)
 
+    def test_file_manager_selection_survives_viewport_resize(self):
+        update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
+            "public override void HandleMouse(", 1)[0]
+        selection = FILE_MANAGER.split("private void EnsureSelectionVisible()", 1)[1].split(
+            "private void GoUp()", 1)[0]
+        self.assertIn("view.Width != previousViewWidth || view.Height != previousViewHeight", update)
+        self.assertIn("EnsureSelectionVisible();", update)
+        self.assertIn("if (selectedIndex >= 0)", selection)
+
+        # Model the selection/scroll math on a narrow and a wide client.
+        for columns, rows in ((1, 1), (2, 4), (5, 4)):
+            count = 40
+            visible = columns * rows
+            for selected in (-1, 0, 13, 39):
+                scroll = 28
+                if selected >= 0:
+                    if selected < scroll:
+                        scroll = selected
+                    elif selected >= scroll + visible:
+                        scroll = selected - visible + columns
+                scroll -= scroll % columns
+                scroll = max(0, scroll)
+                maximum = max(0, count - visible)
+                if scroll > maximum:
+                    scroll = max(0, maximum - maximum % columns)
+                self.assertGreaterEqual(scroll, 0)
+                self.assertLessEqual(scroll, maximum)
+                if selected >= 0:
+                    self.assertLessEqual(scroll, selected)
+                    self.assertLess(selected, scroll + visible)
+
     def test_failed_unmount_preserves_file_manager_location(self):
         unmount = FILE_MANAGER.split("private void UnmountVolume(", 1)[1].split(
             "private static bool IsInsidePath(", 1)[0]
