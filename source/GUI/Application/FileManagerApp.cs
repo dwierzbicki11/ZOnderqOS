@@ -548,8 +548,21 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            if (key.Key == ConsoleKeyEx.PageUp)
+            {
+                SelectPage(-1);
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.PageDown)
+            {
+                SelectPage(1);
+                return;
+            }
+
             if (key.Key == ConsoleKeyEx.Enter)
             {
+                ResetClickSequence();
                 if (selectedIndex >= 0)
                     OpenEntry(selectedIndex);
                 return;
@@ -608,11 +621,22 @@ namespace ZonderqOS.GUI.Apps
             return Math.Max(1, (GridWidthForView + TileGap) / (TileWidth + TileGap));
         }
 
+        private void SelectPage(int direction)
+        {
+            // Page navigation advances by exactly the number of tiles
+            // painted in the current viewport, not a fixed row count.
+            int rows = Math.Max(1, (GridHeightForView + TileGap) / (TileHeight + TileGap));
+            Select(direction * Columns() * rows);
+        }
+
         private void Select(int delta)
         {
             if (entries.Count == 0)
                 return;
 
+            // Keyboard selection must not complete a pending mouse double-click.
+            ResetClickSequence();
+            contextMenuVisible = false;
             if (selectedIndex < 0)
                 selectedIndex = delta >= 0 ? 0 : entries.Count - 1;
             else
