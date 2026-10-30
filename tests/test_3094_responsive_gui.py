@@ -275,7 +275,8 @@ class ResponsiveGui3094(unittest.TestCase):
                         dispatch.index("UpdateDesktopInteractions("))
         # The capture flag is computed before StartMenu.UpdateInteractions
         # can close the menu; never recompute it from the new Visible state.
-        self.assertLess(dispatch.index("bool startMenuCaptures"),
+        self.assertIn("startMenu.Visible &&", dispatch)
+        self.assertLess(dispatch.index("startMenu.Visible &&"),
                         dispatch.index("startMenu.UpdateInteractions("))
 
     def test_file_manager_menu_reflows_and_dismisses_outside_view(self):
