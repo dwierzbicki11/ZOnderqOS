@@ -10,6 +10,7 @@ on:
       - 'source/Hardware/PciDeviceModel.cs'
       - 'source/Hardware/PciConfigDiscoverySource.cs'
       - 'tests/test_3094_nic_pci_inventory.py'
+      - 'tests/PciMetadataSmoke/**'
       - 'tools/build-cosmos-3095-local.sh'
       - 'tools/smoke-network-n1-3095-qemu.sh'
       - 'tests/test_3095_network_n1_contract.py'
@@ -61,6 +62,8 @@ jobs:
           python3 zonderq/tests/test_upstream_smp_disabled.py
           bash -n zonderq/tools/build-cosmos-3095-local.sh
           bash -n zonderq/tools/smoke-network-n1-3095-qemu.sh
+      - name: Compile and execute real C# PCI revision/subsystem metadata smoke
+        run: dotnet run --project zonderq/tests/PciMetadataSmoke/PciMetadataSmoke.csproj --configuration Release
       - name: Install exact Cosmos 3.0.95 toolchain prerequisites
         run: |
           sudo apt-get update
