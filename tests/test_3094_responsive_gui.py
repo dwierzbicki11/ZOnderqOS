@@ -21,6 +21,7 @@ APP_CENTER = code("source/GUI/Application/AppCenterApp.cs")
 DISK_MANAGER = code("source/GUI/Application/DiskManagerApp.cs")
 TASK_MANAGER = code("source/GUI/Application/TaskManagerModernApp.cs")
 APPLICATION_MANAGER = code("source/GUI/Application/ApplicationManager.cs")
+TASKBAR = code("source/GUI/Taskbar.cs")
 PROJECT = code("ZonderqOS.csproj")
 
 
@@ -278,6 +279,39 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("startMenu.Visible &&", dispatch)
         self.assertLess(dispatch.index("startMenu.Visible &&"),
                         dispatch.index("startMenu.UpdateInteractions("))
+
+    def test_taskbar_overflow_pages_are_visible_and_clickable(self):
+        self.assertIn("private int firstVisibleAppIndex;", TASKBAR)
+        self.assertIn("private int GetPageSlots(int runningCount, out bool overflow)", TASKBAR)
+        self.assertIn("overflow = runningCount > slots && slots >= 2;", TASKBAR)
+        self.assertIn("firstVisibleAppIndex += pageSlots;", TASKBAR)
+        self.assertIn("if (firstVisibleAppIndex >= runningCount)", TASKBAR)
+        self.assertEqual(TASKBAR.count("int pageSlots = GetPageSlots(runningCount, out overflow);"), 2)
+        self.assertEqual(TASKBAR.count("if (runningIndex++ < firstVisibleAppIndex)"), 2)
+        self.assertEqual(TASKBAR.count("if (shown >= pageSlots)"), 2)
+        self.assertEqual(TASKBAR.count("int arrowX = OverflowButtonX(pageSlots);"), 2)
+
+        # Pure geometry check for the render/hit-test layout. The last
+        # button is reserved for the page switcher only when necessary.
+        for screen_width in (800, 1366, 1920):
+            max_app_x = screen_width - 278
+            slots = max(0, (max_app_x - 60 + 5) // 45)
+            for running_count in (0, 1, 9, 10, 11, 23, 50):
+                overflow = running_count > slots and slots >= 2
+                page_slots = slots - 1 if overflow else slots
+                self.assertGreaterEqual(page_slots, 0)
+                if overflow:
+                    arrow_x = 60 + page_slots * 45
+                    self.assertLessEqual(arrow_x + 40, max_app_x)
+                    offsets = list(range(0, running_count, page_slots))
+                    self.assertEqual(
+                        [index for offset in offsets
+                         for index in range(offset, min(running_count, offset + page_slots))],
+                        list(range(running_count))
+                    )
+                    self.assertEqual(offsets[-1] + page_slots >= running_count, True)
+                else:
+                    self.assertLessEqual(running_count, page_slots)
 
     def test_file_manager_menu_reflows_and_dismisses_outside_view(self):
         update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
