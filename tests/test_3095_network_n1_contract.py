@@ -8,6 +8,7 @@ PROJECT = (ROOT / "ZonderqOS.csproj").read_text()
 SOURCE = (ROOT / "source/Core/NetworkN1ProbeKernel.cs").read_text()
 BUILD = (ROOT / "tools/build-cosmos-3095-local.sh").read_text()
 SMOKE = (ROOT / "tools/smoke-network-n1-3095-qemu.sh").read_text()
+HOST = (ROOT / "tests/network_3095_tcp_host.py").read_text()
 MAIN = (ROOT / "Kernel.cs").read_text()
 
 class NetworkN1Isolation(unittest.TestCase):
@@ -114,6 +115,9 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('HEARTBEAT=', SOURCE)
         self.assertIn('heartbeat_after - heartbeat_before < 6', SMOKE)
         self.assertIn('Guest fault after network proof', SMOKE)
+        self.assertIn('socket.SO_REUSEADDR, 1', HOST)
+        self.assertNotIn('socket.SO_REUSEPORT', HOST.split('def self_test', 1)[0].split('listener.setsockopt', 1)[-1])
+        self.assertIn('def self_test()', HOST)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
