@@ -420,6 +420,33 @@ class ResponsiveGui3094(unittest.TestCase):
             desktop_receives_click = not captured
             self.assertEqual(desktop_receives_click, not was_window_under_pointer)
 
+    def test_titlebar_double_click_is_timed_and_reset_on_focus_loss(self):
+        mouse = WINDOW.split("public void HandleMouse(int mouseX", 1)[1].split(
+            "private int GetResizeMode(", 1)[0]
+        active = WINDOW.split("public bool IsActive", 1)[1].split(
+            "public System.Action CloseAction", 1)[0]
+        sync = WINDOW.split("private void SyncDesktopBounds()", 1)[1].split(
+            "public void AddChild(", 1)[0]
+        self.assertIn("long now = Stopwatch.GetTimestamp();", mouse)
+        self.assertIn("elapsed <= Stopwatch.Frequency / 2", mouse)
+        self.assertIn("lastTitleClickTimestamp = 0;", active)
+        self.assertIn("lastTitleClickTimestamp = 0;", sync)
+        self.assertIn("lastTitleClickTimestamp = 0;", mouse)
+        self.assertNotIn("lastTitleClickFrame", WINDOW)
+        self.assertNotIn("interactionFrame", WINDOW)
+
+        # A long render stall cannot turn two separated clicks into a
+        # maximize event. Switching focus also discards pending clicks.
+        frequency = 10_000_000
+        def is_double(first, second):
+            elapsed = second - first
+            return first > 0 and elapsed >= 0 and elapsed <= frequency // 2
+
+        self.assertTrue(is_double(100_000_000, 103_000_000))
+        self.assertFalse(is_double(100_000_000, 130_000_000))
+        self.assertFalse(is_double(0, 103_000_000))
+        self.assertFalse(is_double(103_000_000, 102_000_000))
+
     def test_file_manager_sidebar_hit_testing_excludes_clipped_volume_rows(self):
         sidebar = FILE_MANAGER.split("private SidebarEntry GetSidebarEntryAt(int y)", 1)[1].split(
             "private void MountVolume(", 1)[0]
