@@ -706,5 +706,37 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("UiPainter.RoundedPanel(", NOTEPAD)
 
 
+    def test_file_manager_search_backspace_edits_filter_before_navigation(self):
+        keyboard = FILE_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "private void CopySelected(", 1)[0]
+        refresh = FILE_MANAGER.split("private void RefreshInternal(string keep)", 1)[1].split(
+            "private void RebuildSidebar()", 1)[0]
+        backspace = keyboard.split("if (key.Key == ConsoleKeyEx.Backspace)", 1)[1].split(
+            "if (key.Key == ConsoleKeyEx.LeftArrow)", 1)[0]
+        self.assertIn("if (searchText.Length > 0)", backspace)
+        self.assertIn("searchText = searchText.Substring(0, searchText.Length - 1);", backspace)
+        self.assertIn("Refresh();", backspace)
+        self.assertIn("else\n                {\n                    GoUp();", backspace)
+        self.assertLess(backspace.index("Refresh();"), backspace.index("GoUp();"))
+        self.assertIn('"Search: " + searchText + " (" + entries.Count + " item(s))"', refresh)
+
+        # Backspace changes a nonempty filter, but with an empty filter it
+        # keeps the preexisting parent-directory shortcut.
+        filter_text = "notes"
+        navigations = 0
+        for expected in ("note", "not", "no", "n", ""):
+            if filter_text:
+                filter_text = filter_text[:-1]
+            else:
+                navigations += 1
+            self.assertEqual(filter_text, expected)
+            self.assertEqual(navigations, 0)
+        if filter_text:
+            filter_text = filter_text[:-1]
+        else:
+            navigations += 1
+        self.assertEqual(navigations, 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
