@@ -1,4 +1,4 @@
-name: Cosmos 3.0.95 isolated E1000E NIC/link QEMU proof
+name: Cosmos 3.0.95 isolated E1000E link and raw TX PCAP proof
 
 on:
   pull_request:
@@ -52,7 +52,7 @@ jobs:
           bash tools/build-cosmos-3095-local.sh network-n1
           test -s output-3095/ZonderqOS-3095-network-n1.iso
           sha256sum output-3095/ZonderqOS-3095-network-n1.iso
-      - name: Boot real QEMU E1000E with bounded link/MAC evidence
+      - name: Boot real QEMU E1000E and verify captured Ethernet TX
         working-directory: zonderq
         env:
           NET3095_N1_TIMEOUT: '170'

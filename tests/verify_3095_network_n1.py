@@ -170,5 +170,5 @@ if __name__ == "__main__":
         try:
             print(validate(args.serial_log.read_text(errors="replace"),
                            args.pcap.read_bytes()))
-        except ValueError as exc:
+        except (ValueError, OSError) as exc:
             ap.exit(1, f"[NET3095-N1-GATE][FAIL] {exc}\n")
