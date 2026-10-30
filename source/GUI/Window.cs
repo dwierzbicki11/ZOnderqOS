@@ -43,7 +43,6 @@ namespace ZonderqOS.GUI
         private int hoveredResizeMode;
         private int resizeStartMouseX, resizeStartMouseY;
         private int resizeStartX, resizeStartY, resizeStartWidth, resizeStartHeight;
-        private int interactionFrame;
         private long lastTitleClickTimestamp;
 
         private const int TitleBarHeight = 38;
@@ -247,7 +246,6 @@ namespace ZonderqOS.GUI
                 return;
 
             SyncDesktopBounds();
-            interactionFrame++;
 
             int closeX = X + Width - RightPadding - ButtonSize;
             int maximizeX = closeX - ButtonSize;
