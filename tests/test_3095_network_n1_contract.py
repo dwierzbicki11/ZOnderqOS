@@ -21,6 +21,9 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('GuardNetworkN1Probe', PROJECT)
         self.assertIn('>false</ZonderqNetworkN2Dhcp>', PROJECT)
         self.assertIn('ZONDERQ_NETWORK_N2_DHCP', PROJECT)
+        self.assertIn('>false</ZonderqNetworkN3Icmp>', PROJECT)
+        self.assertIn('ZONDERQ_NETWORK_N3_ICMP', PROJECT)
+        self.assertIn('Network N3 ICMP proof requires the isolated N2 DHCP probe.', PROJECT)
         self.assertIn('Network N2 DHCP proof requires the isolated N1 probe.', PROJECT)
         for feature in ("Storage", "Mouse", "Usb", "Keyboard", "Graphics"):
             self.assertIn(
@@ -76,6 +79,15 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('ZonderqOS-3095-network-n2.iso', BUILD)
         self.assertIn('tests/verify_3095_network_n2.py', SMOKE)
         self.assertIn('No correlated DHCP RX/TX capture', SMOKE)
+        self.assertIn('new IcmpClient()', SOURCE)
+        self.assertIn('ping.SendEcho(id: 0x3095, sequence: 1)', SOURCE)
+        self.assertIn('ping.Receive(ref remote, 5000)', SOURCE)
+        self.assertIn('[NET3095-N3] ICMP=PASS from=', SOURCE)
+        self.assertIn('network-n3)', BUILD)
+        self.assertIn('-p:ZonderqNetworkN3Icmp="$network_n3"', BUILD)
+        self.assertIn('ZonderqOS-3095-network-n3.iso', BUILD)
+        self.assertIn('tests/verify_3095_network_n3.py', SMOKE)
+        self.assertIn('No correlated ICMP echo RX/TX capture', SMOKE)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
