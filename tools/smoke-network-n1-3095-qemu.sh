@@ -28,10 +28,16 @@ cleanup() {
   wait "$pid" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
+qemu_alive() {
+  kill -0 "$pid" 2>/dev/null || return 1
+  local state
+  state="$(ps -o stat= -p "$pid" 2>/dev/null)" || return 1
+  [[ -n "$state" && "$state" != Z* ]]
+}
 
 started=$SECONDS
 while (( SECONDS - started < TIMEOUT )); do
-  if ! kill -0 "$pid" 2>/dev/null; then
+  if ! qemu_alive; then
     cat "$LOG.stderr" >&2 || true
     echo "[NET3095-N1][FAIL] Guest process exited before valid NIC proof" >&2
     exit 1
@@ -42,10 +48,24 @@ while (( SECONDS - started < TIMEOUT )); do
     exit 1
   fi
   if grep -Fq '[NET3095-N1] DHCP=NOT_ATTEMPTED IP=UNASSIGNED' "$LOG"; then
+    # TX may leave the descriptor ring after the guest has logged QUEUED.
+    # Wait for actual QEMU PCAP evidence, never count QUEUED as transmitted.
+    capture_start=$SECONDS
+    until python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
+      qemu_alive || {
+        echo "[NET3095-N1][FAIL] Guest exited before TX capture" >&2; exit 1;
+      }
+      if (( SECONDS - capture_start >= 12 )); then
+        python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
+        echo "[NET3095-N1][FAIL] TX capture missing or malformed" >&2
+        exit 1
+      fi
+      sleep 1
+    done
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
     sleep 8
-    kill -0 "$pid" 2>/dev/null || {
-      echo "[NET3095-N1][FAIL] Guest exited after initial link proof" >&2; exit 1;
+    qemu_alive || {
+      echo "[NET3095-N1][FAIL] Guest exited after TX proof" >&2; exit 1;
     }
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
     echo "[NET3095-N1-QEMU] PASS real e1000e link + QEMU PCAP raw TX + 8s stability; RX/DHCP unproven"
