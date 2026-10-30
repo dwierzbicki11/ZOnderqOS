@@ -290,6 +290,10 @@ namespace ZonderqOS.GUI
                 {
                     int newX = mouseX - dragOffsetX;
                     int newY = mouseY - dragOffsetY;
+                    // Moving the window is a drag, not the first click
+                    // of a future title-bar double-click.
+                    if (newX != X || newY != Y)
+                        lastTitleClickTimestamp = 0;
                     int maxX = desktopWidth > Width ? desktopWidth - Width : 0;
                     int maxY = desktopHeight > Height ? desktopHeight - Height : 0;
                     MoveTo(System.Math.Max(0, System.Math.Min(newX, maxX)),
