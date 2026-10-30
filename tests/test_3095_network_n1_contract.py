@@ -19,6 +19,11 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('>ZonderqOS.NetworkN1ProbeKernel</CosmosKernelClass>', PROJECT)
         self.assertIn('ZONDERQ_NETWORK_N1_PROBE', PROJECT)
         self.assertIn('GuardNetworkN1Probe', PROJECT)
+        for feature in ("Storage", "Mouse", "Usb", "Keyboard", "Graphics"):
+            self.assertIn(
+                f'<CosmosEnable{feature} Condition="\'$(ZonderqNetworkN1Probe)\' == \'true\'">false</CosmosEnable{feature}>',
+                PROJECT)
+        self.assertIn('<CosmosEnableUART>true</CosmosEnableUART>', PROJECT)
         self.assertIn('Network N1 probe is x64-only', PROJECT)
 
     def test_no_storage_or_gui_in_probe(self):

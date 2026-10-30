@@ -30,13 +30,20 @@
     <CosmosEnableNetwork Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">true</CosmosEnableNetwork>
     <CosmosKernelClass Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">ZonderqOS.NetworkN1ProbeKernel</CosmosKernelClass>
     <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N1_PROBE</DefineConstants>
-    <CosmosEnableStorage>true</CosmosEnableStorage>
-    <CosmosEnableMouse>true</CosmosEnableMouse>
+    <CosmosEnableStorage Condition="'$(ZonderqNetworkN1Probe)' != 'true'">true</CosmosEnableStorage>
+    <CosmosEnableStorage Condition="'$(ZonderqNetworkN1Probe)' == 'true'">false</CosmosEnableStorage>
+    <CosmosEnableMouse Condition="'$(ZonderqNetworkN1Probe)' != 'true'">true</CosmosEnableMouse>
+    <CosmosEnableMouse Condition="'$(ZonderqNetworkN1Probe)' == 'true'">false</CosmosEnableMouse>
     <CosmosEnablePCI>true</CosmosEnablePCI>
-    <CosmosEnableUsb>true</CosmosEnableUsb>
-    <CosmosEnableKeyboard>true</CosmosEnableKeyboard>
-    <CosmosEnableGraphics>true</CosmosEnableGraphics>
+    <CosmosEnableUsb Condition="'$(ZonderqNetworkN1Probe)' != 'true'">true</CosmosEnableUsb>
+    <CosmosEnableUsb Condition="'$(ZonderqNetworkN1Probe)' == 'true'">false</CosmosEnableUsb>
+    <CosmosEnableKeyboard Condition="'$(ZonderqNetworkN1Probe)' != 'true'">true</CosmosEnableKeyboard>
+    <CosmosEnableKeyboard Condition="'$(ZonderqNetworkN1Probe)' == 'true'">false</CosmosEnableKeyboard>
+    <CosmosEnableGraphics Condition="'$(ZonderqNetworkN1Probe)' != 'true'">true</CosmosEnableGraphics>
+    <CosmosEnableGraphics Condition="'$(ZonderqNetworkN1Probe)' == 'true'">false</CosmosEnableGraphics>
     <CosmosEnableScheduler>true</CosmosEnableScheduler>
+    <!-- Serial diagnostics remain available even without graphics. -->
+    <CosmosEnableUART>true</CosmosEnableUART>
 
     <!-- Make the disabled network state explicit to ZonderqOS code without
          depending on package-internal networking types. -->
