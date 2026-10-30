@@ -111,6 +111,9 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('[NET3095-N5] DNS=PASS host=localhost', SOURCE)
         self.assertIn('tests/verify_3095_network_n5.py', SMOKE)
         self.assertIn('No correlated DNS query/answer capture', SMOKE)
+        self.assertIn('HEARTBEAT=', SOURCE)
+        self.assertIn('heartbeat_after - heartbeat_before < 6', SMOKE)
+        self.assertIn('Guest fault after network proof', SMOKE)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
