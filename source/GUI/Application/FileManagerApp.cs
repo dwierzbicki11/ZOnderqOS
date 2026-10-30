@@ -55,6 +55,11 @@ namespace ZonderqOS.GUI.Apps
                 (view.Height - FooterHeight - 12) / ContextMenuItemCount));
         internal int ContextMenuHeightForView => ContextMenuItemHeightForView * ContextMenuItemCount;
 
+        // Shared grid geometry for painting, hit-testing, keyboard navigation
+        // and scrolling. A two-pixel disagreement can hide a clickable column.
+        internal int GridWidthForView => Math.Max(TileWidth, view.Width - SidebarWidth - 12);
+        internal int GridHeightForView => Math.Max(40, view.Height - FooterHeight - ContentTop - 8);
+
         public FileManagerApp(int x, int y, Action<string> openFile) : base("File Manager")
         {
             nanoLauncher = openFile;
@@ -339,8 +344,7 @@ namespace ZonderqOS.GUI.Apps
             // Match FileManagerView.RenderSidebar's fully-visible row limit.
             // A partially clipped volume row must not be clickable when the
             // window is shrunk, especially for mount/unmount actions.
-            int sidebarBottom = Math.Max(ContentTop + 40,
-                view.Height - FooterHeight - 8);
+            int sidebarBottom = ContentTop + GridHeightForView;
             int itemY = ContentTop + 8;
             for (int i = 0; i < sidebarEntries.Count; i++)
             {
@@ -591,8 +595,7 @@ namespace ZonderqOS.GUI.Apps
 
         private int Columns()
         {
-            int gridWidth = Math.Max(TileWidth, view.Width - SidebarWidth - 14);
-            return Math.Max(1, (gridWidth + TileGap) / (TileWidth + TileGap));
+            return Math.Max(1, (GridWidthForView + TileGap) / (TileWidth + TileGap));
         }
 
         private void Select(int delta)
@@ -611,8 +614,7 @@ namespace ZonderqOS.GUI.Apps
         private void EnsureSelectionVisible()
         {
             int cols = Columns();
-            int availableHeight = Math.Max(TileHeight, view.Height - ContentTop - FooterHeight - 12);
-            int rows = Math.Max(1, (availableHeight + TileGap) / (TileHeight + TileGap));
+            int rows = Math.Max(1, (GridHeightForView + TileGap) / (TileHeight + TileGap));
             int visible = cols * rows;
 
             if (selectedIndex >= 0)
@@ -1008,11 +1010,11 @@ namespace ZonderqOS.GUI.Apps
 
             int footerY = Y + Height - FileManagerApp.FooterHeight - 4;
             int contentY = Y + FileManagerApp.ContentTop;
-            int contentH = Math.Max(40, footerY - contentY - 4);
+            int contentH = app.GridHeightForView;
             int sidebarX = X + 4;
             int sidebarW = FileManagerApp.SidebarWidth;
             int gridX = X + FileManagerApp.SidebarWidth + 8;
-            int gridW = Math.Max(FileManagerApp.TileWidth, Width - FileManagerApp.SidebarWidth - 12);
+            int gridW = app.GridWidthForView;
 
             canvas.DrawFilledRectangle(SidebarBackground, sidebarX, contentY, sidebarW, contentH);
             canvas.DrawRectangle(Color.FromArgb(53, 62, 72), sidebarX, contentY, sidebarW, contentH);
