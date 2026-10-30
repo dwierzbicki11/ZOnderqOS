@@ -435,6 +435,9 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("lastTitleClickTimestamp = 0;", active)
         self.assertIn("lastTitleClickTimestamp = 0;", sync)
         self.assertIn("lastTitleClickTimestamp = 0;", mouse)
+        self.assertIn("if (hoveredControl != 0 || hoveredResizeMode != 0)", mouse)
+        self.assertLess(mouse.index("if (hoveredControl != 0 || hoveredResizeMode != 0)"),
+                        mouse.index("if (hoveredControl == 1)"))
         self.assertNotIn("lastTitleClickFrame", WINDOW)
         self.assertNotIn("interactionFrame", WINDOW)
 
