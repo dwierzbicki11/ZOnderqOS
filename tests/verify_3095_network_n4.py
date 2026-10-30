@@ -70,7 +70,7 @@ def validate(serial: str, pcap: bytes) -> str:
     for i, syn in enumerate(packets):
         if not (
             syn["src"] == guest and syn["dst"] == SERVER and
-            syn["src_mac"] == MAC and syn["dport"] == PORT and
+            syn["src_mac"] == MAC and syn["dport"] == PORT and syn["sport"] != 0 and
             (syn["flags"] & 0x12) == 0x02 and not syn["payload"]
         ):
             continue
@@ -91,6 +91,7 @@ def validate(serial: str, pcap: bytes) -> str:
                     ack["src"] == guest and ack["dst"] == SERVER and
                     ack["src_mac"] == MAC and ack["sport"] == sport and
                     ack["dport"] == PORT and (ack["flags"] & 0x17) == 0x10 and
+                    ack["seq"] == (syn["seq"] + 1) & 0xFFFFFFFF and
                     ack["ack"] == (synack["seq"] + 1) & 0xFFFFFFFF and
                     not ack["payload"]
                 ):
@@ -101,7 +102,9 @@ def validate(serial: str, pcap: bytes) -> str:
                         request["src"] == guest and request["dst"] == SERVER and
                         request["src_mac"] == MAC and request["sport"] == sport and
                         request["dport"] == PORT and request["payload"] == REQUEST and
-                        (request["flags"] & 0x10)
+                        (request["flags"] & 0x17) == 0x10 and
+                        request["seq"] == (syn["seq"] + 1) & 0xFFFFFFFF and
+                        request["ack"] == (synack["seq"] + 1) & 0xFFFFFFFF
                     ):
                         continue
                     for response in packets[l + 1:]:
@@ -110,7 +113,8 @@ def validate(serial: str, pcap: bytes) -> str:
                             response["dst_mac"] == MAC and response["src_mac"] != MAC and
                             response["sport"] == PORT and response["dport"] == sport and
                             response["payload"] == RESPONSE and
-                            (response["flags"] & 0x10) and
+                            (response["flags"] & 0x17) == 0x10 and
+                            response["seq"] == (synack["seq"] + 1) & 0xFFFFFFFF and
                             response["ack"] == (request["seq"] + len(REQUEST)) & 0xFFFFFFFF
                         ):
                             return "[NET3095-N4-GATE] PASS real QEMU TCP handshake and echo RX/TX guest=10.0.2.15 server=10.0.2.2:18095"
@@ -172,7 +176,12 @@ def self_test() -> None:
         (serial, frames[:11] + [fake_tcp(True, 0x18, 5001, 1001 + len(REQUEST), b"WRONG")]),
         (serial, frames[:8] + [fake_tcp(True, 0x12, 5000, 9999)] + frames[9:]),
         (serial, frames[:11] + [fake_tcp(True, 0x18, 5001, 1001 + len(REQUEST), RESPONSE, dport=18096)]),
-        (serial, frames[:10] + [fake_tcp(False, 0x18, 1001, 5001, b"BAD") , frames[-1]]),
+        (serial, frames[:10] + [fake_tcp(False, 0x18, 1001, 5001, b"BAD"), frames[-1]]),
+        # TCP payloads must belong to the exact established sequence space.
+        (serial, frames[:10] + [fake_tcp(False, 0x18, 1002, 5001, REQUEST), frames[-1]]),
+        (serial, frames[:10] + [fake_tcp(False, 0x18, 1001, 5002, REQUEST), frames[-1]]),
+        (serial, frames[:11] + [fake_tcp(True, 0x18, 5002, 1001 + len(REQUEST), RESPONSE)]),
+        (serial, frames[:9] + [fake_tcp(False, 0x10, 1002, 5001)] + frames[10:]),
     ]
     for bad_serial, bad_frames in negatives:
         try:
