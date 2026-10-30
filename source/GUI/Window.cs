@@ -68,21 +68,29 @@ namespace ZonderqOS.GUI
             // (Settings 1080x720, Calculator 500x690). Fit the initial window
             // before creating child controls so click coordinates stay aligned.
             // Never invent a display resolution: this is only a GUI layout cap.
-            if (desktopWidth > 0 && desktopHeight > 0)
-            {
-                // Leave a little desktop breathing room at HD and above.
-                // On 800x600 use all available pixels instead of clipping apps.
-                int margin = desktopWidth >= 1000 && desktopHeight >= 700 ? 12 : 0;
-                int availableWidth = desktopWidth - margin * 2;
-                int availableHeight = desktopHeight - margin * 2;
-                int minW = System.Math.Min(MinWidth, availableWidth);
-                int minH = System.Math.Min(MinHeight, availableHeight);
-                Width = System.Math.Max(minW, System.Math.Min(Width, desktopWidth - margin * 2));
-                Height = System.Math.Max(minH, System.Math.Min(Height, desktopHeight - margin * 2));
-                X = System.Math.Max(margin, System.Math.Min(X, desktopWidth - Width - margin));
-                Y = System.Math.Max(margin, System.Math.Min(Y, desktopHeight - Height - margin));
-            }
+            ConstrainToDesktop();
             UiAnimator.RequestFrames();
+        }
+
+        // Keep the whole caption and client area on the usable desktop.
+        // Also used when restoring a window after the display mode changes.
+        private void ConstrainToDesktop()
+        {
+            if (desktopWidth <= 0 || desktopHeight <= 0)
+                return;
+
+            // Leave breathing room on HD+; on 800x600 use all available pixels.
+            int margin = desktopWidth >= 1000 && desktopHeight >= 700 ? 12 : 0;
+            int availableWidth = System.Math.Max(1, desktopWidth - margin * 2);
+            int availableHeight = System.Math.Max(1, desktopHeight - margin * 2);
+            int minW = System.Math.Min(MinWidth, availableWidth);
+            int minH = System.Math.Min(MinHeight, availableHeight);
+
+            Width = System.Math.Max(minW, System.Math.Min(Width, availableWidth));
+            Height = System.Math.Max(minH, System.Math.Min(Height, availableHeight));
+            int x = System.Math.Max(margin, System.Math.Min(X, desktopWidth - Width - margin));
+            int y = System.Math.Max(margin, System.Math.Min(Y, desktopHeight - Height - margin));
+            MoveTo(x, y);
         }
 
         public void AddChild(Widget widget)
@@ -123,6 +131,16 @@ namespace ZonderqOS.GUI
         {
             IsMinimized = false;
             Visible = true;
+            if (IsMaximized && desktopWidth > 0 && desktopHeight > 0)
+            {
+                MoveTo(0, 0);
+                Width = desktopWidth;
+                Height = desktopHeight;
+            }
+            else
+            {
+                ConstrainToDesktop();
+            }
             openingFrames = 8;
             UiAnimator.RequestFrames();
         }
@@ -149,6 +167,10 @@ namespace ZonderqOS.GUI
 
             if (!IsMaximized)
             {
+                if (desktopWidth <= 0 || desktopHeight <= 0)
+                    return;
+
+                ConstrainToDesktop();
                 restoreX = X;
                 restoreY = Y;
                 restoreWidth = Width;
@@ -164,6 +186,7 @@ namespace ZonderqOS.GUI
                 Width = restoreWidth;
                 Height = restoreHeight;
                 IsMaximized = false;
+                ConstrainToDesktop();
             }
         }
 
@@ -319,26 +342,30 @@ namespace ZonderqOS.GUI
 
             if ((resizeMode & ResizeLeft) != 0)
             {
-                int right = resizeStartX + resizeStartWidth;
-                newX = System.Math.Max(0, System.Math.Min(resizeStartX + dx, right - MinWidth));
+                int right = System.Math.Min(desktopWidth, resizeStartX + resizeStartWidth);
+                int minWidth = System.Math.Min(MinWidth, System.Math.Max(1, right));
+                newX = System.Math.Max(0, System.Math.Min(resizeStartX + dx, right - minWidth));
                 newWidth = right - newX;
             }
             else if ((resizeMode & ResizeRight) != 0)
             {
-                int maxWidth = System.Math.Max(MinWidth, desktopWidth - resizeStartX);
-                newWidth = System.Math.Max(MinWidth, System.Math.Min(resizeStartWidth + dx, maxWidth));
+                int maxWidth = System.Math.Max(1, desktopWidth - resizeStartX);
+                int minWidth = System.Math.Min(MinWidth, maxWidth);
+                newWidth = System.Math.Max(minWidth, System.Math.Min(resizeStartWidth + dx, maxWidth));
             }
 
             if ((resizeMode & ResizeTop) != 0)
             {
-                int bottom = resizeStartY + resizeStartHeight;
-                newY = System.Math.Max(0, System.Math.Min(resizeStartY + dy, bottom - MinHeight));
+                int bottom = System.Math.Min(desktopHeight, resizeStartY + resizeStartHeight);
+                int minHeight = System.Math.Min(MinHeight, System.Math.Max(1, bottom));
+                newY = System.Math.Max(0, System.Math.Min(resizeStartY + dy, bottom - minHeight));
                 newHeight = bottom - newY;
             }
             else if ((resizeMode & ResizeBottom) != 0)
             {
-                int maxHeight = System.Math.Max(MinHeight, desktopHeight - resizeStartY);
-                newHeight = System.Math.Max(MinHeight, System.Math.Min(resizeStartHeight + dy, maxHeight));
+                int maxHeight = System.Math.Max(1, desktopHeight - resizeStartY);
+                int minHeight = System.Math.Min(MinHeight, maxHeight);
+                newHeight = System.Math.Max(minHeight, System.Math.Min(resizeStartHeight + dy, maxHeight));
             }
 
             MoveTo(newX, newY);
