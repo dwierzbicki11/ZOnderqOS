@@ -511,6 +511,13 @@ class ResponsiveGui3094(unittest.TestCase):
                 selected, last_index, last_frame = index, index, frame
         self.assertEqual(opens, 2)
 
+    def test_file_manager_focus_loss_clears_pending_double_click(self):
+        update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
+            "public override void HandleMouse(", 1)[0]
+        self.assertIn("if (!Window.IsActive)\n                ResetClickSequence();", update)
+        self.assertLess(update.index("ResetClickSequence();"),
+                        update.index("int previousViewWidth = view.Width;"))
+
     def test_file_manager_double_click_uses_elapsed_time_not_frame_count(self):
         # An expensive filesystem operation can stall the GUI loop. Even if
         # no frames are rendered, two clicks seconds apart must not open a file.
