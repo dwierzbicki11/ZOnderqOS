@@ -148,6 +148,24 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("view.Height = Math.Max(1, Window.Height - 50);", TASK_MANAGER)
         self.assertIn("int contentWidth = System.Math.Max(1, Window.Width - sidebarWidth);", SETTINGS)
 
+    def test_existing_windows_reflow_when_desktop_mode_changes(self):
+        self.assertIn("private void SyncDesktopBounds()", WINDOW)
+        self.assertIn("observedDesktopWidth == desktopWidth && observedDesktopHeight == desktopHeight", WINDOW)
+        self.assertIn("observedDesktopWidth = desktopWidth;", WINDOW)
+        self.assertIn("observedDesktopHeight = desktopHeight;", WINDOW)
+        self.assertIn("SyncDesktopBounds();\n            interactionFrame++;", WINDOW)
+        self.assertIn("SyncDesktopBounds();\n            focusProgress =", WINDOW)
+        self.assertIn("if (IsMaximized)\n            {\n                MoveTo(0, 0);", WINDOW)
+
+        # Visible windows keep their client area inside the new mode.
+        for old_width, old_height in ((1920, 1080), (1366, 768)):
+            old_x, old_y, old_w, old_h = fit_window(
+                old_width - 500, old_height - 500, 820, 520, old_width, old_height)
+            new_x, new_y, new_w, new_h = fit_window(
+                old_x, old_y, old_w, old_h, 800, 600)
+            self.assertLessEqual(new_x + new_w, 800)
+            self.assertLessEqual(new_y + new_h, 556)
+
     def test_file_manager_context_menu_fits_resized_client(self):
         self.assertIn("internal int ContextMenuWidthForView =>", FILE_MANAGER)
         self.assertIn("internal int ContextMenuItemHeightForView =>", FILE_MANAGER)
