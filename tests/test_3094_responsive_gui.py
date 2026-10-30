@@ -420,6 +420,39 @@ class ResponsiveGui3094(unittest.TestCase):
             desktop_receives_click = not captured
             self.assertEqual(desktop_receives_click, not was_window_under_pointer)
 
+    def test_file_manager_sidebar_hit_testing_excludes_clipped_volume_rows(self):
+        sidebar = FILE_MANAGER.split("private SidebarEntry GetSidebarEntryAt(int y)", 1)[1].split(
+            "private void MountVolume(", 1)[0]
+        render = FILE_MANAGER.split("private void RenderSidebar(Canvas canvas", 1)[1].split(
+            "private bool IsEntryActive(", 1)[0]
+        self.assertIn("int sidebarBottom = Math.Max(ContentTop + 40,", sidebar)
+        self.assertIn("view.Height - FooterHeight - 8);", sidebar)
+        self.assertIn("if (itemY + height > sidebarBottom)", sidebar)
+        self.assertLess(sidebar.index("if (itemY + height > sidebarBottom)"),
+                        sidebar.index("if (y >= itemY && y < itemY + height)"))
+        self.assertIn("if (itemY + rowHeight > y + height)", render)
+
+        # RenderSidebar paints only complete rows. Hit-testing must not
+        # activate a hidden mount/unmount button on a clipped row.
+        for view_height in (170, 220, 300, 465, 700):
+            content_bottom = max(50 + 40, view_height - 24 - 8)
+            item_y = 50 + 8
+            row_heights = (22, 36, 36, 22, 36, 36, 36, 36)
+            visible = []
+            for row_height in row_heights:
+                if item_y + row_height > content_bottom:
+                    break
+                visible.append((item_y, item_y + row_height))
+                item_y += row_height
+            for y in range(50, content_bottom + 1):
+                hit = next((i for i, (top, bottom) in enumerate(visible)
+                            if top <= y < bottom), None)
+                self.assertEqual(hit is not None,
+                                 any(top <= y < bottom for top, bottom in visible))
+            if view_height == 170:
+                self.assertEqual(len(visible), 2)
+                self.assertFalse(any(top <= 125 < bottom for top, bottom in visible))
+
     def test_file_manager_double_click_does_not_leak_across_navigation(self):
         mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
             "private int HitEntryIndex(", 1)[0]
