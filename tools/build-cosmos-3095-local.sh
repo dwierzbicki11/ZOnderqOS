@@ -17,8 +17,8 @@ UPSTREAM="https://github.com/CosmosOS/Cosmos.git"
 WORK_ROOT="${ZONDERQ_3095_WORK_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/zonderqos-cosmos-3095}"
 MODE="${1:-disk}"
 case "$MODE" in
-  disk|probe|network-n1|network-n2|network-n3) ;;
-  *) echo "[3095-BUILD][ERROR] Expected disk, probe, network-n1, network-n2 or network-n3" >&2; exit 2 ;;
+  disk|probe|network-n1|network-n2|network-n3|network-n4) ;;
+  *) echo "[3095-BUILD][ERROR] Expected disk, probe, network-n1, network-n2, network-n3 or network-n4" >&2; exit 2 ;;
 esac
 if [[ $# -gt 1 ]]; then
   echo "[3095-BUILD][ERROR] Unexpected additional arguments" >&2
@@ -162,6 +162,7 @@ case "$MODE" in
     network_n1=false
     network_n2=false
     network_n3=false
+    network_n4=false
     output_file="ZonderqOS-3095-disk.iso"
     ;;
   probe)
@@ -170,6 +171,7 @@ case "$MODE" in
     network_n1=false
     network_n2=false
     network_n3=false
+    network_n4=false
     output_file="ZonderqOS-3095-usb.iso"
     ;;
   network-n1)
@@ -178,6 +180,7 @@ case "$MODE" in
     network_n1=true
     network_n2=false
     network_n3=false
+    network_n4=false
     output_file="ZonderqOS-3095-network-n1.iso"
     ;;
   network-n2)
@@ -186,6 +189,7 @@ case "$MODE" in
     network_n1=true
     network_n2=true
     network_n3=false
+    network_n4=false
     output_file="ZonderqOS-3095-network-n2.iso"
     ;;
   network-n3)
@@ -194,7 +198,17 @@ case "$MODE" in
     network_n1=true
     network_n2=true
     network_n3=true
+    network_n4=false
     output_file="ZonderqOS-3095-network-n3.iso"
+    ;;
+  network-n4)
+    read_only=false
+    diagnostic=false
+    network_n1=true
+    network_n2=true
+    network_n3=true
+    network_n4=true
+    output_file="ZonderqOS-3095-network-n4.iso"
     ;;
 esac
 echo "[3095-BUILD] Publishing $MODE x64 ISO (no older Cosmos versions, no RAM root)..."
@@ -207,6 +221,7 @@ dotnet publish "$STAGE/ZonderqOS.csproj" \
   -p:ZonderqNetworkN1Probe="$network_n1" \
   -p:ZonderqNetworkN2Dhcp="$network_n2" \
   -p:ZonderqNetworkN3Icmp="$network_n3" \
+  -p:ZonderqNetworkN4Tcp="$network_n4" \
   -o "$output" --no-restore
 
 [[ -s "$output/ZonderqOS.iso" ]] || die "Publish finished without an ISO."
@@ -219,6 +234,6 @@ if [[ "$MODE" == disk ]]; then
   echo "[3095-BUILD] Never format or mount Kali's EFI partition as ZONDERQDATA."
 fi
 
-if [[ "$MODE" == network-n1 || "$MODE" == network-n2 || "$MODE" == network-n3 ]]; then
+if [[ "$MODE" == network-n1 || "$MODE" == network-n2 || "$MODE" == network-n3 || "$MODE" == network-n4 ]]; then
   echo "[3095-BUILD] Isolated QEMU NIC probe only; not production networking."
 fi
