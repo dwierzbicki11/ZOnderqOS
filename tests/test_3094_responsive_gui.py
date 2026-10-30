@@ -235,6 +235,49 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertFalse(contains(20, 548, 8, 8, 480, 540))
         self.assertTrue(contains(222, 206, 100, 100, 222, 192))
 
+    def test_desktop_context_menu_is_modal_with_or_without_shortcuts(self):
+        dispatch = DESKTOP.split("bool startMenuCaptures =", 1)[1].split(
+            "int priorMouseX =", 1
+        )[0]
+        desktop = DESKTOP.split("private void UpdateDesktopInteractions(", 1)[1].split(
+            "private bool IsPointOverWindow(", 1
+        )[0]
+
+        self.assertIn("bool desktopMenuWasVisible = desktopContextMenu != null &&", dispatch)
+        self.assertIn("bool desktopMenuCaptures = desktopMenuWasVisible &&", dispatch)
+        self.assertIn("(currentLeftButtonState && !previousLeftButtonState)", dispatch)
+        self.assertIn("if (desktopMenuWasVisible)", dispatch)
+        self.assertLess(dispatch.index("desktopContextMenu.UpdateInteractions("),
+                        dispatch.index("applicationManager.HandleMouse("))
+        self.assertIn("if (!desktopMenuCaptures)\n                            taskbar.UpdateInteractions(", dispatch)
+        self.assertIn("if (!startMenuCaptures && !desktopMenuCaptures)\n                            UpdateDesktopInteractions(", dispatch)
+        # The menu is handled once at the top-level dispatch, before the
+        # ShowDesktopIcons=false early return. Do not double-dispatch actions.
+        self.assertNotIn("desktopContextMenu.UpdateInteractions(", desktop)
+
+        def capture(menu_open, inside, left_down, previous_left):
+            return menu_open and (inside or (left_down and not previous_left))
+
+        # Clicking a menu entry or outside the menu is consumed, even if
+        # the action closes the overlay before other handlers are reached.
+        for icons_visible in (True, False):
+            self.assertTrue(capture(True, True, True, False), icons_visible)
+            self.assertTrue(capture(True, False, True, False), icons_visible)
+            self.assertFalse(capture(True, False, False, False), icons_visible)
+            self.assertFalse(capture(False, True, True, False), icons_visible)
+
+    def test_start_menu_action_does_not_click_desktop_shortcut_below(self):
+        dispatch = DESKTOP.split("bool startMenuCaptures =", 1)[1].split(
+            "int priorMouseX =", 1
+        )[0]
+        self.assertIn("if (!startMenuCaptures && !desktopMenuCaptures)", dispatch)
+        self.assertLess(dispatch.index("startMenu.UpdateInteractions("),
+                        dispatch.index("UpdateDesktopInteractions("))
+        # The capture flag is computed before StartMenu.UpdateInteractions
+        # can close the menu; never recompute it from the new Visible state.
+        self.assertLess(dispatch.index("bool startMenuCaptures"),
+                        dispatch.index("startMenu.UpdateInteractions("))
+
     def test_file_manager_menu_reflows_and_dismisses_outside_view(self):
         update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
             "public override void HandleMouse(", 1)[0]
