@@ -13,6 +13,8 @@ on:
       - 'tests/verify_3095_network_n3.py'
       - 'tests/verify_3095_network_n4.py'
       - 'tests/verify_3095_network_n5.py'
+      - 'tests/verify_3095_network_n6.py'
+      - 'tests/network_3095_http_host.py'
       - 'tests/network_3095_tcp_host.py'
       - '.github/workflows/3095-network-n1-qemu.yml'
   workflow_dispatch:
@@ -45,6 +47,9 @@ jobs:
           python3 zonderq/tests/verify_3095_network_n3.py --self-test
           python3 zonderq/tests/verify_3095_network_n4.py --self-test
           python3 zonderq/tests/verify_3095_network_n5.py --self-test
+          python3 zonderq/tests/verify_3095_network_n6.py --self-test
+          python3 -m py_compile zonderq/tests/network_3095_http_host.py
+          python3 zonderq/tests/network_3095_http_host.py --self-test
           python3 -m py_compile zonderq/tests/network_3095_tcp_host.py
           python3 zonderq/tests/network_3095_tcp_host.py --self-test
           python3 zonderq/tests/test_upstream_smp_disabled.py
@@ -233,5 +238,43 @@ jobs:
         with:
           name: zonderq3095-network-n5-QEMU-ONLY
           path: zonderq/output-3095/ZonderqOS-3095-network-n5.iso
+          retention-days: 4
+          if-no-files-found: error
+
+      - name: Build isolated 3.0.95 HTTP/1.0 over TCP proof ISO
+        working-directory: zonderq
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/without-downgrade
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh network-n6
+          test -s output-3095/ZonderqOS-3095-network-n6.iso
+          sha256sum output-3095/ZonderqOS-3095-network-n6.iso
+      - name: Boot QEMU and verify HTTP GET and 200 response via TCP PCAP
+        working-directory: zonderq
+        env:
+          NET3095_N1_TIMEOUT: '170'
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-n1-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-n6.iso network-n6-3095.serial.log n6
+      - name: Upload N6 HTTP serial PCAP and host evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n6-http-evidence
+          path: |
+            zonderq/network-n6-3095.serial.log
+            zonderq/network-n6-3095.serial.log.stderr
+            zonderq/network-n6-3095.serial.log.pcap
+            zonderq/network-n6-3095.serial.log.tcp-host
+            zonderq/network-n6-3095.serial.log.http-host
+          if-no-files-found: ignore
+      - name: Retain QEMU-only HTTP proof ISO
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n6-QEMU-ONLY
+          path: zonderq/output-3095/ZonderqOS-3095-network-n6.iso
           retention-days: 4
           if-no-files-found: error
