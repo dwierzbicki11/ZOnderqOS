@@ -156,7 +156,10 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("observedDesktopWidth == desktopWidth && observedDesktopHeight == desktopHeight", WINDOW)
         self.assertIn("observedDesktopWidth = desktopWidth;", WINDOW)
         self.assertIn("observedDesktopHeight = desktopHeight;", WINDOW)
-        self.assertIn("SyncDesktopBounds();\n            interactionFrame++;", WINDOW)
+        window_mouse = WINDOW.split("public void HandleMouse(", 1)[1].split(
+            "private int GetResizeMode(", 1)[0]
+        self.assertLess(window_mouse.index("SyncDesktopBounds();"),
+                        window_mouse.index("int closeX = "))
         self.assertIn("SyncDesktopBounds();\n            focusProgress =", WINDOW)
         self.assertIn("if (IsMaximized)\n            {\n                MoveTo(0, 0);", WINDOW)
 
