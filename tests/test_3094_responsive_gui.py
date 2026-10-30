@@ -251,7 +251,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertLess(dispatch.index("desktopContextMenu.UpdateInteractions("),
                         dispatch.index("applicationManager.HandleMouse("))
         self.assertIn("if (!desktopMenuCaptures)\n                            taskbar.UpdateInteractions(", dispatch)
-        self.assertIn("if (!startMenuCaptures && !desktopMenuCaptures)\n                            UpdateDesktopInteractions(", dispatch)
+        self.assertIn("if (!startMenuCaptures && !desktopMenuCaptures && !windowCapturedClick)\n                            UpdateDesktopInteractions(", dispatch)
         # The menu is handled once at the top-level dispatch, before the
         # ShowDesktopIcons=false early return. Do not double-dispatch actions.
         self.assertNotIn("desktopContextMenu.UpdateInteractions(", desktop)
@@ -334,6 +334,28 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertFalse(captures(True, False, True, False, True))
         self.assertTrue(captures(True, True, True, False, False))
         self.assertFalse(captures(False, False, True, False, False))
+
+    def test_window_titlebar_close_does_not_activate_desktop_below(self):
+        dispatch = DESKTOP.split("bool windowCapturedClick =", 1)[1].split(
+            "int priorMouseX =", 1
+        )[0]
+        self.assertIn("IsPointOverWindow(mouseX, mouseY);", dispatch)
+        self.assertLess(dispatch.index("IsPointOverWindow(mouseX, mouseY);"),
+                        dispatch.index("applicationManager.HandleMouse("))
+        self.assertIn(
+            "if (!startMenuCaptures && !desktopMenuCaptures && !windowCapturedClick)",
+            dispatch
+        )
+        self.assertLess(dispatch.index("applicationManager.HandleMouse("),
+                        dispatch.index("UpdateDesktopInteractions("))
+
+        # Closing/minimizing a window can expose a desktop icon at exactly
+        # the pointer position. Ownership must be snapshotted before the
+        # application processes the click, not recalculated afterward.
+        for was_window_under_pointer in (True, False):
+            captured = True and was_window_under_pointer
+            desktop_receives_click = not captured
+            self.assertEqual(desktop_receives_click, not was_window_under_pointer)
 
     def test_file_manager_menu_reflows_and_dismisses_outside_view(self):
         update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
