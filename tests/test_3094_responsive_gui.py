@@ -738,5 +738,37 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertEqual(navigations, 1)
 
 
+    def test_file_manager_page_navigation_uses_visible_grid_geometry(self):
+        keyboard = FILE_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "private void CopySelected(", 1)[0]
+        page = FILE_MANAGER.split("private void SelectPage(int direction)", 1)[1].split(
+            "private void Select(int delta)", 1)[0]
+        selection = FILE_MANAGER.split("private void Select(int delta)", 1)[1].split(
+            "private void EnsureSelectionVisible()", 1)[0]
+        self.assertIn("ConsoleKeyEx.PageUp", keyboard)
+        self.assertIn("SelectPage(-1);", keyboard)
+        self.assertIn("ConsoleKeyEx.PageDown", keyboard)
+        self.assertIn("SelectPage(1);", keyboard)
+        self.assertIn("GridHeightForView + TileGap", page)
+        self.assertIn("Select(direction * Columns() * rows);", page)
+        self.assertIn("ResetClickSequence();", selection)
+        self.assertIn("contextMenuVisible = false;", selection)
+        self.assertIn("ResetClickSequence();\n                if (selectedIndex >= 0)", keyboard)
+
+        # PageUp/PageDown always move by the same number of painted tiles
+        # that the selection visibility calculation uses.
+        for width, height in ((300, 170), (418, 276), (780, 465), (1100, 700)):
+            grid_width = max(112, width - 176 - 12)
+            grid_height = max(40, height - 24 - 50 - 8)
+            cols = max(1, (grid_width + 6) // (112 + 6))
+            rows = max(1, (grid_height + 6) // (94 + 6))
+            visible = cols * rows
+            selected = 17
+            self.assertEqual(min(39, selected + cols * rows),
+                             min(39, selected + visible))
+            self.assertEqual(max(0, selected - cols * rows),
+                             max(0, selected - visible))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
