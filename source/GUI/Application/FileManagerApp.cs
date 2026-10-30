@@ -76,7 +76,12 @@ namespace ZonderqOS.GUI.Apps
             // A first click after switching back from another window is not
             // the second click of an old File Manager double-click.
             if (!Window.IsActive)
+            {
                 ResetClickSequence();
+                // A menu from a background File Manager must not linger when
+                // the user switches windows with Alt+Tab or the taskbar.
+                contextMenuVisible = false;
+            }
 
             int previousViewWidth = view.Width;
             int previousViewHeight = view.Height;
