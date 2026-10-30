@@ -220,7 +220,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertLess(sync.index("resizing = false;"), sync.index("if (IsMaximized)"))
 
     def test_overlay_menus_do_not_click_through_to_windows(self):
-        self.assertIn("bool startMenuCaptures = startMenu.Visible &&", DESKTOP)
+        self.assertIn("bool startMenuCaptures = startMenuInside || startMenuOutsideClick;", DESKTOP)
         self.assertIn("bool desktopMenuCaptures = desktopMenuWasVisible &&", DESKTOP)
         self.assertIn("if (!startMenuCaptures && !desktopMenuCaptures)", DESKTOP)
         dispatch = DESKTOP.split("bool startMenuCaptures =", 1)[1].split(
@@ -276,9 +276,10 @@ class ResponsiveGui3094(unittest.TestCase):
                         dispatch.index("UpdateDesktopInteractions("))
         # The capture flag is computed before StartMenu.UpdateInteractions
         # can close the menu; never recompute it from the new Visible state.
-        self.assertIn("startMenu.Visible &&", dispatch)
-        self.assertLess(dispatch.index("startMenu.Visible &&"),
-                        dispatch.index("startMenu.UpdateInteractions("))
+        self.assertIn("startMenuInside || startMenuOutsideClick", DESKTOP)
+        self.assertIn("if (startMenuOutsideClick)", DESKTOP)
+        self.assertLess(DESKTOP.index("bool startMenuOutsideClick ="),
+                        DESKTOP.index("startMenu.UpdateInteractions("))
 
     def test_taskbar_overflow_pages_are_visible_and_clickable(self):
         self.assertIn("private int firstVisibleAppIndex;", TASKBAR)
@@ -312,6 +313,27 @@ class ResponsiveGui3094(unittest.TestCase):
                     self.assertEqual(offsets[-1] + page_slots >= running_count, True)
                 else:
                     self.assertLessEqual(running_count, page_slots)
+
+    def test_start_menu_outside_click_dismisses_without_click_through(self):
+        dispatch = DESKTOP.split("bool startMenuWasVisible =", 1)[1].split(
+            "int priorMouseX =", 1
+        )[0]
+        self.assertIn("bool startMenuOutsideClick = startMenuWasVisible && !startMenuInside &&", dispatch)
+        self.assertIn("mouseY < taskbar.Y;", dispatch)
+        self.assertIn("if (startMenuOutsideClick)\n                            startMenu.Visible = false;", dispatch)
+        self.assertIn("bool startMenuCaptures = startMenuInside || startMenuOutsideClick;", dispatch)
+        self.assertLess(dispatch.index("startMenu.Visible = false;"),
+                        dispatch.index("applicationManager.HandleMouse("))
+        self.assertIn("if (!startMenuCaptures && !desktopMenuCaptures)", dispatch)
+
+        def captures(menu_open, inside, left, old_left, on_taskbar):
+            outside = menu_open and not inside and left and not old_left and not on_taskbar
+            return inside or outside
+
+        self.assertTrue(captures(True, False, True, False, False))
+        self.assertFalse(captures(True, False, True, False, True))
+        self.assertTrue(captures(True, True, True, False, False))
+        self.assertFalse(captures(False, False, True, False, False))
 
     def test_file_manager_menu_reflows_and_dismisses_outside_view(self):
         update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
