@@ -301,6 +301,11 @@ namespace ZonderqOS.GUI
             if (wasClicked)
                 return;
 
+            // Caption buttons and resize handles are separate gestures.
+            // They must not prime a later title-bar double-click.
+            if (hoveredControl != 0 || hoveredResizeMode != 0)
+                lastTitleClickTimestamp = 0;
+
             if (hoveredControl == 1)
             {
                 Minimize();
