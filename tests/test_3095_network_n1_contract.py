@@ -24,6 +24,9 @@ class NetworkN1Isolation(unittest.TestCase):
     def test_no_storage_or_gui_in_probe(self):
         self.assertTrue(SOURCE.startswith("#if ZONDERQ_NETWORK_N1_PROBE"))
         self.assertIn("NetworkManager.IsInitialized", SOURCE)
+        self.assertIn("Cosmos.Kernel.System.Diagnostics.Log", SOURCE)
+        self.assertNotIn("Cosmos.Kernel.Core.IO", SOURCE)
+        self.assertNotIn("Serial.WriteString", SOURCE)
         self.assertIn("NetworkManager.GetAdapter(i)", SOURCE)
         self.assertIn("adapter.MacAddress", SOURCE)
         self.assertIn("adapter.LinkUp", SOURCE)

@@ -1,7 +1,7 @@
 #if ZONDERQ_NETWORK_N1_PROBE
 using System;
 using System.Threading;
-using Cosmos.Kernel.Core.IO;
+using DiagnosticLog = Cosmos.Kernel.System.Diagnostics.Log;
 using Cosmos.Kernel.System.Network;
 using Sys = Cosmos.Kernel.System;
 
@@ -15,7 +15,7 @@ namespace ZonderqOS
     {
         private static void Log(string line)
         {
-            Serial.WriteString(line + "\n");
+            DiagnosticLog.WriteString(line + "\n");
         }
 
         protected override void BeforeRun()
