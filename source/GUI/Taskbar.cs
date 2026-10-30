@@ -163,10 +163,14 @@ namespace ZonderqOS.GUI
                 StartButtonWidth + 2, Y + Height - 8);
 
             int appX = StartButtonWidth + SidePadding + 6;
-            int maxAppX = Width - TrayWidth;
             List<Application> apps = applicationManager != null ? applicationManager.Applications : null;
             Application activeApplication = applicationManager != null ? applicationManager.ActiveApplication : null;
-            int visibleIndex = 0;
+            int runningCount = CountRunningApps(apps);
+            bool overflow;
+            int pageSlots = GetPageSlots(runningCount, out overflow);
+            NormalizeAppPage(runningCount, pageSlots, overflow);
+            int runningIndex = 0;
+            int shown = 0;
 
             if (apps != null)
             {
@@ -175,12 +179,14 @@ namespace ZonderqOS.GUI
                     Application app = apps[i];
                     if (app == null || !app.IsRunning || app.Window == null)
                         continue;
-                    if (appX + AppButtonSize > maxAppX)
+                    if (runningIndex++ < firstVisibleAppIndex)
+                        continue;
+                    if (shown >= pageSlots)
                         break;
 
                     bool active = activeApplication == app;
                     bool minimized = app.Window.IsMinimized;
-                    bool hovered = visibleIndex == hoveredAppIndex;
+                    bool hovered = shown == hoveredAppIndex;
 
                     Color bg = active
                         ? SystemTheme.AccentSoft
@@ -201,8 +207,19 @@ namespace ZonderqOS.GUI
                         canvas.DrawFilledRectangle(Color.FromArgb(58, 67, 76), appX + 17, Y + Height - 3, 6, 1);
 
                     appX += AppButtonSize + AppButtonGap;
-                    visibleIndex++;
+                    shown++;
                 }
+            }
+
+            if (overflow)
+            {
+                int arrowX = OverflowButtonX(pageSlots);
+                UiPainter.RoundedPanel(canvas, arrowX, Y + 3, AppButtonSize, Height - 6,
+                    UiMetrics.TileRadius,
+                    overflowHovered ? SystemTheme.AccentSoft : Color.FromArgb(25, 31, 38),
+                    overflowHovered ? SystemTheme.AccentBorder : Color.FromArgb(38, 47, 56));
+                SmallTextRenderer.DrawCentered(canvas, ">>", arrowX, Y + 17, AppButtonSize,
+                    Color.FromArgb(232, 237, 242));
             }
 
             RenderSystemTray(canvas);
