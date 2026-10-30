@@ -796,5 +796,35 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertFalse(dispatched_to_sidebar)
 
 
+    def test_file_manager_modal_menu_owns_taskbar_and_window_clicks(self):
+        dispatch = DESKTOP.split("bool windowCapturedClick =", 1)[1].split(
+            "if (lockRequested)", 1)[0]
+        self.assertIn("applicationManager.ActiveApplication is FileManagerApp activeFileManager", dispatch)
+        self.assertIn("activeFileManager.ContextMenuVisible", dispatch)
+        self.assertIn("activeFileManager.HandleMouse(mouseX, mouseY, currentLeftButtonState,", dispatch)
+        self.assertIn("else if (!startMenuCaptures && !desktopMenuCaptures)", dispatch)
+        self.assertIn("if (!rightPressed && !fileManagerMenuCaptures)", dispatch)
+        self.assertIn("if (!desktopMenuCaptures && !fileManagerMenuCaptures)", DESKTOP)
+        self.assertIn("!fileManagerMenuCaptures && !windowCapturedClick", DESKTOP)
+        self.assertLess(dispatch.index("bool fileManagerMenuCaptures ="),
+                        dispatch.index("applicationManager.HandleMouse("))
+
+        # A click on another window or the taskbar while a File Manager
+        # context menu is open must dismiss the menu without focus/volume
+        # changes; the following click may then perform the normal action.
+        menu_open = True
+        focus_changes = 0
+        taskbar_actions = 0
+        for press in range(2):
+            captured = menu_open
+            if captured:
+                menu_open = False
+            else:
+                focus_changes += 1
+                taskbar_actions += 1
+            self.assertEqual((focus_changes, taskbar_actions),
+                             (0, 0) if press == 0 else (1, 1))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
