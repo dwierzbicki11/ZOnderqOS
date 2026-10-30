@@ -47,6 +47,14 @@ namespace ZonderqOS.GUI.Apps
         internal const int ContextMenuItemCount = 7;
         internal const int ContextMenuHeight = ContextMenuItemHeight * ContextMenuItemCount;
 
+        // The menu must remain usable even when the window is resized to its
+        // minimum size (320x220, with a 300x170 client view).
+        internal int ContextMenuWidthForView => Math.Min(ContextMenuWidth, Math.Max(1, view.Width - 8));
+        internal int ContextMenuItemHeightForView =>
+            Math.Max(16, Math.Min(ContextMenuItemHeight,
+                (view.Height - FooterHeight - 12) / ContextMenuItemCount));
+        internal int ContextMenuHeightForView => ContextMenuItemHeightForView * ContextMenuItemCount;
+
         public FileManagerApp(int x, int y, Action<string> openFile) : base("File Manager")
         {
             nanoLauncher = openFile;
@@ -99,8 +107,11 @@ namespace ZonderqOS.GUI.Apps
                 if (x >= SidebarWidth + 6 && y >= ContentTop && y < contentBottom)
                 {
                     selectedIndex = HitEntryIndex(x, y);
-                    contextMenuX = Math.Max(SidebarWidth + 8, Math.Min(x, view.Width - ContextMenuWidth - 6));
-                    contextMenuY = Math.Max(ContentTop, Math.Min(y, view.Height - ContextMenuHeight - FooterHeight - 8));
+                    // A fixed sidebar offset used to push the 240px menu off the
+                    // right edge of narrow windows. Prefer viewport bounds.
+                    contextMenuX = Math.Max(4, Math.Min(x, view.Width - ContextMenuWidthForView - 4));
+                    contextMenuY = Math.Max(4, Math.Min(y,
+                        view.Height - ContextMenuHeightForView - FooterHeight - 4));
                     contextMenuVisible = true;
                     return;
                 }
@@ -174,11 +185,11 @@ namespace ZonderqOS.GUI.Apps
 
         private bool ContextClick(int x, int y)
         {
-            if (x < contextMenuX || x >= contextMenuX + ContextMenuWidth ||
-                y < contextMenuY || y >= contextMenuY + ContextMenuHeight)
+            if (x < contextMenuX || x >= contextMenuX + ContextMenuWidthForView ||
+                y < contextMenuY || y >= contextMenuY + ContextMenuHeightForView)
                 return false;
 
-            int item = (y - contextMenuY) / ContextMenuItemHeight;
+            int item = (y - contextMenuY) / ContextMenuItemHeightForView;
             contextMenuVisible = false;
 
             if (item == 0)
@@ -1212,33 +1223,37 @@ namespace ZonderqOS.GUI.Apps
             int x = X + app.ContextMenuX;
             int y = Y + app.ContextMenuY;
 
-            UiPainter.Shadow(canvas, x, y, FileManagerApp.ContextMenuWidth,
-                FileManagerApp.ContextMenuHeight, UiMetrics.MenuRadius);
-            UiPainter.RoundedPanel(canvas, x, y, FileManagerApp.ContextMenuWidth,
-                FileManagerApp.ContextMenuHeight, UiMetrics.MenuRadius,
+            int menuWidth = app.ContextMenuWidthForView;
+            int menuHeight = app.ContextMenuHeightForView;
+            int rowHeight = app.ContextMenuItemHeightForView;
+
+            UiPainter.Shadow(canvas, x, y, menuWidth, menuHeight, UiMetrics.MenuRadius);
+            UiPainter.RoundedPanel(canvas, x, y, menuWidth, menuHeight, UiMetrics.MenuRadius,
                 UiPalette.SurfaceRaised, UiPalette.Border);
 
             bool selected = app.SelectedIndex >= 0 && app.SelectedIndex < app.Entries.Count;
-            DrawMenuItem(canvas, "Copy", "Ctrl+C", x, y + 0 * FileManagerApp.ContextMenuItemHeight, selected);
-            DrawMenuItem(canvas, "Cut", "Ctrl+X", x, y + 1 * FileManagerApp.ContextMenuItemHeight, selected);
-            DrawMenuItem(canvas, "Paste", "Ctrl+V", x, y + 2 * FileManagerApp.ContextMenuItemHeight, FileClipboard.HasItem);
-            canvas.DrawLine(Color.FromArgb(63, 73, 84), x + 8, y + 87, x + FileManagerApp.ContextMenuWidth - 8, y + 87);
-            DrawMenuItem(canvas, "New file", "", x, y + 3 * FileManagerApp.ContextMenuItemHeight, true);
-            DrawMenuItem(canvas, "New folder", "", x, y + 4 * FileManagerApp.ContextMenuItemHeight, true);
-            DrawMenuItem(canvas, "Refresh", "F5", x, y + 5 * FileManagerApp.ContextMenuItemHeight, true);
-            DrawMenuItem(canvas, "Go up", "Backspace", x, y + 6 * FileManagerApp.ContextMenuItemHeight, true);
+            DrawMenuItem(canvas, "Copy", "Ctrl+C", x, y + 0 * rowHeight, selected);
+            DrawMenuItem(canvas, "Cut", "Ctrl+X", x, y + 1 * rowHeight, selected);
+            DrawMenuItem(canvas, "Paste", "Ctrl+V", x, y + 2 * rowHeight, FileClipboard.HasItem);
+            canvas.DrawLine(Color.FromArgb(63, 73, 84), x + 8, y + 3 * rowHeight,
+                x + menuWidth - 8, y + 3 * rowHeight);
+            DrawMenuItem(canvas, "New file", "", x, y + 3 * rowHeight, true);
+            DrawMenuItem(canvas, "New folder", "", x, y + 4 * rowHeight, true);
+            DrawMenuItem(canvas, "Refresh", "F5", x, y + 5 * rowHeight, true);
+            DrawMenuItem(canvas, "Go up", "Backspace", x, y + 6 * rowHeight, true);
         }
 
         private void DrawMenuItem(Canvas canvas, string text, string shortcut, int x, int y, bool enabled)
         {
             Color color = enabled ? MainText : Color.FromArgb(91, 103, 114);
-            SmallTextRenderer.Draw(canvas, text, x + 10, y + 10, color);
+            int textOffset = Math.Max(4, (app.ContextMenuItemHeightForView - 9) / 2);
+            SmallTextRenderer.Draw(canvas, text, x + 10, y + textOffset, color);
 
             if (!string.IsNullOrEmpty(shortcut))
             {
                 int width = SmallTextRenderer.Width(shortcut);
                 SmallTextRenderer.Draw(canvas, shortcut,
-                    x + FileManagerApp.ContextMenuWidth - width - 10, y + 10,
+                    x + app.ContextMenuWidthForView - width - 10, y + textOffset,
                     enabled ? SecondaryText : Color.FromArgb(75, 86, 96));
             }
         }
