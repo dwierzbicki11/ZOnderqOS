@@ -7,8 +7,8 @@ LOG="${2:?usage: smoke-network-n1-3095-qemu.sh ISO SERIAL-LOG}"
 TIMEOUT="${NET3095_N1_TIMEOUT:-150}"
 PCAP="${NET3095_N1_PCAP:-$LOG.pcap}"
 MODE="${3:-n1}"
-[[ "$MODE" == n1 || "$MODE" == n2 || "$MODE" == n3 || "$MODE" == n4 || "$MODE" == n5 ]] || {
-  echo "[NET3095-N1][FAIL] Expected n1, n2, n3, n4 or n5 mode" >&2; exit 2;
+[[ "$MODE" == n1 || "$MODE" == n2 || "$MODE" == n3 || "$MODE" == n4 || "$MODE" == n5 || "$MODE" == n6 ]] || {
+  echo "[NET3095-N1][FAIL] Expected n1, n2, n3, n4, n5 or n6 mode" >&2; exit 2;
 }
 [[ "$TIMEOUT" =~ ^[1-9][0-9]*$ ]] && (( TIMEOUT <= 600 )) || {
   echo "[NET3095-N1][FAIL] Invalid timeout" >&2; exit 1;
@@ -16,7 +16,7 @@ MODE="${3:-n1}"
 [[ -s "$ISO" ]] || { echo "[NET3095-N1][FAIL] Missing ISO" >&2; exit 1; }
 command -v qemu-system-x86_64 >/dev/null || exit 1
 # Fail closed: do not follow symlinks or erase an existing capture.
-[[ ! -L "$LOG" && ! -L "$LOG.stderr" && ! -L "$LOG.tcp-host" ]] || {
+[[ ! -L "$LOG" && ! -L "$LOG.stderr" && ! -L "$LOG.tcp-host" && ! -L "$LOG.http-host" ]] || {
   echo "[NET3095-N1][FAIL] Refusing symlinked serial output" >&2; exit 1;
 }
 [[ ! -e "$PCAP" && ! -L "$PCAP" ]] || {
@@ -27,7 +27,24 @@ mkdir -p "$(dirname "$LOG")" "$(dirname "$PCAP")"
 # N4 uses a CI-owned, loopback-only TCP server. The QEMU guest reaches
 # 127.0.0.1 on the host through the SLIRP 10.0.2.2 gateway alias.
 server_pid=""
-if [[ "$MODE" == n4 || "$MODE" == n5 ]]; then
+http_pid=""
+pid=""
+cleanup() {
+  if [[ -n "$pid" ]]; then
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+  fi
+  if [[ -n "$server_pid" ]]; then
+    kill "$server_pid" 2>/dev/null || true
+    wait "$server_pid" 2>/dev/null || true
+  fi
+  if [[ -n "$http_pid" ]]; then
+    kill "$http_pid" 2>/dev/null || true
+    wait "$http_pid" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT INT TERM
+if [[ "$MODE" == n4 || "$MODE" == n5 || "$MODE" == n6 ]]; then
   [[ ! -e "$LOG.tcp-host" ]] || {
     echo "[NET3095-N4][FAIL] Refusing to overwrite host server evidence" >&2; exit 1;
   }
@@ -53,6 +70,30 @@ if [[ "$MODE" == n4 || "$MODE" == n5 ]]; then
     exit 1
   }
 fi
+if [[ "$MODE" == n6 ]]; then
+  [[ ! -e "$LOG.http-host" ]] || {
+    echo "[NET3095-N6][FAIL] Refusing to overwrite HTTP host evidence" >&2; exit 1;
+  }
+  python3 -u "$ROOT/tests/network_3095_http_host.py" --port 18096 > "$LOG.http-host" 2>&1 &
+  http_pid=$!
+  ready=0
+  for _ in {1..50}; do
+    if grep -Fq '[NET3095-N6-HOST] READY port=18096' "$LOG.http-host"; then
+      ready=1
+      break
+    fi
+    if ! kill -0 "$http_pid" 2>/dev/null; then
+      cat "$LOG.http-host" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+  [[ "$ready" == 1 ]] || {
+    cat "$LOG.http-host" >&2
+    echo "[NET3095-N6][FAIL] HTTP listener did not become ready" >&2
+    exit 1
+  }
+fi
 qemu-system-x86_64 \
   -machine q35 -cpu Nehalem -smp 1 -m 2048M \
   -boot d -cdrom "$ISO" \
@@ -62,15 +103,6 @@ qemu-system-x86_64 \
   -serial "file:$LOG" -no-reboot -no-shutdown \
   2> "$LOG.stderr" &
 pid=$!
-cleanup() {
-  kill "$pid" 2>/dev/null || true
-  wait "$pid" 2>/dev/null || true
-  if [[ -n "$server_pid" ]]; then
-    kill "$server_pid" 2>/dev/null || true
-    wait "$server_pid" 2>/dev/null || true
-  fi
-}
-trap cleanup EXIT INT TERM
 qemu_alive() {
   kill -0 "$pid" 2>/dev/null || return 1
   local state
@@ -106,7 +138,7 @@ while (( SECONDS - started < TIMEOUT )); do
       sleep 1
     done
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
-    if [[ "$MODE" == n2 || "$MODE" == n3 || "$MODE" == n4 || "$MODE" == n5 ]]; then
+    if [[ "$MODE" == n2 || "$MODE" == n3 || "$MODE" == n4 || "$MODE" == n5 || "$MODE" == n6 ]]; then
       # N2 requires genuine inbound DHCP OFFER/ACK and a guest-applied lease.
       dhcp_start=$SECONDS
       until python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
@@ -127,7 +159,7 @@ while (( SECONDS - started < TIMEOUT )); do
       done
       python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP"
     fi
-    if [[ "$MODE" == n3 || "$MODE" == n4 || "$MODE" == n5 ]]; then
+    if [[ "$MODE" == n3 || "$MODE" == n4 || "$MODE" == n5 || "$MODE" == n6 ]]; then
       icmp_start=$SECONDS
       until python3 "$ROOT/tests/verify_3095_network_n3.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
         qemu_alive || {
@@ -147,7 +179,7 @@ while (( SECONDS - started < TIMEOUT )); do
       done
       python3 "$ROOT/tests/verify_3095_network_n3.py" "$LOG" "$PCAP"
     fi
-    if [[ "$MODE" == n4 || "$MODE" == n5 ]]; then
+    if [[ "$MODE" == n4 || "$MODE" == n5 || "$MODE" == n6 ]]; then
       tcp_start=$SECONDS
       until python3 "$ROOT/tests/verify_3095_network_n4.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
         qemu_alive || {
@@ -173,7 +205,7 @@ while (( SECONDS - started < TIMEOUT )); do
         exit 1
       }
     fi
-    if [[ "$MODE" == n5 ]]; then
+    if [[ "$MODE" == n5 || "$MODE" == n6 ]]; then
       dns_start=$SECONDS
       until python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
         qemu_alive || {
@@ -193,6 +225,32 @@ while (( SECONDS - started < TIMEOUT )); do
       done
       python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP"
     fi
+    if [[ "$MODE" == n6 ]]; then
+      http_start=$SECONDS
+      until python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
+        qemu_alive || {
+          echo "[NET3095-N6][FAIL] Guest exited before HTTP proof" >&2; exit 1;
+        }
+        if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
+          tail -n 90 "$LOG" >&2
+          echo "[NET3095-N6][FAIL] Guest reported HTTP failure" >&2
+          exit 1
+        fi
+        if (( SECONDS - http_start >= 20 )); then
+          python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
+          cat "$LOG.http-host" >&2
+          echo "[NET3095-N6][FAIL] No correlated HTTP TCP capture" >&2
+          exit 1
+        fi
+        sleep 1
+      done
+      python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
+      grep -Fq '[NET3095-N6-HOST] PASS HTTP/1.0 GET /health 200' "$LOG.http-host" || {
+        cat "$LOG.http-host" >&2
+        echo "[NET3095-N6][FAIL] Host did not complete HTTP exchange" >&2
+        exit 1
+      }
+    fi
     # A running QEMU PID is not proof of a live guest (-no-shutdown).
     # Require ongoing managed kernel execution for the stability window.
     heartbeat_before="$(grep -Ec '\[NET3095-N1\] HEARTBEAT=[0-9]+' "$LOG" || true)"
@@ -200,7 +258,7 @@ while (( SECONDS - started < TIMEOUT )); do
     qemu_alive || {
       echo "[NET3095-N1][FAIL] Guest exited after TX proof" >&2; exit 1;
     }
-    if grep -Eqi 'kernel panic|fatal: exception|page fault|\[NET3095-N[1-5]\]\[FAIL\]' "$LOG"; then
+    if grep -Eqi 'kernel panic|fatal: exception|page fault|\[NET3095-N[1-6]\]\[FAIL\]' "$LOG"; then
       tail -n 90 "$LOG" >&2
       echo "[NET3095-N1][FAIL] Guest fault after network proof" >&2
       exit 1
@@ -213,7 +271,10 @@ while (( SECONDS - started < TIMEOUT )); do
     fi
     echo "[NET3095-N1] Guest heartbeat advanced $(( heartbeat_after - heartbeat_before )) ticks in stability window"
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
-    if [[ "$MODE" == n5 ]]; then
+    if [[ "$MODE" == n6 ]]; then
+      python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
+      echo "[NET3095-N6-QEMU] PASS real E1000E HTTP/1.0 GET/200 over TCP + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
+    elif [[ "$MODE" == n5 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP"
       echo "[NET3095-N5-QEMU] PASS real E1000E DNS query/answer + TCP/DHCP/ICMP + 8s stability; production networking disabled"
     elif [[ "$MODE" == n4 ]]; then
