@@ -6,6 +6,10 @@ ISO="${1:?usage: smoke-network-n1-3095-qemu.sh ISO SERIAL-LOG}"
 LOG="${2:?usage: smoke-network-n1-3095-qemu.sh ISO SERIAL-LOG}"
 TIMEOUT="${NET3095_N1_TIMEOUT:-150}"
 PCAP="${NET3095_N1_PCAP:-$LOG.pcap}"
+MODE="${3:-n1}"
+[[ "$MODE" == n1 || "$MODE" == n2 ]] || {
+  echo "[NET3095-N1][FAIL] Expected n1 or n2 mode" >&2; exit 2;
+}
 [[ "$TIMEOUT" =~ ^[1-9][0-9]*$ ]] && (( TIMEOUT <= 600 )) || {
   echo "[NET3095-N1][FAIL] Invalid timeout" >&2; exit 1;
 }
@@ -69,12 +73,38 @@ while (( SECONDS - started < TIMEOUT )); do
       sleep 1
     done
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
+    if [[ "$MODE" == n2 ]]; then
+      # N2 requires genuine inbound DHCP OFFER/ACK and a guest-applied lease.
+      dhcp_start=$SECONDS
+      until python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
+        qemu_alive || {
+          echo "[NET3095-N2][FAIL] Guest exited before DHCP RX proof" >&2; exit 1;
+        }
+        if grep -Fq '[NET3095-N2][FAIL]' "$LOG"; then
+          tail -n 90 "$LOG" >&2
+          echo "[NET3095-N2][FAIL] Guest reported DHCP failure" >&2
+          exit 1
+        fi
+        if (( SECONDS - dhcp_start >= 20 )); then
+          python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP"
+          echo "[NET3095-N2][FAIL] No correlated DHCP RX/TX capture" >&2
+          exit 1
+        fi
+        sleep 1
+      done
+      python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP"
+    fi
     sleep 8
     qemu_alive || {
       echo "[NET3095-N1][FAIL] Guest exited after TX proof" >&2; exit 1;
     }
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
-    echo "[NET3095-N1-QEMU] PASS real e1000e link + QEMU PCAP raw TX + 8s stability; RX/DHCP unproven"
+    if [[ "$MODE" == n2 ]]; then
+      python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP"
+      echo "[NET3095-N2-QEMU] PASS real e1000e RX via DHCP DORA + QEMU PCAP + 8s stability; production networking disabled"
+    else
+      echo "[NET3095-N1-QEMU] PASS real e1000e link + QEMU PCAP raw TX + 8s stability; RX/DHCP unproven"
+    fi
     exit 0
   fi
   sleep 1
