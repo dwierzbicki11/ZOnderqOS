@@ -454,13 +454,44 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertFalse(is_double(0, 103_000_000))
         self.assertFalse(is_double(103_000_000, 102_000_000))
 
+    def test_file_manager_grid_columns_and_rows_match_render_and_hit_test(self):
+        columns = FILE_MANAGER.split("private int Columns()", 1)[1].split(
+            "private void Select(", 1)[0]
+        selection = FILE_MANAGER.split("private void EnsureSelectionVisible()", 1)[1].split(
+            "private void GoUp()", 1)[0]
+        view = FILE_MANAGER.split("internal sealed class FileManagerView", 1)[1]
+        self.assertIn("internal int GridWidthForView =>", FILE_MANAGER)
+        self.assertIn("internal int GridHeightForView =>", FILE_MANAGER)
+        self.assertIn("GridWidthForView + TileGap", columns)
+        self.assertIn("GridHeightForView + TileGap", selection)
+        self.assertIn("int contentH = app.GridHeightForView;", view)
+        self.assertIn("int gridW = app.GridWidthForView;", view)
+
+        # At view width 418 the previous -14/-12 disagreement painted two
+        # columns but navigation/hit-testing knew only one.
+        for view_width in (300, 417, 418, 419, 535, 536, 654, 780):
+            grid_width = max(112, view_width - 176 - 12)
+            painted_columns = max(1, (grid_width + 6) // (112 + 6))
+            hit_columns = max(1, (grid_width + 6) // (112 + 6))
+            self.assertEqual(painted_columns, hit_columns)
+        self.assertEqual((max(112, 418 - 188) + 6) // 118, 2)
+
+        # At heights 276..279 the old -12 scroll math had one row while
+        # the painter could show two. Both now use the same grid height.
+        for view_height in (170, 275, 276, 277, 279, 280, 465, 700):
+            grid_height = max(40, view_height - 24 - 50 - 8)
+            painted_rows = max(1, (grid_height + 6) // (94 + 6))
+            scroll_rows = max(1, (grid_height + 6) // (94 + 6))
+            self.assertEqual(painted_rows, scroll_rows)
+        self.assertEqual((max(40, 276 - 82) + 6) // 100, 2)
+
     def test_file_manager_sidebar_hit_testing_excludes_clipped_volume_rows(self):
         sidebar = FILE_MANAGER.split("private SidebarEntry GetSidebarEntryAt(int y)", 1)[1].split(
             "private void MountVolume(", 1)[0]
         render = FILE_MANAGER.split("private void RenderSidebar(Canvas canvas", 1)[1].split(
             "private bool IsEntryActive(", 1)[0]
-        self.assertIn("int sidebarBottom = Math.Max(ContentTop + 40,", sidebar)
-        self.assertIn("view.Height - FooterHeight - 8);", sidebar)
+        self.assertIn("int sidebarBottom = ContentTop + GridHeightForView;", sidebar)
+        self.assertIn("internal int GridHeightForView =>", FILE_MANAGER)
         self.assertIn("if (itemY + height > sidebarBottom)", sidebar)
         self.assertLess(sidebar.index("if (itemY + height > sidebarBottom)"),
                         sidebar.index("if (y >= itemY && y < itemY + height)"))
