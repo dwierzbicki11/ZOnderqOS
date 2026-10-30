@@ -287,13 +287,38 @@ namespace ZonderqOS.GUI
                         continue;
                     }
 
-                    bool paletteCaptured = commandPalette != null && commandPalette.Visible &&
-                        commandPalette.HandleMouse(mouseX, mouseY,
-                            currentLeftButtonState, previousLeftButtonState);
+                    // Right-click dismisses a modal overlay without passing the same
+                    // event to an underlying app (e.g. File Manager context menu).
+                    bool rightPressed = currentRightButtonState && !previousRightButtonState;
+                    bool paletteCaptured = false;
+                    if (commandPalette != null && commandPalette.Visible)
+                    {
+                        if (rightPressed)
+                        {
+                            commandPalette.Close();
+                            paletteCaptured = true;
+                        }
+                        else
+                        {
+                            paletteCaptured = commandPalette.HandleMouse(mouseX, mouseY,
+                                currentLeftButtonState, previousLeftButtonState);
+                        }
+                    }
 
-                    bool notificationCaptured = !paletteCaptured && notificationCenter != null &&
-                        notificationCenter.UpdateInteractions(mouseX, mouseY,
-                            currentLeftButtonState, previousLeftButtonState);
+                    bool notificationCaptured = false;
+                    if (!paletteCaptured && notificationCenter != null)
+                    {
+                        if (notificationCenter.Visible && rightPressed)
+                        {
+                            notificationCenter.Close();
+                            notificationCaptured = true;
+                        }
+                        else
+                        {
+                            notificationCaptured = notificationCenter.UpdateInteractions(mouseX, mouseY,
+                                currentLeftButtonState, previousLeftButtonState);
+                        }
+                    }
 
                     if (!paletteCaptured && !notificationCaptured)
                     {
@@ -308,7 +333,8 @@ namespace ZonderqOS.GUI
                         // click a window or desktop shortcut underneath.
                         // Taskbar clicks still work, including Start toggling.
                         bool startMenuOutsideClick = startMenuWasVisible && !startMenuInside &&
-                            currentLeftButtonState && !previousLeftButtonState && mouseY < taskbar.Y;
+                            ((currentLeftButtonState && !previousLeftButtonState && mouseY < taskbar.Y) ||
+                             rightPressed);
                         bool startMenuCaptures = startMenuInside || startMenuOutsideClick;
                         if (startMenuOutsideClick)
                             startMenu.Visible = false;
@@ -320,10 +346,15 @@ namespace ZonderqOS.GUI
                         bool desktopMenuCaptures = desktopMenuWasVisible &&
                             ((mouseX >= desktopContextMenu.X && mouseX < desktopContextMenu.X + desktopContextMenu.Width &&
                               mouseY >= desktopContextMenu.Y && mouseY < desktopContextMenu.Y + desktopContextMenu.Height) ||
-                             (currentLeftButtonState && !previousLeftButtonState));
+                             (currentLeftButtonState && !previousLeftButtonState) || rightPressed);
                         if (desktopMenuWasVisible)
-                            desktopContextMenu.UpdateInteractions(mouseX, mouseY,
-                                currentLeftButtonState, previousLeftButtonState);
+                        {
+                            if (rightPressed)
+                                desktopContextMenu.Visible = false;
+                            else
+                                desktopContextMenu.UpdateInteractions(mouseX, mouseY,
+                                    currentLeftButtonState, previousLeftButtonState);
+                        }
 
                         // Snapshot ownership before a title-bar action closes
                         // or minimizes the window. Otherwise that same click
@@ -335,7 +366,10 @@ namespace ZonderqOS.GUI
                         if (!startMenuCaptures && !desktopMenuCaptures)
                             applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
                                 currentRightButtonState, previousRightButtonState);
-                        startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
+                        // A simultaneous right press must never invoke a Start action.
+                        if (!rightPressed)
+                            startMenu.UpdateInteractions(mouseX, mouseY,
+                                currentLeftButtonState, previousLeftButtonState);
 
                         // A lock requested from Start must take over before the taskbar or desktop
                         // can process the same click. Open applications remain alive and untouched.
