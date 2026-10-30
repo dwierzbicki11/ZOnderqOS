@@ -7,8 +7,8 @@ LOG="${2:?usage: smoke-network-n1-3095-qemu.sh ISO SERIAL-LOG}"
 TIMEOUT="${NET3095_N1_TIMEOUT:-150}"
 PCAP="${NET3095_N1_PCAP:-$LOG.pcap}"
 MODE="${3:-n1}"
-[[ "$MODE" == n1 || "$MODE" == n2 ]] || {
-  echo "[NET3095-N1][FAIL] Expected n1 or n2 mode" >&2; exit 2;
+[[ "$MODE" == n1 || "$MODE" == n2 || "$MODE" == n3 ]] || {
+  echo "[NET3095-N1][FAIL] Expected n1, n2 or n3 mode" >&2; exit 2;
 }
 [[ "$TIMEOUT" =~ ^[1-9][0-9]*$ ]] && (( TIMEOUT <= 600 )) || {
   echo "[NET3095-N1][FAIL] Invalid timeout" >&2; exit 1;
@@ -73,7 +73,7 @@ while (( SECONDS - started < TIMEOUT )); do
       sleep 1
     done
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
-    if [[ "$MODE" == n2 ]]; then
+    if [[ "$MODE" == n2 || "$MODE" == n3 ]]; then
       # N2 requires genuine inbound DHCP OFFER/ACK and a guest-applied lease.
       dhcp_start=$SECONDS
       until python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
@@ -94,12 +94,35 @@ while (( SECONDS - started < TIMEOUT )); do
       done
       python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP"
     fi
+    if [[ "$MODE" == n3 ]]; then
+      icmp_start=$SECONDS
+      until python3 "$ROOT/tests/verify_3095_network_n3.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
+        qemu_alive || {
+          echo "[NET3095-N3][FAIL] Guest exited before ICMP RX proof" >&2; exit 1;
+        }
+        if grep -Fq '[NET3095-N3][FAIL]' "$LOG"; then
+          tail -n 90 "$LOG" >&2
+          echo "[NET3095-N3][FAIL] Guest reported ICMP failure" >&2
+          exit 1
+        fi
+        if (( SECONDS - icmp_start >= 15 )); then
+          python3 "$ROOT/tests/verify_3095_network_n3.py" "$LOG" "$PCAP"
+          echo "[NET3095-N3][FAIL] No correlated ICMP echo RX/TX capture" >&2
+          exit 1
+        fi
+        sleep 1
+      done
+      python3 "$ROOT/tests/verify_3095_network_n3.py" "$LOG" "$PCAP"
+    fi
     sleep 8
     qemu_alive || {
       echo "[NET3095-N1][FAIL] Guest exited after TX proof" >&2; exit 1;
     }
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
-    if [[ "$MODE" == n2 ]]; then
+    if [[ "$MODE" == n3 ]]; then
+      python3 "$ROOT/tests/verify_3095_network_n3.py" "$LOG" "$PCAP"
+      echo "[NET3095-N3-QEMU] PASS real e1000e DHCP RX + ICMP echo RX/TX + 8s stability; production networking disabled"
+    elif [[ "$MODE" == n2 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP"
       echo "[NET3095-N2-QEMU] PASS real e1000e RX via DHCP DORA + QEMU PCAP + 8s stability; production networking disabled"
     else
