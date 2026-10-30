@@ -220,7 +220,7 @@ class ResponsiveGui3094(unittest.TestCase):
 
     def test_overlay_menus_do_not_click_through_to_windows(self):
         self.assertIn("bool startMenuCaptures = startMenu.Visible &&", DESKTOP)
-        self.assertIn("bool desktopMenuCaptures = desktopContextMenu != null &&", DESKTOP)
+        self.assertIn("bool desktopMenuCaptures = desktopMenuWasVisible &&", DESKTOP)
         self.assertIn("if (!startMenuCaptures && !desktopMenuCaptures)", DESKTOP)
         dispatch = DESKTOP.split("bool startMenuCaptures =", 1)[1].split(
             "startMenu.UpdateInteractions(", 1)[0]
