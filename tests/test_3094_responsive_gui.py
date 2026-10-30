@@ -200,6 +200,15 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertNotIn("RestoreFromMinimized();", toggle)
         self.assertIn("Activate(application);", toggle)
 
+    def test_right_click_focuses_background_window_before_dispatch(self):
+        mouse = APPLICATION_MANAGER.split(
+            "public void HandleMouse(int mouseX, int mouseY, bool leftClicked", 1
+        )[1].split("public void Update()", 1)[0]
+        self.assertIn("(leftClicked && !leftWasClicked) || (rightClicked && !rightWasClicked)", mouse)
+        self.assertLess(mouse.index("Activate(application);"),
+                        mouse.index("target?.HandleMouse("))
+        self.assertIn("application.Window.ContainsPoint(mouseX, mouseY)", mouse)
+
     def test_display_mode_change_cancels_stale_drag_and_resize(self):
         sync = WINDOW.split("private void SyncDesktopBounds()", 1)[1].split(
             "public void AddChild(", 1)[0]
