@@ -100,6 +100,17 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('tests/verify_3095_network_n4.py', SMOKE)
         self.assertIn('tests/network_3095_tcp_host.py', SMOKE)
         self.assertIn('No correlated TCP RX/TX capture', SMOKE)
+        self.assertIn('>false</ZonderqNetworkN5Dns>', PROJECT)
+        self.assertIn('ZONDERQ_NETWORK_N5_DNS', PROJECT)
+        self.assertIn('Network N5 DNS proof requires the isolated N4 TCP probe.', PROJECT)
+        self.assertIn('network-n5)', BUILD)
+        self.assertIn('-p:ZonderqNetworkN5Dns="$network_n5"', BUILD)
+        self.assertIn('ZonderqOS-3095-network-n5.iso', BUILD)
+        self.assertIn('dns.Connect(new Address4(10, 0, 2, 3))', SOURCE)
+        self.assertIn('dns.SendQuery("localhost")', SOURCE)
+        self.assertIn('[NET3095-N5] DNS=PASS host=localhost', SOURCE)
+        self.assertIn('tests/verify_3095_network_n5.py', SMOKE)
+        self.assertIn('No correlated DNS query/answer capture', SMOKE)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
