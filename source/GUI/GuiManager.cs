@@ -363,11 +363,26 @@ namespace ZonderqOS.GUI
                             ((currentLeftButtonState && !previousLeftButtonState) ||
                              (currentRightButtonState && !previousRightButtonState)) &&
                             IsPointOverWindow(mouseX, mouseY);
-                        if (!startMenuCaptures && !desktopMenuCaptures)
+                        // An open File Manager menu is modal for the next mouse
+                        // press. Route it to its owner before window focus changes,
+                        // and do not replay it on the taskbar or desktop underneath.
+                        bool fileManagerMenuCaptures = !startMenuCaptures && !desktopMenuCaptures &&
+                            ((currentLeftButtonState && !previousLeftButtonState) || rightPressed) &&
+                            applicationManager.ActiveApplication is FileManagerApp activeFileManager &&
+                            activeFileManager.ContextMenuVisible;
+                        if (fileManagerMenuCaptures)
+                        {
+                            activeFileManager.HandleMouse(mouseX, mouseY, currentLeftButtonState,
+                                previousLeftButtonState, currentRightButtonState, previousRightButtonState);
+                        }
+                        else if (!startMenuCaptures && !desktopMenuCaptures)
+                        {
                             applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
                                 currentRightButtonState, previousRightButtonState);
-                        // A simultaneous right press must never invoke a Start action.
-                        if (!rightPressed)
+                        }
+                        // A simultaneous right press or a File Manager menu
+                        // dismissal must never invoke an underlying Start action.
+                        if (!rightPressed && !fileManagerMenuCaptures)
                             startMenu.UpdateInteractions(mouseX, mouseY,
                                 currentLeftButtonState, previousLeftButtonState);
 
@@ -391,12 +406,12 @@ namespace ZonderqOS.GUI
                             continue;
                         }
 
-                        if (!desktopMenuCaptures)
+                        if (!desktopMenuCaptures && !fileManagerMenuCaptures)
                             taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
                         // A Start-menu action may close the menu in this frame.
                         // Use the pre-dispatch capture flags so that same click
                         // cannot open a desktop shortcut beneath the old overlay.
-                        if (!startMenuCaptures && !desktopMenuCaptures && !windowCapturedClick)
+                        if (!startMenuCaptures && !desktopMenuCaptures && !fileManagerMenuCaptures && !windowCapturedClick)
                             UpdateDesktopInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
                                 currentRightButtonState, previousRightButtonState);
                     }
