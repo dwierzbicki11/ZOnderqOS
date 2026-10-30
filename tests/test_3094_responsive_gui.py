@@ -462,7 +462,10 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("ResetClickSequence();\\n                OpenEntry(index);".replace("\\n", "\n"), mouse)
         self.assertLess(mouse.index("ResetClickSequence();\n                OpenEntry(index);"),
                         mouse.index("EnsureSelectionVisible();"))
-        self.assertIn("lastClickIndex = index;\n                clickFrame = frameCounter;", mouse)
+        self.assertIn("lastClickIndex = index;\n                lastClickTimestamp = now;", mouse)
+        self.assertIn("long now = Stopwatch.GetTimestamp();", mouse)
+        self.assertIn("elapsed <= Stopwatch.Frequency / 2", mouse)
+        self.assertNotIn("frameCounter - clickFrame", FILE_MANAGER)
         self.assertIn("ResetClickSequence();\n                if (dialogMode != 0)", mouse)
         self.assertIn("ResetClickSequence();", refresh)
         self.assertIn("ResetClickSequence();\n            if (x < 42)", FILE_MANAGER)
@@ -480,6 +483,21 @@ class ResponsiveGui3094(unittest.TestCase):
             else:
                 selected, last_index, last_frame = index, index, frame
         self.assertEqual(opens, 2)
+
+    def test_file_manager_double_click_uses_elapsed_time_not_frame_count(self):
+        # An expensive filesystem operation can stall the GUI loop. Even if
+        # no frames are rendered, two clicks seconds apart must not open a file.
+        frequency = 10_000_000
+        def is_double(first, second):
+            elapsed = second - first
+            return first > 0 and elapsed >= 0 and elapsed <= frequency // 2
+
+        self.assertTrue(is_double(100_000_000, 104_000_000))
+        self.assertTrue(is_double(100_000_000, 105_000_000))
+        self.assertFalse(is_double(100_000_000, 105_000_001))
+        self.assertFalse(is_double(100_000_000, 140_000_000))
+        self.assertFalse(is_double(100_000_000, 99_000_000))
+        self.assertFalse(is_double(0, 1_000_000))
 
     def test_file_manager_menu_reflows_and_dismisses_outside_view(self):
         update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
