@@ -86,8 +86,11 @@ def pcap_frames(data: bytes):
 def validate(serial: str, pcap: bytes) -> str:
     mac = validate_serial(serial)
     wanted = BROADCAST + mac + ETHER_TYPE + PAYLOAD
+    # Consume every record before accepting: a matching first frame must not
+    # hide a truncated or malformed tail later in the capture.
+    frames = list(pcap_frames(pcap))
     if not any(frame.startswith(wanted) and len(frame) >= 60
-               for frame in pcap_frames(pcap)):
+               for frame in frames):
         raise ValueError("no real QEMU-captured E1000E TX frame")
     return f"[NET3095-N1-GATE] PASS E1000E_LINK_AND_RAW_TX mac={mac.hex(':')}"
 
@@ -141,6 +144,7 @@ def self_test() -> None:
         synthetic_pcap(frame[:6] + b"\x00" * 6 + frame[12:]),
         synthetic_pcap(frame[:12] + b"\x08\x00" + frame[14:]),
         good[:20] + b"\x00\x00\x00\x00" + good[24:],
+        good + b"\x00",  # Corrupt tail after an otherwise matching frame.
     ]
     for data in bad_pcap:
         try:
