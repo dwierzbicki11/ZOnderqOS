@@ -22,6 +22,7 @@ DISK_MANAGER = code("source/GUI/Application/DiskManagerApp.cs")
 TASK_MANAGER = code("source/GUI/Application/TaskManagerModernApp.cs")
 APPLICATION_MANAGER = code("source/GUI/Application/ApplicationManager.cs")
 TASKBAR = code("source/GUI/Taskbar.cs")
+NOTIFICATIONS = code("source/GUI/NotificationCenter.cs")
 PROJECT = code("ZonderqOS.csproj")
 
 
@@ -510,6 +511,38 @@ class ResponsiveGui3094(unittest.TestCase):
             cell_height = max(28, min(58, (desktop_height - 250 - 6 * 5) // 6))
             self.assertLessEqual(grid_width + 36 if not has_sidebar else 646, desktop_width)
             self.assertLessEqual(200 + 6 * cell_height + 5 * 6, desktop_height - 42)
+
+    def test_notification_center_keyboard_scroll_matches_painted_rows(self):
+        self.assertIn("private int VisibleRowCount", NOTIFICATIONS)
+        self.assertIn("int availableHeight = System.Math.Max(0, Height - 130 - 72);", NOTIFICATIONS)
+        self.assertIn("System.Math.Min(VisibleRows, rows)", NOTIFICATIONS)
+        self.assertEqual(NOTIFICATIONS.count("for (int row = 0; row < VisibleRowCount; row++)"), 2)
+        self.assertIn("selectedIndex >= offset + VisibleRowCount", NOTIFICATIONS)
+        self.assertIn("visibleCount - VisibleRowCount", NOTIFICATIONS)
+
+        # The 800x600 panel paints only three rows; using the old fixed
+        # eight-row scroll window made keyboard selection disappear.
+        for screen_height, expected_rows in ((600, 3), (768, 5), (1080, 8)):
+            panel_height = screen_height - 44 - 20
+            available_height = max(0, panel_height - 130 - 72)
+            rows = max(1, min(8, (available_height + 7) // (82 + 7)))
+            self.assertEqual(rows, expected_rows)
+            self.assertLessEqual(130 + (rows - 1) * 89 + 82, panel_height - 72)
+            visible_count = 20
+            offset = 0
+            for selected in range(visible_count):
+                if selected < offset:
+                    offset = selected
+                elif selected >= offset + rows:
+                    offset = selected - rows + 1
+                offset = min(max(0, offset), max(0, visible_count - rows))
+                self.assertLessEqual(offset, selected)
+                self.assertLess(selected, offset + rows)
+            # Keyboard wrap to the first notification must reset scrolling.
+            selected = 0
+            if selected < offset:
+                offset = selected
+            self.assertEqual(offset, 0)
 
     def test_typography_and_editor_shared_styles(self):
         self.assertIn("PCScreenFont.DefaultFont", TYPOGRAPHY)
