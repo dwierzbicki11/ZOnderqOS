@@ -388,6 +388,7 @@ namespace ZonderqOS.GUI
             }
 
             hoveredAppIndex = -1;
+            overflowHovered = false;
             notificationHovered = false;
             if (mouseY < Y || mouseY >= Y + Height)
                 return;
@@ -406,28 +407,49 @@ namespace ZonderqOS.GUI
                 return;
 
             int appX = StartButtonWidth + SidePadding + 6;
-            int maxAppX = Width - TrayWidth;
             List<Application> apps = applicationManager.Applications;
-            int visibleIndex = 0;
+            int runningCount = CountRunningApps(apps);
+            bool overflow;
+            int pageSlots = GetPageSlots(runningCount, out overflow);
+            NormalizeAppPage(runningCount, pageSlots, overflow);
+            int runningIndex = 0;
+            int shown = 0;
 
             for (int i = 0; i < apps.Count; i++)
             {
                 Application app = apps[i];
                 if (app == null || !app.IsRunning || app.Window == null)
                     continue;
-                if (appX + AppButtonSize > maxAppX)
+                if (runningIndex++ < firstVisibleAppIndex)
+                    continue;
+                if (shown >= pageSlots)
                     break;
 
                 if (mouseX >= appX && mouseX < appX + AppButtonSize)
                 {
-                    hoveredAppIndex = visibleIndex;
+                    hoveredAppIndex = shown;
                     if (isClicked && !wasClicked)
                         applicationManager.ToggleMinimize(app);
                     return;
                 }
 
                 appX += AppButtonSize + AppButtonGap;
-                visibleIndex++;
+                shown++;
+            }
+
+            if (overflow)
+            {
+                int arrowX = OverflowButtonX(pageSlots);
+                if (mouseX >= arrowX && mouseX < arrowX + AppButtonSize)
+                {
+                    overflowHovered = true;
+                    if (isClicked && !wasClicked)
+                    {
+                        firstVisibleAppIndex += pageSlots;
+                        if (firstVisibleAppIndex >= runningCount)
+                            firstVisibleAppIndex = 0;
+                    }
+                }
             }
         }
     }
