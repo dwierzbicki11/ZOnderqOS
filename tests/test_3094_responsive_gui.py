@@ -830,5 +830,51 @@ class ResponsiveGui3094(unittest.TestCase):
                              (0, 0) if press == 0 else (1, 1))
 
 
+    def test_file_manager_sort_scales_and_preserves_equal_name_order(self):
+        sort = FILE_MANAGER.split("private void Sort()", 1)[1].split(
+            "private int Compare(", 1)[0]
+        compare = FILE_MANAGER.split("private int Compare(", 1)[1].split(
+            "private void Filter()", 1)[0]
+        self.assertIn("FileEntry[] scratch = new FileEntry[count];", sort)
+        self.assertIn("for (int run = 1; run < count;", sort)
+        self.assertIn("Compare(entries[left], entries[right]) <= 0", sort)
+        self.assertIn("scratch[write] = entries[left++];", sort)
+        self.assertIn("scratch[write] = entries[right++];", sort)
+        self.assertNotIn("while (j >= 0 && Compare(entries[j], value) > 0)", sort)
+        self.assertIn("if (a.IsDirectory != b.IsDirectory)", compare)
+        self.assertIn("StringComparison.OrdinalIgnoreCase", compare)
+
+        # Independent bottom-up merge model: directories precede files;
+        # case-insensitive ties must retain the input order.
+        def sort_model(items):
+            data = list(items)
+            n = len(data)
+            scratch = [None] * n
+            run = 1
+            while run < n:
+                for start in range(0, n, 2 * run):
+                    middle = min(n, start + run)
+                    end = min(n, middle + run)
+                    left, right = start, middle
+                    for write in range(start, end):
+                        if left < middle and (right >= end or
+                                (not data[left][0], data[left][1].lower()) <=
+                                (not data[right][0], data[right][1].lower())):
+                            scratch[write] = data[left]
+                            left += 1
+                        else:
+                            scratch[write] = data[right]
+                            right += 1
+                data[:] = scratch
+                run = n if run > n // 2 else run * 2
+            return data
+
+        for count in (0, 1, 2, 3, 5, 17, 100, 1025):
+            items = [(i % 3 == 0, ("Dir" if i % 3 == 0 else "file") +
+                      str(i % 17), i) for i in range(count)]
+            expected = sorted(items, key=lambda item: (not item[0], item[1].lower()))
+            self.assertEqual(sort_model(items), expected)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
