@@ -88,6 +88,18 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('ZonderqOS-3095-network-n3.iso', BUILD)
         self.assertIn('tests/verify_3095_network_n3.py', SMOKE)
         self.assertIn('No correlated ICMP echo RX/TX capture', SMOKE)
+        self.assertIn('>false</ZonderqNetworkN4Tcp>', PROJECT)
+        self.assertIn('ZONDERQ_NETWORK_N4_TCP', PROJECT)
+        self.assertIn('Network N4 TCP proof requires the isolated N3 ICMP probe.', PROJECT)
+        self.assertIn('network-n4)', BUILD)
+        self.assertIn('-p:ZonderqNetworkN4Tcp="$network_n4"', BUILD)
+        self.assertIn('ZonderqOS-3095-network-n4.iso', BUILD)
+        self.assertIn('new System.Net.Sockets.TcpClient()', SOURCE)
+        self.assertIn('client.Client.ReceiveTimeout = 5000', SOURCE)
+        self.assertIn('[NET3095-N4] TCP=PASS from=', SOURCE)
+        self.assertIn('tests/verify_3095_network_n4.py', SMOKE)
+        self.assertIn('tests/network_3095_tcp_host.py', SMOKE)
+        self.assertIn('No correlated TCP RX/TX capture', SMOKE)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
