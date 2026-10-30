@@ -7,8 +7,8 @@ LOG="${2:?usage: smoke-network-n1-3095-qemu.sh ISO SERIAL-LOG}"
 TIMEOUT="${NET3095_N1_TIMEOUT:-150}"
 PCAP="${NET3095_N1_PCAP:-$LOG.pcap}"
 MODE="${3:-n1}"
-[[ "$MODE" == n1 || "$MODE" == n2 || "$MODE" == n3 ]] || {
-  echo "[NET3095-N1][FAIL] Expected n1, n2 or n3 mode" >&2; exit 2;
+[[ "$MODE" == n1 || "$MODE" == n2 || "$MODE" == n3 || "$MODE" == n4 ]] || {
+  echo "[NET3095-N1][FAIL] Expected n1, n2, n3 or n4 mode" >&2; exit 2;
 }
 [[ "$TIMEOUT" =~ ^[1-9][0-9]*$ ]] && (( TIMEOUT <= 600 )) || {
   echo "[NET3095-N1][FAIL] Invalid timeout" >&2; exit 1;
@@ -16,7 +16,7 @@ MODE="${3:-n1}"
 [[ -s "$ISO" ]] || { echo "[NET3095-N1][FAIL] Missing ISO" >&2; exit 1; }
 command -v qemu-system-x86_64 >/dev/null || exit 1
 # Fail closed: do not follow symlinks or erase an existing capture.
-[[ ! -L "$LOG" && ! -L "$LOG.stderr" ]] || {
+[[ ! -L "$LOG" && ! -L "$LOG.stderr" && ! -L "$LOG.tcp-host" ]] || {
   echo "[NET3095-N1][FAIL] Refusing symlinked serial output" >&2; exit 1;
 }
 [[ ! -e "$PCAP" && ! -L "$PCAP" ]] || {
@@ -24,6 +24,35 @@ command -v qemu-system-x86_64 >/dev/null || exit 1
 }
 mkdir -p "$(dirname "$LOG")" "$(dirname "$PCAP")"
 : > "$LOG"
+# N4 uses a CI-owned, loopback-only TCP server. The QEMU guest reaches
+# 127.0.0.1 on the host through the SLIRP 10.0.2.2 gateway alias.
+server_pid=""
+if [[ "$MODE" == n4 ]]; then
+  [[ ! -e "$LOG.tcp-host" ]] || {
+    echo "[NET3095-N4][FAIL] Refusing to overwrite host server evidence" >&2; exit 1;
+  }
+  python3 -u "$ROOT/tests/network_3095_tcp_host.py" --port 18095 > "$LOG.tcp-host" 2>&1 &
+  server_pid=$!
+  ready=0
+  for _ in {1..50}; do
+    if grep -Fq '[NET3095-N4-HOST] READY port=18095' "$LOG.tcp-host"; then
+      ready=1
+      break
+    fi
+    if ! kill -0 "$server_pid" 2>/dev/null; then
+      cat "$LOG.tcp-host" >&2
+      exit 1
+    fi
+    sleep 0.1
+  done
+  [[ "$ready" == 1 ]] || {
+    cat "$LOG.tcp-host" >&2
+    echo "[NET3095-N4][FAIL] Host TCP server did not become ready" >&2
+    kill "$server_pid" 2>/dev/null || true
+    wait "$server_pid" 2>/dev/null || true
+    exit 1
+  }
+fi
 qemu-system-x86_64 \
   -machine q35 -cpu Nehalem -smp 1 -m 2048M \
   -boot d -cdrom "$ISO" \
@@ -36,6 +65,10 @@ pid=$!
 cleanup() {
   kill "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
+  if [[ -n "$server_pid" ]]; then
+    kill "$server_pid" 2>/dev/null || true
+    wait "$server_pid" 2>/dev/null || true
+  fi
 }
 trap cleanup EXIT INT TERM
 qemu_alive() {
@@ -73,7 +106,7 @@ while (( SECONDS - started < TIMEOUT )); do
       sleep 1
     done
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
-    if [[ "$MODE" == n2 || "$MODE" == n3 ]]; then
+    if [[ "$MODE" == n2 || "$MODE" == n3 || "$MODE" == n4 ]]; then
       # N2 requires genuine inbound DHCP OFFER/ACK and a guest-applied lease.
       dhcp_start=$SECONDS
       until python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
@@ -94,7 +127,7 @@ while (( SECONDS - started < TIMEOUT )); do
       done
       python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP"
     fi
-    if [[ "$MODE" == n3 ]]; then
+    if [[ "$MODE" == n3 || "$MODE" == n4 ]]; then
       icmp_start=$SECONDS
       until python3 "$ROOT/tests/verify_3095_network_n3.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
         qemu_alive || {
@@ -114,12 +147,41 @@ while (( SECONDS - started < TIMEOUT )); do
       done
       python3 "$ROOT/tests/verify_3095_network_n3.py" "$LOG" "$PCAP"
     fi
+    if [[ "$MODE" == n4 ]]; then
+      tcp_start=$SECONDS
+      until python3 "$ROOT/tests/verify_3095_network_n4.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
+        qemu_alive || {
+          echo "[NET3095-N4][FAIL] Guest exited before TCP proof" >&2; exit 1;
+        }
+        if grep -Fq '[NET3095-N4][FAIL]' "$LOG"; then
+          tail -n 90 "$LOG" >&2
+          echo "[NET3095-N4][FAIL] Guest reported TCP failure" >&2
+          exit 1
+        fi
+        if (( SECONDS - tcp_start >= 20 )); then
+          python3 "$ROOT/tests/verify_3095_network_n4.py" "$LOG" "$PCAP"
+          cat "$LOG.tcp-host" >&2
+          echo "[NET3095-N4][FAIL] No correlated TCP RX/TX capture" >&2
+          exit 1
+        fi
+        sleep 1
+      done
+      python3 "$ROOT/tests/verify_3095_network_n4.py" "$LOG" "$PCAP"
+      grep -Fq '[NET3095-N4-HOST] PASS request/reply' "$LOG.tcp-host" || {
+        cat "$LOG.tcp-host" >&2
+        echo "[NET3095-N4][FAIL] Host did not complete TCP echo" >&2
+        exit 1
+      }
+    fi
     sleep 8
     qemu_alive || {
       echo "[NET3095-N1][FAIL] Guest exited after TX proof" >&2; exit 1;
     }
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
-    if [[ "$MODE" == n3 ]]; then
+    if [[ "$MODE" == n4 ]]; then
+      python3 "$ROOT/tests/verify_3095_network_n4.py" "$LOG" "$PCAP"
+      echo "[NET3095-N4-QEMU] PASS real E1000E TCP echo RX/TX + DHCP/ICMP + 8s stability; production networking disabled"
+    elif [[ "$MODE" == n3 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n3.py" "$LOG" "$PCAP"
       echo "[NET3095-N3-QEMU] PASS real e1000e DHCP RX + ICMP echo RX/TX + 8s stability; production networking disabled"
     elif [[ "$MODE" == n2 ]]; then
