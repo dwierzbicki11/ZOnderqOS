@@ -40,13 +40,66 @@ def serve(port: int) -> None:
             print("[NET3095-N4-HOST] PASS request/reply", flush=True)
 
 
+def self_test() -> None:
+    """Exercise two real loopback TCP exchanges on the same port.
+
+    The server actively closes each connection, leaving a possible TIME_WAIT
+    socket. A second bind must still succeed without using SO_REUSEPORT.
+    """
+    import threading
+    import time
+
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+
+    for attempt in range(2):
+        errors = []
+
+        def run_server():
+            try:
+                serve(port)
+            except Exception as exc:
+                errors.append(exc)
+
+        worker = threading.Thread(target=run_server, daemon=True)
+        worker.start()
+        connection = None
+        for _ in range(50):
+            try:
+                connection = socket.create_connection(("127.0.0.1", port), timeout=1)
+                break
+            except ConnectionRefusedError:
+                time.sleep(0.02)
+        if connection is None:
+            raise AssertionError("test server did not accept a connection")
+        with connection:
+            connection.sendall(REQUEST)
+            data = bytearray()
+            while len(data) < len(RESPONSE):
+                chunk = connection.recv(len(RESPONSE) - len(data))
+                if not chunk:
+                    break
+                data.extend(chunk)
+            if bytes(data) != RESPONSE:
+                raise AssertionError("incorrect host TCP response")
+        worker.join(timeout=5)
+        if worker.is_alive() or errors:
+            raise AssertionError(f"loopback server failed on pass {attempt + 1}: {errors}")
+    print("[NET3095-N4-HOST-CONTRACT] PASS sequential loopback rebind after TCP close")
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--port", type=int, default=18095)
+    parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if not 1024 <= args.port <= 65535:
         parser.error("unprivileged port required")
     try:
-        serve(args.port)
-    except (OSError, ValueError) as exc:
+        if args.self_test:
+            self_test()
+        else:
+            serve(args.port)
+    except (OSError, ValueError, AssertionError) as exc:
         sys.exit(f"[NET3095-N4-HOST][FAIL] {exc}")
