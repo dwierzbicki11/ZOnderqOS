@@ -552,7 +552,10 @@ class ResponsiveGui3094(unittest.TestCase):
     def test_file_manager_focus_loss_clears_pending_double_click(self):
         update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
             "public override void HandleMouse(", 1)[0]
-        self.assertIn("if (!Window.IsActive)\n                ResetClickSequence();", update)
+        self.assertIn("if (!Window.IsActive)\n            {\n                ResetClickSequence();", update)
+        self.assertIn("contextMenuVisible = false;", update)
+        self.assertLess(update.index("contextMenuVisible = false;"),
+                        update.index("int previousViewWidth = view.Width;"))
         self.assertLess(update.index("ResetClickSequence();"),
                         update.index("int previousViewWidth = view.Width;"))
 
