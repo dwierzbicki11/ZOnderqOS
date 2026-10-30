@@ -6,6 +6,8 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 PCI = (ROOT / "source/Hardware/PciConfigDiscoverySource.cs").read_text()
 MODEL = (ROOT / "source/Hardware/PciDeviceModel.cs").read_text()
+BARS = (ROOT / "source/Hardware/PciBarInventory.cs").read_text()
+X64 = (ROOT / "source/Platform/X64/PciSysfsProvider.cs").read_text()
 DEVICE = (ROOT / "source/Hardware/DeviceModel.cs").read_text()
 PROJECT = (ROOT / "ZonderqOS.csproj").read_text()
 SHELL = (ROOT / "source/Shell/Command.cs").read_text()
@@ -55,6 +57,17 @@ class Nic3094Safety(unittest.TestCase):
         for token in ('prog_if=', 'rev=', 'subsystem=', 'UNKNOWN'):
             self.assertIn(token, DIAG)
         self.assertNotIn('config.Write', PCI)
+
+    def test_realtek_bar_inventory_is_read_only_and_fail_closed(self):
+        self.assertIn("TryReadRealtek810xE", BARS)
+        self.assertIn("config.Read16(", BARS)
+        self.assertNotIn("config.Write", BARS)
+        self.assertIn("if (index == 5)", BARS)
+        self.assertIn("PciBarKind.Memory64", BARS)
+        self.assertIn("TryReadRealtekBars", X64)
+        self.assertIn("TryReadRealtekBars", ARM64)
+        self.assertIn("size=UNKNOWN", DIAG)
+        self.assertIn("driver=UNVERIFIED", DIAG)
 
     def test_no_mutating_network_or_disk_io(self):
         for forbidden in ('WriteBlock(', 'TryMount(', 'ConfigureDhcp(', 'NetworkManager.Send(',

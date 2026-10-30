@@ -61,3 +61,16 @@ python3 tests/test_3094_storage_policy.py
 The feature-specific GitHub Actions workflows compile the actual C# sources
 with stock Cosmos 3.0.95; the read-only PCI metadata changes still require physical laptop validation.
 It does **not** validate real link, RX/TX or DHCP.
+
+### RTL810xE PCI BAR read-only inventory (Cosmos 3.0.95)
+
+`nicdiag` additionally reads the six type-0 PCI BAR registers **only** for a
+confirmed `10EC:8136` Ethernet function on x64. It reports decoded I/O,
+32-bit and 64-bit MMIO base addresses and the prefetchable bit. It never
+writes PCI configuration space, probes BAR aperture sizes, maps MMIO, enables
+bus mastering, DMA or IRQ, or binds a driver. BAR sizes remain `UNKNOWN`.
+Unassigned, reserved and truncated BARs are not presented as usable.
+ARM64 continues to report unavailable until its ECAM backend exists.
+The `PciMetadataSmoke` C# harness tests synthetic BAR layouts; this does
+**not** establish physical Realtek operation. Verify BAR data on the laptop
+before selecting MMIO/IO and designing the RTL810xE TX/RX rings.

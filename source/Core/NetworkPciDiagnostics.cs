@@ -40,6 +40,26 @@ namespace ZonderqOS.SystemCore
                     " subsystem=" + (d.SubsystemVendorId == 0xFFFF || d.SubsystemDeviceId == 0xFFFF
                         ? "UNKNOWN" : d.SubsystemVendorId.ToString("X4") + ":" + d.SubsystemDeviceId.ToString("X4")) +
                     " " + DescribeDevice(d.VendorId, d.DeviceId, d.Subclass), shellOutput);
+                if (d.VendorId == 0x10EC && d.DeviceId == 0x8136)
+                {
+                    List<PciBarDescriptor> bars;
+                    if (PciSysfsProvider.TryReadRealtekBars(d, out bars))
+                    {
+                        for (int barIndex = 0; barIndex < bars.Count; barIndex++)
+                        {
+                            PciBarDescriptor bar = bars[barIndex];
+                            string kind = bar.Kind == PciBarKind.Io ? "IO" :
+                                (bar.Kind == PciBarKind.Memory64 ? "MMIO64" : "MMIO32");
+                            Write("[NIC3094] BAR" + bar.Index + "=" + kind + " base=0x" +
+                                bar.Address.ToString("X") + " prefetch=" +
+                                (bar.Prefetchable ? "yes" : "no") + " size=UNKNOWN", shellOutput);
+                        }
+                        if (bars.Count == 0)
+                            Write("[NIC3094] No assigned RTL810xE BARs found", shellOutput);
+                    }
+                    else
+                        Write("[NIC3094] RTL810xE BAR read unavailable or invalid", shellOutput);
+                }
                 Write("[NIC3094] driver=UNVERIFIED link=UNKNOWN mac=UNKNOWN ip=UNASSIGNED", shellOutput);
             }
 
