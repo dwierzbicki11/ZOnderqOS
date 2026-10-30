@@ -510,7 +510,17 @@ namespace ZonderqOS.GUI.Apps
 
             if (key.Key == ConsoleKeyEx.Backspace)
             {
-                GoUp();
+                // Backspace edits the live filename filter first. Without this,
+                // a typo unexpectedly navigated to the parent directory.
+                if (searchText.Length > 0)
+                {
+                    searchText = searchText.Substring(0, searchText.Length - 1);
+                    Refresh();
+                }
+                else
+                {
+                    GoUp();
+                }
                 return;
             }
 
@@ -768,7 +778,11 @@ namespace ZonderqOS.GUI.Apps
                 if (!string.IsNullOrEmpty(searchText))
                     Filter();
 
-                status = string.IsNullOrEmpty(keep) ? entries.Count + " item(s)" : keep;
+                status = string.IsNullOrEmpty(keep)
+                    ? (string.IsNullOrEmpty(searchText)
+                        ? entries.Count + " item(s)"
+                        : "Search: " + searchText + " (" + entries.Count + " item(s))")
+                    : keep;
             }
             catch (Exception ex)
             {
