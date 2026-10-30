@@ -420,6 +420,34 @@ class ResponsiveGui3094(unittest.TestCase):
             desktop_receives_click = not captured
             self.assertEqual(desktop_receives_click, not was_window_under_pointer)
 
+    def test_file_manager_double_click_does_not_leak_across_navigation(self):
+        mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
+            "private int HitEntryIndex(", 1)[0]
+        refresh = FILE_MANAGER.split("private void RefreshInternal(string keep)", 1)[1].split(
+            "private void RebuildSidebar()", 1)[0]
+        self.assertIn("private void ResetClickSequence()", mouse)
+        self.assertIn("ResetClickSequence();\\n                OpenEntry(index);".replace("\\n", "\n"), mouse)
+        self.assertLess(mouse.index("ResetClickSequence();\n                OpenEntry(index);"),
+                        mouse.index("EnsureSelectionVisible();"))
+        self.assertIn("lastClickIndex = index;\n                clickFrame = frameCounter;", mouse)
+        self.assertIn("ResetClickSequence();\n                if (dialogMode != 0)", mouse)
+        self.assertIn("ResetClickSequence();", refresh)
+        self.assertIn("ResetClickSequence();\n            if (x < 42)", FILE_MANAGER)
+        self.assertIn("ResetClickSequence();\n            SidebarEntry entry =", FILE_MANAGER)
+
+        # Two clicks on the same index open once, then the sequence is
+        # consumed. A subsequent click in a newly opened folder is single.
+        last_index, last_frame, selected = -1, -1000, -1
+        opens = 0
+        for frame, index in ((100, 0), (105, 0), (110, 0), (115, 0)):
+            if selected == index and last_index == index and frame - last_frame <= 25:
+                opens += 1
+                last_index, last_frame = -1, -1000
+                selected = -1  # RefreshInternal after directory navigation
+            else:
+                selected, last_index, last_frame = index, index, frame
+        self.assertEqual(opens, 2)
+
     def test_file_manager_menu_reflows_and_dismisses_outside_view(self):
         update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
             "public override void HandleMouse(", 1)[0]
