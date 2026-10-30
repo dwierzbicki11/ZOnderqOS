@@ -6,7 +6,7 @@ using ZonderqOS.Platform;
 namespace ZonderqOS.SystemCore
 {
     /// <summary>
-    /// Read-only PCI NIC inventory for Cosmos Gen3 3.0.94.
+    /// Read-only PCI NIC inventory for Cosmos Gen3 3.0.95.
     /// It is a hardware survey, NOT a network driver or link test.
     /// Does not touch the NIC's MMIO, interrupts, DMA, MAC registers or DHCP.
     /// </summary>
@@ -34,8 +34,12 @@ namespace ZonderqOS.SystemCore
                 Write("[NIC3094] " + d.Id.Address + " [" +
                     d.VendorId.ToString("X4") + ":" + d.DeviceId.ToString("X4") +
                     "] class=" + d.ClassCode.ToString("X2") + ":" +
-                    d.Subclass.ToString("X2") + " " +
-                    DescribeDevice(d.VendorId, d.DeviceId, d.Subclass), shellOutput);
+                    d.Subclass.ToString("X2") +
+                    " prog_if=" + d.ProgrammingInterface.ToString("X2") +
+                    " rev=" + (d.RevisionId == 0xFF ? "UNKNOWN" : d.RevisionId.ToString("X2")) +
+                    " subsystem=" + (d.SubsystemVendorId == 0xFFFF || d.SubsystemDeviceId == 0xFFFF
+                        ? "UNKNOWN" : d.SubsystemVendorId.ToString("X4") + ":" + d.SubsystemDeviceId.ToString("X4")) +
+                    " " + DescribeDevice(d.VendorId, d.DeviceId, d.Subclass), shellOutput);
                 Write("[NIC3094] driver=UNVERIFIED link=UNKNOWN mac=UNKNOWN ip=UNASSIGNED", shellOutput);
             }
 

@@ -1,6 +1,6 @@
-# ZonderqOS Gen3 — network bring-up, hardware inventory (Cosmos 3.0.94)
+# ZonderqOS Gen3 — hardware NIC inventory (Cosmos 3.0.95)
 
-The production image still has **no working NIC driver or IP stack**.
+The production image still has **networking disabled**. An isolated QEMU E1000E probe has verified DHCP, ICMP, TCP, DNS and HTTP/1.0 (see `docs/3095-network-n1-qemu.md`), but this is not production or physical RTL810xE support.
 `<CosmosEnableNetwork>false</CosmosEnableNetwork>` remains unchanged.
 A PCI network function is NOT a bound NIC, connected Ethernet cable, DHCP lease,
 working Wi-Fi association or operational network stack.
@@ -24,7 +24,7 @@ then prints actual PCI class 02 network functions and hardware IDs:
 - Laptop Realtek **10EC:B723** RTL8723BE wireless controller.
 - QEMU example **8086:100E** E1000 and **8086:10D3** E1000E.
 
-Class and device ID are detected, not proof that a driver has bound. The
+The read-only inventory also prints `prog_if`, PCI `rev` and type-0 header `subsystem=VVVV:DDDD` (or `UNKNOWN` when not available). These hardware identifiers are needed to distinguish RTL810xE revisions before selecting a driver. Class and device ID are detected, not proof that a driver has bound. The
 command always reports `driver=UNVERIFIED`, `link=UNKNOWN`,
 `ip=UNASSIGNED` while the networking subsystem is disabled.
 On ARM64 the existing PCI ECAM backend explicitly declines enumeration,
@@ -33,8 +33,8 @@ so N0 reports unavailable instead of inventing a NIC.
 ## Safely progressing toward real wired connectivity
 
 1. **N0**: read-only PCI identification on the physical laptop and QEMU.
-   This PR covers source and compile gates, NOT a successful real-device scan.
-2. **N1**: port a Cosmos **3.0.94** NIC driver/device binding for the
+   This inventory covers source and compile gates, NOT a successful real-device scan.
+2. **N1**: port a Cosmos **3.0.95** NIC driver/device binding for the
    actual **10EC:8136**, checking BAR mapping, bus-master DMA ownership,
    IRQ, descriptor-ring lifetimes, link state, RX/TX, and cleanup.
    Isolate driver bring-up in QEMU before enabling it on real hardware.
@@ -58,6 +58,6 @@ python3 tests/test_3094_nic_pci_inventory.py
 python3 tests/test_3094_storage_policy.py
 ```
 
-The feature-specific GitHub Actions workflow compiles the actual C# sources
-with Cosmos 3.0.94 for x64 and ARM64, including the read-only probe path.
+The feature-specific GitHub Actions workflows compile the actual C# sources
+with stock Cosmos 3.0.95; the read-only PCI metadata changes still require physical laptop validation.
 It does **not** validate real link, RX/TX or DHCP.

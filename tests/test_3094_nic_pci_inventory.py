@@ -4,6 +4,9 @@ from pathlib import Path
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
+PCI = (ROOT / "source/Hardware/PciConfigDiscoverySource.cs").read_text()
+MODEL = (ROOT / "source/Hardware/PciDeviceModel.cs").read_text()
+DEVICE = (ROOT / "source/Hardware/DeviceModel.cs").read_text()
 PROJECT = (ROOT / "ZonderqOS.csproj").read_text()
 SHELL = (ROOT / "source/Shell/Command.cs").read_text()
 COMMAND = (ROOT / "source/Shell/Commands/CmdNicDiag.cs").read_text()
@@ -15,7 +18,7 @@ ARM64 = (ROOT / "source/Platform/Arm64/PciSysfsProvider.cs").read_text()
 
 class Nic3094Safety(unittest.TestCase):
     def test_sdk_and_network_feature_gate_preserved(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', PROJECT)
+        self.assertIn('Sdk="Cosmos.Sdk/3.0.95"', PROJECT)
         self.assertIn('<CosmosEnableNetwork>false</CosmosEnableNetwork>', PROJECT)
         self.assertIn('ZONDERQ_NETWORK_DISABLED', PROJECT)
         self.assertIn('public static bool IsReady => false;', NETWORK)
@@ -39,6 +42,19 @@ class Nic3094Safety(unittest.TestCase):
         self.assertIn('link=UNKNOWN', DIAG)
         self.assertIn('driver=UNVERIFIED', DIAG)
         self.assertIn('ip=UNASSIGNED', DIAG)
+
+    def test_realtek_revision_and_subsystem_are_read_only(self):
+        self.assertIn('revisionId = config.Read8(bus, device, function, 0x08)', PCI)
+        self.assertIn('if (classCode == 0x02)', PCI)
+        self.assertIn('if (headerType == 0x00)', PCI)
+        self.assertIn('config.Read16(bus, device, function, 0x2C)', PCI)
+        self.assertIn('config.Read16(bus, device, function, 0x2E)', PCI)
+        self.assertIn('SubsystemVendorId', MODEL)
+        self.assertIn('SubsystemDeviceId', MODEL)
+        self.assertIn('RevisionId', DEVICE)
+        for token in ('prog_if=', 'rev=', 'subsystem=', 'UNKNOWN'):
+            self.assertIn(token, DIAG)
+        self.assertNotIn('config.Write', PCI)
 
     def test_no_mutating_network_or_disk_io(self):
         for forbidden in ('WriteBlock(', 'TryMount(', 'ConfigureDhcp(', 'NetworkManager.Send(',

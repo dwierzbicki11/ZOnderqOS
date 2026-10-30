@@ -5,6 +5,11 @@ on:
     paths:
       - 'ZonderqOS.csproj'
       - 'source/Core/NetworkN1ProbeKernel.cs'
+      - 'source/Core/NetworkPciDiagnostics.cs'
+      - 'source/Hardware/DeviceModel.cs'
+      - 'source/Hardware/PciDeviceModel.cs'
+      - 'source/Hardware/PciConfigDiscoverySource.cs'
+      - 'tests/test_3094_nic_pci_inventory.py'
       - 'tools/build-cosmos-3095-local.sh'
       - 'tools/smoke-network-n1-3095-qemu.sh'
       - 'tests/test_3095_network_n1_contract.py'
@@ -42,6 +47,7 @@ jobs:
           set -euo pipefail
           bash zonderq/tools/verify-cosmos-compat.sh
           python3 zonderq/tests/test_3095_network_n1_contract.py
+          python3 zonderq/tests/test_3094_nic_pci_inventory.py
           python3 zonderq/tests/verify_3095_network_n1.py --self-test
           python3 zonderq/tests/verify_3095_network_n2.py --self-test
           python3 zonderq/tests/verify_3095_network_n3.py --self-test
