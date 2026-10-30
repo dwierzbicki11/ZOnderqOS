@@ -19,6 +19,9 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('>ZonderqOS.NetworkN1ProbeKernel</CosmosKernelClass>', PROJECT)
         self.assertIn('ZONDERQ_NETWORK_N1_PROBE', PROJECT)
         self.assertIn('GuardNetworkN1Probe', PROJECT)
+        self.assertIn('>false</ZonderqNetworkN2Dhcp>', PROJECT)
+        self.assertIn('ZONDERQ_NETWORK_N2_DHCP', PROJECT)
+        self.assertIn('Network N2 DHCP proof requires the isolated N1 probe.', PROJECT)
         for feature in ("Storage", "Mouse", "Usb", "Keyboard", "Graphics"):
             self.assertIn(
                 f'<CosmosEnable{feature} Condition="\'$(ZonderqNetworkN1Probe)\' == \'true\'">false</CosmosEnable{feature}>',
@@ -62,6 +65,14 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('0x88', SOURCE)
         self.assertIn('0xB5', SOURCE)
         self.assertIn('DHCP=NOT_ATTEMPTED IP=UNASSIGNED', SOURCE)
+        self.assertIn('new DhcpClient().SendDiscoverPacket()', SOURCE)
+        self.assertIn('NetworkManager.Primary.IPConfig', SOURCE)
+        self.assertIn('[NET3095-N2] DHCP=PASS ip=', SOURCE)
+        self.assertIn('network-n2)', BUILD)
+        self.assertIn('-p:ZonderqNetworkN2Dhcp="$network_n2"', BUILD)
+        self.assertIn('ZonderqOS-3095-network-n2.iso', BUILD)
+        self.assertIn('tests/verify_3095_network_n2.py', SMOKE)
+        self.assertIn('No correlated DHCP RX/TX capture', SMOKE)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
