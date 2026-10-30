@@ -65,7 +65,7 @@ from the synthetic parser fixtures. The last eight-second window also
 requires six advancing guest heartbeats; QEMU process survival alone is
 insufficient. These are emulator-only results, not a physical NIC test.
 
-## N6: HTTP/1.0 GET over real TCP (experimental, pending CI)
+## N6: HTTP/1.0 GET over real TCP (verified in QEMU)
 
 Build `bash tools/build-cosmos-3095-local.sh network-n6`, then:
 
@@ -85,7 +85,7 @@ port/MAC/IP/sequence/ack continuity and full HTTP request/response byte
 stream, including a possible segmented response. The smoke script also
 requires the host success marker and eight seconds of guest heartbeat.
 
-**Do not call N6 passed until its new real QEMU CI job succeeds.**
+**Confirmed:** GitHub Actions run **#54** on 2026-10-30 built the exact stock Cosmos 3.0.95 N6 ISO and passed the real QEMU HTTP/1.0 PCAP gate, the host fixture, the N1–N5 prerequisites and the eight-second guest heartbeat window. The evidence was uploaded as separate serial, PCAP and host logs.
 HTTP/1.0 here is unencrypted; it is **not HTTPS**, certificate validation,
 a browser or a production network stack. `CosmosEnableNetwork=false`
 continues to be the production default, and the probe never touches host
