@@ -105,6 +105,15 @@ namespace ZonderqOS.GUI
 
             observedDesktopWidth = desktopWidth;
             observedDesktopHeight = desktopHeight;
+
+            // A resize/drag started in the previous display mode holds old
+            // screen coordinates. Cancel it before applying new bounds;
+            // otherwise the next mouse-move can put the window off-screen.
+            dragging = false;
+            resizing = false;
+            resizeMode = 0;
+            hoveredResizeMode = 0;
+            hoveredControl = 0;
             if (desktopWidth <= 0 || desktopHeight <= 0)
                 return;
 
