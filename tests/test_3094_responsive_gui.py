@@ -218,6 +218,23 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("hoveredResizeMode = 0;", sync)
         self.assertLess(sync.index("resizing = false;"), sync.index("if (IsMaximized)"))
 
+    def test_overlay_menus_do_not_click_through_to_windows(self):
+        self.assertIn("bool startMenuCaptures = startMenu.Visible &&", DESKTOP)
+        self.assertIn("bool desktopMenuCaptures = desktopContextMenu != null &&", DESKTOP)
+        self.assertIn("if (!startMenuCaptures && !desktopMenuCaptures)", DESKTOP)
+        dispatch = DESKTOP.split("bool startMenuCaptures =", 1)[1].split(
+            "startMenu.UpdateInteractions(", 1)[0]
+        self.assertIn("applicationManager.HandleMouse(", dispatch)
+
+        # Hit testing uses half-open rectangles, including right/bottom edges.
+        def contains(x, y, ox, oy, w, h):
+            return ox <= x < ox + w and oy <= y < oy + h
+
+        self.assertTrue(contains(20, 20, 8, 8, 480, 540))
+        self.assertFalse(contains(488, 20, 8, 8, 480, 540))
+        self.assertFalse(contains(20, 548, 8, 8, 480, 540))
+        self.assertTrue(contains(222, 206, 100, 100, 222, 192))
+
     def test_file_manager_menu_reflows_and_dismisses_outside_view(self):
         update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
             "public override void HandleMouse(", 1)[0]
