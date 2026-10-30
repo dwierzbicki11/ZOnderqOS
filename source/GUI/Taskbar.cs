@@ -18,6 +18,8 @@ namespace ZonderqOS.GUI
         private int hoveredAppIndex = -1;
         private bool overflowHovered;
         private int firstVisibleAppIndex;
+        private Application lastActiveApplication;
+        private int lastActiveRunningIndex = -1;
         private bool notificationHovered;
         private int cachedClockKey = -1;
         private int cachedDay = -1;
@@ -118,6 +120,24 @@ namespace ZonderqOS.GUI
             return count;
         }
 
+        private static int RunningIndexOf(List<Application> apps, Application target)
+        {
+            if (apps == null || target == null)
+                return -1;
+
+            int runningIndex = 0;
+            for (int i = 0; i < apps.Count; i++)
+            {
+                Application app = apps[i];
+                if (app == null || !app.IsRunning || app.Window == null)
+                    continue;
+                if (app == target)
+                    return runningIndex;
+                runningIndex++;
+            }
+            return -1;
+        }
+
         private int GetPageSlots(int runningCount, out bool overflow)
         {
             int available = Width - TrayWidth - (StartButtonWidth + SidePadding + 6);
@@ -169,6 +189,18 @@ namespace ZonderqOS.GUI
             bool overflow;
             int pageSlots = GetPageSlots(runningCount, out overflow);
             NormalizeAppPage(runningCount, pageSlots, overflow);
+            int activeRunningIndex = RunningIndexOf(apps, activeApplication);
+            // A newly launched or Alt+Tab-selected window must be visible
+            // on the taskbar even when it lives on a later page. Manual
+            // paging does not snap back until focus or MRU order changes.
+            if (activeApplication != lastActiveApplication ||
+                activeRunningIndex != lastActiveRunningIndex)
+            {
+                lastActiveApplication = activeApplication;
+                lastActiveRunningIndex = activeRunningIndex;
+                if (overflow && pageSlots > 0 && activeRunningIndex >= 0)
+                    firstVisibleAppIndex = (activeRunningIndex / pageSlots) * pageSlots;
+            }
             int runningIndex = 0;
             int shown = 0;
 
