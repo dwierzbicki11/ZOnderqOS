@@ -137,6 +137,53 @@ namespace ZonderqOS
                     ping.Close();
                 }
 #endif
+#if ZONDERQ_NETWORK_N4_TCP
+                // Bounded, deterministic TCP echo against a CI-owned host
+                // listener reachable through QEMU user networking at 10.0.2.2.
+                // This does not enable networking in the production desktop.
+                Log("[NET3095-N4] TCP_ATTEMPT=START");
+                try
+                {
+                    using (var client = new System.Net.Sockets.TcpClient())
+                    {
+                        client.Connect(System.Net.IPAddress.Parse("10.0.2.2"), 18095);
+                        client.Client.ReceiveTimeout = 5000;
+                        client.Client.SendTimeout = 5000;
+                        System.Net.Sockets.NetworkStream stream = client.GetStream();
+                        byte[] request = System.Text.Encoding.ASCII.GetBytes("ZONDERQ3095-TCP-PING\n");
+                        byte[] expected = System.Text.Encoding.ASCII.GetBytes("ZONDERQ3095-TCP-PONG\n");
+                        stream.Write(request, 0, request.Length);
+                        byte[] response = new byte[expected.Length];
+                        int received = 0;
+                        while (received < response.Length)
+                        {
+                            int read = stream.Read(response, received, response.Length - received);
+                            if (read <= 0)
+                                break;
+                            received += read;
+                        }
+                        if (received != expected.Length)
+                        {
+                            Log("[NET3095-N4][FAIL] TCP reply truncated");
+                            return;
+                        }
+                        for (int i = 0; i < expected.Length; i++)
+                        {
+                            if (response[i] != expected[i])
+                            {
+                                Log("[NET3095-N4][FAIL] TCP reply mismatch");
+                                return;
+                            }
+                        }
+                        Log("[NET3095-N4] TCP=PASS from=10.0.2.2 port=18095 bytes=" + received);
+                    }
+                }
+                catch (Exception tcpException)
+                {
+                    Log("[NET3095-N4][FAIL] TCP exception " + tcpException.GetType().Name);
+                    return;
+                }
+#endif
             }
             catch (Exception ex)
             {
