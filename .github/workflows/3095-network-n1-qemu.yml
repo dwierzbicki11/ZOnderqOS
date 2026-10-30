@@ -9,6 +9,7 @@ on:
       - 'tools/smoke-network-n1-3095-qemu.sh'
       - 'tests/test_3095_network_n1_contract.py'
       - 'tests/verify_3095_network_n1.py'
+      - 'tests/verify_3095_network_n2.py'
       - '.github/workflows/3095-network-n1-qemu.yml'
   workflow_dispatch:
 
@@ -36,6 +37,7 @@ jobs:
           bash zonderq/tools/verify-cosmos-compat.sh
           python3 zonderq/tests/test_3095_network_n1_contract.py
           python3 zonderq/tests/verify_3095_network_n1.py --self-test
+          python3 zonderq/tests/verify_3095_network_n2.py --self-test
           python3 zonderq/tests/test_upstream_smp_disabled.py
           bash -n zonderq/tools/build-cosmos-3095-local.sh
           bash -n zonderq/tools/smoke-network-n1-3095-qemu.sh
@@ -76,5 +78,41 @@ jobs:
         with:
           name: zonderq3095-network-n1-QEMU-ONLY
           path: zonderq/output-3095/ZonderqOS-3095-network-n1.iso
+          retention-days: 4
+          if-no-files-found: error
+
+      - name: Build isolated 3.0.95 DHCP RX proof ISO
+        working-directory: zonderq
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/without-downgrade
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh network-n2
+          test -s output-3095/ZonderqOS-3095-network-n2.iso
+          sha256sum output-3095/ZonderqOS-3095-network-n2.iso
+      - name: Boot QEMU and verify real E1000E DHCP RX through PCAP
+        working-directory: zonderq
+        env:
+          NET3095_N1_TIMEOUT: '170'
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-n1-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-n2.iso network-n2-3095.serial.log n2
+      - name: Upload N2 DHCP serial and PCAP evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n2-dhcp-rx-evidence
+          path: |
+            zonderq/network-n2-3095.serial.log
+            zonderq/network-n2-3095.serial.log.stderr
+            zonderq/network-n2-3095.serial.log.pcap
+          if-no-files-found: ignore
+      - name: Retain QEMU-only DHCP RX proof ISO
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n2-QEMU-ONLY
+          path: zonderq/output-3095/ZonderqOS-3095-network-n2.iso
           retention-days: 4
           if-no-files-found: error
