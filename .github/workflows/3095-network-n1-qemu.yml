@@ -46,6 +46,7 @@ jobs:
           python3 zonderq/tests/verify_3095_network_n4.py --self-test
           python3 zonderq/tests/verify_3095_network_n5.py --self-test
           python3 -m py_compile zonderq/tests/network_3095_tcp_host.py
+          python3 zonderq/tests/network_3095_tcp_host.py --self-test
           python3 zonderq/tests/test_upstream_smp_disabled.py
           bash -n zonderq/tools/build-cosmos-3095-local.sh
           bash -n zonderq/tools/smoke-network-n1-3095-qemu.sh
