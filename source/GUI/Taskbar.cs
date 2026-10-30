@@ -16,6 +16,8 @@ namespace ZonderqOS.GUI
         private readonly ApplicationManager applicationManager;
         private readonly Action notificationClick;
         private int hoveredAppIndex = -1;
+        private bool overflowHovered;
+        private int firstVisibleAppIndex;
         private bool notificationHovered;
         private int cachedClockKey = -1;
         private int cachedDay = -1;
@@ -98,6 +100,48 @@ namespace ZonderqOS.GUI
                 name.IndexOf("diagnostic", StringComparison.OrdinalIgnoreCase) >= 0)
                 return IconType.About;
             return IconType.File;
+        }
+
+        // Reserve one taskbar slot for paging when open windows overflow.
+        private static int CountRunningApps(List<Application> apps)
+        {
+            if (apps == null)
+                return 0;
+
+            int count = 0;
+            for (int i = 0; i < apps.Count; i++)
+            {
+                Application app = apps[i];
+                if (app != null && app.IsRunning && app.Window != null)
+                    count++;
+            }
+            return count;
+        }
+
+        private int GetPageSlots(int runningCount, out bool overflow)
+        {
+            int available = Width - TrayWidth - (StartButtonWidth + SidePadding + 6);
+            int slots = System.Math.Max(0, (available + AppButtonGap) / (AppButtonSize + AppButtonGap));
+            overflow = runningCount > slots && slots >= 2;
+            return overflow ? slots - 1 : slots;
+        }
+
+        private void NormalizeAppPage(int runningCount, int pageSlots, bool overflow)
+        {
+            if (!overflow || pageSlots <= 0)
+            {
+                firstVisibleAppIndex = 0;
+                return;
+            }
+
+            if (firstVisibleAppIndex < 0 || firstVisibleAppIndex >= runningCount)
+                firstVisibleAppIndex = 0;
+            firstVisibleAppIndex = (firstVisibleAppIndex / pageSlots) * pageSlots;
+        }
+
+        private int OverflowButtonX(int pageSlots)
+        {
+            return StartButtonWidth + SidePadding + 6 + pageSlots * (AppButtonSize + AppButtonGap);
         }
 
         public override void Render(Canvas canvas)
