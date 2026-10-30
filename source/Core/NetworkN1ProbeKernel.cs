@@ -98,6 +98,30 @@ namespace ZonderqOS
                 return;
             }
             Log("[NET3095-N1] DHCP=NOT_ATTEMPTED IP=UNASSIGNED");
+#if ZONDERQ_NETWORK_N2_DHCP
+            // Opt-in second-stage RX proof. DHCP only runs in the isolated
+            // serial QEMU probe, never in the production desktop.
+            Log("[NET3095-N2] DHCP_ATTEMPT=START");
+            try
+            {
+                int elapsed = new DhcpClient().SendDiscoverPacket();
+                IPConfig? config = NetworkManager.Primary.IPConfig;
+                if (elapsed < 0 || config == null ||
+                    config.Address.IsZero || config.SubnetMask.IsZero ||
+                    config.DefaultGateway.IsZero)
+                {
+                    Log("[NET3095-N2][FAIL] DHCP timed out or returned an invalid lease");
+                    return;
+                }
+                Log("[NET3095-N2] DHCP=PASS ip=" + config.Address +
+                    " mask=" + config.SubnetMask +
+                    " gateway=" + config.DefaultGateway);
+            }
+            catch (Exception ex)
+            {
+                Log("[NET3095-N2][FAIL] DHCP exception " + ex.GetType().Name);
+            }
+#endif
         }
 
         private static int HexDigit(char c)
