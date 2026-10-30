@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using Cosmos.Kernel.System.Graphics;
@@ -24,8 +25,7 @@ namespace ZonderqOS.GUI.Apps
         private int selectedIndex = -1;
         private int scrollIndex;
         private int lastClickIndex = -1;
-        private int clickFrame = -1000;
-        private int frameCounter;
+        private long lastClickTimestamp;
         private bool contextMenuVisible;
         private int contextMenuX;
         private int contextMenuY;
@@ -68,7 +68,6 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Update()
         {
-            frameCounter++;
             int previousViewWidth = view.Width;
             int previousViewHeight = view.Height;
             view.X = Window.X + 10;
@@ -173,8 +172,11 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            long now = Stopwatch.GetTimestamp();
+            long elapsed = now - lastClickTimestamp;
             if (selectedIndex == index && lastClickIndex == index &&
-                frameCounter - clickFrame <= 25)
+                lastClickTimestamp > 0 && elapsed >= 0 &&
+                elapsed <= Stopwatch.Frequency / 2)
             {
                 // Clear the old click before opening: navigating to a new
                 // directory must not turn the next single click on the same
@@ -186,7 +188,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 selectedIndex = index;
                 lastClickIndex = index;
-                clickFrame = frameCounter;
+                lastClickTimestamp = now;
             }
 
             EnsureSelectionVisible();
@@ -195,7 +197,7 @@ namespace ZonderqOS.GUI.Apps
         private void ResetClickSequence()
         {
             lastClickIndex = -1;
-            clickFrame = -1000;
+            lastClickTimestamp = 0;
         }
 
         private int HitEntryIndex(int x, int y)
