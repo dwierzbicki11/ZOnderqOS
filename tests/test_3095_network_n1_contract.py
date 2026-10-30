@@ -38,10 +38,13 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("NetworkManager.GetAdapter(i)", SOURCE)
         self.assertIn("adapter.MacAddress", SOURCE)
         self.assertIn("adapter.LinkUp", SOURCE)
+        # The N1 build compiles out the N2-only DHCP block. Keep the N1
+        # isolation contract strict without forbidding the explicit N2 mode.
+        n1_source = SOURCE.split("#if ZONDERQ_NETWORK_N2_DHCP", 1)[0]
         for forbidden in ("Disk.Initialize(", "VfsManager.TryMount(", "WriteBlock(",
                           "File.Write", "UserManager.Initialize(", "DhcpClient(",
                           "TryFormat(", "GuiManager("):
-            self.assertNotIn(forbidden, SOURCE)
+            self.assertNotIn(forbidden, n1_source)
         self.assertIn("if (!Disk.Initialize())", MAIN)
 
     def test_exact_tag_and_real_qemu_gate(self):
