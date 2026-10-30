@@ -325,6 +325,13 @@ namespace ZonderqOS.GUI
                             desktopContextMenu.UpdateInteractions(mouseX, mouseY,
                                 currentLeftButtonState, previousLeftButtonState);
 
+                        // Snapshot ownership before a title-bar action closes
+                        // or minimizes the window. Otherwise that same click
+                        // could hit a desktop shortcut exposed underneath it.
+                        bool windowCapturedClick =
+                            ((currentLeftButtonState && !previousLeftButtonState) ||
+                             (currentRightButtonState && !previousRightButtonState)) &&
+                            IsPointOverWindow(mouseX, mouseY);
                         if (!startMenuCaptures && !desktopMenuCaptures)
                             applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
                                 currentRightButtonState, previousRightButtonState);
@@ -355,7 +362,7 @@ namespace ZonderqOS.GUI
                         // A Start-menu action may close the menu in this frame.
                         // Use the pre-dispatch capture flags so that same click
                         // cannot open a desktop shortcut beneath the old overlay.
-                        if (!startMenuCaptures && !desktopMenuCaptures)
+                        if (!startMenuCaptures && !desktopMenuCaptures && !windowCapturedClick)
                             UpdateDesktopInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
                                 currentRightButtonState, previousRightButtonState);
                     }
