@@ -246,11 +246,16 @@ namespace ZonderqOS
                     frame[9] | frame[10] | frame[11]) != 0;
         }
 
+        private static int s_heartbeat;
+
         protected override void Run()
         {
-            // Allow serial evidence and background driver-kit work to remain
-            // observable; do not touch the host filesystem.
+            // Prove the managed guest is still scheduling after a successful
+            // network exchange. A live QEMU process alone is not enough:
+            // -no-shutdown can leave a frozen or halted guest behind.
             Thread.Sleep(1000);
+            s_heartbeat++;
+            Log("[NET3095-N1] HEARTBEAT=" + s_heartbeat);
         }
     }
 }
