@@ -69,10 +69,18 @@ namespace ZonderqOS.GUI.Apps
         public override void Update()
         {
             frameCounter++;
+            int previousViewWidth = view.Width;
+            int previousViewHeight = view.Height;
             view.X = Window.X + 10;
             view.Y = Window.Y + 40;
             view.Width = Math.Max(1, Window.Width - 20);
             view.Height = Math.Max(1, Window.Height - 50);
+
+            // Recalculate visible rows/columns only when the client size
+            // changes. A selected file must not disappear after shrinking,
+            // and a larger window must not show an empty scrolled page.
+            if (view.Width != previousViewWidth || view.Height != previousViewHeight)
+                EnsureSelectionVisible();
 
             // The menu may have been opened before a window resize. Refit
             // its origin to the current client area so it remains clickable.
@@ -575,10 +583,13 @@ namespace ZonderqOS.GUI.Apps
             int rows = Math.Max(1, (availableHeight + TileGap) / (TileHeight + TileGap));
             int visible = cols * rows;
 
-            if (selectedIndex < scrollIndex)
-                scrollIndex = selectedIndex;
-            else if (selectedIndex >= scrollIndex + visible)
-                scrollIndex = selectedIndex - visible + cols;
+            if (selectedIndex >= 0)
+            {
+                if (selectedIndex < scrollIndex)
+                    scrollIndex = selectedIndex;
+                else if (selectedIndex >= scrollIndex + visible)
+                    scrollIndex = selectedIndex - visible + cols;
+            }
 
             scrollIndex -= scrollIndex % cols;
             if (scrollIndex < 0)
