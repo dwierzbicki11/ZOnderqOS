@@ -17,8 +17,8 @@ UPSTREAM="https://github.com/CosmosOS/Cosmos.git"
 WORK_ROOT="${ZONDERQ_3095_WORK_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/zonderqos-cosmos-3095}"
 MODE="${1:-disk}"
 case "$MODE" in
-  disk|probe|network-n1|network-n2|network-n3|network-n4|network-n5) ;;
-  *) echo "[3095-BUILD][ERROR] Expected disk, probe, network-n1, network-n2, network-n3, network-n4 or network-n5" >&2; exit 2 ;;
+  disk|probe|network-n1|network-n2|network-n3|network-n4|network-n5|network-n6) ;;
+  *) echo "[3095-BUILD][ERROR] Expected disk, probe, network-n1, network-n2, network-n3, network-n4 or network-n5 or network-n6" >&2; exit 2 ;;
 esac
 if [[ $# -gt 1 ]]; then
   echo "[3095-BUILD][ERROR] Unexpected additional arguments" >&2
@@ -164,6 +164,7 @@ case "$MODE" in
     network_n3=false
     network_n4=false
     network_n5=false
+    network_n6=false
     output_file="ZonderqOS-3095-disk.iso"
     ;;
   probe)
@@ -174,6 +175,7 @@ case "$MODE" in
     network_n3=false
     network_n4=false
     network_n5=false
+    network_n6=false
     output_file="ZonderqOS-3095-usb.iso"
     ;;
   network-n1)
@@ -184,6 +186,7 @@ case "$MODE" in
     network_n3=false
     network_n4=false
     network_n5=false
+    network_n6=false
     output_file="ZonderqOS-3095-network-n1.iso"
     ;;
   network-n2)
@@ -194,6 +197,7 @@ case "$MODE" in
     network_n3=false
     network_n4=false
     network_n5=false
+    network_n6=false
     output_file="ZonderqOS-3095-network-n2.iso"
     ;;
   network-n3)
@@ -204,6 +208,7 @@ case "$MODE" in
     network_n3=true
     network_n4=false
     network_n5=false
+    network_n6=false
     output_file="ZonderqOS-3095-network-n3.iso"
     ;;
   network-n4)
@@ -214,6 +219,7 @@ case "$MODE" in
     network_n3=true
     network_n4=true
     network_n5=false
+    network_n6=false
     output_file="ZonderqOS-3095-network-n4.iso"
     ;;
   network-n5)
@@ -224,7 +230,19 @@ case "$MODE" in
     network_n3=true
     network_n4=true
     network_n5=true
+    network_n6=false
     output_file="ZonderqOS-3095-network-n5.iso"
+    ;;
+  network-n6)
+    read_only=false
+    diagnostic=false
+    network_n1=true
+    network_n2=true
+    network_n3=true
+    network_n4=true
+    network_n5=true
+    network_n6=true
+    output_file="ZonderqOS-3095-network-n6.iso"
     ;;
 esac
 echo "[3095-BUILD] Publishing $MODE x64 ISO (no older Cosmos versions, no RAM root)..."
@@ -239,6 +257,7 @@ dotnet publish "$STAGE/ZonderqOS.csproj" \
   -p:ZonderqNetworkN3Icmp="$network_n3" \
   -p:ZonderqNetworkN4Tcp="$network_n4" \
   -p:ZonderqNetworkN5Dns="$network_n5" \
+  -p:ZonderqNetworkN6Http="$network_n6" \
   -o "$output" --no-restore
 
 [[ -s "$output/ZonderqOS.iso" ]] || die "Publish finished without an ISO."
