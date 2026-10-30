@@ -365,7 +365,7 @@ class ResponsiveGui3094(unittest.TestCase):
             "int priorMouseX =", 1
         )[0]
         self.assertIn("currentRightButtonState && !previousRightButtonState;", DESKTOP)
-        self.assertIn("if (rightPressed)\\n                        {\\n                            commandPalette.Close();", dispatch)
+        self.assertRegex(dispatch, r"if \(rightPressed\)\s*\{\s*commandPalette\.Close\(\);")
         self.assertIn("paletteCaptured = true;", dispatch)
         self.assertIn("notificationCenter.Visible && rightPressed", dispatch)
         self.assertIn("notificationCenter.Close();", dispatch)
