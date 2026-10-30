@@ -254,8 +254,8 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("if (desktopMenuWasVisible)", dispatch)
         self.assertLess(dispatch.index("desktopContextMenu.UpdateInteractions("),
                         dispatch.index("applicationManager.HandleMouse("))
-        self.assertIn("if (!desktopMenuCaptures)\n                            taskbar.UpdateInteractions(", dispatch)
-        self.assertIn("if (!startMenuCaptures && !desktopMenuCaptures && !windowCapturedClick)\n                            UpdateDesktopInteractions(", dispatch)
+        self.assertIn("if (!desktopMenuCaptures && !fileManagerMenuCaptures)\n                            taskbar.UpdateInteractions(", dispatch)
+        self.assertIn("if (!startMenuCaptures && !desktopMenuCaptures && !fileManagerMenuCaptures && !windowCapturedClick)\n                            UpdateDesktopInteractions(", dispatch)
         # The menu is handled once at the top-level dispatch, before the
         # ShowDesktopIcons=false early return. Do not double-dispatch actions.
         self.assertNotIn("desktopContextMenu.UpdateInteractions(", desktop)
@@ -377,7 +377,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("if (!paletteCaptured && !notificationCaptured)", dispatch)
         self.assertIn("rightPressed);", dispatch)
         self.assertRegex(dispatch, r"if \(rightPressed\)\s*desktopContextMenu\.Visible = false;")
-        self.assertRegex(dispatch, r"if \(!rightPressed\)\s*startMenu\.UpdateInteractions\(")
+        self.assertRegex(dispatch, r"if \(!rightPressed && !fileManagerMenuCaptures\)\s*startMenu\.UpdateInteractions\(")
         self.assertLess(dispatch.index("commandPalette.Close();"),
                         dispatch.index("applicationManager.HandleMouse("))
         self.assertLess(dispatch.index("desktopContextMenu.Visible = false;"),
@@ -409,7 +409,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertLess(dispatch.index("IsPointOverWindow(mouseX, mouseY);"),
                         dispatch.index("applicationManager.HandleMouse("))
         self.assertIn(
-            "if (!startMenuCaptures && !desktopMenuCaptures && !windowCapturedClick)",
+            "if (!startMenuCaptures && !desktopMenuCaptures && !fileManagerMenuCaptures && !windowCapturedClick)",
             dispatch
         )
         self.assertLess(dispatch.index("applicationManager.HandleMouse("),
