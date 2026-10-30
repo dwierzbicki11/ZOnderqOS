@@ -366,10 +366,10 @@ namespace ZonderqOS.GUI
                         // An open File Manager menu is modal for the next mouse
                         // press. Route it to its owner before window focus changes,
                         // and do not replay it on the taskbar or desktop underneath.
+                        FileManagerApp activeFileManager = applicationManager.ActiveApplication as FileManagerApp;
                         bool fileManagerMenuCaptures = !startMenuCaptures && !desktopMenuCaptures &&
                             ((currentLeftButtonState && !previousLeftButtonState) || rightPressed) &&
-                            applicationManager.ActiveApplication is FileManagerApp activeFileManager &&
-                            activeFileManager.ContextMenuVisible;
+                            activeFileManager != null && activeFileManager.ContextMenuVisible;
                         if (fileManagerMenuCaptures)
                         {
                             activeFileManager.HandleMouse(mouseX, mouseY, currentLeftButtonState,
