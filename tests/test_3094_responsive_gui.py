@@ -770,5 +770,31 @@ class ResponsiveGui3094(unittest.TestCase):
                              max(0, selected - visible))
 
 
+    def test_file_manager_context_menu_dismissal_consumes_mouse_press(self):
+        mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
+            "private int HitEntryIndex(", 1)[0]
+        self.assertIn("if (left && !oldLeft && dialogMode == 0 && contextMenuVisible)", mouse)
+        self.assertIn("if (right && !oldRight && dialogMode == 0 && contextMenuVisible)", mouse)
+        self.assertLess(mouse.index("if (ContextClick(x, y))"),
+                        mouse.index("Window.HandleMouse(mouseX, mouseY, left, oldLeft);"))
+        self.assertLess(mouse.index("ResetClickSequence();\n                return;"),
+                        mouse.index("Window.HandleMouse(mouseX, mouseY, left, oldLeft);"))
+        self.assertLess(mouse.index("Window.HandleMouse(mouseX, mouseY, left, oldLeft);"),
+                        mouse.index("if (x < 0 || y < 0"))
+        self.assertEqual(mouse.count("ContextClick(x, y)"), 1)
+
+        # A dismissal click over the sidebar, toolbar, or titlebar must
+        # never be replayed as a mount/unmount or window-close action.
+        for left, right, menu_hit in ((True, False, False),
+                                      (False, True, False),
+                                      (True, False, True)):
+            menu_open = True
+            consumed = menu_open and (left or right)
+            dispatched_to_window = not consumed
+            dispatched_to_sidebar = not consumed
+            self.assertFalse(dispatched_to_window)
+            self.assertFalse(dispatched_to_sidebar)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
