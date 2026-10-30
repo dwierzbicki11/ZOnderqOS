@@ -109,21 +109,31 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleMouse(int mouseX, int mouseY, bool left, bool oldLeft, bool right, bool oldRight)
         {
-            Window.HandleMouse(mouseX, mouseY, left, oldLeft);
-            if (!Window.Visible)
-                return;
-
             int x = mouseX - view.X;
             int y = mouseY - view.Y;
 
-            // Dismiss an open menu even when the next click is on the title
-            // bar or outside the client view. Previously it stayed stuck.
+            // The context menu owns the next press, even outside its bounds.
+            // Consume dismissal before Window.HandleMouse: otherwise a click
+            // on the titlebar can close the window, or a click on the sidebar
+            // can mount/unmount a volume hidden beneath the menu.
             if (left && !oldLeft && dialogMode == 0 && contextMenuVisible)
             {
                 if (ContextClick(x, y))
                     return;
                 contextMenuVisible = false;
+                ResetClickSequence();
+                return;
             }
+            if (right && !oldRight && dialogMode == 0 && contextMenuVisible)
+            {
+                contextMenuVisible = false;
+                ResetClickSequence();
+                return;
+            }
+
+            Window.HandleMouse(mouseX, mouseY, left, oldLeft);
+            if (!Window.Visible)
+                return;
 
             if (x < 0 || y < 0 || x >= view.Width || y >= view.Height)
                 return;
