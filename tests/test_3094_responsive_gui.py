@@ -148,6 +148,28 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("view.Height = Math.Max(1, Window.Height - 50);", TASK_MANAGER)
         self.assertIn("int contentWidth = System.Math.Max(1, Window.Width - sidebarWidth);", SETTINGS)
 
+    def test_file_manager_context_menu_fits_resized_client(self):
+        self.assertIn("internal int ContextMenuWidthForView =>", FILE_MANAGER)
+        self.assertIn("internal int ContextMenuItemHeightForView =>", FILE_MANAGER)
+        self.assertIn("internal int ContextMenuHeightForView =>", FILE_MANAGER)
+        self.assertIn("view.Width - ContextMenuWidthForView - 4", FILE_MANAGER)
+        self.assertIn("view.Height - ContextMenuHeightForView - FooterHeight - 4", FILE_MANAGER)
+        self.assertIn("int item = (y - contextMenuY) / ContextMenuItemHeightForView;", FILE_MANAGER)
+        self.assertIn("int rowHeight = app.ContextMenuItemHeightForView;", FILE_MANAGER)
+
+        for window_width, window_height in ((320, 220), (480, 350), (800, 520)):
+            view_width, view_height = window_width - 20, window_height - 50
+            menu_width = min(240, max(1, view_width - 8))
+            row_height = max(16, min(29, (view_height - 24 - 12) // 7))
+            menu_height = row_height * 7
+            self.assertLessEqual(menu_width + 8, view_width)
+            self.assertLessEqual(menu_height + 24 + 8, view_height)
+            for click_x, click_y in ((182, 60), (view_width - 5, view_height - 35)):
+                menu_x = max(4, min(click_x, view_width - menu_width - 4))
+                menu_y = max(4, min(click_y, view_height - menu_height - 24 - 4))
+                self.assertLessEqual(menu_x + menu_width + 4, view_width)
+                self.assertLessEqual(menu_y + menu_height + 24 + 4, view_height)
+
     def test_calculator_seventh_row_visible_on_800x600(self):
         self.assertIn("UiPainter.RoundedPanel(", CALC)
         self.assertIn("availableHeight / Rows", CALC)
