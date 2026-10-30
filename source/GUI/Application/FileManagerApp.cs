@@ -68,6 +68,11 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Update()
         {
+            // A first click after switching back from another window is not
+            // the second click of an old File Manager double-click.
+            if (!Window.IsActive)
+                ResetClickSequence();
+
             int previousViewWidth = view.Width;
             int previousViewHeight = view.Height;
             view.X = Window.X + 10;
