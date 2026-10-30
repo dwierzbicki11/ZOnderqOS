@@ -52,3 +52,41 @@ The host listener exits after one request. No host disk or partition is
 mounted or modified by the guest. This **does not** prove HTTP, DNS, TLS,
 the physical Realtek RTL810xE driver, or production networking. Never enable
 this profile in the disk-backed GUI without independent integration tests.
+
+## Verified QEMU milestones (stock Cosmos 3.0.95)
+
+The isolated CI gate has established N1 raw Ethernet TX (PCAP), N2 DHCP
+DISCOVER/OFFER/REQUEST/ACK and lease 10.0.2.15, N3 ICMP echo round-trip to
+10.0.2.2, N4 TCP handshake plus echo, and N5 DNS UDP A query/response
+for `localhost` via QEMU's 10.0.2.3 resolver. All five stages passed
+the **real QEMU** job in GitHub Actions run **#44**, commit `49bad210`
+(on 2026-10-30). The capture, serial log and host TCP evidence are separate
+from the synthetic parser fixtures. The last eight-second window also
+requires six advancing guest heartbeats; QEMU process survival alone is
+insufficient. These are emulator-only results, not a physical NIC test.
+
+## N6: HTTP/1.0 GET over real TCP (experimental, pending CI)
+
+Build `bash tools/build-cosmos-3095-local.sh network-n6`, then:
+
+```sh
+bash tools/smoke-network-n1-3095-qemu.sh \
+  output-3095/ZonderqOS-3095-network-n6.iso \
+  network-n6-3095.serial.log n6
+```
+
+N6 keeps N1–N5 intact, then makes a second TCP connection to
+`10.0.2.2:18096`. A CI-owned unprivileged HTTP fixture binds only
+`127.0.0.1:18096` on the QEMU host and responds to exactly
+`GET /health HTTP/1.0` with `200 OK`, a 20-byte body and a
+`Content-Length` header. The guest checks the exact HTTP status,
+headers and body. The N6 PCAP gate independently checks the TCP handshake,
+port/MAC/IP/sequence/ack continuity and full HTTP request/response byte
+stream, including a possible segmented response. The smoke script also
+requires the host success marker and eight seconds of guest heartbeat.
+
+**Do not call N6 passed until its new real QEMU CI job succeeds.**
+HTTP/1.0 here is unencrypted; it is **not HTTPS**, certificate validation,
+a browser or a production network stack. `CosmosEnableNetwork=false`
+continues to be the production default, and the probe never touches host
+storage or the ZONDERQDATA partition.
