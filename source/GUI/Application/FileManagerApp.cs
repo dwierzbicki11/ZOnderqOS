@@ -123,6 +123,8 @@ namespace ZonderqOS.GUI.Apps
 
             if (right && !oldRight)
             {
+                // A context click is not part of a left-button double-click.
+                ResetClickSequence();
                 if (dialogMode != 0)
                     return;
 
@@ -167,17 +169,33 @@ namespace ZonderqOS.GUI.Apps
             if (index < 0 || index >= entries.Count)
             {
                 selectedIndex = -1;
+                ResetClickSequence();
                 return;
             }
 
-            if (selectedIndex == index && lastClickIndex == index && frameCounter - clickFrame <= 25)
+            if (selectedIndex == index && lastClickIndex == index &&
+                frameCounter - clickFrame <= 25)
+            {
+                // Clear the old click before opening: navigating to a new
+                // directory must not turn the next single click on the same
+                // tile index into a second double-click.
+                ResetClickSequence();
                 OpenEntry(index);
+            }
             else
+            {
                 selectedIndex = index;
+                lastClickIndex = index;
+                clickFrame = frameCounter;
+            }
 
-            lastClickIndex = index;
-            clickFrame = frameCounter;
             EnsureSelectionVisible();
+        }
+
+        private void ResetClickSequence()
+        {
+            lastClickIndex = -1;
+            clickFrame = -1000;
         }
 
         private int HitEntryIndex(int x, int y)
@@ -233,6 +251,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void Toolbar(int x)
         {
+            ResetClickSequence();
             if (x < 42)
             {
                 GoUp();
@@ -255,6 +274,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void SidebarClick(int x, int y)
         {
+            ResetClickSequence();
             SidebarEntry entry = GetSidebarEntryAt(y);
             if (entry == null || entry.IsSection)
                 return;
@@ -718,6 +738,7 @@ namespace ZonderqOS.GUI.Apps
         {
             entries.Clear();
             selectedIndex = -1;
+            ResetClickSequence();
             scrollIndex = 0;
             contextMenuVisible = false;
 
