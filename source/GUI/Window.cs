@@ -30,6 +30,7 @@ namespace ZonderqOS.GUI
 
         private int restoreX, restoreY, restoreWidth, restoreHeight;
         private static int desktopWidth, desktopHeight;
+        private int observedDesktopWidth, observedDesktopHeight;
         private bool dragging;
         private int dragOffsetX, dragOffsetY;
         private int hoveredControl;
@@ -69,6 +70,8 @@ namespace ZonderqOS.GUI
             // before creating child controls so click coordinates stay aligned.
             // Never invent a display resolution: this is only a GUI layout cap.
             ConstrainToDesktop();
+            observedDesktopWidth = desktopWidth;
+            observedDesktopHeight = desktopHeight;
             UiAnimator.RequestFrames();
         }
 
@@ -91,6 +94,32 @@ namespace ZonderqOS.GUI
             int x = System.Math.Max(margin, System.Math.Min(X, desktopWidth - Width - margin));
             int y = System.Math.Max(margin, System.Math.Min(Y, desktopHeight - Height - margin));
             MoveTo(x, y);
+        }
+
+        // Reflow existing windows only when the real desktop dimensions change.
+        // Normal windows are clamped; maximized windows follow the new bounds.
+        private void SyncDesktopBounds()
+        {
+            if (observedDesktopWidth == desktopWidth && observedDesktopHeight == desktopHeight)
+                return;
+
+            observedDesktopWidth = desktopWidth;
+            observedDesktopHeight = desktopHeight;
+            if (desktopWidth <= 0 || desktopHeight <= 0)
+                return;
+
+            if (IsMaximized)
+            {
+                MoveTo(0, 0);
+                Width = desktopWidth;
+                Height = desktopHeight;
+            }
+            else
+            {
+                ConstrainToDesktop();
+            }
+
+            UiAnimator.RequestFrames();
         }
 
         public void AddChild(Widget widget)
@@ -141,6 +170,8 @@ namespace ZonderqOS.GUI
             {
                 ConstrainToDesktop();
             }
+            observedDesktopWidth = desktopWidth;
+            observedDesktopHeight = desktopHeight;
             openingFrames = 8;
             UiAnimator.RequestFrames();
         }
@@ -161,6 +192,7 @@ namespace ZonderqOS.GUI
                 return;
             }
 
+            SyncDesktopBounds();
             dragging = false;
             resizing = false;
             hoveredResizeMode = 0;
@@ -201,6 +233,7 @@ namespace ZonderqOS.GUI
             if (!Visible || IsMinimized)
                 return;
 
+            SyncDesktopBounds();
             interactionFrame++;
 
             int closeX = X + Width - RightPadding - ButtonSize;
@@ -378,6 +411,7 @@ namespace ZonderqOS.GUI
             if (!Visible || IsMinimized)
                 return;
 
+            SyncDesktopBounds();
             focusProgress = UiAnimator.Approach(focusProgress, IsActive ? 1f : 0f, 0.22f);
             Color border = UiAnimator.Blend(UiPalette.Border, UiPalette.AccentBorder, focusProgress);
             Color titleBar = UiAnimator.Blend(UiPalette.SurfaceRaised, UiPalette.AccentSoft, focusProgress * 0.45f);
