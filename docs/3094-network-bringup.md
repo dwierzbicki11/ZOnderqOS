@@ -74,3 +74,10 @@ ARM64 continues to report unavailable until its ECAM backend exists.
 The `PciMetadataSmoke` C# harness tests synthetic BAR layouts; this does
 **not** establish physical Realtek operation. Verify BAR data on the laptop
 before selecting MMIO/IO and designing the RTL810xE TX/RX rings.
+
+`nicdiag` also reports read-only PCI command/status flags and legacy IRQ
+line/pin for `10EC:8136`. These flags describe PCI configuration **only**:
+they do not prove interrupts are delivered, MSI/MSI-X works, DMA is safe,
+or that any network driver is running. PCI revision `06` must not be
+confused with the Realtek internal MAC version; chip-specific initialization
+still requires a separate validated implementation.

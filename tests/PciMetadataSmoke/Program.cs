@@ -44,6 +44,12 @@ Check(bars[2].Index == 2 && bars[2].Kind == PciBarKind.Memory64 &&
       bars[2].Address == 0x100000000UL && bars[2].Prefetchable,
     "64-bit BAR high half or prefetch bit decoding failed");
 Check(barConfig.BarReads == 12, "BAR inventory must read six dwords only");
+Check(PciBarInventory.TryReadRealtek810xEState(barConfig, 0, 2, 0, out var state),
+    "Expected read-only Realtek PCI state");
+Check(state.Command == 0x0007 && state.Status == 0x0010 &&
+      state.IoEnabled && state.MemoryEnabled && state.BusMasterEnabled &&
+      !state.LegacyInterruptDisabled && state.IrqLine == 11 && state.IrqPin == 1,
+    "PCI command/status/IRQ decode failed");
 barConfig.SetBar(0, 0);
 barConfig.SetBar(1, 0xFFFFFFFFu);
 barConfig.SetBar(2, 0);
@@ -55,11 +61,15 @@ Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 2, 0, out bars) &&
       bars.Count == 0, "Truncated 64-bit BAR must fail closed");
 barConfig.SetBar(5, 0);
 barConfig.HeaderType = 1;
+Check(!PciBarInventory.TryReadRealtek810xEState(barConfig, 0, 2, 0, out state),
+    "Non-type-0 PCI state must fail closed");
 int previousReads = barConfig.BarReads;
 Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 2, 0, out bars) &&
       barConfig.BarReads == previousReads, "Non-type-0 headers must not read BARs");
 barConfig.HeaderType = 0;
 barConfig.VendorId = 0x1234;
+Check(!PciBarInventory.TryReadRealtek810xEState(barConfig, 0, 2, 0, out state),
+    "Non-Realtek PCI state must fail closed");
 Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 2, 0, out bars) &&
       barConfig.BarReads == previousReads, "Non-Realtek function must not read BARs");
 barConfig.VendorId = 0x10EC;
@@ -127,6 +137,8 @@ sealed class FakeBarConfig : IPciConfigAccessor
             0x0B => 0x02,
             0x0A => 0x00,
             0x0E => HeaderType,
+            0x3C => 11,
+            0x3D => 1,
             _ => throw new Exception("Unexpected byte config read")
         };
     }
@@ -136,6 +148,8 @@ sealed class FakeBarConfig : IPciConfigAccessor
         if (bus != 0 || device != 2 || function != 0) throw new Exception("Unexpected BDF");
         if (offset == 0x00) return VendorId;
         if (offset == 0x02) return 0x8136;
+        if (offset == 0x04) return 0x0007;
+        if (offset == 0x06) return 0x0010;
         if (offset < 0x10 || offset > 0x26 || (offset & 1) != 0)
             throw new Exception("Unexpected BAR offset");
         BarReads++;

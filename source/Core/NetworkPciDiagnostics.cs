@@ -42,6 +42,16 @@ namespace ZonderqOS.SystemCore
                     " " + DescribeDevice(d.VendorId, d.DeviceId, d.Subclass), shellOutput);
                 if (d.VendorId == 0x10EC && d.DeviceId == 0x8136)
                 {
+                    PciNicConfigState state;
+                    if (PciSysfsProvider.TryReadRealtekPciState(d, out state))
+                        Write("[NIC3094] PCI_CMD=0x" + state.Command.ToString("X4") +
+                            " PCI_STATUS=0x" + state.Status.ToString("X4") +
+                            " io=" + (state.IoEnabled ? "on" : "off") +
+                            " mem=" + (state.MemoryEnabled ? "on" : "off") +
+                            " busmaster=" + (state.BusMasterEnabled ? "on" : "off") +
+                            " legacy_irq_disabled=" + (state.LegacyInterruptDisabled ? "yes" : "no") +
+                            " irq_line=" + (state.IrqLine == 0xFF ? "UNKNOWN" : state.IrqLine.ToString()) +
+                            " irq_pin=" + state.IrqPin + " (read-only; IRQ not verified)", shellOutput);
                     List<PciBarDescriptor> bars;
                     if (PciSysfsProvider.TryReadRealtekBars(d, out bars))
                     {

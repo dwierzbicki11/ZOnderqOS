@@ -24,20 +24,60 @@ namespace ZonderqOS.Hardware
         public bool Prefetchable { get; }
     }
 
+    public readonly struct PciNicConfigState
+    {
+        public PciNicConfigState(ushort command, ushort status, byte irqLine, byte irqPin)
+        {
+            Command = command;
+            Status = status;
+            IrqLine = irqLine;
+            IrqPin = irqPin;
+        }
+        public ushort Command { get; }
+        public ushort Status { get; }
+        public byte IrqLine { get; }
+        public byte IrqPin { get; }
+        public bool IoEnabled => (Command & 0x0001) != 0;
+        public bool MemoryEnabled => (Command & 0x0002) != 0;
+        public bool BusMasterEnabled => (Command & 0x0004) != 0;
+        public bool LegacyInterruptDisabled => (Command & 0x0400) != 0;
+    }
+
     public static class PciBarInventory
     {
+        /// <summary>Read-only PCI command/status and legacy IRQ routing.
+        /// IRQ line/pin are NOT proof of a working interrupt or MSI/MSI-X.</summary>
+        public static bool TryReadRealtek810xEState(IPciConfigAccessor config, byte bus,
+            byte device, byte function, out PciNicConfigState state)
+        {
+            if (config == null) throw new ArgumentNullException(nameof(config));
+            state = default;
+            if (!IsSupportedRealtek(config, bus, device, function)) return false;
+            state = new PciNicConfigState(
+                config.Read16(bus, device, function, 0x04),
+                config.Read16(bus, device, function, 0x06),
+                config.Read8(bus, device, function, 0x3C),
+                config.Read8(bus, device, function, 0x3D));
+            return true;
+        }
+
+        private static bool IsSupportedRealtek(IPciConfigAccessor config, byte bus,
+            byte device, byte function)
+        {
+            return device <= 31 && function <= 7 &&
+                config.Read16(bus, device, function, 0x00) == 0x10EC &&
+                config.Read16(bus, device, function, 0x02) == 0x8136 &&
+                config.Read8(bus, device, function, 0x0B) == 0x02 &&
+                config.Read8(bus, device, function, 0x0A) == 0x00 &&
+                (config.Read8(bus, device, function, 0x0E) & 0x7F) == 0;
+        }
+
         public static bool TryReadRealtek810xE(IPciConfigAccessor config, byte bus,
             byte device, byte function, out List<PciBarDescriptor> bars)
         {
             if (config == null) throw new ArgumentNullException(nameof(config));
             bars = new List<PciBarDescriptor>();
-            if (device > 31 || function > 7 ||
-                config.Read16(bus, device, function, 0x00) != 0x10EC ||
-                config.Read16(bus, device, function, 0x02) != 0x8136 ||
-                config.Read8(bus, device, function, 0x0B) != 0x02 ||
-                config.Read8(bus, device, function, 0x0A) != 0x00 ||
-                (config.Read8(bus, device, function, 0x0E) & 0x7F) != 0)
-                return false;
+            if (!IsSupportedRealtek(config, bus, device, function)) return false;
 
             for (byte index = 0; index < 6; index++)
             {

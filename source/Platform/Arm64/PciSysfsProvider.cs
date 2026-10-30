@@ -5,6 +5,12 @@ namespace ZonderqOS.Platform
 {
     public static class PciSysfsProvider
     {
+        public static bool TryReadRealtekPciState(DeviceDescriptor device, out PciNicConfigState state)
+        {
+            state = default;
+            return false;
+        }
+
         public static bool TryReadRealtekBars(DeviceDescriptor device, out List<PciBarDescriptor> bars)
         {
             // ARM64 PCI ECAM is not implemented; never fabricate BARs.
