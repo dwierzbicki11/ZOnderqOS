@@ -116,6 +116,27 @@ namespace ZonderqOS
                 Log("[NET3095-N2] DHCP=PASS ip=" + config.Address +
                     " mask=" + config.SubnetMask +
                     " gateway=" + config.DefaultGateway);
+#if ZONDERQ_NETWORK_N3_ICMP
+                Log("[NET3095-N3] ICMP_ATTEMPT=START");
+                IcmpClient ping = new IcmpClient();
+                try
+                {
+                    ping.Connect(new Address4(10, 0, 2, 2));
+                    ping.SendEcho(id: 0x3095, sequence: 1);
+                    EndPoint remote = new EndPoint(Address4.Zero, 0);
+                    int elapsedMs = ping.Receive(ref remote, 5000);
+                    if (elapsedMs < 0 || remote.Address.ToString() != "10.0.2.2")
+                    {
+                        Log("[NET3095-N3][FAIL] ICMP echo timeout or wrong peer");
+                        return;
+                    }
+                    Log("[NET3095-N3] ICMP=PASS from=" + remote.Address);
+                }
+                finally
+                {
+                    ping.Close();
+                }
+#endif
             }
             catch (Exception ex)
             {
