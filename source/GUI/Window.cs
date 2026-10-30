@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Graphics.Fonts;
@@ -23,6 +24,8 @@ namespace ZonderqOS.GUI
                 if (isActive == value)
                     return;
                 isActive = value;
+                if (!value)
+                    lastTitleClickTimestamp = 0;
                 UiAnimator.RequestFrames();
             }
         }
@@ -41,7 +44,7 @@ namespace ZonderqOS.GUI
         private int resizeStartMouseX, resizeStartMouseY;
         private int resizeStartX, resizeStartY, resizeStartWidth, resizeStartHeight;
         private int interactionFrame;
-        private int lastTitleClickFrame = -1000;
+        private long lastTitleClickTimestamp;
 
         private const int TitleBarHeight = 38;
         private const int ButtonSize = 30;
@@ -114,6 +117,7 @@ namespace ZonderqOS.GUI
             resizeMode = 0;
             hoveredResizeMode = 0;
             hoveredControl = 0;
+            lastTitleClickTimestamp = 0;
             if (desktopWidth <= 0 || desktopHeight <= 0)
                 return;
 
@@ -323,14 +327,22 @@ namespace ZonderqOS.GUI
 
             bool inTitle = mouseY >= Y && mouseY < Y + TitleBarHeight && mouseX >= X && mouseX < X + Width;
             if (!inTitle || mouseX >= minimizeX)
+            {
+                lastTitleClickTimestamp = 0;
                 return;
+            }
 
-            bool doubleClick = interactionFrame - lastTitleClickFrame <= 28;
-            lastTitleClickFrame = interactionFrame;
+            // Frame counts are not elapsed time: a slow disk operation or
+            // rendering stall must not turn two distant clicks into a double-click.
+            long now = Stopwatch.GetTimestamp();
+            long elapsed = now - lastTitleClickTimestamp;
+            bool doubleClick = lastTitleClickTimestamp > 0 && elapsed >= 0 &&
+                elapsed <= Stopwatch.Frequency / 2;
+            lastTitleClickTimestamp = now;
             if (doubleClick)
             {
+                lastTitleClickTimestamp = 0;
                 ToggleMaximize();
-                lastTitleClickFrame = -1000;
                 return;
             }
 
