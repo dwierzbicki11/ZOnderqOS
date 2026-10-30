@@ -329,17 +329,22 @@ namespace ZonderqOS.GUI.Apps
 
         private SidebarEntry GetSidebarEntryAt(int y)
         {
+            // Match FileManagerView.RenderSidebar's fully-visible row limit.
+            // A partially clipped volume row must not be clickable when the
+            // window is shrunk, especially for mount/unmount actions.
+            int sidebarBottom = Math.Max(ContentTop + 40,
+                view.Height - FooterHeight - 8);
             int itemY = ContentTop + 8;
             for (int i = 0; i < sidebarEntries.Count; i++)
             {
                 SidebarEntry entry = sidebarEntries[i];
                 int height = entry.IsSection ? SidebarSectionHeight : SidebarItemHeight;
+                if (itemY + height > sidebarBottom)
+                    break;
                 if (y >= itemY && y < itemY + height)
                     return entry;
 
                 itemY += height;
-                if (itemY >= view.Height - FooterHeight - 10)
-                    break;
             }
 
             return null;
