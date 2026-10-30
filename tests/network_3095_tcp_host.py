@@ -17,7 +17,10 @@ RESPONSE = b"ZONDERQ3095-TCP-PONG\n"
 
 def serve(port: int) -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
-        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 0)
+        # N4 and N5 run sequentially on the same CI host/port. The first
+        # connection can leave the local endpoint in TCP TIME_WAIT. Allow a
+        # clean sequential rebind, but never SO_REUSEPORT or non-loopback bind.
+        listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind(("127.0.0.1", port))
         listener.listen(1)
         listener.settimeout(40)
