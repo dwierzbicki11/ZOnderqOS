@@ -374,7 +374,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("if (!paletteCaptured && !notificationCaptured)", dispatch)
         self.assertIn("rightPressed);", dispatch)
         self.assertRegex(dispatch, r"if \(rightPressed\)\s*desktopContextMenu\.Visible = false;")
-        self.assertIn("if (!rightPressed)\\n                            startMenu.UpdateInteractions(", dispatch)
+        self.assertRegex(dispatch, r"if \(!rightPressed\)\s*startMenu\.UpdateInteractions\(")
         self.assertLess(dispatch.index("commandPalette.Close();"),
                         dispatch.index("applicationManager.HandleMouse("))
         self.assertLess(dispatch.index("desktopContextMenu.Visible = false;"),
