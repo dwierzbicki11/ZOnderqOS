@@ -193,10 +193,25 @@ while (( SECONDS - started < TIMEOUT )); do
       done
       python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP"
     fi
+    # A running QEMU PID is not proof of a live guest (-no-shutdown).
+    # Require ongoing managed kernel execution for the stability window.
+    heartbeat_before="$(grep -Ec '\[NET3095-N1\] HEARTBEAT=[0-9]+' "$LOG" || true)"
     sleep 8
     qemu_alive || {
       echo "[NET3095-N1][FAIL] Guest exited after TX proof" >&2; exit 1;
     }
+    if grep -Eqi 'kernel panic|fatal: exception|page fault|\[NET3095-N[1-5]\]\[FAIL\]' "$LOG"; then
+      tail -n 90 "$LOG" >&2
+      echo "[NET3095-N1][FAIL] Guest fault after network proof" >&2
+      exit 1
+    fi
+    heartbeat_after="$(grep -Ec '\[NET3095-N1\] HEARTBEAT=[0-9]+' "$LOG" || true)"
+    if (( heartbeat_after - heartbeat_before < 6 )); then
+      tail -n 90 "$LOG" >&2
+      echo "[NET3095-N1][FAIL] Guest did not advance 6 heartbeats during 8s stability window" >&2
+      exit 1
+    fi
+    echo "[NET3095-N1] Guest heartbeat advanced $(( heartbeat_after - heartbeat_before )) ticks in stability window"
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
     if [[ "$MODE" == n5 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP"
