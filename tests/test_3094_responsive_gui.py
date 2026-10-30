@@ -20,6 +20,7 @@ NOTEPAD = code("source/GUI/Application/NotepadApp.cs")
 APP_CENTER = code("source/GUI/Application/AppCenterApp.cs")
 DISK_MANAGER = code("source/GUI/Application/DiskManagerApp.cs")
 TASK_MANAGER = code("source/GUI/Application/TaskManagerModernApp.cs")
+APPLICATION_MANAGER = code("source/GUI/Application/ApplicationManager.cs")
 PROJECT = code("ZonderqOS.csproj")
 
 
@@ -187,6 +188,57 @@ class ResponsiveGui3094(unittest.TestCase):
                 menu_y = max(4, min(click_y, view_height - menu_height - 24 - 4))
                 self.assertLessEqual(menu_x + menu_width + 4, view_width)
                 self.assertLessEqual(menu_y + menu_height + 24 + 4, view_height)
+
+    def test_focus_restores_only_minimized_windows(self):
+        activate = APPLICATION_MANAGER.split("public void Activate(", 1)[1].split(
+            "public void ToggleMinimize(", 1)[0]
+        toggle = APPLICATION_MANAGER.split("public void ToggleMinimize(", 1)[1].split(
+            "public void Close(", 1)[0]
+        self.assertIn("if (application.Window.IsMinimized)", activate)
+        self.assertIn("application.Window.RestoreFromMinimized();", activate)
+        self.assertEqual(activate.count("RestoreFromMinimized();"), 1)
+        self.assertNotIn("RestoreFromMinimized();", toggle)
+        self.assertIn("Activate(application);", toggle)
+
+    def test_display_mode_change_cancels_stale_drag_and_resize(self):
+        sync = WINDOW.split("private void SyncDesktopBounds()", 1)[1].split(
+            "public void AddChild(", 1)[0]
+        self.assertIn("dragging = false;", sync)
+        self.assertIn("resizing = false;", sync)
+        self.assertIn("resizeMode = 0;", sync)
+        self.assertIn("hoveredResizeMode = 0;", sync)
+        self.assertLess(sync.index("resizing = false;"), sync.index("if (IsMaximized)"))
+
+    def test_file_manager_menu_reflows_and_dismisses_outside_view(self):
+        update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
+            "public override void HandleMouse(", 1)[0]
+        mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
+            "private int HitEntryIndex(", 1)[0]
+        self.assertIn("if (contextMenuVisible)", update)
+        self.assertIn("view.Width - ContextMenuWidthForView - 4", update)
+        self.assertIn("view.Height - ContextMenuHeightForView - FooterHeight - 4", update)
+        self.assertIn("left && !oldLeft && dialogMode == 0 && contextMenuVisible", mouse)
+        self.assertLess(mouse.index("if (ContextClick(x, y))"),
+                        mouse.index("if (x < 0 || y < 0"))
+        self.assertEqual(mouse.count("ContextClick(x, y)"), 1)
+
+        # A menu opened on FHD must still fit after shrinking the view.
+        for width, height in ((300, 170), (460, 300), (800, 465)):
+            menu_w = min(240, max(1, width - 8))
+            row_h = max(16, min(29, (height - 24 - 12) // 7))
+            menu_h = row_h * 7
+            x = max(4, min(680, width - menu_w - 4))
+            y = max(4, min(350, height - menu_h - 24 - 4))
+            self.assertLessEqual(x + menu_w + 4, width)
+            self.assertLessEqual(y + menu_h + 24 + 4, height)
+
+    def test_failed_unmount_preserves_file_manager_location(self):
+        unmount = FILE_MANAGER.split("private void UnmountVolume(", 1)[1].split(
+            "private static bool IsInsidePath(", 1)[0]
+        self.assertIn("bool viewingVolume =", unmount)
+        self.assertLess(unmount.index("StorageMountManager.TryUnmount("),
+                        unmount.index('currentPath = "/root";'))
+        self.assertIn("if (viewingVolume)", unmount)
 
     def test_calculator_seventh_row_visible_on_800x600(self):
         self.assertIn("UiPainter.RoundedPanel(", CALC)
