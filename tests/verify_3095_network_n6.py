@@ -42,9 +42,8 @@ def stream_payload(packets, first: int, guest: bytes, client_port: int,
         if not (
             p["src"] == (guest if client else SERVER) and
             p["dst"] == (SERVER if client else guest) and
-            p["src_mac"] == (MAC if client else p["src_mac"]) and
-            p["dst_mac"] == (p["dst_mac"] if client else MAC) and
-            (p["src_mac"] != MAC if not client else True) and
+            (p["src_mac"] == MAC if client else p["src_mac"] != MAC) and
+            (True if client else p["dst_mac"] == MAC) and
             p["sport"] == (client_port if client else PORT) and
             p["dport"] == (PORT if client else client_port) and
             (p["flags"] & 0x14) == 0x10 and p["payload"]
@@ -164,6 +163,12 @@ def self_test() -> None:
         fake_http(True, 0x18, 20001 + split, 10001 + len(REQUEST), RESPONSE[split:]),
     ]
     assert "PASS" in validate(serial, synthetic_capture(segmented))
+    half = len(REQUEST) // 2
+    split_request = base + handshake + [
+        fake_http(False, 0x18, 10001, 20001, REQUEST[:half]),
+        fake_http(False, 0x18, 10001 + half, 20001, REQUEST[half:]),
+    ] + response
+    assert "PASS" in validate(serial, synthetic_capture(split_request))
     negatives = [
         (serial.replace(HTTP_START, ""), frames),
         (serial.replace(HTTP_PASS, ""), frames),
