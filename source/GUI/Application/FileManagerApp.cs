@@ -73,6 +73,16 @@ namespace ZonderqOS.GUI.Apps
             view.Y = Window.Y + 40;
             view.Width = Math.Max(1, Window.Width - 20);
             view.Height = Math.Max(1, Window.Height - 50);
+
+            // The menu may have been opened before a window resize. Refit
+            // its origin to the current client area so it remains clickable.
+            if (contextMenuVisible)
+            {
+                contextMenuX = Math.Max(4, Math.Min(contextMenuX,
+                    view.Width - ContextMenuWidthForView - 4));
+                contextMenuY = Math.Max(4, Math.Min(contextMenuY,
+                    view.Height - ContextMenuHeightForView - FooterHeight - 4));
+            }
         }
 
         public override void HandleMouse(int x, int y, bool clicked, bool wasClicked)
@@ -88,6 +98,16 @@ namespace ZonderqOS.GUI.Apps
 
             int x = mouseX - view.X;
             int y = mouseY - view.Y;
+
+            // Dismiss an open menu even when the next click is on the title
+            // bar or outside the client view. Previously it stayed stuck.
+            if (left && !oldLeft && dialogMode == 0 && contextMenuVisible)
+            {
+                if (ContextClick(x, y))
+                    return;
+                contextMenuVisible = false;
+            }
+
             if (x < 0 || y < 0 || x >= view.Width || y >= view.Height)
                 return;
 
@@ -119,13 +139,6 @@ namespace ZonderqOS.GUI.Apps
 
             if (!left || oldLeft || dialogMode != 0)
                 return;
-
-            if (contextMenuVisible)
-            {
-                if (ContextClick(x, y))
-                    return;
-                contextMenuVisible = false;
-            }
 
             if (y >= ToolbarTop && y < ToolbarTop + ToolbarHeight)
             {
@@ -333,11 +346,8 @@ namespace ZonderqOS.GUI.Apps
                 return;
 
             string mountPoint = StorageMountManager.GetMountPoint(entry.PartitionIndex);
-            if (!string.IsNullOrEmpty(mountPoint) && IsInsidePath(currentPath, mountPoint))
-            {
-                currentPath = "/root";
-                searchText = "";
-            }
+            bool viewingVolume = !string.IsNullOrEmpty(mountPoint) &&
+                IsInsidePath(currentPath, mountPoint);
 
             string error;
             if (!StorageMountManager.TryUnmount(entry.PartitionIndex, out error))
@@ -346,6 +356,14 @@ namespace ZonderqOS.GUI.Apps
                 RebuildSidebar();
                 RefreshKeepStatus();
                 return;
+            }
+
+            // Keep the current directory and search intact on failed unmount.
+            // Only navigate away once the filesystem was actually detached.
+            if (viewingVolume)
+            {
+                currentPath = "/root";
+                searchText = "";
             }
 
             status = "Unmounted Partition " + entry.PartitionIndex;
