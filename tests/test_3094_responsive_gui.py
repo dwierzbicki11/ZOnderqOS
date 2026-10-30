@@ -799,7 +799,8 @@ class ResponsiveGui3094(unittest.TestCase):
     def test_file_manager_modal_menu_owns_taskbar_and_window_clicks(self):
         dispatch = DESKTOP.split("bool windowCapturedClick =", 1)[1].split(
             "if (lockRequested)", 1)[0]
-        self.assertIn("applicationManager.ActiveApplication is FileManagerApp activeFileManager", dispatch)
+        self.assertIn("FileManagerApp activeFileManager = applicationManager.ActiveApplication as FileManagerApp;", dispatch)
+        self.assertIn("activeFileManager != null && activeFileManager.ContextMenuVisible", dispatch)
         self.assertIn("activeFileManager.ContextMenuVisible", dispatch)
         self.assertIn("activeFileManager.HandleMouse(mouseX, mouseY, currentLeftButtonState,", dispatch)
         self.assertIn("else if (!startMenuCaptures && !desktopMenuCaptures)", dispatch)
