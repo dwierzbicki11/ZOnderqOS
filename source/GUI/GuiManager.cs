@@ -303,9 +303,19 @@ namespace ZonderqOS.GUI
                         bool startMenuCaptures = startMenu.Visible &&
                             mouseX >= startMenu.X && mouseX < startMenu.X + startMenu.Width &&
                             mouseY >= startMenu.Y && mouseY < startMenu.Y + startMenu.Height;
-                        bool desktopMenuCaptures = desktopContextMenu != null && desktopContextMenu.Visible &&
-                            mouseX >= desktopContextMenu.X && mouseX < desktopContextMenu.X + desktopContextMenu.Width &&
-                            mouseY >= desktopContextMenu.Y && mouseY < desktopContextMenu.Y + desktopContextMenu.Height;
+                        // Handle the desktop menu before applications, regardless of
+                        // whether desktop shortcuts are enabled. A click outside an
+                        // open menu dismisses it without also activating a hidden
+                        // window or triggering a destructive action underneath.
+                        bool desktopMenuWasVisible = desktopContextMenu != null && desktopContextMenu.Visible;
+                        bool desktopMenuCaptures = desktopMenuWasVisible &&
+                            ((mouseX >= desktopContextMenu.X && mouseX < desktopContextMenu.X + desktopContextMenu.Width &&
+                              mouseY >= desktopContextMenu.Y && mouseY < desktopContextMenu.Y + desktopContextMenu.Height) ||
+                             (currentLeftButtonState && !previousLeftButtonState));
+                        if (desktopMenuWasVisible)
+                            desktopContextMenu.UpdateInteractions(mouseX, mouseY,
+                                currentLeftButtonState, previousLeftButtonState);
+
                         if (!startMenuCaptures && !desktopMenuCaptures)
                             applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
                                 currentRightButtonState, previousRightButtonState);
@@ -331,9 +341,14 @@ namespace ZonderqOS.GUI
                             continue;
                         }
 
-                        taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
-                        UpdateDesktopInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
-                            currentRightButtonState, previousRightButtonState);
+                        if (!desktopMenuCaptures)
+                            taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
+                        // A Start-menu action may close the menu in this frame.
+                        // Use the pre-dispatch capture flags so that same click
+                        // cannot open a desktop shortcut beneath the old overlay.
+                        if (!startMenuCaptures && !desktopMenuCaptures)
+                            UpdateDesktopInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
+                                currentRightButtonState, previousRightButtonState);
                     }
 
                     int priorMouseX = previousMouseX;
@@ -981,12 +996,6 @@ namespace ZonderqOS.GUI
                         (int)canvas.Height - TaskbarHeight);
                 }
                 return;
-            }
-
-            if (desktopContextMenu != null && desktopContextMenu.Visible)
-            {
-                if (desktopContextMenu.UpdateInteractions(mouseX, mouseY, isClicked, wasClicked))
-                    return;
             }
 
             bool desktopAvailable = mouseY >= 0 && mouseY < (int)canvas.Height - TaskbarHeight &&
