@@ -341,7 +341,8 @@ class ResponsiveGui3094(unittest.TestCase):
             "int priorMouseX =", 1
         )[0]
         self.assertIn("bool startMenuOutsideClick = startMenuWasVisible && !startMenuInside &&", dispatch)
-        self.assertIn("mouseY < taskbar.Y;", dispatch)
+        self.assertIn("mouseY < taskbar.Y) ||", dispatch)
+        self.assertIn("rightPressed);", dispatch)
         self.assertIn("if (startMenuOutsideClick)\n                            startMenu.Visible = false;", dispatch)
         self.assertIn("bool startMenuCaptures = startMenuInside || startMenuOutsideClick;", dispatch)
         self.assertLess(dispatch.index("startMenu.Visible = false;"),
@@ -356,6 +357,45 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertFalse(captures(True, False, True, False, True))
         self.assertTrue(captures(True, True, True, False, False))
         self.assertFalse(captures(False, False, True, False, False))
+
+    def test_right_click_dismisses_overlays_without_click_through(self):
+        # A right-click is an edge, not a held-button state. The modal
+        # overlay must consume the edge before any app or desktop handler.
+        dispatch = DESKTOP.split("bool rightPressed =", 1)[1].split(
+            "int priorMouseX =", 1
+        )[0]
+        self.assertIn("currentRightButtonState && !previousRightButtonState;", DESKTOP)
+        self.assertIn("if (rightPressed)\\n                        {\\n                            commandPalette.Close();", dispatch)
+        self.assertIn("paletteCaptured = true;", dispatch)
+        self.assertIn("notificationCenter.Visible && rightPressed", dispatch)
+        self.assertIn("notificationCenter.Close();", dispatch)
+        self.assertIn("notificationCaptured = true;", dispatch)
+        self.assertIn("if (!paletteCaptured && !notificationCaptured)", dispatch)
+        self.assertIn("rightPressed);", dispatch)
+        self.assertIn("if (rightPressed)\\n                                desktopContextMenu.Visible = false;", dispatch)
+        self.assertIn("if (!rightPressed)\\n                            startMenu.UpdateInteractions(", dispatch)
+        self.assertLess(dispatch.index("commandPalette.Close();"),
+                        dispatch.index("applicationManager.HandleMouse("))
+        self.assertLess(dispatch.index("desktopContextMenu.Visible = false;"),
+                        dispatch.index("applicationManager.HandleMouse("))
+
+        def right_edge(now, old):
+            return now and not old
+
+        def start_captures(opened, inside, left_edge, right_edge_value, on_taskbar):
+            outside = opened and not inside and ((left_edge and not on_taskbar) or right_edge_value)
+            return opened and inside or outside
+
+        def desktop_captures(opened, inside, left_edge, right_edge_value):
+            return opened and (inside or left_edge or right_edge_value)
+
+        for inside in (False, True):
+            for on_taskbar in (False, True):
+                self.assertTrue(start_captures(True, inside, False, right_edge(True, False), on_taskbar))
+                self.assertTrue(desktop_captures(True, inside, False, right_edge(True, False)))
+                self.assertFalse(start_captures(False, inside, False, True, on_taskbar))
+                self.assertFalse(desktop_captures(False, inside, False, True))
+        self.assertFalse(right_edge(True, True))
 
     def test_window_titlebar_close_does_not_activate_desktop_below(self):
         dispatch = DESKTOP.split("bool windowCapturedClick =", 1)[1].split(
