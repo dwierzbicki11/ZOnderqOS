@@ -68,6 +68,7 @@ jobs:
           path: |
             zonderq/network-n1-3095.serial.log
             zonderq/network-n1-3095.serial.log.stderr
+            zonderq/network-n1-3095.serial.log.pcap
           if-no-files-found: ignore
       - name: Retain QEMU-only NIC proof ISO
         if: success()

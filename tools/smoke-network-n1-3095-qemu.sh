@@ -5,17 +5,20 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ISO="${1:?usage: smoke-network-n1-3095-qemu.sh ISO SERIAL-LOG}"
 LOG="${2:?usage: smoke-network-n1-3095-qemu.sh ISO SERIAL-LOG}"
 TIMEOUT="${NET3095_N1_TIMEOUT:-150}"
+PCAP="${NET3095_N1_PCAP:-$LOG.pcap}"
 [[ "$TIMEOUT" =~ ^[1-9][0-9]*$ ]] && (( TIMEOUT <= 600 )) || {
   echo "[NET3095-N1][FAIL] Invalid timeout" >&2; exit 1;
 }
 [[ -s "$ISO" ]] || { echo "[NET3095-N1][FAIL] Missing ISO" >&2; exit 1; }
 command -v qemu-system-x86_64 >/dev/null || exit 1
-mkdir -p "$(dirname "$LOG")"
+mkdir -p "$(dirname "$LOG")" "$(dirname "$PCAP")"
 : > "$LOG"
+rm -f -- "$PCAP"
 qemu-system-x86_64 \
   -machine q35 -cpu Nehalem -smp 1 -m 2048M \
   -boot d -cdrom "$ISO" \
   -nic none -netdev user,id=net0 -device e1000e,netdev=net0 \
+  -object "filter-dump,id=netdump,netdev=net0,file=$PCAP" \
   -vga std -display none -monitor none \
   -serial "file:$LOG" -no-reboot -no-shutdown \
   2> "$LOG.stderr" &
@@ -39,13 +42,13 @@ while (( SECONDS - started < TIMEOUT )); do
     exit 1
   fi
   if grep -Fq '[NET3095-N1] DHCP=NOT_ATTEMPTED IP=UNASSIGNED' "$LOG"; then
-    python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG"
+    python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
     sleep 8
     kill -0 "$pid" 2>/dev/null || {
       echo "[NET3095-N1][FAIL] Guest exited after initial link proof" >&2; exit 1;
     }
-    python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG"
-    echo "[NET3095-N1-QEMU] PASS real e1000e driver/link + 8s stability; no DHCP proof"
+    python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
+    echo "[NET3095-N1-QEMU] PASS real e1000e link + QEMU PCAP raw TX + 8s stability; RX/DHCP unproven"
     exit 0
   fi
   sleep 1

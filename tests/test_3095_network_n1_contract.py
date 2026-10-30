@@ -44,6 +44,12 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('-device e1000e,netdev=net0', SMOKE)
         self.assertIn('tests/verify_3095_network_n1.py', SMOKE)
         self.assertIn('sleep 8', SMOKE)
+        self.assertIn('filter-dump', SMOKE)
+        self.assertIn('"$LOG" "$PCAP"', SMOKE)
+        self.assertIn('NetworkManager.Send(frame, frame.Length)', SOURCE)
+        self.assertIn('TX_QUEUED=', SOURCE)
+        self.assertIn('0x88', SOURCE)
+        self.assertIn('0xB5', SOURCE)
         self.assertIn('DHCP=NOT_ATTEMPTED IP=UNASSIGNED', SOURCE)
 
 if __name__ == "__main__":

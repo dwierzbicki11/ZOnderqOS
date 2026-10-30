@@ -15,5 +15,13 @@ Only a real guest serial log with initialized NetworkManager, a registered
 by eight seconds of guest survival, may satisfy the runtime gate.
 
 The parser self-test and static source contract **do not prove real NIC
-operation**. Link proof does not imply DMA TX/RX, DHCP, IPv4 or Internet.
+operation**. After reporting ready/link, the isolated probe sends one 60-byte broadcast
+Ethernet frame with experimental EtherType 0x88B5 and payload
+`ZONDERQ3095TX`. The QEMU smoke script attaches `filter-dump` to the
+explicit E1000E netdev and accepts success only if its real PCAP contains
+that exact frame from the MAC reported by the guest, followed by eight
+seconds of guest survival. A successful `NetworkManager.Send` alone is
+only a queue acknowledgement, **not** physical TX evidence.
+
+This does not prove receive, DHCP, IPv4, Internet or hardware RTL810xE.
 Do not merge the probe into production until the real QEMU gate passes.
