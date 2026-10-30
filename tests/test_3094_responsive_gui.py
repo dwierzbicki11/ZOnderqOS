@@ -314,6 +314,28 @@ class ResponsiveGui3094(unittest.TestCase):
                 else:
                     self.assertLessEqual(running_count, page_slots)
 
+    def test_taskbar_focus_switch_reveals_active_page_without_resetting_manual_page(self):
+        render = TASKBAR.split("public override void Render(Canvas canvas)", 1)[1].split(
+            "private void UpdateTrayCache()", 1
+        )[0]
+        self.assertIn("int activeRunningIndex = RunningIndexOf(apps, activeApplication);", render)
+        self.assertIn("activeApplication != lastActiveApplication ||", render)
+        self.assertIn("activeRunningIndex != lastActiveRunningIndex", render)
+        self.assertIn("firstVisibleAppIndex = (activeRunningIndex / pageSlots) * pageSlots;", render)
+        self.assertLess(render.index("NormalizeAppPage(runningCount, pageSlots, overflow);"),
+                        render.index("int activeRunningIndex = RunningIndexOf("))
+        self.assertLess(render.index("firstVisibleAppIndex = (activeRunningIndex / pageSlots)"),
+                        render.index("if (apps != null)"))
+
+        # A focus change can jump directly to the last page, but clicking
+        # the pager alone must not change the focus signature.
+        for page_slots, active_index in ((9, 0), (9, 10), (9, 49), (21, 23)):
+            focus_page = (active_index // page_slots) * page_slots
+            self.assertLessEqual(focus_page, active_index)
+            self.assertLess(active_index, focus_page + page_slots)
+            manual_page = focus_page + page_slots
+            self.assertNotEqual(manual_page, focus_page)
+
     def test_start_menu_outside_click_dismisses_without_click_through(self):
         dispatch = DESKTOP.split("bool startMenuWasVisible =", 1)[1].split(
             "int priorMouseX =", 1
