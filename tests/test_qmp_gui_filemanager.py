@@ -102,5 +102,25 @@ class FramebufferProbeTests(unittest.TestCase):
         self.assertLessEqual(changed / samples, 0.10)
 
 
+    def test_filter_requires_measurable_real_framebuffer_change(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn("if fraction < 0.003:", source)
+        self.assertIn("File Manager search did not visibly update", source)
+        self.assertLess(source.index("if fraction < 0.003:"),
+                        source.index("difference(after, filter_cleared)"))
+
+        width, height = 80, 64
+        before = bytes(width * height * 3)
+        unchanged, samples = PROBE.difference(
+            (width, height, before), (width, height, before))
+        self.assertLess(unchanged / samples, 0.003)
+
+        # A real content change in the sampled viewport must clear the gate.
+        changed, samples = PROBE.difference(
+            (width, height, before),
+            (width, height, bytes([255]) * len(before)))
+        self.assertGreaterEqual(changed / samples, 0.003)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
