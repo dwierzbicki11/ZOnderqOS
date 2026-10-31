@@ -177,7 +177,8 @@ namespace ZonderqOS.GUI
 
             if (key.Key == ConsoleKeyEx.Delete)
             {
-                DismissSelected();
+                if (key.Modifiers == 0)
+                    DismissSelected();
                 return true;
             }
 
