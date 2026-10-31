@@ -68,6 +68,12 @@ namespace ZonderqOS.GUI.Apps
         // and scrolling. A two-pixel disagreement can hide a clickable column.
         internal int GridWidthForView => Math.Max(TileWidth, view.Width - SidebarWidth - 12);
         internal int GridHeightForView => Math.Max(40, view.Height - FooterHeight - ContentTop - 8);
+        // Use a final partial row only when >=40px is available. Compact
+        // tiles fit inside that space; smaller fragments stay noninteractive.
+        internal const int MinPartialTileHeight = 40;
+        internal int GridRowsForView => Math.Max(1,
+            (GridHeightForView + TileHeight + TileGap - MinPartialTileHeight) /
+            (TileHeight + TileGap));
 
         public FileManagerApp(int x, int y, Action<string> openFile) : base("File Manager")
         {
@@ -295,10 +301,9 @@ namespace ZonderqOS.GUI.Apps
                 return -1;
             int col = relativeX / strideX;
             int row = relativeY / strideY;
-            // Grid() renders only complete rows (except the single compact
-            // row on a very short display). A 388px grid paints three 94px
-            // rows, not the fourth row whose origin would be at y=300.
-            int visibleRows = Math.Max(1, (GridHeightForView + TileGap) / strideY);
+            // Grid() paints only rows that have >=40px of space. Any
+            // smaller trailing fragment is deliberately noninteractive.
+            int visibleRows = GridRowsForView;
 
             if (col < 0 || col >= columns || row < 0 || row >= visibleRows)
                 return -1;
@@ -870,7 +875,7 @@ namespace ZonderqOS.GUI.Apps
         {
             // Page navigation advances by exactly the number of tiles
             // painted in the current viewport, not a fixed row count.
-            int rows = Math.Max(1, (GridHeightForView + TileGap) / (TileHeight + TileGap));
+            int rows = GridRowsForView;
             Select(direction * Columns() * rows);
         }
 
@@ -893,7 +898,7 @@ namespace ZonderqOS.GUI.Apps
         private void EnsureSelectionVisible()
         {
             int cols = Columns();
-            int rows = Math.Max(1, (GridHeightForView + TileGap) / (TileHeight + TileGap));
+            int rows = GridRowsForView;
             int visible = cols * rows;
 
             if (selectedIndex >= 0)
@@ -1552,8 +1557,7 @@ namespace ZonderqOS.GUI.Apps
             int labelHeight = 18;
             int cols = Math.Max(1, (width + FileManagerApp.TileGap) /
                 (FileManagerApp.TileWidth + FileManagerApp.TileGap));
-            int rows = Math.Max(1, (height + FileManagerApp.TileGap) /
-                (FileManagerApp.TileHeight + FileManagerApp.TileGap));
+            int rows = app.GridRowsForView;
             int count = cols * rows;
 
             for (int i = 0; i < count; i++)
