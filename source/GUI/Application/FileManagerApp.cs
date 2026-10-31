@@ -603,7 +603,7 @@ namespace ZonderqOS.GUI.Apps
             // Ctrl+C/X/V are file actions, but Ctrl+Alt combinations
             // belong to the global desktop shortcut layer.
             bool control = (key.Modifiers & ConsoleModifiers.Control) != 0 &&
-                (key.Modifiers & ConsoleModifiers.Alt) == 0;
+                (key.Modifiers & (ConsoleModifiers.Alt | ConsoleModifiers.Shift)) == 0;
             if (control)
             {
                 if (key.Key == ConsoleKeyEx.C)
