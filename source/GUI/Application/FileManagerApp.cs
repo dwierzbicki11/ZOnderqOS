@@ -990,6 +990,10 @@ namespace ZonderqOS.GUI.Apps
                 string selectedPath = sameDirectory && selectedIndex >= 0 && selectedIndex < entries.Count
                     ? entries[selectedIndex].FullPath : null;
                 int previousScroll = sameDirectory ? scrollIndex : 0;
+                // If new names sort before the old viewport, keeping only
+                // the numeric scroll offset unexpectedly jumps to other files.
+                string firstVisiblePath = sameDirectory && scrollIndex >= 0 && scrollIndex < entries.Count
+                    ? entries[scrollIndex].FullPath : null;
 
                 currentPath = targetPath;
                 loadedDirectoryPath = targetPath;
@@ -1011,17 +1015,19 @@ namespace ZonderqOS.GUI.Apps
                 // equality cannot restore the old selection. A removed file
                 // remains unselected; never select a different tile merely
                 // because it now occupies the same index.
-                if (!string.IsNullOrEmpty(selectedPath))
+                if (!string.IsNullOrEmpty(selectedPath) || !string.IsNullOrEmpty(firstVisiblePath))
                 {
                     for (int i = 0; i < entries.Count; i++)
                     {
                         if (string.Equals(entries[i].FullPath, selectedPath, StringComparison.Ordinal))
-                        {
                             selectedIndex = i;
-                            break;
-                        }
+                        if (string.Equals(entries[i].FullPath, firstVisiblePath, StringComparison.Ordinal))
+                            scrollIndex = i;
                     }
                 }
+                // The viewport is row-aligned and clamped to the actual
+                // number of tiles. A removed anchor falls back to the old
+                // numeric position; a surviving selection stays visible.
                 EnsureSelectionVisible();
 
                 status = string.IsNullOrEmpty(keep)
