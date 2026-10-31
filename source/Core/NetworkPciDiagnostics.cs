@@ -69,6 +69,19 @@ namespace ZonderqOS.SystemCore
                     }
                     else
                         Write("[NIC3094] PCI_CAPS=INVALID_OR_UNAVAILABLE (no IRQ proof)", shellOutput);
+                    PciNicPowerState powerInfo;
+                    if (PciSysfsProvider.TryReadRealtekPowerState(d, out powerInfo))
+                    {
+                        string powerName = !powerInfo.PmPresent ? "UNKNOWN_NO_PM_CAP" :
+                            powerInfo.State == 0 ? "D0" : powerInfo.State == 1 ? "D1" :
+                            powerInfo.State == 2 ? "D2" : "D3hot";
+                        Write("[NIC3094] PCI_POWER=" + powerName +
+                            " pme_enable=" + (powerInfo.PmeEnabled ? "1" : "0") +
+                            " pme_status=" + (powerInfo.PmeStatus ? "1" : "0") +
+                            " (read-only; no power transition)", shellOutput);
+                    }
+                    else
+                        Write("[NIC3094] PCI_POWER=INVALID_OR_UNAVAILABLE", shellOutput);
                     PciNicInterruptCapabilities irqInfo;
                     if (PciSysfsProvider.TryReadRealtekInterruptCapabilities(d, out irqInfo))
                     {

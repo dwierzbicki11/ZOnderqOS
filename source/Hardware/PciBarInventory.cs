@@ -90,6 +90,23 @@ namespace ZonderqOS.Hardware
         public uint PbaOffset { get; }
     }
 
+    /// <summary>Read-only PCI PMCSR state, not a request to transition power.
+    /// A D0 report is necessary but not sufficient for safe NIC MMIO.</summary>
+    public readonly struct PciNicPowerState
+    {
+        public PciNicPowerState(bool pmPresent, byte state, bool pmeEnabled, bool pmeStatus)
+        {
+            PmPresent = pmPresent;
+            State = state;
+            PmeEnabled = pmeEnabled;
+            PmeStatus = pmeStatus;
+        }
+        public bool PmPresent { get; }
+        public byte State { get; }
+        public bool PmeEnabled { get; }
+        public bool PmeStatus { get; }
+    }
+
     public static class PciBarInventory
     {
         /// <summary>Read-only PCI command/status and legacy IRQ routing.
@@ -194,6 +211,29 @@ namespace ZonderqOS.Hardware
             info = new PciNicInterruptCapabilities(msi, msiEnabled, msi64,
                 msix, msixEnabled, msixMasked, vectors,
                 tableBir, tableOffset, pbaBir, pbaOffset);
+            return true;
+        }
+
+        /// <summary>Read the power-management capability's PMCSR at cap+4.
+        /// No D0 transition, PMCSR write, DMA or MMIO access is performed.</summary>
+        public static bool TryReadRealtek810xEPowerState(IPciConfigAccessor config,
+            byte bus, byte device, byte function, out PciNicPowerState info)
+        {
+            if (config == null) throw new ArgumentNullException(nameof(config));
+            info = default;
+            if (!TryReadRealtek810xECapabilities(config, bus, device, function, out var caps))
+                return false;
+            bool present = false;
+            ushort pmcsr = 0;
+            for (int i = 0; i < caps.Count; i++)
+            {
+                if (caps[i].Id != 0x01) continue;
+                if (present || caps[i].Offset > 0xF8) return false;
+                present = true;
+                pmcsr = config.Read16(bus, device, function, (byte)(caps[i].Offset + 4));
+            }
+            info = new PciNicPowerState(present, (byte)(pmcsr & 3),
+                (pmcsr & 0x0100) != 0, (pmcsr & 0x8000) != 0);
             return true;
         }
 
