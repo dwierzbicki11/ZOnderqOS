@@ -15,6 +15,12 @@ on:
       - '.github/workflows/services-qemu.yml'
   workflow_dispatch:
 
+# Only the newest commit needs a multi-minute ISO build and two QEMU boots.
+# Cancel superseded PR probes to avoid saturating CI runners.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
