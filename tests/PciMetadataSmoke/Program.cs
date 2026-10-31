@@ -114,6 +114,31 @@ Check(irqInfo.MsiPresent && irqInfo.MsiEnabled && irqInfo.Msi64Bit &&
       irqInfo.TableOffset == 0x2000 && irqInfo.PbaBir == 4 &&
       irqInfo.PbaOffset == 0x3000,
     "MSI/MSI-X control, vector count or table/PBA BAR decode failed");
+// MSI-X table and PBA must point to assigned MEMORY BARs. A 64-bit
+// BAR's high half is never an independently addressable BAR.
+Check(!PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
+      out var msixBars), "Unassigned PBA BAR must fail closed");
+barConfig.SetBar(4, 0xFEBE0000u);
+Check(PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
+      out msixBars) && msixBars.TableBir == 2 &&
+      msixBars.TableAddress == 0x100002000UL &&
+      msixBars.PbaBir == 4 && msixBars.PbaAddress == 0xFEBE3000UL,
+    "MSI-X memory BAR address resolution failed");
+barConfig.SetMsixTable(0x00002003u, 0x00003004u); // BAR3 is high half of BAR2
+Check(!PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
+      out msixBars), "64-bit BAR high half must never resolve MSI-X table");
+barConfig.SetMsixTable(0x00002002u, 0x00003004u);
+barConfig.SetBar(4, 0x0000C001u); // I/O BAR is invalid for MSI-X PBA
+Check(!PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
+      out msixBars), "MSI-X PBA must not resolve through I/O BAR");
+barConfig.SetBar(4, 0xFEBE0000u);
+barConfig.SetBar(2, 0xFFFFF00Cu);
+barConfig.SetBar(3, 0xFFFFFFFFu);
+Check(!PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
+      out msixBars), "MSI-X table address overflow must fail closed");
+barConfig.SetBar(2, 0x0000000Cu);
+barConfig.SetBar(3, 0x00000001u);
+barConfig.SetBar(4, 0);
 barConfig.SetMsixTable(0x00002007u, 0x00003004u); // invalid BAR7
 Check(!PciBarInventory.TryReadRealtek810xEInterruptCapabilities(barConfig, 0, 2, 0,
       out irqInfo), "MSI-X BAR indicator 6/7 must fail closed");
@@ -147,6 +172,7 @@ barConfig.VendorId = 0x10EC;
 Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 32, 0, out bars),
     "Invalid PCI device number must fail closed");
 Console.WriteLine("[NET3095-PCI-PM] PASS C# read-only PMCSR D3hot/PME flags and absent-PM guard; no power transition");
+Console.WriteLine("[NET3095-PCI-MSIX-BAR] PASS C# MSI-X memory BAR resolution and high-half/IO/unassigned/overflow guards; no MMIO or IRQ proof");
 Console.WriteLine("[NET3095-PCI-IRQ] PASS C# read-only MSI/MSI-X control, vector count, BAR indicators and malformed BAR guards; no IRQ delivery proof");
 Console.WriteLine("[NET3095-PCI-CAPS] PASS C# read-only PM/MSI/MSI-X linked list, cycles, reserved IDs, pointers and fail-closed guards");
 Console.WriteLine("[NET3095-PCI-BAR] PASS C# read-only MMIO32/IO/MMIO64, masking, header/identity guards and fail-closed BAR pairs");
