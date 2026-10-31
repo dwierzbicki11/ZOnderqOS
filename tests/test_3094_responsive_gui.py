@@ -47,6 +47,37 @@ def visible_rows(window_height, list_top, bottom_offset, row_height, row_gap):
 
 
 class ResponsiveGui3094(unittest.TestCase):
+    def test_gui_keyboard_dispatch_has_finite_per_frame_budget(self):
+        # A continuous stream of key-repeat events must not prevent the
+        # mouse, lock timer and application updates from running. This is a
+        # source contract, not a keyboard hardware or QEMU performance test.
+        self.assertIn("private const int MaxKeyboardEventsPerFrame = 64;", DESKTOP)
+        run_loop = DESKTOP.split("while (isRunning)", 1)[1].split(
+            "Thread.Sleep(15);", 1)[0]
+        self.assertIn("for (int processedKeys = 0;", run_loop)
+        self.assertIn("processedKeys < MaxKeyboardEventsPerFrame &&", run_loop)
+        self.assertIn("KeyboardManager.TryReadKey(out KeyEvent? key);", run_loop)
+        self.assertIn("processedKeys++)", run_loop)
+        self.assertNotIn("while (KeyboardManager.TryReadKey(", run_loop)
+        self.assertLess(run_loop.index("processedKeys++)"),
+                        run_loop.index("applicationManager.Update();"))
+        self.assertLess(run_loop.index("applicationManager.Update();"),
+                        run_loop.index("RenderFrame(mouseX, mouseY);"))
+
+        # Model a saturated FIFO: each pass consumes at most 64 entries,
+        # preserves their order, and leaves the rest for the next frame.
+        queue = list(range(193))
+        consumed = []
+        iterations = 0
+        while queue:
+            batch = queue[:64]
+            del queue[:64]
+            consumed.extend(batch)
+            self.assertLessEqual(len(batch), 64)
+            iterations += 1
+        self.assertEqual(iterations, 4)
+        self.assertEqual(consumed, list(range(193)))
+
     def test_start_and_palette_do_not_run_modified_search_or_launch_actions(self):
         for name, source in (("Start", START_MENU), ("Palette", COMMAND_PALETTE)):
             keyboard = source.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
