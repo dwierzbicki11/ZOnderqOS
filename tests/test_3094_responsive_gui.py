@@ -265,7 +265,9 @@ class ResponsiveGui3094(unittest.TestCase):
         mouse = APPLICATION_MANAGER.split(
             "public void HandleMouse(int mouseX, int mouseY, bool leftClicked", 1
         )[1].split("public void Update()", 1)[0]
-        self.assertIn("(leftClicked && !leftWasClicked) || (rightClicked && !rightWasClicked)", mouse)
+        self.assertIn("bool newPress = (leftClicked && !leftWasClicked) ||", mouse)
+        self.assertIn("(rightClicked && !rightWasClicked);", mouse)
+        self.assertIn("if (newPress)", mouse)
         self.assertLess(mouse.index("Activate(application);"),
                         mouse.index("target?.HandleMouse("))
         self.assertIn("application.Window.ContainsPoint(mouseX, mouseY)", mouse)
