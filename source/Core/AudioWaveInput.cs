@@ -10,9 +10,9 @@ namespace ZonderqOS.SystemCore
     /// </summary>
     public static class AudioWaveInput
     {
-        // Up to two seconds of stereo PCM24 plus bounded RIFF metadata.
+        // Up to two seconds of stereo signed PCM32 plus bounded RIFF metadata.
         // The decoded stereo PCM16 remains capped at 384 KiB (384,000 bytes).
-        public const int MaxFileBytes = 640 * 1024;
+        public const int MaxFileBytes = 800 * 1024;
 
         public static byte[] DecodeBounded(Stream input)
         {
