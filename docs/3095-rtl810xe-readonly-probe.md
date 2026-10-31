@@ -12,8 +12,16 @@ revision `06`, subsystem `1043:200F`, Ethernet class/subclass `02:00`.
 These identifiers were reported by the ASUS X540LA laptop. Other revisions
 and machines are intentionally declined until their register layout is
 reviewed. The diagnostic reads only BAR2 offsets `0x00..0x05` (MAC)
-and `0x6C` (PHYstatus), via the stock Cosmos 3.0.95
+`0x6C` (PHYstatus), and `0x40..0x43` (32-bit little-endian TxConfig),
+via the stock Cosmos 3.0.95
 `DeviceBinding.MapRegisters(2)` and bounds-checked `RegisterWindow.Read8`.
+
+The read-only TxConfig XID is derived as `(TxConfig >> 20) & 0xFCF`,
+following Linux r8169. Only the reviewed RTL8105e and RTL8106e
+mask patterns are labelled; all other values are reported as `unknown`,
+not silently treated as compatible. PCI revision `06` does **not** by
+itself establish a specific RTL810xE silicon variant. This remains
+identification metadata, not a transmit or DMA proof.
 
 The probe checks PCI memory decoding, D0 (if a PM capability is present),
 an assigned non-I/O BAR2, and an aperture of at least `0x6D` bytes.
@@ -38,8 +46,8 @@ medium, not written to an existing ZONDERQDATA, EFI, Kali or host partition.
 The project intentionally does not flash a USB device.
 
 On a laptop with serial console access, retain the **original boot log**.
-A real snapshot is reported only after the DriverKit reads the seven
-register bytes. Validate the serial evidence with:
+A real snapshot is reported only after the DriverKit reads the eleven
+register bytes (six MAC, one PHYstatus, four TxConfig). Validate the serial evidence with:
 
 ```bash
 python3 tests/verify_3095_realtek_readonly.py laptop-serial.log
@@ -65,7 +73,8 @@ sequence, even if earlier sample markers appear valid.
 ## Verification limits
 
 - C# smoke tests use a fake register window and check exact offsets,
-  seven reads, invalid PHY status and read failures.
+  eleven reads, invalid PHY status, RTL8105e/RTL8106e/unknown XIDs,
+  little-endian TxConfig assembly and read failures.
 - GitHub Actions compiles the isolated ISO and runs the synthetic
   parser gates. QEMU has no equivalent RTL810xE 10EC:8136 model, so
   QEMU cannot prove the physical MAC/link.
