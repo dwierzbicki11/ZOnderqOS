@@ -110,3 +110,8 @@ The QEMU WAV backend and `hda-duplex,audiodev=audio0` device syntax are document
 6. **Next:** confirm the new 44.1 kHz resampler in real QEMU; then design a bounded read-only external WAV source without mounting a host disk or enabling production audio. Physical codec/output and GUI sounds remain later milestones; production audio stays off.
 
 Do not enable AC97, SMP/SMT or network in this audio branch. Never use a real host disk as a test target.
+
+
+### Unsigned PCM8 WAV (isolated experimental extension)
+
+The opt-in decoder also accepts unsigned PCM8 mono/stereo at 44.1/48 kHz and converts to signed 48 kHz stereo PCM16. The `wav8` RAM-only diagnostic generates a distinct 1320 Hz mono PCM8 tone and sends it through the existing bounded read-only stream loader and stock HDA output. The dedicated QEMU gate requires a real captured WAV at approximately 1320 Hz; host C# tests additionally cover odd-sized RIFF data padding and malformed headers. This is **not** playback from FAT32, physical speaker confirmation or ISR evidence. Production audio remains disabled.

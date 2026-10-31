@@ -81,8 +81,8 @@ class WavValidatorTests(unittest.TestCase):
             audio.inspect(self.path, expected_hz=660)
 
     def test_distinct_pcm8_probe_pitch(self):
-        self.make_wave(frequency=990)
-        self.assertIn("PASS captured PCM", audio.inspect(self.path, expected_hz=990))
+        self.make_wave(frequency=1320)
+        self.assertIn("PASS captured PCM", audio.inspect(self.path, expected_hz=1320))
         with self.assertRaisesRegex(ValueError, "expected about 880Hz"):
             audio.inspect(self.path, expected_hz=880)
 

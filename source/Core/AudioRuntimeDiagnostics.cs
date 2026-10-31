@@ -135,14 +135,14 @@ namespace ZonderqOS.SystemCore
 
         /// <summary>
         /// Independent unsigned PCM8 mono WAV -> signed PCM16 stereo -> stock
-        /// HDA. 990 Hz distinguishes this QEMU capture from the other probes.
+        /// HDA. 1320 Hz distinguishes this QEMU capture from the other probes.
         /// No filesystem is opened or mounted.
         /// </summary>
         public static bool PlayWave8TestTone()
         {
             try
             {
-                byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 990, 250, 4096);
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 1320, 250, 4096);
                 byte[] mono8 = new byte[source.Length / 4];
                 for (int i = 0; i < mono8.Length; i++)
                 {

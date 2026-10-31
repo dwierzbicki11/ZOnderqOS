@@ -71,7 +71,7 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-44100-out --boot-seconds 45 --command wav44
-      - name: Boot and capture unsigned PCM8 mono WAV converted to stereo PCM16 (990 Hz)
+      - name: Boot and capture unsigned PCM8 mono WAV converted to stereo PCM16 (1320 Hz)
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-pcm8-out --boot-seconds 45 --command wav8
