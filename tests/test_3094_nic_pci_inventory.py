@@ -7,6 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PCI = (ROOT / "source/Hardware/PciConfigDiscoverySource.cs").read_text()
 MODEL = (ROOT / "source/Hardware/PciDeviceModel.cs").read_text()
 BARS = (ROOT / "source/Hardware/PciBarInventory.cs").read_text()
+RTL = (ROOT / "source/Hardware/Realtek810xERegisterSnapshot.cs").read_text()
 X64 = (ROOT / "source/Platform/X64/PciSysfsProvider.cs").read_text()
 DEVICE = (ROOT / "source/Hardware/DeviceModel.cs").read_text()
 PROJECT = (ROOT / "ZonderqOS.csproj").read_text()
@@ -106,6 +107,17 @@ class Nic3094Safety(unittest.TestCase):
         self.assertIn('unmapped; IRQ not verified', DIAG)
         self.assertIn('IRQ not verified', DIAG)
         self.assertNotIn('config.Write', BARS)
+
+    def test_realtek_register_snapshot_is_pure_and_not_a_live_driver(self):
+        self.assertIn('public const ushort StationAddressOffset = 0x00;', RTL)
+        self.assertIn('public const ushort PhyStatusOffset = 0x6C;', RTL)
+        self.assertIn('bool carrier = (phyStatus & LinkStatus) != 0;', RTL)
+        self.assertIn('if (ten == hundred || (phyStatus & Speed1000) != 0)', RTL)
+        self.assertIn('if ((stationAddress[0] & 1) != 0)', RTL)
+        for forbidden in ('config.Write', 'MemoryBlock', 'NetworkManager.Initialize(',
+                          'NetworkManager.Send(', 'PciConfigIoAccessor(', 'WriteBlock('):
+            self.assertNotIn(forbidden, RTL)
+        self.assertIn('RTL810xE-SNAPSHOT', (ROOT / "tests/PciMetadataSmoke/Program.cs").read_text())
 
     def test_no_mutating_network_or_disk_io(self):
         for forbidden in ('WriteBlock(', 'TryMount(', 'ConfigureDhcp(', 'NetworkManager.Send(',
