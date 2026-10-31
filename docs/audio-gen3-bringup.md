@@ -179,3 +179,13 @@ in RAM, decodes it through `AudioWaveInput.DecodeBounded`, and plays it via
 stock Cosmos HDA. The independent QEMU capture checks actual PCM samples.
 This does **not** mount FAT32, play a file from disk, enable production GUI
 audio, or prove physical speakers or ISR delivery.
+
+
+### Read-only stream boundary (2026-10-31)
+
+`AudioWaveInput.DecodeBounded` now rejects streams advertising `CanWrite=true`
+**before reading the RIFF header**. The caller retains ownership of the
+stream, and the 800 KiB source / 384,000-byte decoded output limits remain.
+The host C# smoke exercises both a rejected writable stream and accepted
+fragmented non-seekable read-only streams. This does not open a FAT32 file,
+attach a guest disk, or prove real hardware playback.

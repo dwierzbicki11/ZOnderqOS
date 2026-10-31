@@ -16,8 +16,8 @@ namespace ZonderqOS.SystemCore
 
         public static byte[] DecodeBounded(Stream input)
         {
-            if (input == null || !input.CanRead)
-                throw new ArgumentException("Readable WAV stream required.", nameof(input));
+            if (input == null || !input.CanRead || input.CanWrite)
+                throw new ArgumentException("Read-only WAV stream required.", nameof(input));
 
             byte[] header = new byte[12];
             ReadExact(input, header, 0, header.Length);

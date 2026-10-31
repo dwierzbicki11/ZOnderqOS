@@ -349,6 +349,17 @@ static class Test
             byte[] fromStream = AudioWaveInput.DecodeBounded(stream);
             Expect(fromStream.Length == pcm.Length, "48k stream conversion length");
         }
+        // The future FAT32 adapter must pass a read-only handle, never a
+        // writable stream, even when its caller promises not to write.
+        rejected = false;
+        using (var writable = new MemoryStream((byte[])encoded.Clone(), true))
+        {
+            try { AudioWaveInput.DecodeBounded(writable); }
+            catch (ArgumentException) { rejected = true; }
+            Expect(writable.Position == 0, "reject writable WAV before reading any bytes");
+            Expect(writable.CanWrite, "rejecting input must not dispose caller stream");
+        }
+        Expect(rejected, "writable WAV stream must be refused");
         byte[] truncatedStream = new byte[encoded.Length - 1];
         Array.Copy(encoded, truncatedStream, truncatedStream.Length);
         rejected = false;

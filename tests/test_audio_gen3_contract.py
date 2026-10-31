@@ -169,6 +169,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("1320 if args.command == \"wav8\"", harness)
         reader = read("source/Core/AudioWaveInput.cs")
         self.assertIn("MaxFileBytes = 800 * 1024", reader)
+        self.assertIn("!input.CanRead || input.CanWrite", reader)
         self.assertIn("ReadExact(input, wave, header.Length", reader)
         self.assertIn("AudioWavePcm.DecodeStereo16(wave)", reader)
         self.assertIn("AudioWaveInput.DecodeBounded(input)", runtime)
