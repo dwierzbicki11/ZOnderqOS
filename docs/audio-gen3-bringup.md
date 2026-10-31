@@ -233,3 +233,13 @@ without accepting clicks or two short bursts; synthetic positive and negative
 fixtures cover both cases. A fresh end-to-end QEMU run is required before
 claiming that the revised gate passes. The PCM driver and Cosmos remain
 unchanged; this is verification hardening, **not** a claimed hardware fix.
+
+### Additional WAV source rates (22.05/32 kHz; isolated decoder)
+
+The opt-in bounded RIFF/WAV decoder now also accepts 22,050 Hz and 32,000 Hz
+uncompressed PCM8/16/24/32 mono or stereo, resampling to 48,000 Hz stereo
+PCM16 with the existing integer interpolation. The two-second output and
+800 KiB input caps are unchanged. Host C# tests check exact 250 ms output
+length, channel phase, pitch, PCM8/24/32 conversion and rejection of 16 kHz.
+This is **not** yet proof of captured QEMU audio for either new source rate;
+production audio remains disabled and no guest disk is attached.

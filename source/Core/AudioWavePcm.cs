@@ -5,7 +5,7 @@ namespace ZonderqOS.SystemCore
     /// <summary>
     /// Strict, allocation-bounded RIFF/WAVE PCM8/PCM16/PCM24/PCM32 mono/stereo decoder for the
     /// opt-in diskless HDA probe. No filesystem, DMA or device access.
-    /// 44.1 kHz sources are explicitly resampled to 48 kHz stereo PCM16.
+    /// 22.05/32/44.1 kHz sources are explicitly resampled to 48 kHz stereo PCM16.
     /// </summary>
     public static class AudioWavePcm
     {
@@ -16,6 +16,13 @@ namespace ZonderqOS.SystemCore
         // Decoded output always remains bounded by two seconds of stereo PCM16.
         private const int MaxDataBytes = SampleRate * MaxDurationSeconds * 2 * 4;
         private const int MaxOutputBytes = SampleRate * MaxDurationSeconds * FrameBytes;
+
+        // Supported uncompressed WAV input rates; HDA always receives 48 kHz PCM16.
+        // The existing bounded integer resampler handles all of these rates.
+        private static bool IsSupportedSourceRate(int rate)
+        {
+            return rate == 22050 || rate == 32000 || rate == 44100 || rate == SampleRate;
+        }
 
         private static uint Read32(byte[] bytes, int index)
         {
@@ -126,10 +133,10 @@ namespace ZonderqOS.SystemCore
                         format = 1;
                     }
                     if (format != 1 || (sourceChannels != 1 && sourceChannels != 2) ||
-                        (rate != SampleRate && rate != 44100) || (bits != 8 && bits != 16 && bits != 24 && bits != 32) ||
+                        !IsSupportedSourceRate((int)rate) || (bits != 8 && bits != 16 && bits != 24 && bits != 32) ||
                         blockAlign != sourceChannels * (bits / 8) ||
                         byteRate != rate * sourceChannels * (uint)(bits / 8))
-                        throw new ArgumentException("Unsupported WAV format (requires 44.1/48kHz PCM8/PCM16/PCM24/PCM32 mono/stereo).", nameof(wave));
+                        throw new ArgumentException("Unsupported WAV format (requires 22.05/32/44.1/48kHz PCM8/PCM16/PCM24/PCM32 mono/stereo).", nameof(wave));
                     channels = sourceChannels;
                     sourceRate = (int)rate;
                     sourceBits = bits;
@@ -238,7 +245,7 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
-        /// Convert 44.1 kHz PCM16 mono/stereo to 48 kHz stereo by bounded linear
+        /// Convert supported non-48 kHz PCM mono/stereo to 48 kHz stereo by bounded linear
         /// interpolation. The input is a validated RIFF data chunk; no IO or HAL.
         /// Integer arithmetic keeps the two channels phase-aligned.
         /// </summary>
@@ -359,7 +366,7 @@ namespace ZonderqOS.SystemCore
         /// <summary>Build a bounded signed PCM24 mono/stereo WAV fixture.</summary>
         public static byte[] EncodePcm24AtRate(byte[] pcm, int sampleRate, int channels)
         {
-            if (sampleRate != 44100 && sampleRate != SampleRate)
+            if (!IsSupportedSourceRate(sampleRate))
                 throw new ArgumentOutOfRangeException(nameof(sampleRate));
             if (channels != 1 && channels != 2)
                 throw new ArgumentOutOfRangeException(nameof(channels));
@@ -390,7 +397,7 @@ namespace ZonderqOS.SystemCore
         /// <summary>Build a bounded signed PCM32 mono/stereo WAV fixture.</summary>
         public static byte[] EncodePcm32AtRate(byte[] pcm, int sampleRate, int channels)
         {
-            if (sampleRate != 44100 && sampleRate != SampleRate)
+            if (!IsSupportedSourceRate(sampleRate))
                 throw new ArgumentOutOfRangeException(nameof(sampleRate));
             if (channels != 1 && channels != 2)
                 throw new ArgumentOutOfRangeException(nameof(channels));
@@ -421,7 +428,7 @@ namespace ZonderqOS.SystemCore
         /// <summary>Build a bounded unsigned PCM8 mono/stereo WAV fixture.</summary>
         public static byte[] EncodePcm8AtRate(byte[] pcm, int sampleRate, int channels)
         {
-            if (sampleRate != 44100 && sampleRate != SampleRate)
+            if (!IsSupportedSourceRate(sampleRate))
                 throw new ArgumentOutOfRangeException(nameof(sampleRate));
             if (channels != 1 && channels != 2)
                 throw new ArgumentOutOfRangeException(nameof(channels));
@@ -451,12 +458,12 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
-        /// Construct a 44.1/48 kHz stereo PCM16 WAV fixture for the resampler
+        /// Construct a supported-rate stereo PCM16 WAV fixture for the resampler
         /// test. This helper never touches a guest or host filesystem.
         /// </summary>
         public static byte[] EncodeStereo16AtRate(byte[] pcm, int sampleRate)
         {
-            if (sampleRate != 44100 && sampleRate != SampleRate)
+            if (!IsSupportedSourceRate(sampleRate))
                 throw new ArgumentOutOfRangeException(nameof(sampleRate));
             if (pcm == null || pcm.Length == 0 ||
                 pcm.Length > sampleRate * MaxDurationSeconds * FrameBytes ||

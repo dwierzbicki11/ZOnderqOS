@@ -758,9 +758,53 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject PCM32 duration exceeding two seconds");
         rejected = false;
-        try { AudioWavePcm.EncodePcm32AtRate(new byte[4], 32000, 1); }
+        try { AudioWavePcm.EncodePcm32AtRate(new byte[4], 16000, 1); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "reject unsupported PCM32 sample rate");
+
+        // Common 22.05/32 kHz PCM16 WAV inputs must use the real bounded
+        // read-only stream loader and the existing integer 48 kHz resampler.
+        foreach (int inputRate in new[] { 22050, 32000 })
+        {
+            byte[] sourceLowRate = AudioTonePcm.GenerateSquareStereo16(inputRate, 3520, 250, 4096);
+            byte[] lowRateWave = AudioWavePcm.EncodeStereo16AtRate(sourceLowRate, inputRate);
+            using (var lowRateInput = new MemoryStream(lowRateWave, false))
+            {
+                byte[] resampled = AudioWaveInput.DecodeBounded(lowRateInput);
+                Expect(resampled.Length == 48000, "low-rate WAV produces 250ms 48kHz stereo16");
+                int crossings = 0;
+                for (int frame = 1; frame < resampled.Length / 4; frame++)
+                {
+                    int at = frame * 4;
+                    int before = at - 4;
+                    short current = (short)(resampled[at] | (resampled[at + 1] << 8));
+                    short prior = (short)(resampled[before] | (resampled[before + 1] << 8));
+                    Expect(resampled[at] == resampled[at + 2] &&
+                        resampled[at + 1] == resampled[at + 3], "low-rate resampler stereo phase");
+                    if ((current < 0) != (prior < 0)) crossings++;
+                }
+                double pitch = crossings * 48000.0 / (2 * (resampled.Length / 4 - 1));
+                Expect(Math.Abs(pitch - 3520) < 60, "low-rate resampler preserves 3520Hz pitch");
+            }
+        }
+        // The same 32 kHz source is supported in unsigned PCM8 and signed
+        // PCM24/PCM32, without enabling any new device or filesystem access.
+        byte[] mono8at32k = new byte[32000 / 4];
+        for (int i = 0; i < mono8at32k.Length; i++)
+            mono8at32k[i] = (byte)((i & 1) == 0 ? 192 : 64);
+        byte[] low8 = AudioWavePcm.DecodeStereo16(
+            AudioWavePcm.EncodePcm8AtRate(mono8at32k, 32000, 1));
+        Expect(low8.Length == 48000, "32kHz unsigned PCM8 mono resamples to stereo16");
+        byte[] low24 = AudioWavePcm.DecodeStereo16(
+            AudioWavePcm.EncodePcm24AtRate(new byte[32000 / 4 * 3], 32000, 1));
+        Expect(low24.Length == 48000, "32kHz signed PCM24 mono resamples to stereo16");
+        byte[] low32 = AudioWavePcm.DecodeStereo16(
+            AudioWavePcm.EncodePcm32AtRate(new byte[32000 / 4 * 4], 32000, 1));
+        Expect(low32.Length == 48000, "32kHz signed PCM32 mono resamples to stereo16");
+        rejected = false;
+        try { AudioWavePcm.EncodeStereo16AtRate(new byte[4], 16000); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "unsupported 16kHz rate remains rejected");
 
         byte[] quarter = AudioPcmVolume.ScaleStereo16(pcm, 25);
         byte[] muted = AudioPcmVolume.ScaleStereo16(pcm, 0);
