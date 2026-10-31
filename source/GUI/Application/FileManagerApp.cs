@@ -31,6 +31,7 @@ namespace ZonderqOS.GUI.Apps
         private long lastClickTimestamp;
         private int lastClickX, lastClickY;
         private bool contextMenuVisible;
+        private int contextMenuSelection = -1;
         private int contextMenuX;
         private int contextMenuY;
         private int dialogMode;
@@ -170,6 +171,7 @@ namespace ZonderqOS.GUI.Apps
                     contextMenuX = Math.Max(4, Math.Min(x, view.Width - ContextMenuWidthForView - 4));
                     contextMenuY = Math.Max(4, Math.Min(y,
                         view.Height - ContextMenuHeightForView - FooterHeight - 4));
+                    contextMenuSelection = -1;
                     contextMenuVisible = true;
                     return;
                 }
@@ -264,7 +266,26 @@ namespace ZonderqOS.GUI.Apps
                 return false;
 
             int item = (y - contextMenuY) / ContextMenuItemHeightForView;
+            ExecuteContextAction(item);
+            return true;
+        }
+
+        private bool ContextActionEnabled(int item)
+        {
+            if (item == 0 || item == 1)
+                return selectedIndex >= 0 && selectedIndex < entries.Count;
+            if (item == 2)
+                return FileClipboard.HasItem;
+            return item >= 3 && item < ContextMenuItemCount;
+        }
+
+        private void ExecuteContextAction(int item)
+        {
             contextMenuVisible = false;
+            contextMenuSelection = -1;
+            // A visually disabled menu item must never perform an action.
+            if (!ContextActionEnabled(item))
+                return;
 
             if (item == 0)
                 CopySelected(false);
@@ -280,8 +301,6 @@ namespace ZonderqOS.GUI.Apps
                 RefreshAll();
             else if (item == 6)
                 GoUp();
-
-            return true;
         }
 
         private void Toolbar(int x)
@@ -504,6 +523,37 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            // Navigate the open context menu with the keyboard, skipping
+            // disabled Copy/Cut/Paste rows. Enter uses the same action path
+            // as a mouse click; Escape still dismisses without side effects.
+            if (contextMenuVisible)
+            {
+                if (key.Key == ConsoleKeyEx.UpArrow || key.Key == ConsoleKeyEx.DownArrow)
+                {
+                    int direction = key.Key == ConsoleKeyEx.UpArrow ? -1 : 1;
+                    int candidate = contextMenuSelection;
+                    for (int attempt = 0; attempt < ContextMenuItemCount; attempt++)
+                    {
+                        candidate = candidate < 0
+                            ? (direction > 0 ? 0 : ContextMenuItemCount - 1)
+                            : (candidate + direction + ContextMenuItemCount) % ContextMenuItemCount;
+                        if (ContextActionEnabled(candidate))
+                        {
+                            contextMenuSelection = candidate;
+                            break;
+                        }
+                    }
+                    return;
+                }
+
+                if (key.Key == ConsoleKeyEx.Enter)
+                {
+                    if (contextMenuSelection >= 0)
+                        ExecuteContextAction(contextMenuSelection);
+                    return;
+                }
+            }
+
             bool control = (key.Modifiers & ConsoleModifiers.Control) != 0;
             if (control)
             {
@@ -529,6 +579,7 @@ namespace ZonderqOS.GUI.Apps
                 if (contextMenuVisible)
                 {
                     contextMenuVisible = false;
+                    contextMenuSelection = -1;
                     return;
                 }
 
@@ -1067,6 +1118,7 @@ namespace ZonderqOS.GUI.Apps
         public List<FileEntry> Entries { get { return entries; } }
         public List<SidebarEntry> SidebarEntries { get { return sidebarEntries; } }
         public bool ContextMenuVisible { get { return contextMenuVisible; } }
+        public int ContextMenuSelection { get { return contextMenuSelection; } }
         public int ContextMenuX { get { return contextMenuX; } }
         public int ContextMenuY { get { return contextMenuY; } }
         public int DialogMode { get { return dialogMode; } }
@@ -1458,19 +1510,23 @@ namespace ZonderqOS.GUI.Apps
                 UiPalette.SurfaceRaised, UiPalette.Border);
 
             bool selected = app.SelectedIndex >= 0 && app.SelectedIndex < app.Entries.Count;
-            DrawMenuItem(canvas, "Copy", "Ctrl+C", x, y + 0 * rowHeight, selected);
-            DrawMenuItem(canvas, "Cut", "Ctrl+X", x, y + 1 * rowHeight, selected);
-            DrawMenuItem(canvas, "Paste", "Ctrl+V", x, y + 2 * rowHeight, FileClipboard.HasItem);
+            DrawMenuItem(canvas, "Copy", "Ctrl+C", x, y + 0 * rowHeight, selected, 0);
+            DrawMenuItem(canvas, "Cut", "Ctrl+X", x, y + 1 * rowHeight, selected, 1);
+            DrawMenuItem(canvas, "Paste", "Ctrl+V", x, y + 2 * rowHeight, FileClipboard.HasItem, 2);
             canvas.DrawLine(Color.FromArgb(63, 73, 84), x + 8, y + 3 * rowHeight,
                 x + menuWidth - 8, y + 3 * rowHeight);
-            DrawMenuItem(canvas, "New file", "", x, y + 3 * rowHeight, true);
-            DrawMenuItem(canvas, "New folder", "", x, y + 4 * rowHeight, true);
-            DrawMenuItem(canvas, "Refresh", "F5", x, y + 5 * rowHeight, true);
-            DrawMenuItem(canvas, "Go up", "Backspace", x, y + 6 * rowHeight, true);
+            DrawMenuItem(canvas, "New file", "", x, y + 3 * rowHeight, true, 3);
+            DrawMenuItem(canvas, "New folder", "", x, y + 4 * rowHeight, true, 4);
+            DrawMenuItem(canvas, "Refresh", "F5", x, y + 5 * rowHeight, true, 5);
+            DrawMenuItem(canvas, "Go up", "Backspace", x, y + 6 * rowHeight, true, 6);
         }
 
-        private void DrawMenuItem(Canvas canvas, string text, string shortcut, int x, int y, bool enabled)
+        private void DrawMenuItem(Canvas canvas, string text, string shortcut, int x, int y, bool enabled, int index)
         {
+            if (enabled && app.ContextMenuSelection == index)
+                canvas.DrawFilledRectangle(Color.FromArgb(53, 78, 99),
+                    x + 4, y + 1, Math.Max(1, app.ContextMenuWidthForView - 8),
+                    Math.Max(1, app.ContextMenuItemHeightForView - 2));
             Color color = enabled ? MainText : Color.FromArgb(91, 103, 114);
             int textOffset = Math.Max(4, (app.ContextMenuItemHeightForView - 9) / 2);
             SmallTextRenderer.Draw(canvas, text, x + 10, y + textOffset, color);

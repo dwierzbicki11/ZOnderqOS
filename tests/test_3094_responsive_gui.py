@@ -1346,5 +1346,42 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertIn("MountVolume(entry, false);", left)
 
 
+    def test_file_manager_context_menu_keyboard_navigation_and_disabled_actions(self):
+        keyboard = FILE_MANAGER.split("public override void HandleKeyboard(", 1)[1].split(
+            "private void CopySelected(", 1)[0]
+        actions = FILE_MANAGER.split("private bool ContextActionEnabled(", 1)[1].split(
+            "private void Toolbar(", 1)[0]
+        render = FILE_MANAGER.split("private void Menu(Canvas canvas)", 1)[1].split(
+            "private void Dialog(Canvas canvas)", 1)[0]
+        self.assertIn("contextMenuSelection = -1;", FILE_MANAGER)
+        self.assertIn("ConsoleKeyEx.UpArrow || key.Key == ConsoleKeyEx.DownArrow", keyboard)
+        self.assertIn("if (ContextActionEnabled(candidate))", keyboard)
+        self.assertIn("ExecuteContextAction(contextMenuSelection);", keyboard)
+        self.assertIn("contextMenuSelection = -1;", keyboard)
+        self.assertIn("return FileClipboard.HasItem;", actions)
+        self.assertIn("selectedIndex >= 0 && selectedIndex < entries.Count", actions)
+        self.assertIn("if (!ContextActionEnabled(item))", actions)
+        self.assertIn("app.ContextMenuSelection == index", render)
+
+        def next_enabled(current, direction, enabled):
+            count = len(enabled)
+            candidate = current
+            for _ in range(count):
+                candidate = (0 if direction > 0 else count - 1) if candidate < 0 else (
+                    candidate + direction + count) % count
+                if enabled[candidate]:
+                    return candidate
+            return current
+
+        # Without a selected file and clipboard, Copy/Cut/Paste cannot run.
+        enabled = [False, False, False, True, True, True, True]
+        self.assertEqual(next_enabled(-1, 1, enabled), 3)
+        self.assertEqual(next_enabled(-1, -1, enabled), 6)
+        self.assertEqual(next_enabled(6, 1, enabled), 3)
+        self.assertEqual(next_enabled(3, -1, enabled), 6)
+        self.assertEqual(next_enabled(3, 1, enabled), 4)
+        self.assertEqual(next_enabled(0, 1, [True] * 7), 1)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
