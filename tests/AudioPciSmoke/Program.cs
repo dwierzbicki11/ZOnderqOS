@@ -90,6 +90,78 @@ static class Test
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "duration guard");
 
+        // Pure C# RIFF/WAVE round-trip; no Cosmos HAL or filesystem access.
+        byte[] encoded = AudioWavePcm.EncodeStereo16(pcm);
+        byte[] decoded = AudioWavePcm.DecodeStereo16(encoded);
+        Expect(encoded.Length == pcm.Length + 44, "canonical WAV header length");
+        Expect(decoded.Length == pcm.Length, "WAV PCM length");
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(decoded[i] == pcm[i], "WAV round-trip preserves PCM");
+
+        byte[] corrupt = (byte[])encoded.Clone();
+        corrupt[0] = (byte)'X';
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(corrupt); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject missing RIFF signature");
+
+        corrupt = (byte[])encoded.Clone();
+        corrupt[4] = 0;
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(corrupt); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject inconsistent RIFF size");
+
+        corrupt = (byte[])encoded.Clone();
+        corrupt[20] = 3; // IEEE float is not signed PCM16.
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(corrupt); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject non-PCM format");
+
+        corrupt = (byte[])encoded.Clone();
+        corrupt[24] = 0x44; // Not 48 kHz; never silently resample.
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(corrupt); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject unsupported sample rate");
+
+        corrupt = (byte[])encoded.Clone();
+        corrupt[32] = 2; // Wrong block alignment.
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(corrupt); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject invalid frame alignment");
+
+        corrupt = (byte[])encoded.Clone();
+        corrupt[40] = 0xff; corrupt[41] = 0xff; corrupt[42] = 0xff; corrupt[43] = 0x7f;
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(corrupt); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject overflowing data chunk");
+
+        // Insert a JUNK metadata chunk with odd payload and one pad byte.
+        byte[] withMetadata = new byte[encoded.Length + 10];
+        Array.Copy(encoded, 0, withMetadata, 0, 36);
+        withMetadata[36] = (byte)'J'; withMetadata[37] = (byte)'U';
+        withMetadata[38] = (byte)'N'; withMetadata[39] = (byte)'K';
+        withMetadata[40] = 1;
+        withMetadata[44] = 0x42;
+        Array.Copy(encoded, 36, withMetadata, 46, encoded.Length - 36);
+        int riffSize = withMetadata.Length - 8;
+        withMetadata[4] = (byte)riffSize;
+        withMetadata[5] = (byte)(riffSize >> 8);
+        withMetadata[6] = (byte)(riffSize >> 16);
+        withMetadata[7] = (byte)(riffSize >> 24);
+        decoded = AudioWavePcm.DecodeStereo16(withMetadata);
+        Expect(decoded.Length == pcm.Length && decoded[0] == pcm[0],
+            "skip odd-sized metadata chunk and padding");
+
+        rejected = false;
+        try { AudioWavePcm.EncodeStereo16(new byte[AudioWavePcm.SampleRate * 2 * 4 + 4]); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject WAV larger than 2 seconds");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
     }
 }
