@@ -75,6 +75,16 @@ def self_test() -> None:
         else:
             raise AssertionError("accepted missing/spoofed IRQ notification")
     assert count_notifications("e1000e_irq_legacy_notify IRQ line state: 1\n" * 2) == (2, 0, 0)
+    termination = "qemu-system-x86_64: terminating on signal 15 from pid 9791 (bash)\n"
+    before = "e1000e_irq_legacy_notify IRQ line state: 1\n"
+    assert count_notifications(before + termination + before) == (1, 0, 0)
+    assert count_notifications(termination + before) == (0, 0, 0)
+    try:
+        report(termination + before, True)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("counted IRQ after QEMU termination")
     print("[NET3095-E1000E-IRQ-CONTRACT] PASS synthetic trace parser tests only")
 
 
