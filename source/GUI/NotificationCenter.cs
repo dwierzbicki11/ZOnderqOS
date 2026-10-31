@@ -147,6 +147,13 @@ namespace ZonderqOS.GUI
                 return true;
             }
 
+            // Only unmodified letters are notification commands. In particular,
+            // Ctrl+C/Ctrl+R must never clear or mark the notification history.
+            bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+            bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+            if (control || alt)
+                return true;
+
             char ch = key.KeyChar;
             if (ch == 'd' || ch == 'D')
             {
@@ -189,9 +196,10 @@ namespace ZonderqOS.GUI
                 toastHovered = Hit(mouseX, mouseY, toastX, toastY, 414, 98);
                 if (toastHovered && isClicked && !wasClicked)
                 {
-                    Visible = true;
+                    // Open through the same path as the keyboard/taskbar so
+                    // selection, animation and cached notifications stay in sync.
                     NotificationService.MarkRead(toast.Id);
-                    EnsureFresh();
+                    Toggle();
                     return true;
                 }
                 return toastHovered;
