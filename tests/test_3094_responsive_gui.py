@@ -1751,5 +1751,34 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
             self.assertLessEqual(bounds[1][1], bounds[2][0])
 
 
+    def test_task_manager_keyboard_pages_and_modifier_safety(self):
+        keyboard = TASK_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "private void SetPage(", 1)[0]
+        guard = "(key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) != 0"
+        self.assertIn(guard, keyboard)
+        self.assertLess(keyboard.index(guard), keyboard.index("ConsoleKeyEx.Delete"))
+        self.assertIn("ConsoleKeyEx.PageUp) Select(-view.VisibleRows)", keyboard)
+        self.assertIn("ConsoleKeyEx.PageDown) Select(view.VisibleRows)", keyboard)
+        self.assertIn("ConsoleKeyEx.Home) SelectAbsolute(0)", keyboard)
+        self.assertIn("ConsoleKeyEx.End) SelectAbsolute(visibleRows.Count - 1)", keyboard)
+        selection = TASK_MANAGER.split("private void Select(int delta)", 1)[1].split(
+            "private void EndSelectedTask(", 1)[0]
+        self.assertIn("private void SelectAbsolute(int index)", selection)
+        self.assertIn("Math.Max(0, Math.Min(visibleRows.Count - 1, index))", selection)
+        self.assertIn("EnsureSelectionVisible();", selection)
+        # Model clamping on short (one row) and HD/FHD (multiple rows)
+        # without requiring a real guest to report a successful keypress.
+        for count in (0, 1, 3, 21):
+            for visible in (1, 3, 12):
+                for selected in (-1, 0, max(0, count - 1)):
+                    if count == 0:
+                        continue
+                    page_down = 0 if selected < 0 else min(count - 1, selected + visible)
+                    page_up = count - 1 if selected < 0 else max(0, selected - visible)
+                    self.assertGreaterEqual(page_down, 0)
+                    self.assertLess(page_down, count)
+                    self.assertGreaterEqual(page_up, 0)
+                    self.assertLess(page_up, count)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
