@@ -35,7 +35,7 @@ namespace ZonderqOS
                 Console.WriteLine();
 #if ZONDERQ_AUDIO_PROBE
                 Console.WriteLine("AUDIO HDA/PCM probe enabled: no disk mounts or account writes.");
-                Console.WriteLine("Commands: audiodiag | audioinfo | tone | inputscan | volumes | help");
+                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | inputscan | volumes | help");
                 AudioRuntimeDiagnostics.PrintStatus();
 #else
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
@@ -248,6 +248,12 @@ namespace ZonderqOS
                 AudioRuntimeDiagnostics.PlayTestTone();
                 return;
             }
+
+            if (command == "wavtone")
+            {
+                AudioRuntimeDiagnostics.PlayWaveTestTone();
+                return;
+            }
 #endif
 
             if (command == "volumes" || command == "lsblk")
@@ -329,6 +335,7 @@ namespace ZonderqOS
 #if ZONDERQ_AUDIO_PROBE
                 Console.WriteLine("audioinfo - show outputs published by the stock Cosmos audio driver");
                 Console.WriteLine("tone      - play 250 ms 440 Hz PCM through primary HDA output");
+                Console.WriteLine("wavtone   - decode RAM-only RIFF/WAV then play through HDA");
 #endif
                 Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");
                 Console.WriteLine("mousegui  - read-only fullscreen cursor and button test (ESC to exit)");
