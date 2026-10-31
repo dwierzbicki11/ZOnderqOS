@@ -908,9 +908,14 @@ namespace ZonderqOS.GUI.Apps
             if (scrollIndex < 0)
                 scrollIndex = 0;
 
-            int max = Math.Max(0, entries.Count - visible);
-            if (scrollIndex > max)
-                scrollIndex = Math.Max(0, max - max % cols);
+            // A partially filled last row still needs a full row-aligned
+            // scroll position. For 10 files, 3 columns and 3 visible rows,
+            // the old (count - visible) clamp gave 1, rounded down to 0,
+            // leaving file #10 unreachable even when selected.
+            int lastRow = entries.Count > 0 ? (entries.Count - 1) / cols : 0;
+            int maxScroll = Math.Max(0, (lastRow - rows + 1) * cols);
+            if (scrollIndex > maxScroll)
+                scrollIndex = maxScroll;
         }
 
         private void GoUp()
