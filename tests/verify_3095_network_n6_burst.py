@@ -10,9 +10,10 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import struct
 
 from verify_3095_network_n1 import BROADCAST, ETHER_TYPE, pcap_frames
-from verify_3095_network_n2 import LEASE, MAC, synthetic_capture
+from verify_3095_network_n2 import LEASE, MAC, SERVER, synthetic_capture
 from verify_3095_network_n4 import tcp_frame
 from verify_3095_network_n6 import (
     HTTP_REPEAT_PASS, find_http_transaction, validate as validate_n6,
@@ -22,18 +23,19 @@ COUNT = 32
 START = "[NET3095-N6] TX_BURST_ATTEMPT=START count=32"
 QUEUED = "[NET3095-N6] TX_BURST=QUEUED count=32"
 TAG = b"ZONDERQ3095-BURST-"
+POST_START = "[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START"
+POST_PASS = "[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2"
 
 
 def check_markers(serial: str) -> None:
     lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
     if any("[NET3095-N6][FAIL]" in line for line in lines):
-        raise ValueError("guest reported TX burst or HTTP failure")
-    if (lines.count(HTTP_REPEAT_PASS) != 1 or lines.count(START) != 1 or
-            lines.count(QUEUED) != 1):
-        raise ValueError("missing or duplicate N6 TX burst markers")
-    if not (lines.index(HTTP_REPEAT_PASS) < lines.index(START) < lines.index(QUEUED)):
-        raise ValueError("N6 TX burst markers out of order")
-
+        raise ValueError("guest reported TX burst, HTTP or post-burst ICMP failure")
+    markers = (HTTP_REPEAT_PASS, START, QUEUED, POST_START, POST_PASS)
+    if any(lines.count(marker) != 1 for marker in markers):
+        raise ValueError("missing or duplicate N6 burst/ICMP markers")
+    if [lines.index(marker) for marker in markers] != sorted(lines.index(marker) for marker in markers):
+        raise ValueError("N6 TX burst or post-burst ICMP markers out of order")
 
 def last_http_frame(serial: str, frames: list[bytes]) -> int:
     """Locate the second HTTP FIN acknowledgment in the original PCAP order."""
@@ -54,16 +56,15 @@ def last_http_frame(serial: str, frames: list[bytes]) -> int:
     return tcp_entries[second[1]][0]
 
 
-def check_frames(pcap: bytes, after_index: int = -1) -> None:
+def check_frames(pcap: bytes, after_index: int = -1) -> int:
     """Require exactly 32 unmodified, in-order guest TX frames after HTTP.
 
-    A subsequence match is insufficient: it could silently ignore a duplicate,
-    reordered frame, wrong source MAC, nonzero padding or a 33rd submission.
-    Scan all candidate burst frames, not only valid Ethernet headers, so a
-    corrupted header cannot be hidden by a later valid retransmission.
+    Subsequence matching could silently ignore duplicates, reordered frames,
+    wrong source MAC, nonzero padding or an unexpected 33rd submission.
     """
     frames = list(pcap_frames(pcap))
     seen = 0
+    last_index = -1
     for index, frame in enumerate(frames):
         if len(frame) < 14 or not frame[14:].startswith(TAG):
             continue
@@ -78,41 +79,121 @@ def check_frames(pcap: bytes, after_index: int = -1) -> None:
             raise ValueError(
                 f"missing, reordered, malformed or forged E1000E TX burst frame {seen:02d}")
         seen += 1
+        last_index = index
     if seen != COUNT:
         raise ValueError(f"incomplete E1000E TX burst: {seen}/{COUNT} frames")
+    return last_index
 
+
+def post_burst_icmp(frame: bytes):
+    """Decode only the distinct N6 post-ring ICMP echo ID/sequence."""
+    if (len(frame) < 14 + 20 + 8 or frame[12:14] != b"\x08\x00" or
+            frame[14] >> 4 != 4 or frame[23] != 1):
+        return None
+    ihl = (frame[14] & 15) * 4
+    if ihl < 20 or len(frame) < 14 + ihl + 8:
+        return None
+    length = int.from_bytes(frame[16:18], "big")
+    if (int.from_bytes(frame[20:22], "big") & 0x3FFF or
+            length < ihl + 8 or len(frame) < 14 + length):
+        return None
+    typ, code, _checksum, ident, seq = struct.unpack_from(">BBHHH", frame, 14 + ihl)
+    if typ not in (0, 8) or code != 0 or ident != 0x3096 or seq != 2:
+        return None
+    return {
+        "type": typ, "src": frame[26:30], "dst": frame[30:34],
+        "src_mac": frame[6:12], "dst_mac": frame[:6],
+    }
+
+
+def check_post_burst_icmp(frames: list[bytes], after_index: int, guest: bytes) -> None:
+    """Require one correlated request and inbound reply AFTER the final TX frame."""
+    events = [(i, p) for i, frame in enumerate(frames)
+              if (p := post_burst_icmp(frame))]
+    if len(events) != 2:
+        raise ValueError("expected exactly one post-burst ICMP request and reply")
+    (request_index, request), (reply_index, reply) = events
+    if not (after_index < request_index < reply_index):
+        raise ValueError("post-burst ICMP not after completed TX ring stress")
+    if not (
+        request["type"] == 8 and request["src"] == guest and
+        request["dst"] == SERVER and request["src_mac"] == MAC and
+        request["dst_mac"] == reply["src_mac"] and
+        reply["type"] == 0 and reply["src"] == SERVER and
+        reply["dst"] == guest and reply["dst_mac"] == MAC and
+        reply["src_mac"] != MAC and reply["src_mac"] != b"\x00" * 6 and
+        not (reply["src_mac"][0] & 1)
+    ):
+        raise ValueError("post-burst ICMP Ethernet/IP peer mismatch")
 
 def validate(serial: str, pcap: bytes) -> str:
-    # The independent N6 validator first proves both real TCP HTTP sessions.
+    # N6 first proves two complete TCP HTTP sessions on real QEMU frames.
     validate_n6(serial, pcap)
     check_markers(serial)
-    # A burst preceding the HTTP FIN/ACK is not the post-RX TX stress test.
     frames = list(pcap_frames(pcap))
-    check_frames(pcap, after_index=last_http_frame(serial, frames))
-    return ("[NET3095-N6-BURST-GATE] PASS 32 ordered QEMU PCAP raw TX frames "
-            "after two HTTP sessions; DMA ISR execution UNPROVEN")
-
+    last_burst = check_frames(pcap, after_index=last_http_frame(serial, frames))
+    leases = [m for line in serial.replace("\r", "").splitlines()
+              if (m := LEASE.fullmatch(line.strip()))]
+    if len(leases) != 1:
+        raise ValueError("missing unique guest lease for post-burst ICMP")
+    guest = bytes(int(part) for part in leases[0].group(1).split("."))
+    check_post_burst_icmp(frames, last_burst, guest)
+    return ("[NET3095-N6-BURST-GATE] PASS 32 exact ordered QEMU PCAP raw TX "
+            "frames followed by correlated ICMP RX/TX; DMA ISR execution UNPROVEN")
 
 def self_test() -> None:
-    serial = "\n".join([HTTP_REPEAT_PASS, START, QUEUED])
+    serial = "\n".join([HTTP_REPEAT_PASS, START, QUEUED, POST_START, POST_PASS])
     frames = []
     for sequence in range(COUNT):
         raw = BROADCAST + MAC + ETHER_TYPE + TAG + f"{sequence:02d}".encode("ascii")
         frames.append(raw + bytes(60 - len(raw)))
     check_markers(serial)
-    check_frames(synthetic_capture(frames))
+    assert check_frames(synthetic_capture(frames)) == COUNT - 1
+
+    # Synthetic ICMP fixture: use the N3 frame builder, changing only the
+    # distinct N6 ID. No fixture is claimed to be real guest RX proof.
+    from verify_3095_network_n3 import fake_icmp
+    guest = bytes([10, 0, 2, 15])
+    request = bytearray(fake_icmp(False, MAC, guest, seq=2))
+    reply = bytearray(fake_icmp(True, MAC, guest, seq=2))
+    request[-4:-2] = (0x3096).to_bytes(2, "big")
+    reply[-4:-2] = (0x3096).to_bytes(2, "big")
+    request, reply = bytes(request), bytes(reply)
+    check_post_burst_icmp(frames + [request, reply], COUNT - 1, guest)
+    for invalid in (
+        [request], [reply, request], [reply], [request, reply, reply],
+        [request, request, reply],
+        [request, reply[:-2] + b"\x00\x01"],
+        [request, reply[:6] + MAC + reply[12:]],
+        [request[:6] + b"\x00" * 6 + request[12:], reply],
+    ):
+        try:
+            check_post_burst_icmp(frames + invalid, COUNT - 1, guest)
+        except ValueError:
+            continue
+        raise AssertionError("accepted invalid post-burst ICMP capture")
+    try:
+        check_post_burst_icmp(frames + [request, reply], COUNT, guest)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted ICMP before final TX frame")
     try:
         check_frames(synthetic_capture(frames), after_index=0)
     except ValueError:
         pass
     else:
-        raise AssertionError("accepted burst that began before required prior traffic")
+        raise AssertionError("accepted burst before HTTP completion")
     bad_serial = [
         serial.replace(START, ""),
         serial.replace(QUEUED, ""),
+        serial.replace(POST_START, ""),
+        serial.replace(POST_PASS, ""),
         serial.replace(HTTP_REPEAT_PASS, ""),
         serial + "\n" + QUEUED,
+        serial + "\n" + POST_PASS,
         serial.replace(START + "\n" + QUEUED, QUEUED + "\n" + START),
+        serial.replace(POST_START + "\n" + POST_PASS, POST_PASS + "\n" + POST_START),
         serial + "\n[NET3095-N6][FAIL] queue rejected",
     ]
     for item in bad_serial:
@@ -120,34 +201,34 @@ def self_test() -> None:
             check_markers(item)
         except ValueError:
             continue
-        raise AssertionError("accepted invalid N6 burst serial evidence")
+        raise AssertionError("accepted invalid N6 burst/ICMP serial evidence")
     wrong_mac = bytes.fromhex("020000000099")
     negative_frames = [
         frames[:-1],
         frames[:12] + frames[13:],
-        frames + [frames[-1]],  # Duplicate/33rd descriptor is not silently ignored.
+        frames + [frames[-1]],
         frames[:8] + [frames[8], frames[8]] + frames[9:],
         frames[:12] + [frames[13], frames[12]] + frames[14:],
         frames[:8] + [frames[8][:-1] + b"X"] + frames[9:],
         frames[:8] + [frames[8] + b"\x00"] + frames[9:],
         frames[:8] + [frames[8][:6] + wrong_mac + frames[8][12:]] + frames[9:],
         frames[:8] + [frames[8][:12] + b"\x08\x00" + frames[8][14:]] + frames[9:],
-        frames[:8] + [frames[8][:14] + TAG + b"99" + frames[8][14 + len(TAG) + 2:]] + frames[9:],
+        frames[:8] + [frames[8][:14] + TAG + b"99" +
+                       frames[8][14 + len(TAG) + 2:]] + frames[9:],
     ]
     for items in negative_frames:
         try:
             check_frames(synthetic_capture(items))
         except ValueError:
             continue
-        raise AssertionError("accepted missing, reordered or forged raw TX burst frame")
+        raise AssertionError("accepted missing, duplicate, reordered or forged raw TX burst frame")
     try:
         check_frames(synthetic_capture(frames)[:-1])
     except ValueError:
         pass
     else:
         raise AssertionError("accepted truncated PCAP")
-    print("[NET3095-N6-BURST-CONTRACT] PASS synthetic ordered TX burst/negative cases only")
-
+    print("[NET3095-N6-BURST-CONTRACT] PASS synthetic strict TX and post-burst ICMP RX/TX cases only")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
