@@ -286,6 +286,13 @@ namespace ZonderqOS.GUI.Apps
             int relativeY = y - ContentTop;
             int strideX = TileWidth + TileGap;
             int strideY = TileHeight + TileGap;
+            // At the minimum 320x220 window, the grid is only 40px tall.
+            // The footer starts below the full client content area, so
+            // contentBottom alone includes pixels that were never painted.
+            // Only tiles inside the *painted* grid can receive clicks.
+            if (relativeX < 0 || relativeX >= GridWidthForView ||
+                relativeY < 0 || relativeY >= GridHeightForView)
+                return -1;
             int col = relativeX / strideX;
             int row = relativeY / strideY;
 
@@ -1564,17 +1571,34 @@ namespace ZonderqOS.GUI.Apps
                     canvas.DrawFilledRectangle(Accent, tileX, tileY, 3, visibleTileHeight);
                 }
 
-                int iconX = tileX + (FileManagerApp.TileWidth - iconSize) / 2;
-                canvas.DrawFilledRectangle(Color.FromArgb(34, 40, 47), iconX - 5, tileY + 3, iconSize + 10, iconSize + 8);
-                IconManager.DrawScaled(canvas, ResolveEntryIcon(entry),
-                    iconX, tileY + 7, iconSize, iconSize);
+                if (visibleTileHeight < iconSize + 33)
+                {
+                    // A 320x220 window leaves a 40px grid. The full-size
+                    // icon and two-line label would spill into the footer.
+                    // Use a horizontal compact tile fully inside the grid.
+                    if (visibleTileHeight >= 32)
+                    {
+                        IconManager.DrawScaled(canvas, ResolveEntryIcon(entry),
+                            tileX + 6, tileY + 7, 24, 24);
+                        SmallTextRenderer.DrawClipped(canvas, entry.Name ?? "",
+                            tileX + 36, tileY + 17, FileManagerApp.TileWidth - 42,
+                            index == app.SelectedIndex ? Color.WhiteSmoke : MainText);
+                    }
+                }
+                else
+                {
+                    int iconX = tileX + (FileManagerApp.TileWidth - iconSize) / 2;
+                    canvas.DrawFilledRectangle(Color.FromArgb(34, 40, 47), iconX - 5, tileY + 3, iconSize + 10, iconSize + 8);
+                    IconManager.DrawScaled(canvas, ResolveEntryIcon(entry),
+                        iconX, tileY + 7, iconSize, iconSize);
 
-                DrawWrappedName(canvas, entry.Name ?? "",
-                    tileX + (FileManagerApp.TileWidth - labelWidth) / 2,
-                    tileY + iconSize + 15,
-                    labelWidth,
-                    labelHeight,
-                    index == app.SelectedIndex ? Color.WhiteSmoke : MainText);
+                    DrawWrappedName(canvas, entry.Name ?? "",
+                        tileX + (FileManagerApp.TileWidth - labelWidth) / 2,
+                        tileY + iconSize + 15,
+                        labelWidth,
+                        labelHeight,
+                        index == app.SelectedIndex ? Color.WhiteSmoke : MainText);
+                }
             }
         }
 
