@@ -262,7 +262,7 @@ while (( SECONDS - started < TIMEOUT )); do
     fi
     # A running QEMU PID is not proof of a live guest (-no-shutdown).
     # Require ongoing managed kernel execution for the stability window.
-    heartbeat_before="$(grep -Ec '\[NET3095-N1\] HEARTBEAT=[0-9]+' "$LOG" || true)"
+    heartbeat_before="$(python3 "$ROOT/tests/verify_3095_network_heartbeat.py" "$LOG" --count)"
     sleep 8
     qemu_alive || {
       echo "[NET3095-N1][FAIL] Guest exited after TX proof" >&2; exit 1;
@@ -272,13 +272,10 @@ while (( SECONDS - started < TIMEOUT )); do
       echo "[NET3095-N1][FAIL] Guest fault after network proof" >&2
       exit 1
     fi
-    heartbeat_after="$(grep -Ec '\[NET3095-N1\] HEARTBEAT=[0-9]+' "$LOG" || true)"
-    if (( heartbeat_after - heartbeat_before < 6 )); then
-      tail -n 90 "$LOG" >&2
-      echo "[NET3095-N1][FAIL] Guest did not advance 6 heartbeats during 8s stability window" >&2
-      exit 1
-    fi
-    echo "[NET3095-N1] Guest heartbeat advanced $(( heartbeat_after - heartbeat_before )) ticks in stability window"
+    # Count alone can be fooled by duplicate or reset markers. Require the
+    # entire guest heartbeat sequence to be strictly 1,2,3,... and at least
+    # six NEW ticks after the captured pre-wait baseline.
+    python3 "$ROOT/tests/verify_3095_network_heartbeat.py" "$LOG" --after-count "$heartbeat_before"
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
     if [[ "$MODE" == n6 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
