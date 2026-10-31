@@ -859,6 +859,11 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("SmallTextRenderer.DrawClipped(canvas, row.Name,", row)
         self.assertIn("SmallTextRenderer.DrawClipped(canvas, row.State,", row)
         self.assertLess(row.index("if (width < 520)"), row.index("int statusX = x + Math.Max(370, width - 240);"))
+        footer = TASK_MANAGER.split("private void RenderFooter(Canvas canvas)", 1)[1]
+        self.assertIn("if (width < 520)", footer)
+        self.assertIn("Math.Max(1, width - 16), Text);", footer)
+        self.assertLess(footer.index("if (width < 520)"),
+                        footer.index('"F5 REFRESH   DEL END TASK"'))
 
         for window_width in (320, 400, 480, 640, 800, 1040):
             view_width = max(1, window_width - 20)
