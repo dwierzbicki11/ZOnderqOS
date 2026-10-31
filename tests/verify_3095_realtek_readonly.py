@@ -14,7 +14,7 @@ PREFIX = "[NET3095-RTL810XE]"
 MAC = r"([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})"
 DRIVER = re.compile(
     re.escape(PREFIX) + r" MMIO_SNAPSHOT=READ mac=" + MAC +
-    r" link=(up|down) speed=(0|10|100) duplex=(full|half)")
+    r" link=(up|down) speed=(0|10|100) duplex=(full|half|unknown)")
 KERNEL = re.compile(
     re.escape(PREFIX) + r" SNAPSHOT=PASS mac=" + MAC +
     r" link=(up|down) speed=(0|10|100)(?=\s|$)")
@@ -44,9 +44,9 @@ def validate(log: str) -> str:
     mac_bytes = bytes.fromhex(d.group(1).replace(":", ""))
     if mac_bytes[0] & 1 or not any(mac_bytes):
         raise ValueError("invalid unicast station address")
-    if d.group(2) == "down" and (d.group(3) != "0" or d.group(4) != "half"):
+    if d.group(2) == "down" and (d.group(3) != "0" or d.group(4) != "unknown"):
         raise ValueError("link-down snapshot invented speed or duplex")
-    if d.group(2) == "up" and d.group(3) == "0":
+    if d.group(2) == "up" and (d.group(3) == "0" or d.group(4) == "unknown"):
         raise ValueError("link-up snapshot has no speed")
     if len(heartbeats) < 2 or heartbeats[0][0] <= kernel[0][0]:
         raise ValueError("insufficient post-sample guest liveness")
@@ -69,6 +69,11 @@ def self_test() -> None:
         PREFIX + " HEARTBEAT=1\n" + PREFIX + " HEARTBEAT=2\n"
     )
     assert "PASS" in validate(sample)
+    link_down = sample.replace("link=up speed=100 duplex=full",
+                               "link=down speed=0 duplex=unknown")
+    link_down = link_down.replace("link=up speed=100 (register",
+                                  "link=down speed=0 (register")
+    assert "PASS" in validate(link_down)
     negatives = [
         sample.replace("MMIO_SNAPSHOT=READ", "MMIO_SNAPSHOT=FAKE"),
         sample.replace("SNAPSHOT=PASS", "SNAPSHOT=FAKE"),
