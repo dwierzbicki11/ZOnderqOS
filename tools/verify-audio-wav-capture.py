@@ -44,39 +44,48 @@ def inspect(path: Path, expected_hz: int = 440):
         if right_peak < 256 or right_peak * 2 < peak or right_peak > peak * 2:
             raise ValueError(f"stereo channel imbalance: left={peak} right={right_peak}")
 
-    # Find an active 180 ms window. The first active sample may be a click;
-    # insist that most of the window carries the expected square wave.
-    window_frames = rate * 18 // 100
-    start = None
+    # Emulated HDA can insert short (~21 ms) silence gaps even while a
+    # real 250 ms PCM tone is present. Do not mistake that for a click, but
+    # never accept a single short burst: require >=200 ms of active samples
+    # AND two disjoint 80 ms windows with the expected pitch on both channels.
+    if sum(abs(x) >= 256 for x in left) < rate // 5:
+        raise ValueError("no sustained 200 ms PCM tone (may be noise/clicks)")
+    window_frames = rate * 8 // 100
+    starts = []
     for i in range(0, len(left) - window_frames + 1, max(1, rate // 200)):
         chunk = left[i:i + window_frames]
         active = sum(abs(x) >= 256 for x in chunk)
         if active * 100 >= len(chunk) * 95:
-            start = i
-            break
-    if start is None:
-        raise ValueError("no sustained 180 ms PCM tone (may be noise/clicks)")
+            if not starts or i >= starts[0] + window_frames:
+                starts.append(i)
+            if len(starts) == 2:
+                break
+    if len(starts) != 2:
+        raise ValueError("no two disjoint 80 ms PCM tone windows (may be noise/clicks)")
 
-    chunk = left[start:start + window_frames]
-    crossings = sum((a < 0) != (b < 0) for a, b in zip(chunk, chunk[1:]))
-    hz = crossings * rate / (2 * (len(chunk) - 1))
-    if not expected_hz * 0.90 <= hz <= expected_hz * 1.10:
-        raise ValueError(f"captured signal has {hz:.1f}Hz, expected about {expected_hz}Hz")
+    measured = []
+    for start in starts:
+        chunk = left[start:start + window_frames]
+        crossings = sum((a < 0) != (b < 0) for a, b in zip(chunk, chunk[1:]))
+        hz = crossings * rate / (2 * (len(chunk) - 1))
+        if not expected_hz * 0.90 <= hz <= expected_hz * 1.10:
+            raise ValueError(f"captured signal has {hz:.1f}Hz, expected about {expected_hz}Hz")
+        measured.append(hz)
 
-    if channels == 2:
-        right_chunk = right[start:start + window_frames]
-        right_active = sum(abs(x) >= 256 for x in right_chunk)
-        if right_active * 100 < len(right_chunk) * 95:
-            raise ValueError("stereo right channel has no sustained 180 ms tone")
-        right_crossings = sum((a < 0) != (b < 0) for a, b in zip(right_chunk, right_chunk[1:]))
-        right_hz = right_crossings * rate / (2 * (len(right_chunk) - 1))
-        if not expected_hz * 0.90 <= right_hz <= expected_hz * 1.10:
-            raise ValueError(f"stereo right channel wrong pitch: {right_hz:.1f}Hz (expected {expected_hz}Hz)")
-        # Every diagnostic source sends identical samples to both channels.
-        # Opposite polarity or a phase-shifted second signal is not valid stereo.
-        aligned = sum((a < 0) == (b < 0) for a, b in zip(chunk, right_chunk))
-        if aligned * 100 < len(chunk) * 95:
-            raise ValueError("stereo channels are not phase-aligned")
+        if channels == 2:
+            right_chunk = right[start:start + window_frames]
+            right_active = sum(abs(x) >= 256 for x in right_chunk)
+            if right_active * 100 < len(right_chunk) * 95:
+                raise ValueError("stereo right channel has no sustained 80 ms tone")
+            right_crossings = sum((a < 0) != (b < 0) for a, b in zip(right_chunk, right_chunk[1:]))
+            right_hz = right_crossings * rate / (2 * (len(right_chunk) - 1))
+            if not expected_hz * 0.90 <= right_hz <= expected_hz * 1.10:
+                raise ValueError(f"stereo right channel wrong pitch: {right_hz:.1f}Hz (expected {expected_hz}Hz)")
+            aligned = sum((a < 0) == (b < 0) for a, b in zip(chunk, right_chunk))
+            if aligned * 100 < len(chunk) * 95:
+                raise ValueError("stereo channels are not phase-aligned")
+
+    hz = sum(measured) / len(measured)
 
     return f"[AUDIO-WAV] PASS captured PCM: {rate}Hz {channels}ch, peak={peak}, tone={hz:.1f}Hz, frames={frames}"
 

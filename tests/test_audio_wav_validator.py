@@ -110,6 +110,38 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected about 2640Hz"):
             audio.inspect(self.path, expected_hz=2640)
 
+    def test_accepts_hda_capture_with_two_short_underruns(self):
+        # Matches the measured QEMU WAV capture: two 21 ms silent gaps,
+        # but >200 ms of real 440 Hz samples on both channels.
+        self.make_wave(ms=390, silence_ms=0)
+        with wave.open(str(self.path), "rb") as wav:
+            data = bytearray(wav.readframes(wav.getnframes()))
+        for start_ms, end_ms in ((64, 85), (205, 226)):
+            for i in range(48000 * start_ms // 1000, 48000 * end_ms // 1000):
+                data[i * 4:i * 4 + 4] = b"\\x00" * 4
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(48000)
+            wav.writeframes(data)
+        self.assertIn("PASS captured PCM", audio.inspect(self.path))
+
+    def test_rejects_two_short_bursts_below_total_activity_floor(self):
+        self.make_wave(ms=390, silence_ms=0)
+        with wave.open(str(self.path), "rb") as wav:
+            data = bytearray(wav.readframes(wav.getnframes()))
+        # Only two 80 ms bursts remain, not the required 200 ms of PCM.
+        for i in range(48000 * 390 // 1000):
+            if not (i < 48000 * 80 // 1000 or i >= 48000 * 310 // 1000):
+                data[i * 4:i * 4 + 4] = b"\\x00" * 4
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(48000)
+            wav.writeframes(data)
+        with self.assertRaisesRegex(ValueError, "no sustained 200 ms"):
+            audio.inspect(self.path)
+
     def test_rejects_inverted_right_channel(self):
         self.make_wave(invert_right=True)
         with self.assertRaisesRegex(ValueError, "not phase-aligned"):

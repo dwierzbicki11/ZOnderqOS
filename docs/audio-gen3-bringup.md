@@ -214,3 +214,22 @@ boot captures WAV backend samples and validates pitch, stereo balance and
 phase. This is not evidence until the new CI run finishes. Production GUI
 audio remains disabled; no guest disk, FAT32 volume or physical sound card
 is touched.
+
+
+### QEMU WAV capture dropout investigation (2026-10-31)
+
+A new real QEMU run #41250243235 built the stock 3.0.95 ISO and passed the
+direct 440 Hz PCM capture, but failed the next `wavtone` capture on the old
+180 ms contiguous-signal gate. The uploaded **actual** WAV contains peak
+2908, about 0.35 s of active PCM and two approximately **21.3 ms** silent
+gaps. It is therefore not an empty/silent decode, but QEMU/backend timing
+or HDA buffering remains a possible cause; the exact source of the gaps is
+not established.
+
+The capture validator now requires **at least 200 ms total active PCM** and
+**two disjoint 80 ms high-activity windows**, each independently checked for
+pitch, stereo balance and phase. This tolerates short HDA backend dropouts
+without accepting clicks or two short bursts; synthetic positive and negative
+fixtures cover both cases. A fresh end-to-end QEMU run is required before
+claiming that the revised gate passes. The PCM driver and Cosmos remain
+unchanged; this is verification hardening, **not** a claimed hardware fix.
