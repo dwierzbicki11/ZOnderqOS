@@ -101,24 +101,35 @@ def validate(serial: str, pcap: bytes) -> str:
         raise ValueError("unexpected QEMU DHCP lease")
     mac = bytes.fromhex(n1.split("mac=")[-1].replace(":", ""))
     records = [r for frame in pcap_frames(pcap) if (r := dhcp_frame(frame))]
+    broadcast = b"\xff" * 6
     # Pair DISCOVER/OFFER and REQUEST/ACK separately: stock Cosmos v3.0.95
     # allocates a fresh BOOTP transaction ID for each outbound packet.
     for i, discover in enumerate(records):
-        if discover["type"] != 1 or discover["chaddr"] != mac or discover["source_mac"] != mac:
+        if (discover["type"] != 1 or discover["chaddr"] != mac or
+            discover["source_mac"] != mac or discover["destination_mac"] != broadcast):
             continue
         for j in range(i + 1, len(records)):
             offer = records[j]
+            # The BOOTP XID/IP must also belong to a consistent unicast L2 peer.
+            server_mac = offer["source_mac"]
             if (offer["type"] != 2 or offer["chaddr"] != mac or
-                offer["xid"] != discover["xid"] or offer["source_ip"] != SERVER):
+                offer["xid"] != discover["xid"] or offer["source_ip"] != SERVER or
+                server_mac in (mac, b"\x00" * 6, broadcast) or
+                (server_mac[0] & 1) != 0 or
+                offer["destination_mac"] not in (mac, broadcast)):
                 continue
             for k in range(j + 1, len(records)):
                 request = records[k]
                 if (request["type"] != 3 or request["chaddr"] != mac or
-                    request["source_mac"] != mac or request["requested"] != offer["yiaddr"]):
+                    request["source_mac"] != mac or
+                    request["destination_mac"] not in (broadcast, server_mac) or
+                    request["requested"] != offer["yiaddr"]):
                     continue
                 for ack in records[k + 1:]:
                     if (ack["type"] == 5 and ack["chaddr"] == mac and
                         ack["xid"] == request["xid"] and ack["source_ip"] == SERVER and
+                        ack["source_mac"] == server_mac and
+                        ack["destination_mac"] in (mac, broadcast) and
                         ack["yiaddr"] == ip.packed and ack["yiaddr"] == offer["yiaddr"]):
                         return "[NET3095-N2-GATE] PASS real QEMU DHCP DISCOVER/OFFER/REQUEST/ACK + guest IPv4 lease " + str(ip)
     raise ValueError("no correlated QEMU DHCP DORA RX/TX proof")
@@ -196,6 +207,13 @@ def self_test() -> None:
         (serial, [frames[0], frames[1], frames[2], frames[3], fake_dhcp(5, 7, mac, ip)]),
         (serial, [frames[0], frames[1], fake_dhcp(2, 9, mac, ip), frames[3], frames[4]]),
         (serial, [frames[0], frames[1], fake_dhcp(2, 1, bytes([2, 0, 0, 0, 0, 1]), ip), frames[3], frames[4]]),
+        # Keep valid DHCP payloads but tamper with Ethernet provenance.
+        (serial, frames[:4] + [frames[4][:6] + bytes.fromhex("020000000099") + frames[4][12:]]),
+        (serial, frames[:2] + [frames[2][:6] + bytes.fromhex("010000000099") + frames[2][12:]] + frames[3:]),
+        (serial, frames[:2] + [bytes.fromhex("020000000088") + frames[2][6:]] + frames[3:]),
+        (serial, frames[:4] + [bytes.fromhex("020000000088") + frames[4][6:]]),
+        (serial, frames[:1] + [bytes.fromhex("020000000088") + frames[1][6:]] + frames[2:]),
+        (serial, frames[:3] + [bytes.fromhex("020000000088") + frames[3][6:]] + frames[4:]),
     ]
     for bad_serial, bad_frames in negatives:
         try:
