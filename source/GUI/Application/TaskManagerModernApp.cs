@@ -263,6 +263,10 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleKeyboard(KeyEvent key)
         {
+            // A modified key belongs to the desktop/global shortcut layer.
+            // In particular Ctrl+Alt+Delete must never end the selected task.
+            if ((key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) != 0)
+                return;
             if (key.Key == ConsoleKeyEx.Escape)
             {
                 Close();
@@ -278,6 +282,10 @@ namespace ZonderqOS.GUI.Apps
                 return;
             if (key.Key == ConsoleKeyEx.UpArrow) Select(-1);
             else if (key.Key == ConsoleKeyEx.DownArrow) Select(1);
+            else if (key.Key == ConsoleKeyEx.PageUp) Select(-view.VisibleRows);
+            else if (key.Key == ConsoleKeyEx.PageDown) Select(view.VisibleRows);
+            else if (key.Key == ConsoleKeyEx.Home) SelectAbsolute(0);
+            else if (key.Key == ConsoleKeyEx.End) SelectAbsolute(visibleRows.Count - 1);
             else if (key.Key == ConsoleKeyEx.Delete) EndSelectedTask();
         }
 
@@ -296,9 +304,16 @@ namespace ZonderqOS.GUI.Apps
         {
             if (visibleRows.Count == 0)
                 return;
-            selectedIndex = selectedIndex < 0
+            SelectAbsolute(selectedIndex < 0
                 ? (delta >= 0 ? 0 : visibleRows.Count - 1)
-                : Math.Max(0, Math.Min(visibleRows.Count - 1, selectedIndex + delta));
+                : selectedIndex + delta);
+        }
+
+        private void SelectAbsolute(int index)
+        {
+            if (visibleRows.Count == 0)
+                return;
+            selectedIndex = Math.Max(0, Math.Min(visibleRows.Count - 1, index));
             EnsureSelectionVisible();
             status = visibleRows[selectedIndex].Name;
         }
