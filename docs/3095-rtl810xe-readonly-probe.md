@@ -16,6 +16,12 @@ reviewed. The diagnostic reads only BAR2 offsets `0x00..0x05` (MAC)
 via the stock Cosmos 3.0.95
 `DeviceBinding.MapRegisters(2)` and bounds-checked `RegisterWindow.Read8`.
 
+Both the raw PHYstatus byte and its decoded carrier/speed/duplex
+are emitted in the driver and kernel serial records. The log validator
+rejects mismatches between the raw PHY byte and the decoded state;
+these are still guest-reported observations, not an independent
+hardware trace.
+
 The read-only TxConfig XID is derived as `(TxConfig >> 20) & 0xFCF`,
 following Linux r8169. Only the reviewed RTL8105e and RTL8106e
 mask patterns are labelled; all other values are reported as `unknown`,
