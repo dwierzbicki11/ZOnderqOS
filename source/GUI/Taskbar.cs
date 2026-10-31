@@ -20,6 +20,7 @@ namespace ZonderqOS.GUI
         private int firstVisibleAppIndex;
         private Application lastActiveApplication;
         private int lastActiveRunningIndex = -1;
+        private int lastPageSlots = -1;
         private bool notificationHovered;
         private int cachedClockKey = -1;
         private int cachedDay = -1;
@@ -159,6 +160,26 @@ namespace ZonderqOS.GUI
             firstVisibleAppIndex = (firstVisibleAppIndex / pageSlots) * pageSlots;
         }
 
+        // Keep render and hit-testing on the same page. Resolution changes
+        // can reduce available slots without changing the active window.
+        // Manual paging stays put until focus, ordering or slot count changes.
+        private void SyncActivePage(List<Application> apps, Application activeApplication,
+            int runningCount, int pageSlots, bool overflow)
+        {
+            NormalizeAppPage(runningCount, pageSlots, overflow);
+            int activeRunningIndex = RunningIndexOf(apps, activeApplication);
+            if (activeApplication != lastActiveApplication ||
+                activeRunningIndex != lastActiveRunningIndex ||
+                pageSlots != lastPageSlots)
+            {
+                lastActiveApplication = activeApplication;
+                lastActiveRunningIndex = activeRunningIndex;
+                lastPageSlots = pageSlots;
+                if (overflow && pageSlots > 0 && activeRunningIndex >= 0)
+                    firstVisibleAppIndex = (activeRunningIndex / pageSlots) * pageSlots;
+            }
+        }
+
         private int OverflowButtonX(int pageSlots)
         {
             return StartButtonWidth + SidePadding + 6 + pageSlots * (AppButtonSize + AppButtonGap);
@@ -188,19 +209,7 @@ namespace ZonderqOS.GUI
             int runningCount = CountRunningApps(apps);
             bool overflow;
             int pageSlots = GetPageSlots(runningCount, out overflow);
-            NormalizeAppPage(runningCount, pageSlots, overflow);
-            int activeRunningIndex = RunningIndexOf(apps, activeApplication);
-            // A newly launched or Alt+Tab-selected window must be visible
-            // on the taskbar even when it lives on a later page. Manual
-            // paging does not snap back until focus or MRU order changes.
-            if (activeApplication != lastActiveApplication ||
-                activeRunningIndex != lastActiveRunningIndex)
-            {
-                lastActiveApplication = activeApplication;
-                lastActiveRunningIndex = activeRunningIndex;
-                if (overflow && pageSlots > 0 && activeRunningIndex >= 0)
-                    firstVisibleAppIndex = (activeRunningIndex / pageSlots) * pageSlots;
-            }
+            SyncActivePage(apps, activeApplication, runningCount, pageSlots, overflow);
             int runningIndex = 0;
             int shown = 0;
 
@@ -443,7 +452,7 @@ namespace ZonderqOS.GUI
             int runningCount = CountRunningApps(apps);
             bool overflow;
             int pageSlots = GetPageSlots(runningCount, out overflow);
-            NormalizeAppPage(runningCount, pageSlots, overflow);
+            SyncActivePage(apps, applicationManager.ActiveApplication, runningCount, pageSlots, overflow);
             int runningIndex = 0;
             int shown = 0;
 
