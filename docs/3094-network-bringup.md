@@ -88,7 +88,10 @@ still requires a separate validated implementation.
 The RTL810xE PCI diagnostic now resolves the MSI-X table and pending-bit
 array (PBA) offsets against assigned **memory** BAR metadata, if an MSI-X
 capability exists. It rejects I/O BARs, unassigned BARs, the upper DWORD of
-a 64-bit BAR and physical-address overflow. Malformed, unaligned PCI
+a 64-bit BAR, overflow of the **entire** table/PBA address ranges, and
+overlapping table/PBA ranges. The table spans `16 * vectors` bytes and the
+PBA spans `8 * ceil(vectors / 64)` bytes. A range ending exactly at the
+largest 64-bit address is allowed; one extending past it is rejected. Malformed, unaligned PCI
 capability pointers are rejected instead of silently rounded down.
 
 `MSI-X_MEMORY_BARS=VALID` means only that PCI config-space metadata
