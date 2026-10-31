@@ -128,3 +128,27 @@ not a direct proof that hardware IRQs fired; stock Cosmos may still poll.
 It remains an isolated QEMU-only diagnostic, never production GUI networking.
 
 **QEMU evidence (2026-10-31):** GitHub Actions run #41201638372 (https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41201638372) passed the N6 boot/PCAP step for the two-connection version at commit `df0612ff`. This is a QEMU result only; it does not establish E1000E IRQ delivery or physical Realtek functionality.
+
+## E1000E IRQ emission tracing (experimental, 2026-10-31)
+
+N6 CI now runs the isolated QEMU guest with `NET3095_IRQ_TRACE=1`.
+The smoke runner checks that QEMU exposes the three trace events
+`e1000e_irq_legacy_notify`, `e1000e_irq_msi_notify`, and
+`e1000e_irq_msix_notify_vec`, enables them and preserves their output in
+`network-n6-3095.serial.log.stderr` alongside the PCAP and guest serial log.
+
+`tests/verify_3095_e1000e_irq_trace.py` classifies real QEMU-side
+notifications as `EMITTED` or `NOT_OBSERVED`, with separate legacy/MSI/MSI-X
+counts. A zero count is **not** rewritten as PASS and does not invalidate
+the independently verified Ethernet/TCP tests. The optional
+`--require-notify` flag fails closed if no notification is recorded.
+The parser's `--self-test` uses synthetic fixtures and is **not**
+an emulator or guest test.
+
+**Crucial limitation:** QEMU raising a legacy interrupt or sending MSI/MSI-X
+does **not** prove that Cosmos 3.0.95 delivered it to a guest ISR, that
+the E1000E ISR ran, or that RX completed without polling. The next step
+requires independently observable guest-side IRQ counters or an explicitly
+IRQ-only RX test, before making any interrupt-driven-driver claim.
+Production networking remains disabled; no PCI/IRQ/DMA configuration is
+changed by this diagnostic trace.
