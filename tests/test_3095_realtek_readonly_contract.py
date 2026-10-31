@@ -16,6 +16,8 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
     def test_stock_and_disabled_by_default(self):
         self.assertIn('Sdk="Cosmos.Sdk/3.0.95"', PROJECT)
         self.assertIn('<CosmosEnableNetwork>false</CosmosEnableNetwork>', PROJECT)
+        self.assertNotIn('<CosmosEnableNetwork Condition="\'$(ZonderqRealtekReadOnlyMmio)\'', PROJECT)
+        self.assertIn("The read-only RTL probe needs PCI/DriverKit", PROJECT)
         self.assertIn(">false</ZonderqRealtekReadOnlyMmio>", PROJECT)
         self.assertIn("ZONDERQ_REALTEK_READONLY_MMIO", PROJECT)
         self.assertIn("[Driver(Default = false)]", DRIVER)

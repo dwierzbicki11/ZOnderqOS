@@ -45,7 +45,8 @@
     <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(ZonderqNetworkN2Dhcp)' == 'true' and '$(ZonderqNetworkN3Icmp)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N3_ICMP</DefineConstants>
     <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(ZonderqNetworkN2Dhcp)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N2_DHCP</DefineConstants>
     <CosmosEnableNetwork Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">true</CosmosEnableNetwork>
-    <CosmosEnableNetwork Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(CosmosArch)' == 'x64'">true</CosmosEnableNetwork>
+    <!-- The read-only RTL probe needs PCI/DriverKit, NOT NetworkManager.
+         Keep the shipped E1000E/virtio NIC drivers and their DMA disabled. -->
     <CosmosKernelClass Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(CosmosArch)' == 'x64'">ZonderqOS.NetworkRealtekReadOnlyKernel</CosmosKernelClass>
     <CosmosKernelClass Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">ZonderqOS.NetworkN1ProbeKernel</CosmosKernelClass>
     <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N1_PROBE</DefineConstants>

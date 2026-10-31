@@ -10,6 +10,10 @@ substitute for the original serial log in the automated validator.
 The normal disk-backed GUI and its FAT32 ZONDERQDATA policy are unchanged.
 No DHCP, frame TX/RX, DMA buffers, IRQ handler, filesystem mount or disk write
 is performed by this diagnostic. It does not publish an Ethernet interface.
+`CosmosEnableNetwork` remains **false** even for the RTL diagnostic:
+the explicit PCI DriverKit probe does not need NetworkManager, and the
+shipped E1000E/virtio network drivers are not activated. This avoids
+accidental NIC DMA or interrupt setup by an unrelated stock driver.
 
 ## Hardware scope
 
@@ -57,8 +61,10 @@ bash tools/build-cosmos-3095-local.sh network-rtl-screen
 
 The `network-rtl-screen` variant enables the Cosmos firmware-framebuffer
 text console but still runs **only** `NetworkRealtekReadOnlyKernel`.
-Storage, keyboard, USB, mouse, disk GUI, network TX/RX, DMA and IRQ
-remain disabled. This optional build may initialize a display driver and
+Storage, keyboard, USB, mouse, disk GUI and all Ethernet
+TX/RX/DMA/IRQ remain disabled. The optional graphics stack can still
+initialize a display device; do not interpret this as a guarantee of
+zero non-network MMIO or interrupts. This optional build may initialize a display driver and
 is **not yet proven to show a screen on the ASUS laptop**. The original
 UART-only ISO remains available for the minimal diagnostic path.
 

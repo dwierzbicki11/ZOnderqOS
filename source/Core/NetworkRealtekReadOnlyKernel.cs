@@ -38,7 +38,7 @@ namespace ZonderqOS
         {
             DiagnosticLog.WriteString("[NET3095-RTL810XE] BOOT read-only physical probe\n");
             Display("ZOnderqOS 3.0.95 / RTL810xE READ-ONLY");
-            Display("No disk mounts, TX/RX, DMA or IRQ.");
+            Display("No disks or Ethernet TX/RX/DMA/IRQ.");
             Display("Physical ASUS 10EC:8136 rev06 probe");
             if (Realtek810xEReadOnlyProbeDriver.ProbeOffers != 1 ||
                 Realtek810xEReadOnlyProbeDriver.SuccessfulSamples != 1)
