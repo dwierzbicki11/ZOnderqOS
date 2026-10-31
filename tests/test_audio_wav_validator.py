@@ -26,7 +26,7 @@ class WavValidatorTests(unittest.TestCase):
         data = bytearray()
         for i in range(rate * (silence_ms + ms) // 1000):
             playing = i >= rate * silence_ms // 1000
-            sample = (amplitude if ((i * frequency // rate) & 1) == 0 else -amplitude) if playing else 0
+            sample = (amplitude if ((i * frequency * 2 // rate) & 1) == 0 else -amplitude) if playing else 0
             if width == 2:
                 data.extend(struct.pack("<hh", sample, sample))
             else:
