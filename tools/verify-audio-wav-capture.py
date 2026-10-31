@@ -61,6 +61,16 @@ def inspect(path: Path):
     if not 400 <= hz <= 480:
         raise ValueError(f"captured signal has {hz:.1f}Hz, expected about 440Hz")
 
+    if channels == 2:
+        right_chunk = right[start:start + window_frames]
+        right_active = sum(abs(x) >= 256 for x in right_chunk)
+        if right_active * 100 < len(right_chunk) * 95:
+            raise ValueError("stereo right channel has no sustained 180 ms tone")
+        right_crossings = sum((a < 0) != (b < 0) for a, b in zip(right_chunk, right_chunk[1:]))
+        right_hz = right_crossings * rate / (2 * (len(right_chunk) - 1))
+        if not 400 <= right_hz <= 480:
+            raise ValueError(f"stereo right channel wrong pitch: {right_hz:.1f}Hz")
+
     return f"[AUDIO-WAV] PASS captured PCM: {rate}Hz {channels}ch, peak={peak}, tone={hz:.1f}Hz, frames={frames}"
 
 
