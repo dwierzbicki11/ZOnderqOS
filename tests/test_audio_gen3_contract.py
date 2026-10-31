@@ -136,9 +136,15 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("dataSize % sourceFrameBytes != 0", parser)
         self.assertIn("pcm.Length % FrameBytes != 0", parser)
         self.assertIn("rate != SampleRate && rate != 44100", parser)
-        self.assertIn("ResampleToStereo16(wave, dataOffset, dataSize, channels, sourceRate)", parser)
+        self.assertIn("ResampleToStereo16(wave, dataOffset, dataSize, channels, sourceRate, sourceBits)", parser)
         self.assertIn("targetFrames > SampleRate * MaxDurationSeconds", parser)
         self.assertIn("EncodeStereo16AtRate(byte[] pcm, int sampleRate)", parser)
+        self.assertIn("EncodePcm8AtRate(byte[] pcm, int sampleRate, int channels)", parser)
+        self.assertIn("(wave[offset] - 128) << 8", parser)
+        self.assertIn("PlayWave8TestTone()", runtime)
+        self.assertIn('if (command == "wav8")', kernel)
+        self.assertIn("--command wav8", workflow)
+        self.assertIn("990 if args.command == \"wav8\"", harness)
         reader = read("source/Core/AudioWaveInput.cs")
         self.assertIn("MaxFileBytes = 512 * 1024", reader)
         self.assertIn("ReadExact(input, wave, header.Length", reader)
@@ -163,7 +169,7 @@ class AudioGen3Contract(unittest.TestCase):
             self.assertNotIn(forbidden, gain)
 
         self.assertIn("--command wavtone", workflow)
-        self.assertIn('choices=("tone", "wavtone", "wavmono", "wav44")', harness)
+        self.assertIn('choices=("tone", "wavtone", "wavmono", "wav44", "wav8")', harness)
         for forbidden in ("System.IO", "File.", "Disk.", "TryMount(", "WriteBlock(",
                           "NetworkManager.", "PciSysfsProvider"):
             self.assertNotIn(forbidden, parser)
