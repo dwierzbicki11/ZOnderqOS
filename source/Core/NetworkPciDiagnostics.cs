@@ -100,9 +100,11 @@ namespace ZonderqOS.SystemCore
                             PciNicMsiXBarResolution msixBars;
                             if (PciSysfsProvider.TryResolveRealtekMsiXMemoryBars(d, out msixBars))
                                 Write("[NIC3094] MSI-X_MEMORY_BARS=VALID table_phys=0x" +
-                                    msixBars.TableAddress.ToString("X") + " pba_phys=0x" +
-                                    msixBars.PbaAddress.ToString("X") +
-                                    " (PCI metadata only; size/mapping/IRQ unverified)", shellOutput);
+                                    msixBars.TableAddress.ToString("X") +
+                                    " table_bytes=" + msixBars.TableBytes +
+                                    " pba_phys=0x" + msixBars.PbaAddress.ToString("X") +
+                                    " pba_bytes=" + msixBars.PbaBytes +
+                                    " (PCI metadata only; BAR aperture/mapping/IRQ unverified)", shellOutput);
                             else
                                 Write("[NIC3094] MSI-X_MEMORY_BARS=INVALID_OR_UNASSIGNED" +
                                     " (no MMIO access attempted)", shellOutput);
