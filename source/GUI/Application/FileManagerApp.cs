@@ -1035,12 +1035,18 @@ namespace ZonderqOS.GUI.Apps
 
         private void Filter()
         {
-            string filter = searchText.ToLowerInvariant();
-            for (int i = entries.Count - 1; i >= 0; i--)
+            // Compact matching entries in place. Repeated RemoveAt(i) shifts
+            // the remaining list on each miss (quadratic for large folders).
+            // IndexOf avoids allocating lowercase copies of every filename.
+            int write = 0;
+            for (int read = 0; read < entries.Count; read++)
             {
-                if (!entries[i].Name.ToLowerInvariant().Contains(filter))
-                    entries.RemoveAt(i);
+                FileEntry entry = entries[read];
+                if (entry.Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0)
+                    entries[write++] = entry;
             }
+            if (write < entries.Count)
+                entries.RemoveRange(write, entries.Count - write);
         }
 
         public string CurrentPath { get { return currentPath; } }
