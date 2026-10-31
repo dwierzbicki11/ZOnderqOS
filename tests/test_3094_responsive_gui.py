@@ -1624,6 +1624,9 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         # The modal branch must consume all keys before clipboard, search,
         # refresh and navigation dispatch. A modified Enter cannot create.
         self.assertLess(keyboard.index("if (contextMenuVisible)"), keyboard.index("bool control ="))
+        self.assertIn(
+            "bool control = (key.Modifiers & ConsoleModifiers.Control) != 0 &&\n"
+            "                (key.Modifiers & ConsoleModifiers.Alt) == 0;", keyboard)
         self.assertLess(keyboard.index("if (modified)\n                return;"),
                         keyboard.index("if (key.Key == ConsoleKeyEx.Backspace)", keyboard.index("bool control =")))
         for menu_open, modified, key in (
