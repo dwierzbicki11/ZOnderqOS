@@ -14,11 +14,27 @@ PREFIX = "[NET3095-RTL810XE]"
 MAC = r"([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})"
 DRIVER = re.compile(
     re.escape(PREFIX) + r" MMIO_SNAPSHOT=READ mac=" + MAC +
-    r" link=(up|down) speed=(0|10|100) duplex=(full|half|unknown)")
+    r" link=(up|down) speed=(0|10|100) duplex=(full|half|unknown)" +
+    r" txconfig=0x([0-9A-F]{8}) xid=0x([0-9A-F]{3})" +
+    r" variant=(RTL8106e|RTL8105e|unknown)(?=\\s|$)")
 KERNEL = re.compile(
     re.escape(PREFIX) + r" SNAPSHOT=PASS mac=" + MAC +
-    r" link=(up|down) speed=(0|10|100)(?=\s|$)")
+    r" link=(up|down) speed=(0|10|100)" +
+    r" txconfig=0x([0-9A-F]{8}) xid=0x([0-9A-F]{3})" +
+    r" variant=(RTL8106e|RTL8105e|unknown)(?=\\s|$)")
 HEARTBEAT = re.compile(re.escape(PREFIX) + r" HEARTBEAT=(\d+)")
+
+
+def decode_xid(raw_txconfig: str) -> tuple[int, str]:
+    """Linux r8169-style conservative XID classification, not a DMA approval."""
+    xid = (int(raw_txconfig, 16) >> 20) & 0xFCF
+    if (xid & 0x7C8) == 0x448:
+        variant = "RTL8106e"
+    elif (xid & 0x7CF) == 0x409 or (xid & 0x7C8) == 0x408:
+        variant = "RTL8105e"
+    else:
+        variant = "unknown"
+    return xid, variant
 
 
 def validate(log: str) -> str:
@@ -50,6 +66,12 @@ def validate(log: str) -> str:
     mac_bytes = bytes.fromhex(d.group(1).replace(":", ""))
     if mac_bytes[0] & 1 or not any(mac_bytes):
         raise ValueError("invalid unicast station address")
+    if (d.group(5), d.group(6), d.group(7)) != (
+        k.group(4), k.group(5), k.group(6)):
+        raise ValueError("driver and kernel TxConfig/XID/variant disagree")
+    expected_xid, expected_variant = decode_xid(d.group(5))
+    if int(d.group(6), 16) != expected_xid or d.group(7) != expected_variant:
+        raise ValueError("TxConfig XID or chip family contradicts raw register value")
     if d.group(2) == "down" and (d.group(3) != "0" or d.group(4) != "unknown"):
         raise ValueError("link-down snapshot invented speed or duplex")
     if d.group(2) == "up" and (d.group(3) == "0" or d.group(4) == "unknown"):
@@ -61,6 +83,7 @@ def validate(log: str) -> str:
         raise ValueError("non-monotonic heartbeat sequence")
     return (f"{PREFIX}-LOG-GATE PASS physical serial report "
             f"mac={d.group(1).upper()} link={d.group(2)} speed={d.group(3)} "
+            f"xid=0x{expected_xid:03X} variant={expected_variant} "
             "(no independent MMIO trace, no TX/RX/DMA/IRQ proof)")
 
 
@@ -68,9 +91,11 @@ def self_test() -> None:
     sample = (
         "[Drivers] pci:0000:02:00.2 RTL810xEReadOnlyProbe: " +
         PREFIX + " MMIO_SNAPSHOT=READ mac=02:11:22:33:44:55 link=up speed=100 "
-        "duplex=full (read-only, no TX/RX/DMA/IRQ)\n" +
+        "duplex=full txconfig=0x44800000 xid=0x448 variant=RTL8106e "
+        "(read-only, no TX/RX/DMA/IRQ)\n" +
         PREFIX + " BOOT read-only physical probe\n" +
         PREFIX + " SNAPSHOT=PASS mac=02:11:22:33:44:55 link=up speed=100 "
+        "txconfig=0x44800000 xid=0x448 variant=RTL8106e "
         "(register read only; TX/RX/DMA/IRQ not tested)\n" +
         PREFIX + " HEARTBEAT=1\n" + PREFIX + " HEARTBEAT=2\n"
     )
@@ -80,8 +105,19 @@ def self_test() -> None:
     link_down = link_down.replace("link=up speed=100 (register",
                                   "link=down speed=0 (register")
     assert "PASS" in validate(link_down)
+    rtl8105 = sample.replace("0x44800000 xid=0x448 variant=RTL8106e",
+                             "0x40900000 xid=0x409 variant=RTL8105e")
+    assert "PASS" in validate(rtl8105)
+    unknown = sample.replace("0x44800000 xid=0x448 variant=RTL8106e",
+                             "0x12300000 xid=0x103 variant=unknown")
+    assert "PASS" in validate(unknown)
     negatives = [
         sample.replace("MMIO_SNAPSHOT=READ", "MMIO_SNAPSHOT=FAKE"),
+        sample.replace("0x44800000", "0x40900000", 1),
+        sample.replace("xid=0x448", "xid=0x409"),
+        sample.replace("variant=RTL8106e", "variant=RTL8105e"),
+        sample.replace("xid=0x448", "xid=0x409", 1),
+        sample.replace("variant=RTL8106e", "variant=unknown", 1),
         sample.replace("SNAPSHOT=PASS", "SNAPSHOT=FAKE"),
         sample.replace("link=up speed=100 (register", "link=down speed=0 (register"),
         sample.replace("HEARTBEAT=2", "HEARTBEAT=4"),
