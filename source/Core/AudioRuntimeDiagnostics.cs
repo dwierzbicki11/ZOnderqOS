@@ -193,6 +193,36 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
+        /// Independent signed PCM32 mono WAV -> PCM16 stereo -> stock HDA.
+        /// The 2200 Hz fixture is generated entirely in RAM; no disk access.
+        /// </summary>
+        public static bool PlayWave32TestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 2200, 250, 4096);
+                byte[] mono32 = new byte[source.Length];
+                for (int i = 0; i < mono32.Length / 4; i++)
+                {
+                    int at = i * 4;
+                    mono32[at] = 0;
+                    mono32[at + 1] = 0;
+                    mono32[at + 2] = source[at];
+                    mono32[at + 3] = source[at + 1];
+                }
+                byte[] wave = AudioWavePcm.EncodePcm32AtRate(mono32, 48000, 1);
+                Console.WriteLine("[AUDIO] WAV signed PCM32 mono -> 48000Hz signed PCM16 stereo");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV PCM32 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Caller owns the stream and is responsible for obtaining it from an
         /// explicitly authorized read-only source. No filesystem is opened here.
         /// The bounded loader rejects oversized, truncated and malformed WAVs.
