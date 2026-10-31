@@ -388,7 +388,7 @@ class FramebufferProbeTests(unittest.TestCase):
         self.assertIn('".filemanager-drag-restored.ppm"', source)
         self.assertIn('difference(drag_before, drag_moved)', source)
         self.assertIn('difference(drag_before, drag_restored)', source)
-        self.assertIn('if fraction < 0.03:', source)
+        self.assertIn('if fraction < 0.02:', source)
         self.assertIn('if fraction > 0.10:', source)
         self.assertLess(source.index('drag_mouse_relative(channel, 48, 28)'),
                         source.index('drag_mouse_relative(channel, -48, -28)'))
