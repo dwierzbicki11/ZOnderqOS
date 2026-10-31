@@ -29,7 +29,7 @@ def serve(port: int = PORT) -> None:
         listener.listen(2)
         listener.settimeout(40)
         print(f"[NET3095-N6-HOST] READY port={port}", flush=True)
-        for attempt in range(1, 4):
+        for attempt in range(1, 7):
             connection, _peer = listener.accept()
             with connection:
                 connection.settimeout(8)
@@ -50,7 +50,11 @@ def serve(port: int = PORT) -> None:
                 for start in range(boundary, len(RESPONSE), 1024):
                     time.sleep(0.1)
                     connection.sendall(RESPONSE[start:start + 1024])
-                print("[NET3095-N6-HOST] " + ("PASS" if attempt == 1 else "REPEAT_PASS" if attempt == 2 else "POST_BURST_PASS") + " HTTP/1.0 GET /health 200 split=6 body=4116", flush=True)
+                label = ("PASS" if attempt == 1 else "REPEAT_PASS" if attempt == 2 else
+                         "POST_BURST_PASS" if attempt == 3 else
+                         f"POST_BURST_REPEAT_PASS attempt={attempt}")
+                print("[NET3095-N6-HOST] " + label +
+                      " HTTP/1.0 GET /health 200 split=6 body=4116", flush=True)
     
 
 def self_test() -> None:
@@ -81,7 +85,7 @@ def self_test() -> None:
                 time.sleep(0.02)
         if connection is None:
             raise AssertionError("HTTP listener did not become ready")
-        for request_index in range(3):
+        for request_index in range(6):
             if request_index:
                 connection = socket.create_connection(("127.0.0.1", port), timeout=1)
             with connection:
@@ -98,7 +102,7 @@ def self_test() -> None:
         worker.join(timeout=5)
         if worker.is_alive() or errors:
             raise AssertionError(f"HTTP server failed on attempt {attempt + 1}: {errors}")
-    print("[NET3095-N6-HOST-CONTRACT] PASS three independent HTTP connections per server and sequential rebind")
+    print("[NET3095-N6-HOST-CONTRACT] PASS six independent HTTP connections per server and sequential rebind")
 
 
 if __name__ == "__main__":
