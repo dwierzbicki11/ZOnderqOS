@@ -324,8 +324,15 @@ def self_test() -> None:
         (serial, base + handshake + request + [fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE, port=18097)]),
         (serial, base + handshake + [fake_http(False, 0x18, 10001, 20001, REQUEST.replace(b"/health", b"/healthz"))] + response),
     ]
+    # Missing the second connection must fail even if the guest prints both
+    # success markers. Do not accidentally append the second fixture here.
+    try:
+        validate(serial, synthetic_capture(base + handshake + request + response + teardown))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted missing second HTTP TCP connection")
     negatives.extend([
-        (serial, base + handshake + request + response + teardown),  # second connection absent
         (serial.replace(HTTP_REPEAT_PASS, ""), frames),
         (serial + "\n" + HTTP_REPEAT_PASS, frames),
         (serial.replace(HTTP_REPEAT_PASS, "").replace(HTTP_PASS, HTTP_REPEAT_PASS), frames),
