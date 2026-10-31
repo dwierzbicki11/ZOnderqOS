@@ -64,6 +64,11 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
         self.assertIn('"${FIRMWARE_ARGS[@]}" "${VIDEO_ARGS[@]}"', smoke)
         self.assertIn('VIDEO_ARGS=(-vga none -device VGA,edid=on,xres=1366,yres=768)', smoke)
         self.assertIn('VIDEO_ARGS=(-vga none -device virtio-vga,edid=on,xres=1366,yres=768)', smoke)
+        # The final shutdown screenshot must use the same 1366-width
+        # scanline-padding decoder as the live File Manager/Task Manager.
+        self.assertIn('spec_from_file_location("qmp_gui_filemanager", sys.argv[3])', smoke)
+        self.assertIn('width, height, pixels = probe.read_ppm(sys.argv[1])', smoke)
+        self.assertNotIn('if len(pixels) != width * height * 3:', smoke)
         self.assertIn('[[ "$FIRMWARE" == ovmf && "$EXPECTED_FRAMEBUFFER" == 1366x768 ]]', smoke)
         self.assertIn("mtools ovmf", hd)
         self.assertIn("SERVICE_QEMU_FIRMWARE: 'ovmf'", hd)
