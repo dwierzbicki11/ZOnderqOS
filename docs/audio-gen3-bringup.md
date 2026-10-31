@@ -29,9 +29,27 @@ This boots **one BSP CPU**, no virtual NIC and no host data disk. QEMU adds `int
 audiodiag
 audioinfo
 tone
+wavtone
 ```
 
 `audiodiag` reports PCI configuration-space discovery only. `audioinfo` should list the output `hda` from `HdAudioDriver` if it bound successfully. `tone` submits a 250 ms, 440 Hz, 48 kHz, signed 16-bit stereo square wave through `AudioManager.Play` and reports `ACCEPTED_AND_DRAINED` only if the stock audio player returned true. This is **not** proof that any human heard sound.
+
+The additional `wavtone` command constructs a canonical RIFF/WAVE container in
+**guest RAM**, validates and decodes it with `AudioWavePcm.DecodeStereo16`,
+then submits the decoded 48 kHz PCM16 stereo frames to the same stock HDA
+path as `tone`. This tests the actual WAV parser-to-playback path without
+opening any disk. It is **not** a file-browser WAV player yet.
+
+The parser currently accepts only uncompressed PCM, 48 kHz, 16-bit stereo,
+with a maximum of two seconds (384,000 PCM bytes). It checks RIFF and chunk
+bounds, fmt consistency, data alignment, duplicate chunks and odd-sized
+metadata padding. Unsupported rates and formats fail explicitly; no hidden
+resampling, DMA, filesystem access or production GUI activation occurs.
+
+The CI audio-QEMU workflow boots the ISO **twice**: once for `tone` and once
+for `wavtone`, each with a fresh QEMU process and a separate WAV capture.
+Both must pass the non-silent pitch validator. The WAV fixture is generated
+in memory; this does not prove arbitrary external WAV files work.
 
 After stopping QEMU and allowing it to close the WAV header, check the actual samples:
 
@@ -49,6 +67,6 @@ The QEMU WAV backend and `hda-duplex,audiodev=audio0` device syntax are document
 2. **Host C#:** `dotnet run --project tests/AudioPciSmoke/AudioPciSmoke.csproj -c Release` compiles the *real* inventory class with a fake PCI provider and exercises classification and failure handling. This does not touch hardware.
 3. **Synthetic WAV:** `python3 tests/test_audio_wav_validator.py` tests the WAV validator with generated 440 Hz, silence, wrong pitch, short and unsupported-format fixtures.
 4. **Real ISO/QEMU:** compile and boot the audio ISO, inspect serial and screen output, run `tone`, and verify QEMU's actual captured WAV. Do not claim this tier passed from host tests alone.
-5. **Later:** test real hardware codec/output path; only after proven playback consider guarded WAV-file access, volume/sample scaling, GUI sounds and production opt-in.
+5. **Next:** verify the separate `wavtone` QEMU capture, then add guarded read-only external WAV access and explicit sample scaling/volume tests. Physical codec/output and GUI sounds remain later milestones; production audio stays off.
 
 Do not enable AC97, SMP/SMT or network in this audio branch. Never use a real host disk as a test target.
