@@ -491,13 +491,23 @@ namespace ZonderqOS.GUI.Apps
             // Only navigate away once the filesystem was actually detached.
             if (viewingVolume)
             {
-                currentPath = "/root";
+                // /root is not guaranteed to exist on every disk-backed boot.
+                // Do not leave a stale listing from a detached FAT32 volume.
+                currentPath = Directory.Exists("/root") ? "/root" : "/";
                 searchText = "";
             }
 
-            status = "Unmounted Partition " + entry.PartitionIndex;
+            string unmountStatus = "Unmounted Partition " + entry.PartitionIndex;
+            status = unmountStatus;
             RebuildSidebar();
-            RefreshKeepStatus();
+            if (!RefreshInternal(unmountStatus) && viewingVolume && currentPath != "/")
+            {
+                // A disappearing home directory must not strand the file
+                // manager on a detached volume. Root is the safe fallback;
+                // never attempt to remount or write to the removed device.
+                currentPath = "/";
+                RefreshInternal(unmountStatus);
+            }
         }
 
         private static bool IsInsidePath(string path, string root)
