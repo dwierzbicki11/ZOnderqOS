@@ -939,7 +939,14 @@ namespace ZonderqOS.GUI
             else if (desktopContextMenu != null && desktopContextMenu.Visible)
                 desktopContextMenu.Visible = false;
             else
-                applicationManager?.RequestCloseActiveWindow();
+            {
+                // The File Manager owns its create-name dialog and context
+                // menu. Alt+F4 dismisses that transient UI first; only the
+                // next Alt+F4 requests the application's normal close action.
+                FileManagerApp fileManager = applicationManager?.ActiveApplication as FileManagerApp;
+                if (fileManager == null || !fileManager.DismissTransientUi())
+                    applicationManager?.RequestCloseActiveWindow();
+            }
 
             return true;
         }
