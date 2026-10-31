@@ -27,6 +27,12 @@ START = "[NET3095-N6] POST_BURST_HTTP_ATTEMPT=START"
 PASS = f"[NET3095-N6] POST_BURST_HTTP=PASS from=10.0.2.2 port={PORT} bytes={len(RESPONSE)}"
 LINK = re.compile(r"^\[NET3095-N6\] POST_STRESS_LINK=PASS mac=([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})$")
 
+REPEATS = tuple(
+    f"[NET3095-N6] POST_BURST_HTTP_REPEAT=PASS attempt={attempt} "
+    f"from=10.0.2.2 port={PORT} bytes={len(RESPONSE)}"
+    for attempt in range(4, 7)
+)
+
 
 def check_link_markers(serial: str) -> None:
     lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
@@ -34,8 +40,11 @@ def check_link_markers(serial: str) -> None:
     link = [match for line in lines if (match := LINK.fullmatch(line))]
     if len(guest) != 1 or len(link) != 1:
         raise ValueError("missing or duplicate guest NIC/post-stress link marker")
-    if not (lines.index(PASS) < lines.index(link[0].group(0))):
-        raise ValueError("post-stress link marker preceded HTTP RX completion")
+    if any(lines.count(marker) != 1 for marker in REPEATS):
+        raise ValueError("missing or duplicate post-burst repeat HTTP marker")
+    markers = (PASS,) + REPEATS + (link[0].group(0),)
+    if [lines.index(marker) for marker in markers] != sorted(lines.index(marker) for marker in markers):
+        raise ValueError("post-stress link marker preceded complete repeated HTTP RX")
     if guest[0].group(1).upper() != link[0].group(1).upper():
         raise ValueError("post-stress NIC MAC differs from original E1000E")
 
@@ -54,6 +63,31 @@ def check_third_http(frames: list[bytes], guest: bytes, last_icmp: int,
         raise ValueError("third HTTP exchange after post-burst ICMP incomplete")
     if third[0] in prior_ports:
         raise ValueError("third HTTP TCP source port reused earlier connection")
+
+
+def check_followup_http(frames: list[bytes], guest: bytes, last_icmp: int,
+                        prior_ports: tuple[int, ...]) -> None:
+    """Prove four unique complete post-burst TCP streams in PCAP order.
+
+    A guest serial PASS alone cannot satisfy this check. Each session must
+    contain the exact response, TCP handshake, segmented RX and peer FIN/ACK.
+    """
+    entries = [(index, packet) for index, frame in enumerate(frames)
+               if (packet := tcp_frame(frame))]
+    packets = [packet for _, packet in entries]
+    used_ports = set(prior_ports)
+    last_frame = last_icmp
+    for attempt in range(3, 7):
+        start = next((i for i, (index, _) in enumerate(entries)
+                      if index > last_frame), len(entries))
+        transaction = find_http_transaction(packets, guest, start, None)
+        if transaction is None:
+            raise ValueError(f"post-burst HTTP session {attempt} incomplete")
+        port, finish = transaction
+        if port in used_ports:
+            raise ValueError(f"post-burst HTTP session {attempt} reused a TCP source port")
+        used_ports.add(port)
+        last_frame = entries[finish][0]
 
 
 def validate(serial: str, pcap: bytes) -> str:
@@ -87,9 +121,9 @@ def validate(serial: str, pcap: bytes) -> str:
     second = find_http_transaction(packets, guest, first[1] + 1, first[0])
     if second is None:
         raise ValueError("missing second HTTP session")
-    check_third_http(frames, guest, last_icmp, (first[0], second[0]))
-    return ("[NET3095-N6-POST-HTTP-GATE] PASS third independent QEMU HTTP "
-            "TCP RX/FIN-ACK after 128 TX frames and four ICMP replies; ISR UNPROVEN")
+    check_followup_http(frames, guest, last_icmp, (first[0], second[0]))
+    return ("[NET3095-N6-POST-HTTP-GATE] PASS four independent QEMU HTTP "
+            "TCP RX/FIN-ACK sessions after 128 TX frames and four ICMP replies; ISR UNPROVEN")
 
 
 def self_test() -> None:
@@ -122,6 +156,7 @@ def self_test() -> None:
     serial = "\n".join((
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
         PASS,
+        *REPEATS,
         "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
     ))
     check_link_markers(serial)
@@ -130,6 +165,9 @@ def self_test() -> None:
         serial.replace("POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
                        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:57"),
         serial + "\n[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
+        serial.replace(REPEATS[0], REPEATS[1]),
+        serial.replace(REPEATS[1], ""),
+        serial.replace(REPEATS[2], REPEATS[0]),
         "\n".join(reversed(serial.splitlines())),
     ):
         try:
