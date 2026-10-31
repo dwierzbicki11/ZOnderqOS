@@ -25,6 +25,12 @@ def validate(log: str) -> str:
     lines = log.replace("\r", "").splitlines()
     if any(PREFIX + "[FAIL]" in line for line in lines):
         raise ValueError("guest explicitly rejected the MMIO snapshot")
+    # A serial log that also records a kernel fault cannot establish a
+    # healthy hardware probe, even when earlier markers look successful.
+    fatal = re.compile(r"kernel panic|fatal: exception|page fault|unhandled exception|triple fault",
+                       re.IGNORECASE)
+    if any(fatal.search(line) for line in lines):
+        raise ValueError("guest fault recorded in serial log")
     driver = [(i, m) for i, line in enumerate(lines)
               if (m := DRIVER.search(line))]
     kernel = [(i, m) for i, line in enumerate(lines)
@@ -83,6 +89,9 @@ def self_test() -> None:
         sample.replace("HEARTBEAT=2\n", ""),
         sample.replace("02:11:22:33:44:55", "FF:FF:FF:FF:FF:FF"),
         sample + PREFIX + "[FAIL] unexpected\n",
+        sample + "kernel panic: synthetic fault\n",
+        sample + "FATAL: Exception 14 (synthetic)\n",
+        sample + "unhandled exception: synthetic\n",
         sample + sample,
     ]
     for bad in negatives:
