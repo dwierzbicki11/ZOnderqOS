@@ -125,9 +125,30 @@ def read_ppm(path):
         if image.readline().strip() != b"255":
             raise ValueError("unexpected PPM depth")
         pixels = image.read()
-    if width <= 0 or height <= 0 or len(pixels) != width * height * 3:
+    if width <= 0 or height <= 0:
+        raise ValueError("invalid framebuffer dimensions: " + path)
+
+    packed_row = width * 3
+    packed_size = packed_row * height
+    if len(pixels) == packed_size:
+        return width, height, pixels
+
+    # QEMU's virtio-vga screendump can emit 4-byte-aligned P6 scanlines.
+    # Real 1366x768 captures have 4098 RGB bytes + two ZERO padding bytes
+    # per row: the header is 1366x768, but the payload is 3,148,800 bytes.
+    # Accept only that exact stride, remove padding before pixel comparisons,
+    # and continue rejecting truncated or arbitrary trailing image data.
+    stride = (packed_row + 3) & ~3
+    if stride == packed_row or len(pixels) != stride * height:
         raise ValueError("incomplete framebuffer: " + path)
-    return width, height, pixels
+    unpacked = bytearray(packed_size)
+    for row in range(height):
+        source = row * stride
+        target = row * packed_row
+        if any(pixels[source + packed_row:source + stride]):
+            raise ValueError("nonzero QMP framebuffer row padding: " + path)
+        unpacked[target:target + packed_row] = pixels[source:source + packed_row]
+    return width, height, bytes(unpacked)
 
 
 def difference(first, second, upper_only=False):
