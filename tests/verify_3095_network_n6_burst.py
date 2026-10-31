@@ -14,6 +14,7 @@ import struct
 
 from verify_3095_network_n1 import BROADCAST, ETHER_TYPE, pcap_frames
 from verify_3095_network_n2 import LEASE, MAC, SERVER, synthetic_capture
+from verify_3095_network_n3 import internet_checksum
 from verify_3095_network_n4 import tcp_frame
 from verify_3095_network_n6 import (
     HTTP_REPEAT_PASS, find_http_transaction, validate as validate_n6,
@@ -83,17 +84,6 @@ def check_frames(pcap: bytes, after_index: int = -1) -> int:
     if seen != COUNT:
         raise ValueError(f"incomplete E1000E TX burst: {seen}/{COUNT} frames")
     return last_index
-
-
-def internet_checksum(data: bytes) -> int:
-    """RFC 1071 one's-complement checksum; zero means a valid wire header."""
-    if len(data) & 1:
-        data += b"\x00"
-    total = sum(int.from_bytes(data[i:i + 2], "big")
-                for i in range(0, len(data), 2))
-    while total > 0xFFFF:
-        total = (total & 0xFFFF) + (total >> 16)
-    return (~total) & 0xFFFF
 
 
 def post_burst_icmp(frame: bytes):
@@ -180,7 +170,6 @@ def self_test() -> None:
         # A real Cosmos SendEcho transmits a 32-byte challenge payload.
         # Build valid IPv4 and ICMP checksums rather than accepting
         # synthetic zero-checksum headers as wire evidence.
-        packet.extend(bytes(range(32)))
         packet[16:18] = (60).to_bytes(2, "big")
         packet[38:40] = (0x3096).to_bytes(2, "big")
         packet[24:26] = b"\x00\x00"
