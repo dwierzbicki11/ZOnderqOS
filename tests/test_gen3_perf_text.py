@@ -59,6 +59,15 @@ class Gen3TextRendererPerformanceContracts(unittest.TestCase):
         self.assertGreater(old, 0)
         self.assertLess(new, old * 0.8)
 
+    def test_ascii_glyph_cache_uses_same_original_decoder(self):
+        self.assertIn("private static readonly byte[] CachedAsciiGlyphRows = BuildAsciiGlyphRows();", SOURCE)
+        self.assertIn("byte[] rows = new byte[128 * 7];", SOURCE)
+        self.assertIn("rows[offset + row] = (byte)Glyph((char)ch, row);", SOURCE)
+        self.assertIn("int glyphOffset = ch < 128 ? ch * 7 : -1;", SOURCE)
+        self.assertIn("CachedAsciiGlyphRows[glyphOffset + row]", SOURCE)
+        self.assertIn(": Glyph(ch, row);", SOURCE)
+        self.assertIn("ch = NormalizeGlyph(ch);", SOURCE)
+
     def test_span_renderer_is_used(self):
         self.assertIn("int runStart = col++;", SOURCE)
         self.assertIn("while (col < 5 && (bits & (1 << (4 - col))) != 0)", SOURCE)

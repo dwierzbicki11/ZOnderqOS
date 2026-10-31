@@ -6,6 +6,23 @@ namespace ZonderqOS.GUI
 {
     public static class SmallTextRenderer
     {
+        // Fixed 128 x 7 byte lookup: avoid parsing string glyph patterns and
+        // repeating the 64-way switch for every rendered character in each frame.
+        // Built once; non-ASCII characters still use the original fallback.
+        private static readonly byte[] CachedAsciiGlyphRows = BuildAsciiGlyphRows();
+
+        private static byte[] BuildAsciiGlyphRows()
+        {
+            byte[] rows = new byte[128 * 7];
+            for (int ch = 0; ch < 128; ch++)
+            {
+                int offset = ch * 7;
+                for (int row = 0; row < 7; row++)
+                    rows[offset + row] = (byte)Glyph((char)ch, row);
+            }
+            return rows;
+        }
+
         public static int Width(string text)
         {
             return string.IsNullOrEmpty(text) ? 0 : text.Length * 6 - 1;
@@ -156,9 +173,12 @@ namespace ZonderqOS.GUI
         private static void DrawChar(Canvas canvas, char ch, int x, int y, Color color)
         {
             ch = NormalizeGlyph(ch);
+            int glyphOffset = ch < 128 ? ch * 7 : -1;
             for (int row = 0; row < 7; row++)
             {
-                int bits = Glyph(ch, row);
+                int bits = glyphOffset >= 0
+                    ? CachedAsciiGlyphRows[glyphOffset + row]
+                    : Glyph(ch, row);
                 // One Canvas call per horizontal span instead of per lit pixel.
                 // Adjacent pixels have identical color, so the 5x7 bitmap is unchanged.
                 for (int col = 0; col < 5;)
