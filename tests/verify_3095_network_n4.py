@@ -73,7 +73,7 @@ def validate(serial: str, pcap: bytes) -> str:
         if not (
             syn["src"] == guest and syn["dst"] == SERVER and
             syn["src_mac"] == MAC and syn["dport"] == PORT and syn["sport"] != 0 and
-            (syn["flags"] & 0x12) == 0x02 and not syn["payload"]
+            (syn["flags"] & 0x17) == 0x02 and not syn["payload"]
         ):
             continue
         sport = syn["sport"]
@@ -84,8 +84,8 @@ def validate(serial: str, pcap: bytes) -> str:
                 synack["dst_mac"] == MAC and synack["src_mac"] != MAC and
                 syn["dst_mac"] == synack["src_mac"] and
                 synack["sport"] == PORT and synack["dport"] == sport and
-                (synack["flags"] & 0x12) == 0x12 and
-                synack["ack"] == (syn["seq"] + 1) & 0xFFFFFFFF
+                (synack["flags"] & 0x17) == 0x12 and
+                not synack["payload"] and synack["ack"] == (syn["seq"] + 1) & 0xFFFFFFFF
             ):
                 continue
             peer_mac = synack["src_mac"]
@@ -185,6 +185,9 @@ def self_test() -> None:
 
     negatives = [
         (serial, frames[:7] + [corrupt_mac(frames[7], 0)] + frames[8:]),
+        (serial, frames[:7] + [fake_tcp(False, 0x06, 1000, 0)] + frames[8:]),  # SYN|RST
+        (serial, frames[:8] + [fake_tcp(True, 0x16, 5000, 1001)] + frames[9:]),  # SYN|ACK|RST
+        (serial, frames[:8] + [fake_tcp(True, 0x12, 5000, 1001, b"BAD")] + frames[9:]),
         (serial, frames[:8] + [corrupt_mac(frames[8], 6)] + frames[9:]),
         (serial, frames[:9] + [corrupt_mac(frames[9], 0)] + frames[10:]),
         (serial, frames[:10] + [corrupt_mac(frames[10], 0)] + frames[11:]),
