@@ -79,6 +79,32 @@ class EvidenceSafety(unittest.TestCase):
                     self.assertEqual(targets[case].read_text(), "KEEP")
                 self.assertFalse(qemu_called.exists(), "fake QEMU was invoked")
 
+    def test_irq_trace_rejects_unsupported_modes_before_qemu(self):
+        for flag, mode in (("1", "n1"), ("2", "n6"), ("garbage", "n6")):
+            with self.subTest(flag=flag, mode=mode), tempfile.TemporaryDirectory() as root:
+                directory = Path(root)
+                fake_bin = directory / "bin"
+                fake_bin.mkdir()
+                called = directory / "qemu-called"
+                fake_qemu = fake_bin / "qemu-system-x86_64"
+                fake_qemu.write_text("#!/bin/sh\\ntouch '" + str(called) + "'\\nexit 99\\n")
+                fake_qemu.chmod(0o755)
+                iso = directory / "test.iso"
+                iso.write_bytes(b"isolated dummy ISO")
+                env = dict(os.environ)
+                env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
+                env["NET3095_IRQ_TRACE"] = flag
+                run = subprocess.run(
+                    ["bash", str(SMOKE), str(iso), str(directory / "probe.log"), mode],
+                    cwd=directory, env=env, capture_output=True, text=True,
+                    timeout=10, check=False,
+                )
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn("IRQ trace diagnostics require isolated n6 mode"
+                              if flag == "1" else "NET3095_IRQ_TRACE must be 0 or 1",
+                              run.stderr)
+                self.assertFalse(called.exists(), "fake QEMU was invoked")
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
