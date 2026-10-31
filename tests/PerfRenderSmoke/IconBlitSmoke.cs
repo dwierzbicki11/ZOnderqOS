@@ -9,10 +9,15 @@ using ZonderqOS.GUI.Icons;
 // No fake success markers: the same C# Blit body used by the kernel executes.
 internal static class IconBlitSmoke
 {
-    private static readonly Action<Canvas, int[], int, int, int, int, bool> ProductionBlit =
-        (Action<Canvas, int[], int, int, int, int, bool>)typeof(IconManager)
-            .GetMethod("Blit", BindingFlags.Static | BindingFlags.NonPublic)
-            .CreateDelegate(typeof(Action<Canvas, int[], int, int, int, int, bool>));
+    private static readonly Action<Canvas, int[], int, int, int, int> ProductionPoints =
+        (Action<Canvas, int[], int, int, int, int>)typeof(IconManager)
+            .GetMethod("BlitPoints", BindingFlags.Static | BindingFlags.NonPublic)
+            .CreateDelegate(typeof(Action<Canvas, int[], int, int, int, int>));
+    private static readonly Action<Canvas, int[], int, int, int, int> ProductionRuns =
+        (Action<Canvas, int[], int, int, int, int>)typeof(IconManager)
+            .GetMethod("BlitRuns", BindingFlags.Static | BindingFlags.NonPublic)
+            .CreateDelegate(typeof(Action<Canvas, int[], int, int, int, int>));
+    private static readonly Action<Canvas, int[], int, int, int, int> Baseline = BaselineBlit;
 
     private static readonly Func<int[], int, int, bool> Classify =
         (Func<int[], int, int, bool>)typeof(IconManager)
@@ -68,7 +73,10 @@ internal static class IconBlitSmoke
         Canvas baseline = new Canvas(64, 64);
         Canvas current = new Canvas(64, 64);
         BaselineBlit(baseline, pixels, 48, 48, x, y);
-        ProductionBlit(current, pixels, 48, 48, x, y, Classify(pixels, 48, 48));
+        if (Classify(pixels, 48, 48))
+            ProductionRuns(current, pixels, 48, 48, x, y);
+        else
+            ProductionPoints(current, pixels, 48, 48, x, y);
         if (baseline.DrawCalls < current.DrawCalls)
             throw new Exception("Icon Blit increased Canvas calls: " + pattern + " at " + x + "," + y);
         for (int i = 0; i < baseline.Pixels.Length; i++)
@@ -80,13 +88,14 @@ internal static class IconBlitSmoke
 
     private static double Time(Canvas canvas, int[] pixels, bool optimized, int iterations)
     {
-        bool useRuns = Classify(pixels, 48, 48); // cached before timed loop
+        // Both paths use delegates, and classification is outside timing.
+        // This compares actual production methods, not a reflection wrapper.
+        Action<Canvas, int[], int, int, int, int> draw = optimized
+            ? (Classify(pixels, 48, 48) ? ProductionRuns : ProductionPoints)
+            : Baseline;
         long start = Stopwatch.GetTimestamp();
         for (int i = 0; i < iterations; i++)
-        {
-            if (optimized) ProductionBlit(canvas, pixels, 48, 48, 0, 0, useRuns);
-            else BaselineBlit(canvas, pixels, 48, 48, 0, 0);
-        }
+            draw(canvas, pixels, 48, 48, 0, 0);
         return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
     }
 

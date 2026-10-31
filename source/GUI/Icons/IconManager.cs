@@ -77,15 +77,20 @@ namespace ZonderqOS.GUI.Icons
 
             if (sourceWidth == width && sourceHeight == height)
             {
-                Blit(canvas, source, width, height, x, y, sourceUseRuns[sourceIndex]);
+                if (sourceUseRuns[sourceIndex])
+                    BlitRuns(canvas, source, width, height, x, y);
+                else
+                    BlitPoints(canvas, source, width, height, x, y);
                 return;
             }
 
             int[] pixels = GetScaledPixels(type, source, sourceWidth, sourceHeight, width, height);
             if (pixels != null)
             {
-                Blit(canvas, pixels, width, height, x, y,
-                    scaledUseRuns[scaledRecentSlots[sourceIndex]]);
+                if (scaledUseRuns[scaledRecentSlots[sourceIndex]])
+                    BlitRuns(canvas, pixels, width, height, x, y);
+                else
+                    BlitPoints(canvas, pixels, width, height, x, y);
                 return;
             }
 
@@ -254,34 +259,43 @@ namespace ZonderqOS.GUI.Icons
                 grouped >= width * height / 4;
         }
 
-        private static void Blit(Canvas canvas, int[] pixels, int width, int height,
-            int x, int y, bool useRuns)
+        // Preserve the original point-only path as a separate method. A
+        // gradient/alpha icon must not pay for run detection or a per-row
+        // dispatch; the one-time cache classification selects the renderer.
+        private static void BlitPoints(Canvas canvas, int[] pixels, int width, int height, int x, int y)
         {
             int startX = x < 0 ? -x : 0;
             int startY = y < 0 ? -y : 0;
             int endX = width;
             int endY = height;
-
             if (x + endX > canvas.Width) endX = canvas.Width - x;
             if (y + endY > canvas.Height) endY = canvas.Height - y;
             if (startX >= endX || startY >= endY)
                 return;
 
-            if (!useRuns)
+            for (int py = startY; py < endY; py++)
             {
-                // Original Canvas point renderer for gradients and antialiasing.
-                for (int py = startY; py < endY; py++)
+                int row = py * width;
+                for (int px = startX; px < endX; px++)
                 {
-                    int row = py * width;
-                    for (int px = startX; px < endX; px++)
-                    {
-                        int argb = pixels[row + px];
-                        if (((uint)argb >> 24) != 0)
-                            canvas.DrawPoint(Color.FromArgb(argb), x + px, y + py);
-                    }
+                    int argb = pixels[row + px];
+                    if (((uint)argb >> 24) == 0)
+                        continue;
+                    canvas.DrawPoint(Color.FromArgb(argb), x + px, y + py);
                 }
-                return;
             }
+        }
+
+        private static void BlitRuns(Canvas canvas, int[] pixels, int width, int height, int x, int y)
+        {
+            int startX = x < 0 ? -x : 0;
+            int startY = y < 0 ? -y : 0;
+            int endX = width;
+            int endY = height;
+            if (x + endX > canvas.Width) endX = canvas.Width - x;
+            if (y + endY > canvas.Height) endY = canvas.Height - y;
+            if (startX >= endX || startY >= endY)
+                return;
 
             for (int py = startY; py < endY; py++)
             {
@@ -297,8 +311,8 @@ namespace ZonderqOS.GUI.Icons
                         continue;
                     }
 
-                    // Only fully opaque runs may be coalesced. Partial alpha
-                    // always uses DrawPoint, preserving Cosmos Canvas semantics.
+                    // Filled rectangles only for fully opaque identical runs.
+                    // Keep DrawPoint for partial alpha to preserve Canvas.
                     if (alpha == 255)
                     {
                         int end = px + 1;
