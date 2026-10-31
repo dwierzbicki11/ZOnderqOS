@@ -76,7 +76,9 @@ class ResponsiveGui3094(unittest.TestCase):
                 bottom = min(desktop_h - margin, y + height)
                 top = max(margin, min(y + delta,
                                       bottom - min(220, max(1, bottom - margin))))
-                self.assertLessEqual(top + bottom - top, desktop_h - margin)
+                self.assertGreaterEqual(top, margin)
+                self.assertLessEqual(bottom, desktop_h - margin)
+                self.assertGreaterEqual(bottom - top, min(220, max(1, bottom - margin)))
                 bottom_height = max(min(220, max(1, desktop_h - margin - y)),
                                     min(height + delta,
                                         max(1, desktop_h - margin - y)))
