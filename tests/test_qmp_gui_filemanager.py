@@ -397,5 +397,61 @@ class FramebufferProbeTests(unittest.TestCase):
 
 
 
+    def test_compact_mouse_probe_homes_cursor_before_baseline(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        home = source.index("move_mouse_to_from_corner(channel, mouse_start_x")
+        before = source.index('screenshot(channel, prefix + ".filemanager-mouse-before.ppm")')
+        after = source.index('screenshot(channel, prefix + ".filemanager-mouse-after.ppm")')
+        verify = source.index("verify_expected_framebuffer(frame_width, frame_height)")
+        self.assertLess(verify, home)
+        self.assertLess(home, before)
+        self.assertLess(before, after)
+        self.assertIn("mouse_start_x = frame_width // 2 - 30", source)
+        self.assertIn("mouse_start_y = frame_height // 2", source)
+        self.assertIn("move_mouse_relative(channel, 60, 0)", source)
+
+    def test_compact_mouse_homing_targets_central_diff_region(self):
+        import json
+
+        class FakeChannel:
+            def __init__(self):
+                self.payloads = []
+
+            def write(self, payload):
+                self.payloads.append(json.loads(payload))
+
+            def readline(self):
+                return b'{"return": {}}\\n'.replace(b"\\n", b"\n")
+
+        old_sleep = PROBE.time.sleep
+        try:
+            PROBE.time.sleep = lambda _: None
+            for width, height in ((640, 480), (800, 600), (1360, 768),
+                                  (1920, 1080)):
+                channel = FakeChannel()
+                x0, y0 = width // 2 - 30, height // 2
+                PROBE.move_mouse_to_from_corner(channel, x0, y0, width, height)
+                PROBE.move_mouse_relative(channel, 60, 0)
+                # A test-only PS/2 clamp model, starting from any legal pixel.
+                for start_x, start_y in ((0, 0), (width // 2, height // 2),
+                                         (width - 1, height - 1)):
+                    x, y = start_x, start_y
+                    for payload in channel.payloads:
+                        for event in payload["arguments"]["events"]:
+                            delta = event["data"]["value"]
+                            self.assertLessEqual(abs(delta), 64)
+                            if event["data"]["axis"] == "x":
+                                x = max(0, min(width - 1, x + delta))
+                            else:
+                                y = max(0, min(height - 1, y + delta))
+                    self.assertEqual((x, y), (x0 + 60, y0))
+                self.assertGreaterEqual(x0, width // 6)
+                self.assertLess(x0 + 60, width * 5 // 6)
+                self.assertGreaterEqual(y0, height // 7)
+                self.assertLess(y0, height * 6 // 7)
+        finally:
+            PROBE.time.sleep = old_sleep
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
