@@ -173,12 +173,19 @@ namespace ZonderqOS.GUI
         private static void DrawChar(Canvas canvas, char ch, int x, int y, Color color)
         {
             ch = NormalizeGlyph(ch);
+            // Spaces (including normalized NBSP) have no lit pixels. They are
+            // common in labels and tables, so skip seven empty row scans.
+            if (ch == ' ')
+                return;
             int glyphOffset = ch < 128 ? ch * 7 : -1;
             for (int row = 0; row < 7; row++)
             {
                 int bits = glyphOffset >= 0
                     ? CachedAsciiGlyphRows[glyphOffset + row]
                     : Glyph(ch, row);
+                // Punctuation and sparse glyphs often have empty rows.
+                if (bits == 0)
+                    continue;
                 // One Canvas call per horizontal span instead of per lit pixel.
                 // Adjacent pixels have identical color, so the 5x7 bitmap is unchanged.
                 for (int col = 0; col < 5;)
