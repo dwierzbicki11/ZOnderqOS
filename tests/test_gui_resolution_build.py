@@ -31,6 +31,16 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
         self.assertIn('GUI_TEST_NATIVE=true', BUILD)
         self.assertIn('resolution: 1366x768x32', LIMINE)
 
+    def test_qemu_workflows_do_not_mask_failed_guest_probes_with_tee(self):
+        # A previous HD probe emitted [SERVICES-QEMU][FAIL] but the workflow
+        # appeared green because tee, not the failing guest probe, set status.
+        for filename in ("services-qemu.yml", "gui-800-qemu.yml",
+                         "gui-hd-qemu.yml"):
+            workflow = (ROOT / ".github/workflows" / filename).read_text()
+            self.assertIn(
+                "run: |\\n          set -euo pipefail\\n          bash tools/smoke-services-qemu.sh",
+                workflow, filename)
+
     def test_limines_resolution_regex_preserves_newline_and_other_entries(self):
         match = re.search(r'modified, count = re.subn\(r"([^"]+)"', BUILD)
         self.assertIsNotNone(match)
