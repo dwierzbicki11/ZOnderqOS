@@ -134,6 +134,35 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
+        /// Independent unsigned PCM8 mono WAV -> signed PCM16 stereo -> stock
+        /// HDA. 990 Hz distinguishes this QEMU capture from the other probes.
+        /// No filesystem is opened or mounted.
+        /// </summary>
+        public static bool PlayWave8TestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 990, 250, 4096);
+                byte[] mono8 = new byte[source.Length / 4];
+                for (int i = 0; i < mono8.Length; i++)
+                {
+                    int at = i * 4;
+                    short sample = (short)(source[at] | (source[at + 1] << 8));
+                    mono8[i] = (byte)(128 + (sample >> 8));
+                }
+                byte[] wave = AudioWavePcm.EncodePcm8AtRate(mono8, 48000, 1);
+                Console.WriteLine("[AUDIO] WAV unsigned PCM8 mono -> 48000Hz signed PCM16 stereo");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV PCM8 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Caller owns the stream and is responsible for obtaining it from an
         /// explicitly authorized read-only source. No filesystem is opened here.
         /// The bounded loader rejects oversized, truncated and malformed WAVs.
