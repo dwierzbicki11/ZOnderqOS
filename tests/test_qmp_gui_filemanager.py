@@ -76,5 +76,30 @@ class FramebufferProbeTests(unittest.TestCase):
                              (81, 64, bytes(81 * 64 * 3)))
 
 
+    def test_real_qmp_filter_escape_probe_has_restore_gate(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('for key in "zzzzzzzz":', source)
+        self.assertIn('send_keys(channel, "esc")', source)
+        self.assertIn('".filemanager-filtered.ppm"', source)
+        self.assertIn('".filemanager-filter-cleared.ppm"', source)
+        self.assertIn('difference(after, filter_cleared)', source)
+        self.assertIn('if fraction > 0.10:', source)
+        self.assertLess(source.index('send_keys(channel, "esc")'),
+                        source.index('send_keys(channel, "alt", "f4")'))
+
+    def test_filter_escape_restore_diff_accepts_small_status_change(self):
+        width, height = 80, 64
+        original = bytes(width * height * 3)
+        restored = bytearray(original)
+        # A small status/clock repaint must not fail a viewport restore.
+        for y in range(10, 12):
+            for x in range(10, 15):
+                off = (y * width + x) * 3
+                restored[off:off + 3] = b"\\xff\\xff\\xff"
+        changed, samples = PROBE.difference(
+            (width, height, original), (width, height, bytes(restored)))
+        self.assertLessEqual(changed / samples, 0.10)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

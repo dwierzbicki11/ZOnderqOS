@@ -95,6 +95,17 @@ def main():
         time.sleep(6)
         screenshot(channel, prefix + ".filemanager-after.ppm")
 
+        # Exercise the real File Manager filter and Escape clear path using
+        # only guest keyboard events. The deliberately improbable query
+        # avoids opening or modifying any FAT32 files.
+        for key in "zzzzzzzz":
+            send_keys(channel, key)
+        time.sleep(0.8)
+        screenshot(channel, prefix + ".filemanager-filtered.ppm")
+        send_keys(channel, "esc")
+        time.sleep(1.0)
+        screenshot(channel, prefix + ".filemanager-filter-cleared.ppm")
+
         # Alt+F4 must close the active File Manager and reveal the desktop.
         # This also exercises the real guest's global window shortcut path.
         send_keys(channel, "alt", "f4")
@@ -104,6 +115,8 @@ def main():
     before = read_ppm(prefix + ".filemanager-before.ppm")
     palette = read_ppm(prefix + ".filemanager-palette.ppm")
     after = read_ppm(prefix + ".filemanager-after.ppm")
+    filtered = read_ppm(prefix + ".filemanager-filtered.ppm")
+    filter_cleared = read_ppm(prefix + ".filemanager-filter-cleared.ppm")
     closed = read_ppm(prefix + ".filemanager-closed.ppm")
     for label, first, second in (
         ("palette-open", before, palette),
@@ -116,6 +129,17 @@ def main():
         print(f"[GUI-QMP] {label}: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
         if fraction < 0.12:
             raise RuntimeError(label + ": insufficient framebuffer change; inspect PPMs")
+    # Escape must restore the same File Manager viewport after clearing
+    # the search query. This is a real QEMU keyboard regression, not merely
+    # evidence that QMP accepted the keystroke.
+    changed, samples = difference(after, filtered)
+    print(f"[GUI-QMP] search-filter: changed {changed}/{samples} sampled pixels ({changed / max(1, samples):.1%}); visual inspection still required")
+    changed, samples = difference(after, filter_cleared)
+    fraction = changed / max(1, samples)
+    print(f"[GUI-QMP] filter-cleared: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
+    if fraction > 0.10:
+        raise RuntimeError("Escape did not restore the File Manager viewport; inspect PPMs")
+
     # Closing a window should return to the same desktop, not another large
     # overlay. Small differences from the clock/toasts are tolerated.
     changed, samples = difference(before, closed)
@@ -123,7 +147,7 @@ def main():
     print(f"[GUI-QMP] desktop-restored: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
     if fraction > 0.10:
         raise RuntimeError("Alt+F4 did not restore the desktop; inspect PPMs")
-    print("[GUI-QMP] PASS real palette launch and Alt+F4 close changed the guest framebuffer; visual app identity requires inspection.")
+    print("[GUI-QMP] PASS real palette launch, filter/Escape restoration and Alt+F4 close changed the guest framebuffer; visual app identity requires inspection.")
 
 
 if __name__ == "__main__":
