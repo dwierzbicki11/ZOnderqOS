@@ -142,6 +142,42 @@ static class Test
             Expect(refusedExtensible, "reject malformed extensible WAV field " + corruptField);
         }
 
+        // Real 20 valid bits in a 24-bit WAVE_FORMAT_EXTENSIBLE container.
+        // The upper 16 bits are bit-exact and the low padding nibble is zero.
+        byte[] pcm20 = new byte[pcm.Length / 2 * 3];
+        for (int i = 0; i < pcm.Length / 2; i++)
+        {
+            pcm20[i * 3] = 0;
+            pcm20[i * 3 + 1] = pcm[i * 2];
+            pcm20[i * 3 + 2] = pcm[i * 2 + 1];
+        }
+        byte[] extensible20 = AudioWavePcm.EncodeExtensiblePcm24AtRate(pcm20, 48000, 2, 20);
+        byte[] decoded20 = AudioWavePcm.DecodeStereo16(extensible20);
+        Expect(decoded20.Length == pcm.Length, "20-in-24 extensible output length");
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(decoded20[i] == pcm[i], "20-in-24 extensible signed samples bit-exact");
+        using (var readOnly20 = new MemoryStream(extensible20, false))
+            Expect(AudioWaveInput.DecodeBounded(readOnly20).Length == pcm.Length,
+                "20-in-24 read-only stream path");
+        byte[] nonzeroPadding20 = (byte[])extensible20.Clone();
+        nonzeroPadding20[68] = 1; // first sample's unused low four bits
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(nonzeroPadding20); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject nonzero 20-in-24 padding bits");
+        byte[] invalidValidBits20 = (byte[])extensible20.Clone();
+        invalidValidBits20[38] = 15;
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(invalidValidBits20); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject less than 16 valid bits in 24-bit container");
+        invalidValidBits20 = (byte[])extensible20.Clone();
+        invalidValidBits20[38] = 25;
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(invalidValidBits20); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject valid bits exceeding 24-bit container");
+
         // A real-world PCM16 mono WAV should decode into bounded stereo frames.
         byte[] mono = new byte[44 + pcm.Length / 2];
         Array.Copy(encoded, mono, 44);
@@ -280,6 +316,21 @@ static class Test
         byte[] wave44100 = AudioWavePcm.EncodeStereo16AtRate(source44100, 44100);
         byte[] converted44100 = AudioWavePcm.DecodeStereo16(wave44100);
         Expect(converted44100.Length == 48000, "44.1k stereo 250ms converts to 48k stereo 250ms");
+        byte[] pcm20at44100 = new byte[source44100.Length / 2 * 3];
+        for (int i = 0; i < source44100.Length / 2; i++)
+        {
+            pcm20at44100[i * 3] = 0;
+            pcm20at44100[i * 3 + 1] = source44100[i * 2];
+            pcm20at44100[i * 3 + 2] = source44100[i * 2 + 1];
+        }
+        byte[] extensible20at44100 = AudioWavePcm.EncodeExtensiblePcm24AtRate(pcm20at44100, 44100, 2, 20);
+        byte[] converted20at44100 = AudioWavePcm.DecodeStereo16(extensible20at44100);
+        Expect(converted20at44100.Length == converted44100.Length,
+            "20-in-24 extensible 44.1kHz resampler length");
+        for (int i = 0; i < converted44100.Length; i++)
+            Expect(converted20at44100[i] == converted44100[i],
+                "20-in-24 extensible 44.1kHz resampler matches PCM16");
+
         byte[] extensible44100 = AudioWavePcm.EncodeExtensibleStereo16AtRate(source44100, 44100);
         byte[] extensibleConverted = AudioWavePcm.DecodeStereo16(extensible44100);
         Expect(extensibleConverted.Length == converted44100.Length, "44.1k extensible resampling length");
@@ -575,6 +626,20 @@ static class Test
             pcm32[i * 4 + 2] = pcm[i * 2];
             pcm32[i * 4 + 3] = pcm[i * 2 + 1];
         }
+        // 24 valid bits in a signed 32-bit extensible container; low 8 bits
+        // are padding, while the decoded high 16 bits retain the sign.
+        byte[] extensible32valid24 = AudioWavePcm.EncodeExtensiblePcm32AtRate(pcm32, 48000, 2, 24);
+        byte[] decoded32valid24 = AudioWavePcm.DecodeStereo16(extensible32valid24);
+        Expect(decoded32valid24.Length == pcm.Length, "24-in-32 extensible output length");
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(decoded32valid24[i] == pcm[i], "24-in-32 extensible signed samples bit-exact");
+        byte[] nonzeroPadding32 = (byte[])extensible32valid24.Clone();
+        nonzeroPadding32[68] = 1;
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(nonzeroPadding32); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject nonzero 24-in-32 padding bits");
+
         byte[] stereo32 = AudioWavePcm.EncodePcm32AtRate(pcm32, 48000, 2);
         byte[] decoded32 = AudioWavePcm.DecodeStereo16(stereo32);
         Expect(decoded32.Length == pcm.Length, "PCM32 stereo output frame count");

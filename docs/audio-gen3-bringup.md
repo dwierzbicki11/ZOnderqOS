@@ -189,3 +189,16 @@ stream, and the 800 KiB source / 384,000-byte decoded output limits remain.
 The host C# smoke exercises both a rejected writable stream and accepted
 fragmented non-seekable read-only streams. This does not open a FAT32 file,
 attach a guest disk, or prove real hardware playback.
+
+
+### Reduced valid bits in WAVE_FORMAT_EXTENSIBLE (host verification pending)
+
+The opt-in PCM decoder now accepts **16/20/24 valid bits in 24-bit
+containers** and **16/24/32 valid bits in 32-bit containers**, provided the
+samples are left-aligned and every unused least-significant bit is zero.
+The high 16 bits are delivered as signed stereo PCM16; 44.1 kHz sources use
+the same bounded resampler. Malformed valid-bit widths and nonzero padding
+bits are rejected before playback. New host C# checks cover 20-in-24 and
+24-in-32 signed samples, malformed padding and 44.1 kHz conversion.
+This change does not itself demonstrate captured PCM, physical speakers,
+DMA/IRQ completion or external FAT32 playback; await CI results.

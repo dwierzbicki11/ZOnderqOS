@@ -71,6 +71,7 @@ namespace ZonderqOS.SystemCore
             int channels = 0;
             int sourceRate = 0;
             int sourceBits = 0;
+            int sourceValidBits = 0;
             int pos = 12;
             while (pos < wave.Length)
             {
@@ -92,14 +93,16 @@ namespace ZonderqOS.SystemCore
                     uint byteRate = Read32(wave, pos + 16);
                     int blockAlign = Read16(wave, pos + 20);
                     int bits = Read16(wave, pos + 22);
+                    int validBits = bits;
                     if (format == 0xFFFE)
                     {
-                        // WAVE_FORMAT_EXTENSIBLE: require a complete PCM GUID,
-                        // exact valid-bit width and an unambiguous mono/stereo
-                        // speaker layout. IEEE float is never treated as PCM.
+                        // Extensible PCM may store 16/20/24 valid bits in a
+                        // larger 24/32-bit container, left-aligned. Keep
+                        // PCM8/PCM16 exact and refuse sub-16-bit precision.
+                        validBits = Read16(wave, pos + 26);
                         if (size < 40 || Read16(wave, pos + 24) < 22 ||
                             (long)Read16(wave, pos + 24) + 18 > size ||
-                            Read16(wave, pos + 26) != bits)
+                            (validBits != bits && !(bits >= 24 && validBits >= 16 && validBits < bits)))
                             throw new ArgumentException("Invalid WAV extensible header.", nameof(wave));
 
                         uint speakerMask = Read32(wave, pos + 28);
@@ -127,6 +130,7 @@ namespace ZonderqOS.SystemCore
                     channels = sourceChannels;
                     sourceRate = (int)rate;
                     sourceBits = bits;
+                    sourceValidBits = validBits;
                     hasFormat = true;
                 }
                 else if (Tag(wave, pos, "data"))
@@ -146,6 +150,22 @@ namespace ZonderqOS.SystemCore
             if (dataSize % sourceFrameBytes != 0 ||
                 dataSize > sourceRate * MaxDurationSeconds * sourceFrameBytes)
                 throw new ArgumentException("WAV data exceeds two seconds or has an incomplete frame.", nameof(wave));
+
+            // Extensible PCM's unused least-significant container bits must
+            // be zero. Validate before any conversion, including resampling,
+            // so malformed 20-in-24 / 24-in-32 samples are not silently played.
+            int unusedBits = sourceBits - sourceValidBits;
+            if (unusedBits > 0)
+            {
+                int unusedMask = (1 << unusedBits) - 1; // at most 16 bits
+                int sampleBytes = sourceBits / 8;
+                for (int at = dataOffset; at < dataOffset + dataSize; at += sampleBytes)
+                {
+                    int low = wave[at] | (sampleBytes == 4 ? wave[at + 1] << 8 : 0);
+                    if ((low & unusedMask) != 0)
+                        throw new ArgumentException("Nonzero WAV extensible padding bits.", nameof(wave));
+                }
+            }
 
             if (sourceRate != SampleRate)
                 return ResampleToStereo16(wave, dataOffset, dataSize, channels, sourceRate, sourceBits);
@@ -262,13 +282,12 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
-        /// Build a canonical WAVE_FORMAT_EXTENSIBLE stereo PCM16 fixture.
-        /// The full PCM subtype GUID and stereo speaker mask are included,
-        /// so the same strict decoder path can be tested through QEMU HDA.
+        /// Convert an already validated canonical PCM fixture into extensible
+        /// RIFF, preserving the data chunk and any even-boundary padding.
+        /// This helper never opens a filesystem or touches a device.
         /// </summary>
-        public static byte[] EncodeExtensibleStereo16AtRate(byte[] pcm, int sampleRate)
+        private static byte[] ToExtensiblePcm(byte[] basic, int channels, int bits, int validBits)
         {
-            byte[] basic = EncodeStereo16AtRate(pcm, sampleRate);
             byte[] wave = new byte[basic.Length + 24];
             Array.Copy(basic, 0, wave, 0, 36);
             Array.Copy(basic, 36, wave, 60, basic.Length - 36);
@@ -276,8 +295,8 @@ namespace ZonderqOS.SystemCore
             Write32(wave, 16, 40); // extended fmt chunk size
             Write16(wave, 20, 0xFFFE);
             Write16(wave, 36, 22); // cbSize
-            Write16(wave, 38, 16); // valid bits
-            Write32(wave, 40, 0x3); // front left + front right
+            Write16(wave, 38, validBits);
+            Write32(wave, 40, channels == 1 ? 0x4 : 0x3);
             Write32(wave, 44, 1); // PCM subtype GUID
             Write16(wave, 48, 0);
             Write16(wave, 50, 0x0010);
@@ -287,6 +306,27 @@ namespace ZonderqOS.SystemCore
             wave[58] = 0x9B;
             wave[59] = 0x71;
             return wave;
+        }
+
+        public static byte[] EncodeExtensibleStereo16AtRate(byte[] pcm, int sampleRate)
+        {
+            return ToExtensiblePcm(EncodeStereo16AtRate(pcm, sampleRate), 2, 16, 16);
+        }
+
+        /// <summary>Build 16/20/24 valid-bit PCM in a signed 24-bit container.</summary>
+        public static byte[] EncodeExtensiblePcm24AtRate(byte[] pcm, int sampleRate, int channels, int validBits)
+        {
+            if (validBits != 16 && validBits != 20 && validBits != 24)
+                throw new ArgumentOutOfRangeException(nameof(validBits));
+            return ToExtensiblePcm(EncodePcm24AtRate(pcm, sampleRate, channels), channels, 24, validBits);
+        }
+
+        /// <summary>Build 16/24/32 valid-bit PCM in a signed 32-bit container.</summary>
+        public static byte[] EncodeExtensiblePcm32AtRate(byte[] pcm, int sampleRate, int channels, int validBits)
+        {
+            if (validBits != 16 && validBits != 24 && validBits != 32)
+                throw new ArgumentOutOfRangeException(nameof(validBits));
+            return ToExtensiblePcm(EncodePcm32AtRate(pcm, sampleRate, channels), channels, 32, validBits);
         }
 
         /// <summary>Build a bounded mono PCM16 RIFF fixture without disk access.</summary>
