@@ -302,6 +302,9 @@ while (( SECONDS - started < TIMEOUT )); do
     if [[ "$MODE" == n6 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
       if [[ "$IRQ_TRACE" == 1 ]]; then
+        # Guest-side binding and line routing are checked independently
+        # from QEMU's device-side notification trace. Neither proves ISR execution.
+        python3 "$ROOT/tests/verify_3095_e1000e_irq_binding.py" "$LOG"
         # This isolated QEMU run must show at least one device-side IRQ
         # notification, not merely pending interrupt bits or successful
         # polling-based packet delivery. Guest ISR execution is STILL unproven.
