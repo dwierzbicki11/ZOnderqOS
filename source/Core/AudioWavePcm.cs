@@ -92,6 +92,33 @@ namespace ZonderqOS.SystemCore
                     uint byteRate = Read32(wave, pos + 16);
                     int blockAlign = Read16(wave, pos + 20);
                     int bits = Read16(wave, pos + 22);
+                    if (format == 0xFFFE)
+                    {
+                        // WAVE_FORMAT_EXTENSIBLE: require a complete PCM GUID,
+                        // exact valid-bit width and an unambiguous mono/stereo
+                        // speaker layout. IEEE float is never treated as PCM.
+                        if (size < 40 || Read16(wave, pos + 24) < 22 ||
+                            (long)Read16(wave, pos + 24) + 18 > size ||
+                            Read16(wave, pos + 26) != bits)
+                            throw new ArgumentException("Invalid WAV extensible header.", nameof(wave));
+
+                        uint speakerMask = Read32(wave, pos + 28);
+                        if (speakerMask != 0 &&
+                            speakerMask != (sourceChannels == 1 ? 0x4U : 0x3U))
+                            throw new ArgumentException("Unsupported WAV speaker layout.", nameof(wave));
+
+                        // KSDATAFORMAT_SUBTYPE_PCM:
+                        // 00000001-0000-0010-8000-00AA00389B71 (LE bytes).
+                        if (Read32(wave, pos + 32) != 1U ||
+                            Read16(wave, pos + 36) != 0 ||
+                            Read16(wave, pos + 38) != 0x0010 ||
+                            wave[pos + 40] != 0x80 || wave[pos + 41] != 0 ||
+                            wave[pos + 42] != 0 || wave[pos + 43] != 0xAA ||
+                            wave[pos + 44] != 0 || wave[pos + 45] != 0x38 ||
+                            wave[pos + 46] != 0x9B || wave[pos + 47] != 0x71)
+                            throw new ArgumentException("WAV extensible subtype is not PCM.", nameof(wave));
+                        format = 1;
+                    }
                     if (format != 1 || (sourceChannels != 1 && sourceChannels != 2) ||
                         (rate != SampleRate && rate != 44100) || (bits != 8 && bits != 16 && bits != 24 && bits != 32) ||
                         blockAlign != sourceChannels * (bits / 8) ||
@@ -232,6 +259,34 @@ namespace ZonderqOS.SystemCore
                 }
             }
             return output;
+        }
+
+        /// <summary>
+        /// Build a canonical WAVE_FORMAT_EXTENSIBLE stereo PCM16 fixture.
+        /// The full PCM subtype GUID and stereo speaker mask are included,
+        /// so the same strict decoder path can be tested through QEMU HDA.
+        /// </summary>
+        public static byte[] EncodeExtensibleStereo16AtRate(byte[] pcm, int sampleRate)
+        {
+            byte[] basic = EncodeStereo16AtRate(pcm, sampleRate);
+            byte[] wave = new byte[basic.Length + 24];
+            Array.Copy(basic, 0, wave, 0, 36);
+            Array.Copy(basic, 36, wave, 60, basic.Length - 36);
+            Write32(wave, 4, wave.Length - 8);
+            Write32(wave, 16, 40); // extended fmt chunk size
+            Write16(wave, 20, 0xFFFE);
+            Write16(wave, 36, 22); // cbSize
+            Write16(wave, 38, 16); // valid bits
+            Write32(wave, 40, 0x3); // front left + front right
+            Write32(wave, 44, 1); // PCM subtype GUID
+            Write16(wave, 48, 0);
+            Write16(wave, 50, 0x0010);
+            wave[52] = 0x80;
+            wave[55] = 0xAA;
+            wave[57] = 0x38;
+            wave[58] = 0x9B;
+            wave[59] = 0x71;
+            return wave;
         }
 
         /// <summary>Build a bounded mono PCM16 RIFF fixture without disk access.</summary>
