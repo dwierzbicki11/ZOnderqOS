@@ -12,8 +12,11 @@ import argparse
 from pathlib import Path
 
 from verify_3095_network_n1 import BROADCAST, ETHER_TYPE, pcap_frames
-from verify_3095_network_n2 import MAC, synthetic_capture
-from verify_3095_network_n6 import HTTP_REPEAT_PASS, validate as validate_n6
+from verify_3095_network_n2 import LEASE, MAC, synthetic_capture
+from verify_3095_network_n4 import tcp_frame
+from verify_3095_network_n6 import (
+    HTTP_REPEAT_PASS, find_http_transaction, validate as validate_n6,
+)
 
 COUNT = 32
 START = "[NET3095-N6] TX_BURST_ATTEMPT=START count=32"
@@ -32,9 +35,28 @@ def check_markers(serial: str) -> None:
         raise ValueError("N6 TX burst markers out of order")
 
 
-def check_frames(pcap: bytes) -> None:
+def last_http_frame(serial: str, frames: list[bytes]) -> int:
+    """Locate the second HTTP FIN acknowledgment in the original PCAP order."""
+    lines = [line.strip() for line in serial.replace("\\r", "").splitlines()]
+    leases = [m for line in lines if (m := LEASE.fullmatch(line))]
+    if len(leases) != 1:
+        raise ValueError("missing unique N6 guest lease")
+    guest = bytes(int(part) for part in leases[0].group(1).split("."))
+    tcp_entries = [(i, p) for i, frame in enumerate(frames)
+                   if (p := tcp_frame(frame))]
+    packets = [p for _, p in tcp_entries]
+    first = find_http_transaction(packets, guest, 0, None)
+    if first is None:
+        raise ValueError("missing first HTTP exchange before raw TX burst")
+    second = find_http_transaction(packets, guest, first[1] + 1, first[0])
+    if second is None:
+        raise ValueError("missing second HTTP exchange before raw TX burst")
+    return tcp_entries[second[1]][0]
+
+
+def check_frames(pcap: bytes, after_index: int = -1) -> None:
     frames = list(pcap_frames(pcap))
-    cursor = 0
+    cursor = after_index + 1
     for sequence in range(COUNT):
         expected = (BROADCAST + MAC + ETHER_TYPE + TAG +
                     f"{sequence:02d}".encode("ascii"))
@@ -51,7 +73,9 @@ def validate(serial: str, pcap: bytes) -> str:
     # The independent N6 validator first proves both real TCP HTTP sessions.
     validate_n6(serial, pcap)
     check_markers(serial)
-    check_frames(pcap)
+    # A burst preceding the HTTP FIN/ACK is not the post-RX TX stress test.
+    frames = list(pcap_frames(pcap))
+    check_frames(pcap, after_index=last_http_frame(serial, frames))
     return ("[NET3095-N6-BURST-GATE] PASS 32 ordered QEMU PCAP raw TX frames "
             "after two HTTP sessions; DMA ISR execution UNPROVEN")
 
@@ -64,6 +88,12 @@ def self_test() -> None:
         frames.append(raw + bytes(60 - len(raw)))
     check_markers(serial)
     check_frames(synthetic_capture(frames))
+    try:
+        check_frames(synthetic_capture(frames), after_index=0)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted burst that began before required prior traffic")
     bad_serial = [
         serial.replace(START, ""),
         serial.replace(QUEUED, ""),
