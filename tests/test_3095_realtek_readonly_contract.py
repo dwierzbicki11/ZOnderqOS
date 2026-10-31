@@ -34,7 +34,9 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
         self.assertIn("rtl8139,restrict=on", NEGATIVE_QEMU)
         self.assertIn('NIC_MODE="${3:-none}"', NEGATIVE_QEMU)
         self.assertIn("Unknown NIC mode:", NEGATIVE_QEMU)
-        self.assertIn("offers=0 samples=0 reason=no matching PCI probe offer", NEGATIVE_QEMU)
+        self.assertIn('verify_3095_rtl_negative_qemu.py" "$LOG" "$NIC_MODE"', NEGATIVE_QEMU)
+        self.assertIn("offers=0 samples=0 reason=no matching PCI probe offer",
+                      (ROOT / "tests/verify_3095_rtl_negative_qemu.py").read_text())
         self.assertIn("NOT physical RTL810xE or screen proof", NEGATIVE_QEMU)
         self.assertIn('realtek_screen=true', BUILD)
         self.assertIn('-p:ZonderqRealtekScreen="$realtek_screen"', BUILD)
