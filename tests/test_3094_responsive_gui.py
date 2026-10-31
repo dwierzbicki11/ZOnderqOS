@@ -2283,5 +2283,40 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertEqual(max(40, (220 - 50) - 24 - 50 - 8), 88)
 
 
+    def test_file_manager_last_partial_row_remains_keyboard_reachable(self):
+        ensure = FILE_MANAGER.split("private void EnsureSelectionVisible()", 1)[1].split(
+            "private void GoUp()", 1)[0]
+        self.assertIn("int lastRow = entries.Count > 0 ? (entries.Count - 1) / cols : 0;", ensure)
+        self.assertIn("int maxScroll = Math.Max(0, (lastRow - rows + 1) * cols);", ensure)
+        self.assertIn("scrollIndex = maxScroll;", ensure)
+        self.assertNotIn("entries.Count - visible", ensure)
+
+        # Reproduce the previous failure: 10 entries, 3 columns, 3 rows.
+        # The last file has index 9; old maxScroll rounded 1 down to 0,
+        # so the selected item was outside the 0..8 visible range.
+        self.assertEqual(max(0, (10 - 9) - (10 - 9) % 3), 0)
+        self.assertEqual(max(0, (((10 - 1) // 3) - 3 + 1) * 3), 3)
+
+        for count in range(1, 71):
+            for cols in range(1, 7):
+                for rows in range(1, 7):
+                    visible = cols * rows
+                    max_scroll = max(0, (((count - 1) // cols) - rows + 1) * cols)
+                    for selected in range(count):
+                        # Model selection from the beginning and from a
+                        # previously scrolled viewport after a resize.
+                        for scroll in (0, max_scroll):
+                            if selected < scroll:
+                                scroll = selected
+                            elif selected >= scroll + visible:
+                                scroll = selected - visible + cols
+                            scroll -= scroll % cols
+                            scroll = max(0, min(scroll, max_scroll))
+                            self.assertEqual(scroll % cols, 0)
+                            self.assertLessEqual(scroll, selected)
+                            self.assertLess(selected, scroll + visible,
+                                            (count, cols, rows, selected, scroll))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
