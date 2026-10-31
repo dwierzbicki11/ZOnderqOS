@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Compile the actual production renderer, not a copied implementation. -->
+    <Compile Include="../../source/GUI/SmallTextRenderer.cs" Link="SmallTextRenderer.cs" />
+  </ItemGroup>
+</Project>

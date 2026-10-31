@@ -19,5 +19,10 @@ jobs:
         run: python3 tests/test_gen3_perf_text.py
       - name: Rounded panel pixel geometry and sqrt-call regression
         run: python3 tests/test_gen3_perf_panels.py
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile and execute production C# glyph renderer with a fake Canvas
+        run: dotnet run --project tests/PerfRenderSmoke/PerfRenderSmoke.csproj --configuration Release
       - name: Preserve stock Cosmos and disabled custom SMP
         run: python3 tests/test_upstream_smp_disabled.py
