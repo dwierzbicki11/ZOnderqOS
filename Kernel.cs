@@ -35,7 +35,7 @@ namespace ZonderqOS
                 Console.WriteLine();
 #if ZONDERQ_AUDIO_PROBE
                 Console.WriteLine("AUDIO HDA/PCM probe enabled: no disk mounts or account writes.");
-                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | inputscan | volumes | help");
+                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | volume N | inputscan | volumes | help");
                 AudioRuntimeDiagnostics.PrintStatus();
 #else
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
@@ -254,6 +254,22 @@ namespace ZonderqOS
                 AudioRuntimeDiagnostics.PlayWaveTestTone();
                 return;
             }
+
+            if (command == "volume")
+            {
+                Console.WriteLine("[AUDIO] software volume=" + AudioRuntimeDiagnostics.VolumePercent + "%");
+                return;
+            }
+
+            if (command.StartsWith("volume ", StringComparison.Ordinal))
+            {
+                int percent;
+                if (!int.TryParse(command.Substring(7).Trim(), out percent))
+                    Console.WriteLine("[AUDIO] usage: volume 0..100");
+                else
+                    AudioRuntimeDiagnostics.SetVolumePercent(percent);
+                return;
+            }
 #endif
 
             if (command == "volumes" || command == "lsblk")
@@ -336,6 +352,7 @@ namespace ZonderqOS
                 Console.WriteLine("audioinfo - show outputs published by the stock Cosmos audio driver");
                 Console.WriteLine("tone      - play 250 ms 440 Hz PCM through primary HDA output");
                 Console.WriteLine("wavtone   - decode RAM-only RIFF/WAV then play through HDA");
+                Console.WriteLine("volume N  - software PCM gain 0..100%, opt-in AUDIO probe only");
 #endif
                 Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");
                 Console.WriteLine("mousegui  - read-only fullscreen cursor and button test (ESC to exit)");
