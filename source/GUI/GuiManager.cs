@@ -37,6 +37,11 @@ namespace ZonderqOS.GUI
         private int frameCounter;
 
         private const int TaskbarHeight = 44;
+        // Bound input dispatch per GUI iteration. An autorepeating key or a
+        // constantly filled PS/2 queue must not starve pointer updates,
+        // window animations, session lock checks or the framebuffer.
+        // TryReadKey leaves the remaining events queued for the next frame.
+        private const int MaxKeyboardEventsPerFrame = 64;
 
         private const string WallpaperCacheDirectory = "/root/.zonderq-wallpapers";
         private const string WallpaperCachePath = WallpaperCacheDirectory + "/wallpaper.png";
@@ -149,7 +154,10 @@ namespace ZonderqOS.GUI
 
                     bool keyboardActivity = false;
 
-                    while (KeyboardManager.TryReadKey(out KeyEvent? key))
+                    for (int processedKeys = 0;
+                         processedKeys < MaxKeyboardEventsPerFrame &&
+                         KeyboardManager.TryReadKey(out KeyEvent? key);
+                         processedKeys++)
                     {
                         if (key == null)
                             continue;
