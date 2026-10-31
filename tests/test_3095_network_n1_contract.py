@@ -146,6 +146,13 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('second independent HTTP TCP exchange incomplete', HTTP_VALIDATOR)
         self.assertIn('REPEAT_PASS HTTP/1.0', SMOKE)
         self.assertIn('http_pid', SMOKE)
+        self.assertIn('NET3095_IRQ_TRACE', SMOKE)
+        self.assertIn('e1000e_irq_legacy_notify', SMOKE)
+        self.assertIn('e1000e_irq_msi_notify', SMOKE)
+        self.assertIn('e1000e_irq_msix_notify_vec', SMOKE)
+        self.assertIn('tests/verify_3095_e1000e_irq_trace.py', SMOKE)
+        self.assertIn('guest handler/IRQ delivery UNPROVEN',
+                      (ROOT / 'tests/verify_3095_e1000e_irq_trace.py').read_text())
         self.assertIn('trap cleanup EXIT INT TERM', SMOKE)
 
 if __name__ == "__main__":
