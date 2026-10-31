@@ -60,9 +60,44 @@ barConfig.SetBar(5, 0x00000004u);
 Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 2, 0, out bars) &&
       bars.Count == 0, "Truncated 64-bit BAR must fail closed");
 barConfig.SetBar(5, 0);
+barConfig.SetBar(0, 0x00000002u); // reserved memory BAR type 01
+Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 2, 0, out bars) &&
+      bars.Count == 0, "Reserved memory BAR encoding must fail closed");
+barConfig.SetBar(0, 0);
+
+// Conventional PCI capabilities: read-only PM -> MSI -> MSI-X linked list.
+barConfig.SetCapability(0x40, 0x01, 0x50);
+barConfig.SetCapability(0x50, 0x05, 0x60);
+barConfig.SetCapability(0x60, 0x11, 0);
+Check(PciBarInventory.TryReadRealtek810xECapabilities(barConfig, 0, 2, 0, out var caps),
+    "Expected read-only RTL810xE capability walk");
+Check(caps.Count == 3 && caps[0].Id == 0x01 && caps[0].Offset == 0x40 &&
+      caps[1].Id == 0x05 && caps[1].Offset == 0x50 &&
+      caps[2].Id == 0x11 && caps[2].Offset == 0x60,
+    "PM/MSI/MSI-X capability list decoding failed");
+barConfig.SetCapability(0x60, 0x11, 0x40); // cycle
+Check(!PciBarInventory.TryReadRealtek810xECapabilities(barConfig, 0, 2, 0, out caps) &&
+      caps.Count == 0, "Cyclic capability list must fail closed without partial data");
+barConfig.SetCapability(0x60, 0x11, 0);
+barConfig.CapabilityPointer = 0x30;
+Check(!PciBarInventory.TryReadRealtek810xECapabilities(barConfig, 0, 2, 0, out caps) &&
+      caps.Count == 0, "Out-of-range capability pointer must fail closed");
+barConfig.CapabilityPointer = 0x40;
+barConfig.SetCapability(0x50, 0xFF, 0);
+Check(!PciBarInventory.TryReadRealtek810xECapabilities(barConfig, 0, 2, 0, out caps) &&
+      caps.Count == 0, "Invalid capability ID must fail closed");
+barConfig.SetCapability(0x50, 0x05, 0x60);
+barConfig.CapabilityListPresent = false;
+int capReadsBefore = barConfig.CapabilityReads;
+Check(PciBarInventory.TryReadRealtek810xECapabilities(barConfig, 0, 2, 0, out caps) &&
+      caps.Count == 0 && barConfig.CapabilityReads == capReadsBefore,
+    "Status without capability-list flag must not walk pointers");
+barConfig.CapabilityListPresent = true;
 barConfig.HeaderType = 1;
 Check(!PciBarInventory.TryReadRealtek810xEState(barConfig, 0, 2, 0, out state),
     "Non-type-0 PCI state must fail closed");
+Check(!PciBarInventory.TryReadRealtek810xECapabilities(barConfig, 0, 2, 0, out caps),
+    "Non-type-0 PCI capability list must fail closed");
 int previousReads = barConfig.BarReads;
 Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 2, 0, out bars) &&
       barConfig.BarReads == previousReads, "Non-type-0 headers must not read BARs");
@@ -75,6 +110,7 @@ Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 2, 0, out bars) &&
 barConfig.VendorId = 0x10EC;
 Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 32, 0, out bars),
     "Invalid PCI device number must fail closed");
+Console.WriteLine("[NET3095-PCI-CAPS] PASS C# read-only PM/MSI/MSI-X linked list, cycles, reserved IDs, pointers and fail-closed guards");
 Console.WriteLine("[NET3095-PCI-BAR] PASS C# read-only MMIO32/IO/MMIO64, masking, header/identity guards and fail-closed BAR pairs");
 
 Console.WriteLine("[NET3095-PCI-METADATA] PASS C# read-only revision/subsystem propagation, header guard and legacy compatibility");
@@ -124,6 +160,11 @@ sealed class FakePciConfig : IPciConfigAccessor
 sealed class FakeBarConfig : IPciConfigAccessor
 {
     private readonly uint[] values = new uint[6];
+    private readonly System.Collections.Generic.Dictionary<byte, (byte Id, byte Next)> caps = new();
+    public byte CapabilityPointer { get; set; } = 0x40;
+    public bool CapabilityListPresent { get; set; } = true;
+    public int CapabilityReads { get; private set; }
+    public void SetCapability(byte offset, byte id, byte next) => caps[offset] = (id, next);
     public ushort VendorId { get; set; } = 0x10EC;
     public byte HeaderType { get; set; }
     public int BarReads { get; private set; }
@@ -132,6 +173,18 @@ sealed class FakeBarConfig : IPciConfigAccessor
     public byte Read8(byte bus, byte device, byte function, byte offset)
     {
         if (bus != 0 || device != 2 || function != 0) throw new Exception("Unexpected BDF");
+        if (offset == 0x34)
+        {
+            CapabilityReads++;
+            return CapabilityPointer;
+        }
+        byte aligned = (byte)(offset & 0xFC);
+        if (caps.TryGetValue(aligned, out var entry) &&
+            (offset == aligned || offset == aligned + 1))
+        {
+            CapabilityReads++;
+            return offset == aligned ? entry.Id : entry.Next;
+        }
         return offset switch
         {
             0x0B => 0x02,
@@ -149,7 +202,7 @@ sealed class FakeBarConfig : IPciConfigAccessor
         if (offset == 0x00) return VendorId;
         if (offset == 0x02) return 0x8136;
         if (offset == 0x04) return 0x0007;
-        if (offset == 0x06) return 0x0010;
+        if (offset == 0x06) return CapabilityListPresent ? (ushort)0x0010 : (ushort)0;
         if (offset < 0x10 || offset > 0x26 || (offset & 1) != 0)
             throw new Exception("Unexpected BAR offset");
         BarReads++;

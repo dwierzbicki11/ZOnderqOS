@@ -52,6 +52,23 @@ namespace ZonderqOS.SystemCore
                             " legacy_irq_disabled=" + (state.LegacyInterruptDisabled ? "yes" : "no") +
                             " irq_line=" + (state.IrqLine == 0xFF ? "UNKNOWN" : state.IrqLine.ToString()) +
                             " irq_pin=" + state.IrqPin + " (read-only; IRQ not verified)", shellOutput);
+                    List<PciCapabilityDescriptor> capabilities;
+                    if (PciSysfsProvider.TryReadRealtekCapabilities(d, out capabilities))
+                    {
+                        if (capabilities.Count == 0)
+                            Write("[NIC3094] PCI_CAPS=NONE (read-only; no MSI IRQ proof)", shellOutput);
+                        for (int capIndex = 0; capIndex < capabilities.Count; capIndex++)
+                        {
+                            PciCapabilityDescriptor cap = capabilities[capIndex];
+                            string name = cap.Id == 0x01 ? "PM" : cap.Id == 0x05 ? "MSI" :
+                                cap.Id == 0x10 ? "PCIe" : cap.Id == 0x11 ? "MSI-X" : "OTHER";
+                            Write("[NIC3094] PCI_CAP=0x" + cap.Id.ToString("X2") +
+                                " " + name + " at=0x" + cap.Offset.ToString("X2") +
+                                " (present only; IRQ not verified)", shellOutput);
+                        }
+                    }
+                    else
+                        Write("[NIC3094] PCI_CAPS=INVALID_OR_UNAVAILABLE (no IRQ proof)", shellOutput);
                     List<PciBarDescriptor> bars;
                     if (PciSysfsProvider.TryReadRealtekBars(d, out bars))
                     {

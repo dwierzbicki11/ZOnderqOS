@@ -43,6 +43,19 @@ namespace ZonderqOS.Hardware
         public bool LegacyInterruptDisabled => (Command & 0x0400) != 0;
     }
 
+    /// <summary>One conventional PCI capability. Presence does not mean the
+    /// corresponding interrupt or power-management feature is active.</summary>
+    public readonly struct PciCapabilityDescriptor
+    {
+        public PciCapabilityDescriptor(byte offset, byte id)
+        {
+            Offset = offset;
+            Id = id;
+        }
+        public byte Offset { get; }
+        public byte Id { get; }
+    }
+
     public static class PciBarInventory
     {
         /// <summary>Read-only PCI command/status and legacy IRQ routing.
@@ -58,6 +71,46 @@ namespace ZonderqOS.Hardware
                 config.Read16(bus, device, function, 0x06),
                 config.Read8(bus, device, function, 0x3C),
                 config.Read8(bus, device, function, 0x3D));
+            return true;
+        }
+
+        /// <summary>Walk the conventional PCI capability linked list without
+        /// changing any configuration bits. Invalid pointers, reserved IDs and
+        /// cycles fail closed; the output is cleared on failure. MSI/MSI-X
+        /// capability presence is not evidence of a working IRQ.</summary>
+        public static bool TryReadRealtek810xECapabilities(IPciConfigAccessor config,
+            byte bus, byte device, byte function, out List<PciCapabilityDescriptor> capabilities)
+        {
+            if (config == null) throw new ArgumentNullException(nameof(config));
+            capabilities = new List<PciCapabilityDescriptor>();
+            if (!IsSupportedRealtek(config, bus, device, function)) return false;
+            ushort status = config.Read16(bus, device, function, 0x06);
+            if ((status & 0x0010) == 0) return true;
+
+            byte pointer = config.Read8(bus, device, function, 0x34);
+            if (pointer == 0) return false;
+            var visited = new bool[256];
+            for (int count = 0; pointer != 0; count++)
+            {
+                byte offset = (byte)(pointer & 0xFC);
+                // Conventional PCI capabilities occupy 0x40..0xFF; each
+                // header contains an ID and a next-pointer byte.
+                if (offset < 0x40 || offset > 0xFC || visited[offset] || count >= 48)
+                {
+                    capabilities.Clear();
+                    return false;
+                }
+                visited[offset] = true;
+                byte id = config.Read8(bus, device, function, offset);
+                byte next = config.Read8(bus, device, function, (byte)(offset + 1));
+                if (id == 0 || id == 0xFF)
+                {
+                    capabilities.Clear();
+                    return false;
+                }
+                capabilities.Add(new PciCapabilityDescriptor(offset, id));
+                pointer = next;
+            }
             return true;
         }
 
@@ -117,7 +170,13 @@ namespace ZonderqOS.Hardware
                             address, (low & 8) != 0));
                     index++;
                 }
-                // Reserved memory types are not decoded as usable resources.
+                else
+                {
+                    // PCI memory BAR type 01/11 is reserved. Do not report
+                    // partial resource inventories as valid.
+                    bars.Clear();
+                    return false;
+                }
             }
             return true;
         }

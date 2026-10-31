@@ -74,6 +74,16 @@ class Nic3094Safety(unittest.TestCase):
         self.assertIn("size=UNKNOWN", DIAG)
         self.assertIn("driver=UNVERIFIED", DIAG)
 
+    def test_realtek_capabilities_are_read_only_and_not_irq_proof(self):
+        self.assertIn('TryReadRealtek810xECapabilities', BARS)
+        self.assertIn('visited[offset]', BARS)
+        self.assertIn('capabilities.Clear()', BARS)
+        self.assertIn('TryReadRealtekCapabilities', X64)
+        self.assertIn('TryReadRealtekCapabilities', ARM64)
+        self.assertIn('PCI_CAPS=INVALID_OR_UNAVAILABLE', DIAG)
+        self.assertIn('IRQ not verified', DIAG)
+        self.assertNotIn('config.Write', BARS)
+
     def test_no_mutating_network_or_disk_io(self):
         for forbidden in ('WriteBlock(', 'TryMount(', 'ConfigureDhcp(', 'NetworkManager.Send(',
                           'SetRawReceiveHandler(', 'PciConfigIoAccessor(', 'NetworkManager.Initialize('):

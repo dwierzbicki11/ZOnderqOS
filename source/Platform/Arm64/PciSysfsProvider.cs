@@ -5,6 +5,14 @@ namespace ZonderqOS.Platform
 {
     public static class PciSysfsProvider
     {
+        public static bool TryReadRealtekCapabilities(DeviceDescriptor device,
+            out List<PciCapabilityDescriptor> capabilities)
+        {
+            // No ARM64 ECAM implementation: never invent IRQ capabilities.
+            capabilities = new List<PciCapabilityDescriptor>();
+            return false;
+        }
+
         public static bool TryReadRealtekPciState(DeviceDescriptor device, out PciNicConfigState state)
         {
             state = default;
