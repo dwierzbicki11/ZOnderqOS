@@ -73,7 +73,7 @@ def main():
     parser.add_argument("iso", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--boot-seconds", type=int, default=35)
-    parser.add_argument("--command", choices=("tone", "wavtone", "wavmono", "wav44", "wav8", "wav24"), default="tone",
+    parser.add_argument("--command", choices=("tone", "wavtone", "wavmono", "wav44", "wav8", "wav24", "wav32"), default="tone",
                         help="isolated guest command to execute; WAV probe never reads guest disks")
     parser.add_argument("--volume", type=int, default=100, help="software gain 0..100 percent")
     args = parser.parse_args()
@@ -137,7 +137,7 @@ def main():
             else:
                 # The mono decoder probe uses a different pitch to prevent a
                 # stray 440 Hz tone from masquerading as successful mono playback.
-                print(capture.inspect(wav, expected_hz=660 if args.command == "wavmono" else 880 if args.command == "wav44" else 1320 if args.command == "wav8" else 1760 if args.command == "wav24" else 440))
+                print(capture.inspect(wav, expected_hz=660 if args.command == "wavmono" else 880 if args.command == "wav44" else 1320 if args.command == "wav8" else 1760 if args.command == "wav24" else 2200 if args.command == "wav32" else 440))
             print(f"[AUDIO-QEMU] PASS command={args.command} volume={args.volume} real QEMU HDA WAV capture; no physical speaker proof")
             return 0
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
