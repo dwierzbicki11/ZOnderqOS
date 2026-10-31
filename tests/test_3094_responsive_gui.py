@@ -590,6 +590,24 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertFalse(is_double(100_000_000, 99_000_000))
         self.assertFalse(is_double(0, 1_000_000))
 
+    def test_file_manager_double_click_requires_nearby_pointer(self):
+        mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
+            "private void ResetClickSequence()", 1)[0]
+        self.assertIn("Math.Abs(mouseX - lastClickX) <= 12", mouse)
+        self.assertIn("Math.Abs(mouseY - lastClickY) <= 12", mouse)
+        self.assertIn("lastClickX = mouseX;", mouse)
+        self.assertIn("lastClickY = mouseY;", mouse)
+
+        def double_click(first, second, elapsed_ms):
+            return (0 <= elapsed_ms <= 500 and
+                    abs(second[0] - first[0]) <= 12 and
+                    abs(second[1] - first[1]) <= 12)
+
+        self.assertTrue(double_click((130, 190), (142, 178), 450))
+        self.assertFalse(double_click((130, 190), (143, 190), 100))
+        self.assertFalse(double_click((130, 190), (130, 177), 100))
+        self.assertFalse(double_click((130, 190), (130, 190), 501))
+
     def test_file_manager_menu_reflows_and_dismisses_outside_view(self):
         update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
             "public override void HandleMouse(", 1)[0]
