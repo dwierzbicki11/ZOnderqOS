@@ -90,3 +90,21 @@ HTTP/1.0 here is unencrypted; it is **not HTTPS**, certificate validation,
 a browser or a production network stack. `CosmosEnableNetwork=false`
 continues to be the production default, and the probe never touches host
 storage or the ZONDERQDATA partition.
+
+
+## N5/N6: explicit ARP resolution evidence (gate hardening)
+
+The N5 DNS gate now requires an Ethernet ARP request from the guest
+`10.0.2.15` for the QEMU DNS proxy `10.0.2.3`, followed by a
+matching ARP reply addressed to the guest MAC, **before** the DNS UDP
+query/answer. The gate validates ARP hardware/protocol types, sender and
+target MAC/IP pairs, opcode and capture ordering; missing or spoofed
+pairs fail closed. N6 inherits the N5 ARP prerequisite.
+
+This change was motivated by inspection of **actual** N5 and N6 PCAP
+artifacts from the previous successful QEMU workflow #59: both captures
+contain the guest ARP request followed by the QEMU DNS proxy reply.
+That historical capture confirms the ARP frames existed; the stricter
+new gate must pass its own current CI run before claiming the updated
+end-to-end proof. Synthetic positive/negative ARP fixtures remain parser
+tests, not hardware or network evidence. Physical RTL810xE is untested.
