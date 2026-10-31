@@ -4,6 +4,7 @@ set -euo pipefail
 ISO="${1:-output-x64/ZonderqOS.iso}"
 OUT="${2:-services-qemu-output}"
 BOOT_SECONDS="${SERVICE_QEMU_BOOT_SECONDS:-100}"
+CAPTURE_SCREEN="${SERVICE_QEMU_CAPTURE_SCREEN:-0}"
 
 fail() { echo "[SERVICES-QEMU][FAIL] $*" >&2; exit 1; }
 for tool in qemu-system-x86_64 mkfs.vfat sfdisk mtype mcopy python3; do
@@ -11,6 +12,7 @@ for tool in qemu-system-x86_64 mkfs.vfat sfdisk mtype mcopy python3; do
 done
 [[ -s "$ISO" ]] || fail "missing ISO: $ISO"
 [[ "$BOOT_SECONDS" =~ ^[1-9][0-9]*$ ]] || fail "invalid boot duration: $BOOT_SECONDS"
+[[ "$CAPTURE_SCREEN" == 0 || "$CAPTURE_SCREEN" == 1 ]] || fail "invalid capture flag: $CAPTURE_SCREEN"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 ISO="$(realpath "$ISO")"
@@ -62,7 +64,7 @@ boot_guest() {
 
   # QMP quit closes the emulated AHCI disk and flushes its writes before mtools
   # reads the image. Never inspect or change the FAT filesystem while QEMU runs.
-  python3 - "$socket" <<'PY'
+  python3 - "$socket" "$OUT/$phase.ppm" "$CAPTURE_SCREEN" <<'PY'
 import json
 import socket
 import sys
@@ -77,10 +79,42 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
     channel.write(b'{"execute":"qmp_capabilities"}\r\n')
     while 'return' not in json.loads(channel.readline()):
         pass
+    if sys.argv[3] == '1':
+        command = {"execute": "screendump", "arguments": {"filename": sys.argv[2]}}
+        channel.write((json.dumps(command) + "\\r\\n").encode())
+        while True:
+            reply = json.loads(channel.readline())
+            if 'error' in reply:
+                raise SystemExit("QMP screendump failed: " + str(reply['error']))
+            if 'return' in reply:
+                break
     channel.write(b'{"execute":"quit"}\r\n')
 PY
   wait "$QEMU_PID" || fail "$phase: QEMU quit failed"
   QEMU_PID=""
+  if [[ "$CAPTURE_SCREEN" == 1 ]]; then
+    [[ -s "$OUT/$phase.ppm" ]] || fail "$phase: QMP screendump missing"
+    python3 - "$OUT/$phase.ppm" <<'PY'
+import sys
+with open(sys.argv[1], 'rb') as screenshot:
+    magic = screenshot.readline().strip()
+    if magic != b'P6':
+        raise SystemExit('QMP screendump is not a P6 PPM')
+    dimensions = screenshot.readline()
+    while dimensions.startswith(b'#'):
+        dimensions = screenshot.readline()
+    width, height = map(int, dimensions.split())
+    max_value = int(screenshot.readline().strip())
+    if width <= 0 or height <= 0 or max_value != 255:
+        raise SystemExit('Invalid QMP framebuffer dimensions')
+    pixels = screenshot.read()
+    if len(pixels) != width * height * 3:
+        raise SystemExit('Incomplete QMP framebuffer dump')
+    # This proves a framebuffer was captured, NOT that GUI interactions work.
+    samples = {pixels[i:i+3] for i in range(0, len(pixels), max(3, len(pixels) // 4096 // 3 * 3))}
+    print(f'[SERVICES-QEMU] framebuffer capture {width}x{height}, sampled colors={len(samples)}')
+PY
+  fi
   echo "[SERVICES-QEMU] $phase: QEMU shut down after ${BOOT_SECONDS}s"
 }
 
