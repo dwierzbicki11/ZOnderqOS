@@ -1,0 +1,77 @@
+name: Experimental 800x600 disk-backed GUI QEMU (stock Cosmos 3.0.95)
+
+on:
+  pull_request:
+    paths:
+      - 'source/GUI/**'
+      - 'Bootloader/limine.conf'
+      - 'ZonderqOS.csproj'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/smoke-services-qemu.sh'
+      - 'tools/qmp-gui-*.py'
+      - '.github/workflows/gui-800-qemu.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  framebuffer-800:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install exact-tag Cosmos, QEMU and synthetic FAT32 prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 tar clang lld nasm xorriso binutils \
+            qemu-system-x86 fdisk dosfstools mtools
+      - name: Validate pinned stock runtime and test-only mode contract
+        run: |
+          set -euo pipefail
+          bash run.sh --check
+          bash -n tools/build-cosmos-3095-local.sh tools/smoke-services-qemu.sh
+          python3 -m py_compile tools/qmp-gui-login.py tools/qmp-gui-filemanager.py tools/qmp-gui-taskmanager.py
+          python3 tests/test_qmp_gui_taskmanager.py
+      - name: Build isolated 800x600 disk GUI ISO (no production mode change)
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
+          ZONDERQ_3095_GUI_TEST_MODE: '800x600'
+        run: |
+          bash tools/build-cosmos-3095-local.sh disk
+          test -s output-3095/ZonderqOS-3095-disk.iso
+      - name: Verify actual 800x600 framebuffer and GUI input on two real boots
+        env:
+          SERVICE_QEMU_BOOT_SECONDS: '100'
+          SERVICE_QEMU_CAPTURE_SCREEN: '1'
+          SERVICE_QEMU_EXPECT_FRAMEBUFFER: '800x600'
+          SERVICE_QEMU_AUTOMATE_GUI_LOGIN: '1'
+          SERVICE_QEMU_PROBE_FILE_MANAGER: '1'
+          SERVICE_QEMU_PROBE_TASK_MANAGER: '1'
+        run: |
+          bash tools/smoke-services-qemu.sh \
+            output-3095/ZonderqOS-3095-disk.iso gui-800-qemu-output \
+            2>&1 | tee gui-800-qemu-smoke.log
+      - name: Diagnostics (a requested mode is NOT a verified framebuffer)
+        if: always()
+        run: |
+          cat gui-800-qemu-smoke.log 2>/dev/null || true
+          tail -n 120 gui-800-qemu-output/first.serial.log gui-800-qemu-output/second.serial.log 2>/dev/null || true
+          cat gui-800-qemu-output/first.stderr.log gui-800-qemu-output/second.stderr.log 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gui-800-stock-real-qemu-diagnostics
+          if-no-files-found: ignore
+          path: |
+            gui-800-qemu-smoke.log
+            gui-800-qemu-output/*.log
+            gui-800-qemu-output/*.conf
+            gui-800-qemu-output/*.ppm
