@@ -29,7 +29,7 @@ done
 [[ -z "$EXPECTED_FRAMEBUFFER" || "$EXPECTED_FRAMEBUFFER" =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || fail "expected framebuffer must be WIDTHxHEIGHT"
 [[ -z "$EXPECTED_FRAMEBUFFER" || "$CAPTURE_SCREEN" == 1 ]] || fail "framebuffer expectation requires screenshot capture"
 [[ "$FIRMWARE" == bios || "$FIRMWARE" == ovmf ]] || fail "unsupported QEMU firmware profile"
-[[ "$VIDEO" == std || "$VIDEO" == virtio || "$VIDEO" == qxl ]] || fail "unsupported QEMU video adapter"
+[[ "$VIDEO" == std || "$VIDEO" == virtio || "$VIDEO" == qxl || "$VIDEO" == std-edid ]] || fail "unsupported QEMU video adapter"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 ISO="$(realpath "$ISO")"
@@ -56,6 +56,15 @@ if [[ "$FIRMWARE" == ovmf ]]; then
   FIRMWARE_ARGS=(-drive "if=pflash,format=raw,unit=0,readonly=on,file=$OVMF_CODE"
                  -drive "if=pflash,format=raw,unit=1,file=$OUT/ovmf-vars.fd")
 fi
+# Opt-in EDID experiment for exact 1366x768. This only advertises a
+# preferred virtual monitor mode; OVMF/GOP must still expose it and the
+# framebuffer gate must independently measure it. Never fake a PASS.
+VIDEO_ARGS=(-vga "$VIDEO")
+if [[ "$VIDEO" == std-edid ]]; then
+  [[ "$FIRMWARE" == ovmf && "$EXPECTED_FRAMEBUFFER" == 1366x768 ]] ||
+    fail "std-edid is restricted to the isolated 1366x768 OVMF GUI probe"
+  VIDEO_ARGS=(-vga none -device VGA,edid=on,xres=1366,yres=768)
+fi
 echo "[SERVICES-QEMU] firmware=$FIRMWARE video=$VIDEO (synthetic FAT32 only)"
 QEMU_PID=""
 
@@ -77,7 +86,7 @@ boot_guest() {
   : > "$stderr"
   qemu-system-x86_64 \
     -M q35 -accel tcg -cpu Nehalem -smp 1 -m 2G \
-    "${FIRMWARE_ARGS[@]}" -vga "$VIDEO" \
+    "${FIRMWARE_ARGS[@]}" "${VIDEO_ARGS[@]}" \
     -drive "file=$ISO,if=none,id=cosmoscd,format=raw,readonly=on" \
     -device ide-cd,drive=cosmoscd,bootindex=0 -boot d \
     -device ich9-ahci,id=ahci0 \
