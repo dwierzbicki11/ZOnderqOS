@@ -67,6 +67,18 @@ class ModifiedKeySafetyTests(unittest.TestCase):
                     allowed = ctrl and not (shift or alt)
                     self.assertEqual(allowed, ctrl and not shift and not alt)
 
+    def test_notification_shift_enter_cannot_acknowledge_message(self):
+        text = source("source/GUI/NotificationCenter.cs")
+        handler = text.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "public bool UpdateInteractions(", 1
+        )[0]
+        enter = handler.split("if (key.Key == ConsoleKeyEx.Enter)", 1)[1].split(
+            "if (key.Key == ConsoleKeyEx.Delete)", 1
+        )[0]
+        self.assertIn("if (key.Modifiers == 0)", enter)
+        self.assertLess(enter.index("if (key.Modifiers == 0)"), enter.index("MarkSelectedRead();"))
+        self.assertIn("return true;", enter)
+
     def test_notification_shift_letters_cannot_clear_history(self):
         text = source("source/GUI/NotificationCenter.cs")
         handler = text.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
