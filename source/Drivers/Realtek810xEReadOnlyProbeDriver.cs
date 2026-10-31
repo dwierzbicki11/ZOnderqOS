@@ -64,7 +64,7 @@ namespace ZonderqOS.Drivers
             binding.Log("[NET3095-RTL810XE] MMIO_SNAPSHOT=READ mac=" +
                 snapshot.MacAddress + " link=" + (snapshot.Carrier ? "up" : "down") +
                 " speed=" + snapshot.SpeedMbps + " duplex=" +
-                (snapshot.FullDuplex ? "full" : "half") +
+                (!snapshot.Carrier ? "unknown" : snapshot.FullDuplex ? "full" : "half") +
                 " (read-only, no TX/RX/DMA/IRQ)");
 
             // Return Declined on purpose: DriverKit releases the mapping and
