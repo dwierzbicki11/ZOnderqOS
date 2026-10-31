@@ -226,10 +226,19 @@ namespace ZonderqOS.GUI.Apps
 
             Application target = ActiveApplication;
 
+            // A fresh press outside every window belongs to the desktop or
+            // taskbar, never to the active application's client controls.
+            // Keep forwarding motion and release events to the active window
+            // so a drag can finish even after the pointer leaves its bounds.
+            bool newPress = (leftClicked && !leftWasClicked) ||
+                (rightClicked && !rightWasClicked);
+            if (newPress)
+                target = null;
+
             // Both mouse buttons must focus the window under the pointer.
             // Otherwise right-clicking a background File Manager could send
             // its context-menu event to the unrelated foreground window.
-            if ((leftClicked && !leftWasClicked) || (rightClicked && !rightWasClicked))
+            if (newPress)
             {
                 for (int i = applications.Count - 1; i >= 0; i--)
                 {
