@@ -274,6 +274,51 @@ class FramebufferProbeTests(unittest.TestCase):
         self.assertLess(source.index('screenshot(channel, prefix + ".notification-click-closed.ppm")'),
                         source.index('send_keys(channel, "alt", "f4")'))
 
+    def test_qmp_drag_holds_button_during_relative_motion(self):
+        import json
+
+        class FakeChannel:
+            def __init__(self):
+                self.payloads = []
+
+            def write(self, payload):
+                self.payloads.append(json.loads(payload))
+
+            def readline(self):
+                return b'{"return": {}}\\n'.replace(b"\\n", b"\n")
+
+        channel = FakeChannel()
+        old_sleep = PROBE.time.sleep
+        try:
+            PROBE.time.sleep = lambda _: None
+            PROBE.drag_mouse_relative(channel, 48, 28)
+        finally:
+            PROBE.time.sleep = old_sleep
+        events = [p["arguments"]["events"] for p in channel.payloads]
+        self.assertEqual(events[0], [{"type": "btn", "data": {"button": "left", "down": True}}])
+        self.assertEqual(events[1], [
+            {"type": "rel", "data": {"axis": "x", "value": 48}},
+            {"type": "rel", "data": {"axis": "y", "value": 28}},
+        ])
+        self.assertEqual(events[2], [{"type": "btn", "data": {"button": "left", "down": False}}])
+
+    def test_real_qmp_window_drag_has_forward_and_reverse_framebuffer_gates(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('drag_mouse_relative(channel, 48, 28)', source)
+        self.assertIn('drag_mouse_relative(channel, -48, -28)', source)
+        self.assertIn('".filemanager-drag-before.ppm"', source)
+        self.assertIn('".filemanager-drag-moved.ppm"', source)
+        self.assertIn('".filemanager-drag-restored.ppm"', source)
+        self.assertIn('difference(drag_before, drag_moved)', source)
+        self.assertIn('difference(drag_before, drag_restored)', source)
+        self.assertIn('if fraction < 0.03:', source)
+        self.assertIn('if fraction > 0.10:', source)
+        self.assertLess(source.index('drag_mouse_relative(channel, 48, 28)'),
+                        source.index('drag_mouse_relative(channel, -48, -28)'))
+        self.assertLess(source.index('".filemanager-drag-restored.ppm"'),
+                        source.index('send_keys(channel, "alt", "f4")'))
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

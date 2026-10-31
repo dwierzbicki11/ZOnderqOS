@@ -99,6 +99,16 @@ def click_mouse(channel, button="left"):
         mouse_button(channel, False, button)
 
 
+def drag_mouse_relative(channel, dx, dy):
+    """Hold the guest left button while moving, releasing even on QMP error."""
+    try:
+        mouse_button(channel, True)
+        move_mouse_relative(channel, dx, dy, delay=0.3)
+    finally:
+        mouse_button(channel, False)
+    time.sleep(0.6)
+
+
 def screenshot(channel, path):
     command(channel, {"execute": "screendump", "arguments": {"filename": path}})
 
@@ -199,6 +209,21 @@ def main():
         time.sleep(1.2)
         screenshot(channel, prefix + ".notification-click-closed.ppm")
 
+        # Verify a real guest window drag, not merely a cursor move. At the
+        # QEMU 1024x768 mode File Manager starts at (120, 78) with a 38px
+        # titlebar. At narrower modes a window may fill the whole desktop,
+        # leaving no legal displacement; those modes need separate tests.
+        if frame_width >= 1000 and frame_height >= 700:
+            move_mouse_to_from_corner(channel, frame_width // 2, 100,
+                                      frame_width, frame_height)
+            screenshot(channel, prefix + ".filemanager-drag-before.ppm")
+            drag_mouse_relative(channel, 48, 28)
+            screenshot(channel, prefix + ".filemanager-drag-moved.ppm")
+            drag_mouse_relative(channel, -48, -28)
+            screenshot(channel, prefix + ".filemanager-drag-restored.ppm")
+        else:
+            print("[GUI-QMP] drag-window: SKIP framebuffer too small for a movable File Manager")
+
         # Alt+F4 must close the active File Manager and reveal the desktop.
         # This also exercises the real guest's global window shortcut path.
         send_keys(channel, "alt", "f4")
@@ -268,6 +293,21 @@ def main():
     if fraction > 0.10:
         raise RuntimeError("second PS/2 click did not restore File Manager viewport; inspect PPMs")
 
+    if frame_width >= 1000 and frame_height >= 700:
+        drag_before = read_ppm(prefix + ".filemanager-drag-before.ppm")
+        drag_moved = read_ppm(prefix + ".filemanager-drag-moved.ppm")
+        drag_restored = read_ppm(prefix + ".filemanager-drag-restored.ppm")
+        changed, samples = difference(drag_before, drag_moved)
+        fraction = changed / max(1, samples)
+        print(f"[GUI-QMP] drag-window-moved: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
+        if fraction < 0.03:
+            raise RuntimeError("PS/2 drag did not visibly move File Manager; inspect PPMs")
+        changed, samples = difference(drag_before, drag_restored)
+        fraction = changed / max(1, samples)
+        print(f"[GUI-QMP] drag-window-restored: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
+        if fraction > 0.10:
+            raise RuntimeError("reverse PS/2 drag did not restore File Manager; inspect PPMs")
+
     # Closing a window should return to the same desktop, not another large
     # overlay. Small differences from the clock/toasts are tolerated.
     changed, samples = difference(before, closed)
@@ -275,7 +315,7 @@ def main():
     print(f"[GUI-QMP] desktop-restored: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
     if fraction > 0.10:
         raise RuntimeError("Alt+F4 did not restore the desktop; inspect PPMs")
-    print("[GUI-QMP] PASS real palette launch, filter/Escape, PS/2 notification clicks and Alt+F4 close changed the guest framebuffer; visual app identity requires inspection.")
+    print("[GUI-QMP] PASS real palette launch, filter/Escape, PS/2 notification clicks, window drag and Alt+F4 close changed the guest framebuffer; visual app identity requires inspection.")
 
 
 if __name__ == "__main__":
