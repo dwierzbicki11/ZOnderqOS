@@ -78,6 +78,19 @@ internal static class CornerBandSmoke
         return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
     }
 
+    private static double TimeTop(Canvas canvas, bool optimized, int repetitions)
+    {
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repetitions; i++)
+        {
+            if (optimized)
+                UiPainter.RoundedTop(canvas, 10, 10, 60, 50, 12, Color.White);
+            else
+                Original(canvas, 10, 10, 60, 50, 12, Color.White, true);
+        }
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
     internal static void Verify()
     {
         int checks = 0;
@@ -142,5 +155,33 @@ internal static class CornerBandSmoke
             " renders, median of 5 A/B samples (informational): baseline " +
             baselineSamples[2].ToString("F2") + " ms, optimized " +
             optimizedSamples[2].ToString("F2") + " ms; no QEMU FPS claim.");
+
+        // RoundedTop still uses grouped scanlines: check its host cost too.
+        Canvas baselineTopCanvas = new Canvas(128, 96);
+        Canvas optimizedTopCanvas = new Canvas(128, 96);
+        TimeTop(baselineTopCanvas, false, 2000);
+        TimeTop(optimizedTopCanvas, true, 2000);
+        double[] baselineTopSamples = new double[5];
+        double[] optimizedTopSamples = new double[5];
+        for (int sample = 0; sample < baselineTopSamples.Length; sample++)
+        {
+            if ((sample & 1) == 0)
+            {
+                baselineTopSamples[sample] = TimeTop(baselineTopCanvas, false, iterations);
+                optimizedTopSamples[sample] = TimeTop(optimizedTopCanvas, true, iterations);
+            }
+            else
+            {
+                optimizedTopSamples[sample] = TimeTop(optimizedTopCanvas, true, iterations);
+                baselineTopSamples[sample] = TimeTop(baselineTopCanvas, false, iterations);
+            }
+        }
+        Array.Sort(baselineTopSamples);
+        Array.Sort(optimizedTopSamples);
+        Console.WriteLine("Host .NET RoundedTop " + iterations +
+            " renders, median of 5 A/B samples (informational): baseline " +
+            baselineTopSamples[2].ToString("F2") + " ms, optimized " +
+            optimizedTopSamples[2].ToString("F2") + " ms; no QEMU FPS claim.");
+
     }
 }
