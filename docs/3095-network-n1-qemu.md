@@ -139,11 +139,20 @@ The smoke runner checks that QEMU exposes the three trace events
 
 `tests/verify_3095_e1000e_irq_trace.py` classifies real QEMU-side
 notifications as `EMITTED` or `NOT_OBSERVED`, with separate legacy/MSI/MSI-X
-counts. A zero count is **not** rewritten as PASS and does not invalidate
-the independently verified Ethernet/TCP tests. The optional
-`--require-notify` flag fails closed if no notification is recorded.
-The parser's `--self-test` uses synthetic fixtures and is **not**
-an emulator or guest test.
+counts. As of the N6 gate hardening, `--require-notify` is mandatory
+for the isolated N6 CI run: **zero device-side notifications fails the N6
+smoke gate** even if packet delivery succeeded through polling. N1–N5
+still establish their separate Ethernet/TCP evidence. The parser's
+`--self-test` uses synthetic fixtures and is **not** an emulator or
+guest test.
+
+**Measured baseline (31 Oct 2026):** real QEMU N6 Actions run
+[#41210672507](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41210672507)
+at `c9957ee4` emitted `legacy=24 msi=0 msix=0` in the device trace
+while the N1–N6 PCAP/serial gates passed. This historical measurement
+motivates the new fail-closed assertion; it does **not** prove guest ISR
+execution, and the new commit must pass its own CI run before its stricter
+N6 gate can be called verified.
 
 **Crucial limitation:** QEMU raising a legacy interrupt or sending MSI/MSI-X
 does **not** prove that Cosmos 3.0.95 delivered it to a guest ISR, that
