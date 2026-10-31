@@ -1606,6 +1606,35 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertIn("MountVolume(entry, false);", left)
 
 
+    def test_file_manager_modal_keyboard_blocks_background_actions(self):
+        keyboard = FILE_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "private void CopySelected(", 1)[0]
+        dialog = keyboard.split("if (dialogMode != 0)", 1)[1].split(
+            "if (contextMenuVisible)", 1)[0]
+        menu = keyboard.split("if (contextMenuVisible)", 1)[1].split(
+            "bool control =", 1)[0]
+        self.assertIn(
+            "bool modified = (key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) != 0;",
+            keyboard)
+        self.assertLess(dialog.index("if (modified)"), dialog.index("FinishCreate();"))
+        self.assertLess(menu.index("if (modified)"), menu.index("ConsoleKeyEx.UpArrow"))
+        self.assertIn("contextMenuSelection = -1;", menu)
+        self.assertIn("if (key.Key == ConsoleKeyEx.Escape)", menu)
+        self.assertTrue(menu.rstrip().endswith("return;\n            }"))
+        # The modal branch must consume all keys before clipboard, search,
+        # refresh and navigation dispatch. A modified Enter cannot create.
+        self.assertLess(keyboard.index("if (contextMenuVisible)"), keyboard.index("bool control ="))
+        self.assertLess(keyboard.index("if (modified)\n                return;"),
+                        keyboard.index("if (key.Key == ConsoleKeyEx.Backspace)", keyboard.index("bool control =")))
+        for menu_open, modified, key in (
+            (True, False, "a"), (True, False, "F5"),
+            (True, True, "V"), (True, True, "Enter"),
+            (False, True, "Enter"), (False, True, "Backspace"),
+        ):
+            background_action = not menu_open and not modified
+            self.assertFalse(background_action, (menu_open, modified, key))
+
+
     def test_file_manager_context_menu_keyboard_navigation_and_disabled_actions(self):
         keyboard = FILE_MANAGER.split("public override void HandleKeyboard(", 1)[1].split(
             "private void CopySelected(", 1)[0]
