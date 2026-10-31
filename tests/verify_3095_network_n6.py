@@ -337,6 +337,38 @@ def self_test() -> None:
         (serial + "\n" + HTTP_REPEAT_PASS, frames),
         (serial.replace(HTTP_REPEAT_PASS, "").replace(HTTP_PASS, HTTP_REPEAT_PASS), frames),
     ])
+    # Verify that the second session is independently inspected, rather
+    # than accepting one good connection and trusting a serial success line.
+    first_frames = base + handshake + request + response + teardown
+
+    def rebind_to_first_port(frame: bytes) -> bytes:
+        packet = bytearray(frame)
+        # Synthetic IPv4 has a 20-byte header; TCP starts after Ethernet.
+        for offset in (34, 36):
+            if int.from_bytes(packet[offset:offset + 2], "big") == 49154:
+                packet[offset:offset + 2] = (49153).to_bytes(2, "big")
+        return bytes(packet)
+
+    second_negatives = [
+        second_frames[:-1],  # second FIN without the guest ACK
+        second_handshake + second_request + second_response[:2] + second_teardown,
+        second_handshake + second_request +
+            [corrupt_mac(second_response[0], 6)] + second_response[1:] + second_teardown,
+        second_handshake + second_request + second_response +
+            [second_teardown[0], corrupt_mac(second_teardown[1], 0)],
+        [rebind_to_first_port(frame) for frame in second_frames],
+        second_handshake +
+            [fake_http(False, 0x18, 30001, 40001,
+                       REQUEST.replace(b"/health", b"/healthz"), client_port=49154)] +
+            second_response + second_teardown,
+    ]
+    for bad_second in second_negatives:
+        try:
+            validate(serial, synthetic_capture(first_frames + bad_second))
+        except ValueError:
+            continue
+        raise AssertionError("accepted invalid second HTTP TCP exchange")
+
     for bad_serial, bad_frames in negatives:
         try:
             validate(bad_serial, synthetic_capture(bad_frames + second_frames))
