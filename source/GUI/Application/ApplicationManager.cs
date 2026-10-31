@@ -50,7 +50,11 @@ namespace ZonderqOS.GUI.Apps
             if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
                 return;
 
-            applications.Add(application);
+            // A launcher may return an already-running application instance.
+            // Re-adding it would render the same window twice and break MRU,
+            // taskbar pagination and Alt+Tab ordering.
+            if (!applications.Contains(application))
+                applications.Add(application);
             Activate(application);
         }
 
