@@ -116,6 +116,9 @@ Check(irqInfo.MsiPresent && irqInfo.MsiEnabled && irqInfo.Msi64Bit &&
     "MSI/MSI-X control, vector count or table/PBA BAR decode failed");
 // MSI-X table and PBA must point to assigned MEMORY BARs. A 64-bit
 // BAR's high half is never an independently addressable BAR.
+// Earlier negative BAR fixtures cleared BAR2/3: explicitly restore them.
+barConfig.SetBar(2, 0x0000000Cu);
+barConfig.SetBar(3, 0x00000001u);
 Check(!PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
       out var msixBars), "Unassigned PBA BAR must fail closed");
 barConfig.SetBar(4, 0xFEBE0000u);
