@@ -42,15 +42,18 @@ namespace ZonderqOS.GUI
             Fill(canvas, border, x, y + r, 1, height - 2 * r);
             Fill(canvas, border, x + width - 1, y + r, 1, height - 2 * r);
 
+            // Adjacent border rows share the same corner inset. Carry it
+            // forward instead of calculating sqrt twice for each row.
+            int borderInset = CornerInset(r, 0);
             for (int row = 0; row < r; row++)
             {
-                int inset = CornerInset(r, row);
                 int next = row + 1 < r ? CornerInset(r, row + 1) : 0;
-                int edge = Math.Max(1, inset - next + 1);
-                Fill(canvas, border, x + inset, y + row, edge, 1);
-                Fill(canvas, border, x + width - inset - edge, y + row, edge, 1);
-                Fill(canvas, border, x + inset, y + height - row - 1, edge, 1);
-                Fill(canvas, border, x + width - inset - edge, y + height - row - 1, edge, 1);
+                int edge = Math.Max(1, borderInset - next + 1);
+                Fill(canvas, border, x + borderInset, y + row, edge, 1);
+                Fill(canvas, border, x + width - borderInset - edge, y + row, edge, 1);
+                Fill(canvas, border, x + borderInset, y + height - row - 1, edge, 1);
+                Fill(canvas, border, x + width - borderInset - edge, y + height - row - 1, edge, 1);
+                borderInset = next;
             }
         }
 
