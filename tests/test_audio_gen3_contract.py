@@ -144,7 +144,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("PlayWave8TestTone()", runtime)
         self.assertIn('if (command == "wav8")', kernel)
         self.assertIn("--command wav8", workflow)
-        self.assertIn("990 if args.command == \"wav8\"", harness)
+        self.assertIn("1320 if args.command == \"wav8\"", harness)
         reader = read("source/Core/AudioWaveInput.cs")
         self.assertIn("MaxFileBytes = 512 * 1024", reader)
         self.assertIn("ReadExact(input, wave, header.Length", reader)
