@@ -92,12 +92,13 @@ class FramebufferProbeTests(unittest.TestCase):
         original = bytes(width * height * 3)
         restored = bytearray(original)
         # A small status/clock repaint must not fail a viewport restore.
-        for y in range(10, 12):
-            for x in range(10, 15):
+        for y in range(13, 15):
+            for x in range(13, 19):
                 off = (y * width + x) * 3
                 restored[off:off + 3] = bytes((255, 255, 255))
         changed, samples = PROBE.difference(
             (width, height, original), (width, height, bytes(restored)))
+        self.assertGreater(changed, 0)
         self.assertLessEqual(changed / samples, 0.10)
 
 
