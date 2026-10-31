@@ -243,7 +243,9 @@ namespace ZonderqOS.SystemCore
                 pcm.Length % channels != 0)
                 throw new ArgumentException("Invalid PCM8 duration or frame alignment.", nameof(pcm));
 
-            byte[] wave = new byte[44 + pcm.Length];
+            // RIFF chunks are padded to an even boundary, but the data chunk
+            // length itself excludes the pad byte.
+            byte[] wave = new byte[44 + pcm.Length + (pcm.Length & 1)];
             PutTag(wave, 0, "RIFF");
             Write32(wave, 4, wave.Length - 8);
             PutTag(wave, 8, "WAVE");
