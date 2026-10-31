@@ -110,6 +110,13 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected about 2640Hz"):
             audio.inspect(self.path, expected_hz=2640)
 
+    def test_distinct_32000_resampler_probe_pitch(self):
+        # Synthetic 3520 Hz capture: this only verifies the validator, not HDA.
+        self.make_wave(frequency=3520)
+        self.assertIn("PASS captured PCM", audio.inspect(self.path, expected_hz=3520))
+        with self.assertRaisesRegex(ValueError, "expected about 3080Hz"):
+            audio.inspect(self.path, expected_hz=3080)
+
     def test_accepts_hda_capture_with_two_short_underruns(self):
         # Matches the measured QEMU WAV capture: two 21 ms silent gaps,
         # but >200 ms of real 440 Hz samples on both channels.
