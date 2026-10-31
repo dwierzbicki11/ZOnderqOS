@@ -99,11 +99,14 @@ namespace ZonderqOS.SystemCore
                         // Extensible PCM may store 16/20/24 valid bits in a
                         // larger 24/32-bit container, left-aligned. Keep
                         // PCM8/PCM16 exact and refuse sub-16-bit precision.
-                        validBits = Read16(wave, pos + 26);
+                        // Check chunk bounds before reading extension fields: a
+                        // short fmt chunk may be the last bytes of the file.
                         if (size < 40 || Read16(wave, pos + 24) < 22 ||
-                            (long)Read16(wave, pos + 24) + 18 > size ||
-                            (validBits != bits && !(bits >= 24 && validBits >= 16 && validBits < bits)))
+                            (long)Read16(wave, pos + 24) + 18 > size)
                             throw new ArgumentException("Invalid WAV extensible header.", nameof(wave));
+                        validBits = Read16(wave, pos + 26);
+                        if (validBits != bits && !(bits >= 24 && validBits >= 16 && validBits < bits))
+                            throw new ArgumentException("Invalid WAV extensible valid-bit width.", nameof(wave));
 
                         uint speakerMask = Read32(wave, pos + 28);
                         if (speakerMask != 0 &&
@@ -286,7 +289,7 @@ namespace ZonderqOS.SystemCore
         /// RIFF, preserving the data chunk and any even-boundary padding.
         /// This helper never opens a filesystem or touches a device.
         /// </summary>
-        private static byte[] ToExtensiblePcm(byte[] basic, int channels, int bits, int validBits)
+        private static byte[] ToExtensiblePcm(byte[] basic, int channels, int validBits)
         {
             byte[] wave = new byte[basic.Length + 24];
             Array.Copy(basic, 0, wave, 0, 36);
@@ -310,7 +313,7 @@ namespace ZonderqOS.SystemCore
 
         public static byte[] EncodeExtensibleStereo16AtRate(byte[] pcm, int sampleRate)
         {
-            return ToExtensiblePcm(EncodeStereo16AtRate(pcm, sampleRate), 2, 16, 16);
+            return ToExtensiblePcm(EncodeStereo16AtRate(pcm, sampleRate), 2, 16);
         }
 
         /// <summary>Build 16/20/24 valid-bit PCM in a signed 24-bit container.</summary>
@@ -318,7 +321,7 @@ namespace ZonderqOS.SystemCore
         {
             if (validBits != 16 && validBits != 20 && validBits != 24)
                 throw new ArgumentOutOfRangeException(nameof(validBits));
-            return ToExtensiblePcm(EncodePcm24AtRate(pcm, sampleRate, channels), channels, 24, validBits);
+            return ToExtensiblePcm(EncodePcm24AtRate(pcm, sampleRate, channels), channels, validBits);
         }
 
         /// <summary>Build 16/24/32 valid-bit PCM in a signed 32-bit container.</summary>
@@ -326,7 +329,7 @@ namespace ZonderqOS.SystemCore
         {
             if (validBits != 16 && validBits != 24 && validBits != 32)
                 throw new ArgumentOutOfRangeException(nameof(validBits));
-            return ToExtensiblePcm(EncodePcm32AtRate(pcm, sampleRate, channels), channels, 32, validBits);
+            return ToExtensiblePcm(EncodePcm32AtRate(pcm, sampleRate, channels), channels, validBits);
         }
 
         /// <summary>Build a bounded mono PCM16 RIFF fixture without disk access.</summary>

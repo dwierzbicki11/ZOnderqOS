@@ -178,6 +178,23 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject valid bits exceeding 24-bit container");
 
+        // A short extensible fmt at the very end must fail cleanly, not read
+        // validBits beyond the input buffer (malformed external WAV safety).
+        byte[] shortExtensibleFmt = new byte[44];
+        Array.Copy(encoded, 0, shortExtensibleFmt, 0, 12);
+        WriteLittle32(shortExtensibleFmt, 4, shortExtensibleFmt.Length - 8);
+        shortExtensibleFmt[12] = (byte)'J'; shortExtensibleFmt[13] = (byte)'U';
+        shortExtensibleFmt[14] = (byte)'N'; shortExtensibleFmt[15] = (byte)'K';
+        WriteLittle32(shortExtensibleFmt, 16, 0);
+        shortExtensibleFmt[20] = (byte)'f'; shortExtensibleFmt[21] = (byte)'m';
+        shortExtensibleFmt[22] = (byte)'t'; shortExtensibleFmt[23] = (byte)' ';
+        WriteLittle32(shortExtensibleFmt, 24, 16);
+        shortExtensibleFmt[28] = 0xFE; shortExtensibleFmt[29] = 0xFF;
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(shortExtensibleFmt); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "short final extensible fmt rejected without out-of-range read");
+
         // A real-world PCM16 mono WAV should decode into bounded stereo frames.
         byte[] mono = new byte[44 + pcm.Length / 2];
         Array.Copy(encoded, mono, 44);
