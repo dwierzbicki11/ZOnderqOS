@@ -58,6 +58,8 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
         self.assertIn("first.MacAddress != second.MacAddress", SAMPLER)
         self.assertIn("samples=2", DRIVER)
         self.assertIn("samples=2", KERNEL)
+        self.assertIn('" duplex=" + (!sample.Carrier', KERNEL)
+        self.assertIn("malformed driver snapshot marker", (ROOT / "tests/verify_3095_realtek_readonly.py").read_text())
         self.assertIn("RTL8106e", SMOKE)
         self.assertIn("RTL8105e", SMOKE)
         self.assertIn("Failed TxConfig byte read", SMOKE)

@@ -18,7 +18,8 @@ via the stock Cosmos 3.0.95
 
 Both the raw PHYstatus byte and its decoded carrier/speed/duplex
 are emitted in the driver and kernel serial records. The log validator
-rejects mismatches between the raw PHY byte and the decoded state;
+rejects mismatches between the raw PHY byte and the decoded state,
+rejects malformed additional sample markers and cross-checks duplex;
 these are still guest-reported observations, not an independent
 hardware trace.
 

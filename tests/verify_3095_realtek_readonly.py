@@ -19,7 +19,7 @@ DRIVER = re.compile(
     r" variant=(RTL8106e|RTL8105e|unknown) samples=2(?=\s|$)")
 KERNEL = re.compile(
     re.escape(PREFIX) + r" SNAPSHOT=PASS mac=" + MAC +
-    r" link=(up|down) speed=(0|10|100)" +
+    r" link=(up|down) speed=(0|10|100) duplex=(full|half|unknown)" +
     r" phy=0x([0-9A-F]{2}) txconfig=0x([0-9A-F]{8}) xid=0x([0-9A-F]{3})" +
     r" variant=(RTL8106e|RTL8105e|unknown) samples=2(?=\s|$)")
 HEARTBEAT = re.compile(re.escape(PREFIX) + r" HEARTBEAT=(\d+)")
@@ -49,6 +49,16 @@ def validate(log: str) -> str:
         re.IGNORECASE)
     if any(fatal.search(line) for line in lines):
         raise ValueError("guest fault recorded in serial log")
+    # Malformed or additional sample claims cannot be ignored just because
+    # another marker happens to be well-formed.
+    if any(PREFIX + " MMIO_SNAPSHOT=" in line and
+           (not DRIVER.search(line) or not line.rstrip().endswith(
+               "samples=2 (read-only, no TX/RX/DMA/IRQ)")) for line in lines):
+        raise ValueError("malformed driver snapshot marker")
+    if any(PREFIX + " SNAPSHOT=" in line and
+           (not KERNEL.search(line) or not line.rstrip().endswith(
+               "samples=2 (register read only; TX/RX/DMA/IRQ not tested)")) for line in lines):
+        raise ValueError("malformed kernel snapshot marker")
     driver = [(i, m) for i, line in enumerate(lines)
               if (m := DRIVER.search(line))]
     kernel = [(i, m) for i, line in enumerate(lines)
@@ -62,14 +72,14 @@ def validate(log: str) -> str:
     if not (driver[0][0] < boots[0] < kernel[0][0]):
         raise ValueError("driver/boot/kernel markers out of order")
     d, k = driver[0][1], kernel[0][1]
-    if (d.group(1).upper(), d.group(2), d.group(3)) != (
-        k.group(1).upper(), k.group(2), k.group(3)):
+    if (d.group(1).upper(), d.group(2), d.group(3), d.group(4)) != (
+        k.group(1).upper(), k.group(2), k.group(3), k.group(4)):
         raise ValueError("driver and kernel snapshots disagree")
     mac_bytes = bytes.fromhex(d.group(1).replace(":", ""))
     if mac_bytes[0] & 1 or not any(mac_bytes):
         raise ValueError("invalid unicast station address")
     if (d.group(5), d.group(6), d.group(7), d.group(8)) != (
-        k.group(4), k.group(5), k.group(6), k.group(7)):
+        k.group(5), k.group(6), k.group(7), k.group(8)):
         raise ValueError("driver and kernel raw PHY/TxConfig/XID/variant disagree")
     expected_xid, expected_variant = decode_xid(d.group(6))
     if int(d.group(7), 16) != expected_xid or d.group(8) != expected_variant:
@@ -106,15 +116,15 @@ def self_test() -> None:
         "samples=2 (read-only, no TX/RX/DMA/IRQ)\n" +
         PREFIX + " BOOT read-only physical probe\n" +
         PREFIX + " SNAPSHOT=PASS mac=02:11:22:33:44:55 link=up speed=100 "
-        "phy=0x0B txconfig=0x44800000 xid=0x448 variant=RTL8106e "
+        "duplex=full phy=0x0B txconfig=0x44800000 xid=0x448 variant=RTL8106e "
         "samples=2 (register read only; TX/RX/DMA/IRQ not tested)\n" +
         PREFIX + " HEARTBEAT=1\n" + PREFIX + " HEARTBEAT=2\n"
     )
     assert "PASS" in validate(sample)
     link_down = sample.replace("link=up speed=100 duplex=full",
                                "link=down speed=0 duplex=unknown")
-    link_down = link_down.replace("link=up speed=100 phy=0x0B txconfig=",
-                                  "link=down speed=0 phy=0x0B txconfig=")
+    link_down = link_down.replace("link=up speed=100 duplex=full phy=0x0B txconfig=",
+                                  "link=down speed=0 duplex=unknown phy=0x0B txconfig=")
     link_down = link_down.replace("phy=0x0B", "phy=0x08")
     assert "PASS" in validate(link_down)
     rtl8105 = sample.replace("0x44800000 xid=0x448 variant=RTL8106e",
@@ -135,7 +145,13 @@ def self_test() -> None:
         sample.replace("SNAPSHOT=PASS", "SNAPSHOT=FAKE"),
         sample.replace("samples=2", "samples=1", 1),
         sample.replace("samples=2", "samples=1"),
-        sample.replace("link=up speed=100 phy=0x0B txconfig=", "link=down speed=0 phy=0x0B txconfig="),
+        sample.replace("link=up speed=100 duplex=full phy=0x0B txconfig=", "link=down speed=0 duplex=unknown phy=0x0B txconfig="),
+        sample.replace("SNAPSHOT=PASS mac=02:11:22:33:44:55 link=up speed=100 duplex=full",
+                       "SNAPSHOT=PASS mac=02:11:22:33:44:55 link=up speed=100 duplex=half"),
+        sample + PREFIX + " MMIO_SNAPSHOT=READ mac=bad\n",
+        sample + PREFIX + " SNAPSHOT=PASS mac=bad\n",
+        sample.replace("samples=2 (read-only, no TX/RX/DMA/IRQ)",
+                       "samples=2 (unreviewed read)"),
         sample.replace("HEARTBEAT=2", "HEARTBEAT=4"),
         sample.replace("HEARTBEAT=2", "HEARTBEAT=1"),
         sample.replace("HEARTBEAT=2\n", ""),
