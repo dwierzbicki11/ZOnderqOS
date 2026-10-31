@@ -487,12 +487,23 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            // Keep the current directory and search intact on failed unmount.
-            // Only navigate away once the filesystem was actually detached.
+            // The detach has succeeded. A stale cached listing must never
+            // remain interactive if BOTH the home and root fallback scans fail
+            // (for example, during a simultaneous storage error). Clear only
+            // snapshots of the detached volume; unrelated directories retain
+            // their selection and cached view on a transient refresh failure.
             if (viewingVolume)
             {
+                entries.Clear();
+                cachedEntries.Clear();
+                hasLoadedDirectory = false;
+                loadedDirectoryPath = null;
+                selectedIndex = -1;
+                scrollIndex = 0;
+                contextMenuVisible = false;
+                contextMenuSelection = -1;
+                ResetClickSequence();
                 // /root is not guaranteed to exist on every disk-backed boot.
-                // Do not leave a stale listing from a detached FAT32 volume.
                 currentPath = Directory.Exists("/root") ? "/root" : "/";
                 searchText = "";
             }
