@@ -68,6 +68,8 @@ def main():
     parser.add_argument("iso", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--boot-seconds", type=int, default=35)
+    parser.add_argument("--command", choices=("tone", "wavtone"), default="tone",
+                        help="isolated guest command to execute; WAV probe never reads guest disks")
     args = parser.parse_args()
     if args.boot_seconds < 5 or args.boot_seconds > 120:
         parser.error("--boot-seconds must be 5..120")
@@ -110,7 +112,7 @@ def main():
                 print(f"[AUDIO-QEMU] optional screenshot unavailable: {exc}")
             qmp.type_line("audioinfo")
             time.sleep(1)
-            qmp.type_line("tone")
+            qmp.type_line(args.command)
             time.sleep(4)
             try:
                 qmp.execute("screendump", {"filename": str(out / "after.ppm")})
@@ -121,7 +123,7 @@ def main():
             if guest.returncode != 0:
                 raise RuntimeError(f"QEMU quit with status {guest.returncode}")
             print(capture.inspect(wav))
-            print("[AUDIO-QEMU] PASS real QEMU HDA WAV capture; no physical speaker proof")
+            print(f"[AUDIO-QEMU] PASS command={args.command} real QEMU HDA WAV capture; no physical speaker proof")
             return 0
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
             print(f"[AUDIO-QEMU] FAIL {exc}", file=sys.stderr)
