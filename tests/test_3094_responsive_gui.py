@@ -1880,5 +1880,28 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertLess(restore.index("lastTitleClickTimestamp = 0;"),
                         restore.index("IsMinimized = false;"))
 
+
+    def test_window_hit_testing_reflows_before_click_after_resolution_change(self):
+        contains = WINDOW.split("public bool ContainsPoint(int mouseX, int mouseY)", 1)[1].split(
+            "public void HandleMouse(", 1)[0]
+        self.assertIn("if (!Visible || IsMinimized)", contains)
+        self.assertIn("SyncDesktopBounds();", contains)
+        self.assertLess(contains.index("SyncDesktopBounds();"),
+                        contains.index("return mouseX >= X"))
+        self.assertIn("mouseX < X + Width", contains)
+        self.assertIn("mouseY < Y + Height", contains)
+        # A former 1040x690 window at (165,110) must not remain clickable
+        # beyond an 800x600 desktop (556px usable height) before repaint.
+        old = (165, 110, 1040, 690)
+        desktop = (800, 556)
+        margin = 0
+        width = min(old[2], desktop[0] - 2 * margin)
+        height = min(old[3], desktop[1] - 2 * margin)
+        x = max(margin, min(old[0], desktop[0] - width - margin))
+        y = max(margin, min(old[1], desktop[1] - height - margin))
+        self.assertEqual((x, y, width, height), (0, 0, 800, 556))
+        self.assertFalse(x <= 950 < x + width)
+        self.assertTrue(x <= 799 < x + width)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

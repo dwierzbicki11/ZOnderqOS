@@ -256,7 +256,14 @@ namespace ZonderqOS.GUI
 
         public bool ContainsPoint(int mouseX, int mouseY)
         {
-            return Visible && !IsMinimized && mouseX >= X && mouseX < X + Width &&
+            if (!Visible || IsMinimized)
+                return false;
+
+            // Input hit-testing can precede the first render after a mode
+            // change. Reflow here so focus and clicks use the new framebuffer
+            // bounds instead of a stale rectangle from the previous mode.
+            SyncDesktopBounds();
+            return mouseX >= X && mouseX < X + Width &&
                 mouseY >= Y && mouseY < Y + Height;
         }
 
