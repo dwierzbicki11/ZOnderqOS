@@ -85,6 +85,10 @@ def self_test() -> None:
         DECLINE, DECLINE[:_VALID_SPLIT] +
         "[SCHED] Tick 6 enabled=1\n" + DECLINE[_VALID_SPLIT:])
     assert "PASS mode=none" in verify(mid_spliced, "none")
+    mid_spliced_rtl = rtl.replace(
+        DECLINE, DECLINE[:_VALID_SPLIT] +
+        "[SCHED] Tick 6 enabled=1\n" + DECLINE[_VALID_SPLIT:])
+    assert "PASS mode=rtl8139" in verify(mid_spliced_rtl, "rtl8139")
     bad = [
         rtl.replace("offers=0", "offers=1"),
         rtl.replace("samples=0", "samples=1"),
@@ -96,10 +100,10 @@ def self_test() -> None:
         rtl.replace(DECLINE, DECLINE + "\n" + DECLINE),
         rtl.replace(BOOT, BOOT + "\n" + BOOT),
         rtl.replace(DECLINE, "[NET[UNKNOWN] noise\n" + DECLINE[len("[NET"):]),
-        mid_spliced.replace("enabled=1\n", "enabled=0\n"),
-        mid_spliced.replace("[SCHED] Tick 6", "[OTHER] Tick 6"),
-        mid_spliced.replace("offers=0", "offers=1"),
-        mid_spliced + "\n" + DECLINE,
+        mid_spliced_rtl.replace("enabled=1\n", "enabled=0\n"),
+        mid_spliced_rtl.replace("[SCHED] Tick 6", "[OTHER] Tick 6"),
+        mid_spliced_rtl.replace("offers=0", "offers=1"),
+        mid_spliced_rtl + "\n" + DECLINE,
         rtl + "[NET3095-RTL810XE] SNAPSHOT=PASS mac=02:11:22:33:44:55\n",
         rtl + "Exception 14 CR2=0xC\n",
         rtl + "[NET3095-RTL810XE][FAIL] unexpected\n",
