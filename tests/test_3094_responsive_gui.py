@@ -345,7 +345,8 @@ class ResponsiveGui3094(unittest.TestCase):
                             if menu_width < 480 else 82)
             right = menu_width - 14
             left = right - 4 * button_width - 3 * gap
-            self.assertGreaterEqual(left, 14 + 110)
+            # Full-width buttons start at 114px; identity text ends at 106px.
+            self.assertGreaterEqual(left, 106 + 8)
             self.assertLessEqual(right, menu_width - 14)
             self.assertGreaterEqual(button_width, 24)
 
