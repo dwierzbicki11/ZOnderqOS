@@ -9,6 +9,8 @@ on:
       - 'tools/build-cosmos-3095-local.sh'
       - 'tools/smoke-audio-qemu.py'
       - 'tools/verify-audio-wav-capture.py'
+      - 'tools/verify-audio-volume-capture.py'
+      - 'tests/test_audio_volume_validator.py'
       - '.github/workflows/audio-qemu.yml'
   workflow_dispatch:
 
@@ -37,9 +39,10 @@ jobs:
         run: |
           bash tools/verify-cosmos-3095-migration.sh
           bash -n run.sh tools/build-cosmos-3095-local.sh
-          python3 -m py_compile tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py
+          python3 -m py_compile tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py tools/verify-audio-volume-capture.py
           python3 tests/test_audio_gen3_contract.py
           python3 tests/test_audio_wav_validator.py
+          python3 tests/test_audio_volume_validator.py
       - name: Build isolated stock Cosmos 3.0.95 AUDIO ISO
         env:
           ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
@@ -54,11 +57,18 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-wav-out --boot-seconds 45 --command wavtone
+      - name: Boot again at 25% software volume and compare actual output amplitude
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-quiet-out --boot-seconds 45 --command tone --volume 25
+          python3 tools/verify-audio-volume-capture.py \
+            audio-qemu-out/captured.wav audio-qemu-quiet-out/captured.wav
       - name: Diagnostic logs
         if: always()
         run: |
           tail -n 200 audio-qemu-out/serial.log audio-qemu-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-wav-out/serial.log audio-qemu-wav-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-quiet-out/serial.log audio-qemu-quiet-out/qemu.stderr.log 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -71,3 +81,6 @@ jobs:
             audio-qemu-wav-out/*.log
             audio-qemu-wav-out/*.wav
             audio-qemu-wav-out/*.ppm
+            audio-qemu-quiet-out/*.log
+            audio-qemu-quiet-out/*.wav
+            audio-qemu-quiet-out/*.ppm
