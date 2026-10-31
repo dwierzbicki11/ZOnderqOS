@@ -132,7 +132,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("--command wavmono", workflow)
         self.assertIn("riffEnd != wave.Length", parser)
         # Mono uses 2-byte frames; stereo uses 4-byte frames. Validate after fmt parsing.
-        self.assertIn("int sourceFrameBytes = channels * 2;", parser)
+        self.assertIn("int sourceFrameBytes = channels * (sourceBits / 8);", parser)
         self.assertIn("dataSize % sourceFrameBytes != 0", parser)
         self.assertIn("pcm.Length % FrameBytes != 0", parser)
         self.assertIn("rate != SampleRate && rate != 44100", parser)
