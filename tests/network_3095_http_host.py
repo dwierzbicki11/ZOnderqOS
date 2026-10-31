@@ -26,31 +26,32 @@ def serve(port: int = PORT) -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         listener.bind(("127.0.0.1", port))
-        listener.listen(1)
+        listener.listen(2)
         listener.settimeout(40)
         print(f"[NET3095-N6-HOST] READY port={port}", flush=True)
-        connection, _peer = listener.accept()
-        with connection:
-            connection.settimeout(8)
-            request = bytearray()
-            while len(request) < len(REQUEST):
-                chunk = connection.recv(len(REQUEST) - len(request))
-                if not chunk:
-                    break
-                request.extend(chunk)
-            if bytes(request) != REQUEST:
-                raise ValueError(f"unexpected HTTP request length={len(request)}")
-            # Force the guest through multiple TCP/IP packets and E1000E DMA
-            # RX descriptors. The PCAP gate must independently establish the
-            # segmentation, sequence continuity and exact 4 KiB body.
-            connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-            boundary = RESPONSE.index(b"\r\n\r\n") + 4
-            connection.sendall(RESPONSE[:boundary])
-            for start in range(boundary, len(RESPONSE), 1024):
-                time.sleep(0.1)
-                connection.sendall(RESPONSE[start:start + 1024])
-            print("[NET3095-N6-HOST] PASS HTTP/1.0 GET /health 200 split=6 body=4116", flush=True)
-
+        for attempt in range(1, 3):
+            connection, _peer = listener.accept()
+            with connection:
+                connection.settimeout(8)
+                request = bytearray()
+                while len(request) < len(REQUEST):
+                    chunk = connection.recv(len(REQUEST) - len(request))
+                    if not chunk:
+                        break
+                    request.extend(chunk)
+                if bytes(request) != REQUEST:
+                    raise ValueError(f"unexpected HTTP request length={len(request)}")
+                # Force the guest through multiple TCP/IP packets and E1000E DMA
+                # RX descriptors. The PCAP gate must independently establish the
+                # segmentation, sequence continuity and exact 4 KiB body.
+                connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                boundary = RESPONSE.index(b"\r\n\r\n") + 4
+                connection.sendall(RESPONSE[:boundary])
+                for start in range(boundary, len(RESPONSE), 1024):
+                    time.sleep(0.1)
+                    connection.sendall(RESPONSE[start:start + 1024])
+                print("[NET3095-N6-HOST] " + ("PASS" if attempt == 1 else "REPEAT_PASS") + " HTTP/1.0 GET /health 200 split=6 body=4116", flush=True)
+    
 
 def self_test() -> None:
     import threading
@@ -80,21 +81,24 @@ def self_test() -> None:
                 time.sleep(0.02)
         if connection is None:
             raise AssertionError("HTTP listener did not become ready")
-        with connection:
-            connection.settimeout(5)
-            connection.sendall(REQUEST)
-            received = bytearray()
-            while len(received) < len(RESPONSE):
-                part = connection.recv(len(RESPONSE) - len(received))
-                if not part:
-                    break
-                received.extend(part)
-            if bytes(received) != RESPONSE:
-                raise AssertionError("HTTP response differs from expected bytes")
+        for request_index in range(2):
+            if request_index:
+                connection = socket.create_connection(("127.0.0.1", port), timeout=1)
+            with connection:
+                connection.settimeout(5)
+                connection.sendall(REQUEST)
+                received = bytearray()
+                while len(received) < len(RESPONSE):
+                    part = connection.recv(len(RESPONSE) - len(received))
+                    if not part:
+                        break
+                    received.extend(part)
+                if bytes(received) != RESPONSE:
+                    raise AssertionError("HTTP response differs from expected bytes")
         worker.join(timeout=5)
         if worker.is_alive() or errors:
             raise AssertionError(f"HTTP server failed on attempt {attempt + 1}: {errors}")
-    print("[NET3095-N6-HOST-CONTRACT] PASS real loopback HTTP/1.0 split header/body and sequential rebind")
+    print("[NET3095-N6-HOST-CONTRACT] PASS two independent HTTP connections per server and sequential rebind")
 
 
 if __name__ == "__main__":

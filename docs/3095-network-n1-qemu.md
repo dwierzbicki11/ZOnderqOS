@@ -114,3 +114,15 @@ That historical capture confirms the ARP frames existed; the stricter
 new gate must pass its own current CI run before claiming the updated
 end-to-end proof. Synthetic positive/negative ARP fixtures remain parser
 tests, not hardware or network evidence. Physical RTL810xE is untested.
+
+## N6 repeated TCP connection / RX-ring reuse probe (2026-10-31)
+
+The isolated N6 guest now performs **two separate TCP connections** to the
+same loopback-only HTTP fixture. Each connection receives the exact 4116-byte
+body, verifies the complete response and closes. The host accepts exactly two
+requests. The PCAP validator requires two distinct client source ports, each
+with a full handshake, contiguous multi-segment response, and server FIN
+acknowledged by the guest. The second handshake must occur after the first
+server FIN/ACK. This is a bounded RX descriptor and socket lifecycle test,
+not a direct proof that hardware IRQs fired; stock Cosmos may still poll.
+It remains an isolated QEMU-only diagnostic, never production GUI networking.

@@ -253,7 +253,8 @@ while (( SECONDS - started < TIMEOUT )); do
         sleep 1
       done
       python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
-      grep -Fq '[NET3095-N6-HOST] PASS HTTP/1.0 GET /health 200' "$LOG.http-host" || {
+      grep -Fq '[NET3095-N6-HOST] PASS HTTP/1.0 GET /health 200' "$LOG.http-host"
+      grep -Fq '[NET3095-N6-HOST] REPEAT_PASS HTTP/1.0 GET /health 200' "$LOG.http-host" || {
         cat "$LOG.http-host" >&2
         echo "[NET3095-N6][FAIL] Host did not complete HTTP exchange" >&2
         exit 1

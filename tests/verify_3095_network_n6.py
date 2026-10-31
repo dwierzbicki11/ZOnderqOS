@@ -25,6 +25,7 @@ from network_3095_http_host import PORT, REQUEST, RESPONSE
 
 HTTP_START = "[NET3095-N6] HTTP_ATTEMPT=START"
 HTTP_PASS = f"[NET3095-N6] HTTP=PASS from=10.0.2.2 port={PORT} bytes={len(RESPONSE)}"
+HTTP_REPEAT_PASS = f"[NET3095-N6] HTTP_REPEAT=PASS from=10.0.2.2 port={PORT} bytes={len(RESPONSE)}"
 GUEST = bytes([10, 0, 2, 15])
 
 
@@ -86,7 +87,8 @@ def server_fin_acked(packets, first: int, guest: bytes,
             not fin["payload"]
         ):
             continue
-        for ack in packets[i + 1:]:
+        for ack_index in range(i + 1, len(packets)):
+            ack = packets[ack_index]
             if (
                 ack["src"] == guest and ack["dst"] == SERVER and
                 ack["src_mac"] == MAC and ack["dst_mac"] == server_mac and
@@ -96,25 +98,16 @@ def server_fin_acked(packets, first: int, guest: bytes,
                 ack["ack"] == (server_end + 1) & 0xFFFFFFFF and
                 not ack["payload"]
             ):
-                return True
-    return False
+                return ack_index
+    return None
 
 
-def validate(serial: str, pcap: bytes) -> str:
-    validate_n5(serial, pcap)
-    lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
-    if any("[NET3095-N6][FAIL]" in line for line in lines):
-        raise ValueError("guest HTTP probe explicitly failed")
-    if lines.count(HTTP_START) != 1 or lines.count(HTTP_PASS) != 1:
-        raise ValueError("missing or duplicate HTTP markers")
-    if not (lines.index(DNS_PASS) < lines.index(HTTP_START) < lines.index(HTTP_PASS)):
-        raise ValueError("DNS/HTTP markers out of order")
-    leases = [m for line in lines if (m := LEASE.fullmatch(line))]
-    if len(leases) != 1:
-        raise ValueError("missing unique guest lease")
-    guest = bytes(int(part) for part in leases[0].group(1).split("."))
-    packets = [p for frame in pcap_frames(pcap) if (p := tcp_frame(frame))]
-    for i, syn in enumerate(packets):
+def find_http_transaction(packets, guest: bytes, first: int, excluded_port: int | None):
+    """Require an entire HTTP stream and peer FIN/ACK for one TCP connection."""
+    for i in range(first, len(packets)):
+        syn = packets[i]
+        if syn["sport"] == excluded_port:
+            continue
         if not (
             syn["src"] == guest and syn["dst"] == SERVER and
             syn["src_mac"] == MAC and syn["sport"] != 0 and
@@ -157,17 +150,44 @@ def validate(serial: str, pcap: bytes) -> str:
                     packets, end_request, guest, client_port, "server",
                     server_seq, (client_seq + len(REQUEST)) & 0xFFFFFFFF,
                     RESPONSE, server_mac, min_segments=3)
-                if end_response is not None and server_fin_acked(
+                if end_response is not None:
+                    fin_ack_index = server_fin_acked(
                         packets, end_response, guest, client_port,
-                        client_seq, server_seq, server_mac):
-                    return "[NET3095-N6-GATE] PASS real QEMU HTTP/1.0 GET /health 200 with TCP RX/TX and FIN/ACK teardown"
-    raise ValueError("no correlated QEMU HTTP request/response TCP stream")
+                        client_seq, server_seq, server_mac)
+                    if fin_ack_index is not None:
+                        return client_port, fin_ack_index
+    return None
+
+
+
+def validate(serial: str, pcap: bytes) -> str:
+    validate_n5(serial, pcap)
+    lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
+    if any("[NET3095-N6][FAIL]" in line for line in lines):
+        raise ValueError("guest HTTP probe explicitly failed")
+    if (lines.count(HTTP_START) != 1 or lines.count(HTTP_PASS) != 1 or
+            lines.count(HTTP_REPEAT_PASS) != 1):
+        raise ValueError("missing or duplicate HTTP markers")
+    if not (lines.index(DNS_PASS) < lines.index(HTTP_START) < lines.index(HTTP_PASS) < lines.index(HTTP_REPEAT_PASS)):
+        raise ValueError("DNS/HTTP markers out of order")
+    leases = [m for line in lines if (m := LEASE.fullmatch(line))]
+    if len(leases) != 1:
+        raise ValueError("missing unique guest lease")
+    guest = bytes(int(part) for part in leases[0].group(1).split("."))
+    packets = [p for frame in pcap_frames(pcap) if (p := tcp_frame(frame))]
+    first = find_http_transaction(packets, guest, 0, None)
+    if first is None:
+        raise ValueError("first HTTP TCP exchange incomplete")
+    second = find_http_transaction(packets, guest, first[1] + 1, first[0])
+    if second is None:
+        raise ValueError("second independent HTTP TCP exchange incomplete")
+    return "[NET3095-N6-GATE] PASS two real QEMU HTTP/1.0 TCP exchanges with RX/TX and FIN/ACK teardown"
 
 
 def fake_http(reply: bool, flags: int, seq: int, ack: int,
-              payload: bytes = b"", port: int = PORT) -> bytes:
+              payload: bytes = b"", port: int = PORT, client_port: int = 49153) -> bytes:
     return fake_tcp(reply, flags, seq, ack, payload,
-                    sport=49153, dport=port)
+                    sport=client_port, dport=port)
 
 
 def self_test() -> None:
@@ -210,6 +230,22 @@ def self_test() -> None:
         fake_http(True, 0x11, 20001 + len(RESPONSE), 10001 + len(REQUEST)),
         fake_http(False, 0x10, 10001 + len(REQUEST), 20002 + len(RESPONSE)),
     ]
+    second_handshake = [
+        fake_http(False, 0x02, 30000, 0, client_port=49154),
+        fake_http(True, 0x12, 40000, 30001, client_port=49154),
+        fake_http(False, 0x10, 30001, 40001, client_port=49154),
+    ]
+    second_request = [fake_http(False, 0x18, 30001, 40001, REQUEST, client_port=49154)]
+    second_response = [
+        fake_http(True, 0x18, 40001 + start, 30001 + len(REQUEST),
+                  RESPONSE[start:end], client_port=49154)
+        for start, end in zip(cuts, cuts[1:])
+    ]
+    second_teardown = [
+        fake_http(True, 0x11, 40001 + len(RESPONSE), 30001 + len(REQUEST), client_port=49154),
+        fake_http(False, 0x10, 30001 + len(REQUEST), 40002 + len(RESPONSE), client_port=49154),
+    ]
+    second_frames = second_handshake + second_request + second_response + second_teardown
     serial = "\n".join([
         "[NET3095-N1] BOOT", "[NET3095-N1] discovered=1",
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
@@ -217,15 +253,15 @@ def self_test() -> None:
         "[NET3095-N1] DHCP=NOT_ATTEMPTED IP=UNASSIGNED",
         START, "[NET3095-N2] DHCP=PASS ip=10.0.2.15 mask=255.255.255.0 gateway=10.0.2.2",
         PING_START, PING_PASS, TCP_START, TCP_PASS,
-        DNS_START, DNS_PASS, HTTP_START, HTTP_PASS,
+        DNS_START, DNS_PASS, HTTP_START, HTTP_PASS, HTTP_REPEAT_PASS,
     ])
-    frames = base + handshake + request + response + teardown
+    frames = base + handshake + request + response + teardown + second_frames
     assert "PASS" in validate(serial, synthetic_capture(frames))
     # A complete one- or two-packet response cannot satisfy the large RX
     # segmentation proof, even when the payload bytes are otherwise valid.
     for insufficient in (single_response, two_response):
         try:
-            validate(serial, synthetic_capture(base + handshake + request + insufficient + teardown))
+            validate(serial, synthetic_capture(base + handshake + request + insufficient + teardown + second_frames))
         except ValueError:
             pass
         else:
@@ -234,7 +270,7 @@ def self_test() -> None:
     split_request = base + handshake + [
         fake_http(False, 0x18, 10001, 20001, REQUEST[:half]),
         fake_http(False, 0x18, 10001 + half, 20001, REQUEST[half:]),
-    ] + response + teardown
+    ] + response + teardown + second_frames
     assert "PASS" in validate(serial, synthetic_capture(split_request))
     # A 4 KiB response with different 1 KiB blocks catches duplicated,
     # missing, corrupted and reordered DMA/TCP data, not merely byte count.
@@ -288,9 +324,15 @@ def self_test() -> None:
         (serial, base + handshake + request + [fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE, port=18097)]),
         (serial, base + handshake + [fake_http(False, 0x18, 10001, 20001, REQUEST.replace(b"/health", b"/healthz"))] + response),
     ]
+    negatives.extend([
+        (serial, base + handshake + request + response + teardown),  # second connection absent
+        (serial.replace(HTTP_REPEAT_PASS, ""), frames),
+        (serial + "\n" + HTTP_REPEAT_PASS, frames),
+        (serial.replace(HTTP_REPEAT_PASS, "").replace(HTTP_PASS, HTTP_REPEAT_PASS), frames),
+    ])
     for bad_serial, bad_frames in negatives:
         try:
-            validate(bad_serial, synthetic_capture(bad_frames))
+            validate(bad_serial, synthetic_capture(bad_frames + second_frames))
         except ValueError:
             continue
         raise AssertionError("accepted invalid HTTP RX/TX proof")
