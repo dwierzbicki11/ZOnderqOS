@@ -43,8 +43,10 @@ def validate(log: str) -> str:
         raise ValueError("guest explicitly rejected the MMIO snapshot")
     # A serial log that also records a kernel fault cannot establish a
     # healthy hardware probe, even when earlier markers look successful.
-    fatal = re.compile(r"kernel panic|fatal: exception|page fault|unhandled exception|triple fault",
-                       re.IGNORECASE)
+    fatal = re.compile(
+        r"kernel panic|fatal: exception|page fault|unhandled exception|triple fault|"
+        r"exception\\s+14\\b|#PF\\b|CR2\\s*=|general protection fault|double fault|stack overflow",
+        re.IGNORECASE)
     if any(fatal.search(line) for line in lines):
         raise ValueError("guest fault recorded in serial log")
     driver = [(i, m) for i, line in enumerate(lines)
@@ -139,6 +141,9 @@ def self_test() -> None:
         sample + PREFIX + "[FAIL] unexpected\n",
         sample + "kernel panic: synthetic fault\n",
         sample + "FATAL: Exception 14 (synthetic)\n",
+        sample + "Exception 14 CR2=0xC\n",
+        sample + "#PF at 0x0\n",
+        sample + "General Protection Fault\n",
         sample + "unhandled exception: synthetic\n",
         sample + sample,
     ]
