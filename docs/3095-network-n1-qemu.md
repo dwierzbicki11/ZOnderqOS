@@ -154,6 +154,18 @@ motivates the new fail-closed assertion; it does **not** prove guest ISR
 execution, and the new commit must pass its own CI run before its stricter
 N6 gate can be called verified.
 
+The N6 gate additionally checks the **guest's own serial record** with
+`verify_3095_e1000e_irq_binding.py`: exactly one E1000E driver bound to
+the same PCI node that reported an IRQ line, and the published ready
+adapter's MAC matching the driver's MAC. It rejects missing line, an
+unbound driver, inconsistent node/MAC and ambiguous duplicate markers.
+The historical N6 serial artifact from #41210672507 contains
+`E1000EDriver: ... line 11, polling every 10 ms` and a matching
+`52:54:00:12:34:56` adapter. This is a **driver IRQ registration**
+observation, not evidence of execution of the registered handler.
+The stronger combined guest-binding/QEMU-emission gate needs its own
+new QEMU run to be considered verified.
+
 **Crucial limitation:** QEMU raising a legacy interrupt or sending MSI/MSI-X
 does **not** prove that Cosmos 3.0.95 delivered it to a guest ISR, that
 the E1000E ISR ran, or that RX completed without polling. The next step
