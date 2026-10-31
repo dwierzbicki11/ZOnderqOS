@@ -22,6 +22,23 @@ RESPONSE = (b"HTTP/1.0 200 OK\r\n"
 assert len(BODY) == 4116
 
 
+def response_for_attempt(attempt: int) -> bytes:
+    """Give every connection a distinct payload to detect stale RX DMA data.
+
+    Only the first byte of the 4 KiB body changes. The length, HTTP headers,
+    segmentation and expected TCP sequence space remain identical.
+    """
+    if not 1 <= attempt <= 6:
+        raise ValueError("HTTP fixture attempt outside 1..6")
+    if attempt == 1:
+        return RESPONSE
+    first_body_block = RESPONSE.index(b"ZONDERQ3095-HTTP-OK\n") + len(b"ZONDERQ3095-HTTP-OK\n")
+    return (RESPONSE[:first_body_block] + bytes([ord("A") + attempt - 1]) +
+            RESPONSE[first_body_block + 1:])
+
+
+
+
 def serve(port: int = PORT) -> None:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
         listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -45,11 +62,12 @@ def serve(port: int = PORT) -> None:
                 # RX descriptors. The PCAP gate must independently establish the
                 # segmentation, sequence continuity and exact 4 KiB body.
                 connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-                boundary = RESPONSE.index(b"\r\n\r\n") + 4
-                connection.sendall(RESPONSE[:boundary])
-                for start in range(boundary, len(RESPONSE), 1024):
+                response = response_for_attempt(attempt)
+                boundary = response.index(b"\r\n\r\n") + 4
+                connection.sendall(response[:boundary])
+                for start in range(boundary, len(response), 1024):
                     time.sleep(0.1)
-                    connection.sendall(RESPONSE[start:start + 1024])
+                    connection.sendall(response[start:start + 1024])
                 label = ("PASS" if attempt == 1 else "REPEAT_PASS" if attempt == 2 else
                          "POST_BURST_PASS" if attempt == 3 else
                          f"POST_BURST_REPEAT_PASS attempt={attempt}")
@@ -97,12 +115,14 @@ def self_test() -> None:
                     if not part:
                         break
                     received.extend(part)
-                if bytes(received) != RESPONSE:
-                    raise AssertionError("HTTP response differs from expected bytes")
+                if bytes(received) != response_for_attempt(request_index + 1):
+                    raise AssertionError("HTTP response differs from expected attempt bytes")
         worker.join(timeout=5)
         if worker.is_alive() or errors:
             raise AssertionError(f"HTTP server failed on attempt {attempt + 1}: {errors}")
-    print("[NET3095-N6-HOST-CONTRACT] PASS six independent HTTP connections per server and sequential rebind")
+    assert len({response_for_attempt(i) for i in range(1, 7)}) == 6
+    assert all(len(response_for_attempt(i)) == len(RESPONSE) for i in range(1, 7))
+    print("[NET3095-N6-HOST-CONTRACT] PASS six distinct HTTP RX payloads per server and sequential rebind")
 
 
 if __name__ == "__main__":
