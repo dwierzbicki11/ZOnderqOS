@@ -27,6 +27,10 @@
     <CosmosEnableNetwork>false</CosmosEnableNetwork>
     <!-- Explicit x64/QEMU-only isolated NIC proof. Production stays offline. -->
     <ZonderqNetworkN1Probe Condition="'$(ZonderqNetworkN1Probe)' == ''">false</ZonderqNetworkN1Probe>
+    <!-- Explicit isolated ASUS RTL810xE read-only BAR2 probe, never production GUI. -->
+    <ZonderqRealtekReadOnlyMmio Condition="'$(ZonderqRealtekReadOnlyMmio)' == ''">false</ZonderqRealtekReadOnlyMmio>
+    <DefineConstants Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_REALTEK_READONLY_MMIO</DefineConstants>
+    <NoWarn Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true'">$(NoWarn);COSMOS0003</NoWarn>
     <!-- N2 runs DHCP only after the N1 raw TX proof, in the same QEMU-only kernel. -->
     <ZonderqNetworkN2Dhcp Condition="'$(ZonderqNetworkN2Dhcp)' == ''">false</ZonderqNetworkN2Dhcp>
     <ZonderqNetworkN3Icmp Condition="'$(ZonderqNetworkN3Icmp)' == ''">false</ZonderqNetworkN3Icmp>
@@ -39,6 +43,8 @@
     <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(ZonderqNetworkN2Dhcp)' == 'true' and '$(ZonderqNetworkN3Icmp)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N3_ICMP</DefineConstants>
     <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(ZonderqNetworkN2Dhcp)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N2_DHCP</DefineConstants>
     <CosmosEnableNetwork Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">true</CosmosEnableNetwork>
+    <CosmosEnableNetwork Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(CosmosArch)' == 'x64'">true</CosmosEnableNetwork>
+    <CosmosKernelClass Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(CosmosArch)' == 'x64'">ZonderqOS.NetworkRealtekReadOnlyKernel</CosmosKernelClass>
     <CosmosKernelClass Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">ZonderqOS.NetworkN1ProbeKernel</CosmosKernelClass>
     <DefineConstants Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_NETWORK_N1_PROBE</DefineConstants>
     <CosmosEnableStorage Condition="'$(ZonderqNetworkN1Probe)' != 'true'">true</CosmosEnableStorage>
@@ -52,6 +58,12 @@
     <CosmosEnableKeyboard Condition="'$(ZonderqNetworkN1Probe)' == 'true'">false</CosmosEnableKeyboard>
     <CosmosEnableGraphics Condition="'$(ZonderqNetworkN1Probe)' != 'true'">true</CosmosEnableGraphics>
     <CosmosEnableGraphics Condition="'$(ZonderqNetworkN1Probe)' == 'true'">false</CosmosEnableGraphics>
+    <!-- Physical diagnostic cannot mount storage or initialize the GUI. -->
+    <CosmosEnableStorage Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true'">false</CosmosEnableStorage>
+    <CosmosEnableMouse Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true'">false</CosmosEnableMouse>
+    <CosmosEnableUsb Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true'">false</CosmosEnableUsb>
+    <CosmosEnableKeyboard Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true'">false</CosmosEnableKeyboard>
+    <CosmosEnableGraphics Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true'">false</CosmosEnableGraphics>
     <CosmosEnableScheduler>true</CosmosEnableScheduler>
     <!-- Serial diagnostics remain available even without graphics. -->
     <CosmosEnableUART>true</CosmosEnableUART>
@@ -106,13 +118,17 @@
     <Compile Remove="**/CosmosGen3DiagnosticsCompat.cs" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true' or '$(ZonderqNetworkN1Probe)' == 'true'">
+  <ItemGroup Condition="'$(CosmosEnableNetwork)' != 'true' or '$(ZonderqNetworkN1Probe)' == 'true' or '$(ZonderqRealtekReadOnlyMmio)' == 'true'">
     <!-- Network commands directly consume the Cosmos networking API. Keep them
          out until the feature is re-enabled and backed by a real platform NIC. -->
     <Compile Remove="source/Shell/Commands/CmdNetwork.cs" />
     <Compile Remove="source/Shell/Commands/CmdIp.cs" />
     <Compile Remove="source/Shell/Commands/CmdPing.cs" />
     <Compile Remove="source/Shell/Commands/CmdDns.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(CosmosArch)' == 'x64'">
+    <CosmosDriverInclude Include="ZonderqOS.Drivers.Realtek810xEReadOnlyProbeDriver" />
   </ItemGroup>
 
   <ItemGroup>
@@ -141,6 +157,15 @@
            Text="Network N1 probe must not share the production or diagnostics boot profiles." />
     <Error Condition="'$(ZonderqNetworkN1Probe)' == 'true' and '$(CosmosEnableNetwork)' != 'true'"
            Text="Network N1 probe requires CosmosEnableNetwork=true." />
+  </Target>
+
+  <Target Name="GuardRealtekReadOnlyMmio" BeforeTargets="CoreCompile">
+    <Error Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(CosmosArch)' != 'x64'"
+           Text="RTL810xE MMIO probe is x64-only." />
+    <Error Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and ('$(ZonderqNetworkN1Probe)' == 'true' or '$(ZonderqRamRoot)' == 'true' or '$(ZonderqReadOnlyHardwareProbe)' == 'true' or '$(ZonderqInputDiagnosticBoot)' == 'true')"
+           Text="RTL810xE MMIO probe must use its own isolated serial boot profile." />
+    <Error Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and ('$(CosmosEnableStorage)' != 'false' or '$(CosmosEnableGraphics)' != 'false')"
+           Text="RTL810xE MMIO probe must not enable disk or GUI." />
   </Target>
 
   <Target Name="GuardRamRootProfile" BeforeTargets="CoreCompile">
