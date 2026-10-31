@@ -133,7 +133,14 @@ def main():
     # the search query. This is a real QEMU keyboard regression, not merely
     # evidence that QMP accepted the keystroke.
     changed, samples = difference(after, filtered)
-    print(f"[GUI-QMP] search-filter: changed {changed}/{samples} sampled pixels ({changed / max(1, samples):.1%}); visual inspection still required")
+    fraction = changed / max(1, samples)
+    print(f"[GUI-QMP] search-filter: changed {changed}/{samples} sampled pixels ({fraction:.1%}); visual inspection still required")
+    # A successful QMP send-key is not proof that the File Manager accepted
+    # the query. Require a measurable change in the central file-list area.
+    # Both real 1024x768 boot probes previously measured 1.1%; allow margin
+    # for other layouts while rejecting unchanged/stale framebuffers.
+    if fraction < 0.003:
+        raise RuntimeError("File Manager search did not visibly update; inspect PPMs")
     changed, samples = difference(after, filter_cleared)
     fraction = changed / max(1, samples)
     print(f"[GUI-QMP] filter-cleared: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
