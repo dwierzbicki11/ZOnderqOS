@@ -165,11 +165,11 @@ class ResponsiveGui3094(unittest.TestCase):
 
     def test_task_manager_short_window_nav_and_compact_process_list(self):
         manager = TASK_MANAGER
-        self.assertIn("private int ListTopForView => Width < 550 ? 64 : ListTop;", manager)
+        self.assertIn("private int ListTopForView => CompactProcessLayout ? 64 : ListTop;", manager)
         self.assertIn("int listTop = ListTopForView;", manager)
         self.assertIn("int listY = Y + ListTopForView;", manager)
         self.assertIn("scrollBar.Y = Y + ListTopForView + 2;", manager)
-        self.assertIn("if (Width < 550)\n            {\n                // The four summary cards", manager)
+        self.assertIn("if (CompactProcessLayout)\n            {\n                // Summary cards", manager)
         self.assertIn("if (Height < 300)", manager)
         self.assertIn("int compactX = X + 6 + (page % 2) * 80;", manager)
         self.assertIn("int compactY = Y + NavTop + (page / 2) * 36;", manager)
@@ -191,10 +191,10 @@ class ResponsiveGui3094(unittest.TestCase):
             "private void DrawResource(Canvas canvas", 1)[0]
         hit = TASK_MANAGER.split("public int PerformanceResourceAt(int x, int y)", 1)[1].split(
             "public int CpuGraphModeAt(int x, int y)", 1)[0]
-        self.assertIn("if (Width < 900)", render)
-        self.assertIn("if (Width < 900)", hit)
-        self.assertIn("if (Width < 900 || app.ActivePage", TASK_MANAGER)
-        self.assertIn("if (Width < 900 || app.CpuGraphMode", TASK_MANAGER)
+        self.assertIn("if (CompactPerformanceLayout)", render)
+        self.assertIn("if (CompactPerformanceLayout)", hit)
+        self.assertIn("if (CompactPerformanceLayout || app.ActivePage", TASK_MANAGER)
+        self.assertIn("if (CompactPerformanceLayout || app.CpuGraphMode", TASK_MANAGER)
         self.assertIn("int buttonWidth = Math.Max(1, (available - 8) / 3);", render)
         self.assertIn("int buttonWidth = Math.Max(1, (available - 8) / 3);", hit)
         self.assertIn("DrawCompactResource(canvas", render)
@@ -1831,6 +1831,54 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
                     self.assertLess(page_down, count)
                     self.assertGreaterEqual(page_up, 0)
                     self.assertLess(page_up, count)
+
+
+    def test_task_manager_short_wide_layout_and_unpainted_rows_are_not_clickable(self):
+        manager = TASK_MANAGER
+        self.assertIn("Height < ListTop + FooterHeight + RowHeight + 6", manager)
+        self.assertIn("private bool CompactPerformanceLayout => Width < 900 || Height < 460;", manager)
+        self.assertIn("private int ListTopForView => CompactProcessLayout ? 64 : ListTop;", manager)
+        process = manager.split("private void RenderProcessPage(Canvas canvas)", 1)[1].split(
+            "private void DrawSummary(", 1)[0]
+        table = manager.split("private void RenderTable(Canvas canvas", 1)[1].split(
+            "private void DrawRow(", 1)[0]
+        hit = manager.split("public int RowAt(int x, int y)", 1)[1].split(
+            "public bool HandleScrollMouse(", 1)[0]
+        self.assertIn("if (CompactProcessLayout)", process)
+        self.assertIn("if (!CompactProcessLayout)", table)
+        self.assertIn("if (CompactProcessLayout)", table)
+        self.assertIn("if (rowOffset >= VisibleRows)", hit)
+        self.assertLess(hit.index("if (rowOffset >= VisibleRows)"),
+                        hit.index("int index = app.ScrollIndex + rowOffset;"))
+
+        # Model the same layout for small and wide windows with minimum height.
+        for width in (300, 480, 780, 1020):
+            for height in (170, 190, 215, 216, 300, 450, 460, 635):
+                compact = width < 550 or height < 146 + 28 + 36 + 6
+                list_top = 64 if compact else 146
+                list_height = max(36, height - list_top - 28 - 6)
+                painted_rows = max(1, list_height // 36)
+                self.assertLessEqual(list_top + list_height, height - 28)
+                self.assertLessEqual(list_top + painted_rows * 36, height - 28)
+                for y in range(list_top, list_top + list_height):
+                    row_offset = (y - list_top) // 36
+                    clickable = row_offset < painted_rows
+                    self.assertEqual(clickable, y < list_top + painted_rows * 36)
+                self.assertEqual(width < 900 or height < 460,
+                                 not (width >= 900 and height >= 460))
+
+    def test_window_minimize_and_restore_cancel_stale_mouse_gestures(self):
+        minimize = WINDOW.split("public void Minimize()", 1)[1].split(
+            "public void RestoreFromMinimized()", 1)[0]
+        restore = WINDOW.split("public void RestoreFromMinimized()", 1)[1].split(
+            "public void ToggleMinimize()", 1)[0]
+        self.assertIn("lastTitleClickTimestamp = 0;", minimize)
+        for state in ("dragging = false;", "resizing = false;", "resizeMode = 0;",
+                      "hoveredResizeMode = 0;", "hoveredControl = 0;",
+                      "lastTitleClickTimestamp = 0;"):
+            self.assertIn(state, restore)
+        self.assertLess(restore.index("lastTitleClickTimestamp = 0;"),
+                        restore.index("IsMinimized = false;"))
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

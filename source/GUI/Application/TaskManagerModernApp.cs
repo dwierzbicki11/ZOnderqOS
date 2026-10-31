@@ -844,7 +844,13 @@ namespace ZonderqOS.GUI.Apps
             scrollBar.ValueChanged = value => app.SetScrollIndex(value);
         }
 
-        private int ListTopForView => Width < 550 ? 64 : ListTop;
+        // A wide but short window needs the same compact layout as a narrow one.
+        // Otherwise the 146px table origin can overlap the footer or leave the client.
+        private bool CompactProcessLayout => Width < 550 ||
+            Height < ListTop + FooterHeight + RowHeight + 6;
+        // The full CPU graph and system details require vertical space too.
+        private bool CompactPerformanceLayout => Width < 900 || Height < 460;
+        private int ListTopForView => CompactProcessLayout ? 64 : ListTop;
         private int ListHeightForView => Math.Max(RowHeight, Height - ListTopForView - FooterHeight - 6);
         public int VisibleRows => Math.Max(1, ListHeightForView / RowHeight);
 
@@ -883,7 +889,7 @@ namespace ZonderqOS.GUI.Apps
         public int PerformanceResourceAt(int x, int y)
         {
             if (app.ActivePage != TaskManagerModernApp.PagePerformance) return -1;
-            if (Width < 900)
+            if (CompactPerformanceLayout)
             {
                 // Compact mode renders three horizontal resource buttons.
                 // Use exactly the same positions for mouse hit-testing.
@@ -908,7 +914,7 @@ namespace ZonderqOS.GUI.Apps
 
         public int CpuGraphModeAt(int x, int y)
         {
-            if (Width < 900 || app.ActivePage != TaskManagerModernApp.PagePerformance || app.PerformanceResource != TaskManagerModernApp.PerfCpu) return -1;
+            if (CompactPerformanceLayout || app.ActivePage != TaskManagerModernApp.PagePerformance || app.PerformanceResource != TaskManagerModernApp.PerfCpu) return -1;
             int panelX = SidebarWidth + 180;
             int top = 86;
             if (y < top || y >= top + 26) return -1;
@@ -919,7 +925,7 @@ namespace ZonderqOS.GUI.Apps
 
         public int CpuLogicalPageActionAt(int x, int y)
         {
-            if (Width < 900 || app.CpuGraphMode != TaskManagerModernApp.CpuGraphLogical || app.LogicalPageCount <= 1) return 0;
+            if (CompactPerformanceLayout || app.CpuGraphMode != TaskManagerModernApp.CpuGraphLogical || app.LogicalPageCount <= 1) return 0;
             int top = 122;
             int right = Width - 16;
             if (y < top || y >= top + 26) return 0;
@@ -935,7 +941,12 @@ namespace ZonderqOS.GUI.Apps
             int listTop = ListTopForView;
             int listH = ListHeightForView;
             if (x < contentX || x >= Width - ScrollReserve || y < listTop || y >= listTop + listH) return -1;
-            int index = app.ScrollIndex + (y - listTop) / RowHeight;
+            int rowOffset = (y - listTop) / RowHeight;
+            // RenderTable paints only VisibleRows complete rows. A click in
+            // the unused bottom strip must not select an invisible process.
+            if (rowOffset >= VisibleRows)
+                return -1;
+            int index = app.ScrollIndex + rowOffset;
             return index >= 0 && index < app.Rows.Count ? index : -1;
         }
 
@@ -1059,9 +1070,9 @@ namespace ZonderqOS.GUI.Apps
         {
             int x = X + SidebarWidth + 8;
             int width = Width - SidebarWidth - 12;
-            if (Width < 550)
+            if (CompactProcessLayout)
             {
-                // The four summary cards would extend past a 320px window.
+                // Summary cards also overlap the footer in short, wide windows.
                 // Use the available area for a compact, scrollable task list.
                 RenderTable(canvas, x, width);
                 return;
@@ -1099,11 +1110,11 @@ namespace ZonderqOS.GUI.Apps
         private void RenderTable(Canvas canvas, int x, int width)
         {
             int headerY = Y + TableHeaderTop;
-            if (Width >= 550)
+            if (!CompactProcessLayout)
             {
                 canvas.DrawFilledRectangle(Color.FromArgb(33, 39, 46), x, headerY, width, TableHeaderHeight);
             }
-            if (Width < 550)
+            if (CompactProcessLayout)
             {
                 // No header row in compact mode; the list starts at y=64.
             }
@@ -1192,9 +1203,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderPerformance(Canvas canvas)
         {
-            if (Width < 900)
+            if (CompactPerformanceLayout)
             {
-                // The normal graph's CPU stats need a 540px content panel:
+                // The normal graph needs both a wide and a tall client:
                 // 360px sidebar/resource offset + 540px = 900px view.
                 // Below that, use compact cards so 800x600 stays in bounds.
                 // Keep all three selectors usable, showing the selected

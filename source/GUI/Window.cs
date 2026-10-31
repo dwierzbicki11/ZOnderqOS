@@ -174,6 +174,9 @@ namespace ZonderqOS.GUI
             resizing = false;
             hoveredControl = 0;
             hoveredResizeMode = 0;
+            // A quick taskbar restore must not reuse the title-bar click
+            // from before minimization as the first half of a double-click.
+            lastTitleClickTimestamp = 0;
             IsMinimized = true;
             Visible = false;
             IsActive = false;
@@ -181,6 +184,12 @@ namespace ZonderqOS.GUI
 
         public void RestoreFromMinimized()
         {
+            dragging = false;
+            resizing = false;
+            resizeMode = 0;
+            hoveredResizeMode = 0;
+            hoveredControl = 0;
+            lastTitleClickTimestamp = 0;
             IsMinimized = false;
             Visible = true;
             if (IsMaximized && desktopWidth > 0 && desktopHeight > 0)
