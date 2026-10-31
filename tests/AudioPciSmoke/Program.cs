@@ -350,7 +350,7 @@ static class Test
         byte[] pcm8 = new byte[pcm.Length / 2];
         for (int i = 0; i < pcm8.Length; i++)
         {
-            int at = i * 4;
+            int at = i * 2;
             short sample = (short)(pcm[at] | (pcm[at + 1] << 8));
             pcm8[i] = (byte)(128 + (sample >> 8));
         }
@@ -371,11 +371,8 @@ static class Test
 
         // Single-frame odd-sized mono8 data is legal RIFF; no 16-bit alignment.
         byte[] oddMono8 = AudioWavePcm.EncodePcm8AtRate(new byte[] { 0, 128, 255 }, 48000, 1);
-        // RIFF requires a pad byte after an odd-sized chunk, so append it.
-        byte[] paddedMono8 = new byte[oddMono8.Length + 1];
-        Array.Copy(oddMono8, paddedMono8, oddMono8.Length);
-        WriteLittle32(paddedMono8, 4, paddedMono8.Length - 8);
-        byte[] decodedOddMono8 = AudioWavePcm.DecodeStereo16(paddedMono8);
+        Expect(oddMono8.Length == 48, "PCM8 odd-sized chunk is RIFF-padded");
+        byte[] decodedOddMono8 = AudioWavePcm.DecodeStereo16(oddMono8);
         Expect(decodedOddMono8.Length == 12, "odd-length mono8 with RIFF pad is accepted");
         Expect(decodedOddMono8[0] == 0 && decodedOddMono8[1] == 128,
             "PCM8 zero maps to signed -32768");
@@ -387,7 +384,7 @@ static class Test
         byte[] pcm8at44100 = new byte[source44100.Length / 2];
         for (int i = 0; i < pcm8at44100.Length; i++)
         {
-            int at = i * 4;
+            int at = i * 2;
             short sample = (short)(source44100[at] | (source44100[at + 1] << 8));
             pcm8at44100[i] = (byte)(128 + (sample >> 8));
         }
