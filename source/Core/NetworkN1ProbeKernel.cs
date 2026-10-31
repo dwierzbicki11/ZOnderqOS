@@ -282,24 +282,29 @@ namespace ZonderqOS
                 Log("[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START");
                 try
                 {
-                    IcmpClient postBurstPing = new IcmpClient();
-                    try
+                    // Four independent echo round trips exercise RX after
+                    // 128 TX submissions. PCAP validates every sequence.
+                    for (ushort sequence = 2; sequence <= 5; sequence++)
                     {
-                        postBurstPing.Connect(new Address4(10, 0, 2, 2));
-                        postBurstPing.SendEcho(id: 0x3096, sequence: 2);
-                        EndPoint remote = new EndPoint(Address4.Zero, 0);
-                        int elapsedMs = postBurstPing.Receive(ref remote, 5000);
-                        if (elapsedMs < 0 || remote.Address.ToString() != "10.0.2.2")
+                        IcmpClient postBurstPing = new IcmpClient();
+                        try
                         {
-                            Log("[NET3095-N6][FAIL] post-burst ICMP timeout or wrong peer");
-                            return;
+                            postBurstPing.Connect(new Address4(10, 0, 2, 2));
+                            postBurstPing.SendEcho(id: 0x3096, sequence: sequence);
+                            EndPoint remote = new EndPoint(Address4.Zero, 0);
+                            int elapsedMs = postBurstPing.Receive(ref remote, 5000);
+                            if (elapsedMs < 0 || remote.Address.ToString() != "10.0.2.2")
+                            {
+                                Log("[NET3095-N6][FAIL] post-burst ICMP timeout or wrong peer seq=" + sequence);
+                                return;
+                            }
                         }
-                        Log("[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2");
+                        finally
+                        {
+                            postBurstPing.Close();
+                        }
                     }
-                    finally
-                    {
-                        postBurstPing.Close();
-                    }
+                    Log("[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2 count=4");
                 }
                 catch (Exception postBurstException)
                 {

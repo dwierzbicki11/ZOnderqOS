@@ -148,7 +148,9 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('TX_BURST_ATTEMPT=START count=128', SOURCE)
         self.assertIn('TX_BURST=QUEUED count=128', SOURCE)
         self.assertIn('POST_BURST_ICMP_ATTEMPT=START', SOURCE)
-        self.assertIn('postBurstPing.SendEcho(id: 0x3096, sequence: 2)', SOURCE)
+        self.assertIn('for (ushort sequence = 2; sequence <= 5; sequence++)', SOURCE)
+        self.assertIn('postBurstPing.SendEcho(id: 0x3096, sequence: sequence)', SOURCE)
+        self.assertIn('POST_BURST_ICMP=PASS from=10.0.2.2 count=4', SOURCE)
         self.assertIn('POST_BURST_ICMP=PASS from=10.0.2.2', SOURCE)
         self.assertIn('verify_3095_network_n6_burst.py', SMOKE)
         self.assertIn('check_post_burst_icmp(frames, last_burst, guest)',

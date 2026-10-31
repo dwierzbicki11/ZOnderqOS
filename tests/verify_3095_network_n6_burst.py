@@ -25,7 +25,7 @@ START = "[NET3095-N6] TX_BURST_ATTEMPT=START count=128"
 QUEUED = "[NET3095-N6] TX_BURST=QUEUED count=128"
 TAG = b"ZONDERQ3095-BURST-"
 POST_START = "[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START"
-POST_PASS = "[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2"
+POST_PASS = "[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2 count=4"
 
 
 def check_markers(serial: str) -> None:
@@ -112,8 +112,10 @@ def post_burst_icmp(frame: bytes):
             length < ihl + 8 or len(frame) < 14 + length):
         return None
     typ, code, _checksum, ident, seq = struct.unpack_from(">BBHHH", frame, 14 + ihl)
-    if typ not in (0, 8) or code != 0 or ident != 0x3096 or seq != 2:
+    if ident != 0x3096:
         return None
+    if typ not in (0, 8) or code != 0 or not 2 <= seq <= 5:
+        raise ValueError("unexpected post-burst ICMP type, code or sequence")
     # Real QEMU N6 capture has valid IPv4 and ICMP checksums. An echo
     # with a matching ID but damaged wire bytes must fail closed even
     # when an additional valid echo pair appears later in the capture.
@@ -122,33 +124,37 @@ def post_burst_icmp(frame: bytes):
             internet_checksum(frame[14 + ihl:14 + length]) != 0):
         raise ValueError("invalid post-burst IPv4/ICMP checksum or TTL")
     return {
-        "type": typ, "src": frame[26:30], "dst": frame[30:34],
+        "type": typ, "sequence": seq, "src": frame[26:30], "dst": frame[30:34],
         "src_mac": frame[6:12], "dst_mac": frame[:6],
         "payload": frame[14 + ihl + 8:14 + length],
     }
 
 
 def check_post_burst_icmp(frames: list[bytes], after_index: int, guest: bytes) -> None:
-    """Require one correlated request and inbound reply AFTER the final TX frame."""
+    """Require four ordered, independently correlated ICMP round trips after TX."""
     events = [(i, p) for i, frame in enumerate(frames)
               if (p := post_burst_icmp(frame))]
-    if len(events) != 2:
-        raise ValueError("expected exactly one post-burst ICMP request and reply")
-    (request_index, request), (reply_index, reply) = events
-    if not (after_index < request_index < reply_index):
-        raise ValueError("post-burst ICMP not after completed TX ring stress")
-    if not (
-        request["type"] == 8 and request["src"] == guest and
-        request["dst"] == SERVER and request["src_mac"] == MAC and
-        request["dst_mac"] == reply["src_mac"] and
-        reply["type"] == 0 and reply["src"] == SERVER and
-        reply["dst"] == guest and reply["dst_mac"] == MAC and
-        reply["src_mac"] != MAC and reply["src_mac"] != b"\x00" * 6 and
-        not (reply["src_mac"][0] & 1) and
-        len(request["payload"]) == 32 and
-        request["payload"] == reply["payload"]
-    ):
-        raise ValueError("post-burst ICMP Ethernet/IP peer mismatch")
+    if len(events) != 8:
+        raise ValueError("expected four post-burst ICMP request/reply pairs")
+    previous_index = after_index
+    for sequence in range(2, 6):
+        (request_index, request), (reply_index, reply) = events[2 * (sequence - 2):2 * (sequence - 1)]
+        if not (previous_index < request_index < reply_index):
+            raise ValueError("post-burst ICMP order or TX completion mismatch")
+        if not (
+            request["sequence"] == sequence and reply["sequence"] == sequence and
+            request["type"] == 8 and request["src"] == guest and
+            request["dst"] == SERVER and request["src_mac"] == MAC and
+            request["dst_mac"] == reply["src_mac"] and
+            reply["type"] == 0 and reply["src"] == SERVER and
+            reply["dst"] == guest and reply["dst_mac"] == MAC and
+            reply["src_mac"] != MAC and reply["src_mac"] != b"\x00" * 6 and
+            not (reply["src_mac"][0] & 1) and
+            len(request["payload"]) == 32 and
+            request["payload"] == reply["payload"]
+        ):
+            raise ValueError(f"post-burst ICMP Ethernet/IP peer mismatch seq={sequence}")
+        previous_index = reply_index
 
 def validate(serial: str, pcap: bytes) -> str:
     # N6 first proves two complete TCP HTTP sessions on real QEMU frames.
@@ -194,11 +200,9 @@ def self_test() -> None:
     # distinct N6 ID. No fixture is claimed to be real guest RX proof.
     from verify_3095_network_n3 import fake_icmp
     guest = bytes([10, 0, 2, 15])
-    def echo_fixture(is_reply: bool) -> bytes:
-        packet = bytearray(fake_icmp(is_reply, MAC, guest, seq=2))
-        # A real Cosmos SendEcho transmits a 32-byte challenge payload.
-        # Build valid IPv4 and ICMP checksums rather than accepting
-        # synthetic zero-checksum headers as wire evidence.
+    def echo_fixture(is_reply: bool, sequence: int) -> bytes:
+        packet = bytearray(fake_icmp(is_reply, MAC, guest, seq=sequence))
+        # Match Cosmos's 32-byte challenge and valid IPv4/ICMP checksums.
         packet[16:18] = (60).to_bytes(2, "big")
         packet[38:40] = (0x3096).to_bytes(2, "big")
         packet[24:26] = b"\x00\x00"
@@ -207,31 +211,47 @@ def self_test() -> None:
         packet[36:38] = internet_checksum(packet[34:]).to_bytes(2, "big")
         return bytes(packet)
 
-    request, reply = echo_fixture(False), echo_fixture(True)
+    pings = [packet for sequence in range(2, 6)
+             for packet in (echo_fixture(False, sequence), echo_fixture(True, sequence))]
+    request, reply = pings[:2]
     assert internet_checksum(request[14:34]) == 0
     assert internet_checksum(reply[34:]) == 0
-    check_post_burst_icmp(frames + [request, reply], COUNT - 1, guest)
-    for invalid in (
-        [request], [reply, request], [reply], [request, reply, reply],
-        [request, request, reply],
-        [request, reply[:-2] + b"\x00\x01"],
-        [request, reply[:6] + MAC + reply[12:]],
-        [request[:6] + b"\x00" * 6 + request[12:], reply],
-        [request, reply[:24] + bytes([reply[24] ^ 1]) + reply[25:]],
-        [request, reply[:36] + bytes([reply[36] ^ 1]) + reply[37:]],
-        [request, reply[:45] + bytes([reply[45] ^ 1]) + reply[46:]],
-        [request, reply[:22] + b"\x00" + reply[23:]],
-        [request, reply[:16] + (59).to_bytes(2, "big") + reply[18:]],
-        [request, reply[:20] + b"\x20" + reply[21:]],
-        [request, reply, reply[:36] + bytes([reply[36] ^ 1]) + reply[37:]],
-    ):
+    check_post_burst_icmp(frames + pings, COUNT - 1, guest)
+
+    def altered_reply(offset: int, replacement: bytes) -> list[bytes]:
+        damaged = reply[:offset] + replacement + reply[offset + len(replacement):]
+        return [request, damaged] + pings[2:]
+
+    invalid_pairs = [
+        pings[:-1], pings[1:], pings + [reply],
+        [reply, request] + pings[2:],
+        [request, request] + pings[2:],
+        pings[:4] + [pings[5], pings[4]] + pings[6:],
+        altered_reply(len(reply) - 2, b"\x00\x01"),
+        altered_reply(6, MAC),
+        [request[:6] + b"\x00" * 6 + request[12:], reply] + pings[2:],
+        altered_reply(24, bytes([reply[24] ^ 1])),
+        altered_reply(36, bytes([reply[36] ^ 1])),
+        altered_reply(45, bytes([reply[45] ^ 1])),
+        altered_reply(22, b"\x00"),
+        altered_reply(16, (59).to_bytes(2, "big")),
+        altered_reply(20, b"\x20"),
+        pings + [altered_reply(36, bytes([reply[36] ^ 1]))[1]],
+    ]
+    # Wrong sequence with a corrected checksum must still be rejected.
+    wrong_sequence = bytearray(reply)
+    wrong_sequence[40:42] = (9).to_bytes(2, "big")
+    wrong_sequence[36:38] = b"\x00\x00"
+    wrong_sequence[36:38] = internet_checksum(wrong_sequence[34:]).to_bytes(2, "big")
+    invalid_pairs.append([request, bytes(wrong_sequence)] + pings[2:])
+    for invalid in invalid_pairs:
         try:
             check_post_burst_icmp(frames + invalid, COUNT - 1, guest)
         except ValueError:
             continue
-        raise AssertionError("accepted invalid post-burst ICMP capture")
+        raise AssertionError("accepted invalid four-pair post-burst ICMP capture")
     try:
-        check_post_burst_icmp(frames + [request, reply], COUNT, guest)
+        check_post_burst_icmp(frames + pings, COUNT, guest)
     except ValueError:
         pass
     else:
