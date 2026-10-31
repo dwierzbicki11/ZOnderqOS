@@ -63,6 +63,9 @@ def self_test() -> None:
         serial.replace("mac=52:54:00:12:34:56", "mac=02:54:00:12:34:56"),
         serial.replace("mac 52:54:00:12:34:56", "mac 02:54:00:12:34:56"),
         serial.replace("polling every 10 ms", "no polling"),
+        serial + "[Drivers] pci:0000:00:02.0 E1000EDriver: mac malformed\\n",
+        serial + "[Drivers] pci:0000:00:02.0 offer E1000EDriver -> declined\\n",
+        "".join(reversed(serial.splitlines(keepends=True))),
         serial + serial,
         "",
     )
