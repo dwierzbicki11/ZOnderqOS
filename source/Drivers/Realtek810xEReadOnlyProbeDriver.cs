@@ -86,6 +86,20 @@ namespace ZonderqOS.Drivers
                         new WindowReader(window), out var snapshot))
                     return Decline("invalid or unstable MAC/PHY/TxConfig snapshot; no link proof");
 
+                // Read back PCI state after the MMIO sample: a device reset,
+                // power transition or disabled BAR decoding invalidates the
+                // apparent MAC/link snapshot even if both byte passes agreed.
+                if (!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
+                        pci.ReadConfig16(0x00), pci.ReadConfig16(0x02),
+                        pci.ReadConfig16(0x08), pci.ReadConfig16(0x0A),
+                        pci.ReadConfig16(0x0E), pci.ReadConfig16(0x2C),
+                        pci.ReadConfig16(0x2E)))
+                    return Decline("PCI identity changed after MMIO sampling; no link proof");
+                if ((pci.ReadConfig16(0x04) & 0x0002) == 0)
+                    return Decline("PCI memory decoding disabled after sampling; no link proof");
+                if (pm != 0 && (pci.ReadConfig16((ushort)(pm + 4)) & 0x0003) != 0)
+                    return Decline("PCI power state changed after sampling; no link proof");
+
                 binding.Log("[NET3095-RTL810XE] MMIO_SNAPSHOT=READ mac=" +
                     snapshot.MacAddress + " link=" + (snapshot.Carrier ? "up" : "down") +
                     " speed=" + snapshot.SpeedMbps + " duplex=" +

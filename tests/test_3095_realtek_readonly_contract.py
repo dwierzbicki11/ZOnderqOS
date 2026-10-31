@@ -72,6 +72,12 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
         self.assertIn("PM capability pointer exhaustive range/alignment guard", SMOKE)
         self.assertIn("binding.MapRegisters(RegisterBar)", DRIVER)
         self.assertIn("Realtek810xERegisterSampler.TrySample", DRIVER)
+        self.assertEqual(DRIVER.count("IsExactAsusRtl810xE("), 2)
+        self.assertIn("PCI identity changed after MMIO sampling; no link proof", DRIVER)
+        self.assertIn("PCI memory decoding disabled after sampling; no link proof", DRIVER)
+        self.assertIn("PCI power state changed after sampling; no link proof", DRIVER)
+        self.assertLess(DRIVER.index("Realtek810xERegisterSampler.TrySample"),
+                        DRIVER.index("PCI identity changed after MMIO sampling"))
         self.assertIn("return ProbeResult.Declined", DRIVER)
         self.assertIn("for (ushort i = 0; i < 6; i++)", SAMPLER)
         self.assertIn("PhyStatusOffset", SAMPLER)
