@@ -73,7 +73,7 @@ def main():
     parser.add_argument("iso", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--boot-seconds", type=int, default=35)
-    parser.add_argument("--command", choices=("tone", "wavtone"), default="tone",
+    parser.add_argument("--command", choices=("tone", "wavtone", "wavmono"), default="tone",
                         help="isolated guest command to execute; WAV probe never reads guest disks")
     parser.add_argument("--volume", type=int, default=100, help="software gain 0..100 percent")
     args = parser.parse_args()
