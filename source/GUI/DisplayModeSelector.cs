@@ -79,7 +79,15 @@ namespace ZonderqOS.GUI
         internal static Mode SelectBest(Mode current, System.Collections.Generic.IReadOnlyList<Mode> advertised)
         {
             Mode best = current;
-            long bestPixels = (long)current.Width * current.Height;
+            // A firmware framebuffer may be 16/24-bit or outside our safe
+            // geometry limits. Do not let its pixel count outrank every
+            // valid 32-bit mode exposed by the driver.
+            long currentPixels = (long)current.Width * current.Height;
+            bool currentUsable = (int)current.ColorDepth == 32 &&
+                current.Width >= 640 && current.Height >= 480 &&
+                current.Width <= MaxWidth && current.Height <= MaxHeight &&
+                currentPixels <= MaxPixels;
+            long bestPixels = currentUsable ? currentPixels : -1;
             if (advertised == null)
                 return best;
 
