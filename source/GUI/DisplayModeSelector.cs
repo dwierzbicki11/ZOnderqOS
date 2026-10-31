@@ -20,6 +20,14 @@ namespace ZonderqOS.GUI
         internal static Canvas OpenNativeOrBest()
         {
             Canvas canvas = Canvas.GetFullScreen();
+#if ZONDERQ_GUI_TEST_NATIVE_FRAMEBUFFER
+            // Opt-in CI profile: keep the *physical* firmware mode requested
+            // by the disposable test ISO. Never fake Width/Height or resize
+            // the backing buffer. Production builds still negotiate best mode.
+            Console.WriteLine("[DISPLAY-TEST] Native framebuffer=" +
+                canvas.Width + "x" + canvas.Height);
+            return canvas;
+#endif
             Mode current = canvas.Mode;
             Mode chosen = current;
             try
