@@ -163,3 +163,19 @@ boot/capture validates actual 2200 Hz PCM on both channels. **Do not claim
 this new path passed QEMU until the new workflow completes successfully.**
 No external FAT32 file is opened, no host disk is attached, no physical
 speaker or IRQ execution is proven, and production GUI audio remains off.
+
+### WAVE_FORMAT_EXTENSIBLE PCM16 (opt-in, diskless)
+
+The bounded decoder now recognizes WAVE_FORMAT_EXTENSIBLE (0xFFFE) for
+uncompressed PCM8/16/24/32 mono/stereo at 44.1 or 48 kHz. The fmt chunk must
+contain at least 40 bytes, a complete 22-byte extension, a PCM subtype GUID,
+matching valid/container bits and either a canonical mono/stereo speaker mask
+or an unspecified (zero) mask. Float GUIDs, mismatched valid bits, unsupported
+channel layouts and malformed extensions are rejected. The two-second decoded
+PCM16 cap and 800 KiB RIFF source cap are unchanged.
+
+The opt-in `wavext` command generates a 2640 Hz extensible stereo PCM16 WAV
+in RAM, decodes it through `AudioWaveInput.DecodeBounded`, and plays it via
+stock Cosmos HDA. The independent QEMU capture checks actual PCM samples.
+This does **not** mount FAT32, play a file from disk, enable production GUI
+audio, or prove physical speakers or ISR delivery.
