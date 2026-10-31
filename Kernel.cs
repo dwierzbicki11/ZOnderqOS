@@ -273,6 +273,12 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "wav24")
+            {
+                AudioRuntimeDiagnostics.PlayWave24TestTone();
+                return;
+            }
+
             if (command == "volume")
             {
                 Console.WriteLine("[AUDIO] software volume=" + AudioRuntimeDiagnostics.VolumePercent + "%");
