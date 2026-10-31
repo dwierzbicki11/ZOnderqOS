@@ -766,7 +766,7 @@ static class Test
         // read-only stream loader and the existing integer 48 kHz resampler.
         foreach (int inputRate in new[] { 22050, 32000 })
         {
-            byte[] sourceLowRate = AudioTonePcm.GenerateSquareStereo16(inputRate, 3520, 250, 4096);
+            byte[] sourceLowRate = AudioTonePcm.GenerateSquareStereo16(inputRate, inputRate == 22050 ? 1100 : 3520, 250, 4096);
             byte[] lowRateWave = AudioWavePcm.EncodeStereo16AtRate(sourceLowRate, inputRate);
             using (var lowRateInput = new MemoryStream(lowRateWave, false))
             {
@@ -785,7 +785,8 @@ static class Test
                     if ((current < 0) != (prior < 0)) crossings++;
                 }
                 double pitch = crossings * 48000.0 / (2 * (resampled.Length / 4 - 1));
-                Expect(Math.Abs(pitch - 3520) < 60, "low-rate resampler preserves 3520Hz pitch");
+                Expect(Math.Abs(pitch - (inputRate == 22050 ? 1100 : 3520)) < 60,
+                    "low-rate resampler preserves independently selected 1100/3520Hz pitch");
             }
         }
         // The same 32 kHz source is supported in unsigned PCM8 and signed

@@ -35,7 +35,7 @@ namespace ZonderqOS
                 Console.WriteLine();
 #if ZONDERQ_AUDIO_PROBE
                 Console.WriteLine("AUDIO HDA/PCM probe enabled: no disk mounts or account writes.");
-                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | wavmono | wav44 | wav32k | wav8 | wav24 | wav32 | wavext | wavext20 | volume N | inputscan | volumes | help");
+                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | wavmono | wav44 | wav22k | wav32k | wav8 | wav24 | wav32 | wavext | wavext20 | volume N | inputscan | volumes | help");
                 AudioRuntimeDiagnostics.PrintStatus();
 #else
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
@@ -264,6 +264,12 @@ namespace ZonderqOS
             if (command == "wav44")
             {
                 AudioRuntimeDiagnostics.PlayWave44100TestTone();
+                return;
+            }
+
+            if (command == "wav22k")
+            {
+                AudioRuntimeDiagnostics.PlayWave22050TestTone();
                 return;
             }
 

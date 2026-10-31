@@ -252,3 +252,14 @@ loader and 48 kHz integer resampler, and submits the result to stock HDA.
 A separate diskless QEMU boot captures the backend WAV and checks both
 channels and pitch. This is **not verified** until the new workflow succeeds;
 no physical speakers, external WAV files or production GUI are involved.
+
+
+### 22.05 kHz end-to-end probe (2026-11-01)
+
+The `wav22k` diagnostic generates a 250 ms, 1100 Hz PCM16 stereo WAV at
+22,050 Hz entirely in guest RAM. It exercises `AudioWaveInput.DecodeBounded`,
+integer 22,050→48,000 Hz resampling and the stock HDA playback path. The
+independent QEMU WAV backend gate must detect sustained 1100 Hz PCM on both
+channels; a successful compile or console message is not playback evidence.
+This test uses a diskless 1-vCPU image and does not enable production audio,
+mount FAT32, or validate physical speakers/IRQ handling.

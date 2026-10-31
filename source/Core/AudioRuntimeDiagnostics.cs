@@ -134,11 +134,6 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
-        /// Independent unsigned PCM8 mono WAV -> signed PCM16 stereo -> stock
-        /// HDA. 1320 Hz distinguishes this QEMU capture from the other probes.
-        /// No filesystem is opened or mounted.
-        /// </summary>
-        /// <summary>
         /// Distinct 3520 Hz PCM16 stereo WAV at 32 kHz, resampled by the
         /// bounded read-only loader to 48 kHz and played via stock HDA.
         /// No filesystem, host disk or production GUI is accessed.
@@ -160,6 +155,33 @@ namespace ZonderqOS.SystemCore
             }
         }
 
+        /// <summary>
+        /// Independent 22.05 kHz PCM16 stereo WAV with a distinct 1100 Hz
+        /// test tone. Resamples to 48 kHz through the same bounded read-only
+        /// stream used by other probes; no guest disk or GUI is involved.
+        /// </summary>
+        public static bool PlayWave22050TestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(22050, 1100, 250, 4096);
+                byte[] wave = AudioWavePcm.EncodeStereo16AtRate(source, 22050);
+                Console.WriteLine("[AUDIO] WAV 22050Hz input -> bounded read-only stream -> 48000Hz HDA");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV 22050 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Independent unsigned PCM8 mono WAV -> signed PCM16 stereo -> stock
+        /// HDA. 1320 Hz distinguishes this QEMU capture from the other probes.
+        /// No filesystem is opened or mounted.
+        /// </summary>
         public static bool PlayWave8TestTone()
         {
             try
