@@ -50,6 +50,38 @@ class ModifiedKeySafetyTests(unittest.TestCase):
         self.assertLess(deletion.index("if (key.Modifiers == 0)"), deletion.index("DismissSelected();"))
         self.assertIn("return true;", deletion)
 
+    def test_file_manager_clipboard_rejects_shift_modified_control(self):
+        text = source("source/GUI/Application/FileManagerApp.cs")
+        handler = text.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "private void CopySelected(bool cut)", 1
+        )[0]
+        self.assertIn(
+            "(key.Modifiers & (ConsoleModifiers.Alt | ConsoleModifiers.Shift)) == 0",
+            handler,
+        )
+        self.assertLess(handler.index("bool control ="), handler.index("CopySelected(true);"))
+        # Ctrl+C/X/V remains available, Ctrl+Shift+C/X/V is reserved.
+        for ctrl in (False, True):
+            for shift in (False, True):
+                for alt in (False, True):
+                    allowed = ctrl and not (shift or alt)
+                    self.assertEqual(allowed, ctrl and not shift and not alt)
+
+    def test_notification_shift_letters_cannot_clear_history(self):
+        text = source("source/GUI/NotificationCenter.cs")
+        handler = text.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "public bool UpdateInteractions(", 1
+        )[0]
+        self.assertIn("if (key.Modifiers != 0)\n                return true;", handler)
+        self.assertLess(
+            handler.index("if (key.Modifiers != 0)"),
+            handler.index("char ch = key.KeyChar;"),
+        )
+        self.assertLess(
+            handler.index("if (key.Modifiers != 0)"),
+            handler.index("NotificationService.ClearAll();"),
+        )
+
     def test_modifier_policy_for_destructive_actions(self):
         # Independent model of the intended key predicate, not a runtime test.
         for ctrl in (False, True):
