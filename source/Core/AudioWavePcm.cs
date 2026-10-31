@@ -66,6 +66,7 @@ namespace ZonderqOS.SystemCore
             int dataOffset = 0;
             int dataSize = 0;
             int channels = 0;
+            int sourceRate = 0;
             int pos = 12;
             while (pos < wave.Length)
             {
@@ -88,11 +89,12 @@ namespace ZonderqOS.SystemCore
                     int blockAlign = Read16(wave, pos + 20);
                     int bits = Read16(wave, pos + 22);
                     if (format != 1 || (sourceChannels != 1 && sourceChannels != 2) ||
-                        rate != SampleRate || bits != 16 ||
+                        (rate != SampleRate && rate != 44100) || bits != 16 ||
                         blockAlign != sourceChannels * 2 ||
-                        byteRate != SampleRate * sourceChannels * 2)
-                        throw new ArgumentException("Unsupported WAV format (requires 48kHz PCM16 mono/stereo).", nameof(wave));
+                        byteRate != rate * sourceChannels * 2)
+                        throw new ArgumentException("Unsupported WAV format (requires 44.1/48kHz PCM16 mono/stereo).", nameof(wave));
                     channels = sourceChannels;
+                    sourceRate = (int)rate;
                     hasFormat = true;
                 }
                 else if (Tag(wave, pos, "data"))
@@ -110,8 +112,11 @@ namespace ZonderqOS.SystemCore
 
             int sourceFrameBytes = channels * 2;
             if (dataSize % sourceFrameBytes != 0 ||
-                dataSize > SampleRate * MaxDurationSeconds * sourceFrameBytes)
+                dataSize > sourceRate * MaxDurationSeconds * sourceFrameBytes)
                 throw new ArgumentException("WAV data exceeds two seconds or has an incomplete frame.", nameof(wave));
+
+            if (sourceRate != SampleRate)
+                return ResampleToStereo16(wave, dataOffset, dataSize, channels, sourceRate);
 
             if (channels == 2)
             {
@@ -136,6 +141,45 @@ namespace ZonderqOS.SystemCore
             return upmixed;
         }
 
+        /// <summary>
+        /// Convert 44.1 kHz PCM16 mono/stereo to 48 kHz stereo by bounded linear
+        /// interpolation. The input is a validated RIFF data chunk; no IO or HAL.
+        /// Integer arithmetic keeps the two channels phase-aligned.
+        /// </summary>
+        private static byte[] ResampleToStereo16(byte[] wave, int offset, int dataSize,
+            int channels, int sourceRate)
+        {
+            int sourceFrameBytes = channels * 2;
+            int sourceFrames = dataSize / sourceFrameBytes;
+            int targetFrames = (int)(((long)sourceFrames * SampleRate + sourceRate - 1) / sourceRate);
+            if (targetFrames <= 0 || targetFrames > SampleRate * MaxDurationSeconds)
+                throw new ArgumentException("Resampled WAV exceeds two seconds.", nameof(wave));
+
+            byte[] output = new byte[targetFrames * FrameBytes];
+            for (int frame = 0; frame < targetFrames; frame++)
+            {
+                long position = (long)frame * sourceRate;
+                int firstFrame = (int)(position / SampleRate);
+                int remainder = (int)(position % SampleRate);
+                if (firstFrame >= sourceFrames) firstFrame = sourceFrames - 1;
+                int nextFrame = firstFrame + 1 < sourceFrames ? firstFrame + 1 : firstFrame;
+                for (int channel = 0; channel < 2; channel++)
+                {
+                    int sourceChannel = channels == 1 ? 0 : channel;
+                    int a = offset + firstFrame * sourceFrameBytes + sourceChannel * 2;
+                    int b = offset + nextFrame * sourceFrameBytes + sourceChannel * 2;
+                    short first = (short)Read16(wave, a);
+                    short next = (short)Read16(wave, b);
+                    int sample = (int)(((long)first * (SampleRate - remainder) +
+                        (long)next * remainder) / SampleRate);
+                    int dst = frame * FrameBytes + channel * 2;
+                    output[dst] = (byte)sample;
+                    output[dst + 1] = (byte)(sample >> 8);
+                }
+            }
+            return output;
+        }
+
         /// <summary>Build a bounded mono PCM16 RIFF fixture without disk access.</summary>
         public static byte[] EncodeMono16(byte[] pcm)
         {
@@ -157,6 +201,24 @@ namespace ZonderqOS.SystemCore
             PutTag(wave, 36, "data");
             Write32(wave, 40, pcm.Length);
             Array.Copy(pcm, 0, wave, 44, pcm.Length);
+            return wave;
+        }
+
+        /// <summary>
+        /// Construct a 44.1/48 kHz stereo PCM16 WAV fixture for the resampler
+        /// test. This helper never touches a guest or host filesystem.
+        /// </summary>
+        public static byte[] EncodeStereo16AtRate(byte[] pcm, int sampleRate)
+        {
+            if (sampleRate != 44100 && sampleRate != SampleRate)
+                throw new ArgumentOutOfRangeException(nameof(sampleRate));
+            if (pcm == null || pcm.Length == 0 ||
+                pcm.Length > sampleRate * MaxDurationSeconds * FrameBytes ||
+                pcm.Length % FrameBytes != 0)
+                throw new ArgumentException("Invalid PCM16 stereo duration or alignment.", nameof(pcm));
+            byte[] wave = EncodeStereo16(pcm);
+            Write32(wave, 24, sampleRate);
+            Write32(wave, 28, sampleRate * FrameBytes);
             return wave;
         }
 

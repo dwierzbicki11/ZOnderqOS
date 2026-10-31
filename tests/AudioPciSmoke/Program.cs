@@ -251,6 +251,62 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject WAV larger than 2 seconds");
 
+        // 44.1 kHz source WAV must produce bounded 48 kHz stereo PCM
+        // before reaching the stock HDA driver. This is host C#, not QEMU.
+        byte[] source44100 = AudioTonePcm.GenerateSquareStereo16(44100, 880, 250, 4096);
+        byte[] wave44100 = AudioWavePcm.EncodeStereo16AtRate(source44100, 44100);
+        byte[] converted44100 = AudioWavePcm.DecodeStereo16(wave44100);
+        Expect(converted44100.Length == 48000, "44.1k stereo 250ms converts to 48k stereo 250ms");
+        int crossings44100 = 0;
+        for (int i = 0; i < converted44100.Length / 4; i++)
+        {
+            int at = i * 4;
+            short left = (short)(converted44100[at] | (converted44100[at + 1] << 8));
+            short right = (short)(converted44100[at + 2] | (converted44100[at + 3] << 8));
+            Expect(left == right, "resampling preserves stereo phase");
+            Expect(left >= -4096 && left <= 4096, "resampling does not exceed source amplitude");
+            if (i > 0)
+            {
+                int prior = at - 4;
+                short old = (short)(converted44100[prior] | (converted44100[prior + 1] << 8));
+                if ((old < 0) != (left < 0)) crossings44100++;
+            }
+        }
+        double convertedHz = crossings44100 * 48000.0 / (2 * (converted44100.Length / 4 - 1));
+        Expect(Math.Abs(convertedHz - 880) < 10, "44.1k->48k resampler preserves 880Hz pitch");
+        byte[] sourceMono44100 = new byte[source44100.Length / 2];
+        for (int i = 0; i < sourceMono44100.Length / 2; i++)
+        {
+            sourceMono44100[i * 2] = source44100[i * 4];
+            sourceMono44100[i * 2 + 1] = source44100[i * 4 + 1];
+        }
+        byte[] monoWave44100 = AudioWavePcm.EncodeMono16(sourceMono44100);
+        WriteLittle32(monoWave44100, 24, 44100);
+        WriteLittle32(monoWave44100, 28, 44100 * 2);
+        byte[] monoConverted44100 = AudioWavePcm.DecodeStereo16(monoWave44100);
+        Expect(monoConverted44100.Length == 48000, "44.1k mono upmix and resample duration");
+        for (int i = 0; i < monoConverted44100.Length; i++)
+            Expect(monoConverted44100[i] == converted44100[i], "mono 44.1k upmix matches stereo source");
+        byte[] invalidRate44100 = (byte[])wave44100.Clone();
+        WriteLittle32(invalidRate44100, 24, 32000);
+        WriteLittle32(invalidRate44100, 28, 32000 * 4);
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(invalidRate44100); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "unsupported 32k WAV still refused");
+        byte[] overlong44100 = new byte[44 + 44100 * 2 * 4 + 4];
+        Array.Copy(wave44100, overlong44100, wave44100.Length);
+        WriteLittle32(overlong44100, 4, overlong44100.Length - 8);
+        WriteLittle32(overlong44100, 40, overlong44100.Length - 44);
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(overlong44100); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "44.1k WAV longer than two seconds refused");
+        rejected = false;
+        try { AudioWavePcm.EncodeStereo16AtRate(source44100, 32000); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "unsupported encoder rate refused");
+
         byte[] quarter = AudioPcmVolume.ScaleStereo16(pcm, 25);
         byte[] muted = AudioPcmVolume.ScaleStereo16(pcm, 0);
         byte[] full = AudioPcmVolume.ScaleStereo16(pcm, 100);
