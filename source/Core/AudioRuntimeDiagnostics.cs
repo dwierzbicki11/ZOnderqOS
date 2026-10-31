@@ -110,6 +110,28 @@ namespace ZonderqOS.SystemCore
             }
         }
 
+        /// <summary>
+        /// Independent 44.1 kHz RIFF/WAV fixture -> bounded 48 kHz resampling
+        /// -> stock HDA. Distinct 880 Hz pitch makes QEMU capture attributable
+        /// to this decoder path; the diagnostic image never reads guest disks.
+        /// </summary>
+        public static bool PlayWave44100TestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(44100, 880, 250, 4096);
+                byte[] wave = AudioWavePcm.EncodeStereo16AtRate(source, 44100);
+                byte[] decoded = AudioWavePcm.DecodeStereo16(wave);
+                Console.WriteLine("[AUDIO] WAV 44100Hz resampled to 48000Hz PCM16 stereo bytes=" + decoded.Length);
+                return PlayPcm(decoded);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV 44100 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
         private static bool PlayPcm(byte[] pcm)
         {
             AudioDevice output = AudioManager.Primary;

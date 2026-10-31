@@ -31,6 +31,7 @@ audioinfo
 tone
 wavtone
 wavmono
+wav44
 volume 25
 tone
 volume 100
@@ -44,10 +45,10 @@ then submits the decoded 48 kHz PCM16 stereo frames to the same stock HDA
 path as `tone`. This tests the actual WAV parser-to-playback path without
 opening any disk. It is **not** a file-browser WAV player yet.
 
-The parser accepts uncompressed PCM16 at 48 kHz in mono or stereo, with
+The parser accepts uncompressed PCM16 at 44.1 or 48 kHz in mono or stereo, with
 a maximum of two seconds (at most 384,000 decoded stereo PCM bytes). Mono
 input is upmixed by duplicating each signed sample to both channels; no
-resampling occurs. It checks RIFF and chunk bounds, fmt consistency, data
+resampling occurs for 48 kHz input. 44.1 kHz input is converted to 48 kHz stereo using bounded integer linear interpolation, without touching the filesystem. It checks RIFF and chunk bounds, fmt consistency, data
 alignment, duplicate chunks, odd-sized metadata padding and source-duration
 bounds before allocating the decoded buffer. Unsupported rates and formats
 fail explicitly; no DMA, filesystem access or production GUI activation occurs.
@@ -58,11 +59,17 @@ to the same stock HDA output. The independent QEMU capture validates 660 Hz
 on both stereo channels so a mistakenly executed 440 Hz `tone` cannot pass.
 The new capture must pass before claiming mono playback verified end-to-end.
 
-The CI audio-QEMU workflow boots the ISO **five times**: direct `tone`,
-`wavtone`, mono `wavmono`, `tone` at 25% software volume, and `tone` at 0% (mute).
-Each uses a fresh QEMU process and a separate WAV capture. The first four
+The `wav44` command generates a distinct 880 Hz stereo PCM16 fixture at 44.1 kHz,
+encodes RIFF/WAV entirely in RAM, resamples it to 48 kHz and plays it through
+the same HDA path. The sixth QEMU capture checks the distinct 880 Hz signal,
+rather than trusting a decoder log line. 44.1 kHz mono is covered by real C#
+host tests, not independently by QEMU.
+
+The CI audio-QEMU workflow boots the ISO **six times**: direct `tone`,
+`wavtone`, mono `wavmono`, 44.1 kHz `wav44`, `tone` at 25% software volume, and `tone` at 0% (mute).
+Each uses a fresh QEMU process and a separate WAV capture. The first five
 must pass the non-silent pitch validator, including a stereo channel-balance
-check; the fifth must contain at least 100 ms of genuinely muted PCM frames. The WAV fixture is generated
+check; the sixth must contain at least 100 ms of genuinely muted PCM frames. The WAV fixture is generated
 in memory; this does not prove arbitrary external WAV files work.
 
 The diagnostic console also accepts `volume N` for integer `N` from
@@ -74,7 +81,7 @@ without arguments prints the current percentage. The C# host smoke verifies
 
 The fourth QEMU boot uses `volume 25` and `tone`, then compares the actual
 backend WAV peak against the normal 100% capture. A PASS requires a ratio
-near 0.25, not just a serial message. The fifth boot uses `volume 0` and
+near 0.25, not just a serial message. The sixth boot uses `volume 0` and
 requires a nonempty, sustained WAV capture with a PCM peak no higher than 32;
 a missing/header-only file is a failure, not a mute PASS. This verifies
 software PCM gain/mute in the emulator, not perceived loudness.
@@ -98,6 +105,6 @@ The QEMU WAV backend and `hda-duplex,audiodev=audio0` device syntax are document
 3. **Synthetic WAV:** `python3 tests/test_audio_wav_validator.py` tests the WAV validator with generated 440 Hz, silence, wrong pitch, short and unsupported-format fixtures.
 4. **Real ISO/QEMU:** compile and boot the audio ISO, inspect serial and screen output, run `tone`, and verify QEMU's actual captured WAV. Do not claim this tier passed from host tests alone.
 5. **Verified baseline:** the 2026-10-31 real QEMU run #41221871415 passed three independent captures (direct PCM, decoded in-RAM WAV, 25% gain), with measured 0.250 amplitude ratio. The newer stereo-balance and mute gates require their own CI runs; do not infer they passed from the baseline.
-6. **Next:** confirm the new mono, mute and stereo-balance gates in real QEMU; then consider guarded read-only external WAV access. Physical codec/output and GUI sounds remain later milestones; production audio stays off.
+6. **Next:** confirm the new 44.1 kHz resampler in real QEMU; then design a bounded read-only external WAV source without mounting a host disk or enabling production audio. Physical codec/output and GUI sounds remain later milestones; production audio stays off.
 
 Do not enable AC97, SMP/SMT or network in this audio branch. Never use a real host disk as a test target.

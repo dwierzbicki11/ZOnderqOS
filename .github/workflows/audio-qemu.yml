@@ -67,6 +67,10 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-mono-out --boot-seconds 45 --command wavmono
+      - name: Boot and capture resampled 44.1 kHz stereo WAV (880 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-44100-out --boot-seconds 45 --command wav44
       - name: Boot again at 25% software volume and compare actual output amplitude
         run: |
           python3 tools/smoke-audio-qemu.py \
@@ -83,6 +87,7 @@ jobs:
           tail -n 200 audio-qemu-out/serial.log audio-qemu-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-wav-out/serial.log audio-qemu-wav-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-mono-out/serial.log audio-qemu-mono-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-44100-out/serial.log audio-qemu-44100-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-quiet-out/serial.log audio-qemu-quiet-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-muted-out/serial.log audio-qemu-muted-out/qemu.stderr.log 2>/dev/null || true
       - uses: actions/upload-artifact@v4
@@ -100,6 +105,9 @@ jobs:
             audio-qemu-mono-out/*.log
             audio-qemu-mono-out/*.wav
             audio-qemu-mono-out/*.ppm
+            audio-qemu-44100-out/*.log
+            audio-qemu-44100-out/*.wav
+            audio-qemu-44100-out/*.ppm
             audio-qemu-quiet-out/*.log
             audio-qemu-quiet-out/*.wav
             audio-qemu-quiet-out/*.ppm

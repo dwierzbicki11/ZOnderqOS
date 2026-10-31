@@ -35,7 +35,7 @@ namespace ZonderqOS
                 Console.WriteLine();
 #if ZONDERQ_AUDIO_PROBE
                 Console.WriteLine("AUDIO HDA/PCM probe enabled: no disk mounts or account writes.");
-                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | wavmono | volume N | inputscan | volumes | help");
+                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | wavmono | wav44 | volume N | inputscan | volumes | help");
                 AudioRuntimeDiagnostics.PrintStatus();
 #else
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
@@ -261,6 +261,12 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "wav44")
+            {
+                AudioRuntimeDiagnostics.PlayWave44100TestTone();
+                return;
+            }
+
             if (command == "volume")
             {
                 Console.WriteLine("[AUDIO] software volume=" + AudioRuntimeDiagnostics.VolumePercent + "%");
@@ -358,6 +364,8 @@ namespace ZonderqOS
                 Console.WriteLine("audioinfo - show outputs published by the stock Cosmos audio driver");
                 Console.WriteLine("tone      - play 250 ms 440 Hz PCM through primary HDA output");
                 Console.WriteLine("wavtone   - decode RAM-only RIFF/WAV then play through HDA");
+                Console.WriteLine("wavmono   - upmix RAM-only 48kHz mono WAV to stereo");
+                Console.WriteLine("wav44     - resample RAM-only 44.1kHz stereo WAV to 48kHz");
                 Console.WriteLine("volume N  - software PCM gain 0..100%, opt-in AUDIO probe only");
 #endif
                 Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");

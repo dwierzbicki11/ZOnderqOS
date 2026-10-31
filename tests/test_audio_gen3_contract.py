@@ -123,7 +123,10 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("public static byte[] EncodeMono16(byte[] pcm)", parser)
         self.assertIn("AudioWavePcm.EncodeMono16(mono)", runtime)
         self.assertIn("GenerateSquareStereo16(48000, 660, 250, 4096)", runtime)
-        self.assertIn('expected_hz=660 if args.command == "wavmono" else 440', harness)
+        self.assertIn('expected_hz=660 if args.command == "wavmono" else 880 if args.command == "wav44" else 440', harness)
+        self.assertIn('if (command == "wav44")', kernel)
+        self.assertIn("AudioWavePcm.EncodeStereo16AtRate(source, 44100)", runtime)
+        self.assertIn("--command wav44", workflow)
         self.assertIn("AudioWavePcm.DecodeStereo16(wave)", runtime)
         self.assertIn('if (command == "wavmono")', kernel)
         self.assertIn("--command wavmono", workflow)
@@ -152,7 +155,7 @@ class AudioGen3Contract(unittest.TestCase):
             self.assertNotIn(forbidden, gain)
 
         self.assertIn("--command wavtone", workflow)
-        self.assertIn('choices=("tone", "wavtone", "wavmono")', harness)
+        self.assertIn('choices=("tone", "wavtone", "wavmono", "wav44")', harness)
         for forbidden in ("System.IO", "File.", "Disk.", "TryMount(", "WriteBlock(",
                           "NetworkManager.", "PciSysfsProvider"):
             self.assertNotIn(forbidden, parser)
