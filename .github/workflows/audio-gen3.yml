@@ -1,0 +1,43 @@
+name: Audio Gen3 — opt-in HDA probe contracts
+
+on:
+  push:
+    branches:
+      - feat/audio-gen3
+    paths:
+      - 'ZonderqOS.csproj'
+      - 'Kernel.cs'
+      - 'source/Core/Audio*.cs'
+      - 'source/Shell/Command.cs'
+      - 'source/Shell/Commands/CmdAudioDiag.cs'
+      - 'tests/test_audio_gen3_contract.py'
+      - 'tests/AudioPciSmoke/**'
+      - '.github/workflows/audio-gen3.yml'
+  pull_request:
+    paths:
+      - 'ZonderqOS.csproj'
+      - 'Kernel.cs'
+      - 'source/Core/Audio*.cs'
+      - 'source/Shell/Command.cs'
+      - 'source/Shell/Commands/CmdAudioDiag.cs'
+      - 'tests/test_audio_gen3_contract.py'
+      - 'tests/AudioPciSmoke/**'
+      - '.github/workflows/audio-gen3.yml'
+  workflow_dispatch:
+
+jobs:
+  audio-host-contract:
+    name: Static safety and real C# host smoke (NOT QEMU)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Python source and isolation gates
+        run: python3 tests/test_audio_gen3_contract.py
+      - name: Compile and execute real C# PCI classification
+        run: dotnet run --project tests/AudioPciSmoke/AudioPciSmoke.csproj --configuration Release
+      - name: Explicit scope
+        run: echo 'Host-side only; NO Cosmos ISO, QEMU boot, HDA binding, DMA, IRQ or audible PCM proof.'
