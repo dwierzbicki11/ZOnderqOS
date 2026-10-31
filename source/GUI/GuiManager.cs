@@ -895,6 +895,8 @@ namespace ZonderqOS.GUI
 
             if (key.Key == ConsoleKeyEx.Tab)
             {
+                // Keyboard focus changes invalidate pending desktop double-clicks.
+                lastShortcutClickTimestamp = 0;
                 // A window switch always returns to the desktop, including
                 // when Start, notifications, or the command palette were open.
                 commandPalette?.Close();
@@ -912,6 +914,7 @@ namespace ZonderqOS.GUI
             if (key.Key != ConsoleKeyEx.F4)
                 return false;
 
+            lastShortcutClickTimestamp = 0;
             // Alt+F4 first dismisses whichever transient panel currently owns
             // keyboard focus. The underlying app must not close accidentally.
             if (commandPalette != null && commandPalette.Visible)

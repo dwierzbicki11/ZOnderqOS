@@ -1102,5 +1102,17 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("Never connect this probe to a guest with host disks", probe)
 
 
+    def test_window_keyboard_shortcuts_cancel_pending_desktop_double_click(self):
+        shortcuts = DESKTOP.split("private bool HandleWindowShortcut(KeyEvent key)", 1)[1].split(
+            "private void LogoutSession()", 1)[0]
+        self.assertIn("if (key.Key == ConsoleKeyEx.Tab)", shortcuts)
+        self.assertIn("if (key.Key != ConsoleKeyEx.F4)", shortcuts)
+        self.assertEqual(shortcuts.count("lastShortcutClickTimestamp = 0;"), 2)
+        self.assertLess(shortcuts.index("lastShortcutClickTimestamp = 0;"),
+                        shortcuts.index("applicationManager?.CycleWindow(reverse);"))
+        self.assertLess(shortcuts.rindex("lastShortcutClickTimestamp = 0;"),
+                        shortcuts.index("applicationManager?.RequestCloseActiveWindow();"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
