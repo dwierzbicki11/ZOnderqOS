@@ -302,23 +302,42 @@ class ResponsiveGui3094(unittest.TestCase):
 
         # Pure geometry check for the render/hit-test layout. The last
         # button is reserved for the page switcher only when necessary.
-        for screen_width in (800, 1366, 1920):
-            max_app_x = screen_width - 278
-            slots = max(0, (max_app_x - 60 + 5) // 45)
-            for running_count in (0, 1, 9, 10, 11, 23, 50):
+        self.assertIn("private const int CompactTrayWidth = 132;", TASKBAR)
+        self.assertIn("return Width < 560 ? CompactTrayWidth : TrayWidth;", TASKBAR)
+        self.assertIn("Width - GetTrayWidth() - (StartButtonWidth + SidePadding + 6)", TASKBAR)
+        self.assertEqual(TASKBAR.count("int trayX = Width - GetTrayWidth();"), 2)
+        self.assertIn("GetTrayWidth() == TrayWidth &&", TASKBAR)
+
+        # At 320px the full 278px tray obscured the Start button and
+        # left zero application slots. The compact tray keeps the clock
+        # and notification button, while reserving space for paging.
+        for screen_width in (320, 360, 400, 480, 540, 559, 560, 640,
+                             800, 1024, 1366, 1920):
+            tray_width = 132 if screen_width < 560 else 278
+            tray_x = screen_width - tray_width
+            self.assertGreaterEqual(tray_x, 48)
+            notification_x = tray_x + 9
+            self.assertLessEqual(notification_x + 34, screen_width - 88)
+            self.assertLessEqual(screen_width - 78 + 68, screen_width)
+            slots = max(0, (tray_x - 60 + 5) // 45)
+            self.assertGreaterEqual(slots, 2)
+            for running_count in (0, 1, 2, 9, 10, 11, 23, 50):
                 overflow = running_count > slots and slots >= 2
                 page_slots = slots - 1 if overflow else slots
                 self.assertGreaterEqual(page_slots, 0)
+                if page_slots:
+                    last_button_right = 60 + (page_slots - 1) * 45 + 40
+                    self.assertLessEqual(last_button_right, tray_x)
                 if overflow:
                     arrow_x = 60 + page_slots * 45
-                    self.assertLessEqual(arrow_x + 40, max_app_x)
+                    self.assertLessEqual(arrow_x + 40, tray_x)
                     offsets = list(range(0, running_count, page_slots))
                     self.assertEqual(
                         [index for offset in offsets
                          for index in range(offset, min(running_count, offset + page_slots))],
                         list(range(running_count))
                     )
-                    self.assertEqual(offsets[-1] + page_slots >= running_count, True)
+                    self.assertTrue(offsets[-1] + page_slots >= running_count)
                 else:
                     self.assertLessEqual(running_count, page_slots)
 
