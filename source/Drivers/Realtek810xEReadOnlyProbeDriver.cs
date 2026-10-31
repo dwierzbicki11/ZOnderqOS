@@ -9,7 +9,7 @@ namespace ZonderqOS.Drivers
 {
     /// <summary>
     /// Deliberately non-binding, opt-in PCI probe for the ASUS RTL810xE
-    /// 10EC:8136 rev06, subsystem 1043:200F. Samples seven MMIO bytes.
+    /// 10EC:8136 rev06, subsystem 1043:200F. Samples eleven MMIO bytes.
     /// No explicit PCI config writes, bus mastering, DMA, IRQ or network
     /// publication. Never included in the normal disk-backed GUI build.
     /// </summary>
@@ -74,6 +74,9 @@ namespace ZonderqOS.Drivers
                     snapshot.MacAddress + " link=" + (snapshot.Carrier ? "up" : "down") +
                     " speed=" + snapshot.SpeedMbps + " duplex=" +
                     (!snapshot.Carrier ? "unknown" : snapshot.FullDuplex ? "full" : "half") +
+                    " txconfig=0x" + snapshot.RawTxConfig.ToString("X8") +
+                    " xid=0x" + snapshot.Xid.ToString("X3") +
+                    " variant=" + snapshot.ChipVariant +
                     " (read-only, no TX/RX/DMA/IRQ)");
                 // Only publish a successful sample after the diagnostic
                 // marker itself has been emitted without throwing.
