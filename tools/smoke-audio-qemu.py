@@ -23,6 +23,22 @@ mute_spec = spec_from_file_location("audio_mute", ROOT / "tools/verify-audio-mut
 mute_capture = module_from_spec(mute_spec)
 mute_spec.loader.exec_module(mute_capture)
 
+# Explicit pitch identity prevents one diagnostic command from being
+# accidentally certified by another command's captured PCM.
+EXPECTED_TONE_HZ = {
+    "tone": 440,
+    "wavtone": 440,
+    "wavmono": 660,
+    "wav44": 880,
+    "wav22k": 1100,
+    "wav32k": 3520,
+    "wav8": 1320,
+    "wav24": 1760,
+    "wav32": 2200,
+    "wavext": 2640,
+    "wavext20": 3080,
+}
+
 
 class Qmp:
     def __init__(self, path):
@@ -137,7 +153,7 @@ def main():
             else:
                 # The mono decoder probe uses a different pitch to prevent a
                 # stray 440 Hz tone from masquerading as successful mono playback.
-                print(capture.inspect(wav, expected_hz=660 if args.command == "wavmono" else 880 if args.command == "wav44" else 1100 if args.command == "wav22k" else 3520 if args.command == "wav32k" else 1320 if args.command == "wav8" else 1760 if args.command == "wav24" else 2200 if args.command == "wav32" else 2640 if args.command == "wavext" else 3080 if args.command == "wavext20" else 440))
+                print(capture.inspect(wav, expected_hz=EXPECTED_TONE_HZ[args.command]))
             print(f"[AUDIO-QEMU] PASS command={args.command} volume={args.volume} real QEMU HDA WAV capture; no physical speaker proof")
             return 0
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
