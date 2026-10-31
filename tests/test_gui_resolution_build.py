@@ -60,9 +60,10 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
         self.assertIn('[[ "$FIRMWARE" == bios || "$FIRMWARE" == ovmf ]]', smoke)
         self.assertIn('cp "$OVMF_VARS" "$OUT/ovmf-vars.fd"', smoke)
         self.assertIn('VIDEO="${SERVICE_QEMU_VIDEO:-std}"', smoke)
-        self.assertIn('[[ "$VIDEO" == std || "$VIDEO" == virtio || "$VIDEO" == qxl || "$VIDEO" == std-edid ]]', smoke)
+        self.assertIn('[[ "$VIDEO" == std || "$VIDEO" == virtio || "$VIDEO" == qxl || "$VIDEO" == std-edid || "$VIDEO" == virtio-edid ]]', smoke)
         self.assertIn('"${FIRMWARE_ARGS[@]}" "${VIDEO_ARGS[@]}"', smoke)
         self.assertIn('VIDEO_ARGS=(-vga none -device VGA,edid=on,xres=1366,yres=768)', smoke)
+        self.assertIn('VIDEO_ARGS=(-vga none -device virtio-vga,edid=on,xres=1366,yres=768)', smoke)
         self.assertIn('[[ "$FIRMWARE" == ovmf && "$EXPECTED_FRAMEBUFFER" == 1366x768 ]]', smoke)
         self.assertIn("mtools ovmf", hd)
         self.assertIn("SERVICE_QEMU_FIRMWARE: 'ovmf'", hd)
@@ -70,10 +71,10 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
         self.assertIn("SERVICE_QEMU_PROBE_MAX_DRAG:", hd)
         self.assertIn("resolution: '1360x768'", hd)
         self.assertIn("resolution: '1366x768'", hd)
-        self.assertIn("video: 'std-edid'", hd)
+        self.assertIn("video: 'virtio-edid'", hd)
         self.assertIn("resolution: '1920x1080'", hd)
         self.assertIn("video: 'std'", hd)
-        for mode, adapter in (("1360x768", "std"), ("1366x768", "std-edid"),
+        for mode, adapter in (("1360x768", "std"), ("1366x768", "virtio-edid"),
                               ("1920x1080", "std")):
             self.assertRegex(hd, r"resolution: '" + mode +
                              r"'\s*video: '" + adapter + r"'")
