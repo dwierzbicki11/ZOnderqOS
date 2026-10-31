@@ -142,7 +142,7 @@ def validate(serial: str, pcap: bytes) -> str:
                 if not (
                     ack["src"] == guest and ack["dst"] == SERVER and
                     ack["src_mac"] == MAC and ack["dst_mac"] == server_mac and
-                ack["sport"] == client_port and
+                    ack["sport"] == client_port and
                     ack["dport"] == PORT and (ack["flags"] & 0x17) == 0x10 and
                     ack["seq"] == client_seq and ack["ack"] == server_seq and
                     not ack["payload"]
