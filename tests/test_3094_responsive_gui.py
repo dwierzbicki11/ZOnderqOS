@@ -1438,5 +1438,58 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
                         mouse.index("Toggle();"))
 
 
+    def test_notification_panel_and_toast_fit_small_and_full_hd_modes(self):
+        self.assertIn("private static int PanelWidth(int screenWidth)", NOTIFICATIONS)
+        self.assertIn("private int ToastWidth", NOTIFICATIONS)
+        self.assertIn("private int ToastX", NOTIFICATIONS)
+        self.assertIn("private int ToastY", NOTIFICATIONS)
+        self.assertIn("ToastX, ToastY, ToastWidth, 98", NOTIFICATIONS)
+        self.assertIn("int width = ToastWidth;", NOTIFICATIONS)
+
+        for width, height in ((320, 240), (360, 480), (400, 600),
+                              (640, 480), (800, 600), (1024, 768),
+                              (1366, 768), (1920, 1080)):
+            panel_width = min(462, max(1, width - 20))
+            panel_x = max(0, width - panel_width - 10)
+            toast_width = min(414, max(1, width - 24))
+            toast_x = max(0, width - toast_width - 18)
+            toast_y = max(0, height - 44 - 116)
+            self.assertGreaterEqual(panel_x, 0)
+            self.assertLessEqual(panel_x + panel_width, width)
+            self.assertGreaterEqual(toast_x, 0)
+            self.assertLessEqual(toast_x + toast_width, width)
+            self.assertGreaterEqual(toast_y, 0)
+            self.assertLessEqual(toast_y + 98, height - 44)
+
+    def test_notification_footer_render_and_hit_test_share_narrow_bounds(self):
+        self.assertIn("private void FooterButtonBounds(int index, out int x, out int width)", NOTIFICATIONS)
+        render = NOTIFICATIONS.split("private void RenderFooter(", 1)[1].split(
+            "private void DrawFooterButton(", 1)[0]
+        hover = NOTIFICATIONS.split("private void UpdateHover(", 1)[1].split(
+            "private void EnsureFresh(", 1)[0]
+        self.assertEqual(render.count("FooterButtonBounds("), 4)
+        self.assertEqual(hover.count("FooterButtonBounds("), 1)
+        self.assertIn("Hit(mouseX, mouseY, buttonX, footerY, buttonWidth, 38)", hover)
+        self.assertIn('Width < 380 && i == 1 ? "NOWE"', NOTIFICATIONS)
+        for width in (300, 340, 380, 420, 462):
+            gap = 4
+            slot = max(1, (width - 28 - 2 * gap) // 3)
+            bounds = []
+            for index in range(3):
+                if width >= 440:
+                    x = (14, 147, 258)[index]
+                    button_width = (126, 104, width - 272)[index]
+                else:
+                    x = 14 + index * (slot + gap)
+                    button_width = max(1, width - 14 - x) if index == 2 else slot
+                bounds.append((x, x + button_width))
+            self.assertGreaterEqual(bounds[0][0], 0)
+            self.assertLessEqual(bounds[-1][1], width)
+            for left, right in bounds:
+                self.assertGreater(right, left)
+            self.assertLessEqual(bounds[0][1], bounds[1][0])
+            self.assertLessEqual(bounds[1][1], bounds[2][0])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
