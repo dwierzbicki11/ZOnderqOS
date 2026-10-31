@@ -28,6 +28,7 @@ QEMU_SMOKE = code("tools/smoke-services-qemu.sh")
 QEMU_WORKFLOW = code(".github/workflows/services-qemu.yml")
 QMP_LOGIN = code("tools/qmp-gui-login.py")
 COMMAND_PALETTE = code("source/GUI/CommandPalette.cs")
+START_MENU = code("source/GUI/StartMenu.cs")
 
 
 def fit_window(x, y, width, height, screen_width, screen_height):
@@ -46,6 +47,17 @@ def visible_rows(window_height, list_top, bottom_offset, row_height, row_gap):
 
 
 class ResponsiveGui3094(unittest.TestCase):
+    def test_start_and_palette_do_not_run_modified_search_or_launch_actions(self):
+        for name, source in (("Start", START_MENU), ("Palette", COMMAND_PALETTE)):
+            keyboard = source.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
+                "public void UpdateInteractions(" if name == "Start" else "public bool HandleMouse(", 1)[0]
+            guard = "(key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) != 0"
+            self.assertIn(guard, keyboard, name)
+            self.assertIn("return true;", keyboard.split(guard, 1)[1][:80], name)
+            self.assertLess(keyboard.index(guard), keyboard.index("ConsoleKeyEx.Backspace"), name)
+            self.assertLess(keyboard.index(guard), keyboard.index("ConsoleKeyEx.Enter"), name)
+            self.assertLess(keyboard.index(guard), keyboard.index("char ch = key.KeyChar"), name)
+
     def test_resize_edges_preserve_work_area_insets(self):
         resize = WINDOW.split("private void ApplyResize(", 1)[1].split(
             "public override void Render(", 1)[0]

@@ -93,6 +93,11 @@ namespace ZonderqOS.GUI
                 return true;
             }
 
+            // Modified navigation/Enter must not accidentally launch an app.
+            // The overlay consumes these keys without changing its query.
+            if ((key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) != 0)
+                return true;
+
             if (key.Key == ConsoleKeyEx.UpArrow)
             {
                 MoveSelection(-1);

@@ -10,6 +10,7 @@ on:
       - 'tools/smoke-services-qemu.sh'
       - 'tools/qmp-gui-*.py'
       - 'tests/test_gui_resolution_build.py'
+      - 'tests/test_qmp_gui_taskmanager.py'
       - '.github/workflows/gui-800-qemu.yml'
   workflow_dispatch:
 

@@ -31,6 +31,17 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
         self.assertIn('GUI_TEST_NATIVE=true', BUILD)
         self.assertIn('resolution: 1366x768x32', LIMINE)
 
+    def test_resolution_jobs_track_gui_and_probe_changes(self):
+        common = ("source/GUI/**", "Bootloader/limine.conf",
+                  "ZonderqOS.csproj", "tools/build-cosmos-3095-local.sh",
+                  "tools/smoke-services-qemu.sh", "tools/qmp-gui-*.py",
+                  "tests/test_gui_resolution_build.py",
+                  "tests/test_qmp_gui_taskmanager.py")
+        for name in ("gui-800-qemu.yml", "gui-hd-qemu.yml"):
+            workflow = (ROOT / ".github/workflows" / name).read_text()
+            for path in common:
+                self.assertIn("- '" + path + "'", workflow, name + ": " + path)
+
     def test_qemu_workflows_do_not_mask_failed_guest_probes_with_tee(self):
         # A previous HD probe emitted [SERVICES-QEMU][FAIL] but the workflow
         # appeared green because tee, not the failing guest probe, set status.

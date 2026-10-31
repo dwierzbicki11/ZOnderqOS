@@ -393,6 +393,12 @@ namespace ZonderqOS.GUI
             if (!Visible || key == null)
                 return false;
 
+            // Start owns the keyboard while open. Do not treat Ctrl/Alt
+            // shortcuts as search text, Backspace edits or Enter launches.
+            // Shift remains available for uppercase search characters.
+            if ((key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) != 0)
+                return true;
+
             if (key.Key == ConsoleKeyEx.Backspace)
             {
                 if (searchText.Length > 0)
