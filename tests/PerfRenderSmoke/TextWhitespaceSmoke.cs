@@ -97,6 +97,17 @@ internal static class TextWhitespaceSmoke
             " renders, median 5 alternating A/B; baseline " +
             baseline[2].ToString("F2") + " ms, current " +
             optimized[2].ToString("F2") + " ms; informational, not QEMU.");
+
+        // After warm-up, report actual thread-local allocations from the
+        // production path; do not turn noisy runtime metrics into CI gates.
+        SmallTextRenderer.Draw(after, text, 2, 3, Color.White);
+        long allocationStart = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < iterations; i++)
+            SmallTextRenderer.Draw(after, text, 2, 3, Color.White);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocationStart;
+        Console.WriteLine("Host .NET text " + label + ": allocated " +
+            allocated + " bytes / " + iterations +
+            " production Draw calls (informational).");
     }
 
     internal static void Verify()
@@ -108,5 +119,6 @@ internal static class TextWhitespaceSmoke
         Console.WriteLine("Whitespace text: 4 exact framebuffer/call-count checks");
         Benchmark("spaces", new string(' ', 120));
         Benchmark("mixed", "CPU     RAM      I/O     GUI     FPS     Task Manager");
+        Benchmark("punctuation", "...  !!!  ...  !!!  ...");
     }
 }
