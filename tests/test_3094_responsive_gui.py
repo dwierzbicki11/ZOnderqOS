@@ -26,6 +26,7 @@ NOTIFICATIONS = code("source/GUI/NotificationCenter.cs")
 PROJECT = code("ZonderqOS.csproj")
 QEMU_SMOKE = code("tools/smoke-services-qemu.sh")
 QEMU_WORKFLOW = code(".github/workflows/services-qemu.yml")
+QMP_LOGIN = code("tools/qmp-gui-login.py")
 
 
 def fit_window(x, y, width, height, screen_width, screen_height):
@@ -888,6 +889,15 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("NOT that GUI interactions work", QEMU_SMOKE)
         self.assertIn("SERVICE_QEMU_CAPTURE_SCREEN: '1'", QEMU_WORKFLOW)
         self.assertIn("services-qemu-output/*.ppm", QEMU_WORKFLOW)
+        self.assertIn("SERVICE_QEMU_AUTOMATE_GUI_LOGIN: '1'", QEMU_WORKFLOW)
+        self.assertIn('AUTOMATE_GUI_LOGIN="${SERVICE_QEMU_AUTOMATE_GUI_LOGIN:-0}"', QEMU_SMOKE)
+        self.assertIn('qmp-gui-login.py" "$socket" "$phase"', QEMU_SMOKE)
+        self.assertIn('TEST_PASSWORD = "gui2026test"', QMP_LOGIN)
+        self.assertIn('"execute": "send-key"', QMP_LOGIN)
+        self.assertIn('"hold-time": 80', QMP_LOGIN)
+        self.assertIn('if sys.argv[2] == "first":', QMP_LOGIN)
+        self.assertIn("enter_password(channel)", QMP_LOGIN)
+        self.assertIn("framebuffer must be inspected separately", QMP_LOGIN)
         self.assertIn("-display none -monitor none", QEMU_SMOKE)
         self.assertIn('[[ ! -e "$DISK" ]]', QEMU_SMOKE)
 
