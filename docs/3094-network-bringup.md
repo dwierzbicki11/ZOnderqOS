@@ -100,3 +100,20 @@ map or read MMIO, enable MSI-X, deliver an interrupt, or initialize the
 NIC. `INVALID_OR_UNASSIGNED` is diagnostic, not proof of faulty hardware;
 firmware may not have assigned a resource. The C# tests use synthetic PCI
 configuration fixtures and do not replace real laptop testing.
+
+### RTL810xE station-address and PHY status decoder (offline only)
+
+`Realtek810xERegisterDecoder.TryDecode` is now a **pure C# decoder** for
+six station-address bytes (IDR0–IDR5, offsets `0x00..0x05`) and the
+RTL810xE PHY status byte (offset `0x6C`). The status bit meanings follow
+the Realtek 810x family layout also used by Linux's r8169 driver:
+carrier `0x02`, 10 Mb/s `0x04`, 100 Mb/s `0x08`, full duplex `0x01`.
+It rejects invalid/unicast-unsafe MACs and conflicting/unknown link-up
+speed bits. A link-down snapshot reports speed 0 (unknown).
+
+**Important:** No production path calls this decoder with real hardware
+register values yet. It performs **no MMIO reads or writes** and cannot
+establish the laptop's MAC, Ethernet carrier, DMA, IRQ or driver binding.
+The decoder is covered by the real C# synthetic smoke harness; the
+next step requires an isolated, revision-validated register reader and
+actual laptop evidence before the values can be displayed as live data.
