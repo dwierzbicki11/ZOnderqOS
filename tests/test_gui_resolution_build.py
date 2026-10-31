@@ -26,7 +26,7 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
         self.assertIn('git -C "$ROOT" archive HEAD | tar -xf - -C "$STAGE"', BUILD)
         self.assertIn('python3 - "$STAGE/Bootloader/limine.conf" "$GUI_TEST_MODE"', BUILD)
         self.assertIn('[[ "$MODE" == disk ]]', BUILD)
-        self.assertIn('800x600|1360x768|1366x768|1920x1080', BUILD)
+        self.assertIn('640x480|800x600|1360x768|1366x768|1920x1080', BUILD)
         self.assertIn('GUI_TEST_NATIVE=false', BUILD)
         self.assertIn('GUI_TEST_NATIVE=true', BUILD)
         self.assertIn('resolution: 1366x768x32', LIMINE)
@@ -41,6 +41,16 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
             workflow = (ROOT / ".github/workflows" / name).read_text()
             for path in common:
                 self.assertIn("- '" + path + "'", workflow, name + ": " + path)
+
+    def test_compact_qemu_matrix_uses_real_framebuffer_gates_for_both_modes(self):
+        compact = (ROOT / ".github/workflows/gui-800-qemu.yml").read_text()
+        self.assertIn("resolution: ['640x480', '800x600']", compact)
+        self.assertIn("ZONDERQ_3095_GUI_TEST_MODE: ${{ matrix.resolution }}", compact)
+        self.assertIn("SERVICE_QEMU_EXPECT_FRAMEBUFFER: ${{ matrix.resolution }}", compact)
+        self.assertIn("SERVICE_QEMU_PROBE_FILE_MANAGER: '1'", compact)
+        self.assertIn("SERVICE_QEMU_PROBE_TASK_MANAGER: '1'", compact)
+        self.assertIn("gui-${{ matrix.resolution }}-stock-real-qemu-diagnostics", compact)
+        self.assertIn("fail-fast: false", compact)
 
     def test_hd_qemu_uses_disposable_uefi_gop_and_keeps_bios_default(self):
         smoke = (ROOT / "tools/smoke-services-qemu.sh").read_text()
