@@ -613,8 +613,8 @@ class ResponsiveGui3094(unittest.TestCase):
     def test_file_manager_double_click_requires_nearby_pointer(self):
         mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
             "private void ResetClickSequence()", 1)[0]
-        self.assertIn("Math.Abs(mouseX - lastClickX) <= 12", mouse)
-        self.assertIn("Math.Abs(mouseY - lastClickY) <= 12", mouse)
+        self.assertIn("System.Math.Abs(mouseX - lastClickX) <= 12", mouse)
+        self.assertIn("System.Math.Abs(mouseY - lastClickY) <= 12", mouse)
         self.assertIn("lastClickX = mouseX;", mouse)
         self.assertIn("lastClickY = mouseY;", mouse)
 
