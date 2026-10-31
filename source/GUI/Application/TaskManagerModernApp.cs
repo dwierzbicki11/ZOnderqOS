@@ -286,7 +286,7 @@ namespace ZonderqOS.GUI.Apps
             else if (key.Key == ConsoleKeyEx.PageDown) Select(view.VisibleRows);
             else if (key.Key == ConsoleKeyEx.Home) SelectAbsolute(0);
             else if (key.Key == ConsoleKeyEx.End) SelectAbsolute(visibleRows.Count - 1);
-            else if (key.Key == ConsoleKeyEx.Delete) EndSelectedTask();
+            else if (key.Key == ConsoleKeyEx.Delete && key.Modifiers == 0) EndSelectedTask();
         }
 
         private void SetPage(int page)
