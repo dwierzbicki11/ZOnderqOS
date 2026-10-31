@@ -35,7 +35,7 @@ namespace ZonderqOS
                 Console.WriteLine();
 #if ZONDERQ_AUDIO_PROBE
                 Console.WriteLine("AUDIO HDA/PCM probe enabled: no disk mounts or account writes.");
-                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | wavmono | wav44 | volume N | inputscan | volumes | help");
+                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | wavmono | wav44 | wav8 | volume N | inputscan | volumes | help");
                 AudioRuntimeDiagnostics.PrintStatus();
 #else
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
@@ -267,6 +267,12 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "wav8")
+            {
+                AudioRuntimeDiagnostics.PlayWave8TestTone();
+                return;
+            }
+
             if (command == "volume")
             {
                 Console.WriteLine("[AUDIO] software volume=" + AudioRuntimeDiagnostics.VolumePercent + "%");
@@ -366,6 +372,7 @@ namespace ZonderqOS
                 Console.WriteLine("wavtone   - decode RAM-only RIFF/WAV then play through HDA");
                 Console.WriteLine("wavmono   - upmix RAM-only 48kHz mono WAV to stereo");
                 Console.WriteLine("wav44     - resample RAM-only 44.1kHz stereo WAV to 48kHz");
+                Console.WriteLine("wav8      - decode RAM-only unsigned PCM8 mono WAV to stereo PCM16");
                 Console.WriteLine("volume N  - software PCM gain 0..100%, opt-in AUDIO probe only");
 #endif
                 Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");
