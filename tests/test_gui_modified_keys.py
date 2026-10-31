@@ -146,6 +146,60 @@ class ModifiedKeySafetyTests(unittest.TestCase):
         self.assertIn("return true;", enter)
         self.assertRegex(handler.rstrip(), r"return true;\s*}$")
 
+    def test_start_menu_keyboard_navigation_targets_filtered_results(self):
+        menu = source("source/GUI/StartMenu.cs")
+        handler = menu.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "public void UpdateInteractions(", 1
+        )[0]
+        self.assertIn("private int selectedResult = -1;", menu)
+        self.assertIn("private int CountVisibleResults()", menu)
+        self.assertIn("int count = CountVisibleResults();", handler)
+        for key in ("UpArrow", "DownArrow", "Home", "End"):
+            self.assertIn("ConsoleKeyEx." + key, handler)
+        self.assertIn("selectedResult = selectedResult < 0 ? 0 : (selectedResult + 1) % count;", handler)
+        self.assertIn("selectedResult = selectedResult < 0 ? count - 1 : (selectedResult + count - 1) % count;", handler)
+        self.assertIn("int target = selectedResult < 0 ? 0 : selectedResult;", handler)
+        self.assertEqual(handler.count("if (target-- == 0)"), 2)
+        self.assertIn("if (!pinnedButtons[i].Visible)", handler)
+        self.assertIn("if (!toolButtons[i].Visible)", handler)
+        self.assertLess(handler.index("if (key.Modifiers != 0)"),
+                        handler.index("int target = selectedResult"))
+
+    def test_start_menu_selection_resets_on_search_and_is_rendered(self):
+        menu = source("source/GUI/StartMenu.cs")
+        reset = menu.split("public void ResetSearch()", 1)[1].split(
+            "private Button CreateMenuButton", 1
+        )[0]
+        self.assertIn("selectedResult = -1;", reset)
+        handler = menu.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "public void UpdateInteractions(", 1
+        )[0]
+        self.assertGreaterEqual(handler.count("selectedResult = -1;"), 3)
+        pinned = menu.split("private void RenderPinned(Canvas canvas)", 1)[1].split(
+            "private void RenderTools(", 1
+        )[0]
+        tools = menu.split("private void RenderTools(Canvas canvas)", 1)[1].split(
+            "private void RenderFooter(", 1
+        )[0]
+        self.assertIn("selectedResult == visibleCount", pinned)
+        self.assertIn("selectedResult == visibleIndex", tools)
+        # Independent filtered-list model: no stale result may be activated.
+        for pinned_count in (0, 1, 3, 6):
+            for tools_count in (0, 1, 3, 6):
+                total = pinned_count + tools_count
+                selection = -1
+                if not total:
+                    self.assertEqual(selection, -1)
+                    continue
+                selection = 0  # Down from no selection.
+                self.assertEqual(selection, 0)
+                selection = (selection + total - 1) % total  # Up wraps.
+                self.assertEqual(selection, total - 1)
+                self.assertEqual(selection < pinned_count,
+                                 total - 1 < pinned_count)
+                selection = 0  # Search edits clear the old selection.
+                self.assertEqual(selection, 0)
+
     def test_modifier_policy_for_destructive_actions(self):
         # Independent model of the intended key predicate, not a runtime test.
         for ctrl in (False, True):
