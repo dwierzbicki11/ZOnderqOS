@@ -117,7 +117,7 @@ class Nic3094Safety(unittest.TestCase):
         for forbidden in ('config.Write', 'MemoryBlock', 'NetworkManager.Initialize(',
                           'NetworkManager.Send(', 'PciConfigIoAccessor(', 'WriteBlock('):
             self.assertNotIn(forbidden, RTL)
-        self.assertIn('RTL810xE-SNAPSHOT', (ROOT / "tests/PciMetadataSmoke/Program.cs").read_text())
+        self.assertIn('NET3095-RTL810XE-SNAPSHOT', (ROOT / "tests/PciMetadataSmoke/Program.cs").read_text())
 
     def test_no_mutating_network_or_disk_io(self):
         for forbidden in ('WriteBlock(', 'TryMount(', 'ConfigureDhcp(', 'NetworkManager.Send(',
