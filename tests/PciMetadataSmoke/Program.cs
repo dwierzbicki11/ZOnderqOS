@@ -201,6 +201,21 @@ Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 2, 0, out bars) &&
 barConfig.VendorId = 0x10EC;
 Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 32, 0, out bars),
     "Invalid PCI device number must fail closed");
+// A corrupt PM capability pointer must never be dereferenced past 0xFF.
+Check(Realtek810xERegisterDecoder.IsSafePowerManagementCapabilityOffset(0x40) &&
+      Realtek810xERegisterDecoder.IsSafePowerManagementCapabilityOffset(0xF8),
+    "Aligned conventional PCI PM capability bounds must be accepted");
+foreach (int invalid in new[] { 0, 0x3C, 0x41, 0xF9, 0xFC, 0xFF })
+    Check(!Realtek810xERegisterDecoder.IsSafePowerManagementCapabilityOffset((byte)invalid),
+        "Malformed PCI PM capability pointer must fail closed: " + invalid);
+for (int offset = 0; offset < 256; offset++)
+{
+    bool expected = offset >= 0x40 && offset <= 0xF8 && (offset & 3) == 0;
+    Check(Realtek810xERegisterDecoder.IsSafePowerManagementCapabilityOffset((byte)offset) == expected,
+        "PM capability pointer exhaustive range/alignment guard failed: " + offset);
+}
+Console.WriteLine("[NET3095-RTL810XE-PM-POINTER] PASS C# exhaustive conventional PCI PM capability pointer guard; no hardware access");
+
 // Exact PCI header guard executes as pure C#; it never accesses a real NIC.
 Check(Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
       0x10EC, 0x8136, 0x0006, 0x0200, 0x0000, 0x1043, 0x200F),

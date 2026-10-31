@@ -64,8 +64,15 @@ namespace ZonderqOS.Drivers
                     return Decline("PCI memory decoding disabled; no MMIO reads");
 
                 byte pm = pci.FindCapability(0x01);
-                if (pm != 0 && (pci.ReadConfig16((ushort)(pm + 4)) & 0x0003) != 0)
-                    return Decline("PCI device not in D0; no MMIO reads");
+                if (pm != 0)
+                {
+                    // A malformed pointer must not turn a read-only probe
+                    // into an access outside conventional PCI config space.
+                    if (!Realtek810xERegisterDecoder.IsSafePowerManagementCapabilityOffset(pm))
+                        return Decline("malformed PCI PM capability offset; no MMIO reads");
+                    if ((pci.ReadConfig16((ushort)(pm + 4)) & 0x0003) != 0)
+                        return Decline("PCI device not in D0; no MMIO reads");
+                }
 
                 PciBar bar = pci.Bars[RegisterBar];
                 if (!bar.IsAssigned || bar.IsIo || bar.Length < MinimumRegisterBytes)

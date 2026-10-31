@@ -56,6 +56,14 @@ namespace ZonderqOS.Hardware
                 subsystemVendorId == 0x1043 && subsystemDeviceId == 0x200F;
         }
 
+        // Conventional PCI PM capability is at least eight bytes long.
+        // PMCSR occupies bytes offset+4..+5 within the 256-byte header.
+        // Reject malformed/unaligned pointers before any config-space read.
+        public static bool IsSafePowerManagementCapabilityOffset(byte offset)
+        {
+            return offset >= 0x40 && offset <= 0xF8 && (offset & 3) == 0;
+        }
+
         public const ushort StationAddressOffset = 0x00;
         public const ushort PhyStatusOffset = 0x6C;
         public const ushort TxConfigOffset = 0x40;
