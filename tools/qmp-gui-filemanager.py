@@ -210,7 +210,16 @@ def main():
         screenshot(channel, prefix + ".filemanager-after.ppm")
 
         # A keyboard-only launch cannot prove that the guest mouse works.
-        # Capture a real PS/2 relative move before changing the file filter.
+        # The cursor left by login may be outside the central diff crop,
+        # especially at 640x480. Home the real PS/2 cursor to a known,
+        # sampled interior position BEFORE capturing the baseline. A QMP
+        # acknowledgement alone still cannot satisfy the pixel-change gate.
+        frame_width, frame_height, _ = read_ppm(prefix + ".filemanager-after.ppm")
+        verify_expected_framebuffer(frame_width, frame_height)
+        mouse_start_x = frame_width // 2 - 30
+        mouse_start_y = frame_height // 2
+        move_mouse_to_from_corner(channel, mouse_start_x, mouse_start_y,
+                                  frame_width, frame_height)
         screenshot(channel, prefix + ".filemanager-mouse-before.ppm")
         move_mouse_relative(channel, 60, 0)
         screenshot(channel, prefix + ".filemanager-mouse-after.ppm")
@@ -232,8 +241,6 @@ def main():
         # The pointer is anchored to the screen corner first: QMP's PS/2
         # device has relative coordinates only, and earlier cursor positions
         # are not a trustworthy basis for a click target.
-        frame_width, frame_height, _ = read_ppm(prefix + ".filemanager-after.ppm")
-        verify_expected_framebuffer(frame_width, frame_height)
         window_x, window_y, window_width, window_height = expected_filemanager_bounds(
             frame_width, frame_height)
         tray_width = 278 if frame_width >= 560 else 132
