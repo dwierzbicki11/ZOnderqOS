@@ -35,7 +35,7 @@ namespace ZonderqOS
                 Console.WriteLine();
 #if ZONDERQ_AUDIO_PROBE
                 Console.WriteLine("AUDIO HDA/PCM probe enabled: no disk mounts or account writes.");
-                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | volume N | inputscan | volumes | help");
+                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | wavmono | volume N | inputscan | volumes | help");
                 AudioRuntimeDiagnostics.PrintStatus();
 #else
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
@@ -252,6 +252,12 @@ namespace ZonderqOS
             if (command == "wavtone")
             {
                 AudioRuntimeDiagnostics.PlayWaveTestTone();
+                return;
+            }
+
+            if (command == "wavmono")
+            {
+                AudioRuntimeDiagnostics.PlayWaveMonoTestTone();
                 return;
             }
 
