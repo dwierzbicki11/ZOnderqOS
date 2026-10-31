@@ -11,6 +11,7 @@ on:
       - 'tools/build-cosmos-3095-local.sh'
       - 'tools/smoke-services-qemu.sh'
       - 'tools/qmp-gui-login.py'
+      - 'tools/qmp-gui-filemanager.py'
       - '.github/workflows/services-qemu.yml'
   workflow_dispatch:
 
@@ -36,6 +37,7 @@ jobs:
           set -euo pipefail
           bash run.sh --check
           bash -n tools/smoke-services-qemu.sh
+          python3 -m py_compile tools/qmp-gui-login.py tools/qmp-gui-filemanager.py
       - name: Build stock v3.0.95 disk-backed ISO (no Stage23 patches)
         env:
           ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
@@ -47,6 +49,7 @@ jobs:
           SERVICE_QEMU_BOOT_SECONDS: '100'
           SERVICE_QEMU_CAPTURE_SCREEN: '1'
           SERVICE_QEMU_AUTOMATE_GUI_LOGIN: '1'
+          SERVICE_QEMU_PROBE_FILE_MANAGER: '1'
         run: |
           bash tools/smoke-services-qemu.sh \
             output-3095/ZonderqOS-3095-disk.iso services-qemu-output \

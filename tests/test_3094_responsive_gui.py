@@ -1085,5 +1085,22 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertFalse(abs(dx) <= 12 and abs(dy) <= 12)
 
 
+    def test_qmp_file_manager_keyboard_probe_is_opt_in_and_evidence_scoped(self):
+        probe = code("tools/qmp-gui-filemanager.py")
+        self.assertIn('PROBE_FILE_MANAGER="${SERVICE_QEMU_PROBE_FILE_MANAGER:-0}"', QEMU_SMOKE)
+        self.assertIn('[[ "$PROBE_FILE_MANAGER" == 0 || "$AUTOMATE_GUI_LOGIN" == 1 ]]', QEMU_SMOKE)
+        self.assertIn('"$elapsed" == 65', QEMU_SMOKE)
+        self.assertIn('qmp-gui-filemanager.py" "$socket" "$OUT/$phase"', QEMU_SMOKE)
+        self.assertIn("SERVICE_QEMU_PROBE_FILE_MANAGER: '1'", QEMU_WORKFLOW)
+        self.assertIn("python3 -m py_compile tools/qmp-gui-login.py tools/qmp-gui-filemanager.py", QEMU_WORKFLOW)
+        self.assertIn('send_keys(channel, "alt", "spc")', probe)
+        self.assertIn('for key in "file":', probe)
+        self.assertIn('send_keys(channel, "ret")', probe)
+        self.assertIn('"screendump"', probe)
+        self.assertIn('if fraction < 0.12:', probe)
+        self.assertIn("visual app identity requires inspection", probe)
+        self.assertIn("Never connect this probe to a guest with host disks", probe)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

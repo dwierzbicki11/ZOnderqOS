@@ -6,6 +6,7 @@ OUT="${2:-services-qemu-output}"
 BOOT_SECONDS="${SERVICE_QEMU_BOOT_SECONDS:-100}"
 CAPTURE_SCREEN="${SERVICE_QEMU_CAPTURE_SCREEN:-0}"
 AUTOMATE_GUI_LOGIN="${SERVICE_QEMU_AUTOMATE_GUI_LOGIN:-0}"
+PROBE_FILE_MANAGER="${SERVICE_QEMU_PROBE_FILE_MANAGER:-0}"
 
 fail() { echo "[SERVICES-QEMU][FAIL] $*" >&2; exit 1; }
 for tool in qemu-system-x86_64 mkfs.vfat sfdisk mtype mcopy python3; do
@@ -16,6 +17,8 @@ done
 [[ "$CAPTURE_SCREEN" == 0 || "$CAPTURE_SCREEN" == 1 ]] || fail "invalid capture flag: $CAPTURE_SCREEN"
 [[ "$AUTOMATE_GUI_LOGIN" == 0 || "$AUTOMATE_GUI_LOGIN" == 1 ]] || fail "invalid GUI login flag"
 [[ "$AUTOMATE_GUI_LOGIN" == 0 || "$CAPTURE_SCREEN" == 1 ]] || fail "GUI login probe requires framebuffer capture"
+[[ "$PROBE_FILE_MANAGER" == 0 || "$PROBE_FILE_MANAGER" == 1 ]] || fail "invalid File Manager probe flag"
+[[ "$PROBE_FILE_MANAGER" == 0 || "$AUTOMATE_GUI_LOGIN" == 1 ]] || fail "File Manager probe requires synthetic GUI login"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 ISO="$(realpath "$ISO")"
@@ -66,6 +69,12 @@ boot_guest() {
       # Only the fresh synthetic FAT32 image is attached; never use a host disk.
       python3 "$(dirname "$0")/qmp-gui-login.py" "$socket" "$phase" \
         > "$OUT/$phase.login.log" 2>&1 || fail "$phase: GUI QMP input failed"
+    fi
+    if [[ "$PROBE_FILE_MANAGER" == 1 && "$elapsed" == 65 ]]; then
+      # The guest uses only the synthetic test image. Capture real framebuffer
+      # changes caused by opening File Manager via Alt+Space -> search -> Enter.
+      python3 "$(dirname "$0")/qmp-gui-filemanager.py" "$socket" "$OUT/$phase" \
+        > "$OUT/$phase.filemanager-probe.log" 2>&1 || fail "$phase: GUI File Manager interaction probe failed"
     fi
     sleep 1
   done
