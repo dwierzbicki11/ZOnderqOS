@@ -141,7 +141,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("EncodeStereo16AtRate(byte[] pcm, int sampleRate)", parser)
         self.assertIn("EncodePcm8AtRate(byte[] pcm, int sampleRate, int channels)", parser)
         self.assertIn("EncodePcm24AtRate(byte[] pcm, int sampleRate, int channels)", parser)
-        self.assertIn("(bits != 8 && bits != 16 && bits != 24)", parser)
+        self.assertIn("(bits != 8 && bits != 16 && bits != 24 && bits != 32)", parser)
         self.assertIn("int src = dataOffset + frame * sourceFrameBytes + sourceChannel * (sourceBits / 8);", parser)
         self.assertIn("if (bits == 24) return (short)(wave[offset + 1]", parser)
         self.assertIn("(wave[offset] - 128) << 8", parser)
