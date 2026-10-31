@@ -628,7 +628,10 @@ static class Test
         }
         // 24 valid bits in a signed 32-bit extensible container; low 8 bits
         // are padding, while the decoded high 16 bits retain the sign.
-        byte[] extensible32valid24 = AudioWavePcm.EncodeExtensiblePcm32AtRate(pcm32, 48000, 2, 24);
+        byte[] pcm32valid24 = (byte[])pcm32.Clone();
+        for (int i = 0; i < pcm32valid24.Length; i += 4)
+            pcm32valid24[i] = 0; // unused low eight bits must be zero
+        byte[] extensible32valid24 = AudioWavePcm.EncodeExtensiblePcm32AtRate(pcm32valid24, 48000, 2, 24);
         byte[] decoded32valid24 = AudioWavePcm.DecodeStereo16(extensible32valid24);
         Expect(decoded32valid24.Length == pcm.Length, "24-in-32 extensible output length");
         for (int i = 0; i < pcm.Length; i++)

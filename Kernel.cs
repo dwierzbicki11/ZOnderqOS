@@ -35,7 +35,7 @@ namespace ZonderqOS
                 Console.WriteLine();
 #if ZONDERQ_AUDIO_PROBE
                 Console.WriteLine("AUDIO HDA/PCM probe enabled: no disk mounts or account writes.");
-                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | wavmono | wav44 | wav8 | wav24 | wav32 | wavext | volume N | inputscan | volumes | help");
+                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | wavmono | wav44 | wav8 | wav24 | wav32 | wavext | wavext20 | volume N | inputscan | volumes | help");
                 AudioRuntimeDiagnostics.PrintStatus();
 #else
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
@@ -291,6 +291,12 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "wavext20")
+            {
+                AudioRuntimeDiagnostics.PlayWaveExtensible20TestTone();
+                return;
+            }
+
             if (command == "volume")
             {
                 Console.WriteLine("[AUDIO] software volume=" + AudioRuntimeDiagnostics.VolumePercent + "%");
@@ -391,6 +397,7 @@ namespace ZonderqOS
                 Console.WriteLine("wavmono   - upmix RAM-only 48kHz mono WAV to stereo");
                 Console.WriteLine("wav44     - resample RAM-only 44.1kHz stereo WAV to 48kHz");
                 Console.WriteLine("wav8      - decode RAM-only unsigned PCM8 mono WAV to stereo PCM16");
+                Console.WriteLine("wavext20  - decode RAM-only extensible PCM20-in-24 mono WAV");
                 Console.WriteLine("volume N  - software PCM gain 0..100%, opt-in AUDIO probe only");
 #endif
                 Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");
