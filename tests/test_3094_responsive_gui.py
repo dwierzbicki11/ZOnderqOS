@@ -1413,6 +1413,22 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertNotIn("TryUnmount", refresh)
         self.assertNotIn("TryMount", refresh)
 
+    def test_file_manager_unmount_fallback_never_reads_detached_volume(self):
+        unmount = FILE_MANAGER.split("private void UnmountVolume(SidebarEntry entry)", 1)[1].split(
+            "private static bool IsInsidePath(", 1)[0]
+        self.assertIn("if (!StorageMountManager.TryUnmount(entry.PartitionIndex, out error))", unmount)
+        self.assertIn('currentPath = Directory.Exists("/root") ? "/root" : "/";', unmount)
+        self.assertIn('string unmountStatus = "Unmounted Partition " + entry.PartitionIndex;', unmount)
+        self.assertIn('if (!RefreshInternal(unmountStatus) && viewingVolume && currentPath != "/")', unmount)
+        self.assertIn('currentPath = "/";', unmount)
+        self.assertIn('RefreshInternal(unmountStatus);', unmount)
+        # No implicit mount, formatting or writes after successful unmount.
+        self.assertNotIn("TryMount(", unmount)
+        self.assertNotIn("File.Write", unmount)
+        self.assertLess(unmount.index("if (!StorageMountManager.TryUnmount("),
+                        unmount.index('currentPath = Directory.Exists("/root")'))
+
+
     def test_file_manager_create_dialog_is_modal_to_window_chrome(self):
         mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
             "private void ResetClickSequence()", 1)[0]
