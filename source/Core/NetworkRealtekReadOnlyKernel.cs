@@ -33,6 +33,9 @@ namespace ZonderqOS
             DiagnosticLog.WriteString("[NET3095-RTL810XE] SNAPSHOT=PASS mac=" +
                 sample.MacAddress + " link=" + (sample.Carrier ? "up" : "down") +
                 " speed=" + sample.SpeedMbps +
+                " txconfig=0x" + sample.RawTxConfig.ToString("X8") +
+                " xid=0x" + sample.Xid.ToString("X3") +
+                " variant=" + sample.ChipVariant +
                 " (register read only; TX/RX/DMA/IRQ not tested)\n");
         }
 
