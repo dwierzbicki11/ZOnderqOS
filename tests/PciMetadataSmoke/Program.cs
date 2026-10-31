@@ -216,6 +216,35 @@ for (int offset = 0; offset < 256; offset++)
 }
 Console.WriteLine("[NET3095-RTL810XE-PM-POINTER] PASS C# exhaustive conventional PCI PM capability pointer guard; no hardware access");
 
+// Fail closed when BAR2 is not MMIO or the register BAR pair changes
+// while a read-only snapshot is being sampled. No real PCI access here.
+const ulong bar2Mmio32 = 0x00000000FEBF0000UL;
+const ulong bar2Mmio64 = 0x00000001FEBF0004UL;
+Check(Realtek810xERegisterDecoder.IsStableMmioBar2Pair(bar2Mmio32, bar2Mmio32),
+    "Stable 32-bit MMIO BAR2 must be accepted");
+Check(Realtek810xERegisterDecoder.IsStableMmioBar2Pair(bar2Mmio64, bar2Mmio64),
+    "Stable 64-bit MMIO BAR2/BAR3 must be accepted");
+Check(Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
+      0x00000000FEBF0008UL, 0x00000000FEBF0008UL),
+    "Prefetchable MMIO BAR2 is still a memory BAR");
+Check(!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
+      bar2Mmio32, 0x00000000FEBE0000UL),
+    "Changed BAR2 address must invalidate the register sample");
+Check(!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
+      bar2Mmio64, 0x00000002FEBF0004UL),
+    "Changed 64-bit BAR3 upper address must invalidate the register sample");
+Check(!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
+      bar2Mmio32, 0x00000001FEBF0000UL),
+    "Changed BAR3 must fail closed even with a 32-bit BAR2");
+foreach (ulong badBar in new[] {
+    0x00000000FEBF0001UL, // I/O BAR
+    0x00000000FEBF0002UL, // reserved memory type 01
+    0x00000000FEBF0006UL  // reserved memory type 11
+})
+    Check(!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(badBar, badBar),
+        "Unsupported BAR2 encoding must be rejected: " + badBar.ToString("X16"));
+Console.WriteLine("[NET3095-RTL810XE-BAR-STABILITY] PASS C# BAR2/BAR3 MMIO type and relocation guards; no hardware MMIO proof");
+
 // Exact PCI header guard executes as pure C#; it never accesses a real NIC.
 Check(Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
       0x10EC, 0x8136, 0x0006, 0x0200, 0x0000, 0x1043, 0x200F),
