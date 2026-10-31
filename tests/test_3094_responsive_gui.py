@@ -772,9 +772,9 @@ class ResponsiveGui3094(unittest.TestCase):
             "if (key.Key == ConsoleKeyEx.LeftArrow)", 1)[0]
         self.assertIn("if (searchText.Length > 0)", backspace)
         self.assertIn("searchText = searchText.Substring(0, searchText.Length - 1);", backspace)
-        self.assertIn("Refresh();", backspace)
+        self.assertIn("ApplySearchFilter();", backspace)
         self.assertIn("else\n                {\n                    GoUp();", backspace)
-        self.assertLess(backspace.index("Refresh();"), backspace.index("GoUp();"))
+        self.assertLess(backspace.index("ApplySearchFilter();"), backspace.index("GoUp();"))
         self.assertIn('"Search: " + searchText + " (" + entries.Count + " item(s))"', refresh)
 
         # Backspace changes a nonempty filter, but with an empty filter it
@@ -950,7 +950,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("if (contextMenuVisible)", escape)
         self.assertIn("if (searchText.Length > 0)", escape)
         self.assertIn('searchText = "";', escape)
-        self.assertIn("Refresh();", escape)
+        self.assertIn("ApplySearchFilter();", escape)
         self.assertIn("Close();", escape)
         self.assertLess(escape.index("if (contextMenuVisible)"),
                         escape.index("if (searchText.Length > 0)"))
@@ -1018,6 +1018,33 @@ class ResponsiveGui3094(unittest.TestCase):
         ):
             self.assertEqual(not (control or alt), expected)
 
+
+    def test_file_manager_live_filter_uses_cached_directory_snapshot(self):
+        refresh = FILE_MANAGER.split("private void RefreshInternal(string keep)", 1)[1].split(
+            "private void RebuildSidebar()", 1)[0]
+        filter_only = refresh.split("private void ApplySearchFilter()", 1)[1]
+        self.assertIn("cachedEntries.Clear();", refresh)
+        self.assertIn("cachedEntries.AddRange(entries);", refresh)
+        self.assertIn("entries.AddRange(cachedEntries);", filter_only)
+        self.assertIn("Filter();", filter_only)
+        self.assertNotIn("Directory.GetFiles(", filter_only)
+        self.assertNotIn("Directory.GetDirectories(", filter_only)
+        self.assertNotIn("Sort();", filter_only)
+        keyboard = FILE_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "private void CopySelected(bool cut)", 1)[0]
+        self.assertGreaterEqual(keyboard.count("ApplySearchFilter();"), 3)
+        self.assertIn("RefreshAll();", keyboard)  # Explicit F5 still scans disk.
+        toolbar = FILE_MANAGER.split("private void Toolbar(int x)", 1)[1].split(
+            "private void SidebarClick(", 1)[0]
+        self.assertIn("ApplySearchFilter();", toolbar)
+
+        # Independent model: narrowing and then clearing a search must
+        # restore the complete, originally sorted snapshot.
+        snapshot = ["alpha.txt", "alpine.log", "beta.txt", "readme"]
+        for term, expected in (("a", ["alpha.txt", "alpine.log", "beta.txt", "readme"]),
+                               ("alp", ["alpha.txt", "alpine.log"]),
+                               ("", snapshot)):
+            self.assertEqual([name for name in snapshot if term in name], expected)
 
     def test_file_manager_sort_scales_and_preserves_equal_name_order(self):
         sort = FILE_MANAGER.split("private void Sort()", 1)[1].split(
