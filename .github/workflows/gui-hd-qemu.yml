@@ -31,6 +31,8 @@ jobs:
           # 1280x800, both FAIL against exact 1366x768. Probe QXL VBE/GOP
           # as a third isolated adapter; preserve the strict real-framebuffer
           # and GUI interaction gates. No production display change.
+          - resolution: '1360x768'
+            video: 'std'
           - resolution: '1366x768'
             video: 'qxl'
           - resolution: '1920x1080'
