@@ -27,11 +27,12 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # OVMF std VGA reported 1360x768 for a 1366x768 Limine
-          # framebuffer and produced a visibly skewed image. Virtio GOP
-          # advertises 1366x768; keep exact framebuffer checks enabled.
+          # OVMF std VGA gave 1360x768 (skewed) and virtio VGA gave
+          # 1280x800, both FAIL against exact 1366x768. Probe QXL VBE/GOP
+          # as a third isolated adapter; preserve the strict real-framebuffer
+          # and GUI interaction gates. No production display change.
           - resolution: '1366x768'
-            video: 'virtio'
+            video: 'qxl'
           - resolution: '1920x1080'
             video: 'std'
     runs-on: ubuntu-latest
