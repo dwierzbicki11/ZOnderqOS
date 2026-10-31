@@ -11,6 +11,45 @@ def source(path):
 
 
 class ModifiedKeySafetyTests(unittest.TestCase):
+    def test_alt_f4_dismisses_file_manager_modal_before_window_close(self):
+        manager = source("source/GUI/GuiManager.cs")
+        file_manager = source("source/GUI/Application/FileManagerApp.cs")
+        shortcut = manager.split("private bool HandleWindowShortcut(KeyEvent key)", 1)[1].split(
+            "private void LogoutSession()", 1
+        )[0]
+        modal = file_manager.split("public bool DismissTransientUi()", 1)[1].split(
+            "public override void Update()", 1
+        )[0]
+
+        # The global shortcut must preserve overlay precedence and only close
+        # the underlying window when File Manager has no transient UI.
+        self.assertIn("FileManagerApp fileManager = applicationManager?.ActiveApplication as FileManagerApp;", shortcut)
+        self.assertIn("if (fileManager == null || !fileManager.DismissTransientUi())", shortcut)
+        self.assertLess(shortcut.index("fileManager.DismissTransientUi()"),
+                        shortcut.index("applicationManager?.RequestCloseActiveWindow();"))
+        self.assertLess(shortcut.index("commandPalette.Close();"),
+                        shortcut.index("fileManager.DismissTransientUi()"))
+        self.assertLess(shortcut.index("desktopContextMenu.Visible = false;"),
+                        shortcut.index("fileManager.DismissTransientUi()"))
+
+        # Dialog cancellation must clear the typed name and must never call
+        # FinishCreate(), while a context menu only loses its selection.
+        self.assertIn("if (dialogMode != 0)", modal)
+        self.assertIn('dialogName = "";', modal)
+        self.assertIn('status = "Cancelled";', modal)
+        self.assertIn("if (contextMenuVisible)", modal)
+        self.assertIn("contextMenuSelection = -1;", modal)
+        self.assertEqual(modal.count("ResetClickSequence();"), 2)
+        self.assertEqual(modal.count("return true;"), 2)
+        self.assertIn("return false;", modal)
+        self.assertNotIn("FinishCreate(", modal)
+        self.assertNotIn("ExecuteContextAction(", modal)
+
+        # A second Alt+F4 closes normally after the first dismissal.
+        for dialog, menu in ((1, False), (2, False), (0, True), (0, False)):
+            dismissed = dialog != 0 or menu
+            self.assertEqual(not dismissed, dialog == 0 and not menu)
+
     def test_file_manager_requires_plain_enter_for_all_actions(self):
         text = source("source/GUI/Application/FileManagerApp.cs")
         handler = text.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
