@@ -852,18 +852,32 @@ namespace ZonderqOS.GUI.Apps
         public int PerformanceResourceAt(int x, int y)
         {
             if (app.ActivePage != TaskManagerModernApp.PagePerformance) return -1;
-            int left = SidebarWidth + 10;
+            if (Width < 730)
+            {
+                // Compact mode renders three horizontal resource buttons.
+                // Use exactly the same positions for mouse hit-testing.
+                int left = SidebarWidth + 8;
+                int available = Math.Max(1, Width - SidebarWidth - 16);
+                int buttonWidth = Math.Max(1, (available - 8) / 3);
+                if (y < 64 || y >= 106 || x < left) return -1;
+                int relative = x - left;
+                int index = relative / (buttonWidth + 4);
+                return index >= 0 && index < 3 &&
+                    relative % (buttonWidth + 4) < buttonWidth ? index : -1;
+            }
+
+            int cardLeft = SidebarWidth + 10;
             int top = 64;
-            int relative = y - top;
+            int relativeY = y - top;
             int stride = PerfCardHeight + PerfCardGap;
-            if (x < left || x >= left + 154 || relative < 0) return -1;
-            int index = relative / stride;
-            return index >= 0 && index <= 2 && relative % stride < PerfCardHeight ? index : -1;
+            if (x < cardLeft || x >= cardLeft + 154 || relativeY < 0) return -1;
+            int card = relativeY / stride;
+            return card >= 0 && card <= 2 && relativeY % stride < PerfCardHeight ? card : -1;
         }
 
         public int CpuGraphModeAt(int x, int y)
         {
-            if (app.ActivePage != TaskManagerModernApp.PagePerformance || app.PerformanceResource != TaskManagerModernApp.PerfCpu) return -1;
+            if (Width < 730 || app.ActivePage != TaskManagerModernApp.PagePerformance || app.PerformanceResource != TaskManagerModernApp.PerfCpu) return -1;
             int panelX = SidebarWidth + 180;
             int top = 86;
             if (y < top || y >= top + 26) return -1;
@@ -874,7 +888,7 @@ namespace ZonderqOS.GUI.Apps
 
         public int CpuLogicalPageActionAt(int x, int y)
         {
-            if (app.CpuGraphMode != TaskManagerModernApp.CpuGraphLogical || app.LogicalPageCount <= 1) return 0;
+            if (Width < 730 || app.CpuGraphMode != TaskManagerModernApp.CpuGraphLogical || app.LogicalPageCount <= 1) return 0;
             int top = 122;
             int right = Width - 16;
             if (y < top || y >= top + 26) return 0;
@@ -1101,6 +1115,36 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderPerformance(Canvas canvas)
         {
+            if (Width < 730)
+            {
+                // On 320-640px desktops the fixed 154px resource column plus
+                // 360px graph would render outside the window and taskbar.
+                // Keep all three selectors usable, showing the selected
+                // telemetry without drawing an off-screen graph.
+                int left = X + SidebarWidth + 8;
+                int available = Math.Max(1, Width - SidebarWidth - 16);
+                int buttonWidth = Math.Max(1, (available - 8) / 3);
+                int top = Y + 64;
+                DrawCompactResource(canvas, left, top, buttonWidth, 0, "CPU",
+                    app.CpuUsagePercent.ToString() + "%");
+                DrawCompactResource(canvas, left + buttonWidth + 4, top,
+                    buttonWidth, 1, "MEM", app.MemoryUsageText);
+                DrawCompactResource(canvas, left + (buttonWidth + 4) * 2, top,
+                    buttonWidth, 2, "SYS", app.SchedulerThreadCount.ToString());
+
+                if (Height >= 145)
+                {
+                    string detail = app.PerformanceResource == 0
+                        ? "CPU " + app.CpuUsagePercent + "%"
+                        : app.PerformanceResource == 1
+                            ? "RAM " + app.MemoryUsageText
+                            : "Threads " + app.SchedulerThreadCount;
+                    SmallTextRenderer.DrawClipped(canvas, detail, left,
+                        Y + 122, available, Text);
+                }
+                return;
+            }
+
             int resourceX = X + SidebarWidth + 10;
             int resourceY = Y + 64;
             DrawResource(canvas, resourceX, resourceY, 0, "CPU", (ulong)app.CpuUsagePercent, "%");
@@ -1113,6 +1157,20 @@ namespace ZonderqOS.GUI.Apps
             if (app.PerformanceResource == 0) RenderCpu(canvas, x, y, width);
             else if (app.PerformanceResource == 1) RenderMemory(canvas, x, y, width);
             else RenderSystem(canvas, x, y, width);
+        }
+
+        private void DrawCompactResource(Canvas canvas, int x, int y, int width,
+            int resource, string title, string value)
+        {
+            bool active = app.PerformanceResource == resource;
+            canvas.DrawFilledRectangle(active ? Color.FromArgb(35, 55, 71) :
+                Color.FromArgb(26, 32, 38), x, y, width, 42);
+            canvas.DrawRectangle(active ? Color.FromArgb(65, 126, 169) :
+                Color.FromArgb(52, 63, 74), x, y, width, 42);
+            SmallTextRenderer.DrawClipped(canvas, title, x + 4, y + 10,
+                Math.Max(1, width - 8), active ? Color.WhiteSmoke : Text);
+            SmallTextRenderer.DrawClipped(canvas, value, x + 4, y + 25,
+                Math.Max(1, width - 8), active ? Color.FromArgb(126, 194, 238) : Muted);
         }
 
         private void DrawResource(Canvas canvas, int x, int y, int resource, string title, ulong value, string suffix)

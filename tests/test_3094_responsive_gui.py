@@ -142,6 +142,33 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn('"3.0.95", Good', SETTINGS)
         self.assertNotIn('"3.0.94", Good', SETTINGS)
 
+    def test_task_manager_compact_performance_cards_fit_and_match_hit_tests(self):
+        render = TASK_MANAGER.split("private void RenderPerformance(Canvas canvas)", 1)[1].split(
+            "private void DrawResource(Canvas canvas", 1)[0]
+        hit = TASK_MANAGER.split("public int PerformanceResourceAt(int x, int y)", 1)[1].split(
+            "public int CpuGraphModeAt(int x, int y)", 1)[0]
+        self.assertIn("if (Width < 730)", render)
+        self.assertIn("if (Width < 730)", hit)
+        self.assertIn("int buttonWidth = Math.Max(1, (available - 8) / 3);", render)
+        self.assertIn("int buttonWidth = Math.Max(1, (available - 8) / 3);", hit)
+        self.assertIn("DrawCompactResource(canvas", render)
+        self.assertIn("relative % (buttonWidth + 4) < buttonWidth", hit)
+        for screen_width in (320, 640, 800, 1366, 1920):
+            view_width = screen_width - 20
+            if view_width >= 730:
+                # Normal graph has at least 360px available.
+                self.assertGreaterEqual(view_width - 360, 370)
+                continue
+            available = max(1, view_width - 170 - 16)
+            button_width = max(1, (available - 8) // 3)
+            last_right = 170 + 8 + 2 * (button_width + 4) + button_width
+            self.assertLessEqual(last_right, view_width - 8)
+            for index in range(3):
+                click_x = 170 + 8 + index * (button_width + 4) + button_width // 2
+                relative = click_x - (170 + 8)
+                self.assertEqual(relative // (button_width + 4), index)
+                self.assertLess(relative % (button_width + 4), button_width)
+
     def test_display_firmware_mode_enumeration_and_switch_fail_closed(self):
         selector = code("source/GUI/DisplayModeSelector.cs")
         self.assertIn("Mode chosen = current;", selector)
