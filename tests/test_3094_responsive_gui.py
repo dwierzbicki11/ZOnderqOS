@@ -307,7 +307,7 @@ class ResponsiveGui3094(unittest.TestCase):
         # Source-level contract: the geometry used for painting must be the
         # same Button geometry used by the mouse hit-test. Not a guest boot.
         for expression in (
-            "private bool CompactLayout => Height < 500;",
+            "private bool CompactLayout => Height < 530;",
             "button.Y = Y + PinnedCardsY + row * (PinnedCardsHeight + PinnedCardsGap);",
             "button.Height = PinnedCardsHeight;",
             "button.Y = Y + ToolsCardsY + row * (ToolsCardsHeight + ToolsCardsGap);",
@@ -320,10 +320,11 @@ class ResponsiveGui3094(unittest.TestCase):
         ):
             self.assertIn(expression, START_MENU)
 
-        for screen_width, screen_height in ((640, 480), (800, 600),
+        for screen_width, screen_height in ((640, 480), (800, 560),
+                                            (800, 580), (800, 600),
                                             (1366, 768), (1920, 1080)):
             menu_height = min(560, max(1, screen_height - 44 - 16))
-            compact = menu_height < 500
+            compact = menu_height < 530
             pinned_top = 134 if compact else 146
             pinned_height = 53 if compact else 88
             pinned_gap = 5 if compact else 9
@@ -334,7 +335,7 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertLess(pinned_top + 2 * pinned_height + pinned_gap, tools_label)
             self.assertLess(tools_top + 2 * tools_height + tools_gap,
                             menu_height - 76)
-            self.assertEqual(compact, screen_height == 480)
+            self.assertEqual(compact, menu_height < 530)
 
         # Narrower-than-design Start menu keeps the four distinct session
         # buttons to the right of the identity block, all inside the panel.
