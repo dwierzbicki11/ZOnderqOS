@@ -64,6 +64,21 @@ namespace ZonderqOS.Hardware
             return offset >= 0x40 && offset <= 0xF8 && (offset & 3) == 0;
         }
 
+        // BAR2 contains the RTL810xE register aperture. Compare both raw
+        // BAR2 and BAR3 words before/after MMIO: BAR3 is the upper address
+        // half when BAR2 is 64-bit. Never size BARs or write PCI config.
+        // A 32-bit BAR3 change is conservatively rejected as well.
+        public static bool IsStableMmioBar2Pair(ulong before, ulong after)
+        {
+            if (before != after)
+                return false;
+            uint bar2 = (uint)before;
+            if ((bar2 & 1u) != 0)
+                return false; // I/O BAR, not an MMIO register aperture.
+            uint memoryType = (bar2 >> 1) & 3u;
+            return memoryType == 0u || memoryType == 2u;
+        }
+
         public const ushort StationAddressOffset = 0x00;
         public const ushort PhyStatusOffset = 0x6C;
         public const ushort TxConfigOffset = 0x40;
