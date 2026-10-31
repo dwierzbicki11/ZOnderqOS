@@ -127,6 +127,14 @@ namespace ZonderqOS.GUI
                 return true;
             }
 
+            // Global Ctrl/Alt shortcuts must not change filters, mark
+            // notifications read or dismiss them (Ctrl+Delete in particular).
+            // Escape remains available to close the panel.
+            bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+            bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+            if (control || alt)
+                return true;
+
             if (key.Key == ConsoleKeyEx.LeftArrow)
             {
                 filter--;
@@ -173,13 +181,7 @@ namespace ZonderqOS.GUI
                 return true;
             }
 
-            // Only unmodified letters are notification commands. In particular,
-            // Ctrl+C/Ctrl+R must never clear or mark the notification history.
-            bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
-            bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
-            if (control || alt)
-                return true;
-
+            // Only unmodified letters are notification commands.
             char ch = key.KeyChar;
             if (ch == 'd' || ch == 'D')
             {
