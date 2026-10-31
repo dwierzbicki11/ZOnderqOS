@@ -38,7 +38,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y git python3 tar clang lld nasm xorriso binutils \
-            qemu-system-x86 fdisk dosfstools mtools
+            qemu-system-x86 fdisk dosfstools mtools ovmf
       - name: Validate pinned stock runtime and test-only mode contract
         run: |
           set -euo pipefail
@@ -60,6 +60,7 @@ jobs:
           SERVICE_QEMU_BOOT_SECONDS: '100'
           SERVICE_QEMU_CAPTURE_SCREEN: '1'
           SERVICE_QEMU_EXPECT_FRAMEBUFFER: ${{ matrix.resolution }}
+          SERVICE_QEMU_FIRMWARE: 'ovmf'
           SERVICE_QEMU_AUTOMATE_GUI_LOGIN: '1'
           SERVICE_QEMU_PROBE_FILE_MANAGER: '1'
           SERVICE_QEMU_PROBE_TASK_MANAGER: '1'

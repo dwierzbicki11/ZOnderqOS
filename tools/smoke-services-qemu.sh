@@ -9,6 +9,7 @@ AUTOMATE_GUI_LOGIN="${SERVICE_QEMU_AUTOMATE_GUI_LOGIN:-0}"
 PROBE_FILE_MANAGER="${SERVICE_QEMU_PROBE_FILE_MANAGER:-0}"
 PROBE_TASK_MANAGER="${SERVICE_QEMU_PROBE_TASK_MANAGER:-0}"
 EXPECTED_FRAMEBUFFER="${SERVICE_QEMU_EXPECT_FRAMEBUFFER:-}"
+FIRMWARE="${SERVICE_QEMU_FIRMWARE:-bios}"
 
 fail() { echo "[SERVICES-QEMU][FAIL] $*" >&2; exit 1; }
 for tool in qemu-system-x86_64 mkfs.vfat sfdisk mtype mcopy python3; do
@@ -26,6 +27,7 @@ done
 [[ "$PROBE_TASK_MANAGER" == 0 || "$BOOT_SECONDS" -ge 84 ]] || fail "Task Manager probe requires at least 84 boot seconds"
 [[ -z "$EXPECTED_FRAMEBUFFER" || "$EXPECTED_FRAMEBUFFER" =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || fail "expected framebuffer must be WIDTHxHEIGHT"
 [[ -z "$EXPECTED_FRAMEBUFFER" || "$CAPTURE_SCREEN" == 1 ]] || fail "framebuffer expectation requires screenshot capture"
+[[ "$FIRMWARE" == bios || "$FIRMWARE" == ovmf ]] || fail "unsupported QEMU firmware profile"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 ISO="$(realpath "$ISO")"
@@ -39,6 +41,19 @@ printf 'label: dos\nunit: sectors\nstart=2048, type=c\n' | sfdisk "$DISK" > "$OU
 # Exactly the dedicated FAT32 volume label required by DataVolumePolicy.
 mkfs.vfat -I -F 32 -n ZONDERQDATA -h 2048 --offset 2048 "$DISK" > "$OUT/mkfs.log"
 MTOOLS_IMAGE="$DISK@@1048576"
+
+# Optional, CI-only UEFI GOP path for modes that SeaBIOS VBE does not
+# advertise (notably 1366x768). The firmware variable store is a private
+# copy inside the disposable output directory; never touch host NVRAM.
+FIRMWARE_ARGS=()
+if [[ "$FIRMWARE" == ovmf ]]; then
+  OVMF_CODE=/usr/share/OVMF/OVMF_CODE_4M.fd
+  OVMF_VARS=/usr/share/OVMF/OVMF_VARS_4M.fd
+  [[ -r "$OVMF_CODE" && -r "$OVMF_VARS" ]] || fail "missing ovmf 4M firmware images"
+  cp "$OVMF_VARS" "$OUT/ovmf-vars.fd"
+  FIRMWARE_ARGS=(-drive "if=pflash,format=raw,unit=0,readonly=on,file=$OVMF_CODE"
+                 -drive "if=pflash,format=raw,unit=1,file=$OUT/ovmf-vars.fd")
+fi
 QEMU_PID=""
 
 cleanup() {
@@ -59,6 +74,7 @@ boot_guest() {
   : > "$stderr"
   qemu-system-x86_64 \
     -M q35 -accel tcg -cpu Nehalem -smp 1 -m 2G \
+    "${FIRMWARE_ARGS[@]}" -vga std \
     -drive "file=$ISO,if=none,id=cosmoscd,format=raw,readonly=on" \
     -device ide-cd,drive=cosmoscd,bootindex=0 -boot d \
     -device ich9-ahci,id=ahci0 \
@@ -80,16 +96,22 @@ boot_guest() {
     if [[ "$PROBE_FILE_MANAGER" == 1 && "$elapsed" == 65 ]]; then
       # The guest uses only the synthetic test image. Capture real framebuffer
       # changes caused by opening File Manager via Alt+Space -> search -> Enter.
-      python3 "$(dirname "$0")/qmp-gui-filemanager.py" "$socket" "$OUT/$phase" \
-        > "$OUT/$phase.filemanager-probe.log" 2>&1 || fail "$phase: GUI File Manager interaction probe failed"
+      if ! python3 "$(dirname "$0")/qmp-gui-filemanager.py" "$socket" "$OUT/$phase" \
+          > "$OUT/$phase.filemanager-probe.log" 2>&1; then
+        tail -n 50 "$OUT/$phase.filemanager-probe.log" >&2
+        fail "$phase: GUI File Manager interaction probe failed"
+      fi
       # Publish measured framebuffer changes in CI logs, not just artifacts.
       cat "$OUT/$phase.filemanager-probe.log"
     fi
     if [[ "$PROBE_TASK_MANAGER" == 1 && "$elapsed" == 83 ]]; then
       # Read-only Task Manager interactions follow the File Manager close.
       # Both probes run against the same disposable FAT32 guest image.
-      python3 "$(dirname "$0")/qmp-gui-taskmanager.py" "$socket" "$OUT/$phase" \
-        > "$OUT/$phase.taskmanager-probe.log" 2>&1 || fail "$phase: Task Manager QMP interaction probe failed"
+      if ! python3 "$(dirname "$0")/qmp-gui-taskmanager.py" "$socket" "$OUT/$phase" \
+          > "$OUT/$phase.taskmanager-probe.log" 2>&1; then
+        tail -n 50 "$OUT/$phase.taskmanager-probe.log" >&2
+        fail "$phase: Task Manager QMP interaction probe failed"
+      fi
       cat "$OUT/$phase.taskmanager-probe.log"
     fi
     sleep 1

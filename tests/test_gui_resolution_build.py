@@ -42,6 +42,20 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
             for path in common:
                 self.assertIn("- '" + path + "'", workflow, name + ": " + path)
 
+    def test_hd_qemu_uses_disposable_uefi_gop_and_keeps_bios_default(self):
+        smoke = (ROOT / "tools/smoke-services-qemu.sh").read_text()
+        hd = (ROOT / ".github/workflows/gui-hd-qemu.yml").read_text()
+        regular = (ROOT / ".github/workflows/services-qemu.yml").read_text()
+        self.assertIn('FIRMWARE="${SERVICE_QEMU_FIRMWARE:-bios}"', smoke)
+        self.assertIn('[[ "$FIRMWARE" == bios || "$FIRMWARE" == ovmf ]]', smoke)
+        self.assertIn('cp "$OVMF_VARS" "$OUT/ovmf-vars.fd"', smoke)
+        self.assertIn('"${FIRMWARE_ARGS[@]}" -vga std', smoke)
+        self.assertIn("mtools ovmf", hd)
+        self.assertIn("SERVICE_QEMU_FIRMWARE: 'ovmf'", hd)
+        self.assertNotIn("SERVICE_QEMU_FIRMWARE: 'ovmf'", regular)
+        self.assertIn('tail -n 50 "$OUT/$phase.filemanager-probe.log" >&2', smoke)
+        self.assertIn('tail -n 50 "$OUT/$phase.taskmanager-probe.log" >&2', smoke)
+
     def test_qemu_workflows_do_not_mask_failed_guest_probes_with_tee(self):
         # A previous HD probe emitted [SERVICES-QEMU][FAIL] but the workflow
         # appeared green because tee, not the failing guest probe, set status.
