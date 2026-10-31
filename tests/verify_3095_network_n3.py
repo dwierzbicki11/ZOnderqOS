@@ -22,6 +22,30 @@ ECHO_ID = 0x3095
 ECHO_SEQ = 1
 
 
+def normalize_icmp_serial(serial: str) -> str:
+    """Repair only a *verified* BSP timer-log splice inside the N3 PASS line.
+
+    The single-vCPU timer can preempt a serial WriteString mid-marker and
+    inject its LAPIC/SCHED debug lines. Do not discard arbitrary log content
+    or accept a partial IP: the reconstructed marker must match exactly.
+    Independent request/reply PCAP evidence remains mandatory.
+    """
+    lines = serial.replace("\r", "").splitlines()
+    for i, line in enumerate(lines):
+        if not line.startswith("[NET3095-N3] ICMP=PASS from="):
+            continue
+        head, sep, tick = line.partition("[LAPIC] Timer tick ")
+        if not sep or not re.fullmatch(r"[0-9]+ RSP=[0-9A-Fa-f]+", tick):
+            continue
+        if i + 2 >= len(lines) or not re.fullmatch(
+            r"\[SCHED\] Tick [0-9]+ enabled=[01]", lines[i + 1]
+        ):
+            continue
+        if head + lines[i + 2] == PING_PASS:
+            lines[i:i + 3] = [PING_PASS]
+    return "\n".join(lines)
+
+
 def icmp_frame(frame: bytes):
     if len(frame) < 14 + 20 + 8 or frame[12:14] != b"\x08\x00":
         return None
@@ -47,6 +71,7 @@ def icmp_frame(frame: bytes):
 
 
 def validate(serial: str, pcap: bytes) -> str:
+    serial = normalize_icmp_serial(serial)
     validate_n2(serial, pcap)
     lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
     if any("[NET3095-N3][FAIL]" in line for line in lines):
@@ -104,7 +129,17 @@ def self_test() -> None:
         PING_START, PING_PASS
     ])
     assert "PASS" in validate(serial, synthetic_capture(frames))
+    torn = serial.replace(
+        PING_PASS,
+        "[NET3095-N3] ICMP=PASS from=10.[LAPIC] Timer tick 5 RSP=FFFF80007F651C90\n"
+        "[SCHED] Tick 5 enabled=1\n0.2.2",
+    )
+    assert "PASS" in validate(torn, synthetic_capture(frames))
     bad = [
+        (torn.replace("0.2.2", "0.2.3"), frames),
+        (torn.replace("[SCHED] Tick 5 enabled=1", "[OTHER] injected"), frames),
+        (torn.replace("RSP=FFFF80007F651C90", "RSP=NOTHEX"), frames),
+        (torn + "\n" + PING_PASS, frames),
         (serial.replace(PING_START, ""), frames),
         (serial.replace(PING_PASS, ""), frames),
         (serial + "\n[NET3095-N3][FAIL] timeout", frames),

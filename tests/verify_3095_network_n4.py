@@ -15,7 +15,8 @@ from verify_3095_network_n2 import (
     LEASE, MAC, SERVER, START, fake_dhcp, synthetic_capture,
 )
 from verify_3095_network_n3 import (
-    PING_START, PING_PASS, fake_icmp, validate as validate_n3,
+    PING_START, PING_PASS, fake_icmp, normalize_icmp_serial,
+    validate as validate_n3,
 )
 
 TCP_START = "[NET3095-N4] TCP_ATTEMPT=START"
@@ -54,6 +55,7 @@ def tcp_frame(frame: bytes):
 
 
 def validate(serial: str, pcap: bytes) -> str:
+    serial = normalize_icmp_serial(serial)
     validate_n3(serial, pcap)
     lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
     if any("[NET3095-N4][FAIL]" in line for line in lines):
@@ -165,6 +167,12 @@ def self_test() -> None:
         PING_START, PING_PASS, TCP_START, TCP_PASS,
     ])
     assert "PASS" in validate(serial, synthetic_capture(frames))
+    torn = serial.replace(
+        PING_PASS,
+        "[NET3095-N3] ICMP=PASS from=10.[LAPIC] Timer tick 5 RSP=FFFF80007F651C90\n"
+        "[SCHED] Tick 5 enabled=1\n0.2.2",
+    )
+    assert "PASS" in validate(torn, synthetic_capture(frames))
     negatives = [
         (serial.replace(TCP_START, ""), frames),
         (serial.replace(TCP_PASS, ""), frames),
