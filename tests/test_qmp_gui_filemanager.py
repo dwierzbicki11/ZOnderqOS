@@ -32,7 +32,7 @@ class FramebufferProbeTests(unittest.TestCase):
         for y in range(534, 598):
             for x in range(170, 850):
                 offset = (y * width + x) * 3
-                shrunk[offset:offset + 3] = b"\\xff\\xff\\xff"
+                shrunk[offset:offset + 3] = bytes((255, 255, 255))
         changed, samples = PROBE.difference(
             (width, height, baseline), (width, height, bytes(shrunk)))
         self.assertGreater(changed / samples, 0.015)
