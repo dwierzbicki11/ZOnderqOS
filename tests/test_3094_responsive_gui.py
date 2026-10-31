@@ -179,8 +179,10 @@ class ResponsiveGui3094(unittest.TestCase):
             "private void DrawResource(Canvas canvas", 1)[0]
         hit = TASK_MANAGER.split("public int PerformanceResourceAt(int x, int y)", 1)[1].split(
             "public int CpuGraphModeAt(int x, int y)", 1)[0]
-        self.assertIn("if (Width < 730)", render)
-        self.assertIn("if (Width < 730)", hit)
+        self.assertIn("if (Width < 900)", render)
+        self.assertIn("if (Width < 900)", hit)
+        self.assertIn("if (Width < 900 || app.ActivePage", TASK_MANAGER)
+        self.assertIn("if (Width < 900 || app.CpuGraphMode", TASK_MANAGER)
         self.assertIn("int buttonWidth = Math.Max(1, (available - 8) / 3);", render)
         self.assertIn("int buttonWidth = Math.Max(1, (available - 8) / 3);", hit)
         self.assertIn("DrawCompactResource(canvas", render)
@@ -188,9 +190,13 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("relative % (buttonWidth + 4) < buttonWidth", hit)
         for screen_width in (320, 640, 800, 1366, 1920):
             view_width = screen_width - 20
-            if view_width >= 730:
-                # Normal graph has at least 360px available.
-                self.assertGreaterEqual(view_width - 360, 370)
+            if view_width >= 900:
+                # CPU stats require 380px offset + 160px right column.
+                panel_width = view_width - 360
+                self.assertGreaterEqual(panel_width, 540)
+                right_offset = max(380, panel_width // 2 + 80)
+                right_width = max(160, panel_width - right_offset)
+                self.assertLessEqual(right_offset + right_width, panel_width)
                 continue
             available = max(1, view_width - 170 - 16)
             button_width = max(1, (available - 8) // 3)
