@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate a REAL laptop serial log from the opt-in RTL810xE MMIO probe.
 
-A passing log establishes an eleven-byte register snapshot reported by the
+A passing log establishes two matching eleven-byte register snapshots reported by the
 DriverKit probe, not TX/RX, DMA, IRQ, DHCP or network functionality.
 --self-test only checks parser logic using synthetic strings.
 """
@@ -16,12 +16,12 @@ DRIVER = re.compile(
     re.escape(PREFIX) + r" MMIO_SNAPSHOT=READ mac=" + MAC +
     r" link=(up|down) speed=(0|10|100) duplex=(full|half|unknown)" +
     r" phy=0x([0-9A-F]{2}) txconfig=0x([0-9A-F]{8}) xid=0x([0-9A-F]{3})" +
-    r" variant=(RTL8106e|RTL8105e|unknown)(?=\s|$)")
+    r" variant=(RTL8106e|RTL8105e|unknown) samples=2(?=\s|$)")
 KERNEL = re.compile(
     re.escape(PREFIX) + r" SNAPSHOT=PASS mac=" + MAC +
     r" link=(up|down) speed=(0|10|100)" +
     r" phy=0x([0-9A-F]{2}) txconfig=0x([0-9A-F]{8}) xid=0x([0-9A-F]{3})" +
-    r" variant=(RTL8106e|RTL8105e|unknown)(?=\s|$)")
+    r" variant=(RTL8106e|RTL8105e|unknown) samples=2(?=\s|$)")
 HEARTBEAT = re.compile(re.escape(PREFIX) + r" HEARTBEAT=(\d+)")
 
 
@@ -103,11 +103,11 @@ def self_test() -> None:
         "[Drivers] pci:0000:02:00.2 RTL810xEReadOnlyProbe: " +
         PREFIX + " MMIO_SNAPSHOT=READ mac=02:11:22:33:44:55 link=up speed=100 "
         "duplex=full phy=0x0B txconfig=0x44800000 xid=0x448 variant=RTL8106e "
-        "(read-only, no TX/RX/DMA/IRQ)\n" +
+        "samples=2 (read-only, no TX/RX/DMA/IRQ)\n" +
         PREFIX + " BOOT read-only physical probe\n" +
         PREFIX + " SNAPSHOT=PASS mac=02:11:22:33:44:55 link=up speed=100 "
         "phy=0x0B txconfig=0x44800000 xid=0x448 variant=RTL8106e "
-        "(register read only; TX/RX/DMA/IRQ not tested)\n" +
+        "samples=2 (register read only; TX/RX/DMA/IRQ not tested)\n" +
         PREFIX + " HEARTBEAT=1\n" + PREFIX + " HEARTBEAT=2\n"
     )
     assert "PASS" in validate(sample)
@@ -133,6 +133,8 @@ def self_test() -> None:
         sample.replace("xid=0x448", "xid=0x409", 1),
         sample.replace("variant=RTL8106e", "variant=unknown", 1),
         sample.replace("SNAPSHOT=PASS", "SNAPSHOT=FAKE"),
+        sample.replace("samples=2", "samples=1", 1),
+        sample.replace("samples=2", "samples=1"),
         sample.replace("link=up speed=100 phy=0x0B txconfig=", "link=down speed=0 phy=0x0B txconfig="),
         sample.replace("HEARTBEAT=2", "HEARTBEAT=4"),
         sample.replace("HEARTBEAT=2", "HEARTBEAT=1"),

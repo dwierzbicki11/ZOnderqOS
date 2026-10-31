@@ -53,7 +53,10 @@ The project intentionally does not flash a USB device.
 
 On a laptop with serial console access, retain the **original boot log**.
 A real snapshot is reported only after the DriverKit reads the eleven
-register bytes (six MAC, one PHYstatus, four TxConfig). Validate the serial evidence with:
+register bytes (six MAC, one PHYstatus, four TxConfig) **twice** and
+confirms identical MAC, PHYstatus and TxConfig values. Any disagreement
+or read exception fails closed; the two passes cannot guarantee a link
+will remain stable afterward. Both serial records include `samples=2`. Validate the serial evidence with:
 
 ```bash
 python3 tests/verify_3095_realtek_readonly.py laptop-serial.log
@@ -79,7 +82,8 @@ sequence, even if earlier sample markers appear valid.
 ## Verification limits
 
 - C# smoke tests use a fake register window and check exact offsets,
-  eleven reads, invalid PHY status, RTL8105e/RTL8106e/unknown XIDs,
+  22 reads in two identical passes, changing MAC/PHY/TxConfig, invalid
+  PHY status, RTL8105e/RTL8106e/unknown XIDs,
   little-endian TxConfig assembly and read failures.
 - GitHub Actions compiles the isolated ISO and runs the synthetic
   parser gates. QEMU has no equivalent RTL810xE 10EC:8136 model, so

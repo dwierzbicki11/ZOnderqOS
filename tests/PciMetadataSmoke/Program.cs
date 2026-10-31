@@ -231,22 +231,39 @@ Check(!Realtek810xERegisterDecoder.TryDecode(null, 0x0B, out nicSnapshot) &&
 Check(!Realtek810xERegisterDecoder.TryDecode(
       new byte[] { 0x01, 0, 0, 0, 0, 1 }, 0x0B, out nicSnapshot),
     "Multicast station address must fail closed");
-// Eleven bounded, read-only register accesses: MAC, PHY and TxConfig XID.
+// Two identical eleven-byte passes: reject changing MAC, PHY or TxConfig.
 var registerReader = new FakeRealtekRegisterReader();
 Check(Realtek810xERegisterSampler.TrySample(registerReader, out nicSnapshot) &&
       nicSnapshot.MacAddress == "02:11:22:33:44:55" &&
       nicSnapshot.Carrier && nicSnapshot.SpeedMbps == 100 &&
-      nicSnapshot.FullDuplex && registerReader.ReadCount == 11 &&
+      nicSnapshot.FullDuplex && registerReader.ReadCount == 22 &&
       nicSnapshot.RawTxConfig == 0x44800000u &&
       nicSnapshot.Xid == 0x448 && nicSnapshot.ChipVariant == "RTL8106e",
-    "RTL810xE register sampler must read MAC and PHY exactly once");
-Check(registerReader.ReadOffsets.Count == 11 &&
+    "RTL810xE register sampler must require two identical register passes");
+Check(registerReader.ReadOffsets.Count == 22 &&
       registerReader.ReadOffsets[0] == 0 &&
       registerReader.ReadOffsets[5] == 5 &&
       registerReader.ReadOffsets[6] == 0x6C &&
       registerReader.ReadOffsets[7] == 0x40 &&
-      registerReader.ReadOffsets[10] == 0x43,
+      registerReader.ReadOffsets[10] == 0x43 &&
+      registerReader.ReadOffsets[11] == 0 &&
+      registerReader.ReadOffsets[16] == 5 &&
+      registerReader.ReadOffsets[17] == 0x6C &&
+      registerReader.ReadOffsets[18] == 0x40 &&
+      registerReader.ReadOffsets[21] == 0x43,
     "RTL810xE register sampler used unexpected offsets");
+var changingPhy = new FakeRealtekRegisterReader { ChangePhyOnSecondPass = true };
+Check(!Realtek810xERegisterSampler.TrySample(changingPhy, out nicSnapshot) &&
+      nicSnapshot.MacAddress == null && changingPhy.ReadCount == 22,
+    "Renegotiating PHY must not produce a successful snapshot");
+var changingMac = new FakeRealtekRegisterReader { ChangeMacOnSecondPass = true };
+Check(!Realtek810xERegisterSampler.TrySample(changingMac, out nicSnapshot) &&
+      nicSnapshot.MacAddress == null,
+    "Changing MAC must not produce a successful snapshot");
+var changingXid = new FakeRealtekRegisterReader { ChangeTxConfigOnSecondPass = true };
+Check(!Realtek810xERegisterSampler.TrySample(changingXid, out nicSnapshot) &&
+      nicSnapshot.MacAddress == null,
+    "Changing TxConfig must not produce a successful snapshot");
 registerReader.ThrowAt = 3;
 Check(!Realtek810xERegisterSampler.TrySample(registerReader, out nicSnapshot) &&
       nicSnapshot.MacAddress == null,
@@ -273,7 +290,7 @@ Check(!Realtek810xERegisterSampler.TrySample(registerReader, out nicSnapshot),
     "Invalid live PHY status must fail closed");
 Check(!Realtek810xERegisterSampler.TrySample(null, out nicSnapshot),
     "Null register window must fail closed");
-Console.WriteLine("[NET3095-RTL810XE-READER] PASS C# bounded 11-read synthetic MAC/PHY/TxConfig sampling; no hardware MMIO proof");
+Console.WriteLine("[NET3095-RTL810XE-READER] PASS C# bounded 22-read double snapshot and instability rejection; no hardware MMIO proof");
 
 Console.WriteLine("[NET3095-RTL810XE-SNAPSHOT] PASS C# synthetic MAC/PHYstatus decoding; no physical MMIO/link proof");
 
@@ -404,17 +421,27 @@ sealed class FakeRealtekRegisterReader : IRealtek810xEByteReader
     public int ThrowAt { get; set; } = -1;
     public byte PhyStatus { get; set; } = 0x0B;
     public uint TxConfig { get; set; } = 0x44800000u;
+    public bool ChangePhyOnSecondPass { get; set; }
+    public bool ChangeMacOnSecondPass { get; set; }
+    public bool ChangeTxConfigOnSecondPass { get; set; }
     public System.Collections.Generic.List<ushort> ReadOffsets { get; } = new();
     public byte Read8(ushort offset)
     {
         ReadCount++;
         ReadOffsets.Add(offset);
         if (offset == ThrowAt) throw new InvalidOperationException("synthetic read failure");
-        if (offset == 0x6C) return PhyStatus;
+        if (offset == 0x6C)
+            return ChangePhyOnSecondPass && ReadCount > 11 ? (byte)(PhyStatus ^ 0x01) : PhyStatus;
         if (offset >= 0x40 && offset <= 0x43)
-            return (byte)(TxConfig >> (8 * (offset - 0x40)));
+        {
+            uint tx = ChangeTxConfigOnSecondPass && ReadCount > 11 ?
+                TxConfig ^ 0x00100000u : TxConfig;
+            return (byte)(tx >> (8 * (offset - 0x40)));
+        }
         byte[] mac = { 0x02, 0x11, 0x22, 0x33, 0x44, 0x55 };
-        if (offset < 6) return mac[offset];
+        if (offset < 6)
+            return ChangeMacOnSecondPass && ReadCount > 11 && offset == 0 ?
+                (byte)(mac[0] ^ 0x02) : mac[offset];
         throw new InvalidOperationException("unexpected MMIO offset");
     }
 }

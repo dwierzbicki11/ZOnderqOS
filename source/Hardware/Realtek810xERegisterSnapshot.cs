@@ -108,8 +108,8 @@ namespace ZonderqOS.Hardware
     }
 
     /// <summary>
-    /// Read precisely IDR0..IDR5, PHYstatus and TxConfig (eleven byte reads) from a
-    /// caller-validated register window. Does not discover/map hardware.
+    /// Read IDR0..IDR5, PHYstatus and TxConfig twice (22 bounded byte reads)
+    /// from a caller-validated register window. Reject changed snapshots. Does not discover/map hardware.
     /// The caller must check PCI identity, D0, memory decoding and BAR aperture.
     /// </summary>
     public static class Realtek810xERegisterSampler
@@ -120,6 +120,24 @@ namespace ZonderqOS.Hardware
             snapshot = default;
             if (registers == null) return false;
 
+            // PHY can renegotiate during a register read. A successful
+            // snapshot requires two identical read-only passes.
+            if (!TryReadOnce(registers, out var first) ||
+                !TryReadOnce(registers, out var second))
+                return false;
+            if (first.MacAddress != second.MacAddress ||
+                first.RawPhyStatus != second.RawPhyStatus ||
+                first.RawTxConfig != second.RawTxConfig)
+                return false;
+
+            snapshot = second;
+            return true;
+        }
+
+        private static bool TryReadOnce(IRealtek810xEByteReader registers,
+            out Realtek810xERegisterSnapshot snapshot)
+        {
+            snapshot = default;
             byte[] mac = new byte[6];
             byte phy;
             uint txConfig = 0;

@@ -37,7 +37,7 @@ namespace ZonderqOS
                 " txconfig=0x" + sample.RawTxConfig.ToString("X8") +
                 " xid=0x" + sample.Xid.ToString("X3") +
                 " variant=" + sample.ChipVariant +
-                " (register read only; TX/RX/DMA/IRQ not tested)\n");
+                " samples=2 (register read only; TX/RX/DMA/IRQ not tested)\n");
         }
 
         protected override void Run()
