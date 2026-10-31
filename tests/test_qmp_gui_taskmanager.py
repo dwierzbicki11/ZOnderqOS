@@ -69,5 +69,31 @@ class TaskManagerQmpContract(unittest.TestCase):
         self.assertIn("second_taskmanager_launches > first_taskmanager_launches", smoke)
 
 
+
+    def test_bottom_edge_resize_steps_are_bounded_and_reversible(self):
+        for delta in (-470, -336, -64, -1, 0, 1, 64, 336, 470):
+            steps = list(PROBE.resize_steps(delta))
+            self.assertEqual(sum(steps), delta)
+            self.assertTrue(all(0 < abs(step) <= 48 for step in steps))
+            self.assertEqual(sum(PROBE.resize_steps(-delta)), -delta)
+        with self.assertRaises(TypeError):
+            list(PROBE.resize_steps(1.5))
+        with self.assertRaises(TypeError):
+            list(PROBE.resize_steps(True))
+
+    def test_taskmanager_probe_keeps_resize_evidence_separate_from_layout_proof(self):
+        source = (ROOT / "tools/qmp-gui-taskmanager.py").read_text()
+        self.assertIn("shrink = min(470, max(0, bounds[3] - 220))", source)
+        self.assertIn("resize_bottom_edge(channel, -shrink)", source)
+        self.assertIn("resize_bottom_edge(channel, shrink)", source)
+        self.assertIn('minimum=0.015', source)
+        self.assertIn('maximum=0.10', source)
+        self.assertIn("compact layout semantics require visual review", source)
+        self.assertIn("finally:\n        qmp.mouse_button(channel, False)", source)
+        for height in (220, 300, 556, 690):
+            shrink = min(470, max(0, height - 220))
+            self.assertGreaterEqual(height - shrink, 220)
+            self.assertLessEqual(height - shrink, height)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -53,6 +53,28 @@ def measure(label, before, after, minimum=None, maximum=None):
     return fraction
 
 
+
+def resize_steps(delta):
+    """Bound each PS/2 relative movement; a single large QMP delta can saturate."""
+    if isinstance(delta, bool) or not isinstance(delta, int):
+        raise TypeError("resize delta must be an integer")
+    while delta:
+        step = max(-48, min(48, delta))
+        yield step
+        delta -= step
+
+
+def resize_bottom_edge(channel, delta):
+    """Resize a guest window with a real held PS/2 button and guaranteed release."""
+    try:
+        qmp.mouse_button(channel, True)
+        for step in resize_steps(delta):
+            qmp.move_mouse_relative(channel, 0, step, delay=0.15)
+    finally:
+        qmp.mouse_button(channel, False)
+    time.sleep(0.6)
+
+
 def main():
     if len(sys.argv) != 3:
         raise SystemExit("usage: qmp-gui-taskmanager.py <qmp-socket> <output-prefix>")
@@ -95,6 +117,25 @@ def main():
         time.sleep(1)
         qmp.screenshot(channel, prefix + ".taskmanager-processes-restored.ppm")
 
+
+        # Exercise the minimum-height, wide Task Manager layout using a real
+        # bottom-edge drag. No END TASK, disk, or file operations are touched.
+        # Keep screenshots as evidence: a pixel difference alone does not
+        # prove every compact row or footer label is correctly drawn.
+        resize_x = bounds[0] + bounds[2] // 2
+        resize_y = bounds[1] + bounds[3] - 3
+        shrink = min(470, max(0, bounds[3] - 220))
+        if shrink:
+            qmp.move_mouse_to_from_corner(channel, resize_x, resize_y,
+                                          frame_width, frame_height)
+            qmp.screenshot(channel, prefix + ".taskmanager-resize-before.ppm")
+            resize_bottom_edge(channel, -shrink)
+            qmp.screenshot(channel, prefix + ".taskmanager-short-wide.ppm")
+            resize_bottom_edge(channel, shrink)
+            qmp.screenshot(channel, prefix + ".taskmanager-resize-restored.ppm")
+        else:
+            print("[TASK-QMP] short-window-resize: SKIP no legal height reduction")
+
         # Escape is a non-destructive close path in TaskManagerModernApp.
         qmp.send_keys(channel, "esc")
         time.sleep(2)
@@ -110,9 +151,16 @@ def main():
     measure("app-open", desktop, processes, minimum=0.12)
     measure("performance-tab", processes, performance, minimum=0.025)
     measure("processes-tab-restored", processes, restored, maximum=0.15)
+    if shrink:
+        resize_before = qmp.read_ppm(prefix + ".taskmanager-resize-before.ppm")
+        short = qmp.read_ppm(prefix + ".taskmanager-short-wide.ppm")
+        resize_restored = qmp.read_ppm(prefix + ".taskmanager-resize-restored.ppm")
+        measure("short-window-resize", resize_before, short, minimum=0.015)
+        measure("short-window-restored", resize_before, resize_restored, maximum=0.10)
     measure("desktop-restored", desktop, closed, maximum=0.10)
-    print("[TASK-QMP] PASS: real Task Manager launch, PS/2 tab navigation "
-          "and Escape close changed/restored the guest framebuffer; "
+    print("[TASK-QMP] PASS: real Task Manager launch, PS/2 tab navigation, "
+          "bottom-edge resize where supported and Escape close changed/restored "
+          "the guest framebuffer; compact layout semantics require visual review; "
           "the persistent system log must independently confirm app identity.")
 
 
