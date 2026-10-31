@@ -492,5 +492,42 @@ class FramebufferProbeTests(unittest.TestCase):
             PROBE.changed_pixels_in_region(a, (width, height, b""), 0, 0, 20, 20)
 
 
+    def test_desktop_restore_ignores_expiring_bottom_toast_not_stale_window(self):
+        width, height = 80, 64
+        desktop = bytes(width * height * 3)
+        toast_gone = bytearray(desktop)
+        for y in range(45, 62):
+            for x in range(30, 78):
+                offset = (y * width + x) * 3
+                toast_gone[offset:offset + 3] = b"\xff\xff\xff"
+        before = (width, height, desktop)
+        after = (width, height, bytes(toast_gone))
+        # A toast can cover enough of the lower desktop to fail the old
+        # full-frame restoration gate despite a correctly closed window.
+        changed_full, sampled_full = PROBE.difference(before, after)
+        self.assertGreater(changed_full / sampled_full, 0.10)
+        changed_upper, sampled_upper = PROBE.difference(
+            before, after, upper_only=True)
+        self.assertEqual(changed_upper, 0)
+        self.assertGreater(sampled_upper, 0)
+
+        # A window that stays open over the upper desktop must still fail.
+        stale_window = bytearray(desktop)
+        for y in range(12, 35):
+            for x in range(15, 65):
+                offset = (y * width + x) * 3
+                stale_window[offset:offset + 3] = b"\xff\xff\xff"
+        changed, sampled = PROBE.difference(
+            before, (width, height, bytes(stale_window)), upper_only=True)
+        self.assertGreater(changed / sampled, 0.10)
+
+    def test_real_desktop_restore_uses_stable_upper_crop(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn("difference(before, closed, upper_only=True)", source)
+        self.assertIn("bottom = height * 3 // 5 if upper_only", source)
+        self.assertIn("if fraction > 0.10:", source)
+        self.assertIn("Alt+F4 did not restore the desktop", source)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
