@@ -32,6 +32,20 @@ def send_keys(channel, *codes):
     time.sleep(0.2)
 
 
+
+def move_mouse_relative(channel, dx, dy):
+    # QEMU's emulated PS/2 mouse receives real relative pointer events.
+    # No host input devices or host disk partitions are exposed to the guest.
+    events = []
+    if dx:
+        events.append({"type": "rel", "data": {"axis": "x", "value": dx}})
+    if dy:
+        events.append({"type": "rel", "data": {"axis": "y", "value": dy}})
+    if events:
+        command(channel, {"execute": "input-send-event", "arguments": {"events": events}})
+        time.sleep(0.8)
+
+
 def screenshot(channel, path):
     command(channel, {"execute": "screendump", "arguments": {"filename": path}})
 
@@ -95,6 +109,12 @@ def main():
         time.sleep(6)
         screenshot(channel, prefix + ".filemanager-after.ppm")
 
+        # A keyboard-only launch cannot prove that the guest mouse works.
+        # Capture a real PS/2 relative move before changing the file filter.
+        screenshot(channel, prefix + ".filemanager-mouse-before.ppm")
+        move_mouse_relative(channel, 60, 0)
+        screenshot(channel, prefix + ".filemanager-mouse-after.ppm")
+
         # Exercise the real File Manager filter and Escape clear path using
         # only guest keyboard events. The deliberately improbable query
         # avoids opening or modifying any FAT32 files.
@@ -115,6 +135,8 @@ def main():
     before = read_ppm(prefix + ".filemanager-before.ppm")
     palette = read_ppm(prefix + ".filemanager-palette.ppm")
     after = read_ppm(prefix + ".filemanager-after.ppm")
+    mouse_before = read_ppm(prefix + ".filemanager-mouse-before.ppm")
+    mouse_after = read_ppm(prefix + ".filemanager-mouse-after.ppm")
     filtered = read_ppm(prefix + ".filemanager-filtered.ppm")
     filter_cleared = read_ppm(prefix + ".filemanager-filter-cleared.ppm")
     closed = read_ppm(prefix + ".filemanager-closed.ppm")
@@ -129,6 +151,14 @@ def main():
         print(f"[GUI-QMP] {label}: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
         if fraction < 0.12:
             raise RuntimeError(label + ": insufficient framebuffer change; inspect PPMs")
+    # The software cursor is rendered into the guest framebuffer. A small,
+    # nonzero central-region change is required for real PS/2 pointer motion;
+    # it is not evidence of clicking, dragging or touchpad compatibility.
+    mouse_changed, mouse_samples = difference(mouse_before, mouse_after)
+    print(f"[GUI-QMP] mouse-move: changed {mouse_changed}/{mouse_samples} sampled pixels")
+    if mouse_changed < 8:
+        raise RuntimeError("PS/2 pointer move not visible in guest framebuffer")
+
     # Escape must restore the same File Manager viewport after clearing
     # the search query. This is a real QEMU keyboard regression, not merely
     # evidence that QMP accepted the keystroke.
