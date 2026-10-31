@@ -507,9 +507,17 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
+                // Do not strand the user in an unreadable directory. A failed
+                // scan must leave both the old path and its cached listing intact.
+                string previousPath = currentPath;
+                string previousSearch = searchText;
                 currentPath = path.Replace('\\', '/');
                 searchText = "";
-                Refresh();
+                if (!RefreshInternal(""))
+                {
+                    currentPath = previousPath;
+                    searchText = previousSearch;
+                }
             }
             catch (Exception ex)
             {
@@ -948,24 +956,30 @@ namespace ZonderqOS.GUI.Apps
             RefreshInternal(status);
         }
 
-        private void RefreshInternal(string keep)
+        private bool RefreshInternal(string keep)
         {
-            entries.Clear();
-            cachedEntries.Clear();
-            selectedIndex = -1;
-            ResetClickSequence();
-            scrollIndex = 0;
-            contextMenuVisible = false;
-
             try
             {
-                if (!Directory.Exists(currentPath))
-                    currentPath = "/";
+                string targetPath = Directory.Exists(currentPath) ? currentPath : "/";
+                // Directory.GetFiles can fail after GetDirectories succeeded
+                // (e.g. FAT32 media removed or an I/O error). Scan and sort
+                // into a temporary snapshot; never erase the last usable view
+                // until the complete read has succeeded.
+                List<FileEntry> scanned = new List<FileEntry>();
+                Add(scanned, Directory.GetDirectories(targetPath), true);
+                Add(scanned, Directory.GetFiles(targetPath), false);
+                Sort(scanned);
 
-                Add(Directory.GetDirectories(currentPath), true);
-                Add(Directory.GetFiles(currentPath), false);
-                Sort();
-                cachedEntries.AddRange(entries);
+                currentPath = targetPath;
+                entries.Clear();
+                entries.AddRange(scanned);
+                cachedEntries.Clear();
+                cachedEntries.AddRange(scanned);
+                selectedIndex = -1;
+                ResetClickSequence();
+                scrollIndex = 0;
+                contextMenuVisible = false;
+                contextMenuSelection = -1;
 
                 if (!string.IsNullOrEmpty(searchText))
                     Filter();
@@ -975,12 +989,14 @@ namespace ZonderqOS.GUI.Apps
                         ? entries.Count + " item(s)"
                         : "Search: " + searchText + " (" + entries.Count + " item(s))")
                     : keep;
+                return true;
             }
             catch (Exception ex)
             {
-                entries.Clear();
-                cachedEntries.Clear();
+                // Retain the old path, selection, scroll and cached snapshot
+                // on transient storage failure. Navigation rolls back its path.
                 status = "Read error: " + ex.Message;
+                return false;
             }
         }
 
@@ -1084,7 +1100,7 @@ namespace ZonderqOS.GUI.Apps
             return megabytes + " MB";
         }
 
-        private void Add(string[] paths, bool directory)
+        private void Add(List<FileEntry> destination, string[] paths, bool directory)
         {
             if (paths == null)
                 return;
@@ -1096,16 +1112,16 @@ namespace ZonderqOS.GUI.Apps
                 if (string.IsNullOrEmpty(name))
                     name = path;
 
-                entries.Add(new FileEntry(name, path.Replace('\\', '/'), directory));
+                destination.Add(new FileEntry(name, path.Replace('\\', '/'), directory));
             }
         }
 
-        private void Sort()
+        private void Sort(List<FileEntry> destination)
         {
             // A large directory used to freeze the GUI with insertion sort
             // (quadratic comparisons). Stable bottom-up merge sort avoids
             // recursion and does not depend on Cosmos List<T>.Sort support.
-            int count = entries.Count;
+            int count = destination.Count;
             if (count < 2)
                 return;
 
@@ -1124,17 +1140,17 @@ namespace ZonderqOS.GUI.Apps
                     {
                         // Equal names retain their original order.
                         if (left < middle && (right >= end ||
-                            Compare(entries[left], entries[right]) <= 0))
-                            scratch[write] = entries[left++];
+                            Compare(destination[left], destination[right]) <= 0))
+                            scratch[write] = destination[left++];
                         else
-                            scratch[write] = entries[right++];
+                            scratch[write] = destination[right++];
                     }
 
                     start = end;
                 }
 
                 for (int i = 0; i < count; i++)
-                    entries[i] = scratch[i];
+                    destination[i] = scratch[i];
             }
         }
 
