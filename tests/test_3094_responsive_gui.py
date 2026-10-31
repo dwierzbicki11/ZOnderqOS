@@ -1046,6 +1046,32 @@ class ResponsiveGui3094(unittest.TestCase):
                                ("", snapshot)):
             self.assertEqual([name for name in snapshot if term in name], expected)
 
+    def test_file_manager_filter_compacts_in_linear_time(self):
+        filter_code = FILE_MANAGER.split("private void Filter()", 1)[1].split(
+            "public string CurrentPath", 1)[0]
+        self.assertIn("for (int read = 0; read < entries.Count; read++)", filter_code)
+        self.assertIn("entries[write++] = entry;", filter_code)
+        self.assertIn("entries.RemoveRange(write, entries.Count - write);", filter_code)
+        self.assertIn("StringComparison.OrdinalIgnoreCase", filter_code)
+        self.assertNotIn("entries.RemoveAt(i)", filter_code)
+        self.assertNotIn("ToLowerInvariant()", filter_code)
+
+        # A stable in-place compaction must preserve directory order and
+        # match Unicode/case-insensitive queries without mutating the cache.
+        original = ["README", "notes.txt", "Readme.md", "data.bin", "READ-ME"]
+        for query, expected in (("read", ["README", "Readme.md", "READ-ME"]),
+                                ("TXT", ["notes.txt"]),
+                                ("absent", []), ("", original)):
+            working = list(original)
+            write = 0
+            for name in working:
+                if query.lower() in name.lower():
+                    working[write] = name
+                    write += 1
+            del working[write:]
+            self.assertEqual(working, expected)
+            self.assertEqual(len(original), 5)
+
     def test_file_manager_sort_scales_and_preserves_equal_name_order(self):
         sort = FILE_MANAGER.split("private void Sort()", 1)[1].split(
             "private int Compare(", 1)[0]
