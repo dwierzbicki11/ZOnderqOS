@@ -163,6 +163,36 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
+        /// Independent signed PCM24 mono WAV -> PCM16 stereo -> stock HDA.
+        /// 1760 Hz makes the QEMU capture distinguishable from PCM8/PCM16.
+        /// All source bytes are generated in RAM; no disk is attached.
+        /// </summary>
+        public static bool PlayWave24TestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 1760, 250, 4096);
+                byte[] mono24 = new byte[source.Length / 4 * 3];
+                for (int i = 0; i < mono24.Length / 3; i++)
+                {
+                    int at = i * 4;
+                    mono24[i * 3] = 0; // least-significant eight bits
+                    mono24[i * 3 + 1] = source[at];
+                    mono24[i * 3 + 2] = source[at + 1];
+                }
+                byte[] wave = AudioWavePcm.EncodePcm24AtRate(mono24, 48000, 1);
+                Console.WriteLine("[AUDIO] WAV signed PCM24 mono -> 48000Hz signed PCM16 stereo");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV PCM24 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Caller owns the stream and is responsible for obtaining it from an
         /// explicitly authorized read-only source. No filesystem is opened here.
         /// The bounded loader rejects oversized, truncated and malformed WAVs.
