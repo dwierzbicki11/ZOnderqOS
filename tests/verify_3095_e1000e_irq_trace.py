@@ -22,6 +22,11 @@ def count_notifications(stderr: str) -> tuple[int, int, int]:
     legacy = msi = msix = 0
     for line in stderr.replace("\r", "").splitlines():
         line = line.strip()
+        # QEMU can emit another device trace event while its process is
+        # being terminated by the runner's cleanup trap. Those events are
+        # not guest runtime evidence and must not inflate retained artifacts.
+        if re.match(r"^qemu-system-[^:]+: terminating on signal ", line):
+            break
         match = LEGACY.fullmatch(line)
         if match is not None:
             legacy += match.group(1) == "1"
