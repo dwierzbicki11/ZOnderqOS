@@ -155,7 +155,7 @@ def difference(first, second, upper_only=False):
     return changed, samples
 
 
-def changed_pixels_in_region(first, second, left, top, right, bottom):
+def changed_pixels_in_region(first, second, left, top, right, bottom, threshold=24):
     """Count real framebuffer pixel changes in a clipped cursor-sized region.
 
     Unlike the coarse 4px desktop sampling grid, this cannot miss a narrow
@@ -172,7 +172,7 @@ def changed_pixels_in_region(first, second, left, top, right, bottom):
     for y in range(max(0, top), min(height, bottom)):
         for x in range(max(0, left), min(width, right)):
             offset = (y * width + x) * 3
-            if any(abs(before[offset + channel] - after[offset + channel]) > 24
+            if any(abs(before[offset + channel] - after[offset + channel]) > threshold
                    for channel in range(3)):
                 changed += 1
     return changed
@@ -392,8 +392,8 @@ def main():
         # and taskbar. This catches accidental window closure as well as a
         # menu that failed to open/dismiss; a QMP ACK cannot satisfy it.
         region = (modal_x + 25, modal_y + 25, modal_x + 145, modal_y + 105)
-        opened_pixels = changed_pixels_in_region(modal_before, modal_open, *region)
-        dismissed_pixels = changed_pixels_in_region(modal_before, modal_dismissed, *region)
+        opened_pixels = changed_pixels_in_region(modal_before, modal_open, *region, threshold=8)
+        dismissed_pixels = changed_pixels_in_region(modal_before, modal_dismissed, *region, threshold=8)
         print(f"[GUI-QMP] modal-alt-f4: opened={opened_pixels}, "
               f"remaining={dismissed_pixels} changed pixels in 120x80 region")
         if opened_pixels < 500 or dismissed_pixels * 3 >= opened_pixels:
