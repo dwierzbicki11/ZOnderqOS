@@ -154,7 +154,10 @@ namespace ZonderqOS.GUI
         {
             int available = Width - GetTrayWidth() - (StartButtonWidth + SidePadding + 6);
             int slots = System.Math.Max(0, (available + AppButtonGap) / (AppButtonSize + AppButtonGap));
-            overflow = runningCount > slots && slots >= 2;
+            // With a single available slot, reserve it for a window
+            // switcher instead of stranding every app except the first.
+            // Zero app slots means the arrow itself cycles the MRU ring.
+            overflow = runningCount > slots && slots >= 1;
             return overflow ? slots - 1 : slots;
         }
 
@@ -497,9 +500,19 @@ namespace ZonderqOS.GUI
                     overflowHovered = true;
                     if (isClicked && !wasClicked)
                     {
-                        firstVisibleAppIndex += pageSlots;
-                        if (firstVisibleAppIndex >= runningCount)
-                            firstVisibleAppIndex = 0;
+                        if (pageSlots == 0)
+                        {
+                            // At ultra-narrow widths (one total slot), an
+                            // overflow arrow is the only usable app control.
+                            // Cycle windows instead of advancing by zero.
+                            applicationManager.CycleWindow(false);
+                        }
+                        else
+                        {
+                            firstVisibleAppIndex += pageSlots;
+                            if (firstVisibleAppIndex >= runningCount)
+                                firstVisibleAppIndex = 0;
+                        }
                     }
                 }
             }
