@@ -6,7 +6,7 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE = (ROOT / "source/GUI/SmallTextRenderer.cs").read_text(encoding="utf-8")
-PATTERNS = re.findall(r'case [^\\n]+?: pattern = "([01]+)"; break;', SOURCE)
+PATTERNS = re.findall(r'case .*?: pattern = "([01]+)"; break;', SOURCE)
 
 
 def glyph_rows(pattern):
