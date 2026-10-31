@@ -107,7 +107,7 @@ class ModifiedKeySafetyTests(unittest.TestCase):
             "public bool UpdateInteractions(", 1
         )[0]
         self.assertIn("if (!Visible || key == null)", handler)
-        self.assertIn("if (key.Modifiers != 0)\\n                return true;", handler)
+        self.assertRegex(handler, r"if \(key\.Modifiers != 0\)\s*return true;")
         self.assertIn("ConsoleKeyEx.Escape", handler)
         self.assertIn("ConsoleKeyEx.UpArrow", handler)
         self.assertIn("ConsoleKeyEx.DownArrow", handler)
