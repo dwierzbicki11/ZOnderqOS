@@ -16,6 +16,22 @@ namespace ZonderqOS.GUI
         private const int CardHeight = 82;
         private const int CardGap = 7;
 
+        // The list ends 72px above the panel bottom and begins at Y+130.
+        // Eight cards do not fit at 800x600; use the same row count for
+        // painting, hit testing and keyboard selection/scrolling.
+        private int VisibleRowCount
+        {
+            get
+            {
+                int availableHeight = System.Math.Max(0, Height - 130 - 72);
+                int rows = (availableHeight + CardGap) / (CardHeight + CardGap);
+                // On a 320x240 display the header, filters and footer use
+                // the entire panel. Zero visible cards is safer than letting
+                // keyboard selection target an invisible notification.
+                return System.Math.Max(0, System.Math.Min(VisibleRows, rows));
+            }
+        }
+
         private static readonly string[] FilterLabels = { "WSZYSTKIE", "NIEPRZECZYTANE", "WAZNE" };
         private static readonly Color Background = Color.FromArgb(20, 25, 31);
         private static readonly Color Header = Color.FromArgb(27, 34, 42);
@@ -46,8 +62,31 @@ namespace ZonderqOS.GUI
         private bool toastHovered;
         private int openingFrames;
 
+        // Preserve the 462px layout at normal resolutions, but keep the panel
+        // entirely inside smaller framebuffers instead of using a negative X.
+        private static int PanelWidth(int screenWidth)
+        {
+            return System.Math.Min(462, System.Math.Max(1, screenWidth - 20));
+        }
+
+        private int ToastWidth
+        {
+            get { return System.Math.Min(414, System.Math.Max(1, screenWidth - 24)); }
+        }
+
+        private int ToastX
+        {
+            get { return System.Math.Max(0, screenWidth - ToastWidth - 18); }
+        }
+
+        private int ToastY
+        {
+            get { return System.Math.Max(0, screenHeight - taskbarHeight - 116); }
+        }
+
         public NotificationCenter(int screenWidth, int screenHeight, int taskbarHeight)
-            : base(screenWidth - 472, 10, 462, screenHeight - taskbarHeight - 20)
+            : base(System.Math.Max(0, screenWidth - PanelWidth(screenWidth) - 10), 10,
+                   PanelWidth(screenWidth), System.Math.Max(1, screenHeight - taskbarHeight - 20))
         {
             this.screenWidth = screenWidth;
             this.screenHeight = screenHeight;
@@ -88,6 +127,14 @@ namespace ZonderqOS.GUI
                 return true;
             }
 
+            // Global Ctrl/Alt shortcuts must not change filters, mark
+            // notifications read or dismiss them (Ctrl+Delete in particular).
+            // Escape remains available to close the panel.
+            bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+            bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+            if (control || alt)
+                return true;
+
             if (key.Key == ConsoleKeyEx.LeftArrow)
             {
                 filter--;
@@ -124,16 +171,26 @@ namespace ZonderqOS.GUI
 
             if (key.Key == ConsoleKeyEx.Enter)
             {
-                MarkSelectedRead();
+                // Shift+Enter is not a notification acknowledgement.
+                if (key.Modifiers == 0)
+                    MarkSelectedRead();
                 return true;
             }
 
             if (key.Key == ConsoleKeyEx.Delete)
             {
-                DismissSelected();
+                if (key.Modifiers == 0)
+                    DismissSelected();
                 return true;
             }
 
+            // Shift+C/R/D must not clear or alter notifications merely
+            // because the keyboard produced an uppercase character.
+            // Caps Lock still works because it does not set Shift.
+            if (key.Modifiers != 0)
+                return true;
+
+            // Only unmodified letters are notification commands.
             char ch = key.KeyChar;
             if (ch == 'd' || ch == 'D')
             {
@@ -171,14 +228,13 @@ namespace ZonderqOS.GUI
                 if (!NotificationService.TryGetActiveToast(out toast))
                     return false;
 
-                int toastX = screenWidth - 432;
-                int toastY = screenHeight - taskbarHeight - 116;
-                toastHovered = Hit(mouseX, mouseY, toastX, toastY, 414, 98);
+                toastHovered = Hit(mouseX, mouseY, ToastX, ToastY, ToastWidth, 98);
                 if (toastHovered && isClicked && !wasClicked)
                 {
-                    Visible = true;
+                    // Open through the same path as the keyboard/taskbar so
+                    // selection, animation and cached notifications stay in sync.
                     NotificationService.MarkRead(toast.Id);
-                    EnsureFresh();
+                    Toggle();
                     return true;
                 }
                 return toastHovered;
@@ -284,8 +340,11 @@ namespace ZonderqOS.GUI
             if (openingFrames > 0)
                 openingFrames--;
             IconManager.DrawScaled(canvas, IconType.About, X + 18, Y + 19, 28, 28);
-            SmallTextRenderer.Draw(canvas, "CENTRUM POWIADOMIEN", X + 58, Y + 20, Text);
-            SmallTextRenderer.Draw(canvas, "CTRL+ALT+N  |  D DND  |  R PRZECZYTANE", X + 58, Y + 41, Muted);
+            SmallTextRenderer.Draw(canvas, Width < 380 ? "POWIADOMIENIA" : "CENTRUM POWIADOMIEN",
+                X + 58, Y + 20, Text);
+            if (Width >= 380)
+                SmallTextRenderer.Draw(canvas, "CTRL+ALT+N  |  D DND  |  R PRZECZYTANE",
+                    X + 58, Y + 41, Muted);
 
             int unread = NotificationService.UnreadCount;
             int badgeX = X + Width - 82;
@@ -320,7 +379,8 @@ namespace ZonderqOS.GUI
                     selected || hovered ? SystemTheme.AccentBorder : Border);
                 if (selected)
                     canvas.DrawFilledRectangle(SystemTheme.Accent, tx, y + 33, tabWidth, 3);
-                SmallTextRenderer.DrawCentered(canvas, FilterLabels[i], tx + 4, y + 15,
+                string label = Width < 380 && i == 1 ? "NOWE" : FilterLabels[i];
+                SmallTextRenderer.DrawCentered(canvas, label, tx + 4, y + 15,
                     tabWidth - 8, selected ? Text : Muted);
             }
         }
@@ -331,7 +391,7 @@ namespace ZonderqOS.GUI
             int cardWidth = Width - 28;
             int cardX = X + 14;
 
-            for (int row = 0; row < VisibleRows; row++)
+            for (int row = 0; row < VisibleRowCount; row++)
             {
                 int visibleIndex = offset + row;
                 int cy = startY + row * (CardHeight + CardGap);
@@ -346,7 +406,8 @@ namespace ZonderqOS.GUI
                             UiMetrics.TileRadius, Panel, Border);
                         IconManager.DrawScaled(canvas, IconType.About, cardX + 18, cy + 27, 28, 28);
                         SmallTextRenderer.Draw(canvas, "BRAK POWIADOMIEN", cardX + 60, cy + 29, Text);
-                        SmallTextRenderer.Draw(canvas, "System nie ma nic nowego do pokazania.", cardX + 60, cy + 50, Muted);
+                        SmallTextRenderer.DrawClipped(canvas, "System nie ma nic nowego do pokazania.",
+                            cardX + 60, cy + 50, System.Math.Max(1, cardWidth - 74), Muted);
                     }
                     continue;
                 }
@@ -398,10 +459,30 @@ namespace ZonderqOS.GUI
                 UiMetrics.ButtonRadius, Header);
             canvas.DrawLine(Border, X + 1, y, X + Width - 2, y);
 
-            DrawFooterButton(canvas, 0, X + 14, y + 9, 126, "PRZECZYTANE", IconType.About);
-            DrawFooterButton(canvas, 1, X + 147, y + 9, 104, "WYCZYSC", IconType.Trash);
-            DrawFooterButton(canvas, 2, X + 258, y + 9, Width - 272,
+            int buttonX, buttonWidth;
+            FooterButtonBounds(0, out buttonX, out buttonWidth);
+            DrawFooterButton(canvas, 0, buttonX, y + 9, buttonWidth, "PRZECZYTANE", IconType.About);
+            FooterButtonBounds(1, out buttonX, out buttonWidth);
+            DrawFooterButton(canvas, 1, buttonX, y + 9, buttonWidth, "WYCZYSC", IconType.Trash);
+            FooterButtonBounds(2, out buttonX, out buttonWidth);
+            DrawFooterButton(canvas, 2, buttonX, y + 9, buttonWidth,
                 NotificationService.DoNotDisturb ? "DND: WL." : "DND: WYL.", IconType.Settings);
+        }
+
+        // Render and hit-test share the same geometry, including narrow panels.
+        private void FooterButtonBounds(int index, out int x, out int width)
+        {
+            if (Width >= 440)
+            {
+                x = X + (index == 0 ? 14 : index == 1 ? 147 : 258);
+                width = index == 0 ? 126 : index == 1 ? 104 : Width - 272;
+                return;
+            }
+
+            const int gap = 4;
+            int slotWidth = System.Math.Max(1, (Width - 28 - 2 * gap) / 3);
+            x = X + 14 + index * (slotWidth + gap);
+            width = index == 2 ? System.Math.Max(1, X + Width - 14 - x) : slotWidth;
         }
 
         private void DrawFooterButton(Canvas canvas, int index, int x, int y, int width, string label, IconType icon)
@@ -422,9 +503,9 @@ namespace ZonderqOS.GUI
             if (!NotificationService.TryGetActiveToast(out entry))
                 return;
 
-            int x = screenWidth - 432;
-            int y = screenHeight - taskbarHeight - 116;
-            const int width = 414;
+            int x = ToastX;
+            int y = ToastY;
+            int width = ToastWidth;
             const int height = 98;
             Color kindColor = KindColor(entry.Kind);
 
@@ -465,7 +546,7 @@ namespace ZonderqOS.GUI
             int startY = Y + 130;
             int cardWidth = Width - 28;
             int cardX = X + 14;
-            for (int row = 0; row < VisibleRows; row++)
+            for (int row = 0; row < VisibleRowCount; row++)
             {
                 int visibleIndex = offset + row;
                 if (visibleIndex >= visibleCount)
@@ -488,12 +569,16 @@ namespace ZonderqOS.GUI
             }
 
             int footerY = Y + Height - 48;
-            if (Hit(mouseX, mouseY, X + 14, footerY, 126, 38))
-                hoveredAction = 0;
-            else if (Hit(mouseX, mouseY, X + 147, footerY, 104, 38))
-                hoveredAction = 1;
-            else if (Hit(mouseX, mouseY, X + 258, footerY, Width - 272, 38))
-                hoveredAction = 2;
+            for (int i = 0; i < 3; i++)
+            {
+                int buttonX, buttonWidth;
+                FooterButtonBounds(i, out buttonX, out buttonWidth);
+                if (Hit(mouseX, mouseY, buttonX, footerY, buttonWidth, 38))
+                {
+                    hoveredAction = i;
+                    break;
+                }
+            }
         }
 
         private void EnsureFresh()
@@ -544,6 +629,8 @@ namespace ZonderqOS.GUI
 
         private void MoveSelection(int delta)
         {
+            if (VisibleRowCount <= 0)
+                return;
             EnsureFresh();
             if (visibleCount <= 0)
                 return;
@@ -557,12 +644,17 @@ namespace ZonderqOS.GUI
 
         private void KeepSelectionVisible()
         {
+            if (VisibleRowCount <= 0)
+            {
+                offset = 0;
+                return;
+            }
             if (selectedIndex < offset)
                 offset = selectedIndex;
-            else if (selectedIndex >= offset + VisibleRows)
-                offset = selectedIndex - VisibleRows + 1;
+            else if (selectedIndex >= offset + VisibleRowCount)
+                offset = selectedIndex - VisibleRowCount + 1;
 
-            int maxOffset = System.Math.Max(0, visibleCount - VisibleRows);
+            int maxOffset = System.Math.Max(0, visibleCount - VisibleRowCount);
             if (offset > maxOffset)
                 offset = maxOffset;
             if (offset < 0)
@@ -571,6 +663,8 @@ namespace ZonderqOS.GUI
 
         private void MarkSelectedRead()
         {
+            if (VisibleRowCount <= 0)
+                return;
             NotificationEntry entry;
             if (TryGetVisible(selectedIndex, out entry))
             {
@@ -581,6 +675,8 @@ namespace ZonderqOS.GUI
 
         private void DismissSelected()
         {
+            if (VisibleRowCount <= 0)
+                return;
             NotificationEntry entry;
             if (TryGetVisible(selectedIndex, out entry))
             {

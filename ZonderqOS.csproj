@@ -18,6 +18,10 @@
          No host disk can receive a write from root setup or icon caches. -->
     <ZonderqRamRoot Condition="'$(ZonderqRamRoot)' == ''">false</ZonderqRamRoot>
     <DefineConstants Condition="'$(ZonderqRamRoot)' == 'true'">$(DefineConstants);ZONDERQ_3094_RAM_ROOT</DefineConstants>
+    <!-- Explicit CI-only ISO: preserve the real Limine framebuffer to exercise
+         small display layouts. Production builds never enable this symbol. -->
+    <ZonderqGuiTestNativeFramebuffer Condition="'$(ZonderqGuiTestNativeFramebuffer)' == ''">false</ZonderqGuiTestNativeFramebuffer>
+    <DefineConstants Condition="'$(ZonderqGuiTestNativeFramebuffer)' == 'true'">$(DefineConstants);ZONDERQ_GUI_TEST_NATIVE_FRAMEBUFFER</DefineConstants>
     <DefineConstants Condition="'$(ZonderqCosmosKeyboardApi)' == 'Input'">$(DefineConstants);ZONDERQ_COSMOS_INPUT_API</DefineConstants>
 
     <CosmosKernelClass>ZonderqOS.Kernel</CosmosKernelClass>

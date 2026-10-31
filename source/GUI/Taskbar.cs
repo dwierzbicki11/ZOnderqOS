@@ -16,6 +16,11 @@ namespace ZonderqOS.GUI
         private readonly ApplicationManager applicationManager;
         private readonly Action notificationClick;
         private int hoveredAppIndex = -1;
+        private bool overflowHovered;
+        private int firstVisibleAppIndex;
+        private Application lastActiveApplication;
+        private int lastActiveRunningIndex = -1;
+        private int lastPageSlots = -1;
         private bool notificationHovered;
         private int cachedClockKey = -1;
         private int cachedDay = -1;
@@ -34,6 +39,17 @@ namespace ZonderqOS.GUI
         private const int AppButtonGap = 5;
         private const int SidePadding = 6;
         private const int TrayWidth = 278;
+        private const int CompactTrayWidth = 132;
+
+        // At low resolutions the full NET/VOL tray would cover the Start
+        // button and leave no slots for open windows. Keep notifications and
+        // the clock, but collapse optional status tiles when space is tight
+        // or the user has disabled them in settings.
+        private int GetTrayWidth()
+        {
+            return Width < 560 || !global::ZonderqOS.SystemSettings.ShowTrayStatus
+                ? CompactTrayWidth : TrayWidth;
+        }
 
         public Taskbar(int screenWidth, int screenHeight, int height, Action onStartClick, ApplicationManager manager)
             : this(screenWidth, screenHeight, height, onStartClick, manager, null)
@@ -100,6 +116,86 @@ namespace ZonderqOS.GUI
             return IconType.File;
         }
 
+        // Reserve one taskbar slot for paging when open windows overflow.
+        private static int CountRunningApps(List<Application> apps)
+        {
+            if (apps == null)
+                return 0;
+
+            int count = 0;
+            for (int i = 0; i < apps.Count; i++)
+            {
+                Application app = apps[i];
+                if (app != null && app.IsRunning && app.Window != null)
+                    count++;
+            }
+            return count;
+        }
+
+        private static int RunningIndexOf(List<Application> apps, Application target)
+        {
+            if (apps == null || target == null)
+                return -1;
+
+            int runningIndex = 0;
+            for (int i = 0; i < apps.Count; i++)
+            {
+                Application app = apps[i];
+                if (app == null || !app.IsRunning || app.Window == null)
+                    continue;
+                if (app == target)
+                    return runningIndex;
+                runningIndex++;
+            }
+            return -1;
+        }
+
+        private int GetPageSlots(int runningCount, out bool overflow)
+        {
+            int available = Width - GetTrayWidth() - (StartButtonWidth + SidePadding + 6);
+            int slots = System.Math.Max(0, (available + AppButtonGap) / (AppButtonSize + AppButtonGap));
+            overflow = runningCount > slots && slots >= 2;
+            return overflow ? slots - 1 : slots;
+        }
+
+        private void NormalizeAppPage(int runningCount, int pageSlots, bool overflow)
+        {
+            if (!overflow || pageSlots <= 0)
+            {
+                firstVisibleAppIndex = 0;
+                return;
+            }
+
+            if (firstVisibleAppIndex < 0 || firstVisibleAppIndex >= runningCount)
+                firstVisibleAppIndex = 0;
+            firstVisibleAppIndex = (firstVisibleAppIndex / pageSlots) * pageSlots;
+        }
+
+        // Keep render and hit-testing on the same page. Resolution changes
+        // can reduce available slots without changing the active window.
+        // Manual paging stays put until focus, ordering or slot count changes.
+        private void SyncActivePage(List<Application> apps, Application activeApplication,
+            int runningCount, int pageSlots, bool overflow)
+        {
+            NormalizeAppPage(runningCount, pageSlots, overflow);
+            int activeRunningIndex = RunningIndexOf(apps, activeApplication);
+            if (activeApplication != lastActiveApplication ||
+                activeRunningIndex != lastActiveRunningIndex ||
+                pageSlots != lastPageSlots)
+            {
+                lastActiveApplication = activeApplication;
+                lastActiveRunningIndex = activeRunningIndex;
+                lastPageSlots = pageSlots;
+                if (overflow && pageSlots > 0 && activeRunningIndex >= 0)
+                    firstVisibleAppIndex = (activeRunningIndex / pageSlots) * pageSlots;
+            }
+        }
+
+        private int OverflowButtonX(int pageSlots)
+        {
+            return StartButtonWidth + SidePadding + 6 + pageSlots * (AppButtonSize + AppButtonGap);
+        }
+
         public override void Render(Canvas canvas)
         {
             if (!Visible)
@@ -119,10 +215,14 @@ namespace ZonderqOS.GUI
                 StartButtonWidth + 2, Y + Height - 8);
 
             int appX = StartButtonWidth + SidePadding + 6;
-            int maxAppX = Width - TrayWidth;
             List<Application> apps = applicationManager != null ? applicationManager.Applications : null;
             Application activeApplication = applicationManager != null ? applicationManager.ActiveApplication : null;
-            int visibleIndex = 0;
+            int runningCount = CountRunningApps(apps);
+            bool overflow;
+            int pageSlots = GetPageSlots(runningCount, out overflow);
+            SyncActivePage(apps, activeApplication, runningCount, pageSlots, overflow);
+            int runningIndex = 0;
+            int shown = 0;
 
             if (apps != null)
             {
@@ -131,12 +231,14 @@ namespace ZonderqOS.GUI
                     Application app = apps[i];
                     if (app == null || !app.IsRunning || app.Window == null)
                         continue;
-                    if (appX + AppButtonSize > maxAppX)
+                    if (runningIndex++ < firstVisibleAppIndex)
+                        continue;
+                    if (shown >= pageSlots)
                         break;
 
                     bool active = activeApplication == app;
                     bool minimized = app.Window.IsMinimized;
-                    bool hovered = visibleIndex == hoveredAppIndex;
+                    bool hovered = shown == hoveredAppIndex;
 
                     Color bg = active
                         ? SystemTheme.AccentSoft
@@ -157,8 +259,19 @@ namespace ZonderqOS.GUI
                         canvas.DrawFilledRectangle(Color.FromArgb(58, 67, 76), appX + 17, Y + Height - 3, 6, 1);
 
                     appX += AppButtonSize + AppButtonGap;
-                    visibleIndex++;
+                    shown++;
                 }
+            }
+
+            if (overflow)
+            {
+                int arrowX = OverflowButtonX(pageSlots);
+                UiPainter.RoundedPanel(canvas, arrowX, Y + 3, AppButtonSize, Height - 6,
+                    UiMetrics.TileRadius,
+                    overflowHovered ? SystemTheme.AccentSoft : Color.FromArgb(25, 31, 38),
+                    overflowHovered ? SystemTheme.AccentBorder : Color.FromArgb(38, 47, 56));
+                SmallTextRenderer.DrawCentered(canvas, ">>", arrowX, Y + 17, AppButtonSize,
+                    Color.FromArgb(232, 237, 242));
             }
 
             RenderSystemTray(canvas);
@@ -239,12 +352,12 @@ namespace ZonderqOS.GUI
 
         private void RenderSystemTray(Canvas canvas)
         {
-            int trayX = Width - TrayWidth;
+            int trayX = Width - GetTrayWidth();
             canvas.DrawLine(Color.FromArgb(48, 59, 70), trayX, Y + 7, trayX, Y + Height - 7);
 
             DrawNotificationTile(canvas, trayX + 9, 34);
 
-            if (global::ZonderqOS.SystemSettings.ShowTrayStatus)
+            if (GetTrayWidth() == TrayWidth && global::ZonderqOS.SystemSettings.ShowTrayStatus)
             {
                 bool networkReady = global::ZonderqOS.Network.IsReady;
                 DrawTrayTile(canvas, trayX + 49, 58, IconType.Network, "NET", networkReady);
@@ -327,11 +440,12 @@ namespace ZonderqOS.GUI
             }
 
             hoveredAppIndex = -1;
+            overflowHovered = false;
             notificationHovered = false;
             if (mouseY < Y || mouseY >= Y + Height)
                 return;
 
-            int trayX = Width - TrayWidth;
+            int trayX = Width - GetTrayWidth();
             int notificationX = trayX + 9;
             if (mouseX >= notificationX && mouseX < notificationX + 34)
             {
@@ -345,28 +459,49 @@ namespace ZonderqOS.GUI
                 return;
 
             int appX = StartButtonWidth + SidePadding + 6;
-            int maxAppX = Width - TrayWidth;
             List<Application> apps = applicationManager.Applications;
-            int visibleIndex = 0;
+            int runningCount = CountRunningApps(apps);
+            bool overflow;
+            int pageSlots = GetPageSlots(runningCount, out overflow);
+            SyncActivePage(apps, applicationManager.ActiveApplication, runningCount, pageSlots, overflow);
+            int runningIndex = 0;
+            int shown = 0;
 
             for (int i = 0; i < apps.Count; i++)
             {
                 Application app = apps[i];
                 if (app == null || !app.IsRunning || app.Window == null)
                     continue;
-                if (appX + AppButtonSize > maxAppX)
+                if (runningIndex++ < firstVisibleAppIndex)
+                    continue;
+                if (shown >= pageSlots)
                     break;
 
                 if (mouseX >= appX && mouseX < appX + AppButtonSize)
                 {
-                    hoveredAppIndex = visibleIndex;
+                    hoveredAppIndex = shown;
                     if (isClicked && !wasClicked)
                         applicationManager.ToggleMinimize(app);
                     return;
                 }
 
                 appX += AppButtonSize + AppButtonGap;
-                visibleIndex++;
+                shown++;
+            }
+
+            if (overflow)
+            {
+                int arrowX = OverflowButtonX(pageSlots);
+                if (mouseX >= arrowX && mouseX < arrowX + AppButtonSize)
+                {
+                    overflowHovered = true;
+                    if (isClicked && !wasClicked)
+                    {
+                        firstVisibleAppIndex += pageSlots;
+                        if (firstVisibleAppIndex >= runningCount)
+                            firstVisibleAppIndex = 0;
+                    }
+                }
             }
         }
     }

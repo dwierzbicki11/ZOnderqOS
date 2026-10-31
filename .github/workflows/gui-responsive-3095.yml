@@ -1,0 +1,45 @@
+name: ZonderqOS Gen3 responsive GUI contract (Cosmos 3.0.95)
+
+on:
+  pull_request:
+    paths:
+      - 'source/GUI/**'
+      - 'ZonderqOS.csproj'
+      - 'tests/test_3094_responsive_gui.py'
+      - 'tests/test_gui_modified_keys.py'
+      - 'tests/test_3094_storage_policy.py'
+      - 'tools/qmp-gui-login.py'
+      - 'tools/qmp-gui-filemanager.py'
+      - 'tools/qmp-gui-taskmanager.py'
+      - 'tests/test_qmp_gui_filemanager.py'
+      - 'tests/test_qmp_gui_taskmanager.py'
+      - 'tests/test_gui_resolution_build.py'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/smoke-services-qemu.sh'
+      - '.github/workflows/gui-responsive-3095.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  responsive-gui-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate optional QMP GUI input probe syntax
+        run: |
+          python3 -m py_compile tools/qmp-gui-login.py tools/qmp-gui-filemanager.py tools/qmp-gui-taskmanager.py
+          bash -n tools/smoke-services-qemu.sh
+      - name: Validate 3.0.95 GUI layout and desktop bounds (source/math only)
+        run: |
+          python3 tests/test_3094_responsive_gui.py
+          python3 tests/test_gui_modified_keys.py
+      - name: Exercise QMP framebuffer diff parser with synthetic PPM images
+        run: |
+          python3 tests/test_qmp_gui_filemanager.py
+          python3 tests/test_qmp_gui_taskmanager.py
+          python3 tests/test_gui_resolution_build.py
+      - name: Preserve protected FAT32 storage policy
+        run: python3 tests/test_3094_storage_policy.py

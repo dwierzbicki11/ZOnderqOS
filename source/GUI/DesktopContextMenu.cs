@@ -23,6 +23,7 @@ namespace ZonderqOS.GUI
 
         private readonly MenuEntry[] entries;
         private int hoveredIndex = -1;
+        private int lastMouseX, lastMouseY;
 
         private const int MenuWidth = 222;
         private const int Padding = 6;
@@ -49,8 +50,55 @@ namespace ZonderqOS.GUI
             X = Math.Max(6, Math.Min(x, desktopWidth - Width - 6));
             Y = Math.Max(6, Math.Min(y, desktopHeight - Height - 6));
             hoveredIndex = -1;
+            // Preserve keyboard selection while the pointer remains stationary.
+            // The opening right-click must not immediately overwrite it.
+            lastMouseX = x;
+            lastMouseY = y;
             Visible = true;
             UiAnimator.RequestFrames(6);
+        }
+
+        // The desktop menu is modal: never forward typing or destructive keys
+        // to the application underneath while it is open.
+        public bool HandleKeyboard(KeyEvent key)
+        {
+            if (!Visible || key == null)
+                return false;
+
+            if (key.Key == ConsoleKeyEx.Escape)
+            {
+                Visible = false;
+                hoveredIndex = -1;
+                return true;
+            }
+
+            // Ctrl/Alt/Shift combinations cannot launch a menu command.
+            if (key.Modifiers != 0)
+                return true;
+
+            if (key.Key == ConsoleKeyEx.UpArrow)
+                hoveredIndex = hoveredIndex < 0 ? entries.Length - 1 :
+                    (hoveredIndex + entries.Length - 1) % entries.Length;
+            else if (key.Key == ConsoleKeyEx.DownArrow)
+                hoveredIndex = (hoveredIndex + 1) % entries.Length;
+            else if (key.Key == ConsoleKeyEx.Home)
+                hoveredIndex = 0;
+            else if (key.Key == ConsoleKeyEx.End)
+                hoveredIndex = entries.Length - 1;
+            else if (key.Key == ConsoleKeyEx.Enter || key.Key == ConsoleKeyEx.NumEnter)
+            {
+                int index = hoveredIndex;
+                Visible = false;
+                hoveredIndex = -1;
+                if (index >= 0 && index < entries.Length)
+                    entries[index].Action?.Invoke();
+                return true;
+            }
+            else
+                return true;
+
+            UiAnimator.RequestFrames();
+            return true;
         }
 
         public bool UpdateInteractions(int mouseX, int mouseY, bool left, bool oldLeft)
@@ -58,11 +106,20 @@ namespace ZonderqOS.GUI
             if (!Visible)
                 return false;
 
-            hoveredIndex = HitTest(mouseX, mouseY);
+            // A stationary mouse must not erase arrow-key navigation each frame.
+            // A click always acts on the actual pointer target, not the keyboard highlight.
+            int pointerIndex = HitTest(mouseX, mouseY);
+            if (mouseX != lastMouseX || mouseY != lastMouseY)
+            {
+                hoveredIndex = pointerIndex;
+                lastMouseX = mouseX;
+                lastMouseY = mouseY;
+                UiAnimator.RequestFrames();
+            }
             if (!left || oldLeft)
                 return false;
 
-            int index = hoveredIndex;
+            int index = pointerIndex;
             Visible = false;
             hoveredIndex = -1;
 

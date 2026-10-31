@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Source regression gate for the Cosmos 3.0.94 persistent-storage policy.
+"""Source regression gate for the Cosmos Gen3 persistent-storage policy.
 
 This is intentionally a *source contract* test, not proof of bare-metal I/O.
-Full compilation and the QEMU USB smoke run independently in the 3.0.94 CI.
+Full compilation and the QEMU USB smoke run independently in dedicated hardware CI.
 """
 from pathlib import Path
 import re
@@ -31,9 +31,9 @@ def method(code: str, signature: str) -> str:
 
 
 class StorageSafetyRegression(unittest.TestCase):
-    def test_3094_only(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', CSPROJ)
-        self.assertIn('Version="3.0.94"', CSPROJ)
+    def test_stock_3095_only(self):
+        self.assertIn('Sdk="Cosmos.Sdk/3.0.95"', CSPROJ)
+        self.assertIn('Version="3.0.95"', CSPROJ)
         self.assertIn('ZONDERQ_READONLY_HARDWARE_PROBE', KERNEL)
 
     def test_label_is_unique_fat32(self):
@@ -88,8 +88,8 @@ class StorageSafetyRegression(unittest.TestCase):
 
     def test_interactive_mounts_require_policy(self):
         mount = method(DISK, "public static void MountPartition(")
-        self.assertIn("Manual mounts disabled in Cosmos 3.0.94", mount)
-        self.assertIn("Manual mounts disabled in Cosmos 3.0.94", GUI)
+        self.assertIn("Manual mounts disabled in Cosmos 3.0.95", mount)
+        self.assertIn("Manual mounts disabled in Cosmos 3.0.95", GUI)
         self.assertNotIn('VfsManager.TryMount(', mount)
         self.assertNotIn('VfsManager.TryMount(', GUI)
         self.assertNotIn('mountedPartitions[0] = "/"', GUI)

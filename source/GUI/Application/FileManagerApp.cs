@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using System.IO;
 using Cosmos.Kernel.System.Graphics;
@@ -16,6 +17,9 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action<string> nanoLauncher;
         private readonly FileManagerView view;
         private readonly List<FileEntry> entries = new List<FileEntry>();
+        // Sorted directory snapshot: typing in the filename filter must not
+        // re-enumerate a potentially slow FAT32 volume on every keystroke.
+        private readonly List<FileEntry> cachedEntries = new List<FileEntry>();
         private readonly List<SidebarEntry> sidebarEntries = new List<SidebarEntry>();
 
         private string currentPath = "/root";
@@ -24,9 +28,10 @@ namespace ZonderqOS.GUI.Apps
         private int selectedIndex = -1;
         private int scrollIndex;
         private int lastClickIndex = -1;
-        private int clickFrame = -1000;
-        private int frameCounter;
+        private long lastClickTimestamp;
+        private int lastClickX, lastClickY;
         private bool contextMenuVisible;
+        private int contextMenuSelection = -1;
         private int contextMenuX;
         private int contextMenuY;
         private int dialogMode;
@@ -47,6 +52,19 @@ namespace ZonderqOS.GUI.Apps
         internal const int ContextMenuItemCount = 7;
         internal const int ContextMenuHeight = ContextMenuItemHeight * ContextMenuItemCount;
 
+        // The menu must remain usable even when the window is resized to its
+        // minimum size (320x220, with a 300x170 client view).
+        internal int ContextMenuWidthForView => Math.Min(ContextMenuWidth, Math.Max(1, view.Width - 8));
+        internal int ContextMenuItemHeightForView =>
+            Math.Max(16, Math.Min(ContextMenuItemHeight,
+                (view.Height - FooterHeight - 12) / ContextMenuItemCount));
+        internal int ContextMenuHeightForView => ContextMenuItemHeightForView * ContextMenuItemCount;
+
+        // Shared grid geometry for painting, hit-testing, keyboard navigation
+        // and scrolling. A two-pixel disagreement can hide a clickable column.
+        internal int GridWidthForView => Math.Max(TileWidth, view.Width - SidebarWidth - 12);
+        internal int GridHeightForView => Math.Max(40, view.Height - FooterHeight - ContentTop - 8);
+
         public FileManagerApp(int x, int y, Action<string> openFile) : base("File Manager")
         {
             nanoLauncher = openFile;
@@ -60,11 +78,38 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Update()
         {
-            frameCounter++;
+            // A first click after switching back from another window is not
+            // the second click of an old File Manager double-click.
+            if (!Window.IsActive)
+            {
+                ResetClickSequence();
+                // A menu from a background File Manager must not linger when
+                // the user switches windows with Alt+Tab or the taskbar.
+                contextMenuVisible = false;
+            }
+
+            int previousViewWidth = view.Width;
+            int previousViewHeight = view.Height;
             view.X = Window.X + 10;
             view.Y = Window.Y + 40;
             view.Width = Math.Max(1, Window.Width - 20);
             view.Height = Math.Max(1, Window.Height - 50);
+
+            // Recalculate visible rows/columns only when the client size
+            // changes. A selected file must not disappear after shrinking,
+            // and a larger window must not show an empty scrolled page.
+            if (view.Width != previousViewWidth || view.Height != previousViewHeight)
+                EnsureSelectionVisible();
+
+            // The menu may have been opened before a window resize. Refit
+            // its origin to the current client area so it remains clickable.
+            if (contextMenuVisible)
+            {
+                contextMenuX = Math.Max(4, Math.Min(contextMenuX,
+                    view.Width - ContextMenuWidthForView - 4));
+                contextMenuY = Math.Max(4, Math.Min(contextMenuY,
+                    view.Height - ContextMenuHeightForView - FooterHeight - 4));
+            }
         }
 
         public override void HandleMouse(int x, int y, bool clicked, bool wasClicked)
@@ -74,12 +119,32 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleMouse(int mouseX, int mouseY, bool left, bool oldLeft, bool right, bool oldRight)
         {
+            int x = mouseX - view.X;
+            int y = mouseY - view.Y;
+
+            // The context menu owns the next press, even outside its bounds.
+            // Consume dismissal before Window.HandleMouse: otherwise a click
+            // on the titlebar can close the window, or a click on the sidebar
+            // can mount/unmount a volume hidden beneath the menu.
+            if (left && !oldLeft && dialogMode == 0 && contextMenuVisible)
+            {
+                if (ContextClick(x, y))
+                    return;
+                contextMenuVisible = false;
+                ResetClickSequence();
+                return;
+            }
+            if (right && !oldRight && dialogMode == 0 && contextMenuVisible)
+            {
+                contextMenuVisible = false;
+                ResetClickSequence();
+                return;
+            }
+
             Window.HandleMouse(mouseX, mouseY, left, oldLeft);
             if (!Window.Visible)
                 return;
 
-            int x = mouseX - view.X;
-            int y = mouseY - view.Y;
             if (x < 0 || y < 0 || x >= view.Width || y >= view.Height)
                 return;
 
@@ -87,6 +152,8 @@ namespace ZonderqOS.GUI.Apps
 
             if (right && !oldRight)
             {
+                // A context click is not part of a left-button double-click.
+                ResetClickSequence();
                 if (dialogMode != 0)
                     return;
 
@@ -99,8 +166,12 @@ namespace ZonderqOS.GUI.Apps
                 if (x >= SidebarWidth + 6 && y >= ContentTop && y < contentBottom)
                 {
                     selectedIndex = HitEntryIndex(x, y);
-                    contextMenuX = Math.Max(SidebarWidth + 8, Math.Min(x, view.Width - ContextMenuWidth - 6));
-                    contextMenuY = Math.Max(ContentTop, Math.Min(y, view.Height - ContextMenuHeight - FooterHeight - 8));
+                    // A fixed sidebar offset used to push the 240px menu off the
+                    // right edge of narrow windows. Prefer viewport bounds.
+                    contextMenuX = Math.Max(4, Math.Min(x, view.Width - ContextMenuWidthForView - 4));
+                    contextMenuY = Math.Max(4, Math.Min(y,
+                        view.Height - ContextMenuHeightForView - FooterHeight - 4));
+                    contextMenuSelection = -1;
                     contextMenuVisible = true;
                     return;
                 }
@@ -108,13 +179,6 @@ namespace ZonderqOS.GUI.Apps
 
             if (!left || oldLeft || dialogMode != 0)
                 return;
-
-            if (contextMenuVisible)
-            {
-                if (ContextClick(x, y))
-                    return;
-                contextMenuVisible = false;
-            }
 
             if (y >= ToolbarTop && y < ToolbarTop + ToolbarHeight)
             {
@@ -135,17 +199,40 @@ namespace ZonderqOS.GUI.Apps
             if (index < 0 || index >= entries.Count)
             {
                 selectedIndex = -1;
+                ResetClickSequence();
                 return;
             }
 
-            if (selectedIndex == index && lastClickIndex == index && frameCounter - clickFrame <= 25)
+            long now = Stopwatch.GetTimestamp();
+            long elapsed = now - lastClickTimestamp;
+            if (selectedIndex == index && lastClickIndex == index &&
+                lastClickTimestamp > 0 && elapsed >= 0 &&
+                elapsed <= Stopwatch.Frequency / 2 &&
+                System.Math.Abs(mouseX - lastClickX) <= 12 &&
+                System.Math.Abs(mouseY - lastClickY) <= 12)
+            {
+                // Clear the old click before opening: navigating to a new
+                // directory must not turn the next single click on the same
+                // tile index into a second double-click.
+                ResetClickSequence();
                 OpenEntry(index);
+            }
             else
+            {
                 selectedIndex = index;
+                lastClickIndex = index;
+                lastClickTimestamp = now;
+                lastClickX = mouseX;
+                lastClickY = mouseY;
+            }
 
-            lastClickIndex = index;
-            clickFrame = frameCounter;
             EnsureSelectionVisible();
+        }
+
+        private void ResetClickSequence()
+        {
+            lastClickIndex = -1;
+            lastClickTimestamp = 0;
         }
 
         private int HitEntryIndex(int x, int y)
@@ -174,12 +261,31 @@ namespace ZonderqOS.GUI.Apps
 
         private bool ContextClick(int x, int y)
         {
-            if (x < contextMenuX || x >= contextMenuX + ContextMenuWidth ||
-                y < contextMenuY || y >= contextMenuY + ContextMenuHeight)
+            if (x < contextMenuX || x >= contextMenuX + ContextMenuWidthForView ||
+                y < contextMenuY || y >= contextMenuY + ContextMenuHeightForView)
                 return false;
 
-            int item = (y - contextMenuY) / ContextMenuItemHeight;
+            int item = (y - contextMenuY) / ContextMenuItemHeightForView;
+            ExecuteContextAction(item);
+            return true;
+        }
+
+        private bool ContextActionEnabled(int item)
+        {
+            if (item == 0 || item == 1)
+                return selectedIndex >= 0 && selectedIndex < entries.Count;
+            if (item == 2)
+                return FileClipboard.HasItem;
+            return item >= 3 && item < ContextMenuItemCount;
+        }
+
+        private void ExecuteContextAction(int item)
+        {
             contextMenuVisible = false;
+            contextMenuSelection = -1;
+            // A visually disabled menu item must never perform an action.
+            if (!ContextActionEnabled(item))
+                return;
 
             if (item == 0)
                 CopySelected(false);
@@ -195,12 +301,11 @@ namespace ZonderqOS.GUI.Apps
                 RefreshAll();
             else if (item == 6)
                 GoUp();
-
-            return true;
         }
 
         private void Toolbar(int x)
         {
+            ResetClickSequence();
             if (x < 42)
             {
                 GoUp();
@@ -216,21 +321,24 @@ namespace ZonderqOS.GUI.Apps
             else if (x < 168)
             {
                 searchText = "";
+                ApplySearchFilter();
                 status = "Search cleared";
-                RefreshKeepStatus();
             }
         }
 
         private void SidebarClick(int x, int y)
         {
+            ResetClickSequence();
             SidebarEntry entry = GetSidebarEntryAt(y);
             if (entry == null || entry.IsSection)
                 return;
 
             if (entry.IsVolume)
             {
-                bool actionArea = x >= SidebarWidth - 28;
-                if (entry.PartitionIndex > 0 && actionArea)
+                // Only the painted 20x22 M/U button may change mount state.
+                // Clicking its label or the neighboring padding must never
+                // detach a FAT32 volume (or implicitly mount a new one).
+                if (entry.PartitionIndex > 0 && IsVolumeActionHit(entry, x, y))
                 {
                     if (entry.IsMounted)
                         UnmountVolume(entry);
@@ -247,7 +355,7 @@ namespace ZonderqOS.GUI.Apps
 
                 if (entry.PartitionIndex > 0)
                 {
-                    MountVolume(entry, true);
+                    status = "Use the M button to mount " + entry.Label;
                     return;
                 }
             }
@@ -263,31 +371,62 @@ namespace ZonderqOS.GUI.Apps
                 : entry.Label + ": " + entry.Detail;
         }
 
+        private bool IsVolumeActionHit(SidebarEntry target, int x, int y)
+        {
+            // Match RenderSidebar: sidebar origin X+4, action at width-27,
+            // button Y+7, 20x22. Reject padding and clipped rows.
+            const int actionLeft = 4 + SidebarWidth - 27;
+            if (x < actionLeft || x >= actionLeft + 20)
+                return false;
+
+            int rowY = ContentTop + 8;
+            int sidebarBottom = ContentTop + GridHeightForView;
+            for (int i = 0; i < sidebarEntries.Count; i++)
+            {
+                SidebarEntry entry = sidebarEntries[i];
+                int rowHeight = entry.IsSection ? SidebarSectionHeight : SidebarItemHeight;
+                if (rowY + rowHeight > sidebarBottom)
+                    break;
+                if (entry == target)
+                    return entry.IsVolume && entry.PartitionIndex > 0 &&
+                        y >= rowY + 7 && y < rowY + 29;
+                rowY += rowHeight;
+            }
+            return false;
+        }
+
         private void SidebarRightClick(int x, int y)
         {
             SidebarEntry entry = GetSidebarEntryAt(y);
             if (entry == null || !entry.IsVolume || entry.PartitionIndex <= 0)
                 return;
 
-            if (entry.IsMounted)
-                UnmountVolume(entry);
-            else
-                MountVolume(entry, false);
+            // Right-click is informational, not a destructive mount toggle.
+            // A stray context click must never unmount an open FAT32 volume.
+            // Explicit left-click on the M/U control remains available.
+            status = entry.IsMounted
+                ? "Mounted: " + (string.IsNullOrEmpty(entry.Path) ? entry.Label : entry.Path) +
+                    " (use U button to unmount)"
+                : "Not mounted: " + entry.Label + " (use M button to mount)";
         }
 
         private SidebarEntry GetSidebarEntryAt(int y)
         {
+            // Match FileManagerView.RenderSidebar's fully-visible row limit.
+            // A partially clipped volume row must not be clickable when the
+            // window is shrunk, especially for mount/unmount actions.
+            int sidebarBottom = ContentTop + GridHeightForView;
             int itemY = ContentTop + 8;
             for (int i = 0; i < sidebarEntries.Count; i++)
             {
                 SidebarEntry entry = sidebarEntries[i];
                 int height = entry.IsSection ? SidebarSectionHeight : SidebarItemHeight;
+                if (itemY + height > sidebarBottom)
+                    break;
                 if (y >= itemY && y < itemY + height)
                     return entry;
 
                 itemY += height;
-                if (itemY >= view.Height - FooterHeight - 10)
-                    break;
             }
 
             return null;
@@ -322,11 +461,8 @@ namespace ZonderqOS.GUI.Apps
                 return;
 
             string mountPoint = StorageMountManager.GetMountPoint(entry.PartitionIndex);
-            if (!string.IsNullOrEmpty(mountPoint) && IsInsidePath(currentPath, mountPoint))
-            {
-                currentPath = "/root";
-                searchText = "";
-            }
+            bool viewingVolume = !string.IsNullOrEmpty(mountPoint) &&
+                IsInsidePath(currentPath, mountPoint);
 
             string error;
             if (!StorageMountManager.TryUnmount(entry.PartitionIndex, out error))
@@ -335,6 +471,14 @@ namespace ZonderqOS.GUI.Apps
                 RebuildSidebar();
                 RefreshKeepStatus();
                 return;
+            }
+
+            // Keep the current directory and search intact on failed unmount.
+            // Only navigate away once the filesystem was actually detached.
+            if (viewingVolume)
+            {
+                currentPath = "/root";
+                searchText = "";
             }
 
             status = "Unmounted Partition " + entry.PartitionIndex;
@@ -375,6 +519,9 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleKeyboard(KeyEvent key)
         {
+            // A modified Enter must not create files; modifier shortcuts must
+            // never leak into the filename editor or a modal context menu.
+            bool modified = (key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) != 0;
             if (dialogMode != 0)
             {
                 if (key.Key == ConsoleKeyEx.Escape)
@@ -385,7 +532,10 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
-                if (key.Key == ConsoleKeyEx.Enter)
+                if (modified)
+                    return;
+
+                if (key.Key == ConsoleKeyEx.Enter && key.Modifiers == 0)
                 {
                     FinishCreate();
                     return;
@@ -398,12 +548,62 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
-                if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar) && dialogName.Length < 64)
+                if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar) &&
+                    (key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) == 0 &&
+                    dialogName.Length < 64)
                     dialogName += key.KeyChar;
                 return;
             }
 
-            bool control = (key.Modifiers & ConsoleModifiers.Control) != 0;
+            // Navigate the open context menu with the keyboard, skipping
+            // disabled Copy/Cut/Paste rows. Enter uses the same action path
+            // as a mouse click; Escape still dismisses without side effects.
+            if (contextMenuVisible)
+            {
+                if (key.Key == ConsoleKeyEx.Escape)
+                {
+                    contextMenuVisible = false;
+                    contextMenuSelection = -1;
+                    return;
+                }
+
+                // A context menu is modal: no typing into the search filter,
+                // navigation, refresh or clipboard writes behind the overlay.
+                if (modified)
+                    return;
+
+                if (key.Key == ConsoleKeyEx.UpArrow || key.Key == ConsoleKeyEx.DownArrow)
+                {
+                    int direction = key.Key == ConsoleKeyEx.UpArrow ? -1 : 1;
+                    int candidate = contextMenuSelection;
+                    for (int attempt = 0; attempt < ContextMenuItemCount; attempt++)
+                    {
+                        candidate = candidate < 0
+                            ? (direction > 0 ? 0 : ContextMenuItemCount - 1)
+                            : (candidate + direction + ContextMenuItemCount) % ContextMenuItemCount;
+                        if (ContextActionEnabled(candidate))
+                        {
+                            contextMenuSelection = candidate;
+                            break;
+                        }
+                    }
+                    return;
+                }
+
+                if (key.Key == ConsoleKeyEx.Enter && key.Modifiers == 0)
+                {
+                    if (contextMenuSelection >= 0)
+                        ExecuteContextAction(contextMenuSelection);
+                    return;
+                }
+
+                return;
+            }
+
+            // Ctrl+C/X/V are file actions, but Ctrl+Alt combinations
+            // belong to the global desktop shortcut layer.
+            bool control = (key.Modifiers & ConsoleModifiers.Control) != 0 &&
+                (key.Modifiers & (ConsoleModifiers.Alt | ConsoleModifiers.Shift)) == 0;
             if (control)
             {
                 if (key.Key == ConsoleKeyEx.C)
@@ -423,11 +623,24 @@ namespace ZonderqOS.GUI.Apps
                 }
             }
 
+            if (modified)
+                return;
+
             if (key.Key == ConsoleKeyEx.Escape)
             {
                 if (contextMenuVisible)
                 {
                     contextMenuVisible = false;
+                    contextMenuSelection = -1;
+                    return;
+                }
+
+                // Escape clears an active filename filter before closing the
+                // entire file manager. Keep the user in the current folder.
+                if (searchText.Length > 0)
+                {
+                    searchText = "";
+                    ApplySearchFilter();
                     return;
                 }
 
@@ -437,7 +650,17 @@ namespace ZonderqOS.GUI.Apps
 
             if (key.Key == ConsoleKeyEx.Backspace)
             {
-                GoUp();
+                // Backspace edits the live filename filter first. Without this,
+                // a typo unexpectedly navigated to the parent directory.
+                if (searchText.Length > 0)
+                {
+                    searchText = searchText.Substring(0, searchText.Length - 1);
+                    ApplySearchFilter();
+                }
+                else
+                {
+                    GoUp();
+                }
                 return;
             }
 
@@ -465,8 +688,33 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            if (key.Key == ConsoleKeyEx.Enter)
+            if (key.Key == ConsoleKeyEx.Home)
             {
+                SelectBoundary(false);
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.End)
+            {
+                SelectBoundary(true);
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.PageUp)
+            {
+                SelectPage(-1);
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.PageDown)
+            {
+                SelectPage(1);
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.Enter && key.Modifiers == 0)
+            {
+                ResetClickSequence();
                 if (selectedIndex >= 0)
                     OpenEntry(selectedIndex);
                 return;
@@ -478,11 +726,14 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar))
+            if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar) &&
+                (key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) == 0)
             {
                 if (searchText.Length < 48)
+                {
                     searchText += key.KeyChar;
-                Refresh();
+                    ApplySearchFilter();
+                }
             }
         }
 
@@ -522,8 +773,26 @@ namespace ZonderqOS.GUI.Apps
 
         private int Columns()
         {
-            int gridWidth = Math.Max(TileWidth, view.Width - SidebarWidth - 14);
-            return Math.Max(1, (gridWidth + TileGap) / (TileWidth + TileGap));
+            return Math.Max(1, (GridWidthForView + TileGap) / (TileWidth + TileGap));
+        }
+
+        private void SelectBoundary(bool last)
+        {
+            if (entries.Count == 0)
+                return;
+
+            ResetClickSequence();
+            contextMenuVisible = false;
+            selectedIndex = last ? entries.Count - 1 : 0;
+            EnsureSelectionVisible();
+        }
+
+        private void SelectPage(int direction)
+        {
+            // Page navigation advances by exactly the number of tiles
+            // painted in the current viewport, not a fixed row count.
+            int rows = Math.Max(1, (GridHeightForView + TileGap) / (TileHeight + TileGap));
+            Select(direction * Columns() * rows);
         }
 
         private void Select(int delta)
@@ -531,6 +800,9 @@ namespace ZonderqOS.GUI.Apps
             if (entries.Count == 0)
                 return;
 
+            // Keyboard selection must not complete a pending mouse double-click.
+            ResetClickSequence();
+            contextMenuVisible = false;
             if (selectedIndex < 0)
                 selectedIndex = delta >= 0 ? 0 : entries.Count - 1;
             else
@@ -542,14 +814,16 @@ namespace ZonderqOS.GUI.Apps
         private void EnsureSelectionVisible()
         {
             int cols = Columns();
-            int availableHeight = Math.Max(TileHeight, view.Height - ContentTop - FooterHeight - 12);
-            int rows = Math.Max(1, (availableHeight + TileGap) / (TileHeight + TileGap));
+            int rows = Math.Max(1, (GridHeightForView + TileGap) / (TileHeight + TileGap));
             int visible = cols * rows;
 
-            if (selectedIndex < scrollIndex)
-                scrollIndex = selectedIndex;
-            else if (selectedIndex >= scrollIndex + visible)
-                scrollIndex = selectedIndex - visible + cols;
+            if (selectedIndex >= 0)
+            {
+                if (selectedIndex < scrollIndex)
+                    scrollIndex = selectedIndex;
+                else if (selectedIndex >= scrollIndex + visible)
+                    scrollIndex = selectedIndex - visible + cols;
+            }
 
             scrollIndex -= scrollIndex % cols;
             if (scrollIndex < 0)
@@ -677,7 +951,9 @@ namespace ZonderqOS.GUI.Apps
         private void RefreshInternal(string keep)
         {
             entries.Clear();
+            cachedEntries.Clear();
             selectedIndex = -1;
+            ResetClickSequence();
             scrollIndex = 0;
             contextMenuVisible = false;
 
@@ -689,16 +965,47 @@ namespace ZonderqOS.GUI.Apps
                 Add(Directory.GetDirectories(currentPath), true);
                 Add(Directory.GetFiles(currentPath), false);
                 Sort();
+                cachedEntries.AddRange(entries);
 
                 if (!string.IsNullOrEmpty(searchText))
                     Filter();
 
-                status = string.IsNullOrEmpty(keep) ? entries.Count + " item(s)" : keep;
+                status = string.IsNullOrEmpty(keep)
+                    ? (string.IsNullOrEmpty(searchText)
+                        ? entries.Count + " item(s)"
+                        : "Search: " + searchText + " (" + entries.Count + " item(s))")
+                    : keep;
             }
             catch (Exception ex)
             {
+                entries.Clear();
+                cachedEntries.Clear();
                 status = "Read error: " + ex.Message;
             }
+        }
+
+        private void ApplySearchFilter()
+        {
+            // Rebuild only the visible list. Explicit F5, navigation and
+            // successful filesystem changes still refresh the disk snapshot.
+            // Keep the selected FileEntry object when it survives filtering;
+            // otherwise select the first search match so Enter works directly.
+            FileEntry previousSelection = selectedIndex >= 0 && selectedIndex < entries.Count
+                ? entries[selectedIndex] : null;
+            scrollIndex = 0;
+            contextMenuVisible = false;
+            ResetClickSequence();
+            entries.Clear();
+            entries.AddRange(cachedEntries);
+            if (!string.IsNullOrEmpty(searchText))
+                Filter();
+            selectedIndex = previousSelection == null ? -1 : entries.IndexOf(previousSelection);
+            if (selectedIndex < 0 && searchText.Length > 0 && entries.Count > 0)
+                selectedIndex = 0;
+            EnsureSelectionVisible();
+            status = string.IsNullOrEmpty(searchText)
+                ? entries.Count + " item(s)"
+                : "Search: " + searchText + " (" + entries.Count + " item(s))";
         }
 
         private void RebuildSidebar()
@@ -795,17 +1102,39 @@ namespace ZonderqOS.GUI.Apps
 
         private void Sort()
         {
-            for (int i = 1; i < entries.Count; i++)
+            // A large directory used to freeze the GUI with insertion sort
+            // (quadratic comparisons). Stable bottom-up merge sort avoids
+            // recursion and does not depend on Cosmos List<T>.Sort support.
+            int count = entries.Count;
+            if (count < 2)
+                return;
+
+            FileEntry[] scratch = new FileEntry[count];
+            for (int run = 1; run < count; run = run > count / 2 ? count : run * 2)
             {
-                FileEntry value = entries[i];
-                int j = i - 1;
-                while (j >= 0 && Compare(entries[j], value) > 0)
+                int start = 0;
+                while (start < count)
                 {
-                    entries[j + 1] = entries[j];
-                    j--;
+                    int middle = Math.Min(count, start + run);
+                    int end = Math.Min(count, middle + run);
+                    int left = start;
+                    int right = middle;
+
+                    for (int write = start; write < end; write++)
+                    {
+                        // Equal names retain their original order.
+                        if (left < middle && (right >= end ||
+                            Compare(entries[left], entries[right]) <= 0))
+                            scratch[write] = entries[left++];
+                        else
+                            scratch[write] = entries[right++];
+                    }
+
+                    start = end;
                 }
 
-                entries[j + 1] = value;
+                for (int i = 0; i < count; i++)
+                    entries[i] = scratch[i];
             }
         }
 
@@ -819,12 +1148,18 @@ namespace ZonderqOS.GUI.Apps
 
         private void Filter()
         {
-            string filter = searchText.ToLowerInvariant();
-            for (int i = entries.Count - 1; i >= 0; i--)
+            // Compact matching entries in place. Repeated RemoveAt(i) shifts
+            // the remaining list on each miss (quadratic for large folders).
+            // IndexOf avoids allocating lowercase copies of every filename.
+            int write = 0;
+            for (int read = 0; read < entries.Count; read++)
             {
-                if (!entries[i].Name.ToLowerInvariant().Contains(filter))
-                    entries.RemoveAt(i);
+                FileEntry entry = entries[read];
+                if (entry.Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0)
+                    entries[write++] = entry;
             }
+            if (write < entries.Count)
+                entries.RemoveRange(write, entries.Count - write);
         }
 
         public string CurrentPath { get { return currentPath; } }
@@ -835,6 +1170,7 @@ namespace ZonderqOS.GUI.Apps
         public List<FileEntry> Entries { get { return entries; } }
         public List<SidebarEntry> SidebarEntries { get { return sidebarEntries; } }
         public bool ContextMenuVisible { get { return contextMenuVisible; } }
+        public int ContextMenuSelection { get { return contextMenuSelection; } }
         public int ContextMenuX { get { return contextMenuX; } }
         public int ContextMenuY { get { return contextMenuY; } }
         public int DialogMode { get { return dialogMode; } }
@@ -935,11 +1271,11 @@ namespace ZonderqOS.GUI.Apps
 
             int footerY = Y + Height - FileManagerApp.FooterHeight - 4;
             int contentY = Y + FileManagerApp.ContentTop;
-            int contentH = Math.Max(40, footerY - contentY - 4);
+            int contentH = app.GridHeightForView;
             int sidebarX = X + 4;
             int sidebarW = FileManagerApp.SidebarWidth;
             int gridX = X + FileManagerApp.SidebarWidth + 8;
-            int gridW = Math.Max(FileManagerApp.TileWidth, Width - FileManagerApp.SidebarWidth - 12);
+            int gridW = app.GridWidthForView;
 
             canvas.DrawFilledRectangle(SidebarBackground, sidebarX, contentY, sidebarW, contentH);
             canvas.DrawRectangle(Color.FromArgb(53, 62, 72), sidebarX, contentY, sidebarW, contentH);
@@ -1095,14 +1431,19 @@ namespace ZonderqOS.GUI.Apps
                 FileEntry entry = app.Entries[index];
                 int tileX = x + i % cols * (FileManagerApp.TileWidth + FileManagerApp.TileGap);
                 int tileY = y + i / cols * (FileManagerApp.TileHeight + FileManagerApp.TileGap);
+                // The minimum 320x220 window leaves only 88px for the 94px
+                // tile. Never paint its selection into the footer below.
+                int visibleTileHeight = Math.Min(FileManagerApp.TileHeight, y + height - tileY);
+                if (visibleTileHeight <= 0)
+                    break;
 
                 if (index == app.SelectedIndex)
                 {
                     canvas.DrawFilledRectangle(Color.FromArgb(41, 66, 87), tileX, tileY,
-                        FileManagerApp.TileWidth, FileManagerApp.TileHeight);
+                        FileManagerApp.TileWidth, visibleTileHeight);
                     canvas.DrawRectangle(Accent, tileX, tileY,
-                        FileManagerApp.TileWidth, FileManagerApp.TileHeight);
-                    canvas.DrawFilledRectangle(Accent, tileX, tileY, 3, FileManagerApp.TileHeight);
+                        FileManagerApp.TileWidth, visibleTileHeight);
+                    canvas.DrawFilledRectangle(Accent, tileX, tileY, 3, visibleTileHeight);
                 }
 
                 int iconX = tileX + (FileManagerApp.TileWidth - iconSize) / 2;
@@ -1212,33 +1553,41 @@ namespace ZonderqOS.GUI.Apps
             int x = X + app.ContextMenuX;
             int y = Y + app.ContextMenuY;
 
-            UiPainter.Shadow(canvas, x, y, FileManagerApp.ContextMenuWidth,
-                FileManagerApp.ContextMenuHeight, UiMetrics.MenuRadius);
-            UiPainter.RoundedPanel(canvas, x, y, FileManagerApp.ContextMenuWidth,
-                FileManagerApp.ContextMenuHeight, UiMetrics.MenuRadius,
+            int menuWidth = app.ContextMenuWidthForView;
+            int menuHeight = app.ContextMenuHeightForView;
+            int rowHeight = app.ContextMenuItemHeightForView;
+
+            UiPainter.Shadow(canvas, x, y, menuWidth, menuHeight, UiMetrics.MenuRadius);
+            UiPainter.RoundedPanel(canvas, x, y, menuWidth, menuHeight, UiMetrics.MenuRadius,
                 UiPalette.SurfaceRaised, UiPalette.Border);
 
             bool selected = app.SelectedIndex >= 0 && app.SelectedIndex < app.Entries.Count;
-            DrawMenuItem(canvas, "Copy", "Ctrl+C", x, y + 0 * FileManagerApp.ContextMenuItemHeight, selected);
-            DrawMenuItem(canvas, "Cut", "Ctrl+X", x, y + 1 * FileManagerApp.ContextMenuItemHeight, selected);
-            DrawMenuItem(canvas, "Paste", "Ctrl+V", x, y + 2 * FileManagerApp.ContextMenuItemHeight, FileClipboard.HasItem);
-            canvas.DrawLine(Color.FromArgb(63, 73, 84), x + 8, y + 87, x + FileManagerApp.ContextMenuWidth - 8, y + 87);
-            DrawMenuItem(canvas, "New file", "", x, y + 3 * FileManagerApp.ContextMenuItemHeight, true);
-            DrawMenuItem(canvas, "New folder", "", x, y + 4 * FileManagerApp.ContextMenuItemHeight, true);
-            DrawMenuItem(canvas, "Refresh", "F5", x, y + 5 * FileManagerApp.ContextMenuItemHeight, true);
-            DrawMenuItem(canvas, "Go up", "Backspace", x, y + 6 * FileManagerApp.ContextMenuItemHeight, true);
+            DrawMenuItem(canvas, "Copy", "Ctrl+C", x, y + 0 * rowHeight, selected, 0);
+            DrawMenuItem(canvas, "Cut", "Ctrl+X", x, y + 1 * rowHeight, selected, 1);
+            DrawMenuItem(canvas, "Paste", "Ctrl+V", x, y + 2 * rowHeight, FileClipboard.HasItem, 2);
+            canvas.DrawLine(Color.FromArgb(63, 73, 84), x + 8, y + 3 * rowHeight,
+                x + menuWidth - 8, y + 3 * rowHeight);
+            DrawMenuItem(canvas, "New file", "", x, y + 3 * rowHeight, true, 3);
+            DrawMenuItem(canvas, "New folder", "", x, y + 4 * rowHeight, true, 4);
+            DrawMenuItem(canvas, "Refresh", "F5", x, y + 5 * rowHeight, true, 5);
+            DrawMenuItem(canvas, "Go up", "Backspace", x, y + 6 * rowHeight, true, 6);
         }
 
-        private void DrawMenuItem(Canvas canvas, string text, string shortcut, int x, int y, bool enabled)
+        private void DrawMenuItem(Canvas canvas, string text, string shortcut, int x, int y, bool enabled, int index)
         {
+            if (enabled && app.ContextMenuSelection == index)
+                canvas.DrawFilledRectangle(Color.FromArgb(53, 78, 99),
+                    x + 4, y + 1, Math.Max(1, app.ContextMenuWidthForView - 8),
+                    Math.Max(1, app.ContextMenuItemHeightForView - 2));
             Color color = enabled ? MainText : Color.FromArgb(91, 103, 114);
-            SmallTextRenderer.Draw(canvas, text, x + 10, y + 10, color);
+            int textOffset = Math.Max(4, (app.ContextMenuItemHeightForView - 9) / 2);
+            SmallTextRenderer.Draw(canvas, text, x + 10, y + textOffset, color);
 
             if (!string.IsNullOrEmpty(shortcut))
             {
                 int width = SmallTextRenderer.Width(shortcut);
                 SmallTextRenderer.Draw(canvas, shortcut,
-                    x + FileManagerApp.ContextMenuWidth - width - 10, y + 10,
+                    x + app.ContextMenuWidthForView - width - 10, y + textOffset,
                     enabled ? SecondaryText : Color.FromArgb(75, 86, 96));
             }
         }

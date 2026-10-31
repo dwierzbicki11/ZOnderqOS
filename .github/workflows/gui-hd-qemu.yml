@@ -1,0 +1,98 @@
+name: Experimental HD/FHD disk-backed GUI QEMU (stock Cosmos 3.0.95)
+
+on:
+  pull_request:
+    paths:
+      - 'source/GUI/**'
+      - 'Bootloader/limine.conf'
+      - 'ZonderqOS.csproj'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/smoke-services-qemu.sh'
+      - 'tools/qmp-gui-*.py'
+      - 'tests/test_gui_resolution_build.py'
+      - 'tests/test_qmp_gui_taskmanager.py'
+      - '.github/workflows/gui-hd-qemu.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  framebuffer-hd:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # OVMF std VGA gave 1360x768 (skewed) and virtio VGA gave
+          # 1280x800, both FAIL against exact 1366x768. Probe QXL VBE/GOP
+          # as a third isolated adapter; preserve the strict real-framebuffer
+          # and GUI interaction gates. No production display change.
+          - resolution: '1360x768'
+            video: 'std'
+          - resolution: '1366x768'
+            video: 'qxl'
+          - resolution: '1920x1080'
+            video: 'std'
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install exact-tag Cosmos, QEMU and synthetic FAT32 prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 tar clang lld nasm xorriso binutils \
+            qemu-system-x86 fdisk dosfstools mtools ovmf
+      - name: Validate pinned stock runtime and test-only mode contract
+        run: |
+          set -euo pipefail
+          bash run.sh --check
+          bash -n tools/build-cosmos-3095-local.sh
+          bash -n tools/smoke-services-qemu.sh
+          python3 -m py_compile tools/qmp-gui-login.py tools/qmp-gui-filemanager.py tools/qmp-gui-taskmanager.py
+          python3 tests/test_qmp_gui_taskmanager.py
+          python3 tests/test_gui_resolution_build.py
+      - name: Build isolated ${{ matrix.resolution }} disk GUI ISO (no production mode change)
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
+          ZONDERQ_3095_GUI_TEST_MODE: ${{ matrix.resolution }}
+        run: |
+          bash tools/build-cosmos-3095-local.sh disk
+          test -s output-3095/ZonderqOS-3095-disk.iso
+      - name: Verify actual ${{ matrix.resolution }} framebuffer and GUI input on two real boots
+        env:
+          SERVICE_QEMU_BOOT_SECONDS: '100'
+          SERVICE_QEMU_CAPTURE_SCREEN: '1'
+          SERVICE_QEMU_EXPECT_FRAMEBUFFER: ${{ matrix.resolution }}
+          SERVICE_QEMU_FIRMWARE: 'ovmf'
+          SERVICE_QEMU_VIDEO: ${{ matrix.video }}
+          SERVICE_QEMU_AUTOMATE_GUI_LOGIN: '1'
+          SERVICE_QEMU_PROBE_FILE_MANAGER: '1'
+          SERVICE_QEMU_PROBE_TASK_MANAGER: '1'
+        run: |
+          set -euo pipefail
+          bash tools/smoke-services-qemu.sh \
+            output-3095/ZonderqOS-3095-disk.iso gui-hd-qemu-output \
+            2>&1 | tee gui-hd-qemu-smoke.log
+      - name: Diagnostics (a requested mode is NOT a verified framebuffer)
+        if: always()
+        run: |
+          cat gui-hd-qemu-smoke.log 2>/dev/null || true
+          tail -n 120 gui-hd-qemu-output/first.serial.log gui-hd-qemu-output/second.serial.log 2>/dev/null || true
+          cat gui-hd-qemu-output/first.stderr.log gui-hd-qemu-output/second.stderr.log 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: gui-${{ matrix.resolution }}-stock-real-qemu-diagnostics
+          if-no-files-found: ignore
+          path: |
+            gui-hd-qemu-smoke.log
+            gui-hd-qemu-output/*.log
+            gui-hd-qemu-output/*.conf
+            gui-hd-qemu-output/*.ppm

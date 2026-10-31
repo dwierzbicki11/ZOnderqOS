@@ -19,6 +19,7 @@ namespace ZonderqOS.GUI
         private const int SearchHeight = 44;
         private const int RowHeight = 48;
         private const int FooterHeight = 34;
+        private const int DesktopTaskbarHeight = 44;
 
         private static readonly Color Surface = Color.FromArgb(20, 25, 31);
         private static readonly Color Header = Color.FromArgb(27, 34, 41);
@@ -36,14 +37,28 @@ namespace ZonderqOS.GUI
         private int selectedIndex;
         private int firstVisibleIndex;
         private int openingFrames;
+        private readonly int visibleRows;
+        private readonly int resultRowHeight;
 
         public CommandPalette(int screenWidth, int screenHeight, AppRegistry appRegistry)
             : base(0, 0, 680, HeaderHeight + SearchHeight + MaxVisibleResults * RowHeight + FooterHeight + 30)
         {
             registry = appRegistry ?? new AppRegistry();
             resultIndices = new int[System.Math.Max(1, registry.Count)];
-            X = System.Math.Max(8, (screenWidth - Width) / 2);
-            Y = System.Math.Max(18, System.Math.Min(100, (screenHeight - Height) / 4));
+            // The command palette must fit inside the desktop above the taskbar,
+            // including 640x480 and other modes smaller than its design size.
+            Width = System.Math.Min(Width, System.Math.Max(1, screenWidth - 16));
+            int desktopHeight = System.Math.Max(1, screenHeight - DesktopTaskbarHeight);
+            Height = System.Math.Min(Height, System.Math.Max(1, desktopHeight - 16));
+            int listSpace = System.Math.Max(1,
+                Height - (HeaderHeight + SearchHeight + 20) - FooterHeight);
+            visibleRows = System.Math.Max(1,
+                System.Math.Min(MaxVisibleResults, listSpace / RowHeight));
+            resultRowHeight = System.Math.Min(RowHeight,
+                System.Math.Max(1, listSpace / visibleRows));
+            X = System.Math.Max(0, (screenWidth - Width) / 2);
+            Y = System.Math.Max(0, System.Math.Min(
+                System.Math.Max(8, (desktopHeight - Height) / 4), desktopHeight - Height));
             Visible = false;
             RebuildResults();
         }
@@ -80,6 +95,11 @@ namespace ZonderqOS.GUI
                 return true;
             }
 
+            // Modified navigation/Enter must not accidentally launch an app.
+            // The overlay consumes these keys without changing its query.
+            if ((key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) != 0)
+                return true;
+
             if (key.Key == ConsoleKeyEx.UpArrow)
             {
                 MoveSelection(-1);
@@ -89,6 +109,35 @@ namespace ZonderqOS.GUI
             if (key.Key == ConsoleKeyEx.DownArrow)
             {
                 MoveSelection(1);
+                return true;
+            }
+
+            if (key.Key == ConsoleKeyEx.Home)
+            {
+                selectedIndex = 0;
+                KeepSelectionVisible();
+                return true;
+            }
+
+            if (key.Key == ConsoleKeyEx.End)
+            {
+                selectedIndex = System.Math.Max(0, resultCount - 1);
+                KeepSelectionVisible();
+                return true;
+            }
+
+            if (key.Key == ConsoleKeyEx.PageUp)
+            {
+                selectedIndex = System.Math.Max(0, selectedIndex - visibleRows);
+                KeepSelectionVisible();
+                return true;
+            }
+
+            if (key.Key == ConsoleKeyEx.PageDown)
+            {
+                selectedIndex = System.Math.Min(System.Math.Max(0, resultCount - 1),
+                    selectedIndex + visibleRows);
+                KeepSelectionVisible();
                 return true;
             }
 
@@ -152,9 +201,9 @@ namespace ZonderqOS.GUI
             }
 
             int listY = Y + HeaderHeight + SearchHeight + 20;
-            if (mouseY >= listY && mouseY < listY + MaxVisibleResults * RowHeight)
+            if (mouseY >= listY && mouseY < listY + visibleRows * resultRowHeight)
             {
-                int row = (mouseY - listY) / RowHeight;
+                int row = (mouseY - listY) / resultRowHeight;
                 int visibleIndex = firstVisibleIndex + row;
                 if (visibleIndex >= 0 && visibleIndex < resultCount)
                 {
@@ -191,8 +240,11 @@ namespace ZonderqOS.GUI
                 openingFrames--;
             IconManager.DrawScaled(canvas, IconType.Search, X + 16, Y + 13, 26, 26);
             SmallTextRenderer.Draw(canvas, "COMMAND PALETTE", X + 54, Y + 14, Text);
-            SmallTextRenderer.Draw(canvas, "ALT+SPACE", X + Width - 82, Y + 14, Muted);
-            SmallTextRenderer.Draw(canvas, "URUCHOM APLIKACJE PO NAZWIE LUB ID", X + 54, Y + 32, Muted);
+            if (Width >= 500)
+            {
+                SmallTextRenderer.Draw(canvas, "ALT+SPACE", X + Width - 82, Y + 14, Muted);
+                SmallTextRenderer.Draw(canvas, "URUCHOM APLIKACJE PO NAZWIE LUB ID", X + 54, Y + 32, Muted);
+            }
         }
 
         private void RenderSearch(Canvas canvas)
@@ -225,7 +277,7 @@ namespace ZonderqOS.GUI
                 return;
             }
 
-            for (int row = 0; row < MaxVisibleResults; row++)
+            for (int row = 0; row < visibleRows; row++)
             {
                 int resultIndex = firstVisibleIndex + row;
                 if (resultIndex >= resultCount)
@@ -235,24 +287,34 @@ namespace ZonderqOS.GUI
                 if (app == null)
                     continue;
 
-                int y = listY + row * RowHeight;
+                int y = listY + row * resultRowHeight;
                 bool selected = resultIndex == selectedIndex;
-                UiPainter.RoundedPanel(canvas, X + 14, y, Width - 28, RowHeight - 4,
+                UiPainter.RoundedPanel(canvas, X + 14, y, Width - 28,
+                    System.Math.Max(1, resultRowHeight - 4),
                     UiMetrics.TileRadius, selected ? RowSelected : Row,
                     selected ? SystemTheme.AccentBorder : Border);
                 if (selected)
-                    canvas.DrawFilledRectangle(SystemTheme.Accent, X + 14, y + 5, 3, RowHeight - 14);
+                    canvas.DrawFilledRectangle(SystemTheme.Accent, X + 14, y + 5, 3,
+                        System.Math.Max(1, resultRowHeight - 14));
 
-                IconManager.DrawScaled(canvas, app.Icon, X + 27, y + 10, 24, 24);
-                SmallTextRenderer.DrawClipped(canvas, app.Name, X + 64, y + 10, 250,
+                int iconSize = System.Math.Min(24, System.Math.Max(1, resultRowHeight - 12));
+                IconManager.DrawScaled(canvas, app.Icon, X + 27, y + 5, iconSize, iconSize);
+                int nameY = y + (resultRowHeight >= 42 ? 10 : 7);
+                SmallTextRenderer.DrawClipped(canvas, app.Name, X + 64, nameY,
+                    System.Math.Max(1, Width - (Width >= 620 ? 240 : 90)),
                     selected ? Text : Color.FromArgb(218, 225, 232));
-                SmallTextRenderer.DrawClipped(canvas, app.Description, X + 64, y + 27, 390, Muted);
+                if (resultRowHeight >= 42 && Width >= 540)
+                    SmallTextRenderer.DrawClipped(canvas, app.Description, X + 64, y + 27,
+                        System.Math.Max(1, Width - 110), Muted);
 
-                string idText = app.Id ?? string.Empty;
-                int idWidth = SmallTextRenderer.Width(idText);
-                SmallTextRenderer.DrawClipped(canvas, idText,
-                    X + Width - 30 - System.Math.Min(150, idWidth), y + 18, 150,
-                    selected ? SystemTheme.Accent : Muted);
+                if (Width >= 620)
+                {
+                    string idText = app.Id ?? string.Empty;
+                    int idWidth = SmallTextRenderer.Width(idText);
+                    SmallTextRenderer.DrawClipped(canvas, idText,
+                        X + Width - 30 - System.Math.Min(150, idWidth), y + 18, 150,
+                        selected ? SystemTheme.Accent : Muted);
+                }
             }
         }
 
@@ -260,8 +322,9 @@ namespace ZonderqOS.GUI
         {
             int y = Y + Height - FooterHeight;
             canvas.DrawLine(Border, X + 1, y, X + Width - 2, y);
-            SmallTextRenderer.Draw(canvas, "UP/DOWN WYBOR   ENTER URUCHOM   DELETE WYCZYSC   ESC ZAMKNIJ",
-                X + 18, y + 13, Muted);
+            SmallTextRenderer.Draw(canvas, Width >= 600
+                ? "UP/DOWN WYBOR   ENTER URUCHOM   DELETE WYCZYSC   ESC ZAMKNIJ"
+                : "UP/DOWN  ENTER  ESC", X + 18, y + 13, Muted);
             SmallTextRenderer.DrawUInt(canvas, (ulong)resultCount, X + Width - 34, y + 13, Text);
         }
 
@@ -283,10 +346,10 @@ namespace ZonderqOS.GUI
         {
             if (selectedIndex < firstVisibleIndex)
                 firstVisibleIndex = selectedIndex;
-            else if (selectedIndex >= firstVisibleIndex + MaxVisibleResults)
-                firstVisibleIndex = selectedIndex - MaxVisibleResults + 1;
+            else if (selectedIndex >= firstVisibleIndex + visibleRows)
+                firstVisibleIndex = selectedIndex - visibleRows + 1;
 
-            int maxFirst = System.Math.Max(0, resultCount - MaxVisibleResults);
+            int maxFirst = System.Math.Max(0, resultCount - visibleRows);
             if (firstVisibleIndex > maxFirst)
                 firstVisibleIndex = maxFirst;
             if (firstVisibleIndex < 0)

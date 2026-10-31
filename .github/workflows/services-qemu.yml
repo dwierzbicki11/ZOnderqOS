@@ -10,8 +10,17 @@ on:
       - 'ZonderqOS.csproj'
       - 'tools/build-cosmos-3095-local.sh'
       - 'tools/smoke-services-qemu.sh'
+      - 'tools/qmp-gui-login.py'
+      - 'tools/qmp-gui-filemanager.py'
+      - 'tools/qmp-gui-taskmanager.py'
       - '.github/workflows/services-qemu.yml'
   workflow_dispatch:
+
+# Only the newest commit needs a multi-minute ISO build and two QEMU boots.
+# Cancel superseded PR probes to avoid saturating CI runners.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -35,6 +44,7 @@ jobs:
           set -euo pipefail
           bash run.sh --check
           bash -n tools/smoke-services-qemu.sh
+          python3 -m py_compile tools/qmp-gui-login.py tools/qmp-gui-filemanager.py tools/qmp-gui-taskmanager.py
       - name: Build stock v3.0.95 disk-backed ISO (no Stage23 patches)
         env:
           ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
@@ -44,7 +54,12 @@ jobs:
       - name: Boot twice with one dedicated ZONDERQDATA FAT32 image (1 vCPU)
         env:
           SERVICE_QEMU_BOOT_SECONDS: '100'
+          SERVICE_QEMU_CAPTURE_SCREEN: '1'
+          SERVICE_QEMU_AUTOMATE_GUI_LOGIN: '1'
+          SERVICE_QEMU_PROBE_FILE_MANAGER: '1'
+          SERVICE_QEMU_PROBE_TASK_MANAGER: '1'
         run: |
+          set -euo pipefail
           bash tools/smoke-services-qemu.sh \
             output-3095/ZonderqOS-3095-disk.iso services-qemu-output \
             2>&1 | tee services-qemu-smoke.log
@@ -63,3 +78,4 @@ jobs:
             services-qemu-smoke.log
             services-qemu-output/*.log
             services-qemu-output/*.conf
+            services-qemu-output/*.ppm

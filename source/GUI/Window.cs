@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Graphics.Fonts;
@@ -23,6 +24,18 @@ namespace ZonderqOS.GUI
                 if (isActive == value)
                     return;
                 isActive = value;
+                if (!value)
+                {
+                    // A release can be delivered to a different window after
+                    // focus switches. Do not resume an old drag/resize when
+                    // this window is activated again.
+                    lastTitleClickTimestamp = 0;
+                    dragging = false;
+                    resizing = false;
+                    resizeMode = 0;
+                    hoveredResizeMode = 0;
+                    hoveredControl = 0;
+                }
                 UiAnimator.RequestFrames();
             }
         }
@@ -30,6 +43,7 @@ namespace ZonderqOS.GUI
 
         private int restoreX, restoreY, restoreWidth, restoreHeight;
         private static int desktopWidth, desktopHeight;
+        private int observedDesktopWidth, observedDesktopHeight;
         private bool dragging;
         private int dragOffsetX, dragOffsetY;
         private int hoveredControl;
@@ -39,8 +53,8 @@ namespace ZonderqOS.GUI
         private int hoveredResizeMode;
         private int resizeStartMouseX, resizeStartMouseY;
         private int resizeStartX, resizeStartY, resizeStartWidth, resizeStartHeight;
-        private int interactionFrame;
-        private int lastTitleClickFrame = -1000;
+        private long lastTitleClickTimestamp;
+        private int lastTitleClickX, lastTitleClickY;
 
         private const int TitleBarHeight = 38;
         private const int ButtonSize = 30;
@@ -68,20 +82,66 @@ namespace ZonderqOS.GUI
             // (Settings 1080x720, Calculator 500x690). Fit the initial window
             // before creating child controls so click coordinates stay aligned.
             // Never invent a display resolution: this is only a GUI layout cap.
-            if (desktopWidth > 0 && desktopHeight > 0)
+            ConstrainToDesktop();
+            observedDesktopWidth = desktopWidth;
+            observedDesktopHeight = desktopHeight;
+            UiAnimator.RequestFrames();
+        }
+
+        // Keep the whole caption and client area on the usable desktop.
+        // Also used when restoring a window after the display mode changes.
+        private void ConstrainToDesktop()
+        {
+            if (desktopWidth <= 0 || desktopHeight <= 0)
+                return;
+
+            // Leave breathing room on HD+; on 800x600 use all available pixels.
+            int margin = desktopWidth >= 1000 && desktopHeight >= 700 ? 12 : 0;
+            int availableWidth = System.Math.Max(1, desktopWidth - margin * 2);
+            int availableHeight = System.Math.Max(1, desktopHeight - margin * 2);
+            int minW = System.Math.Min(MinWidth, availableWidth);
+            int minH = System.Math.Min(MinHeight, availableHeight);
+
+            Width = System.Math.Max(minW, System.Math.Min(Width, availableWidth));
+            Height = System.Math.Max(minH, System.Math.Min(Height, availableHeight));
+            int x = System.Math.Max(margin, System.Math.Min(X, desktopWidth - Width - margin));
+            int y = System.Math.Max(margin, System.Math.Min(Y, desktopHeight - Height - margin));
+            MoveTo(x, y);
+        }
+
+        // Reflow existing windows only when the real desktop dimensions change.
+        // Normal windows are clamped; maximized windows follow the new bounds.
+        private void SyncDesktopBounds()
+        {
+            if (observedDesktopWidth == desktopWidth && observedDesktopHeight == desktopHeight)
+                return;
+
+            observedDesktopWidth = desktopWidth;
+            observedDesktopHeight = desktopHeight;
+
+            // A resize/drag started in the previous display mode holds old
+            // screen coordinates. Cancel it before applying new bounds;
+            // otherwise the next mouse-move can put the window off-screen.
+            dragging = false;
+            resizing = false;
+            resizeMode = 0;
+            hoveredResizeMode = 0;
+            hoveredControl = 0;
+            lastTitleClickTimestamp = 0;
+            if (desktopWidth <= 0 || desktopHeight <= 0)
+                return;
+
+            if (IsMaximized)
             {
-                // Leave a little desktop breathing room at HD and above.
-                // On 800x600 use all available pixels instead of clipping apps.
-                int margin = desktopWidth >= 1000 && desktopHeight >= 700 ? 12 : 0;
-                int availableWidth = desktopWidth - margin * 2;
-                int availableHeight = desktopHeight - margin * 2;
-                int minW = System.Math.Min(MinWidth, availableWidth);
-                int minH = System.Math.Min(MinHeight, availableHeight);
-                Width = System.Math.Max(minW, System.Math.Min(Width, desktopWidth - margin * 2));
-                Height = System.Math.Max(minH, System.Math.Min(Height, desktopHeight - margin * 2));
-                X = System.Math.Max(margin, System.Math.Min(X, desktopWidth - Width - margin));
-                Y = System.Math.Max(margin, System.Math.Min(Y, desktopHeight - Height - margin));
+                MoveTo(0, 0);
+                Width = desktopWidth;
+                Height = desktopHeight;
             }
+            else
+            {
+                ConstrainToDesktop();
+            }
+
             UiAnimator.RequestFrames();
         }
 
@@ -114,6 +174,9 @@ namespace ZonderqOS.GUI
             resizing = false;
             hoveredControl = 0;
             hoveredResizeMode = 0;
+            // A quick taskbar restore must not reuse the title-bar click
+            // from before minimization as the first half of a double-click.
+            lastTitleClickTimestamp = 0;
             IsMinimized = true;
             Visible = false;
             IsActive = false;
@@ -121,8 +184,26 @@ namespace ZonderqOS.GUI
 
         public void RestoreFromMinimized()
         {
+            dragging = false;
+            resizing = false;
+            resizeMode = 0;
+            hoveredResizeMode = 0;
+            hoveredControl = 0;
+            lastTitleClickTimestamp = 0;
             IsMinimized = false;
             Visible = true;
+            if (IsMaximized && desktopWidth > 0 && desktopHeight > 0)
+            {
+                MoveTo(0, 0);
+                Width = desktopWidth;
+                Height = desktopHeight;
+            }
+            else
+            {
+                ConstrainToDesktop();
+            }
+            observedDesktopWidth = desktopWidth;
+            observedDesktopHeight = desktopHeight;
             openingFrames = 8;
             UiAnimator.RequestFrames();
         }
@@ -143,12 +224,17 @@ namespace ZonderqOS.GUI
                 return;
             }
 
+            SyncDesktopBounds();
             dragging = false;
             resizing = false;
             hoveredResizeMode = 0;
 
             if (!IsMaximized)
             {
+                if (desktopWidth <= 0 || desktopHeight <= 0)
+                    return;
+
+                ConstrainToDesktop();
                 restoreX = X;
                 restoreY = Y;
                 restoreWidth = Width;
@@ -164,12 +250,20 @@ namespace ZonderqOS.GUI
                 Width = restoreWidth;
                 Height = restoreHeight;
                 IsMaximized = false;
+                ConstrainToDesktop();
             }
         }
 
         public bool ContainsPoint(int mouseX, int mouseY)
         {
-            return Visible && !IsMinimized && mouseX >= X && mouseX < X + Width &&
+            if (!Visible || IsMinimized)
+                return false;
+
+            // Input hit-testing can precede the first render after a mode
+            // change. Reflow here so focus and clicks use the new framebuffer
+            // bounds instead of a stale rectangle from the previous mode.
+            SyncDesktopBounds();
+            return mouseX >= X && mouseX < X + Width &&
                 mouseY >= Y && mouseY < Y + Height;
         }
 
@@ -178,7 +272,7 @@ namespace ZonderqOS.GUI
             if (!Visible || IsMinimized)
                 return;
 
-            interactionFrame++;
+            SyncDesktopBounds();
 
             int closeX = X + Width - RightPadding - ButtonSize;
             int maximizeX = closeX - ButtonSize;
@@ -223,16 +317,30 @@ namespace ZonderqOS.GUI
                 {
                     int newX = mouseX - dragOffsetX;
                     int newY = mouseY - dragOffsetY;
-                    int maxX = desktopWidth > Width ? desktopWidth - Width : 0;
-                    int maxY = desktopHeight > Height ? desktopHeight - Height : 0;
-                    MoveTo(System.Math.Max(0, System.Math.Min(newX, maxX)),
-                        System.Math.Max(0, System.Math.Min(newY, maxY)));
+                    // Moving the window is a drag, not the first click
+                    // of a future title-bar double-click.
+                    if (newX != X || newY != Y)
+                        lastTitleClickTimestamp = 0;
+                    // Dragging must respect the same desktop inset as
+                    // construction and restore, including the taskbar-free
+                    // work area. Otherwise a window jumps into the margin
+                    // and is moved back on the next desktop reflow.
+                    int margin = desktopWidth >= 1000 && desktopHeight >= 700 ? 12 : 0;
+                    int maxX = System.Math.Max(margin, desktopWidth - Width - margin);
+                    int maxY = System.Math.Max(margin, desktopHeight - Height - margin);
+                    MoveTo(System.Math.Max(margin, System.Math.Min(newX, maxX)),
+                        System.Math.Max(margin, System.Math.Min(newY, maxY)));
                 }
                 return;
             }
 
             if (wasClicked)
                 return;
+
+            // Caption buttons and resize handles are separate gestures.
+            // They must not prime a later title-bar double-click.
+            if (hoveredControl != 0 || hoveredResizeMode != 0)
+                lastTitleClickTimestamp = 0;
 
             if (hoveredControl == 1)
             {
@@ -258,14 +366,26 @@ namespace ZonderqOS.GUI
 
             bool inTitle = mouseY >= Y && mouseY < Y + TitleBarHeight && mouseX >= X && mouseX < X + Width;
             if (!inTitle || mouseX >= minimizeX)
+            {
+                lastTitleClickTimestamp = 0;
                 return;
+            }
 
-            bool doubleClick = interactionFrame - lastTitleClickFrame <= 28;
-            lastTitleClickFrame = interactionFrame;
+            // Frame counts are not elapsed time: a slow disk operation or
+            // rendering stall must not turn two distant clicks into a double-click.
+            long now = Stopwatch.GetTimestamp();
+            long elapsed = now - lastTitleClickTimestamp;
+            bool doubleClick = lastTitleClickTimestamp > 0 && elapsed >= 0 &&
+                elapsed <= Stopwatch.Frequency / 2 &&
+                System.Math.Abs(mouseX - lastTitleClickX) <= 12 &&
+                System.Math.Abs(mouseY - lastTitleClickY) <= 12;
+            lastTitleClickTimestamp = now;
+            lastTitleClickX = mouseX;
+            lastTitleClickY = mouseY;
             if (doubleClick)
             {
+                lastTitleClickTimestamp = 0;
                 ToggleMaximize();
-                lastTitleClickFrame = -1000;
                 return;
             }
 
@@ -317,28 +437,36 @@ namespace ZonderqOS.GUI
             int newWidth = resizeStartWidth;
             int newHeight = resizeStartHeight;
 
+            // Use the same inset for drag, resize and restore. A resize
+            // should never push a normal window into the taskbar or past
+            // the visible HD+ margin, even when the pointer leaves the edge.
+            int margin = desktopWidth >= 1000 && desktopHeight >= 700 ? 12 : 0;
             if ((resizeMode & ResizeLeft) != 0)
             {
-                int right = resizeStartX + resizeStartWidth;
-                newX = System.Math.Max(0, System.Math.Min(resizeStartX + dx, right - MinWidth));
+                int right = System.Math.Min(desktopWidth - margin, resizeStartX + resizeStartWidth);
+                int minWidth = System.Math.Min(MinWidth, System.Math.Max(1, right - margin));
+                newX = System.Math.Max(margin, System.Math.Min(resizeStartX + dx, right - minWidth));
                 newWidth = right - newX;
             }
             else if ((resizeMode & ResizeRight) != 0)
             {
-                int maxWidth = System.Math.Max(MinWidth, desktopWidth - resizeStartX);
-                newWidth = System.Math.Max(MinWidth, System.Math.Min(resizeStartWidth + dx, maxWidth));
+                int maxWidth = System.Math.Max(1, desktopWidth - margin - resizeStartX);
+                int minWidth = System.Math.Min(MinWidth, maxWidth);
+                newWidth = System.Math.Max(minWidth, System.Math.Min(resizeStartWidth + dx, maxWidth));
             }
 
             if ((resizeMode & ResizeTop) != 0)
             {
-                int bottom = resizeStartY + resizeStartHeight;
-                newY = System.Math.Max(0, System.Math.Min(resizeStartY + dy, bottom - MinHeight));
+                int bottom = System.Math.Min(desktopHeight - margin, resizeStartY + resizeStartHeight);
+                int minHeight = System.Math.Min(MinHeight, System.Math.Max(1, bottom - margin));
+                newY = System.Math.Max(margin, System.Math.Min(resizeStartY + dy, bottom - minHeight));
                 newHeight = bottom - newY;
             }
             else if ((resizeMode & ResizeBottom) != 0)
             {
-                int maxHeight = System.Math.Max(MinHeight, desktopHeight - resizeStartY);
-                newHeight = System.Math.Max(MinHeight, System.Math.Min(resizeStartHeight + dy, maxHeight));
+                int maxHeight = System.Math.Max(1, desktopHeight - margin - resizeStartY);
+                int minHeight = System.Math.Min(MinHeight, maxHeight);
+                newHeight = System.Math.Max(minHeight, System.Math.Min(resizeStartHeight + dy, maxHeight));
             }
 
             MoveTo(newX, newY);
@@ -351,6 +479,7 @@ namespace ZonderqOS.GUI
             if (!Visible || IsMinimized)
                 return;
 
+            SyncDesktopBounds();
             focusProgress = UiAnimator.Approach(focusProgress, IsActive ? 1f : 0f, 0.22f);
             Color border = UiAnimator.Blend(UiPalette.Border, UiPalette.AccentBorder, focusProgress);
             Color titleBar = UiAnimator.Blend(UiPalette.SurfaceRaised, UiPalette.AccentSoft, focusProgress * 0.45f);
