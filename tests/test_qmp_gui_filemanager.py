@@ -159,5 +159,67 @@ class FramebufferProbeTests(unittest.TestCase):
         })
 
 
+    def test_qmp_mouse_click_sends_press_then_release(self):
+        import json
+
+        class FakeChannel:
+            def __init__(self):
+                self.payloads = []
+
+            def write(self, payload):
+                self.payloads.append(json.loads(payload))
+
+            def readline(self):
+                return b'{"return": {}}\\n'.replace(b"\\n", b"\n")
+
+        channel = FakeChannel()
+        original_sleep = PROBE.time.sleep
+        try:
+            PROBE.time.sleep = lambda _: None
+            PROBE.click_mouse(channel)
+        finally:
+            PROBE.time.sleep = original_sleep
+
+        self.assertEqual(channel.payloads, [
+            {"execute": "input-send-event", "arguments": {"events": [
+                {"type": "btn", "data": {"button": "left", "down": True}}]}},
+            {"execute": "input-send-event", "arguments": {"events": [
+                {"type": "btn", "data": {"button": "left", "down": False}}]}},
+        ])
+
+    def test_qmp_mouse_click_releases_on_press_error_and_rejects_invalid_button(self):
+        import json
+
+        class FakeChannel:
+            def __init__(self):
+                self.payloads = []
+
+            def write(self, payload):
+                self.payloads.append(json.loads(payload))
+
+            def readline(self):
+                if len(self.payloads) == 1:
+                    return b'{"error": {"desc": "synthetic press failure"}}\\n'.replace(b"\\n", b"\n")
+                return b'{"return": {}}\\n'.replace(b"\\n", b"\n")
+
+        channel = FakeChannel()
+        original_sleep = PROBE.time.sleep
+        try:
+            PROBE.time.sleep = lambda _: None
+            with self.assertRaises(RuntimeError):
+                PROBE.click_mouse(channel)
+            with self.assertRaises(ValueError):
+                PROBE.mouse_button(channel, True, "wheel-up")
+            with self.assertRaises(TypeError):
+                PROBE.mouse_button(channel, 1)
+        finally:
+            PROBE.time.sleep = original_sleep
+
+        self.assertEqual(len(channel.payloads), 2)
+        self.assertTrue(channel.payloads[0]["arguments"]["events"][0]["data"]["down"])
+        self.assertFalse(channel.payloads[1]["arguments"]["events"][0]["data"]["down"])
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
