@@ -26,6 +26,7 @@ namespace ZonderqOS.GUI.Apps
         private int scrollIndex;
         private int lastClickIndex = -1;
         private long lastClickTimestamp;
+        private int lastClickX, lastClickY;
         private bool contextMenuVisible;
         private int contextMenuX;
         private int contextMenuY;
@@ -201,7 +202,9 @@ namespace ZonderqOS.GUI.Apps
             long elapsed = now - lastClickTimestamp;
             if (selectedIndex == index && lastClickIndex == index &&
                 lastClickTimestamp > 0 && elapsed >= 0 &&
-                elapsed <= Stopwatch.Frequency / 2)
+                elapsed <= Stopwatch.Frequency / 2 &&
+                Math.Abs(mouseX - lastClickX) <= 12 &&
+                Math.Abs(mouseY - lastClickY) <= 12)
             {
                 // Clear the old click before opening: navigating to a new
                 // directory must not turn the next single click on the same
@@ -214,6 +217,8 @@ namespace ZonderqOS.GUI.Apps
                 selectedIndex = index;
                 lastClickIndex = index;
                 lastClickTimestamp = now;
+                lastClickX = mouseX;
+                lastClickY = mouseY;
             }
 
             EnsureSelectionVisible();
