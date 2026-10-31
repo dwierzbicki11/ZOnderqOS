@@ -81,7 +81,7 @@ class AudioGen3Contract(unittest.TestCase):
         tone = read("source/Core/AudioTonePcm.cs")
         self.assertIn("(long)i * frequency * 2", tone)
         self.assertNotIn("Disk.", tone)
-        self.assertIn("AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, pcm))", runtime)
+        self.assertIn("AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled))", runtime)
         self.assertIn("PCM ACCEPTED_AND_DRAINED (not proof of audible output)", runtime)
         self.assertIn('if (command == "tone")', kernel)
         self.assertIn('if (command == "audioinfo")', kernel)
@@ -104,6 +104,17 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn('if (command == "wavtone")', kernel)
         self.assertIn("PlayWaveTestTone()", kernel)
         self.assertIn("AudioWavePcm.cs", project)
+        self.assertIn("AudioPcmVolume.cs", project)
+        self.assertIn("AudioPcmVolume.ScaleStereo16(pcm, volumePercent)", runtime)
+        self.assertIn('if (command == "volume")', kernel)
+        self.assertIn('command.StartsWith("volume ", StringComparison.Ordinal)', kernel)
+        self.assertIn("--volume", harness)
+        self.assertIn("verify-audio-volume-capture.py", workflow)
+        gain = read("source/Core/AudioPcmVolume.cs")
+        self.assertIn("percent < 0 || percent > 100", gain)
+        for forbidden in ("Disk.", "File.", "TryMount(", "WriteBlock("):
+            self.assertNotIn(forbidden, gain)
+
         self.assertIn("--command wavtone", workflow)
         self.assertIn('choices=("tone", "wavtone")', harness)
         for forbidden in ("System.IO", "File.", "Disk.", "TryMount(", "WriteBlock(",
