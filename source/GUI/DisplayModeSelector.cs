@@ -21,7 +21,20 @@ namespace ZonderqOS.GUI
         {
             Canvas canvas = Canvas.GetFullScreen();
             Mode current = canvas.Mode;
-            Mode chosen = SelectBest(current, canvas.AvailableModes);
+            Mode chosen = current;
+            try
+            {
+                chosen = SelectBest(current, canvas.AvailableModes);
+            }
+            catch (NotSupportedException)
+            {
+                // Firmware-only displays may not expose a mode list at all.
+                // Preserve the real framebuffer instead of aborting the GUI.
+            }
+            catch (InvalidOperationException)
+            {
+                // A display driver may be initialized but unable to enumerate.
+            }
 
             if (chosen != current)
             {
@@ -37,6 +50,11 @@ namespace ZonderqOS.GUI
                 }
                 catch (InvalidOperationException)
                 {
+                    canvas = Canvas.GetFullScreen();
+                }
+                catch (NotSupportedException)
+                {
+                    // A mode may be advertised but not switchable by the driver.
                     canvas = Canvas.GetFullScreen();
                 }
             }

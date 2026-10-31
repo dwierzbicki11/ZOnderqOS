@@ -142,6 +142,17 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn('"3.0.95", Good', SETTINGS)
         self.assertNotIn('"3.0.94", Good', SETTINGS)
 
+    def test_display_firmware_mode_enumeration_and_switch_fail_closed(self):
+        selector = code("source/GUI/DisplayModeSelector.cs")
+        self.assertIn("Mode chosen = current;", selector)
+        self.assertIn("chosen = SelectBest(current, canvas.AvailableModes);", selector)
+        self.assertIn("catch (NotSupportedException)", selector)
+        self.assertGreaterEqual(selector.count("catch (NotSupportedException)"), 2)
+        self.assertGreaterEqual(selector.count("catch (InvalidOperationException)"), 2)
+        self.assertIn("canvas = Canvas.GetFullScreen();", selector)
+        # Source/exception contract only; actual firmware fallback requires
+        # a real boot and must not be reported as hardware-verified.
+
     def test_display_mode_selection_enforces_both_4k_axes(self):
         selector = code("source/GUI/DisplayModeSelector.cs")
         self.assertIn("private const int MaxWidth = 3840;", selector)
