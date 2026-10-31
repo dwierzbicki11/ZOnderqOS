@@ -486,7 +486,9 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
-                if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar) && dialogName.Length < 64)
+                if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar) &&
+                    (key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) == 0 &&
+                    dialogName.Length < 64)
                     dialogName += key.KeyChar;
                 return;
             }
@@ -589,7 +591,8 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar))
+            if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar) &&
+                (key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) == 0)
             {
                 if (searchText.Length < 48)
                     searchText += key.KeyChar;
