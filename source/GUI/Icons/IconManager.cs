@@ -196,30 +196,35 @@ namespace ZonderqOS.GUI.Icons
             if (startX >= endX || startY >= endY)
                 return;
 
-            for (int py = startY; py < endY; py++)
-            {
-                int row = py * width;
-                int destinationY = y + py;
+            // A few representative opaque triples decide the path ONCE per
+            // icon. Gradient and translucent icons retain the exact original
+            // point-only renderer with no per-scanline run-detection overhead.
+            // Restrict coalescing to icons with repeated colors in top, middle
+            // and bottom visible rows; correctness never depends on the hint.
+            bool useRuns = endX - startX >= 3 &&
+                HasOpaqueTriple(pixels, startY * width + startX) &&
+                HasOpaqueTriple(pixels, ((startY + endY) / 2) * width + startX) &&
+                HasOpaqueTriple(pixels, (endY - 1) * width + startX);
 
-                // Most gradient/antialiased rows have no repeated opaque colors.
-                // Keep the original point-only loop for those rows: probing
-                // every pixel for runs made them slower in host A/B benchmarks.
-                // A three-pixel opaque prefix is a cheap conservative signal
-                // that this scanline can benefit from run coalescing.
-                if (endX - startX < 3 ||
-                    ((uint)pixels[row + startX] >> 24) != 255 ||
-                    pixels[row + startX] != pixels[row + startX + 1] ||
-                    pixels[row + startX] != pixels[row + startX + 2])
+            if (!useRuns)
+            {
+                for (int py = startY; py < endY; py++)
                 {
+                    int row = py * width;
                     for (int px = startX; px < endX; px++)
                     {
                         int argb = pixels[row + px];
                         if (((uint)argb >> 24) != 0)
-                            canvas.DrawPoint(Color.FromArgb(argb), x + px, destinationY);
+                            canvas.DrawPoint(Color.FromArgb(argb), x + px, y + py);
                     }
-                    continue;
                 }
+                return;
+            }
 
+            for (int py = startY; py < endY; py++)
+            {
+                int row = py * width;
+                int destinationY = y + py;
                 for (int px = startX; px < endX;)
                 {
                     int argb = pixels[row + px];
@@ -230,11 +235,8 @@ namespace ZonderqOS.GUI.Icons
                         continue;
                     }
 
-                    // Solid opaque PNG rows frequently contain repeated colors.
-                    // Coalesce runs of >= 3 identical pixels into one Canvas call.
-                    // Preserve DrawPoint for partially transparent pixels: the
-                    // Cosmos Canvas implementations may treat filled rectangles
-                    // differently from points when alpha is not 255.
+                    // Only opaque runs may use filled rectangles. Keep point
+                    // rendering for partial alpha to preserve Canvas behavior.
                     if (alpha == 255)
                     {
                         int end = px + 1;
@@ -255,6 +257,13 @@ namespace ZonderqOS.GUI.Icons
                     px++;
                 }
             }
+        }
+
+        private static bool HasOpaqueTriple(int[] pixels, int index)
+        {
+            int argb = pixels[index];
+            return ((uint)argb >> 24) == 255 &&
+                pixels[index + 1] == argb && pixels[index + 2] == argb;
         }
 
         private static void BlitScaledDirect(Canvas canvas, int[] source, int sourceWidth, int sourceHeight,
