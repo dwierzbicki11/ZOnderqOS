@@ -82,6 +82,14 @@ barConfig.SetCapability(0x60, 0x11, 0);
 barConfig.CapabilityPointer = 0x30;
 Check(!PciBarInventory.TryReadRealtek810xECapabilities(barConfig, 0, 2, 0, out caps) &&
       caps.Count == 0, "Out-of-range capability pointer must fail closed");
+barConfig.CapabilityPointer = 0x41; // malformed unaligned head
+Check(!PciBarInventory.TryReadRealtek810xECapabilities(barConfig, 0, 2, 0, out caps) &&
+      caps.Count == 0, "Unaligned capability head must fail closed");
+barConfig.CapabilityPointer = 0x40;
+barConfig.SetCapability(0x50, 0x05, 0x61); // malformed unaligned next
+Check(!PciBarInventory.TryReadRealtek810xECapabilities(barConfig, 0, 2, 0, out caps) &&
+      caps.Count == 0, "Unaligned capability next pointer must fail closed");
+barConfig.SetCapability(0x50, 0x05, 0x60);
 barConfig.CapabilityPointer = 0x40;
 barConfig.SetCapability(0x50, 0xFF, 0);
 Check(!PciBarInventory.TryReadRealtek810xECapabilities(barConfig, 0, 2, 0, out caps) &&
