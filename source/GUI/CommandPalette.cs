@@ -19,6 +19,7 @@ namespace ZonderqOS.GUI
         private const int SearchHeight = 44;
         private const int RowHeight = 48;
         private const int FooterHeight = 34;
+        private const int DesktopTaskbarHeight = 44;
 
         private static readonly Color Surface = Color.FromArgb(20, 25, 31);
         private static readonly Color Header = Color.FromArgb(27, 34, 41);
@@ -47,7 +48,8 @@ namespace ZonderqOS.GUI
             // The command palette must fit inside the desktop above the taskbar,
             // including 640x480 and other modes smaller than its design size.
             Width = System.Math.Min(Width, System.Math.Max(1, screenWidth - 16));
-            Height = System.Math.Min(Height, System.Math.Max(1, screenHeight - 16));
+            int desktopHeight = System.Math.Max(1, screenHeight - DesktopTaskbarHeight);
+            Height = System.Math.Min(Height, System.Math.Max(1, desktopHeight - 16));
             int listSpace = System.Math.Max(1,
                 Height - (HeaderHeight + SearchHeight + 20) - FooterHeight);
             visibleRows = System.Math.Max(1,
@@ -56,7 +58,7 @@ namespace ZonderqOS.GUI
                 System.Math.Max(1, listSpace / visibleRows));
             X = System.Math.Max(0, (screenWidth - Width) / 2);
             Y = System.Math.Max(0, System.Math.Min(
-                System.Math.Max(18, (screenHeight - Height) / 4), screenHeight - Height));
+                System.Math.Max(8, (desktopHeight - Height) / 4), desktopHeight - Height));
             Visible = false;
             RebuildResults();
         }
