@@ -624,7 +624,7 @@ class ResponsiveGui3094(unittest.TestCase):
     def test_taskbar_overflow_pages_are_visible_and_clickable(self):
         self.assertIn("private int firstVisibleAppIndex;", TASKBAR)
         self.assertIn("private int GetPageSlots(int runningCount, out bool overflow)", TASKBAR)
-        self.assertIn("overflow = runningCount > slots && slots >= 2;", TASKBAR)
+        self.assertIn("overflow = runningCount > slots && slots >= 1;", TASKBAR)
         self.assertIn("firstVisibleAppIndex += pageSlots;", TASKBAR)
         self.assertIn("if (firstVisibleAppIndex >= runningCount)", TASKBAR)
         self.assertEqual(TASKBAR.count("int pageSlots = GetPageSlots(runningCount, out overflow);"), 2)
@@ -643,7 +643,7 @@ class ResponsiveGui3094(unittest.TestCase):
         # At 320px the full 278px tray obscured the Start button and
         # left zero application slots. The compact tray keeps the clock
         # and notification button, while reserving space for paging.
-        for screen_width in (320, 360, 400, 480, 540, 559, 560, 640,
+        for screen_width in (240, 320, 360, 400, 480, 540, 559, 560, 640,
                              800, 1024, 1366, 1920):
             tray_width = 132 if screen_width < 560 else 278
             tray_x = screen_width - tray_width
@@ -652,9 +652,9 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertLessEqual(notification_x + 34, screen_width - 88)
             self.assertLessEqual(screen_width - 78 + 68, screen_width)
             slots = max(0, (tray_x - 60 + 5) // 45)
-            self.assertGreaterEqual(slots, 2)
+            self.assertGreaterEqual(slots, 1)
             for running_count in (0, 1, 2, 9, 10, 11, 23, 50):
-                overflow = running_count > slots and slots >= 2
+                overflow = running_count > slots and slots >= 1
                 page_slots = slots - 1 if overflow else slots
                 self.assertGreaterEqual(page_slots, 0)
                 if page_slots:
@@ -663,13 +663,21 @@ class ResponsiveGui3094(unittest.TestCase):
                 if overflow:
                     arrow_x = 60 + page_slots * 45
                     self.assertLessEqual(arrow_x + 40, tray_x)
-                    offsets = list(range(0, running_count, page_slots))
-                    self.assertEqual(
-                        [index for offset in offsets
-                         for index in range(offset, min(running_count, offset + page_slots))],
-                        list(range(running_count))
-                    )
-                    self.assertTrue(offsets[-1] + page_slots >= running_count)
+                    if page_slots:
+                        offsets = list(range(0, running_count, page_slots))
+                        self.assertEqual(
+                            [index for offset in offsets
+                             for index in range(offset, min(running_count, offset + page_slots))],
+                            list(range(running_count))
+                        )
+                        self.assertTrue(offsets[-1] + page_slots >= running_count)
+                    else:
+                        # At 240px there is room for just one taskbar slot.
+                        # The arrow cycles MRU windows; no zero-step paging.
+                        self.assertEqual(slots, 1)
+                        self.assertGreater(running_count, 1)
+                        self.assertIn("if (pageSlots == 0)", TASKBAR)
+                        self.assertIn("applicationManager.CycleWindow(false);", TASKBAR)
                 else:
                     self.assertLessEqual(running_count, page_slots)
 
@@ -692,7 +700,7 @@ class ResponsiveGui3094(unittest.TestCase):
                     full_slots = max(0, (screen_width - full - 60 + 5) // 45)
                     self.assertGreaterEqual(slots, full_slots)
                 for running_count in (0, 2, 5, 20):
-                    overflow = running_count > slots and slots >= 2
+                    overflow = running_count > slots and slots >= 1
                     page_slots = slots - 1 if overflow else slots
                     if overflow:
                         self.assertLessEqual(60 + page_slots * 45 + 40, tray_x)
