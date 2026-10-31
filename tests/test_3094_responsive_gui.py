@@ -303,7 +303,7 @@ class ResponsiveGui3094(unittest.TestCase):
         # Pure geometry check for the render/hit-test layout. The last
         # button is reserved for the page switcher only when necessary.
         self.assertIn("private const int CompactTrayWidth = 132;", TASKBAR)
-        self.assertIn("return Width < 560 ? CompactTrayWidth : TrayWidth;", TASKBAR)
+        self.assertIn("return Width < 560 || !global::ZonderqOS.SystemSettings.ShowTrayStatus", TASKBAR)
         self.assertIn("Width - GetTrayWidth() - (StartButtonWidth + SidePadding + 6)", TASKBAR)
         self.assertEqual(TASKBAR.count("int trayX = Width - GetTrayWidth();"), 2)
         self.assertIn("GetTrayWidth() == TrayWidth &&", TASKBAR)
@@ -340,6 +340,30 @@ class ResponsiveGui3094(unittest.TestCase):
                     self.assertTrue(offsets[-1] + page_slots >= running_count)
                 else:
                     self.assertLessEqual(running_count, page_slots)
+
+    def test_taskbar_reclaims_app_slots_when_status_tiles_are_disabled(self):
+        # The same tray geometry must drive painting, hit testing and paging.
+        # Disabling NET/VOL status must never reserve their old 278px width.
+        self.assertIn("if (GetTrayWidth() == TrayWidth &&", TASKBAR)
+        self.assertEqual(TASKBAR.count("int trayX = Width - GetTrayWidth();"), 2)
+        for screen_width in (320, 400, 560, 640, 800, 1024, 1366, 1920):
+            compact = 132
+            full = 278
+            for show_status in (False, True):
+                tray_width = full if show_status and screen_width >= 560 else compact
+                tray_x = screen_width - tray_width
+                slots = max(0, (tray_x - 60 + 5) // 45)
+                self.assertGreaterEqual(slots, 2)
+                self.assertGreaterEqual(tray_x, 48)
+                self.assertLessEqual(tray_x + 9 + 34, screen_width - 88)
+                if screen_width >= 560 and not show_status:
+                    full_slots = max(0, (screen_width - full - 60 + 5) // 45)
+                    self.assertGreaterEqual(slots, full_slots)
+                for running_count in (0, 2, 5, 20):
+                    overflow = running_count > slots and slots >= 2
+                    page_slots = slots - 1 if overflow else slots
+                    if overflow:
+                        self.assertLessEqual(60 + page_slots * 45 + 40, tray_x)
 
     def test_taskbar_focus_switch_reveals_active_page_without_resetting_manual_page(self):
         sync = TASKBAR.split("private void SyncActivePage(", 1)[1].split(
