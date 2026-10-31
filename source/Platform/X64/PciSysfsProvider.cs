@@ -40,6 +40,24 @@ namespace ZonderqOS.Platform
             }
         }
 
+        public static bool TryResolveRealtekMsiXMemoryBars(DeviceDescriptor device,
+            out PciNicMsiXBarResolution resolution)
+        {
+            resolution = default;
+            byte bus, slot, function;
+            if (!TryParseRealtekBdf(device, out bus, out slot, out function)) return false;
+            try
+            {
+                return PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(
+                    new X64.PciConfigIoAccessor(), bus, slot, function, out resolution);
+            }
+            catch
+            {
+                resolution = default;
+                return false;
+            }
+        }
+
         public static bool TryReadRealtekPowerState(DeviceDescriptor device,
             out PciNicPowerState info)
         {
