@@ -21,9 +21,11 @@ namespace ZonderqOS
             if (Realtek810xEReadOnlyProbeDriver.ProbeOffers != 1 ||
                 Realtek810xEReadOnlyProbeDriver.SuccessfulSamples != 1)
             {
+                string reason = Realtek810xEReadOnlyProbeDriver.LastDeclineReason ?? "no matching PCI probe offer";
                 DiagnosticLog.WriteString("[NET3095-RTL810XE][FAIL] no unique valid MMIO snapshot; offers=" +
                     Realtek810xEReadOnlyProbeDriver.ProbeOffers +
-                    " samples=" + Realtek810xEReadOnlyProbeDriver.SuccessfulSamples + "\n");
+                    " samples=" + Realtek810xEReadOnlyProbeDriver.SuccessfulSamples +
+                    " reason=" + reason + "\n");
                 return;
             }
 
