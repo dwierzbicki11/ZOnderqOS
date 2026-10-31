@@ -410,6 +410,101 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject PCM8 longer than two seconds");
 
+        // Signed PCM24 (little-endian) must downconvert to PCM16 with the
+        // sign preserved; low 8 bits are discarded, not rounded or saturated.
+        byte[] pcm24 = new byte[pcm.Length / 2 * 3];
+        for (int i = 0; i < pcm.Length / 2; i++)
+        {
+            pcm24[i * 3] = 0x7f; // deliberately nonzero discarded low bits
+            pcm24[i * 3 + 1] = pcm[i * 2];
+            pcm24[i * 3 + 2] = pcm[i * 2 + 1];
+        }
+        byte[] stereo24 = AudioWavePcm.EncodePcm24AtRate(pcm24, 48000, 2);
+        byte[] decoded24 = AudioWavePcm.DecodeStereo16(stereo24);
+        Expect(decoded24.Length == pcm.Length, "48k PCM24 stereo output frame count");
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(decoded24[i] == pcm[i], "PCM24 stereo signed downconversion bit-exact");
+
+        byte[] mono24 = new byte[monoPcm.Length / 2 * 3];
+        for (int i = 0; i < monoPcm.Length / 2; i++)
+        {
+            mono24[i * 3] = 0;
+            mono24[i * 3 + 1] = monoPcm[i * 2];
+            mono24[i * 3 + 2] = monoPcm[i * 2 + 1];
+        }
+        byte[] mono24Wave = AudioWavePcm.EncodePcm24AtRate(mono24, 48000, 1);
+        byte[] decodedMono24 = AudioWavePcm.DecodeStereo16(mono24Wave);
+        Expect(decodedMono24.Length == pcm.Length, "48k PCM24 mono upmix output frame count");
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(decodedMono24[i] == pcm[i], "PCM24 mono downmix duplicates both channels");
+
+        byte[] odd24 = AudioWavePcm.EncodePcm24AtRate(new byte[] { 0xff, 0x00, 0x80 }, 48000, 1);
+        Expect(odd24.Length == 48 && odd24[44] == 0xff && odd24[47] == 0,
+            "odd-sized PCM24 mono data is RIFF padded, pad excluded from data size");
+        byte[] decodedOdd24 = AudioWavePcm.DecodeStereo16(odd24);
+        Expect(decodedOdd24.Length == 4 && decodedOdd24[0] == 0 && decodedOdd24[1] == 128 &&
+            decodedOdd24[2] == 0 && decodedOdd24[3] == 128,
+            "signed PCM24 minimum maps to signed PCM16 minimum on both channels");
+        byte[] max24 = AudioWavePcm.DecodeStereo16(
+            AudioWavePcm.EncodePcm24AtRate(new byte[] { 0xff, 0xff, 0x7f }, 48000, 1));
+        Expect(max24[0] == 255 && max24[1] == 127 && max24[2] == 255 && max24[3] == 127,
+            "signed PCM24 maximum maps to signed PCM16 maximum");
+
+        byte[] pcm24at44100 = new byte[source44100.Length / 2 * 3];
+        for (int i = 0; i < source44100.Length / 2; i++)
+        {
+            pcm24at44100[i * 3] = 0;
+            pcm24at44100[i * 3 + 1] = source44100[i * 2];
+            pcm24at44100[i * 3 + 2] = source44100[i * 2 + 1];
+        }
+        byte[] wave24at44100 = AudioWavePcm.EncodePcm24AtRate(pcm24at44100, 44100, 2);
+        byte[] converted24at44100 = AudioWavePcm.DecodeStereo16(wave24at44100);
+        Expect(converted24at44100.Length == converted44100.Length,
+            "44.1k PCM24 stereo resampling preserves duration");
+        for (int i = 0; i < converted44100.Length; i++)
+            Expect(converted24at44100[i] == converted44100[i],
+                "44.1k PCM24 stereo resampling matches equivalent PCM16");
+
+        byte[] mono24at44100 = new byte[sourceMono44100.Length / 2 * 3];
+        for (int i = 0; i < sourceMono44100.Length / 2; i++)
+        {
+            mono24at44100[i * 3] = 0;
+            mono24at44100[i * 3 + 1] = sourceMono44100[i * 2];
+            mono24at44100[i * 3 + 2] = sourceMono44100[i * 2 + 1];
+        }
+        byte[] convertedMono24at44100 = AudioWavePcm.DecodeStereo16(
+            AudioWavePcm.EncodePcm24AtRate(mono24at44100, 44100, 1));
+        for (int i = 0; i < converted44100.Length; i++)
+            Expect(convertedMono24at44100[i] == converted44100[i],
+                "44.1k PCM24 mono resampling matches equivalent stereo");
+
+        byte[] max24Pcm = new byte[48000 * 2 * 2 * 3];
+        byte[] max24Wave = AudioWavePcm.EncodePcm24AtRate(max24Pcm, 48000, 2);
+        using (var stream = new MemoryStream(max24Wave, false))
+        {
+            byte[] max24Decoded = AudioWaveInput.DecodeBounded(stream);
+            Expect(max24Decoded.Length == 48000 * 2 * 4,
+                "exact two-second PCM24 stereo fits bounded stream and PCM16 output");
+        }
+        byte[] invalid24 = (byte[])stereo24.Clone();
+        invalid24[32] = 4; // PCM24 stereo must have six-byte frames
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(invalid24); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject incorrect PCM24 block alignment");
+        rejected = false;
+        try { AudioWavePcm.EncodePcm24AtRate(new byte[5], 48000, 2); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject incomplete PCM24 stereo frame");
+        rejected = false;
+        try { AudioWavePcm.EncodePcm24AtRate(new byte[48000 * 2 * 2 * 3 + 6], 48000, 2); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject PCM24 duration exceeding two seconds");
+        rejected = false;
+        try { AudioWavePcm.EncodePcm24AtRate(new byte[3], 32000, 1); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "reject unsupported PCM24 sample rate");
+
         byte[] quarter = AudioPcmVolume.ScaleStereo16(pcm, 25);
         byte[] muted = AudioPcmVolume.ScaleStereo16(pcm, 0);
         byte[] full = AudioPcmVolume.ScaleStereo16(pcm, 100);
