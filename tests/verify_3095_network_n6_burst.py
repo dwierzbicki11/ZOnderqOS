@@ -55,18 +55,31 @@ def last_http_frame(serial: str, frames: list[bytes]) -> int:
 
 
 def check_frames(pcap: bytes, after_index: int = -1) -> None:
+    """Require exactly 32 unmodified, in-order guest TX frames after HTTP.
+
+    A subsequence match is insufficient: it could silently ignore a duplicate,
+    reordered frame, wrong source MAC, nonzero padding or a 33rd submission.
+    Scan all candidate burst frames, not only valid Ethernet headers, so a
+    corrupted header cannot be hidden by a later valid retransmission.
+    """
     frames = list(pcap_frames(pcap))
-    cursor = after_index + 1
-    for sequence in range(COUNT):
+    seen = 0
+    for index, frame in enumerate(frames):
+        if len(frame) < 14 or not frame[14:].startswith(TAG):
+            continue
+        if index <= after_index:
+            raise ValueError("E1000E TX burst preceded the completed HTTP exchange")
+        if seen >= COUNT:
+            raise ValueError("unexpected extra E1000E TX burst frame")
         expected = (BROADCAST + MAC + ETHER_TYPE + TAG +
-                    f"{sequence:02d}".encode("ascii"))
-        while cursor < len(frames) and not (
-            len(frames[cursor]) >= 60 and frames[cursor].startswith(expected)
-        ):
-            cursor += 1
-        if cursor == len(frames):
-            raise ValueError(f"missing or reordered E1000E TX burst frame {sequence:02d}")
-        cursor += 1
+                    f"{seen:02d}".encode("ascii"))
+        if (len(frame) != 60 or not frame.startswith(expected) or
+                any(frame[len(expected):])):
+            raise ValueError(
+                f"missing, reordered, malformed or forged E1000E TX burst frame {seen:02d}")
+        seen += 1
+    if seen != COUNT:
+        raise ValueError(f"incomplete E1000E TX burst: {seen}/{COUNT} frames")
 
 
 def validate(serial: str, pcap: bytes) -> str:
@@ -112,7 +125,11 @@ def self_test() -> None:
     negative_frames = [
         frames[:-1],
         frames[:12] + frames[13:],
+        frames + [frames[-1]],  # Duplicate/33rd descriptor is not silently ignored.
+        frames[:8] + [frames[8], frames[8]] + frames[9:],
         frames[:12] + [frames[13], frames[12]] + frames[14:],
+        frames[:8] + [frames[8][:-1] + b"X"] + frames[9:],
+        frames[:8] + [frames[8] + b"\x00"] + frames[9:],
         frames[:8] + [frames[8][:6] + wrong_mac + frames[8][12:]] + frames[9:],
         frames[:8] + [frames[8][:12] + b"\x08\x00" + frames[8][14:]] + frames[9:],
         frames[:8] + [frames[8][:14] + TAG + b"99" + frames[8][14 + len(TAG) + 2:]] + frames[9:],
