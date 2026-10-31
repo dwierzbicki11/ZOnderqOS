@@ -305,10 +305,15 @@ namespace ZonderqOS.GUI
                     // of a future title-bar double-click.
                     if (newX != X || newY != Y)
                         lastTitleClickTimestamp = 0;
-                    int maxX = desktopWidth > Width ? desktopWidth - Width : 0;
-                    int maxY = desktopHeight > Height ? desktopHeight - Height : 0;
-                    MoveTo(System.Math.Max(0, System.Math.Min(newX, maxX)),
-                        System.Math.Max(0, System.Math.Min(newY, maxY)));
+                    // Dragging must respect the same desktop inset as
+                    // construction and restore, including the taskbar-free
+                    // work area. Otherwise a window jumps into the margin
+                    // and is moved back on the next desktop reflow.
+                    int margin = desktopWidth >= 1000 && desktopHeight >= 700 ? 12 : 0;
+                    int maxX = System.Math.Max(margin, desktopWidth - Width - margin);
+                    int maxY = System.Math.Max(margin, desktopHeight - Height - margin);
+                    MoveTo(System.Math.Max(margin, System.Math.Min(newX, maxX)),
+                        System.Math.Max(margin, System.Math.Min(newY, maxY)));
                 }
                 return;
             }
