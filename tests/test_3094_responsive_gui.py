@@ -1030,10 +1030,10 @@ class ResponsiveGui3094(unittest.TestCase):
     def test_desktop_shortcuts_fit_actual_usable_height(self):
         layout = DESKTOP.split("private void InitializeDesktopShortcuts()", 1)[1].split(
             "private void LaunchRegisteredApp(", 1)[0]
-        self.assertIn("int usableHeight = Math.Max(1, (int)canvas.Height - TaskbarHeight);", layout)
+        self.assertIn("int usableHeight = System.Math.Max(1, (int)canvas.Height - TaskbarHeight);", layout)
         self.assertIn("const int shortcutHeight = 86;", layout)
         self.assertIn("const int shortcutRowStride = 94;", layout)
-        self.assertIn("int rowsPerColumn = Math.Max(1,", layout)
+        self.assertIn("int rowsPerColumn = System.Math.Max(1,", layout)
         self.assertIn("int column = target / rowsPerColumn;", layout)
         self.assertIn("int row = target % rowsPerColumn;", layout)
         self.assertNotIn("const int rowsPerColumn = 9;", layout)
@@ -1056,8 +1056,8 @@ class ResponsiveGui3094(unittest.TestCase):
             "private bool IsPointOverWindow(", 1)[0]
         self.assertIn("long now = Stopwatch.GetTimestamp();", desktop)
         self.assertIn("elapsed <= Stopwatch.Frequency / 2", desktop)
-        self.assertIn("Math.Abs(mouseX - lastShortcutClickX) <= 12", desktop)
-        self.assertIn("Math.Abs(mouseY - lastShortcutClickY) <= 12", desktop)
+        self.assertIn("System.Math.Abs(mouseX - lastShortcutClickX) <= 12", desktop)
+        self.assertIn("System.Math.Abs(mouseY - lastShortcutClickY) <= 12", desktop)
         self.assertIn("lastShortcutClickTimestamp = now;", desktop)
         self.assertNotIn("lastShortcutClickFrame", DESKTOP)
         self.assertIn("if (windowCapturedClick)\n                            lastShortcutClickTimestamp = 0;", DESKTOP)

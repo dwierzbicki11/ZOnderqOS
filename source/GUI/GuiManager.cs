@@ -709,8 +709,8 @@ namespace ZonderqOS.GUI
                     const int shortcutTop = 22;
                     const int shortcutHeight = 86;
                     const int shortcutRowStride = 94;
-                    int usableHeight = Math.Max(1, (int)canvas.Height - TaskbarHeight);
-                    int rowsPerColumn = Math.Max(1,
+                    int usableHeight = System.Math.Max(1, (int)canvas.Height - TaskbarHeight);
+                    int rowsPerColumn = System.Math.Max(1,
                         (usableHeight - shortcutTop - shortcutHeight) / shortcutRowStride + 1);
                     int column = target / rowsPerColumn;
                     int row = target % rowsPerColumn;
@@ -1143,8 +1143,8 @@ namespace ZonderqOS.GUI
             bool doubleClick = selectedShortcut == hitIndex && lastShortcutClick == hitIndex &&
                 lastShortcutClickTimestamp > 0 && elapsed >= 0 &&
                 elapsed <= Stopwatch.Frequency / 2 &&
-                Math.Abs(mouseX - lastShortcutClickX) <= 12 &&
-                Math.Abs(mouseY - lastShortcutClickY) <= 12;
+                System.Math.Abs(mouseX - lastShortcutClickX) <= 12 &&
+                System.Math.Abs(mouseY - lastShortcutClickY) <= 12;
 
             selectedShortcut = hitIndex;
             lastShortcutClick = hitIndex;
