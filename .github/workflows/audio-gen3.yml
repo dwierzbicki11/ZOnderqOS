@@ -6,6 +6,9 @@ on:
       - feat/audio-gen3
     paths:
       - 'ZonderqOS.csproj'
+      - 'run.sh'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'docs/audio-gen3-bringup.md'
       - 'Kernel.cs'
       - 'source/Core/Audio*.cs'
       - 'source/Shell/Command.cs'
@@ -18,6 +21,9 @@ on:
   pull_request:
     paths:
       - 'ZonderqOS.csproj'
+      - 'run.sh'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'docs/audio-gen3-bringup.md'
       - 'Kernel.cs'
       - 'source/Core/Audio*.cs'
       - 'source/Shell/Command.cs'
