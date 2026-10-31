@@ -345,6 +345,27 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "null stream rejected");
 
+        // External read-only streams may return tiny chunks and cannot seek.
+        // Exercise the actual bounded reader without mounting a filesystem.
+        using (var fragmented = new ShortReadStream(wave44100))
+        {
+            byte[] fromFragments = AudioWaveInput.DecodeBounded(fragmented);
+            Expect(fromFragments.Length == converted44100.Length,
+                "nonseekable fragmented read-only stream decodes full WAV");
+            for (int i = 0; i < fromFragments.Length; i++)
+                Expect(fromFragments[i] == converted44100[i],
+                    "fragmented stream PCM matches contiguous input");
+            Expect(fragmented.CanRead, "bounded loader does not dispose caller-owned stream");
+        }
+        rejected = false;
+        try { using var fragmented = new ShortReadStream(truncatedStream); AudioWaveInput.DecodeBounded(fragmented); }
+        catch (EndOfStreamException) { rejected = true; }
+        Expect(rejected, "fragmented truncated WAV must fail");
+        rejected = false;
+        try { using var fragmented = new ShortReadStream(trailingStream); AudioWaveInput.DecodeBounded(fragmented); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "fragmented trailing WAV must fail");
+
         // Unsigned PCM8 WAV is distinct from signed PCM16: silence is 128.
         // Exercise actual decoder bytes, not a model of the conversion.
         byte[] pcm8 = new byte[pcm.Length / 2];
@@ -533,6 +554,42 @@ static class Test
 
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
     }
+}
+
+// Simulates a read-only filesystem/device stream that cannot seek and
+// returns at most seven bytes per read. No real disk is accessed.
+sealed class ShortReadStream : Stream
+{
+    private readonly byte[] data;
+    private int offset;
+
+    public ShortReadStream(byte[] bytes) { data = bytes; }
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position
+    {
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
+    }
+    public override int Read(byte[] buffer, int index, int count)
+    {
+        if (offset == data.Length) return 0;
+        int take = Math.Min(7, Math.Min(count, data.Length - offset));
+        Array.Copy(data, offset, buffer, index, take);
+        offset += take;
+        return take;
+    }
+    public override int ReadByte()
+    {
+        if (offset == data.Length) return -1;
+        return data[offset++];
+    }
+    public override void Flush() { }
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+    public override void SetLength(long value) => throw new NotSupportedException();
+    public override void Write(byte[] buffer, int index, int count) => throw new NotSupportedException();
 }
 
 namespace ZonderqOS.Hardware
