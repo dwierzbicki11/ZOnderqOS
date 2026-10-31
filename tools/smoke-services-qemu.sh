@@ -75,6 +75,8 @@ boot_guest() {
       # changes caused by opening File Manager via Alt+Space -> search -> Enter.
       python3 "$(dirname "$0")/qmp-gui-filemanager.py" "$socket" "$OUT/$phase" \
         > "$OUT/$phase.filemanager-probe.log" 2>&1 || fail "$phase: GUI File Manager interaction probe failed"
+      # Publish measured framebuffer changes in CI logs, not just artifacts.
+      cat "$OUT/$phase.filemanager-probe.log"
     fi
     sleep 1
   done
