@@ -39,6 +39,15 @@ namespace ZonderqOS.GUI
         private const int AppButtonGap = 5;
         private const int SidePadding = 6;
         private const int TrayWidth = 278;
+        private const int CompactTrayWidth = 132;
+
+        // At low resolutions the full NET/VOL tray would cover the Start
+        // button and leave no slots for open windows. Keep notifications and
+        // the clock, but collapse the optional status tiles.
+        private int GetTrayWidth()
+        {
+            return Width < 560 ? CompactTrayWidth : TrayWidth;
+        }
 
         public Taskbar(int screenWidth, int screenHeight, int height, Action onStartClick, ApplicationManager manager)
             : this(screenWidth, screenHeight, height, onStartClick, manager, null)
@@ -141,7 +150,7 @@ namespace ZonderqOS.GUI
 
         private int GetPageSlots(int runningCount, out bool overflow)
         {
-            int available = Width - TrayWidth - (StartButtonWidth + SidePadding + 6);
+            int available = Width - GetTrayWidth() - (StartButtonWidth + SidePadding + 6);
             int slots = System.Math.Max(0, (available + AppButtonGap) / (AppButtonSize + AppButtonGap));
             overflow = runningCount > slots && slots >= 2;
             return overflow ? slots - 1 : slots;
@@ -341,12 +350,12 @@ namespace ZonderqOS.GUI
 
         private void RenderSystemTray(Canvas canvas)
         {
-            int trayX = Width - TrayWidth;
+            int trayX = Width - GetTrayWidth();
             canvas.DrawLine(Color.FromArgb(48, 59, 70), trayX, Y + 7, trayX, Y + Height - 7);
 
             DrawNotificationTile(canvas, trayX + 9, 34);
 
-            if (global::ZonderqOS.SystemSettings.ShowTrayStatus)
+            if (GetTrayWidth() == TrayWidth && global::ZonderqOS.SystemSettings.ShowTrayStatus)
             {
                 bool networkReady = global::ZonderqOS.Network.IsReady;
                 DrawTrayTile(canvas, trayX + 49, 58, IconType.Network, "NET", networkReady);
@@ -434,7 +443,7 @@ namespace ZonderqOS.GUI
             if (mouseY < Y || mouseY >= Y + Height)
                 return;
 
-            int trayX = Width - TrayWidth;
+            int trayX = Width - GetTrayWidth();
             int notificationX = trayX + 9;
             if (mouseX >= notificationX && mouseX < notificationX + 34)
             {
