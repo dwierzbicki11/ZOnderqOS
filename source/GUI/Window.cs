@@ -421,30 +421,34 @@ namespace ZonderqOS.GUI
             int newWidth = resizeStartWidth;
             int newHeight = resizeStartHeight;
 
+            // Use the same inset for drag, resize and restore. A resize
+            // should never push a normal window into the taskbar or past
+            // the visible HD+ margin, even when the pointer leaves the edge.
+            int margin = desktopWidth >= 1000 && desktopHeight >= 700 ? 12 : 0;
             if ((resizeMode & ResizeLeft) != 0)
             {
-                int right = System.Math.Min(desktopWidth, resizeStartX + resizeStartWidth);
-                int minWidth = System.Math.Min(MinWidth, System.Math.Max(1, right));
-                newX = System.Math.Max(0, System.Math.Min(resizeStartX + dx, right - minWidth));
+                int right = System.Math.Min(desktopWidth - margin, resizeStartX + resizeStartWidth);
+                int minWidth = System.Math.Min(MinWidth, System.Math.Max(1, right - margin));
+                newX = System.Math.Max(margin, System.Math.Min(resizeStartX + dx, right - minWidth));
                 newWidth = right - newX;
             }
             else if ((resizeMode & ResizeRight) != 0)
             {
-                int maxWidth = System.Math.Max(1, desktopWidth - resizeStartX);
+                int maxWidth = System.Math.Max(1, desktopWidth - margin - resizeStartX);
                 int minWidth = System.Math.Min(MinWidth, maxWidth);
                 newWidth = System.Math.Max(minWidth, System.Math.Min(resizeStartWidth + dx, maxWidth));
             }
 
             if ((resizeMode & ResizeTop) != 0)
             {
-                int bottom = System.Math.Min(desktopHeight, resizeStartY + resizeStartHeight);
-                int minHeight = System.Math.Min(MinHeight, System.Math.Max(1, bottom));
-                newY = System.Math.Max(0, System.Math.Min(resizeStartY + dy, bottom - minHeight));
+                int bottom = System.Math.Min(desktopHeight - margin, resizeStartY + resizeStartHeight);
+                int minHeight = System.Math.Min(MinHeight, System.Math.Max(1, bottom - margin));
+                newY = System.Math.Max(margin, System.Math.Min(resizeStartY + dy, bottom - minHeight));
                 newHeight = bottom - newY;
             }
             else if ((resizeMode & ResizeBottom) != 0)
             {
-                int maxHeight = System.Math.Max(1, desktopHeight - resizeStartY);
+                int maxHeight = System.Math.Max(1, desktopHeight - margin - resizeStartY);
                 int minHeight = System.Math.Min(MinHeight, maxHeight);
                 newHeight = System.Math.Max(minHeight, System.Math.Min(resizeStartHeight + dy, maxHeight));
             }
