@@ -173,6 +173,22 @@ def self_test() -> None:
         frames.append(raw + bytes(60 - len(raw)))
     check_markers(serial)
     assert check_frames(synthetic_capture(frames)) == COUNT - 1
+    # The same capture also contains the earlier N1 broadcast frame and
+    # unrelated IPv4/ARP traffic; neither may count as a burst submission.
+    n1_payload = b"ZONDERQ3095TX"
+    n1_frame = (BROADCAST + MAC + ETHER_TYPE + n1_payload +
+                bytes(60 - 14 - len(n1_payload)))
+    unrelated = BROADCAST + MAC + b"\x08\x06" + bytes(46)
+    assert check_frames(synthetic_capture([n1_frame, unrelated] + frames)) == COUNT + 1
+    for malformed_n1 in (
+        n1_frame[:6] + bytes.fromhex("020000000099") + n1_frame[12:],
+        n1_frame[:-1] + b"X",
+    ):
+        try:
+            check_frames(synthetic_capture([malformed_n1] + frames))
+        except ValueError:
+            continue
+        raise AssertionError("accepted malformed N1 frame alongside valid burst")
 
     # Synthetic ICMP fixture: use the N3 frame builder, changing only the
     # distinct N6 ID. No fixture is claimed to be real guest RX proof.
@@ -268,7 +284,7 @@ def self_test() -> None:
     # present. A subsequence-only validator used to silently ignore them.
     extra_bad_frames = [
         frames[8][:14] + b"ZONDERQ3095-BURST-X" + frames[8][14 + len(TAG) + 2:],
-        frames[8][:12] + b"\\x08\\x00" + frames[8][14:],
+        frames[8][:12] + b"\x08\x00" + frames[8][14:],
         frames[8][:6] + wrong_mac + frames[8][12:],
         frames[8][:14] + TAG + b"99" + frames[8][14 + len(TAG) + 2:],
     ]
