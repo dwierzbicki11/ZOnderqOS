@@ -102,8 +102,8 @@ def self_test() -> None:
     assert "PASS" in validate(sample)
     link_down = sample.replace("link=up speed=100 duplex=full",
                                "link=down speed=0 duplex=unknown")
-    link_down = link_down.replace("link=up speed=100 (register",
-                                  "link=down speed=0 (register")
+    link_down = link_down.replace("link=up speed=100 txconfig=",
+                                  "link=down speed=0 txconfig=")
     assert "PASS" in validate(link_down)
     rtl8105 = sample.replace("0x44800000 xid=0x448 variant=RTL8106e",
                              "0x40900000 xid=0x409 variant=RTL8105e")
@@ -119,7 +119,7 @@ def self_test() -> None:
         sample.replace("xid=0x448", "xid=0x409", 1),
         sample.replace("variant=RTL8106e", "variant=unknown", 1),
         sample.replace("SNAPSHOT=PASS", "SNAPSHOT=FAKE"),
-        sample.replace("link=up speed=100 (register", "link=down speed=0 (register"),
+        sample.replace("link=up speed=100 txconfig=", "link=down speed=0 txconfig="),
         sample.replace("HEARTBEAT=2", "HEARTBEAT=4"),
         sample.replace("HEARTBEAT=2", "HEARTBEAT=1"),
         sample.replace("HEARTBEAT=2\n", ""),
