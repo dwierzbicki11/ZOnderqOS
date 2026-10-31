@@ -44,6 +44,7 @@ namespace ZonderqOS.GUI
         private int resizeStartMouseX, resizeStartMouseY;
         private int resizeStartX, resizeStartY, resizeStartWidth, resizeStartHeight;
         private long lastTitleClickTimestamp;
+        private int lastTitleClickX, lastTitleClickY;
 
         private const int TitleBarHeight = 38;
         private const int ButtonSize = 30;
@@ -344,8 +345,12 @@ namespace ZonderqOS.GUI
             long now = Stopwatch.GetTimestamp();
             long elapsed = now - lastTitleClickTimestamp;
             bool doubleClick = lastTitleClickTimestamp > 0 && elapsed >= 0 &&
-                elapsed <= Stopwatch.Frequency / 2;
+                elapsed <= Stopwatch.Frequency / 2 &&
+                System.Math.Abs(mouseX - lastTitleClickX) <= 12 &&
+                System.Math.Abs(mouseY - lastTitleClickY) <= 12;
             lastTitleClickTimestamp = now;
+            lastTitleClickX = mouseX;
+            lastTitleClickY = mouseY;
             if (doubleClick)
             {
                 lastTitleClickTimestamp = 0;

@@ -1051,5 +1051,39 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertEqual(rows, {600: 5, 768: 7, 1080: 10}[height])
 
 
+    def test_desktop_shortcut_double_click_uses_elapsed_time_and_proximity(self):
+        desktop = DESKTOP.split("private void UpdateDesktopInteractions(", 1)[1].split(
+            "private bool IsPointOverWindow(", 1)[0]
+        self.assertIn("long now = Stopwatch.GetTimestamp();", desktop)
+        self.assertIn("elapsed <= Stopwatch.Frequency / 2", desktop)
+        self.assertIn("Math.Abs(mouseX - lastShortcutClickX) <= 12", desktop)
+        self.assertIn("Math.Abs(mouseY - lastShortcutClickY) <= 12", desktop)
+        self.assertIn("lastShortcutClickTimestamp = now;", desktop)
+        self.assertNotIn("lastShortcutClickFrame", DESKTOP)
+        self.assertIn("if (windowCapturedClick)\n                            lastShortcutClickTimestamp = 0;", DESKTOP)
+        self.assertIn("lastShortcutClickTimestamp = 0;\n                desktopShortcuts[hitIndex].Open();", desktop)
+        for elapsed_ms, dx, dy, expected in (
+            (100, 0, 0, True), (499, 12, 12, True),
+            (501, 0, 0, False), (100, 13, 0, False),
+            (100, 0, -13, False), (2500, 0, 0, False),
+        ):
+            self.assertEqual(elapsed_ms <= 500 and abs(dx) <= 12 and abs(dy) <= 12,
+                             expected)
+
+    def test_titlebar_double_click_requires_nearby_coordinates(self):
+        title = WINDOW.split("long now = Stopwatch.GetTimestamp();", 1)[1].split(
+            "private int GetResizeMode(", 1)[0]
+        self.assertIn("System.Math.Abs(mouseX - lastTitleClickX) <= 12", title)
+        self.assertIn("System.Math.Abs(mouseY - lastTitleClickY) <= 12", title)
+        self.assertIn("lastTitleClickX = mouseX;", title)
+        self.assertIn("lastTitleClickY = mouseY;", title)
+        self.assertLess(title.index("lastTitleClickX = mouseX;"),
+                        title.index("if (doubleClick)"))
+        for dx, dy in ((0, 0), (12, -12), (-12, 12)):
+            self.assertTrue(abs(dx) <= 12 and abs(dy) <= 12)
+        for dx, dy in ((13, 0), (0, 13), (-20, -20)):
+            self.assertFalse(abs(dx) <= 12 and abs(dy) <= 12)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -32,7 +32,8 @@ namespace ZonderqOS.GUI
         private long lastActivityTimestamp;
         private int selectedShortcut = -1;
         private int lastShortcutClick = -1;
-        private int lastShortcutClickFrame = -1000;
+        private long lastShortcutClickTimestamp;
+        private int lastShortcutClickX, lastShortcutClickY;
         private int frameCounter;
 
         private const int TaskbarHeight = 44;
@@ -110,6 +111,7 @@ namespace ZonderqOS.GUI
                     if (desktopContextMenu != null)
                         desktopContextMenu.Visible = false;
                     selectedShortcut = -1;
+                    lastShortcutClickTimestamp = 0;
                 }, applicationManager, ToggleNotificationCenter);
 
                 global::ZonderqOS.NotificationService.Post(
@@ -363,6 +365,8 @@ namespace ZonderqOS.GUI
                             ((currentLeftButtonState && !previousLeftButtonState) ||
                              (currentRightButtonState && !previousRightButtonState)) &&
                             IsPointOverWindow(mouseX, mouseY);
+                        if (windowCapturedClick)
+                            lastShortcutClickTimestamp = 0;
                         // An open File Manager menu is modal for the next mouse
                         // press. Route it to its owner before window focus changes,
                         // and do not replay it on the taskbar or desktop underneath.
@@ -741,6 +745,7 @@ namespace ZonderqOS.GUI
             if (desktopContextMenu != null)
                 desktopContextMenu.Visible = false;
             selectedShortcut = -1;
+            lastShortcutClickTimestamp = 0;
             commandPalette.Show();
         }
 
@@ -748,7 +753,7 @@ namespace ZonderqOS.GUI
         {
             selectedShortcut = -1;
             lastShortcutClick = -1;
-            lastShortcutClickFrame = -1000;
+            lastShortcutClickTimestamp = 0;
 
             if (desktopContextMenu != null)
                 desktopContextMenu.Visible = false;
@@ -768,6 +773,7 @@ namespace ZonderqOS.GUI
                 if (desktopContextMenu != null)
                     desktopContextMenu.Visible = false;
                 selectedShortcut = -1;
+                lastShortcutClickTimestamp = 0;
             }
             notificationCenter.Toggle();
         }
@@ -786,7 +792,7 @@ namespace ZonderqOS.GUI
 
             selectedShortcut = -1;
             lastShortcutClick = -1;
-            lastShortcutClickFrame = -1000;
+            lastShortcutClickTimestamp = 0;
             lockRequested = true;
         }
 
@@ -941,7 +947,7 @@ namespace ZonderqOS.GUI
             lockRequested = false;
             selectedShortcut = -1;
             lastShortcutClick = -1;
-            lastShortcutClickFrame = -1000;
+            lastShortcutClickTimestamp = 0;
 
             if (applicationManager != null)
                 applicationManager.CloseAll();
@@ -1087,6 +1093,7 @@ namespace ZonderqOS.GUI
                 {
                     selectedShortcut = -1;
                     lastShortcutClick = -1;
+                    lastShortcutClickTimestamp = 0;
                     desktopContextMenu.ShowAt(mouseX, mouseY, (int)canvas.Width,
                         (int)canvas.Height - TaskbarHeight);
                 }
@@ -1106,7 +1113,10 @@ namespace ZonderqOS.GUI
             }
 
             if (!desktopAvailable)
+            {
+                lastShortcutClickTimestamp = 0;
                 return;
+            }
 
             int hitIndex = -1;
             for (int i = 0; i < desktopShortcuts.Length; i++)
@@ -1122,21 +1132,33 @@ namespace ZonderqOS.GUI
             {
                 selectedShortcut = -1;
                 lastShortcutClick = -1;
+                lastShortcutClickTimestamp = 0;
                 return;
             }
 
+            // Frame counts do not measure elapsed time during disk stalls.
+            // Two distant clicks on the same shortcut must not launch it.
+            long now = Stopwatch.GetTimestamp();
+            long elapsed = now - lastShortcutClickTimestamp;
             bool doubleClick = selectedShortcut == hitIndex && lastShortcutClick == hitIndex &&
-                               frameCounter - lastShortcutClickFrame <= 28;
+                lastShortcutClickTimestamp > 0 && elapsed >= 0 &&
+                elapsed <= Stopwatch.Frequency / 2 &&
+                Math.Abs(mouseX - lastShortcutClickX) <= 12 &&
+                Math.Abs(mouseY - lastShortcutClickY) <= 12;
 
             selectedShortcut = hitIndex;
             lastShortcutClick = hitIndex;
-            lastShortcutClickFrame = frameCounter;
+            lastShortcutClickTimestamp = now;
+            lastShortcutClickX = mouseX;
+            lastShortcutClickY = mouseY;
 
             if (doubleClick)
             {
-                desktopShortcuts[hitIndex].Open();
+                // Consume the pair before launching (which may perform IO).
                 selectedShortcut = -1;
                 lastShortcutClick = -1;
+                lastShortcutClickTimestamp = 0;
+                desktopShortcuts[hitIndex].Open();
             }
         }
 
