@@ -125,7 +125,10 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn('if (command == "wavmono")', kernel)
         self.assertIn("--command wavmono", workflow)
         self.assertIn("riffEnd != wave.Length", parser)
-        self.assertIn("size % FrameBytes != 0", parser)
+        # Mono uses 2-byte frames; stereo uses 4-byte frames. Validate after fmt parsing.
+        self.assertIn("int sourceFrameBytes = channels * 2;", parser)
+        self.assertIn("dataSize % sourceFrameBytes != 0", parser)
+        self.assertIn("pcm.Length % FrameBytes != 0", parser)
         self.assertIn("rate != SampleRate", parser)
         self.assertIn("AudioWavePcm.DecodeStereo16(wave)", runtime)
         self.assertIn('if (command == "wavtone")', kernel)
