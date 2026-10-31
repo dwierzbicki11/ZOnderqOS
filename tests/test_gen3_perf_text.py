@@ -68,6 +68,30 @@ class Gen3TextRendererPerformanceContracts(unittest.TestCase):
         self.assertIn(": Glyph(ch, row);", SOURCE)
         self.assertIn("ch = NormalizeGlyph(ch);", SOURCE)
 
+    def test_blank_glyph_fast_path_preserves_ink(self):
+        # Only normalized ASCII space can bypass every row. NBSP is
+        # normalized to space first, so it must be included as well.
+        normalized = SOURCE.index("ch = NormalizeGlyph(ch);", SOURCE.index("private static void DrawChar"))
+        blank = SOURCE.index("if (ch == ' ')", normalized)
+        offset = SOURCE.index("int glyphOffset =", normalized)
+        self.assertLess(normalized, blank)
+        self.assertLess(blank, offset)
+        self.assertIn("case '\\u00A0': return ' ';", SOURCE)
+        self.assertIn("if (bits == 0)\\n                    continue;".replace("\\n", "\n"), SOURCE)
+
+        for pattern in PATTERNS:
+            for bits in glyph_rows(pattern):
+                baseline, optimized, _ = pixels_and_spans(bits)
+                if bits == "00000":
+                    optimized = []  # production skips the empty row
+                self.assertEqual(baseline, optimized)
+
+    def test_ascii_space_is_an_empty_glyph(self):
+        match = re.search(r"case ' ': pattern = \"([01]+)\"; break;", SOURCE)
+        self.assertIsNotNone(match)
+        self.assertEqual(set(match.group(1)), {"0"})
+        self.assertGreaterEqual(len(match.group(1)), 35)
+
     def test_span_renderer_is_used(self):
         self.assertIn("int runStart = col++;", SOURCE)
         self.assertIn("while (col < 5 && (bits & (1 << (4 - col))) != 0)", SOURCE)
