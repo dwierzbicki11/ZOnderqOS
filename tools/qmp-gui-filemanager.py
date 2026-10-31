@@ -357,8 +357,8 @@ def main():
         drag_restored = read_ppm(prefix + ".filemanager-drag-restored.ppm")
         changed, samples = difference(drag_before, drag_moved)
         fraction = changed / max(1, samples)
-        print(f"[GUI-QMP] drag-window-moved: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
-        if fraction < 0.03:
+        print(f"[GUI-QMP] drag-window-moved: changed {changed}/{samples} sampled pixels ({fraction:.1%}); 2% min allows Full HD crop")
+        if fraction < 0.02:
             raise RuntimeError("PS/2 drag did not visibly move File Manager; inspect PPMs")
         changed, samples = difference(drag_before, drag_restored)
         fraction = changed / max(1, samples)
