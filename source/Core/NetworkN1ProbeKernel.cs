@@ -319,8 +319,8 @@ namespace ZonderqOS
 #if ZONDERQ_NETWORK_N6_HTTP
         private static bool TrySendBurst(byte[] template)
         {
-            // 128 paced frames exercise four 32-descriptor TX ring cycles across
-            // ring cycles without exposing the NIC in the production GUI.
+            // 128 paced frames exercise four complete 32-descriptor TX ring cycles
+            // without exposing the NIC in the production GUI.
             // The first 14 bytes are the already validated N1 L2 header.
             byte[] tag = System.Text.Encoding.ASCII.GetBytes("ZONDERQ3095-BURST-");
             // Stock 3.0.95 E1000E.Transmit copies the caller's span into

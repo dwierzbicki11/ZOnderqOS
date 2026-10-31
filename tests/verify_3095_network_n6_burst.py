@@ -61,7 +61,7 @@ def check_frames(pcap: bytes, after_index: int = -1) -> int:
     """Require exactly 128 unmodified, in-order guest TX frames after HTTP.
 
     Subsequence matching could silently ignore duplicates, reordered frames,
-    wrong source MAC, nonzero padding or an unexpected 33rd submission.
+    wrong source MAC, nonzero padding or an unexpected extra submission.
     """
     frames = list(pcap_frames(pcap))
     seen = 0
