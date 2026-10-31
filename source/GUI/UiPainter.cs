@@ -65,7 +65,15 @@ namespace ZonderqOS.GUI
             }
 
             Fill(canvas, fill, x, y + r, width, height - 2 * r);
-            FillCornerBands(canvas, x, y, width, height, r, fill, true);
+            // RoundedFill is common in layered shadows. On the host Canvas
+            // the grouping loop costs more than its saved draw calls at small
+            // radii; use cached insets with simple scanlines instead.
+            for (int row = 0; row < r; row++)
+            {
+                int inset = CornerInset(r, row);
+                Fill(canvas, fill, x + inset, y + row, width - 2 * inset, 1);
+                Fill(canvas, fill, x + inset, y + height - row - 1, width - 2 * inset, 1);
+            }
         }
 
         internal static void RoundedTop(Canvas canvas, int x, int y, int width, int height,

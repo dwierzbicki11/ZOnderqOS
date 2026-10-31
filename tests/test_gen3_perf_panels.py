@@ -73,7 +73,7 @@ class RoundedPanelPerformanceContracts(unittest.TestCase):
 
     def test_corner_band_raster_and_draw_calls(self):
         self.assertEqual(SOURCE.count(
-            "FillCornerBands(canvas, x, y, width, height, r, fill, true);"), 2)
+            "FillCornerBands(canvas, x, y, width, height, r, fill, true);"), 1)
         self.assertIn(
             "FillCornerBands(canvas, x, y, width, height, r, fill, false);", SOURCE)
         self.assertIn("y + height - end", SOURCE)
@@ -83,7 +83,7 @@ class RoundedPanelPerformanceContracts(unittest.TestCase):
                                  [inset(radius, row) for row in range(radius)])
                 self.assertLessEqual(len(grouped_corner_rows(radius)), radius)
         self.assertEqual(len(grouped_corner_rows(12)), 8)
-        self.assertEqual((1 + 2 * 12, 1 + 2 * 8), (25, 17))
+        self.assertEqual((1 + 2 * 12, 1 + 2 * 8), (25, 17))  # grouped panel fill only
         self.assertEqual((1 + 12, 1 + 8), (13, 9))
 
     def test_radius_clamping_remains_unchanged(self):
@@ -102,6 +102,6 @@ if __name__ == "__main__":
     before, after = 3 * r - 1, 2 * r
     print(f"RoundedPanel radius={r}: CornerInset lookups {before} -> {after} "
           "(cache removes runtime sqrt for radius <=32; static count).")
-    print(f"RoundedFill radius={r}: Canvas calls {1+2*r} -> "
+    print(f"RoundedPanel radius={r}: corner fill Canvas calls {1+2*r} -> "
           f"{1+2*len(grouped_corner_rows(r))} (static model, not FPS).")
     unittest.main(verbosity=2)
