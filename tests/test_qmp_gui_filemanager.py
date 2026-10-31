@@ -138,7 +138,7 @@ class FramebufferProbeTests(unittest.TestCase):
                 self.payloads.append(json.loads(payload))
 
             def readline(self):
-                return b'{"return": {}}\\n'
+                return b'{"return": {}}\n'
 
         channel = FakeChannel()
         original_sleep = PROBE.time.sleep
