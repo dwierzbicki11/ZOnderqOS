@@ -27,6 +27,7 @@ PROJECT = code("ZonderqOS.csproj")
 QEMU_SMOKE = code("tools/smoke-services-qemu.sh")
 QEMU_WORKFLOW = code(".github/workflows/services-qemu.yml")
 QMP_LOGIN = code("tools/qmp-gui-login.py")
+COMMAND_PALETTE = code("source/GUI/CommandPalette.cs")
 
 
 def fit_window(x, y, width, height, screen_width, screen_height):
@@ -1207,6 +1208,50 @@ class ResponsiveGui3094(unittest.TestCase):
                         shortcuts.index("applicationManager?.CycleWindow(reverse);"))
         self.assertLess(shortcuts.rindex("lastShortcutClickTimestamp = 0;"),
                         shortcuts.index("applicationManager?.RequestCloseActiveWindow();"))
+
+
+
+class CommandPaletteResponsiveTests(unittest.TestCase):
+    def test_palette_stays_inside_actual_desktop(self):
+        self.assertIn("Width = System.Math.Min(Width, System.Math.Max(1, screenWidth - 16));",
+                      COMMAND_PALETTE)
+        self.assertIn("Height = System.Math.Min(Height, System.Math.Max(1, screenHeight - 16));",
+                      COMMAND_PALETTE)
+        self.assertIn("X = System.Math.Max(0, (screenWidth - Width) / 2);",
+                      COMMAND_PALETTE)
+        self.assertIn("screenHeight - Height));", COMMAND_PALETTE)
+        for width, height in ((320, 196), (640, 436), (800, 556),
+                              (1024, 724), (1366, 724), (1920, 1036)):
+            palette_width = min(680, max(1, width - 16))
+            palette_height = min(448, max(1, height - 16))
+            x = max(0, (width - palette_width) // 2)
+            y = max(0, min(max(18, (height - palette_height) // 4),
+                           height - palette_height))
+            self.assertGreaterEqual(x, 0)
+            self.assertGreaterEqual(y, 0)
+            self.assertLessEqual(x + palette_width, width)
+            self.assertLessEqual(y + palette_height, height)
+
+    def test_palette_rows_share_render_and_mouse_geometry(self):
+        self.assertIn("listY + visibleRows * resultRowHeight", COMMAND_PALETTE)
+        self.assertIn("int row = (mouseY - listY) / resultRowHeight;", COMMAND_PALETTE)
+        self.assertIn("for (int row = 0; row < visibleRows; row++)", COMMAND_PALETTE)
+        self.assertIn("int y = listY + row * resultRowHeight;", COMMAND_PALETTE)
+        self.assertIn("selectedIndex - visibleRows + 1", COMMAND_PALETTE)
+        self.assertIn("resultCount - visibleRows", COMMAND_PALETTE)
+        for height in (180, 420, 448, 720):
+            list_space = max(1, height - (52 + 44 + 20) - 34)
+            rows = max(1, min(6, list_space // 48))
+            row_height = min(48, max(1, list_space // rows))
+            self.assertGreaterEqual(rows, 1)
+            self.assertLessEqual(rows, 6)
+            self.assertLessEqual(116 + rows * row_height, height - 34)
+
+    def test_palette_compacts_details_in_narrow_mode(self):
+        self.assertIn("if (resultRowHeight >= 42 && Width >= 540)", COMMAND_PALETTE)
+        self.assertIn("if (Width >= 620)", COMMAND_PALETTE)
+        self.assertIn('"UP/DOWN  ENTER  ESC"', COMMAND_PALETTE)
+        self.assertIn("System.Math.Max(1, resultRowHeight - 14)", COMMAND_PALETTE)
 
 
 if __name__ == "__main__":
