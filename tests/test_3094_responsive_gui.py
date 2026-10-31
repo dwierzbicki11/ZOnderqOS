@@ -184,6 +184,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("int buttonWidth = Math.Max(1, (available - 8) / 3);", render)
         self.assertIn("int buttonWidth = Math.Max(1, (available - 8) / 3);", hit)
         self.assertIn("DrawCompactResource(canvas", render)
+        self.assertIn("if (Height >= 180)", render)
         self.assertIn("relative % (buttonWidth + 4) < buttonWidth", hit)
         for screen_width in (320, 640, 800, 1366, 1920):
             view_width = screen_width - 20

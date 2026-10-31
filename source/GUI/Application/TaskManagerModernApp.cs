@@ -1194,7 +1194,8 @@ namespace ZonderqOS.GUI.Apps
                 DrawCompactResource(canvas, left + (buttonWidth + 4) * 2, top,
                     buttonWidth, 2, "SYS", app.SchedulerThreadCount.ToString());
 
-                if (Height >= 145)
+                // Leave the 28px footer unobstructed on 320x240 desktops.
+                if (Height >= 180)
                 {
                     string detail = app.PerformanceResource == 0
                         ? "CPU " + app.CpuUsagePercent + "%"
