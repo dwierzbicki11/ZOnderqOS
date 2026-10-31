@@ -95,7 +95,7 @@ class FramebufferProbeTests(unittest.TestCase):
         for y in range(10, 12):
             for x in range(10, 15):
                 off = (y * width + x) * 3
-                restored[off:off + 3] = b"\\xff\\xff\\xff"
+                restored[off:off + 3] = bytes((255, 255, 255))
         changed, samples = PROBE.difference(
             (width, height, original), (width, height, bytes(restored)))
         self.assertLessEqual(changed / samples, 0.10)
