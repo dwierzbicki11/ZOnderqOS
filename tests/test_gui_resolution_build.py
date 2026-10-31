@@ -87,6 +87,16 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
         self.assertIn('tail -n 50 "$OUT/$phase.filemanager-probe.log" >&2', smoke)
         self.assertIn('tail -n 50 "$OUT/$phase.taskmanager-probe.log" >&2', smoke)
 
+    def test_embedded_qmp_python_validators_compile(self):
+        # bash -n cannot see Python indentation inside heredocs. The first
+        # shared-decoder integration failed here despite passing shell syntax.
+        smoke = (ROOT / "tools/smoke-services-qemu.sh").read_text()
+        snippets = re.findall(r"<<'PY'\\n(.*?)\\nPY", smoke, re.DOTALL)
+        self.assertGreaterEqual(len(snippets), 2)
+        for index, source in enumerate(snippets):
+            compile(source, f"smoke-services-qemu.sh:heredoc-{index}", "exec")
+
+
     def test_qemu_workflows_do_not_mask_failed_guest_probes_with_tee(self):
         # A previous HD probe emitted [SERVICES-QEMU][FAIL] but the workflow
         # appeared green because tee, not the failing guest probe, set status.
