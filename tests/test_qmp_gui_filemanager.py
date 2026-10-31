@@ -122,5 +122,40 @@ class FramebufferProbeTests(unittest.TestCase):
         self.assertGreaterEqual(changed / samples, 0.003)
 
 
+    def test_real_mouse_move_probe_and_event_shape(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('move_mouse_relative(channel, 60, 0)', source)
+        self.assertIn('".filemanager-mouse-before.ppm"', source)
+        self.assertIn('".filemanager-mouse-after.ppm"', source)
+        self.assertIn('if mouse_changed < 8:', source)
+
+        class FakeChannel:
+            def __init__(self):
+                self.payloads = []
+
+            def write(self, payload):
+                import json
+                self.payloads.append(json.loads(payload))
+
+            def readline(self):
+                return b'{"return": {}}\\n'
+
+        channel = FakeChannel()
+        original_sleep = PROBE.time.sleep
+        try:
+            PROBE.time.sleep = lambda seconds: None
+            PROBE.move_mouse_relative(channel, 60, 0)
+            PROBE.move_mouse_relative(channel, 0, 0)
+        finally:
+            PROBE.time.sleep = original_sleep
+        self.assertEqual(len(channel.payloads), 1)
+        self.assertEqual(channel.payloads[0], {
+            "execute": "input-send-event",
+            "arguments": {"events": [
+                {"type": "rel", "data": {"axis": "x", "value": 60}}
+            ]}
+        })
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
