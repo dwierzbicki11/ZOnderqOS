@@ -97,6 +97,31 @@ fi
 rm -rf -- "$STAGE"
 mkdir -p "$STAGE"
 git -C "$ROOT" archive HEAD | tar -xf - -C "$STAGE"
+
+# CI-only display mode experiment: alter the disposable staged bootloader
+# configuration, NEVER the checked-out production source or host partitions.
+GUI_TEST_MODE="${ZONDERQ_3095_GUI_TEST_MODE:-}"
+GUI_TEST_NATIVE=false
+if [[ -n "$GUI_TEST_MODE" ]]; then
+  [[ "$MODE" == disk ]] || die "GUI resolution probe requires disk-backed GUI"
+  case "$GUI_TEST_MODE" in
+    800x600|1366x768|1920x1080) ;;
+    *) die "Unsupported GUI test resolution: $GUI_TEST_MODE" ;;
+  esac
+  python3 - "$STAGE/Bootloader/limine.conf" "$GUI_TEST_MODE" <<'PY'
+import pathlib, re, sys
+path = pathlib.Path(sys.argv[1])
+original = path.read_text()
+modified, count = re.subn(r"(?m)^(\s*resolution:\s*)\d+x\d+x32\s*$",
+                          lambda match: match.group(1) + sys.argv[2] + "x32",
+                          original)
+if count != 1:
+    raise SystemExit("[3095-BUILD][ERROR] Expected exactly one Limine resolution entry")
+path.write_text(modified)
+print("[3095-BUILD] Disposable test ISO requests " + sys.argv[2] + "x32")
+PY
+  GUI_TEST_NATIVE=true
+fi
 cat > "$STAGE/NuGet.Config" <<EOF
 <?xml version="1.0" encoding="utf-8"?>
 <configuration>
@@ -174,6 +199,7 @@ dotnet publish "$STAGE/ZonderqOS.csproj" \
   -p:ZonderqReadOnlyHardwareProbe="$read_only" \
   -p:ZonderqInputDiagnosticBoot="$diagnostic" \
   -p:ZonderqRamRoot=false \
+  -p:ZonderqGuiTestNativeFramebuffer="$GUI_TEST_NATIVE" \
   -o "$output" --no-restore
 
 [[ -s "$output/ZonderqOS.iso" ]] || die "Publish finished without an ISO."
