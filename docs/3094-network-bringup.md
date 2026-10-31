@@ -81,3 +81,19 @@ they do not prove interrupts are delivered, MSI/MSI-X works, DMA is safe,
 or that any network driver is running. PCI revision `06` must not be
 confused with the Realtek internal MAC version; chip-specific initialization
 still requires a separate validated implementation.
+
+
+### MSI-X memory BAR resolution (read-only diagnostic)
+
+The RTL810xE PCI diagnostic now resolves the MSI-X table and pending-bit
+array (PBA) offsets against assigned **memory** BAR metadata, if an MSI-X
+capability exists. It rejects I/O BARs, unassigned BARs, the upper DWORD of
+a 64-bit BAR and physical-address overflow. Malformed, unaligned PCI
+capability pointers are rejected instead of silently rounded down.
+
+`MSI-X_MEMORY_BARS=VALID` means only that PCI config-space metadata
+yields plausible addresses. It does **not** verify the BAR aperture size,
+map or read MMIO, enable MSI-X, deliver an interrupt, or initialize the
+NIC. `INVALID_OR_UNASSIGNED` is diagnostic, not proof of faulty hardware;
+firmware may not have assigned a resource. The C# tests use synthetic PCI
+configuration fixtures and do not replace real laptop testing.
