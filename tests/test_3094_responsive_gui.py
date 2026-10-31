@@ -830,6 +830,32 @@ class ResponsiveGui3094(unittest.TestCase):
                              (0, 0) if press == 0 else (1, 1))
 
 
+    def test_file_manager_modifier_shortcuts_do_not_type_into_names_or_filter(self):
+        keyboard = FILE_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "private void CopySelected(bool cut)", 1
+        )[0]
+        dialog = keyboard.split("if (dialogMode != 0)", 1)[1].split(
+            "bool control =", 1
+        )[0]
+        search = keyboard.split("if (key.KeyChar != '\\0' && !char.IsControl(key.KeyChar) &&", 2)[-1]
+        guard = "(key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) == 0"
+        self.assertIn(guard, dialog)
+        self.assertIn(guard, search)
+        self.assertLess(dialog.index(guard), dialog.index("dialogName += key.KeyChar;"))
+        self.assertLess(search.index(guard), search.index("searchText += key.KeyChar;"))
+
+        # Control combinations are actions, not text. Normal typing,
+        # including Shift-modified uppercase characters, must still work.
+        for control, alt, shift, expected in (
+            (False, False, False, True),
+            (False, False, True, True),
+            (True, False, False, False),
+            (False, True, False, False),
+            (True, True, False, False),
+        ):
+            self.assertEqual(not (control or alt), expected)
+
+
     def test_file_manager_sort_scales_and_preserves_equal_name_order(self):
         sort = FILE_MANAGER.split("private void Sort()", 1)[1].split(
             "private int Compare(", 1)[0]
