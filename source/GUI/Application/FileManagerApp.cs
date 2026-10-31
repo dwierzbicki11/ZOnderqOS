@@ -535,7 +535,7 @@ namespace ZonderqOS.GUI.Apps
                 if (modified)
                     return;
 
-                if (key.Key == ConsoleKeyEx.Enter)
+                if (key.Key == ConsoleKeyEx.Enter && key.Modifiers == 0)
                 {
                     FinishCreate();
                     return;
@@ -590,7 +590,7 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
-                if (key.Key == ConsoleKeyEx.Enter)
+                if (key.Key == ConsoleKeyEx.Enter && key.Modifiers == 0)
                 {
                     if (contextMenuSelection >= 0)
                         ExecuteContextAction(contextMenuSelection);
@@ -712,7 +712,7 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            if (key.Key == ConsoleKeyEx.Enter)
+            if (key.Key == ConsoleKeyEx.Enter && key.Modifiers == 0)
             {
                 ResetClickSequence();
                 if (selectedIndex >= 0)
