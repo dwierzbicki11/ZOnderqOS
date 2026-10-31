@@ -12,6 +12,8 @@ on:
       - 'tools/qmp-gui-taskmanager.py'
       - 'tests/test_qmp_gui_filemanager.py'
       - 'tests/test_qmp_gui_taskmanager.py'
+      - 'tests/test_gui_resolution_build.py'
+      - 'tools/build-cosmos-3095-local.sh'
       - 'tools/smoke-services-qemu.sh'
       - '.github/workflows/gui-responsive-3095.yml'
   workflow_dispatch:
@@ -35,5 +37,6 @@ jobs:
         run: |
           python3 tests/test_qmp_gui_filemanager.py
           python3 tests/test_qmp_gui_taskmanager.py
+          python3 tests/test_gui_resolution_build.py
       - name: Preserve protected FAT32 storage policy
         run: python3 tests/test_3094_storage_policy.py
