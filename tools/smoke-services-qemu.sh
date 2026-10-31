@@ -29,7 +29,7 @@ done
 [[ -z "$EXPECTED_FRAMEBUFFER" || "$EXPECTED_FRAMEBUFFER" =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || fail "expected framebuffer must be WIDTHxHEIGHT"
 [[ -z "$EXPECTED_FRAMEBUFFER" || "$CAPTURE_SCREEN" == 1 ]] || fail "framebuffer expectation requires screenshot capture"
 [[ "$FIRMWARE" == bios || "$FIRMWARE" == ovmf ]] || fail "unsupported QEMU firmware profile"
-[[ "$VIDEO" == std || "$VIDEO" == virtio || "$VIDEO" == qxl || "$VIDEO" == std-edid ]] || fail "unsupported QEMU video adapter"
+[[ "$VIDEO" == std || "$VIDEO" == virtio || "$VIDEO" == qxl || "$VIDEO" == std-edid || "$VIDEO" == virtio-edid ]] || fail "unsupported QEMU video adapter"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 ISO="$(realpath "$ISO")"
@@ -64,6 +64,14 @@ if [[ "$VIDEO" == std-edid ]]; then
   [[ "$FIRMWARE" == ovmf && "$EXPECTED_FRAMEBUFFER" == 1366x768 ]] ||
     fail "std-edid is restricted to the isolated 1366x768 OVMF GUI probe"
   VIDEO_ARGS=(-vga none -device VGA,edid=on,xres=1366,yres=768)
+fi
+if [[ "$VIDEO" == virtio-edid ]]; then
+  # Independent opt-in GOP experiment: virtio-vga may expose a native
+  # 1366x768 mode that legacy VGA rounds down to 1360x768. The strict
+  # QMP framebuffer gate must still verify actual pixels after boot.
+  [[ "$FIRMWARE" == ovmf && "$EXPECTED_FRAMEBUFFER" == 1366x768 ]] ||
+    fail "virtio-edid is restricted to the isolated 1366x768 OVMF GUI probe"
+  VIDEO_ARGS=(-vga none -device virtio-vga,edid=on,xres=1366,yres=768)
 fi
 echo "[SERVICES-QEMU] firmware=$FIRMWARE video=$VIDEO (synthetic FAT32 only)"
 QEMU_PID=""
