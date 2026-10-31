@@ -39,6 +39,35 @@ namespace ZonderqOS.SystemCore
 
         public static bool PlayTestTone()
         {
+            const int sampleRate = 48000;
+            byte[] pcm = AudioTonePcm.GenerateSquareStereo16(sampleRate, 440, 250, 4096);
+            return PlayPcm(pcm);
+        }
+
+        /// <summary>
+        /// End-to-end RIFF/WAVE decoder + stock HDA playback smoke. The WAV
+        /// fixture is generated entirely in RAM: no FAT32 or host disk reads.
+        /// A successful decode alone is not evidence of audible output.
+        /// </summary>
+        public static bool PlayWaveTestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 440, 250, 4096);
+                byte[] wave = AudioWavePcm.EncodeStereo16(source);
+                byte[] decoded = AudioWavePcm.DecodeStereo16(wave);
+                Console.WriteLine("[AUDIO] WAV decoded 48000Hz PCM16 stereo bytes=" + decoded.Length);
+                return PlayPcm(decoded);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        private static bool PlayPcm(byte[] pcm)
+        {
             AudioDevice output = AudioManager.Primary;
             if (!AudioManager.IsEnabled || output == null || output.IsWithdrawn)
             {
@@ -52,10 +81,7 @@ namespace ZonderqOS.SystemCore
                 return false;
             }
 
-            // 250 ms, 440 Hz, PCM16 stereo. Pure generator has host C# tests.
             const int sampleRate = 48000;
-            byte[] pcm = AudioTonePcm.GenerateSquareStereo16(sampleRate, 440, 250, 4096);
-
             try
             {
                 bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, pcm));
