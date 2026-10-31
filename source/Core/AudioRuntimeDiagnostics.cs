@@ -52,23 +52,9 @@ namespace ZonderqOS.SystemCore
                 return false;
             }
 
-            // 250 ms, 440 Hz, signed little-endian 16-bit stereo at 48 kHz.
-            // 4096 peak amplitude keeps the signal well below full scale.
+            // 250 ms, 440 Hz, PCM16 stereo. Pure generator has host C# tests.
             const int sampleRate = 48000;
-            const int frequency = 440;
-            const int frames = sampleRate / 4;
-            byte[] pcm = new byte[frames * 4];
-            for (int i = 0; i < frames; i++)
-            {
-                short sample = (short)((((i * frequency * 2) / sampleRate) & 1) == 0 ? 4096 : -4096);
-                byte lo = (byte)sample;
-                byte hi = (byte)(sample >> 8);
-                int offset = i * 4;
-                pcm[offset] = lo;
-                pcm[offset + 1] = hi;
-                pcm[offset + 2] = lo;
-                pcm[offset + 3] = hi;
-            }
+            byte[] pcm = AudioTonePcm.GenerateSquareStereo16(sampleRate, 440, 250, 4096);
 
             try
             {
