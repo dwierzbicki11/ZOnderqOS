@@ -56,6 +56,40 @@ internal static class TextWhitespaceSmoke
                 throw new Exception(label + ": framebuffer mismatch at " + i);
     }
 
+    private static void Compare(Canvas baseline, Canvas optimized, string label)
+    {
+        if (baseline.DrawCalls != optimized.DrawCalls)
+            throw new Exception(label + ": changed Canvas call count");
+        for (int i = 0; i < baseline.Pixels.Length; i++)
+            if (baseline.Pixels[i] != optimized.Pixels[i])
+                throw new Exception(label + ": framebuffer mismatch at " + i);
+    }
+
+    private static void CheckAlternateEntryPoints()
+    {
+        const string text = "    ABC   DEF    ";
+        Canvas before = new Canvas(512, 24);
+        Canvas after = new Canvas(512, 24);
+        BaselineDrawAscii(before, text.Substring(2, 9), 2, 3, Color.White);
+        SmallTextRenderer.DrawRange(after, text, 2, 9, 2, 3, Color.White);
+        Compare(before, after, "DrawRange");
+
+        before = new Canvas(512, 24);
+        after = new Canvas(512, 24);
+        const int width = 59; // ten glyph slots, seven characters + ellipsis
+        BaselineDrawAscii(before, text.Substring(0, 7) + "...", 2, 3, Color.White);
+        SmallTextRenderer.DrawClipped(after, text, 2, 3, width, Color.White);
+        Compare(before, after, "DrawClipped");
+
+        before = new Canvas(512, 24);
+        after = new Canvas(512, 24);
+        int offset = Math.Max(0, (200 - SmallTextRenderer.Width(text)) / 2);
+        BaselineDrawAscii(before, text, 2 + offset, 3, Color.White);
+        SmallTextRenderer.DrawCentered(after, text, 2, 3, 200, Color.White);
+        Compare(before, after, "DrawCentered");
+        Console.WriteLine("Whitespace text: 3 extra exact entry-point raster checks");
+    }
+
     private static double Time(Canvas canvas, string text, bool optimized, int repetitions)
     {
         long start = Stopwatch.GetTimestamp();
@@ -116,6 +150,7 @@ internal static class TextWhitespaceSmoke
         CheckPixels("mixed", "GUI    file manager    800x600");
         CheckPixels("NBSP", "A\u00A0 B\u00A0C");
         CheckPixels("punctuation", "!!! ... !!!");
+        CheckAlternateEntryPoints();
         Console.WriteLine("Whitespace text: 4 exact framebuffer/call-count checks");
         Benchmark("spaces", new string(' ', 120));
         Benchmark("mixed", "CPU     RAM      I/O     GUI     FPS     Task Manager");
