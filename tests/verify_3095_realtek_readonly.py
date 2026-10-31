@@ -17,7 +17,7 @@ DRIVER = re.compile(
     r" link=(up|down) speed=(0|10|100) duplex=(full|half)")
 KERNEL = re.compile(
     re.escape(PREFIX) + r" SNAPSHOT=PASS mac=" + MAC +
-    r" link=(up|down) speed=(0|10|100)(?=\\s|$)")
+    r" link=(up|down) speed=(0|10|100)(?=\s|$)")
 HEARTBEAT = re.compile(re.escape(PREFIX) + r" HEARTBEAT=(\d+)")
 
 
