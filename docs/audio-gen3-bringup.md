@@ -124,8 +124,8 @@ The opt-in decoder also accepts unsigned PCM8 mono/stereo at 44.1/48 kHz and con
 The bounded decoder now also accepts signed **24-bit little-endian PCM** at
 44.1/48 kHz, mono or stereo. It converts to 48 kHz stereo PCM16 using the
 upper 16 bits of each signed 24-bit sample (discarding the lowest eight bits),
-with the same bounded 44.1→48 kHz linear interpolation. The input RIFF limit
-is **640 KiB**, sufficient for two seconds of 48 kHz stereo PCM24 plus
+with the same bounded 44.1→48 kHz linear interpolation. The current input RIFF limit
+is **800 KiB**, sufficient for two seconds of 48 kHz stereo PCM32 plus
 metadata; decoded output remains at most **384,000 bytes**. Invalid frame
 alignment, byte rate, unsupported sample rates, truncation and excessive
 duration are rejected before decoded-buffer allocation.
