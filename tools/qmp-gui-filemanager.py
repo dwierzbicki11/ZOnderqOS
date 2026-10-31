@@ -221,6 +221,19 @@ def main():
             screenshot(channel, prefix + ".filemanager-drag-moved.ppm")
             drag_mouse_relative(channel, -48, -28)
             screenshot(channel, prefix + ".filemanager-drag-restored.ppm")
+
+            # Resize the bottom edge by a real PS/2 drag. Unlike the right
+            # edge, the bottom edge is inside the central-framebuffer diff
+            # region, so a visual change cannot be hidden by crop bounds.
+            # The File Manager's initial bounds are (120,78,820,520) at
+            # 1024x768; restoring the title drag restores these bounds.
+            move_mouse_to_from_corner(channel, frame_width // 2, 595,
+                                      frame_width, frame_height)
+            screenshot(channel, prefix + ".filemanager-resize-before.ppm")
+            drag_mouse_relative(channel, 0, -64)
+            screenshot(channel, prefix + ".filemanager-resize-smaller.ppm")
+            drag_mouse_relative(channel, 0, 64)
+            screenshot(channel, prefix + ".filemanager-resize-restored.ppm")
         else:
             print("[GUI-QMP] drag-window: SKIP framebuffer too small for a movable File Manager")
 
@@ -308,6 +321,20 @@ def main():
         if fraction > 0.10:
             raise RuntimeError("reverse PS/2 drag did not restore File Manager; inspect PPMs")
 
+        resize_before = read_ppm(prefix + ".filemanager-resize-before.ppm")
+        resize_smaller = read_ppm(prefix + ".filemanager-resize-smaller.ppm")
+        resize_restored = read_ppm(prefix + ".filemanager-resize-restored.ppm")
+        changed, samples = difference(resize_before, resize_smaller)
+        fraction = changed / max(1, samples)
+        print(f"[GUI-QMP] resize-window-smaller: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
+        if fraction < 0.015:
+            raise RuntimeError("PS/2 bottom-edge resize did not visibly shrink File Manager; inspect PPMs")
+        changed, samples = difference(resize_before, resize_restored)
+        fraction = changed / max(1, samples)
+        print(f"[GUI-QMP] resize-window-restored: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
+        if fraction > 0.10:
+            raise RuntimeError("reverse PS/2 resize did not restore File Manager; inspect PPMs")
+
     # Closing a window should return to the same desktop, not another large
     # overlay. Small differences from the clock/toasts are tolerated.
     changed, samples = difference(before, closed)
@@ -315,7 +342,7 @@ def main():
     print(f"[GUI-QMP] desktop-restored: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
     if fraction > 0.10:
         raise RuntimeError("Alt+F4 did not restore the desktop; inspect PPMs")
-    print("[GUI-QMP] PASS real palette launch, filter/Escape, PS/2 notification clicks, window drag and Alt+F4 close changed the guest framebuffer; visual app identity requires inspection.")
+    print("[GUI-QMP] PASS real palette launch, filter/Escape, PS/2 notification clicks, window drag/resize and Alt+F4 close changed the guest framebuffer; visual app identity requires inspection.")
 
 
 if __name__ == "__main__":
