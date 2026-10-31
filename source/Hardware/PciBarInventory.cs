@@ -143,10 +143,12 @@ namespace ZonderqOS.Hardware
             var visited = new bool[256];
             for (int count = 0; pointer != 0; count++)
             {
-                byte offset = (byte)(pointer & 0xFC);
-                // Conventional PCI capabilities occupy 0x40..0xFF; each
-                // header contains an ID and a next-pointer byte.
-                if (offset < 0x40 || offset > 0xFC || visited[offset] || count >= 48)
+                // PCI capability pointers are DWORD-aligned by specification.
+                // Do not silently mask malformed low bits: doing so could
+                // interpret unrelated config bytes as a valid capability.
+                byte offset = pointer;
+                if ((offset & 3) != 0 || offset < 0x40 || offset > 0xFC ||
+                    visited[offset] || count >= 48)
                 {
                     capabilities.Clear();
                     return false;
