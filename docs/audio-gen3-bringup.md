@@ -34,6 +34,7 @@ wavmono
 wav44
 wav8
 wav24
+wav32
 volume 25
 tone
 volume 100
@@ -47,7 +48,7 @@ then submits the decoded 48 kHz PCM16 stereo frames to the same stock HDA
 path as `tone`. This tests the actual WAV parser-to-playback path without
 opening any disk. It is **not** a file-browser WAV player yet.
 
-The parser accepts uncompressed PCM8, PCM16 and PCM24 at 44.1 or 48 kHz in mono or stereo, with
+The parser accepts uncompressed PCM8, PCM16, PCM24 and signed PCM32 at 44.1 or 48 kHz in mono or stereo, with
 a maximum of two seconds (at most 384,000 decoded stereo PCM bytes). Mono
 input is upmixed by duplicating each signed sample to both channels; no
 resampling occurs for 48 kHz input. 44.1 kHz input is converted to 48 kHz stereo using bounded integer linear interpolation, without touching the filesystem. It checks RIFF and chunk bounds, fmt consistency, data
@@ -61,7 +62,7 @@ to the same stock HDA output. The independent QEMU capture validates 660 Hz
 on both stereo channels so a mistakenly executed 440 Hz `tone` cannot pass.
 The new capture must pass before claiming mono playback verified end-to-end.
 
-A separate `AudioWaveInput.DecodeBounded(Stream)` component now accepts caller-owned, read-only WAV streams. It reads exactly the declared RIFF size (at most 512 KiB), rejects truncation and trailing bytes, and never opens, mounts or writes a disk. The `wav44` QEMU probe exercises this bounded stream loader using a RAM-backed `MemoryStream`. This **does not** yet play a file from FAT32 or prove removable-media behavior; connecting an external read-only source is a separate safety milestone.
+A separate `AudioWaveInput.DecodeBounded(Stream)` component now accepts caller-owned, read-only WAV streams. It reads exactly the declared RIFF size (at most 800 KiB), rejects truncation and trailing bytes, and never opens, mounts or writes a disk. The `wav44` QEMU probe exercises this bounded stream loader using a RAM-backed `MemoryStream`. This **does not** yet play a file from FAT32 or prove removable-media behavior; connecting an external read-only source is a separate safety milestone.
 
 The `wav44` command generates a distinct 880 Hz stereo PCM16 fixture at 44.1 kHz,
 encodes RIFF/WAV entirely in RAM, resamples it to 48 kHz and plays it through
@@ -69,11 +70,11 @@ the same HDA path. The sixth QEMU capture checks the distinct 880 Hz signal,
 rather than trusting a decoder log line. 44.1 kHz mono is covered by real C#
 host tests, not independently by QEMU.
 
-The CI audio-QEMU workflow boots the ISO **eight times**: direct `tone`,
-`wavtone`, mono `wavmono`, 44.1 kHz `wav44`, unsigned mono PCM8 `wav8`, signed mono PCM24 `wav24`, `tone` at 25% software volume, and `tone` at 0% (mute).
-Each uses a fresh QEMU process and a separate WAV capture. The first six
+The CI audio-QEMU workflow boots the ISO **nine times**: direct `tone`,
+`wavtone`, mono `wavmono`, 44.1 kHz `wav44`, unsigned mono PCM8 `wav8`, signed mono PCM24 `wav24`, signed mono PCM32 `wav32`, `tone` at 25% software volume, and `tone` at 0% (mute).
+Each uses a fresh QEMU process and a separate WAV capture. The first seven
 must pass the non-silent pitch validator, including a stereo channel-balance
-check; the eighth must contain at least 100 ms of genuinely muted PCM frames. The WAV fixture is generated
+check; the ninth must contain at least 100 ms of genuinely muted PCM frames. The WAV fixture is generated
 in memory; this does not prove arbitrary external WAV files work.
 
 The diagnostic console also accepts `volume N` for integer `N` from
@@ -83,9 +84,9 @@ HDA codec volume registers or change a production system setting. `volume`
 without arguments prints the current percentage. The C# host smoke verifies
 25% scaling, mute, 100% bit-exactness, invalid inputs and source immutability.
 
-The seventh QEMU boot uses `volume 25` and `tone`, then compares the actual
+The eighth QEMU boot uses `volume 25` and `tone`, then compares the actual
 backend WAV peak against the normal 100% capture. A PASS requires a ratio
-near 0.25, not just a serial message. The eighth boot uses `volume 0` and
+near 0.25, not just a serial message. The ninth boot uses `volume 0` and
 requires a nonempty, sustained WAV capture with a PCM peak no higher than 32;
 a missing/header-only file is a failure, not a mute PASS. This verifies
 software PCM gain/mute in the emulator, not perceived loudness.
@@ -141,3 +142,24 @@ measured 1705.8 Hz (1760 Hz requested), 44.1 kHz stereo16 WAV backend,
 peak 2908. Host-side [C# and Python #41242893436](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41242893436)
 passed 768,125 C# assertions and 33 Python tests. This does not enable
 external FAT32 playback, physical audio, or production GUI sound.
+
+
+### Signed PCM32 WAV (isolated diagnostic; verification pending)
+
+The opt-in RIFF decoder now also accepts signed **32-bit little-endian integer
+PCM** mono/stereo at 44.1/48 kHz. It retains the high 16 bits of each signed
+32-bit sample, then uses the existing 44.1→48 kHz resampler if necessary.
+IEEE float (format 3), WAVE_FORMAT_EXTENSIBLE and other codecs remain
+unsupported and are explicitly rejected. The input cap is now **800 KiB**,
+allowing two seconds of 48 kHz stereo PCM32 (768,000 source bytes), while the
+decoded 48 kHz stereo PCM16 cap remains **384,000 bytes**.
+
+The diskless `wav32` command generates a distinct **2200 Hz** signed PCM32
+mono WAV in guest RAM, decodes it via the caller-owned bounded stream API and
+submits PCM16 to stock HDA. Host C# tests cover signed extremes, discarded
+low bits, 44.1 kHz resampling, mono/stereo, fragmented streams, exact
+two-second bounds and invalid format/frame/rate. The ninth independent QEMU
+boot/capture validates actual 2200 Hz PCM on both channels. **Do not claim
+this new path passed QEMU until the new workflow completes successfully.**
+No external FAT32 file is opened, no host disk is attached, no physical
+speaker or IRQ execution is proven, and production GUI audio remains off.
