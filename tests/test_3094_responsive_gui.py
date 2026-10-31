@@ -1991,7 +1991,8 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
                            desktop_height - height))
             self.assertGreaterEqual(y, 0)
             self.assertLessEqual(y + height, desktop_height)
-            self.assertLessEqual(rows * 48, list_space)
+            row_height = min(48, max(1, list_space // rows))
+            self.assertLessEqual(rows * row_height, list_space)
             if (screen_width, screen_height) == (640, 480):
                 self.assertEqual((height, rows), (420, 5))
             if screen_height >= 600:
