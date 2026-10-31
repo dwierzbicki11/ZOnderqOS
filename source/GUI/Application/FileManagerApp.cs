@@ -286,10 +286,10 @@ namespace ZonderqOS.GUI.Apps
             int relativeY = y - ContentTop;
             int strideX = TileWidth + TileGap;
             int strideY = TileHeight + TileGap;
-            // At the minimum 320x220 window, the grid is only 40px tall.
-            // The footer starts below the full client content area, so
-            // contentBottom alone includes pixels that were never painted.
-            // Only tiles inside the *painted* grid can receive clicks.
+            // On very small firmware framebuffers, the grid may be shorter
+            // than a full tile. On larger windows its last partial row may
+            // be deliberately omitted by Grid(). A broad content-area test
+            // alone must not make those unpainted pixels clickable.
             if (relativeX < 0 || relativeX >= GridWidthForView ||
                 relativeY < 0 || relativeY >= GridHeightForView)
                 return -1;
