@@ -10,6 +10,7 @@ on:
       - 'ZonderqOS.csproj'
       - 'tools/build-cosmos-3095-local.sh'
       - 'tools/smoke-services-qemu.sh'
+      - 'tools/qmp-gui-login.py'
       - '.github/workflows/services-qemu.yml'
   workflow_dispatch:
 
@@ -45,6 +46,7 @@ jobs:
         env:
           SERVICE_QEMU_BOOT_SECONDS: '100'
           SERVICE_QEMU_CAPTURE_SCREEN: '1'
+          SERVICE_QEMU_AUTOMATE_GUI_LOGIN: '1'
         run: |
           bash tools/smoke-services-qemu.sh \
             output-3095/ZonderqOS-3095-disk.iso services-qemu-output \
