@@ -105,7 +105,7 @@ GUI_TEST_NATIVE=false
 if [[ -n "$GUI_TEST_MODE" ]]; then
   [[ "$MODE" == disk ]] || die "GUI resolution probe requires disk-backed GUI"
   case "$GUI_TEST_MODE" in
-    800x600|1360x768|1366x768|1920x1080) ;;
+    640x480|800x600|1360x768|1366x768|1920x1080) ;;
     *) die "Unsupported GUI test resolution: $GUI_TEST_MODE" ;;
   esac
   python3 - "$STAGE/Bootloader/limine.conf" "$GUI_TEST_MODE" <<'PY'
