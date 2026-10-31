@@ -30,6 +30,7 @@ on:
       - 'tests/verify_3095_network_n4.py'
       - 'tests/verify_3095_network_n5.py'
       - 'tests/verify_3095_network_n6.py'
+      - 'tests/verify_3095_network_heartbeat.py'
       - 'tests/network_3095_http_host.py'
       - 'tests/network_3095_tcp_host.py'
       - '.github/workflows/3095-network-n1-qemu.yml'
@@ -68,6 +69,7 @@ jobs:
           python3 zonderq/tests/verify_3095_network_n4.py --self-test
           python3 zonderq/tests/verify_3095_network_n5.py --self-test
           python3 zonderq/tests/verify_3095_network_n6.py --self-test
+          python3 zonderq/tests/verify_3095_network_heartbeat.py --self-test
           python3 -m py_compile zonderq/tests/network_3095_http_host.py
           python3 zonderq/tests/network_3095_http_host.py --self-test
           python3 -m py_compile zonderq/tests/network_3095_tcp_host.py
