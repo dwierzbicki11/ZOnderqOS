@@ -1965,5 +1965,37 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertFalse(x <= 950 < x + width)
         self.assertTrue(x <= 799 < x + width)
 
+
+    def test_command_palette_uses_full_framebuffer_height_once(self):
+        # GuiManager supplies physical canvas dimensions. CommandPalette alone
+        # subtracts the 44px taskbar, preserving a fifth result at 640x480.
+        self.assertIn(
+            "new CommandPalette((int)canvas.Width, (int)canvas.Height, appRegistry)",
+            DESKTOP)
+        self.assertNotIn(
+            "new CommandPalette((int)canvas.Width, desktopHeight, appRegistry)",
+            DESKTOP)
+        self.assertIn("int desktopHeight = System.Math.Max(1, screenHeight - DesktopTaskbarHeight);",
+                      COMMAND_PALETTE)
+        self.assertIn("Height = System.Math.Min(Height, System.Math.Max(1, desktopHeight - 16));",
+                      COMMAND_PALETTE)
+        self.assertIn("visibleRows = System.Math.Max(1,", COMMAND_PALETTE)
+
+        for screen_width, screen_height in ((320, 240), (640, 480), (800, 600),
+                                            (1366, 768), (1920, 1080)):
+            desktop_height = screen_height - 44
+            height = min(52 + 44 + 6 * 48 + 34 + 30, max(1, desktop_height - 16))
+            list_space = max(1, height - (52 + 44 + 20) - 34)
+            rows = max(1, min(6, list_space // 48))
+            y = max(0, min(max(8, (desktop_height - height) // 4),
+                           desktop_height - height))
+            self.assertGreaterEqual(y, 0)
+            self.assertLessEqual(y + height, desktop_height)
+            self.assertLessEqual(rows * 48, list_space)
+            if (screen_width, screen_height) == (640, 480):
+                self.assertEqual((height, rows), (420, 5))
+            if screen_height >= 600:
+                self.assertEqual(rows, 6)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
