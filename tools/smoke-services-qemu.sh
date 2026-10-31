@@ -182,13 +182,13 @@ spec = importlib.util.spec_from_file_location("qmp_gui_filemanager", sys.argv[3]
 probe = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(probe)
 width, height, pixels = probe.read_ppm(sys.argv[1])
-    if sys.argv[2] and f'{width}x{height}' != sys.argv[2]:
-        raise SystemExit(f'Framebuffer mode mismatch: requested {sys.argv[2]}, actual {width}x{height}')
-    if sys.argv[2]:
-        print(f'[SERVICES-QEMU] verified actual framebuffer {width}x{height}')
-    # This proves a framebuffer was captured, NOT that GUI interactions work.
-    samples = {pixels[i:i+3] for i in range(0, len(pixels), max(3, len(pixels) // 4096 // 3 * 3))}
-    print(f'[SERVICES-QEMU] framebuffer capture {width}x{height}, sampled colors={len(samples)}')
+if sys.argv[2] and f'{width}x{height}' != sys.argv[2]:
+    raise SystemExit(f'Framebuffer mode mismatch: requested {sys.argv[2]}, actual {width}x{height}')
+if sys.argv[2]:
+    print(f'[SERVICES-QEMU] verified actual framebuffer {width}x{height}')
+# This proves a framebuffer was captured, NOT that GUI interactions work.
+samples = {pixels[i:i+3] for i in range(0, len(pixels), max(3, len(pixels) // 4096 // 3 * 3))}
+print(f'[SERVICES-QEMU] framebuffer capture {width}x{height}, sampled colors={len(samples)}')
 PY
   fi
   echo "[SERVICES-QEMU] $phase: QEMU shut down after ${BOOT_SECONDS}s"
