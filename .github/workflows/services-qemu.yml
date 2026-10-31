@@ -44,6 +44,7 @@ jobs:
       - name: Boot twice with one dedicated ZONDERQDATA FAT32 image (1 vCPU)
         env:
           SERVICE_QEMU_BOOT_SECONDS: '100'
+          SERVICE_QEMU_CAPTURE_SCREEN: '1'
         run: |
           bash tools/smoke-services-qemu.sh \
             output-3095/ZonderqOS-3095-disk.iso services-qemu-output \
@@ -63,3 +64,4 @@ jobs:
             services-qemu-smoke.log
             services-qemu-output/*.log
             services-qemu-output/*.conf
+            services-qemu-output/*.ppm
