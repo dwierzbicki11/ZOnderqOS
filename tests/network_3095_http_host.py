@@ -13,7 +13,8 @@ import time
 
 PORT = 18096
 REQUEST = b"GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n\r\n"
-BODY = b"ZONDERQ3095-HTTP-OK\n" + b"X" * 4096
+BODY = (b"ZONDERQ3095-HTTP-OK\n" +
+        b"A" * 1024 + b"B" * 1024 + b"C" * 1024 + b"D" * 1024)
 RESPONSE = (b"HTTP/1.0 200 OK\r\n"
             b"Content-Type: text/plain\r\n"
             b"Content-Length: 4116\r\n"

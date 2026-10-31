@@ -231,7 +231,17 @@ def self_test() -> None:
         fake_http(False, 0x18, 10001 + half, 20001, REQUEST[half:]),
     ] + response + teardown
     assert "PASS" in validate(serial, synthetic_capture(split_request))
+    # A 4 KiB response with different 1 KiB blocks catches duplicated,
+    # missing, corrupted and reordered DMA/TCP data, not merely byte count.
+    corrupted = list(response)
+    damaged = bytearray(RESPONSE[cuts[2]:cuts[3]])
+    damaged[0] = ord("Z") if damaged[0] != ord("Z") else ord("Y")
+    corrupted[2] = fake_http(
+        True, 0x18, 20001 + cuts[2], 10001 + len(REQUEST), bytes(damaged))
     negatives = [
+        (serial, base + handshake + request + corrupted + teardown),
+        (serial, base + handshake + request + response[:2] + response[3:] + teardown),
+        (serial, base + handshake + request + response[:1] + response[2:3] + response[1:2] + response[3:] + teardown),
         (serial.replace(HTTP_START, ""), frames),
         (serial.replace(HTTP_PASS, ""), frames),
         (serial + "\n" + HTTP_PASS, frames),
