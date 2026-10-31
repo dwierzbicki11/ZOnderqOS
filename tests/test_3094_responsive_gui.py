@@ -46,6 +46,58 @@ def visible_rows(window_height, list_top, bottom_offset, row_height, row_gap):
 
 
 class ResponsiveGui3094(unittest.TestCase):
+    def test_new_mouse_press_outside_windows_never_reaches_active_app(self):
+        dispatch = APPLICATION_MANAGER.split(
+            "public void HandleMouse(int mouseX, int mouseY, bool leftClicked,", 1
+        )[1].split("public void Update()", 1)[0]
+        self.assertIn("bool newPress = (leftClicked && !leftWasClicked) ||", dispatch)
+        self.assertIn("(rightClicked && !rightWasClicked);", dispatch)
+        self.assertIn("if (newPress)\n                target = null;", dispatch)
+        self.assertIn("if (newPress)\n            {", dispatch)
+        self.assertIn("target?.HandleMouse(mouseX, mouseY", dispatch)
+        self.assertLess(dispatch.index("target = null;"),
+                        dispatch.index("for (int i = applications.Count - 1;"))
+        # A new desktop/taskbar press has no window target, but an
+        # ongoing drag still delivers motion and button release.
+        for left, old_left, right, old_right in (
+            (True, False, False, False), (False, False, True, False),
+            (True, True, False, False), (False, True, False, False),
+        ):
+            new_press = (left and not old_left) or (right and not old_right)
+            has_window_under_pointer = False
+            target_active = not new_press or has_window_under_pointer
+            self.assertEqual(target_active, not new_press)
+
+    def test_drag_respects_same_work_area_inset_as_restore(self):
+        drag = WINDOW.split("if (dragging)", 1)[1].split(
+            "if (wasClicked)", 1)[0]
+        self.assertIn(
+            "int margin = desktopWidth >= 1000 && desktopHeight >= 700 ? 12 : 0;",
+            drag)
+        self.assertIn("desktopWidth - Width - margin", drag)
+        self.assertIn("desktopHeight - Height - margin", drag)
+        self.assertIn("System.Math.Max(margin, System.Math.Min(newX, maxX))", drag)
+        self.assertIn("System.Math.Max(margin, System.Math.Min(newY, maxY))", drag)
+        for screen_width, screen_height in (
+            (320, 240), (800, 600), (1024, 768),
+            (1366, 768), (1920, 1080),
+        ):
+            desktop_height = screen_height - 44
+            margin = 12 if screen_width >= 1000 and desktop_height >= 700 else 0
+            _, _, width, height = fit_window(
+                120, 78, 820, 520, screen_width, screen_height)
+            for desired_x, desired_y in (
+                (-10000, -10000), (0, 0), (99999, 99999),
+            ):
+                x = max(margin, min(desired_x,
+                                    max(margin, screen_width - width - margin)))
+                y = max(margin, min(desired_y,
+                                    max(margin, desktop_height - height - margin)))
+                self.assertGreaterEqual(x, margin)
+                self.assertGreaterEqual(y, margin)
+                self.assertLessEqual(x + width, screen_width - margin)
+                self.assertLessEqual(y + height, desktop_height - margin)
+
     def test_sdk_version_still_pinned(self):
         self.assertIn('Sdk="Cosmos.Sdk/3.0.95"', PROJECT)
         self.assertIn('Version="3.0.95"', PROJECT)
