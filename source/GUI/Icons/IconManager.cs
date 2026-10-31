@@ -28,6 +28,11 @@ namespace ZonderqOS.GUI.Icons
         private static readonly int[] scaledHeights = new int[MaxScaledCacheEntries];
         private static int scaledCacheCount;
 
+        // Per-icon most-recent-size slot: 47 integers instead of searching
+        // up to 256 entries every time an icon is drawn at its usual size.
+        // A miss still uses the original exhaustive lookup and eviction rules.
+        private static readonly int[] scaledRecentSlots = new int[IconCount];
+
         public static void Preload()
         {
             try
@@ -138,10 +143,26 @@ namespace ZonderqOS.GUI.Icons
         private static int[] GetScaledPixels(IconType type, int[] source, int sourceWidth, int sourceHeight,
             int width, int height)
         {
+            int typeIndex = (int)type;
+            bool validType = typeIndex >= 0 && typeIndex < IconCount;
+            if (validType)
+            {
+                int recent = scaledRecentSlots[typeIndex];
+                if (recent < scaledCacheCount &&
+                    scaledTypes[recent] == type &&
+                    scaledWidths[recent] == width &&
+                    scaledHeights[recent] == height)
+                    return scaledPixels[recent];
+            }
+
             for (int i = 0; i < scaledCacheCount; i++)
             {
                 if (scaledTypes[i] == type && scaledWidths[i] == width && scaledHeights[i] == height)
+                {
+                    if (validType)
+                        scaledRecentSlots[typeIndex] = i;
                     return scaledPixels[i];
+                }
             }
 
             if (scaledCacheCount >= MaxScaledCacheEntries)
@@ -181,6 +202,8 @@ namespace ZonderqOS.GUI.Icons
             scaledHeights[slot] = height;
             scaledPixels[slot] = destination;
             scaledCacheCount = slot + 1;
+            if (validType)
+                scaledRecentSlots[typeIndex] = slot;
             return destination;
         }
 
