@@ -57,6 +57,7 @@ internal static class Program
         Verify("Signed integer minimum", "-9223372036854775808", true);
         RoundedPanelSmoke.Verify();
         CornerInsetSmoke.Verify();
+        CornerBandSmoke.Verify();
         Console.WriteLine("PASS: production C# text/panel renderers tested with stub Canvas; not QEMU.");
         return 0;
     }

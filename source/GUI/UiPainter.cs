@@ -5,7 +5,7 @@ using Cosmos.Kernel.System.Graphics;
 namespace ZonderqOS.GUI
 {
     /// <summary>
-    /// Clipped rounded rectangles for the Cosmos 3.0.94 software Canvas.
+    /// Clipped rounded rectangles for the Cosmos 3.0.95 software Canvas.
     /// Full-height content is drawn in one fast filled rectangle; only the
     /// two corner strips use a small number of scanlines. No per-pixel
     /// trigonometry, frame buffers, bitmaps or heap allocations.
@@ -30,12 +30,7 @@ namespace ZonderqOS.GUI
             }
 
             Fill(canvas, fill, x, y + r, width, height - 2 * r);
-            for (int row = 0; row < r; row++)
-            {
-                int inset = CornerInset(r, row);
-                Fill(canvas, fill, x + inset, y + row, width - 2 * inset, 1);
-                Fill(canvas, fill, x + inset, y + height - row - 1, width - 2 * inset, 1);
-            }
+            FillCornerBands(canvas, x, y, width, height, r, fill, true);
 
             Horizontal(canvas, border, x + r, y, width - 2 * r);
             Horizontal(canvas, border, x + r, y + height - 1, width - 2 * r);
@@ -70,12 +65,7 @@ namespace ZonderqOS.GUI
             }
 
             Fill(canvas, fill, x, y + r, width, height - 2 * r);
-            for (int row = 0; row < r; row++)
-            {
-                int inset = CornerInset(r, row);
-                Fill(canvas, fill, x + inset, y + row, width - 2 * inset, 1);
-                Fill(canvas, fill, x + inset, y + height - row - 1, width - 2 * inset, 1);
-            }
+            FillCornerBands(canvas, x, y, width, height, r, fill, true);
         }
 
         internal static void RoundedTop(Canvas canvas, int x, int y, int width, int height,
@@ -85,10 +75,27 @@ namespace ZonderqOS.GUI
                 return;
             int r = Math.Min(Math.Min(radius, width / 2), height);
             Fill(canvas, fill, x, y + r, width, height - r);
-            for (int row = 0; row < r; row++)
+            FillCornerBands(canvas, x, y, width, height, r, fill, false);
+        }
+
+        // Adjacent scanlines with the same corner inset form one rectangle.
+        // This preserves the exact opaque pixels while reducing Canvas calls.
+        private static void FillCornerBands(Canvas canvas, int x, int y, int width,
+            int height, int radius, Color fill, bool mirrored)
+        {
+            for (int row = 0; row < radius;)
             {
-                int inset = CornerInset(r, row);
-                Fill(canvas, fill, x + inset, y + row, width - 2 * inset, 1);
+                int inset = CornerInset(radius, row);
+                int end = row + 1;
+                while (end < radius && CornerInset(radius, end) == inset)
+                    end++;
+
+                int bandHeight = end - row;
+                Fill(canvas, fill, x + inset, y + row, width - 2 * inset, bandHeight);
+                if (mirrored)
+                    Fill(canvas, fill, x + inset, y + height - end,
+                        width - 2 * inset, bandHeight);
+                row = end;
             }
         }
 
