@@ -315,6 +315,7 @@ class ResponsiveGui3094(unittest.TestCase):
             "Y + PinnedLabelY", "Y + ToolsLabelY",
             "button.Y + (CompactLayout ? 33 : 56)",
             "button.Y + (CompactLayout ? 10 : 17)",
+            "int toolWidth = Math.Max(60,",
             "int powerGap = Width < 480 ? 6 : 8;",
             "if (button.Width < 72)",
         ):
@@ -336,6 +337,13 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertLess(tools_top + 2 * tools_height + tools_gap,
                             menu_height - 76)
             self.assertEqual(compact, menu_height < 530)
+
+        for screen_width in (320, 400, 480, 640):
+            menu_width = min(480, max(1, screen_width - 16))
+            pinned_width = max(86, (menu_width - 28 - 18) // 3)
+            tool_width = max(60, (menu_width - 28 - 16) // 3)
+            self.assertLessEqual(28 + 3 * pinned_width + 2 * 9, menu_width)
+            self.assertLessEqual(28 + 3 * tool_width + 2 * 8, menu_width)
 
         # Narrower-than-design Start menu keeps the four distinct session
         # buttons to the right of the identity block, all inside the panel.
