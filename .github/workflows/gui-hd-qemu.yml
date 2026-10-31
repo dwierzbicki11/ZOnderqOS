@@ -56,6 +56,7 @@ jobs:
           SERVICE_QEMU_PROBE_FILE_MANAGER: '1'
           SERVICE_QEMU_PROBE_TASK_MANAGER: '1'
         run: |
+          set -euo pipefail
           bash tools/smoke-services-qemu.sh \
             output-3095/ZonderqOS-3095-disk.iso gui-hd-qemu-output \
             2>&1 | tee gui-hd-qemu-smoke.log
