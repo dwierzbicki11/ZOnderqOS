@@ -248,6 +248,15 @@ class FramebufferProbeTests(unittest.TestCase):
 
 
 
+    def test_smoke_gate_rejects_wrong_real_qemu_resolution(self):
+        source = (ROOT / "tools/smoke-services-qemu.sh").read_text()
+        self.assertIn('EXPECTED_FRAMEBUFFER="${SERVICE_QEMU_EXPECT_FRAMEBUFFER:-}"', source)
+        self.assertIn('framebuffer expectation requires screenshot capture', source)
+        self.assertIn("Framebuffer mode mismatch: requested", source)
+        self.assertIn("verified actual framebuffer", source)
+        self.assertLess(source.index("if sys.argv[2] and f'{width}x{height}'"),
+                        source.index("verified actual framebuffer"))
+
     def test_source_derived_filemanager_bounds_across_modes(self):
         # This is geometry-model testing; the real boot must separately
         # report its actual framebuffer size.

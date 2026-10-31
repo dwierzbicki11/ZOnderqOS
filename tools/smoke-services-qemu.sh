@@ -7,6 +7,7 @@ BOOT_SECONDS="${SERVICE_QEMU_BOOT_SECONDS:-100}"
 CAPTURE_SCREEN="${SERVICE_QEMU_CAPTURE_SCREEN:-0}"
 AUTOMATE_GUI_LOGIN="${SERVICE_QEMU_AUTOMATE_GUI_LOGIN:-0}"
 PROBE_FILE_MANAGER="${SERVICE_QEMU_PROBE_FILE_MANAGER:-0}"
+EXPECTED_FRAMEBUFFER="${SERVICE_QEMU_EXPECT_FRAMEBUFFER:-}"
 
 fail() { echo "[SERVICES-QEMU][FAIL] $*" >&2; exit 1; }
 for tool in qemu-system-x86_64 mkfs.vfat sfdisk mtype mcopy python3; do
@@ -19,6 +20,8 @@ done
 [[ "$AUTOMATE_GUI_LOGIN" == 0 || "$CAPTURE_SCREEN" == 1 ]] || fail "GUI login probe requires framebuffer capture"
 [[ "$PROBE_FILE_MANAGER" == 0 || "$PROBE_FILE_MANAGER" == 1 ]] || fail "invalid File Manager probe flag"
 [[ "$PROBE_FILE_MANAGER" == 0 || "$AUTOMATE_GUI_LOGIN" == 1 ]] || fail "File Manager probe requires synthetic GUI login"
+[[ -z "$EXPECTED_FRAMEBUFFER" || "$EXPECTED_FRAMEBUFFER" =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || fail "expected framebuffer must be WIDTHxHEIGHT"
+[[ -z "$EXPECTED_FRAMEBUFFER" || "$CAPTURE_SCREEN" == 1 ]] || fail "framebuffer expectation requires screenshot capture"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 ISO="$(realpath "$ISO")"
@@ -116,7 +119,7 @@ PY
   QEMU_PID=""
   if [[ "$CAPTURE_SCREEN" == 1 ]]; then
     [[ -s "$OUT/$phase.ppm" ]] || fail "$phase: QMP screendump missing"
-    python3 - "$OUT/$phase.ppm" <<'PY'
+    python3 - "$OUT/$phase.ppm" "$EXPECTED_FRAMEBUFFER" <<'PY'
 import sys
 with open(sys.argv[1], 'rb') as screenshot:
     magic = screenshot.readline().strip()
@@ -132,6 +135,10 @@ with open(sys.argv[1], 'rb') as screenshot:
     pixels = screenshot.read()
     if len(pixels) != width * height * 3:
         raise SystemExit('Incomplete QMP framebuffer dump')
+    if sys.argv[2] and f'{width}x{height}' != sys.argv[2]:
+        raise SystemExit(f'Framebuffer mode mismatch: requested {sys.argv[2]}, actual {width}x{height}')
+    if sys.argv[2]:
+        print(f'[SERVICES-QEMU] verified actual framebuffer {width}x{height}')
     # This proves a framebuffer was captured, NOT that GUI interactions work.
     samples = {pixels[i:i+3] for i in range(0, len(pixels), max(3, len(pixels) // 4096 // 3 * 3))}
     print(f'[SERVICES-QEMU] framebuffer capture {width}x{height}, sampled colors={len(samples)}')
