@@ -33,7 +33,9 @@ def dhcp_frame(frame: bytes):
     if ihl < 20 or len(frame) < 14 + ihl + 8 or frame[23] != 17:
         return None
     iplen = int.from_bytes(frame[16:18], "big")
-    if iplen < ihl + 8 or len(frame) < 14 + iplen:
+    # An IPv4 fragment cannot establish a complete BOOTP/DHCP exchange.
+    # Reject both MF and nonzero offsets before decoding the UDP header.
+    if (int.from_bytes(frame[20:22], "big") & 0x3FFF) or iplen < ihl + 8 or len(frame) < 14 + iplen:
         return None
     udp_start = 14 + ihl
     sport, dport, udplen, _checksum = struct.unpack_from(">HHHH", frame, udp_start)
@@ -171,7 +173,18 @@ def self_test() -> None:
         START, "[NET3095-N2] DHCP=PASS ip=10.0.2.15 mask=255.255.255.0 gateway=10.0.2.2"
     ])
     assert "PASS" in validate(serial, synthetic_capture(frames))
+    # Keep the Ethernet payload intact while marking the IPv4 datagram as
+    # fragmented: a fail-open DHCP parser must not accept these captures.
+    def fragment(frame: bytes, flags_offset: int) -> bytes:
+        changed = bytearray(frame)
+        changed[20:22] = flags_offset.to_bytes(2, "big")
+        return bytes(changed)
+
     negatives = [
+        (serial, frames[:1] + [fragment(frames[1], 0x2000)] + frames[2:]),
+        (serial, frames[:2] + [fragment(frames[2], 0x0001)] + frames[3:]),
+        (serial, frames[:3] + [fragment(frames[3], 0x2000)] + frames[4:]),
+        (serial, frames[:4] + [fragment(frames[4], 0x0001)]),
         (serial.replace(START, ""), frames),
         (serial.replace("DHCP=PASS", "DHCP=FAIL"), frames),
         (serial + "\n[NET3095-N2][FAIL] bad", frames),
