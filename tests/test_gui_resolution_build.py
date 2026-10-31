@@ -38,7 +38,7 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
                          "gui-hd-qemu.yml"):
             workflow = (ROOT / ".github/workflows" / filename).read_text()
             self.assertIn(
-                "run: |\\n          set -euo pipefail\\n          bash tools/smoke-services-qemu.sh",
+                "run: |\n          set -euo pipefail\n          bash tools/smoke-services-qemu.sh",
                 workflow, filename)
 
     def test_limines_resolution_regex_preserves_newline_and_other_entries(self):
