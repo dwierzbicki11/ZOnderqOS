@@ -7,11 +7,18 @@ LOG="${2:?usage: smoke-network-n1-3095-qemu.sh ISO SERIAL-LOG}"
 TIMEOUT="${NET3095_N1_TIMEOUT:-150}"
 PCAP="${NET3095_N1_PCAP:-$LOG.pcap}"
 MODE="${3:-n1}"
+IRQ_TRACE="${NET3095_IRQ_TRACE:-0}"
 [[ "$MODE" == n1 || "$MODE" == n2 || "$MODE" == n3 || "$MODE" == n4 || "$MODE" == n5 || "$MODE" == n6 ]] || {
   echo "[NET3095-N1][FAIL] Expected n1, n2, n3, n4, n5 or n6 mode" >&2; exit 2;
 }
 [[ "$TIMEOUT" =~ ^[1-9][0-9]*$ ]] && (( TIMEOUT <= 600 )) || {
   echo "[NET3095-N1][FAIL] Invalid timeout" >&2; exit 1;
+}
+[[ "$IRQ_TRACE" == 0 || "$IRQ_TRACE" == 1 ]] || {
+  echo "[NET3095-N1][FAIL] NET3095_IRQ_TRACE must be 0 or 1" >&2; exit 2;
+}
+[[ "$IRQ_TRACE" == 0 || "$MODE" == n6 ]] || {
+  echo "[NET3095-N1][FAIL] IRQ trace diagnostics require isolated n6 mode" >&2; exit 2;
 }
 [[ -s "$ISO" ]] || { echo "[NET3095-N1][FAIL] Missing ISO" >&2; exit 1; }
 command -v qemu-system-x86_64 >/dev/null || exit 1
@@ -102,7 +109,22 @@ if [[ "$MODE" == n6 ]]; then
     exit 1
   }
 fi
+trace_args=()
+if [[ "$IRQ_TRACE" == 1 ]]; then
+  # QEMU trace events are device-side evidence, NOT proof of guest IRQ handling.
+  # Require all requested events to exist rather than silently disabling tracing.
+  trace_available="$(qemu-system-x86_64 -trace help 2>&1)" || {
+    echo "[NET3095-E1000E-IRQ][FAIL] QEMU cannot list trace events" >&2; exit 1;
+  }
+  for event in e1000e_irq_legacy_notify e1000e_irq_msi_notify e1000e_irq_msix_notify_vec; do
+    grep -Eq "^[[:space:]]*${event}([[:space:]]|$)" <<< "$trace_available" || {
+      echo "[NET3095-E1000E-IRQ][FAIL] QEMU lacks trace event: $event" >&2; exit 1;
+    }
+    trace_args+=(-trace "$event")
+  done
+fi
 qemu-system-x86_64 \
+  "${trace_args[@]}" \
   -machine q35 -cpu Nehalem -smp 1 -m 2048M \
   -boot d -cdrom "$ISO" \
   -nic none -netdev user,id=net0 -device e1000e,netdev=net0 \
@@ -279,6 +301,9 @@ while (( SECONDS - started < TIMEOUT )); do
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
     if [[ "$MODE" == n6 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
+      if [[ "$IRQ_TRACE" == 1 ]]; then
+        python3 "$ROOT/tests/verify_3095_e1000e_irq_trace.py" "$LOG.stderr"
+      fi
       echo "[NET3095-N6-QEMU] PASS two E1000E HTTP/1.0 GET/200 TCP sessions + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
     elif [[ "$MODE" == n5 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP"
