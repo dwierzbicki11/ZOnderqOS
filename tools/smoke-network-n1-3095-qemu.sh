@@ -15,15 +15,23 @@ MODE="${3:-n1}"
 }
 [[ -s "$ISO" ]] || { echo "[NET3095-N1][FAIL] Missing ISO" >&2; exit 1; }
 command -v qemu-system-x86_64 >/dev/null || exit 1
-# Fail closed: do not follow symlinks or erase an existing capture.
-[[ ! -L "$LOG" && ! -L "$LOG.stderr" && ! -L "$LOG.tcp-host" && ! -L "$LOG.http-host" ]] || {
-  echo "[NET3095-N1][FAIL] Refusing symlinked serial output" >&2; exit 1;
-}
-[[ ! -e "$PCAP" && ! -L "$PCAP" ]] || {
-  echo "[NET3095-N1][FAIL] Refusing to overwrite existing PCAP" >&2; exit 1;
-}
+# Fail closed: evidence files are unique per boot and must never
+# truncate an existing host file, including a dangling symlink.
+# Refuse aliasing between serial, stderr, host evidence and the PCAP.
+declare -A evidence_paths=()
+for evidence in "$LOG" "$LOG.stderr" "$LOG.tcp-host" "$LOG.http-host" "$PCAP"; do
+  [[ ! -e "$evidence" && ! -L "$evidence" ]] || {
+    echo "[NET3095-N1][FAIL] Refusing to overwrite existing evidence: $evidence" >&2; exit 1;
+  }
+  absolute="$(realpath -m -- "$evidence")"
+  [[ -z "${evidence_paths[$absolute]:-}" ]] || {
+    echo "[NET3095-N1][FAIL] Evidence paths alias: $evidence" >&2; exit 1;
+  }
+  evidence_paths[$absolute]=1
+done
 mkdir -p "$(dirname "$LOG")" "$(dirname "$PCAP")"
-: > "$LOG"
+# noclobber closes the common TOCTOU window between the guard and creation.
+( set -C; : > "$LOG" )
 # N4 uses a CI-owned, loopback-only TCP server. The QEMU guest reaches
 # 127.0.0.1 on the host through the SLIRP 10.0.2.2 gateway alias.
 server_pid=""
