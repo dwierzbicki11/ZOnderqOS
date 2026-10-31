@@ -32,14 +32,26 @@ internal static class IconCacheSmoke
         return null;
     }
 
+    // Benchmark baseline must NOT use reflection inside the timed loop.
+    // Capture the production cache count once, then compare the original
+    // linear search to the new recent-slot hit under identical conditions.
+    private static int[] BaselineLookupFast(IconType type, int width, int height, int count)
+    {
+        for (int i = 0; i < count; i++)
+            if (Types[i] == type && Widths[i] == width && Heights[i] == height)
+                return Pixels[i];
+        return null;
+    }
+
     private static double Time(bool recent, IconType type, int[] source, int width, int height, int repeats)
     {
+        int count = (int)Count.GetValue(null);
         long start = Stopwatch.GetTimestamp();
         for (int i = 0; i < repeats; i++)
         {
             int[] result = recent
                 ? GetScaled(type, source, 8, 8, width, height)
-                : BaselineLookup(type, width, height);
+                : BaselineLookupFast(type, width, height, count);
             if (result == null) throw new Exception("Missing cached icon");
         }
         return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
