@@ -1303,5 +1303,48 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertIn("System.Math.Max(1, resultRowHeight - 14)", COMMAND_PALETTE)
 
 
+    def test_file_manager_filter_retains_selection_and_enter_opens_first_match(self):
+        section = FILE_MANAGER.split("private void ApplySearchFilter()", 1)[1].split(
+            "private void RebuildSidebar()", 1)[0]
+        self.assertIn("FileEntry previousSelection =", section)
+        self.assertIn("entries.IndexOf(previousSelection)", section)
+        self.assertIn("searchText.Length > 0 && entries.Count > 0", section)
+        self.assertIn("selectedIndex = 0;", section)
+        self.assertIn("EnsureSelectionVisible();", section)
+        self.assertNotIn("Directory.GetFiles", section)
+        self.assertNotIn("Directory.GetDirectories", section)
+        keyboard = FILE_MANAGER.split("public override void HandleKeyboard(", 1)[1].split(
+            "private void CopySelected(", 1)[0]
+        self.assertIn("if (selectedIndex >= 0)\\n                    OpenEntry(selectedIndex);".replace("\\n", "\n"), keyboard)
+
+        def select_after_filter(names, previous, query):
+            visible = [name for name in names if query.lower() in name.lower()]
+            if previous in visible:
+                return visible, visible.index(previous)
+            return visible, 0 if query and visible else -1
+
+        names = ["Alpha.txt", "Beta.txt", "Gamma.log", "README.md"]
+        self.assertEqual(select_after_filter(names, "Gamma.log", "log"),
+                         (["Gamma.log"], 0))
+        self.assertEqual(select_after_filter(names, "Beta.txt", "a"),
+                         (["Alpha.txt", "Beta.txt", "Gamma.log", "README.md"], 1))
+        self.assertEqual(select_after_filter(names, "Beta.txt", "read"),
+                         (["README.md"], 0))
+        self.assertEqual(select_after_filter(names, None, "zzzz"), ([], -1))
+        self.assertEqual(select_after_filter(names, None, ""), (names, -1))
+
+    def test_sidebar_context_click_cannot_mount_or_unmount_volume(self):
+        right = FILE_MANAGER.split("private void SidebarRightClick(", 1)[1].split(
+            "private SidebarEntry GetSidebarEntryAt(", 1)[0]
+        self.assertIn("status = entry.IsMounted", right)
+        self.assertNotIn("UnmountVolume(", right)
+        self.assertNotIn("MountVolume(", right)
+        self.assertNotIn("TryUnmount(", right)
+        left = FILE_MANAGER.split("private void SidebarClick(", 1)[1].split(
+            "private void SidebarRightClick(", 1)[0]
+        self.assertIn("UnmountVolume(entry);", left)
+        self.assertIn("MountVolume(entry, false);", left)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

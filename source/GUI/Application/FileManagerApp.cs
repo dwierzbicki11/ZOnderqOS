@@ -356,10 +356,13 @@ namespace ZonderqOS.GUI.Apps
             if (entry == null || !entry.IsVolume || entry.PartitionIndex <= 0)
                 return;
 
-            if (entry.IsMounted)
-                UnmountVolume(entry);
-            else
-                MountVolume(entry, false);
+            // Right-click is informational, not a destructive mount toggle.
+            // A stray context click must never unmount an open FAT32 volume.
+            // Explicit left-click on the M/U control remains available.
+            status = entry.IsMounted
+                ? "Mounted: " + (string.IsNullOrEmpty(entry.Path) ? entry.Label : entry.Path) +
+                    " (use U button to unmount)"
+                : "Not mounted: " + entry.Label + " (use M button to mount)";
         }
 
         private SidebarEntry GetSidebarEntryAt(int y)
@@ -882,7 +885,10 @@ namespace ZonderqOS.GUI.Apps
         {
             // Rebuild only the visible list. Explicit F5, navigation and
             // successful filesystem changes still refresh the disk snapshot.
-            selectedIndex = -1;
+            // Keep the selected FileEntry object when it survives filtering;
+            // otherwise select the first search match so Enter works directly.
+            FileEntry previousSelection = selectedIndex >= 0 && selectedIndex < entries.Count
+                ? entries[selectedIndex] : null;
             scrollIndex = 0;
             contextMenuVisible = false;
             ResetClickSequence();
@@ -890,6 +896,10 @@ namespace ZonderqOS.GUI.Apps
             entries.AddRange(cachedEntries);
             if (!string.IsNullOrEmpty(searchText))
                 Filter();
+            selectedIndex = previousSelection == null ? -1 : entries.IndexOf(previousSelection);
+            if (selectedIndex < 0 && searchText.Length > 0 && entries.Count > 0)
+                selectedIndex = 0;
+            EnsureSelectionVisible();
             status = string.IsNullOrEmpty(searchText)
                 ? entries.Count + " item(s)"
                 : "Search: " + searchText + " (" + entries.Count + " item(s))";
