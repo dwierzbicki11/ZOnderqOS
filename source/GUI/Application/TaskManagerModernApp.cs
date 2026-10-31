@@ -829,11 +829,25 @@ namespace ZonderqOS.GUI.Apps
             scrollBar.ValueChanged = value => app.SetScrollIndex(value);
         }
 
-        public int VisibleRows => Math.Max(1, Math.Max(RowHeight, Height - ListTop - FooterHeight - 6) / RowHeight);
+        private int ListTopForView => Width < 550 ? 64 : ListTop;
+        private int ListHeightForView => Math.Max(RowHeight, Height - ListTopForView - FooterHeight - 6);
+        public int VisibleRows => Math.Max(1, ListHeightForView / RowHeight);
 
         public int NavAt(int x, int y)
         {
             if (x < 6 || x >= SidebarWidth - 6 || y < NavTop) return -1;
+            if (Height < 300)
+            {
+                // Same 2x2 navigation layout as DrawNav on short screens.
+                int relativeX = x - 6;
+                int relativeY = y - NavTop;
+                int column = relativeX / 80;
+                int row = relativeY / 36;
+                if (column > 1 || row > 1 || relativeX % 80 >= 76 ||
+                    relativeY % 36 >= 32)
+                    return -1;
+                return row * 2 + column;
+            }
             int relative = y - NavTop;
             int page = relative / NavHeight;
             return page >= 0 && page <= 3 && relative < NavHeight * 4 ? page : -1;
@@ -842,6 +856,8 @@ namespace ZonderqOS.GUI.Apps
         public int ToolbarActionAt(int x, int y)
         {
             if (x < SidebarWidth || y < 8 || y >= 42) return 0;
+            if (Width < 550)
+                return x >= Width - 42 && x < Width - 10 ? 1 : 0;
             int refresh = Width - 210;
             int end = Width - 114;
             if (x >= refresh && x < refresh + 88) return 1;
@@ -901,9 +917,10 @@ namespace ZonderqOS.GUI.Apps
         {
             if (app.ActivePage == TaskManagerModernApp.PagePerformance) return -1;
             int contentX = SidebarWidth + 8;
-            int listH = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
-            if (x < contentX || x >= Width - ScrollReserve || y < ListTop || y >= ListTop + listH) return -1;
-            int index = app.ScrollIndex + (y - ListTop) / RowHeight;
+            int listTop = ListTopForView;
+            int listH = ListHeightForView;
+            if (x < contentX || x >= Width - ScrollReserve || y < listTop || y >= listTop + listH) return -1;
+            int index = app.ScrollIndex + (y - listTop) / RowHeight;
             return index >= 0 && index < app.Rows.Count ? index : -1;
         }
 
@@ -916,9 +933,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void UpdateScrollBar()
         {
-            int listH = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
+            int listH = ListHeightForView;
             scrollBar.X = X + Width - 15;
-            scrollBar.Y = Y + ListTop + 2;
+            scrollBar.Y = Y + ListTopForView + 2;
             scrollBar.Width = 10;
             scrollBar.Height = Math.Max(24, listH - 4);
             scrollBar.SetRange(app.Rows.Count, VisibleRows);
@@ -947,6 +964,8 @@ namespace ZonderqOS.GUI.Apps
             DrawNav(canvas, 1, "Wydajnosc", IconType.Settings);
             DrawNav(canvas, 2, "Szczegoly", IconType.File);
             DrawNav(canvas, 3, "Uslugi", IconType.Settings);
+            if (Height < 300)
+                return; // The clock must not overlap compact 2x2 navigation.
             int bottom = Y + Height - 62;
             canvas.DrawLine(Color.FromArgb(48, 58, 68), X + 10, bottom - 8, X + SidebarWidth - 10, bottom - 8);
             SmallTextRenderer.Draw(canvas, "SYSTEM CLOCK", X + 16, bottom + 2, Muted);
@@ -956,6 +975,18 @@ namespace ZonderqOS.GUI.Apps
 
         private void DrawNav(Canvas canvas, int page, string label, IconType icon)
         {
+            if (Height < 300)
+            {
+                int compactX = X + 6 + (page % 2) * 80;
+                int compactY = Y + NavTop + (page / 2) * 36;
+                bool compactActive = app.ActivePage == page;
+                canvas.DrawFilledRectangle(compactActive ? Color.FromArgb(38, 55, 70) :
+                    Sidebar, compactX, compactY, 76, 32);
+                if (compactActive)
+                    canvas.DrawFilledRectangle(Accent, compactX, compactY + 4, 3, 24);
+                IconManager.DrawScaled(canvas, icon, compactX + 29, compactY + 7, 18, 18);
+                return;
+            }
             int y = Y + NavTop + page * NavHeight;
             bool active = app.ActivePage == page;
             if (active)
@@ -971,6 +1002,17 @@ namespace ZonderqOS.GUI.Apps
         {
             int contentX = X + SidebarWidth + 8;
             string title = app.ActivePage == 0 ? "Procesy" : app.ActivePage == 1 ? "Wydajnosc" : app.ActivePage == 2 ? "Szczegoly" : "Uslugi";
+            if (Width < 550)
+            {
+                // Do not draw REFRESH, END TASK or the clock over the sidebar.
+                // The compact header retains a safe refresh-only button.
+                SmallTextRenderer.DrawClipped(canvas, title, contentX + 4, Y + 21,
+                    Math.Max(1, Width - SidebarWidth - 64), Color.WhiteSmoke);
+                DrawButton(canvas, X + Width - 42, Y + 10, 32, "", IconType.Refresh, false, true);
+                canvas.DrawLine(Color.FromArgb(52, 63, 74), contentX,
+                    Y + HeaderHeight, X + Width - 4, Y + HeaderHeight);
+                return;
+            }
             SmallTextRenderer.Draw(canvas, title, contentX + 4, Y + 21, Color.WhiteSmoke);
             int refresh = X + Width - 210;
             int end = X + Width - 114;
@@ -996,6 +1038,13 @@ namespace ZonderqOS.GUI.Apps
         {
             int x = X + SidebarWidth + 8;
             int width = Width - SidebarWidth - 12;
+            if (Width < 550)
+            {
+                // The four summary cards would extend past a 320px window.
+                // Use the available area for a compact, scrollable task list.
+                RenderTable(canvas, x, width);
+                return;
+            }
             int gap = 8;
             int cardW = Math.Max(86, (width - gap * 3) / 4);
             DrawSummary(canvas, x, cardW, "APPS", (ulong)app.GuiAppCount, "APPLICATIONS", false);
@@ -1029,8 +1078,15 @@ namespace ZonderqOS.GUI.Apps
         private void RenderTable(Canvas canvas, int x, int width)
         {
             int headerY = Y + TableHeaderTop;
-            canvas.DrawFilledRectangle(Color.FromArgb(33, 39, 46), x, headerY, width, TableHeaderHeight);
-            if (width < 520)
+            if (Width >= 550)
+            {
+                canvas.DrawFilledRectangle(Color.FromArgb(33, 39, 46), x, headerY, width, TableHeaderHeight);
+            }
+            if (Width < 550)
+            {
+                // No header row in compact mode; the list starts at y=64.
+            }
+            else if (width < 520)
             {
                 // Narrow windows cannot fit four columns. The compact rows
                 // show name and state without drawing beyond the client area.
@@ -1045,8 +1101,8 @@ namespace ZonderqOS.GUI.Apps
                 SmallTextRenderer.Draw(canvas, "DETAIL", x + Math.Max(470, width - 120), headerY + 11, Muted);
             }
 
-            int listY = Y + ListTop;
-            int listH = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
+            int listY = Y + ListTopForView;
+            int listH = ListHeightForView;
             int rowW = width - ScrollReserve;
             canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), x, listY, width, listH);
             canvas.DrawRectangle(Color.FromArgb(50, 60, 70), x, listY, width, listH);

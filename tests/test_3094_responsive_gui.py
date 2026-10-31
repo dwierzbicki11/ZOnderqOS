@@ -142,6 +142,29 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn('"3.0.95", Good', SETTINGS)
         self.assertNotIn('"3.0.94", Good', SETTINGS)
 
+    def test_task_manager_short_window_nav_and_compact_process_list(self):
+        manager = TASK_MANAGER
+        self.assertIn("private int ListTopForView => Width < 550 ? 64 : ListTop;", manager)
+        self.assertIn("int listTop = ListTopForView;", manager)
+        self.assertIn("int listY = Y + ListTopForView;", manager)
+        self.assertIn("scrollBar.Y = Y + ListTopForView + 2;", manager)
+        self.assertIn("if (Width < 550)\n            {\n                // The four summary cards", manager)
+        self.assertIn("if (Height < 300)", manager)
+        self.assertIn("int compactX = X + 6 + (page % 2) * 80;", manager)
+        self.assertIn("int compactY = Y + NavTop + (page / 2) * 36;", manager)
+        self.assertIn("return x >= Width - 42 && x < Width - 10 ? 1 : 0;", manager)
+        for height in (146, 220, 386):
+            for page in range(4):
+                x = 6 + (page % 2) * 80 + 38
+                y = 60 + (page // 2) * 36 + 16
+                if height < 300:
+                    self.assertLess(y, height)
+                    self.assertEqual(((y - 60) // 36) * 2 + ((x - 6) // 80), page)
+            if height == 146:
+                list_top = 64
+                list_height = max(36, height - list_top - 28 - 6)
+                self.assertLessEqual(list_top + list_height, height - 28)
+
     def test_task_manager_compact_performance_cards_fit_and_match_hit_tests(self):
         render = TASK_MANAGER.split("private void RenderPerformance(Canvas canvas)", 1)[1].split(
             "private void DrawResource(Canvas canvas", 1)[0]
