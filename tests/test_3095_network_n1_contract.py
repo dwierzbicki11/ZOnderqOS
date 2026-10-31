@@ -144,7 +144,12 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('for (int sequence = 0; sequence < 32; sequence++)', SOURCE)
         self.assertIn('TX_BURST_ATTEMPT=START count=32', SOURCE)
         self.assertIn('TX_BURST=QUEUED count=32', SOURCE)
+        self.assertIn('POST_BURST_ICMP_ATTEMPT=START', SOURCE)
+        self.assertIn('postBurstPing.SendEcho(id: 0x3096, sequence: 2)', SOURCE)
+        self.assertIn('POST_BURST_ICMP=PASS from=10.0.2.2', SOURCE)
         self.assertIn('verify_3095_network_n6_burst.py', SMOKE)
+        self.assertIn('check_post_burst_icmp(frames, last_burst, guest)',
+                      (ROOT / 'tests/verify_3095_network_n6_burst.py').read_text())
         self.assertIn('No 32-frame ordered raw TX PCAP proof', SMOKE)
 
         self.assertIn('for attempt in range(1, 3):', HTTP_HOST)
