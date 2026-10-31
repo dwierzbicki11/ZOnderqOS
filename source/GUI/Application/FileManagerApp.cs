@@ -17,6 +17,9 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action<string> nanoLauncher;
         private readonly FileManagerView view;
         private readonly List<FileEntry> entries = new List<FileEntry>();
+        // Sorted directory snapshot: typing in the filename filter must not
+        // re-enumerate a potentially slow FAT32 volume on every keystroke.
+        private readonly List<FileEntry> cachedEntries = new List<FileEntry>();
         private readonly List<SidebarEntry> sidebarEntries = new List<SidebarEntry>();
 
         private string currentPath = "/root";
@@ -299,8 +302,8 @@ namespace ZonderqOS.GUI.Apps
             else if (x < 168)
             {
                 searchText = "";
+                ApplySearchFilter();
                 status = "Search cleared";
-                RefreshKeepStatus();
             }
         }
 
@@ -531,7 +534,7 @@ namespace ZonderqOS.GUI.Apps
                 if (searchText.Length > 0)
                 {
                     searchText = "";
-                    Refresh();
+                    ApplySearchFilter();
                     return;
                 }
 
@@ -546,7 +549,7 @@ namespace ZonderqOS.GUI.Apps
                 if (searchText.Length > 0)
                 {
                     searchText = searchText.Substring(0, searchText.Length - 1);
-                    Refresh();
+                    ApplySearchFilter();
                 }
                 else
                 {
@@ -621,8 +624,10 @@ namespace ZonderqOS.GUI.Apps
                 (key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) == 0)
             {
                 if (searchText.Length < 48)
+                {
                     searchText += key.KeyChar;
-                Refresh();
+                    ApplySearchFilter();
+                }
             }
         }
 
@@ -840,6 +845,7 @@ namespace ZonderqOS.GUI.Apps
         private void RefreshInternal(string keep)
         {
             entries.Clear();
+            cachedEntries.Clear();
             selectedIndex = -1;
             ResetClickSequence();
             scrollIndex = 0;
@@ -853,6 +859,7 @@ namespace ZonderqOS.GUI.Apps
                 Add(Directory.GetDirectories(currentPath), true);
                 Add(Directory.GetFiles(currentPath), false);
                 Sort();
+                cachedEntries.AddRange(entries);
 
                 if (!string.IsNullOrEmpty(searchText))
                     Filter();
@@ -865,8 +872,27 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
+                entries.Clear();
+                cachedEntries.Clear();
                 status = "Read error: " + ex.Message;
             }
+        }
+
+        private void ApplySearchFilter()
+        {
+            // Rebuild only the visible list. Explicit F5, navigation and
+            // successful filesystem changes still refresh the disk snapshot.
+            selectedIndex = -1;
+            scrollIndex = 0;
+            contextMenuVisible = false;
+            ResetClickSequence();
+            entries.Clear();
+            entries.AddRange(cachedEntries);
+            if (!string.IsNullOrEmpty(searchText))
+                Filter();
+            status = string.IsNullOrEmpty(searchText)
+                ? entries.Count + " item(s)"
+                : "Search: " + searchText + " (" + entries.Count + " item(s))";
         }
 
         private void RebuildSidebar()
