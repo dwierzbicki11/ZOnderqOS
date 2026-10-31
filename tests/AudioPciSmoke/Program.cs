@@ -124,6 +124,24 @@ static class Test
         for (int i = 0; i < pcm.Length; i++)
             Expect(upmixed[i] == pcm[i], "mono upmix duplicates PCM16 into both channels");
 
+        byte[] monoPcm = new byte[mono.Length - 44];
+        Array.Copy(mono, 44, monoPcm, 0, monoPcm.Length);
+        byte[] generatedMono = AudioWavePcm.EncodeMono16(monoPcm);
+        Expect(generatedMono.Length == mono.Length, "canonical mono WAV fixture length");
+        for (int i = 0; i < mono.Length; i++)
+            Expect(generatedMono[i] == mono[i], "mono encoder matches RIFF fixture");
+        byte[] monoDecoded = AudioWavePcm.DecodeStereo16(generatedMono);
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(monoDecoded[i] == pcm[i], "mono WAV encoder/decoder round-trip upmix");
+        bool invalidMonoEncode = false;
+        try { AudioWavePcm.EncodeMono16(new byte[3]); }
+        catch (ArgumentException) { invalidMonoEncode = true; }
+        Expect(invalidMonoEncode, "reject partial mono PCM16 sample");
+        invalidMonoEncode = false;
+        try { AudioWavePcm.EncodeMono16(new byte[48000 * 2 * 2 + 2]); }
+        catch (ArgumentException) { invalidMonoEncode = true; }
+        Expect(invalidMonoEncode, "reject mono encode longer than two seconds");
+
         byte[] invalidMono = (byte[])mono.Clone();
         invalidMono[32] = 4; // invalid mono block alignment
         bool badMonoRejected = false;
