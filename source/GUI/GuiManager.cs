@@ -70,7 +70,10 @@ namespace ZonderqOS.GUI
                 Window.ConfigureDesktop((int)canvas.Width, desktopHeight);
                 applicationManager = new ApplicationManager();
                 InitializeAppRegistry();
-                commandPalette = new CommandPalette((int)canvas.Width, desktopHeight, appRegistry);
+                // CommandPalette expects the full framebuffer height and reserves
+                // the 44px taskbar itself. Passing desktopHeight deducted it twice,
+                // needlessly hiding a row of search results on compact displays.
+                commandPalette = new CommandPalette((int)canvas.Width, (int)canvas.Height, appRegistry);
                 LoadWallpaper((int)canvas.Width, desktopHeight);
                 InitializeDesktopShortcuts();
                 desktopContextMenu = new DesktopContextMenu(
