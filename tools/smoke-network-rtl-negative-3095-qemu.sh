@@ -51,10 +51,9 @@ done
   echo "[NET3095-RTL-NEG][FAIL] Timed out waiting for guest heartbeat" >&2
   exit 1
 }
-grep -Fq '[NET3095-RTL810XE] BOOT read-only physical probe' "$LOG"
-grep -Fq '[NET3095-RTL810XE][FAIL] no unique valid MMIO snapshot; offers=0 samples=0 reason=no matching PCI probe offer' "$LOG"
-if grep -Eq 'MMIO_SNAPSHOT=READ|SNAPSHOT=PASS|kernel panic|Exception 14|CR2=|#PF' "$LOG"; then
-  echo "[NET3095-RTL-NEG][FAIL] False NIC proof or guest fault" >&2
-  exit 1
-fi
+# The scheduler can splice a tick *inside* a serial diagnostic marker.
+# Validate only the exact known splice and still require one unique decline,
+# expected PCI function count, no binding, and ordered guest heartbeats.
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+python3 "$ROOT/tests/verify_3095_rtl_negative_qemu.py" "$LOG" "$NIC_MODE"
 echo "[NET3095-RTL-NEG] PASS real QEMU mode=$NIC_MODE fail-closed boot with heartbeat; NOT physical RTL810xE or screen proof"
