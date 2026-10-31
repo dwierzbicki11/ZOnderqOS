@@ -85,8 +85,19 @@ def check_frames(pcap: bytes, after_index: int = -1) -> int:
     return last_index
 
 
+def internet_checksum(data: bytes) -> int:
+    """RFC 1071 one's-complement checksum; zero means a valid wire header."""
+    if len(data) & 1:
+        data += b"\x00"
+    total = sum(int.from_bytes(data[i:i + 2], "big")
+                for i in range(0, len(data), 2))
+    while total > 0xFFFF:
+        total = (total & 0xFFFF) + (total >> 16)
+    return (~total) & 0xFFFF
+
+
 def post_burst_icmp(frame: bytes):
-    """Decode only the distinct N6 post-ring ICMP echo ID/sequence."""
+    """Decode N6 echo packets; reject bad wire checksums, not just wrong IDs."""
     if (len(frame) < 14 + 20 + 8 or frame[12:14] != b"\x08\x00" or
             frame[14] >> 4 != 4 or frame[23] != 1):
         return None
@@ -100,9 +111,17 @@ def post_burst_icmp(frame: bytes):
     typ, code, _checksum, ident, seq = struct.unpack_from(">BBHHH", frame, 14 + ihl)
     if typ not in (0, 8) or code != 0 or ident != 0x3096 or seq != 2:
         return None
+    # Real QEMU N6 capture has valid IPv4 and ICMP checksums. An echo
+    # with a matching ID but damaged wire bytes must fail closed even
+    # when an additional valid echo pair appears later in the capture.
+    if (frame[22] == 0 or
+            internet_checksum(frame[14:14 + ihl]) != 0 or
+            internet_checksum(frame[14 + ihl:14 + length]) != 0):
+        raise ValueError("invalid post-burst IPv4/ICMP checksum or TTL")
     return {
         "type": typ, "src": frame[26:30], "dst": frame[30:34],
         "src_mac": frame[6:12], "dst_mac": frame[:6],
+        "payload": frame[14 + ihl + 8:14 + length],
     }
 
 
@@ -122,7 +141,9 @@ def check_post_burst_icmp(frames: list[bytes], after_index: int, guest: bytes) -
         reply["type"] == 0 and reply["src"] == SERVER and
         reply["dst"] == guest and reply["dst_mac"] == MAC and
         reply["src_mac"] != MAC and reply["src_mac"] != b"\x00" * 6 and
-        not (reply["src_mac"][0] & 1)
+        not (reply["src_mac"][0] & 1) and
+        len(request["payload"]) == 32 and
+        request["payload"] == reply["payload"]
     ):
         raise ValueError("post-burst ICMP Ethernet/IP peer mismatch")
 
@@ -154,11 +175,23 @@ def self_test() -> None:
     # distinct N6 ID. No fixture is claimed to be real guest RX proof.
     from verify_3095_network_n3 import fake_icmp
     guest = bytes([10, 0, 2, 15])
-    request = bytearray(fake_icmp(False, MAC, guest, seq=2))
-    reply = bytearray(fake_icmp(True, MAC, guest, seq=2))
-    request[-4:-2] = (0x3096).to_bytes(2, "big")
-    reply[-4:-2] = (0x3096).to_bytes(2, "big")
-    request, reply = bytes(request), bytes(reply)
+    def echo_fixture(is_reply: bool) -> bytes:
+        packet = bytearray(fake_icmp(is_reply, MAC, guest, seq=2))
+        # A real Cosmos SendEcho transmits a 32-byte challenge payload.
+        # Build valid IPv4 and ICMP checksums rather than accepting
+        # synthetic zero-checksum headers as wire evidence.
+        packet.extend(bytes(range(32)))
+        packet[16:18] = (60).to_bytes(2, "big")
+        packet[38:40] = (0x3096).to_bytes(2, "big")
+        packet[24:26] = b"\x00\x00"
+        packet[36:38] = b"\x00\x00"
+        packet[24:26] = internet_checksum(packet[14:34]).to_bytes(2, "big")
+        packet[36:38] = internet_checksum(packet[34:]).to_bytes(2, "big")
+        return bytes(packet)
+
+    request, reply = echo_fixture(False), echo_fixture(True)
+    assert internet_checksum(request[14:34]) == 0
+    assert internet_checksum(reply[34:]) == 0
     check_post_burst_icmp(frames + [request, reply], COUNT - 1, guest)
     for invalid in (
         [request], [reply, request], [reply], [request, reply, reply],
@@ -166,6 +199,13 @@ def self_test() -> None:
         [request, reply[:-2] + b"\x00\x01"],
         [request, reply[:6] + MAC + reply[12:]],
         [request[:6] + b"\x00" * 6 + request[12:], reply],
+        [request, reply[:24] + bytes([reply[24] ^ 1]) + reply[25:]],
+        [request, reply[:36] + bytes([reply[36] ^ 1]) + reply[37:]],
+        [request, reply[:45] + bytes([reply[45] ^ 1]) + reply[46:]],
+        [request, reply[:22] + b"\x00" + reply[23:]],
+        [request, reply[:16] + (59).to_bytes(2, "big") + reply[18:]],
+        [request, reply[:20] + b"\x20" + reply[21:]],
+        [request, reply, reply[:36] + bytes([reply[36] ^ 1]) + reply[37:]],
     ):
         try:
             check_post_burst_icmp(frames + invalid, COUNT - 1, guest)
@@ -228,7 +268,7 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("accepted truncated PCAP")
-    print("[NET3095-N6-BURST-CONTRACT] PASS synthetic strict TX and post-burst ICMP RX/TX cases only")
+    print("[NET3095-N6-BURST-CONTRACT] PASS synthetic TX and post-burst ICMP checksum/payload cases only")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
