@@ -45,6 +45,20 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
                           "TryRequestInterrupt(", "PublishNetwork(", "PublishChild("):
             self.assertNotIn(forbidden, DRIVER)
 
+    def test_probe_failures_are_bounded_and_reported(self):
+        self.assertIn("LastDeclineReason", DRIVER)
+        self.assertIn("LastDeclineReason = null;", DRIVER)
+        self.assertIn("catch (Exception ex)", DRIVER)
+        self.assertIn('return Decline("PCI/MMIO probe exception: " + ex.GetType().Name)', DRIVER)
+        self.assertIn('return Decline("PCI memory decoding disabled;', DRIVER)
+        self.assertIn('return Decline("PCI device not in D0;', DRIVER)
+        self.assertIn('return Decline("BAR2 is not an assigned MMIO window', DRIVER)
+        self.assertIn('return Decline("mapped BAR2 window too short', DRIVER)
+        self.assertIn('return Decline("invalid MAC/PHY snapshot;', DRIVER)
+        self.assertIn("Realtek810xEReadOnlyProbeDriver.LastDeclineReason", KERNEL)
+        self.assertIn("reason=" + '" + reason', KERNEL)
+        self.assertIn("SuccessfulSamples != 1", KERNEL)
+
     def test_serial_only_and_no_false_link_pass(self):
         self.assertIn("class NetworkRealtekReadOnlyKernel", KERNEL)
         self.assertIn("SuccessfulSamples != 1", KERNEL)
