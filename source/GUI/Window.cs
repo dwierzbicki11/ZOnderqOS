@@ -313,6 +313,33 @@ namespace ZonderqOS.GUI
 
             if (dragging)
             {
+                if (IsMaximized)
+                {
+                    // A maximized window can be pulled down by its caption.
+                    // Wait for an actual drag so a normal click or a
+                    // double-click still toggles maximize without a jump.
+                    int movedX = mouseX - (X + dragOffsetX);
+                    int movedY = mouseY - (Y + dragOffsetY);
+                    if (System.Math.Abs(movedX) <= 6 && System.Math.Abs(movedY) <= 6)
+                        return;
+
+                    int maximizedWidth = Width;
+                    int pressedOffsetX = dragOffsetX;
+                    int pressedOffsetY = dragOffsetY;
+                    ToggleMaximize();
+                    if (IsMaximized)
+                        return;
+
+                    // Preserve the pointer's horizontal fraction of the
+                    // caption after restoring the smaller window. Otherwise
+                    // a drag from the right side teleports the window.
+                    dragOffsetX = System.Math.Max(0, System.Math.Min(Width - 1,
+                        (int)((long)pressedOffsetX * Width / System.Math.Max(1, maximizedWidth))));
+                    dragOffsetY = System.Math.Max(0, System.Math.Min(TitleBarHeight - 1, pressedOffsetY));
+                    dragging = true;
+                    lastTitleClickTimestamp = 0;
+                }
+
                 if (!IsMaximized)
                 {
                     int newX = mouseX - dragOffsetX;
@@ -389,12 +416,11 @@ namespace ZonderqOS.GUI
                 return;
             }
 
-            if (!IsMaximized)
-            {
-                dragging = true;
-                dragOffsetX = mouseX - X;
-                dragOffsetY = mouseY - Y;
-            }
+            // Arm caption dragging even while maximized. A release
+            // without pointer motion remains an ordinary click.
+            dragging = true;
+            dragOffsetX = mouseX - X;
+            dragOffsetY = mouseY - Y;
         }
 
         private int GetResizeMode(int mouseX, int mouseY)

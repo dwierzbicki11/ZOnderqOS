@@ -148,6 +148,48 @@ class ResponsiveGui3094(unittest.TestCase):
                 self.assertLessEqual(x + width, screen_width - margin)
                 self.assertLessEqual(y + height, desktop_height - margin)
 
+    def test_maximized_caption_drag_restores_without_pointer_jump(self):
+        drag = WINDOW.split("if (dragging)", 1)[1].split(
+            "if (wasClicked)", 1)[0]
+        self.assertIn("if (IsMaximized)", drag)
+        self.assertIn("System.Math.Abs(movedX) <= 6", drag)
+        self.assertIn("System.Math.Abs(movedY) <= 6", drag)
+        self.assertIn("ToggleMaximize();", drag)
+        self.assertIn("(long)pressedOffsetX * Width", drag)
+        self.assertIn("dragOffsetY = System.Math.Max(0,", drag)
+        self.assertIn("dragging = true;", drag)
+        self.assertIn("lastTitleClickTimestamp = 0;", drag)
+        # The initial press must arm a maximized drag, but an unmoved
+        # click must still be available for the existing double-click.
+        caption = WINDOW.split("bool inTitle =", 1)[1].split(
+            "private int GetResizeMode", 1)[0]
+        self.assertIn("dragging = true;", caption)
+        self.assertNotIn("if (!IsMaximized)\n            {\n                dragging = true;", caption)
+        self.assertLess(drag.index("if (IsMaximized)"), drag.index("if (!IsMaximized)"))
+
+        for screen_width, screen_height, restored_width, press_x in (
+            (640, 480, 640, 500),
+            (800, 600, 640, 600),
+            (1366, 768, 760, 1120),
+            (1920, 1080, 950, 1680),
+        ):
+            desktop_height = screen_height - 44
+            margin = 12 if screen_width >= 1000 and desktop_height >= 700 else 0
+            for move_x, move_y in ((0, 0), (6, 6), (20, 10), (-100, 40)):
+                should_restore = abs(move_x) > 6 or abs(move_y) > 6
+                if not should_restore:
+                    continue
+                offset = max(0, min(restored_width - 1,
+                                    press_x * restored_width // screen_width))
+                new_x = max(margin, min(press_x + move_x - offset,
+                                        max(margin, screen_width - restored_width - margin)))
+                self.assertGreaterEqual(new_x, margin)
+                self.assertLessEqual(new_x + restored_width, screen_width - margin)
+                self.assertGreaterEqual(offset, 0)
+                self.assertLess(offset, restored_width)
+                self.assertLessEqual(abs(offset / restored_width - press_x / screen_width),
+                                     1 / restored_width + 0.001)
+
     def test_sdk_version_still_pinned(self):
         self.assertIn('Sdk="Cosmos.Sdk/3.0.95"', PROJECT)
         self.assertIn('Version="3.0.95"', PROJECT)
