@@ -70,13 +70,15 @@ namespace ZonderqOS.Drivers
                         new WindowReader(window), out var snapshot))
                     return Decline("invalid MAC/PHY snapshot; no link proof");
 
-                LastSample = snapshot;
-                SuccessfulSamples++;
                 binding.Log("[NET3095-RTL810XE] MMIO_SNAPSHOT=READ mac=" +
                     snapshot.MacAddress + " link=" + (snapshot.Carrier ? "up" : "down") +
                     " speed=" + snapshot.SpeedMbps + " duplex=" +
                     (!snapshot.Carrier ? "unknown" : snapshot.FullDuplex ? "full" : "half") +
                     " (read-only, no TX/RX/DMA/IRQ)");
+                // Only publish a successful sample after the diagnostic
+                // marker itself has been emitted without throwing.
+                LastSample = snapshot;
+                SuccessfulSamples++;
 
                 // DriverKit releases the mapping after Declined. No NIC is
                 // bound and no interface is published by this diagnostic.
