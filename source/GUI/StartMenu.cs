@@ -50,7 +50,7 @@ namespace ZonderqOS.GUI
         // The 560px design fits 800x600, but a 640x480 desktop gives Start
         // only 420px. Keep both result grids above the footer in that mode.
         // Render and hit-testing use the same Button geometry.
-        private bool CompactLayout => Height < 500;
+        private bool CompactLayout => Height < 530;
         private int PinnedLabelY => CompactLayout ? 118 : PinnedLabelTop;
         private int PinnedCardsY => CompactLayout ? 134 : PinnedTop;
         private int PinnedCardsHeight => CompactLayout ? 53 : PinnedCardHeight;
