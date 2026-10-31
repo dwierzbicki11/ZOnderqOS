@@ -35,7 +35,8 @@ def stream_payload(packets, first: int, guest: bytes, client_port: int,
 
     No packet with an unrelated port, MAC, TCP sequence or acknowledgment can
     satisfy the expected application payload. Pure ACKs may be interleaved.
-    N6 additionally requires two distinct accepted server payload segments.
+    N6 additionally requires at least three distinct accepted server payload
+    segments; the fixture sends a 4 KiB body in bounded 1024-byte writes.
     """
     collected = bytearray()
     segments = 0
@@ -150,7 +151,7 @@ def validate(serial: str, pcap: bytes) -> str:
                 end_response = stream_payload(
                     packets, end_request, guest, client_port, "server",
                     server_seq, (client_seq + len(REQUEST)) & 0xFFFFFFFF,
-                    RESPONSE, min_segments=2)
+                    RESPONSE, min_segments=3)
                 if end_response is not None and server_fin_acked(
                         packets, end_response, guest, client_port,
                         client_seq, server_seq):
@@ -185,11 +186,21 @@ def self_test() -> None:
     ]
     request = [fake_http(False, 0x18, 10001, 20001, REQUEST)]
     split = RESPONSE.index(b"\r\n\r\n") + 4
+    # Keep synthetic packets below Ethernet MTU; test real sequence-space
+    # reassembly, not an impossible single 4 KiB IP packet.
+    cuts = [0, split]
+    cuts.extend(range(split + 1024, len(RESPONSE), 1024))
+    cuts.append(len(RESPONSE))
     response = [
+        fake_http(True, 0x18, 20001 + start, 10001 + len(REQUEST),
+                  RESPONSE[start:end])
+        for start, end in zip(cuts, cuts[1:])
+    ]
+    single_response = [fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE)]
+    two_response = [
         fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE[:split]),
         fake_http(True, 0x18, 20001 + split, 10001 + len(REQUEST), RESPONSE[split:]),
     ]
-    single_response = [fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE)]
     teardown = [
         fake_http(True, 0x11, 20001 + len(RESPONSE), 10001 + len(REQUEST)),
         fake_http(False, 0x10, 10001 + len(REQUEST), 20002 + len(RESPONSE)),
@@ -205,14 +216,15 @@ def self_test() -> None:
     ])
     frames = base + handshake + request + response + teardown
     assert "PASS" in validate(serial, synthetic_capture(frames))
-    # A complete single-packet response is insufficient evidence for
-    # the new multi-segment E1000E RX/TCP reassembly gate.
-    try:
-        validate(serial, synthetic_capture(base + handshake + request + single_response + teardown))
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("accepted an unsplit HTTP response")
+    # A complete one- or two-packet response cannot satisfy the large RX
+    # segmentation proof, even when the payload bytes are otherwise valid.
+    for insufficient in (single_response, two_response):
+        try:
+            validate(serial, synthetic_capture(base + handshake + request + insufficient + teardown))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted insufficient HTTP segmentation")
     half = len(REQUEST) // 2
     split_request = base + handshake + [
         fake_http(False, 0x18, 10001, 20001, REQUEST[:half]),

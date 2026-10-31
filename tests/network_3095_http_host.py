@@ -13,12 +13,12 @@ import time
 
 PORT = 18096
 REQUEST = b"GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n\r\n"
-BODY = b"ZONDERQ3095-HTTP-OK\n"
+BODY = b"ZONDERQ3095-HTTP-OK\n" + b"X" * 4096
 RESPONSE = (b"HTTP/1.0 200 OK\r\n"
             b"Content-Type: text/plain\r\n"
-            b"Content-Length: 20\r\n"
+            b"Content-Length: 4116\r\n"
             b"Connection: close\r\n\r\n" + BODY)
-assert len(BODY) == 20
+assert len(BODY) == 4116
 
 
 def serve(port: int = PORT) -> None:
@@ -39,15 +39,16 @@ def serve(port: int = PORT) -> None:
                 request.extend(chunk)
             if bytes(request) != REQUEST:
                 raise ValueError(f"unexpected HTTP request length={len(request)}")
-            # Exercise guest TCP RX reassembly across the HTTP header/body
-            # boundary. The delay and TCP_NODELAY prevent Nagle coalescing
-            # in this loopback-only fixture; PCAP must prove two RX segments.
+            # Force the guest through multiple TCP/IP packets and E1000E DMA
+            # RX descriptors. The PCAP gate must independently establish the
+            # segmentation, sequence continuity and exact 4 KiB body.
             connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             boundary = RESPONSE.index(b"\r\n\r\n") + 4
             connection.sendall(RESPONSE[:boundary])
-            time.sleep(0.2)
-            connection.sendall(RESPONSE[boundary:])
-            print("[NET3095-N6-HOST] PASS HTTP/1.0 GET /health 200 split=2", flush=True)
+            for start in range(boundary, len(RESPONSE), 1024):
+                time.sleep(0.1)
+                connection.sendall(RESPONSE[start:start + 1024])
+            print("[NET3095-N6-HOST] PASS HTTP/1.0 GET /health 200 split=6 body=4116", flush=True)
 
 
 def self_test() -> None:

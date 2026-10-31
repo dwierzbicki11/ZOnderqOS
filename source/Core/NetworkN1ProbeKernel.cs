@@ -224,8 +224,11 @@ namespace ZonderqOS
                         System.Net.Sockets.NetworkStream stream = http.GetStream();
                         byte[] request = System.Text.Encoding.ASCII.GetBytes(
                             "GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n\r\n");
+                        // Cross multiple Ethernet MTUs and DMA RX descriptors,
+                        // rather than proving only a tiny split TCP response.
                         byte[] expected = System.Text.Encoding.ASCII.GetBytes(
-                            "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 20\r\nConnection: close\r\n\r\nZONDERQ3095-HTTP-OK\n");
+                            "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 4116\r\nConnection: close\r\n\r\nZONDERQ3095-HTTP-OK\n" +
+                            new string('X', 4096));
                         stream.Write(request, 0, request.Length);
                         byte[] response = new byte[expected.Length];
                         int received = 0;
