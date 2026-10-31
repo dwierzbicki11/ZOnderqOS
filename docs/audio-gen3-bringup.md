@@ -49,9 +49,11 @@ bounds, fmt consistency, data alignment, duplicate chunks and odd-sized
 metadata padding. Unsupported rates and formats fail explicitly; no hidden
 resampling, DMA, filesystem access or production GUI activation occurs.
 
-The CI audio-QEMU workflow boots the ISO **twice**: once for `tone` and once
-for `wavtone`, each with a fresh QEMU process and a separate WAV capture.
-Both must pass the non-silent pitch validator. The WAV fixture is generated
+The CI audio-QEMU workflow boots the ISO **four times**: direct `tone`,
+`wavtone`, `tone` at 25% software volume, and `tone` at 0% (mute).
+Each uses a fresh QEMU process and a separate WAV capture. The first three
+must pass the non-silent pitch validator, including a stereo channel-balance
+check; the fourth must contain at least 100 ms of genuinely muted PCM frames. The WAV fixture is generated
 in memory; this does not prove arbitrary external WAV files work.
 
 The diagnostic console also accepts `volume N` for integer `N` from
@@ -61,10 +63,12 @@ HDA codec volume registers or change a production system setting. `volume`
 without arguments prints the current percentage. The C# host smoke verifies
 25% scaling, mute, 100% bit-exactness, invalid inputs and source immutability.
 
-The QEMU workflow performs a **third independent boot** with `volume 25`
-and `tone`, then compares the actual backend WAV peak against the normal
-100% capture. A PASS requires a ratio near 0.25, not just a serial message.
-This verifies software PCM gain in the emulator, not perceived loudness.
+The third QEMU boot uses `volume 25` and `tone`, then compares the actual
+backend WAV peak against the normal 100% capture. A PASS requires a ratio
+near 0.25, not just a serial message. The fourth boot uses `volume 0` and
+requires a nonempty, sustained WAV capture with a PCM peak no higher than 32;
+a missing/header-only file is a failure, not a mute PASS. This verifies
+software PCM gain/mute in the emulator, not perceived loudness.
 
 After stopping QEMU and allowing it to close the WAV header, check the actual samples:
 
@@ -72,7 +76,9 @@ After stopping QEMU and allowing it to close the WAV header, check the actual sa
 python3 tools/verify-audio-wav-capture.py output-3095/audio-capture.wav
 ```
 
-The verifier rejects silent output, a short click, unsupported PCM formats and a tone with the wrong pitch. A PASS is evidence of actual PCM captured by QEMU, **not** physical laptop sound, IRQ delivery or general WAV playback. To choose a different host capture location set `ZONDERQ_AUDIO_WAV=/path/to/capture.wav` before `./run.sh --qemu-audio`.
+The verifier rejects silent output, a short click, unsupported PCM formats,
+a tone with the wrong pitch, and a stereo capture with one silent or severely
+imbalanced channel. A PASS is evidence of actual PCM captured by QEMU, **not** physical laptop sound, IRQ delivery or general WAV playback. To choose a different host capture location set `ZONDERQ_AUDIO_WAV=/path/to/capture.wav` before `./run.sh --qemu-audio`.
 
 The QEMU WAV backend and `hda-duplex,audiodev=audio0` device syntax are documented in the QEMU invocation manual. If the local QEMU build lacks the WAV backend, the launch must fail rather than silently claim success.
 
@@ -82,6 +88,7 @@ The QEMU WAV backend and `hda-duplex,audiodev=audio0` device syntax are document
 2. **Host C#:** `dotnet run --project tests/AudioPciSmoke/AudioPciSmoke.csproj -c Release` compiles the *real* inventory class with a fake PCI provider and exercises classification and failure handling. This does not touch hardware.
 3. **Synthetic WAV:** `python3 tests/test_audio_wav_validator.py` tests the WAV validator with generated 440 Hz, silence, wrong pitch, short and unsupported-format fixtures.
 4. **Real ISO/QEMU:** compile and boot the audio ISO, inspect serial and screen output, run `tone`, and verify QEMU's actual captured WAV. Do not claim this tier passed from host tests alone.
-5. **Next:** verify all three new QEMU captures (direct PCM, decoded in-RAM WAV, 25% gain), then consider guarded read-only external WAV access. Physical codec/output and GUI sounds remain later milestones; production audio stays off.
+5. **Verified baseline:** the 2026-10-31 real QEMU run #41221871415 passed three independent captures (direct PCM, decoded in-RAM WAV, 25% gain), with measured 0.250 amplitude ratio. The newer stereo-balance and mute gates require their own CI runs; do not infer they passed from the baseline.
+6. **Next:** confirm the new fourth mute capture and stereo-balance gate in real QEMU; then consider guarded read-only external WAV access. Physical codec/output and GUI sounds remain later milestones; production audio stays off.
 
 Do not enable AC97, SMP/SMT or network in this audio branch. Never use a real host disk as a test target.
