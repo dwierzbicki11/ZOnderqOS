@@ -15,6 +15,7 @@ namespace ZonderqOS.SystemCore
         // Largest supported source: two seconds of 48 kHz stereo PCM24.
         // Decoded output always remains bounded by two seconds of stereo PCM16.
         private const int MaxDataBytes = SampleRate * MaxDurationSeconds * 2 * 3;
+        private const int MaxOutputBytes = SampleRate * MaxDurationSeconds * FrameBytes;
 
         private static uint Read32(byte[] bytes, int index)
         {
@@ -339,7 +340,7 @@ namespace ZonderqOS.SystemCore
         /// <summary>Build an in-memory RIFF fixture for exercising the decoder.</summary>
         public static byte[] EncodeStereo16(byte[] pcm)
         {
-            if (pcm == null || pcm.Length == 0 || pcm.Length > MaxDataBytes ||
+            if (pcm == null || pcm.Length == 0 || pcm.Length > MaxOutputBytes ||
                 pcm.Length % FrameBytes != 0)
                 throw new ArgumentException("PCM must be nonempty, stereo16 and at most 2 seconds.", nameof(pcm));
             byte[] wave = new byte[44 + pcm.Length];
