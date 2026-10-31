@@ -49,6 +49,17 @@ def normalize_icmp_serial(serial: str) -> str:
     return "\n".join(repaired)
 
 
+def internet_checksum(data: bytes) -> int:
+    """RFC 1071 one's-complement checksum; zero validates a wire header."""
+    if len(data) & 1:
+        data += b"\x00"
+    total = sum(int.from_bytes(data[i:i + 2], "big")
+                for i in range(0, len(data), 2))
+    while total > 0xFFFF:
+        total = (total & 0xFFFF) + (total >> 16)
+    return (~total) & 0xFFFF
+
+
 def icmp_frame(frame: bytes):
     if len(frame) < 14 + 20 + 8 or frame[12:14] != b"\x08\x00":
         return None
@@ -67,9 +78,14 @@ def icmp_frame(frame: bytes):
     typ, code, _checksum, ident, seq = struct.unpack_from(">BBHHH", frame, offset)
     if typ not in (0, 8) or code != 0 or ident != ECHO_ID or seq != ECHO_SEQ:
         return None
+    if (frame[22] == 0 or
+            internet_checksum(frame[14:14 + ihl]) != 0 or
+            internet_checksum(frame[offset:14 + length]) != 0):
+        raise ValueError("N3 ICMP packet has invalid IPv4/ICMP checksum or TTL")
     return {
         "type": typ, "src": frame[26:30], "dst": frame[30:34],
-        "src_mac": frame[6:12], "dst_mac": frame[:6]
+        "src_mac": frame[6:12], "dst_mac": frame[:6],
+        "payload": frame[offset + 8:14 + length],
     }
 
 
@@ -95,8 +111,10 @@ def validate(serial: str, pcap: bytes) -> str:
         for reply in frames[i + 1:]:
             if (reply["type"] == 0 and reply["src"] == SERVER and
                 reply["dst"] == guest_ip and reply["dst_mac"] == MAC and
-                reply["src_mac"] != MAC):
-                return "[NET3095-N3-GATE] PASS real QEMU ICMP echo request/reply guest=10.0.2.15 gateway=10.0.2.2"
+                reply["src_mac"] != MAC and
+                len(req["payload"]) == 32 and
+                req["payload"] == reply["payload"]):
+                return "[NET3095-N3-GATE] PASS real QEMU ICMP echo request/reply with matching 32-byte payload guest=10.0.2.15 gateway=10.0.2.2"
     raise ValueError("no correlated QEMU ICMP echo RX/TX proof")
 
 
@@ -104,10 +122,15 @@ def fake_icmp(reply: bool, mac: bytes, ip: bytes, seq: int = ECHO_SEQ) -> bytes:
     src, dst = (SERVER, ip) if reply else (ip, SERVER)
     hdr = bytearray(20)
     hdr[0] = 0x45
-    hdr[2:4] = (28).to_bytes(2, "big")
+    hdr[2:4] = (60).to_bytes(2, "big")
     hdr[8:10] = bytes([64, 1])
     hdr[12:16], hdr[16:20] = src, dst
-    icmp = struct.pack(">BBHHH", 0 if reply else 8, 0, 0, ECHO_ID, seq)
+    # Same 32-byte echo payload length observed in the real QEMU N3 PCAP.
+    # Synthetic frames must carry valid wire checksums to test the parser.
+    icmp = bytearray(struct.pack(">BBHHH", 0 if reply else 8, 0, 0, ECHO_ID, seq) +
+                     bytes(range(32)))
+    hdr[10:12] = internet_checksum(hdr).to_bytes(2, "big")
+    icmp[2:4] = internet_checksum(icmp).to_bytes(2, "big")
     return ((mac if reply else bytes.fromhex("525400123499")) +
             (bytes.fromhex("525400123499") if reply else mac) +
             b"\x08\x00" + hdr + icmp)
@@ -153,6 +176,10 @@ def self_test() -> None:
         (serial, frames[:6] + [fake_icmp(True, mac, ip, seq=2)]),
         (serial, frames[:6] + [fake_icmp(True, bytes.fromhex("525400000001"), ip)]),
         (serial.replace("10.0.2.15", "10.0.2.25"), frames),
+        (serial, frames[:6] + [frames[6][:24] + bytes([frames[6][24] ^ 1]) + frames[6][25:]]),
+        (serial, frames[:6] + [frames[6][:36] + bytes([frames[6][36] ^ 1]) + frames[6][37:]]),
+        (serial, frames[:6] + [frames[6][:45] + bytes([frames[6][45] ^ 1]) + frames[6][46:]]),
+        (serial, frames[:6] + [frames[6][:22] + b"\x00" + frames[6][23:]]),
     ]
     for text, packets in bad:
         try:
