@@ -106,12 +106,17 @@ def validate(serial: str, pcap: bytes) -> str:
     frames = [p for f in pcap_frames(pcap) if (p := icmp_frame(f))]
     for i, req in enumerate(frames):
         if (req["type"] != 8 or req["src"] != guest_ip or req["dst"] != SERVER
-            or req["src_mac"] != MAC):
+            or req["src_mac"] != MAC or req["dst_mac"] == MAC or
+            req["dst_mac"] == b"\x00" * 6 or
+            (req["dst_mac"][0] & 1)):
             continue
         for reply in frames[i + 1:]:
             if (reply["type"] == 0 and reply["src"] == SERVER and
                 reply["dst"] == guest_ip and reply["dst_mac"] == MAC and
+                reply["src_mac"] == req["dst_mac"] and
                 reply["src_mac"] != MAC and
+                reply["src_mac"] != b"\x00" * 6 and
+                not (reply["src_mac"][0] & 1) and
                 len(req["payload"]) == 32 and
                 req["payload"] == reply["payload"]):
                 return "[NET3095-N3-GATE] PASS real QEMU ICMP echo request/reply with matching 32-byte payload guest=10.0.2.15 gateway=10.0.2.2"
@@ -180,6 +185,10 @@ def self_test() -> None:
         (serial, frames[:6] + [frames[6][:36] + bytes([frames[6][36] ^ 1]) + frames[6][37:]]),
         (serial, frames[:6] + [frames[6][:45] + bytes([frames[6][45] ^ 1]) + frames[6][46:]]),
         (serial, frames[:6] + [frames[6][:22] + b"\x00" + frames[6][23:]]),
+        (serial, frames[:6] + [frames[6][:6] + bytes.fromhex("525400000001") + frames[6][12:]]),
+        (serial, frames[:5] + [bytes.fromhex("525400000001") + frames[5][6:]] + frames[6:]),
+        (serial, frames[:6] + [frames[6][:6] + b"\x00" * 6 + frames[6][12:]]),
+        (serial, frames[:5] + [b"\xff" * 6 + frames[5][6:]] + frames[6:]),
     ]
     for text, packets in bad:
         try:
