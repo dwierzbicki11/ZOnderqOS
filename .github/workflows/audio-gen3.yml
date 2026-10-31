@@ -41,6 +41,10 @@ on:
       - '.github/workflows/audio-gen3.yml'
   workflow_dispatch:
 
+concurrency:
+  group: audio-host-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
 jobs:
   audio-host-contract:
     name: Static safety and real C# host smoke (NOT QEMU)
