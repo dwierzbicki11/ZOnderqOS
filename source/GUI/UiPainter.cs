@@ -101,7 +101,33 @@ namespace ZonderqOS.GUI
             RoundedFill(canvas, x + 2, y + 3, width, height, radius + 1, UiPalette.ShadowInner);
         }
 
-        private static int CornerInset(int radius, int row)
+        // Common UI radii are small. Cache their integer corner geometry once:
+        // 1 + 2 + ... + 32 = 528 bytes, with no allocations in the paint loop.
+        // Larger radii retain the original Math.Sqrt path.
+        private const int CachedCornerRadius = 32;
+        private static readonly byte[] CachedCornerInsets = BuildCornerInsets();
+
+        private static byte[] BuildCornerInsets()
+        {
+            byte[] insets = new byte[CachedCornerRadius * (CachedCornerRadius + 1) / 2];
+            int index = 0;
+            for (int radius = 1; radius <= CachedCornerRadius; radius++)
+            {
+                for (int row = 0; row < radius; row++)
+                    insets[index++] = (byte)CalculateCornerInset(radius, row);
+            }
+            return insets;
+        }
+
+        // Internal only to let the host smoke test exercise the production path.
+        internal static int CornerInset(int radius, int row)
+        {
+            if (radius >= 1 && radius <= CachedCornerRadius && row >= 0 && row < radius)
+                return CachedCornerInsets[radius * (radius - 1) / 2 + row];
+            return CalculateCornerInset(radius, row);
+        }
+
+        private static int CalculateCornerInset(int radius, int row)
         {
             int delta = radius - row - 1;
             int horizontal = (int)Math.Sqrt(radius * radius - delta * delta);
