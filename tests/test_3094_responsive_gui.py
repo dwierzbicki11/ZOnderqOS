@@ -142,6 +142,15 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn('"3.0.95", Good', SETTINGS)
         self.assertNotIn('"3.0.94", Good', SETTINGS)
 
+    def test_task_manager_compact_refresh_button_has_no_negative_label_width(self):
+        source = TASK_MANAGER.split("private void DrawButton(Canvas canvas", 1)[1].split(
+            "private void RenderProcessPage(Canvas canvas)", 1)[0]
+        self.assertIn("if (width < 40)", source)
+        self.assertIn("x + (width - 16) / 2", source)
+        self.assertLess(source.index("if (width < 40)"),
+                        source.index("width - 34"))
+        self.assertEqual((32 - 16) // 2, 8)
+
     def test_task_manager_short_window_nav_and_compact_process_list(self):
         manager = TASK_MANAGER
         self.assertIn("private int ListTopForView => Width < 550 ? 64 : ListTop;", manager)

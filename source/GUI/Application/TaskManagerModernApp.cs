@@ -1030,6 +1030,12 @@ namespace ZonderqOS.GUI.Apps
             Color border = !enabled ? Color.FromArgb(54, 62, 70) : danger ? Color.FromArgb(111, 65, 73) : Color.FromArgb(80, 94, 108);
             canvas.DrawFilledRectangle(bg, x, y, width, 30);
             canvas.DrawRectangle(border, x, y, width, 30);
+            if (width < 40)
+            {
+                // Compact refresh-only header: avoid a negative text width.
+                IconManager.DrawScaled(canvas, icon, x + (width - 16) / 2, y + 7, 16, 16);
+                return;
+            }
             IconManager.DrawScaled(canvas, icon, x + 7, y + 7, 16, 16);
             SmallTextRenderer.DrawClipped(canvas, label, x + 29, y + 12, width - 34, enabled ? Color.WhiteSmoke : Muted);
         }
