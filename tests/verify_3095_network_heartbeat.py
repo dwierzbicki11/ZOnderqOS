@@ -20,6 +20,8 @@ def parse(serial: str) -> list[int]:
     for line in serial.replace("\r", "").splitlines():
         if MARKER not in line:
             continue
+        if line.count(MARKER) != 1:
+            raise ValueError("duplicated guest heartbeat marker on one line")
         match = VALUE.search(line.strip())
         if match is None:
             raise ValueError("malformed guest heartbeat marker")
@@ -60,6 +62,8 @@ def self_test() -> None:
         (log([1, 2, 3]), 4),  # truncated log
         (log([0, 1, 2, 3, 4, 5, 6]), 0),  # invalid initial tick
         (log([1, 2, 3, 4, 5, 6, 7, 8]) + MARKER + "junk\n", 2),
+        (log([1, 2, 3, 4, 5, 6, 7, 8]) +
+         MARKER + "9 " + MARKER + "9\n", 2),
         (log([1, 2, 3, 4, 5, 6, 7, 8]) + MARKER + "08\n", 2),
         (log([1, 2, 3, 4, 5, 6, 7, 8]), -1),
     ]
