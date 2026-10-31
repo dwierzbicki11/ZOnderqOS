@@ -1620,7 +1620,7 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertLess(menu.index("if (modified)"), menu.index("ConsoleKeyEx.UpArrow"))
         self.assertIn("contextMenuSelection = -1;", menu)
         self.assertIn("if (key.Key == ConsoleKeyEx.Escape)", menu)
-        self.assertTrue(menu.rstrip().endswith("return;\n            }"))
+        self.assertRegex(menu, r"(?s)if \(key.Key == ConsoleKeyEx.Enter\).*?return;\s*}\s*return;\s*}")
         # The modal branch must consume all keys before clipboard, search,
         # refresh and navigation dispatch. A modified Enter cannot create.
         self.assertLess(keyboard.index("if (contextMenuVisible)"), keyboard.index("bool control ="))
