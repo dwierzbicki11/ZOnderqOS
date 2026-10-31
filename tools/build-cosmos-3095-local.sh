@@ -112,7 +112,7 @@ if [[ -n "$GUI_TEST_MODE" ]]; then
 import pathlib, re, sys
 path = pathlib.Path(sys.argv[1])
 original = path.read_text()
-modified, count = re.subn(r"(?m)^(\s*resolution:\s*)\d+x\d+x32\s*$",
+modified, count = re.subn(r"(?m)^([ \t]*resolution:[ \t]*)[0-9]+x[0-9]+x32[ \t]*$",
                           lambda match: match.group(1) + sys.argv[2] + "x32",
                           original)
 if count != 1:
