@@ -89,5 +89,29 @@ class AudioGen3Contract(unittest.TestCase):
             self.assertNotIn(forbidden, runtime)
 
 
+    def test_diskless_wav_decode_is_opt_in_and_bounded(self):
+        parser = read("source/Core/AudioWavePcm.cs")
+        runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
+        kernel = read("Kernel.cs")
+        project = read("tests/AudioPciSmoke/AudioPciSmoke.csproj")
+        workflow = read(".github/workflows/audio-qemu.yml")
+        harness = read("tools/smoke-audio-qemu.py")
+        self.assertIn("MaxDurationSeconds = 2", parser)
+        self.assertIn("riffEnd != wave.Length", parser)
+        self.assertIn("size % FrameBytes != 0", parser)
+        self.assertIn("rate != SampleRate", parser)
+        self.assertIn("AudioWavePcm.DecodeStereo16(wave)", runtime)
+        self.assertIn('if (command == "wavtone")', kernel)
+        self.assertIn("PlayWaveTestTone()", kernel)
+        self.assertIn("AudioWavePcm.cs", project)
+        self.assertIn("--command wavtone", workflow)
+        self.assertIn('choices=("tone", "wavtone")', harness)
+        for forbidden in ("System.IO", "File.", "Disk.", "TryMount(", "WriteBlock(",
+                          "NetworkManager.", "PciSysfsProvider"):
+            self.assertNotIn(forbidden, parser)
+        for forbidden in ("Disk.", "File.", "TryMount(", "WriteBlock("):
+            self.assertNotIn(forbidden, runtime)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
