@@ -138,7 +138,7 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('for (int attempt = 1; attempt <= 2; attempt++)', SOURCE)
         self.assertIn('HTTP_REPEAT=PASS', SOURCE)
         self.assertIn('for attempt in range(1, 3):', HTTP_HOST)
-        self.assertIn('REPEAT_PASS HTTP/1.0', HTTP_HOST)
+        self.assertIn('else "REPEAT_PASS"', HTTP_HOST)
         self.assertIn('HTTP_REPEAT_PASS', HTTP_VALIDATOR)
         self.assertIn('second independent HTTP TCP exchange incomplete', HTTP_VALIDATOR)
         self.assertIn('REPEAT_PASS HTTP/1.0', SMOKE)
