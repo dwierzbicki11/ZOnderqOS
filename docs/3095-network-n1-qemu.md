@@ -177,7 +177,7 @@ changed by this diagnostic trace.
 ## N6 ordered raw Ethernet TX burst (experimental, 2026-10-31)
 
 After the two verified HTTP/1.0 RX sessions, the isolated N6 kernel queues
-**64 paced, uniquely tagged 60-byte broadcast Ethernet frames** with
+**128 paced, uniquely tagged 60-byte broadcast Ethernet frames** with
 experimental EtherType `0x88B5` and payloads
 `ZONDERQ3095-BURST-00` through `ZONDERQ3095-BURST-63`.
 The 25 ms inter-frame sleep avoids treating a full software queue as a
@@ -189,7 +189,7 @@ run it. The burst is not a replacement for a real RX or ISR test.
 N6 HTTP/PCAP proof, then checks that the guest emitted exactly one
 post-HTTP burst-start and burst-queued marker. It locates the second HTTP
 server FIN acknowledged by the guest in the actual PCAP and requires all
-64 unique raw Ethernet frames **after** that packet, in order, with the
+128 unique raw Ethernet frames **after** that packet, in order, with the
 expected source MAC, broadcast destination, EtherType and payload.
 A queue-success serial marker without the frames fails closed.
 Synthetic parser negatives cover missing, reordered, corrupted and
@@ -206,6 +206,6 @@ gates demonstrates execution of the guest ISR.
 
 **Verification status:** source and Python self-test changes are committed
 to `feat/3094-qemu-e1000e-link`; a full new exact-stock-3.0.95
-build and QEMU PCAP run are required before declaring the 64-frame
+build and QEMU PCAP run are required before declaring the 128-frame
 burst, tightened DHCP L2 proof or combined legacy IRQ gate PASS.
 Historical N1–N6 QEMU evidence does not cover these new checks.

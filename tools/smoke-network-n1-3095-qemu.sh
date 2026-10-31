@@ -281,7 +281,7 @@ while (( SECONDS - started < TIMEOUT )); do
         echo "[NET3095-N6][FAIL] Host did not complete both HTTP exchanges" >&2
         exit 1
       fi
-      # Wait for the separate 64-frame raw TX proof before starting the
+      # Wait for the separate 128-frame raw TX proof before starting the
       # post-proof heartbeat window. Never mistake queued frames for PCAP TX.
       burst_start=$SECONDS
       until python3 "$ROOT/tests/verify_3095_network_n6_burst.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
@@ -295,7 +295,7 @@ while (( SECONDS - started < TIMEOUT )); do
         fi
         if (( SECONDS - burst_start >= 15 )); then
           python3 "$ROOT/tests/verify_3095_network_n6_burst.py" "$LOG" "$PCAP"
-          echo "[NET3095-N6][FAIL] No 64-frame ordered raw TX PCAP proof" >&2
+          echo "[NET3095-N6][FAIL] No 128-frame ordered raw TX PCAP proof" >&2
           exit 1
         fi
         sleep 1
@@ -334,7 +334,7 @@ while (( SECONDS - started < TIMEOUT )); do
         python3 "$ROOT/tests/verify_3095_e1000e_irq_trace.py" \
           "$LOG.stderr" --require-notify
       fi
-      echo "[NET3095-N6-QEMU] PASS two E1000E HTTP sessions + 64 ordered raw TX frames + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
+      echo "[NET3095-N6-QEMU] PASS two E1000E HTTP sessions + 128 ordered raw TX frames + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
     elif [[ "$MODE" == n5 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP"
       echo "[NET3095-N5-QEMU] PASS real E1000E DNS query/answer + TCP/DHCP/ICMP + 8s stability; production networking disabled"

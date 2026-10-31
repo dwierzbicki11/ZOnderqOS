@@ -265,20 +265,20 @@ namespace ZonderqOS
                     Log("[NET3095-N6][FAIL] HTTP exception " + httpException.GetType().Name);
                     return;
                 }
-                // Opt-in 64-frame raw TX after two completed HTTP RX sessions.
+                // Opt-in 128-frame raw TX after two completed HTTP RX sessions.
                 // Each distinct frame must be independently observed in QEMU
                 // filter-dump; successful queueing alone is NOT a DMA proof.
-                Log("[NET3095-N6] TX_BURST_ATTEMPT=START count=64");
+                Log("[NET3095-N6] TX_BURST_ATTEMPT=START count=128");
                 if (!TrySendBurst(frame))
                 {
                     Log("[NET3095-N6][FAIL] E1000E raw TX burst queue rejected");
                     return;
                 }
-                Log("[NET3095-N6] TX_BURST=QUEUED count=64");
+                Log("[NET3095-N6] TX_BURST=QUEUED count=128");
                 // Verify that RX and the IPv4/ICMP stack still work after the
-                // 64 TX submissions, including repeated descriptor reuse. The
+                // 128 TX submissions, including repeated descriptor reuse. The
                 // independent PCAP gate must see this request and its reply
-                // strictly after all 64 raw TX frames, not just a serial PASS.
+                // strictly after all 128 raw TX frames, not just a serial PASS.
                 Log("[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START");
                 try
                 {
@@ -319,7 +319,7 @@ namespace ZonderqOS
 #if ZONDERQ_NETWORK_N6_HTTP
         private static bool TrySendBurst(byte[] template)
         {
-            // 64 paced frames exercise descriptor reuse across multiple
+            // 128 paced frames exercise four 32-descriptor TX ring cycles across
             // ring cycles without exposing the NIC in the production GUI.
             // The first 14 bytes are the already validated N1 L2 header.
             byte[] tag = System.Text.Encoding.ASCII.GetBytes("ZONDERQ3095-BURST-");
@@ -330,10 +330,12 @@ namespace ZonderqOS
                 burst[i] = template[i];
             for (int i = 0; i < tag.Length; i++)
                 burst[14 + i] = tag[i];
-            for (int sequence = 0; sequence < 64; sequence++)
+            for (int sequence = 0; sequence < 128; sequence++)
             {
-                burst[14 + tag.Length] = (byte)('0' + sequence / 10);
-                burst[15 + tag.Length] = (byte)('0' + sequence % 10);
+                // Fixed-width decimal tag survives 099 -> 100 and 127.
+                burst[14 + tag.Length] = (byte)('0' + sequence / 100);
+                burst[15 + tag.Length] = (byte)('0' + (sequence / 10) % 10);
+                burst[16 + tag.Length] = (byte)('0' + sequence % 10);
                 if (!NetworkManager.Send(burst, burst.Length))
                     return false;
                 Thread.Sleep(5);

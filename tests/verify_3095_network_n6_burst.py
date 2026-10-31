@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """N6-only sustained raw E1000E TX proof from QEMU PCAP, not serial alone.
 
-The guest queues 64 paced, uniquely tagged Ethernet frames after two HTTP
+The guest queues 128 paced, uniquely tagged Ethernet frames after two HTTP
 sessions. The PCAP must contain every frame in order. This establishes real
 QEMU TX and repeated descriptor submission, NOT guest IRQ ISR execution,
 physical RTL810xE operation, or production networking.
@@ -20,9 +20,9 @@ from verify_3095_network_n6 import (
     HTTP_REPEAT_PASS, find_http_transaction, validate as validate_n6,
 )
 
-COUNT = 64
-START = "[NET3095-N6] TX_BURST_ATTEMPT=START count=64"
-QUEUED = "[NET3095-N6] TX_BURST=QUEUED count=64"
+COUNT = 128
+START = "[NET3095-N6] TX_BURST_ATTEMPT=START count=128"
+QUEUED = "[NET3095-N6] TX_BURST=QUEUED count=128"
 TAG = b"ZONDERQ3095-BURST-"
 POST_START = "[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START"
 POST_PASS = "[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2"
@@ -58,7 +58,7 @@ def last_http_frame(serial: str, frames: list[bytes]) -> int:
 
 
 def check_frames(pcap: bytes, after_index: int = -1) -> int:
-    """Require exactly 64 unmodified, in-order guest TX frames after HTTP.
+    """Require exactly 128 unmodified, in-order guest TX frames after HTTP.
 
     Subsequence matching could silently ignore duplicates, reordered frames,
     wrong source MAC, nonzero padding or an unexpected 33rd submission.
@@ -73,7 +73,7 @@ def check_frames(pcap: bytes, after_index: int = -1) -> int:
         # EtherType 0x88B5 is reserved for this isolated diagnostic.
         # Previously a forged/malformed extra burst could be hidden by
         # corrupting one tag byte: the validator silently skipped it and
-        # accepted the other 64 valid frames. Fail closed instead.
+        # accepted the other 128 valid frames. Fail closed instead.
         if frame[12:14] != ETHER_TYPE and not payload.startswith(TAG):
             continue
         if frame[12:14] == ETHER_TYPE and payload.startswith(b"ZONDERQ3095TX"):
@@ -87,11 +87,11 @@ def check_frames(pcap: bytes, after_index: int = -1) -> int:
         if seen >= COUNT:
             raise ValueError("unexpected extra E1000E TX burst frame")
         expected = (BROADCAST + MAC + ETHER_TYPE + TAG +
-                    f"{seen:02d}".encode("ascii"))
+                    f"{seen:03d}".encode("ascii"))
         if (len(frame) != 60 or not frame.startswith(expected) or
                 any(frame[len(expected):])):
             raise ValueError(
-                f"missing, reordered, malformed or forged E1000E TX burst frame {seen:02d}")
+                f"missing, reordered, malformed or forged E1000E TX burst frame {seen:03d}")
         seen += 1
         last_index = index
     if seen != COUNT:
@@ -162,14 +162,14 @@ def validate(serial: str, pcap: bytes) -> str:
         raise ValueError("missing unique guest lease for post-burst ICMP")
     guest = bytes(int(part) for part in leases[0].group(1).split("."))
     check_post_burst_icmp(frames, last_burst, guest)
-    return ("[NET3095-N6-BURST-GATE] PASS 64 exact ordered QEMU PCAP raw TX "
+    return ("[NET3095-N6-BURST-GATE] PASS 128 exact ordered QEMU PCAP raw TX "
             "frames followed by correlated ICMP RX/TX; DMA ISR execution UNPROVEN")
 
 def self_test() -> None:
     serial = "\n".join([HTTP_REPEAT_PASS, START, QUEUED, POST_START, POST_PASS])
     frames = []
     for sequence in range(COUNT):
-        raw = BROADCAST + MAC + ETHER_TYPE + TAG + f"{sequence:02d}".encode("ascii")
+        raw = BROADCAST + MAC + ETHER_TYPE + TAG + f"{sequence:03d}".encode("ascii")
         frames.append(raw + bytes(60 - len(raw)))
     check_markers(serial)
     assert check_frames(synthetic_capture(frames)) == COUNT - 1
@@ -271,8 +271,11 @@ def self_test() -> None:
         frames[:8] + [frames[8] + b"\x00"] + frames[9:],
         frames[:8] + [frames[8][:6] + wrong_mac + frames[8][12:]] + frames[9:],
         frames[:8] + [frames[8][:12] + b"\x08\x00" + frames[8][14:]] + frames[9:],
-        frames[:8] + [frames[8][:14] + TAG + b"99" +
-                       frames[8][14 + len(TAG) + 2:]] + frames[9:],
+        frames[:8] + [frames[8][:14] + TAG + b"999" +
+                       frames[8][14 + len(TAG) + 3:]] + frames[9:],
+        # Reject decimal rollover confusion between 099 and 100.
+        frames[:100] + [frames[100][:14] + TAG + b"099" +
+                        frames[100][14 + len(TAG) + 3:]] + frames[101:],
     ]
     for items in negative_frames:
         try:
@@ -280,13 +283,13 @@ def self_test() -> None:
         except ValueError:
             continue
         raise AssertionError("accepted missing, duplicate, reordered or forged raw TX burst frame")
-    # Extra damaged frames must fail even when all 64 genuine frames are
+    # Extra damaged frames must fail even when all 128 genuine frames are
     # present. A subsequence-only validator used to silently ignore them.
     extra_bad_frames = [
-        frames[8][:14] + b"ZONDERQ3095-BURST-X" + frames[8][14 + len(TAG) + 2:],
+        frames[8][:14] + b"ZONDERQ3095-BURST-X" + frames[8][14 + len(TAG) + 3:],
         frames[8][:12] + b"\x08\x00" + frames[8][14:],
         frames[8][:6] + wrong_mac + frames[8][12:],
-        frames[8][:14] + TAG + b"99" + frames[8][14 + len(TAG) + 2:],
+        frames[8][:14] + TAG + b"999" + frames[8][14 + len(TAG) + 3:],
     ]
     for extra in extra_bad_frames:
         try:
