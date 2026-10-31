@@ -46,6 +46,35 @@ def move_mouse_relative(channel, dx, dy):
         time.sleep(0.8)
 
 
+
+def mouse_button(channel, pressed, button="left"):
+    """Send an actual emulated mouse button transition, not a keyboard key.
+
+    This primitive is deliberately separate from the default screenshot gate:
+    a QMP acknowledgement does not prove the guest handled a click.
+    """
+    if button not in ("left", "right", "middle"):
+        raise ValueError("unsupported QMP mouse button: " + str(button))
+    if not isinstance(pressed, bool):
+        raise TypeError("pressed must be a bool")
+    command(channel, {
+        "execute": "input-send-event",
+        "arguments": {"events": [{
+            "type": "btn",
+            "data": {"button": button, "down": pressed},
+        }]},
+    })
+    time.sleep(0.15)
+
+
+def click_mouse(channel, button="left"):
+    """Always release the button, even if the guest rejects the press."""
+    try:
+        mouse_button(channel, True, button)
+    finally:
+        mouse_button(channel, False, button)
+
+
 def screenshot(channel, path):
     command(channel, {"execute": "screendump", "arguments": {"filename": path}})
 
