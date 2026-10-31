@@ -290,6 +290,17 @@ namespace ZonderqOS
                         postHttpException.GetType().Name);
                     return;
                 }
+                // Read-only post-stress adapter check: catch a dropped link,
+                // lost binding or changed MAC before reporting N6 success.
+                NetworkAdapter postStress = NetworkManager.Primary;
+                if (!postStress.IsValid || postStress.Name != "e1000e" ||
+                    !postStress.Ready || !postStress.LinkUp ||
+                    (postStress.MacAddress?.ToString() ?? "") != sourceMac)
+                {
+                    Log("[NET3095-N6][FAIL] E1000E link/MAC changed after TX/RX stress");
+                    return;
+                }
+                Log("[NET3095-N6] POST_STRESS_LINK=PASS mac=" + sourceMac);
 #endif
             }
             catch (Exception ex)

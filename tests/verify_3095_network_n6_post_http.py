@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import re
 
 from network_3095_http_host import PORT, REQUEST, RESPONSE
 from verify_3095_network_n1 import pcap_frames
@@ -16,6 +17,7 @@ from verify_3095_network_n4 import tcp_frame
 from verify_3095_network_n6 import (
     fake_http, find_http_transaction,
 )
+from verify_3095_e1000e_irq_binding import GUEST
 from verify_3095_network_n6_burst import (
     POST_PASS, check_frames, check_markers, check_post_burst_icmp,
     last_http_frame, post_burst_icmp, validate as validate_burst,
@@ -23,6 +25,20 @@ from verify_3095_network_n6_burst import (
 
 START = "[NET3095-N6] POST_BURST_HTTP_ATTEMPT=START"
 PASS = f"[NET3095-N6] POST_BURST_HTTP=PASS from=10.0.2.2 port={PORT} bytes={len(RESPONSE)}"
+LINK = re.compile(r"^\\[NET3095-N6\\] POST_STRESS_LINK=PASS mac=([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})$")
+
+
+def check_link_markers(serial: str) -> None:
+    lines = [line.strip() for line in serial.replace("\\r", "").splitlines()]
+    guest = [match for line in lines if (match := GUEST.fullmatch(line))]
+    link = [match for line in lines if (match := LINK.fullmatch(line))]
+    if len(guest) != 1 or len(link) != 1:
+        raise ValueError("missing or duplicate guest NIC/post-stress link marker")
+    if not (lines.index(PASS) < lines.index(link[0].group(0))):
+        raise ValueError("post-stress link marker preceded HTTP RX completion")
+    if guest[0].group(1).upper() != link[0].group(1).upper():
+        raise ValueError("post-stress NIC MAC differs from original E1000E")
+
 
 
 def check_third_http(frames: list[bytes], guest: bytes, last_icmp: int,
@@ -49,6 +65,7 @@ def validate(serial: str, pcap: bytes) -> str:
         raise ValueError("missing or duplicate post-burst HTTP markers")
     if not (lines.index(POST_PASS) < lines.index(START) < lines.index(PASS)):
         raise ValueError("post-burst HTTP markers out of order")
+    check_link_markers(serial)
     leases = [m for line in lines if (m := LEASE.fullmatch(line))]
     if len(leases) != 1:
         raise ValueError("missing unique guest lease")
@@ -102,6 +119,24 @@ def self_test() -> None:
     third = handshake + response + teardown
     frames = [bytes(60)] + third
     check_third_http(frames, guest, 0, (49153, 49154))
+    serial = "\\n".join((
+        "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
+        PASS,
+        "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
+    ))
+    check_link_markers(serial)
+    for invalid in (
+        serial.replace("POST_STRESS_LINK=PASS", "POST_STRESS_LINK=FAIL"),
+        serial.replace("POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
+                       "POST_STRESS_LINK=PASS mac=52:54:00:12:34:57"),
+        serial + "\\n[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
+        "\\n".join(reversed(serial.splitlines())),
+    ):
+        try:
+            check_link_markers(invalid)
+        except ValueError:
+            continue
+        raise AssertionError("accepted invalid post-stress E1000E link marker")
     negatives = [
         frames[:-1],
         frames[:1] + handshake + response[:2] + teardown,

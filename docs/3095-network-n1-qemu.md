@@ -232,3 +232,9 @@ after TX-ring stress. A serial PASS alone is insufficient.
 The new probe is isolated to the N6 QEMU profile. It does not modify
 production networking, the stock SDK, or the disk-backed GUI. CI/QEMU
 must pass on the new commit before this extension is considered proven.
+
+The isolated N6 guest also re-reads the primary E1000E adapter after the
+third HTTP session, rejecting lost readiness, dropped link or changed MAC.
+The independent post-HTTP validator correlates the final serial MAC with
+the original ready adapter. This is a read-only status observation, not
+an IRQ/ISR proof or a physical Realtek test.
