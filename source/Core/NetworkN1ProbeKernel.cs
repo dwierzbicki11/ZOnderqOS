@@ -291,13 +291,15 @@ namespace ZonderqOS
             // submission without exposing the NIC in the production GUI.
             // The first 14 bytes are the already validated N1 L2 header.
             byte[] tag = System.Text.Encoding.ASCII.GetBytes("ZONDERQ3095-BURST-");
+            // Stock 3.0.95 E1000E.Transmit copies the caller's span into
+            // its DMA slot before returning, so this one buffer is reusable.
+            byte[] burst = new byte[60];
+            for (int i = 0; i < 14; i++)
+                burst[i] = template[i];
+            for (int i = 0; i < tag.Length; i++)
+                burst[14 + i] = tag[i];
             for (int sequence = 0; sequence < 32; sequence++)
             {
-                byte[] burst = new byte[60];
-                for (int i = 0; i < 14; i++)
-                    burst[i] = template[i];
-                for (int i = 0; i < tag.Length; i++)
-                    burst[14 + i] = tag[i];
                 burst[14 + tag.Length] = (byte)('0' + sequence / 10);
                 burst[15 + tag.Length] = (byte)('0' + sequence % 10);
                 if (!NetworkManager.Send(burst, burst.Length))
