@@ -65,6 +65,7 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
         self.assertIn("mtools ovmf", hd)
         self.assertIn("SERVICE_QEMU_FIRMWARE: 'ovmf'", hd)
         self.assertIn("SERVICE_QEMU_VIDEO: ${{ matrix.video }}", hd)
+        self.assertIn("SERVICE_QEMU_PROBE_MAX_DRAG:", hd)
         self.assertIn("resolution: '1360x768'", hd)
         self.assertIn("resolution: '1366x768'", hd)
         self.assertIn("video: 'qxl'", hd)

@@ -319,6 +319,25 @@ def main():
         else:
             print("[GUI-QMP] resize-window: SKIP window too small for safe resize")
 
+        # Optional real guest regression for maximized caption dragging.
+        # Run after ordinary drag/resize so this probe cannot invalidate
+        # their source-derived coordinates. It never touches disk content.
+        probe_max_drag = os.environ.get("SERVICE_QEMU_PROBE_MAX_DRAG") == "1" and can_drag
+        if probe_max_drag:
+            maximize_x = window_x + window_width - 49
+            maximize_y = window_y + 19
+            move_mouse_to_from_corner(channel, maximize_x, maximize_y,
+                                      frame_width, frame_height)
+            screenshot(channel, prefix + ".filemanager-maxdrag-before.ppm")
+            click_mouse(channel)
+            time.sleep(1.0)
+            screenshot(channel, prefix + ".filemanager-maxdrag-maximized.ppm")
+            # Grab a safe central caption point, far from caption controls.
+            move_mouse_to_from_corner(channel, frame_width // 2, 20,
+                                      frame_width, frame_height)
+            drag_mouse_relative(channel, 50, 45)
+            screenshot(channel, prefix + ".filemanager-maxdrag-restored.ppm")
+
         # Alt+F4 must close the active File Manager and reveal the desktop.
         # This also exercises the real guest's global window shortcut path.
         send_keys(channel, "alt", "f4")
@@ -426,6 +445,21 @@ def main():
         print(f"[GUI-QMP] resize-window-restored: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
         if fraction > 0.10:
             raise RuntimeError("reverse PS/2 resize did not restore File Manager; inspect PPMs")
+
+    if probe_max_drag:
+        max_before = read_ppm(prefix + ".filemanager-maxdrag-before.ppm")
+        maximized = read_ppm(prefix + ".filemanager-maxdrag-maximized.ppm")
+        restored = read_ppm(prefix + ".filemanager-maxdrag-restored.ppm")
+        changed, samples = difference(max_before, maximized)
+        fraction = changed / max(1, samples)
+        print(f"[GUI-QMP] maxdrag-maximize: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
+        if fraction < 0.03:
+            raise RuntimeError("maximize button did not visibly maximize File Manager")
+        changed, samples = difference(maximized, restored)
+        fraction = changed / max(1, samples)
+        print(f"[GUI-QMP] maxdrag-restore: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
+        if fraction < 0.03:
+            raise RuntimeError("maximized caption drag did not visibly restore File Manager")
 
     # Closing a window should return to the same desktop, not another large
     # overlay. Small differences from the clock/toasts are tolerated.

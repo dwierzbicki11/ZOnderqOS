@@ -40,6 +40,22 @@ class FramebufferProbeTests(unittest.TestCase):
             (width, height, baseline), (width, height, baseline))
         self.assertEqual(restored, 0)
 
+    def test_opt_in_real_maximized_caption_drag_requires_two_framebuffer_changes(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('os.environ.get("SERVICE_QEMU_PROBE_MAX_DRAG") == "1" and can_drag', source)
+        self.assertIn('".filemanager-maxdrag-before.ppm"', source)
+        self.assertIn('".filemanager-maxdrag-maximized.ppm"', source)
+        self.assertIn('".filemanager-maxdrag-restored.ppm"', source)
+        self.assertIn("move_mouse_to_from_corner(channel, frame_width // 2, 20,", source)
+        self.assertIn("drag_mouse_relative(channel, 50, 45)", source)
+        self.assertIn("difference(max_before, maximized)", source)
+        self.assertIn("difference(maximized, restored)", source)
+        self.assertIn("maximized caption drag did not visibly restore", source)
+        self.assertLess(source.index("if probe_max_drag:"),
+                        source.index('send_keys(channel, "alt", "f4")'))
+        self.assertIn("SERVICE_QEMU_PROBE_MAX_DRAG: ${{ matrix.resolution != '1366x768' && '1' || '0' }}",
+                      (ROOT / ".github/workflows/gui-hd-qemu.yml").read_text())
+
     def test_identical_frames_do_not_count_as_gui_interaction(self):
         width, height = 80, 64
         pixels = bytes(width * height * 3)

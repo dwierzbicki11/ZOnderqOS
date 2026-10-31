@@ -75,6 +75,7 @@ jobs:
           SERVICE_QEMU_AUTOMATE_GUI_LOGIN: '1'
           SERVICE_QEMU_PROBE_FILE_MANAGER: '1'
           SERVICE_QEMU_PROBE_TASK_MANAGER: '1'
+          SERVICE_QEMU_PROBE_MAX_DRAG: ${{ matrix.resolution != '1366x768' && '1' || '0' }}
         run: |
           set -euo pipefail
           bash tools/smoke-services-qemu.sh \
