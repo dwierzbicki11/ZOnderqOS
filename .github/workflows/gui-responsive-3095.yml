@@ -9,7 +9,9 @@ on:
       - 'tests/test_3094_storage_policy.py'
       - 'tools/qmp-gui-login.py'
       - 'tools/qmp-gui-filemanager.py'
+      - 'tools/qmp-gui-taskmanager.py'
       - 'tests/test_qmp_gui_filemanager.py'
+      - 'tests/test_qmp_gui_taskmanager.py'
       - 'tools/smoke-services-qemu.sh'
       - '.github/workflows/gui-responsive-3095.yml'
   workflow_dispatch:
@@ -25,11 +27,13 @@ jobs:
       - uses: actions/checkout@v4
       - name: Validate optional QMP GUI input probe syntax
         run: |
-          python3 -m py_compile tools/qmp-gui-login.py tools/qmp-gui-filemanager.py
+          python3 -m py_compile tools/qmp-gui-login.py tools/qmp-gui-filemanager.py tools/qmp-gui-taskmanager.py
           bash -n tools/smoke-services-qemu.sh
       - name: Validate 3.0.95 GUI layout and desktop bounds (source/math only)
         run: python3 tests/test_3094_responsive_gui.py
       - name: Exercise QMP framebuffer diff parser with synthetic PPM images
-        run: python3 tests/test_qmp_gui_filemanager.py
+        run: |
+          python3 tests/test_qmp_gui_filemanager.py
+          python3 tests/test_qmp_gui_taskmanager.py
       - name: Preserve protected FAT32 storage policy
         run: python3 tests/test_3094_storage_policy.py
