@@ -9,6 +9,8 @@ SOURCE = (ROOT / "source/Core/NetworkN1ProbeKernel.cs").read_text()
 BUILD = (ROOT / "tools/build-cosmos-3095-local.sh").read_text()
 SMOKE = (ROOT / "tools/smoke-network-n1-3095-qemu.sh").read_text()
 HOST = (ROOT / "tests/network_3095_tcp_host.py").read_text()
+HTTP_HOST = (ROOT / "tests/network_3095_http_host.py").read_text()
+HTTP_VALIDATOR = (ROOT / "tests/verify_3095_network_n6.py").read_text()
 MAIN = (ROOT / "Kernel.cs").read_text()
 
 class NetworkN1Isolation(unittest.TestCase):
@@ -133,6 +135,13 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('tests/verify_3095_network_n6.py', SMOKE)
         self.assertIn('No correlated HTTP TCP capture', SMOKE)
         self.assertIn('NET3095-N[1-6]', SMOKE)
+        self.assertIn('for (int attempt = 1; attempt <= 2; attempt++)', SOURCE)
+        self.assertIn('HTTP_REPEAT=PASS', SOURCE)
+        self.assertIn('for attempt in range(1, 3):', HTTP_HOST)
+        self.assertIn('REPEAT_PASS HTTP/1.0', HTTP_HOST)
+        self.assertIn('HTTP_REPEAT_PASS', HTTP_VALIDATOR)
+        self.assertIn('second independent HTTP TCP exchange incomplete', HTTP_VALIDATOR)
+        self.assertIn('REPEAT_PASS HTTP/1.0', SMOKE)
         self.assertIn('http_pid', SMOKE)
         self.assertIn('trap cleanup EXIT INT TERM', SMOKE)
 

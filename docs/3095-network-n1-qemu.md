@@ -78,7 +78,7 @@ bash tools/smoke-network-n1-3095-qemu.sh \
 N6 keeps N1–N5 intact, then makes a second TCP connection to
 `10.0.2.2:18096`. A CI-owned unprivileged HTTP fixture binds only
 `127.0.0.1:18096` on the QEMU host and responds to exactly
-`GET /health HTTP/1.0` with `200 OK`, a 20-byte body and a
+`GET /health HTTP/1.0` with `200 OK`, a 4116-byte body and a
 `Content-Length` header. The guest checks the exact HTTP status,
 headers and body. The N6 PCAP gate independently checks the TCP handshake,
 port/MAC/IP/sequence/ack continuity and full HTTP request/response byte
@@ -126,3 +126,5 @@ acknowledged by the guest. The second handshake must occur after the first
 server FIN/ACK. This is a bounded RX descriptor and socket lifecycle test,
 not a direct proof that hardware IRQs fired; stock Cosmos may still poll.
 It remains an isolated QEMU-only diagnostic, never production GUI networking.
+
+**QEMU evidence (2026-10-31):** GitHub Actions run #41201638372 (https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41201638372) passed the N6 boot/PCAP step for the two-connection version at commit `df0612ff`. This is a QEMU result only; it does not establish E1000E IRQ delivery or physical Realtek functionality.

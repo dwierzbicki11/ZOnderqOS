@@ -68,8 +68,8 @@ def stream_payload(packets, first: int, guest: bytes, client_port: int,
 
 def server_fin_acked(packets, first: int, guest: bytes,
                      client_port: int, client_seq: int, server_seq: int,
-                     server_mac: bytes) -> bool:
-    """Require the peer's FIN and the guest's matching final ACK.
+                     server_mac: bytes) -> int | None:
+    """Return the matching guest ACK packet index after the peer FIN.
 
     The server sends FIN after its complete HTTP response. This verifies
     the guest consumes TCP teardown, not merely the HTTP payload.
