@@ -85,7 +85,10 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         while True:
             reply = json.loads(channel.readline())
             if 'error' in reply:
-                raise SystemExit("QMP screendump failed: " + str(reply['error']))
+                # Still issue QMP quit so the synthetic FAT32 disk is flushed.
+                # The missing screenshot is rejected after QEMU has exited.
+                print("QMP screendump failed: " + str(reply['error']), file=sys.stderr)
+                break
             if 'return' in reply:
                 break
     channel.write(b'{"execute":"quit"}\r\n')
