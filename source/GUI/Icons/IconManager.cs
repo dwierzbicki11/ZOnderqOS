@@ -200,6 +200,26 @@ namespace ZonderqOS.GUI.Icons
             {
                 int row = py * width;
                 int destinationY = y + py;
+
+                // Most gradient/antialiased rows have no repeated opaque colors.
+                // Keep the original point-only loop for those rows: probing
+                // every pixel for runs made them slower in host A/B benchmarks.
+                // A three-pixel opaque prefix is a cheap conservative signal
+                // that this scanline can benefit from run coalescing.
+                if (endX - startX < 3 ||
+                    ((uint)pixels[row + startX] >> 24) != 255 ||
+                    pixels[row + startX] != pixels[row + startX + 1] ||
+                    pixels[row + startX] != pixels[row + startX + 2])
+                {
+                    for (int px = startX; px < endX; px++)
+                    {
+                        int argb = pixels[row + px];
+                        if (((uint)argb >> 24) != 0)
+                            canvas.DrawPoint(Color.FromArgb(argb), x + px, destinationY);
+                    }
+                    continue;
+                }
+
                 for (int px = startX; px < endX;)
                 {
                     int argb = pixels[row + px];
