@@ -21,6 +21,9 @@ namespace ZonderqOS.GUI.Apps
         // re-enumerate a potentially slow FAT32 volume on every keystroke.
         private readonly List<FileEntry> cachedEntries = new List<FileEntry>();
         private bool hasLoadedDirectory;
+        // The path represented by cachedEntries can differ from currentPath
+        // while NavigateTo is validating a new directory.
+        private string loadedDirectoryPath;
         private readonly List<SidebarEntry> sidebarEntries = new List<SidebarEntry>();
 
         private string currentPath = "/root";
@@ -978,7 +981,18 @@ namespace ZonderqOS.GUI.Apps
                 Add(scanned, Directory.GetFiles(targetPath), false);
                 Sort(scanned);
 
+                // An explicit F5 or a successful paste should not jump back
+                // to the first tile in a large directory. Compare the actual
+                // cached path, not currentPath: NavigateTo changes currentPath
+                // before it asks us to scan the new location.
+                bool sameDirectory = hasLoadedDirectory &&
+                    string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal);
+                string selectedPath = sameDirectory && selectedIndex >= 0 && selectedIndex < entries.Count
+                    ? entries[selectedIndex].FullPath : null;
+                int previousScroll = sameDirectory ? scrollIndex : 0;
+
                 currentPath = targetPath;
+                loadedDirectoryPath = targetPath;
                 hasLoadedDirectory = true;
                 entries.Clear();
                 entries.AddRange(scanned);
@@ -986,12 +1000,29 @@ namespace ZonderqOS.GUI.Apps
                 cachedEntries.AddRange(scanned);
                 selectedIndex = -1;
                 ResetClickSequence();
-                scrollIndex = 0;
+                scrollIndex = previousScroll;
                 contextMenuVisible = false;
                 contextMenuSelection = -1;
 
                 if (!string.IsNullOrEmpty(searchText))
                     Filter();
+
+                // Entries are reconstructed on every scan, so reference
+                // equality cannot restore the old selection. A removed file
+                // remains unselected; never select a different tile merely
+                // because it now occupies the same index.
+                if (!string.IsNullOrEmpty(selectedPath))
+                {
+                    for (int i = 0; i < entries.Count; i++)
+                    {
+                        if (string.Equals(entries[i].FullPath, selectedPath, StringComparison.Ordinal))
+                        {
+                            selectedIndex = i;
+                            break;
+                        }
+                    }
+                }
+                EnsureSelectionVisible();
 
                 status = string.IsNullOrEmpty(keep)
                     ? (string.IsNullOrEmpty(searchText)
