@@ -46,14 +46,19 @@ jobs:
         run: |
           bash tools/build-cosmos-3095-local.sh audio
           test -s output-3095/ZonderqOS-3095-audio.iso
-      - name: Boot and capture actual HDA output
+      - name: Boot and capture direct PCM tone
         run: |
           python3 tools/smoke-audio-qemu.py \
-            output-3095/ZonderqOS-3095-audio.iso audio-qemu-out --boot-seconds 45
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-out --boot-seconds 45 --command tone
+      - name: Boot again and capture decoded in-memory RIFF/WAV playback
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-wav-out --boot-seconds 45 --command wavtone
       - name: Diagnostic logs
         if: always()
         run: |
           tail -n 200 audio-qemu-out/serial.log audio-qemu-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-wav-out/serial.log audio-qemu-wav-out/qemu.stderr.log 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -63,3 +68,6 @@ jobs:
             audio-qemu-out/*.log
             audio-qemu-out/*.wav
             audio-qemu-out/*.ppm
+            audio-qemu-wav-out/*.log
+            audio-qemu-wav-out/*.wav
+            audio-qemu-wav-out/*.ppm
