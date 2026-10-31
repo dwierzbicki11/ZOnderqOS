@@ -565,6 +565,18 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            if (key.Key == ConsoleKeyEx.Home)
+            {
+                SelectBoundary(false);
+                return;
+            }
+
+            if (key.Key == ConsoleKeyEx.End)
+            {
+                SelectBoundary(true);
+                return;
+            }
+
             if (key.Key == ConsoleKeyEx.PageUp)
             {
                 SelectPage(-1);
@@ -637,6 +649,17 @@ namespace ZonderqOS.GUI.Apps
         private int Columns()
         {
             return Math.Max(1, (GridWidthForView + TileGap) / (TileWidth + TileGap));
+        }
+
+        private void SelectBoundary(bool last)
+        {
+            if (entries.Count == 0)
+                return;
+
+            ResetClickSequence();
+            contextMenuVisible = false;
+            selectedIndex = last ? entries.Count - 1 : 0;
+            EnsureSelectionVisible();
         }
 
         private void SelectPage(int direction)
