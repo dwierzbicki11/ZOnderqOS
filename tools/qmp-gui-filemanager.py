@@ -6,6 +6,7 @@ that the intended app rendered correctly. Preserve screenshots for inspection.
 Never connect this probe to a guest with host disks or real credentials.
 """
 import json
+import os
 import socket
 import sys
 import time
@@ -147,6 +148,42 @@ def difference(first, second):
     return changed, samples
 
 
+def expected_filemanager_bounds(frame_width, frame_height):
+    """Source-derived initial Window bounds, not proof of rendered geometry.
+
+    FileManager starts at (120,78) with size (820,520); Window constrains
+    this to the actual desktop (screen height minus the 44px taskbar).
+    """
+    if frame_width <= 0 or frame_height <= 44:
+        raise ValueError("invalid GUI framebuffer dimensions")
+    desktop_height = frame_height - 44
+    margin = 12 if frame_width >= 1000 and desktop_height >= 700 else 0
+    available_width = frame_width - 2 * margin
+    available_height = desktop_height - 2 * margin
+    width = max(min(320, available_width), min(820, available_width))
+    height = max(min(220, available_height), min(520, available_height))
+    x = max(margin, min(120, frame_width - width - margin))
+    y = max(margin, min(78, desktop_height - height - margin))
+    return x, y, width, height
+
+
+def verify_expected_framebuffer(width, height):
+    """Fail closed when a requested 800x600/1366x768 mode was not obtained."""
+    expected = os.environ.get("SERVICE_QEMU_EXPECT_FRAMEBUFFER", "")
+    if not expected:
+        return
+    try:
+        wanted_width, wanted_height = map(int, expected.split("x"))
+    except (ValueError, TypeError):
+        raise ValueError("invalid SERVICE_QEMU_EXPECT_FRAMEBUFFER; use WIDTHxHEIGHT")
+    if wanted_width <= 0 or wanted_height <= 0:
+        raise ValueError("expected framebuffer dimensions must be positive")
+    if (width, height) != (wanted_width, wanted_height):
+        raise RuntimeError(
+            f"requested framebuffer {expected}, actual {width}x{height}; "
+            "do not count this boot as a resolution test")
+
+
 def main():
     if len(sys.argv) != 3:
         raise SystemExit("usage: qmp-gui-filemanager.py <qmp-socket> <output-prefix>")
@@ -196,6 +233,9 @@ def main():
         # device has relative coordinates only, and earlier cursor positions
         # are not a trustworthy basis for a click target.
         frame_width, frame_height, _ = read_ppm(prefix + ".filemanager-after.ppm")
+        verify_expected_framebuffer(frame_width, frame_height)
+        window_x, window_y, window_width, window_height = expected_filemanager_bounds(
+            frame_width, frame_height)
         tray_width = 278 if frame_width >= 560 else 132
         notification_x = frame_width - tray_width + 26
         notification_y = frame_height - 22
@@ -209,25 +249,30 @@ def main():
         time.sleep(1.2)
         screenshot(channel, prefix + ".notification-click-closed.ppm")
 
-        # Verify a real guest window drag, not merely a cursor move. At the
-        # QEMU 1024x768 mode File Manager starts at (120, 78) with a 38px
-        # titlebar. At narrower modes a window may fill the whole desktop,
-        # leaving no legal displacement; those modes need separate tests.
-        if frame_width >= 1000 and frame_height >= 700:
-            move_mouse_to_from_corner(channel, frame_width // 2, 100,
+        # A full-width File Manager cannot be dragged horizontally at
+        # 800x600; still exercise a real bottom-edge resize at that mode.
+        # Coordinates are derived from Window.ConstrainToDesktop, never
+        # hard-coded for QEMU's previous 1024x768 framebuffer.
+        can_drag = (frame_width - window_width >= 80 and
+                    frame_height - 44 - window_height >= 40)
+        can_resize = window_height >= 300 and window_width >= 320
+        if can_drag:
+            title_x = window_x + window_width // 2
+            title_y = window_y + 22
+            move_mouse_to_from_corner(channel, title_x, title_y,
                                       frame_width, frame_height)
             screenshot(channel, prefix + ".filemanager-drag-before.ppm")
             drag_mouse_relative(channel, 48, 28)
             screenshot(channel, prefix + ".filemanager-drag-moved.ppm")
             drag_mouse_relative(channel, -48, -28)
             screenshot(channel, prefix + ".filemanager-drag-restored.ppm")
+        else:
+            print("[GUI-QMP] drag-window: SKIP no legal 48x28 window displacement")
 
-            # Resize the bottom edge by a real PS/2 drag. Unlike the right
-            # edge, the bottom edge is inside the central-framebuffer diff
-            # region, so a visual change cannot be hidden by crop bounds.
-            # The File Manager's initial bounds are (120,78,820,520) at
-            # 1024x768; restoring the title drag restores these bounds.
-            move_mouse_to_from_corner(channel, frame_width // 2, 595,
+        if can_resize:
+            resize_x = window_x + window_width // 2
+            resize_y = window_y + window_height - 3
+            move_mouse_to_from_corner(channel, resize_x, resize_y,
                                       frame_width, frame_height)
             screenshot(channel, prefix + ".filemanager-resize-before.ppm")
             drag_mouse_relative(channel, 0, -64)
@@ -235,7 +280,7 @@ def main():
             drag_mouse_relative(channel, 0, 64)
             screenshot(channel, prefix + ".filemanager-resize-restored.ppm")
         else:
-            print("[GUI-QMP] drag-window: SKIP framebuffer too small for a movable File Manager")
+            print("[GUI-QMP] resize-window: SKIP window too small for safe resize")
 
         # Alt+F4 must close the active File Manager and reveal the desktop.
         # This also exercises the real guest's global window shortcut path.
@@ -306,7 +351,7 @@ def main():
     if fraction > 0.10:
         raise RuntimeError("second PS/2 click did not restore File Manager viewport; inspect PPMs")
 
-    if frame_width >= 1000 and frame_height >= 700:
+    if can_drag:
         drag_before = read_ppm(prefix + ".filemanager-drag-before.ppm")
         drag_moved = read_ppm(prefix + ".filemanager-drag-moved.ppm")
         drag_restored = read_ppm(prefix + ".filemanager-drag-restored.ppm")
@@ -321,6 +366,7 @@ def main():
         if fraction > 0.10:
             raise RuntimeError("reverse PS/2 drag did not restore File Manager; inspect PPMs")
 
+    if can_resize:
         resize_before = read_ppm(prefix + ".filemanager-resize-before.ppm")
         resize_smaller = read_ppm(prefix + ".filemanager-resize-smaller.ppm")
         resize_restored = read_ppm(prefix + ".filemanager-resize-restored.ppm")

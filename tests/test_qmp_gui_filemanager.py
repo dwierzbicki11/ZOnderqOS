@@ -248,6 +248,47 @@ class FramebufferProbeTests(unittest.TestCase):
 
 
 
+    def test_source_derived_filemanager_bounds_across_modes(self):
+        # This is geometry-model testing; the real boot must separately
+        # report its actual framebuffer size.
+        self.assertEqual(PROBE.expected_filemanager_bounds(800, 600),
+                         (0, 36, 800, 520))
+        self.assertEqual(PROBE.expected_filemanager_bounds(1024, 768),
+                         (120, 78, 820, 520))
+        self.assertEqual(PROBE.expected_filemanager_bounds(1366, 768),
+                         (120, 78, 820, 520))
+        self.assertEqual(PROBE.expected_filemanager_bounds(1920, 1080),
+                         (120, 78, 820, 520))
+        with self.assertRaises(ValueError):
+            PROBE.expected_filemanager_bounds(800, 44)
+
+    def test_requested_mode_requires_real_framebuffer_match(self):
+        import os
+        previous = os.environ.get("SERVICE_QEMU_EXPECT_FRAMEBUFFER")
+        try:
+            os.environ["SERVICE_QEMU_EXPECT_FRAMEBUFFER"] = "800x600"
+            PROBE.verify_expected_framebuffer(800, 600)
+            with self.assertRaisesRegex(RuntimeError, "actual 1024x768"):
+                PROBE.verify_expected_framebuffer(1024, 768)
+            os.environ["SERVICE_QEMU_EXPECT_FRAMEBUFFER"] = "invalid"
+            with self.assertRaises(ValueError):
+                PROBE.verify_expected_framebuffer(800, 600)
+            os.environ.pop("SERVICE_QEMU_EXPECT_FRAMEBUFFER")
+            PROBE.verify_expected_framebuffer(1024, 768)
+        finally:
+            if previous is None:
+                os.environ.pop("SERVICE_QEMU_EXPECT_FRAMEBUFFER", None)
+            else:
+                os.environ["SERVICE_QEMU_EXPECT_FRAMEBUFFER"] = previous
+
+    def test_800x600_resize_is_not_skipped_by_old_1024_guard(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn("can_resize = window_height >= 300", source)
+        self.assertIn("if can_resize:", source)
+        self.assertIn("resize_y = window_y + window_height - 3", source)
+        self.assertNotIn("frame_width // 2, 595", source)
+        self.assertNotIn("if frame_width >= 1000 and frame_height >= 700:", source)
+
     def test_relative_mouse_homing_reaches_notification_tile_without_overflow(self):
         import json
 
