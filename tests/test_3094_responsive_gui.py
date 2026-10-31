@@ -1413,6 +1413,41 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertNotIn("TryUnmount", refresh)
         self.assertNotIn("TryMount", refresh)
 
+    def test_file_manager_refresh_keeps_selection_and_scroll_only_in_same_directory(self):
+        refresh = FILE_MANAGER.split("private bool RefreshInternal(string keep)", 1)[1].split(
+            "private void ApplySearchFilter()", 1)[0]
+        self.assertIn("private string loadedDirectoryPath;", FILE_MANAGER)
+        self.assertIn("string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal)", refresh)
+        self.assertIn("string selectedPath = sameDirectory && selectedIndex >= 0", refresh)
+        self.assertIn("int previousScroll = sameDirectory ? scrollIndex : 0;", refresh)
+        self.assertIn("loadedDirectoryPath = targetPath;", refresh)
+        self.assertIn("scrollIndex = previousScroll;", refresh)
+        self.assertIn("string.Equals(entries[i].FullPath, selectedPath, StringComparison.Ordinal)", refresh)
+        self.assertIn("EnsureSelectionVisible();", refresh)
+        self.assertLess(refresh.index("Sort(scanned);"), refresh.index("loadedDirectoryPath = targetPath;"))
+        self.assertLess(refresh.index("Filter();"), refresh.index("if (!string.IsNullOrEmpty(selectedPath))"))
+        self.assertLess(refresh.index("if (!string.IsNullOrEmpty(selectedPath))"),
+                        refresh.index("EnsureSelectionVisible();"))
+        self.assertNotIn("selectedIndex = i;", refresh.split("catch (Exception ex)", 1)[1])
+
+        # Independent state model: a new snapshot has new object instances.
+        # Preserve by full path, not by index or object identity; never
+        # accidentally select the file that replaced a removed item.
+        def refreshed(path, old_path, old_selection, old_scroll, new_paths):
+            same = path == old_path
+            selected_path = old_selection if same else None
+            selected = next((i for i, name in enumerate(new_paths)
+                             if name == selected_path), -1)
+            return selected, old_scroll if same else 0
+
+        self.assertEqual(refreshed("/root", "/root", "/root/z.txt", 8,
+                                   ["/root/a.txt", "/root/z.txt"]), (1, 8))
+        self.assertEqual(refreshed("/root", "/root", "/root/z.txt", 8,
+                                   ["/root/a.txt", "/root/b.txt"]), (-1, 8))
+        self.assertEqual(refreshed("/mnt/data", "/root", "/root/z.txt", 8,
+                                   ["/mnt/data/z.txt"]), (-1, 0))
+
+
     def test_file_manager_live_filter_uses_cached_directory_snapshot(self):
         refresh = FILE_MANAGER.split("private bool RefreshInternal(string keep)", 1)[1].split(
             "private void RebuildSidebar()", 1)[0]
