@@ -125,8 +125,23 @@ barConfig.SetBar(4, 0xFEBE0000u);
 Check(PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
       out msixBars) && msixBars.TableBir == 2 &&
       msixBars.TableAddress == 0x100002000UL &&
-      msixBars.PbaBir == 4 && msixBars.PbaAddress == 0xFEBE3000UL,
+      msixBars.PbaBir == 4 && msixBars.PbaAddress == 0xFEBE3000UL &&
+      msixBars.TableBytes == 64u && msixBars.PbaBytes == 8u,
     "MSI-X memory BAR address resolution failed");
+// Reject overlapping table/PBA windows, including two offsets in one BAR.
+barConfig.SetMsixTable(0x00002002u, 0x00002022u);
+Check(!PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
+      out msixBars), "Overlapping MSI-X table/PBA windows must fail closed");
+barConfig.SetMsixTable(0x00002002u, 0x00002042u);
+Check(PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
+      out msixBars) && msixBars.PbaAddress == 0x100002040UL,
+    "Adjacent non-overlapping MSI-X windows in one BAR should resolve");
+barConfig.SetMsixTable(0x00002002u, 0x00003004u);
+barConfig.SetMsixControl(0xC7FF); // 2048 vectors, maximum table/PBA sizes
+Check(PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
+      out msixBars) && msixBars.TableBytes == 32768u && msixBars.PbaBytes == 256u,
+    "Maximum MSI-X vector count must produce bounded table/PBA spans");
+barConfig.SetMsixControl(0xC003);
 barConfig.SetMsixTable(0x00002003u, 0x00003004u); // BAR3 is high half of BAR2
 Check(!PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
       out msixBars), "64-bit BAR high half must never resolve MSI-X table");
@@ -139,6 +154,18 @@ barConfig.SetBar(2, 0xFFFFF00Cu);
 barConfig.SetBar(3, 0xFFFFFFFFu);
 Check(!PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
       out msixBars), "MSI-X table address overflow must fail closed");
+// A range ending exactly at ulong.MaxValue is valid; one byte beyond is not.
+barConfig.SetMsixTable(0x00000FC2u, 0x00003004u);
+Check(PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
+      out msixBars), "MSI-X table ending at ulong.MaxValue is representable");
+barConfig.SetMsixTable(0x00000FCAu, 0x00003004u);
+Check(!PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
+      out msixBars), "MSI-X table span overflow must fail closed");
+barConfig.SetMsixControl(0xC040); // 65 vectors -> two PBA words
+barConfig.SetMsixTable(0x00002004u, 0x00000FFAu); // PBA on near-max BAR2
+Check(!PciBarInventory.TryResolveRealtek810xEMsiXMemoryBars(barConfig, 0, 2, 0,
+      out msixBars), "MSI-X PBA span overflow must fail closed");
+barConfig.SetMsixControl(0xC003);
 barConfig.SetBar(2, 0x0000000Cu);
 barConfig.SetBar(3, 0x00000001u);
 barConfig.SetBar(4, 0);
@@ -175,7 +202,7 @@ barConfig.VendorId = 0x10EC;
 Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 32, 0, out bars),
     "Invalid PCI device number must fail closed");
 Console.WriteLine("[NET3095-PCI-PM] PASS C# read-only PMCSR D3hot/PME flags and absent-PM guard; no power transition");
-Console.WriteLine("[NET3095-PCI-MSIX-BAR] PASS C# MSI-X memory BAR resolution and high-half/IO/unassigned/overflow guards; no MMIO or IRQ proof");
+Console.WriteLine("[NET3095-PCI-MSIX-BAR] PASS C# MSI-X table/PBA range and overlap guards, high-half/IO/unassigned/overflow; no MMIO or IRQ proof");
 Console.WriteLine("[NET3095-PCI-IRQ] PASS C# read-only MSI/MSI-X control, vector count, BAR indicators and malformed BAR guards; no IRQ delivery proof");
 Console.WriteLine("[NET3095-PCI-CAPS] PASS C# read-only PM/MSI/MSI-X linked list, cycles, reserved IDs, pointers and fail-closed guards");
 Console.WriteLine("[NET3095-PCI-BAR] PASS C# read-only MMIO32/IO/MMIO64, masking, header/identity guards and fail-closed BAR pairs");
