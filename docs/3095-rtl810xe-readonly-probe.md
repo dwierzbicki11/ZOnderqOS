@@ -44,7 +44,15 @@ The probe checks PCI memory decoding, D0 (if a PM capability is present),
 an assigned non-I/O BAR2, and an aperture of at least `0x6D` bytes.
 A PM capability pointer must be 4-byte aligned and in `0x40..0xF8`,
 so reading PMCSR at pointer+4 cannot escape conventional 256-byte PCI
-configuration space. After the double MMIO snapshot the probe **re-reads**
+configuration space. The diagnostic also reads raw PCI BAR2/BAR3 twice, before mapping and
+after the double MMIO sample. It accepts only supported memory BAR2
+encodings (32-bit or 64-bit), rejects I/O and reserved encodings, and
+declines a sample if either BAR word changes. BAR3 is the upper address
+half for a 64-bit BAR2; a change to an unrelated 32-bit BAR3 is also
+conservatively rejected. **No BAR sizing write** is performed. This
+narrows the risk of reporting registers from a relocated aperture;
+it cannot guarantee that no transient relocation occurred between reads.
+After the double MMIO snapshot the probe **re-reads**
 the PCI identity, memory-decoding bit and PM power state. Any unexpected
 change declines the sample before the driver emits its diagnostic marker.
 These are additional read-only safeguards, not proof of working Ethernet.
