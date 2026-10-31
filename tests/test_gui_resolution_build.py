@@ -89,5 +89,29 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
                                  "timeout: 5\n")[1], 0)
 
 
+    def test_invalid_firmware_mode_cannot_outvote_safe_32bit_mode(self):
+        self.assertIn("bool currentUsable = (int)current.ColorDepth == 32", SELECTOR)
+        self.assertIn("current.Width <= MaxWidth && current.Height <= MaxHeight", SELECTOR)
+        self.assertIn("long bestPixels = currentUsable ? currentPixels : -1;", SELECTOR)
+        self.assertIn("pixels <= bestPixels", SELECTOR)
+        # Host-only selection model; the real Cosmos driver still needs a
+        # compile and a boot test before this is considered hardware-verified.
+        candidates = [(640, 480, 32), (800, 600, 32),
+                      (1366, 768, 32), (1920, 1080, 32),
+                      (4000, 900, 32), (1280, 720, 24)]
+        def select(current):
+            w, h, depth = current
+            usable = depth == 32 and 640 <= w <= 3840 and 480 <= h <= 2160 and w * h <= 3840 * 2160
+            best, pixels = current, w * h if usable else -1
+            for width, height, bpp in candidates:
+                area = width * height
+                if bpp != 32 or width < 640 or height < 480 or width > 3840 or height > 2160 or area > 3840 * 2160 or area <= pixels:
+                    continue
+                best, pixels = (width, height, bpp), area
+            return best
+        self.assertEqual(select((3840, 2160, 24)), (1920, 1080, 32))
+        self.assertEqual(select((3840, 2160, 32)), (3840, 2160, 32))
+        self.assertEqual(select((320, 200, 32)), (1920, 1080, 32))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
