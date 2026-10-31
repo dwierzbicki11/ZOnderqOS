@@ -278,6 +278,19 @@ namespace ZonderqOS.GUI.Apps
                 status = "Odswiezono";
                 return;
             }
+            // The left/right arrows switch Task Manager pages without a mouse.
+            // Only plain arrows are accepted; modified keys stay reserved for
+            // global desktop shortcuts and never trigger process actions.
+            if (key.Modifiers == 0 && key.Key == ConsoleKeyEx.LeftArrow)
+            {
+                SetPage(activePage == PageProcesses ? PageServices : activePage - 1);
+                return;
+            }
+            if (key.Modifiers == 0 && key.Key == ConsoleKeyEx.RightArrow)
+            {
+                SetPage(activePage == PageServices ? PageProcesses : activePage + 1);
+                return;
+            }
             if (activePage == PagePerformance)
                 return;
             if (key.Key == ConsoleKeyEx.UpArrow) Select(-1);
