@@ -26,7 +26,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        resolution: ['1366x768', '1920x1080']
+        include:
+          # OVMF std VGA reported 1360x768 for a 1366x768 Limine
+          # framebuffer and produced a visibly skewed image. Virtio GOP
+          # advertises 1366x768; keep exact framebuffer checks enabled.
+          - resolution: '1366x768'
+            video: 'virtio'
+          - resolution: '1920x1080'
+            video: 'std'
     runs-on: ubuntu-latest
     timeout-minutes: 110
     steps:
@@ -61,6 +68,7 @@ jobs:
           SERVICE_QEMU_CAPTURE_SCREEN: '1'
           SERVICE_QEMU_EXPECT_FRAMEBUFFER: ${{ matrix.resolution }}
           SERVICE_QEMU_FIRMWARE: 'ovmf'
+          SERVICE_QEMU_VIDEO: ${{ matrix.video }}
           SERVICE_QEMU_AUTOMATE_GUI_LOGIN: '1'
           SERVICE_QEMU_PROBE_FILE_MANAGER: '1'
           SERVICE_QEMU_PROBE_TASK_MANAGER: '1'

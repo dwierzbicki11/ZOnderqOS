@@ -10,6 +10,7 @@ PROBE_FILE_MANAGER="${SERVICE_QEMU_PROBE_FILE_MANAGER:-0}"
 PROBE_TASK_MANAGER="${SERVICE_QEMU_PROBE_TASK_MANAGER:-0}"
 EXPECTED_FRAMEBUFFER="${SERVICE_QEMU_EXPECT_FRAMEBUFFER:-}"
 FIRMWARE="${SERVICE_QEMU_FIRMWARE:-bios}"
+VIDEO="${SERVICE_QEMU_VIDEO:-std}"
 
 fail() { echo "[SERVICES-QEMU][FAIL] $*" >&2; exit 1; }
 for tool in qemu-system-x86_64 mkfs.vfat sfdisk mtype mcopy python3; do
@@ -28,6 +29,7 @@ done
 [[ -z "$EXPECTED_FRAMEBUFFER" || "$EXPECTED_FRAMEBUFFER" =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || fail "expected framebuffer must be WIDTHxHEIGHT"
 [[ -z "$EXPECTED_FRAMEBUFFER" || "$CAPTURE_SCREEN" == 1 ]] || fail "framebuffer expectation requires screenshot capture"
 [[ "$FIRMWARE" == bios || "$FIRMWARE" == ovmf ]] || fail "unsupported QEMU firmware profile"
+[[ "$VIDEO" == std || "$VIDEO" == virtio ]] || fail "unsupported QEMU video adapter"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 ISO="$(realpath "$ISO")"
@@ -54,6 +56,7 @@ if [[ "$FIRMWARE" == ovmf ]]; then
   FIRMWARE_ARGS=(-drive "if=pflash,format=raw,unit=0,readonly=on,file=$OVMF_CODE"
                  -drive "if=pflash,format=raw,unit=1,file=$OUT/ovmf-vars.fd")
 fi
+echo "[SERVICES-QEMU] firmware=$FIRMWARE video=$VIDEO (synthetic FAT32 only)"
 QEMU_PID=""
 
 cleanup() {
@@ -74,7 +77,7 @@ boot_guest() {
   : > "$stderr"
   qemu-system-x86_64 \
     -M q35 -accel tcg -cpu Nehalem -smp 1 -m 2G \
-    "${FIRMWARE_ARGS[@]}" -vga std \
+    "${FIRMWARE_ARGS[@]}" -vga "$VIDEO" \
     -drive "file=$ISO,if=none,id=cosmoscd,format=raw,readonly=on" \
     -device ide-cd,drive=cosmoscd,bootindex=0 -boot d \
     -device ich9-ahci,id=ahci0 \
