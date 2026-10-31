@@ -9,6 +9,7 @@ on:
       - 'tools/build-cosmos-3095-local.sh'
       - 'tools/smoke-services-qemu.sh'
       - 'tools/qmp-gui-*.py'
+      - 'tests/test_gui_resolution_build.py'
       - '.github/workflows/gui-800-qemu.yml'
   workflow_dispatch:
 
@@ -37,9 +38,11 @@ jobs:
         run: |
           set -euo pipefail
           bash run.sh --check
-          bash -n tools/build-cosmos-3095-local.sh tools/smoke-services-qemu.sh
+          bash -n tools/build-cosmos-3095-local.sh
+          bash -n tools/smoke-services-qemu.sh
           python3 -m py_compile tools/qmp-gui-login.py tools/qmp-gui-filemanager.py tools/qmp-gui-taskmanager.py
           python3 tests/test_qmp_gui_taskmanager.py
+          python3 tests/test_gui_resolution_build.py
       - name: Build isolated 800x600 disk GUI ISO (no production mode change)
         env:
           ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
