@@ -60,6 +60,8 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
         self.assertIn("IsExactAsusRtl810xE(", DRIVER)
         self.assertIn("PCI identity/header mismatch; no MMIO reads", DRIVER)
         self.assertIn("IsExactAsusRtl810xE(ushort vendorId", SAMPLER)
+        self.assertIn("(revisionAndProgIf & 0xFF00) == 0", SAMPLER)
+        self.assertIn("Unexpected PCI programming interface must be rejected", SMOKE)
         self.assertIn("Multifunction bit must not invalidate", SMOKE)
         self.assertIn("Gigabit Realtek device must be rejected", SMOKE)
         self.assertIn("pci.FindCapability(0x01)", DRIVER)

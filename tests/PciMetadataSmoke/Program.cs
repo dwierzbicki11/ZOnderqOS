@@ -212,6 +212,9 @@ Check(!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
       0x10EC, 0x8136, 0x0006, 0x0200, 0x0001, 0x1043, 0x200F),
     "Type-1 bridge header must be rejected");
 Check(!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
+      0x10EC, 0x8136, 0x0106, 0x0200, 0x0000, 0x1043, 0x200F),
+    "Unexpected PCI programming interface must be rejected");
+Check(!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
       0x10EC, 0x8136, 0x0007, 0x0200, 0x0000, 0x1043, 0x200F),
     "Unreviewed silicon revision must be rejected");
 Check(!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(

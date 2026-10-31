@@ -41,6 +41,7 @@ namespace ZonderqOS.Hardware
     public static class Realtek810xERegisterDecoder
     {
         // Recheck the exact physical PCI identity immediately before mapping BAR2.
+        // Reject a nonzero PCI programming interface as well as unexpected revision.
         // The DriverKit match is necessary but must not be the only safety gate:
         // never sample an unexpected header, revision or subsystem.
         public static bool IsExactAsusRtl810xE(ushort vendorId, ushort deviceId,
@@ -49,6 +50,7 @@ namespace ZonderqOS.Hardware
         {
             return vendorId == 0x10EC && deviceId == 0x8136 &&
                 (revisionAndProgIf & 0x00FF) == 0x06 &&
+                (revisionAndProgIf & 0xFF00) == 0 &&
                 classAndSubclass == 0x0200 &&
                 (headerAndBist & 0x007F) == 0 &&
                 subsystemVendorId == 0x1043 && subsystemDeviceId == 0x200F;
