@@ -333,6 +333,15 @@ jobs:
           bash tools/smoke-network-rtl-negative-3095-qemu.sh \
             output-3095/ZonderqOS-3095-network-rtl-screen.iso rtl-screen-no-nic.serial.log
 
+      - name: Boot both RTL diagnostics with nonmatching Realtek RTL8139 PCI NIC
+        working-directory: zonderq
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-rtl-negative-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-rtl-readonly.iso rtl-readonly-rtl8139.serial.log rtl8139
+          bash tools/smoke-network-rtl-negative-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-rtl-screen.iso rtl-screen-rtl8139.serial.log rtl8139
+
       - name: Upload negative QEMU boot evidence (NOT physical Realtek proof)
         if: always()
         uses: actions/upload-artifact@v4
@@ -343,6 +352,10 @@ jobs:
             zonderq/rtl-readonly-no-nic.serial.log.stderr
             zonderq/rtl-screen-no-nic.serial.log
             zonderq/rtl-screen-no-nic.serial.log.stderr
+            zonderq/rtl-readonly-rtl8139.serial.log
+            zonderq/rtl-readonly-rtl8139.serial.log.stderr
+            zonderq/rtl-screen-rtl8139.serial.log
+            zonderq/rtl-screen-rtl8139.serial.log.stderr
           if-no-files-found: ignore
 
       - name: Retain opt-in RTL810xE screen ISO (UNVERIFIED HARDWARE)

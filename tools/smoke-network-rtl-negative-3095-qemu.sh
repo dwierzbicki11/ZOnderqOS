@@ -3,7 +3,15 @@
 # This is NOT physical Realtek proof and does not validate text framebuffer.
 set -euo pipefail
 ISO="${1:?usage: smoke-network-rtl-negative-3095-qemu.sh ISO SERIAL-LOG}"
-LOG="${2:?usage: smoke-network-rtl-negative-3095-qemu.sh ISO SERIAL-LOG}"
+LOG="${2:?usage: smoke-network-rtl-negative-3095-qemu.sh ISO SERIAL-LOG [none|rtl8139]}"
+NIC_MODE="${3:-none}"
+# Both profiles must decline a different Realtek PCI ID as well as no NIC.
+# QEMU user networking is restricted; this is NOT an RTL810xE emulator.
+case "$NIC_MODE" in
+  none) nic_args=(-nic none) ;;
+  rtl8139) nic_args=(-nic user,model=rtl8139,restrict=on) ;;
+  *) echo "[NET3095-RTL-NEG][FAIL] Unknown NIC mode: $NIC_MODE" >&2; exit 2 ;;
+esac
 [[ -s "$ISO" ]] || { echo "[NET3095-RTL-NEG][FAIL] Missing ISO" >&2; exit 1; }
 command -v qemu-system-x86_64 >/dev/null || exit 1
 [[ ! -e "$LOG" && ! -L "$LOG" && ! -e "$LOG.stderr" && ! -L "$LOG.stderr" ]] || {
@@ -21,7 +29,7 @@ cleanup() {
 trap cleanup EXIT INT TERM
 qemu-system-x86_64 \
   -machine q35 -cpu Nehalem -smp 1 -m 2048M \
-  -boot d -cdrom "$ISO" -nic none \
+  -boot d -cdrom "$ISO" "${nic_args[@]}" \
   -vga std -display none -monitor none \
   -serial "file:$LOG" -no-reboot -no-shutdown \
   2> "$LOG.stderr" &
@@ -49,4 +57,4 @@ if grep -Eq 'MMIO_SNAPSHOT=READ|SNAPSHOT=PASS|kernel panic|Exception 14|CR2=|#PF
   echo "[NET3095-RTL-NEG][FAIL] False NIC proof or guest fault" >&2
   exit 1
 fi
-echo "[NET3095-RTL-NEG] PASS real QEMU no-NIC fail-closed boot with heartbeat; NOT physical RTL or screen proof"
+echo "[NET3095-RTL-NEG] PASS real QEMU mode=$NIC_MODE fail-closed boot with heartbeat; NOT physical RTL810xE or screen proof"

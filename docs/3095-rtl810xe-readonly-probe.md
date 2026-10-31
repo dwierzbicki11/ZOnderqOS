@@ -114,10 +114,13 @@ sequence, even if earlier sample markers appear valid.
   22 reads in two identical passes, changing MAC/PHY/TxConfig, invalid
   PHY status, RTL8105e/RTL8106e/unknown XIDs,
   little-endian TxConfig assembly and read failures.
-- GitHub Actions also boots **both** isolated RTL diagnostic ISOs in real
-  QEMU with `-nic none`. The negative gate requires an explicit
+- GitHub Actions boots **both** isolated RTL diagnostic ISOs in real
+  QEMU with `-nic none` and separately with a nonmatching **10EC:8139**
+  RTL8139 PCI adapter on restricted QEMU user networking. The negative gate requires an explicit
   `offers=0 samples=0` decline and two guest heartbeats, with no
-  `SNAPSHOT=PASS`. This proves the no-device failure path boots; it
+  `SNAPSHOT=PASS`. These prove fail-closed boot for no NIC and an unrelated
+  Realtek model; they do not establish that the guest detected that model,
+  and neither is a physical RTL810xE or positive MMIO proof. The no-NIC test
   does **not** prove the laptop's NIC, MMIO mapping or visible text console.
 - GitHub Actions compiles the isolated ISO and runs the synthetic
   parser gates. QEMU has no equivalent RTL810xE 10EC:8136 model, so
