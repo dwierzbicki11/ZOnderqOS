@@ -23,6 +23,7 @@ on:
       - 'tools/smoke-network-n1-3095-qemu.sh'
       - 'tools/smoke-network-rtl-negative-3095-qemu.sh'
       - 'tests/test_3095_network_n1_contract.py'
+      - 'tests/test_3095_network_smoke_safety.py'
       - 'tests/verify_3095_network_n1.py'
       - 'tests/verify_3095_network_n2.py'
       - 'tests/verify_3095_network_n3.py'
@@ -57,6 +58,7 @@ jobs:
           set -euo pipefail
           bash zonderq/tools/verify-cosmos-compat.sh
           python3 zonderq/tests/test_3095_network_n1_contract.py
+          python3 zonderq/tests/test_3095_network_smoke_safety.py
           python3 zonderq/tests/test_3095_realtek_readonly_contract.py
           python3 zonderq/tests/verify_3095_realtek_readonly.py --self-test
           python3 zonderq/tests/test_3094_nic_pci_inventory.py
