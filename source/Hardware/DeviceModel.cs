@@ -29,7 +29,8 @@ namespace ZonderqOS.Hardware
 
     public sealed class DeviceDescriptor
     {
-        public DeviceDescriptor(DeviceId id, ushort vendorId, ushort deviceId, byte classCode, byte subclass, byte programmingInterface)
+        public DeviceDescriptor(DeviceId id, ushort vendorId, ushort deviceId, byte classCode, byte subclass, byte programmingInterface,
+            byte revisionId = 0xFF, ushort subsystemVendorId = 0xFFFF, ushort subsystemDeviceId = 0xFFFF)
         {
             Id = id;
             VendorId = vendorId;
@@ -37,6 +38,9 @@ namespace ZonderqOS.Hardware
             ClassCode = classCode;
             Subclass = subclass;
             ProgrammingInterface = programmingInterface;
+            RevisionId = revisionId;
+            SubsystemVendorId = subsystemVendorId;
+            SubsystemDeviceId = subsystemDeviceId;
         }
 
         public DeviceId Id { get; }
@@ -45,6 +49,9 @@ namespace ZonderqOS.Hardware
         public byte ClassCode { get; }
         public byte Subclass { get; }
         public byte ProgrammingInterface { get; }
+        public byte RevisionId { get; }
+        public ushort SubsystemVendorId { get; }
+        public ushort SubsystemDeviceId { get; }
     }
 
     /// <summary>System-facing driver contract; contains no PCI/MMIO implementation details.</summary>

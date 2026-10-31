@@ -1,0 +1,387 @@
+name: Cosmos 3.0.95 isolated E1000E link and raw TX PCAP proof
+
+on:
+  pull_request:
+    paths:
+      - 'ZonderqOS.csproj'
+      - 'source/Core/NetworkN1ProbeKernel.cs'
+      - 'source/Core/NetworkPciDiagnostics.cs'
+      - 'source/Hardware/DeviceModel.cs'
+      - 'source/Hardware/PciDeviceModel.cs'
+      - 'source/Hardware/PciConfigDiscoverySource.cs'
+      - 'source/Hardware/PciBarInventory.cs'
+      - 'source/Hardware/Realtek810xERegisterSnapshot.cs'
+      - 'source/Drivers/Realtek810xEReadOnlyProbeDriver.cs'
+      - 'source/Core/NetworkRealtekReadOnlyKernel.cs'
+      - 'tests/test_3095_realtek_readonly_contract.py'
+      - 'tests/verify_3095_realtek_readonly.py'
+      - 'source/Platform/X64/PciSysfsProvider.cs'
+      - 'source/Platform/Arm64/PciSysfsProvider.cs'
+      - 'tests/test_3094_nic_pci_inventory.py'
+      - 'tests/PciMetadataSmoke/**'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/smoke-network-n1-3095-qemu.sh'
+      - 'tools/smoke-network-rtl-negative-3095-qemu.sh'
+      - 'tests/test_3095_network_n1_contract.py'
+      - 'tests/test_3095_network_smoke_safety.py'
+      - 'tests/verify_3095_network_n1.py'
+      - 'tests/verify_3095_network_n2.py'
+      - 'tests/verify_3095_network_n3.py'
+      - 'tests/verify_3095_network_n4.py'
+      - 'tests/verify_3095_network_n5.py'
+      - 'tests/verify_3095_network_n6.py'
+      - 'tests/verify_3095_network_heartbeat.py'
+      - 'tests/verify_3095_e1000e_irq_trace.py'
+      - 'tests/verify_3095_e1000e_irq_binding.py'
+      - 'tests/network_3095_http_host.py'
+      - 'tests/network_3095_tcp_host.py'
+      - '.github/workflows/3095-network-n1-qemu.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: zonderq3095-network-n1-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  network-n1-real-qemu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: zonderq
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Contract tests and script syntax, no 3.0.85 SDK
+        run: |
+          set -euo pipefail
+          bash zonderq/tools/verify-cosmos-compat.sh
+          python3 zonderq/tests/test_3095_network_n1_contract.py
+          python3 zonderq/tests/test_3095_network_smoke_safety.py
+          python3 zonderq/tests/test_3095_realtek_readonly_contract.py
+          python3 zonderq/tests/verify_3095_realtek_readonly.py --self-test
+          python3 zonderq/tests/verify_3095_rtl_negative_qemu.py --self-test
+          python3 zonderq/tests/test_3094_nic_pci_inventory.py
+          python3 zonderq/tests/verify_3095_network_n1.py --self-test
+          python3 zonderq/tests/verify_3095_network_n2.py --self-test
+          python3 zonderq/tests/verify_3095_network_n3.py --self-test
+          python3 zonderq/tests/verify_3095_network_n4.py --self-test
+          python3 zonderq/tests/verify_3095_network_n5.py --self-test
+          python3 zonderq/tests/verify_3095_network_n6.py --self-test
+          python3 zonderq/tests/verify_3095_network_heartbeat.py --self-test
+          python3 zonderq/tests/verify_3095_e1000e_irq_trace.py --self-test
+          python3 zonderq/tests/verify_3095_e1000e_irq_binding.py --self-test
+          python3 -m py_compile zonderq/tests/network_3095_http_host.py
+          python3 zonderq/tests/network_3095_http_host.py --self-test
+          python3 -m py_compile zonderq/tests/network_3095_tcp_host.py
+          python3 zonderq/tests/network_3095_tcp_host.py --self-test
+          python3 zonderq/tests/test_upstream_smp_disabled.py
+          bash -n zonderq/tools/build-cosmos-3095-local.sh
+          bash -n zonderq/tools/smoke-network-n1-3095-qemu.sh
+          bash -n zonderq/tools/smoke-network-rtl-negative-3095-qemu.sh
+      - name: Compile and execute real C# PCI revision/subsystem metadata smoke
+        run: dotnet run --project zonderq/tests/PciMetadataSmoke/PciMetadataSmoke.csproj --configuration Release
+      - name: Install exact Cosmos 3.0.95 toolchain prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 tar clang lld nasm xorriso binutils qemu-system-x86
+      - name: Build isolated 3.0.95 SDK and E1000E N1 probe ISO
+        working-directory: zonderq
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/without-downgrade
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh network-n1
+          test -s output-3095/ZonderqOS-3095-network-n1.iso
+          sha256sum output-3095/ZonderqOS-3095-network-n1.iso
+      - name: Boot real QEMU E1000E and verify captured Ethernet TX
+        working-directory: zonderq
+        env:
+          NET3095_N1_TIMEOUT: '170'
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-n1-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-n1.iso network-n1-3095.serial.log
+      - name: Upload serial evidence for audit
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n1-e1000e-serial
+          path: |
+            zonderq/network-n1-3095.serial.log
+            zonderq/network-n1-3095.serial.log.stderr
+            zonderq/network-n1-3095.serial.log.pcap
+          if-no-files-found: ignore
+      - name: Retain QEMU-only NIC proof ISO
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n1-QEMU-ONLY
+          path: zonderq/output-3095/ZonderqOS-3095-network-n1.iso
+          retention-days: 4
+          if-no-files-found: error
+
+      - name: Build isolated 3.0.95 DHCP RX proof ISO
+        working-directory: zonderq
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/without-downgrade
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh network-n2
+          test -s output-3095/ZonderqOS-3095-network-n2.iso
+          sha256sum output-3095/ZonderqOS-3095-network-n2.iso
+      - name: Boot QEMU and verify real E1000E DHCP RX through PCAP
+        working-directory: zonderq
+        env:
+          NET3095_N1_TIMEOUT: '170'
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-n1-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-n2.iso network-n2-3095.serial.log n2
+      - name: Upload N2 DHCP serial and PCAP evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n2-dhcp-rx-evidence
+          path: |
+            zonderq/network-n2-3095.serial.log
+            zonderq/network-n2-3095.serial.log.stderr
+            zonderq/network-n2-3095.serial.log.pcap
+          if-no-files-found: ignore
+      - name: Retain QEMU-only DHCP RX proof ISO
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n2-QEMU-ONLY
+          path: zonderq/output-3095/ZonderqOS-3095-network-n2.iso
+          retention-days: 4
+          if-no-files-found: error
+
+      - name: Build isolated 3.0.95 ICMP echo proof ISO
+        working-directory: zonderq
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/without-downgrade
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh network-n3
+          test -s output-3095/ZonderqOS-3095-network-n3.iso
+          sha256sum output-3095/ZonderqOS-3095-network-n3.iso
+      - name: Boot QEMU and verify E1000E DHCP plus ICMP echo round-trip
+        working-directory: zonderq
+        env:
+          NET3095_N1_TIMEOUT: '170'
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-n1-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-n3.iso network-n3-3095.serial.log n3
+      - name: Upload N3 ICMP serial and PCAP evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n3-icmp-rx-evidence
+          path: |
+            zonderq/network-n3-3095.serial.log
+            zonderq/network-n3-3095.serial.log.stderr
+            zonderq/network-n3-3095.serial.log.pcap
+          if-no-files-found: ignore
+      - name: Retain QEMU-only ICMP echo proof ISO
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n3-QEMU-ONLY
+          path: zonderq/output-3095/ZonderqOS-3095-network-n3.iso
+          retention-days: 4
+          if-no-files-found: error
+
+      - name: Build isolated 3.0.95 TCP echo proof ISO
+        working-directory: zonderq
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/without-downgrade
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh network-n4
+          test -s output-3095/ZonderqOS-3095-network-n4.iso
+          sha256sum output-3095/ZonderqOS-3095-network-n4.iso
+      - name: Boot QEMU and verify real E1000E TCP echo RX and TX
+        working-directory: zonderq
+        env:
+          NET3095_N1_TIMEOUT: '170'
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-n1-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-n4.iso network-n4-3095.serial.log n4
+      - name: Upload N4 TCP serial PCAP and host evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n4-tcp-echo-evidence
+          path: |
+            zonderq/network-n4-3095.serial.log
+            zonderq/network-n4-3095.serial.log.stderr
+            zonderq/network-n4-3095.serial.log.pcap
+            zonderq/network-n4-3095.serial.log.tcp-host
+          if-no-files-found: ignore
+      - name: Retain QEMU-only TCP echo proof ISO
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n4-QEMU-ONLY
+          path: zonderq/output-3095/ZonderqOS-3095-network-n4.iso
+          retention-days: 4
+          if-no-files-found: error
+
+      - name: Build isolated 3.0.95 DNS resolution proof ISO
+        working-directory: zonderq
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/without-downgrade
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh network-n5
+          test -s output-3095/ZonderqOS-3095-network-n5.iso
+          sha256sum output-3095/ZonderqOS-3095-network-n5.iso
+      - name: Boot QEMU and verify real DNS query and answer via PCAP
+        working-directory: zonderq
+        env:
+          NET3095_N1_TIMEOUT: '170'
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-n1-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-n5.iso network-n5-3095.serial.log n5
+      - name: Upload N5 DNS serial and PCAP evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n5-dns-evidence
+          path: |
+            zonderq/network-n5-3095.serial.log
+            zonderq/network-n5-3095.serial.log.stderr
+            zonderq/network-n5-3095.serial.log.pcap
+            zonderq/network-n5-3095.serial.log.tcp-host
+          if-no-files-found: ignore
+      - name: Retain QEMU-only DNS proof ISO
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n5-QEMU-ONLY
+          path: zonderq/output-3095/ZonderqOS-3095-network-n5.iso
+          retention-days: 4
+          if-no-files-found: error
+
+      - name: Build isolated 3.0.95 HTTP/1.0 over TCP proof ISO
+        working-directory: zonderq
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/without-downgrade
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh network-n6
+          test -s output-3095/ZonderqOS-3095-network-n6.iso
+          sha256sum output-3095/ZonderqOS-3095-network-n6.iso
+      - name: Boot QEMU HTTP N6 with independent device-side E1000E IRQ trace
+        working-directory: zonderq
+        env:
+          NET3095_N1_TIMEOUT: '170'
+          NET3095_IRQ_TRACE: '1'
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-n1-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-n6.iso network-n6-3095.serial.log n6
+      - name: Upload N6 HTTP serial PCAP and host evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n6-http-evidence
+          path: |
+            zonderq/network-n6-3095.serial.log
+            zonderq/network-n6-3095.serial.log.stderr
+            zonderq/network-n6-3095.serial.log.pcap
+            zonderq/network-n6-3095.serial.log.tcp-host
+            zonderq/network-n6-3095.serial.log.http-host
+          if-no-files-found: ignore
+      - name: Retain QEMU-only HTTP proof ISO
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n6-QEMU-ONLY
+          path: zonderq/output-3095/ZonderqOS-3095-network-n6.iso
+          retention-days: 4
+          if-no-files-found: error
+
+      # This compiles the real DriverKit registration path against stock 3.0.95.
+      # QEMU has no 10EC:8136 model; compilation is NOT a hardware MMIO proof.
+      - name: Build isolated RTL810xE read-only MMIO diagnostic ISO (compile only)
+        working-directory: zonderq
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/without-downgrade
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh network-rtl-readonly
+          test -s output-3095/ZonderqOS-3095-network-rtl-readonly.iso
+          sha256sum output-3095/ZonderqOS-3095-network-rtl-readonly.iso
+          echo "[NET3095-RTL810XE] BUILD_ONLY; physical MAC/link not verified"
+
+      - name: Build opt-in RTL810xE text-console diagnostic ISO (compile only)
+        working-directory: zonderq
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/without-downgrade
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh network-rtl-screen
+          test -s output-3095/ZonderqOS-3095-network-rtl-screen.iso
+          sha256sum output-3095/ZonderqOS-3095-network-rtl-screen.iso
+          echo "[NET3095-RTL810XE] SCREEN_BUILD_ONLY; no physical MMIO or video proof"
+
+      - name: Boot both RTL diagnostics in QEMU without a NIC (negative gate only)
+        working-directory: zonderq
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-rtl-negative-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-rtl-readonly.iso rtl-readonly-no-nic.serial.log
+          bash tools/smoke-network-rtl-negative-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-rtl-screen.iso rtl-screen-no-nic.serial.log
+
+      - name: Boot both RTL diagnostics with nonmatching Realtek RTL8139 PCI NIC
+        working-directory: zonderq
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-rtl-negative-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-rtl-readonly.iso rtl-readonly-rtl8139.serial.log rtl8139
+          bash tools/smoke-network-rtl-negative-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-rtl-screen.iso rtl-screen-rtl8139.serial.log rtl8139
+
+      - name: Upload negative QEMU boot evidence (NOT physical Realtek proof)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-rtl-no-nic-QEMU-negative-evidence
+          path: |
+            zonderq/rtl-readonly-no-nic.serial.log
+            zonderq/rtl-readonly-no-nic.serial.log.stderr
+            zonderq/rtl-screen-no-nic.serial.log
+            zonderq/rtl-screen-no-nic.serial.log.stderr
+            zonderq/rtl-readonly-rtl8139.serial.log
+            zonderq/rtl-readonly-rtl8139.serial.log.stderr
+            zonderq/rtl-screen-rtl8139.serial.log
+            zonderq/rtl-screen-rtl8139.serial.log.stderr
+          if-no-files-found: ignore
+
+      - name: Retain opt-in RTL810xE screen ISO (UNVERIFIED HARDWARE)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-rtl810xe-screen-UNVERIFIED-HARDWARE
+          path: zonderq/output-3095/ZonderqOS-3095-network-rtl-screen.iso
+          retention-days: 4
+          if-no-files-found: error
+
+      - name: Retain isolated physical RTL810xE diagnostic ISO (UNVERIFIED HARDWARE)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-rtl810xe-readonly-UNVERIFIED-HARDWARE
+          path: zonderq/output-3095/ZonderqOS-3095-network-rtl-readonly.iso
+          retention-days: 4
+          if-no-files-found: error
