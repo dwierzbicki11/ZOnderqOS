@@ -882,7 +882,7 @@ class ResponsiveGui3094(unittest.TestCase):
     def test_file_manager_double_click_does_not_leak_across_navigation(self):
         mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
             "private int HitEntryIndex(", 1)[0]
-        refresh = FILE_MANAGER.split("private void RefreshInternal(string keep)", 1)[1].split(
+        refresh = FILE_MANAGER.split("private bool RefreshInternal(string keep)", 1)[1].split(
             "private void RebuildSidebar()", 1)[0]
         self.assertIn("private void ResetClickSequence()", mouse)
         self.assertIn("ResetClickSequence();\\n                OpenEntry(index);".replace("\\n", "\n"), mouse)
@@ -1125,7 +1125,7 @@ class ResponsiveGui3094(unittest.TestCase):
     def test_file_manager_search_backspace_edits_filter_before_navigation(self):
         keyboard = FILE_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
             "private void CopySelected(", 1)[0]
-        refresh = FILE_MANAGER.split("private void RefreshInternal(string keep)", 1)[1].split(
+        refresh = FILE_MANAGER.split("private bool RefreshInternal(string keep)", 1)[1].split(
             "private void RebuildSidebar()", 1)[0]
         backspace = keyboard.split("if (key.Key == ConsoleKeyEx.Backspace)", 1)[1].split(
             "if (key.Key == ConsoleKeyEx.LeftArrow)", 1)[0]
@@ -1378,12 +1378,41 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertEqual(not (control or alt), expected)
 
 
+    def test_file_manager_failed_directory_scan_is_transactional(self):
+        navigation = FILE_MANAGER.split("private void NavigateTo(string path)", 1)[1].split(
+            "public override void HandleKeyboard(", 1)[0]
+        refresh = FILE_MANAGER.split("private bool RefreshInternal(string keep)", 1)[1].split(
+            "private void ApplySearchFilter()", 1)[0]
+        self.assertIn("string previousPath = currentPath;", navigation)
+        self.assertIn("string previousSearch = searchText;", navigation)
+        self.assertIn('if (!RefreshInternal(""))', navigation)
+        rollback = navigation.split('if (!RefreshInternal(""))', 1)[1]
+        self.assertIn("currentPath = previousPath;", rollback)
+        self.assertIn("searchText = previousSearch;", rollback)
+        self.assertIn("List<FileEntry> scanned = new List<FileEntry();", refresh)
+        self.assertIn("Add(scanned, Directory.GetDirectories(targetPath), true);", refresh)
+        self.assertIn("Add(scanned, Directory.GetFiles(targetPath), false);", refresh)
+        self.assertIn("Sort(scanned);", refresh)
+        self.assertLess(refresh.index("Directory.GetFiles(targetPath)"),
+                        refresh.index("entries.Clear();"))
+        self.assertLess(refresh.index("Sort(scanned);"),
+                        refresh.index("cachedEntries.Clear();"))
+        failure = refresh.split("catch (Exception ex)", 1)[1]
+        self.assertIn('status = "Read error: " + ex.Message;', failure)
+        self.assertIn("return false;", failure)
+        for mutation in ("entries.Clear();", "cachedEntries.Clear();",
+                         "selectedIndex = -1;", "scrollIndex = 0;"):
+            self.assertNotIn(mutation, failure)
+        self.assertNotIn("File.Write", refresh)
+        self.assertNotIn("TryUnmount", refresh)
+        self.assertNotIn("TryMount", refresh)
+
     def test_file_manager_live_filter_uses_cached_directory_snapshot(self):
-        refresh = FILE_MANAGER.split("private void RefreshInternal(string keep)", 1)[1].split(
+        refresh = FILE_MANAGER.split("private bool RefreshInternal(string keep)", 1)[1].split(
             "private void RebuildSidebar()", 1)[0]
         filter_only = refresh.split("private void ApplySearchFilter()", 1)[1]
         self.assertIn("cachedEntries.Clear();", refresh)
-        self.assertIn("cachedEntries.AddRange(entries);", refresh)
+        self.assertIn("cachedEntries.AddRange(scanned);", refresh)
         self.assertIn("entries.AddRange(cachedEntries);", filter_only)
         self.assertIn("Filter();", filter_only)
         self.assertNotIn("Directory.GetFiles(", filter_only)
@@ -1432,15 +1461,15 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertEqual(len(original), 5)
 
     def test_file_manager_sort_scales_and_preserves_equal_name_order(self):
-        sort = FILE_MANAGER.split("private void Sort()", 1)[1].split(
+        sort = FILE_MANAGER.split("private void Sort(List<FileEntry> destination)", 1)[1].split(
             "private int Compare(", 1)[0]
         compare = FILE_MANAGER.split("private int Compare(", 1)[1].split(
             "private void Filter()", 1)[0]
         self.assertIn("FileEntry[] scratch = new FileEntry[count];", sort)
         self.assertIn("for (int run = 1; run < count;", sort)
-        self.assertIn("Compare(entries[left], entries[right]) <= 0", sort)
-        self.assertIn("scratch[write] = entries[left++];", sort)
-        self.assertIn("scratch[write] = entries[right++];", sort)
+        self.assertIn("Compare(destination[left], destination[right]) <= 0", sort)
+        self.assertIn("scratch[write] = destination[left++];", sort)
+        self.assertIn("scratch[write] = destination[right++];", sort)
         self.assertNotIn("while (j >= 0 && Compare(entries[j], value) > 0)", sort)
         self.assertIn("if (a.IsDirectory != b.IsDirectory)", compare)
         self.assertIn("StringComparison.OrdinalIgnoreCase", compare)
