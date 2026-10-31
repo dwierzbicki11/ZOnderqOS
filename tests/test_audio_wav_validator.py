@@ -21,14 +21,15 @@ class WavValidatorTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def make_wave(self, frequency=440, amplitude=4096, ms=250, silence_ms=500, width=2):
+    def make_wave(self, frequency=440, amplitude=4096, ms=250, silence_ms=500, width=2, right_amplitude=None):
         rate = 48000
         data = bytearray()
         for i in range(rate * (silence_ms + ms) // 1000):
             playing = i >= rate * silence_ms // 1000
             sample = (amplitude if ((i * frequency * 2 // rate) & 1) == 0 else -amplitude) if playing else 0
             if width == 2:
-                data.extend(struct.pack("<hh", sample, sample))
+                right = sample if right_amplitude is None else (right_amplitude if sample > 0 else -right_amplitude) if playing else 0
+                data.extend(struct.pack("<hh", sample, right))
             else:
                 data.extend(bytes([128, 128]))
         with wave.open(str(self.path), "wb") as wav:
@@ -46,6 +47,16 @@ class WavValidatorTests(unittest.TestCase):
     def test_rejects_silence(self):
         self.make_wave(amplitude=0)
         with self.assertRaisesRegex(ValueError, "silent"):
+            audio.inspect(self.path)
+
+    def test_rejects_silent_right_channel(self):
+        self.make_wave(right_amplitude=0)
+        with self.assertRaisesRegex(ValueError, "stereo channel imbalance"):
+            audio.inspect(self.path)
+
+    def test_rejects_quiet_right_channel(self):
+        self.make_wave(right_amplitude=256)
+        with self.assertRaisesRegex(ValueError, "stereo channel imbalance"):
             audio.inspect(self.path)
 
     def test_rejects_wrong_pitch(self):
