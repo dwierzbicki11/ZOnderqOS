@@ -90,7 +90,8 @@ class Gen3TextRendererPerformanceContracts(unittest.TestCase):
         match = re.search(r"case ' ': pattern = \"([01]+)\"; break;", SOURCE)
         self.assertIsNotNone(match)
         self.assertEqual(set(match.group(1)), {"0"})
-        self.assertGreaterEqual(len(match.group(1)), 35)
+        # The source intentionally omits the final all-zero row.
+        self.assertEqual(list(glyph_rows(match.group(1))), ["00000"] * 7)
 
     def test_span_renderer_is_used(self):
         self.assertIn("int runStart = col++;", SOURCE)
