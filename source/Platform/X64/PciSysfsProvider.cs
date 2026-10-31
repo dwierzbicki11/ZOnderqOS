@@ -40,6 +40,24 @@ namespace ZonderqOS.Platform
             }
         }
 
+        public static bool TryReadRealtekInterruptCapabilities(DeviceDescriptor device,
+            out PciNicInterruptCapabilities info)
+        {
+            info = default;
+            byte bus, slot, function;
+            if (!TryParseRealtekBdf(device, out bus, out slot, out function)) return false;
+            try
+            {
+                return PciBarInventory.TryReadRealtek810xEInterruptCapabilities(
+                    new X64.PciConfigIoAccessor(), bus, slot, function, out info);
+            }
+            catch
+            {
+                info = default;
+                return false;
+            }
+        }
+
         public static bool TryReadRealtekCapabilities(DeviceDescriptor device,
             out List<PciCapabilityDescriptor> capabilities)
         {

@@ -56,6 +56,40 @@ namespace ZonderqOS.Hardware
         public byte Id { get; }
     }
 
+    /// <summary>Read-only PCI interrupt capability configuration, NOT proof
+    /// of IRQ delivery or an initialized NIC. Table/PBA offsets are not mapped.</summary>
+    public readonly struct PciNicInterruptCapabilities
+    {
+        public PciNicInterruptCapabilities(bool msiPresent, bool msiEnabled,
+            bool msi64Bit, bool msixPresent, bool msixEnabled,
+            bool msixFunctionMasked, ushort msixVectors, byte tableBir,
+            uint tableOffset, byte pbaBir, uint pbaOffset)
+        {
+            MsiPresent = msiPresent;
+            MsiEnabled = msiEnabled;
+            Msi64Bit = msi64Bit;
+            MsiXPresent = msixPresent;
+            MsiXEnabled = msixEnabled;
+            MsiXFunctionMasked = msixFunctionMasked;
+            MsiXVectors = msixVectors;
+            TableBir = tableBir;
+            TableOffset = tableOffset;
+            PbaBir = pbaBir;
+            PbaOffset = pbaOffset;
+        }
+        public bool MsiPresent { get; }
+        public bool MsiEnabled { get; }
+        public bool Msi64Bit { get; }
+        public bool MsiXPresent { get; }
+        public bool MsiXEnabled { get; }
+        public bool MsiXFunctionMasked { get; }
+        public ushort MsiXVectors { get; }
+        public byte TableBir { get; }
+        public uint TableOffset { get; }
+        public byte PbaBir { get; }
+        public uint PbaOffset { get; }
+    }
+
     public static class PciBarInventory
     {
         /// <summary>Read-only PCI command/status and legacy IRQ routing.
@@ -111,6 +145,55 @@ namespace ZonderqOS.Hardware
                 capabilities.Add(new PciCapabilityDescriptor(offset, id));
                 pointer = next;
             }
+            return true;
+        }
+
+        /// <summary>Read MSI and MSI-X control fields and MSI-X BAR indicators.
+        /// No PCI command, MSI enable, MSI-X table or interrupt registers are
+        /// written. An enabled bit is firmware configuration, NOT IRQ proof.</summary>
+        public static bool TryReadRealtek810xEInterruptCapabilities(IPciConfigAccessor config,
+            byte bus, byte device, byte function, out PciNicInterruptCapabilities info)
+        {
+            if (config == null) throw new ArgumentNullException(nameof(config));
+            info = default;
+            if (!TryReadRealtek810xECapabilities(config, bus, device, function, out var caps))
+                return false;
+            bool msi = false, msiEnabled = false, msi64 = false;
+            bool msix = false, msixEnabled = false, msixMasked = false;
+            ushort vectors = 0;
+            byte tableBir = 0, pbaBir = 0;
+            uint tableOffset = 0, pbaOffset = 0;
+            for (int i = 0; i < caps.Count; i++)
+            {
+                byte offset = caps[i].Offset;
+                if (caps[i].Id == 0x05)
+                {
+                    if (msi) return false; // duplicate MSI is malformed
+                    msi = true;
+                    ushort control = config.Read16(bus, device, function, (byte)(offset + 2));
+                    msiEnabled = (control & 0x0001) != 0;
+                    msi64 = (control & 0x0080) != 0;
+                }
+                else if (caps[i].Id == 0x11)
+                {
+                    if (msix || offset > 0xF4) return false;
+                    msix = true;
+                    ushort control = config.Read16(bus, device, function, (byte)(offset + 2));
+                    uint table = Read32(config, bus, device, function, (byte)(offset + 4));
+                    uint pba = Read32(config, bus, device, function, (byte)(offset + 8));
+                    tableBir = (byte)(table & 7);
+                    pbaBir = (byte)(pba & 7);
+                    if (tableBir > 5 || pbaBir > 5) return false;
+                    tableOffset = table & 0xFFFFFFF8u;
+                    pbaOffset = pba & 0xFFFFFFF8u;
+                    vectors = (ushort)((control & 0x07FF) + 1);
+                    msixMasked = (control & 0x4000) != 0;
+                    msixEnabled = (control & 0x8000) != 0;
+                }
+            }
+            info = new PciNicInterruptCapabilities(msi, msiEnabled, msi64,
+                msix, msixEnabled, msixMasked, vectors,
+                tableBir, tableOffset, pbaBir, pbaOffset);
             return true;
         }
 

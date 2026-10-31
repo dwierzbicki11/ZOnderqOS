@@ -93,6 +93,23 @@ Check(PciBarInventory.TryReadRealtek810xECapabilities(barConfig, 0, 2, 0, out ca
       caps.Count == 0 && barConfig.CapabilityReads == capReadsBefore,
     "Status without capability-list flag must not walk pointers");
 barConfig.CapabilityListPresent = true;
+// Read-only MSI and MSI-X controls. The bit being set is NOT an IRQ proof.
+barConfig.SetCapability(0x50, 0x05, 0x60);
+barConfig.SetMsiControl(0x0081); // MSI enabled + 64-bit capable
+barConfig.SetMsixControl(0xC003); // enabled, function masked, 4 vectors
+barConfig.SetMsixTable(0x00002002u, 0x00003004u); // BAR2 / BAR4
+Check(PciBarInventory.TryReadRealtek810xEInterruptCapabilities(barConfig, 0, 2, 0,
+      out var irqInfo), "Expected read-only interrupt capability inventory");
+Check(irqInfo.MsiPresent && irqInfo.MsiEnabled && irqInfo.Msi64Bit &&
+      irqInfo.MsiXPresent && irqInfo.MsiXEnabled && irqInfo.MsiXFunctionMasked &&
+      irqInfo.MsiXVectors == 4 && irqInfo.TableBir == 2 &&
+      irqInfo.TableOffset == 0x2000 && irqInfo.PbaBir == 4 &&
+      irqInfo.PbaOffset == 0x3000,
+    "MSI/MSI-X control, vector count or table/PBA BAR decode failed");
+barConfig.SetMsixTable(0x00002007u, 0x00003004u); // invalid BAR7
+Check(!PciBarInventory.TryReadRealtek810xEInterruptCapabilities(barConfig, 0, 2, 0,
+      out irqInfo), "MSI-X BAR indicator 6/7 must fail closed");
+barConfig.SetMsixTable(0x00002002u, 0x00003004u);
 barConfig.HeaderType = 1;
 Check(!PciBarInventory.TryReadRealtek810xEState(barConfig, 0, 2, 0, out state),
     "Non-type-0 PCI state must fail closed");
@@ -110,6 +127,7 @@ Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 2, 0, out bars) &&
 barConfig.VendorId = 0x10EC;
 Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 32, 0, out bars),
     "Invalid PCI device number must fail closed");
+Console.WriteLine("[NET3095-PCI-IRQ] PASS C# read-only MSI/MSI-X control, vector count, BAR indicators and malformed BAR guards; no IRQ delivery proof");
 Console.WriteLine("[NET3095-PCI-CAPS] PASS C# read-only PM/MSI/MSI-X linked list, cycles, reserved IDs, pointers and fail-closed guards");
 Console.WriteLine("[NET3095-PCI-BAR] PASS C# read-only MMIO32/IO/MMIO64, masking, header/identity guards and fail-closed BAR pairs");
 
@@ -165,6 +183,13 @@ sealed class FakeBarConfig : IPciConfigAccessor
     public bool CapabilityListPresent { get; set; } = true;
     public int CapabilityReads { get; private set; }
     public void SetCapability(byte offset, byte id, byte next) => caps[offset] = (id, next);
+    private ushort msiControl;
+    private ushort msixControl;
+    private uint msixTable;
+    private uint msixPba;
+    public void SetMsiControl(ushort value) => msiControl = value;
+    public void SetMsixControl(ushort value) => msixControl = value;
+    public void SetMsixTable(uint table, uint pba) { msixTable = table; msixPba = pba; }
     public ushort VendorId { get; set; } = 0x10EC;
     public byte HeaderType { get; set; }
     public int BarReads { get; private set; }
@@ -203,6 +228,13 @@ sealed class FakeBarConfig : IPciConfigAccessor
         if (offset == 0x02) return 0x8136;
         if (offset == 0x04) return 0x0007;
         if (offset == 0x06) return CapabilityListPresent ? (ushort)0x0010 : (ushort)0;
+        if (offset == 0x52) return msiControl;
+        if (offset == 0x62) return msixControl;
+        if (offset >= 0x64 && offset <= 0x6A && (offset & 1) == 0)
+        {
+            uint word = offset < 0x68 ? msixTable : msixPba;
+            return (offset & 2) != 0 ? (ushort)(word >> 16) : (ushort)word;
+        }
         if (offset < 0x10 || offset > 0x26 || (offset & 1) != 0)
             throw new Exception("Unexpected BAR offset");
         BarReads++;

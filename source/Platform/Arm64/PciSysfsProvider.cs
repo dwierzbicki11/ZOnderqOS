@@ -5,6 +5,13 @@ namespace ZonderqOS.Platform
 {
     public static class PciSysfsProvider
     {
+        public static bool TryReadRealtekInterruptCapabilities(DeviceDescriptor device,
+            out PciNicInterruptCapabilities info)
+        {
+            info = default; // No ARM64 PCI ECAM support.
+            return false;
+        }
+
         public static bool TryReadRealtekCapabilities(DeviceDescriptor device,
             out List<PciCapabilityDescriptor> capabilities)
         {

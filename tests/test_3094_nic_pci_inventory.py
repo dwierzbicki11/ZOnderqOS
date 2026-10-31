@@ -81,6 +81,11 @@ class Nic3094Safety(unittest.TestCase):
         self.assertIn('TryReadRealtekCapabilities', X64)
         self.assertIn('TryReadRealtekCapabilities', ARM64)
         self.assertIn('PCI_CAPS=INVALID_OR_UNAVAILABLE', DIAG)
+        self.assertIn('TryReadRealtek810xEInterruptCapabilities', BARS)
+        self.assertIn('TryReadRealtekInterruptCapabilities', X64)
+        self.assertIn('TryReadRealtekInterruptCapabilities', ARM64)
+        self.assertIn('PCI_IRQ_CAPS=INVALID_OR_UNAVAILABLE', DIAG)
+        self.assertIn('unmapped; IRQ not verified', DIAG)
         self.assertIn('IRQ not verified', DIAG)
         self.assertNotIn('config.Write', BARS)
 

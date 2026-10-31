@@ -69,6 +69,25 @@ namespace ZonderqOS.SystemCore
                     }
                     else
                         Write("[NIC3094] PCI_CAPS=INVALID_OR_UNAVAILABLE (no IRQ proof)", shellOutput);
+                    PciNicInterruptCapabilities irqInfo;
+                    if (PciSysfsProvider.TryReadRealtekInterruptCapabilities(d, out irqInfo))
+                    {
+                        Write("[NIC3094] MSI=" + (irqInfo.MsiPresent ? "present" : "absent") +
+                            " enabled_bit=" + (irqInfo.MsiEnabled ? "1" : "0") +
+                            " addr64=" + (irqInfo.Msi64Bit ? "yes" : "no") +
+                            " (read-only; IRQ not verified)", shellOutput);
+                        if (irqInfo.MsiXPresent)
+                            Write("[NIC3094] MSI-X=present enabled_bit=" + (irqInfo.MsiXEnabled ? "1" : "0") +
+                                " function_mask=" + (irqInfo.MsiXFunctionMasked ? "1" : "0") +
+                                " vectors=" + irqInfo.MsiXVectors +
+                                " table=BAR" + irqInfo.TableBir + "+0x" + irqInfo.TableOffset.ToString("X") +
+                                " pba=BAR" + irqInfo.PbaBir + "+0x" + irqInfo.PbaOffset.ToString("X") +
+                                " (unmapped; IRQ not verified)", shellOutput);
+                        else
+                            Write("[NIC3094] MSI-X=absent (IRQ not verified)", shellOutput);
+                    }
+                    else
+                        Write("[NIC3094] PCI_IRQ_CAPS=INVALID_OR_UNAVAILABLE (IRQ not verified)", shellOutput);
                     List<PciBarDescriptor> bars;
                     if (PciSysfsProvider.TryReadRealtekBars(d, out bars))
                     {
