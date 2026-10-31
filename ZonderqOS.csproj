@@ -14,6 +14,13 @@
          the diagnostics ISO, NEVER silently applied to the normal GUI ISO. -->
     <ZonderqReadOnlyHardwareProbe Condition="'$(ZonderqReadOnlyHardwareProbe)' == ''">false</ZonderqReadOnlyHardwareProbe>
     <DefineConstants Condition="'$(ZonderqReadOnlyHardwareProbe)' == 'true'">$(DefineConstants);ZONDERQ_READONLY_HARDWARE_PROBE</DefineConstants>
+    <!-- AUDIO is disabled in production. Only a diskless diagnostic build
+         can opt in to stock Cosmos 3.0.95 HdAudioDriver + PCM playback. -->
+    <ZonderqAudioProbe Condition="'$(ZonderqAudioProbe)' == ''">false</ZonderqAudioProbe>
+    <DefineConstants Condition="'$(ZonderqAudioProbe)' == 'true'">$(DefineConstants);ZONDERQ_AUDIO_PROBE</DefineConstants>
+    <CosmosEnableAudio Condition="'$(ZonderqAudioProbe)' == 'true'">true</CosmosEnableAudio>
+    <CosmosEnableAudio Condition="'$(ZonderqAudioProbe)' != 'true'">false</CosmosEnableAudio>
+    <NoWarn Condition="'$(ZonderqAudioProbe)' == 'true'">$(NoWarn);COSMOS0003</NoWarn>
     <!-- Optional *ephemeral* full-GUI profile: FAT32 on private RAM device.
          No host disk can receive a write from root setup or icon caches. -->
     <ZonderqRamRoot Condition="'$(ZonderqRamRoot)' == ''">false</ZonderqRamRoot>
@@ -100,6 +107,15 @@
       <LogicalName>Wallpapers.%(Filename)%(Extension)</LogicalName>
     </EmbeddedResource>
   </ItemGroup>
+
+  <Target Name="GuardAudioProbeProfile" BeforeTargets="CoreCompile">
+    <Error Condition="'$(ZonderqAudioProbe)' == 'true' and '$(ZonderqReadOnlyHardwareProbe)' != 'true'"
+           Text="AUDIO probe must boot diskless: set ZonderqReadOnlyHardwareProbe=true." />
+    <Error Condition="'$(ZonderqAudioProbe)' == 'true' and '$(ZonderqRamRoot)' == 'true'"
+           Text="AUDIO probe cannot use the GUI RAM-root profile." />
+    <Error Condition="'$(ZonderqAudioProbe)' == 'true' and '$(ZonderqInputDiagnosticBoot)' == 'true'"
+           Text="AUDIO probe uses the isolated hardware-probe console only." />
+  </Target>
 
   <Target Name="GuardRamRootProfile" BeforeTargets="CoreCompile">
     <Error Condition="'$(ZonderqRamRoot)' == 'true' and '$(ZonderqReadOnlyHardwareProbe)' == 'true'"
