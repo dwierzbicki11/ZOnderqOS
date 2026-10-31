@@ -27,15 +27,15 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # std VGA -> 1360x768, virtio VGA -> 1280x800 and QXL ->
-          # 1360x768 in previous real OVMF QEMU runs: all FAIL for exact
-          # 1366x768. Probe std VGA with explicit EDID as another isolated
-          # experiment; keep the strict real-framebuffer gate. No production
-          # display change or fake dimensions.
+          # std VGA -> 1360x768, virtio VGA -> 1280x800, QXL ->
+          # 1360x768, and std VGA with EDID -> 1360x768 in real OVMF
+          # boots: none reached exact 1366x768. Probe virtio-vga with
+          # explicit EDID next; keep the strict framebuffer gate. Never
+          # alter production display settings or fake pixel dimensions.
           - resolution: '1360x768'
             video: 'std'
           - resolution: '1366x768'
-            video: 'std-edid'
+            video: 'virtio-edid'
           - resolution: '1920x1080'
             video: 'std'
     runs-on: ubuntu-latest
