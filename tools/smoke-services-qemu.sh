@@ -29,7 +29,7 @@ done
 [[ -z "$EXPECTED_FRAMEBUFFER" || "$EXPECTED_FRAMEBUFFER" =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || fail "expected framebuffer must be WIDTHxHEIGHT"
 [[ -z "$EXPECTED_FRAMEBUFFER" || "$CAPTURE_SCREEN" == 1 ]] || fail "framebuffer expectation requires screenshot capture"
 [[ "$FIRMWARE" == bios || "$FIRMWARE" == ovmf ]] || fail "unsupported QEMU firmware profile"
-[[ "$VIDEO" == std || "$VIDEO" == virtio ]] || fail "unsupported QEMU video adapter"
+[[ "$VIDEO" == std || "$VIDEO" == virtio || "$VIDEO" == qxl ]] || fail "unsupported QEMU video adapter"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 ISO="$(realpath "$ISO")"
