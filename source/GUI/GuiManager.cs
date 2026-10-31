@@ -222,9 +222,11 @@ namespace ZonderqOS.GUI
                             continue;
                         }
 
-                        if (key.Key == ConsoleKeyEx.Escape && desktopContextMenu != null && desktopContextMenu.Visible)
+                        // The desktop context menu owns all keys while open.
+                        // Do not let Delete/Enter/letters reach a background app.
+                        if (desktopContextMenu != null && desktopContextMenu.Visible)
                         {
-                            desktopContextMenu.Visible = false;
+                            desktopContextMenu.HandleKeyboard(key);
                             continue;
                         }
 
