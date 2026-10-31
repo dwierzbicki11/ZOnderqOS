@@ -2235,6 +2235,8 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
             "private bool ContextClick(", 1)[0]
         self.assertIn("relativeX >= GridWidthForView", hit)
         self.assertIn("relativeY >= GridHeightForView", hit)
+        self.assertIn("row >= visibleRows", hit)
+        self.assertIn("int visibleRows = Math.Max(1, (GridHeightForView + TileGap) / strideY);", hit)
         self.assertLess(hit.index("relativeY >= GridHeightForView"),
                         hit.index("int col = relativeX / strideX;"))
         self.assertIn("int gridW = app.GridWidthForView;", FILE_MANAGER)
@@ -2258,8 +2260,8 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
                                rx % 118 < 112 and ry % 100 < 94)
                     hit_test = (0 <= rx < grid_width and
                                 0 <= ry < grid_height and
-                                col < cols and rx % 118 < 112 and
-                                ry % 100 < 94)
+                                col < cols and row < rows and
+                                rx % 118 < 112 and ry % 100 < 94)
                     self.assertEqual(hit_test, painted,
                                      (window_width, window_height, rx, ry))
 
