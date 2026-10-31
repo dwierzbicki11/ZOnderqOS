@@ -355,6 +355,7 @@ namespace ZonderqOS
                 return true;
             }
         }
+#endif
 
 #if ZONDERQ_NETWORK_N6_HTTP
         private static bool TrySendBurst(byte[] template)
