@@ -97,9 +97,11 @@ storage or the ZONDERQDATA partition.
 The N5 DNS gate now requires an Ethernet ARP request from the guest
 `10.0.2.15` for the QEMU DNS proxy `10.0.2.3`, followed by a
 matching ARP reply addressed to the guest MAC, **before** the DNS UDP
-query/answer. The gate validates ARP hardware/protocol types, sender and
-target MAC/IP pairs, opcode and capture ordering; missing or spoofed
-pairs fail closed. N6 inherits the N5 ARP prerequisite.
+query/answer. The DNS request's Ethernet destination must also match
+the MAC learned from that ARP reply. The gate validates ARP hardware/
+protocol types, sender and target MAC/IP pairs, opcode and capture
+ordering; missing or mismatched pairs fail closed. N6 inherits the N5
+ARP prerequisite.
 
 This change was motivated by inspection of **actual** N5 and N6 PCAP
 artifacts from the previous successful QEMU workflow #59: both captures
