@@ -238,3 +238,27 @@ third HTTP session, rejecting lost readiness, dropped link or changed MAC.
 The independent post-HTTP validator correlates the final serial MAC with
 the original ready adapter. This is a read-only status observation, not
 an IRQ/ISR proof or a physical Realtek test.
+
+
+## N6 four post-burst HTTP RX sessions (experimental, 2026-10-31)
+
+The isolated N6 guest now opens **four independent HTTP/1.0 TCP
+connections after** the 128-frame raw Ethernet TX burst and four ICMP
+echo round-trips (attempts 3–6; six HTTP connections in total). Each
+connection requests the exact 4116-byte test body from the loopback-only
+CI HTTP fixture, verifies the entire response in the guest, and closes
+its TCP socket. The fixture emits six distinct host completion markers.
+
+The post-burst PCAP validator requires **four distinct client source
+ports**, ordered TCP handshakes, complete segmented HTTP RX payloads,
+and server FIN acknowledgments, all after the final post-burst ICMP
+reply. The serial gate also requires all four ordered guest completion
+markers and a final unchanged MAC/link snapshot. The QEMU smoke runner
+checks each corresponding host marker.
+
+This tests additional repeated RX/TCP teardown under the existing stock
+Cosmos 3.0.95 E1000E driver and remains opt-in N6-only. It is **not**
+proof of guest ISR execution, physical RTL810xE operation, TLS/HTTPS,
+or production desktop networking. New code requires fresh CI/QEMU
+evidence before claiming success; older three-session evidence does not
+validate the six-session extension.
