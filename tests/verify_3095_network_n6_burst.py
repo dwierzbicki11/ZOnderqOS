@@ -37,7 +37,7 @@ def check_markers(serial: str) -> None:
 
 def last_http_frame(serial: str, frames: list[bytes]) -> int:
     """Locate the second HTTP FIN acknowledgment in the original PCAP order."""
-    lines = [line.strip() for line in serial.replace("\\r", "").splitlines()]
+    lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
     leases = [m for line in lines if (m := LEASE.fullmatch(line))]
     if len(leases) != 1:
         raise ValueError("missing unique N6 guest lease")
