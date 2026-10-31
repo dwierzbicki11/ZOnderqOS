@@ -265,6 +265,16 @@ namespace ZonderqOS
                     Log("[NET3095-N6][FAIL] HTTP exception " + httpException.GetType().Name);
                     return;
                 }
+                // Opt-in sustained raw TX after two completed HTTP RX sessions.
+                // Each distinct frame must be independently observed in QEMU
+                // filter-dump; successful queueing alone is NOT a DMA proof.
+                Log("[NET3095-N6] TX_BURST_ATTEMPT=START count=32");
+                if (!TrySendBurst(frame))
+                {
+                    Log("[NET3095-N6][FAIL] E1000E raw TX burst queue rejected");
+                    return;
+                }
+                Log("[NET3095-N6] TX_BURST=QUEUED count=32");
 #endif
             }
             catch (Exception ex)
@@ -273,6 +283,30 @@ namespace ZonderqOS
             }
 #endif
         }
+
+#if ZONDERQ_NETWORK_N6_HTTP
+        private static bool TrySendBurst(byte[] template)
+        {
+            // 32 paced frames exercise repeated E1000E TX descriptor
+            // submission without exposing the NIC in the production GUI.
+            // The first 14 bytes are the already validated N1 L2 header.
+            byte[] tag = System.Text.Encoding.ASCII.GetBytes("ZONDERQ3095-BURST-");
+            for (int sequence = 0; sequence < 32; sequence++)
+            {
+                byte[] burst = new byte[60];
+                for (int i = 0; i < 14; i++)
+                    burst[i] = template[i];
+                for (int i = 0; i < tag.Length; i++)
+                    burst[14 + i] = tag[i];
+                burst[14 + tag.Length] = (byte)('0' + sequence / 10);
+                burst[15 + tag.Length] = (byte)('0' + sequence % 10);
+                if (!NetworkManager.Send(burst, burst.Length))
+                    return false;
+                Thread.Sleep(25);
+            }
+            return true;
+        }
+#endif
 
         private static int HexDigit(char c)
         {
