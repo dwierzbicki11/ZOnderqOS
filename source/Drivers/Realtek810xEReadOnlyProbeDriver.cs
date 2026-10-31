@@ -74,6 +74,7 @@ namespace ZonderqOS.Drivers
                     snapshot.MacAddress + " link=" + (snapshot.Carrier ? "up" : "down") +
                     " speed=" + snapshot.SpeedMbps + " duplex=" +
                     (!snapshot.Carrier ? "unknown" : snapshot.FullDuplex ? "full" : "half") +
+                    " phy=0x" + snapshot.RawPhyStatus.ToString("X2") +
                     " txconfig=0x" + snapshot.RawTxConfig.ToString("X8") +
                     " xid=0x" + snapshot.Xid.ToString("X3") +
                     " variant=" + snapshot.ChipVariant +
