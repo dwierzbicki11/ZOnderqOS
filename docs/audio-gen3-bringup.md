@@ -51,10 +51,12 @@ resampling occurs. It checks RIFF and chunk bounds, fmt consistency, data
 alignment, duplicate chunks, odd-sized metadata padding and source-duration
 bounds before allocating the decoded buffer. Unsupported rates and formats
 fail explicitly; no DMA, filesystem access or production GUI activation occurs.
-The diskless `wavtone` fixture is stereo. The new `wavmono` command generates
-48 kHz mono PCM16 RIFF in guest RAM, decodes/upmixes to stereo and sends it
-to the same stock HDA output. The new independent QEMU capture must pass
-before claiming mono playback has been verified end-to-end.
+The diskless `wavtone` fixture is stereo (440 Hz). The `wavmono` command
+uses a distinct 660 Hz, 48 kHz mono PCM16 RIFF fixture in guest RAM, decodes/upmixes
+to stereo and sends it
+to the same stock HDA output. The independent QEMU capture validates 660 Hz
+on both stereo channels so a mistakenly executed 440 Hz `tone` cannot pass.
+The new capture must pass before claiming mono playback verified end-to-end.
 
 The CI audio-QEMU workflow boots the ISO **five times**: direct `tone`,
 `wavtone`, mono `wavmono`, `tone` at 25% software volume, and `tone` at 0% (mute).

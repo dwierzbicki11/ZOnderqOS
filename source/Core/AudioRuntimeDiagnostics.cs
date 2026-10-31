@@ -90,7 +90,8 @@ namespace ZonderqOS.SystemCore
         {
             try
             {
-                byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 440, 250, 4096);
+                // Distinct from tone/wavtone (440 Hz): QEMU can verify this path ran.
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 660, 250, 4096);
                 byte[] mono = new byte[source.Length / 2];
                 for (int i = 0; i < mono.Length; i += 2)
                 {

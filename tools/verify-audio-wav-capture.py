@@ -12,7 +12,9 @@ import sys
 import wave
 
 
-def inspect(path: Path):
+def inspect(path: Path, expected_hz: int = 440):
+    if expected_hz not in (440, 660):
+        raise ValueError("unsupported expected test frequency")
     with wave.open(str(path), "rb") as wav:
         channels = wav.getnchannels()
         rate = wav.getframerate()
@@ -58,8 +60,8 @@ def inspect(path: Path):
     chunk = left[start:start + window_frames]
     crossings = sum((a < 0) != (b < 0) for a, b in zip(chunk, chunk[1:]))
     hz = crossings * rate / (2 * (len(chunk) - 1))
-    if not 400 <= hz <= 480:
-        raise ValueError(f"captured signal has {hz:.1f}Hz, expected about 440Hz")
+    if not expected_hz * 0.90 <= hz <= expected_hz * 1.10:
+        raise ValueError(f"captured signal has {hz:.1f}Hz, expected about {expected_hz}Hz")
 
     if channels == 2:
         right_chunk = right[start:start + window_frames]
@@ -68,8 +70,8 @@ def inspect(path: Path):
             raise ValueError("stereo right channel has no sustained 180 ms tone")
         right_crossings = sum((a < 0) != (b < 0) for a, b in zip(right_chunk, right_chunk[1:]))
         right_hz = right_crossings * rate / (2 * (len(right_chunk) - 1))
-        if not 400 <= right_hz <= 480:
-            raise ValueError(f"stereo right channel wrong pitch: {right_hz:.1f}Hz")
+        if not expected_hz * 0.90 <= right_hz <= expected_hz * 1.10:
+            raise ValueError(f"stereo right channel wrong pitch: {right_hz:.1f}Hz (expected {expected_hz}Hz)")
 
     return f"[AUDIO-WAV] PASS captured PCM: {rate}Hz {channels}ch, peak={peak}, tone={hz:.1f}Hz, frames={frames}"
 
@@ -77,9 +79,10 @@ def inspect(path: Path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("wav", type=Path, help="QEMU WAV backend output file")
+    parser.add_argument("--expected-hz", type=int, choices=(440, 660), default=440)
     args = parser.parse_args()
     try:
-        print(inspect(args.wav))
+        print(inspect(args.wav, expected_hz=args.expected_hz))
     except (OSError, EOFError, ValueError, wave.Error) as exc:
         print(f"[AUDIO-WAV] FAIL {exc}", file=sys.stderr)
         return 1

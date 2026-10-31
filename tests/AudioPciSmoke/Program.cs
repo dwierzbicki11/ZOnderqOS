@@ -89,6 +89,19 @@ static class Test
         }
         double measuredHz = transitions * 48000.0 / (2 * (pcm.Length / 4 - 1));
         Expect(Math.Abs(measuredHz - 440) < 5, "actual 440Hz square-wave period");
+        // The independent mono WAV QEMU path uses 660Hz so a stray 440Hz tone cannot pass.
+        byte[] monoProbeSource = AudioTonePcm.GenerateSquareStereo16(48000, 660, 250, 4096);
+        int monoTransitions = 0;
+        for (int i = 1; i < monoProbeSource.Length / 4; i++)
+        {
+            int prior = (i - 1) * 4;
+            int current = i * 4;
+            short a = (short)(monoProbeSource[prior] | (monoProbeSource[prior + 1] << 8));
+            short b = (short)(monoProbeSource[current] | (monoProbeSource[current + 1] << 8));
+            if ((a < 0) != (b < 0)) monoTransitions++;
+        }
+        double monoHz = monoTransitions * 48000.0 / (2 * (monoProbeSource.Length / 4 - 1));
+        Expect(Math.Abs(monoHz - 660) < 6, "distinct 660Hz mono QEMU probe frequency");
         bool rejected = false;
         try { AudioTonePcm.GenerateSquareStereo16(48000, 24000, 250, 4096); }
         catch (ArgumentOutOfRangeException) { rejected = true; }

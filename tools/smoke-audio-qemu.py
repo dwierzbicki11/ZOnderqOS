@@ -135,7 +135,9 @@ def main():
             if args.volume == 0:
                 print(mute_capture.inspect(wav))
             else:
-                print(capture.inspect(wav))
+                # The mono decoder probe uses a different pitch to prevent a
+                # stray 440 Hz tone from masquerading as successful mono playback.
+                print(capture.inspect(wav, expected_hz=660 if args.command == "wavmono" else 440))
             print(f"[AUDIO-QEMU] PASS command={args.command} volume={args.volume} real QEMU HDA WAV capture; no physical speaker proof")
             return 0
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:

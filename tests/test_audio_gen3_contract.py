@@ -121,6 +121,8 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("byte[] upmixed = new byte[dataSize * 2]", parser)
         self.assertIn("public static byte[] EncodeMono16(byte[] pcm)", parser)
         self.assertIn("AudioWavePcm.EncodeMono16(mono)", runtime)
+        self.assertIn("GenerateSquareStereo16(48000, 660, 250, 4096)", runtime)
+        self.assertIn('expected_hz=660 if args.command == "wavmono" else 440', harness)
         self.assertIn("AudioWavePcm.DecodeStereo16(wave)", runtime)
         self.assertIn('if (command == "wavmono")', kernel)
         self.assertIn("--command wavmono", workflow)

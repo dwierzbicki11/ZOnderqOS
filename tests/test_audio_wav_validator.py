@@ -66,6 +66,12 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "stereo right channel has no sustained"):
             audio.inspect(self.path)
 
+    def test_distinct_mono_probe_pitch(self):
+        self.make_wave(frequency=660)
+        self.assertIn("PASS captured PCM", audio.inspect(self.path, expected_hz=660))
+        with self.assertRaisesRegex(ValueError, "expected about 440Hz"):
+            audio.inspect(self.path)
+
     def test_rejects_wrong_pitch(self):
         self.make_wave(frequency=880)
         with self.assertRaisesRegex(ValueError, "expected about 440Hz"):
