@@ -24,6 +24,8 @@ APPLICATION_MANAGER = code("source/GUI/Application/ApplicationManager.cs")
 TASKBAR = code("source/GUI/Taskbar.cs")
 NOTIFICATIONS = code("source/GUI/NotificationCenter.cs")
 PROJECT = code("ZonderqOS.csproj")
+QEMU_SMOKE = code("tools/smoke-services-qemu.sh")
+QEMU_WORKFLOW = code(".github/workflows/services-qemu.yml")
 
 
 def fit_window(x, y, width, height, screen_width, screen_height):
@@ -841,6 +843,21 @@ class ResponsiveGui3094(unittest.TestCase):
                 taskbar_actions += 1
             self.assertEqual((focus_changes, taskbar_actions),
                              (0, 0) if press == 0 else (1, 1))
+
+
+    def test_qemu_framebuffer_capture_is_optional_and_not_a_gui_pass(self):
+        self.assertIn('CAPTURE_SCREEN="${SERVICE_QEMU_CAPTURE_SCREEN:-0}"', QEMU_SMOKE)
+        self.assertIn('"screendump"', QEMU_SMOKE)
+        self.assertIn('"filename": sys.argv[2]', QEMU_SMOKE)
+        self.assertIn('QMP screendump failed:', QEMU_SMOKE)
+        self.assertIn('QMP screendump missing', QEMU_SMOKE)
+        self.assertIn("with open(sys.argv[1], 'rb') as screenshot:", QEMU_SMOKE)
+        self.assertIn("if len(pixels) != width * height * 3:", QEMU_SMOKE)
+        self.assertIn("NOT that GUI interactions work", QEMU_SMOKE)
+        self.assertIn("SERVICE_QEMU_CAPTURE_SCREEN: '1'", QEMU_WORKFLOW)
+        self.assertIn("services-qemu-output/*.ppm", QEMU_WORKFLOW)
+        self.assertIn("-display none -monitor none", QEMU_SMOKE)
+        self.assertIn('[[ ! -e "$DISK" ]]', QEMU_SMOKE)
 
 
     def test_file_manager_escape_clears_search_before_closing_window(self):
