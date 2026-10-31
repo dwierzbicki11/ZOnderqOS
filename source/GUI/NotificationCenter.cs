@@ -59,8 +59,31 @@ namespace ZonderqOS.GUI
         private bool toastHovered;
         private int openingFrames;
 
+        // Preserve the 462px layout at normal resolutions, but keep the panel
+        // entirely inside smaller framebuffers instead of using a negative X.
+        private static int PanelWidth(int screenWidth)
+        {
+            return System.Math.Min(462, System.Math.Max(1, screenWidth - 20));
+        }
+
+        private int ToastWidth
+        {
+            get { return System.Math.Min(414, System.Math.Max(1, screenWidth - 24)); }
+        }
+
+        private int ToastX
+        {
+            get { return System.Math.Max(0, screenWidth - ToastWidth - 18); }
+        }
+
+        private int ToastY
+        {
+            get { return System.Math.Max(0, screenHeight - taskbarHeight - 116); }
+        }
+
         public NotificationCenter(int screenWidth, int screenHeight, int taskbarHeight)
-            : base(screenWidth - 472, 10, 462, screenHeight - taskbarHeight - 20)
+            : base(System.Math.Max(0, screenWidth - PanelWidth(screenWidth) - 10), 10,
+                   PanelWidth(screenWidth), System.Math.Max(1, screenHeight - taskbarHeight - 20))
         {
             this.screenWidth = screenWidth;
             this.screenHeight = screenHeight;
@@ -191,9 +214,7 @@ namespace ZonderqOS.GUI
                 if (!NotificationService.TryGetActiveToast(out toast))
                     return false;
 
-                int toastX = screenWidth - 432;
-                int toastY = screenHeight - taskbarHeight - 116;
-                toastHovered = Hit(mouseX, mouseY, toastX, toastY, 414, 98);
+                toastHovered = Hit(mouseX, mouseY, ToastX, ToastY, ToastWidth, 98);
                 if (toastHovered && isClicked && !wasClicked)
                 {
                     // Open through the same path as the keyboard/taskbar so
@@ -305,8 +326,11 @@ namespace ZonderqOS.GUI
             if (openingFrames > 0)
                 openingFrames--;
             IconManager.DrawScaled(canvas, IconType.About, X + 18, Y + 19, 28, 28);
-            SmallTextRenderer.Draw(canvas, "CENTRUM POWIADOMIEN", X + 58, Y + 20, Text);
-            SmallTextRenderer.Draw(canvas, "CTRL+ALT+N  |  D DND  |  R PRZECZYTANE", X + 58, Y + 41, Muted);
+            SmallTextRenderer.Draw(canvas, Width < 380 ? "POWIADOMIENIA" : "CENTRUM POWIADOMIEN",
+                X + 58, Y + 20, Text);
+            if (Width >= 380)
+                SmallTextRenderer.Draw(canvas, "CTRL+ALT+N  |  D DND  |  R PRZECZYTANE",
+                    X + 58, Y + 41, Muted);
 
             int unread = NotificationService.UnreadCount;
             int badgeX = X + Width - 82;
@@ -341,7 +365,8 @@ namespace ZonderqOS.GUI
                     selected || hovered ? SystemTheme.AccentBorder : Border);
                 if (selected)
                     canvas.DrawFilledRectangle(SystemTheme.Accent, tx, y + 33, tabWidth, 3);
-                SmallTextRenderer.DrawCentered(canvas, FilterLabels[i], tx + 4, y + 15,
+                string label = Width < 380 && i == 1 ? "NOWE" : FilterLabels[i];
+                SmallTextRenderer.DrawCentered(canvas, label, tx + 4, y + 15,
                     tabWidth - 8, selected ? Text : Muted);
             }
         }
@@ -367,7 +392,8 @@ namespace ZonderqOS.GUI
                             UiMetrics.TileRadius, Panel, Border);
                         IconManager.DrawScaled(canvas, IconType.About, cardX + 18, cy + 27, 28, 28);
                         SmallTextRenderer.Draw(canvas, "BRAK POWIADOMIEN", cardX + 60, cy + 29, Text);
-                        SmallTextRenderer.Draw(canvas, "System nie ma nic nowego do pokazania.", cardX + 60, cy + 50, Muted);
+                        SmallTextRenderer.DrawClipped(canvas, "System nie ma nic nowego do pokazania.",
+                            cardX + 60, cy + 50, System.Math.Max(1, cardWidth - 74), Muted);
                     }
                     continue;
                 }
@@ -419,10 +445,30 @@ namespace ZonderqOS.GUI
                 UiMetrics.ButtonRadius, Header);
             canvas.DrawLine(Border, X + 1, y, X + Width - 2, y);
 
-            DrawFooterButton(canvas, 0, X + 14, y + 9, 126, "PRZECZYTANE", IconType.About);
-            DrawFooterButton(canvas, 1, X + 147, y + 9, 104, "WYCZYSC", IconType.Trash);
-            DrawFooterButton(canvas, 2, X + 258, y + 9, Width - 272,
+            int buttonX, buttonWidth;
+            FooterButtonBounds(0, out buttonX, out buttonWidth);
+            DrawFooterButton(canvas, 0, buttonX, y + 9, buttonWidth, "PRZECZYTANE", IconType.About);
+            FooterButtonBounds(1, out buttonX, out buttonWidth);
+            DrawFooterButton(canvas, 1, buttonX, y + 9, buttonWidth, "WYCZYSC", IconType.Trash);
+            FooterButtonBounds(2, out buttonX, out buttonWidth);
+            DrawFooterButton(canvas, 2, buttonX, y + 9, buttonWidth,
                 NotificationService.DoNotDisturb ? "DND: WL." : "DND: WYL.", IconType.Settings);
+        }
+
+        // Render and hit-test share the same geometry, including narrow panels.
+        private void FooterButtonBounds(int index, out int x, out int width)
+        {
+            if (Width >= 440)
+            {
+                x = X + (index == 0 ? 14 : index == 1 ? 147 : 258);
+                width = index == 0 ? 126 : index == 1 ? 104 : Width - 272;
+                return;
+            }
+
+            const int gap = 4;
+            int slotWidth = System.Math.Max(1, (Width - 28 - 2 * gap) / 3);
+            x = X + 14 + index * (slotWidth + gap);
+            width = index == 2 ? System.Math.Max(1, X + Width - 14 - x) : slotWidth;
         }
 
         private void DrawFooterButton(Canvas canvas, int index, int x, int y, int width, string label, IconType icon)
@@ -443,9 +489,9 @@ namespace ZonderqOS.GUI
             if (!NotificationService.TryGetActiveToast(out entry))
                 return;
 
-            int x = screenWidth - 432;
-            int y = screenHeight - taskbarHeight - 116;
-            const int width = 414;
+            int x = ToastX;
+            int y = ToastY;
+            int width = ToastWidth;
             const int height = 98;
             Color kindColor = KindColor(entry.Kind);
 
@@ -509,12 +555,16 @@ namespace ZonderqOS.GUI
             }
 
             int footerY = Y + Height - 48;
-            if (Hit(mouseX, mouseY, X + 14, footerY, 126, 38))
-                hoveredAction = 0;
-            else if (Hit(mouseX, mouseY, X + 147, footerY, 104, 38))
-                hoveredAction = 1;
-            else if (Hit(mouseX, mouseY, X + 258, footerY, Width - 272, 38))
-                hoveredAction = 2;
+            for (int i = 0; i < 3; i++)
+            {
+                int buttonX, buttonWidth;
+                FooterButtonBounds(i, out buttonX, out buttonWidth);
+                if (Hit(mouseX, mouseY, buttonX, footerY, buttonWidth, 38))
+                {
+                    hoveredAction = i;
+                    break;
+                }
+            }
         }
 
         private void EnsureFresh()
