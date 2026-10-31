@@ -307,6 +307,44 @@ static class Test
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "unsupported encoder rate refused");
 
+        // Read-only bounded Stream loader: future external WAV integration
+        // must not read unbounded metadata or write/mount a volume.
+        using (var stream = new MemoryStream(wave44100, false))
+        {
+            byte[] fromStream = AudioWaveInput.DecodeBounded(stream);
+            Expect(fromStream.Length == converted44100.Length, "44.1k stream conversion length");
+            for (int i = 0; i < fromStream.Length; i++)
+                Expect(fromStream[i] == converted44100[i], "stream reader matches direct RIFF decoder");
+        }
+        using (var stream = new MemoryStream(encoded, false))
+        {
+            byte[] fromStream = AudioWaveInput.DecodeBounded(stream);
+            Expect(fromStream.Length == pcm.Length, "48k stream conversion length");
+        }
+        byte[] truncatedStream = new byte[encoded.Length - 1];
+        Array.Copy(encoded, truncatedStream, truncatedStream.Length);
+        rejected = false;
+        try { using var stream = new MemoryStream(truncatedStream, false); AudioWaveInput.DecodeBounded(stream); }
+        catch (EndOfStreamException) { rejected = true; }
+        Expect(rejected, "truncated stream must not be accepted");
+        byte[] trailingStream = new byte[encoded.Length + 1];
+        Array.Copy(encoded, trailingStream, encoded.Length);
+        rejected = false;
+        try { using var stream = new MemoryStream(trailingStream, false); AudioWaveInput.DecodeBounded(stream); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "trailing stream data must not be accepted");
+        byte[] oversizedHeader = new byte[12];
+        Array.Copy(encoded, oversizedHeader, 12);
+        WriteLittle32(oversizedHeader, 4, AudioWaveInput.MaxFileBytes);
+        rejected = false;
+        try { using var stream = new MemoryStream(oversizedHeader, false); AudioWaveInput.DecodeBounded(stream); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "oversized RIFF length rejected before allocation");
+        rejected = false;
+        try { AudioWaveInput.DecodeBounded(null); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "null stream rejected");
+
         byte[] quarter = AudioPcmVolume.ScaleStereo16(pcm, 25);
         byte[] muted = AudioPcmVolume.ScaleStereo16(pcm, 0);
         byte[] full = AudioPcmVolume.ScaleStereo16(pcm, 100);

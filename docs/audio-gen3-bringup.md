@@ -59,6 +59,8 @@ to the same stock HDA output. The independent QEMU capture validates 660 Hz
 on both stereo channels so a mistakenly executed 440 Hz `tone` cannot pass.
 The new capture must pass before claiming mono playback verified end-to-end.
 
+A separate `AudioWaveInput.DecodeBounded(Stream)` component now accepts caller-owned, read-only WAV streams. It reads exactly the declared RIFF size (at most 512 KiB), rejects truncation and trailing bytes, and never opens, mounts or writes a disk. The `wav44` QEMU probe exercises this bounded stream loader using a RAM-backed `MemoryStream`. This **does not** yet play a file from FAT32 or prove removable-media behavior; connecting an external read-only source is a separate safety milestone.
+
 The `wav44` command generates a distinct 880 Hz stereo PCM16 fixture at 44.1 kHz,
 encodes RIFF/WAV entirely in RAM, resamples it to 48 kHz and plays it through
 the same HDA path. The sixth QEMU capture checks the distinct 880 Hz signal,

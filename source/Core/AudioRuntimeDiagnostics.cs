@@ -1,5 +1,6 @@
 #if ZONDERQ_AUDIO_PROBE
 using System;
+using System.IO;
 using Cosmos.Kernel.HAL.Devices.Audio;
 using Cosmos.Kernel.System.Audio;
 
@@ -121,13 +122,33 @@ namespace ZonderqOS.SystemCore
             {
                 byte[] source = AudioTonePcm.GenerateSquareStereo16(44100, 880, 250, 4096);
                 byte[] wave = AudioWavePcm.EncodeStereo16AtRate(source, 44100);
-                byte[] decoded = AudioWavePcm.DecodeStereo16(wave);
-                Console.WriteLine("[AUDIO] WAV 44100Hz resampled to 48000Hz PCM16 stereo bytes=" + decoded.Length);
-                return PlayPcm(decoded);
+                Console.WriteLine("[AUDIO] WAV 44100Hz input -> bounded read-only stream -> 48000Hz HDA");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
             }
             catch (Exception ex)
             {
                 Console.WriteLine("[AUDIO] WAV 44100 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Caller owns the stream and is responsible for obtaining it from an
+        /// explicitly authorized read-only source. No filesystem is opened here.
+        /// The bounded loader rejects oversized, truncated and malformed WAVs.
+        /// </summary>
+        public static bool PlayWaveFromReadOnlyStream(Stream input)
+        {
+            try
+            {
+                byte[] decoded = AudioWaveInput.DecodeBounded(input);
+                Console.WriteLine("[AUDIO] bounded WAV stream decoded to 48000Hz PCM16 stereo bytes=" + decoded.Length);
+                return PlayPcm(decoded);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV STREAM ERROR: " + ex.Message);
                 return false;
             }
         }
