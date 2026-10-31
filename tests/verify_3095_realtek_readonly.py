@@ -45,7 +45,7 @@ def validate(log: str) -> str:
     # healthy hardware probe, even when earlier markers look successful.
     fatal = re.compile(
         r"kernel panic|fatal: exception|page fault|unhandled exception|triple fault|"
-        r"exception\\s+14\\b|#PF\\b|CR2\\s*=|general protection fault|double fault|stack overflow",
+        r"exception\s+14\b|#PF\b|CR2\s*=|general protection fault|double fault|stack overflow",
         re.IGNORECASE)
     if any(fatal.search(line) for line in lines):
         raise ValueError("guest fault recorded in serial log")
