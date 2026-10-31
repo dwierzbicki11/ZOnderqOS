@@ -94,6 +94,44 @@ class ModifiedKeySafetyTests(unittest.TestCase):
             handler.index("NotificationService.ClearAll();"),
         )
 
+    def test_desktop_context_menu_is_modal_for_keyboard(self):
+        gui = source("source/GUI/GuiManager.cs")
+        keyboard = gui.split("if (desktopContextMenu != null && desktopContextMenu.Visible)", 1)[1]
+        self.assertIn("desktopContextMenu.HandleKeyboard(key);", keyboard)
+        self.assertLess(
+            gui.index("desktopContextMenu.HandleKeyboard(key);"),
+            gui.index("applicationManager.HandleKeyboard(key);"),
+        )
+        menu = source("source/GUI/DesktopContextMenu.cs")
+        handler = menu.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "public bool UpdateInteractions(", 1
+        )[0]
+        self.assertIn("if (!Visible || key == null)", handler)
+        self.assertIn("if (key.Modifiers != 0)\\n                return true;", handler)
+        self.assertIn("ConsoleKeyEx.Escape", handler)
+        self.assertIn("ConsoleKeyEx.UpArrow", handler)
+        self.assertIn("ConsoleKeyEx.DownArrow", handler)
+        self.assertIn("ConsoleKeyEx.Home", handler)
+        self.assertIn("ConsoleKeyEx.End", handler)
+        self.assertIn("ConsoleKeyEx.NumEnter", handler)
+        self.assertLess(handler.index("Visible = false;", handler.index("ConsoleKeyEx.Enter")),
+                        handler.index("entries[index].Action?.Invoke();"))
+        self.assertTrue(handler.rstrip().endswith("}"))
+
+    def test_desktop_context_menu_mouse_and_keyboard_selection_are_independent(self):
+        menu = source("source/GUI/DesktopContextMenu.cs")
+        self.assertIn("lastMouseX = x;", menu)
+        self.assertIn("lastMouseY = y;", menu)
+        handler = menu.split("public bool UpdateInteractions(", 1)[1].split(
+            "private int HitTest(", 1
+        )[0]
+        self.assertIn("int pointerIndex = HitTest(mouseX, mouseY);", handler)
+        self.assertIn("if (mouseX != lastMouseX || mouseY != lastMouseY)", handler)
+        self.assertIn("hoveredIndex = pointerIndex;", handler)
+        self.assertIn("int index = pointerIndex;", handler)
+        self.assertLess(handler.index("int index = pointerIndex;"),
+                        handler.index("entries[index].Action?.Invoke();"))
+
     def test_modifier_policy_for_destructive_actions(self):
         # Independent model of the intended key predicate, not a runtime test.
         for ctrl in (False, True):
