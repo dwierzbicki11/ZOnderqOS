@@ -64,8 +64,8 @@ class FramebufferProbeTests(unittest.TestCase):
         self.assertIn('".filemanager-modal-before.ppm"', script)
         self.assertIn('".filemanager-modal-open.ppm"', script)
         self.assertIn('".filemanager-modal-dismissed.ppm"', script)
-        self.assertIn('changed_pixels_in_region(modal_before, modal_open, *region)', script)
-        self.assertIn('changed_pixels_in_region(modal_before, modal_dismissed, *region)', script)
+        self.assertIn('changed_pixels_in_region(modal_before, modal_open, *region, threshold=8)', script)
+        self.assertIn('changed_pixels_in_region(modal_before, modal_dismissed, *region, threshold=8)', script)
         self.assertIn("opened_pixels < 500 or dismissed_pixels * 3 >= opened_pixels", script)
         self.assertIn("SERVICE_QEMU_PROBE_MODAL_ALT_F4: ${{ matrix.resolution == '800x600' && '1' || '0' }}", workflow)
         self.assertLess(script.index('click_mouse(channel, "right")'),
@@ -88,6 +88,16 @@ class FramebufferProbeTests(unittest.TestCase):
         restored = PROBE.changed_pixels_in_region(blank, blank, *region)
         self.assertGreater(opened, 500)
         self.assertLess(restored * 3, opened)
+
+    def test_low_contrast_modal_diff_keeps_default_cursor_threshold(self):
+        width, height = 12, 12
+        before = (width, height, bytes(width * height * 3))
+        pixels = bytes((12, 12, 12)) * (width * height)
+        after = (width, height, pixels)
+        self.assertEqual(PROBE.changed_pixels_in_region(
+            before, after, 0, 0, width, height), 0)
+        self.assertEqual(PROBE.changed_pixels_in_region(
+            before, after, 0, 0, width, height, threshold=8), width * height)
 
     def test_identical_frames_do_not_count_as_gui_interaction(self):
         width, height = 80, 64
