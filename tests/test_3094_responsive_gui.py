@@ -1283,6 +1283,19 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
                 self.assertGreaterEqual(page_down, 0)
                 self.assertLessEqual(page_down, max(0, count - 1))
 
+    def test_focus_loss_cancels_drag_resize_and_hover_state(self):
+        setter = WINDOW.split("public bool IsActive", 1)[1].split(
+            "public System.Action CloseAction", 1)[0]
+        self.assertIn("if (!value)", setter)
+        for reset in ("dragging = false;", "resizing = false;",
+                      "resizeMode = 0;", "hoveredResizeMode = 0;",
+                      "hoveredControl = 0;", "lastTitleClickTimestamp = 0;"):
+            self.assertIn(reset, setter)
+        self.assertLess(setter.index("if (!value)"),
+                        setter.index("dragging = false;"))
+        self.assertLess(setter.index("resizing = false;"),
+                        setter.index("UiAnimator.RequestFrames();"))
+
     def test_palette_compacts_details_in_narrow_mode(self):
         self.assertIn("if (resultRowHeight >= 42 && Width >= 540)", COMMAND_PALETTE)
         self.assertIn("if (Width >= 620)", COMMAND_PALETTE)
