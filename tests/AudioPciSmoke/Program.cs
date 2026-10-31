@@ -15,6 +15,14 @@ static class Test
         if (!condition) throw new Exception("FAIL: " + message);
     }
 
+    static void WriteLittle32(byte[] bytes, int offset, int value)
+    {
+        bytes[offset] = (byte)value;
+        bytes[offset + 1] = (byte)(value >> 8);
+        bytes[offset + 2] = (byte)(value >> 16);
+        bytes[offset + 3] = (byte)(value >> 24);
+    }
+
     static string Capture(Func<bool> action, out bool result)
     {
         TextWriter previous = Console.Out;
@@ -97,6 +105,40 @@ static class Test
         Expect(decoded.Length == pcm.Length, "WAV PCM length");
         for (int i = 0; i < pcm.Length; i++)
             Expect(decoded[i] == pcm[i], "WAV round-trip preserves PCM");
+
+        // A real-world PCM16 mono WAV should decode into bounded stereo frames.
+        byte[] mono = new byte[44 + pcm.Length / 2];
+        Array.Copy(encoded, mono, 44);
+        mono[22] = 1; mono[23] = 0; // one channel
+        WriteLittle32(mono, 28, 48000 * 2); // 16-bit mono byte rate
+        mono[32] = 2; mono[33] = 0; // mono block alignment
+        WriteLittle32(mono, 4, mono.Length - 8);
+        WriteLittle32(mono, 40, mono.Length - 44);
+        for (int i = 0; i < pcm.Length / 4; i++)
+        {
+            mono[44 + i * 2] = pcm[i * 4];
+            mono[44 + i * 2 + 1] = pcm[i * 4 + 1];
+        }
+        byte[] upmixed = AudioWavePcm.DecodeStereo16(mono);
+        Expect(upmixed.Length == pcm.Length, "mono WAV upmix output length");
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(upmixed[i] == pcm[i], "mono upmix duplicates PCM16 into both channels");
+
+        byte[] invalidMono = (byte[])mono.Clone();
+        invalidMono[32] = 4; // invalid mono block alignment
+        bool badMonoRejected = false;
+        try { AudioWavePcm.DecodeStereo16(invalidMono); }
+        catch (ArgumentException) { badMonoRejected = true; }
+        Expect(badMonoRejected, "reject invalid mono block alignment");
+
+        byte[] overlongMono = new byte[44 + 48000 * 2 * 2 + 2];
+        Array.Copy(mono, overlongMono, 44);
+        WriteLittle32(overlongMono, 4, overlongMono.Length - 8);
+        WriteLittle32(overlongMono, 40, overlongMono.Length - 44);
+        badMonoRejected = false;
+        try { AudioWavePcm.DecodeStereo16(overlongMono); }
+        catch (ArgumentException) { badMonoRejected = true; }
+        Expect(badMonoRejected, "reject mono WAV longer than two seconds before upmix");
 
         byte[] corrupt = (byte[])encoded.Clone();
         corrupt[0] = (byte)'X';
