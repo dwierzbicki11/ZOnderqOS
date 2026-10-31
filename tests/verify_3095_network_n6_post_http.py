@@ -194,7 +194,48 @@ def self_test() -> None:
         except ValueError:
             continue
         raise AssertionError("accepted early or reused third HTTP session")
-    print("[NET3095-N6-POST-HTTP-CONTRACT] PASS synthetic third-session cases only")
+
+    # Three more complete HTTP sessions after the third, with distinct ports
+    # and TCP sequence spaces. Every segment stays below the Ethernet MTU.
+    extended = list(frames)
+    for attempt in range(4, 7):
+        port = 49152 + attempt
+        client_seq = 10000 * attempt
+        server_seq = 10000 * (attempt + 1)
+        extended.extend([
+            fake_http(False, 0x02, client_seq, 0, client_port=port),
+            fake_http(True, 0x12, server_seq, client_seq + 1, client_port=port),
+            fake_http(False, 0x10, client_seq + 1, server_seq + 1, client_port=port),
+            fake_http(False, 0x18, client_seq + 1, server_seq + 1,
+                      REQUEST, client_port=port),
+        ])
+        extended.extend(
+            fake_http(True, 0x18, server_seq + 1 + start,
+                      client_seq + 1 + len(REQUEST), RESPONSE[start:end],
+                      client_port=port)
+            for start, end in zip(cuts, cuts[1:])
+        )
+        extended.extend([
+            fake_http(True, 0x11, server_seq + 1 + len(RESPONSE),
+                      client_seq + 1 + len(REQUEST), client_port=port),
+            fake_http(False, 0x10, client_seq + 1 + len(REQUEST),
+                      server_seq + 2 + len(RESPONSE), client_port=port),
+        ])
+    check_followup_http(extended, guest, 0, (49153, 49154))
+    for bad in (extended[:-1], extended[:len(frames)],
+                extended[:len(frames)] + extended[len(frames) + 1:]):
+        try:
+            check_followup_http(bad, guest, 0, (49153, 49154))
+        except ValueError:
+            continue
+        raise AssertionError("accepted incomplete post-burst HTTP repetitions")
+    try:
+        check_followup_http(extended, guest, 0, (49153, 49154, 49158))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted reused post-burst TCP source port")
+    print("[NET3095-N6-POST-HTTP-CONTRACT] PASS synthetic four-session cases only")
 
 
 if __name__ == "__main__":
