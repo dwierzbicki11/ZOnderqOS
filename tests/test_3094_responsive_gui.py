@@ -862,8 +862,9 @@ class ResponsiveGui3094(unittest.TestCase):
         view = FILE_MANAGER.split("internal sealed class FileManagerView", 1)[1]
         self.assertIn("internal int GridWidthForView =>", FILE_MANAGER)
         self.assertIn("internal int GridHeightForView =>", FILE_MANAGER)
+        self.assertIn("internal int GridRowsForView =>", FILE_MANAGER)
         self.assertIn("GridWidthForView + TileGap", columns)
-        self.assertIn("GridHeightForView + TileGap", selection)
+        self.assertIn("GridRowsForView", selection)
         self.assertIn("int contentH = app.GridHeightForView;", view)
         self.assertIn("int gridW = app.GridWidthForView;", view)
 
@@ -880,8 +881,8 @@ class ResponsiveGui3094(unittest.TestCase):
         # the painter could show two. Both now use the same grid height.
         for view_height in (170, 275, 276, 277, 279, 280, 465, 700):
             grid_height = max(40, view_height - 24 - 50 - 8)
-            painted_rows = max(1, (grid_height + 6) // (94 + 6))
-            scroll_rows = max(1, (grid_height + 6) // (94 + 6))
+            painted_rows = max(1, (grid_height + 60) // (94 + 6))
+            scroll_rows = max(1, (grid_height + 60) // (94 + 6))
             self.assertEqual(painted_rows, scroll_rows)
         self.assertEqual((max(40, 276 - 82) + 6) // 100, 2)
 
@@ -986,7 +987,7 @@ class ResponsiveGui3094(unittest.TestCase):
         for window_height in (220, 226, 240, 320, 520):
             view_height = window_height - 50
             grid_height = max(40, view_height - 24 - 50 - 8)
-            rows = max(1, (grid_height + 6) // 100)
+            rows = max(1, (grid_height + 60) // 100)
             for row in range(rows):
                 tile_y = row * 100
                 visible = min(94, grid_height - tile_y)
@@ -1204,7 +1205,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("SelectPage(-1);", keyboard)
         self.assertIn("ConsoleKeyEx.PageDown", keyboard)
         self.assertIn("SelectPage(1);", keyboard)
-        self.assertIn("GridHeightForView + TileGap", page)
+        self.assertIn("GridRowsForView", page)
         self.assertIn("Select(direction * Columns() * rows);", page)
         self.assertIn("ResetClickSequence();", selection)
         self.assertIn("contextMenuVisible = false;", selection)
@@ -1216,7 +1217,7 @@ class ResponsiveGui3094(unittest.TestCase):
             grid_width = max(112, width - 176 - 12)
             grid_height = max(40, height - 24 - 50 - 8)
             cols = max(1, (grid_width + 6) // (112 + 6))
-            rows = max(1, (grid_height + 6) // (94 + 6))
+            rows = max(1, (grid_height + 60) // (94 + 6))
             visible = cols * rows
             selected = 17
             self.assertEqual(min(39, selected + cols * rows),
@@ -2236,7 +2237,7 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertIn("relativeX >= GridWidthForView", hit)
         self.assertIn("relativeY >= GridHeightForView", hit)
         self.assertIn("row >= visibleRows", hit)
-        self.assertIn("int visibleRows = Math.Max(1, (GridHeightForView + TileGap) / strideY);", hit)
+        self.assertIn("int visibleRows = GridRowsForView;", hit)
         self.assertLess(hit.index("relativeY >= GridHeightForView"),
                         hit.index("int col = relativeX / strideX;"))
         self.assertIn("int gridW = app.GridWidthForView;", FILE_MANAGER)
@@ -2250,7 +2251,7 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
             grid_width = max(112, view_width - 176 - 12)
             grid_height = max(40, view_height - 24 - 50 - 8)
             cols = max(1, (grid_width + 6) // 118)
-            rows = max(1, (grid_height + 6) // 100)
+            rows = max(1, (grid_height + 60) // 100)
             for rx in range(0, max(grid_width + 2, 120)):
                 col = rx // 118
                 for ry in range(0, max(grid_height + 2, 100)):
