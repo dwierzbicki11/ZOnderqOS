@@ -67,7 +67,20 @@ def check_frames(pcap: bytes, after_index: int = -1) -> int:
     seen = 0
     last_index = -1
     for index, frame in enumerate(frames):
-        if len(frame) < 14 or not frame[14:].startswith(TAG):
+        if len(frame) < 14:
+            continue
+        payload = frame[14:]
+        # EtherType 0x88B5 is reserved for this isolated diagnostic.
+        # Previously a forged/malformed extra burst could be hidden by
+        # corrupting one tag byte: the validator silently skipped it and
+        # accepted the other 64 valid frames. Fail closed instead.
+        if frame[12:14] != ETHER_TYPE and not payload.startswith(TAG):
+            continue
+        if frame[12:14] == ETHER_TYPE and payload.startswith(b"ZONDERQ3095TX"):
+            # The initial N1 raw TX is expected, but an altered copy is not.
+            if (frame[:6] != BROADCAST or frame[6:12] != MAC or
+                    len(frame) != 60 or any(payload[len(b"ZONDERQ3095TX"):])):
+                raise ValueError("malformed initial N1 raw Ethernet frame")
             continue
         if index <= after_index:
             raise ValueError("E1000E TX burst preceded the completed HTTP exchange")
@@ -251,6 +264,20 @@ def self_test() -> None:
         except ValueError:
             continue
         raise AssertionError("accepted missing, duplicate, reordered or forged raw TX burst frame")
+    # Extra damaged frames must fail even when all 64 genuine frames are
+    # present. A subsequence-only validator used to silently ignore them.
+    extra_bad_frames = [
+        frames[8][:14] + b"ZONDERQ3095-BURST-X" + frames[8][14 + len(TAG) + 2:],
+        frames[8][:12] + b"\\x08\\x00" + frames[8][14:],
+        frames[8][:6] + wrong_mac + frames[8][12:],
+        frames[8][:14] + TAG + b"99" + frames[8][14 + len(TAG) + 2:],
+    ]
+    for extra in extra_bad_frames:
+        try:
+            check_frames(synthetic_capture(frames + [extra]))
+        except ValueError:
+            continue
+        raise AssertionError("accepted an extra malformed diagnostic Ethernet frame")
     try:
         check_frames(synthetic_capture(frames)[:-1])
     except ValueError:
