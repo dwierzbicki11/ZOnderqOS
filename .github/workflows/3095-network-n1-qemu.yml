@@ -30,6 +30,8 @@ on:
       - 'tests/verify_3095_network_n4.py'
       - 'tests/verify_3095_network_n5.py'
       - 'tests/verify_3095_network_n6.py'
+      - 'tests/verify_3095_network_n6_burst.py'
+      - 'tests/verify_3095_rtl_negative_qemu.py'
       - 'tests/verify_3095_network_heartbeat.py'
       - 'tests/verify_3095_e1000e_irq_trace.py'
       - 'tests/verify_3095_e1000e_irq_binding.py'

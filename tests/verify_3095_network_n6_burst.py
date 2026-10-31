@@ -65,6 +65,7 @@ def check_frames(pcap: bytes, after_index: int = -1) -> int:
     """
     frames = list(pcap_frames(pcap))
     seen = 0
+    initial_count = 0
     last_index = -1
     for index, frame in enumerate(frames):
         if len(frame) < 14:
@@ -81,6 +82,9 @@ def check_frames(pcap: bytes, after_index: int = -1) -> int:
             if (frame[:6] != BROADCAST or frame[6:12] != MAC or
                     len(frame) != 60 or any(payload[len(b"ZONDERQ3095TX"):])):
                 raise ValueError("malformed initial N1 raw Ethernet frame")
+            if initial_count or (after_index >= 0 and index >= after_index):
+                raise ValueError("duplicate or late initial N1 raw Ethernet frame")
+            initial_count += 1
             continue
         if index <= after_index:
             raise ValueError("E1000E TX burst preceded the completed HTTP exchange")
@@ -96,6 +100,8 @@ def check_frames(pcap: bytes, after_index: int = -1) -> int:
         last_index = index
     if seen != COUNT:
         raise ValueError(f"incomplete E1000E TX burst: {seen}/{COUNT} frames")
+    if after_index >= 0 and initial_count != 1:
+        raise ValueError("missing unique N1 raw TX before HTTP completion")
     return last_index
 
 
@@ -186,6 +192,18 @@ def self_test() -> None:
                 bytes(60 - 14 - len(n1_payload)))
     unrelated = BROADCAST + MAC + b"\x08\x06" + bytes(46)
     assert check_frames(synthetic_capture([n1_frame, unrelated] + frames)) == COUNT + 1
+    assert check_frames(synthetic_capture([n1_frame, unrelated] + frames),
+                        after_index=1) == COUNT + 1
+    for malformed_sequence, after_http in (
+        ([n1_frame, n1_frame, unrelated] + frames, 2),
+        ([unrelated] + frames, 0),
+        ([unrelated, n1_frame] + frames, 0),
+    ):
+        try:
+            check_frames(synthetic_capture(malformed_sequence), after_index=after_http)
+        except ValueError:
+            continue
+        raise AssertionError("accepted missing, duplicate or late initial N1 raw TX")
     for malformed_n1 in (
         n1_frame[:6] + bytes.fromhex("020000000099") + n1_frame[12:],
         n1_frame[:-1] + b"X",

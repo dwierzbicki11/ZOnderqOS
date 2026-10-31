@@ -179,8 +179,8 @@ changed by this diagnostic trace.
 After the two verified HTTP/1.0 RX sessions, the isolated N6 kernel queues
 **128 paced, uniquely tagged 60-byte broadcast Ethernet frames** with
 experimental EtherType `0x88B5` and payloads
-`ZONDERQ3095-BURST-00` through `ZONDERQ3095-BURST-63`.
-The 25 ms inter-frame sleep avoids treating a full software queue as a
+`ZONDERQ3095-BURST-000` through `ZONDERQ3095-BURST-127`.
+The 5 ms inter-frame sleep avoids treating a full software queue as a
 DMA failure and exercises repeated submissions. This code is behind
 `ZONDERQ_NETWORK_N6_HTTP`; N1–N5 and the disk-backed production GUI do not
 run it. The burst is not a replacement for a real RX or ISR test.
@@ -193,7 +193,14 @@ server FIN acknowledged by the guest in the actual PCAP and requires all
 expected source MAC, broadcast destination, EtherType and payload.
 A queue-success serial marker without the frames fails closed.
 Synthetic parser negatives cover missing, reordered, corrupted and
-misaddressed frames. The runner waits for this PCAP proof *before*
+misaddressed frames. After the burst, the guest performs **four sequential ICMP echo request/reply
+cycles** with identifier 0x3096 and distinct sequences 2–5. The N6 PCAP
+gate requires all four ordered, checksum-valid, 32-byte payload-matching
+round trips after the final burst frame, with exact peer MAC/IP pairs.
+Duplicate, reordered or missing replies fail. It also requires the initial
+N1 raw TX frame exactly once before the HTTP completion. These checks
+exercise sustained RX after TX stress, but still do not prove guest ISR
+execution. The runner waits for this PCAP proof *before*
 starting its eight-second managed guest heartbeat window.
 
 The DHCP DORA PCAP gate now additionally correlates the Ethernet
