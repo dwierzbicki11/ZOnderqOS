@@ -219,6 +219,7 @@ namespace ZonderqOS.GUI.Icons
         {
             int opaque = 0;
             int grouped = 0;
+            int nonOpaque = 0;
             for (int y = 0; y < height; y++)
             {
                 int row = y * width;
@@ -227,6 +228,7 @@ namespace ZonderqOS.GUI.Icons
                     int argb = pixels[row + x];
                     if (((uint)argb >> 24) != 255)
                     {
+                        nonOpaque++;
                         x++;
                         continue;
                     }
@@ -244,7 +246,11 @@ namespace ZonderqOS.GUI.Icons
 
             // Require substantial opaque runs before paying for the run scanner.
             // Conservative false negatives are harmless: DrawPoint is identical.
-            return grouped >= 6 && grouped * 3 >= opaque * 2 &&
+            // Mixed-alpha PNGs are better served by the original point
+            // renderer: checking runs around transparency can cost more than
+            // the saved calls. Allow at most 5% non-opaque pixels.
+            return grouped >= 6 && nonOpaque * 20 <= width * height &&
+                (long)grouped * 3 >= (long)opaque * 2 &&
                 grouped >= width * height / 4;
         }
 

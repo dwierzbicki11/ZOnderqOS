@@ -133,7 +133,8 @@ internal static class IconBlitSmoke
                 }
         if (!Classify(MakePixels(48, 48, 0), 48, 48) ||
             Classify(MakePixels(48, 48, 1), 48, 48) ||
-            Classify(MakePixels(48, 48, 3), 48, 48))
+            Classify(MakePixels(48, 48, 3), 48, 48) ||
+            Classify(MakePixels(48, 48, 4), 48, 48))
             throw new Exception("Icon run classification regression");
         Console.WriteLine("Icon Blit: " + count + " exact framebuffer/call-count checks, including clipping and alpha.");
         Benchmark(0, "opaque solid");
