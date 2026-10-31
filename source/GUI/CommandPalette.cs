@@ -105,6 +105,35 @@ namespace ZonderqOS.GUI
                 return true;
             }
 
+            if (key.Key == ConsoleKeyEx.Home)
+            {
+                selectedIndex = 0;
+                KeepSelectionVisible();
+                return true;
+            }
+
+            if (key.Key == ConsoleKeyEx.End)
+            {
+                selectedIndex = System.Math.Max(0, resultCount - 1);
+                KeepSelectionVisible();
+                return true;
+            }
+
+            if (key.Key == ConsoleKeyEx.PageUp)
+            {
+                selectedIndex = System.Math.Max(0, selectedIndex - visibleRows);
+                KeepSelectionVisible();
+                return true;
+            }
+
+            if (key.Key == ConsoleKeyEx.PageDown)
+            {
+                selectedIndex = System.Math.Min(System.Math.Max(0, resultCount - 1),
+                    selectedIndex + visibleRows);
+                KeepSelectionVisible();
+                return true;
+            }
+
             if (key.Key == ConsoleKeyEx.Enter || key.Key == ConsoleKeyEx.NumEnter)
             {
                 LaunchSelected();
