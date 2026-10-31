@@ -19,6 +19,10 @@ spec = spec_from_file_location("audio_capture", ROOT / "tools/verify-audio-wav-c
 capture = module_from_spec(spec)
 spec.loader.exec_module(capture)
 
+mute_spec = spec_from_file_location("audio_mute", ROOT / "tools/verify-audio-mute-capture.py")
+mute_capture = module_from_spec(mute_spec)
+mute_spec.loader.exec_module(mute_capture)
+
 
 class Qmp:
     def __init__(self, path):
@@ -128,7 +132,10 @@ def main():
             guest.wait(timeout=15)
             if guest.returncode != 0:
                 raise RuntimeError(f"QEMU quit with status {guest.returncode}")
-            print(capture.inspect(wav))
+            if args.volume == 0:
+                print(mute_capture.inspect(wav))
+            else:
+                print(capture.inspect(wav))
             print(f"[AUDIO-QEMU] PASS command={args.command} volume={args.volume} real QEMU HDA WAV capture; no physical speaker proof")
             return 0
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
