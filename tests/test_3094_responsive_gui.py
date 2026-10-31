@@ -1393,6 +1393,12 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("Add(scanned, Directory.GetDirectories(targetPath), true);", refresh)
         self.assertIn("Add(scanned, Directory.GetFiles(targetPath), false);", refresh)
         self.assertIn("Sort(scanned);", refresh)
+        self.assertIn("if (!hasLoadedDirectory && targetPath == \"/root\" &&", refresh)
+        self.assertIn("!Directory.Exists(targetPath))", refresh)
+        self.assertIn('targetPath = "/";', refresh)
+        self.assertNotIn('Directory.Exists(currentPath) ? currentPath : "/"', refresh)
+        self.assertLess(refresh.index("Directory.GetFiles(targetPath)"),
+                        refresh.index("hasLoadedDirectory = true;"))
         self.assertLess(refresh.index("Directory.GetFiles(targetPath)"),
                         refresh.index("entries.Clear();"))
         self.assertLess(refresh.index("Sort(scanned);"),
