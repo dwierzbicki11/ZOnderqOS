@@ -159,10 +159,21 @@ namespace ZonderqOS.GUI
             for (int row = 0; row < 7; row++)
             {
                 int bits = Glyph(ch, row);
-                for (int col = 0; col < 5; col++)
+                // One Canvas call per horizontal span instead of per lit pixel.
+                // Adjacent pixels have identical color, so the 5x7 bitmap is unchanged.
+                for (int col = 0; col < 5;)
                 {
-                    if ((bits & (1 << (4 - col))) != 0)
-                        canvas.DrawFilledRectangle(color, x + col, y + row, 1, 1);
+                    if ((bits & (1 << (4 - col))) == 0)
+                    {
+                        col++;
+                        continue;
+                    }
+
+                    int runStart = col++;
+                    while (col < 5 && (bits & (1 << (4 - col))) != 0)
+                        col++;
+
+                    canvas.DrawFilledRectangle(color, x + runStart, y + row, col - runStart, 1);
                 }
             }
         }

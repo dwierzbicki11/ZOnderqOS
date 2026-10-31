@@ -1,0 +1,19 @@
+name: ZonderqOS Gen3 performance contracts
+on:
+  pull_request:
+    paths:
+      - "source/GUI/SmallTextRenderer.cs"
+      - "tests/test_gen3_perf_text.py"
+      - ".github/workflows/perf-gen3.yml"
+  push:
+    branches: [perf/system-gen3]
+  workflow_dispatch:
+jobs:
+  text-renderer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pixel-equivalence and Canvas-call regression
+        run: python3 tests/test_gen3_perf_text.py
+      - name: Preserve stock Cosmos and disabled custom SMP
+        run: python3 tests/test_upstream_smp_disabled.py
