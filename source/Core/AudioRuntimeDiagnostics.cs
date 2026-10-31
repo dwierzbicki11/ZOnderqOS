@@ -60,7 +60,7 @@ namespace ZonderqOS.SystemCore
             byte[] pcm = new byte[frames * 4];
             for (int i = 0; i < frames; i++)
             {
-                short sample = (short)((((i * frequency) / sampleRate) & 1) == 0 ? 4096 : -4096);
+                short sample = (short)((((i * frequency * 2) / sampleRate) & 1) == 0 ? 4096 : -4096);
                 byte lo = (byte)sample;
                 byte hi = (byte)(sample >> 8);
                 int offset = i * 4;
