@@ -153,6 +153,18 @@ def self_test() -> None:
     third = handshake + response + teardown
     frames = [bytes(60)] + third
     check_third_http(frames, guest, 0, (49153, 49154))
+    # Detect a stale/replayed first-session DMA payload after the TX burst.
+    stale_third = ([bytes(60)] + handshake +
+                   [fake_http(True, 0x18, 60001 + start,
+                              50001 + len(REQUEST), RESPONSE[start:end],
+                              client_port=port)
+                    for start, end in zip(cuts, cuts[1:])] + teardown)
+    try:
+        check_third_http(stale_third, guest, 0, (49153, 49154))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted stale first-session RX bytes after DMA stress")
     serial = "\n".join((
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
         PASS,
