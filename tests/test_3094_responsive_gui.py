@@ -1247,6 +1247,27 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
             self.assertLessEqual(rows, 6)
             self.assertLessEqual(116 + rows * row_height, height - 34)
 
+    def test_relaunch_same_app_does_not_duplicate_window_or_taskbar_slot(self):
+        launch = APPLICATION_MANAGER.split("public void Launch(", 1)[1].split(
+            "public void Activate(", 1)[0]
+        self.assertIn("if (!applications.Contains(application))", launch)
+        self.assertIn("applications.Add(application);", launch)
+        self.assertLess(launch.index("if (!applications.Contains(application))"),
+                        launch.index("applications.Add(application);"))
+        self.assertLess(launch.index("applications.Add(application);"),
+                        launch.index("Activate(application);"))
+
+        # Repeatedly launching the same instance changes MRU position, not
+        # the number of windows rendered or counted by taskbar pagination.
+        apps = []
+        for app in ("files", "files", "terminal", "files", "terminal"):
+            if app not in apps:
+                apps.append(app)
+            apps.remove(app)
+            apps.append(app)
+        self.assertEqual(len(apps), 2)
+        self.assertEqual(apps, ["files", "terminal"])
+
     def test_palette_compacts_details_in_narrow_mode(self):
         self.assertIn("if (resultRowHeight >= 42 && Width >= 540)", COMMAND_PALETTE)
         self.assertIn("if (Width >= 620)", COMMAND_PALETTE)
