@@ -10,7 +10,7 @@ import argparse
 from pathlib import Path
 import re
 
-from network_3095_http_host import PORT, REQUEST, RESPONSE
+from network_3095_http_host import PORT, REQUEST, RESPONSE, response_for_attempt
 from verify_3095_network_n1 import pcap_frames
 from verify_3095_network_n2 import LEASE, synthetic_capture
 from verify_3095_network_n4 import tcp_frame
@@ -58,7 +58,7 @@ def check_third_http(frames: list[bytes], guest: bytes, last_icmp: int,
     start = next((i for i, (index, _) in enumerate(entries)
                   if index > last_icmp), len(entries))
     third = find_http_transaction([packet for _, packet in entries],
-                                  guest, start, None)
+                                  guest, start, None, attempt=3)
     if third is None:
         raise ValueError("third HTTP exchange after post-burst ICMP incomplete")
     if third[0] in prior_ports:
@@ -80,7 +80,7 @@ def check_followup_http(frames: list[bytes], guest: bytes, last_icmp: int,
     for attempt in range(3, 7):
         start = next((i for i, (index, _) in enumerate(entries)
                       if index > last_frame), len(entries))
-        transaction = find_http_transaction(packets, guest, start, None)
+        transaction = find_http_transaction(packets, guest, start, None, attempt=attempt)
         if transaction is None:
             raise ValueError(f"post-burst HTTP session {attempt} incomplete")
         port, finish = transaction
@@ -118,7 +118,7 @@ def validate(serial: str, pcap: bytes) -> str:
     first = find_http_transaction(packets, guest, 0, None)
     if first is None:
         raise ValueError("missing first HTTP session")
-    second = find_http_transaction(packets, guest, first[1] + 1, first[0])
+    second = find_http_transaction(packets, guest, first[1] + 1, first[0], attempt=2)
     if second is None:
         raise ValueError("missing second HTTP session")
     check_followup_http(frames, guest, last_icmp, (first[0], second[0]))
@@ -141,7 +141,7 @@ def self_test() -> None:
     cuts.append(len(RESPONSE))
     response = [
         fake_http(True, 0x18, 60001 + start, 50001 + len(REQUEST),
-                  RESPONSE[start:end], client_port=port)
+                  response_for_attempt(3)[start:end], client_port=port)
         for start, end in zip(cuts, cuts[1:])
     ]
     teardown = [
@@ -211,7 +211,7 @@ def self_test() -> None:
         ])
         extended.extend(
             fake_http(True, 0x18, server_seq + 1 + start,
-                      client_seq + 1 + len(REQUEST), RESPONSE[start:end],
+                      client_seq + 1 + len(REQUEST), response_for_attempt(attempt)[start:end],
                       client_port=port)
             for start, end in zip(cuts, cuts[1:])
         )
