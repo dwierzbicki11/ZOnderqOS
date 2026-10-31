@@ -137,6 +137,39 @@ class FramebufferProbeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 PROBE.read_ppm(str(path))
 
+    def test_read_ppm_decodes_real_1366_width_qemu_row_padding(self):
+        # A real virtio-vga/OVMF capture reports 1366x768 in the P6 header,
+        # but QEMU emits 4098 RGB bytes + two zero bytes per scanline.
+        # Verify strict normalization, including the final row.
+        width, height = 1366, 3
+        packed_row = width * 3
+        self.assertEqual((packed_row + 3) & ~3, 4100)
+        rows = [bytes((row + 1,)) * packed_row for row in range(height)]
+        padded = b"".join(row + b"\\x00\\x00" for row in rows)
+        header = f"P6\\n{width} {height}\\n255\\n".encode("ascii")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "virtio.ppm"
+            path.write_bytes(header + padded)
+            self.assertEqual(PROBE.read_ppm(str(path)),
+                             (width, height, b"".join(rows)))
+
+            # A nonzero padding byte is not a valid QEMU zero pad.
+            invalid_pad = bytearray(padded)
+            invalid_pad[packed_row] = 1
+            path.write_bytes(header + invalid_pad)
+            with self.assertRaisesRegex(ValueError, "nonzero QMP framebuffer row padding"):
+                PROBE.read_ppm(str(path))
+
+            # Do not treat arbitrary extra bytes as scanline alignment.
+            path.write_bytes(header + b"".join(rows) + b"\\x00")
+            with self.assertRaisesRegex(ValueError, "incomplete framebuffer"):
+                PROBE.read_ppm(str(path))
+
+            # Missing a byte from the last padded row is also rejected.
+            path.write_bytes(header + padded[:-1])
+            with self.assertRaisesRegex(ValueError, "incomplete framebuffer"):
+                PROBE.read_ppm(str(path))
+
     def test_restored_desktop_diff_is_small(self):
         width, height = 80, 64
         desktop = bytes(width * height * 3)
