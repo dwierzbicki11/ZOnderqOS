@@ -13,6 +13,33 @@ SPEC.loader.exec_module(PROBE)
 
 
 class FramebufferProbeTests(unittest.TestCase):
+    def test_real_qmp_bottom_edge_resize_has_two_visual_gates(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('".filemanager-resize-before.ppm"', source)
+        self.assertIn('".filemanager-resize-smaller.ppm"', source)
+        self.assertIn('".filemanager-resize-restored.ppm"', source)
+        self.assertIn("drag_mouse_relative(channel, 0, -64)", source)
+        self.assertIn("drag_mouse_relative(channel, 0, 64)", source)
+        self.assertIn("if fraction < 0.015:", source)
+        self.assertIn("if fraction > 0.10:", source)
+        self.assertIn("PS/2 bottom-edge resize did not visibly shrink", source)
+        self.assertIn("reverse PS/2 resize did not restore", source)
+        # A bottom-edge shrink is sampled inside the central framebuffer
+        # region, unlike a right-edge-only change beyond the 5/6 crop.
+        width, height = 1024, 768
+        baseline = bytes(width * height * 3)
+        shrunk = bytearray(baseline)
+        for y in range(534, 598):
+            for x in range(170, 850):
+                offset = (y * width + x) * 3
+                shrunk[offset:offset + 3] = b"\\xff\\xff\\xff"
+        changed, samples = PROBE.difference(
+            (width, height, baseline), (width, height, bytes(shrunk)))
+        self.assertGreater(changed / samples, 0.015)
+        restored, _ = PROBE.difference(
+            (width, height, baseline), (width, height, baseline))
+        self.assertEqual(restored, 0)
+
     def test_identical_frames_do_not_count_as_gui_interaction(self):
         width, height = 80, 64
         pixels = bytes(width * height * 3)
