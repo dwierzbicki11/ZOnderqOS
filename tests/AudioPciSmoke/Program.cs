@@ -158,6 +158,22 @@ static class Test
         catch (ArgumentException) { badMonoRejected = true; }
         Expect(badMonoRejected, "reject mono WAV longer than two seconds before upmix");
 
+        // The mono extension must not weaken the stereo frame-alignment gate.
+        byte[] partialStereo = new byte[encoded.Length - 2];
+        Array.Copy(encoded, partialStereo, partialStereo.Length);
+        WriteLittle32(partialStereo, 4, partialStereo.Length - 8);
+        WriteLittle32(partialStereo, 40, pcm.Length - 2);
+        bool partialRejected = false;
+        try { AudioWavePcm.DecodeStereo16(partialStereo); }
+        catch (ArgumentException) { partialRejected = true; }
+        Expect(partialRejected, "reject stereo data with a partial 4-byte frame");
+
+        byte[] maxMonoPcm = new byte[48000 * 2 * 2];
+        byte[] maxMonoWav = AudioWavePcm.EncodeMono16(maxMonoPcm);
+        byte[] maxMonoDecoded = AudioWavePcm.DecodeStereo16(maxMonoWav);
+        Expect(maxMonoDecoded.Length == 48000 * 2 * 4,
+            "accept exact two-second mono limit with bounded stereo output");
+
         byte[] corrupt = (byte[])encoded.Clone();
         corrupt[0] = (byte)'X';
         rejected = false;
