@@ -25,11 +25,11 @@ from verify_3095_network_n6_burst import (
 
 START = "[NET3095-N6] POST_BURST_HTTP_ATTEMPT=START"
 PASS = f"[NET3095-N6] POST_BURST_HTTP=PASS from=10.0.2.2 port={PORT} bytes={len(RESPONSE)}"
-LINK = re.compile(r"^\\[NET3095-N6\\] POST_STRESS_LINK=PASS mac=([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})$")
+LINK = re.compile(r"^\[NET3095-N6\] POST_STRESS_LINK=PASS mac=([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})$")
 
 
 def check_link_markers(serial: str) -> None:
-    lines = [line.strip() for line in serial.replace("\\r", "").splitlines()]
+    lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
     guest = [match for line in lines if (match := GUEST.fullmatch(line))]
     link = [match for line in lines if (match := LINK.fullmatch(line))]
     if len(guest) != 1 or len(link) != 1:
@@ -119,7 +119,7 @@ def self_test() -> None:
     third = handshake + response + teardown
     frames = [bytes(60)] + third
     check_third_http(frames, guest, 0, (49153, 49154))
-    serial = "\\n".join((
+    serial = "\n".join((
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
         PASS,
         "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
@@ -129,8 +129,8 @@ def self_test() -> None:
         serial.replace("POST_STRESS_LINK=PASS", "POST_STRESS_LINK=FAIL"),
         serial.replace("POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
                        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:57"),
-        serial + "\\n[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
-        "\\n".join(reversed(serial.splitlines())),
+        serial + "\n[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
+        "\n".join(reversed(serial.splitlines())),
     ):
         try:
             check_link_markers(invalid)
