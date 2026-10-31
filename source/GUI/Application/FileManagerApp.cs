@@ -335,8 +335,10 @@ namespace ZonderqOS.GUI.Apps
 
             if (entry.IsVolume)
             {
-                bool actionArea = x >= SidebarWidth - 28;
-                if (entry.PartitionIndex > 0 && actionArea)
+                // Only the painted 20x22 M/U button may change mount state.
+                // Clicking its label or the neighboring padding must never
+                // detach a FAT32 volume (or implicitly mount a new one).
+                if (entry.PartitionIndex > 0 && IsVolumeActionHit(entry, x, y))
                 {
                     if (entry.IsMounted)
                         UnmountVolume(entry);
@@ -353,7 +355,7 @@ namespace ZonderqOS.GUI.Apps
 
                 if (entry.PartitionIndex > 0)
                 {
-                    MountVolume(entry, true);
+                    status = "Use the M button to mount " + entry.Label;
                     return;
                 }
             }
@@ -367,6 +369,30 @@ namespace ZonderqOS.GUI.Apps
             status = string.IsNullOrEmpty(entry.Detail)
                 ? entry.Label
                 : entry.Label + ": " + entry.Detail;
+        }
+
+        private bool IsVolumeActionHit(SidebarEntry target, int x, int y)
+        {
+            // Match RenderSidebar: sidebar origin X+4, action at width-27,
+            // button Y+7, 20x22. Reject padding and clipped rows.
+            const int actionLeft = 4 + SidebarWidth - 27;
+            if (x < actionLeft || x >= actionLeft + 20)
+                return false;
+
+            int rowY = ContentTop + 8;
+            int sidebarBottom = ContentTop + GridHeightForView;
+            for (int i = 0; i < sidebarEntries.Count; i++)
+            {
+                SidebarEntry entry = sidebarEntries[i];
+                int rowHeight = entry.IsSection ? SidebarSectionHeight : SidebarItemHeight;
+                if (rowY + rowHeight > sidebarBottom)
+                    break;
+                if (entry == target)
+                    return entry.IsVolume && entry.PartitionIndex > 0 &&
+                        y >= rowY + 7 && y < rowY + 29;
+                rowY += rowHeight;
+            }
+            return false;
         }
 
         private void SidebarRightClick(int x, int y)

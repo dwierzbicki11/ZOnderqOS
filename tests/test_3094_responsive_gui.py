@@ -1383,5 +1383,33 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertEqual(next_enabled(0, 1, [True] * 7), 1)
 
 
+    def test_file_manager_volume_mount_hitbox_matches_painted_button(self):
+        click = FILE_MANAGER.split("private void SidebarClick(", 1)[1].split(
+            "private void SidebarRightClick(", 1)[0]
+        render = FILE_MANAGER.split("private void RenderSidebar(", 1)[1].split(
+            "private bool IsEntryActive(", 1)[0]
+        self.assertIn("IsVolumeActionHit(entry, x, y)", click)
+        self.assertIn("const int actionLeft = 4 + SidebarWidth - 27;", click)
+        self.assertIn("x >= actionLeft + 20", click)
+        self.assertIn("y >= rowY + 7 && y < rowY + 29", click)
+        self.assertIn("rowY + rowHeight > sidebarBottom", click)
+        self.assertIn('status = "Use the M button to mount " + entry.Label;', click)
+        self.assertNotIn("MountVolume(entry, true);", click)
+        self.assertIn("int actionX = x + width - 27;", render)
+        self.assertIn("itemY + 7, 20, 22", render)
+
+        # View-relative hitbox, independent of screen resolution.
+        action_left = 4 + 176 - 27
+        for row_y in (50 + 8, 50 + 8 + 22 + 36, 50 + 8 + 22 + 72):
+            def hit(x, y):
+                return action_left <= x < action_left + 20 and row_y + 7 <= y < row_y + 29
+            self.assertFalse(hit(action_left - 1, row_y + 15))
+            self.assertTrue(hit(action_left, row_y + 7))
+            self.assertTrue(hit(action_left + 19, row_y + 28))
+            self.assertFalse(hit(action_left + 20, row_y + 15))
+            self.assertFalse(hit(action_left + 10, row_y + 6))
+            self.assertFalse(hit(action_left + 10, row_y + 29))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
