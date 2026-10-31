@@ -107,8 +107,70 @@ namespace ZonderqOS.Hardware
         public bool PmeStatus { get; }
     }
 
+    /// <summary>
+    /// Addresses derived solely from PCI BAR and MSI-X capability metadata.
+    /// BAR aperture sizes and actual MMIO accessibility are NOT verified.
+    /// Neither the MSI-X table nor PBA is mapped or accessed.
+    /// </summary>
+    public readonly struct PciNicMsiXBarResolution
+    {
+        public PciNicMsiXBarResolution(byte tableBir, ulong tableAddress,
+            byte pbaBir, ulong pbaAddress)
+        {
+            TableBir = tableBir;
+            TableAddress = tableAddress;
+            PbaBir = pbaBir;
+            PbaAddress = pbaAddress;
+        }
+        public byte TableBir { get; }
+        public ulong TableAddress { get; }
+        public byte PbaBir { get; }
+        public ulong PbaAddress { get; }
+    }
+
     public static class PciBarInventory
     {
+        /// <summary>
+        /// Resolve MSI-X table/PBA offsets only against assigned memory BARs.
+        /// Reject I/O BARs, unassigned BARs, the high half of a 64-bit BAR,
+        /// and 64-bit address overflow. This does not validate BAR aperture
+        /// sizes, map MMIO, program MSI-X or establish IRQ delivery.
+        /// </summary>
+        public static bool TryResolveRealtek810xEMsiXMemoryBars(IPciConfigAccessor config,
+            byte bus, byte device, byte function, out PciNicMsiXBarResolution resolution)
+        {
+            if (config == null) throw new ArgumentNullException(nameof(config));
+            resolution = default;
+            if (!TryReadRealtek810xEInterruptCapabilities(config, bus, device, function,
+                    out var irq) || !irq.MsiXPresent ||
+                !TryReadRealtek810xE(config, bus, device, function, out var bars))
+                return false;
+
+            if (!TryResolveMemoryBar(bars, irq.TableBir, irq.TableOffset, out ulong table) ||
+                !TryResolveMemoryBar(bars, irq.PbaBir, irq.PbaOffset, out ulong pba))
+                return false;
+
+            resolution = new PciNicMsiXBarResolution(irq.TableBir, table,
+                irq.PbaBir, pba);
+            return true;
+        }
+
+        private static bool TryResolveMemoryBar(List<PciBarDescriptor> bars, byte bir,
+            uint offset, out ulong address)
+        {
+            address = 0;
+            for (int i = 0; i < bars.Count; i++)
+            {
+                PciBarDescriptor bar = bars[i];
+                if (bar.Index != bir) continue;
+                if (bar.Kind == PciBarKind.Io || bar.Address > ulong.MaxValue - (ulong)offset)
+                    return false;
+                address = bar.Address + offset;
+                return true;
+            }
+            return false;
+        }
+
         /// <summary>Read-only PCI command/status and legacy IRQ routing.
         /// IRQ line/pin are NOT proof of a working interrupt or MSI/MSI-X.</summary>
         public static bool TryReadRealtek810xEState(IPciConfigAccessor config, byte bus,
