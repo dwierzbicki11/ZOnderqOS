@@ -1349,9 +1349,19 @@ namespace ZonderqOS.GUI.Apps
             int width = Width - SidebarWidth - 12;
             canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), x, y, width, FooterHeight - 4);
             canvas.DrawLine(Color.FromArgb(58, 69, 80), x, y, x + width, y);
-            SmallTextRenderer.DrawClipped(canvas, app.Status, x + 8, y + 9, Math.Max(20, width - 260), Text);
-            SmallTextRenderer.Draw(canvas, "F5 REFRESH   DEL END TASK", x + width - 244, y + 9, Muted);
-            SmallTextRenderer.Draw(canvas, app.ClockText, x + width - 72, y + 9, Text);
+            if (width < 520)
+            {
+                // At minimum window width, the fixed shortcut/clock columns
+                // would start inside the sidebar and overlap the status.
+                SmallTextRenderer.DrawClipped(canvas, app.Status, x + 8, y + 9,
+                    Math.Max(1, width - 16), Text);
+            }
+            else
+            {
+                SmallTextRenderer.DrawClipped(canvas, app.Status, x + 8, y + 9, Math.Max(20, width - 260), Text);
+                SmallTextRenderer.Draw(canvas, "F5 REFRESH   DEL END TASK", x + width - 244, y + 9, Muted);
+                SmallTextRenderer.Draw(canvas, app.ClockText, x + width - 72, y + 9, Text);
+            }
         }
     }
 }
