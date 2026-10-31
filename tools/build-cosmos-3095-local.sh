@@ -17,8 +17,8 @@ UPSTREAM="https://github.com/CosmosOS/Cosmos.git"
 WORK_ROOT="${ZONDERQ_3095_WORK_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/zonderqos-cosmos-3095}"
 MODE="${1:-disk}"
 case "$MODE" in
-  disk|probe) ;;
-  *) echo "[3095-BUILD][ERROR] Expected disk or probe" >&2; exit 2 ;;
+  disk|probe|audio) ;;
+  *) echo "[3095-BUILD][ERROR] Expected disk, probe or audio" >&2; exit 2 ;;
 esac
 if [[ $# -gt 1 ]]; then
   echo "[3095-BUILD][ERROR] Unexpected additional arguments" >&2
@@ -159,12 +159,22 @@ case "$MODE" in
   disk)
     read_only=false
     diagnostic=false
+    audio_probe=false
     output_file="ZonderqOS-3095-disk.iso"
     ;;
   probe)
     read_only=true
     diagnostic=true
+    audio_probe=false
     output_file="ZonderqOS-3095-usb.iso"
+    ;;
+  audio)
+    # Explicit diskless probe: no FAT32 mounts, user setup or GUI writes.
+    # Only this profile enables the stock Cosmos 3.0.95 HdAudioDriver.
+    read_only=true
+    diagnostic=false
+    audio_probe=true
+    output_file="ZonderqOS-3095-audio.iso"
     ;;
 esac
 echo "[3095-BUILD] Publishing $MODE x64 ISO (no older Cosmos versions, no RAM root)..."
@@ -173,6 +183,7 @@ dotnet publish "$STAGE/ZonderqOS.csproj" \
   -p:ZonderqCosmosKeyboardApi=Input \
   -p:ZonderqReadOnlyHardwareProbe="$read_only" \
   -p:ZonderqInputDiagnosticBoot="$diagnostic" \
+  -p:ZonderqAudioProbe="$audio_probe" \
   -p:ZonderqRamRoot=false \
   -o "$output" --no-restore
 
