@@ -42,6 +42,12 @@ identification metadata, not a transmit or DMA proof.
 
 The probe checks PCI memory decoding, D0 (if a PM capability is present),
 an assigned non-I/O BAR2, and an aperture of at least `0x6D` bytes.
+A PM capability pointer must be 4-byte aligned and in `0x40..0xF8`,
+so reading PMCSR at pointer+4 cannot escape conventional 256-byte PCI
+configuration space. After the double MMIO snapshot the probe **re-reads**
+the PCI identity, memory-decoding bit and PM power state. Any unexpected
+change declines the sample before the driver emits its diagnostic marker.
+These are additional read-only safeguards, not proof of working Ethernet.
 It never enables memory decoding, bus mastering, DMA or interrupts itself.
 **The upstream DriverKit may still quiesce and restore PCI configuration**
 as part of normal probe arbitration; do not mistake this for a guarantee

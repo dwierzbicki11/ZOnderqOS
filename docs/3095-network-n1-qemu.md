@@ -82,8 +82,12 @@ N6 keeps N1–N5 intact, then makes a second TCP connection to
 `Content-Length` header. The guest checks the exact HTTP status,
 headers and body. The N6 PCAP gate independently checks the TCP handshake,
 port/MAC/IP/sequence/ack continuity and full HTTP request/response byte
-stream, including a possible segmented response. The smoke script also
-requires the host success marker and eight seconds of guest heartbeat.
+stream, including a possible segmented response. The gate additionally
+requires a matching server FIN after the complete HTTP response and a
+subsequent guest ACK for that FIN, correlated to the same TCP sequence
+space. This tests observed TCP teardown, not TLS or IRQ delivery. The
+smoke script also requires the host success marker and eight seconds of
+guest heartbeat.
 
 **Confirmed:** GitHub Actions run **#54** on 2026-10-30 built the exact stock Cosmos 3.0.95 N6 ISO and passed the real QEMU HTTP/1.0 PCAP gate, the host fixture, the N1–N5 prerequisites and the eight-second guest heartbeat window. The evidence was uploaded as separate serial, PCAP and host logs.
 HTTP/1.0 here is unencrypted; it is **not HTTPS**, certificate validation,
