@@ -221,5 +221,59 @@ class FramebufferProbeTests(unittest.TestCase):
 
 
 
+    def test_relative_mouse_homing_reaches_notification_tile_without_overflow(self):
+        import json
+
+        class FakeChannel:
+            def __init__(self):
+                self.payloads = []
+
+            def write(self, payload):
+                self.payloads.append(json.loads(payload))
+
+            def readline(self):
+                return b'{"return": {}}\\n'.replace(b"\\n", b"\n")
+
+        channel = FakeChannel()
+        original_sleep = PROBE.time.sleep
+        try:
+            PROBE.time.sleep = lambda _: None
+            PROBE.move_mouse_to_from_corner(channel, 772, 746, 1024, 768)
+            with self.assertRaises(ValueError):
+                PROBE.move_mouse_to_from_corner(channel, -1, 10, 1024, 768)
+            with self.assertRaises(ValueError):
+                PROBE.move_mouse_to_from_corner(channel, 10, 768, 1024, 768)
+        finally:
+            PROBE.time.sleep = original_sleep
+
+        # A relative PS/2 packet must never request a large delta.
+        for start_x, start_y in ((0, 0), (512, 384), (1023, 767)):
+            x, y = start_x, start_y
+            for payload in channel.payloads:
+                for event in payload["arguments"]["events"]:
+                    delta = event["data"]["value"]
+                    self.assertLessEqual(abs(delta), 64)
+                    if event["data"]["axis"] == "x":
+                        x = max(0, min(1023, x + delta))
+                    else:
+                        y = max(0, min(767, y + delta))
+            self.assertEqual((x, y), (772, 746))
+
+    def test_real_qmp_notification_click_has_stationary_framebuffer_gate(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('move_mouse_to_from_corner(channel, notification_x, notification_y,', source)
+        self.assertIn('".notification-click-before.ppm"', source)
+        self.assertIn('".notification-click-open.ppm"', source)
+        self.assertIn('".notification-click-closed.ppm"', source)
+        self.assertIn('difference(notification_before, notification_open)', source)
+        self.assertIn('difference(notification_before, notification_closed)', source)
+        self.assertIn('if fraction < 0.05:', source)
+        self.assertIn('if fraction > 0.10:', source)
+        self.assertLess(source.index('screenshot(channel, prefix + ".notification-click-before.ppm")'),
+                        source.index('click_mouse(channel)'))
+        self.assertLess(source.index('screenshot(channel, prefix + ".notification-click-closed.ppm")'),
+                        source.index('send_keys(channel, "alt", "f4")'))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

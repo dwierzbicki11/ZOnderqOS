@@ -33,7 +33,7 @@ def send_keys(channel, *codes):
 
 
 
-def move_mouse_relative(channel, dx, dy):
+def move_mouse_relative(channel, dx, dy, delay=0.8):
     # QEMU's emulated PS/2 mouse receives real relative pointer events.
     # No host input devices or host disk partitions are exposed to the guest.
     events = []
@@ -43,7 +43,31 @@ def move_mouse_relative(channel, dx, dy):
         events.append({"type": "rel", "data": {"axis": "y", "value": dy}})
     if events:
         command(channel, {"execute": "input-send-event", "arguments": {"events": events}})
-        time.sleep(0.8)
+        time.sleep(delay)
+
+
+def move_mouse_to_from_corner(channel, target_x, target_y, width, height):
+    """Anchor a PS/2 relative pointer at (0, 0), then reach a screen point.
+
+    The QMP relative mouse has no position query. Small deltas avoid PS/2
+    packet saturation; first move beyond the screen bounds so the result is
+    independent of the cursor position left by the login or keyboard probe.
+    """
+    if width <= 0 or height <= 0 or not (0 <= target_x < width and 0 <= target_y < height):
+        raise ValueError("QMP mouse target is outside the framebuffer")
+    dx, dy = width + 64, height + 64
+    while dx or dy:
+        step_x, step_y = min(64, dx), min(64, dy)
+        move_mouse_relative(channel, -step_x, -step_y, delay=0.06)
+        dx -= step_x
+        dy -= step_y
+    dx, dy = target_x, target_y
+    while dx or dy:
+        step_x, step_y = min(64, dx), min(64, dy)
+        move_mouse_relative(channel, step_x, step_y, delay=0.06)
+        dx -= step_x
+        dy -= step_y
+    time.sleep(0.8)
 
 
 
@@ -155,6 +179,26 @@ def main():
         time.sleep(1.0)
         screenshot(channel, prefix + ".filemanager-filter-cleared.ppm")
 
+        # Real PS/2 button integration: click the taskbar notification tile,
+        # require a large central-framebuffer change, then click again to
+        # dismiss. This never touches a disk action or file-list item.
+        # The pointer is anchored to the screen corner first: QMP's PS/2
+        # device has relative coordinates only, and earlier cursor positions
+        # are not a trustworthy basis for a click target.
+        frame_width, frame_height, _ = read_ppm(prefix + ".filemanager-after.ppm")
+        tray_width = 278 if frame_width >= 560 else 132
+        notification_x = frame_width - tray_width + 26
+        notification_y = frame_height - 22
+        move_mouse_to_from_corner(channel, notification_x, notification_y,
+                                  frame_width, frame_height)
+        screenshot(channel, prefix + ".notification-click-before.ppm")
+        click_mouse(channel)
+        time.sleep(1.2)
+        screenshot(channel, prefix + ".notification-click-open.ppm")
+        click_mouse(channel)
+        time.sleep(1.2)
+        screenshot(channel, prefix + ".notification-click-closed.ppm")
+
         # Alt+F4 must close the active File Manager and reveal the desktop.
         # This also exercises the real guest's global window shortcut path.
         send_keys(channel, "alt", "f4")
@@ -208,6 +252,22 @@ def main():
     if fraction > 0.10:
         raise RuntimeError("Escape did not restore the File Manager viewport; inspect PPMs")
 
+    # Compare at a stationary cursor location so moving the pointer alone
+    # cannot produce a false positive for a successful mouse click.
+    notification_before = read_ppm(prefix + ".notification-click-before.ppm")
+    notification_open = read_ppm(prefix + ".notification-click-open.ppm")
+    notification_closed = read_ppm(prefix + ".notification-click-closed.ppm")
+    changed, samples = difference(notification_before, notification_open)
+    fraction = changed / max(1, samples)
+    print(f"[GUI-QMP] notification-click-open: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
+    if fraction < 0.05:
+        raise RuntimeError("PS/2 click did not visibly open notification center; inspect PPMs")
+    changed, samples = difference(notification_before, notification_closed)
+    fraction = changed / max(1, samples)
+    print(f"[GUI-QMP] notification-click-closed: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
+    if fraction > 0.10:
+        raise RuntimeError("second PS/2 click did not restore File Manager viewport; inspect PPMs")
+
     # Closing a window should return to the same desktop, not another large
     # overlay. Small differences from the clock/toasts are tolerated.
     changed, samples = difference(before, closed)
@@ -215,7 +275,7 @@ def main():
     print(f"[GUI-QMP] desktop-restored: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
     if fraction > 0.10:
         raise RuntimeError("Alt+F4 did not restore the desktop; inspect PPMs")
-    print("[GUI-QMP] PASS real palette launch, filter/Escape restoration and Alt+F4 close changed the guest framebuffer; visual app identity requires inspection.")
+    print("[GUI-QMP] PASS real palette launch, filter/Escape, PS/2 notification clicks and Alt+F4 close changed the guest framebuffer; visual app identity requires inspection.")
 
 
 if __name__ == "__main__":
