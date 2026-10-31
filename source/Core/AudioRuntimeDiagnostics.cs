@@ -138,6 +138,28 @@ namespace ZonderqOS.SystemCore
         /// HDA. 1320 Hz distinguishes this QEMU capture from the other probes.
         /// No filesystem is opened or mounted.
         /// </summary>
+        /// <summary>
+        /// Distinct 3520 Hz PCM16 stereo WAV at 32 kHz, resampled by the
+        /// bounded read-only loader to 48 kHz and played via stock HDA.
+        /// No filesystem, host disk or production GUI is accessed.
+        /// </summary>
+        public static bool PlayWave32000TestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(32000, 3520, 250, 4096);
+                byte[] wave = AudioWavePcm.EncodeStereo16AtRate(source, 32000);
+                Console.WriteLine("[AUDIO] WAV 32000Hz input -> bounded read-only stream -> 48000Hz HDA");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV 32000 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
         public static bool PlayWave8TestTone()
         {
             try

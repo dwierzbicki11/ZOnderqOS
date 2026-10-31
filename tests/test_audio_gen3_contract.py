@@ -123,10 +123,14 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("public static byte[] EncodeMono16(byte[] pcm)", parser)
         self.assertIn("AudioWavePcm.EncodeMono16(mono)", runtime)
         self.assertIn("GenerateSquareStereo16(48000, 660, 250, 4096)", runtime)
-        self.assertIn('expected_hz=660 if args.command == "wavmono" else 880 if args.command == "wav44" else 1320 if args.command == "wav8" else 1760 if args.command == "wav24" else 2200 if args.command == "wav32" else 2640 if args.command == "wavext" else 3080 if args.command == "wavext20" else 440', harness)
+        self.assertIn('expected_hz=660 if args.command == "wavmono" else 880 if args.command == "wav44" else 3520 if args.command == "wav32k" else 1320 if args.command == "wav8" else 1760 if args.command == "wav24" else 2200 if args.command == "wav32" else 2640 if args.command == "wavext" else 3080 if args.command == "wavext20" else 440', harness)
         self.assertIn('if (command == "wav44")', kernel)
         self.assertIn("AudioWavePcm.EncodeStereo16AtRate(source, 44100)", runtime)
         self.assertIn("--command wav44", workflow)
+        self.assertIn("--command wav32k", workflow)
+        self.assertIn("PlayWave32000TestTone()", runtime)
+        self.assertIn('if (command == "wav32k")', kernel)
+        self.assertIn("audio-qemu-32000-out/*.wav", workflow)
         self.assertIn("AudioWavePcm.DecodeStereo16(wave)", runtime)
         self.assertIn('if (command == "wavmono")', kernel)
         self.assertIn("--command wavmono", workflow)
@@ -200,7 +204,7 @@ class AudioGen3Contract(unittest.TestCase):
             self.assertNotIn(forbidden, gain)
 
         self.assertIn("--command wavtone", workflow)
-        self.assertIn('choices=("tone", "wavtone", "wavmono", "wav44", "wav8", "wav24", "wav32", "wavext", "wavext20")', harness)
+        self.assertIn('choices=("tone", "wavtone", "wavmono", "wav44", "wav32k", "wav8", "wav24", "wav32", "wavext", "wavext20")', harness)
         for forbidden in ("System.IO", "File.", "Disk.", "TryMount(", "WriteBlock(",
                           "NetworkManager.", "PciSysfsProvider"):
             self.assertNotIn(forbidden, parser)

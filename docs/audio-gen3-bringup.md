@@ -243,3 +243,12 @@ PCM16 with the existing integer interpolation. The two-second output and
 length, channel phase, pitch, PCM8/24/32 conversion and rejection of 16 kHz.
 This is **not** yet proof of captured QEMU audio for either new source rate;
 production audio remains disabled and no guest disk is attached.
+
+### 32 kHz PCM16 WAV: isolated QEMU capture gate
+
+The new opt-in `wav32k` diagnostic creates a 3520 Hz stereo PCM16 WAV at
+32,000 Hz in guest RAM, passes it through the same bounded read-only stream
+loader and 48 kHz integer resampler, and submits the result to stock HDA.
+A separate diskless QEMU boot captures the backend WAV and checks both
+channels and pitch. This is **not verified** until the new workflow succeeds;
+no physical speakers, external WAV files or production GUI are involved.

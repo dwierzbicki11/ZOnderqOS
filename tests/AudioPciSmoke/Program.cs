@@ -771,7 +771,8 @@ static class Test
             using (var lowRateInput = new MemoryStream(lowRateWave, false))
             {
                 byte[] resampled = AudioWaveInput.DecodeBounded(lowRateInput);
-                Expect(resampled.Length == 48000, "low-rate WAV produces 250ms 48kHz stereo16");
+                int expectedFrames = (int)(((long)(sourceLowRate.Length / 4) * 48000 + inputRate - 1) / inputRate);
+                Expect(resampled.Length == expectedFrames * 4, "low-rate WAV preserves source frame duration after resampling");
                 int crossings = 0;
                 for (int frame = 1; frame < resampled.Length / 4; frame++)
                 {
