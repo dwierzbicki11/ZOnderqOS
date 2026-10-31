@@ -140,6 +140,13 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('NET3095-N[1-6]', SMOKE)
         self.assertIn('for (int attempt = 1; attempt <= 2; attempt++)', SOURCE)
         self.assertIn('HTTP_REPEAT=PASS', SOURCE)
+        self.assertIn('TrySendBurst(frame)', SOURCE)
+        self.assertIn('for (int sequence = 0; sequence < 32; sequence++)', SOURCE)
+        self.assertIn('TX_BURST_ATTEMPT=START count=32', SOURCE)
+        self.assertIn('TX_BURST=QUEUED count=32', SOURCE)
+        self.assertIn('verify_3095_network_n6_burst.py', SMOKE)
+        self.assertIn('No 32-frame ordered raw TX PCAP proof', SMOKE)
+
         self.assertIn('for attempt in range(1, 3):', HTTP_HOST)
         self.assertIn('else "REPEAT_PASS"', HTTP_HOST)
         self.assertIn('HTTP_REPEAT_PASS', HTTP_VALIDATOR)
