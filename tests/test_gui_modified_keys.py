@@ -132,6 +132,20 @@ class ModifiedKeySafetyTests(unittest.TestCase):
         self.assertLess(handler.index("int index = pointerIndex;"),
                         handler.index("entries[index].Action?.Invoke();"))
 
+    def test_start_menu_consumes_unhandled_keys_instead_of_ending_tasks(self):
+        text = source("source/GUI/StartMenu.cs")
+        handler = text.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "public void UpdateInteractions(", 1
+        )[0]
+        self.assertRegex(handler, r"if \(!Visible \|\| key == null\)\s*return false;")
+        self.assertIn("ConsoleKeyEx.NumEnter", handler)
+        enter = handler.split("if (key.Key == ConsoleKeyEx.Enter", 1)[1].split(
+            "for (int i = 0; i < pinnedButtons.Count; i++)", 1
+        )[0]
+        self.assertIn("if (key.Modifiers != 0)", enter)
+        self.assertIn("return true;", enter)
+        self.assertRegex(handler.rstrip(), r"return true;\s*}$")
+
     def test_modifier_policy_for_destructive_actions(self):
         # Independent model of the intended key predicate, not a runtime test.
         for ctrl in (False, True):
