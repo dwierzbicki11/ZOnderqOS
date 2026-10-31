@@ -223,6 +223,28 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
+        /// WAVE_FORMAT_EXTENSIBLE PCM16 stereo through the same bounded
+        /// read-only stream and stock HDA path. Unique 2640 Hz tone allows
+        /// an independent QEMU backend capture; no guest disk is attached.
+        /// </summary>
+        public static bool PlayWaveExtensibleTestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 2640, 250, 4096);
+                byte[] wave = AudioWavePcm.EncodeExtensibleStereo16AtRate(source, 48000);
+                Console.WriteLine("[AUDIO] WAV extensible PCM16 stereo -> 48000Hz HDA");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV EXTENSIBLE ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Caller owns the stream and is responsible for obtaining it from an
         /// explicitly authorized read-only source. No filesystem is opened here.
         /// The bounded loader rejects oversized, truncated and malformed WAVs.
