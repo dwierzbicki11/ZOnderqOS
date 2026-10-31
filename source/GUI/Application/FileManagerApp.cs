@@ -521,6 +521,15 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
+                // Escape clears an active filename filter before closing the
+                // entire file manager. Keep the user in the current folder.
+                if (searchText.Length > 0)
+                {
+                    searchText = "";
+                    Refresh();
+                    return;
+                }
+
                 Close();
                 return;
             }
