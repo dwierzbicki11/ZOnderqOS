@@ -118,6 +118,11 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("sourceChannels != 1 && sourceChannels != 2", parser)
         self.assertIn("dataSize > SampleRate * MaxDurationSeconds * sourceFrameBytes", parser)
         self.assertIn("byte[] upmixed = new byte[dataSize * 2]", parser)
+        self.assertIn("public static byte[] EncodeMono16(byte[] pcm)", parser)
+        self.assertIn("AudioWavePcm.EncodeMono16(mono)", runtime)
+        self.assertIn("AudioWavePcm.DecodeStereo16(wave)", runtime)
+        self.assertIn('if (command == "wavmono")', kernel)
+        self.assertIn("--command wavmono", workflow)
         self.assertIn("riffEnd != wave.Length", parser)
         self.assertIn("size % FrameBytes != 0", parser)
         self.assertIn("rate != SampleRate", parser)
@@ -137,7 +142,7 @@ class AudioGen3Contract(unittest.TestCase):
             self.assertNotIn(forbidden, gain)
 
         self.assertIn("--command wavtone", workflow)
-        self.assertIn('choices=("tone", "wavtone")', harness)
+        self.assertIn('choices=("tone", "wavtone", "wavmono")', harness)
         for forbidden in ("System.IO", "File.", "Disk.", "TryMount(", "WriteBlock(",
                           "NetworkManager.", "PciSysfsProvider"):
             self.assertNotIn(forbidden, parser)
