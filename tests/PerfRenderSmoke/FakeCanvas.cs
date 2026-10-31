@@ -19,6 +19,13 @@ namespace Cosmos.Kernel.System.Graphics
             pixels = new int[checked(width * height)];
         }
 
+        public void DrawPoint(Color color, int x, int y)
+        {
+            DrawCalls++;
+            if (x >= 0 && y >= 0 && x < Width && y < Height)
+                pixels[y * Width + x] = color.ToArgb();
+        }
+
         public void DrawFilledRectangle(Color color, int x, int y, int width, int height)
         {
             DrawCalls++;

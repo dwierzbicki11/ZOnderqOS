@@ -9,5 +9,8 @@
     <!-- Compile the actual production renderer, not a copied implementation. -->
     <Compile Include="../../source/GUI/SmallTextRenderer.cs" Link="SmallTextRenderer.cs" />
     <Compile Include="../../source/GUI/UiPainter.cs" Link="UiPainter.cs" />
+    <Compile Include="../../source/GUI/Icons/IconManager.cs" Link="IconManager.cs" />
+    <Compile Include="../../source/GUI/Icons/IconType.cs" Link="IconType.cs" />
+    <Compile Include="../../source/GUI/Icons/IconResources.cs" Link="IconResources.cs" />
   </ItemGroup>
 </Project>

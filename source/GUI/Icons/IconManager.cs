@@ -200,13 +200,39 @@ namespace ZonderqOS.GUI.Icons
             {
                 int row = py * width;
                 int destinationY = y + py;
-                for (int px = startX; px < endX; px++)
+                for (int px = startX; px < endX;)
                 {
                     int argb = pixels[row + px];
-                    if (((uint)argb >> 24) == 0)
+                    uint alpha = (uint)argb >> 24;
+                    if (alpha == 0)
+                    {
+                        px++;
                         continue;
+                    }
+
+                    // Solid opaque PNG rows frequently contain repeated colors.
+                    // Coalesce runs of >= 3 identical pixels into one Canvas call.
+                    // Preserve DrawPoint for partially transparent pixels: the
+                    // Cosmos Canvas implementations may treat filled rectangles
+                    // differently from points when alpha is not 255.
+                    if (alpha == 255)
+                    {
+                        int end = px + 1;
+                        while (end < endX && pixels[row + end] == argb)
+                            end++;
+
+                        Color ink = Color.FromArgb(argb);
+                        if (end - px >= 3)
+                            canvas.DrawFilledRectangle(ink, x + px, destinationY, end - px, 1);
+                        else
+                            for (int col = px; col < end; col++)
+                                canvas.DrawPoint(ink, x + col, destinationY);
+                        px = end;
+                        continue;
+                    }
 
                     canvas.DrawPoint(Color.FromArgb(argb), x + px, destinationY);
+                    px++;
                 }
             }
         }
