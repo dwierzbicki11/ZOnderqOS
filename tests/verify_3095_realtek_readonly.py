@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Validate a REAL laptop serial log from the opt-in RTL810xE MMIO probe.
 
-A passing log establishes a seven-byte register snapshot reported by the
+A passing log establishes an eleven-byte register snapshot reported by the
 DriverKit probe, not TX/RX, DMA, IRQ, DHCP or network functionality.
 --self-test only checks parser logic using synthetic strings.
 """
