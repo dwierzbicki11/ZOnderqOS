@@ -41,6 +41,17 @@ namespace ZonderqOS.Drivers
             return ProbeResult.Declined(reason);
         }
 
+        private static ulong ReadRegisterBarPair(PciAccess pci)
+        {
+            // Read conventional PCI BAR2/BAR3 as four 16-bit config reads.
+            // No BAR sizing write and no change to PCI command bits.
+            uint bar2 = (uint)pci.ReadConfig16(0x18) |
+                ((uint)pci.ReadConfig16(0x1A) << 16);
+            uint bar3 = (uint)pci.ReadConfig16(0x1C) |
+                ((uint)pci.ReadConfig16(0x1E) << 16);
+            return (ulong)bar2 | ((ulong)bar3 << 32);
+        }
+
         public override ProbeResult Probe(DeviceBinding binding)
         {
             ProbeOffers++;
@@ -77,6 +88,10 @@ namespace ZonderqOS.Drivers
                 PciBar bar = pci.Bars[RegisterBar];
                 if (!bar.IsAssigned || bar.IsIo || bar.Length < MinimumRegisterBytes)
                     return Decline("BAR2 is not an assigned MMIO window of at least 0x6D bytes");
+                ulong barPairBefore = ReadRegisterBarPair(pci);
+                if (!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
+                        barPairBefore, barPairBefore))
+                    return Decline("BAR2 is not a supported PCI MMIO BAR; no MMIO reads");
 
                 RegisterWindow window = binding.MapRegisters(RegisterBar);
                 if (window.Length < MinimumRegisterBytes)
@@ -99,6 +114,9 @@ namespace ZonderqOS.Drivers
                     return Decline("PCI memory decoding disabled after sampling; no link proof");
                 if (pm != 0 && (pci.ReadConfig16((ushort)(pm + 4)) & 0x0003) != 0)
                     return Decline("PCI power state changed after sampling; no link proof");
+                if (!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
+                        barPairBefore, ReadRegisterBarPair(pci)))
+                    return Decline("BAR2/BAR3 changed or became invalid after sampling; no link proof");
 
                 binding.Log("[NET3095-RTL810XE] MMIO_SNAPSHOT=READ mac=" +
                     snapshot.MacAddress + " link=" + (snapshot.Carrier ? "up" : "down") +
