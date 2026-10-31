@@ -95,20 +95,35 @@ def main():
         time.sleep(6)
         screenshot(channel, prefix + ".filemanager-after.ppm")
 
+        # Alt+F4 must close the active File Manager and reveal the desktop.
+        # This also exercises the real guest's global window shortcut path.
+        send_keys(channel, "alt", "f4")
+        time.sleep(2)
+        screenshot(channel, prefix + ".filemanager-closed.ppm")
+
     before = read_ppm(prefix + ".filemanager-before.ppm")
     palette = read_ppm(prefix + ".filemanager-palette.ppm")
     after = read_ppm(prefix + ".filemanager-after.ppm")
+    closed = read_ppm(prefix + ".filemanager-closed.ppm")
     for label, first, second in (
         ("palette-open", before, palette),
         ("app-vs-desktop", before, after),
         ("app-vs-palette", palette, after),
+        ("app-closed", after, closed),
     ):
         changed, samples = difference(first, second)
         fraction = changed / max(1, samples)
         print(f"[GUI-QMP] {label}: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
         if fraction < 0.12:
             raise RuntimeError(label + ": insufficient framebuffer change; inspect PPMs")
-    print("[GUI-QMP] PASS significant framebuffer changes after real QMP keyboard actions; visual app identity requires inspection.")
+    # Closing a window should return to the same desktop, not another large
+    # overlay. Small differences from the clock/toasts are tolerated.
+    changed, samples = difference(before, closed)
+    fraction = changed / max(1, samples)
+    print(f"[GUI-QMP] desktop-restored: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
+    if fraction > 0.10:
+        raise RuntimeError("Alt+F4 did not restore the desktop; inspect PPMs")
+    print("[GUI-QMP] PASS real palette launch and Alt+F4 close changed the guest framebuffer; visual app identity requires inspection.")
 
 
 if __name__ == "__main__":
