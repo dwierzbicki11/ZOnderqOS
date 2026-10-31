@@ -247,6 +247,15 @@ def self_test() -> None:
         fake_http(False, 0x10, 30001 + len(REQUEST), 40002 + len(RESPONSE), client_port=49154),
     ]
     second_frames = second_handshake + second_request + second_response + second_teardown
+    # An old/stale DMA buffer containing the first HTTP response must never
+    # count as a valid second RX session even when the TCP tuple is correct.
+    stale_second_response = [
+        fake_http(True, 0x18, 40001 + start, 30001 + len(REQUEST),
+                  RESPONSE[start:end], client_port=49154)
+        for start, end in zip(cuts, cuts[1:])
+    ]
+    stale_second_frames = (second_handshake + second_request +
+                           stale_second_response + second_teardown)
     serial = "\n".join([
         "[NET3095-N1] BOOT", "[NET3095-N1] discovered=1",
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
@@ -258,6 +267,13 @@ def self_test() -> None:
     ])
     frames = base + handshake + request + response + teardown + second_frames
     assert "PASS" in validate(serial, synthetic_capture(frames))
+    try:
+        validate(serial, synthetic_capture(
+            base + handshake + request + response + teardown + stale_second_frames))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted stale first-response DMA bytes as second HTTP RX")
     # A complete one- or two-packet response cannot satisfy the large RX
     # segmentation proof, even when the payload bytes are otherwise valid.
     for insufficient in (single_response, two_response):
