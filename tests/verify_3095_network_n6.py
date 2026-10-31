@@ -29,13 +29,16 @@ GUEST = bytes([10, 0, 2, 15])
 
 
 def stream_payload(packets, first: int, guest: bytes, client_port: int,
-                   direction: str, seq: int, ack: int, expected: bytes):
+                   direction: str, seq: int, ack: int, expected: bytes,
+                   min_segments: int = 1):
     """Match contiguous TCP payload bytes; permit small multi-segment responses.
 
     No packet with an unrelated port, MAC, TCP sequence or acknowledgment can
     satisfy the expected application payload. Pure ACKs may be interleaved.
+    N6 additionally requires two distinct accepted server payload segments.
     """
     collected = bytearray()
+    segments = 0
     for i in range(first, len(packets)):
         p = packets[i]
         client = direction == "client"
@@ -55,8 +58,9 @@ def stream_payload(packets, first: int, guest: bytes, client_port: int,
         if not expected.startswith(bytes(collected) + payload):
             continue
         collected.extend(payload)
+        segments += 1
         if bytes(collected) == expected:
-            return i + 1
+            return i + 1 if segments >= min_segments else None
     return None
 
 
@@ -146,7 +150,7 @@ def validate(serial: str, pcap: bytes) -> str:
                 end_response = stream_payload(
                     packets, end_request, guest, client_port, "server",
                     server_seq, (client_seq + len(REQUEST)) & 0xFFFFFFFF,
-                    RESPONSE)
+                    RESPONSE, min_segments=2)
                 if end_response is not None and server_fin_acked(
                         packets, end_response, guest, client_port,
                         client_seq, server_seq):
@@ -180,7 +184,12 @@ def self_test() -> None:
         fake_http(False, 0x10, 10001, 20001),
     ]
     request = [fake_http(False, 0x18, 10001, 20001, REQUEST)]
-    response = [fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE)]
+    split = RESPONSE.index(b"\r\n\r\n") + 4
+    response = [
+        fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE[:split]),
+        fake_http(True, 0x18, 20001 + split, 10001 + len(REQUEST), RESPONSE[split:]),
+    ]
+    single_response = [fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE)]
     teardown = [
         fake_http(True, 0x11, 20001 + len(RESPONSE), 10001 + len(REQUEST)),
         fake_http(False, 0x10, 10001 + len(REQUEST), 20002 + len(RESPONSE)),
@@ -196,12 +205,14 @@ def self_test() -> None:
     ])
     frames = base + handshake + request + response + teardown
     assert "PASS" in validate(serial, synthetic_capture(frames))
-    split = len(RESPONSE) // 2
-    segmented = base + handshake + request + [
-        fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE[:split]),
-        fake_http(True, 0x18, 20001 + split, 10001 + len(REQUEST), RESPONSE[split:]),
-    ] + teardown
-    assert "PASS" in validate(serial, synthetic_capture(segmented))
+    # A complete single-packet response is insufficient evidence for
+    # the new multi-segment E1000E RX/TCP reassembly gate.
+    try:
+        validate(serial, synthetic_capture(base + handshake + request + single_response + teardown))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted an unsplit HTTP response")
     half = len(REQUEST) // 2
     split_request = base + handshake + [
         fake_http(False, 0x18, 10001, 20001, REQUEST[:half]),
@@ -216,6 +227,7 @@ def self_test() -> None:
         (serial.replace(HTTP_START, "").replace(DNS_PASS, HTTP_START + "\n" + DNS_PASS), frames),
         (serial, base + handshake + request),
         (serial, base + handshake + request + response),  # no TCP teardown
+        (serial, base + handshake + request + response[:1] + teardown),  # truncated RX
         (serial, base + handshake + request + response + teardown[:1]),  # FIN without guest ACK
         (serial, base + handshake + request + response + [
             fake_http(True, 0x11, 20002 + len(RESPONSE), 10001 + len(REQUEST)),
@@ -229,7 +241,10 @@ def self_test() -> None:
         (serial, base + handshake + [fake_http(False, 0x18, 10002, 20001, REQUEST)] + response),
         (serial, base + handshake + request + [fake_http(True, 0x18, 20002, 10001 + len(REQUEST), RESPONSE)]),
         (serial, base + handshake + request + [fake_http(True, 0x18, 20001, 10002 + len(REQUEST), RESPONSE)]),
-        (serial, base + handshake + request + [fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE.replace(b"200 OK", b"404 No"))]),
+        (serial, base + handshake + request + [
+            fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE[:split].replace(b"200 OK", b"404 No")),
+            response[1],
+        ] + teardown),
         (serial, base + handshake + request + [fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE, port=18097)]),
         (serial, base + handshake + [fake_http(False, 0x18, 10001, 20001, REQUEST.replace(b"/health", b"/healthz"))] + response),
     ]

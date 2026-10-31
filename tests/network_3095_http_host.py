@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import socket
 import sys
+import time
 
 PORT = 18096
 REQUEST = b"GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n\r\n"
@@ -38,8 +39,15 @@ def serve(port: int = PORT) -> None:
                 request.extend(chunk)
             if bytes(request) != REQUEST:
                 raise ValueError(f"unexpected HTTP request length={len(request)}")
-            connection.sendall(RESPONSE)
-            print("[NET3095-N6-HOST] PASS HTTP/1.0 GET /health 200", flush=True)
+            # Exercise guest TCP RX reassembly across the HTTP header/body
+            # boundary. The delay and TCP_NODELAY prevent Nagle coalescing
+            # in this loopback-only fixture; PCAP must prove two RX segments.
+            connection.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            boundary = RESPONSE.index(b"\r\n\r\n") + 4
+            connection.sendall(RESPONSE[:boundary])
+            time.sleep(0.2)
+            connection.sendall(RESPONSE[boundary:])
+            print("[NET3095-N6-HOST] PASS HTTP/1.0 GET /health 200 split=2", flush=True)
 
 
 def self_test() -> None:
@@ -84,7 +92,7 @@ def self_test() -> None:
         worker.join(timeout=5)
         if worker.is_alive() or errors:
             raise AssertionError(f"HTTP server failed on attempt {attempt + 1}: {errors}")
-    print("[NET3095-N6-HOST-CONTRACT] PASS real loopback HTTP/1.0 and sequential rebind")
+    print("[NET3095-N6-HOST-CONTRACT] PASS real loopback HTTP/1.0 split header/body and sequential rebind")
 
 
 if __name__ == "__main__":
