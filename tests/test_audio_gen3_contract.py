@@ -54,6 +54,24 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn('if (command == "audiodiag")', kernel)
         self.assertIn("AudioPciDiagnostics.PrintReport(false)", kernel)
 
+    def test_builder_and_qemu_keep_guest_diskless(self):
+        builder = read("tools/build-cosmos-3095-local.sh")
+        launcher = read("run.sh")
+        self.assertIn("disk|probe|audio)", builder)
+        self.assertIn("audio_probe=true", builder)
+        self.assertIn("read_only=true", builder)
+        self.assertIn('ZonderqInputDiagnosticBoot="$diagnostic"', builder)
+        self.assertIn('ZonderqAudioProbe="$audio_probe"', builder)
+        self.assertIn('output_file="ZonderqOS-3095-audio.iso"', builder)
+        self.assertIn("--build-audio", launcher)
+        self.assertIn("--qemu-audio", launcher)
+        self.assertIn("-nic none", launcher)
+        self.assertIn("-device intel-hda -device hda-duplex,audiodev=audio0", launcher)
+        self.assertIn("verify-audio-wav-capture.py", launcher)
+        audio_section = launcher.split("  --qemu-audio)", 1)[1].split("  --qemu)", 1)[0]
+        self.assertNotIn("-drive ", audio_section)
+        self.assertNotIn("ZONDERQDATA", audio_section)
+
     def test_real_pcm_path_is_opt_in_only(self):
         runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
         kernel = read("Kernel.cs")
