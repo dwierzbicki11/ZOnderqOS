@@ -21,7 +21,7 @@ from verify_3095_network_n4 import (
 from verify_3095_network_n5 import (
     DNS_START, DNS_PASS, fake_arp, fake_dns, validate as validate_n5,
 )
-from network_3095_http_host import PORT, REQUEST, RESPONSE
+from network_3095_http_host import PORT, REQUEST, RESPONSE, response_for_attempt
 
 HTTP_START = "[NET3095-N6] HTTP_ATTEMPT=START"
 HTTP_PASS = f"[NET3095-N6] HTTP=PASS from=10.0.2.2 port={PORT} bytes={len(RESPONSE)}"
@@ -102,7 +102,8 @@ def server_fin_acked(packets, first: int, guest: bytes,
     return None
 
 
-def find_http_transaction(packets, guest: bytes, first: int, excluded_port: int | None):
+def find_http_transaction(packets, guest: bytes, first: int, excluded_port: int | None,
+                          attempt: int = 1):
     """Require an entire HTTP stream and peer FIN/ACK for one TCP connection."""
     for i in range(first, len(packets)):
         syn = packets[i]
@@ -149,7 +150,7 @@ def find_http_transaction(packets, guest: bytes, first: int, excluded_port: int 
                 end_response = stream_payload(
                     packets, end_request, guest, client_port, "server",
                     server_seq, (client_seq + len(REQUEST)) & 0xFFFFFFFF,
-                    RESPONSE, server_mac, min_segments=3)
+                    response_for_attempt(attempt), server_mac, min_segments=3)
                 if end_response is not None:
                     fin_ack_index = server_fin_acked(
                         packets, end_response, guest, client_port,
@@ -178,7 +179,7 @@ def validate(serial: str, pcap: bytes) -> str:
     first = find_http_transaction(packets, guest, 0, None)
     if first is None:
         raise ValueError("first HTTP TCP exchange incomplete")
-    second = find_http_transaction(packets, guest, first[1] + 1, first[0])
+    second = find_http_transaction(packets, guest, first[1] + 1, first[0], attempt=2)
     if second is None:
         raise ValueError("second independent HTTP TCP exchange incomplete")
     return "[NET3095-N6-GATE] PASS two real QEMU HTTP/1.0 TCP exchanges with RX/TX and FIN/ACK teardown"
@@ -238,7 +239,7 @@ def self_test() -> None:
     second_request = [fake_http(False, 0x18, 30001, 40001, REQUEST, client_port=49154)]
     second_response = [
         fake_http(True, 0x18, 40001 + start, 30001 + len(REQUEST),
-                  RESPONSE[start:end], client_port=49154)
+                  response_for_attempt(2)[start:end], client_port=49154)
         for start, end in zip(cuts, cuts[1:])
     ]
     second_teardown = [
