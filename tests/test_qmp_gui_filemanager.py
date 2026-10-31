@@ -51,6 +51,25 @@ class FramebufferProbeTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 PROBE.read_ppm(str(path))
 
+    def test_restored_desktop_diff_is_small(self):
+        width, height = 80, 64
+        desktop = bytes(width * height * 3)
+        # The application fills the center; closing it must restore desktop.
+        app = bytes([255]) * (width * height * 3)
+        changed, samples = PROBE.difference(
+            (width, height, app), (width, height, desktop))
+        self.assertGreater(changed / samples, 0.12)
+        changed, samples = PROBE.difference(
+            (width, height, desktop), (width, height, desktop))
+        self.assertLessEqual(changed / samples, 0.10)
+
+    def test_alt_f4_close_probe_is_wired(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('send_keys(channel, "alt", "f4")', source)
+        self.assertIn('".filemanager-closed.ppm"', source)
+        self.assertIn('("app-closed", after, closed)', source)
+        self.assertIn('if fraction > 0.10:', source)
+
     def test_changed_framebuffer_dimensions_are_rejected(self):
         with self.assertRaises(ValueError):
             PROBE.difference((80, 64, bytes(80 * 64 * 3)),
