@@ -72,6 +72,7 @@ jobs:
           python3 zonderq/tests/verify_3095_network_n4.py --self-test
           python3 zonderq/tests/verify_3095_network_n5.py --self-test
           python3 zonderq/tests/verify_3095_network_n6.py --self-test
+          python3 zonderq/tests/verify_3095_network_n6_burst.py --self-test
           python3 zonderq/tests/verify_3095_network_heartbeat.py --self-test
           python3 zonderq/tests/verify_3095_e1000e_irq_trace.py --self-test
           python3 zonderq/tests/verify_3095_e1000e_irq_binding.py --self-test
