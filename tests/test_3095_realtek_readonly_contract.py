@@ -10,6 +10,7 @@ KERNEL = (ROOT / "source/Core/NetworkRealtekReadOnlyKernel.cs").read_text()
 BUILD = (ROOT / "tools/build-cosmos-3095-local.sh").read_text()
 SAMPLER = (ROOT / "source/Hardware/Realtek810xERegisterSnapshot.cs").read_text()
 SMOKE = (ROOT / "tests/PciMetadataSmoke/Program.cs").read_text()
+NEGATIVE_QEMU = (ROOT / "tools/smoke-network-rtl-negative-3095-qemu.sh").read_text()
 
 
 class RealtekReadOnlyIsolation(unittest.TestCase):
@@ -29,6 +30,9 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
         self.assertIn("RTL810xE screen output requires the isolated read-only MMIO probe", PROJECT)
         self.assertIn("<ZonderqRealtekScreen Condition=", PROJECT)
         self.assertIn("network-rtl-screen)", BUILD)
+        self.assertIn("-nic none", NEGATIVE_QEMU)
+        self.assertIn("offers=0 samples=0 reason=no matching PCI probe offer", NEGATIVE_QEMU)
+        self.assertIn("NOT physical RTL or screen proof", NEGATIVE_QEMU)
         self.assertIn('realtek_screen=true', BUILD)
         self.assertIn('-p:ZonderqRealtekScreen="$realtek_screen"', BUILD)
         self.assertIn("RTL810xE MMIO probe is x64-only", PROJECT)
