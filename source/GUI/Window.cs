@@ -25,7 +25,17 @@ namespace ZonderqOS.GUI
                     return;
                 isActive = value;
                 if (!value)
+                {
+                    // A release can be delivered to a different window after
+                    // focus switches. Do not resume an old drag/resize when
+                    // this window is activated again.
                     lastTitleClickTimestamp = 0;
+                    dragging = false;
+                    resizing = false;
+                    resizeMode = 0;
+                    hoveredResizeMode = 0;
+                    hoveredControl = 0;
+                }
                 UiAnimator.RequestFrames();
             }
         }
