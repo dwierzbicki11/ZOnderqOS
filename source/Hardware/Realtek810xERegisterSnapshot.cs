@@ -81,4 +81,44 @@ namespace ZonderqOS.Hardware
             return true;
         }
     }
+    /// <summary>
+    /// A bounded, read-only view of an ALREADY mapped RTL810xE register window.
+    /// Implementations must not write PCI config, enable DMA or change IRQ masks.
+    /// </summary>
+    public interface IRealtek810xEByteReader
+    {
+        byte Read8(ushort offset);
+    }
+
+    /// <summary>
+    /// Read precisely IDR0..IDR5 and PHYstatus (seven byte reads) from a
+    /// caller-validated register window. Does not discover/map hardware.
+    /// The caller must check PCI identity, D0, memory decoding and BAR aperture.
+    /// </summary>
+    public static class Realtek810xERegisterSampler
+    {
+        public static bool TrySample(IRealtek810xEByteReader registers,
+            out Realtek810xERegisterSnapshot snapshot)
+        {
+            snapshot = default;
+            if (registers == null) return false;
+
+            byte[] mac = new byte[6];
+            byte phy;
+            try
+            {
+                for (ushort i = 0; i < 6; i++)
+                    mac[i] = registers.Read8((ushort)(Realtek810xERegisterDecoder.StationAddressOffset + i));
+                phy = registers.Read8(Realtek810xERegisterDecoder.PhyStatusOffset);
+            }
+            catch (Exception)
+            {
+                // A read error must never be misreported as a valid MAC/link.
+                return false;
+            }
+
+            return Realtek810xERegisterDecoder.TryDecode(mac, phy, out snapshot);
+        }
+    }
+
 }
