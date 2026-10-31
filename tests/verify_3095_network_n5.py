@@ -118,7 +118,7 @@ def dns_packet(data: bytes):
 
 def arp_frame(frame: bytes):
     """Decode an Ethernet/IPv4 ARP frame without trusting padding."""
-    if len(frame) < 42 or frame[12:14] != b"\\x08\\x06":
+    if len(frame) < 42 or frame[12:14] != b"\x08\x06":
         return None
     htype, ptype, hlen, plen, opcode = struct.unpack_from(">HHBBH", frame, 14)
     if (htype, ptype, hlen, plen) != (1, 0x0800, 6, 4) or opcode not in (1, 2):
@@ -136,8 +136,8 @@ def verify_arp_for_dns(frames: list[bytes], guest: bytes) -> int:
     Returns the reply's capture index; the DNS exchange must follow it.
     Synthetic fixtures test the parser, not real NIC operation.
     """
-    broadcast = b"\\xff" * 6
-    zero_mac = b"\\x00" * 6
+    broadcast = b"\xff" * 6
+    zero_mac = b"\x00" * 6
     for i, frame in enumerate(frames):
         req = arp_frame(frame)
         if req is None or not (
@@ -217,7 +217,7 @@ def fake_arp(reply: bool, sender_ip: bytes | None = None,
     spa = sender_ip if sender_ip is not None else (DNS_SERVER if reply else guest)
     tpa = target_ip if target_ip is not None else (guest if reply else DNS_SERVER)
     dst = MAC if reply else bytes([255] * 6)
-    packet = (dst + sha + b"\\x08\\x06" +
+    packet = (dst + sha + b"\x08\x06" +
               struct.pack(">HHBBH", 1, 0x0800, 6, 4, 2 if reply else 1) +
               sha + spa + tha + tpa)
     return packet + bytes(max(0, 60 - len(packet)))
@@ -281,7 +281,7 @@ def self_test() -> None:
         (serial, frames[:-4] + [fake_arp(True), fake_arp(False)] + frames[-2:]),
         (serial, frames[:-3] + [fake_arp(True, sender_ip=bytes([10, 0, 2, 4]))] + frames[-2:]),
         (serial, frames[:-3] + [fake_arp(True, target_ip=bytes([10, 0, 2, 16]))] + frames[-2:]),
-        (serial, frames[:-3] + [fake_arp(True, sender_mac=b"\\x01\\x02\\x03\\x04\\x05\\x06")] + frames[-2:]),
+        (serial, frames[:-3] + [fake_arp(True, sender_mac=b"\x01\x02\x03\x04\x05\x06")] + frames[-2:]),
         (serial, frames[:-1]),
         (serial, frames[:-2] + [frames[-1], frames[-2]]),
         (serial, frames[:-1] + [fake_dns(True, txid=0x3096)]),
