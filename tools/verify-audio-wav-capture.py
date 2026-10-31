@@ -42,7 +42,7 @@ def inspect(path: Path):
     for i in range(0, len(left) - window_frames + 1, max(1, rate // 200)):
         chunk = left[i:i + window_frames]
         active = sum(abs(x) >= 256 for x in chunk)
-        if active * 100 >= len(chunk) * 80:
+        if active * 100 >= len(chunk) * 95:
             start = i
             break
     if start is None:
