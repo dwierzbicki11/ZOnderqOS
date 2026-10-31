@@ -43,10 +43,12 @@ namespace ZonderqOS.GUI
 
         // At low resolutions the full NET/VOL tray would cover the Start
         // button and leave no slots for open windows. Keep notifications and
-        // the clock, but collapse the optional status tiles.
+        // the clock, but collapse optional status tiles when space is tight
+        // or the user has disabled them in settings.
         private int GetTrayWidth()
         {
-            return Width < 560 ? CompactTrayWidth : TrayWidth;
+            return Width < 560 || !global::ZonderqOS.SystemSettings.ShowTrayStatus
+                ? CompactTrayWidth : TrayWidth;
         }
 
         public Taskbar(int screenWidth, int screenHeight, int height, Action onStartClick, ApplicationManager manager)
