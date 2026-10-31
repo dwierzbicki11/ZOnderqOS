@@ -55,7 +55,8 @@ internal static class Program
         Verify("Printable ASCII 32..126", ascii, false);
         Verify("Polish glyph normalization", "Zażółć gęślą jaźń", false);
         Verify("Signed integer minimum", "-9223372036854775808", true);
-        Console.WriteLine("PASS: actual production C# SmallTextRenderer tested with stub Canvas; not QEMU.");
+        RoundedPanelSmoke.Verify();
+        Console.WriteLine("PASS: production C# text/panel renderers tested with stub Canvas; not QEMU.");
         return 0;
     }
 }

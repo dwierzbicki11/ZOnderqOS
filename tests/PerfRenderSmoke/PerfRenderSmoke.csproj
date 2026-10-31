@@ -8,5 +8,6 @@
   <ItemGroup>
     <!-- Compile the actual production renderer, not a copied implementation. -->
     <Compile Include="../../source/GUI/SmallTextRenderer.cs" Link="SmallTextRenderer.cs" />
+    <Compile Include="../../source/GUI/UiPainter.cs" Link="UiPainter.cs" />
   </ItemGroup>
 </Project>
