@@ -30,6 +30,9 @@ audiodiag
 audioinfo
 tone
 wavtone
+volume 25
+tone
+volume 100
 ```
 
 `audiodiag` reports PCI configuration-space discovery only. `audioinfo` should list the output `hda` from `HdAudioDriver` if it bound successfully. `tone` submits a 250 ms, 440 Hz, 48 kHz, signed 16-bit stereo square wave through `AudioManager.Play` and reports `ACCEPTED_AND_DRAINED` only if the stock audio player returned true. This is **not** proof that any human heard sound.
@@ -51,6 +54,18 @@ for `wavtone`, each with a fresh QEMU process and a separate WAV capture.
 Both must pass the non-silent pitch validator. The WAV fixture is generated
 in memory; this does not prove arbitrary external WAV files work.
 
+The diagnostic console also accepts `volume N` for integer `N` from
+0 to 100 (default 100). This applies **software gain** to a fresh PCM copy
+before submitting frames to `AudioManager`. It does not modify physical
+HDA codec volume registers or change a production system setting. `volume`
+without arguments prints the current percentage. The C# host smoke verifies
+25% scaling, mute, 100% bit-exactness, invalid inputs and source immutability.
+
+The QEMU workflow performs a **third independent boot** with `volume 25`
+and `tone`, then compares the actual backend WAV peak against the normal
+100% capture. A PASS requires a ratio near 0.25, not just a serial message.
+This verifies software PCM gain in the emulator, not perceived loudness.
+
 After stopping QEMU and allowing it to close the WAV header, check the actual samples:
 
 ```bash
@@ -67,6 +82,6 @@ The QEMU WAV backend and `hda-duplex,audiodev=audio0` device syntax are document
 2. **Host C#:** `dotnet run --project tests/AudioPciSmoke/AudioPciSmoke.csproj -c Release` compiles the *real* inventory class with a fake PCI provider and exercises classification and failure handling. This does not touch hardware.
 3. **Synthetic WAV:** `python3 tests/test_audio_wav_validator.py` tests the WAV validator with generated 440 Hz, silence, wrong pitch, short and unsupported-format fixtures.
 4. **Real ISO/QEMU:** compile and boot the audio ISO, inspect serial and screen output, run `tone`, and verify QEMU's actual captured WAV. Do not claim this tier passed from host tests alone.
-5. **Next:** verify the separate `wavtone` QEMU capture, then add guarded read-only external WAV access and explicit sample scaling/volume tests. Physical codec/output and GUI sounds remain later milestones; production audio stays off.
+5. **Next:** verify all three new QEMU captures (direct PCM, decoded in-RAM WAV, 25% gain), then consider guarded read-only external WAV access. Physical codec/output and GUI sounds remain later milestones; production audio stays off.
 
 Do not enable AC97, SMP/SMT or network in this audio branch. Never use a real host disk as a test target.
