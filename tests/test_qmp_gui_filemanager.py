@@ -81,7 +81,7 @@ class FramebufferProbeTests(unittest.TestCase):
         for y in range(35, 125):
             for x in range(35, 155):
                 pos = (y * width + x) * 3
-                overlay[pos:pos + 3] = b"\\xff\\xff\\xff"
+                overlay[pos:pos + 3] = bytes((255, 255, 255))
         menu = (width, height, bytes(overlay))
         region = (40, 40, 150, 120)
         opened = PROBE.changed_pixels_in_region(blank, menu, *region)
