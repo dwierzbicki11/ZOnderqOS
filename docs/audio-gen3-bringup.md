@@ -118,7 +118,7 @@ Do not enable AC97, SMP/SMT or network in this audio branch. Never use a real ho
 
 The opt-in decoder also accepts unsigned PCM8 mono/stereo at 44.1/48 kHz and converts to signed 48 kHz stereo PCM16. The `wav8` RAM-only diagnostic generates a distinct 1320 Hz mono PCM8 tone and sends it through the existing bounded read-only stream loader and stock HDA output. The dedicated QEMU gate requires a real captured WAV at approximately 1320 Hz; host C# tests additionally cover odd-sized RIFF data padding and malformed headers. This is **not** playback from FAT32, physical speaker confirmation or ISR evidence. Production audio remains disabled.
 
-### Signed PCM24 WAV (isolated diagnostic, verification pending)
+### Signed PCM24 WAV (isolated diagnostic, QEMU capture verified)
 
 The bounded decoder now also accepts signed **24-bit little-endian PCM** at
 44.1/48 kHz, mono or stereo. It converts to 48 kHz stereo PCM16 using the
@@ -135,6 +135,9 @@ and submits decoded PCM16 stereo to the existing stock HDA playback path.
 The eighth independent QEMU boot captures actual output to WAV and checks
 for 1760 Hz on both channels. Host C# tests additionally cover PCM24 signed
 extremes, 48 kHz mono/stereo, 44.1 kHz resampling, odd RIFF padding and
-the exact two-second input bound. **Do not claim this new QEMU path passed
-until the new workflow finishes successfully.** This does not enable
+the exact two-second input bound. [Real QEMU HDA capture #41242893468](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41242893468)
+**passed all eight independent boots**, including signed PCM24 `wav24` with
+measured 1705.8 Hz (1760 Hz requested), 44.1 kHz stereo16 WAV backend,
+peak 2908. Host-side [C# and Python #41242893436](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41242893436)
+passed 768,125 C# assertions and 33 Python tests. This does not enable
 external FAT32 playback, physical audio, or production GUI sound.
