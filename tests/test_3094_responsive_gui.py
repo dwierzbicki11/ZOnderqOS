@@ -2228,5 +2228,58 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
             if screen_height >= 600:
                 self.assertEqual(rows, 6)
 
+    def test_file_manager_grid_hit_test_stays_inside_painted_tiles(self):
+        # The hit-test must use the same grid geometry as the renderer,
+        # including the 320x240 firmware fallback (desktop < 220px).
+        hit = FILE_MANAGER.split("private int HitEntryIndex(int x, int y)", 1)[1].split(
+            "private bool ContextClick(", 1)[0]
+        self.assertIn("relativeX >= GridWidthForView", hit)
+        self.assertIn("relativeY >= GridHeightForView", hit)
+        self.assertLess(hit.index("relativeY >= GridHeightForView"),
+                        hit.index("int col = relativeX / strideX;"))
+        self.assertIn("int gridW = app.GridWidthForView;", FILE_MANAGER)
+        self.assertIn("int contentH = app.GridHeightForView;", FILE_MANAGER)
+
+        for window_width, window_height in ((320, 196), (320, 220),
+                                            (800, 520), (820, 520),
+                                            (1366, 720), (1920, 1000)):
+            view_width = window_width - 20
+            view_height = window_height - 50
+            grid_width = max(112, view_width - 176 - 12)
+            grid_height = max(40, view_height - 24 - 50 - 8)
+            cols = max(1, (grid_width + 6) // 118)
+            rows = max(1, (grid_height + 6) // 100)
+            for rx in range(0, max(grid_width + 2, 120)):
+                col = rx // 118
+                for ry in range(0, max(grid_height + 2, 100)):
+                    row = ry // 100
+                    painted = (rx < grid_width and ry < grid_height and
+                               col < cols and row < rows and
+                               rx % 118 < 112 and ry % 100 < 94)
+                    hit_test = (0 <= rx < grid_width and
+                                0 <= ry < grid_height and
+                                col < cols and rx % 118 < 112 and
+                                ry % 100 < 94)
+                    self.assertEqual(hit_test, painted,
+                                     (window_width, window_height, rx, ry))
+
+    def test_file_manager_compact_tile_does_not_overpaint_footer(self):
+        grid = FILE_MANAGER.split("private void Grid(Canvas canvas", 1)[1].split(
+            "private static IconType ResolveEntryIcon(", 1)[0]
+        self.assertIn("if (visibleTileHeight < iconSize + 33)", grid)
+        self.assertIn("if (visibleTileHeight >= 32)", grid)
+        self.assertIn("tileX + 6, tileY + 7, 24, 24", grid)
+        self.assertIn("tileX + 36, tileY + 17", grid)
+        self.assertIn("FileManagerApp.TileWidth - 42", grid)
+        # At 320x240 the window is constrained to 320x196: grid 64px.
+        # Normal 42px icon + two-line label needs 75px; compact layout
+        # fits both icon and single-line text without touching the footer.
+        for grid_height in (40, 41, 64, 74):
+            self.assertLessEqual(7 + 24, grid_height)
+            self.assertLessEqual(17 + 7, grid_height)
+        self.assertEqual(max(40, (196 - 50) - 24 - 50 - 8), 64)
+        self.assertEqual(max(40, (220 - 50) - 24 - 50 - 8), 88)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
