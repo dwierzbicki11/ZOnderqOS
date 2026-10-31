@@ -295,8 +295,12 @@ namespace ZonderqOS.GUI.Apps
                 return -1;
             int col = relativeX / strideX;
             int row = relativeY / strideY;
+            // Grid() renders only complete rows (except the single compact
+            // row on a very short display). A 388px grid paints three 94px
+            // rows, not the fourth row whose origin would be at y=300.
+            int visibleRows = Math.Max(1, (GridHeightForView + TileGap) / strideY);
 
-            if (col < 0 || col >= columns || row < 0)
+            if (col < 0 || col >= columns || row < 0 || row >= visibleRows)
                 return -1;
             if (relativeX % strideX >= TileWidth || relativeY % strideY >= TileHeight)
                 return -1;
