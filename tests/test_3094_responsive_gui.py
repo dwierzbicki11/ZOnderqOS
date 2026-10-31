@@ -46,6 +46,42 @@ def visible_rows(window_height, list_top, bottom_offset, row_height, row_gap):
 
 
 class ResponsiveGui3094(unittest.TestCase):
+    def test_resize_edges_preserve_work_area_insets(self):
+        resize = WINDOW.split("private void ApplyResize(", 1)[1].split(
+            "public override void Render(", 1)[0]
+        self.assertIn("desktopWidth - margin - resizeStartX", resize)
+        self.assertIn("desktopHeight - margin - resizeStartY", resize)
+        self.assertIn("System.Math.Min(desktopWidth - margin,", resize)
+        self.assertIn("System.Math.Min(desktopHeight - margin,", resize)
+        self.assertIn("System.Math.Max(margin, System.Math.Min(resizeStartX + dx", resize)
+        self.assertIn("System.Math.Max(margin, System.Math.Min(resizeStartY + dy", resize)
+        for screen_w, screen_h in (
+            (800, 600), (1024, 768), (1366, 768), (1920, 1080),
+        ):
+            desktop_h = screen_h - 44
+            margin = 12 if screen_w >= 1000 and desktop_h >= 700 else 0
+            x, y, width, height = fit_window(
+                120, 78, 820, 520, screen_w, screen_h)
+            for delta in (-10000, -64, 0, 64, 10000):
+                right = min(screen_w - margin, x + width)
+                left = max(margin, min(x + delta,
+                                       right - min(320, max(1, right - margin))))
+                left_width = right - left
+                self.assertGreaterEqual(left, margin)
+                self.assertLessEqual(left + left_width, screen_w - margin)
+                right_width = max(min(320, max(1, screen_w - margin - x)),
+                                  min(width + delta,
+                                      max(1, screen_w - margin - x)))
+                self.assertLessEqual(x + right_width, screen_w - margin)
+                bottom = min(desktop_h - margin, y + height)
+                top = max(margin, min(y + delta,
+                                      bottom - min(220, max(1, bottom - margin))))
+                self.assertLessEqual(top + bottom - top, desktop_h - margin)
+                bottom_height = max(min(220, max(1, desktop_h - margin - y)),
+                                    min(height + delta,
+                                        max(1, desktop_h - margin - y)))
+                self.assertLessEqual(y + bottom_height, desktop_h - margin)
+
     def test_new_mouse_press_outside_windows_never_reaches_active_app(self):
         dispatch = APPLICATION_MANAGER.split(
             "public void HandleMouse(int mouseX, int mouseY, bool leftClicked,", 1
@@ -122,8 +158,8 @@ class ResponsiveGui3094(unittest.TestCase):
     def test_window_restore_and_resize_stay_within_desktop(self):
         self.assertIn("private void ConstrainToDesktop()", WINDOW)
         self.assertGreaterEqual(WINDOW.count("ConstrainToDesktop();"), 3)
-        self.assertIn("int maxWidth = System.Math.Max(1, desktopWidth - resizeStartX);", WINDOW)
-        self.assertIn("int maxHeight = System.Math.Max(1, desktopHeight - resizeStartY);", WINDOW)
+        self.assertIn("int maxWidth = System.Math.Max(1, desktopWidth - margin - resizeStartX);", WINDOW)
+        self.assertIn("int maxHeight = System.Math.Max(1, desktopHeight - margin - resizeStartY);", WINDOW)
         self.assertIn("int minWidth = System.Math.Min(MinWidth, maxWidth);", WINDOW)
         self.assertIn("int minHeight = System.Math.Min(MinHeight, maxHeight);", WINDOW)
 
