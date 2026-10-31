@@ -51,7 +51,7 @@ def last_http_frame(serial: str, frames: list[bytes]) -> int:
     first = find_http_transaction(packets, guest, 0, None)
     if first is None:
         raise ValueError("missing first HTTP exchange before raw TX burst")
-    second = find_http_transaction(packets, guest, first[1] + 1, first[0])
+    second = find_http_transaction(packets, guest, first[1] + 1, first[0], attempt=2)
     if second is None:
         raise ValueError("missing second HTTP exchange before raw TX burst")
     return tcp_entries[second[1]][0]
