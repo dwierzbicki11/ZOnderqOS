@@ -118,7 +118,7 @@ class WavValidatorTests(unittest.TestCase):
             data = bytearray(wav.readframes(wav.getnframes()))
         for start_ms, end_ms in ((64, 85), (205, 226)):
             for i in range(48000 * start_ms // 1000, 48000 * end_ms // 1000):
-                data[i * 4:i * 4 + 4] = b"\\x00" * 4
+                data[i * 4:i * 4 + 4] = bytes(4)
         with wave.open(str(self.path), "wb") as wav:
             wav.setnchannels(2)
             wav.setsampwidth(2)
@@ -133,7 +133,7 @@ class WavValidatorTests(unittest.TestCase):
         # Only two 80 ms bursts remain, not the required 200 ms of PCM.
         for i in range(48000 * 390 // 1000):
             if not (i < 48000 * 80 // 1000 or i >= 48000 * 310 // 1000):
-                data[i * 4:i * 4 + 4] = b"\\x00" * 4
+                data[i * 4:i * 4 + 4] = bytes(4)
         with wave.open(str(self.path), "wb") as wav:
             wav.setnchannels(2)
             wav.setsampwidth(2)
