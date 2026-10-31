@@ -80,6 +80,12 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected about 660Hz"):
             audio.inspect(self.path, expected_hz=660)
 
+    def test_distinct_pcm8_probe_pitch(self):
+        self.make_wave(frequency=990)
+        self.assertIn("PASS captured PCM", audio.inspect(self.path, expected_hz=990))
+        with self.assertRaisesRegex(ValueError, "expected about 880Hz"):
+            audio.inspect(self.path, expected_hz=880)
+
     def test_rejects_inverted_right_channel(self):
         self.make_wave(invert_right=True)
         with self.assertRaisesRegex(ValueError, "not phase-aligned"):
