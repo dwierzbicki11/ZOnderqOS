@@ -526,6 +526,118 @@ static class Test
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "reject unsupported PCM24 sample rate");
 
+        // Signed PCM32 (little-endian) retains its high 16 bits; this
+        // exercises actual decoder C#, not a synthetic Python conversion.
+        byte[] pcm32 = new byte[pcm.Length / 2 * 4];
+        for (int i = 0; i < pcm.Length / 2; i++)
+        {
+            pcm32[i * 4] = 0x34;
+            pcm32[i * 4 + 1] = 0x12; // deliberately discarded low 16 bits
+            pcm32[i * 4 + 2] = pcm[i * 2];
+            pcm32[i * 4 + 3] = pcm[i * 2 + 1];
+        }
+        byte[] stereo32 = AudioWavePcm.EncodePcm32AtRate(pcm32, 48000, 2);
+        byte[] decoded32 = AudioWavePcm.DecodeStereo16(stereo32);
+        Expect(decoded32.Length == pcm.Length, "PCM32 stereo output frame count");
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(decoded32[i] == pcm[i], "PCM32 signed stereo downconversion bit-exact");
+
+        byte[] mono32 = new byte[monoPcm.Length / 2 * 4];
+        for (int i = 0; i < monoPcm.Length / 2; i++)
+        {
+            mono32[i * 4] = 0;
+            mono32[i * 4 + 1] = 0;
+            mono32[i * 4 + 2] = monoPcm[i * 2];
+            mono32[i * 4 + 3] = monoPcm[i * 2 + 1];
+        }
+        byte[] mono32Wave = AudioWavePcm.EncodePcm32AtRate(mono32, 48000, 1);
+        byte[] decodedMono32 = AudioWavePcm.DecodeStereo16(mono32Wave);
+        Expect(decodedMono32.Length == pcm.Length, "PCM32 mono upmix output length");
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(decodedMono32[i] == pcm[i], "PCM32 mono upmix duplicates channels");
+
+        byte[] min32 = AudioWavePcm.DecodeStereo16(
+            AudioWavePcm.EncodePcm32AtRate(new byte[] { 0, 0, 0, 128 }, 48000, 1));
+        Expect(min32.Length == 4 && min32[0] == 0 && min32[1] == 128 &&
+            min32[2] == 0 && min32[3] == 128, "PCM32 minimum maps to signed PCM16 minimum");
+        byte[] max32 = AudioWavePcm.DecodeStereo16(
+            AudioWavePcm.EncodePcm32AtRate(new byte[] { 255, 255, 255, 127 }, 48000, 1));
+        Expect(max32.Length == 4 && max32[0] == 255 && max32[1] == 127 &&
+            max32[2] == 255 && max32[3] == 127, "PCM32 maximum maps to signed PCM16 maximum");
+
+        byte[] pcm32at44100 = new byte[source44100.Length / 2 * 4];
+        for (int i = 0; i < source44100.Length / 2; i++)
+        {
+            pcm32at44100[i * 4] = 0;
+            pcm32at44100[i * 4 + 1] = 0;
+            pcm32at44100[i * 4 + 2] = source44100[i * 2];
+            pcm32at44100[i * 4 + 3] = source44100[i * 2 + 1];
+        }
+        byte[] converted32at44100 = AudioWavePcm.DecodeStereo16(
+            AudioWavePcm.EncodePcm32AtRate(pcm32at44100, 44100, 2));
+        Expect(converted32at44100.Length == converted44100.Length,
+            "44.1k PCM32 resampling preserves duration");
+        for (int i = 0; i < converted44100.Length; i++)
+            Expect(converted32at44100[i] == converted44100[i],
+                "44.1k PCM32 stereo resampling matches equivalent PCM16");
+
+        byte[] mono32at44100 = new byte[sourceMono44100.Length / 2 * 4];
+        for (int i = 0; i < sourceMono44100.Length / 2; i++)
+        {
+            mono32at44100[i * 4] = 0;
+            mono32at44100[i * 4 + 1] = 0;
+            mono32at44100[i * 4 + 2] = sourceMono44100[i * 2];
+            mono32at44100[i * 4 + 3] = sourceMono44100[i * 2 + 1];
+        }
+        byte[] convertedMono32at44100 = AudioWavePcm.DecodeStereo16(
+            AudioWavePcm.EncodePcm32AtRate(mono32at44100, 44100, 1));
+        for (int i = 0; i < converted44100.Length; i++)
+            Expect(convertedMono32at44100[i] == converted44100[i],
+                "44.1k PCM32 mono resampling matches equivalent stereo");
+
+        byte[] max32Pcm = new byte[48000 * 2 * 2 * 4];
+        byte[] max32Wave = AudioWavePcm.EncodePcm32AtRate(max32Pcm, 48000, 2);
+        Expect(max32Wave.Length < AudioWaveInput.MaxFileBytes,
+            "maximum PCM32 source fits bounded RIFF input");
+        using (var stream = new MemoryStream(max32Wave, false))
+        {
+            byte[] max32Decoded = AudioWaveInput.DecodeBounded(stream);
+            Expect(max32Decoded.Length == 48000 * 2 * 4,
+                "exact two-second PCM32 stereo decodes into bounded PCM16");
+        }
+        using (var fragmented = new ShortReadStream(stereo32))
+        {
+            byte[] fromFragments32 = AudioWaveInput.DecodeBounded(fragmented);
+            Expect(fromFragments32.Length == pcm.Length, "fragmented PCM32 stream length");
+            for (int i = 0; i < pcm.Length; i++)
+                Expect(fromFragments32[i] == pcm[i], "fragmented PCM32 stream bit-exact");
+        }
+
+        byte[] malformed32 = (byte[])stereo32.Clone();
+        malformed32[32] = 4; // PCM32 stereo must have eight-byte frames
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(malformed32); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject incorrect PCM32 block alignment");
+        malformed32 = (byte[])stereo32.Clone();
+        malformed32[20] = 3; // IEEE float is not signed integer PCM
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(malformed32); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject IEEE float PCM32 masquerading as signed integer");
+        rejected = false;
+        try { AudioWavePcm.EncodePcm32AtRate(new byte[7], 48000, 2); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject incomplete PCM32 stereo frame");
+        rejected = false;
+        try { AudioWavePcm.EncodePcm32AtRate(new byte[48000 * 2 * 2 * 4 + 8], 48000, 2); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject PCM32 duration exceeding two seconds");
+        rejected = false;
+        try { AudioWavePcm.EncodePcm32AtRate(new byte[4], 32000, 1); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "reject unsupported PCM32 sample rate");
+
         byte[] quarter = AudioPcmVolume.ScaleStereo16(pcm, 25);
         byte[] muted = AudioPcmVolume.ScaleStereo16(pcm, 0);
         byte[] full = AudioPcmVolume.ScaleStereo16(pcm, 100);
