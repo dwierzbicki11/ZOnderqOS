@@ -82,7 +82,7 @@ class FramebufferProbeTests(unittest.TestCase):
         self.assertIn('send_keys(channel, "esc")', source)
         self.assertIn('".filemanager-filtered.ppm"', source)
         self.assertIn('".filemanager-filter-cleared.ppm"', source)
-        self.assertIn('difference(after, filter_cleared)', source)
+        self.assertIn('difference(mouse_after, filter_cleared)', source)
         self.assertIn('if fraction > 0.10:', source)
         self.assertLess(source.index('send_keys(channel, "esc")'),
                         source.index('send_keys(channel, "alt", "f4")'))
@@ -107,7 +107,7 @@ class FramebufferProbeTests(unittest.TestCase):
         self.assertIn("if fraction < 0.003:", source)
         self.assertIn("File Manager search did not visibly update", source)
         self.assertLess(source.index("if fraction < 0.003:"),
-                        source.index("difference(after, filter_cleared)"))
+                        source.index("difference(mouse_after, filter_cleared)"))
 
         width, height = 80, 64
         before = bytes(width * height * 3)
@@ -128,6 +128,8 @@ class FramebufferProbeTests(unittest.TestCase):
         self.assertIn('".filemanager-mouse-before.ppm"', source)
         self.assertIn('".filemanager-mouse-after.ppm"', source)
         self.assertIn('if mouse_changed < 8:', source)
+        self.assertIn("difference(mouse_after, filtered)", source)
+        self.assertIn("difference(mouse_after, filter_cleared)", source)
 
         class FakeChannel:
             def __init__(self):
