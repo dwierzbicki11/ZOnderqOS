@@ -31,6 +31,7 @@ on:
       - 'tests/verify_3095_network_n5.py'
       - 'tests/verify_3095_network_n6.py'
       - 'tests/verify_3095_network_heartbeat.py'
+      - 'tests/verify_3095_e1000e_irq_trace.py'
       - 'tests/network_3095_http_host.py'
       - 'tests/network_3095_tcp_host.py'
       - '.github/workflows/3095-network-n1-qemu.yml'
@@ -70,6 +71,7 @@ jobs:
           python3 zonderq/tests/verify_3095_network_n5.py --self-test
           python3 zonderq/tests/verify_3095_network_n6.py --self-test
           python3 zonderq/tests/verify_3095_network_heartbeat.py --self-test
+          python3 zonderq/tests/verify_3095_e1000e_irq_trace.py --self-test
           python3 -m py_compile zonderq/tests/network_3095_http_host.py
           python3 zonderq/tests/network_3095_http_host.py --self-test
           python3 -m py_compile zonderq/tests/network_3095_tcp_host.py
@@ -275,10 +277,11 @@ jobs:
           bash tools/build-cosmos-3095-local.sh network-n6
           test -s output-3095/ZonderqOS-3095-network-n6.iso
           sha256sum output-3095/ZonderqOS-3095-network-n6.iso
-      - name: Boot QEMU and verify HTTP GET and 200 response via TCP PCAP
+      - name: Boot QEMU HTTP N6 with independent device-side E1000E IRQ trace
         working-directory: zonderq
         env:
           NET3095_N1_TIMEOUT: '170'
+          NET3095_IRQ_TRACE: '1'
         run: |
           set -euo pipefail
           bash tools/smoke-network-n1-3095-qemu.sh \
