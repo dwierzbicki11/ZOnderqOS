@@ -275,6 +275,38 @@ namespace ZonderqOS
                     return;
                 }
                 Log("[NET3095-N6] TX_BURST=QUEUED count=32");
+                // Verify that RX and the IPv4/ICMP stack still work after the
+                // complete 32-slot E1000E TX descriptor-ring stress. The
+                // independent PCAP gate must see this request and its reply
+                // strictly after all 32 raw TX frames, not just a serial PASS.
+                Log("[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START");
+                try
+                {
+                    IcmpClient postBurstPing = new IcmpClient();
+                    try
+                    {
+                        postBurstPing.Connect(new Address4(10, 0, 2, 2));
+                        postBurstPing.SendEcho(id: 0x3096, sequence: 2);
+                        EndPoint remote = new EndPoint(Address4.Zero, 0);
+                        int elapsedMs = postBurstPing.Receive(ref remote, 5000);
+                        if (elapsedMs < 0 || remote.Address.ToString() != "10.0.2.2")
+                        {
+                            Log("[NET3095-N6][FAIL] post-burst ICMP timeout or wrong peer");
+                            return;
+                        }
+                        Log("[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2");
+                    }
+                    finally
+                    {
+                        postBurstPing.Close();
+                    }
+                }
+                catch (Exception postBurstException)
+                {
+                    Log("[NET3095-N6][FAIL] post-burst ICMP exception " +
+                        postBurstException.GetType().Name);
+                    return;
+                }
 #endif
             }
             catch (Exception ex)
