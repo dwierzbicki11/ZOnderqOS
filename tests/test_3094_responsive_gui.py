@@ -319,26 +319,39 @@ class ResponsiveGui3094(unittest.TestCase):
                     self.assertLessEqual(running_count, page_slots)
 
     def test_taskbar_focus_switch_reveals_active_page_without_resetting_manual_page(self):
+        sync = TASKBAR.split("private void SyncActivePage(", 1)[1].split(
+            "private int OverflowButtonX(", 1
+        )[0]
         render = TASKBAR.split("public override void Render(Canvas canvas)", 1)[1].split(
             "private void UpdateTrayCache()", 1
         )[0]
-        self.assertIn("int activeRunningIndex = RunningIndexOf(apps, activeApplication);", render)
-        self.assertIn("activeApplication != lastActiveApplication ||", render)
-        self.assertIn("activeRunningIndex != lastActiveRunningIndex", render)
-        self.assertIn("firstVisibleAppIndex = (activeRunningIndex / pageSlots) * pageSlots;", render)
-        self.assertLess(render.index("NormalizeAppPage(runningCount, pageSlots, overflow);"),
-                        render.index("int activeRunningIndex = RunningIndexOf("))
-        self.assertLess(render.index("firstVisibleAppIndex = (activeRunningIndex / pageSlots)"),
-                        render.index("if (apps != null)"))
+        mouse = TASKBAR.split("public void UpdateInteractions(", 1)[1]
+        self.assertIn("int activeRunningIndex = RunningIndexOf(apps, activeApplication);", sync)
+        self.assertIn("activeApplication != lastActiveApplication ||", sync)
+        self.assertIn("activeRunningIndex != lastActiveRunningIndex ||", sync)
+        self.assertIn("pageSlots != lastPageSlots", sync)
+        self.assertIn("firstVisibleAppIndex = (activeRunningIndex / pageSlots) * pageSlots;", sync)
+        self.assertLess(sync.index("NormalizeAppPage(runningCount, pageSlots, overflow);"),
+                        sync.index("int activeRunningIndex = RunningIndexOf("))
+        self.assertIn("SyncActivePage(apps, activeApplication, runningCount, pageSlots, overflow);", render)
+        self.assertIn("SyncActivePage(apps, applicationManager.ActiveApplication, runningCount, pageSlots, overflow);", mouse)
+        self.assertLess(mouse.index("SyncActivePage("), mouse.index("if (runningIndex++ < firstVisibleAppIndex)"))
+        self.assertIn("private int lastPageSlots = -1;", TASKBAR)
 
-        # A focus change can jump directly to the last page, but clicking
-        # the pager alone must not change the focus signature.
-        for page_slots, active_index in ((9, 0), (9, 10), (9, 49), (21, 23)):
-            focus_page = (active_index // page_slots) * page_slots
+        # A resolution change must reveal the focused app even when its
+        # index stays the same. Manual paging is preserved otherwise.
+        for old_slots, new_slots, active_index in (
+            (18, 9, 15), (9, 18, 15), (21, 9, 23), (9, 9, 49)
+        ):
+            focus_page = (active_index // new_slots) * new_slots
             self.assertLessEqual(focus_page, active_index)
-            self.assertLess(active_index, focus_page + page_slots)
-            manual_page = focus_page + page_slots
-            self.assertNotEqual(manual_page, focus_page)
+            self.assertLess(active_index, focus_page + new_slots)
+            old_page = (active_index // old_slots) * old_slots
+            if old_slots != new_slots:
+                self.assertEqual(focus_page, (active_index // new_slots) * new_slots)
+            else:
+                manual_page = old_page + old_slots
+                self.assertNotEqual(manual_page, focus_page)
 
     def test_start_menu_outside_click_dismisses_without_click_through(self):
         dispatch = DESKTOP.split("bool startMenuWasVisible =", 1)[1].split(
