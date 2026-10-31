@@ -843,6 +843,29 @@ class ResponsiveGui3094(unittest.TestCase):
                              (0, 0) if press == 0 else (1, 1))
 
 
+    def test_file_manager_home_end_select_and_reveal_boundary_tiles(self):
+        keyboard = FILE_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "private void CopySelected(bool cut)", 1
+        )[0]
+        boundary = FILE_MANAGER.split("private void SelectBoundary(bool last)", 1)[1].split(
+            "private void SelectPage(", 1
+        )[0]
+        self.assertIn("if (key.Key == ConsoleKeyEx.Home)", keyboard)
+        self.assertIn("SelectBoundary(false);", keyboard)
+        self.assertIn("if (key.Key == ConsoleKeyEx.End)", keyboard)
+        self.assertIn("SelectBoundary(true);", keyboard)
+        self.assertIn("if (entries.Count == 0)", boundary)
+        self.assertIn("ResetClickSequence();", boundary)
+        self.assertIn("contextMenuVisible = false;", boundary)
+        self.assertIn("selectedIndex = last ? entries.Count - 1 : 0;", boundary)
+        self.assertIn("EnsureSelectionVisible();", boundary)
+
+        for count in (0, 1, 10, 1234):
+            for last in (False, True):
+                selected = -1 if count == 0 else (count - 1 if last else 0)
+                self.assertTrue(selected == -1 or 0 <= selected < count)
+
+
     def test_file_manager_modifier_shortcuts_do_not_type_into_names_or_filter(self):
         keyboard = FILE_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
             "private void CopySelected(bool cut)", 1
