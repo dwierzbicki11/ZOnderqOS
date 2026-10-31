@@ -39,6 +39,20 @@ done
 mkdir -p "$(dirname "$LOG")" "$(dirname "$PCAP")"
 # noclobber closes the common TOCTOU window between the guard and creation.
 ( set -C; : > "$LOG" )
+trace_args=()
+if [[ "$IRQ_TRACE" == 1 ]]; then
+  # QEMU trace events are device-side evidence, NOT proof of guest IRQ handling.
+  # Require all requested events to exist rather than silently disabling tracing.
+  trace_available="$(qemu-system-x86_64 -trace help 2>&1)" || {
+    echo "[NET3095-E1000E-IRQ][FAIL] QEMU cannot list trace events" >&2; exit 1;
+  }
+  for event in e1000e_irq_legacy_notify e1000e_irq_msi_notify e1000e_irq_msix_notify_vec; do
+    grep -Eq "^[[:space:]]*${event}([[:space:]]|$)" <<< "$trace_available" || {
+      echo "[NET3095-E1000E-IRQ][FAIL] QEMU lacks trace event: $event" >&2; exit 1;
+    }
+    trace_args+=(-trace "$event")
+  done
+fi
 # N4 uses a CI-owned, loopback-only TCP server. The QEMU guest reaches
 # 127.0.0.1 on the host through the SLIRP 10.0.2.2 gateway alias.
 server_pid=""
@@ -108,20 +122,6 @@ if [[ "$MODE" == n6 ]]; then
     echo "[NET3095-N6][FAIL] HTTP listener did not become ready" >&2
     exit 1
   }
-fi
-trace_args=()
-if [[ "$IRQ_TRACE" == 1 ]]; then
-  # QEMU trace events are device-side evidence, NOT proof of guest IRQ handling.
-  # Require all requested events to exist rather than silently disabling tracing.
-  trace_available="$(qemu-system-x86_64 -trace help 2>&1)" || {
-    echo "[NET3095-E1000E-IRQ][FAIL] QEMU cannot list trace events" >&2; exit 1;
-  }
-  for event in e1000e_irq_legacy_notify e1000e_irq_msi_notify e1000e_irq_msix_notify_vec; do
-    grep -Eq "^[[:space:]]*${event}([[:space:]]|$)" <<< "$trace_available" || {
-      echo "[NET3095-E1000E-IRQ][FAIL] QEMU lacks trace event: $event" >&2; exit 1;
-    }
-    trace_args+=(-trace "$event")
-  done
 fi
 qemu-system-x86_64 \
   "${trace_args[@]}" \
