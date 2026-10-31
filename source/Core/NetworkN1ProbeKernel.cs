@@ -219,45 +219,8 @@ namespace ZonderqOS
                     // Two independent TCP connections exercise RX descriptor reuse and socket teardown.
                     for (int attempt = 1; attempt <= 2; attempt++)
                     {
-                        using (var http = new System.Net.Sockets.TcpClient())
-                        {
-                            http.Connect(System.Net.IPAddress.Parse("10.0.2.2"), 18096);
-                            http.Client.ReceiveTimeout = 5000;
-                            http.Client.SendTimeout = 5000;
-                            System.Net.Sockets.NetworkStream stream = http.GetStream();
-                            byte[] request = System.Text.Encoding.ASCII.GetBytes(
-                                "GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n\r\n");
-                            // Cross multiple Ethernet MTUs and DMA RX descriptors,
-                            // rather than proving only a tiny split TCP response.
-                            byte[] expected = System.Text.Encoding.ASCII.GetBytes(
-                                "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 4116\r\nConnection: close\r\n\r\nZONDERQ3095-HTTP-OK\n" +
-                                new string('A', 1024) + new string('B', 1024) +
-                                new string('C', 1024) + new string('D', 1024));
-                            stream.Write(request, 0, request.Length);
-                            byte[] response = new byte[expected.Length];
-                            int received = 0;
-                            while (received < response.Length)
-                            {
-                                int read = stream.Read(response, received, response.Length - received);
-                                if (read <= 0)
-                                    break;
-                                received += read;
-                            }
-                            if (received != expected.Length)
-                            {
-                                Log("[NET3095-N6][FAIL] HTTP response truncated");
-                                return;
-                            }
-                            for (int i = 0; i < expected.Length; i++)
-                            {
-                                if (response[i] != expected[i])
-                                {
-                                    Log("[NET3095-N6][FAIL] HTTP status/headers/body mismatch");
-                                    return;
-                                }
-                            }
-                            Log("[NET3095-N6] " + (attempt == 1 ? "HTTP=PASS" : "HTTP_REPEAT=PASS") + " from=10.0.2.2 port=18096 bytes=" + received);
-                        }
+                        if (!TryHttpExchange(attempt))
+                            return;
                     }
                 }
                 catch (Exception httpException)
@@ -312,6 +275,21 @@ namespace ZonderqOS
                         postBurstException.GetType().Name);
                     return;
                 }
+                // A third full HTTP RX stream must succeed after all TX ring
+                // cycles and the four ICMP replies. Unlike queue success, the
+                // host PCAP independently proves the later RX/TCP teardown.
+                Log("[NET3095-N6] POST_BURST_HTTP_ATTEMPT=START");
+                try
+                {
+                    if (!TryHttpExchange(3))
+                        return;
+                }
+                catch (Exception postHttpException)
+                {
+                    Log("[NET3095-N6][FAIL] post-burst HTTP exception " +
+                        postHttpException.GetType().Name);
+                    return;
+                }
 #endif
             }
             catch (Exception ex)
@@ -319,6 +297,52 @@ namespace ZonderqOS
                 Log("[NET3095-N2][FAIL] DHCP exception " + ex.GetType().Name);
             }
 #endif
+        }
+
+#if ZONDERQ_NETWORK_N6_HTTP
+        private static bool TryHttpExchange(int attempt)
+        {
+            using (var http = new System.Net.Sockets.TcpClient())
+            {
+                http.Connect(System.Net.IPAddress.Parse("10.0.2.2"), 18096);
+                http.Client.ReceiveTimeout = 5000;
+                http.Client.SendTimeout = 5000;
+                System.Net.Sockets.NetworkStream stream = http.GetStream();
+                byte[] request = System.Text.Encoding.ASCII.GetBytes(
+                    "GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n\r\n");
+                byte[] expected = System.Text.Encoding.ASCII.GetBytes(
+                    "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 4116\r\nConnection: close\r\n\r\nZONDERQ3095-HTTP-OK\n" +
+                    new string('A', 1024) + new string('B', 1024) +
+                    new string('C', 1024) + new string('D', 1024));
+                stream.Write(request, 0, request.Length);
+                byte[] response = new byte[expected.Length];
+                int received = 0;
+                while (received < response.Length)
+                {
+                    int read = stream.Read(response, received, response.Length - received);
+                    if (read <= 0)
+                        break;
+                    received += read;
+                }
+                if (received != expected.Length)
+                {
+                    Log("[NET3095-N6][FAIL] HTTP response truncated");
+                    return false;
+                }
+                for (int i = 0; i < expected.Length; i++)
+                {
+                    if (response[i] != expected[i])
+                    {
+                        Log("[NET3095-N6][FAIL] HTTP status/headers/body mismatch");
+                        return false;
+                    }
+                }
+                string marker = attempt == 1 ? "HTTP=PASS" :
+                    attempt == 2 ? "HTTP_REPEAT=PASS" : "POST_BURST_HTTP=PASS";
+                Log("[NET3095-N6] " + marker +
+                    " from=10.0.2.2 port=18096 bytes=" + received);
+                return true;
+            }
         }
 
 #if ZONDERQ_NETWORK_N6_HTTP

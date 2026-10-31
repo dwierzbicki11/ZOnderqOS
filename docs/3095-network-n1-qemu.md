@@ -216,3 +216,19 @@ to `feat/3094-qemu-e1000e-link`; a full new exact-stock-3.0.95
 build and QEMU PCAP run are required before declaring the 128-frame
 burst, tightened DHCP L2 proof or combined legacy IRQ gate PASS.
 Historical N1–N6 QEMU evidence does not cover these new checks.
+
+## N6 post-burst TCP RX stress (2026-10-31)
+
+The isolated N6 probe additionally attempts a **third** 4116-byte HTTP
+response after all 128 diagnostic Ethernet TX frames and four ICMP
+request/reply pairs. It reuses the same Cosmos 3.0.95 TCP and E1000E stack,
+but opens a new connection. The host fixture now accepts three independent
+connections. The new `verify_3095_network_n6_post_http.py` gate requires a
+third complete TCP handshake, exact multi-segment HTTP response and peer
+FIN/ACK **strictly after the fourth ICMP reply** in QEMU's captured PCAP;
+its source port must differ from the first two. This tests RX/TCP reuse
+after TX-ring stress. A serial PASS alone is insufficient.
+
+The new probe is isolated to the N6 QEMU profile. It does not modify
+production networking, the stock SDK, or the disk-backed GUI. CI/QEMU
+must pass on the new commit before this extension is considered proven.

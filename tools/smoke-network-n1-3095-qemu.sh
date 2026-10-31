@@ -301,6 +301,32 @@ while (( SECONDS - started < TIMEOUT )); do
         sleep 1
       done
       python3 "$ROOT/tests/verify_3095_network_n6_burst.py" "$LOG" "$PCAP"
+      # The final HTTP transaction must occur after the last post-burst
+      # ICMP reply, not before or during the TX descriptor stress.
+      post_http_start=$SECONDS
+      until python3 "$ROOT/tests/verify_3095_network_n6_post_http.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
+        qemu_alive || {
+          echo "[NET3095-N6][FAIL] Guest exited before post-burst HTTP RX proof" >&2; exit 1;
+        }
+        if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
+          tail -n 90 "$LOG" >&2
+          echo "[NET3095-N6][FAIL] Guest rejected post-burst HTTP RX" >&2
+          exit 1
+        fi
+        if (( SECONDS - post_http_start >= 20 )); then
+          python3 "$ROOT/tests/verify_3095_network_n6_post_http.py" "$LOG" "$PCAP"
+          cat "$LOG.http-host" >&2
+          echo "[NET3095-N6][FAIL] No correlated post-burst HTTP RX/TX capture" >&2
+          exit 1
+        fi
+        sleep 1
+      done
+      python3 "$ROOT/tests/verify_3095_network_n6_post_http.py" "$LOG" "$PCAP"
+      if ! grep -Fq '[NET3095-N6-HOST] POST_BURST_PASS HTTP/1.0 GET /health 200' "$LOG.http-host"; then
+        cat "$LOG.http-host" >&2
+        echo "[NET3095-N6][FAIL] Host did not complete post-burst HTTP" >&2
+        exit 1
+      fi
     fi
     # A running QEMU PID is not proof of a live guest (-no-shutdown).
     # Require ongoing managed kernel execution for the stability window.
@@ -322,6 +348,7 @@ while (( SECONDS - started < TIMEOUT )); do
     if [[ "$MODE" == n6 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
       python3 "$ROOT/tests/verify_3095_network_n6_burst.py" "$LOG" "$PCAP"
+      python3 "$ROOT/tests/verify_3095_network_n6_post_http.py" "$LOG" "$PCAP"
       if [[ "$IRQ_TRACE" == 1 ]]; then
         # Correlate the guest's assigned legacy line with a real QEMU
         # legacy assertion. An MSI-only trace must not satisfy this check.
@@ -334,7 +361,7 @@ while (( SECONDS - started < TIMEOUT )); do
         python3 "$ROOT/tests/verify_3095_e1000e_irq_trace.py" \
           "$LOG.stderr" --require-notify
       fi
-      echo "[NET3095-N6-QEMU] PASS two E1000E HTTP sessions + 128 ordered raw TX frames + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
+      echo "[NET3095-N6-QEMU] PASS three E1000E HTTP sessions (third after 128 TX + 4 ICMP) + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
     elif [[ "$MODE" == n5 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP"
       echo "[NET3095-N5-QEMU] PASS real E1000E DNS query/answer + TCP/DHCP/ICMP + 8s stability; production networking disabled"
