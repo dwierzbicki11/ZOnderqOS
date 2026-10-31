@@ -162,7 +162,9 @@ def main():
     # Escape must restore the same File Manager viewport after clearing
     # the search query. This is a real QEMU keyboard regression, not merely
     # evidence that QMP accepted the keystroke.
-    changed, samples = difference(after, filtered)
+    # Compare against the post-mouse baseline so pointer movement cannot
+    # masquerade as a successful search update.
+    changed, samples = difference(mouse_after, filtered)
     fraction = changed / max(1, samples)
     print(f"[GUI-QMP] search-filter: changed {changed}/{samples} sampled pixels ({fraction:.1%}); visual inspection still required")
     # A successful QMP send-key is not proof that the File Manager accepted
@@ -171,7 +173,7 @@ def main():
     # for other layouts while rejecting unchanged/stale framebuffers.
     if fraction < 0.003:
         raise RuntimeError("File Manager search did not visibly update; inspect PPMs")
-    changed, samples = difference(after, filter_cleared)
+    changed, samples = difference(mouse_after, filter_cleared)
     fraction = changed / max(1, samples)
     print(f"[GUI-QMP] filter-cleared: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
     if fraction > 0.10:
