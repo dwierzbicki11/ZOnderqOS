@@ -60,6 +60,39 @@ def stream_payload(packets, first: int, guest: bytes, client_port: int,
     return None
 
 
+def server_fin_acked(packets, first: int, guest: bytes,
+                     client_port: int, client_seq: int, server_seq: int) -> bool:
+    """Require the peer's FIN and the guest's matching final ACK.
+
+    The server sends FIN after its complete HTTP response. This verifies
+    the guest consumes TCP teardown, not merely the HTTP payload.
+    """
+    client_end = (client_seq + len(REQUEST)) & 0xFFFFFFFF
+    server_end = (server_seq + len(RESPONSE)) & 0xFFFFFFFF
+    for i in range(first, len(packets)):
+        fin = packets[i]
+        if not (
+            fin["src"] == SERVER and fin["dst"] == guest and
+            fin["src_mac"] != MAC and fin["dst_mac"] == MAC and
+            fin["sport"] == PORT and fin["dport"] == client_port and
+            (fin["flags"] & 0x17) == 0x11 and
+            fin["seq"] == server_end and fin["ack"] == client_end and
+            not fin["payload"]
+        ):
+            continue
+        for ack in packets[i + 1:]:
+            if (
+                ack["src"] == guest and ack["dst"] == SERVER and
+                ack["src_mac"] == MAC and ack["sport"] == client_port and
+                ack["dport"] == PORT and (ack["flags"] & 0x17) == 0x10 and
+                ack["seq"] == client_end and
+                ack["ack"] == (server_end + 1) & 0xFFFFFFFF and
+                not ack["payload"]
+            ):
+                return True
+    return False
+
+
 def validate(serial: str, pcap: bytes) -> str:
     validate_n5(serial, pcap)
     lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
@@ -114,8 +147,10 @@ def validate(serial: str, pcap: bytes) -> str:
                     packets, end_request, guest, client_port, "server",
                     server_seq, (client_seq + len(REQUEST)) & 0xFFFFFFFF,
                     RESPONSE)
-                if end_response is not None:
-                    return "[NET3095-N6-GATE] PASS real QEMU HTTP/1.0 GET /health 200 with TCP request/response RX/TX"
+                if end_response is not None and server_fin_acked(
+                        packets, end_response, guest, client_port,
+                        client_seq, server_seq):
+                    return "[NET3095-N6-GATE] PASS real QEMU HTTP/1.0 GET /health 200 with TCP RX/TX and FIN/ACK teardown"
     raise ValueError("no correlated QEMU HTTP request/response TCP stream")
 
 
@@ -146,6 +181,10 @@ def self_test() -> None:
     ]
     request = [fake_http(False, 0x18, 10001, 20001, REQUEST)]
     response = [fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE)]
+    teardown = [
+        fake_http(True, 0x11, 20001 + len(RESPONSE), 10001 + len(REQUEST)),
+        fake_http(False, 0x10, 10001 + len(REQUEST), 20002 + len(RESPONSE)),
+    ]
     serial = "\n".join([
         "[NET3095-N1] BOOT", "[NET3095-N1] discovered=1",
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
@@ -155,19 +194,19 @@ def self_test() -> None:
         PING_START, PING_PASS, TCP_START, TCP_PASS,
         DNS_START, DNS_PASS, HTTP_START, HTTP_PASS,
     ])
-    frames = base + handshake + request + response
+    frames = base + handshake + request + response + teardown
     assert "PASS" in validate(serial, synthetic_capture(frames))
     split = len(RESPONSE) // 2
     segmented = base + handshake + request + [
         fake_http(True, 0x18, 20001, 10001 + len(REQUEST), RESPONSE[:split]),
         fake_http(True, 0x18, 20001 + split, 10001 + len(REQUEST), RESPONSE[split:]),
-    ]
+    ] + teardown
     assert "PASS" in validate(serial, synthetic_capture(segmented))
     half = len(REQUEST) // 2
     split_request = base + handshake + [
         fake_http(False, 0x18, 10001, 20001, REQUEST[:half]),
         fake_http(False, 0x18, 10001 + half, 20001, REQUEST[half:]),
-    ] + response
+    ] + response + teardown
     assert "PASS" in validate(serial, synthetic_capture(split_request))
     negatives = [
         (serial.replace(HTTP_START, ""), frames),
@@ -176,6 +215,16 @@ def self_test() -> None:
         (serial + "\n[NET3095-N6][FAIL] bad", frames),
         (serial.replace(HTTP_START, "").replace(DNS_PASS, HTTP_START + "\n" + DNS_PASS), frames),
         (serial, base + handshake + request),
+        (serial, base + handshake + request + response),  # no TCP teardown
+        (serial, base + handshake + request + response + teardown[:1]),  # FIN without guest ACK
+        (serial, base + handshake + request + response + [
+            fake_http(True, 0x11, 20002 + len(RESPONSE), 10001 + len(REQUEST)),
+            teardown[1],
+        ]),
+        (serial, base + handshake + request + response + [
+            teardown[0],
+            fake_http(False, 0x10, 10001 + len(REQUEST), 20001 + len(RESPONSE)),
+        ]),
         (serial, base + handshake[:1] + handshake[2:] + request + response),
         (serial, base + handshake + [fake_http(False, 0x18, 10002, 20001, REQUEST)] + response),
         (serial, base + handshake + request + [fake_http(True, 0x18, 20002, 10001 + len(REQUEST), RESPONSE)]),
