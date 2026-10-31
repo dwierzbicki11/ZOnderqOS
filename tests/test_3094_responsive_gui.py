@@ -1411,5 +1411,32 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
             self.assertFalse(hit(action_left + 10, row_y + 29))
 
 
+    def test_notification_shortcuts_ignore_ctrl_alt_modifiers(self):
+        keyboard = NOTIFICATIONS.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "public bool UpdateInteractions(", 1)[0]
+        self.assertIn("bool control = (key.Modifiers & ConsoleModifiers.Control)", keyboard)
+        self.assertIn("bool alt = (key.Modifiers & ConsoleModifiers.Alt)", keyboard)
+        self.assertIn("if (control || alt)", keyboard)
+        self.assertLess(keyboard.index("if (control || alt)"),
+                        keyboard.index("NotificationService.ClearAll();"))
+        self.assertLess(keyboard.index("if (control || alt)"),
+                        keyboard.index("NotificationService.MarkAllRead();"))
+        self.assertLess(keyboard.index("if (control || alt)"),
+                        keyboard.index("NotificationService.DoNotDisturb ="))
+        for control, alt, ch in ((True, False, "c"), (False, True, "r"),
+                                 (True, True, "d"), (False, False, "c")):
+            allowed = not (control or alt) and ch in "dDrRcC"
+            self.assertEqual(allowed, not (control or alt))
+
+    def test_notification_toast_uses_normal_panel_open_path(self):
+        mouse = NOTIFICATIONS.split("public bool UpdateInteractions(", 1)[1].split(
+            "public override void Render(", 1)[0]
+        self.assertIn("NotificationService.MarkRead(toast.Id);", mouse)
+        self.assertIn("Toggle();", mouse)
+        self.assertNotIn("Visible = true;", mouse)
+        self.assertLess(mouse.index("NotificationService.MarkRead(toast.Id);"),
+                        mouse.index("Toggle();"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
