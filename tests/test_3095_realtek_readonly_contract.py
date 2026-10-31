@@ -70,6 +70,23 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
         self.assertIn("IsSafePowerManagementCapabilityOffset(byte offset)", SAMPLER)
         self.assertIn("offset >= 0x40 && offset <= 0xF8", SAMPLER)
         self.assertIn("PM capability pointer exhaustive range/alignment guard", SMOKE)
+        # Raw BAR2/BAR3 must be stable across mapping and sampling.
+        # These are PCI reads, never BAR sizing writes.
+        self.assertIn("IsStableMmioBar2Pair(ulong before, ulong after)", SAMPLER)
+        self.assertIn("memoryType == 0u || memoryType == 2u", SAMPLER)
+        self.assertIn("ReadRegisterBarPair(PciAccess pci)", DRIVER)
+        for offset in ("0x18", "0x1A", "0x1C", "0x1E"):
+            self.assertIn("pci.ReadConfig16(" + offset + ")", DRIVER)
+        self.assertIn("BAR2 is not a supported PCI MMIO BAR; no MMIO reads", DRIVER)
+        self.assertIn("BAR2/BAR3 changed or became invalid after sampling; no link proof", DRIVER)
+        self.assertLess(DRIVER.index("ulong barPairBefore = ReadRegisterBarPair(pci)"),
+                        DRIVER.index("binding.MapRegisters(RegisterBar)"))
+        self.assertLess(DRIVER.index("Realtek810xERegisterSampler.TrySample"),
+                        DRIVER.index("barPairBefore, ReadRegisterBarPair(pci)"))
+        self.assertIn("[NET3095-RTL810XE-BAR-STABILITY] PASS", SMOKE)
+        self.assertIn("Changed BAR2 address must invalidate", SMOKE)
+        self.assertIn("Changed 64-bit BAR3 upper address must invalidate", SMOKE)
+        self.assertIn("Unsupported BAR2 encoding must be rejected", SMOKE)
         self.assertIn("binding.MapRegisters(RegisterBar)", DRIVER)
         self.assertIn("Realtek810xERegisterSampler.TrySample", DRIVER)
         self.assertEqual(DRIVER.count("IsExactAsusRtl810xE("), 2)
