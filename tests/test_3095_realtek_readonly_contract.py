@@ -90,6 +90,13 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
 
     def test_serial_only_and_no_false_link_pass(self):
         self.assertIn("class NetworkRealtekReadOnlyKernel", KERNEL)
+        self.assertIn("Console.WriteLine(message)", KERNEL)
+        self.assertIn("catch (Exception)", KERNEL)
+        self.assertIn("REGISTER SNAPSHOT / NOT A NETWORK TEST", KERNEL)
+        self.assertIn("PROBE FAILED / NO NIC BOUND", KERNEL)
+        self.assertIn("Photograph this screen for diagnosis.", KERNEL)
+        self.assertIn("Display(\"MAC: \" + sample.MacAddress)", KERNEL)
+        self.assertNotIn("Display(\"HEARTBEAT", KERNEL)
         self.assertIn("SuccessfulSamples != 1", KERNEL)
         self.assertIn("[NET3095-RTL810XE][FAIL]", KERNEL)
         self.assertIn("SNAPSHOT=PASS", KERNEL)

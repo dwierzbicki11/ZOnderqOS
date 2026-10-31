@@ -1,6 +1,12 @@
 # RTL810xE 10EC:8136 read-only hardware snapshot (Cosmos Gen3 3.0.95)
 
-This is an **opt-in, serial-only physical diagnostic**, not a network driver.
+This is an **opt-in, isolated physical diagnostic**, not a network driver.
+The kernel keeps the machine-readable UART output and now also attempts to
+mirror the one-time MAC/PHY/TxConfig result (or the decline reason) to the
+text console. This gives laptops without an accessible UART connector a
+possible screen/photo diagnostic path. Console output is **best effort**:
+firmware/video availability is not guaranteed, and a photograph is not a
+substitute for the original serial log in the automated validator.
 The normal disk-backed GUI and its FAT32 ZONDERQDATA policy are unchanged.
 No DHCP, frame TX/RX, DMA buffers, IRQ handler, filesystem mount or disk write
 is performed by this diagnostic. It does not publish an Ethernet interface.
@@ -73,6 +79,13 @@ isolated kernel now reports `[NET3095-RTL810XE][FAIL]` with a bounded
 or counting a successful sample. Disabled memory decoding, D-state and
 unassigned BAR2 have separate decline reasons. No sample is counted until
 its serial diagnostic marker has been emitted successfully.
+
+The diagnostic deliberately does **not** echo the one-second heartbeat
+to the screen, so the result remains visible instead of scrolling away.
+The serial heartbeat and the existing log validation rules are unchanged.
+If the screen is visible, photograph the complete MAC, link, PHY, TxConfig,
+XID and chip lines for manual review. A photo cannot establish independent
+MMIO reads or working network traffic.
 
 The laptop must actually expose a usable serial capture path to collect
 the log. A QEMU serial log or a photograph of an unrelated boot cannot
