@@ -123,7 +123,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("public static byte[] EncodeMono16(byte[] pcm)", parser)
         self.assertIn("AudioWavePcm.EncodeMono16(mono)", runtime)
         self.assertIn("GenerateSquareStereo16(48000, 660, 250, 4096)", runtime)
-        self.assertIn('expected_hz=660 if args.command == "wavmono" else 880 if args.command == "wav44" else 1320 if args.command == "wav8" else 440', harness)
+        self.assertIn('expected_hz=660 if args.command == "wavmono" else 880 if args.command == "wav44" else 1320 if args.command == "wav8" else 1760 if args.command == "wav24" else 440', harness)
         self.assertIn('if (command == "wav44")', kernel)
         self.assertIn("AudioWavePcm.EncodeStereo16AtRate(source, 44100)", runtime)
         self.assertIn("--command wav44", workflow)
