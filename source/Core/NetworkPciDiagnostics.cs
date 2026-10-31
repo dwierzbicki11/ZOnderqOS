@@ -90,12 +90,23 @@ namespace ZonderqOS.SystemCore
                             " addr64=" + (irqInfo.Msi64Bit ? "yes" : "no") +
                             " (read-only; IRQ not verified)", shellOutput);
                         if (irqInfo.MsiXPresent)
+                        {
                             Write("[NIC3094] MSI-X=present enabled_bit=" + (irqInfo.MsiXEnabled ? "1" : "0") +
                                 " function_mask=" + (irqInfo.MsiXFunctionMasked ? "1" : "0") +
                                 " vectors=" + irqInfo.MsiXVectors +
                                 " table=BAR" + irqInfo.TableBir + "+0x" + irqInfo.TableOffset.ToString("X") +
                                 " pba=BAR" + irqInfo.PbaBir + "+0x" + irqInfo.PbaOffset.ToString("X") +
                                 " (unmapped; IRQ not verified)", shellOutput);
+                            PciNicMsiXBarResolution msixBars;
+                            if (PciSysfsProvider.TryResolveRealtekMsiXMemoryBars(d, out msixBars))
+                                Write("[NIC3094] MSI-X_MEMORY_BARS=VALID table_phys=0x" +
+                                    msixBars.TableAddress.ToString("X") + " pba_phys=0x" +
+                                    msixBars.PbaAddress.ToString("X") +
+                                    " (PCI metadata only; size/mapping/IRQ unverified)", shellOutput);
+                            else
+                                Write("[NIC3094] MSI-X_MEMORY_BARS=INVALID_OR_UNASSIGNED" +
+                                    " (no MMIO access attempted)", shellOutput);
+                        }
                         else
                             Write("[NIC3094] MSI-X=absent (IRQ not verified)", shellOutput);
                     }
