@@ -1389,7 +1389,7 @@ class ResponsiveGui3094(unittest.TestCase):
         rollback = navigation.split('if (!RefreshInternal(""))', 1)[1]
         self.assertIn("currentPath = previousPath;", rollback)
         self.assertIn("searchText = previousSearch;", rollback)
-        self.assertIn("List<FileEntry> scanned = new List<FileEntry();", refresh)
+        self.assertIn("List<FileEntry> scanned = new List<FileEntry>();", refresh)
         self.assertIn("Add(scanned, Directory.GetDirectories(targetPath), true);", refresh)
         self.assertIn("Add(scanned, Directory.GetFiles(targetPath), false);", refresh)
         self.assertIn("Sort(scanned);", refresh)
