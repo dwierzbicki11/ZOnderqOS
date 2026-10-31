@@ -201,6 +201,37 @@ Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 2, 0, out bars) &&
 barConfig.VendorId = 0x10EC;
 Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 32, 0, out bars),
     "Invalid PCI device number must fail closed");
+// Pure RTL810xE register decoding only: no MMIO is performed by this test.
+var station = new byte[] { 0x02, 0x11, 0x22, 0x33, 0x44, 0x55 };
+Check(Realtek810xERegisterDecoder.StationAddressOffset == 0x00 &&
+      Realtek810xERegisterDecoder.PhyStatusOffset == 0x6C,
+    "RTL810xE station/PHY register offsets changed");
+Check(Realtek810xERegisterDecoder.TryDecode(station, 0x0B, out var nicSnapshot) &&
+      nicSnapshot.MacAddress == "02:11:22:33:44:55" &&
+      nicSnapshot.Carrier && nicSnapshot.SpeedMbps == 100 &&
+      nicSnapshot.FullDuplex && nicSnapshot.RawPhyStatus == 0x0B,
+    "100M full-duplex PHY status or MAC decode failed");
+Check(Realtek810xERegisterDecoder.TryDecode(station, 0x06, out nicSnapshot) &&
+      nicSnapshot.Carrier && nicSnapshot.SpeedMbps == 10 && !nicSnapshot.FullDuplex,
+    "10M half-duplex PHY status decode failed");
+Check(Realtek810xERegisterDecoder.TryDecode(station, 0x08, out nicSnapshot) &&
+      !nicSnapshot.Carrier && nicSnapshot.SpeedMbps == 0 && !nicSnapshot.FullDuplex,
+    "No carrier must not invent a negotiated speed or duplex");
+Check(!Realtek810xERegisterDecoder.TryDecode(station, 0x02, out nicSnapshot),
+    "Link-up without a speed indication must fail closed");
+Check(!Realtek810xERegisterDecoder.TryDecode(station, 0x0E, out nicSnapshot),
+    "Conflicting 10M/100M bits must fail closed");
+Check(!Realtek810xERegisterDecoder.TryDecode(station, 0x1A, out nicSnapshot),
+    "Unexpected gigabit status must not be reported for RTL810xE");
+Check(!Realtek810xERegisterDecoder.TryDecode(null, 0x0B, out nicSnapshot) &&
+      !Realtek810xERegisterDecoder.TryDecode(new byte[5], 0x0B, out nicSnapshot) &&
+      !Realtek810xERegisterDecoder.TryDecode(new byte[6], 0x0B, out nicSnapshot),
+    "Missing, truncated or all-zero station address must fail closed");
+Check(!Realtek810xERegisterDecoder.TryDecode(
+      new byte[] { 0x01, 0, 0, 0, 0, 1 }, 0x0B, out nicSnapshot),
+    "Multicast station address must fail closed");
+Console.WriteLine("[NET3095-RTL810XE-SNAPSHOT] PASS C# synthetic MAC/PHYstatus decoding; no physical MMIO/link proof");
+
 Console.WriteLine("[NET3095-PCI-PM] PASS C# read-only PMCSR D3hot/PME flags and absent-PM guard; no power transition");
 Console.WriteLine("[NET3095-PCI-MSIX-BAR] PASS C# MSI-X table/PBA range and overlap guards, high-half/IO/unassigned/overflow; no MMIO or IRQ proof");
 Console.WriteLine("[NET3095-PCI-IRQ] PASS C# read-only MSI/MSI-X control, vector count, BAR indicators and malformed BAR guards; no IRQ delivery proof");
