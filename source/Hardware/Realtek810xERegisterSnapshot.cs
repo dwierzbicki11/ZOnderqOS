@@ -10,13 +10,14 @@ namespace ZonderqOS.Hardware
     public readonly struct Realtek810xERegisterSnapshot
     {
         public Realtek810xERegisterSnapshot(string macAddress, bool carrier,
-            int speedMbps, bool fullDuplex, byte rawPhyStatus)
+            int speedMbps, bool fullDuplex, byte rawPhyStatus, uint rawTxConfig = 0)
         {
             MacAddress = macAddress;
             Carrier = carrier;
             SpeedMbps = speedMbps;
             FullDuplex = fullDuplex;
             RawPhyStatus = rawPhyStatus;
+            RawTxConfig = rawTxConfig;
         }
 
         public string MacAddress { get; }
@@ -25,6 +26,10 @@ namespace ZonderqOS.Hardware
         public int SpeedMbps { get; }
         public bool FullDuplex { get; }
         public byte RawPhyStatus { get; }
+        // TxConfig is read-only identification metadata, never a TX completion proof.
+        public uint RawTxConfig { get; }
+        public ushort Xid => (ushort)((RawTxConfig >> 20) & 0xFCF);
+        public string ChipVariant => Realtek810xERegisterDecoder.GetChipVariant(Xid);
     }
 
     /// <summary>
@@ -37,14 +42,26 @@ namespace ZonderqOS.Hardware
     {
         public const ushort StationAddressOffset = 0x00;
         public const ushort PhyStatusOffset = 0x6C;
+        public const ushort TxConfigOffset = 0x40;
         private const byte LinkStatus = 0x02;
         private const byte Speed10 = 0x04;
         private const byte Speed100 = 0x08;
         private const byte Speed1000 = 0x10;
         private const byte FullDuplex = 0x01;
 
+        // Linux r8169 extracts XID from TxConfig bits 20..31 and uses
+        // ordered masks. Only the two reviewed 10/100 families are labelled;
+        // an unrecognised XID must never be treated as a supported DMA variant.
+        public static string GetChipVariant(ushort xid)
+        {
+            if ((xid & 0x7C8) == 0x448) return "RTL8106e";
+            if ((xid & 0x7CF) == 0x409 || (xid & 0x7C8) == 0x408)
+                return "RTL8105e";
+            return "unknown";
+        }
+
         public static bool TryDecode(byte[] stationAddress, byte phyStatus,
-            out Realtek810xERegisterSnapshot snapshot)
+            out Realtek810xERegisterSnapshot snapshot, uint rawTxConfig = 0)
         {
             snapshot = default;
             if (stationAddress == null || stationAddress.Length != 6)
@@ -77,7 +94,7 @@ namespace ZonderqOS.Hardware
             for (int i = 1; i < stationAddress.Length; i++)
                 mac += ":" + stationAddress[i].ToString("X2");
             snapshot = new Realtek810xERegisterSnapshot(mac, carrier,
-                speed, duplex, phyStatus);
+                speed, duplex, phyStatus, rawTxConfig);
             return true;
         }
     }
@@ -91,7 +108,7 @@ namespace ZonderqOS.Hardware
     }
 
     /// <summary>
-    /// Read precisely IDR0..IDR5 and PHYstatus (seven byte reads) from a
+    /// Read precisely IDR0..IDR5, PHYstatus and TxConfig (eleven byte reads) from a
     /// caller-validated register window. Does not discover/map hardware.
     /// The caller must check PCI identity, D0, memory decoding and BAR aperture.
     /// </summary>
@@ -105,11 +122,15 @@ namespace ZonderqOS.Hardware
 
             byte[] mac = new byte[6];
             byte phy;
+            uint txConfig = 0;
             try
             {
                 for (ushort i = 0; i < 6; i++)
                     mac[i] = registers.Read8((ushort)(Realtek810xERegisterDecoder.StationAddressOffset + i));
                 phy = registers.Read8(Realtek810xERegisterDecoder.PhyStatusOffset);
+                // Four little-endian bytes; no register writes or DMA setup.
+                for (ushort i = 0; i < 4; i++)
+                    txConfig |= (uint)registers.Read8((ushort)(Realtek810xERegisterDecoder.TxConfigOffset + i)) << (8 * i);
             }
             catch (Exception)
             {
@@ -117,7 +138,7 @@ namespace ZonderqOS.Hardware
                 return false;
             }
 
-            return Realtek810xERegisterDecoder.TryDecode(mac, phy, out snapshot);
+            return Realtek810xERegisterDecoder.TryDecode(mac, phy, out snapshot, txConfig);
         }
     }
 
