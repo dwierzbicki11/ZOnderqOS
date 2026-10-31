@@ -42,5 +42,22 @@ namespace ZonderqOS.SystemCore
             }
             return pcm;
         }
+        /// <summary>
+        /// Bounded true-stereo diagnostic: independent left/right frequencies.
+        /// Reuses the validated PCM16 generator, then replaces only right
+        /// samples. Does not access a codec, DMA or filesystem.
+        /// </summary>
+        public static byte[] GenerateDualSquareStereo16(int sampleRate,
+            int leftFrequency, int rightFrequency, int durationMs, short amplitude)
+        {
+            byte[] left = GenerateSquareStereo16(sampleRate, leftFrequency, durationMs, amplitude);
+            byte[] right = GenerateSquareStereo16(sampleRate, rightFrequency, durationMs, amplitude);
+            for (int i = 0; i < left.Length; i += 4)
+            {
+                left[i + 2] = right[i + 2];
+                left[i + 3] = right[i + 3];
+            }
+            return left;
+        }
     }
 }

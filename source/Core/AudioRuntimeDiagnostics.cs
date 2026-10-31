@@ -54,6 +54,16 @@ namespace ZonderqOS.SystemCore
             return true;
         }
 
+        /// <summary>
+        /// Distinct left/right PCM16 signals (440/880 Hz) for independent
+        /// stereo HDA capture verification. Diskless and opt-in only.
+        /// </summary>
+        public static bool PlayStereoSplitTestTone()
+        {
+            byte[] pcm = AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 880, 250, 4096);
+            return PlayPcm(pcm);
+        }
+
         public static bool PlayTestTone()
         {
             const int sampleRate = 48000;

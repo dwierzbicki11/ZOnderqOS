@@ -124,6 +124,14 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("AudioWavePcm.EncodeMono16(mono)", runtime)
         self.assertIn("GenerateSquareStereo16(48000, 660, 250, 4096)", runtime)
         self.assertIn("expected_hz=EXPECTED_TONE_HZ[args.command]", harness)
+        self.assertIn('elif args.command == "stereosplit":', harness)
+        self.assertIn("stereo_capture.inspect(wav)", harness)
+        self.assertIn("verify-audio-stereo-capture.py", workflow)
+        self.assertIn("test_audio_stereo_validator.py", workflow)
+        self.assertIn("--command stereosplit", workflow)
+        self.assertIn('if (command == "stereosplit")', kernel)
+        self.assertIn("PlayStereoSplitTestTone()", runtime)
+        self.assertIn("GenerateDualSquareStereo16", read("source/Core/AudioTonePcm.cs"))
         self.assertIn('"wav22k": 1100', harness)
         self.assertIn('"wav32k": 3520', harness)
         self.assertIn('if (command == "wav44")', kernel)
@@ -210,7 +218,7 @@ class AudioGen3Contract(unittest.TestCase):
             self.assertNotIn(forbidden, gain)
 
         self.assertIn("--command wavtone", workflow)
-        self.assertIn('choices=("tone", "wavtone", "wavmono", "wav44", "wav22k", "wav32k", "wav8", "wav24", "wav32", "wavext", "wavext20")', harness)
+        self.assertIn('choices=("tone", "stereosplit", "wavtone", "wavmono", "wav44", "wav22k", "wav32k", "wav8", "wav24", "wav32", "wavext", "wavext20")', harness)
         for forbidden in ("System.IO", "File.", "Disk.", "TryMount(", "WriteBlock(",
                           "NetworkManager.", "PciSysfsProvider"):
             self.assertNotIn(forbidden, parser)

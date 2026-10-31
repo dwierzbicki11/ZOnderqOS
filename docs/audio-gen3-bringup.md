@@ -263,3 +263,17 @@ independent QEMU WAV backend gate must detect sustained 1100 Hz PCM on both
 channels; a successful compile or console message is not playback evidence.
 This test uses a diskless 1-vCPU image and does not enable production audio,
 mount FAT32, or validate physical speakers/IRQ handling.
+
+
+### Independent stereo HDA capture (2026-11-01)
+
+The diskless opt-in `stereosplit` command produces signed PCM16 with **440 Hz
+on the left channel** and **880 Hz on the right channel**, through the same
+stock Cosmos HDA player. The separate QEMU WAV capture is validated by
+`tools/verify-audio-stereo-capture.py`: it requires sustained non-silent
+samples in both channels, two independent 80 ms windows, correct channel
+order and different measured pitches. Host C# checks verify the production
+PCM generator, and synthetic Python negative fixtures reject swapped,
+identical, silent and short channels. Only a completed QEMU capture test
+proves the emulated stereo PCM path; neither that nor the host tests prove
+physical speaker output, codec interrupts or production GUI audio.

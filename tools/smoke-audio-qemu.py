@@ -27,6 +27,7 @@ mute_spec.loader.exec_module(mute_capture)
 # accidentally certified by another command's captured PCM.
 EXPECTED_TONE_HZ = {
     "tone": 440,
+    "stereosplit": 440,
     "wavtone": 440,
     "wavmono": 660,
     "wav44": 880,
@@ -38,6 +39,11 @@ EXPECTED_TONE_HZ = {
     "wavext": 2640,
     "wavext20": 3080,
 }
+
+
+stereo_spec = spec_from_file_location("stereo_capture", ROOT / "tools/verify-audio-stereo-capture.py")
+stereo_capture = module_from_spec(stereo_spec)
+stereo_spec.loader.exec_module(stereo_capture)
 
 
 class Qmp:
@@ -89,7 +95,7 @@ def main():
     parser.add_argument("iso", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--boot-seconds", type=int, default=35)
-    parser.add_argument("--command", choices=("tone", "wavtone", "wavmono", "wav44", "wav22k", "wav32k", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
+    parser.add_argument("--command", choices=("tone", "stereosplit", "wavtone", "wavmono", "wav44", "wav22k", "wav32k", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
                         help="isolated guest command to execute; WAV probe never reads guest disks")
     parser.add_argument("--volume", type=int, default=100, help="software gain 0..100 percent")
     args = parser.parse_args()
@@ -150,6 +156,8 @@ def main():
                 raise RuntimeError(f"QEMU quit with status {guest.returncode}")
             if args.volume == 0:
                 print(mute_capture.inspect(wav))
+            elif args.command == "stereosplit":
+                print(stereo_capture.inspect(wav))
             else:
                 # The mono decoder probe uses a different pitch to prevent a
                 # stray 440 Hz tone from masquerading as successful mono playback.

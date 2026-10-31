@@ -89,6 +89,30 @@ static class Test
         }
         double measuredHz = transitions * 48000.0 / (2 * (pcm.Length / 4 - 1));
         Expect(Math.Abs(measuredHz - 440) < 5, "actual 440Hz square-wave period");
+        // True stereo must preserve independent left/right frequencies, not
+        // just duplicate the mono channel. This tests production PCM C#.
+        byte[] split = AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 880, 250, 4096);
+        Expect(split.Length == pcm.Length, "independent stereo length");
+        int leftTransitions = 0;
+        int rightTransitions = 0;
+        for (int frame = 1; frame < split.Length / 4; frame++)
+        {
+            int at = frame * 4;
+            int prior = at - 4;
+            short leftNow = (short)(split[at] | (split[at + 1] << 8));
+            short leftBefore = (short)(split[prior] | (split[prior + 1] << 8));
+            short rightNow = (short)(split[at + 2] | (split[at + 3] << 8));
+            short rightBefore = (short)(split[prior + 2] | (split[prior + 3] << 8));
+            Expect(leftNow == 4096 || leftNow == -4096, "left amplitude");
+            Expect(rightNow == 4096 || rightNow == -4096, "right amplitude");
+            if ((leftNow < 0) != (leftBefore < 0)) leftTransitions++;
+            if ((rightNow < 0) != (rightBefore < 0)) rightTransitions++;
+        }
+        double leftPitch = leftTransitions * 48000.0 / (2 * (split.Length / 4 - 1));
+        double rightPitch = rightTransitions * 48000.0 / (2 * (split.Length / 4 - 1));
+        Expect(Math.Abs(leftPitch - 440) < 5, "left channel 440Hz");
+        Expect(Math.Abs(rightPitch - 880) < 5, "right channel 880Hz");
+        Expect(rightTransitions > leftTransitions * 1.9, "independent stereo periods");
         // The independent mono WAV QEMU path uses 660Hz so a stray 440Hz tone cannot pass.
         byte[] monoProbeSource = AudioTonePcm.GenerateSquareStereo16(48000, 660, 250, 4096);
         int monoTransitions = 0;
