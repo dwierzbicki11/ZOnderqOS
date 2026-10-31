@@ -82,6 +82,33 @@ namespace ZonderqOS.SystemCore
             }
         }
 
+        /// <summary>
+        /// Independent in-RAM mono RIFF fixture -> upmix to stereo -> stock HDA.
+        /// No guest filesystem or physical codec access is added.
+        /// </summary>
+        public static bool PlayWaveMonoTestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 440, 250, 4096);
+                byte[] mono = new byte[source.Length / 2];
+                for (int i = 0; i < mono.Length; i += 2)
+                {
+                    mono[i] = source[i * 2];
+                    mono[i + 1] = source[i * 2 + 1];
+                }
+                byte[] wave = AudioWavePcm.EncodeMono16(mono);
+                byte[] decoded = AudioWavePcm.DecodeStereo16(wave);
+                Console.WriteLine("[AUDIO] WAV mono upmixed 48000Hz PCM16 stereo bytes=" + decoded.Length);
+                return PlayPcm(decoded);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV MONO ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
         private static bool PlayPcm(byte[] pcm)
         {
             AudioDevice output = AudioManager.Primary;
