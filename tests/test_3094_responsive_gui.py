@@ -1531,22 +1531,28 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
     def test_palette_stays_inside_actual_desktop(self):
         self.assertIn("Width = System.Math.Min(Width, System.Math.Max(1, screenWidth - 16));",
                       COMMAND_PALETTE)
-        self.assertIn("Height = System.Math.Min(Height, System.Math.Max(1, screenHeight - 16));",
+        self.assertIn("int desktopHeight = System.Math.Max(1, screenHeight - DesktopTaskbarHeight);",
+                      COMMAND_PALETTE)
+        self.assertIn("Height = System.Math.Min(Height, System.Math.Max(1, desktopHeight - 16));",
                       COMMAND_PALETTE)
         self.assertIn("X = System.Math.Max(0, (screenWidth - Width) / 2);",
                       COMMAND_PALETTE)
-        self.assertIn("screenHeight - Height));", COMMAND_PALETTE)
-        for width, height in ((320, 196), (640, 436), (800, 556),
-                              (1024, 724), (1366, 724), (1920, 1036)):
+        self.assertIn("desktopHeight - Height));", COMMAND_PALETTE)
+        for width, screen_height in ((320, 240), (640, 480), (800, 600),
+                                     (1024, 768), (1366, 768), (1920, 1080)):
+            desktop_height = max(1, screen_height - 44)
             palette_width = min(680, max(1, width - 16))
-            palette_height = min(448, max(1, height - 16))
+            palette_height = min(448, max(1, desktop_height - 16))
             x = max(0, (width - palette_width) // 2)
-            y = max(0, min(max(18, (height - palette_height) // 4),
-                           height - palette_height))
+            y = max(0, min(max(8, (desktop_height - palette_height) // 4),
+                           desktop_height - palette_height))
             self.assertGreaterEqual(x, 0)
             self.assertGreaterEqual(y, 0)
             self.assertLessEqual(x + palette_width, width)
-            self.assertLessEqual(y + palette_height, height)
+            self.assertLessEqual(y + palette_height, desktop_height)
+            self.assertLessEqual(y + palette_height, screen_height - 44)
+            if screen_height == 480:
+                self.assertEqual((y, palette_height), (8, 420))
 
     def test_palette_rows_share_render_and_mouse_geometry(self):
         self.assertIn("listY + visibleRows * resultRowHeight", COMMAND_PALETTE)
