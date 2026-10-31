@@ -7,6 +7,7 @@ BOOT_SECONDS="${SERVICE_QEMU_BOOT_SECONDS:-100}"
 CAPTURE_SCREEN="${SERVICE_QEMU_CAPTURE_SCREEN:-0}"
 AUTOMATE_GUI_LOGIN="${SERVICE_QEMU_AUTOMATE_GUI_LOGIN:-0}"
 PROBE_FILE_MANAGER="${SERVICE_QEMU_PROBE_FILE_MANAGER:-0}"
+PROBE_TASK_MANAGER="${SERVICE_QEMU_PROBE_TASK_MANAGER:-0}"
 EXPECTED_FRAMEBUFFER="${SERVICE_QEMU_EXPECT_FRAMEBUFFER:-}"
 
 fail() { echo "[SERVICES-QEMU][FAIL] $*" >&2; exit 1; }
@@ -20,6 +21,9 @@ done
 [[ "$AUTOMATE_GUI_LOGIN" == 0 || "$CAPTURE_SCREEN" == 1 ]] || fail "GUI login probe requires framebuffer capture"
 [[ "$PROBE_FILE_MANAGER" == 0 || "$PROBE_FILE_MANAGER" == 1 ]] || fail "invalid File Manager probe flag"
 [[ "$PROBE_FILE_MANAGER" == 0 || "$AUTOMATE_GUI_LOGIN" == 1 ]] || fail "File Manager probe requires synthetic GUI login"
+[[ "$PROBE_TASK_MANAGER" == 0 || "$PROBE_TASK_MANAGER" == 1 ]] || fail "invalid Task Manager probe flag"
+[[ "$PROBE_TASK_MANAGER" == 0 || "$PROBE_FILE_MANAGER" == 1 ]] || fail "Task Manager probe requires completed File Manager probe"
+[[ "$PROBE_TASK_MANAGER" == 0 || "$BOOT_SECONDS" -ge 84 ]] || fail "Task Manager probe requires at least 84 boot seconds"
 [[ -z "$EXPECTED_FRAMEBUFFER" || "$EXPECTED_FRAMEBUFFER" =~ ^[1-9][0-9]*x[1-9][0-9]*$ ]] || fail "expected framebuffer must be WIDTHxHEIGHT"
 [[ -z "$EXPECTED_FRAMEBUFFER" || "$CAPTURE_SCREEN" == 1 ]] || fail "framebuffer expectation requires screenshot capture"
 mkdir -p "$OUT"
@@ -80,6 +84,13 @@ boot_guest() {
         > "$OUT/$phase.filemanager-probe.log" 2>&1 || fail "$phase: GUI File Manager interaction probe failed"
       # Publish measured framebuffer changes in CI logs, not just artifacts.
       cat "$OUT/$phase.filemanager-probe.log"
+    fi
+    if [[ "$PROBE_TASK_MANAGER" == 1 && "$elapsed" == 83 ]]; then
+      # Read-only Task Manager interactions follow the File Manager close.
+      # Both probes run against the same disposable FAT32 guest image.
+      python3 "$(dirname "$0")/qmp-gui-taskmanager.py" "$socket" "$OUT/$phase" \
+        > "$OUT/$phase.taskmanager-probe.log" 2>&1 || fail "$phase: Task Manager QMP interaction probe failed"
+      cat "$OUT/$phase.taskmanager-probe.log"
     fi
     sleep 1
   done
@@ -164,6 +175,10 @@ if [[ "$PROBE_FILE_MANAGER" == 1 ]]; then
   first_filemanager_launches="$(grep -cF '[PALETTE] Launched application: File Manager' "$OUT/system-first.log" || true)"
   (( first_filemanager_launches >= 1 )) || fail 'first boot did not log File Manager launch'
 fi
+if [[ "$PROBE_TASK_MANAGER" == 1 ]]; then
+  first_taskmanager_launches="$(grep -cF '[PALETTE] Launched application: Manager zadan' "$OUT/system-first.log" || true)"
+  (( first_taskmanager_launches >= 1 )) || fail 'first boot did not log Task Manager launch'
+fi
 
 # Change the on-disk definition with QEMU stopped. The second boot must load it
 # and append memory samples to the same persistent service log.
@@ -184,6 +199,12 @@ if [[ "$PROBE_FILE_MANAGER" == 1 ]]; then
   (( second_filemanager_launches > first_filemanager_launches )) ||
     fail 'second boot did not log a new File Manager launch'
   echo '[SERVICES-QEMU] QMP keyboard probe launched File Manager in both real guest sessions.'
+fi
+if [[ "$PROBE_TASK_MANAGER" == 1 ]]; then
+  second_taskmanager_launches="$(grep -cF '[PALETTE] Launched application: Manager zadan' "$OUT/system-after.log" || true)"
+  (( second_taskmanager_launches > first_taskmanager_launches )) ||
+    fail 'second boot did not log a new Task Manager launch'
+  echo '[SERVICES-QEMU] QMP Task Manager launch and tab interactions verified in both guest sessions.'
 fi
 
 echo '[SERVICES-QEMU][PASS] Two real boots reused one FAT partition; /etc config and /var/log persisted.'
