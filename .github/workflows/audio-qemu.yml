@@ -1,0 +1,65 @@
+name: Audio Gen3 — real QEMU HDA PCM capture
+
+on:
+  pull_request:
+    paths:
+      - 'ZonderqOS.csproj'
+      - 'Kernel.cs'
+      - 'source/Core/Audio*.cs'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/smoke-audio-qemu.py'
+      - 'tools/verify-audio-wav-capture.py'
+      - '.github/workflows/audio-qemu.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audio-qemu-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hda-capture:
+    name: Real ISO + 1 vCPU QEMU + non-silent WAV (no host disk)
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install pinned Cosmos and QEMU prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 tar clang lld nasm xorriso binutils qemu-system-x86
+      - name: Check source and shell syntax
+        run: |
+          bash tools/verify-cosmos-3095-migration.sh
+          bash -n run.sh tools/build-cosmos-3095-local.sh
+          python3 -m py_compile tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py
+          python3 tests/test_audio_gen3_contract.py
+          python3 tests/test_audio_wav_validator.py
+      - name: Build isolated stock Cosmos 3.0.95 AUDIO ISO
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
+        run: |
+          bash tools/build-cosmos-3095-local.sh audio
+          test -s output-3095/ZonderqOS-3095-audio.iso
+      - name: Boot and capture actual HDA output
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-out --boot-seconds 45
+      - name: Diagnostic logs
+        if: always()
+        run: |
+          tail -n 200 audio-qemu-out/serial.log audio-qemu-out/qemu.stderr.log 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audio-gen3-hda-qemu-diagnostics
+          if-no-files-found: ignore
+          path: |
+            audio-qemu-out/*.log
+            audio-qemu-out/*.wav
+            audio-qemu-out/*.ppm
