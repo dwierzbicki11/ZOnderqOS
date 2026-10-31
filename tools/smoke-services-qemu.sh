@@ -172,22 +172,16 @@ PY
   QEMU_PID=""
   if [[ "$CAPTURE_SCREEN" == 1 ]]; then
     [[ -s "$OUT/$phase.ppm" ]] || fail "$phase: QMP screendump missing"
-    python3 - "$OUT/$phase.ppm" "$EXPECTED_FRAMEBUFFER" <<'PY'
+    python3 - "$OUT/$phase.ppm" "$EXPECTED_FRAMEBUFFER" "$(dirname "$0")/qmp-gui-filemanager.py" <<'PY'
+import importlib.util
 import sys
-with open(sys.argv[1], 'rb') as screenshot:
-    magic = screenshot.readline().strip()
-    if magic != b'P6':
-        raise SystemExit('QMP screendump is not a P6 PPM')
-    dimensions = screenshot.readline()
-    while dimensions.startswith(b'#'):
-        dimensions = screenshot.readline()
-    width, height = map(int, dimensions.split())
-    max_value = int(screenshot.readline().strip())
-    if width <= 0 or height <= 0 or max_value != 255:
-        raise SystemExit('Invalid QMP framebuffer dimensions')
-    pixels = screenshot.read()
-    if len(pixels) != width * height * 3:
-        raise SystemExit('Incomplete QMP framebuffer dump')
+# Use the SAME strict PPM parser as the interactive GUI probes. QEMU's
+# 1366x768 virtio-vga captures have two zero padding bytes per RGB row;
+# a second tight-only parser would incorrectly reject a real framebuffer.
+spec = importlib.util.spec_from_file_location("qmp_gui_filemanager", sys.argv[3])
+probe = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(probe)
+width, height, pixels = probe.read_ppm(sys.argv[1])
     if sys.argv[2] and f'{width}x{height}' != sys.argv[2]:
         raise SystemExit(f'Framebuffer mode mismatch: requested {sys.argv[2]}, actual {width}x{height}')
     if sys.argv[2]:
