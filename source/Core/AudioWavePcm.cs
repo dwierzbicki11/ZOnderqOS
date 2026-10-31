@@ -136,6 +136,30 @@ namespace ZonderqOS.SystemCore
             return upmixed;
         }
 
+        /// <summary>Build a bounded mono PCM16 RIFF fixture without disk access.</summary>
+        public static byte[] EncodeMono16(byte[] pcm)
+        {
+            if (pcm == null || pcm.Length == 0 ||
+                pcm.Length > SampleRate * MaxDurationSeconds * 2 || pcm.Length % 2 != 0)
+                throw new ArgumentException("PCM must be nonempty, mono16 and at most 2 seconds.", nameof(pcm));
+            byte[] wave = new byte[44 + pcm.Length];
+            PutTag(wave, 0, "RIFF");
+            Write32(wave, 4, wave.Length - 8);
+            PutTag(wave, 8, "WAVE");
+            PutTag(wave, 12, "fmt ");
+            Write32(wave, 16, 16);
+            Write16(wave, 20, 1);
+            Write16(wave, 22, 1);
+            Write32(wave, 24, SampleRate);
+            Write32(wave, 28, SampleRate * 2);
+            Write16(wave, 32, 2);
+            Write16(wave, 34, 16);
+            PutTag(wave, 36, "data");
+            Write32(wave, 40, pcm.Length);
+            Array.Copy(pcm, 0, wave, 44, pcm.Length);
+            return wave;
+        }
+
         /// <summary>Build an in-memory RIFF fixture for exercising the decoder.</summary>
         public static byte[] EncodeStereo16(byte[] pcm)
         {
