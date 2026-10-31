@@ -31,19 +31,22 @@ def normalize_icmp_serial(serial: str) -> str:
     Independent request/reply PCAP evidence remains mandatory.
     """
     lines = serial.replace("\r", "").splitlines()
-    for i, line in enumerate(lines):
-        if not line.startswith("[NET3095-N3] ICMP=PASS from="):
-            continue
-        head, sep, tick = line.partition("[LAPIC] Timer tick ")
-        if not sep or not re.fullmatch(r"[0-9]+ RSP=[0-9A-Fa-f]+", tick):
-            continue
-        if i + 2 >= len(lines) or not re.fullmatch(
-            r"\[SCHED\] Tick [0-9]+ enabled=[01]", lines[i + 1]
-        ):
-            continue
-        if head + lines[i + 2] == PING_PASS:
-            lines[i:i + 3] = [PING_PASS]
-    return "\n".join(lines)
+    repaired = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("[NET3095-N3] ICMP=PASS from="):
+            head, sep, tick = line.partition("[LAPIC] Timer tick ")
+            if (sep and re.fullmatch(r"[0-9]+ RSP=[0-9A-Fa-f]+", tick)
+                and i + 2 < len(lines)
+                and re.fullmatch(r"\[SCHED\] Tick [0-9]+ enabled=[01]", lines[i + 1])
+                and head + lines[i + 2] == PING_PASS):
+                repaired.append(PING_PASS)
+                i += 3
+                continue
+        repaired.append(line)
+        i += 1
+    return "\n".join(repaired)
 
 
 def icmp_frame(frame: bytes):
@@ -140,6 +143,8 @@ def self_test() -> None:
         (torn.replace("[SCHED] Tick 5 enabled=1", "[OTHER] injected"), frames),
         (torn.replace("RSP=FFFF80007F651C90", "RSP=NOTHEX"), frames),
         (torn + "\n" + PING_PASS, frames),
+        (torn + "\n" + "[NET3095-N3] ICMP=PASS from=10.[LAPIC] Timer tick 5 RSP=FFFF80007F651C90\n"
+         "[SCHED] Tick 5 enabled=1\n0.2.2", frames),
         (serial.replace(PING_START, ""), frames),
         (serial.replace(PING_PASS, ""), frames),
         (serial + "\n[NET3095-N3][FAIL] timeout", frames),
