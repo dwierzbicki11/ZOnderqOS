@@ -843,6 +843,36 @@ class ResponsiveGui3094(unittest.TestCase):
                              (0, 0) if press == 0 else (1, 1))
 
 
+    def test_file_manager_escape_clears_search_before_closing_window(self):
+        keyboard = FILE_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "private void CopySelected(bool cut)", 1
+        )[0]
+        escape = keyboard.split("if (key.Key == ConsoleKeyEx.Escape)", 2)[-1].split(
+            "if (key.Key == ConsoleKeyEx.Backspace)", 1
+        )[0]
+        self.assertIn("if (contextMenuVisible)", escape)
+        self.assertIn("if (searchText.Length > 0)", escape)
+        self.assertIn('searchText = "";', escape)
+        self.assertIn("Refresh();", escape)
+        self.assertIn("Close();", escape)
+        self.assertLess(escape.index("if (contextMenuVisible)"),
+                        escape.index("if (searchText.Length > 0)"))
+        self.assertLess(escape.index("if (searchText.Length > 0)"),
+                        escape.index("Close();"))
+
+        # First Escape dismisses a context menu; the next clears the
+        # filter; only the last Escape closes the window.
+        menu, filter_text, closed = True, "report", False
+        for expected in ((False, "report", False), (False, "", False), (False, "", True)):
+            if menu:
+                menu = False
+            elif filter_text:
+                filter_text = ""
+            else:
+                closed = True
+            self.assertEqual((menu, filter_text, closed), expected)
+
+
     def test_file_manager_home_end_select_and_reveal_boundary_tiles(self):
         keyboard = FILE_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
             "private void CopySelected(bool cut)", 1
