@@ -1016,10 +1016,20 @@ namespace ZonderqOS.GUI.Apps
         {
             int headerY = Y + TableHeaderTop;
             canvas.DrawFilledRectangle(Color.FromArgb(33, 39, 46), x, headerY, width, TableHeaderHeight);
-            SmallTextRenderer.Draw(canvas, app.ActivePage == 2 ? "PID" : "NAME", x + 12, headerY + 11, Muted);
-            SmallTextRenderer.Draw(canvas, app.ActivePage == 2 ? "NAME" : "TYPE", x + 90, headerY + 11, Muted);
-            SmallTextRenderer.Draw(canvas, "STATUS", x + Math.Max(370, width - 240), headerY + 11, Muted);
-            SmallTextRenderer.Draw(canvas, "DETAIL", x + Math.Max(470, width - 120), headerY + 11, Muted);
+            if (width < 520)
+            {
+                // Narrow windows cannot fit four columns. The compact rows
+                // show name and state without drawing beyond the client area.
+                SmallTextRenderer.Draw(canvas, app.ActivePage == 2 ? "PID / NAME" : "NAME",
+                    x + 12, headerY + 11, Muted);
+            }
+            else
+            {
+                SmallTextRenderer.Draw(canvas, app.ActivePage == 2 ? "PID" : "NAME", x + 12, headerY + 11, Muted);
+                SmallTextRenderer.Draw(canvas, app.ActivePage == 2 ? "NAME" : "TYPE", x + 90, headerY + 11, Muted);
+                SmallTextRenderer.Draw(canvas, "STATUS", x + Math.Max(370, width - 240), headerY + 11, Muted);
+                SmallTextRenderer.Draw(canvas, "DETAIL", x + Math.Max(470, width - 120), headerY + 11, Muted);
+            }
 
             int listY = Y + ListTop;
             int listH = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
@@ -1045,6 +1055,32 @@ namespace ZonderqOS.GUI.Apps
 
         private void DrawRow(Canvas canvas, ModernTaskRow row, int x, int width, int y, bool selected)
         {
+            if (width < 520)
+            {
+                int nameOffset;
+                if (app.ActivePage == 2)
+                {
+                    if (row.KernelPid > 0)
+                        SmallTextRenderer.DrawUInt(canvas, (ulong)row.KernelPid, x + 8, y + 12, Muted);
+                    else
+                        SmallTextRenderer.Draw(canvas, "GUI", x + 8, y + 12, Muted);
+                    nameOffset = 52;
+                }
+                else
+                {
+                    IconManager.DrawScaled(canvas, row.IsKernel ? IconType.Settings : IconType.File,
+                        x + 8, y + 9, 18, 18);
+                    nameOffset = 34;
+                }
+
+                int textWidth = Math.Max(1, width - nameOffset - 4);
+                SmallTextRenderer.DrawClipped(canvas, row.Name, x + nameOffset, y + 10,
+                    textWidth, selected ? Color.WhiteSmoke : Text);
+                SmallTextRenderer.DrawClipped(canvas, row.State, x + nameOffset, y + 23,
+                    textWidth, row.State == "ACTIVE" ? Good : Muted);
+                return;
+            }
+
             if (app.ActivePage == 2)
             {
                 if (row.KernelPid > 0) SmallTextRenderer.DrawUInt(canvas, (ulong)row.KernelPid, x + 12, y + 14, Muted);
