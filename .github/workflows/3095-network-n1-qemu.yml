@@ -14,6 +14,7 @@ on:
       - 'source/Drivers/Realtek810xEReadOnlyProbeDriver.cs'
       - 'source/Core/NetworkRealtekReadOnlyKernel.cs'
       - 'tests/test_3095_realtek_readonly_contract.py'
+      - 'tests/verify_3095_realtek_readonly.py'
       - 'source/Platform/X64/PciSysfsProvider.cs'
       - 'source/Platform/Arm64/PciSysfsProvider.cs'
       - 'tests/test_3094_nic_pci_inventory.py'
@@ -56,6 +57,7 @@ jobs:
           bash zonderq/tools/verify-cosmos-compat.sh
           python3 zonderq/tests/test_3095_network_n1_contract.py
           python3 zonderq/tests/test_3095_realtek_readonly_contract.py
+          python3 zonderq/tests/verify_3095_realtek_readonly.py --self-test
           python3 zonderq/tests/test_3094_nic_pci_inventory.py
           python3 zonderq/tests/verify_3095_network_n1.py --self-test
           python3 zonderq/tests/verify_3095_network_n2.py --self-test
