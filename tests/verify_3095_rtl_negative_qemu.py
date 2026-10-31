@@ -17,6 +17,15 @@ DECLINE = (PREFIX + "[FAIL] no unique valid MMIO snapshot; "
            "offers=0 samples=0 reason=no matching PCI probe offer")
 TICK_SPLICE = re.compile(r"(?<=\[NET)\[SCHED\] Tick [0-9]+ enabled=1\n"
                          r"(?=3095-RTL810XE\]\[FAIL\])")
+# Observed in real no-NIC QEMU 41225440865: a scheduler tick split
+# the literal word 'valid' inside the exact decline line. Match the
+# COMPLETE expected decline around the one allowed tick, not arbitrary
+# partial strings or unrelated injected log lines.
+_VALID_SPLIT = DECLINE.index("valid") + 1
+TICK_SPLICE_VALID = re.compile(
+    re.escape(DECLINE[:_VALID_SPLIT]) +
+    r"\[SCHED\] Tick [0-9]+ enabled=1\n" +
+    re.escape(DECLINE[_VALID_SPLIT:]))
 HEARTBEAT = re.compile(r"^\[NET3095-RTL810XE\] HEARTBEAT=([0-9]+)$", re.MULTILINE)
 PCI_FUNCTIONS = re.compile(r"^\[Drivers\] platform:pci@cf8 PciHostDriver: ([0-9]+) functions on 1 buses$", re.MULTILINE)
 FATAL = re.compile(r"kernel panic|fatal: exception|page fault|unhandled exception|"
@@ -31,7 +40,7 @@ def verify(serial: str, mode: str) -> str:
     # Do not remove arbitrary trace lines or reconstruct arbitrary fragments.
     # A scheduler tick between '[NET' and '3095-RTL...' was observed in
     # the real RTL8139 QEMU artifact, run 41215345464.
-    cleaned = TICK_SPLICE.sub("", raw)
+    cleaned = TICK_SPLICE_VALID.sub(DECLINE, TICK_SPLICE.sub("", raw))
     lines = cleaned.splitlines()
     if lines.count(BOOT) != 1 or lines.count(DECLINE) != 1:
         raise ValueError("missing/duplicate RTL810xE boot or exact decline marker")
@@ -72,6 +81,10 @@ def self_test() -> None:
     spliced = rtl.replace(DECLINE, "[NET[SCHED] Tick 6 enabled=1\n" +
                           DECLINE[len("[NET"):])
     assert "PASS mode=rtl8139" in verify(spliced, "rtl8139")
+    mid_spliced = base.replace(
+        DECLINE, DECLINE[:_VALID_SPLIT] +
+        "[SCHED] Tick 6 enabled=1\n" + DECLINE[_VALID_SPLIT:])
+    assert "PASS mode=none" in verify(mid_spliced, "none")
     bad = [
         rtl.replace("offers=0", "offers=1"),
         rtl.replace("samples=0", "samples=1"),
@@ -83,6 +96,10 @@ def self_test() -> None:
         rtl.replace(DECLINE, DECLINE + "\n" + DECLINE),
         rtl.replace(BOOT, BOOT + "\n" + BOOT),
         rtl.replace(DECLINE, "[NET[UNKNOWN] noise\n" + DECLINE[len("[NET"):]),
+        mid_spliced.replace("enabled=1\n", "enabled=0\n"),
+        mid_spliced.replace("[SCHED] Tick 6", "[OTHER] Tick 6"),
+        mid_spliced.replace("offers=0", "offers=1"),
+        mid_spliced + "\n" + DECLINE,
         rtl + "[NET3095-RTL810XE] SNAPSHOT=PASS mac=02:11:22:33:44:55\n",
         rtl + "Exception 14 CR2=0xC\n",
         rtl + "[NET3095-RTL810XE][FAIL] unexpected\n",
