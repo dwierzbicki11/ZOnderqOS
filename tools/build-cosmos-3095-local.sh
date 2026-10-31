@@ -17,8 +17,8 @@ UPSTREAM="https://github.com/CosmosOS/Cosmos.git"
 WORK_ROOT="${ZONDERQ_3095_WORK_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}/zonderqos-cosmos-3095}"
 MODE="${1:-disk}"
 case "$MODE" in
-  disk|probe|network-n1|network-n2|network-n3|network-n4|network-n5|network-n6|network-rtl-readonly) ;;
-  *) echo "[3095-BUILD][ERROR] Expected disk, probe, network-n1, network-n2, network-n3, network-n4 or network-n5 or network-n6 or network-rtl-readonly" >&2; exit 2 ;;
+  disk|probe|network-n1|network-n2|network-n3|network-n4|network-n5|network-n6|network-rtl-readonly|network-rtl-screen) ;;
+  *) echo "[3095-BUILD][ERROR] Expected disk, probe, network-n1, network-n2, network-n3, network-n4 or network-n5 or network-n6 or network-rtl-readonly or network-rtl-screen" >&2; exit 2 ;;
 esac
 if [[ $# -gt 1 ]]; then
   echo "[3095-BUILD][ERROR] Unexpected additional arguments" >&2
@@ -156,6 +156,7 @@ dotnet build "$STAGE/tests/KeyboardApiSmoke/KeyboardApiSmoke.csproj" \
 
 output="$STAGE/output"
 realtek_mmio=false
+realtek_screen=false
 case "$MODE" in
   disk)
     read_only=false
@@ -190,6 +191,19 @@ case "$MODE" in
     network_n6=false
     realtek_mmio=true
     output_file="ZonderqOS-3095-network-rtl-readonly.iso"
+    ;;
+  network-rtl-screen)
+    read_only=false
+    diagnostic=false
+    network_n1=false
+    network_n2=false
+    network_n3=false
+    network_n4=false
+    network_n5=false
+    network_n6=false
+    realtek_mmio=true
+    realtek_screen=true
+    output_file="ZonderqOS-3095-network-rtl-screen.iso"
     ;;
   network-n1)
     read_only=false
@@ -267,6 +281,7 @@ dotnet publish "$STAGE/ZonderqOS.csproj" \
   -p:ZonderqRamRoot=false \
   -p:ZonderqNetworkN1Probe="$network_n1" \
   -p:ZonderqRealtekReadOnlyMmio="$realtek_mmio" \
+  -p:ZonderqRealtekScreen="$realtek_screen" \
   -p:ZonderqNetworkN2Dhcp="$network_n2" \
   -p:ZonderqNetworkN3Icmp="$network_n3" \
   -p:ZonderqNetworkN4Tcp="$network_n4" \
@@ -284,6 +299,6 @@ if [[ "$MODE" == disk ]]; then
   echo "[3095-BUILD] Never format or mount Kali's EFI partition as ZONDERQDATA."
 fi
 
-if [[ "$MODE" == network-n1 || "$MODE" == network-n2 || "$MODE" == network-n3 || "$MODE" == network-n4 || "$MODE" == network-n5 || "$MODE" == network-n6 || "$MODE" == network-rtl-readonly ]]; then
+if [[ "$MODE" == network-n1 || "$MODE" == network-n2 || "$MODE" == network-n3 || "$MODE" == network-n4 || "$MODE" == network-n5 || "$MODE" == network-n6 || "$MODE" == network-rtl-readonly || "$MODE" == network-rtl-screen ]]; then
   echo "[3095-BUILD] Isolated QEMU NIC probe only; not production networking."
 fi

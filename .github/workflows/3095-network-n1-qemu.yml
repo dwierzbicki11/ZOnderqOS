@@ -311,6 +311,26 @@ jobs:
           sha256sum output-3095/ZonderqOS-3095-network-rtl-readonly.iso
           echo "[NET3095-RTL810XE] BUILD_ONLY; physical MAC/link not verified"
 
+      - name: Build opt-in RTL810xE text-console diagnostic ISO (compile only)
+        working-directory: zonderq
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/without-downgrade
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh network-rtl-screen
+          test -s output-3095/ZonderqOS-3095-network-rtl-screen.iso
+          sha256sum output-3095/ZonderqOS-3095-network-rtl-screen.iso
+          echo "[NET3095-RTL810XE] SCREEN_BUILD_ONLY; no physical MMIO or video proof"
+
+      - name: Retain opt-in RTL810xE screen ISO (UNVERIFIED HARDWARE)
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-rtl810xe-screen-UNVERIFIED-HARDWARE
+          path: zonderq/output-3095/ZonderqOS-3095-network-rtl-screen.iso
+          retention-days: 4
+          if-no-files-found: error
+
       - name: Retain isolated physical RTL810xE diagnostic ISO (UNVERIFIED HARDWARE)
         if: success()
         uses: actions/upload-artifact@v4

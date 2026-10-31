@@ -29,6 +29,8 @@
     <ZonderqNetworkN1Probe Condition="'$(ZonderqNetworkN1Probe)' == ''">false</ZonderqNetworkN1Probe>
     <!-- Explicit isolated ASUS RTL810xE read-only BAR2 probe, never production GUI. -->
     <ZonderqRealtekReadOnlyMmio Condition="'$(ZonderqRealtekReadOnlyMmio)' == ''">false</ZonderqRealtekReadOnlyMmio>
+    <!-- Separate opt-in screen variant. The original UART-only ISO stays unchanged. -->
+    <ZonderqRealtekScreen Condition="'$(ZonderqRealtekScreen)' == ''">false</ZonderqRealtekScreen>
     <DefineConstants Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(CosmosArch)' == 'x64'">$(DefineConstants);ZONDERQ_REALTEK_READONLY_MMIO</DefineConstants>
     <NoWarn Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true'">$(NoWarn);COSMOS0003</NoWarn>
     <!-- N2 runs DHCP only after the N1 raw TX proof, in the same QEMU-only kernel. -->
@@ -63,7 +65,9 @@
     <CosmosEnableMouse Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true'">false</CosmosEnableMouse>
     <CosmosEnableUsb Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true'">false</CosmosEnableUsb>
     <CosmosEnableKeyboard Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true'">false</CosmosEnableKeyboard>
-    <CosmosEnableGraphics Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true'">false</CosmosEnableGraphics>
+    <CosmosEnableGraphics Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(ZonderqRealtekScreen)' != 'true'">false</CosmosEnableGraphics>
+    <!-- Only a text console on the firmware display; never the production GUI. -->
+    <CosmosEnableGraphics Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(ZonderqRealtekScreen)' == 'true'">true</CosmosEnableGraphics>
     <CosmosEnableScheduler>true</CosmosEnableScheduler>
     <!-- Serial diagnostics remain available even without graphics. -->
     <CosmosEnableUART>true</CosmosEnableUART>
@@ -164,8 +168,14 @@
            Text="RTL810xE MMIO probe is x64-only." />
     <Error Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and ('$(ZonderqNetworkN1Probe)' == 'true' or '$(ZonderqRamRoot)' == 'true' or '$(ZonderqReadOnlyHardwareProbe)' == 'true' or '$(ZonderqInputDiagnosticBoot)' == 'true')"
            Text="RTL810xE MMIO probe must use its own isolated serial boot profile." />
-    <Error Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and ('$(CosmosEnableStorage)' != 'false' or '$(CosmosEnableGraphics)' != 'false')"
-           Text="RTL810xE MMIO probe must not enable disk or GUI." />
+    <Error Condition="'$(ZonderqRealtekScreen)' == 'true' and '$(ZonderqRealtekReadOnlyMmio)' != 'true'"
+           Text="RTL810xE screen output requires the isolated read-only MMIO probe." />
+    <Error Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(CosmosEnableStorage)' != 'false'"
+           Text="RTL810xE MMIO probe must not enable storage." />
+    <Error Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(ZonderqRealtekScreen)' != 'true' and '$(CosmosEnableGraphics)' != 'false'"
+           Text="RTL810xE UART-only probe must keep graphics disabled." />
+    <Error Condition="'$(ZonderqRealtekReadOnlyMmio)' == 'true' and '$(ZonderqRealtekScreen)' == 'true' and '$(CosmosEnableGraphics)' != 'true'"
+           Text="RTL810xE screen probe requires the text-console display." />
   </Target>
 
   <Target Name="GuardRamRootProfile" BeforeTargets="CoreCompile">

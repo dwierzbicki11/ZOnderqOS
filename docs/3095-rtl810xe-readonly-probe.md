@@ -50,8 +50,17 @@ DriverKit releases the mapping and does not retain a bound network device.
 
 ```bash
 bash tools/build-cosmos-3095-local.sh network-rtl-readonly
-# output-3095/ZonderqOS-3095-network-rtl-readonly.iso
+# output-3095/ZonderqOS-3095-network-rtl-readonly.iso (UART-only, original)
+bash tools/build-cosmos-3095-local.sh network-rtl-screen
+# output-3095/ZonderqOS-3095-network-rtl-screen.iso (opt-in text console)
 ```
+
+The `network-rtl-screen` variant enables the Cosmos firmware-framebuffer
+text console but still runs **only** `NetworkRealtekReadOnlyKernel`.
+Storage, keyboard, USB, mouse, disk GUI, network TX/RX, DMA and IRQ
+remain disabled. This optional build may initialize a display driver and
+is **not yet proven to show a screen on the ASUS laptop**. The original
+UART-only ISO remains available for the minimal diagnostic path.
 
 The script pins the exact upstream Cosmos tag `v3.0.95` and uses its
 private cache. This ISO must be booted on a separately prepared test
