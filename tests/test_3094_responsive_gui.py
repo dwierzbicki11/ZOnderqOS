@@ -2319,5 +2319,40 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
                                             (count, cols, rows, selected, scroll))
 
 
+    def test_file_manager_partial_rows_use_remaining_screen_space_safely(self):
+        self.assertIn("internal const int MinPartialTileHeight = 40;", FILE_MANAGER)
+        self.assertIn("internal int GridRowsForView => Math.Max(1,", FILE_MANAGER)
+        self.assertIn("GridHeightForView + TileHeight + TileGap - MinPartialTileHeight", FILE_MANAGER)
+        hit = FILE_MANAGER.split("private int HitEntryIndex(int x, int y)", 1)[1].split(
+            "private bool ContextClick(", 1)[0]
+        grid = FILE_MANAGER.split("private void Grid(Canvas canvas", 1)[1].split(
+            "private static IconType ResolveEntryIcon(", 1)[0]
+        selection = FILE_MANAGER.split("private void EnsureSelectionVisible()", 1)[1].split(
+            "private void GoUp()", 1)[0]
+        page = FILE_MANAGER.split("private void SelectPage(int direction)", 1)[1].split(
+            "private void Select(int delta)", 1)[0]
+        for source in (hit, grid, selection, page):
+            self.assertIn("GridRowsForView", source)
+
+        # Only show the last row if >=40px is left. The old full-row
+        # calculation wasted 88px at the default 820x520 window.
+        for height, expected_rows in ((40, 1), (88, 1), (139, 1),
+                                      (140, 2), (339, 3), (340, 4),
+                                      (388, 4), (399, 4), (400, 4),
+                                      (439, 4), (440, 5), (868, 9)):
+            rows = max(1, (height + 60) // 100)
+            self.assertEqual(rows, expected_rows)
+            for row in range(rows):
+                visible = min(94, height - row * 100)
+                self.assertGreaterEqual(visible, 40)
+                self.assertLessEqual(row * 100 + visible, height)
+
+        # At 800x600 a default 820x520 window has 5 columns and
+        # four usable rows, including a final 88px row: 20 vs 15 tiles.
+        self.assertEqual(max(1, (612 + 6) // 118), 5)
+        self.assertEqual(max(1, (388 + 6) // 100), 3)
+        self.assertEqual(max(1, (388 + 60) // 100), 4)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
