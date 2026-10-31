@@ -104,12 +104,18 @@ def main():
                     raise RuntimeError(f"QEMU exited early: {guest.returncode}")
                 time.sleep(0.1)
             qmp = Qmp(qmp_socket)
-            qmp.execute("screendump", {"filename": str(out / "before.ppm")})
+            try:
+                qmp.execute("screendump", {"filename": str(out / "before.ppm")})
+            except RuntimeError as exc:
+                print(f"[AUDIO-QEMU] optional screenshot unavailable: {exc}")
             qmp.type_line("audioinfo")
             time.sleep(1)
             qmp.type_line("tone")
             time.sleep(4)
-            qmp.execute("screendump", {"filename": str(out / "after.ppm")})
+            try:
+                qmp.execute("screendump", {"filename": str(out / "after.ppm")})
+            except RuntimeError as exc:
+                print(f"[AUDIO-QEMU] optional screenshot unavailable: {exc}")
             qmp.execute("quit")
             guest.wait(timeout=15)
             if guest.returncode != 0:
