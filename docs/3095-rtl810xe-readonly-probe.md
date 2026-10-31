@@ -48,7 +48,19 @@ python3 tests/verify_3095_realtek_readonly.py laptop-serial.log
 The `--self-test` mode tests the parser with synthetic strings; it is
 **not** evidence of a physical read. A missing BAR, disabled memory
 decoding, unexpected PCI identity, invalid MAC or PHY status produces
-a failure/decline rather than a false PASS.
+a failure/decline rather than a false PASS. If the DriverKit probe is offered
+but PCI configuration access, BAR mapping or MMIO sampling throws, the
+isolated kernel now reports `[NET3095-RTL810XE][FAIL]` with a bounded
+`reason=PCI/MMIO probe exception: <type>` instead of crashing the diagnostic
+or counting a successful sample. Disabled memory decoding, D-state and
+unassigned BAR2 have separate decline reasons. No sample is counted until
+its serial diagnostic marker has been emitted successfully.
+
+The laptop must actually expose a usable serial capture path to collect
+the log. A QEMU serial log or a photograph of an unrelated boot cannot
+substitute for the ASUS hardware run. The validator also rejects a log
+containing kernel panic, fatal exception, page fault or a broken heartbeat
+sequence, even if earlier sample markers appear valid.
 
 ## Verification limits
 
