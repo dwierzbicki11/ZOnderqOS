@@ -139,7 +139,7 @@ def self_test() -> None:
     )
     assert "PASS" in validate(torn, synthetic_capture(frames))
     bad = [
-        (torn.replace("0.2.2", "0.2.3"), frames),
+        (torn.replace("\n0.2.2", "\n0.2.3"), frames),
         (torn.replace("[SCHED] Tick 5 enabled=1", "[OTHER] injected"), frames),
         (torn.replace("RSP=FFFF80007F651C90", "RSP=NOTHEX"), frames),
         (torn + "\n" + PING_PASS, frames),
