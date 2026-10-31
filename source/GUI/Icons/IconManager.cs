@@ -19,10 +19,12 @@ namespace ZonderqOS.GUI.Icons
         private static readonly int[] sourceWidths = new int[IconCount];
         private static readonly int[] sourceHeights = new int[IconCount];
         private static readonly bool[] sourceLoadAttempted = new bool[IconCount];
+        private static readonly bool[] sourceUseRuns = new bool[IconCount];
 
         // Every requested icon/size pair is scaled once. Later frames only reuse the
         // same persistent int[]; Canvas.DrawImage(image, x, y, w, h) is never used.
         private static readonly int[][] scaledPixels = new int[MaxScaledCacheEntries][];
+        private static readonly bool[] scaledUseRuns = new bool[MaxScaledCacheEntries];
         private static readonly IconType[] scaledTypes = new IconType[MaxScaledCacheEntries];
         private static readonly int[] scaledWidths = new int[MaxScaledCacheEntries];
         private static readonly int[] scaledHeights = new int[MaxScaledCacheEntries];
@@ -75,14 +77,15 @@ namespace ZonderqOS.GUI.Icons
 
             if (sourceWidth == width && sourceHeight == height)
             {
-                Blit(canvas, source, width, height, x, y);
+                Blit(canvas, source, width, height, x, y, sourceUseRuns[sourceIndex]);
                 return;
             }
 
             int[] pixels = GetScaledPixels(type, source, sourceWidth, sourceHeight, width, height);
             if (pixels != null)
             {
-                Blit(canvas, pixels, width, height, x, y);
+                Blit(canvas, pixels, width, height, x, y,
+                    scaledUseRuns[scaledRecentSlots[sourceIndex]]);
                 return;
             }
 
@@ -132,6 +135,7 @@ namespace ZonderqOS.GUI.Icons
                 sourceWidths[index] = width;
                 sourceHeights[index] = height;
                 sourcePixels[index] = pixels;
+                sourceUseRuns[index] = ShouldCoalesce(pixels, width, height);
                 return true;
             }
             catch
@@ -201,13 +205,51 @@ namespace ZonderqOS.GUI.Icons
             scaledWidths[slot] = width;
             scaledHeights[slot] = height;
             scaledPixels[slot] = destination;
+            scaledUseRuns[slot] = ShouldCoalesce(destination, width, height);
             scaledCacheCount = slot + 1;
             if (validType)
                 scaledRecentSlots[typeIndex] = slot;
             return destination;
         }
 
-        private static void Blit(Canvas canvas, int[] pixels, int width, int height, int x, int y)
+        // Classification happens only when PNGs are decoded or a new size is
+        // cached, NEVER in the per-frame blitter. A gradient keeps the original
+        // point-only path with no repeated per-pixel color probing.
+        private static bool ShouldCoalesce(int[] pixels, int width, int height)
+        {
+            int opaque = 0;
+            int grouped = 0;
+            for (int y = 0; y < height; y++)
+            {
+                int row = y * width;
+                for (int x = 0; x < width;)
+                {
+                    int argb = pixels[row + x];
+                    if (((uint)argb >> 24) != 255)
+                    {
+                        x++;
+                        continue;
+                    }
+
+                    int end = x + 1;
+                    while (end < width && pixels[row + end] == argb)
+                        end++;
+                    int run = end - x;
+                    opaque += run;
+                    if (run >= 3)
+                        grouped += run;
+                    x = end;
+                }
+            }
+
+            // Require substantial opaque runs before paying for the run scanner.
+            // Conservative false negatives are harmless: DrawPoint is identical.
+            return grouped >= 6 && grouped * 3 >= opaque * 2 &&
+                grouped >= width * height / 4;
+        }
+
+        private static void Blit(Canvas canvas, int[] pixels, int width, int height,
+            int x, int y, bool useRuns)
         {
             int startX = x < 0 ? -x : 0;
             int startY = y < 0 ? -y : 0;
@@ -219,18 +261,9 @@ namespace ZonderqOS.GUI.Icons
             if (startX >= endX || startY >= endY)
                 return;
 
-            // A few representative opaque triples decide the path ONCE per
-            // icon. Gradient and translucent icons retain the exact original
-            // point-only renderer with no per-scanline run-detection overhead.
-            // Restrict coalescing to icons with repeated colors in top, middle
-            // and bottom visible rows; correctness never depends on the hint.
-            bool useRuns = endX - startX >= 3 &&
-                HasOpaqueTriple(pixels, startY * width + startX) &&
-                HasOpaqueTriple(pixels, ((startY + endY) / 2) * width + startX) &&
-                HasOpaqueTriple(pixels, (endY - 1) * width + startX);
-
             if (!useRuns)
             {
+                // Original Canvas point renderer for gradients and antialiasing.
                 for (int py = startY; py < endY; py++)
                 {
                     int row = py * width;
@@ -258,8 +291,8 @@ namespace ZonderqOS.GUI.Icons
                         continue;
                     }
 
-                    // Only opaque runs may use filled rectangles. Keep point
-                    // rendering for partial alpha to preserve Canvas behavior.
+                    // Only fully opaque runs may be coalesced. Partial alpha
+                    // always uses DrawPoint, preserving Cosmos Canvas semantics.
                     if (alpha == 255)
                     {
                         int end = px + 1;
@@ -280,13 +313,6 @@ namespace ZonderqOS.GUI.Icons
                     px++;
                 }
             }
-        }
-
-        private static bool HasOpaqueTriple(int[] pixels, int index)
-        {
-            int argb = pixels[index];
-            return ((uint)argb >> 24) == 255 &&
-                pixels[index + 1] == argb && pixels[index + 2] == argb;
         }
 
         private static void BlitScaledDirect(Canvas canvas, int[] source, int sourceWidth, int sourceHeight,

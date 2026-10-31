@@ -9,10 +9,15 @@ using ZonderqOS.GUI.Icons;
 // No fake success markers: the same C# Blit body used by the kernel executes.
 internal static class IconBlitSmoke
 {
-    private static readonly Action<Canvas, int[], int, int, int, int> ProductionBlit =
-        (Action<Canvas, int[], int, int, int, int>)typeof(IconManager)
+    private static readonly Action<Canvas, int[], int, int, int, int, bool> ProductionBlit =
+        (Action<Canvas, int[], int, int, int, int, bool>)typeof(IconManager)
             .GetMethod("Blit", BindingFlags.Static | BindingFlags.NonPublic)
-            .CreateDelegate(typeof(Action<Canvas, int[], int, int, int, int>));
+            .CreateDelegate(typeof(Action<Canvas, int[], int, int, int, int, bool>));
+
+    private static readonly Func<int[], int, int, bool> Classify =
+        (Func<int[], int, int, bool>)typeof(IconManager)
+            .GetMethod("ShouldCoalesce", BindingFlags.Static | BindingFlags.NonPublic)
+            .CreateDelegate(typeof(Func<int[], int, int, bool>));
 
     private static void BaselineBlit(Canvas canvas, int[] pixels, int width, int height, int x, int y)
     {
@@ -63,7 +68,7 @@ internal static class IconBlitSmoke
         Canvas baseline = new Canvas(64, 64);
         Canvas current = new Canvas(64, 64);
         BaselineBlit(baseline, pixels, 48, 48, x, y);
-        ProductionBlit(current, pixels, 48, 48, x, y);
+        ProductionBlit(current, pixels, 48, 48, x, y, Classify(pixels, 48, 48));
         if (baseline.DrawCalls < current.DrawCalls)
             throw new Exception("Icon Blit increased Canvas calls: " + pattern + " at " + x + "," + y);
         for (int i = 0; i < baseline.Pixels.Length; i++)
@@ -75,10 +80,11 @@ internal static class IconBlitSmoke
 
     private static double Time(Canvas canvas, int[] pixels, bool optimized, int iterations)
     {
+        bool useRuns = Classify(pixels, 48, 48); // cached before timed loop
         long start = Stopwatch.GetTimestamp();
         for (int i = 0; i < iterations; i++)
         {
-            if (optimized) ProductionBlit(canvas, pixels, 48, 48, 0, 0);
+            if (optimized) ProductionBlit(canvas, pixels, 48, 48, 0, 0, useRuns);
             else BaselineBlit(canvas, pixels, 48, 48, 0, 0);
         }
         return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
@@ -125,6 +131,10 @@ internal static class IconBlitSmoke
                     Check(pattern, x, y);
                     count++;
                 }
+        if (!Classify(MakePixels(48, 48, 0), 48, 48) ||
+            Classify(MakePixels(48, 48, 1), 48, 48) ||
+            Classify(MakePixels(48, 48, 3), 48, 48))
+            throw new Exception("Icon run classification regression");
         Console.WriteLine("Icon Blit: " + count + " exact framebuffer/call-count checks, including clipping and alpha.");
         Benchmark(0, "opaque solid");
         Benchmark(1, "opaque gradient");
