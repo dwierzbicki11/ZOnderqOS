@@ -590,6 +590,26 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertFalse(is_double(100_000_000, 99_000_000))
         self.assertFalse(is_double(0, 1_000_000))
 
+    def test_file_manager_short_grid_does_not_paint_selection_into_footer(self):
+        grid = FILE_MANAGER.split("private void Grid(Canvas canvas", 1)[1].split(
+            "private static IconType ResolveEntryIcon", 1)[0]
+        self.assertIn("int visibleTileHeight = Math.Min(FileManagerApp.TileHeight, y + height - tileY);", grid)
+        self.assertIn("if (visibleTileHeight <= 0)", grid)
+        self.assertEqual(grid.count("FileManagerApp.TileWidth, visibleTileHeight"), 2)
+        self.assertIn("tileY, 3, visibleTileHeight", grid)
+        # Minimum Window(320x220): view 300x170, grid height 88,
+        # selection used to extend 6px into the footer.
+        for window_height in (220, 226, 240, 320, 520):
+            view_height = window_height - 50
+            grid_height = max(40, view_height - 24 - 50 - 8)
+            rows = max(1, (grid_height + 6) // 100)
+            for row in range(rows):
+                tile_y = row * 100
+                visible = min(94, grid_height - tile_y)
+                self.assertGreater(visible, 0)
+                self.assertLessEqual(tile_y + visible, grid_height)
+        self.assertEqual(min(94, 88), 88)
+
     def test_file_manager_double_click_requires_nearby_pointer(self):
         mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
             "private void ResetClickSequence()", 1)[0]
