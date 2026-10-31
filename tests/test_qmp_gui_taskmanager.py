@@ -49,6 +49,19 @@ class TaskManagerQmpContract(unittest.TestCase):
         self.assertIn('minimum=0.025', source)
         self.assertIn('maximum=0.10', source)
 
+    def test_real_qmp_keyboard_page_probe_requires_both_transitions(self):
+        source = (ROOT / "tools/qmp-gui-taskmanager.py").read_text()
+        self.assertIn('qmp.send_keys(channel, "right")', source)
+        self.assertIn('qmp.send_keys(channel, "left")', source)
+        self.assertIn('prefix + ".taskmanager-performance-keyboard.ppm"', source)
+        self.assertIn('prefix + ".taskmanager-processes-keyboard.ppm"', source)
+        self.assertIn('measure("keyboard-right-performance", restored, keyboard_performance, minimum=0.025)', source)
+        self.assertIn('measure("keyboard-left-transition", keyboard_performance, keyboard_restored, minimum=0.025)', source)
+        self.assertIn('measure("keyboard-processes-restored", restored, keyboard_restored, maximum=0.15)', source)
+        self.assertLess(source.index('qmp.send_keys(channel, "right")'),
+                        source.index('qmp.send_keys(channel, "left")'))
+        self.assertNotIn('qmp.send_keys(channel, "del")', source)
+
     def test_visual_gate_rejects_unchanged_frames(self):
         pixels = bytes(80 * 64 * 3)
         frame = (80, 64, pixels)
