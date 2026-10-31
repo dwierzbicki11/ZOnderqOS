@@ -34,6 +34,13 @@ def inspect(path: Path):
     peak = max(abs(x) for x in left)
     if peak < 512:
         raise ValueError(f"silent/too quiet capture (peak={peak})")
+    # A stereo output must carry both channels. Looking only at the left
+    # channel would incorrectly certify a broken right-channel HDA path.
+    if channels == 2:
+        right = samples[1::2]
+        right_peak = max(abs(x) for x in right)
+        if right_peak < 256 or right_peak * 2 < peak or right_peak > peak * 2:
+            raise ValueError(f"stereo channel imbalance: left={peak} right={right_peak}")
 
     # Find an active 180 ms window. The first active sample may be a click;
     # insist that most of the window carries the expected square wave.
