@@ -202,3 +202,15 @@ bits are rejected before playback. New host C# checks cover 20-in-24 and
 24-in-32 signed samples, malformed padding and 44.1 kHz conversion.
 This change does not itself demonstrate captured PCM, physical speakers,
 DMA/IRQ completion or external FAT32 playback; await CI results.
+
+
+### 20-bit-in-24-bit PCM: independent QEMU capture (new CI pending)
+
+The opt-in diskless command `wavext20` constructs a **3080 Hz** mono
+WAVE_FORMAT_EXTENSIBLE fixture with 20 valid bits in a 24-bit signed
+container, decodes it via the read-only bounded stream loader and sends
+PCM16 stereo to the stock Cosmos HDA player. The eleventh independent QEMU
+boot captures WAV backend samples and validates pitch, stereo balance and
+phase. This is not evidence until the new CI run finishes. Production GUI
+audio remains disabled; no guest disk, FAT32 volume or physical sound card
+is touched.
