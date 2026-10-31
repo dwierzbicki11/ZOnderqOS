@@ -275,14 +275,18 @@ namespace ZonderqOS
                         postBurstException.GetType().Name);
                     return;
                 }
-                // A third full HTTP RX stream must succeed after all TX ring
-                // cycles and the four ICMP replies. Unlike queue success, the
-                // host PCAP independently proves the later RX/TCP teardown.
+                // Four independent full HTTP RX streams must succeed after all TX
+                // ring cycles and the four ICMP replies. Repeated fresh TCP
+                // sessions exercise E1000E RX descriptor reuse and teardown.
+                // QEMU PCAP, not queue/serial success alone, proves each one.
                 Log("[NET3095-N6] POST_BURST_HTTP_ATTEMPT=START");
                 try
                 {
-                    if (!TryHttpExchange(3))
-                        return;
+                    for (int attempt = 3; attempt <= 6; attempt++)
+                    {
+                        if (!TryHttpExchange(attempt))
+                            return;
+                    }
                 }
                 catch (Exception postHttpException)
                 {
@@ -349,7 +353,9 @@ namespace ZonderqOS
                     }
                 }
                 string marker = attempt == 1 ? "HTTP=PASS" :
-                    attempt == 2 ? "HTTP_REPEAT=PASS" : "POST_BURST_HTTP=PASS";
+                    attempt == 2 ? "HTTP_REPEAT=PASS" :
+                    attempt == 3 ? "POST_BURST_HTTP=PASS" :
+                    "POST_BURST_HTTP_REPEAT=PASS attempt=" + attempt;
                 Log("[NET3095-N6] " + marker +
                     " from=10.0.2.2 port=18096 bytes=" + received);
                 return true;
