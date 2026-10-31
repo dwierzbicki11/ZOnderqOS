@@ -1285,14 +1285,19 @@ namespace ZonderqOS.GUI.Apps
                 FileEntry entry = app.Entries[index];
                 int tileX = x + i % cols * (FileManagerApp.TileWidth + FileManagerApp.TileGap);
                 int tileY = y + i / cols * (FileManagerApp.TileHeight + FileManagerApp.TileGap);
+                // The minimum 320x220 window leaves only 88px for the 94px
+                // tile. Never paint its selection into the footer below.
+                int visibleTileHeight = Math.Min(FileManagerApp.TileHeight, y + height - tileY);
+                if (visibleTileHeight <= 0)
+                    break;
 
                 if (index == app.SelectedIndex)
                 {
                     canvas.DrawFilledRectangle(Color.FromArgb(41, 66, 87), tileX, tileY,
-                        FileManagerApp.TileWidth, FileManagerApp.TileHeight);
+                        FileManagerApp.TileWidth, visibleTileHeight);
                     canvas.DrawRectangle(Accent, tileX, tileY,
-                        FileManagerApp.TileWidth, FileManagerApp.TileHeight);
-                    canvas.DrawFilledRectangle(Accent, tileX, tileY, 3, FileManagerApp.TileHeight);
+                        FileManagerApp.TileWidth, visibleTileHeight);
+                    canvas.DrawFilledRectangle(Accent, tileX, tileY, 3, visibleTileHeight);
                 }
 
                 int iconX = tileX + (FileManagerApp.TileWidth - iconSize) / 2;
