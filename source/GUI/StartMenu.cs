@@ -30,6 +30,9 @@ namespace ZonderqOS.GUI
         // Index into the currently filtered pinned + tools results (-1 = none).
         // Keyboard selection is independent from pointer hover.
         private int selectedResult = -1;
+        // Pointer movement, not a stationary hover, returns selection to mouse.
+        private int lastPointerX = int.MinValue;
+        private int lastPointerY = int.MinValue;
         private bool wasDrawnOpen;
         private int openingFrames;
 
@@ -124,6 +127,8 @@ namespace ZonderqOS.GUI
         {
             searchText = string.Empty;
             selectedResult = -1;
+            lastPointerX = int.MinValue;
+            lastPointerY = int.MinValue;
             UpdateLayout();
         }
 
@@ -320,7 +325,8 @@ namespace ZonderqOS.GUI
                 if (!button.Visible)
                     continue;
 
-                bool highlighted = button.IsHovered || selectedResult == visibleCount;
+                bool highlighted = selectedResult >= 0
+                    ? selectedResult == visibleCount : button.IsHovered;
                 Color background = highlighted ? PanelHover : Panel;
                 Color border = highlighted ? SystemTheme.AccentBorder : Border;
                 UiPainter.RoundedPanel(canvas, button.X, button.Y, button.Width, button.Height,
@@ -356,7 +362,8 @@ namespace ZonderqOS.GUI
                 if (!button.Visible)
                     continue;
 
-                bool highlighted = button.IsHovered || selectedResult == visibleIndex;
+                bool highlighted = selectedResult >= 0
+                    ? selectedResult == visibleIndex : button.IsHovered;
                 UiPainter.RoundedPanel(canvas, button.X, button.Y, button.Width, button.Height,
                     UiMetrics.TileRadius, highlighted ? PanelHover : Panel,
                     highlighted ? UiPalette.AccentBorder : Border);
@@ -537,6 +544,12 @@ namespace ZonderqOS.GUI
         {
             if (!Visible)
                 return;
+
+            if (lastPointerX != int.MinValue &&
+                (mouseX != lastPointerX || mouseY != lastPointerY))
+                selectedResult = -1;
+            lastPointerX = mouseX;
+            lastPointerY = mouseY;
 
             UpdateLayout();
             UpdateButtonInteractions(pinnedButtons, mouseX, mouseY, isClicked, wasClicked);
