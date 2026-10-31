@@ -7,5 +7,6 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../source/Core/AudioPciDiagnostics.cs" Link="AudioPciDiagnostics.cs" />
+    <Compile Include="../../source/Core/AudioTonePcm.cs" Link="AudioTonePcm.cs" />
   </ItemGroup>
 </Project>
