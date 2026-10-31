@@ -162,6 +162,32 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject WAV larger than 2 seconds");
 
+        byte[] quarter = AudioPcmVolume.ScaleStereo16(pcm, 25);
+        byte[] muted = AudioPcmVolume.ScaleStereo16(pcm, 0);
+        byte[] full = AudioPcmVolume.ScaleStereo16(pcm, 100);
+        Expect(quarter.Length == pcm.Length, "gain preserves frame count");
+        for (int i = 0; i < pcm.Length; i += 2)
+        {
+            short original = (short)(pcm[i] | (pcm[i + 1] << 8));
+            short quiet = (short)(quarter[i] | (quarter[i + 1] << 8));
+            Expect(quiet == original / 4, "25 percent signed sample gain");
+            Expect(muted[i] == 0 && muted[i + 1] == 0, "mute is silent");
+            Expect(full[i] == pcm[i] && full[i + 1] == pcm[i + 1], "100 percent is bit-exact");
+        }
+        Expect(pcm[0] == 0 && pcm[1] == 16, "gain must not modify original PCM");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16(pcm, 101); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "reject gain above 100");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16(pcm, -1); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "reject negative gain");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16(new byte[3], 25); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject incomplete stereo frame");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
     }
 }
