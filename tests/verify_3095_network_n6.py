@@ -30,10 +30,10 @@ GUEST = bytes([10, 0, 2, 15])
 
 def stream_payload(packets, first: int, guest: bytes, client_port: int,
                    direction: str, seq: int, ack: int, expected: bytes,
-                   min_segments: int = 1):
+                   server_mac: bytes, min_segments: int = 1):
     """Match contiguous TCP payload bytes; permit small multi-segment responses.
 
-    No packet with an unrelated port, MAC, TCP sequence or acknowledgment can
+    No packet with an unrelated port, peer MAC, TCP sequence or acknowledgment can
     satisfy the expected application payload. Pure ACKs may be interleaved.
     N6 additionally requires at least three distinct accepted server payload
     segments; the fixture sends a 4 KiB body in bounded 1024-byte writes.
@@ -46,8 +46,8 @@ def stream_payload(packets, first: int, guest: bytes, client_port: int,
         if not (
             p["src"] == (guest if client else SERVER) and
             p["dst"] == (SERVER if client else guest) and
-            (p["src_mac"] == MAC if client else p["src_mac"] != MAC) and
-            (True if client else p["dst_mac"] == MAC) and
+            p["src_mac"] == (MAC if client else server_mac) and
+            p["dst_mac"] == (server_mac if client else MAC) and
             p["sport"] == (client_port if client else PORT) and
             p["dport"] == (PORT if client else client_port) and
             (p["flags"] & 0x14) == 0x10 and p["payload"]
@@ -66,7 +66,8 @@ def stream_payload(packets, first: int, guest: bytes, client_port: int,
 
 
 def server_fin_acked(packets, first: int, guest: bytes,
-                     client_port: int, client_seq: int, server_seq: int) -> bool:
+                     client_port: int, client_seq: int, server_seq: int,
+                     server_mac: bytes) -> bool:
     """Require the peer's FIN and the guest's matching final ACK.
 
     The server sends FIN after its complete HTTP response. This verifies
@@ -78,7 +79,7 @@ def server_fin_acked(packets, first: int, guest: bytes,
         fin = packets[i]
         if not (
             fin["src"] == SERVER and fin["dst"] == guest and
-            fin["src_mac"] != MAC and fin["dst_mac"] == MAC and
+            fin["src_mac"] == server_mac and fin["dst_mac"] == MAC and
             fin["sport"] == PORT and fin["dport"] == client_port and
             (fin["flags"] & 0x17) == 0x11 and
             fin["seq"] == server_end and fin["ack"] == client_end and
@@ -88,7 +89,8 @@ def server_fin_acked(packets, first: int, guest: bytes,
         for ack in packets[i + 1:]:
             if (
                 ack["src"] == guest and ack["dst"] == SERVER and
-                ack["src_mac"] == MAC and ack["sport"] == client_port and
+                ack["src_mac"] == MAC and ack["dst_mac"] == server_mac and
+                ack["sport"] == client_port and
                 ack["dport"] == PORT and (ack["flags"] & 0x17) == 0x10 and
                 ack["seq"] == client_end and
                 ack["ack"] == (server_end + 1) & 0xFFFFFFFF and
@@ -127,17 +129,20 @@ def validate(serial: str, pcap: bytes) -> str:
             if not (
                 synack["src"] == SERVER and synack["dst"] == guest and
                 synack["src_mac"] != MAC and synack["dst_mac"] == MAC and
+                syn["dst_mac"] == synack["src_mac"] and
                 synack["sport"] == PORT and synack["dport"] == client_port and
                 (synack["flags"] & 0x17) == 0x12 and
                 synack["ack"] == client_seq and not synack["payload"]
             ):
                 continue
             server_seq = (synack["seq"] + 1) & 0xFFFFFFFF
+            server_mac = synack["src_mac"]
             for k in range(j + 1, len(packets)):
                 ack = packets[k]
                 if not (
                     ack["src"] == guest and ack["dst"] == SERVER and
-                    ack["src_mac"] == MAC and ack["sport"] == client_port and
+                    ack["src_mac"] == MAC and ack["dst_mac"] == server_mac and
+                ack["sport"] == client_port and
                     ack["dport"] == PORT and (ack["flags"] & 0x17) == 0x10 and
                     ack["seq"] == client_seq and ack["ack"] == server_seq and
                     not ack["payload"]
@@ -145,16 +150,16 @@ def validate(serial: str, pcap: bytes) -> str:
                     continue
                 end_request = stream_payload(
                     packets, k + 1, guest, client_port, "client",
-                    client_seq, server_seq, REQUEST)
+                    client_seq, server_seq, REQUEST, server_mac)
                 if end_request is None:
                     continue
                 end_response = stream_payload(
                     packets, end_request, guest, client_port, "server",
                     server_seq, (client_seq + len(REQUEST)) & 0xFFFFFFFF,
-                    RESPONSE, min_segments=3)
+                    RESPONSE, server_mac, min_segments=3)
                 if end_response is not None and server_fin_acked(
                         packets, end_response, guest, client_port,
-                        client_seq, server_seq):
+                        client_seq, server_seq, server_mac):
                     return "[NET3095-N6-GATE] PASS real QEMU HTTP/1.0 GET /health 200 with TCP RX/TX and FIN/ACK teardown"
     raise ValueError("no correlated QEMU HTTP request/response TCP stream")
 
@@ -238,7 +243,20 @@ def self_test() -> None:
     damaged[0] = ord("Z") if damaged[0] != ord("Z") else ord("Y")
     corrupted[2] = fake_http(
         True, 0x18, 20001 + cuts[2], 10001 + len(REQUEST), bytes(damaged))
+    # A valid IP/TCP tuple is insufficient if frames do not belong to the
+    # Ethernet peer that answered the SYN. Verify both data and FIN/ACK L2.
+    wrong_mac = bytes.fromhex("020000000001")
+    def corrupt_mac(frame: bytes, offset: int) -> bytes:
+        return frame[:offset] + wrong_mac + frame[offset + 6:]
+
     negatives = [
+        (serial, base + [corrupt_mac(handshake[0], 0)] + handshake[1:] + request + response + teardown),
+        (serial, base + handshake[:1] + [corrupt_mac(handshake[1], 6)] + handshake[2:] + request + response + teardown),
+        (serial, base + handshake[:2] + [corrupt_mac(handshake[2], 0)] + request + response + teardown),
+        (serial, base + handshake + [corrupt_mac(request[0], 0)] + response + teardown),
+        (serial, base + handshake + request + [corrupt_mac(response[0], 6)] + response[1:] + teardown),
+        (serial, base + handshake + request + response + [corrupt_mac(teardown[0], 6), teardown[1]]),
+        (serial, base + handshake + request + response + [teardown[0], corrupt_mac(teardown[1], 0)]),
         (serial, base + handshake + request + corrupted + teardown),
         (serial, base + handshake + request + response[:2] + response[3:] + teardown),
         (serial, base + handshake + request + response[:1] + response[2:3] + response[1:2] + response[3:] + teardown),
