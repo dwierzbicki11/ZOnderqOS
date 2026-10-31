@@ -81,7 +81,7 @@ with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
         pass
     if sys.argv[3] == '1':
         command = {"execute": "screendump", "arguments": {"filename": sys.argv[2]}}
-        channel.write((json.dumps(command) + "\\r\\n").encode())
+        channel.write((json.dumps(command) + "\r\n").encode())
         while True:
             reply = json.loads(channel.readline())
             if 'error' in reply:
