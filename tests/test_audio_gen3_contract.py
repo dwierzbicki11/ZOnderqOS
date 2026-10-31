@@ -89,6 +89,24 @@ class AudioGen3Contract(unittest.TestCase):
             self.assertNotIn(forbidden, runtime)
 
 
+    def test_qemu_stereo_and_mute_gates_are_not_serial_only(self):
+        workflow = read(".github/workflows/audio-qemu.yml")
+        harness = read("tools/smoke-audio-qemu.py")
+        validator = read("tools/verify-audio-wav-capture.py")
+        mute = read("tools/verify-audio-mute-capture.py")
+        self.assertIn("audio-qemu-muted-out", workflow)
+        self.assertIn("--volume 0", workflow)
+        self.assertIn("tests/test_audio_mute_validator.py", workflow)
+        self.assertIn("mute_capture.inspect(wav)", harness)
+        self.assertIn("if args.volume == 0:", harness)
+        self.assertIn("stereo channel imbalance", validator)
+        self.assertIn("frames < rate // 10", mute)
+        self.assertIn("peak > 32", mute)
+        self.assertIn("stream.readframes(frames)", mute)
+        self.assertIn("captured.wav", harness)
+        for forbidden in ("-hda ", "-drive file=/dev/", "ZONDERQDATA"):
+            self.assertNotIn(forbidden, harness)
+
     def test_diskless_wav_decode_is_opt_in_and_bounded(self):
         parser = read("source/Core/AudioWavePcm.cs")
         runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
