@@ -234,6 +234,19 @@ def self_test() -> None:
                       server_seq + 2 + len(RESPONSE), client_port=port),
         ])
     check_followup_http(extended, guest, 0, (49153, 49154))
+    # A stale first-session body in the fourth RX stream must fail even if
+    # every TCP handshake, length and FIN/ACK is otherwise correct.
+    stale_fourth = list(extended)
+    fourth_body_index = len(frames) + 5  # SYN, SYN-ACK, ACK, request, headers, body
+    stale_fourth[fourth_body_index] = fake_http(
+        True, 0x18, 50001 + cuts[1], 40001 + len(REQUEST),
+        RESPONSE[cuts[1]:cuts[2]], client_port=49156)
+    try:
+        check_followup_http(stale_fourth, guest, 0, (49153, 49154))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted stale fourth-session HTTP RX payload")
     for bad in (extended[:-1], extended[:len(frames)],
                 extended[:len(frames)] + extended[len(frames) + 1:]):
         try:
