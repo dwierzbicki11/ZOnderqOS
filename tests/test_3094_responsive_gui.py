@@ -1413,6 +1413,18 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertNotIn("TryUnmount", refresh)
         self.assertNotIn("TryMount", refresh)
 
+    def test_file_manager_create_dialog_is_modal_to_window_chrome(self):
+        mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
+            "private void ResetClickSequence()", 1)[0]
+        guard = mouse.split("if (dialogMode != 0)", 1)[1].split(
+            "Window.HandleMouse(mouseX, mouseY, left, oldLeft);", 1)[0]
+        self.assertIn("ResetClickSequence();", guard)
+        self.assertIn("return;", guard)
+        self.assertLess(mouse.index("if (dialogMode != 0)"),
+                        mouse.index("Window.HandleMouse(mouseX, mouseY, left, oldLeft);"))
+        self.assertIn("if ((left && !oldLeft) || (right && !oldRight))", guard)
+
+
     def test_file_manager_refresh_keeps_selection_and_scroll_only_in_same_directory(self):
         refresh = FILE_MANAGER.split("private bool RefreshInternal(string keep)", 1)[1].split(
             "private void ApplySearchFilter()", 1)[0]
