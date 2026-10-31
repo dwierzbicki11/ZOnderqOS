@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """N6-only sustained raw E1000E TX proof from QEMU PCAP, not serial alone.
 
-The guest queues 32 paced, uniquely tagged Ethernet frames after two HTTP
+The guest queues 64 paced, uniquely tagged Ethernet frames after two HTTP
 sessions. The PCAP must contain every frame in order. This establishes real
 QEMU TX and repeated descriptor submission, NOT guest IRQ ISR execution,
 physical RTL810xE operation, or production networking.
@@ -20,9 +20,9 @@ from verify_3095_network_n6 import (
     HTTP_REPEAT_PASS, find_http_transaction, validate as validate_n6,
 )
 
-COUNT = 32
-START = "[NET3095-N6] TX_BURST_ATTEMPT=START count=32"
-QUEUED = "[NET3095-N6] TX_BURST=QUEUED count=32"
+COUNT = 64
+START = "[NET3095-N6] TX_BURST_ATTEMPT=START count=64"
+QUEUED = "[NET3095-N6] TX_BURST=QUEUED count=64"
 TAG = b"ZONDERQ3095-BURST-"
 POST_START = "[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START"
 POST_PASS = "[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2"
@@ -58,7 +58,7 @@ def last_http_frame(serial: str, frames: list[bytes]) -> int:
 
 
 def check_frames(pcap: bytes, after_index: int = -1) -> int:
-    """Require exactly 32 unmodified, in-order guest TX frames after HTTP.
+    """Require exactly 64 unmodified, in-order guest TX frames after HTTP.
 
     Subsequence matching could silently ignore duplicates, reordered frames,
     wrong source MAC, nonzero padding or an unexpected 33rd submission.
@@ -149,7 +149,7 @@ def validate(serial: str, pcap: bytes) -> str:
         raise ValueError("missing unique guest lease for post-burst ICMP")
     guest = bytes(int(part) for part in leases[0].group(1).split("."))
     check_post_burst_icmp(frames, last_burst, guest)
-    return ("[NET3095-N6-BURST-GATE] PASS 32 exact ordered QEMU PCAP raw TX "
+    return ("[NET3095-N6-BURST-GATE] PASS 64 exact ordered QEMU PCAP raw TX "
             "frames followed by correlated ICMP RX/TX; DMA ISR execution UNPROVEN")
 
 def self_test() -> None:
