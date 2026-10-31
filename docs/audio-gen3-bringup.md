@@ -43,11 +43,15 @@ then submits the decoded 48 kHz PCM16 stereo frames to the same stock HDA
 path as `tone`. This tests the actual WAV parser-to-playback path without
 opening any disk. It is **not** a file-browser WAV player yet.
 
-The parser currently accepts only uncompressed PCM, 48 kHz, 16-bit stereo,
-with a maximum of two seconds (384,000 PCM bytes). It checks RIFF and chunk
-bounds, fmt consistency, data alignment, duplicate chunks and odd-sized
-metadata padding. Unsupported rates and formats fail explicitly; no hidden
-resampling, DMA, filesystem access or production GUI activation occurs.
+The parser accepts uncompressed PCM16 at 48 kHz in mono or stereo, with
+a maximum of two seconds (at most 384,000 decoded stereo PCM bytes). Mono
+input is upmixed by duplicating each signed sample to both channels; no
+resampling occurs. It checks RIFF and chunk bounds, fmt consistency, data
+alignment, duplicate chunks, odd-sized metadata padding and source-duration
+bounds before allocating the decoded buffer. Unsupported rates and formats
+fail explicitly; no DMA, filesystem access or production GUI activation occurs.
+The diskless `wavtone` fixture itself is still stereo; mono decoding is
+host-C# tested but not yet independently exercised through HDA in QEMU.
 
 The CI audio-QEMU workflow boots the ISO **four times**: direct `tone`,
 `wavtone`, `tone` at 25% software volume, and `tone` at 0% (mute).
