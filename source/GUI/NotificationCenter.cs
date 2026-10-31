@@ -182,6 +182,12 @@ namespace ZonderqOS.GUI
                 return true;
             }
 
+            // Shift+C/R/D must not clear or alter notifications merely
+            // because the keyboard produced an uppercase character.
+            // Caps Lock still works because it does not set Shift.
+            if (key.Modifiers != 0)
+                return true;
+
             // Only unmodified letters are notification commands.
             char ch = key.KeyChar;
             if (ch == 'd' || ch == 'D')
