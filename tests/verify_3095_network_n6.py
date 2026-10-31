@@ -19,7 +19,7 @@ from verify_3095_network_n4 import (
     RESPONSE as ECHO_RESPONSE, fake_tcp, tcp_frame,
 )
 from verify_3095_network_n5 import (
-    DNS_START, DNS_PASS, fake_dns, validate as validate_n5,
+    DNS_START, DNS_PASS, fake_arp, fake_dns, validate as validate_n5,
 )
 from network_3095_http_host import PORT, REQUEST, RESPONSE
 
@@ -137,7 +137,7 @@ def self_test() -> None:
         fake_tcp(False, 0x10, 1001, 5001),
         fake_tcp(False, 0x18, 1001, 5001, ECHO_REQUEST),
         fake_tcp(True, 0x18, 5001, 1001 + len(ECHO_REQUEST), ECHO_RESPONSE),
-        fake_dns(False), fake_dns(True),
+        fake_arp(False), fake_arp(True), fake_dns(False), fake_dns(True),
     ]
     handshake = [
         fake_http(False, 0x02, 10000, 0),
