@@ -3,7 +3,7 @@ using System;
 namespace ZonderqOS.SystemCore
 {
     /// <summary>
-    /// Strict, allocation-bounded RIFF/WAVE PCM16 stereo decoder for the
+    /// Strict, allocation-bounded RIFF/WAVE PCM16 mono/stereo decoder for the
     /// opt-in diskless HDA probe. No filesystem, DMA or device access.
     /// Currently only 48 kHz PCM is supported; do not silently resample.
     /// </summary>
@@ -65,6 +65,7 @@ namespace ZonderqOS.SystemCore
             bool hasData = false;
             int dataOffset = 0;
             int dataSize = 0;
+            int channels = 0;
             int pos = 12;
             while (pos < wave.Length)
             {
@@ -81,20 +82,22 @@ namespace ZonderqOS.SystemCore
                     if (hasFormat || size < 16)
                         throw new ArgumentException("Duplicate or short WAV fmt chunk.", nameof(wave));
                     int format = Read16(wave, pos + 8);
-                    int channels = Read16(wave, pos + 10);
+                    int sourceChannels = Read16(wave, pos + 10);
                     uint rate = Read32(wave, pos + 12);
                     uint byteRate = Read32(wave, pos + 16);
                     int blockAlign = Read16(wave, pos + 20);
                     int bits = Read16(wave, pos + 22);
-                    if (format != 1 || channels != 2 || rate != SampleRate ||
-                        bits != 16 || blockAlign != FrameBytes ||
-                        byteRate != SampleRate * FrameBytes)
-                        throw new ArgumentException("Unsupported WAV format (requires 48kHz PCM16 stereo).", nameof(wave));
+                    if (format != 1 || (sourceChannels != 1 && sourceChannels != 2) ||
+                        rate != SampleRate || bits != 16 ||
+                        blockAlign != sourceChannels * 2 ||
+                        byteRate != SampleRate * sourceChannels * 2)
+                        throw new ArgumentException("Unsupported WAV format (requires 48kHz PCM16 mono/stereo).", nameof(wave));
+                    channels = sourceChannels;
                     hasFormat = true;
                 }
                 else if (Tag(wave, pos, "data"))
                 {
-                    if (hasData || size == 0 || size > MaxDataBytes || size % FrameBytes != 0)
+                    if (hasData || size == 0 || size > MaxDataBytes || size % 2 != 0)
                         throw new ArgumentException("Invalid WAV data chunk.", nameof(wave));
                     dataOffset = pos + 8;
                     dataSize = (int)size;
@@ -105,9 +108,32 @@ namespace ZonderqOS.SystemCore
             if (!hasFormat || !hasData)
                 throw new ArgumentException("WAV fmt or data chunk missing.", nameof(wave));
 
-            byte[] pcm = new byte[dataSize];
-            Array.Copy(wave, dataOffset, pcm, 0, dataSize);
-            return pcm;
+            int sourceFrameBytes = channels * 2;
+            if (dataSize % sourceFrameBytes != 0 ||
+                dataSize > SampleRate * MaxDurationSeconds * sourceFrameBytes)
+                throw new ArgumentException("WAV data exceeds two seconds or has an incomplete frame.", nameof(wave));
+
+            if (channels == 2)
+            {
+                byte[] stereo = new byte[dataSize];
+                Array.Copy(wave, dataOffset, stereo, 0, dataSize);
+                return stereo;
+            }
+
+            // Mono PCM16 is duplicated to left and right, without resampling.
+            // The two-second bound above limits this output to MaxDataBytes.
+            byte[] upmixed = new byte[dataSize * 2];
+            for (int i = 0; i < dataSize; i += 2)
+            {
+                int dst = i * 2;
+                byte lo = wave[dataOffset + i];
+                byte hi = wave[dataOffset + i + 1];
+                upmixed[dst] = lo;
+                upmixed[dst + 1] = hi;
+                upmixed[dst + 2] = lo;
+                upmixed[dst + 3] = hi;
+            }
+            return upmixed;
         }
 
         /// <summary>Build an in-memory RIFF fixture for exercising the decoder.</summary>
