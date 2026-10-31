@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Diagnostics;
 using Cosmos.Kernel.System.Graphics;
 using ZonderqOS.GUI;
 
@@ -64,6 +65,19 @@ internal static class CornerBandSmoke
                     " radius=" + radius + " topOnly=" + topOnly);
     }
 
+    private static double TimeFill(Canvas canvas, bool optimized, int repetitions)
+    {
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repetitions; i++)
+        {
+            if (optimized)
+                UiPainter.RoundedFill(canvas, 10, 10, 60, 50, 12, Color.White);
+            else
+                Original(canvas, 10, 10, 60, 50, 12, Color.White, false);
+        }
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
     internal static void Verify()
     {
         int checks = 0;
@@ -97,5 +111,19 @@ internal static class CornerBandSmoke
                 oldTop.DrawCalls + " -> " + newTop.DrawCalls);
         Console.WriteLine("Corner bands: " + checks + " exact raster comparisons; " +
             "radius 12 RoundedFill calls 25 -> 17; RoundedTop calls 13 -> 9");
+
+        // Measure actual host execution of the production C# RoundedFill with
+        // a test Canvas, against the original raster algorithm. This is NOT
+        // Cosmos/QEMU frame time; never gate CI on noisy wall-clock timings.
+        Canvas baselineCanvas = new Canvas(128, 96);
+        Canvas optimizedCanvas = new Canvas(128, 96);
+        TimeFill(baselineCanvas, false, 200);
+        TimeFill(optimizedCanvas, true, 200);
+        const int iterations = 10000;
+        double baselineMs = TimeFill(baselineCanvas, false, iterations);
+        double optimizedMs = TimeFill(optimizedCanvas, true, iterations);
+        Console.WriteLine("Host .NET RoundedFill " + iterations + " renders (informational): " +
+            "baseline " + baselineMs.ToString("F2") + " ms, optimized " +
+            optimizedMs.ToString("F2") + " ms; no QEMU FPS claim.");
     }
 }
