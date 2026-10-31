@@ -145,6 +145,16 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            // The create-file/folder dialog is modal. In particular, a
+            // click on the caption close/minimize controls must not dismiss
+            // the owning window while the filename editor is active.
+            if (dialogMode != 0)
+            {
+                if ((left && !oldLeft) || (right && !oldRight))
+                    ResetClickSequence();
+                return;
+            }
+
             Window.HandleMouse(mouseX, mouseY, left, oldLeft);
             if (!Window.Visible)
                 return;
