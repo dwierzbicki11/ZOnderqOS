@@ -1268,6 +1268,21 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertEqual(len(apps), 2)
         self.assertEqual(apps, ["files", "terminal"])
 
+    def test_palette_keyboard_page_navigation_clamps_to_result_count(self):
+        for key in ("Home", "End", "PageUp", "PageDown"):
+            self.assertIn("ConsoleKeyEx." + key, COMMAND_PALETTE)
+        self.assertIn("selectedIndex - visibleRows", COMMAND_PALETTE)
+        self.assertIn("selectedIndex + visibleRows", COMMAND_PALETTE)
+        self.assertIn("System.Math.Max(0, resultCount - 1)", COMMAND_PALETTE)
+        for count, rows in ((0, 1), (1, 1), (5, 5), (12, 5), (40, 6)):
+            for start in range(max(1, count)):
+                page_up = max(0, start - rows)
+                page_down = min(max(0, count - 1), start + rows)
+                self.assertGreaterEqual(page_up, 0)
+                self.assertLessEqual(page_up, max(0, count - 1))
+                self.assertGreaterEqual(page_down, 0)
+                self.assertLessEqual(page_down, max(0, count - 1))
+
     def test_palette_compacts_details_in_narrow_mode(self):
         self.assertIn("if (resultRowHeight >= 42 && Width >= 540)", COMMAND_PALETTE)
         self.assertIn("if (Width >= 620)", COMMAND_PALETTE)
