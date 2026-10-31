@@ -15,7 +15,9 @@ on:
       - 'source/Shell/Commands/CmdAudioDiag.cs'
       - 'tests/test_audio_gen3_contract.py'
       - 'tests/test_audio_wav_validator.py'
+      - 'tests/test_audio_volume_validator.py'
       - 'tools/verify-audio-wav-capture.py'
+      - 'tools/verify-audio-volume-capture.py'
       - 'tests/AudioPciSmoke/**'
       - '.github/workflows/audio-gen3.yml'
   pull_request:
@@ -30,7 +32,9 @@ on:
       - 'source/Shell/Commands/CmdAudioDiag.cs'
       - 'tests/test_audio_gen3_contract.py'
       - 'tests/test_audio_wav_validator.py'
+      - 'tests/test_audio_volume_validator.py'
       - 'tools/verify-audio-wav-capture.py'
+      - 'tools/verify-audio-volume-capture.py'
       - 'tests/AudioPciSmoke/**'
       - '.github/workflows/audio-gen3.yml'
   workflow_dispatch:
@@ -49,6 +53,7 @@ jobs:
         run: |
           python3 tests/test_audio_gen3_contract.py
           python3 tests/test_audio_wav_validator.py
+          python3 tests/test_audio_volume_validator.py
       - name: Compile and execute real C# PCI classification
         run: dotnet run --project tests/AudioPciSmoke/AudioPciSmoke.csproj --configuration Release
       - name: Explicit scope
