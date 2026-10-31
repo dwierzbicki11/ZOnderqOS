@@ -327,6 +327,13 @@ while (( SECONDS - started < TIMEOUT )); do
         echo "[NET3095-N6][FAIL] Host did not complete post-burst HTTP" >&2
         exit 1
       fi
+      for attempt in 4 5 6; do
+        if ! grep -Fq "[NET3095-N6-HOST] POST_BURST_REPEAT_PASS attempt=$attempt HTTP/1.0 GET /health 200" "$LOG.http-host"; then
+          cat "$LOG.http-host" >&2
+          echo "[NET3095-N6][FAIL] Host did not complete post-burst HTTP attempt=$attempt" >&2
+          exit 1
+        fi
+      done
     fi
     # A running QEMU PID is not proof of a live guest (-no-shutdown).
     # Require ongoing managed kernel execution for the stability window.
@@ -361,7 +368,7 @@ while (( SECONDS - started < TIMEOUT )); do
         python3 "$ROOT/tests/verify_3095_e1000e_irq_trace.py" \
           "$LOG.stderr" --require-notify
       fi
-      echo "[NET3095-N6-QEMU] PASS three E1000E HTTP sessions (third after 128 TX + 4 ICMP) + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
+      echo "[NET3095-N6-QEMU] PASS six E1000E HTTP sessions (four after 128 TX + 4 ICMP) + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
     elif [[ "$MODE" == n5 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP"
       echo "[NET3095-N5-QEMU] PASS real E1000E DNS query/answer + TCP/DHCP/ICMP + 8s stability; production networking disabled"
