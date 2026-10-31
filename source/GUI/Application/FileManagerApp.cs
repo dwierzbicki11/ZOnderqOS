@@ -20,6 +20,7 @@ namespace ZonderqOS.GUI.Apps
         // Sorted directory snapshot: typing in the filename filter must not
         // re-enumerate a potentially slow FAT32 volume on every keystroke.
         private readonly List<FileEntry> cachedEntries = new List<FileEntry>();
+        private bool hasLoadedDirectory;
         private readonly List<SidebarEntry> sidebarEntries = new List<SidebarEntry>();
 
         private string currentPath = "/root";
@@ -960,7 +961,14 @@ namespace ZonderqOS.GUI.Apps
         {
             try
             {
-                string targetPath = Directory.Exists(currentPath) ? currentPath : "/";
+                string targetPath = currentPath;
+                // The first boot may have no /root yet. Only that initial
+                // scan may fall back to /. A removed FAT32 volume or a later
+                // unreadable folder must NOT silently replace the user's
+                // current directory and cached listing with root.
+                if (!hasLoadedDirectory && targetPath == "/root" &&
+                    !Directory.Exists(targetPath))
+                    targetPath = "/";
                 // Directory.GetFiles can fail after GetDirectories succeeded
                 // (e.g. FAT32 media removed or an I/O error). Scan and sort
                 // into a temporary snapshot; never erase the last usable view
@@ -971,6 +979,7 @@ namespace ZonderqOS.GUI.Apps
                 Sort(scanned);
 
                 currentPath = targetPath;
+                hasLoadedDirectory = true;
                 entries.Clear();
                 entries.AddRange(scanned);
                 cachedEntries.Clear();
