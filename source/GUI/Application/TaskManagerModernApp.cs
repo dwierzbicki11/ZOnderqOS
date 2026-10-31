@@ -868,7 +868,7 @@ namespace ZonderqOS.GUI.Apps
         public int PerformanceResourceAt(int x, int y)
         {
             if (app.ActivePage != TaskManagerModernApp.PagePerformance) return -1;
-            if (Width < 730)
+            if (Width < 900)
             {
                 // Compact mode renders three horizontal resource buttons.
                 // Use exactly the same positions for mouse hit-testing.
@@ -893,7 +893,7 @@ namespace ZonderqOS.GUI.Apps
 
         public int CpuGraphModeAt(int x, int y)
         {
-            if (Width < 730 || app.ActivePage != TaskManagerModernApp.PagePerformance || app.PerformanceResource != TaskManagerModernApp.PerfCpu) return -1;
+            if (Width < 900 || app.ActivePage != TaskManagerModernApp.PagePerformance || app.PerformanceResource != TaskManagerModernApp.PerfCpu) return -1;
             int panelX = SidebarWidth + 180;
             int top = 86;
             if (y < top || y >= top + 26) return -1;
@@ -904,7 +904,7 @@ namespace ZonderqOS.GUI.Apps
 
         public int CpuLogicalPageActionAt(int x, int y)
         {
-            if (Width < 730 || app.CpuGraphMode != TaskManagerModernApp.CpuGraphLogical || app.LogicalPageCount <= 1) return 0;
+            if (Width < 900 || app.CpuGraphMode != TaskManagerModernApp.CpuGraphLogical || app.LogicalPageCount <= 1) return 0;
             int top = 122;
             int right = Width - 16;
             if (y < top || y >= top + 26) return 0;
@@ -1177,10 +1177,11 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderPerformance(Canvas canvas)
         {
-            if (Width < 730)
+            if (Width < 900)
             {
-                // On 320-640px desktops the fixed 154px resource column plus
-                // 360px graph would render outside the window and taskbar.
+                // The normal graph's CPU stats need a 540px content panel:
+                // 360px sidebar/resource offset + 540px = 900px view.
+                // Below that, use compact cards so 800x600 stays in bounds.
                 // Keep all three selectors usable, showing the selected
                 // telemetry without drawing an off-screen graph.
                 int left = X + SidebarWidth + 8;
