@@ -115,17 +115,21 @@ namespace ZonderqOS.Hardware
     public readonly struct PciNicMsiXBarResolution
     {
         public PciNicMsiXBarResolution(byte tableBir, ulong tableAddress,
-            byte pbaBir, ulong pbaAddress)
+            uint tableBytes, byte pbaBir, ulong pbaAddress, uint pbaBytes)
         {
             TableBir = tableBir;
             TableAddress = tableAddress;
+            TableBytes = tableBytes;
             PbaBir = pbaBir;
             PbaAddress = pbaAddress;
+            PbaBytes = pbaBytes;
         }
         public byte TableBir { get; }
         public ulong TableAddress { get; }
+        public uint TableBytes { get; }
         public byte PbaBir { get; }
         public ulong PbaAddress { get; }
+        public uint PbaBytes { get; }
     }
 
     public static class PciBarInventory
@@ -133,7 +137,8 @@ namespace ZonderqOS.Hardware
         /// <summary>
         /// Resolve MSI-X table/PBA offsets only against assigned memory BARs.
         /// Reject I/O BARs, unassigned BARs, the high half of a 64-bit BAR,
-        /// and 64-bit address overflow. This does not validate BAR aperture
+        /// and 64-bit overflow of full table/PBA spans, as well as overlap.
+        /// This does not validate BAR aperture
         /// sizes, map MMIO, program MSI-X or establish IRQ delivery.
         /// </summary>
         public static bool TryResolveRealtek810xEMsiXMemoryBars(IPciConfigAccessor config,
@@ -146,26 +151,44 @@ namespace ZonderqOS.Hardware
                 !TryReadRealtek810xE(config, bus, device, function, out var bars))
                 return false;
 
-            if (!TryResolveMemoryBar(bars, irq.TableBir, irq.TableOffset, out ulong table) ||
-                !TryResolveMemoryBar(bars, irq.PbaBir, irq.PbaOffset, out ulong pba))
+            // Each MSI-X vector occupies 16 bytes in the table. The PBA uses
+            // one 64-bit word per 64 vectors. Validate the complete ranges,
+            // not just their first bytes, before reporting physical addresses.
+            uint tableBytes = (uint)irq.MsiXVectors * 16u;
+            uint pbaBytes = (((uint)irq.MsiXVectors + 63u) / 64u) * 8u;
+            if (!TryResolveMemoryBar(bars, irq.TableBir, irq.TableOffset,
+                    tableBytes, out ulong table) ||
+                !TryResolveMemoryBar(bars, irq.PbaBir, irq.PbaOffset,
+                    pbaBytes, out ulong pba))
+                return false;
+
+            // The table and PBA must not alias even when placed in the
+            // same BAR. Range ends cannot overflow after the checks above.
+            ulong tableEnd = table + tableBytes - 1u;
+            ulong pbaEnd = pba + pbaBytes - 1u;
+            if (table <= pbaEnd && pba <= tableEnd)
                 return false;
 
             resolution = new PciNicMsiXBarResolution(irq.TableBir, table,
-                irq.PbaBir, pba);
+                tableBytes, irq.PbaBir, pba, pbaBytes);
             return true;
         }
 
         private static bool TryResolveMemoryBar(List<PciBarDescriptor> bars, byte bir,
-            uint offset, out ulong address)
+            uint offset, uint bytes, out ulong address)
         {
             address = 0;
+            if (bytes == 0) return false;
             for (int i = 0; i < bars.Count; i++)
             {
                 PciBarDescriptor bar = bars[i];
                 if (bar.Index != bir) continue;
                 if (bar.Kind == PciBarKind.Io || bar.Address > ulong.MaxValue - (ulong)offset)
                     return false;
-                address = bar.Address + offset;
+                ulong start = bar.Address + offset;
+                if (start > ulong.MaxValue - ((ulong)bytes - 1UL))
+                    return false;
+                address = start;
                 return true;
             }
             return false;
