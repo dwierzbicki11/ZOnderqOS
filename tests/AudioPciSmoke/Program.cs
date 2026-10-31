@@ -65,6 +65,31 @@ static class Test
         report = Capture(() => AudioPciDiagnostics.PrintReport(false), out ok);
         Expect(!ok && report.Contains("PCI discovery unavailable"), "failed scan not reported as empty success");
 
+        byte[] pcm = AudioTonePcm.GenerateSquareStereo16(48000, 440, 250, 4096);
+        Expect(pcm.Length == 48000, "250ms stereo16 48kHz length");
+        int transitions = 0;
+        short previous = 0;
+        for (int i = 0; i < pcm.Length / 4; i++)
+        {
+            int offset = i * 4;
+            short sample = (short)(pcm[offset] | (pcm[offset + 1] << 8));
+            short right = (short)(pcm[offset + 2] | (pcm[offset + 3] << 8));
+            Expect(sample == right, "stereo channels equal");
+            Expect(sample == 4096 || sample == -4096, "bounded PCM amplitude");
+            if (i > 0 && (sample < 0) != (previous < 0)) transitions++;
+            previous = sample;
+        }
+        double measuredHz = transitions * 48000.0 / (2 * (pcm.Length / 4 - 1));
+        Expect(Math.Abs(measuredHz - 440) < 5, "actual 440Hz square-wave period");
+        bool rejected = false;
+        try { AudioTonePcm.GenerateSquareStereo16(48000, 24000, 250, 4096); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "Nyquist guard");
+        rejected = false;
+        try { AudioTonePcm.GenerateSquareStereo16(48000, 440, 3000, 4096); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "duration guard");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
     }
 }
