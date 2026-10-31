@@ -407,8 +407,12 @@ namespace ZonderqOS.GUI
                 return true;
             }
 
-            if (key.Key == ConsoleKeyEx.Enter)
+            if (key.Key == ConsoleKeyEx.Enter || key.Key == ConsoleKeyEx.NumEnter)
             {
+                // Shift+Enter must not launch the first visible application.
+                if (key.Modifiers != 0)
+                    return true;
+
                 for (int i = 0; i < pinnedButtons.Count; i++)
                 {
                     if (pinnedButtons[i].Visible)
@@ -436,7 +440,9 @@ namespace ZonderqOS.GUI
                 return true;
             }
 
-            return false;
+            // Start is modal: navigation and Delete must never fall through
+            // to the active application (especially Task Manager).
+            return true;
         }
 
         public void UpdateInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked)
