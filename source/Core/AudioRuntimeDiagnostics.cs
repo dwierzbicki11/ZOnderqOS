@@ -12,6 +12,22 @@ namespace ZonderqOS.SystemCore
     /// </summary>
     public static class AudioRuntimeDiagnostics
     {
+        private static int volumePercent = 100;
+
+        public static int VolumePercent => volumePercent;
+
+        public static bool SetVolumePercent(int percent)
+        {
+            if (percent < 0 || percent > 100)
+            {
+                Console.WriteLine("[AUDIO] VOLUME REFUSED: expected 0..100.");
+                return false;
+            }
+            volumePercent = percent;
+            Console.WriteLine("[AUDIO] software volume=" + volumePercent + "% (PCM gain only)");
+            return true;
+        }
+
         public static bool PrintStatus()
         {
             if (!AudioManager.IsEnabled)
@@ -84,7 +100,8 @@ namespace ZonderqOS.SystemCore
             const int sampleRate = 48000;
             try
             {
-                bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, pcm));
+                byte[] scaled = AudioPcmVolume.ScaleStereo16(pcm, volumePercent);
+                bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled));
                 Console.WriteLine(accepted
                     ? "[AUDIO] PCM ACCEPTED_AND_DRAINED (not proof of audible output)"
                     : "[AUDIO] PCM REFUSED (format, driver or playback failure)");
