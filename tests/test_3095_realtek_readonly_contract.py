@@ -35,7 +35,7 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
         self.assertIn('NIC_MODE="${3:-none}"', NEGATIVE_QEMU)
         self.assertIn("Unknown NIC mode:", NEGATIVE_QEMU)
         self.assertIn("offers=0 samples=0 reason=no matching PCI probe offer", NEGATIVE_QEMU)
-        self.assertIn("NOT physical RTL or screen proof", NEGATIVE_QEMU)
+        self.assertIn("NOT physical RTL810xE or screen proof", NEGATIVE_QEMU)
         self.assertIn('realtek_screen=true', BUILD)
         self.assertIn('-p:ZonderqRealtekScreen="$realtek_screen"', BUILD)
         self.assertIn("RTL810xE MMIO probe is x64-only", PROJECT)

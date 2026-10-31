@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Negative QEMU gate: with -nic none the isolated RTL probe MUST decline.
+# Negative QEMU gate: with no NIC or an unrelated RTL8139, probe MUST decline.
 # This is NOT physical Realtek proof and does not validate text framebuffer.
 set -euo pipefail
 ISO="${1:?usage: smoke-network-rtl-negative-3095-qemu.sh ISO SERIAL-LOG}"
