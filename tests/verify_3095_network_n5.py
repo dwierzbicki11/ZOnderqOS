@@ -116,6 +116,53 @@ def dns_packet(data: bytes):
     }
 
 
+def arp_frame(frame: bytes):
+    """Decode an Ethernet/IPv4 ARP frame without trusting padding."""
+    if len(frame) < 42 or frame[12:14] != b"\\x08\\x06":
+        return None
+    htype, ptype, hlen, plen, opcode = struct.unpack_from(">HHBBH", frame, 14)
+    if (htype, ptype, hlen, plen) != (1, 0x0800, 6, 4) or opcode not in (1, 2):
+        return None
+    return {
+        "op": opcode, "src_mac": frame[6:12], "dst_mac": frame[:6],
+        "sha": frame[22:28], "spa": frame[28:32],
+        "tha": frame[32:38], "tpa": frame[38:42],
+    }
+
+
+def verify_arp_for_dns(frames: list[bytes], guest: bytes) -> int:
+    """Require a real guest ARP request and matching DNS-proxy ARP reply.
+
+    Returns the reply's capture index; the DNS exchange must follow it.
+    Synthetic fixtures test the parser, not real NIC operation.
+    """
+    broadcast = b"\\xff" * 6
+    zero_mac = b"\\x00" * 6
+    for i, frame in enumerate(frames):
+        req = arp_frame(frame)
+        if req is None or not (
+            req["op"] == 1 and req["src_mac"] == MAC and
+            req["dst_mac"] == broadcast and req["sha"] == MAC and
+            req["spa"] == guest and req["tha"] == zero_mac and
+            req["tpa"] == DNS_SERVER
+        ):
+            continue
+        for j in range(i + 1, len(frames)):
+            reply = arp_frame(frames[j])
+            if reply is None:
+                continue
+            mac = reply["sha"]
+            if (
+                reply["op"] == 2 and reply["dst_mac"] == MAC and
+                reply["src_mac"] == mac and mac != MAC and
+                mac != broadcast and mac != zero_mac and (mac[0] & 1) == 0 and
+                reply["spa"] == DNS_SERVER and reply["tha"] == MAC and
+                reply["tpa"] == guest
+            ):
+                return j
+    raise ValueError("no correlated QEMU ARP request/reply for DNS proxy")
+
+
 def validate(serial: str, pcap: bytes) -> str:
     validate_n4(serial, pcap)
     lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
@@ -129,8 +176,12 @@ def validate(serial: str, pcap: bytes) -> str:
     if len(leases) != 1:
         raise ValueError("missing unique guest lease")
     guest = bytes(int(part) for part in leases[0].group(1).split("."))
+    frames = list(pcap_frames(pcap))
+    arp_reply_index = verify_arp_for_dns(frames, guest)
     packets = []
-    for frame in pcap_frames(pcap):
+    for index, frame in enumerate(frames):
+        if index <= arp_reply_index:
+            continue
         udp = udp_frame(frame)
         if udp is not None:
             dns = dns_packet(udp["data"])
@@ -152,8 +203,24 @@ def validate(serial: str, pcap: bytes) -> str:
                 answer["reply"] and answer["rcode"] == 0 and
                 answer["id"] == query["id"] and LOOPBACK in answer["answers"]
             ):
-                return "[NET3095-N5-GATE] PASS real QEMU DNS A localhost=127.0.0.1 via 10.0.2.3"
+                return "[NET3095-N5-GATE] PASS real QEMU ARP resolution and DNS A localhost=127.0.0.1 via 10.0.2.3"
     raise ValueError("no correlated QEMU DNS query/answer RX/TX proof")
+
+
+def fake_arp(reply: bool, sender_ip: bytes | None = None,
+             target_ip: bytes | None = None, sender_mac: bytes | None = None,
+             target_mac: bytes | None = None) -> bytes:
+    guest = bytes([10, 0, 2, 15])
+    proxy_mac = bytes.fromhex("52550a000203")
+    sha = sender_mac if sender_mac is not None else (proxy_mac if reply else MAC)
+    tha = target_mac if target_mac is not None else (MAC if reply else bytes(6))
+    spa = sender_ip if sender_ip is not None else (DNS_SERVER if reply else guest)
+    tpa = target_ip if target_ip is not None else (guest if reply else DNS_SERVER)
+    dst = MAC if reply else bytes([255] * 6)
+    packet = (dst + sha + b"\\x08\\x06" +
+              struct.pack(">HHBBH", 1, 0x0800, 6, 4, 2 if reply else 1) +
+              sha + spa + tha + tpa)
+    return packet + bytes(max(0, 60 - len(packet)))
 
 
 def fake_dns(reply: bool, txid: int = 0x3095, host: bytes = b"localhost",
@@ -192,7 +259,7 @@ def self_test() -> None:
         fake_tcp(False, 0x10, 1001, 5001),
         fake_tcp(False, 0x18, 1001, 5001, REQUEST),
         fake_tcp(True, 0x18, 5001, 1001 + len(REQUEST), RESPONSE),
-        fake_dns(False), fake_dns(True),
+        fake_arp(False), fake_arp(True), fake_dns(False), fake_dns(True),
     ]
     serial = "\n".join([
         "[NET3095-N1] BOOT", "[NET3095-N1] discovered=1",
@@ -209,6 +276,12 @@ def self_test() -> None:
         (serial + "\n" + DNS_PASS, frames),
         (serial + "\n[NET3095-N5][FAIL] timeout", frames),
         (serial.replace(DNS_START, "").replace(TCP_PASS, DNS_START + "\n" + TCP_PASS), frames),
+        (serial, frames[:-4] + frames[-2:]),  # missing both ARP frames
+        (serial, frames[:-3] + frames[-2:]),  # missing ARP reply
+        (serial, frames[:-4] + [fake_arp(True), fake_arp(False)] + frames[-2:]),
+        (serial, frames[:-3] + [fake_arp(True, sender_ip=bytes([10, 0, 2, 4]))] + frames[-2:]),
+        (serial, frames[:-3] + [fake_arp(True, target_ip=bytes([10, 0, 2, 16]))] + frames[-2:]),
+        (serial, frames[:-3] + [fake_arp(True, sender_mac=b"\\x01\\x02\\x03\\x04\\x05\\x06")] + frames[-2:]),
         (serial, frames[:-1]),
         (serial, frames[:-2] + [frames[-1], frames[-2]]),
         (serial, frames[:-1] + [fake_dns(True, txid=0x3096)]),
