@@ -1425,8 +1425,11 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("string.Equals(entries[i].FullPath, selectedPath, StringComparison.Ordinal)", refresh)
         self.assertIn("EnsureSelectionVisible();", refresh)
         self.assertLess(refresh.index("Sort(scanned);"), refresh.index("loadedDirectoryPath = targetPath;"))
-        self.assertLess(refresh.index("Filter();"), refresh.index("if (!string.IsNullOrEmpty(selectedPath))"))
-        self.assertLess(refresh.index("if (!string.IsNullOrEmpty(selectedPath))"),
+        self.assertIn("string firstVisiblePath = sameDirectory && scrollIndex >= 0", refresh)
+        self.assertIn("string.Equals(entries[i].FullPath, firstVisiblePath, StringComparison.Ordinal)", refresh)
+        self.assertIn("scrollIndex = i;", refresh)
+        self.assertLess(refresh.index("Filter();"), refresh.index("if (!string.IsNullOrEmpty(selectedPath) ||"))
+        self.assertLess(refresh.index("if (!string.IsNullOrEmpty(selectedPath) ||"),
                         refresh.index("EnsureSelectionVisible();"))
         self.assertNotIn("selectedIndex = i;", refresh.split("catch (Exception ex)", 1)[1])
 
@@ -1446,6 +1449,17 @@ class ResponsiveGui3094(unittest.TestCase):
                                    ["/root/a.txt", "/root/b.txt"]), (-1, 8))
         self.assertEqual(refreshed("/mnt/data", "/root", "/root/z.txt", 8,
                                    ["/mnt/data/z.txt"]), (-1, 0))
+
+        # Insertions before the old first visible tile must move the numeric
+        # scroll offset, while retaining that same file as the viewport anchor.
+        def anchor_after_refresh(old_first_path, new_paths, old_scroll):
+            return next((i for i, name in enumerate(new_paths)
+                         if name == old_first_path), old_scroll)
+
+        self.assertEqual(anchor_after_refresh("/root/f.txt",
+                         ["/root/a.txt", "/root/b.txt", "/root/f.txt", "/root/z.txt"], 1), 2)
+        self.assertEqual(anchor_after_refresh("/root/f.txt",
+                         ["/root/a.txt", "/root/b.txt", "/root/z.txt"], 1), 1)
 
 
     def test_file_manager_live_filter_uses_cached_directory_snapshot(self):
