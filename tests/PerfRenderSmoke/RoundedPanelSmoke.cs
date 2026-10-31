@@ -117,13 +117,29 @@ internal static class RoundedPanelSmoke
         Console.WriteLine("RoundedPanel radius 12: Canvas calls 77 -> 69; exact raster");
 
         // Host-side comparison only. The fake Canvas is not a Cosmos GPU.
-        TimePanel(baseline, false, 200);
-        TimePanel(optimized, true, 200);
+        TimePanel(baseline, false, 2000);
+        TimePanel(optimized, true, 2000);
         const int iterations = 10000;
-        double baselineMs = TimePanel(baseline, false, iterations);
-        double optimizedMs = TimePanel(optimized, true, iterations);
-        Console.WriteLine("Host .NET RoundedPanel " + iterations + " renders (informational): " +
-            "baseline " + baselineMs.ToString("F2") + " ms, optimized " +
-            optimizedMs.ToString("F2") + " ms; no QEMU FPS claim.");
+        double[] baselineSamples = new double[5];
+        double[] optimizedSamples = new double[5];
+        for (int sample = 0; sample < baselineSamples.Length; sample++)
+        {
+            if ((sample & 1) == 0)
+            {
+                baselineSamples[sample] = TimePanel(baseline, false, iterations);
+                optimizedSamples[sample] = TimePanel(optimized, true, iterations);
+            }
+            else
+            {
+                optimizedSamples[sample] = TimePanel(optimized, true, iterations);
+                baselineSamples[sample] = TimePanel(baseline, false, iterations);
+            }
+        }
+        Array.Sort(baselineSamples);
+        Array.Sort(optimizedSamples);
+        Console.WriteLine("Host .NET RoundedPanel " + iterations +
+            " renders, median of 5 A/B samples (informational): baseline " +
+            baselineSamples[2].ToString("F2") + " ms, optimized " +
+            optimizedSamples[2].ToString("F2") + " ms; no QEMU FPS claim.");
     }
 }

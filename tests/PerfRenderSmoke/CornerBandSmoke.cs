@@ -117,13 +117,30 @@ internal static class CornerBandSmoke
         // Cosmos/QEMU frame time; never gate CI on noisy wall-clock timings.
         Canvas baselineCanvas = new Canvas(128, 96);
         Canvas optimizedCanvas = new Canvas(128, 96);
-        TimeFill(baselineCanvas, false, 200);
-        TimeFill(optimizedCanvas, true, 200);
+        TimeFill(baselineCanvas, false, 2000);
+        TimeFill(optimizedCanvas, true, 2000);
         const int iterations = 10000;
-        double baselineMs = TimeFill(baselineCanvas, false, iterations);
-        double optimizedMs = TimeFill(optimizedCanvas, true, iterations);
-        Console.WriteLine("Host .NET RoundedFill " + iterations + " renders (informational): " +
-            "baseline " + baselineMs.ToString("F2") + " ms, optimized " +
-            optimizedMs.ToString("F2") + " ms; no QEMU FPS claim.");
+        double[] baselineSamples = new double[5];
+        double[] optimizedSamples = new double[5];
+        for (int sample = 0; sample < baselineSamples.Length; sample++)
+        {
+            // Alternate order to reduce warm-up / runner load bias.
+            if ((sample & 1) == 0)
+            {
+                baselineSamples[sample] = TimeFill(baselineCanvas, false, iterations);
+                optimizedSamples[sample] = TimeFill(optimizedCanvas, true, iterations);
+            }
+            else
+            {
+                optimizedSamples[sample] = TimeFill(optimizedCanvas, true, iterations);
+                baselineSamples[sample] = TimeFill(baselineCanvas, false, iterations);
+            }
+        }
+        Array.Sort(baselineSamples);
+        Array.Sort(optimizedSamples);
+        Console.WriteLine("Host .NET RoundedFill " + iterations +
+            " renders, median of 5 A/B samples (informational): baseline " +
+            baselineSamples[2].ToString("F2") + " ms, optimized " +
+            optimizedSamples[2].ToString("F2") + " ms; no QEMU FPS claim.");
     }
 }
