@@ -29,6 +29,13 @@ def check_guest_line(serial: str) -> str:
     bound, driver, guest = matches(BOUND), matches(DRIVER), matches(GUEST)
     if len(bound) != 1 or len(driver) != 1 or len(guest) != 1:
         raise ValueError("expected exactly one bound E1000E, line and ready guest adapter")
+    if any((" E1000EDriver: mac " in line and not DRIVER.fullmatch(line)) or
+           (" offer E1000EDriver -> " in line and not BOUND.fullmatch(line))
+           for line in lines):
+        raise ValueError("malformed additional E1000E driver/offer claim")
+    if not (lines.index(driver[0].group(0)) < lines.index(bound[0].group(0)) <
+            lines.index(guest[0].group(0))):
+        raise ValueError("E1000E driver, binding and guest readiness out of order")
     if bound[0].group(1) != driver[0].group(1):
         raise ValueError("driver bound node differs from line diagnostic node")
     if driver[0].group(2).upper() != guest[0].group(1).upper():
