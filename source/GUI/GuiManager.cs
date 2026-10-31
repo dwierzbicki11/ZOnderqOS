@@ -699,11 +699,19 @@ namespace ZonderqOS.GUI
                     if (app == null || app.DesktopOrder != order)
                         continue;
 
-                    const int rowsPerColumn = 9;
+                    // Each shortcut is 92x86. The former fixed nine rows
+                    // placed icons below the taskbar at 800x600 and 1366x768.
+                    // Derive rows from the actual usable framebuffer height.
+                    const int shortcutTop = 22;
+                    const int shortcutHeight = 86;
+                    const int shortcutRowStride = 94;
+                    int usableHeight = Math.Max(1, (int)canvas.Height - TaskbarHeight);
+                    int rowsPerColumn = Math.Max(1,
+                        (usableHeight - shortcutTop - shortcutHeight) / shortcutRowStride + 1);
                     int column = target / rowsPerColumn;
                     int row = target % rowsPerColumn;
                     int x = 20 + column * 100;
-                    int y = 22 + row * 94;
+                    int y = shortcutTop + row * shortcutRowStride;
                     desktopShortcuts[target++] = new DesktopShortcut(
                         x, y, app.DesktopName, app.Icon, app.Launcher);
                 }

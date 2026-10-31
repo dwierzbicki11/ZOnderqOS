@@ -1027,5 +1027,29 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertEqual(sort_model(items), expected)
 
 
+    def test_desktop_shortcuts_fit_actual_usable_height(self):
+        layout = DESKTOP.split("private void InitializeDesktopShortcuts()", 1)[1].split(
+            "private void LaunchRegisteredApp(", 1)[0]
+        self.assertIn("int usableHeight = Math.Max(1, (int)canvas.Height - TaskbarHeight);", layout)
+        self.assertIn("const int shortcutHeight = 86;", layout)
+        self.assertIn("const int shortcutRowStride = 94;", layout)
+        self.assertIn("int rowsPerColumn = Math.Max(1,", layout)
+        self.assertIn("int column = target / rowsPerColumn;", layout)
+        self.assertIn("int row = target % rowsPerColumn;", layout)
+        self.assertNotIn("const int rowsPerColumn = 9;", layout)
+
+        for width, height in ((800, 600), (1024, 768), (1366, 768), (1920, 1080)):
+            usable_height = height - 44
+            rows = max(1, int((usable_height - 22 - 86) / 94) + 1)
+            self.assertGreaterEqual(rows, 1)
+            # Check the first 16 shortcuts, including multiple columns.
+            for index in range(16):
+                column, row = divmod(index, rows)
+                x, y = 20 + column * 100, 22 + row * 94
+                self.assertLessEqual(y + 86, usable_height)
+                self.assertLessEqual(x + 92, width)
+            self.assertEqual(rows, {600: 5, 768: 7, 1080: 10}[height])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
