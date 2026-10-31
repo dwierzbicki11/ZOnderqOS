@@ -119,11 +119,11 @@ internal static class CornerBandSmoke
         Canvas newTop = new Canvas(128, 96);
         Original(oldTop, 10, 10, 60, 50, 12, ink, true);
         UiPainter.RoundedTop(newTop, 10, 10, 60, 50, 12, ink);
-        if (oldTop.DrawCalls != 13 || newTop.DrawCalls != 9)
+        if (oldTop.DrawCalls != 13 || newTop.DrawCalls != 13)
             throw new Exception("RoundedTop Canvas call regression: " +
                 oldTop.DrawCalls + " -> " + newTop.DrawCalls);
         Console.WriteLine("Corner bands: " + checks + " exact raster comparisons; " +
-            "radius 12 RoundedFill calls 25 -> 25 (cached sqrt); RoundedTop calls 13 -> 9");
+            "radius 12 RoundedFill calls 25 -> 25 (cached sqrt); RoundedTop calls 13 -> 13 (cached sqrt)");
 
         // Measure actual host execution of the production C# RoundedFill with
         // a test Canvas, against the original raster algorithm. This is NOT

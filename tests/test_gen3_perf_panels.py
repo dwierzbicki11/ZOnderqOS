@@ -73,9 +73,8 @@ class RoundedPanelPerformanceContracts(unittest.TestCase):
 
     def test_corner_band_raster_and_draw_calls(self):
         self.assertEqual(SOURCE.count(
-            "FillCornerBands(canvas, x, y, width, height, r, fill, true);"), 1)
-        self.assertIn(
-            "FillCornerBands(canvas, x, y, width, height, r, fill, false);", SOURCE)
+            "FillCornerBands(canvas, x, y, width, height, r, fill);"), 1)
+        self.assertNotIn("bool mirrored", SOURCE)
         self.assertIn("y + height - end", SOURCE)
         for radius in range(1, 65):
             with self.subTest(radius=radius):

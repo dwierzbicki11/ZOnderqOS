@@ -30,7 +30,7 @@ namespace ZonderqOS.GUI
             }
 
             Fill(canvas, fill, x, y + r, width, height - 2 * r);
-            FillCornerBands(canvas, x, y, width, height, r, fill, true);
+            FillCornerBands(canvas, x, y, width, height, r, fill);
 
             Horizontal(canvas, border, x + r, y, width - 2 * r);
             Horizontal(canvas, border, x + r, y + height - 1, width - 2 * r);
@@ -83,13 +83,19 @@ namespace ZonderqOS.GUI
                 return;
             int r = Math.Min(Math.Min(radius, width / 2), height);
             Fill(canvas, fill, x, y + r, width, height - r);
-            FillCornerBands(canvas, x, y, width, height, r, fill, false);
+            // Host A/B showed grouping overhead on this one-sided strip.
+            // The cached inset avoids Math.Sqrt without extra band scans.
+            for (int row = 0; row < r; row++)
+            {
+                int inset = CornerInset(r, row);
+                Fill(canvas, fill, x + inset, y + row, width - 2 * inset, 1);
+            }
         }
 
         // Adjacent scanlines with the same corner inset form one rectangle.
         // This preserves the exact opaque pixels while reducing Canvas calls.
         private static void FillCornerBands(Canvas canvas, int x, int y, int width,
-            int height, int radius, Color fill, bool mirrored)
+            int height, int radius, Color fill)
         {
             for (int row = 0; row < radius;)
             {
@@ -100,9 +106,8 @@ namespace ZonderqOS.GUI
 
                 int bandHeight = end - row;
                 Fill(canvas, fill, x + inset, y + row, width - 2 * inset, bandHeight);
-                if (mirrored)
-                    Fill(canvas, fill, x + inset, y + height - end,
-                        width - 2 * inset, bandHeight);
+                Fill(canvas, fill, x + inset, y + height - end,
+                    width - 2 * inset, bandHeight);
                 row = end;
             }
         }
