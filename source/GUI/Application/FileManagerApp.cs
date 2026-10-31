@@ -80,6 +80,31 @@ namespace ZonderqOS.GUI.Apps
             Refresh();
         }
 
+        // Alt+F4 dismisses the File Manager's own modal UI before closing
+        // its window. Never lose a pending filename or activate a hidden
+        // context-menu action as a side effect of the global shortcut.
+        public bool DismissTransientUi()
+        {
+            if (dialogMode != 0)
+            {
+                dialogMode = 0;
+                dialogName = "";
+                status = "Cancelled";
+                ResetClickSequence();
+                return true;
+            }
+
+            if (contextMenuVisible)
+            {
+                contextMenuVisible = false;
+                contextMenuSelection = -1;
+                ResetClickSequence();
+                return true;
+            }
+
+            return false;
+        }
+
         public override void Update()
         {
             // A first click after switching back from another window is not
