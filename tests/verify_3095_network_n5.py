@@ -133,7 +133,7 @@ def arp_frame(frame: bytes):
 def verify_arp_for_dns(frames: list[bytes], guest: bytes) -> int:
     """Require a real guest ARP request and matching DNS-proxy ARP reply.
 
-    Returns the reply's capture index; the DNS exchange must follow it.
+    Returns (reply capture index, resolved MAC); DNS must follow it.
     Synthetic fixtures test the parser, not real NIC operation.
     """
     broadcast = b"\xff" * 6
@@ -159,7 +159,7 @@ def verify_arp_for_dns(frames: list[bytes], guest: bytes) -> int:
                 reply["spa"] == DNS_SERVER and reply["tha"] == MAC and
                 reply["tpa"] == guest
             ):
-                return j
+                return j, mac
     raise ValueError("no correlated QEMU ARP request/reply for DNS proxy")
 
 
@@ -177,7 +177,7 @@ def validate(serial: str, pcap: bytes) -> str:
         raise ValueError("missing unique guest lease")
     guest = bytes(int(part) for part in leases[0].group(1).split("."))
     frames = list(pcap_frames(pcap))
-    arp_reply_index = verify_arp_for_dns(frames, guest)
+    arp_reply_index, dns_proxy_mac = verify_arp_for_dns(frames, guest)
     packets = []
     for index, frame in enumerate(frames):
         if index <= arp_reply_index:
@@ -190,7 +190,8 @@ def validate(serial: str, pcap: bytes) -> str:
     for i, (req, query) in enumerate(packets):
         if not (
             req["src"] == guest and req["dst"] == DNS_SERVER and
-            req["src_mac"] == MAC and req["dport"] == 53 and
+            req["src_mac"] == MAC and req["dst_mac"] == dns_proxy_mac and
+            req["dport"] == 53 and
             req["sport"] != 0 and not query["reply"] and
             query["rcode"] == 0 and not query["answers"]
         ):
@@ -225,7 +226,8 @@ def fake_arp(reply: bool, sender_ip: bytes | None = None,
 
 def fake_dns(reply: bool, txid: int = 0x3095, host: bytes = b"localhost",
              answer: bytes = LOOPBACK, sport: int = 53,
-             dest_mac: bytes = MAC) -> bytes:
+             dest_mac: bytes = MAC,
+             request_dest_mac: bytes = bytes.fromhex("52550a000203")) -> bytes:
     qname = bytes([len(host)]) + host + b"\x00"
     question = qname + struct.pack(">HH", 1, 1)
     dns = struct.pack(">HHHHHH", txid, 0x8180 if reply else 0x0100,
@@ -241,7 +243,7 @@ def fake_dns(reply: bool, txid: int = 0x3095, host: bytes = b"localhost",
     ip[12:16] = DNS_SERVER if reply else bytes([10, 0, 2, 15])
     ip[16:20] = bytes([10, 0, 2, 15]) if reply else DNS_SERVER
     gateway_mac = bytes.fromhex("525400123499")
-    eth = ((dest_mac if reply else gateway_mac) +
+    eth = ((dest_mac if reply else request_dest_mac) +
            (gateway_mac if reply else MAC) + b"\x08\x00")
     return eth + ip + udp
 
@@ -289,6 +291,7 @@ def self_test() -> None:
         (serial, frames[:-1] + [fake_dns(True, host=b"wronghost")]),
         (serial, frames[:-1] + [fake_dns(True, sport=54)]),
         (serial, frames[:-1] + [fake_dns(True, dest_mac=b"\x02\x00\x00\x00\x00\x01")]),
+        (serial, frames[:-2] + [fake_dns(False, request_dest_mac=b"\x02\x00\x00\x00\x00\x02"), frames[-1]]),
         (serial, frames[:12] + [frames[-1]]),
     ]
     for text, packets in bad:
