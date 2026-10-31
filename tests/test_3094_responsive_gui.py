@@ -1032,7 +1032,7 @@ class ResponsiveGui3094(unittest.TestCase):
             "private static bool IsInsidePath(", 1)[0]
         self.assertIn("bool viewingVolume =", unmount)
         self.assertLess(unmount.index("StorageMountManager.TryUnmount("),
-                        unmount.index('currentPath = "/root";'))
+                        unmount.index('currentPath = Directory.Exists("/root") ? "/root" : "/";'))
         self.assertIn("if (viewingVolume)", unmount)
 
     def test_calculator_seventh_row_visible_on_800x600(self):
