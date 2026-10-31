@@ -1717,6 +1717,26 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
             allowed = not (control or alt) and ch in "dDrRcC"
             self.assertEqual(allowed, not (control or alt))
 
+    def test_notification_modified_navigation_cannot_dismiss_or_mark_read(self):
+        keyboard = NOTIFICATIONS.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "public bool UpdateInteractions(", 1)[0]
+        # Escape closes the overlay, but all other modified keys are
+        # consumed before any filter, selection or destructive operation.
+        self.assertLess(keyboard.index("ConsoleKeyEx.Escape"),
+                        keyboard.index("if (control || alt)"))
+        for action in ("ConsoleKeyEx.LeftArrow", "ConsoleKeyEx.RightArrow",
+                       "ConsoleKeyEx.UpArrow", "ConsoleKeyEx.DownArrow",
+                       "ConsoleKeyEx.Enter", "ConsoleKeyEx.Delete"):
+            self.assertLess(keyboard.index("if (control || alt)"),
+                            keyboard.index(action), action)
+        self.assertEqual(keyboard.count("bool control ="), 1)
+        self.assertEqual(keyboard.count("bool alt ="), 1)
+        for ctrl, alt, key in ((True, False, "Delete"), (False, True, "Enter"),
+                               (True, False, "LeftArrow"), (True, True, "DownArrow")):
+            should_dispatch = not (ctrl or alt)
+            self.assertFalse(should_dispatch, key)
+
+
     def test_notification_toast_uses_normal_panel_open_path(self):
         mouse = NOTIFICATIONS.split("public bool UpdateInteractions(", 1)[1].split(
             "public override void Render(", 1)[0]
