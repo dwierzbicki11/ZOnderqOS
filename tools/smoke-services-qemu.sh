@@ -149,6 +149,12 @@ read_guest /var/log/system.log > "$OUT/system-first.log" || fail 'first boot did
 grep -q '^enabled=true$' "$OUT/heartbeat-first.conf" || fail 'first boot did not create enabled heartbeat config'
 grep -q 'heartbeat' "$OUT/heartbeat-first.log" || fail 'first boot did not run heartbeat'
 grep -q 'ZonderqOS kernel successfully booted' "$OUT/system-first.log" || fail 'first boot did not finish kernel setup'
+if [[ "$PROBE_FILE_MANAGER" == 1 ]]; then
+  # Framebuffer changes alone do not prove the intended app launched.
+  # The palette records the actual launch in the persistent guest system log.
+  first_filemanager_launches="$(grep -cF '[PALETTE] Launched application: File Manager' "$OUT/system-first.log" || true)"
+  (( first_filemanager_launches >= 1 )) || fail 'first boot did not log File Manager launch'
+fi
 
 # Change the on-disk definition with QEMU stopped. The second boot must load it
 # and append memory samples to the same persistent service log.
@@ -164,5 +170,11 @@ grep -q 'free_pages=' "$OUT/heartbeat-after.log" || fail 'second boot did not ru
 first_boots="$(grep -c 'ZonderqOS kernel successfully booted' "$OUT/system-first.log")"
 second_boots="$(grep -c 'ZonderqOS kernel successfully booted' "$OUT/system-after.log")"
 (( second_boots > first_boots )) || fail 'second boot did not finish kernel setup'
+if [[ "$PROBE_FILE_MANAGER" == 1 ]]; then
+  second_filemanager_launches="$(grep -cF '[PALETTE] Launched application: File Manager' "$OUT/system-after.log" || true)"
+  (( second_filemanager_launches > first_filemanager_launches )) ||
+    fail 'second boot did not log a new File Manager launch'
+  echo '[SERVICES-QEMU] QMP keyboard probe launched File Manager in both real guest sessions.'
+fi
 
 echo '[SERVICES-QEMU][PASS] Two real boots reused one FAT partition; /etc config and /var/log persisted.'

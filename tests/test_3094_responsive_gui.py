@@ -1099,6 +1099,10 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn('"screendump"', probe)
         self.assertIn('if fraction < 0.12:', probe)
         self.assertIn("visual app identity requires inspection", probe)
+        self.assertIn("first_filemanager_launches=", QEMU_SMOKE)
+        self.assertIn("second_filemanager_launches=", QEMU_SMOKE)
+        self.assertIn("'[PALETTE] Launched application: File Manager'", QEMU_SMOKE)
+        self.assertIn("second_filemanager_launches > first_filemanager_launches", QEMU_SMOKE)
         self.assertIn("Never connect this probe to a guest with host disks", probe)
 
 
