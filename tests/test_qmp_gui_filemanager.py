@@ -154,7 +154,9 @@ class FramebufferProbeTests(unittest.TestCase):
         self.assertIn('move_mouse_relative(channel, 60, 0)', source)
         self.assertIn('".filemanager-mouse-before.ppm"', source)
         self.assertIn('".filemanager-mouse-after.ppm"', source)
-        self.assertIn('if mouse_changed < 8:', source)
+        self.assertIn("if old_cursor_pixels < 32 or new_cursor_pixels < 32:", source)
+        self.assertIn("changed_pixels_in_region(", source)
+        self.assertIn("mouse_start_x + 60 - 4", source)
         self.assertIn("difference(mouse_after, filtered)", source)
         self.assertIn("difference(mouse_after, filter_cleared)", source)
 
@@ -451,6 +453,43 @@ class FramebufferProbeTests(unittest.TestCase):
                 self.assertLess(y0, height * 6 // 7)
         finally:
             PROBE.time.sleep = old_sleep
+
+
+    def test_cursor_damage_gate_avoids_four_pixel_sample_aliasing(self):
+        # Real 800x600 QEMU images changed 113 full pixels in each cursor
+        # rectangle but only 6 samples in the 4px global comparison grid.
+        # Recreate this sparse-grid failure without storing megabyte PPMs.
+        for width, height in ((640, 480), (800, 600), (1920, 1080)):
+            x0, y0 = width // 2 - 30, height // 2
+            before = bytes(width * height * 3)
+            after = bytearray(before)
+            for left in (x0, x0 + 60):
+                for y in range(y0, y0 + 16):
+                    for x in range(left, left + 12):
+                        offset = (y * width + x) * 3
+                        after[offset:offset + 3] = b"\xff\xff\xff"
+            first = (width, height, before)
+            second = (width, height, bytes(after))
+            old = PROBE.changed_pixels_in_region(
+                first, second, x0 - 4, y0 - 4, x0 + 24, y0 + 28)
+            new = PROBE.changed_pixels_in_region(
+                first, second, x0 + 56, y0 - 4, x0 + 84, y0 + 28)
+            self.assertGreaterEqual(old, 32)
+            self.assertGreaterEqual(new, 32)
+            # The two regions must independently reject unchanged frames.
+            self.assertEqual(PROBE.changed_pixels_in_region(
+                first, first, x0 - 4, y0 - 4, x0 + 24, y0 + 28), 0)
+            self.assertEqual(PROBE.changed_pixels_in_region(
+                first, first, x0 + 56, y0 - 4, x0 + 84, y0 + 28), 0)
+
+    def test_cursor_damage_rejects_mismatched_or_incomplete_frames(self):
+        width, height = 80, 64
+        a = (width, height, bytes(width * height * 3))
+        b = (width + 1, height, bytes((width + 1) * height * 3))
+        with self.assertRaises(ValueError):
+            PROBE.changed_pixels_in_region(a, b, 0, 0, 20, 20)
+        with self.assertRaises(ValueError):
+            PROBE.changed_pixels_in_region(a, (width, height, b""), 0, 0, 20, 20)
 
 
 if __name__ == "__main__":
