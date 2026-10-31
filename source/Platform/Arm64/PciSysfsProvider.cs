@@ -5,6 +5,13 @@ namespace ZonderqOS.Platform
 {
     public static class PciSysfsProvider
     {
+        public static bool TryResolveRealtekMsiXMemoryBars(DeviceDescriptor device,
+            out PciNicMsiXBarResolution resolution)
+        {
+            resolution = default; // No ARM64 PCI ECAM support.
+            return false;
+        }
+
         public static bool TryReadRealtekPowerState(DeviceDescriptor device,
             out PciNicPowerState info)
         {
