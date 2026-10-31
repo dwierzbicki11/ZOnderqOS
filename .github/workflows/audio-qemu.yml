@@ -11,6 +11,7 @@ on:
       - 'tools/verify-audio-wav-capture.py'
       - 'tools/verify-audio-volume-capture.py'
       - 'tests/test_audio_volume_validator.py'
+      - 'tests/test_audio_qmp_keys.py'
       - '.github/workflows/audio-qemu.yml'
   workflow_dispatch:
 
@@ -43,6 +44,7 @@ jobs:
           python3 tests/test_audio_gen3_contract.py
           python3 tests/test_audio_wav_validator.py
           python3 tests/test_audio_volume_validator.py
+          python3 tests/test_audio_qmp_keys.py
       - name: Build isolated stock Cosmos 3.0.95 AUDIO ISO
         env:
           ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
