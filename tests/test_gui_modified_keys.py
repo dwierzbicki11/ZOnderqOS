@@ -37,6 +37,22 @@ class ModifiedKeySafetyTests(unittest.TestCase):
         self.assertNotIn("else if (key.Key == ConsoleKeyEx.Delete) EndSelectedTask();", handler)
         self.assertIn("if (key.Key == ConsoleKeyEx.PageDown)", handler)
 
+    def test_task_manager_page_arrows_are_plain_and_wrap(self):
+        text = source("source/GUI/Application/TaskManagerModernApp.cs")
+        handler = text.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "private void SetPage(int page)", 1
+        )[0]
+        self.assertIn("key.Modifiers == 0 && key.Key == ConsoleKeyEx.LeftArrow", handler)
+        self.assertIn("key.Modifiers == 0 && key.Key == ConsoleKeyEx.RightArrow", handler)
+        self.assertIn("SetPage(activePage == PageProcesses ? PageServices : activePage - 1);", handler)
+        self.assertIn("SetPage(activePage == PageServices ? PageProcesses : activePage + 1);", handler)
+        self.assertLess(handler.index("key.Key == ConsoleKeyEx.RightArrow"),
+                        handler.index("if (activePage == PagePerformance)"))
+        # Four pages, including Performance, must be reachable in both directions.
+        for page in range(4):
+            self.assertEqual(3 if page == 0 else page - 1, (page - 1) % 4)
+            self.assertEqual(0 if page == 3 else page + 1, (page + 1) % 4)
+
     def test_notification_center_requires_plain_delete(self):
         text = source("source/GUI/NotificationCenter.cs")
         handler = text.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
