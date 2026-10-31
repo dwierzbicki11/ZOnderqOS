@@ -519,6 +519,9 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleKeyboard(KeyEvent key)
         {
+            // A modified Enter must not create files; modifier shortcuts must
+            // never leak into the filename editor or a modal context menu.
+            bool modified = (key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) != 0;
             if (dialogMode != 0)
             {
                 if (key.Key == ConsoleKeyEx.Escape)
@@ -528,6 +531,9 @@ namespace ZonderqOS.GUI.Apps
                     status = "Cancelled";
                     return;
                 }
+
+                if (modified)
+                    return;
 
                 if (key.Key == ConsoleKeyEx.Enter)
                 {
@@ -554,6 +560,18 @@ namespace ZonderqOS.GUI.Apps
             // as a mouse click; Escape still dismisses without side effects.
             if (contextMenuVisible)
             {
+                if (key.Key == ConsoleKeyEx.Escape)
+                {
+                    contextMenuVisible = false;
+                    contextMenuSelection = -1;
+                    return;
+                }
+
+                // A context menu is modal: no typing into the search filter,
+                // navigation, refresh or clipboard writes behind the overlay.
+                if (modified)
+                    return;
+
                 if (key.Key == ConsoleKeyEx.UpArrow || key.Key == ConsoleKeyEx.DownArrow)
                 {
                     int direction = key.Key == ConsoleKeyEx.UpArrow ? -1 : 1;
@@ -578,6 +596,8 @@ namespace ZonderqOS.GUI.Apps
                         ExecuteContextAction(contextMenuSelection);
                     return;
                 }
+
+                return;
             }
 
             bool control = (key.Modifiers & ConsoleModifiers.Control) != 0;
@@ -599,6 +619,9 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
             }
+
+            if (modified)
+                return;
 
             if (key.Key == ConsoleKeyEx.Escape)
             {
