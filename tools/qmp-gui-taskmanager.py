@@ -163,7 +163,8 @@ def main():
     measure("performance-tab", processes, performance, minimum=0.025)
     measure("processes-tab-restored", processes, restored, maximum=0.15)
     measure("keyboard-right-performance", restored, keyboard_performance, minimum=0.025)
-    measure("keyboard-left-processes", restored, keyboard_restored, maximum=0.15)
+    measure("keyboard-left-transition", keyboard_performance, keyboard_restored, minimum=0.025)
+    measure("keyboard-processes-restored", restored, keyboard_restored, maximum=0.15)
     if shrink:
         resize_before = qmp.read_ppm(prefix + ".taskmanager-resize-before.ppm")
         short = qmp.read_ppm(prefix + ".taskmanager-short-wide.ppm")
