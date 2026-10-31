@@ -204,7 +204,8 @@ Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 32, 0, out bars),
 // Pure RTL810xE register decoding only: no MMIO is performed by this test.
 var station = new byte[] { 0x02, 0x11, 0x22, 0x33, 0x44, 0x55 };
 Check(Realtek810xERegisterDecoder.StationAddressOffset == 0x00 &&
-      Realtek810xERegisterDecoder.PhyStatusOffset == 0x6C,
+      Realtek810xERegisterDecoder.PhyStatusOffset == 0x6C &&
+      Realtek810xERegisterDecoder.TxConfigOffset == 0x40,
     "RTL810xE station/PHY register offsets changed");
 Check(Realtek810xERegisterDecoder.TryDecode(station, 0x0B, out var nicSnapshot) &&
       nicSnapshot.MacAddress == "02:11:22:33:44:55" &&
@@ -230,29 +231,49 @@ Check(!Realtek810xERegisterDecoder.TryDecode(null, 0x0B, out nicSnapshot) &&
 Check(!Realtek810xERegisterDecoder.TryDecode(
       new byte[] { 0x01, 0, 0, 0, 0, 1 }, 0x0B, out nicSnapshot),
     "Multicast station address must fail closed");
-// Seven bounded, read-only register accesses, including the PHY status.
+// Eleven bounded, read-only register accesses: MAC, PHY and TxConfig XID.
 var registerReader = new FakeRealtekRegisterReader();
 Check(Realtek810xERegisterSampler.TrySample(registerReader, out nicSnapshot) &&
       nicSnapshot.MacAddress == "02:11:22:33:44:55" &&
       nicSnapshot.Carrier && nicSnapshot.SpeedMbps == 100 &&
-      nicSnapshot.FullDuplex && registerReader.ReadCount == 7,
+      nicSnapshot.FullDuplex && registerReader.ReadCount == 11 &&
+      nicSnapshot.RawTxConfig == 0x44800000u &&
+      nicSnapshot.Xid == 0x448 && nicSnapshot.ChipVariant == "RTL8106e",
     "RTL810xE register sampler must read MAC and PHY exactly once");
-Check(registerReader.ReadOffsets.Count == 7 &&
+Check(registerReader.ReadOffsets.Count == 11 &&
       registerReader.ReadOffsets[0] == 0 &&
       registerReader.ReadOffsets[5] == 5 &&
-      registerReader.ReadOffsets[6] == 0x6C,
+      registerReader.ReadOffsets[6] == 0x6C &&
+      registerReader.ReadOffsets[7] == 0x40 &&
+      registerReader.ReadOffsets[10] == 0x43,
     "RTL810xE register sampler used unexpected offsets");
 registerReader.ThrowAt = 3;
 Check(!Realtek810xERegisterSampler.TrySample(registerReader, out nicSnapshot) &&
       nicSnapshot.MacAddress == null,
     "Failed register read must not expose a partial MAC");
+registerReader.ThrowAt = 0x42;
+Check(!Realtek810xERegisterSampler.TrySample(registerReader, out nicSnapshot) &&
+      nicSnapshot.MacAddress == null,
+    "Failed TxConfig byte read must not expose a partial snapshot");
 registerReader.ThrowAt = -1;
+registerReader.TxConfig = 0x40900000u;
+Check(Realtek810xERegisterSampler.TrySample(registerReader, out nicSnapshot) &&
+      nicSnapshot.Xid == 0x409 && nicSnapshot.ChipVariant == "RTL8105e",
+    "RTL8105e exact XID classification failed");
+registerReader.TxConfig = 0x40800000u;
+Check(Realtek810xERegisterSampler.TrySample(registerReader, out nicSnapshot) &&
+      nicSnapshot.Xid == 0x408 && nicSnapshot.ChipVariant == "RTL8105e",
+    "RTL8105e masked XID classification failed");
+registerReader.TxConfig = 0x12300000u;
+Check(Realtek810xERegisterSampler.TrySample(registerReader, out nicSnapshot) &&
+      nicSnapshot.ChipVariant == "unknown",
+    "Unrecognised XID must not be assigned a supported chip variant");
 registerReader.PhyStatus = 0x02; // link without a negotiated speed
 Check(!Realtek810xERegisterSampler.TrySample(registerReader, out nicSnapshot),
     "Invalid live PHY status must fail closed");
 Check(!Realtek810xERegisterSampler.TrySample(null, out nicSnapshot),
     "Null register window must fail closed");
-Console.WriteLine("[NET3095-RTL810XE-READER] PASS C# bounded 7-read synthetic register sampling; no hardware MMIO proof");
+Console.WriteLine("[NET3095-RTL810XE-READER] PASS C# bounded 11-read synthetic MAC/PHY/TxConfig sampling; no hardware MMIO proof");
 
 Console.WriteLine("[NET3095-RTL810XE-SNAPSHOT] PASS C# synthetic MAC/PHYstatus decoding; no physical MMIO/link proof");
 
@@ -382,6 +403,7 @@ sealed class FakeRealtekRegisterReader : IRealtek810xEByteReader
     public int ReadCount { get; private set; }
     public int ThrowAt { get; set; } = -1;
     public byte PhyStatus { get; set; } = 0x0B;
+    public uint TxConfig { get; set; } = 0x44800000u;
     public System.Collections.Generic.List<ushort> ReadOffsets { get; } = new();
     public byte Read8(ushort offset)
     {
@@ -389,6 +411,8 @@ sealed class FakeRealtekRegisterReader : IRealtek810xEByteReader
         ReadOffsets.Add(offset);
         if (offset == ThrowAt) throw new InvalidOperationException("synthetic read failure");
         if (offset == 0x6C) return PhyStatus;
+        if (offset >= 0x40 && offset <= 0x43)
+            return (byte)(TxConfig >> (8 * (offset - 0x40)));
         byte[] mac = { 0x02, 0x11, 0x22, 0x33, 0x44, 0x55 };
         if (offset < 6) return mac[offset];
         throw new InvalidOperationException("unexpected MMIO offset");
