@@ -185,7 +185,7 @@ namespace ZonderqOS.GUI
             // inside the menu instead of shrinking them until labels/icons overlap.
             const int toolColumns = 3;
             const int toolGap = 8;
-            int toolWidth = Math.Max(100,
+            int toolWidth = Math.Max(60,
                 (Width - Padding * 2 - toolGap * (toolColumns - 1)) / toolColumns);
             int toolIndex = 0;
             for (int i = 0; i < toolButtons.Count; i++)
