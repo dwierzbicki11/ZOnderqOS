@@ -49,6 +49,15 @@ namespace ZonderqOS.Drivers
             {
                 PciAccess pci = binding.Node.Access<PciAccess>();
 
+                // Defense in depth: verify the live PCI config header even if
+                // DriverKit already matched the node. These are reads only.
+                if (!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
+                        pci.ReadConfig16(0x00), pci.ReadConfig16(0x02),
+                        pci.ReadConfig16(0x08), pci.ReadConfig16(0x0A),
+                        pci.ReadConfig16(0x0E), pci.ReadConfig16(0x2C),
+                        pci.ReadConfig16(0x2E)))
+                    return Decline("PCI identity/header mismatch; no MMIO reads");
+
                 // DriverKit owns the PCI node. Do not enable memory decoding
                 // or transition D3->D0 in a read-only diagnostic.
                 if ((pci.ReadConfig16(0x04) & 0x0002) == 0)

@@ -201,6 +201,32 @@ Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 2, 0, out bars) &&
 barConfig.VendorId = 0x10EC;
 Check(!PciBarInventory.TryReadRealtek810xE(barConfig, 0, 32, 0, out bars),
     "Invalid PCI device number must fail closed");
+// Exact PCI header guard executes as pure C#; it never accesses a real NIC.
+Check(Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
+      0x10EC, 0x8136, 0x0006, 0x0200, 0x0000, 0x1043, 0x200F),
+    "Exact ASUS RTL810xE PCI identity should pass");
+Check(Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
+      0x10EC, 0x8136, 0x0006, 0x0200, 0x0080, 0x1043, 0x200F),
+    "Multifunction bit must not invalidate a type-0 PCI header");
+Check(!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
+      0x10EC, 0x8136, 0x0006, 0x0200, 0x0001, 0x1043, 0x200F),
+    "Type-1 bridge header must be rejected");
+Check(!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
+      0x10EC, 0x8136, 0x0007, 0x0200, 0x0000, 0x1043, 0x200F),
+    "Unreviewed silicon revision must be rejected");
+Check(!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
+      0x10EC, 0x8136, 0x0006, 0x0280, 0x0000, 0x1043, 0x200F),
+    "Non-Ethernet PCI subclass must be rejected");
+Check(!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
+      0x10EC, 0x8136, 0x0006, 0x0200, 0x0000, 0x1043, 0xFFFF),
+    "Unexpected subsystem must be rejected");
+Check(!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
+      0x10EC, 0x8168, 0x0006, 0x0200, 0x0000, 0x1043, 0x200F),
+    "Gigabit Realtek device must be rejected");
+Check(!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
+      0xFFFF, 0x8136, 0x0006, 0x0200, 0x0000, 0x1043, 0x200F),
+    "Invalid PCI vendor must be rejected");
+
 // Pure RTL810xE register decoding only: no MMIO is performed by this test.
 var station = new byte[] { 0x02, 0x11, 0x22, 0x33, 0x44, 0x55 };
 Check(Realtek810xERegisterDecoder.StationAddressOffset == 0x00 &&
