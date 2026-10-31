@@ -302,7 +302,11 @@ while (( SECONDS - started < TIMEOUT )); do
     if [[ "$MODE" == n6 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
       if [[ "$IRQ_TRACE" == 1 ]]; then
-        python3 "$ROOT/tests/verify_3095_e1000e_irq_trace.py" "$LOG.stderr"
+        # This isolated QEMU run must show at least one device-side IRQ
+        # notification, not merely pending interrupt bits or successful
+        # polling-based packet delivery. Guest ISR execution is STILL unproven.
+        python3 "$ROOT/tests/verify_3095_e1000e_irq_trace.py" \
+          "$LOG.stderr" --require-notify
       fi
       echo "[NET3095-N6-QEMU] PASS two E1000E HTTP/1.0 GET/200 TCP sessions + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
     elif [[ "$MODE" == n5 ]]; then
