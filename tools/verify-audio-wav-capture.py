@@ -72,6 +72,11 @@ def inspect(path: Path, expected_hz: int = 440):
         right_hz = right_crossings * rate / (2 * (len(right_chunk) - 1))
         if not expected_hz * 0.90 <= right_hz <= expected_hz * 1.10:
             raise ValueError(f"stereo right channel wrong pitch: {right_hz:.1f}Hz (expected {expected_hz}Hz)")
+        # Every diagnostic source sends identical samples to both channels.
+        # Opposite polarity or a phase-shifted second signal is not valid stereo.
+        aligned = sum((a < 0) == (b < 0) for a, b in zip(chunk, right_chunk))
+        if aligned * 100 < len(chunk) * 95:
+            raise ValueError("stereo channels are not phase-aligned")
 
     return f"[AUDIO-WAV] PASS captured PCM: {rate}Hz {channels}ch, peak={peak}, tone={hz:.1f}Hz, frames={frames}"
 

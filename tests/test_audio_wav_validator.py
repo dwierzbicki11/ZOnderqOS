@@ -21,7 +21,7 @@ class WavValidatorTests(unittest.TestCase):
     def tearDown(self):
         self.temp.cleanup()
 
-    def make_wave(self, frequency=440, amplitude=4096, ms=250, silence_ms=500, width=2, right_amplitude=None, right_click_only=False):
+    def make_wave(self, frequency=440, amplitude=4096, ms=250, silence_ms=500, width=2, right_amplitude=None, right_click_only=False, invert_right=False):
         rate = 48000
         data = bytearray()
         for i in range(rate * (silence_ms + ms) // 1000):
@@ -31,6 +31,8 @@ class WavValidatorTests(unittest.TestCase):
                 right = sample if right_amplitude is None else (right_amplitude if sample > 0 else -right_amplitude) if playing else 0
                 if right_click_only and i != rate * silence_ms // 1000:
                     right = 0
+                if invert_right:
+                    right = -right
                 data.extend(struct.pack("<hh", sample, right))
             else:
                 data.extend(bytes([128, 128]))
@@ -70,6 +72,11 @@ class WavValidatorTests(unittest.TestCase):
         self.make_wave(frequency=660)
         self.assertIn("PASS captured PCM", audio.inspect(self.path, expected_hz=660))
         with self.assertRaisesRegex(ValueError, "expected about 440Hz"):
+            audio.inspect(self.path)
+
+    def test_rejects_inverted_right_channel(self):
+        self.make_wave(invert_right=True)
+        with self.assertRaisesRegex(ValueError, "not phase-aligned"):
             audio.inspect(self.path)
 
     def test_rejects_wrong_pitch(self):
