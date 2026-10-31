@@ -6,6 +6,7 @@ on:
       - 'source/GUI/**'
       - 'ZonderqOS.csproj'
       - 'tests/test_3094_responsive_gui.py'
+      - 'tests/test_gui_modified_keys.py'
       - 'tests/test_3094_storage_policy.py'
       - 'tools/qmp-gui-login.py'
       - 'tools/qmp-gui-filemanager.py'
@@ -32,7 +33,9 @@ jobs:
           python3 -m py_compile tools/qmp-gui-login.py tools/qmp-gui-filemanager.py tools/qmp-gui-taskmanager.py
           bash -n tools/smoke-services-qemu.sh
       - name: Validate 3.0.95 GUI layout and desktop bounds (source/math only)
-        run: python3 tests/test_3094_responsive_gui.py
+        run: |
+          python3 tests/test_3094_responsive_gui.py
+          python3 tests/test_gui_modified_keys.py
       - name: Exercise QMP framebuffer diff parser with synthetic PPM images
         run: |
           python3 tests/test_qmp_gui_filemanager.py
