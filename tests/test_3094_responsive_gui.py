@@ -303,6 +303,52 @@ class ResponsiveGui3094(unittest.TestCase):
         # The footer starts at 540-76=464: no overlapping controls.
         self.assertLess(452, menu_height - 76)
 
+    def test_start_menu_compacts_both_grids_and_power_controls_on_small_modes(self):
+        # Source-level contract: the geometry used for painting must be the
+        # same Button geometry used by the mouse hit-test. Not a guest boot.
+        for expression in (
+            "private bool CompactLayout => Height < 500;",
+            "button.Y = Y + PinnedCardsY + row * (PinnedCardsHeight + PinnedCardsGap);",
+            "button.Height = PinnedCardsHeight;",
+            "button.Y = Y + ToolsCardsY + row * (ToolsCardsHeight + ToolsCardsGap);",
+            "button.Height = ToolsCardsHeight;",
+            "Y + PinnedLabelY", "Y + ToolsLabelY",
+            "button.Y + (CompactLayout ? 33 : 56)",
+            "button.Y + (CompactLayout ? 10 : 17)",
+            "int powerGap = Width < 480 ? 6 : 8;",
+            "if (button.Width < 72)",
+        ):
+            self.assertIn(expression, START_MENU)
+
+        for screen_width, screen_height in ((640, 480), (800, 600),
+                                            (1366, 768), (1920, 1080)):
+            menu_height = min(560, max(1, screen_height - 44 - 16))
+            compact = menu_height < 500
+            pinned_top = 134 if compact else 146
+            pinned_height = 53 if compact else 88
+            pinned_gap = 5 if compact else 9
+            tools_label = 250 if compact else 342
+            tools_top = 264 if compact else 360
+            tools_height = 30 if compact else 42
+            tools_gap = 4 if compact else 8
+            self.assertLess(pinned_top + 2 * pinned_height + pinned_gap, tools_label)
+            self.assertLess(tools_top + 2 * tools_height + tools_gap,
+                            menu_height - 76)
+            self.assertEqual(compact, screen_height == 480)
+
+        # Narrower-than-design Start menu keeps the four distinct session
+        # buttons to the right of the identity block, all inside the panel.
+        for screen_width in (320, 400, 480, 640):
+            menu_width = min(480, max(1, screen_width - 16))
+            gap = 6 if menu_width < 480 else 8
+            button_width = (max(24, (menu_width - 28 - 110 - gap * 3) // 4)
+                            if menu_width < 480 else 82)
+            right = menu_width - 14
+            left = right - 4 * button_width - 3 * gap
+            self.assertGreaterEqual(left, 14 + 110)
+            self.assertLessEqual(right, menu_width - 14)
+            self.assertGreaterEqual(button_width, 24)
+
     def test_app_center_list_actions_and_details_fit(self):
         self.assertIn("private int ListWidth => ShowDetails ? 640", APP_CENTER)
         self.assertIn("private int ActionY => Window.Y + Window.Height - ActionBottomOffset", APP_CENTER)
