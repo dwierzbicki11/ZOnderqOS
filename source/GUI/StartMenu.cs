@@ -47,6 +47,19 @@ namespace ZonderqOS.GUI
         private const int ToolHeight = 42;
         private const int FooterHeight = 76;
 
+        // The 560px design fits 800x600, but a 640x480 desktop gives Start
+        // only 420px. Keep both result grids above the footer in that mode.
+        // Render and hit-testing use the same Button geometry.
+        private bool CompactLayout => Height < 500;
+        private int PinnedLabelY => CompactLayout ? 118 : PinnedLabelTop;
+        private int PinnedCardsY => CompactLayout ? 134 : PinnedTop;
+        private int PinnedCardsHeight => CompactLayout ? 53 : PinnedCardHeight;
+        private int PinnedCardsGap => CompactLayout ? 5 : PinnedGap;
+        private int ToolsLabelY => CompactLayout ? 250 : ToolsLabelTop;
+        private int ToolsCardsY => CompactLayout ? 264 : ToolsTop;
+        private int ToolsCardsHeight => CompactLayout ? 30 : ToolHeight;
+        private int ToolsCardsGap => CompactLayout ? 4 : 8;
+
         private static readonly Color Background = Color.FromArgb(24, 29, 35);
         private static readonly Color Header = Color.FromArgb(29, 36, 44);
         private static readonly Color Panel = Color.FromArgb(31, 38, 46);
@@ -162,9 +175,9 @@ namespace ZonderqOS.GUI
                 int row = visiblePinned / PinnedColumns;
                 int column = visiblePinned % PinnedColumns;
                 button.X = X + Padding + column * (cardWidth + PinnedGap);
-                button.Y = Y + PinnedTop + row * (PinnedCardHeight + PinnedGap);
+                button.Y = Y + PinnedCardsY + row * (PinnedCardsHeight + PinnedCardsGap);
                 button.Width = cardWidth;
-                button.Height = PinnedCardHeight;
+                button.Height = PinnedCardsHeight;
                 visiblePinned++;
             }
 
@@ -172,7 +185,6 @@ namespace ZonderqOS.GUI
             // inside the menu instead of shrinking them until labels/icons overlap.
             const int toolColumns = 3;
             const int toolGap = 8;
-            const int toolRowGap = 8;
             int toolWidth = Math.Max(100,
                 (Width - Padding * 2 - toolGap * (toolColumns - 1)) / toolColumns);
             int toolIndex = 0;
@@ -187,15 +199,19 @@ namespace ZonderqOS.GUI
                 int row = toolIndex / toolColumns;
                 int column = toolIndex % toolColumns;
                 button.X = X + Padding + column * (toolWidth + toolGap);
-                button.Y = Y + ToolsTop + row * (ToolHeight + toolRowGap);
+                button.Y = Y + ToolsCardsY + row * (ToolsCardsHeight + ToolsCardsGap);
                 button.Width = toolWidth;
-                button.Height = ToolHeight;
+                button.Height = ToolsCardsHeight;
                 toolIndex++;
             }
 
             // Four compact session/power controls fit beside the footer identity block.
-            const int powerWidth = 82;
-            const int powerGap = 8;
+            // Preserve the identity block when the menu is narrower than 480px.
+            // Four icon-only controls remain independently clickable on 320px+.
+            int powerGap = Width < 480 ? 6 : 8;
+            int powerWidth = Width < 480
+                ? Math.Max(24, (Width - Padding * 2 - 110 - powerGap * 3) / 4)
+                : 82;
             int powerY = Y + Height - FooterHeight + 16;
             int powerRight = X + Width - Padding;
 
@@ -295,7 +311,7 @@ namespace ZonderqOS.GUI
 
         private void RenderPinned(Canvas canvas)
         {
-            SmallTextRenderer.Draw(canvas, "PRZYPINANE", X + Padding, Y + PinnedLabelTop, Muted);
+            SmallTextRenderer.Draw(canvas, "PRZYPINANE", X + Padding, Y + PinnedLabelY, Muted);
 
             int visibleCount = 0;
             for (int i = 0; i < pinnedButtons.Count; i++)
@@ -312,15 +328,18 @@ namespace ZonderqOS.GUI
                 if (highlighted)
                     canvas.DrawFilledRectangle(Accent, button.X, button.Y, button.Width, 2);
 
-                int iconX = button.X + (button.Width - 32) / 2;
-                IconManager.DrawScaled(canvas, pinnedIcons[i], iconX, button.Y + 13, 32, 32);
-                SmallTextRenderer.DrawCentered(canvas, pinnedLabels[i], button.X + 7, button.Y + 56,
+                int iconSize = CompactLayout ? 24 : 32;
+                int iconX = button.X + (button.Width - iconSize) / 2;
+                IconManager.DrawScaled(canvas, pinnedIcons[i], iconX,
+                    button.Y + (CompactLayout ? 5 : 13), iconSize, iconSize);
+                SmallTextRenderer.DrawCentered(canvas, pinnedLabels[i], button.X + 7,
+                    button.Y + (CompactLayout ? 33 : 56),
                     Math.Max(20, button.Width - 14), Text);
                 visibleCount++;
             }
 
             if (visibleCount == 0)
-                SmallTextRenderer.Draw(canvas, "BRAK WYNIKOW", X + Padding, Y + PinnedTop + 18, Muted);
+                SmallTextRenderer.Draw(canvas, "BRAK WYNIKOW", X + Padding, Y + PinnedCardsY + 18, Muted);
         }
 
         private void RenderTools(Canvas canvas)
@@ -330,7 +349,7 @@ namespace ZonderqOS.GUI
             for (int i = 0; i < pinnedButtons.Count; i++)
                 if (pinnedButtons[i].Visible)
                     visibleIndex++;
-            SmallTextRenderer.Draw(canvas, "NARZEDZIA", X + Padding, Y + ToolsLabelTop, Muted);
+            SmallTextRenderer.Draw(canvas, "NARZEDZIA", X + Padding, Y + ToolsLabelY, Muted);
             for (int i = 0; i < toolButtons.Count; i++)
             {
                 Button button = toolButtons[i];
@@ -341,9 +360,13 @@ namespace ZonderqOS.GUI
                 UiPainter.RoundedPanel(canvas, button.X, button.Y, button.Width, button.Height,
                     UiMetrics.TileRadius, highlighted ? PanelHover : Panel,
                     highlighted ? UiPalette.AccentBorder : Border);
-                IconManager.DrawScaled(canvas, toolIcons[i], button.X + 9, button.Y + 10, 20, 20);
-                SmallTextRenderer.DrawClipped(canvas, toolLabels[i], button.X + 36, button.Y + 17,
-                    Math.Max(18, button.Width - 43), Text);
+                int toolIconSize = CompactLayout ? 16 : 20;
+                IconManager.DrawScaled(canvas, toolIcons[i], button.X + 9,
+                    button.Y + (CompactLayout ? 7 : 10), toolIconSize, toolIconSize);
+                SmallTextRenderer.DrawClipped(canvas, toolLabels[i],
+                    button.X + (CompactLayout ? 30 : 36),
+                    button.Y + (CompactLayout ? 10 : 17),
+                    Math.Max(18, button.Width - (CompactLayout ? 37 : 43)), Text);
                 visibleIndex++;
             }
         }
@@ -391,9 +414,18 @@ namespace ZonderqOS.GUI
             UiPainter.RoundedPanel(canvas, button.X, button.Y, button.Width, button.Height,
                 UiMetrics.ButtonRadius, button.IsHovered ? hover : normal,
                 button.IsHovered ? (danger ? UiPalette.DangerBorder : Accent) : border);
-            IconManager.DrawScaled(canvas, icon, button.X + 8, button.Y + 11, 20, 20);
-            SmallTextRenderer.DrawClipped(canvas, label, button.X + 34, button.Y + 18,
-                Math.Max(16, button.Width - 40), Text);
+            if (button.Width < 72)
+            {
+                // Narrow screens cannot fit four power labels beside the user.
+                IconManager.DrawScaled(canvas, icon, button.X + (button.Width - 20) / 2,
+                    button.Y + 11, 20, 20);
+            }
+            else
+            {
+                IconManager.DrawScaled(canvas, icon, button.X + 8, button.Y + 11, 20, 20);
+                SmallTextRenderer.DrawClipped(canvas, label, button.X + 34, button.Y + 18,
+                    Math.Max(16, button.Width - 40), Text);
+            }
         }
 
         private int CountVisibleResults()
