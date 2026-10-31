@@ -5,6 +5,7 @@ ISO="${1:-output-x64/ZonderqOS.iso}"
 OUT="${2:-services-qemu-output}"
 BOOT_SECONDS="${SERVICE_QEMU_BOOT_SECONDS:-100}"
 CAPTURE_SCREEN="${SERVICE_QEMU_CAPTURE_SCREEN:-0}"
+AUTOMATE_GUI_LOGIN="${SERVICE_QEMU_AUTOMATE_GUI_LOGIN:-0}"
 
 fail() { echo "[SERVICES-QEMU][FAIL] $*" >&2; exit 1; }
 for tool in qemu-system-x86_64 mkfs.vfat sfdisk mtype mcopy python3; do
@@ -13,6 +14,8 @@ done
 [[ -s "$ISO" ]] || fail "missing ISO: $ISO"
 [[ "$BOOT_SECONDS" =~ ^[1-9][0-9]*$ ]] || fail "invalid boot duration: $BOOT_SECONDS"
 [[ "$CAPTURE_SCREEN" == 0 || "$CAPTURE_SCREEN" == 1 ]] || fail "invalid capture flag: $CAPTURE_SCREEN"
+[[ "$AUTOMATE_GUI_LOGIN" == 0 || "$AUTOMATE_GUI_LOGIN" == 1 ]] || fail "invalid GUI login flag"
+[[ "$AUTOMATE_GUI_LOGIN" == 0 || "$CAPTURE_SCREEN" == 1 ]] || fail "GUI login probe requires framebuffer capture"
 mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 ISO="$(realpath "$ISO")"
@@ -59,6 +62,11 @@ boot_guest() {
   local elapsed
   for ((elapsed=0;elapsed<BOOT_SECONDS;elapsed++)); do
     kill -0 "$QEMU_PID" 2>/dev/null || fail "$phase: QEMU exited early; see $stderr"
+    if [[ "$AUTOMATE_GUI_LOGIN" == 1 && "$elapsed" == 25 ]]; then
+      # Only the fresh synthetic FAT32 image is attached; never use a host disk.
+      python3 "$(dirname "$0")/qmp-gui-login.py" "$socket" "$phase" \
+        > "$OUT/$phase.login.log" 2>&1 || fail "$phase: GUI QMP input failed"
+    fi
     sleep 1
   done
 
