@@ -772,6 +772,20 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("selectedIndex >= offset + VisibleRowCount", NOTIFICATIONS)
         self.assertIn("visibleCount - VisibleRowCount", NOTIFICATIONS)
 
+        # At 320x240 no complete card fits between filters and footer.
+        # Selection/Enter/Delete must not act on an invisible notification.
+        self.assertIn("System.Math.Max(0, System.Math.Min(VisibleRows, rows))", NOTIFICATIONS)
+        for method in ("MoveSelection", "KeepSelectionVisible", "MarkSelectedRead", "DismissSelected"):
+            body = NOTIFICATIONS.split("private " + ("bool" if method == "X" else "void") + " " + method + "(", 1)[1]
+            self.assertIn("if (VisibleRowCount <= 0)", body.split("private ", 1)[0])
+        for screen_height, expected_rows in ((240, 0), (480, 2)):
+            panel_height = screen_height - 44 - 20
+            available_height = max(0, panel_height - 130 - 72)
+            rows = max(0, min(8, (available_height + 7) // 89))
+            self.assertEqual(rows, expected_rows)
+            if rows:
+                self.assertLessEqual(130 + (rows - 1) * 89 + 82, panel_height - 72)
+
         # The 800x600 panel paints only three rows; using the old fixed
         # eight-row scroll window made keyboard selection disappear.
         for screen_height, expected_rows in ((600, 3), (768, 5), (1080, 8)):

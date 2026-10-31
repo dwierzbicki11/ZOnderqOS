@@ -25,7 +25,10 @@ namespace ZonderqOS.GUI
             {
                 int availableHeight = System.Math.Max(0, Height - 130 - 72);
                 int rows = (availableHeight + CardGap) / (CardHeight + CardGap);
-                return System.Math.Max(1, System.Math.Min(VisibleRows, rows));
+                // On a 320x240 display the header, filters and footer use
+                // the entire panel. Zero visible cards is safer than letting
+                // keyboard selection target an invisible notification.
+                return System.Math.Max(0, System.Math.Min(VisibleRows, rows));
             }
         }
 
@@ -615,6 +618,8 @@ namespace ZonderqOS.GUI
 
         private void MoveSelection(int delta)
         {
+            if (VisibleRowCount <= 0)
+                return;
             EnsureFresh();
             if (visibleCount <= 0)
                 return;
@@ -628,6 +633,11 @@ namespace ZonderqOS.GUI
 
         private void KeepSelectionVisible()
         {
+            if (VisibleRowCount <= 0)
+            {
+                offset = 0;
+                return;
+            }
             if (selectedIndex < offset)
                 offset = selectedIndex;
             else if (selectedIndex >= offset + VisibleRowCount)
@@ -642,6 +652,8 @@ namespace ZonderqOS.GUI
 
         private void MarkSelectedRead()
         {
+            if (VisibleRowCount <= 0)
+                return;
             NotificationEntry entry;
             if (TryGetVisible(selectedIndex, out entry))
             {
@@ -652,6 +664,8 @@ namespace ZonderqOS.GUI
 
         private void DismissSelected()
         {
+            if (VisibleRowCount <= 0)
+                return;
             NotificationEntry entry;
             if (TryGetVisible(selectedIndex, out entry))
             {
