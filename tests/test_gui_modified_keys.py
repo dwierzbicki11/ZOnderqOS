@@ -216,6 +216,28 @@ class ModifiedKeySafetyTests(unittest.TestCase):
                 selection = 0  # Search edits clear the old selection.
                 self.assertEqual(selection, 0)
 
+    def test_start_menu_keyboard_selection_survives_stationary_mouse(self):
+        menu = source("source/GUI/StartMenu.cs")
+        interaction = menu.split("public void UpdateInteractions(", 1)[1].split(
+            "private static void UpdateButtonInteractions(", 1)[0]
+        self.assertIn("lastPointerX != int.MinValue", interaction)
+        self.assertIn("mouseX != lastPointerX || mouseY != lastPointerY", interaction)
+        self.assertIn("selectedResult = -1;", interaction)
+        self.assertLess(interaction.index("selectedResult = -1;"),
+                        interaction.index("UpdateButtonInteractions(pinnedButtons"))
+        self.assertIn("lastPointerX = int.MinValue;", menu)
+        self.assertIn("lastPointerY = int.MinValue;", menu)
+        self.assertIn("selectedResult == visibleCount : button.IsHovered", menu)
+        self.assertIn("selectedResult == visibleIndex : button.IsHovered", menu)
+        # A stationary cursor must not override a keyboard highlight; an
+        # actual move returns the highlight to the hovered mouse button.
+        def selection(selected, last, current):
+            if last is not None and last != current:
+                selected = -1
+            return selected
+        self.assertEqual(selection(2, (100, 200), (100, 200)), 2)
+        self.assertEqual(selection(2, (100, 200), (101, 200)), -1)
+
     def test_modifier_policy_for_destructive_actions(self):
         # Independent model of the intended key predicate, not a runtime test.
         for ctrl in (False, True):
