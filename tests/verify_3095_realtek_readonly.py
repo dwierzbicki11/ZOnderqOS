@@ -16,12 +16,12 @@ DRIVER = re.compile(
     re.escape(PREFIX) + r" MMIO_SNAPSHOT=READ mac=" + MAC +
     r" link=(up|down) speed=(0|10|100) duplex=(full|half|unknown)" +
     r" txconfig=0x([0-9A-F]{8}) xid=0x([0-9A-F]{3})" +
-    r" variant=(RTL8106e|RTL8105e|unknown)(?=\\s|$)")
+    r" variant=(RTL8106e|RTL8105e|unknown)(?=\s|$)")
 KERNEL = re.compile(
     re.escape(PREFIX) + r" SNAPSHOT=PASS mac=" + MAC +
     r" link=(up|down) speed=(0|10|100)" +
     r" txconfig=0x([0-9A-F]{8}) xid=0x([0-9A-F]{3})" +
-    r" variant=(RTL8106e|RTL8105e|unknown)(?=\\s|$)")
+    r" variant=(RTL8106e|RTL8105e|unknown)(?=\s|$)")
 HEARTBEAT = re.compile(re.escape(PREFIX) + r" HEARTBEAT=(\d+)")
 
 
