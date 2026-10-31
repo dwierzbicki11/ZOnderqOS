@@ -148,6 +148,29 @@ def difference(first, second):
     return changed, samples
 
 
+def changed_pixels_in_region(first, second, left, top, right, bottom):
+    """Count real framebuffer pixel changes in a clipped cursor-sized region.
+
+    Unlike the coarse 4px desktop sampling grid, this cannot miss a narrow
+    software cursor because of sample-grid alignment. A clock/toast outside
+    both cursor rectangles cannot satisfy either independent movement gate.
+    """
+    width, height, before = first
+    other_width, other_height, after = second
+    if (width, height) != (other_width, other_height):
+        raise ValueError("framebuffer dimensions changed during cursor probe")
+    if len(before) != width * height * 3 or len(after) != width * height * 3:
+        raise ValueError("incomplete framebuffer during cursor probe")
+    changed = 0
+    for y in range(max(0, top), min(height, bottom)):
+        for x in range(max(0, left), min(width, right)):
+            offset = (y * width + x) * 3
+            if any(abs(before[offset + channel] - after[offset + channel]) > 24
+                   for channel in range(3)):
+                changed += 1
+    return changed
+
+
 def expected_filemanager_bounds(frame_width, frame_height):
     """Source-derived initial Window bounds, not proof of rendered geometry.
 
@@ -314,13 +337,22 @@ def main():
         print(f"[GUI-QMP] {label}: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
         if fraction < 0.12:
             raise RuntimeError(label + ": insufficient framebuffer change; inspect PPMs")
-    # The software cursor is rendered into the guest framebuffer. A small,
-    # nonzero central-region change is required for real PS/2 pointer motion;
-    # it is not evidence of clicking, dragging or touchpad compatibility.
-    mouse_changed, mouse_samples = difference(mouse_before, mouse_after)
-    print(f"[GUI-QMP] mouse-move: changed {mouse_changed}/{mouse_samples} sampled pixels")
-    if mouse_changed < 8:
-        raise RuntimeError("PS/2 pointer move not visible in guest framebuffer")
+    # Require separate changes at the cursor's old and new positions.
+    # The previous 4px sampling grid saw only 6 pixels at 800x600 even
+    # though real QEMU frames changed 113 pixels in EACH cursor rectangle.
+    # Keep this a real framebuffer gate; never accept QMP ACK alone.
+    old_cursor_pixels = changed_pixels_in_region(
+        mouse_before, mouse_after,
+        mouse_start_x - 4, mouse_start_y - 4,
+        mouse_start_x + 24, mouse_start_y + 28)
+    new_cursor_pixels = changed_pixels_in_region(
+        mouse_before, mouse_after,
+        mouse_start_x + 60 - 4, mouse_start_y - 4,
+        mouse_start_x + 60 + 24, mouse_start_y + 28)
+    print(f"[GUI-QMP] mouse-move: old={old_cursor_pixels} new={new_cursor_pixels} "
+          "changed full-resolution pixels")
+    if old_cursor_pixels < 32 or new_cursor_pixels < 32:
+        raise RuntimeError("PS/2 pointer move not visible at both guest cursor positions")
 
     # Escape must restore the same File Manager viewport after clearing
     # the search query. This is a real QEMU keyboard regression, not merely
