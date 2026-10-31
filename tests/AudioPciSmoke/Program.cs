@@ -119,6 +119,29 @@ static class Test
         for (int i = 0; i < pcm.Length; i++)
             Expect(decoded[i] == pcm[i], "WAV round-trip preserves PCM");
 
+        // WAVE_FORMAT_EXTENSIBLE PCM16 is common in modern WAV exports.
+        // Exercise the actual C# decoder, not a synthetic Python reimplementation.
+        byte[] extensible = AudioWavePcm.EncodeExtensibleStereo16AtRate(pcm, 48000);
+        Expect(extensible.Length == encoded.Length + 24, "extensible fmt has 24 additional bytes");
+        byte[] extensibleDecoded = AudioWavePcm.DecodeStereo16(extensible);
+        Expect(extensibleDecoded.Length == pcm.Length, "extensible PCM16 decoded length");
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(extensibleDecoded[i] == pcm[i], "extensible PCM16 exact round-trip");
+
+        foreach (int corruptField in new[] { 36, 38, 40, 44, 55 })
+        {
+            byte[] invalidExtensible = (byte[])extensible.Clone();
+            if (corruptField == 36) invalidExtensible[36] = 21; // cbSize < 22
+            if (corruptField == 38) invalidExtensible[38] = 8; // valid bits != container
+            if (corruptField == 40) invalidExtensible[40] = 4; // mono speaker mask in stereo
+            if (corruptField == 44) invalidExtensible[44] = 3; // IEEE float GUID
+            if (corruptField == 55) invalidExtensible[55] = 0; // damaged PCM GUID
+            bool refusedExtensible = false;
+            try { AudioWavePcm.DecodeStereo16(invalidExtensible); }
+            catch (ArgumentException) { refusedExtensible = true; }
+            Expect(refusedExtensible, "reject malformed extensible WAV field " + corruptField);
+        }
+
         // A real-world PCM16 mono WAV should decode into bounded stereo frames.
         byte[] mono = new byte[44 + pcm.Length / 2];
         Array.Copy(encoded, mono, 44);
@@ -257,6 +280,11 @@ static class Test
         byte[] wave44100 = AudioWavePcm.EncodeStereo16AtRate(source44100, 44100);
         byte[] converted44100 = AudioWavePcm.DecodeStereo16(wave44100);
         Expect(converted44100.Length == 48000, "44.1k stereo 250ms converts to 48k stereo 250ms");
+        byte[] extensible44100 = AudioWavePcm.EncodeExtensibleStereo16AtRate(source44100, 44100);
+        byte[] extensibleConverted = AudioWavePcm.DecodeStereo16(extensible44100);
+        Expect(extensibleConverted.Length == converted44100.Length, "44.1k extensible resampling length");
+        for (int i = 0; i < extensibleConverted.Length; i++)
+            Expect(extensibleConverted[i] == converted44100[i], "44.1k extensible PCM matches standard RIFF");
         int crossings44100 = 0;
         for (int i = 0; i < converted44100.Length / 4; i++)
         {
