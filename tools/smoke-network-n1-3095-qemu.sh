@@ -281,6 +281,26 @@ while (( SECONDS - started < TIMEOUT )); do
         echo "[NET3095-N6][FAIL] Host did not complete both HTTP exchanges" >&2
         exit 1
       fi
+      # Wait for the separate 32-frame raw TX proof before starting the
+      # post-proof heartbeat window. Never mistake queued frames for PCAP TX.
+      burst_start=$SECONDS
+      until python3 "$ROOT/tests/verify_3095_network_n6_burst.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
+        qemu_alive || {
+          echo "[NET3095-N6][FAIL] Guest exited before raw TX burst proof" >&2; exit 1;
+        }
+        if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
+          tail -n 90 "$LOG" >&2
+          echo "[NET3095-N6][FAIL] Guest rejected raw TX burst" >&2
+          exit 1
+        fi
+        if (( SECONDS - burst_start >= 15 )); then
+          python3 "$ROOT/tests/verify_3095_network_n6_burst.py" "$LOG" "$PCAP"
+          echo "[NET3095-N6][FAIL] No 32-frame ordered raw TX PCAP proof" >&2
+          exit 1
+        fi
+        sleep 1
+      done
+      python3 "$ROOT/tests/verify_3095_network_n6_burst.py" "$LOG" "$PCAP"
     fi
     # A running QEMU PID is not proof of a live guest (-no-shutdown).
     # Require ongoing managed kernel execution for the stability window.
@@ -301,6 +321,7 @@ while (( SECONDS - started < TIMEOUT )); do
     python3 "$ROOT/tests/verify_3095_network_n1.py" "$LOG" "$PCAP"
     if [[ "$MODE" == n6 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
+      python3 "$ROOT/tests/verify_3095_network_n6_burst.py" "$LOG" "$PCAP"
       if [[ "$IRQ_TRACE" == 1 ]]; then
         # Correlate the guest's assigned legacy line with a real QEMU
         # legacy assertion. An MSI-only trace must not satisfy this check.
@@ -313,7 +334,7 @@ while (( SECONDS - started < TIMEOUT )); do
         python3 "$ROOT/tests/verify_3095_e1000e_irq_trace.py" \
           "$LOG.stderr" --require-notify
       fi
-      echo "[NET3095-N6-QEMU] PASS two E1000E HTTP/1.0 GET/200 TCP sessions + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
+      echo "[NET3095-N6-QEMU] PASS two E1000E HTTP sessions + 32 ordered raw TX frames + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
     elif [[ "$MODE" == n5 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP"
       echo "[NET3095-N5-QEMU] PASS real E1000E DNS query/answer + TCP/DHCP/ICMP + 8s stability; production networking disabled"
