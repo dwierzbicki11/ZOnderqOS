@@ -63,7 +63,7 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
         for mode, adapter in (("1360x768", "std"), ("1366x768", "qxl"),
                               ("1920x1080", "std")):
             self.assertRegex(hd, r"resolution: '" + mode +
-                             r"'\\s*video: '" + adapter + r"'")
+                             r"'\s*video: '" + adapter + r"'")
         self.assertNotIn("SERVICE_QEMU_FIRMWARE: 'ovmf'", regular)
         self.assertIn('tail -n 50 "$OUT/$phase.filemanager-probe.log" >&2', smoke)
         self.assertIn('tail -n 50 "$OUT/$phase.taskmanager-probe.log" >&2', smoke)
