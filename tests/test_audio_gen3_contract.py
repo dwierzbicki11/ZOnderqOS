@@ -100,6 +100,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("mute_capture.inspect(wav)", harness)
         self.assertIn("if args.volume == 0:", harness)
         self.assertIn("stereo channel imbalance", validator)
+        self.assertIn("stereo right channel has no sustained", validator)
         self.assertIn("frames < rate // 10", mute)
         self.assertIn("peak > 32", mute)
         self.assertIn("stream.readframes(frames)", mute)
