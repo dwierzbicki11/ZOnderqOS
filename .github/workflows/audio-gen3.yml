@@ -16,6 +16,7 @@ on:
       - 'tests/test_audio_gen3_contract.py'
       - 'tests/test_audio_wav_validator.py'
       - 'tests/test_audio_volume_validator.py'
+      - 'tests/test_audio_qmp_keys.py'
       - 'tools/verify-audio-wav-capture.py'
       - 'tools/verify-audio-volume-capture.py'
       - 'tests/AudioPciSmoke/**'
@@ -54,6 +55,7 @@ jobs:
           python3 tests/test_audio_gen3_contract.py
           python3 tests/test_audio_wav_validator.py
           python3 tests/test_audio_volume_validator.py
+          python3 tests/test_audio_qmp_keys.py
       - name: Compile and execute real C# PCI classification
         run: dotnet run --project tests/AudioPciSmoke/AudioPciSmoke.csproj --configuration Release
       - name: Explicit scope
