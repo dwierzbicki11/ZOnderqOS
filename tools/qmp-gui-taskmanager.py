@@ -117,6 +117,15 @@ def main():
         time.sleep(1)
         qmp.screenshot(channel, prefix + ".taskmanager-processes-restored.ppm")
 
+        # Prove that the *guest* responds to plain keyboard page navigation,
+        # not just a successful QMP send-key acknowledgement. Both transitions
+        # are read-only and checked against captured real framebuffer pixels.
+        qmp.send_keys(channel, "right")
+        time.sleep(1)
+        qmp.screenshot(channel, prefix + ".taskmanager-performance-keyboard.ppm")
+        qmp.send_keys(channel, "left")
+        time.sleep(1)
+        qmp.screenshot(channel, prefix + ".taskmanager-processes-keyboard.ppm")
 
         # Exercise the minimum-height, wide Task Manager layout using a real
         # bottom-edge drag. No END TASK, disk, or file operations are touched.
@@ -146,11 +155,15 @@ def main():
     processes = qmp.read_ppm(prefix + ".taskmanager-processes.ppm")
     performance = qmp.read_ppm(prefix + ".taskmanager-performance.ppm")
     restored = qmp.read_ppm(prefix + ".taskmanager-processes-restored.ppm")
+    keyboard_performance = qmp.read_ppm(prefix + ".taskmanager-performance-keyboard.ppm")
+    keyboard_restored = qmp.read_ppm(prefix + ".taskmanager-processes-keyboard.ppm")
     closed = qmp.read_ppm(prefix + ".taskmanager-closed.ppm")
     measure("palette-open", desktop, palette, minimum=0.06)
     measure("app-open", desktop, processes, minimum=0.12)
     measure("performance-tab", processes, performance, minimum=0.025)
     measure("processes-tab-restored", processes, restored, maximum=0.15)
+    measure("keyboard-right-performance", restored, keyboard_performance, minimum=0.025)
+    measure("keyboard-left-processes", restored, keyboard_restored, maximum=0.15)
     if shrink:
         resize_before = qmp.read_ppm(prefix + ".taskmanager-resize-before.ppm")
         short = qmp.read_ppm(prefix + ".taskmanager-short-wide.ppm")
@@ -159,7 +172,7 @@ def main():
         measure("short-window-restored", resize_before, resize_restored, maximum=0.10)
     measure("desktop-restored", desktop, closed, maximum=0.10)
     print("[TASK-QMP] PASS: real Task Manager launch, PS/2 tab navigation, "
-          "bottom-edge resize where supported and Escape close changed/restored "
+          "keyboard page navigation, bottom-edge resize where supported and Escape close changed/restored "
           "the guest framebuffer; compact layout semantics require visual review; "
           "the persistent system log must independently confirm app identity.")
 
