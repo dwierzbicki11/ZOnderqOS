@@ -3,7 +3,7 @@ using System;
 namespace ZonderqOS.SystemCore
 {
     /// <summary>
-    /// Strict, allocation-bounded RIFF/WAVE PCM8/PCM16/PCM24 mono/stereo decoder for the
+    /// Strict, allocation-bounded RIFF/WAVE PCM8/PCM16/PCM24/PCM32 mono/stereo decoder for the
     /// opt-in diskless HDA probe. No filesystem, DMA or device access.
     /// 44.1 kHz sources are explicitly resampled to 48 kHz stereo PCM16.
     /// </summary>
@@ -12,9 +12,9 @@ namespace ZonderqOS.SystemCore
         public const int SampleRate = 48000;
         public const int MaxDurationSeconds = 2;
         private const int FrameBytes = 4;
-        // Largest supported source: two seconds of 48 kHz stereo PCM24.
+        // Largest supported source: two seconds of 48 kHz stereo signed PCM32.
         // Decoded output always remains bounded by two seconds of stereo PCM16.
-        private const int MaxDataBytes = SampleRate * MaxDurationSeconds * 2 * 3;
+        private const int MaxDataBytes = SampleRate * MaxDurationSeconds * 2 * 4;
         private const int MaxOutputBytes = SampleRate * MaxDurationSeconds * FrameBytes;
 
         private static uint Read32(byte[] bytes, int index)
@@ -93,10 +93,10 @@ namespace ZonderqOS.SystemCore
                     int blockAlign = Read16(wave, pos + 20);
                     int bits = Read16(wave, pos + 22);
                     if (format != 1 || (sourceChannels != 1 && sourceChannels != 2) ||
-                        (rate != SampleRate && rate != 44100) || (bits != 8 && bits != 16 && bits != 24) ||
+                        (rate != SampleRate && rate != 44100) || (bits != 8 && bits != 16 && bits != 24 && bits != 32) ||
                         blockAlign != sourceChannels * (bits / 8) ||
                         byteRate != rate * sourceChannels * (uint)(bits / 8))
-                        throw new ArgumentException("Unsupported WAV format (requires 44.1/48kHz PCM8/PCM16/PCM24 mono/stereo).", nameof(wave));
+                        throw new ArgumentException("Unsupported WAV format (requires 44.1/48kHz PCM8/PCM16/PCM24/PCM32 mono/stereo).", nameof(wave));
                     channels = sourceChannels;
                     sourceRate = (int)rate;
                     sourceBits = bits;
@@ -130,10 +130,10 @@ namespace ZonderqOS.SystemCore
                 return stereo;
             }
 
-            if (sourceBits == 24)
+            if (sourceBits == 24 || sourceBits == 32)
             {
-                // Signed little-endian PCM24 -> PCM16: discard the least
-                // significant byte, preserving the sign and both channels.
+                // Signed little-endian PCM24/PCM32 -> PCM16: retain the
+                // most significant two bytes, preserving the sign and channels.
                 int frames = dataSize / sourceFrameBytes;
                 byte[] downmixed = new byte[frames * FrameBytes];
                 for (int frame = 0; frame < frames; frame++)
@@ -141,10 +141,11 @@ namespace ZonderqOS.SystemCore
                     for (int channel = 0; channel < 2; channel++)
                     {
                         int sourceChannel = channels == 1 ? 0 : channel;
-                        int src = dataOffset + frame * sourceFrameBytes + sourceChannel * 3;
+                        int src = dataOffset + frame * sourceFrameBytes + sourceChannel * (sourceBits / 8);
                         int dst = frame * FrameBytes + channel * 2;
-                        downmixed[dst] = wave[src + 1];
-                        downmixed[dst + 1] = wave[src + 2];
+                        int high = sourceBits == 24 ? 1 : 2;
+                        downmixed[dst] = wave[src + high];
+                        downmixed[dst + 1] = wave[src + high + 1];
                     }
                 }
                 return downmixed;
@@ -195,6 +196,7 @@ namespace ZonderqOS.SystemCore
         {
             if (bits == 8) return (wave[offset] - 128) << 8;
             if (bits == 24) return (short)(wave[offset + 1] | (wave[offset + 2] << 8));
+            if (bits == 32) return (short)(wave[offset + 2] | (wave[offset + 3] << 8));
             return (short)Read16(wave, offset);
         }
 
@@ -281,6 +283,37 @@ namespace ZonderqOS.SystemCore
             Write32(wave, 28, sampleRate * frameBytes);
             Write16(wave, 32, frameBytes);
             Write16(wave, 34, 24);
+            PutTag(wave, 36, "data");
+            Write32(wave, 40, pcm.Length);
+            Array.Copy(pcm, 0, wave, 44, pcm.Length);
+            return wave;
+        }
+
+        /// <summary>Build a bounded signed PCM32 mono/stereo WAV fixture.</summary>
+        public static byte[] EncodePcm32AtRate(byte[] pcm, int sampleRate, int channels)
+        {
+            if (sampleRate != 44100 && sampleRate != SampleRate)
+                throw new ArgumentOutOfRangeException(nameof(sampleRate));
+            if (channels != 1 && channels != 2)
+                throw new ArgumentOutOfRangeException(nameof(channels));
+            int frameBytes = channels * 4;
+            if (pcm == null || pcm.Length == 0 ||
+                pcm.Length > sampleRate * MaxDurationSeconds * frameBytes ||
+                pcm.Length % frameBytes != 0)
+                throw new ArgumentException("Invalid PCM32 duration or frame alignment.", nameof(pcm));
+
+            byte[] wave = new byte[44 + pcm.Length];
+            PutTag(wave, 0, "RIFF");
+            Write32(wave, 4, wave.Length - 8);
+            PutTag(wave, 8, "WAVE");
+            PutTag(wave, 12, "fmt ");
+            Write32(wave, 16, 16);
+            Write16(wave, 20, 1);
+            Write16(wave, 22, channels);
+            Write32(wave, 24, sampleRate);
+            Write32(wave, 28, sampleRate * frameBytes);
+            Write16(wave, 32, frameBytes);
+            Write16(wave, 34, 32);
             PutTag(wave, 36, "data");
             Write32(wave, 40, pcm.Length);
             Array.Copy(pcm, 0, wave, 44, pcm.Length);
