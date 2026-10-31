@@ -82,16 +82,19 @@ def validate(serial: str, pcap: bytes) -> str:
             if not (
                 synack["src"] == SERVER and synack["dst"] == guest and
                 synack["dst_mac"] == MAC and synack["src_mac"] != MAC and
+                syn["dst_mac"] == synack["src_mac"] and
                 synack["sport"] == PORT and synack["dport"] == sport and
                 (synack["flags"] & 0x12) == 0x12 and
                 synack["ack"] == (syn["seq"] + 1) & 0xFFFFFFFF
             ):
                 continue
+            peer_mac = synack["src_mac"]
             for k in range(j + 1, len(packets)):
                 ack = packets[k]
                 if not (
                     ack["src"] == guest and ack["dst"] == SERVER and
-                    ack["src_mac"] == MAC and ack["sport"] == sport and
+                    ack["src_mac"] == MAC and ack["dst_mac"] == peer_mac and
+                    ack["sport"] == sport and
                     ack["dport"] == PORT and (ack["flags"] & 0x17) == 0x10 and
                     ack["seq"] == (syn["seq"] + 1) & 0xFFFFFFFF and
                     ack["ack"] == (synack["seq"] + 1) & 0xFFFFFFFF and
@@ -102,7 +105,8 @@ def validate(serial: str, pcap: bytes) -> str:
                     request = packets[l]
                     if not (
                         request["src"] == guest and request["dst"] == SERVER and
-                        request["src_mac"] == MAC and request["sport"] == sport and
+                        request["src_mac"] == MAC and request["dst_mac"] == peer_mac and
+                        request["sport"] == sport and
                         request["dport"] == PORT and request["payload"] == REQUEST and
                         (request["flags"] & 0x17) == 0x10 and
                         request["seq"] == (syn["seq"] + 1) & 0xFFFFFFFF and
@@ -112,7 +116,7 @@ def validate(serial: str, pcap: bytes) -> str:
                     for response in packets[l + 1:]:
                         if (
                             response["src"] == SERVER and response["dst"] == guest and
-                            response["dst_mac"] == MAC and response["src_mac"] != MAC and
+                            response["dst_mac"] == MAC and response["src_mac"] == peer_mac and
                             response["sport"] == PORT and response["dport"] == sport and
                             response["payload"] == RESPONSE and
                             (response["flags"] & 0x17) == 0x10 and
@@ -173,7 +177,18 @@ def self_test() -> None:
         "[SCHED] Tick 5 enabled=1\n0.2.2",
     )
     assert "PASS" in validate(torn, synthetic_capture(frames))
+    # The handshake must bind the subsequent echo to the same L2 peer,
+    # not merely to a matching IPv4 address, port and TCP sequence.
+    wrong_mac = bytes.fromhex("020000000001")
+    def corrupt_mac(frame: bytes, offset: int) -> bytes:
+        return frame[:offset] + wrong_mac + frame[offset + 6:]
+
     negatives = [
+        (serial, frames[:7] + [corrupt_mac(frames[7], 0)] + frames[8:]),
+        (serial, frames[:8] + [corrupt_mac(frames[8], 6)] + frames[9:]),
+        (serial, frames[:9] + [corrupt_mac(frames[9], 0)] + frames[10:]),
+        (serial, frames[:10] + [corrupt_mac(frames[10], 0)] + frames[11:]),
+        (serial, frames[:11] + [corrupt_mac(frames[11], 6)]),
         (serial.replace(TCP_START, ""), frames),
         (serial.replace(TCP_PASS, ""), frames),
         (serial + "\n" + TCP_PASS, frames),
