@@ -845,6 +845,33 @@ class ResponsiveGui3094(unittest.TestCase):
                              (0, 0) if press == 0 else (1, 1))
 
 
+    def test_task_manager_compact_rows_fit_small_window_widths(self):
+        table = TASK_MANAGER.split("private void RenderTable(Canvas canvas, int x, int width)", 1)[1].split(
+            "private void DrawRow(", 1
+        )[0]
+        row = TASK_MANAGER.split("private void DrawRow(Canvas canvas, ModernTaskRow row", 1)[1].split(
+            "private void RenderPerformance(", 1
+        )[0]
+        self.assertIn("if (width < 520)", table)
+        self.assertIn("if (width < 520)", row)
+        self.assertIn('app.ActivePage == 2 ? "PID / NAME" : "NAME"', table)
+        self.assertIn("int textWidth = Math.Max(1, width - nameOffset - 4);", row)
+        self.assertIn("SmallTextRenderer.DrawClipped(canvas, row.Name,", row)
+        self.assertIn("SmallTextRenderer.DrawClipped(canvas, row.State,", row)
+        self.assertLess(row.index("if (width < 520)"), row.index("int statusX = x + Math.Max(370, width - 240);"))
+
+        for window_width in (320, 400, 480, 640, 800, 1040):
+            view_width = max(1, window_width - 20)
+            table_width = view_width - 170 - 12
+            row_width = table_width - 16
+            if table_width < 520:
+                for name_offset in (34, 52):
+                    text_width = max(1, row_width - name_offset - 4)
+                    self.assertLessEqual(name_offset + text_width, row_width)
+            else:
+                self.assertGreaterEqual(table_width, 520)
+
+
     def test_qemu_framebuffer_capture_is_optional_and_not_a_gui_pass(self):
         self.assertIn('CAPTURE_SCREEN="${SERVICE_QEMU_CAPTURE_SCREEN:-0}"', QEMU_SMOKE)
         self.assertIn('"screendump"', QEMU_SMOKE)
