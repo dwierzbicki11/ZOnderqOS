@@ -3,9 +3,9 @@ using System;
 namespace ZonderqOS.SystemCore
 {
     /// <summary>
-    /// Strict, allocation-bounded RIFF/WAVE PCM16 mono/stereo decoder for the
+    /// Strict, allocation-bounded RIFF/WAVE PCM8/PCM16 mono/stereo decoder for the
     /// opt-in diskless HDA probe. No filesystem, DMA or device access.
-    /// Currently only 48 kHz PCM is supported; do not silently resample.
+    /// 44.1 kHz sources are explicitly resampled to 48 kHz stereo PCM16.
     /// </summary>
     public static class AudioWavePcm
     {
@@ -67,6 +67,7 @@ namespace ZonderqOS.SystemCore
             int dataSize = 0;
             int channels = 0;
             int sourceRate = 0;
+            int sourceBits = 0;
             int pos = 12;
             while (pos < wave.Length)
             {
@@ -89,17 +90,18 @@ namespace ZonderqOS.SystemCore
                     int blockAlign = Read16(wave, pos + 20);
                     int bits = Read16(wave, pos + 22);
                     if (format != 1 || (sourceChannels != 1 && sourceChannels != 2) ||
-                        (rate != SampleRate && rate != 44100) || bits != 16 ||
-                        blockAlign != sourceChannels * 2 ||
-                        byteRate != rate * sourceChannels * 2)
-                        throw new ArgumentException("Unsupported WAV format (requires 44.1/48kHz PCM16 mono/stereo).", nameof(wave));
+                        (rate != SampleRate && rate != 44100) || (bits != 8 && bits != 16) ||
+                        blockAlign != sourceChannels * (bits / 8) ||
+                        byteRate != rate * sourceChannels * (uint)(bits / 8))
+                        throw new ArgumentException("Unsupported WAV format (requires 44.1/48kHz PCM8/PCM16 mono/stereo).", nameof(wave));
                     channels = sourceChannels;
                     sourceRate = (int)rate;
+                    sourceBits = bits;
                     hasFormat = true;
                 }
                 else if (Tag(wave, pos, "data"))
                 {
-                    if (hasData || size == 0 || size > MaxDataBytes || size % 2 != 0)
+                    if (hasData || size == 0 || size > MaxDataBytes)
                         throw new ArgumentException("Invalid WAV data chunk.", nameof(wave));
                     dataOffset = pos + 8;
                     dataSize = (int)size;
@@ -110,19 +112,39 @@ namespace ZonderqOS.SystemCore
             if (!hasFormat || !hasData)
                 throw new ArgumentException("WAV fmt or data chunk missing.", nameof(wave));
 
-            int sourceFrameBytes = channels * 2;
+            int sourceFrameBytes = channels * (sourceBits / 8);
             if (dataSize % sourceFrameBytes != 0 ||
                 dataSize > sourceRate * MaxDurationSeconds * sourceFrameBytes)
                 throw new ArgumentException("WAV data exceeds two seconds or has an incomplete frame.", nameof(wave));
 
             if (sourceRate != SampleRate)
-                return ResampleToStereo16(wave, dataOffset, dataSize, channels, sourceRate);
+                return ResampleToStereo16(wave, dataOffset, dataSize, channels, sourceRate, sourceBits);
 
-            if (channels == 2)
+            if (channels == 2 && sourceBits == 16)
             {
                 byte[] stereo = new byte[dataSize];
                 Array.Copy(wave, dataOffset, stereo, 0, dataSize);
                 return stereo;
+            }
+
+            if (sourceBits == 8)
+            {
+                // WAV PCM8 is unsigned, with silence at 128. Convert to signed
+                // PCM16 before handing frames to the stock HDA output.
+                int frames = dataSize / sourceFrameBytes;
+                byte[] expanded = new byte[frames * FrameBytes];
+                for (int frame = 0; frame < frames; frame++)
+                {
+                    for (int channel = 0; channel < 2; channel++)
+                    {
+                        int sourceChannel = channels == 1 ? 0 : channel;
+                        int sample = (wave[dataOffset + frame * sourceFrameBytes + sourceChannel] - 128) << 8;
+                        int dst = frame * FrameBytes + channel * 2;
+                        expanded[dst] = (byte)sample;
+                        expanded[dst + 1] = (byte)(sample >> 8);
+                    }
+                }
+                return expanded;
             }
 
             // Mono PCM16 is duplicated to left and right, without resampling.
@@ -146,10 +168,15 @@ namespace ZonderqOS.SystemCore
         /// interpolation. The input is a validated RIFF data chunk; no IO or HAL.
         /// Integer arithmetic keeps the two channels phase-aligned.
         /// </summary>
-        private static byte[] ResampleToStereo16(byte[] wave, int offset, int dataSize,
-            int channels, int sourceRate)
+        private static int ReadSourceSample16(byte[] wave, int offset, int bits)
         {
-            int sourceFrameBytes = channels * 2;
+            return bits == 8 ? (wave[offset] - 128) << 8 : (short)Read16(wave, offset);
+        }
+
+        private static byte[] ResampleToStereo16(byte[] wave, int offset, int dataSize,
+            int channels, int sourceRate, int sourceBits)
+        {
+            int sourceFrameBytes = channels * (sourceBits / 8);
             int sourceFrames = dataSize / sourceFrameBytes;
             int targetFrames = (int)(((long)sourceFrames * SampleRate + sourceRate - 1) / sourceRate);
             if (targetFrames <= 0 || targetFrames > SampleRate * MaxDurationSeconds)
@@ -166,10 +193,10 @@ namespace ZonderqOS.SystemCore
                 for (int channel = 0; channel < 2; channel++)
                 {
                     int sourceChannel = channels == 1 ? 0 : channel;
-                    int a = offset + firstFrame * sourceFrameBytes + sourceChannel * 2;
-                    int b = offset + nextFrame * sourceFrameBytes + sourceChannel * 2;
-                    short first = (short)Read16(wave, a);
-                    short next = (short)Read16(wave, b);
+                    int a = offset + firstFrame * sourceFrameBytes + sourceChannel * (sourceBits / 8);
+                    int b = offset + nextFrame * sourceFrameBytes + sourceChannel * (sourceBits / 8);
+                    int first = ReadSourceSample16(wave, a, sourceBits);
+                    int next = ReadSourceSample16(wave, b, sourceBits);
                     int sample = (int)(((long)first * (SampleRate - remainder) +
                         (long)next * remainder) / SampleRate);
                     int dst = frame * FrameBytes + channel * 2;
@@ -198,6 +225,36 @@ namespace ZonderqOS.SystemCore
             Write32(wave, 28, SampleRate * 2);
             Write16(wave, 32, 2);
             Write16(wave, 34, 16);
+            PutTag(wave, 36, "data");
+            Write32(wave, 40, pcm.Length);
+            Array.Copy(pcm, 0, wave, 44, pcm.Length);
+            return wave;
+        }
+
+        /// <summary>Build a bounded unsigned PCM8 mono/stereo WAV fixture.</summary>
+        public static byte[] EncodePcm8AtRate(byte[] pcm, int sampleRate, int channels)
+        {
+            if (sampleRate != 44100 && sampleRate != SampleRate)
+                throw new ArgumentOutOfRangeException(nameof(sampleRate));
+            if (channels != 1 && channels != 2)
+                throw new ArgumentOutOfRangeException(nameof(channels));
+            if (pcm == null || pcm.Length == 0 ||
+                pcm.Length > sampleRate * MaxDurationSeconds * channels ||
+                pcm.Length % channels != 0)
+                throw new ArgumentException("Invalid PCM8 duration or frame alignment.", nameof(pcm));
+
+            byte[] wave = new byte[44 + pcm.Length];
+            PutTag(wave, 0, "RIFF");
+            Write32(wave, 4, wave.Length - 8);
+            PutTag(wave, 8, "WAVE");
+            PutTag(wave, 12, "fmt ");
+            Write32(wave, 16, 16);
+            Write16(wave, 20, 1);
+            Write16(wave, 22, channels);
+            Write32(wave, 24, sampleRate);
+            Write32(wave, 28, sampleRate * channels);
+            Write16(wave, 32, channels);
+            Write16(wave, 34, 8);
             PutTag(wave, 36, "data");
             Write32(wave, 40, pcm.Length);
             Array.Copy(pcm, 0, wave, 44, pcm.Length);
