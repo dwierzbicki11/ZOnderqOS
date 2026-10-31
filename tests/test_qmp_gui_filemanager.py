@@ -52,9 +52,42 @@ class FramebufferProbeTests(unittest.TestCase):
         self.assertIn("difference(maximized, restored)", source)
         self.assertIn("maximized caption drag did not visibly restore", source)
         self.assertLess(source.index("if probe_max_drag:"),
-                        source.index('send_keys(channel, "alt", "f4")'))
+                        source.rindex('send_keys(channel, "alt", "f4")'))
         self.assertIn("SERVICE_QEMU_PROBE_MAX_DRAG: ${{ matrix.resolution != '1366x768' && '1' || '0' }}",
                       (ROOT / ".github/workflows/gui-hd-qemu.yml").read_text())
+
+    def test_opt_in_modal_alt_f4_uses_real_right_click_and_pixel_restore(self):
+        script = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        workflow = (ROOT / ".github/workflows/gui-800-qemu.yml").read_text()
+        self.assertIn('os.environ.get("SERVICE_QEMU_PROBE_MODAL_ALT_F4") == "1"', script)
+        self.assertIn('click_mouse(channel, "right")', script)
+        self.assertIn('".filemanager-modal-before.ppm"', script)
+        self.assertIn('".filemanager-modal-open.ppm"', script)
+        self.assertIn('".filemanager-modal-dismissed.ppm"', script)
+        self.assertIn('changed_pixels_in_region(modal_before, modal_open, *region)', script)
+        self.assertIn('changed_pixels_in_region(modal_before, modal_dismissed, *region)', script)
+        self.assertIn("opened_pixels < 500 or dismissed_pixels * 3 >= opened_pixels", script)
+        self.assertIn("SERVICE_QEMU_PROBE_MODAL_ALT_F4: ${{ matrix.resolution == '800x600' && '1' || '0' }}", workflow)
+        self.assertLess(script.index('click_mouse(channel, "right")'),
+                        script.index('send_keys(channel, "alt", "f4")'))
+        self.assertLess(script.index('".filemanager-modal-dismissed.ppm"'),
+                        script.index('if probe_max_drag:'))
+
+        # The pure host model rejects both no-op captures and a menu left
+        # open. The actual guest test still requires a QEMU PPM capture.
+        width, height = 180, 140
+        blank = (width, height, bytes(width * height * 3))
+        overlay = bytearray(blank[2])
+        for y in range(35, 125):
+            for x in range(35, 155):
+                pos = (y * width + x) * 3
+                overlay[pos:pos + 3] = b"\\xff\\xff\\xff"
+        menu = (width, height, bytes(overlay))
+        region = (40, 40, 150, 120)
+        opened = PROBE.changed_pixels_in_region(blank, menu, *region)
+        restored = PROBE.changed_pixels_in_region(blank, blank, *region)
+        self.assertGreater(opened, 500)
+        self.assertLess(restored * 3, opened)
 
     def test_identical_frames_do_not_count_as_gui_interaction(self):
         width, height = 80, 64
