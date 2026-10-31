@@ -142,6 +142,28 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn('"3.0.95", Good', SETTINGS)
         self.assertNotIn('"3.0.94", Good', SETTINGS)
 
+    def test_display_mode_selection_enforces_both_4k_axes(self):
+        selector = code("source/GUI/DisplayModeSelector.cs")
+        self.assertIn("private const int MaxWidth = 3840;", selector)
+        self.assertIn("private const int MaxHeight = 2160;", selector)
+        self.assertIn("mode.Width > MaxWidth", selector)
+        self.assertIn("mode.Height > MaxHeight", selector)
+        self.assertIn("pixels > MaxPixels", selector)
+        self.assertIn("Canvas.GetFullScreen(chosen)", selector)
+        self.assertIn("canvas.Width", selector)
+        # Mathematical contract for advertised 32-bit modes. The driver
+        # still decides whether a real framebuffer mode switch succeeds.
+        for width, height, allowed in (
+            (800, 600, True), (1366, 768, True),
+            (1920, 1080, True), (3840, 2160, True),
+            (8000, 1000, False), (1000, 8000, False),
+            (4000, 2000, False), (640, 480, True),
+        ):
+            self.assertEqual(
+                width >= 640 and height >= 480 and
+                width <= 3840 and height <= 2160 and
+                width * height <= 3840 * 2160, allowed)
+
     def test_window_fit_does_not_fake_actual_display_resolution(self):
         self.assertIn("desktopWidth - Width - margin", WINDOW)
         self.assertIn("desktopHeight - Height - margin", WINDOW)

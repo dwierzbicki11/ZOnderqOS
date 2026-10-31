@@ -4,7 +4,7 @@ using Cosmos.Kernel.System.Graphics;
 namespace ZonderqOS.GUI
 {
     /// <summary>
-    /// Cosmos 3.0.94 display mode negotiation.
+    /// Cosmos Gen3 stock 3.0.95 display mode negotiation.
     /// Prefer the highest 32-bit mode explicitly advertised by the display
     /// driver. For firmware-only displays (no mode switching), preserve
     /// the framebuffer mode supplied by UEFI/Limine. Never fake canvas sizes.
@@ -13,7 +13,9 @@ namespace ZonderqOS.GUI
     {
         // 4K limit prevents malformed/overly large modes from exhausting
         // memory on Broadwell, while still allowing common laptop and 4K panels.
-        private const long MaxPixels = 3840L * 2160L;
+        private const int MaxWidth = 3840;
+        private const int MaxHeight = 2160;
+        private const long MaxPixels = (long)MaxWidth * MaxHeight;
 
         internal static Canvas OpenNativeOrBest()
         {
@@ -59,8 +61,11 @@ namespace ZonderqOS.GUI
             {
                 Mode mode = advertised[i];
                 long pixels = (long)mode.Width * mode.Height;
+                // Pixel count alone is insufficient: 8000x1000 fits an 8M
+                // pixel budget but exceeds the advertised 4K axis limits.
                 if ((int)mode.ColorDepth != 32 || mode.Width < 640 ||
-                    mode.Height < 480 || pixels > MaxPixels || pixels <= bestPixels)
+                    mode.Height < 480 || mode.Width > MaxWidth ||
+                    mode.Height > MaxHeight || pixels > MaxPixels || pixels <= bestPixels)
                     continue;
                 bestPixels = pixels;
                 best = mode;
