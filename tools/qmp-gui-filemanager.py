@@ -319,6 +319,24 @@ def main():
         else:
             print("[GUI-QMP] resize-window: SKIP window too small for safe resize")
 
+        # Optional regression: a File Manager context menu is modal for
+        # Alt+F4. The first shortcut must dismiss the menu, not close the
+        # window; the final Alt+F4 below must still close it normally.
+        # No file operation is selected or performed by this probe.
+        probe_modal_alt_f4 = os.environ.get("SERVICE_QEMU_PROBE_MODAL_ALT_F4") == "1"
+        if probe_modal_alt_f4:
+            modal_x = window_x + 10 + 176 + 50
+            modal_y = window_y + 40 + 50 + 20
+            move_mouse_to_from_corner(channel, modal_x, modal_y,
+                                      frame_width, frame_height)
+            screenshot(channel, prefix + ".filemanager-modal-before.ppm")
+            click_mouse(channel, "right")
+            time.sleep(0.9)
+            screenshot(channel, prefix + ".filemanager-modal-open.ppm")
+            send_keys(channel, "alt", "f4")
+            time.sleep(0.9)
+            screenshot(channel, prefix + ".filemanager-modal-dismissed.ppm")
+
         # Optional real guest regression for maximized caption dragging.
         # Run after ordinary drag/resize so this probe cannot invalidate
         # their source-derived coordinates. It never touches disk content.
@@ -366,6 +384,22 @@ def main():
     # Require separate changes at the cursor's old and new positions.
     # The previous 4px sampling grid saw only 6 pixels at 800x600 even
     # though real QEMU frames changed 113 pixels in EACH cursor rectangle.
+    if probe_modal_alt_f4:
+        modal_before = read_ppm(prefix + ".filemanager-modal-before.ppm")
+        modal_open = read_ppm(prefix + ".filemanager-modal-open.ppm")
+        modal_dismissed = read_ppm(prefix + ".filemanager-modal-dismissed.ppm")
+        # Compare a region within the menu, away from the stationary cursor
+        # and taskbar. This catches accidental window closure as well as a
+        # menu that failed to open/dismiss; a QMP ACK cannot satisfy it.
+        region = (modal_x + 25, modal_y + 25, modal_x + 145, modal_y + 105)
+        opened_pixels = changed_pixels_in_region(modal_before, modal_open, *region)
+        dismissed_pixels = changed_pixels_in_region(modal_before, modal_dismissed, *region)
+        print(f"[GUI-QMP] modal-alt-f4: opened={opened_pixels}, "
+              f"remaining={dismissed_pixels} changed pixels in 120x80 region")
+        if opened_pixels < 500 or dismissed_pixels * 3 >= opened_pixels:
+            raise RuntimeError("File Manager modal Alt+F4 did not dismiss "
+                               "the context menu while preserving the window")
+
     # Keep this a real framebuffer gate; never accept QMP ACK alone.
     old_cursor_pixels = changed_pixels_in_region(
         mouse_before, mouse_after,
