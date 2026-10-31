@@ -1460,6 +1460,43 @@ class ResponsiveGui3094(unittest.TestCase):
                         unmount.index('currentPath = Directory.Exists("/root")'))
 
 
+    def test_file_manager_successful_detach_invalidates_stale_snapshot(self):
+        unmount = FILE_MANAGER.split("private void UnmountVolume(SidebarEntry entry)", 1)[1].split(
+            "private static bool IsInsidePath(", 1)[0]
+        failed = unmount.split("if (!StorageMountManager.TryUnmount(", 1)[1].split(
+            "if (viewingVolume)", 1)[0]
+        # A failed detach must preserve the old view and path.
+        self.assertNotIn("entries.Clear();", failed)
+        self.assertNotIn("cachedEntries.Clear();", failed)
+        success = unmount.split("if (viewingVolume)", 1)[1].split(
+            'string unmountStatus = "Unmounted Partition "', 1)[0]
+        for statement in ("entries.Clear();", "cachedEntries.Clear();",
+                          "hasLoadedDirectory = false;", "loadedDirectoryPath = null;",
+                          "selectedIndex = -1;", "scrollIndex = 0;",
+                          "contextMenuVisible = false;", "contextMenuSelection = -1;",
+                          "ResetClickSequence();"):
+            self.assertIn(statement, success)
+        self.assertLess(success.index("entries.Clear();"),
+                        success.index('currentPath = Directory.Exists("/root")'))
+        self.assertLess(unmount.index("entries.Clear();"),
+                        unmount.index("RefreshInternal(unmountStatus)"))
+        self.assertIn('if (!RefreshInternal(unmountStatus) && viewingVolume && currentPath != "/")',
+                      unmount)
+        # Model a detached volume whose /root and / fallback scans both
+        # fail: the old FAT32 entries are not left selectable or executable.
+        old_entries = ["/mnt/usb/secret.txt", "/mnt/usb/docs"]
+        old_cache = list(old_entries)
+        viewing_volume = True
+        if viewing_volume:
+            old_entries.clear()
+            old_cache.clear()
+            selected = -1
+            menu_visible = False
+        self.assertEqual(old_entries, [])
+        self.assertEqual(old_cache, [])
+        self.assertEqual(selected, -1)
+        self.assertFalse(menu_visible)
+
     def test_file_manager_create_dialog_is_modal_to_window_chrome(self):
         mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
             "private void ResetClickSequence()", 1)[0]
