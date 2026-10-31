@@ -123,7 +123,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("public static byte[] EncodeMono16(byte[] pcm)", parser)
         self.assertIn("AudioWavePcm.EncodeMono16(mono)", runtime)
         self.assertIn("GenerateSquareStereo16(48000, 660, 250, 4096)", runtime)
-        self.assertIn('expected_hz=660 if args.command == "wavmono" else 880 if args.command == "wav44" else 1320 if args.command == "wav8" else 1760 if args.command == "wav24" else 2200 if args.command == "wav32" else 440', harness)
+        self.assertIn('expected_hz=660 if args.command == "wavmono" else 880 if args.command == "wav44" else 1320 if args.command == "wav8" else 1760 if args.command == "wav24" else 2200 if args.command == "wav32" else 2640 if args.command == "wavext" else 440', harness)
         self.assertIn('if (command == "wav44")', kernel)
         self.assertIn("AudioWavePcm.EncodeStereo16AtRate(source, 44100)", runtime)
         self.assertIn("--command wav44", workflow)
@@ -152,6 +152,12 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("(bits != 8 && bits != 16 && bits != 24 && bits != 32)", parser)
         self.assertIn("if (bits == 32) return (short)(wave[offset + 2]", parser)
         self.assertIn('if (command == "wav32")', kernel)
+        self.assertIn('if (command == "wavext")', kernel)
+        self.assertIn("PlayWaveExtensibleTestTone()", runtime)
+        self.assertIn("EncodeExtensibleStereo16AtRate", parser)
+        self.assertIn("WAV extensible subtype is not PCM", parser)
+        self.assertIn("--command wavext", workflow)
+        self.assertIn("audio-qemu-extensible-out/*.wav", workflow)
         self.assertIn("--command wav32", workflow)
         self.assertIn("audio-qemu-pcm32-out/*.wav", workflow)
         self.assertIn('2200 if args.command == "wav32"', harness)
@@ -185,7 +191,7 @@ class AudioGen3Contract(unittest.TestCase):
             self.assertNotIn(forbidden, gain)
 
         self.assertIn("--command wavtone", workflow)
-        self.assertIn('choices=("tone", "wavtone", "wavmono", "wav44", "wav8", "wav24", "wav32")', harness)
+        self.assertIn('choices=("tone", "wavtone", "wavmono", "wav44", "wav8", "wav24", "wav32", "wavext")', harness)
         for forbidden in ("System.IO", "File.", "Disk.", "TryMount(", "WriteBlock(",
                           "NetworkManager.", "PciSysfsProvider"):
             self.assertNotIn(forbidden, parser)
