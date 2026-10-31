@@ -345,6 +345,74 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "null stream rejected");
 
+        // Unsigned PCM8 WAV is distinct from signed PCM16: silence is 128.
+        // Exercise actual decoder bytes, not a model of the conversion.
+        byte[] pcm8 = new byte[pcm.Length / 2];
+        for (int i = 0; i < pcm8.Length; i++)
+        {
+            int at = i * 4;
+            short sample = (short)(pcm[at] | (pcm[at + 1] << 8));
+            pcm8[i] = (byte)(128 + (sample >> 8));
+        }
+        byte[] stereo8 = AudioWavePcm.EncodePcm8AtRate(pcm8, 48000, 2);
+        byte[] decoded8 = AudioWavePcm.DecodeStereo16(stereo8);
+        Expect(decoded8.Length == pcm.Length, "48k PCM8 stereo expands to PCM16");
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(decoded8[i] == pcm[i], "48k PCM8 stereo conversion preserves quantized square wave");
+
+        byte[] mono8 = new byte[pcm8.Length / 2];
+        for (int i = 0; i < mono8.Length; i++)
+            mono8[i] = pcm8[i * 2];
+        byte[] mono8Wave = AudioWavePcm.EncodePcm8AtRate(mono8, 48000, 1);
+        byte[] decodedMono8 = AudioWavePcm.DecodeStereo16(mono8Wave);
+        Expect(decodedMono8.Length == pcm.Length, "48k PCM8 mono upmix length");
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(decodedMono8[i] == pcm[i], "48k PCM8 mono upmix duplicates channels");
+
+        // Single-frame odd-sized mono8 data is legal RIFF; no 16-bit alignment.
+        byte[] oddMono8 = AudioWavePcm.EncodePcm8AtRate(new byte[] { 0, 128, 255 }, 48000, 1);
+        // RIFF requires a pad byte after an odd-sized chunk, so append it.
+        byte[] paddedMono8 = new byte[oddMono8.Length + 1];
+        Array.Copy(oddMono8, paddedMono8, oddMono8.Length);
+        WriteLittle32(paddedMono8, 4, paddedMono8.Length - 8);
+        byte[] decodedOddMono8 = AudioWavePcm.DecodeStereo16(paddedMono8);
+        Expect(decodedOddMono8.Length == 12, "odd-length mono8 with RIFF pad is accepted");
+        Expect(decodedOddMono8[0] == 0 && decodedOddMono8[1] == 128,
+            "PCM8 zero maps to signed -32768");
+        Expect(decodedOddMono8[4] == 0 && decodedOddMono8[5] == 0,
+            "PCM8 128 maps to signed zero");
+        Expect(decodedOddMono8[8] == 0 && decodedOddMono8[9] == 127,
+            "PCM8 255 maps to signed 32512");
+
+        byte[] pcm8at44100 = new byte[source44100.Length / 2];
+        for (int i = 0; i < pcm8at44100.Length; i++)
+        {
+            int at = i * 4;
+            short sample = (short)(source44100[at] | (source44100[at + 1] << 8));
+            pcm8at44100[i] = (byte)(128 + (sample >> 8));
+        }
+        byte[] wave8at44100 = AudioWavePcm.EncodePcm8AtRate(pcm8at44100, 44100, 2);
+        byte[] converted8at44100 = AudioWavePcm.DecodeStereo16(wave8at44100);
+        Expect(converted8at44100.Length == converted44100.Length, "44.1k PCM8 resample duration");
+        for (int i = 0; i < converted44100.Length; i++)
+            Expect(converted8at44100[i] == converted44100[i],
+                "44.1k PCM8 resampling matches PCM16 for quantized samples");
+
+        byte[] malformed8 = (byte[])stereo8.Clone();
+        malformed8[32] = 4; // incorrect block alignment
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(malformed8); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject PCM8 malformed block alignment");
+        rejected = false;
+        try { AudioWavePcm.EncodePcm8AtRate(new byte[] { 128 }, 48000, 2); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject PCM8 incomplete stereo frame");
+        rejected = false;
+        try { AudioWavePcm.EncodePcm8AtRate(new byte[48000 * 2 + 1], 48000, 1); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject PCM8 longer than two seconds");
+
         byte[] quarter = AudioPcmVolume.ScaleStereo16(pcm, 25);
         byte[] muted = AudioPcmVolume.ScaleStereo16(pcm, 0);
         byte[] full = AudioPcmVolume.ScaleStereo16(pcm, 100);
