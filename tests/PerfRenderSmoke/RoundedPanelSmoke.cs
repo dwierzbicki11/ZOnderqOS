@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Diagnostics;
 using Cosmos.Kernel.System.Graphics;
 using ZonderqOS.GUI;
 
@@ -70,6 +71,21 @@ internal static class RoundedPanelSmoke
         }
     }
 
+    private static double TimePanel(Canvas canvas, bool optimized, int repetitions)
+    {
+        Color fill = Color.FromArgb(22, 33, 44);
+        Color border = Color.FromArgb(200, 120, 50);
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repetitions; i++)
+        {
+            if (optimized)
+                UiPainter.RoundedPanel(canvas, 10, 10, 60, 50, 12, fill, border);
+            else
+                OriginalPanel(canvas, 10, 10, 60, 50, 12, fill, border);
+        }
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
     internal static void Verify()
     {
         Color fill = Color.FromArgb(22, 33, 44);
@@ -90,5 +106,24 @@ internal static class RoundedPanelSmoke
             checks++;
         }
         Console.WriteLine("RoundedPanel: " + checks + " exact raster comparisons including clipped edges");
+
+        Canvas baseline = new Canvas(128, 96);
+        Canvas optimized = new Canvas(128, 96);
+        OriginalPanel(baseline, 10, 10, 60, 50, 12, fill, border);
+        UiPainter.RoundedPanel(optimized, 10, 10, 60, 50, 12, fill, border);
+        if (baseline.DrawCalls != 77 || optimized.DrawCalls != 69)
+            throw new Exception("RoundedPanel Canvas call regression: " +
+                baseline.DrawCalls + " -> " + optimized.DrawCalls);
+        Console.WriteLine("RoundedPanel radius 12: Canvas calls 77 -> 69; exact raster");
+
+        // Host-side comparison only. The fake Canvas is not a Cosmos GPU.
+        TimePanel(baseline, false, 200);
+        TimePanel(optimized, true, 200);
+        const int iterations = 10000;
+        double baselineMs = TimePanel(baseline, false, iterations);
+        double optimizedMs = TimePanel(optimized, true, iterations);
+        Console.WriteLine("Host .NET RoundedPanel " + iterations + " renders (informational): " +
+            "baseline " + baselineMs.ToString("F2") + " ms, optimized " +
+            optimizedMs.ToString("F2") + " ms; no QEMU FPS claim.");
     }
 }
