@@ -325,7 +325,10 @@ def main():
         # No file operation is selected or performed by this probe.
         probe_modal_alt_f4 = os.environ.get("SERVICE_QEMU_PROBE_MODAL_ALT_F4") == "1"
         if probe_modal_alt_f4:
-            modal_x = window_x + 10 + 176 + 50
+            # Hit the six-pixel gap between grid tiles: this opens the
+            # menu without selecting/highlighting a file, so its dismissal
+            # can be compared against an unchanged client-area baseline.
+            modal_x = window_x + 10 + 176 + 8 + 112 + 2
             modal_y = window_y + 40 + 50 + 20
             move_mouse_to_from_corner(channel, modal_x, modal_y,
                                       frame_width, frame_height)
