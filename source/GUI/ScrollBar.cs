@@ -48,19 +48,22 @@ namespace ZonderqOS.GUI
 
             contentItems = nextContent;
             visibleItems = nextVisible;
+            // Old drag offsets do not apply to a resized list.
+            if (rangeChanged)
+                dragging = false;
             Value = value;
-
-            if (rangeChanged && MaxValue == 0 && this.value != 0)
-                Value = 0;
         }
 
         private int GetThumbHeight()
         {
-            if (contentItems <= visibleItems || Height <= 0)
+            if (Height <= 0)
+                return 0;
+            if (contentItems <= visibleItems)
                 return Height;
 
-            int thumb = (Height * visibleItems) / contentItems;
-            return Math.Max(22, Math.Min(Height, thumb));
+            // Large lists must not overflow the intermediate product.
+            int thumb = (int)(((long)Height * visibleItems) / contentItems);
+            return Math.Min(Height, Math.Max(22, thumb));
         }
 
         private int GetThumbY()
@@ -68,14 +71,15 @@ namespace ZonderqOS.GUI
             int travel = Height - GetThumbHeight();
             if (travel <= 0 || MaxValue <= 0)
                 return Y;
-            return Y + (Value * travel) / MaxValue;
+            return Y + (int)(((long)Value * travel) / MaxValue);
         }
 
         public bool HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
         {
-            hovered = mouseX >= X && mouseX < X + Width && mouseY >= Y && mouseY < Y + Height;
+            hovered = Visible && Width > 0 && Height > 0 &&
+                mouseX >= X && mouseX < X + Width && mouseY >= Y && mouseY < Y + Height;
 
-            if (!Visible || MaxValue <= 0)
+            if (!Visible || Width <= 0 || Height <= 0 || MaxValue <= 0)
             {
                 dragging = false;
                 return false;
@@ -95,7 +99,9 @@ namespace ZonderqOS.GUI
 
                 if (hovered)
                 {
-                    Value = mouseY < thumbY ? Value - visibleItems : Value + visibleItems;
+                    Value = mouseY < thumbY
+                        ? Math.Max(0, Value - visibleItems)
+                        : (int)Math.Min((long)MaxValue, (long)Value + visibleItems);
                     return true;
                 }
             }
@@ -109,7 +115,7 @@ namespace ZonderqOS.GUI
                 if (travel > 0)
                 {
                     int newY = Math.Max(Y, Math.Min(Y + travel, mouseY - dragOffset));
-                    Value = ((newY - Y) * MaxValue) / travel;
+                    Value = (int)(((long)(newY - Y) * MaxValue) / travel);
                 }
                 return true;
             }
@@ -119,15 +125,16 @@ namespace ZonderqOS.GUI
 
         public override void Render(Canvas canvas)
         {
-            if (!Visible || MaxValue <= 0)
+            if (!Visible || Width <= 0 || Height <= 0 || MaxValue <= 0)
                 return;
 
-            int trackX = X + Math.Max(0, Width / 2 - 1);
-            canvas.DrawFilledRectangle(Color.FromArgb(38, 45, 53), trackX, Y, 2, Height);
+            int trackWidth = Math.Min(2, Width);
+            int trackX = X + (Width - trackWidth) / 2;
+            canvas.DrawFilledRectangle(Color.FromArgb(38, 45, 53), trackX, Y, trackWidth, Height);
 
             int thumbHeight = GetThumbHeight();
             int thumbY = GetThumbY();
-            int thumbWidth = Math.Max(4, Width - 2);
+            int thumbWidth = Math.Min(Width, Math.Max(4, Width - 2));
             int thumbX = X + (Width - thumbWidth) / 2;
 
             Color thumb = dragging

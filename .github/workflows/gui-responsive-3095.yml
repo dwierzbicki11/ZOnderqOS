@@ -6,6 +6,7 @@ on:
       - 'source/GUI/**'
       - 'ZonderqOS.csproj'
       - 'tests/test_3094_responsive_gui.py'
+      - 'tests/GuiScrollBarSmoke/**'
       - 'tests/test_gui_modified_keys.py'
       - 'tests/test_3094_storage_policy.py'
       - 'tools/qmp-gui-login.py'
@@ -28,6 +29,9 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
       - name: Validate optional QMP GUI input probe syntax
         run: |
           python3 -m py_compile tools/qmp-gui-login.py tools/qmp-gui-filemanager.py tools/qmp-gui-taskmanager.py
@@ -43,3 +47,5 @@ jobs:
           python3 tests/test_gui_resolution_build.py
       - name: Preserve protected FAT32 storage policy
         run: python3 tests/test_3094_storage_policy.py
+      - name: Exercise production scrollbar in host C#
+        run: dotnet run --project tests/GuiScrollBarSmoke/GuiScrollBarSmoke.csproj --configuration Release
