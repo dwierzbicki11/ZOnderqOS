@@ -130,13 +130,20 @@ def read_ppm(path):
     return width, height, pixels
 
 
-def difference(first, second):
+def difference(first, second, upper_only=False):
+    """Sample GUI changes; optionally ignore transient lower-screen toasts.
+
+    The welcome notification can expire between the desktop baseline and
+    Alt+F4. A full-screen desktop-restore comparison would mistake that
+    unrelated toast expiry for a File Manager window left open.
+    """
     width, height, a = first
     other_width, other_height, b = second
     if (width, height) != (other_width, other_height):
         raise ValueError("framebuffer dimensions changed during probe")
     left, right = width // 6, width * 5 // 6
-    top, bottom = height // 7, height * 6 // 7
+    top = height // 7
+    bottom = height * 3 // 5 if upper_only else height * 6 // 7
     changed = 0
     samples = 0
     for y in range(top, bottom, 4):
@@ -422,9 +429,14 @@ def main():
 
     # Closing a window should return to the same desktop, not another large
     # overlay. Small differences from the clock/toasts are tolerated.
-    changed, samples = difference(before, closed)
+    # Use the stable upper desktop: at 640x480 a welcome toast in the
+    # lower-right corner can expire while the File Manager is open. The
+    # File Manager occupies the upper region too, so a window left open
+    # still fails this strict 10% restoration gate.
+    changed, samples = difference(before, closed, upper_only=True)
     fraction = changed / max(1, samples)
-    print(f"[GUI-QMP] desktop-restored: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
+    print(f"[GUI-QMP] desktop-restored-upper: changed {changed}/{samples} "
+          f"sampled pixels ({fraction:.1%})")
     if fraction > 0.10:
         raise RuntimeError("Alt+F4 did not restore the desktop; inspect PPMs")
     print("[GUI-QMP] PASS real palette launch, filter/Escape, PS/2 notification clicks, window drag/resize and Alt+F4 close changed the guest framebuffer; visual app identity requires inspection.")
