@@ -160,6 +160,10 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('No final ICMP RX/TX after six HTTP teardowns', SMOKE)
         self.assertIn('check_final_pair(frames, last_http_fin_ack(frames, guest), guest)',
                       (ROOT / 'tests/verify_3095_network_n6_final_icmp.py').read_text())
+        self.assertIn('if (readCalls >= 64)', SOURCE)
+        self.assertIn('HTTP response fragmented into too many reads', SOURCE)
+        self.assertLess(SOURCE.index('if (readCalls >= 64)'),
+                        SOURCE.index('int read = stream.Read('))
         self.assertIn('POST_STRESS_IPV4=PASS', SOURCE)
         self.assertIn('postStress.IPConfig', SOURCE)
         for field, snapshot in (('Address', 'initialIp'),
