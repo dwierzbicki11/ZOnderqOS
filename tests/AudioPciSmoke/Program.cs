@@ -1246,6 +1246,63 @@ static class Test
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "combined gain/fade rejects invalid gain");
 
+        // Independent PCM clips can overlap without wrapping signed PCM16.
+        // This is pure host-side arithmetic; the QEMU HDA capture is separate.
+        byte[] mixA = { 0xff, 0x7f, 0x00, 0x80, 0x10, 0x27, 0x10, 0x27 };
+        byte[] mixB = { 0x01, 0x00, 0xff, 0xff, 0x10, 0x27, 0xf0, 0xd8 };
+        byte[] mixACopy = (byte[])mixA.Clone();
+        byte[] mixBCopy = (byte[])mixB.Clone();
+        byte[] mixed = AudioPcmMixer.MixStereo16(mixA, mixB, 100, 100);
+        Expect(mixed.Length == 8, "mix retains the longest clip duration");
+        Expect(BitConverter.ToInt16(mixed, 0) == 32767, "mix saturates positive PCM16");
+        Expect(BitConverter.ToInt16(mixed, 2) == -32768, "mix saturates negative PCM16");
+        Expect(BitConverter.ToInt16(mixed, 4) == 20000, "mix sums independent sources");
+        Expect(BitConverter.ToInt16(mixed, 6) == 0, "mix cancels opposite-polarity samples");
+        Expect(mixA.AsSpan().SequenceEqual(mixACopy) &&
+            mixB.AsSpan().SequenceEqual(mixBCopy), "mix leaves both sources untouched");
+
+        byte[] halfMix = AudioPcmMixer.MixStereo16(mixA, mixB, 50, 100);
+        Expect(BitConverter.ToInt16(halfMix, 0) == 16384, "mix applies first gain before addition");
+        Expect(BitConverter.ToInt16(halfMix, 2) == -16385, "mix rounds negative gain toward zero");
+        byte[] mutedMix = AudioPcmMixer.MixStereo16(mixA, mixB, 0, 0);
+        Expect(Array.TrueForAll(mutedMix, value => value == 0), "two muted sources produce silence");
+
+        byte[] shorterMix = AudioPcmMixer.MixStereo16(mixA, new byte[4], 100, 100);
+        Expect(shorterMix.Length == mixA.Length, "mix retains longer first clip");
+        Expect(BitConverter.ToInt16(shorterMix, 4) == 10000 &&
+            BitConverter.ToInt16(shorterMix, 6) == 10000, "shorter second clip becomes silence");
+        byte[] longerMix = AudioPcmMixer.MixStereo16(new byte[4], mixB, 100, 100);
+        Expect(longerMix.Length == mixB.Length &&
+            BitConverter.ToInt16(longerMix, 4) == 10000, "shorter first clip becomes silence");
+
+        byte[] maxMix = AudioPcmMixer.MixStereo16(new byte[384000], new byte[4], 100, 100);
+        Expect(maxMix.Length == 384000, "mix accepts exactly two seconds");
+        rejected = false;
+        try { AudioPcmMixer.MixStereo16(new byte[384004], new byte[4], 100, 100); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "mix rejects clips over two seconds");
+        rejected = false;
+        try { AudioPcmMixer.MixStereo16(new byte[3], new byte[4], 100, 100); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "mix rejects partial PCM frames");
+        rejected = false;
+        try { AudioPcmMixer.MixStereo16(Array.Empty<byte>(), new byte[4], 100, 100); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "mix rejects empty sources");
+        rejected = false;
+        try { AudioPcmMixer.MixStereo16(null, new byte[4], 100, 100); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "mix rejects null sources");
+        rejected = false;
+        try { AudioPcmMixer.MixStereo16(mixA, mixB, -1, 100); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "mix rejects negative first gain");
+        rejected = false;
+        try { AudioPcmMixer.MixStereo16(mixA, mixB, 100, 101); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "mix rejects second gain over 100");
+        Console.WriteLine("[AUDIO-PCI-HOST] PCM16 mixer saturation, gains, bounds and source immutability PASS");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
     }
 }
