@@ -37,21 +37,50 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            // FAT32 snapshots and repeated refreshes can already be in the
-            // requested order. A linear check avoids the merge passes and
-            // scratch allocation entirely in that case. On unsorted input it
-            // exits at the first inversion (usually after one comparison).
-            bool alreadySorted = true;
+            // Most directory refreshes are already sorted, or differ by only
+            // a few moved entries (for example a newly renamed file). Inspect
+            // adjacent inversions before allocating a merge buffer.
+            int inversions = 0;
             for (int i = 1; i < count; i++)
             {
-                if (Compare(entries[i - 1], entries[i]) > 0)
-                {
-                    alreadySorted = false;
+                if (Compare(entries[i - 1], entries[i]) > 0 && ++inversions > 4)
                     break;
-                }
             }
-            if (alreadySorted)
+            if (inversions == 0)
                 return;
+
+            // A bounded stable insertion repair is O(n) for a handful of
+            // displaced entries. Cap total shifts at 4*n: two sorted blocks
+            // can have only one inversion yet require O(n^2) insertion work.
+            // If the budget expires, restore the displaced item before
+            // continuing with the ordinary stable merge sort.
+            if (inversions <= 4)
+            {
+                long shifts = 0;
+                long budget = (long)count * 4;
+                bool repaired = true;
+                for (int i = 1; i < count; i++)
+                {
+                    FileEntry value = entries[i];
+                    int j = i - 1;
+                    while (j >= 0 && Compare(entries[j], value) > 0)
+                    {
+                        if (shifts >= budget)
+                        {
+                            repaired = false;
+                            break;
+                        }
+                        entries[j + 1] = entries[j];
+                        j--;
+                        shifts++;
+                    }
+                    entries[j + 1] = value;
+                    if (!repaired)
+                        break;
+                }
+                if (repaired)
+                    return;
+            }
 
             if (scratch == null || scratch.Length < count)
                 scratch = new FileEntry[count];
