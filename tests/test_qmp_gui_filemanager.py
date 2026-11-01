@@ -13,6 +13,39 @@ SPEC.loader.exec_module(PROBE)
 
 
 class FramebufferProbeTests(unittest.TestCase):
+    def test_real_start_taskbar_click_uses_ps2_and_pixel_restoration(self):
+        script = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        workflow = (ROOT / ".github/workflows/gui-800-qemu.yml").read_text()
+        self.assertIn('os.environ.get("SERVICE_QEMU_PROBE_START_TASKBAR") == "1"', script)
+        self.assertIn("SERVICE_QEMU_PROBE_START_TASKBAR: ${{ matrix.resolution == '800x600' && '1' || '0' }}", workflow)
+        self.assertIn('".start-taskbar-before.ppm"', script)
+        self.assertIn('".start-taskbar-open.ppm"', script)
+        self.assertIn('".start-taskbar-dismissed.ppm"', script)
+        self.assertIn("move_mouse_to_from_corner(channel, 22, frame_height - 22,", script)
+        self.assertIn("move_mouse_to_from_corner(channel, notification_x, notification_y,", script)
+        self.assertIn("changed_pixels_in_region(start_before, start_open, *start_region, threshold=8)", script)
+        self.assertIn("remaining_pixels * 3 >= start_pixels", script)
+        self.assertLess(script.index('".start-taskbar-before.ppm"'),
+                        script.index('".start-taskbar-open.ppm"'))
+        self.assertLess(script.index('".start-taskbar-open.ppm"'),
+                        script.index('".start-taskbar-dismissed.ppm"'))
+        # Independent synthetic gate: an opened 320x250 panel changes more
+        # than 1500 pixels; a restored background changes none. Actual
+        # guest interaction is verified separately in QEMU, not here.
+        width, height = 800, 600
+        blank = (width, height, bytes(width * height * 3))
+        panel = bytearray(blank[2])
+        for y in range(100, 350):
+            for x in range(90, 410):
+                pos = (y * width + x) * 3
+                panel[pos:pos + 3] = b"\\x80\\x80\\x80"
+        opened = (width, height, bytes(panel))
+        region = (80, 80, 420, 400)
+        changed = PROBE.changed_pixels_in_region(blank, opened, *region, threshold=8)
+        restored = PROBE.changed_pixels_in_region(blank, blank, *region, threshold=8)
+        self.assertGreater(changed, 1500)
+        self.assertEqual(restored, 0)
+
     def test_real_palette_shift_enter_does_not_launch_application(self):
         script = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
         self.assertIn('send_keys(channel, "shift", "ret")', script)
