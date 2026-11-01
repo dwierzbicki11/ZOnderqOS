@@ -41,7 +41,7 @@ EXPECTED_TONE_HZ = {
     "wav44": 880,
     "wav16k": 1500,
     "wav22k": 1100,
-    "wav24k": 4000,
+    "wav24k": 740,
     "wav32k": 3520,
     "wavstereo32": 440,  # left; right checked separately by stereo validator
     "wav8": 1320,
