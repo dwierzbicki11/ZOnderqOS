@@ -112,9 +112,11 @@ namespace ZonderqOS.GUI
                     // A bound FAT driver uses the empty source, deliberately
                     // avoiding a mutable numeric index. The root's verified
                     // partition is still shown as mounted at "/" in the GUI.
+                    // Use the mount-time identity, never a fresh label selection:
+                    // another approved disk is not the root after removal/hotplug.
                     if (mount.MountPoint == "/" &&
                         (mount.Name == "rootfat" || mount.Name == "ramfat") &&
-                        global::ZonderqOS.DataVolumePolicy.IsSelectedDataPartition(selected))
+                        global::ZonderqOS.Disk.IsRootPartition(selected))
                         return "/";
                 }
             }

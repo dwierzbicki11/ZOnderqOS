@@ -8,11 +8,10 @@ using ZonderqOS.SystemCore;
 
 namespace ZonderqOS
 {
-    public static class Disk
+    public static partial class Disk
     {
         private static FatFileSystemType fat;
         private static VfsMount _currentMount;
-        private static Partition _rootPartition;
 
         private sealed class RootSectorReader : IFatSectorReader
         {
