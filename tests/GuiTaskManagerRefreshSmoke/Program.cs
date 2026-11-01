@@ -83,9 +83,9 @@ internal static class Program
         Check(TaskManagerPerformanceNavigation.StepResource(3, -1) == 2,
             "invalid resource safely wraps");
 
-        foreach (int count in new[] { -1, 0, 1, 2, 16, 256 })
+        foreach (int count in new[] { int.MinValue, -1, 0, 1, 2, 16, 256, int.MaxValue })
         {
-            int last = Math.Max(0, count - 1);
+            int last = count > 0 ? count - 1 : 0;
             foreach (int page in new[] { int.MinValue, -10, -1, 0, 1, 2, 15, 16, 255, int.MaxValue })
             {
                 int expected = Math.Max(0, Math.Min(page, last));
