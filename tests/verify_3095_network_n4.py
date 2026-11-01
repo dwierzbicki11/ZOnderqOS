@@ -17,7 +17,7 @@ from verify_3095_network_n2 import (
 )
 from verify_3095_network_n3 import (
     PING_START, PING_PASS, fake_icmp, normalize_icmp_serial,
-    validate as validate_n3,
+    internet_checksum, validate as validate_n3,
 )
 
 TCP_START = "[NET3095-N4] TCP_ATTEMPT=START"
@@ -56,6 +56,15 @@ def tcp_frame(frame: bytes):
     thl = (frame[offset + 12] >> 4) * 4
     if thl < 20 or length < ihl + thl:
         return None
+    # Fail closed on damaged wire data even if another matching TCP
+    # exchange appears later in the capture. The QEMU 3.0.95 N6 PCAP
+    # baseline has valid IPv4 and TCP checksums in both directions.
+    if frame[22] == 0 or internet_checksum(frame[14:14 + ihl]) != 0:
+        raise ValueError("invalid TCP IPv4 TTL or header checksum")
+    segment = frame[offset:14 + length]
+    pseudo = frame[26:34] + b"\x00\x06" + len(segment).to_bytes(2, "big")
+    if internet_checksum(pseudo + segment) != 0:
+        raise ValueError("invalid TCP segment checksum")
     sport, dport, seq, ack = struct.unpack_from(">HHII", frame, offset)
     return {
         "src": frame[26:30], "dst": frame[30:34],
@@ -157,6 +166,9 @@ def fake_tcp(reply: bool, flags: int, seq: int, ack: int, payload: bytes = b"",
     tcp[12] = 0x50
     tcp[13] = flags
     tcp[14:16] = (8192).to_bytes(2, "big")
+    header[10:12] = internet_checksum(header).to_bytes(2, "big")
+    pseudo = src + dst + b"\x00\x06" + (len(tcp) + len(payload)).to_bytes(2, "big")
+    tcp[16:18] = internet_checksum(pseudo + tcp + payload).to_bytes(2, "big")
     return ethernet + header + tcp + payload
 
 
@@ -183,6 +195,17 @@ def self_test() -> None:
         PING_START, PING_PASS, TCP_START, TCP_PASS,
     ])
     assert "PASS" in validate(serial, synthetic_capture(frames))
+    # Synthetic packet bit flips must not be ignored or rescued by later
+    # valid frames with the same sequence/port tuple.
+    for offset in (22, 24, 50, len(frames[-1]) - 1):
+        corrupted = bytearray(frames[-1])
+        corrupted[offset] ^= 1
+        try:
+            validate(serial, synthetic_capture(frames + [bytes(corrupted)]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted corrupted TCP/IP checksum or payload")
     torn = serial.replace(
         PING_PASS,
         "[NET3095-N3] ICMP=PASS from=10.[LAPIC] Timer tick 5 RSP=FFFF80007F651C90\n"
