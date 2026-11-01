@@ -137,6 +137,40 @@ namespace ZonderqOS.SystemCore
             return PlayPcm(mixed);
         }
 
+        /// <summary>
+        /// Three scheduled, non-identical PCM effects for an end-to-end HDA
+        /// capture: left 440 Hz (0..250 ms), right 880 Hz (50..300 ms),
+        /// then left 660 Hz (300..400 ms). The 50 ms left-channel gap and
+        /// different final pitch prove that the third clip was scheduled.
+        /// This is an opt-in diskless test, not production GUI sound.
+        /// </summary>
+        public static bool PlayScheduledMixedTestTones()
+        {
+            byte[] left = AudioTonePcm.GenerateSquareStereo16(48000, 440, 250, 4096);
+            byte[] right = AudioTonePcm.GenerateSquareStereo16(48000, 880, 250, 4096);
+            byte[] finalLeft = AudioTonePcm.GenerateSquareStereo16(48000, 660, 100, 4096);
+            for (int at = 0; at < left.Length; at += 4)
+            {
+                left[at + 2] = 0;
+                left[at + 3] = 0;
+                right[at] = 0;
+                right[at + 1] = 0;
+            }
+            for (int at = 0; at < finalLeft.Length; at += 4)
+            {
+                finalLeft[at + 2] = 0;
+                finalLeft[at + 3] = 0;
+            }
+
+            byte[] mixed = AudioPcmMixer.MixScheduledStereo16(
+                new[] { left, right, finalLeft },
+                new[] { 0, 2400, 14400 },
+                new[] { 100, 100, 100 });
+            Console.WriteLine("[AUDIO] MIXQUEUE 48kHz stereo16 clips=3 " +
+                "left=440Hz@0ms right=880Hz@50ms left=660Hz@300ms bytes=" + mixed.Length);
+            return PlayPcm(mixed);
+        }
+
         public static bool PlayStereoSplitTestTone()
         {
             byte[] pcm = AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 880, 250, 4096);
