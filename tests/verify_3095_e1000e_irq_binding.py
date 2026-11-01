@@ -29,6 +29,9 @@ STREAM = re.compile(r"^\[NET3095-N6\] HTTP_DRIVER_STABLE=PASS attempt=([1-6]) "
                     r"resources=(\d+) irq_sources=(\d+)$")
 BURST = re.compile(r"^\[NET3095-N6\] TX_DRIVER_STABLE=PASS count=128 checks=5 "
                    r"resources=(\d+) irq_sources=(\d+)$")
+ICMP_CHECK = re.compile(r"^\[NET3095-N6\] ICMP_DRIVER_CHECK=PASS "
+                        r"phase=(post_before|post_after|final_before|final_after) "
+                        r"seq=(\d+) resources=(\d+) irq_sources=(\d+)$")
 TX_CHECK = re.compile(r"^\[NET3095-N6\] TX_DRIVER_CHECK=PASS sent=(\d+) "
                       r"resources=(\d+) irq_sources=(\d+)$")
 
@@ -134,6 +137,44 @@ def check_driver_health(serial: str) -> str:
         if not previous_check < check_index < lines.index(burst_queued):
             raise ValueError("TX DriverKit checkpoints missing or out of order")
         previous_check = check_index
+    # Sample the guest NIC, original DHCP lease and DriverKit ownership
+    # before/after each post-burst ICMP echo and the final echo. These are
+    # read-only source counts, NOT evidence of guest ISR execution.
+    anchors = (
+        "[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START",
+        "[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2 count=4",
+        "[NET3095-N6] POST_BURST_HTTP_ATTEMPT=START",
+        "[NET3095-N6] FINAL_ICMP_ATTEMPT=START",
+        "[NET3095-N6] FINAL_ICMP=PASS from=10.0.2.2 seq=1",
+    )
+    if any(lines.count(marker) != 1 for marker in anchors):
+        raise ValueError("missing or duplicate post-stress ICMP marker")
+    post_start, post_done, http_start, final_start, final_done = map(lines.index, anchors)
+    if not (lines.index(post_burst) < post_start < post_done < http_start <
+            final_start < final_done < lines.index(link_lines[0])):
+        raise ValueError("post-stress ICMP phases out of order")
+    checkpoints = [line for line in lines
+                   if line.startswith("[NET3095-N6] ICMP_DRIVER_CHECK")]
+    expected = ([(phase, seq) for seq in range(2, 6)
+                 for phase in ("post_before", "post_after")] +
+                [("final_before", 1), ("final_after", 1)])
+    if len(checkpoints) != len(expected):
+        raise ValueError("missing or duplicate ICMP DriverKit checkpoints")
+    previous = post_start
+    for (phase, seq), line in zip(expected, checkpoints):
+        match = ICMP_CHECK.fullmatch(line)
+        if (match is None or match.group(1) != phase or
+                int(match.group(2)) != seq or match.group(3) != resources or
+                match.group(4) != sources):
+            raise ValueError("invalid ICMP checkpoint phase, sequence or ownership")
+        pos = lines.index(line)
+        if not previous < pos:
+            raise ValueError("ICMP DriverKit checkpoints out of order")
+        if phase.startswith("post_") and pos >= post_done:
+            raise ValueError("post-burst ICMP checkpoint outside echo phase")
+        if phase.startswith("final_") and not final_start < pos < final_done:
+            raise ValueError("final ICMP checkpoint outside echo phase")
+        previous = pos
     # Require six independent, ordered ownership snapshots. A single final
     # snapshot cannot detect a resource/IRQ registration that churned and
     # recovered between TCP sessions. These remain source counts, not ISRs.
@@ -155,9 +196,11 @@ def check_driver_health(serial: str) -> str:
                 lines.index(claims[0])):
             raise ValueError("per-stream DriverKit snapshots out of order")
         if (attempt <= 2 and nic_index >= lines.index(burst_start)) or (
-                attempt >= 3 and stream_index <= lines.index(post_burst)):
+                attempt >= 3 and stream_index <= http_start):
             raise ValueError("HTTP DriverKit snapshot on wrong side of TX burst")
         previous_nic_index = nic_index
+    if previous_nic_index >= final_start:
+        raise ValueError("final ICMP did not follow all six HTTP sessions")
     if any("[NET3095-N6][FAIL]" in line for line in lines):
         raise ValueError("guest reported N6 failure despite DriverKit marker")
     return f"driverkit-bound=yes irq-sources={sources} streams=6 handler-faults=0 ISR-UNPROVEN"
@@ -200,10 +243,20 @@ def self_test() -> None:
         + "[NET3095-N6] TX_DRIVER_STABLE=PASS count=128 checks=5 resources=8 irq_sources=1\n"
         + "[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START\n"
         + "".join(
+            f"[NET3095-N6] ICMP_DRIVER_CHECK=PASS phase={phase} seq={seq} resources=8 irq_sources=1\n"
+            for seq in range(2, 6) for phase in ("post_before", "post_after")
+        )
+        + "[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2 count=4\n"
+        + "[NET3095-N6] POST_BURST_HTTP_ATTEMPT=START\n"
+        + "".join(
             f"[NET3095-N6] HTTP_DRIVER_STABLE=PASS attempt={attempt} resources=8 irq_sources=1\n"
             f"[NET3095-N6] HTTP_NIC_STABLE=PASS attempt={attempt}\n"
             for attempt in range(3, 7)
         )
+        + "[NET3095-N6] FINAL_ICMP_ATTEMPT=START\n"
+        + "[NET3095-N6] ICMP_DRIVER_CHECK=PASS phase=final_before seq=1 resources=8 irq_sources=1\n"
+        + "[NET3095-N6] ICMP_DRIVER_CHECK=PASS phase=final_after seq=1 resources=8 irq_sources=1\n"
+        + "[NET3095-N6] FINAL_ICMP=PASS from=10.0.2.2 seq=1\n"
         + "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\n"
         "[NET3095-N6] DRIVER_HEALTH=PASS node=pci:0000:00:02.0 driver=E1000EDriver resources=8 published=1 irq_sources=1 handler_faults=0 isr_executions=unknown\n"
     )
@@ -294,6 +347,25 @@ def self_test() -> None:
         serial.replace(check64, check64.replace("TX_DRIVER_CHECK=PASS", "TX_DRIVER_CHECK=FAIL")),
         serial.replace(check32, "").replace(burst_queued, burst_queued + check32),
         serial.replace(burst_start, "").replace(burst_queued, burst_queued + burst_start),
+    )
+    post_before = "[NET3095-N6] ICMP_DRIVER_CHECK=PASS phase=post_before seq=3 resources=8 irq_sources=1\n"
+    post_after = "[NET3095-N6] ICMP_DRIVER_CHECK=PASS phase=post_after seq=3 resources=8 irq_sources=1\n"
+    final_before = "[NET3095-N6] ICMP_DRIVER_CHECK=PASS phase=final_before seq=1 resources=8 irq_sources=1\n"
+    final_after = "[NET3095-N6] ICMP_DRIVER_CHECK=PASS phase=final_after seq=1 resources=8 irq_sources=1\n"
+    bad_health += (
+        serial.replace(post_before, ""),
+        serial + post_before,
+        serial.replace(post_before, post_before.replace("seq=3", "seq=4")),
+        serial.replace(post_before, post_before.replace("resources=8", "resources=9")),
+        serial.replace(post_after, post_after.replace("irq_sources=1", "irq_sources=2")),
+        serial.replace(post_before + post_after, post_after + post_before),
+        serial.replace(final_before, ""),
+        serial + final_after,
+        serial.replace(final_before + final_after, final_after + final_before),
+        serial.replace("[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2 count=4\n", ""),
+        serial.replace("[NET3095-N6] FINAL_ICMP_ATTEMPT=START\n", ""),
+        serial.replace("[NET3095-N6] FINAL_ICMP=PASS from=10.0.2.2 seq=1\n", ""),
+        serial.replace("[NET3095-N6] POST_BURST_HTTP_ATTEMPT=START\n", ""),
     )
     for bad in bad_health:
         try:
