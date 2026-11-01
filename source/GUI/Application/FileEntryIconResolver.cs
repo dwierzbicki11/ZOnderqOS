@@ -17,12 +17,14 @@ namespace ZonderqOS.GUI.Apps
             if (string.IsNullOrEmpty(name))
                 return IconType.File;
 
-            // Classify by suffix length first. Unknown extensions used to run
-            // through fourteen case-insensitive EndsWith comparisons; most
-            // directory snapshots contain many unknown/binary names.
-            // LastIndexOf does not allocate and preserves the legacy treatment
-            // of paths containing dots or directory separators.
-            int suffixLength = name.Length - name.LastIndexOf('.');
+            // Only the final 3, 4 or 5 characters can be a recognized
+            // extension. Check their dot positions in O(1) instead of scanning
+            // a potentially long path with LastIndexOf or trying all suffixes.
+            // The EndsWith checks retain the original OrdinalIgnoreCase rules.
+            int length = name.Length;
+            int suffixLength = length >= 3 && name[length - 3] == '.' ? 3
+                : length >= 4 && name[length - 4] == '.' ? 4
+                : length >= 5 && name[length - 5] == '.' ? 5 : 0;
             switch (suffixLength)
             {
                 case 3:
