@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using ZonderqOS.SystemCore;
 
@@ -9,6 +10,20 @@ namespace ZonderqOS.Commands
         public string Description => "Move or rename file";
 
         public void Execute(string[] args, ref string currentPath)
+        {
+            CommandIO.LastCommandSuccess = false;
+            try
+            {
+                ExecuteCore(args, ref currentPath);
+            }
+            catch (Exception ex)
+            {
+                CommandIO.LastCommandSuccess = false;
+                WriteMessage.WriteError($"Move failed: {ex.Message}", "FS");
+            }
+        }
+
+        private static void ExecuteCore(string[] args, ref string currentPath)
         {
             if (args.Length <= 2)
             {
@@ -42,8 +57,7 @@ namespace ZonderqOS.Commands
                     if (!CommandIO.LastCommandSuccess)
                         return;
 
-                    VirtualFs.TryDeleteFile(source, out _);
-                    CommandIO.LastCommandSuccess = true;
+                    Disk.DeleteFile(source);
                     return;
                 }
 
@@ -65,8 +79,7 @@ namespace ZonderqOS.Commands
                 if (!CommandIO.LastCommandSuccess)
                     return;
 
-                VirtualFs.TryDeleteFile(source, out _);
-                CommandIO.LastCommandSuccess = true;
+                Disk.DeleteFile(source);
                 return;
             }
 
@@ -101,12 +114,21 @@ namespace ZonderqOS.Commands
                     return;
                 }
 
+                if (!PermissionManager.CanRead(source, SecurityContext.CurrentUser))
+                {
+                    WriteMessage.WriteError($"Permission denied: Cannot read {source}", "SEC");
+                    return;
+                }
+
                 string content = File.ReadAllText(source);
                 Disk.CreateFile(destination, content);
                 if (!CommandIO.LastCommandSuccess)
                     return;
 
-                File.Delete(source);
+                Disk.DeleteFile(source);
+                if (!CommandIO.LastCommandSuccess)
+                    return;
+
                 PermissionManager.RemovePermission(source);
                 CommandIO.LastCommandSuccess = true;
                 return;
@@ -127,7 +149,7 @@ namespace ZonderqOS.Commands
             }
 
             Disk.MoveFile(source, destination);
-            if (File.Exists(source) || !File.Exists(destination))
+            if (!CommandIO.LastCommandSuccess || File.Exists(source) || !File.Exists(destination))
             {
                 CommandIO.LastCommandSuccess = false;
                 return;
