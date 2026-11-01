@@ -7,6 +7,11 @@ namespace ZonderqOS.GUI.Apps
     {
         private readonly List<Application> applications = new List<Application>();
         private bool closingAll;
+        // Snapshot the frame's application order once. Focus changes may reorder the
+        // live MRU list during Update; iterating that list skips or double-updates
+        // windows. Reuse the buffer to avoid allocating on every GUI frame.
+        private readonly List<Application> updateSnapshot = new List<Application>();
+        private bool updating;
 
         public List<Application> Applications { get { return applications; } }
 
@@ -279,55 +284,76 @@ namespace ZonderqOS.GUI.Apps
 
         public void Update()
         {
-            // This also catches a session ended from inside an application (for example the
-            // Accounts tool). Closing happens before any further app update can run.
+            // A callback can synchronously re-enter the manager. The outer
+            // frame owns the snapshot; nested calls must not invalidate it.
+            if (updating)
+                return;
+
             if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
             {
                 CloseAll();
                 return;
             }
 
+            updating = true;
             bool removed = false;
-            for (int i = applications.Count - 1; i >= 0; i--)
+            try
             {
-                // An app can close other windows (or the entire session)
-                // from its Update callback. Never index the old list size.
-                if (i >= applications.Count)
-                    continue;
-
-                Application application = applications[i];
-                if (application == null || !application.IsRunning || application.Window == null)
+                // Prune invalid windows before capturing the frame's roster.
+                // Apps launched during this frame begin updating next frame.
+                for (int i = applications.Count - 1; i >= 0; i--)
                 {
-                    applications.RemoveAt(i);
-                    removed = true;
+                    Application application = applications[i];
+                    if (application == null || !application.IsRunning || application.Window == null)
+                    {
+                        applications.RemoveAt(i);
+                        removed = true;
+                    }
                 }
-                else
-                {
-                    application.Update();
 
-                    // Logout can happen inside Update. Stop this frame
-                    // immediately: no other user's windows may keep running.
+                updateSnapshot.Clear();
+                updateSnapshot.AddRange(applications);
+                for (int i = updateSnapshot.Count - 1; i >= 0; i--)
+                {
                     if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
                     {
                         CloseAll();
                         return;
                     }
-                    if (applications.Count == 0)
-                        return;
 
-                    // If a callback removed an earlier entry, this window
-                    // moved to a lower index. Resume below its NEW position
-                    // so it is not updated twice in the same frame.
-                    int currentIndex = i < applications.Count &&
-                        object.ReferenceEquals(applications[i], application)
-                        ? i : applications.IndexOf(application);
-                    if (currentIndex >= 0 && currentIndex < i)
-                        i = currentIndex;
+                    Application application = updateSnapshot[i];
+                    // A previous callback may have closed this window. MRU
+                    // reordering alone must not cause an app to be skipped.
+                    if (application == null || !application.IsRunning ||
+                        application.Window == null || !applications.Contains(application))
+                        continue;
+
+                    application.Update();
+                    if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+                    {
+                        CloseAll();
+                        return;
+                    }
+                }
+
+                // A callback may mark itself stopped without calling Close().
+                for (int i = applications.Count - 1; i >= 0; i--)
+                {
+                    Application application = applications[i];
+                    if (application == null || !application.IsRunning || application.Window == null)
+                    {
+                        applications.RemoveAt(i);
+                        removed = true;
+                    }
                 }
             }
-
-            if (removed)
-                SetActiveStates(ActiveApplication);
+            finally
+            {
+                updateSnapshot.Clear();
+                updating = false;
+                if (removed)
+                    SetActiveStates(ActiveApplication);
+            }
         }
 
         public void Render(Canvas canvas)
