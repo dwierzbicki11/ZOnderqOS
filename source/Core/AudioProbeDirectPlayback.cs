@@ -34,8 +34,10 @@ namespace ZonderqOS.SystemCore
             bool started = false;
             try
             {
-                output.Start();
+                // Start can fail after partially enabling the stream engine.
+                // Mark cleanup as required before invoking the driver.
                 started = true;
+                output.Start();
                 bool fed = AudioProbeRingFeeder.Feed(pcm,
                     (data, offset, count) => output.Write(data.AsSpan(offset, count)),
                     () => !output.IsWithdrawn && output.IsRunning,

@@ -48,6 +48,36 @@ internal static class AudioProbeFeederSmoke
         for (int i = pcm.Length; i < written.Count; i++)
             Check(written[i] == 0, "drain is silent");
 
+        // The output can disappear immediately after accepting the final
+        // silent frame. A successful byte count alone is not enough.
+        int acceptedBeforeWithdrawal = 0;
+        bool withdrawnAfterLastFrame = false;
+        ok = AudioProbeRingFeeder.Feed(new byte[4],
+            (a, b, c) =>
+            {
+                acceptedBeforeWithdrawal += c;
+                if (acceptedBeforeWithdrawal == 4 + 16384)
+                    withdrawnAfterLastFrame = true;
+                return c;
+            },
+            () => !withdrawnAfterLastFrame, _ => { }, out waits);
+        Check(!ok && withdrawnAfterLastFrame && acceptedBeforeWithdrawal == 4 + 16384,
+            "withdrawn output after final silent frame fails closed");
+
+        int acceptedBeforeMidDrainWithdrawal = 0;
+        bool withdrawnDuringDrain = false;
+        ok = AudioProbeRingFeeder.Feed(new byte[4],
+            (a, b, c) =>
+            {
+                acceptedBeforeMidDrainWithdrawal += c;
+                if (acceptedBeforeMidDrainWithdrawal >= 4 + 4096)
+                    withdrawnDuringDrain = true;
+                return c;
+            },
+            () => !withdrawnDuringDrain, _ => { }, out waits);
+        Check(!ok && withdrawnDuringDrain && acceptedBeforeMidDrainWithdrawal == 4 + 4096,
+            "withdrawn output during silent drain fails closed");
+
         int stalledWaits = 0;
         ok = AudioProbeRingFeeder.Feed(pcm, (a, b, c) => 0,
             () => true, _ => stalledWaits++, out waits);
@@ -67,6 +97,24 @@ internal static class AudioProbeFeederSmoke
         }
         catch (InvalidOperationException) { rejected = true; }
         Check(rejected, "unaligned driver write rejected");
+
+        rejected = false;
+        try
+        {
+            AudioProbeRingFeeder.Feed(pcm, (a, b, c) => c + 4,
+                () => true, _ => { }, out waits);
+        }
+        catch (InvalidOperationException) { rejected = true; }
+        Check(rejected, "overreported driver write rejected");
+
+        rejected = false;
+        try
+        {
+            AudioProbeRingFeeder.Feed(pcm, (a, b, c) => -4,
+                () => true, _ => { }, out waits);
+        }
+        catch (InvalidOperationException) { rejected = true; }
+        Check(rejected, "negative driver write rejected");
 
         rejected = false;
         try

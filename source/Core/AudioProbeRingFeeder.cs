@@ -45,7 +45,10 @@ namespace ZonderqOS.SystemCore
                 if (!WriteAll(silence, silence.Length, write, ready, wait,
                     ref waitCalls, ref consecutiveWaits))
                     return false;
-            return true;
+            // A device withdrawn just after the final silent write must not
+            // be reported as successfully drained. This is a final snapshot,
+            // not a claim that DMA/IRQ or audible playback succeeded.
+            return ready();
         }
 
         private static bool WriteAll(
