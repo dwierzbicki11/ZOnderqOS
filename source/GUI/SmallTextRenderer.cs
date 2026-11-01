@@ -377,7 +377,14 @@ namespace ZonderqOS.GUI
                 if (upper < 128)
                     glyphOffset = upper * 7;
             }
-            for (int row = 0; row < 7; row++)
+            // A partially visible title/label should not send completely
+            // offscreen glyph rows to the software Canvas. The fully visible
+            // path still uses exactly seven rows and allocates nothing.
+            // Wide arithmetic keeps extreme signed Y coordinates safe.
+            int firstRow = y < 0 ? (int)Math.Min(7L, -(long)y) : 0;
+            int lastRow = (long)y + 7 > canvas.Height
+                ? (int)Math.Max(0L, Math.Min(7L, (long)canvas.Height - y)) : 7;
+            for (int row = firstRow; row < lastRow; row++)
             {
                 int bits = glyphOffset >= 0
                     ? CachedAsciiGlyphRows[glyphOffset + row]
