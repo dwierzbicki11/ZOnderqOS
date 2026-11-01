@@ -214,6 +214,20 @@ def self_test() -> None:
         except ValueError:
             continue
         raise AssertionError(f"accepted stale third HTTP RX block {block}")
+    # A one-byte rotation within a valid-sized RX descriptor must also
+    # fail; constant-byte blocks used to hide this corruption.
+    for block in range(1, 5):
+        start, end = cuts[block], cuts[block + 1]
+        original = response_for_attempt(3)[start:end]
+        shifted = list(frames)
+        shifted[1 + len(handshake) + block] = fake_http(
+            True, 0x18, 60001 + start, 50001 + len(REQUEST),
+            original[1:] + original[:1], client_port=port)
+        try:
+            check_third_http(shifted, guest, 0, (49153, 49154))
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted shifted third HTTP RX block {block}")
     serial = "\n".join((
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
         PASS,
