@@ -106,6 +106,31 @@ class AudioGen3Contract(unittest.TestCase):
                           "AllocateDma(", "EnableBusMastering(", "AudioManager."):
             self.assertNotIn(forbidden, mixer)
 
+    def test_scheduled_pcm_queue_is_bounded_and_opt_in(self):
+        mixer = read("source/Core/AudioPcmMixer.cs")
+        runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
+        kernel = read("Kernel.cs")
+        harness = read("tools/smoke-audio-qemu.py")
+        workflow = read(".github/workflows/audio-qemu.yml")
+        host_workflow = read(".github/workflows/audio-gen3.yml")
+        self.assertIn("MixScheduledStereo16(", mixer)
+        self.assertIn("clips.Length > 8", mixer)
+        self.assertIn("(long)startFrames[i] * 4 + clip.Length", mixer)
+        self.assertIn("total += sample * gainsPercent[i] / 100", mixer)
+        self.assertIn("PlayScheduledMixedTestTones()", runtime)
+        self.assertIn('if (command == "mixqueue")', kernel)
+        self.assertIn('"mixqueue": 440', harness)
+        self.assertIn('elif args.command == "mixqueue":', harness)
+        self.assertIn("queue_capture.inspect(wav)", harness)
+        self.assertIn("--command mixqueue", workflow)
+        self.assertIn("audio-qemu-mixqueue-out/*.wav", workflow)
+        self.assertIn("tests/test_audio_queue_validator.py", workflow)
+        self.assertIn("tests/test_audio_queue_validator.py", host_workflow)
+        self.assertIn("verify-audio-queue-capture.py", workflow)
+        for forbidden in ("Disk.", "File.", "WriteBlock(", "TryMount(",
+                          "AllocateDma(", "EnableBusMastering(", "AudioManager."):
+            self.assertNotIn(forbidden, mixer)
+
     def test_real_pcm_path_is_opt_in_only(self):
         runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
         kernel = read("Kernel.cs")
