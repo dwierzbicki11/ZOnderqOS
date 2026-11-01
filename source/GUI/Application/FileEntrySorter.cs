@@ -115,6 +115,20 @@ namespace ZonderqOS.GUI.Apps
                     return;
             }
 
+            // FAT32 may enumerate a directory in reverse name order. A
+            // descending snapshot can be reversed in O(n) without allocating
+            // a merge buffer. Reverse equal-key groups a second time to
+            // preserve the old stable order of case-insensitive duplicates.
+            // Only probe this path when the first inversion was near the
+            // beginning; sample both ends before scanning the whole folder.
+            if (firstInversion > 0 && firstInversion <= 8 &&
+                (cannotRepairLocally || inversions > 4) &&
+                IsDescending(entries, count))
+            {
+                ReverseStableDescending(entries, count);
+                return;
+            }
+
             // Two sorted runs separated by one large inversion (for example,
             // a FAT32 enumeration rotated at a directory boundary) can be
             // merged in O(n), rather than using log2(n) merge passes.
@@ -221,6 +235,51 @@ namespace ZonderqOS.GUI.Apps
             // Otherwise old entries would remain strongly referenced after
             // navigating to another (smaller) folder.
             Array.Clear(scratch, 0, count);
+        }
+
+        // First and last eight pairs reject almost every random folder
+        // without paying for a full scan. The middle is checked only when
+        // the cheap samples agree with descending order.
+        private static bool IsDescending(List<FileEntry> entries, int count)
+        {
+            int headEnd = Math.Min(count, 9);
+            for (int i = 1; i < headEnd; i++)
+                if (Compare(entries[i - 1], entries[i]) < 0)
+                    return false;
+            int tailStart = Math.Max(headEnd, count - 8);
+            for (int i = tailStart; i < count; i++)
+                if (Compare(entries[i - 1], entries[i]) < 0)
+                    return false;
+            for (int i = headEnd; i < tailStart; i++)
+                if (Compare(entries[i - 1], entries[i]) < 0)
+                    return false;
+            return true;
+        }
+
+        private static void ReverseStableDescending(List<FileEntry> entries, int count)
+        {
+            for (int left = 0, right = count - 1; left < right; left++, right--)
+            {
+                FileEntry value = entries[left];
+                entries[left] = entries[right];
+                entries[right] = value;
+            }
+
+            // Reversing the whole list also reverses ties. Restore each
+            // contiguous tie group to match a stable ascending sort.
+            for (int start = 0; start < count;)
+            {
+                int end = start + 1;
+                while (end < count && Compare(entries[start], entries[end]) == 0)
+                    end++;
+                for (int left = start, right = end - 1; left < right; left++, right--)
+                {
+                    FileEntry value = entries[left];
+                    entries[left] = entries[right];
+                    entries[right] = value;
+                }
+                start = end;
+            }
         }
 
         // A full suffix scan is only worthwhile when its final few pairs
