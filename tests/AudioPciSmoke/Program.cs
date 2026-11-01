@@ -832,6 +832,35 @@ static class Test
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "unsupported 16kHz rate remains rejected");
 
+        // The real PCM16 decoder must preserve channel independence when
+        // resampling a 32 kHz RIFF source to the 48 kHz HDA stream.
+        byte[] sourceStereo32 = AudioTonePcm.GenerateDualSquareStereo16(32000, 440, 880, 250, 4096);
+        byte[] stereoWave32 = AudioWavePcm.EncodeStereo16AtRate(sourceStereo32, 32000);
+        byte[] stereoDecoded32;
+        using (var stereoStream32 = new MemoryStream(stereoWave32, false))
+            stereoDecoded32 = AudioWaveInput.DecodeBounded(stereoStream32);
+        Expect(stereoDecoded32.Length == 48000, "32kHz true stereo resamples to 250ms at 48kHz");
+        int resampledLeftTransitions = 0;
+        int resampledRightTransitions = 0;
+        int differentStereoFrames = 0;
+        for (int frame = 1; frame < stereoDecoded32.Length / 4; frame++)
+        {
+            int at = frame * 4;
+            int prior = at - 4;
+            short l0 = (short)(stereoDecoded32[prior] | (stereoDecoded32[prior + 1] << 8));
+            short l1 = (short)(stereoDecoded32[at] | (stereoDecoded32[at + 1] << 8));
+            short r0 = (short)(stereoDecoded32[prior + 2] | (stereoDecoded32[prior + 3] << 8));
+            short r1 = (short)(stereoDecoded32[at + 2] | (stereoDecoded32[at + 3] << 8));
+            if ((l0 < 0) != (l1 < 0)) resampledLeftTransitions++;
+            if ((r0 < 0) != (r1 < 0)) resampledRightTransitions++;
+            if (l1 != r1) differentStereoFrames++;
+        }
+        double resampledLeftHz = resampledLeftTransitions * 48000.0 / (2 * (stereoDecoded32.Length / 4 - 1));
+        double resampledRightHz = resampledRightTransitions * 48000.0 / (2 * (stereoDecoded32.Length / 4 - 1));
+        Expect(Math.Abs(resampledLeftHz - 440) < 12, "32kHz stereo left pitch survives resampling");
+        Expect(Math.Abs(resampledRightHz - 880) < 12, "32kHz stereo right pitch survives resampling");
+        Expect(differentStereoFrames > 3000, "32kHz stereo channels remain independent");
+
         byte[] quarter = AudioPcmVolume.ScaleStereo16(pcm, 25);
         byte[] muted = AudioPcmVolume.ScaleStereo16(pcm, 0);
         byte[] full = AudioPcmVolume.ScaleStereo16(pcm, 100);

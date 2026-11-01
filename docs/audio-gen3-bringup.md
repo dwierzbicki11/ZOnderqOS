@@ -250,8 +250,10 @@ The new opt-in `wav32k` diagnostic creates a 3520 Hz stereo PCM16 WAV at
 32,000 Hz in guest RAM, passes it through the same bounded read-only stream
 loader and 48 kHz integer resampler, and submits the result to stock HDA.
 A separate diskless QEMU boot captures the backend WAV and checks both
-channels and pitch. This is **not verified** until the new workflow succeeds;
-no physical speakers, external WAV files or production GUI are involved.
+channels and pitch. Run 41254680984 completed successfully on 2026-11-01:
+the 32 kHz input produced a 3507.2 Hz measured tone in the QEMU 44.1 kHz
+WAV backend (target 3520 Hz). No physical speakers, external WAV files or
+production GUI were involved.
 
 
 ### 22.05 kHz end-to-end probe (2026-11-01)
@@ -277,3 +279,15 @@ PCM generator, and synthetic Python negative fixtures reject swapped,
 identical, silent and short channels. Only a completed QEMU capture test
 proves the emulated stereo PCM path; neither that nor the host tests prove
 physical speaker output, codec interrupts or production GUI audio.
+
+
+### 32 kHz independent stereo through resampling (2026-11-01)
+
+The opt-in `wavstereo32` diagnostic builds a 250 ms 32 kHz PCM16 WAV with
+440 Hz on the left and 880 Hz on the right, decodes it via the bounded
+read-only stream, resamples both channels to 48 kHz, then plays it through
+stock HDA. The dedicated QEMU boot must capture independent left/right
+frequencies in two disjoint 80 ms windows; the C# host test checks decoded
+pitch, duration and channel separation. A successful host test alone does
+not establish that the QEMU output worked. No host disk, production audio,
+SMP/SMT or FAT32 write access is enabled by this diagnostic.

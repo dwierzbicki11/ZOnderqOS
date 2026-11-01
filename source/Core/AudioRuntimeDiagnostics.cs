@@ -148,6 +148,28 @@ namespace ZonderqOS.SystemCore
         /// bounded read-only loader to 48 kHz and played via stock HDA.
         /// No filesystem, host disk or production GUI is accessed.
         /// </summary>
+        /// <summary>
+        /// Independent 440/880 Hz stereo channels in a 32 kHz PCM16 WAV.
+        /// Exercises the bounded read-only RIFF loader, integer resampler,
+        /// and stock HDA together. No guest disk or production GUI access.
+        /// </summary>
+        public static bool PlayWave32000StereoSplitTestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateDualSquareStereo16(32000, 440, 880, 250, 4096);
+                byte[] wave = AudioWavePcm.EncodeStereo16AtRate(source, 32000);
+                Console.WriteLine("[AUDIO] WAV 32000Hz independent stereo 440/880Hz -> 48000Hz HDA");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV 32000 STEREO ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
         public static bool PlayWave32000TestTone()
         {
             try

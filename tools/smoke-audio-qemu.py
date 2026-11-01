@@ -33,6 +33,7 @@ EXPECTED_TONE_HZ = {
     "wav44": 880,
     "wav22k": 1100,
     "wav32k": 3520,
+    "wavstereo32": 440,  # left; right checked separately by stereo validator
     "wav8": 1320,
     "wav24": 1760,
     "wav32": 2200,
@@ -95,7 +96,7 @@ def main():
     parser.add_argument("iso", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--boot-seconds", type=int, default=35)
-    parser.add_argument("--command", choices=("tone", "stereosplit", "wavtone", "wavmono", "wav44", "wav22k", "wav32k", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
+    parser.add_argument("--command", choices=("tone", "stereosplit", "wavtone", "wavmono", "wav44", "wav22k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
                         help="isolated guest command to execute; WAV probe never reads guest disks")
     parser.add_argument("--volume", type=int, default=100, help="software gain 0..100 percent")
     args = parser.parse_args()
@@ -157,6 +158,9 @@ def main():
             if args.volume == 0:
                 print(mute_capture.inspect(wav))
             elif args.command == "stereosplit":
+                print(stereo_capture.inspect(wav))
+            elif args.command == "wavstereo32":
+                # Require both independently resampled channels, not just a 440 Hz tone.
                 print(stereo_capture.inspect(wav))
             else:
                 # The mono decoder probe uses a different pitch to prevent a

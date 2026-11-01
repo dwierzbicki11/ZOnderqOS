@@ -86,6 +86,10 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-32000-out --boot-seconds 45 --command wav32k
+      - name: Boot and capture resampled 32 kHz WAV with independent 440/880 Hz stereo
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-stereo32-out --boot-seconds 45 --command wavstereo32
       - name: Boot and capture unsigned PCM8 mono WAV converted to stereo PCM16 (1320 Hz)
         run: |
           python3 tools/smoke-audio-qemu.py \
@@ -124,6 +128,7 @@ jobs:
           tail -n 200 audio-qemu-44100-out/serial.log audio-qemu-44100-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-22050-out/serial.log audio-qemu-22050-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-32000-out/serial.log audio-qemu-32000-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-stereo32-out/serial.log audio-qemu-stereo32-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-pcm8-out/serial.log audio-qemu-pcm8-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-pcm24-out/serial.log audio-qemu-pcm24-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-pcm32-out/serial.log audio-qemu-pcm32-out/qemu.stderr.log 2>/dev/null || true
@@ -158,6 +163,9 @@ jobs:
             audio-qemu-32000-out/*.log
             audio-qemu-32000-out/*.wav
             audio-qemu-32000-out/*.ppm
+            audio-qemu-stereo32-out/*.log
+            audio-qemu-stereo32-out/*.wav
+            audio-qemu-stereo32-out/*.ppm
             audio-qemu-pcm8-out/*.log
             audio-qemu-pcm8-out/*.wav
             audio-qemu-pcm8-out/*.ppm
