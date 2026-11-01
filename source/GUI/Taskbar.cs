@@ -47,6 +47,15 @@ namespace ZonderqOS.GUI
         // or the user has disabled them in settings.
         private int GetTrayWidth()
         {
+            // Below 240px the normal compact tray overlaps the last usable
+            // app-switcher slot. Preserve the Start button and a 40px window
+            // control first; show a clock only when all three can fit.
+            if (Width < 178)
+                return 0;
+            if (Width < 240)
+                return System.Math.Min(CompactTrayWidth,
+                    System.Math.Max(0, Width - (StartButtonWidth + SidePadding + 6 + AppButtonSize)));
+
             return Width < 560 || !global::ZonderqOS.SystemSettings.ShowTrayStatus
                 ? CompactTrayWidth : TrayWidth;
         }
@@ -355,21 +364,29 @@ namespace ZonderqOS.GUI
 
         private void RenderSystemTray(Canvas canvas)
         {
-            int trayX = Width - GetTrayWidth();
-            canvas.DrawLine(Color.FromArgb(48, 59, 70), trayX, Y + 7, trayX, Y + Height - 7);
+            // At <178px even the clock would cover the window switcher.
+            // The Start button and running applications take precedence.
+            if (Width < 178)
+                return;
 
-            DrawNotificationTile(canvas, trayX + 9, 34);
-
-            if (GetTrayWidth() == TrayWidth && global::ZonderqOS.SystemSettings.ShowTrayStatus)
+            if (Width >= 240)
             {
-                bool networkReady = global::ZonderqOS.Network.IsReady;
-                DrawTrayTile(canvas, trayX + 49, 58, IconType.Network, "NET", networkReady);
-                DrawTrayTile(canvas, trayX + 113, 72, IconType.FileManager, cachedVolumeLabel, cachedVolumeCount > 0);
+                int trayX = Width - GetTrayWidth();
+                canvas.DrawLine(Color.FromArgb(48, 59, 70), trayX, Y + 7, trayX, Y + Height - 7);
+                DrawNotificationTile(canvas, trayX + 9, 34);
+
+                if (GetTrayWidth() == TrayWidth && global::ZonderqOS.SystemSettings.ShowTrayStatus)
+                {
+                    bool networkReady = global::ZonderqOS.Network.IsReady;
+                    DrawTrayTile(canvas, trayX + 49, 58, IconType.Network, "NET", networkReady);
+                    DrawTrayTile(canvas, trayX + 113, 72, IconType.FileManager, cachedVolumeLabel, cachedVolumeCount > 0);
+                }
             }
 
             int clockX = Width - 78;
-            canvas.DrawLine(Color.FromArgb(48, 59, 70), clockX - 10, Y + 7,
-                clockX - 10, Y + Height - 7);
+            if (Width >= 240)
+                canvas.DrawLine(Color.FromArgb(48, 59, 70), clockX - 10, Y + 7,
+                    clockX - 10, Y + Height - 7);
 
             if (global::ZonderqOS.SystemSettings.ShowTaskbarDate)
             {
@@ -448,14 +465,20 @@ namespace ZonderqOS.GUI
             if (mouseY < Y || mouseY >= Y + Height)
                 return;
 
-            int trayX = Width - GetTrayWidth();
-            int notificationX = trayX + 9;
-            if (mouseX >= notificationX && mouseX < notificationX + 34)
+            // The notification tile is deliberately hidden on ultra-narrow
+            // desktops. Its invisible old rectangle must not steal clicks
+            // from the app switcher or the clock.
+            if (Width >= 240)
             {
-                notificationHovered = true;
-                if (isClicked && !wasClicked)
-                    notificationClick?.Invoke();
-                return;
+                int trayX = Width - GetTrayWidth();
+                int notificationX = trayX + 9;
+                if (mouseX >= notificationX && mouseX < notificationX + 34)
+                {
+                    notificationHovered = true;
+                    if (isClicked && !wasClicked)
+                        notificationClick?.Invoke();
+                    return;
+                }
             }
 
             if (applicationManager == null)
