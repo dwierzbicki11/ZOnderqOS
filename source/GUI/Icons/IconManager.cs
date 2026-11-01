@@ -66,6 +66,13 @@ namespace ZonderqOS.GUI.Icons
             if (canvas == null || width <= 0 || height <= 0)
                 return;
 
+            // A scrolled-out icon must not decode PNGs, scan the scaled cache,
+            // or allocate a new scaled bitmap. Use wide coordinates so extreme
+            // window offsets cannot overflow the visibility calculation.
+            if ((long)x >= canvas.Width || (long)y >= canvas.Height ||
+                (long)x + width <= 0 || (long)y + height <= 0)
+                return;
+
             type = CanonicalizeType(type);
             if (!EnsureSource(type))
                 return;
