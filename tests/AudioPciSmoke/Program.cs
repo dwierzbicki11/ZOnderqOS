@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using ZonderqOS.Hardware;
 using ZonderqOS.Platform;
@@ -37,6 +38,52 @@ static class Test
             Console.SetOut(previous);
         }
         return buffer.ToString();
+    }
+
+    // Independent pre-optimization reference for the bounded PCM drain.
+    // It deliberately does not call AudioPcmVolume, so an incorrect fast
+    // path cannot validate itself against the same implementation.
+    static byte[] ReferenceGainFadeDrain(
+        byte[] pcm, int leftPercent, int rightPercent, int fadeMilliseconds, int tailBytes)
+    {
+        int frames = pcm.Length / 4;
+        int fadeFrames = Math.Min(fadeMilliseconds * 48, frames / 2);
+        byte[] output = new byte[pcm.Length + tailBytes];
+        for (int frame = 0; frame < frames; frame++)
+        {
+            int envelope = fadeMilliseconds == 0 ? 1 :
+                Math.Min(fadeFrames, Math.Min(frame, frames - 1 - frame));
+            int divisor = fadeMilliseconds == 0 ? 1 : fadeFrames;
+            for (int channel = 0; channel < 2; channel++)
+            {
+                int offset = frame * 4 + channel * 2;
+                short sample = (short)(pcm[offset] | (pcm[offset + 1] << 8));
+                int gain = channel == 0 ? leftPercent : rightPercent;
+                int scaled = sample * gain / 100;
+                scaled = divisor == 0 ? 0 : scaled * envelope / divisor;
+                output[offset] = (byte)scaled;
+                output[offset + 1] = (byte)(scaled >> 8);
+            }
+        }
+        return output;
+    }
+
+    static double MedianPcmMilliseconds(Func<byte[]> action, int iterations)
+    {
+        long[] elapsed = new long[5];
+        action(); // JIT and allocation warm-up; never count it.
+        for (int trial = 0; trial < elapsed.Length; trial++)
+        {
+            long start = Stopwatch.GetTimestamp();
+            for (int iteration = 0; iteration < iterations; iteration++)
+            {
+                byte[] result = action();
+                GC.KeepAlive(result);
+            }
+            elapsed[trial] = Stopwatch.GetTimestamp() - start;
+        }
+        Array.Sort(elapsed);
+        return elapsed[elapsed.Length / 2] * 1000.0 / Stopwatch.Frequency;
     }
 
     public static void Main()
@@ -1221,6 +1268,53 @@ static class Test
                         Expect(combined[i] == reference[i], "one-pass PCM gain/fade bit exact");
                 }
             }
+        }
+        // Compare the new mute/unity fast paths against an independent
+        // per-sample implementation, including negative PCM and zero tails.
+        byte[] fastPathSource = (byte[])fadeSource.Clone();
+        foreach (int fadeMs in new[] { 0, 20 })
+        {
+            foreach (int leftGain in new[] { 0, 25, 100 })
+            {
+                foreach (int rightGain in new[] { 0, 50, 100 })
+                {
+                    foreach (int tail in new[] { 0, 16 * 1024 })
+                    {
+                        byte[] expected = ReferenceGainFadeDrain(
+                            fastPathSource, leftGain, rightGain, fadeMs, tail);
+                        byte[] actual = AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
+                            fastPathSource, leftGain, rightGain, fadeMs, tail);
+                        Expect(!ReferenceEquals(actual, fastPathSource),
+                            "gain/fade drain output must not alias caller PCM");
+                        Expect(actual.Length == expected.Length,
+                            "gain/fade drain length matches independent reference");
+                        for (int i = 0; i < actual.Length; i++)
+                            Expect(actual[i] == expected[i],
+                                "gain/fade drain matches independent reference PCM");
+                    }
+                }
+            }
+        }
+        for (int i = 0; i < fastPathSource.Length; i++)
+            Expect(fastPathSource[i] == fadeSource[i],
+                "gain/fade drain fast paths preserve caller PCM");
+        const int benchIterations = 96;
+        foreach (int gain in new[] { 0, 100 })
+        {
+            // Only the 0% and 100% no-fade cases take the new fast paths.
+            // These are host-side measurements, not HDA or QEMU throughput.
+            int capturedGain = gain;
+            double referenceMs = MedianPcmMilliseconds(
+                () => ReferenceGainFadeDrain(fastPathSource, capturedGain, capturedGain, 0, 16384),
+                benchIterations);
+            double fastMs = MedianPcmMilliseconds(
+                () => AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
+                    fastPathSource, capturedGain, capturedGain, 0, 16384),
+                benchIterations);
+            Console.WriteLine("[AUDIO-PCI-HOST] PCM drain gain=" + capturedGain +
+                "% baseline=" + referenceMs.ToString("F3") + "ms fast=" +
+                fastMs.ToString("F3") + "ms iterations=" + benchIterations +
+                " (host only; no speed assertion)");
         }
         // The opt-in HDA fade path reserves exactly one 16 KiB DMA-ring
         // duration of silence, without losing the release envelope or
