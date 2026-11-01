@@ -2981,6 +2981,30 @@ class TinyStartMenu3095(unittest.TestCase):
                 self.assertGreaterEqual(leftmost, 14)
                 self.assertLessEqual(height - 48 + 6 + 36, height)
 
+    def test_tiny_start_pages_match_filter_and_do_not_hit_power_controls(self):
+        self.assertIn("private int tinyFirstResult;", START_MENU)
+        self.assertIn("private int CountMatchingResults()", START_MENU)
+        self.assertIn("private void ChangeTinyPage(int direction)", START_MENU)
+        self.assertIn("matchIndex >= tinyFirstResult", START_MENU)
+        self.assertIn("matchIndex < tinyFirstResult + capacity", START_MENU)
+        self.assertIn("ConsoleKeyEx.PageUp || key.Key == ConsoleKeyEx.PageDown", START_MENU)
+        self.assertIn("ChangeTinyPage(key.Key == ConsoleKeyEx.PageDown ? 1 : -1);",
+                      START_MENU)
+        self.assertIn("ChangeTinyPage(-1);", START_MENU)
+        self.assertIn("ChangeTinyPage(1);", START_MENU)
+        self.assertIn("tinyFirstResult = 0;", START_MENU)
+
+        for capacity in (1, 2, 3, 4, 6, 9):
+            for count in range(1, 14):
+                pages = max(1, (count + capacity - 1) // capacity)
+                first = 0
+                seen = set()
+                for _ in range(pages):
+                    seen.update(range(first, min(first + capacity, count)))
+                    first = ((first // capacity + 1) % pages) * capacity
+                self.assertEqual(seen, set(range(count)))
+                self.assertEqual(first, 0)
+
     def test_start_menu_consumes_press_after_first_action(self):
         handler = START_MENU.split("public void UpdateInteractions(", 1)[1].split(
             "private static bool UpdateButtonInteractions(", 1)[0]
