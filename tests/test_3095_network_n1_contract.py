@@ -141,7 +141,7 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('No correlated HTTP TCP capture', SMOKE)
         self.assertIn('NET3095-N[1-6]', SMOKE)
         self.assertIn('for (int attempt = 1; attempt <= 2; attempt++)', SOURCE)
-        self.assertIn('TryHttpExchange(attempt)', SOURCE)
+        self.assertIn('TryHttpExchange(attempt, sourceMac, initialIp, initialMask, initialGateway)', SOURCE)
         self.assertIn('for (int attempt = 3; attempt <= 6; attempt++)', SOURCE)
         self.assertIn('POST_BURST_HTTP_REPEAT=PASS attempt=', SOURCE)
         self.assertIn('POST_BURST_HTTP_ATTEMPT=START', SOURCE)
@@ -268,6 +268,20 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('readCalls++', SOURCE)
         self.assertIn('if (read > largestRead)', SOURCE)
         self.assertIn('HTTP_RX_STATS attempt=', SOURCE)
+        # Every HTTP RX chunk must recheck the live adapter against the
+        # original DHCP string snapshots; no mutable IPConfig self-baseline.
+        self.assertIn('private static bool IsE1000ELeaseStable(', SOURCE)
+        self.assertIn('lease.Address.ToString() == expectedIp', SOURCE)
+        self.assertIn('lease.SubnetMask.ToString() == expectedMask', SOURCE)
+        self.assertIn('lease.DefaultGateway.ToString() == expectedGateway', SOURCE)
+        self.assertIn('HTTP NIC/lease changed during RX attempt=', SOURCE)
+        self.assertIn('HTTP_NIC_STABLE=PASS attempt=', SOURCE)
+        self.assertIn('HTTP_NIC_STABLE=PASS attempt=', (ROOT / 'tests/verify_3095_network_n6_post_http.py').read_text())
+        self.assertLess(SOURCE.index('received += read;'),
+                        SOURCE.index('HTTP NIC/lease changed during RX attempt='))
+        self.assertLess(SOURCE.index('HTTP NIC/lease changed during RX attempt='),
+                        SOURCE.index('HTTP_NIC_STABLE=PASS attempt='))
+
         self.assertIn(
             'check_rx_stats(serial)',
             (ROOT / 'tests/verify_3095_network_n6_post_http.py').read_text())
