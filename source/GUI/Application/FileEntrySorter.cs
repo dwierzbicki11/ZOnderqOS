@@ -37,6 +37,22 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            // FAT32 snapshots and repeated refreshes can already be in the
+            // requested order. A linear check avoids the merge passes and
+            // scratch allocation entirely in that case. On unsorted input it
+            // exits at the first inversion (usually after one comparison).
+            bool alreadySorted = true;
+            for (int i = 1; i < count; i++)
+            {
+                if (Compare(entries[i - 1], entries[i]) > 0)
+                {
+                    alreadySorted = false;
+                    break;
+                }
+            }
+            if (alreadySorted)
+                return;
+
             if (scratch == null || scratch.Length < count)
                 scratch = new FileEntry[count];
 
