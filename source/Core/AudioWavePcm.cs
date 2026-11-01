@@ -11,6 +11,9 @@ namespace ZonderqOS.SystemCore
     {
         public const int SampleRate = 48000;
         public const int MaxDurationSeconds = 2;
+        // Apply the same upper bound to direct byte[] callers as the read-only
+        // stream loader. Large metadata-only RIFFs must not be scanned.
+        public const int MaxRiffBytes = 800 * 1024;
         private const int FrameBytes = 4;
         // Largest supported source: two seconds of 48 kHz stereo signed PCM32.
         // Decoded output always remains bounded by two seconds of stereo PCM16.
@@ -66,6 +69,9 @@ namespace ZonderqOS.SystemCore
             if (wave == null || wave.Length < 44 || !Tag(wave, 0, "RIFF") ||
                 !Tag(wave, 8, "WAVE"))
                 throw new ArgumentException("Missing RIFF/WAVE header.", nameof(wave));
+
+            if (wave.Length > MaxRiffBytes)
+                throw new ArgumentException("WAV exceeds bounded RIFF file limit.", nameof(wave));
 
             long riffEnd = 8L + Read32(wave, 4);
             if (riffEnd != wave.Length)
