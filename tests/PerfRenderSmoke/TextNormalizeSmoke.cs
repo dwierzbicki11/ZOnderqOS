@@ -58,7 +58,7 @@ internal static class TextNormalizeSmoke
             "0123456789 /.-_:%()[]ąćęłńóśżź").ToCharArray();
         Time(Baseline, text, 10000);
         Time(Optimized, text, 10000);
-        const int repeats = 1000000;
+        const int repeats = 5000000;
         double[] before = new double[5];
         double[] after = new double[5];
         for (int sample = 0; sample < 5; sample++)
