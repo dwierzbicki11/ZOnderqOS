@@ -2953,5 +2953,48 @@ class WindowInterruptedGesture3095(unittest.TestCase):
                     self.assertEqual((remaining_drag, remaining_resize), (dragging, resizing))
 
 
+
+class TinyStartMenu3095(unittest.TestCase):
+    def test_tiny_search_results_never_overlap_power_footer(self):
+        self.assertIn("private bool TinyLayout => Height < 400;", START_MENU)
+        self.assertIn("private void UpdateTinyLayout()", START_MENU)
+        self.assertIn("private void RenderTiny(Canvas canvas)", START_MENU)
+        self.assertIn("button.Visible = show;", START_MENU)
+        self.assertIn("bool powerFits = Width >= 160", START_MENU)
+        self.assertIn("SetPowerVisibility(powerFits);", START_MENU)
+        self.assertIn("if (button == null || !button.Visible)", START_MENU)
+
+        for width, height in ((304, 180), (184, 140), (224, 180),
+                              (304, 260), (480, 340)):
+            cols = 3 if width >= 270 else 2 if width >= 160 else 1
+            rows = max(0, (height - 48 - 70 - 6 + 4) // (42 + 4))
+            button_width = max(1, (width - 28 - (cols - 1) * 6) // cols)
+            for index in range(min(12, cols * rows)):
+                x = 14 + (index % cols) * (button_width + 6)
+                y = 70 + (index // cols) * (42 + 4)
+                self.assertGreaterEqual(x, 14)
+                self.assertLessEqual(x + button_width, width - 14)
+                self.assertLessEqual(y + 42, height - 48)
+            if width >= 160:
+                power_width = max(1, (width - 28 - 18) // 4)
+                leftmost = width - 14 - 4 * power_width - 18
+                self.assertGreaterEqual(leftmost, 14)
+                self.assertLessEqual(height - 48 + 6 + 36, height)
+
+    def test_start_menu_consumes_press_after_first_action(self):
+        handler = START_MENU.split("public void UpdateInteractions(", 1)[1].split(
+            "private static bool UpdateButtonInteractions(", 1)[0]
+        self.assertIn("if (UpdateButtonInteractions(pinnedButtons", handler)
+        self.assertIn("if (UpdateButtonInteractions(toolButtons", handler)
+        for action in ("lockButton", "exitButton", "rebootButton"):
+            self.assertIn("if (UpdatePowerInteraction(" + action, handler)
+        self.assertIn("return true;", START_MENU.split(
+            "private static bool UpdateButtonInteractions(", 1)[1])
+        self.assertIn("return true;", START_MENU.split(
+            "private static bool UpdatePowerInteraction(", 1)[1])
+        self.assertIn("GuiStartMenuSmoke", code(
+            ".github/workflows/gui-responsive-3095.yml"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
