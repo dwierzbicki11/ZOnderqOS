@@ -90,6 +90,44 @@ internal static class PanelVisibilitySmoke
             after[3].ToString("F3") + " ms (not QEMU FPS).");
     }
 
+    private static void VerifyResolutionClips()
+    {
+        int[] widths = { 800, 1366, 1920 };
+        int[] heights = { 600, 768, 1080 };
+        int checks = 0;
+        for (int resolution = 0; resolution < widths.Length; resolution++)
+        {
+            int screenWidth = widths[resolution];
+            int screenHeight = heights[resolution];
+            int[,] origins = {
+                { screenWidth - 50, screenHeight - 30 },
+                { -500, -1020 },
+                { screenWidth - 50, -1020 },
+                { -500, screenHeight - 30 }
+            };
+            for (int position = 0; position < origins.GetLength(0); position++)
+            {
+                int x = origins[position, 0];
+                int y = origins[position, 1];
+                Canvas baseline = new Canvas(screenWidth, screenHeight);
+                Canvas optimized = new Canvas(screenWidth, screenHeight);
+                Draw(false, 0, baseline, x, y, 1024, 1024, 512);
+                Draw(true, 0, optimized, x, y, 1024, 1024, 512);
+                if (baseline.DrawCalls != optimized.DrawCalls)
+                    throw new Exception("Resolution-specific Canvas call mismatch at " +
+                        screenWidth + "x" + screenHeight + " position=" + position);
+                for (int pixel = 0; pixel < baseline.Pixels.Length; pixel++)
+                    if (baseline.Pixels[pixel] != optimized.Pixels[pixel])
+                        throw new Exception("Resolution-specific panel pixel mismatch at " +
+                            screenWidth + "x" + screenHeight + " position=" + position +
+                            " pixel=" + pixel);
+                checks++;
+            }
+        }
+        Console.WriteLine("Panel 800x600/1366x768/1920x1080: " + checks +
+            " exact pixel and Canvas-call comparisons (host fake Canvas).");
+    }
+
     private static double Time(bool optimized, int op, Canvas canvas, int repeats,
         bool onscreen)
     {
@@ -139,6 +177,7 @@ internal static class PanelVisibilitySmoke
                                   -508, -500, -1, 0, 99 })
             VerifyTallClippedPanel(y);
         BenchmarkTallPanel();
+        VerifyResolutionClips();
 
         // Fill/Top are unchanged production methods and serve as negative
         // controls for runner/JIT timing noise; do not interpret small deltas
