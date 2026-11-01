@@ -71,7 +71,8 @@ namespace ZonderqOS.Drivers
 
                 // DriverKit owns the PCI node. Do not enable memory decoding
                 // or transition D3->D0 in a read-only diagnostic.
-                if ((pci.ReadConfig16(0x04) & 0x0002) == 0)
+                ushort commandBefore = pci.ReadConfig16(0x04);
+                if ((commandBefore & 0x0002) == 0)
                     return Decline("PCI memory decoding disabled; no MMIO reads");
 
                 byte pm = pci.FindCapability(0x01);
@@ -110,8 +111,12 @@ namespace ZonderqOS.Drivers
                         pci.ReadConfig16(0x0E), pci.ReadConfig16(0x2C),
                         pci.ReadConfig16(0x2E)))
                     return Decline("PCI identity changed after MMIO sampling; no link proof");
-                if ((pci.ReadConfig16(0x04) & 0x0002) == 0)
+                ushort commandAfter = pci.ReadConfig16(0x04);
+                if ((commandAfter & 0x0002) == 0)
                     return Decline("PCI memory decoding disabled after sampling; no link proof");
+                if (!Realtek810xERegisterDecoder.IsStablePciCommand(
+                        commandBefore, commandAfter))
+                    return Decline("PCI command changed after MMIO sampling; no link proof");
                 if (pm != 0 && (pci.ReadConfig16((ushort)(pm + 4)) & 0x0003) != 0)
                     return Decline("PCI power state changed after sampling; no link proof");
                 if (!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
