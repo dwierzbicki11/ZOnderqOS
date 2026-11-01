@@ -56,18 +56,45 @@ namespace ZonderqOS.GUI
             Fill(canvas, border, x, y + r, 1, height - 2 * r);
             Fill(canvas, border, x + width - 1, y + r, 1, height - 2 * r);
 
-            // Adjacent border rows share the same corner inset. Carry it
-            // forward instead of calculating sqrt twice for each row.
-            int borderInset = CornerInset(r, 0);
-            for (int row = 0; row < r; row++)
+            // Keep the original single-loop hot path for fully visible
+            // panels. Large panels dragged across a screen edge need only
+            // evaluate border rows that actually intersect the framebuffer.
+            if (y >= 0 && (long)y + height <= canvas.Height)
             {
+                int borderInset = CornerInset(r, 0);
+                for (int row = 0; row < r; row++)
+                {
+                    int next = row + 1 < r ? CornerInset(r, row + 1) : 0;
+                    int edge = Math.Max(1, borderInset - next + 1);
+                    Fill(canvas, border, x + borderInset, y + row, edge, 1);
+                    Fill(canvas, border, x + width - borderInset - edge, y + row, edge, 1);
+                    Fill(canvas, border, x + borderInset, y + height - row - 1, edge, 1);
+                    Fill(canvas, border, x + width - borderInset - edge, y + height - row - 1, edge, 1);
+                    borderInset = next;
+                }
+                return;
+            }
+
+            long topFirst = Math.Max(0L, -(long)y);
+            long topEnd = Math.Min((long)r, (long)canvas.Height - y);
+            for (int row = (int)topFirst; row < topEnd; row++)
+            {
+                int inset = CornerInset(r, row);
                 int next = row + 1 < r ? CornerInset(r, row + 1) : 0;
-                int edge = Math.Max(1, borderInset - next + 1);
-                Fill(canvas, border, x + borderInset, y + row, edge, 1);
-                Fill(canvas, border, x + width - borderInset - edge, y + row, edge, 1);
-                Fill(canvas, border, x + borderInset, y + height - row - 1, edge, 1);
-                Fill(canvas, border, x + width - borderInset - edge, y + height - row - 1, edge, 1);
-                borderInset = next;
+                int edge = Math.Max(1, inset - next + 1);
+                Fill(canvas, border, x + inset, y + row, edge, 1);
+                Fill(canvas, border, x + width - inset - edge, y + row, edge, 1);
+            }
+
+            long bottomFirst = Math.Max(0L, (long)y + height - canvas.Height);
+            long bottomEnd = Math.Min((long)r, (long)y + height);
+            for (int row = (int)bottomFirst; row < bottomEnd; row++)
+            {
+                int inset = CornerInset(r, row);
+                int next = row + 1 < r ? CornerInset(r, row + 1) : 0;
+                int edge = Math.Max(1, inset - next + 1);
+                Fill(canvas, border, x + inset, y + height - row - 1, edge, 1);
+                Fill(canvas, border, x + width - inset - edge, y + height - row - 1, edge, 1);
             }
         }
 
@@ -156,17 +183,49 @@ namespace ZonderqOS.GUI
         private static void FillCornerBands(Canvas canvas, int x, int y, int width,
             int height, int radius, Color fill)
         {
-            for (int row = 0; row < radius;)
+            if (y >= 0 && (long)y + height <= canvas.Height)
+            {
+                for (int row = 0; row < radius;)
+                {
+                    int inset = CornerInset(radius, row);
+                    int end = row + 1;
+                    while (end < radius && CornerInset(radius, end) == inset)
+                        end++;
+
+                    int bandHeight = end - row;
+                    Fill(canvas, fill, x + inset, y + row, width - 2 * inset, bandHeight);
+                    Fill(canvas, fill, x + inset, y + height - end,
+                        width - 2 * inset, bandHeight);
+                    row = end;
+                }
+                return;
+            }
+
+            // Clip the two mirrored corner strips independently. Starting in
+            // the middle of a same-inset band preserves every visible pixel,
+            // while skipping the invisible band scans and their sqrt calls.
+            long topFirst = Math.Max(0L, -(long)y);
+            long topEnd = Math.Min((long)radius, (long)canvas.Height - y);
+            for (int row = (int)topFirst; row < topEnd;)
             {
                 int inset = CornerInset(radius, row);
                 int end = row + 1;
-                while (end < radius && CornerInset(radius, end) == inset)
+                while (end < topEnd && CornerInset(radius, end) == inset)
                     end++;
+                Fill(canvas, fill, x + inset, y + row, width - 2 * inset, end - row);
+                row = end;
+            }
 
-                int bandHeight = end - row;
-                Fill(canvas, fill, x + inset, y + row, width - 2 * inset, bandHeight);
+            long bottomFirst = Math.Max(0L, (long)y + height - canvas.Height);
+            long bottomEnd = Math.Min((long)radius, (long)y + height);
+            for (int row = (int)bottomFirst; row < bottomEnd;)
+            {
+                int inset = CornerInset(radius, row);
+                int end = row + 1;
+                while (end < bottomEnd && CornerInset(radius, end) == inset)
+                    end++;
                 Fill(canvas, fill, x + inset, y + height - end,
-                    width - 2 * inset, bandHeight);
+                    width - 2 * inset, end - row);
                 row = end;
             }
         }

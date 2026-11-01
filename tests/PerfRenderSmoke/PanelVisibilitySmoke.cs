@@ -31,6 +31,65 @@ internal static class PanelVisibilitySmoke
         }
     }
 
+    private static void VerifyTallClippedPanel(int y)
+    {
+        Canvas baseline = new Canvas(140, 100);
+        Canvas optimized = new Canvas(140, 100);
+        UiPainterLegacy.RoundedPanel(baseline, -450, y, 1024, 1024, 512, Ink, Edge);
+        UiPainter.RoundedPanel(optimized, -450, y, 1024, 1024, 512, Ink, Edge);
+        if (baseline.DrawCalls != optimized.DrawCalls)
+            throw new Exception("Tall clipped panel changed Canvas calls at y=" + y +
+                ": " + baseline.DrawCalls + " vs " + optimized.DrawCalls);
+        for (int i = 0; i < baseline.Pixels.Length; i++)
+            if (baseline.Pixels[i] != optimized.Pixels[i])
+                throw new Exception("Tall clipped panel changed pixel " + i + " at y=" + y);
+    }
+
+    private static double TimeTallPanel(bool optimized, Canvas canvas, int repeats)
+    {
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repeats; i++)
+        {
+            if (optimized)
+                UiPainter.RoundedPanel(canvas, -450, -1020, 1024, 1024, 512, Ink, Edge);
+            else
+                UiPainterLegacy.RoundedPanel(canvas, -450, -1020, 1024, 1024, 512, Ink, Edge);
+        }
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
+    private static void BenchmarkTallPanel()
+    {
+        const int repeats = 1500;
+        Canvas beforeFrame = new Canvas(140, 100);
+        Canvas afterFrame = new Canvas(140, 100);
+        TimeTallPanel(false, beforeFrame, 100);
+        TimeTallPanel(true, afterFrame, 100);
+        double[] before = new double[7];
+        double[] after = new double[7];
+        for (int sample = 0; sample < 7; sample++)
+        {
+            if ((sample & 1) == 0)
+            {
+                before[sample] = TimeTallPanel(false, beforeFrame, repeats);
+                after[sample] = TimeTallPanel(true, afterFrame, repeats);
+            }
+            else
+            {
+                after[sample] = TimeTallPanel(true, afterFrame, repeats);
+                before[sample] = TimeTallPanel(false, beforeFrame, repeats);
+            }
+        }
+        Array.Sort(before);
+        Array.Sort(after);
+        if (beforeFrame.DrawCalls != afterFrame.DrawCalls || beforeFrame.DrawCalls == 0)
+            throw new Exception("Tall panel benchmark changed visible Canvas calls");
+        Console.WriteLine("Host .NET tall vertically clipped RoundedPanel: " +
+            repeats + " calls, median 7 alternating A/B, previous " +
+            before[3].ToString("F3") + " ms, optimized " +
+            after[3].ToString("F3") + " ms (not QEMU FPS).");
+    }
+
     private static double Time(bool optimized, int op, Canvas canvas, int repeats,
         bool onscreen)
     {
@@ -75,6 +134,11 @@ internal static class PanelVisibilitySmoke
         UiPainter.RoundedTop(null, 0, 0, 180, 100, 32, Ink);
         if (extreme.DrawCalls != 0)
             throw new Exception("Offscreen extreme coordinates touched Canvas");
+
+        foreach (int y in new[] { -1023, -1020, -1015, -1000, -800, -512,
+                                  -508, -500, -1, 0, 99 })
+            VerifyTallClippedPanel(y);
+        BenchmarkTallPanel();
 
         // Fill/Top are unchanged production methods and serve as negative
         // controls for runner/JIT timing noise; do not interpret small deltas
