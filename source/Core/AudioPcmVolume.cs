@@ -94,6 +94,18 @@ namespace ZonderqOS.SystemCore
             int frames = pcm.Length / 4;
             int fadeFrames = Math.Min(fadeMilliseconds * 48, frames / 2);
             byte[] output = new byte[pcm.Length + trailingSilenceBytes];
+            // Mute needs no per-sample arithmetic: the new array is already
+            // zeroed, including the bounded HDA drain. Preserve ownership.
+            if (leftPercent == 0 && rightPercent == 0)
+                return output;
+            // Unity gain without an envelope is a bit-exact bulk copy.
+            // Keep the silent tail in the same allocation and never alias
+            // the source when this API promises an independent output.
+            if (fadeMilliseconds == 0 && leftPercent == 100 && rightPercent == 100)
+            {
+                Array.Copy(pcm, 0, output, 0, pcm.Length);
+                return output;
+            }
             for (int frame = 0; frame < frames; frame++)
             {
                 int envelope = fadeMilliseconds == 0 ? 1 :
