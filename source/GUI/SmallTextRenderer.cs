@@ -16,6 +16,37 @@ namespace ZonderqOS.GUI
         // pattern lookup and bit decoding seven times per character/frame.
         // Unicode characters uppercasing to ASCII retain their original glyph.
         private static readonly byte[] CachedFallbackGlyphRows = BuildFallbackGlyphRows();
+        // A 5-pixel row has only 32 possible patterns. Precompute its one to
+        // three horizontal spans once, rather than scanning all five columns
+        // on every glyph draw. Packed as: 2-bit run count, then up to three
+        // (3-bit start, 3-bit length) pairs. Only 128 bytes of lookup storage.
+        private static readonly int[] CachedSpanRuns = BuildSpanRuns();
+
+        private static int[] BuildSpanRuns()
+        {
+            var table = new int[32];
+            for (int bits = 0; bits < table.Length; bits++)
+            {
+                int packed = 0;
+                int count = 0;
+                for (int col = 0; col < 5;)
+                {
+                    if ((bits & (1 << (4 - col))) == 0)
+                    {
+                        col++;
+                        continue;
+                    }
+                    int start = col++;
+                    while (col < 5 && (bits & (1 << (4 - col))) != 0)
+                        col++;
+                    packed |= (start | ((col - start) << 3)) << (2 + count * 6);
+                    count++;
+                }
+                table[bits] = packed | count;
+            }
+            return table;
+        }
+
 
         private static byte[] BuildAsciiGlyphRows()
         {
@@ -354,21 +385,17 @@ namespace ZonderqOS.GUI
                 // Punctuation and sparse glyphs often have empty rows.
                 if (bits == 0)
                     continue;
-                // One Canvas call per horizontal span instead of per lit pixel.
-                // Adjacent pixels have identical color, so the 5x7 bitmap is unchanged.
-                for (int col = 0; col < 5;)
+                // The lookup encodes exactly the same contiguous spans as
+                // the original column scan. Preserve one Canvas call per run.
+                int packed = CachedSpanRuns[bits];
+                int runCount = packed & 3;
+                packed >>= 2;
+                for (int run = 0; run < runCount; run++)
                 {
-                    if ((bits & (1 << (4 - col))) == 0)
-                    {
-                        col++;
-                        continue;
-                    }
-
-                    int runStart = col++;
-                    while (col < 5 && (bits & (1 << (4 - col))) != 0)
-                        col++;
-
-                    canvas.DrawFilledRectangle(color, x + runStart, y + row, col - runStart, 1);
+                    int runStart = packed & 7;
+                    int runLength = (packed >> 3) & 7;
+                    canvas.DrawFilledRectangle(color, x + runStart, y + row, runLength, 1);
+                    packed >>= 6;
                 }
             }
         }
