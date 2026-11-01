@@ -247,10 +247,14 @@ connections after** the 128-frame raw Ethernet TX burst and four ICMP
 echo round-trips (attempts 3–6; six HTTP connections in total). Each
 connection requests a 4116-byte test body from the loopback-only
 CI HTTP fixture, verifies the entire response in the guest, and closes
-its TCP socket. Each connection now uses four **independently changing
-1 KiB body blocks**, so a stale RX descriptor containing a block from
-any earlier connection is detectable (not only the first byte). The
-fixture emits six distinct host completion markers.
+its TCP socket. Each connection now uses a deterministic **byte-varying
+4 KiB body**, with distinct content at every offset between connections
+and nonuniform content inside each 1 KiB block. This detects both stale
+blocks from earlier sessions and one-byte shifts *within* a descriptor
+that the former uniform A/B/C/D blocks could conceal. The host and guest
+compute the same bounded ASCII pattern independently; the PCAP validator
+checks the complete byte stream. The fixture emits six distinct host
+completion markers.
 
 The post-burst PCAP validator requires **four distinct client source
 ports**, ordered TCP handshakes, complete segmented HTTP RX payloads,
