@@ -63,6 +63,7 @@ internal sealed class ClosingApp : Application
     public bool LastLeftRelease;
     public Action? OnClose;
     public Action? OnUpdate;
+    public Action? OnMouse;
 
     public override void Close()
     {
@@ -82,6 +83,7 @@ internal sealed class ClosingApp : Application
         MouseCount++;
         LastRightPress = right && !oldRight;
         LastLeftRelease = !left && oldLeft;
+        OnMouse?.Invoke();
     }
 }
 
@@ -363,6 +365,29 @@ internal static class Program
         manager.CloseAll();
     }
 
+    private static void MouseCallbackClosingOwnerDoesNotLeakRelease()
+    {
+        var manager = new ApplicationManager();
+        var owner = new ClosingApp();
+        var exposed = new ClosingApp();
+        exposed.Window.X = 200;
+        manager.Launch(exposed);
+        manager.Launch(owner);
+        owner.OnMouse = () => manager.Close(owner);
+        // Model a title-bar close action executed synchronously inside
+        // HandleMouse, before the button has been released.
+        manager.HandleMouse(10, 20, true, false, false, false);
+        Check(owner.CloseCount == 1 && owner.MouseCount == 1,
+            "title-bar callback closes captured owner exactly once");
+        manager.HandleMouse(220, 20, true, true, false, false);
+        manager.HandleMouse(220, 20, false, true, false, false);
+        Check(exposed.MouseCount == 0,
+            "same close-button gesture cannot click exposed window");
+        manager.HandleMouse(220, 20, true, false, false, false);
+        Check(exposed.MouseCount == 1, "next fresh click works after callback close");
+        manager.CloseAll();
+    }
+
     private static void MinimizingCapturedWindowDoesNotLeakRelease()
     {
         var manager = new ApplicationManager();
@@ -513,6 +538,7 @@ internal static class Program
         WindowGestureSurvivesFocusAndSecondButton();
         FilteredChordKeepsPhysicalGestureOwner();
         ClosingCapturedWindowDoesNotLeakRelease();
+        MouseCallbackClosingOwnerDoesNotLeakRelease();
         MinimizingCapturedWindowDoesNotLeakRelease();
         FocusReorderDuringUpdate();
         LaunchDuringUpdate();
