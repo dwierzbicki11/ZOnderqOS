@@ -35,10 +35,38 @@ internal static class IconResolverSmoke
         }
     }
 
+    // Snapshot of the previous allocation-free production classifier. Used
+    // as the A/B baseline, distinct from the allocating Path.GetExtension
+    // legacy baseline. Do not silently compare against a different workload.
+    private static IconType PreviousOptimized(string name, bool isDirectory)
+    {
+        if (isDirectory) return IconType.Folder;
+        if (string.IsNullOrEmpty(name)) return IconType.File;
+        if (name.EndsWith(".bmp", StringComparison.OrdinalIgnoreCase)) return IconType.FileBmp;
+        if (name.EndsWith(".doc", StringComparison.OrdinalIgnoreCase)) return IconType.FileDoc;
+        if (name.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)) return IconType.FileDocx;
+        if (name.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)) return IconType.FileJpg;
+        if (name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) return IconType.FilePdf;
+        if (name.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) return IconType.FilePng;
+        if (name.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) return IconType.FileSvg;
+        if (name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".md", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".conf", StringComparison.OrdinalIgnoreCase) ||
+            name.EndsWith(".ini", StringComparison.OrdinalIgnoreCase)) return IconType.FileTxt;
+        return IconType.File;
+    }
+
     private static void Check(string name, bool directory)
     {
         IconType expected = Legacy(name, directory);
         IconType actual = FileEntryIconResolver.Resolve(name, directory);
+        IconType previous = PreviousOptimized(name, directory);
+        if (actual != previous)
+            throw new Exception("previous icon classifier mismatch name=" + name +
+                " directory=" + directory + " previous=" + previous + " new=" + actual);
         if (actual != expected)
             throw new Exception("icon mismatch name=" + name + " directory=" + directory +
                 " old=" + expected + " new=" + actual);
@@ -211,10 +239,81 @@ internal static class IconResolverSmoke
             " B optimized=" + optimizedBytes + " B");
     }
 
+    private static double TimeSuffixDispatch(bool optimized, string[] names)
+    {
+        const int repeats = 32;
+        long start = Stopwatch.GetTimestamp();
+        for (int rep = 0; rep < repeats; rep++)
+            for (int i = 0; i < names.Length; i++)
+                sink += (int)(optimized
+                    ? FileEntryIconResolver.Resolve(names[i], false)
+                    : PreviousOptimized(names[i], false));
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 /
+            Stopwatch.Frequency / repeats;
+    }
+
+    private static void BenchmarkSuffixDispatch()
+    {
+        // Same immutable names for both classifiers. Include many unknown
+        // extensions, long filenames and no-extension entries, as well as
+        // common recognized types. This measures only CPU classification,
+        // not directory I/O, painting or complete system responsiveness.
+        string[] suffixes =
+        {
+            ".txt", ".jpeg", ".png", ".cfg", ".exe", ".tar.gz",
+            "", ".unknown", ".dat", ".docx", ".md", ".CONF"
+        };
+        string[] names = new string[4096];
+        for (int i = 0; i < names.Length; i++)
+        {
+            string prefix = (i % 7 == 0) ? "nested.folder/" : "";
+            names[i] = prefix + "long-directory-entry-" + i + suffixes[i % suffixes.Length];
+            Check(names[i], false);
+        }
+        for (int i = 0; i < 6; i++)
+        {
+            TimeSuffixDispatch(false, names);
+            TimeSuffixDispatch(true, names);
+        }
+
+        double[] oldMs = new double[7], newMs = new double[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if ((i & 1) == 0)
+            {
+                oldMs[i] = TimeSuffixDispatch(false, names);
+                newMs[i] = TimeSuffixDispatch(true, names);
+            }
+            else
+            {
+                newMs[i] = TimeSuffixDispatch(true, names);
+                oldMs[i] = TimeSuffixDispatch(false, names);
+            }
+        }
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        TimeSuffixDispatch(false, names);
+        long oldBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        before = GC.GetAllocatedBytesForCurrentThread();
+        TimeSuffixDispatch(true, names);
+        long newBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        if (oldBytes != 0 || newBytes != 0)
+            throw new Exception("suffix classifier warm allocations old=" + oldBytes +
+                " new=" + newBytes);
+
+        double a = Median(oldMs), b = Median(newMs);
+        Console.WriteLine("HOST A/B 4096 mixed suffixes per snapshot: previous=" +
+            a.ToString("F5") + " ms dispatched=" + b.ToString("F5") +
+            " ms ratio=" + (a / b).ToString("F2") + "x");
+        Console.WriteLine("HOST suffix allocation 32 snapshots: previous=" +
+            oldBytes + " B dispatched=" + newBytes + " B");
+    }
+
     internal static void Run()
     {
         Verify();
         Benchmark();
         BenchmarkSnapshot();
+        BenchmarkSuffixDispatch();
     }
 }
