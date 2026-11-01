@@ -50,14 +50,14 @@ class TinyTaskManagerViewTests(unittest.TestCase):
     def test_no_row_or_column_means_no_process_interaction(self):
         self.assertIn("internal bool HasPaintedProcessRows => VisibleRows > 0 &&", SOURCE)
         self.assertIn("Width - SidebarWidth - 12 > ScrollReserve + 4;", SOURCE)
-        # The view has a 176px sidebar, 12px content inset and 14px
+        # The view has a 170px sidebar, 12px content inset and 16px
         # scrollbar reserve; a 4px safety gap must remain.
         for width in range(1, 321):
             for height in (40, 100, 120, 146, 170, 220):
                 top = 64 if width < 550 or height < 216 else 146
                 rows = max(0, height - top - 28 - 6) // 36
-                painted = rows > 0 and width - 176 - 12 > 14 + 4
-                if width <= 206 or rows == 0:
+                painted = rows > 0 and width - 170 - 12 > 16 + 4
+                if width <= 202 or rows == 0:
                     self.assertFalse(painted)
                 else:
                     self.assertTrue(painted)
