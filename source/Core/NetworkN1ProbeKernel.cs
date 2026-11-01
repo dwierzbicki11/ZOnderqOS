@@ -107,12 +107,32 @@ namespace ZonderqOS
             try
             {
                 int elapsed = new DhcpClient().SendDiscoverPacket();
-                IPConfig? config = NetworkManager.Primary.IPConfig;
+                NetworkAdapter leasedAdapter = NetworkManager.Primary;
+                IPConfig? config = leasedAdapter.IPConfig;
                 if (elapsed < 0 || config == null ||
                     config.Address.IsZero || config.SubnetMask.IsZero ||
                     config.DefaultGateway.IsZero)
                 {
                     Log("[NET3095-N2][FAIL] DHCP timed out or returned an invalid lease");
+                    return;
+                }
+                // This isolated QEMU profile uses the fixed SLIRP 10.0.2.0/24
+                // topology. Do not claim DHCP success if the original E1000E
+                // disappeared, its MAC changed or the guest accepted an
+                // unexpected address/mask/gateway. The independent PCAP gate
+                // still proves the actual DORA packets on the wire.
+                if (!leasedAdapter.IsValid || leasedAdapter.Name != "e1000e" ||
+                    !leasedAdapter.Ready || !leasedAdapter.LinkUp ||
+                    (leasedAdapter.MacAddress?.ToString() ?? "") != sourceMac)
+                {
+                    Log("[NET3095-N2][FAIL] E1000E binding/link/MAC changed during DHCP");
+                    return;
+                }
+                if (config.Address.ToString() != "10.0.2.15" ||
+                    config.SubnetMask.ToString() != "255.255.255.0" ||
+                    config.DefaultGateway.ToString() != "10.0.2.2")
+                {
+                    Log("[NET3095-N2][FAIL] Unexpected QEMU DHCP lease");
                     return;
                 }
 #if ZONDERQ_NETWORK_N6_HTTP
