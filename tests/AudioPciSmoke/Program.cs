@@ -230,6 +230,16 @@ static class Test
         try { AudioWavePcm.DecodeStereo16(nonzeroPadding20); }
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject nonzero 20-in-24 padding bits");
+        byte[] invalidEncoder20 = (byte[])pcm20.Clone();
+        invalidEncoder20[0] = 1;
+        rejected = false;
+        try { AudioWavePcm.EncodeExtensiblePcm24AtRate(invalidEncoder20, 48000, 2, 20); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "encoder rejects nonzero 20-in-24 padding");
+        byte[] encoded16in24 = AudioWavePcm.EncodeExtensiblePcm24AtRate(pcm20, 48000, 2, 16);
+        byte[] decoded16in24 = AudioWavePcm.DecodeStereo16(encoded16in24);
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(decoded16in24[i] == pcm[i], "16-in-24 valid padding round-trip");
         byte[] invalidValidBits20 = (byte[])extensible20.Clone();
         invalidValidBits20[38] = 15;
         rejected = false;
@@ -724,6 +734,19 @@ static class Test
         try { AudioWavePcm.DecodeStereo16(nonzeroPadding32); }
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject nonzero 24-in-32 padding bits");
+        byte[] invalidEncoder32 = (byte[])pcm32valid24.Clone();
+        invalidEncoder32[0] = 1;
+        rejected = false;
+        try { AudioWavePcm.EncodeExtensiblePcm32AtRate(invalidEncoder32, 48000, 2, 24); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "encoder rejects nonzero 24-in-32 padding");
+        byte[] pcm32valid16 = (byte[])pcm32valid24.Clone();
+        for (int i = 0; i < pcm32valid16.Length; i += 4)
+            pcm32valid16[i + 1] = 0;
+        byte[] encoded16in32 = AudioWavePcm.EncodeExtensiblePcm32AtRate(pcm32valid16, 48000, 2, 16);
+        byte[] decoded16in32 = AudioWavePcm.DecodeStereo16(encoded16in32);
+        for (int i = 0; i < pcm.Length; i++)
+            Expect(decoded16in32[i] == pcm[i], "16-in-32 valid padding round-trip");
 
         byte[] stereo32 = AudioWavePcm.EncodePcm32AtRate(pcm32, 48000, 2);
         byte[] decoded32 = AudioWavePcm.DecodeStereo16(stereo32);

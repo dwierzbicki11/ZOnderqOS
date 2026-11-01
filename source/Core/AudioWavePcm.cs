@@ -325,6 +325,23 @@ namespace ZonderqOS.SystemCore
             return wave;
         }
 
+        // A reduced-valid-bits extensible WAV stores signed samples left-aligned.
+        // Do not emit a self-inconsistent fixture whose padding bits would be
+        // rejected by DecodeStereo16. Canonical encoders have a 44-byte header.
+        private static void CheckExtensiblePadding(byte[] wave, int containerBytes, int validBits)
+        {
+            int unusedBits = containerBytes * 8 - validBits;
+            if (unusedBits == 0) return;
+            int mask = (1 << unusedBits) - 1;
+            int dataEnd = 44 + (int)Read32(wave, 40);
+            for (int at = 44; at < dataEnd; at += containerBytes)
+            {
+                int low = wave[at] | (containerBytes == 4 ? wave[at + 1] << 8 : 0);
+                if ((low & mask) != 0)
+                    throw new ArgumentException("Nonzero extensible PCM padding bits.", nameof(wave));
+            }
+        }
+
         public static byte[] EncodeExtensibleStereo16AtRate(byte[] pcm, int sampleRate)
         {
             return ToExtensiblePcm(EncodeStereo16AtRate(pcm, sampleRate), 2, 16);
@@ -335,7 +352,9 @@ namespace ZonderqOS.SystemCore
         {
             if (validBits != 16 && validBits != 20 && validBits != 24)
                 throw new ArgumentOutOfRangeException(nameof(validBits));
-            return ToExtensiblePcm(EncodePcm24AtRate(pcm, sampleRate, channels), channels, validBits);
+            byte[] wave = EncodePcm24AtRate(pcm, sampleRate, channels);
+            CheckExtensiblePadding(wave, 3, validBits);
+            return ToExtensiblePcm(wave, channels, validBits);
         }
 
         /// <summary>Build 16/24/32 valid-bit PCM in a signed 32-bit container.</summary>
@@ -343,7 +362,9 @@ namespace ZonderqOS.SystemCore
         {
             if (validBits != 16 && validBits != 24 && validBits != 32)
                 throw new ArgumentOutOfRangeException(nameof(validBits));
-            return ToExtensiblePcm(EncodePcm32AtRate(pcm, sampleRate, channels), channels, validBits);
+            byte[] wave = EncodePcm32AtRate(pcm, sampleRate, channels);
+            CheckExtensiblePadding(wave, 4, validBits);
+            return ToExtensiblePcm(wave, channels, validBits);
         }
 
         /// <summary>Build a bounded mono PCM16 RIFF fixture without disk access.</summary>
