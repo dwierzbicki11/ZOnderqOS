@@ -84,10 +84,10 @@ class TaskManagerQmpContract(unittest.TestCase):
             size = screen_width * screen_height * 3
             before = bytearray(size)
             after = bytearray(size)
-            # Simulate a small real page change (64x64 pixels), much less
+            # Simulate a small real page change (96x96 pixels), much less
             # than 2.5% of the whole FHD desktop but >2.5% of the window.
-            for y in range(compact[1] + 70, compact[1] + 134):
-                for x in range(compact[0] + 100, compact[0] + 164):
+            for y in range(compact[1] + 70, compact[1] + 166):
+                for x in range(compact[0] + 100, compact[0] + 196):
                     after[(y * screen_width + x) * 3] = 255
             baseline = (screen_width, screen_height, bytes(before))
             changed = (screen_width, screen_height, bytes(after))
