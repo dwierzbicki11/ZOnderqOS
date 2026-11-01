@@ -17,6 +17,11 @@ class QmpKeyTests(unittest.TestCase):
         for command in ("tone", "wavtone", "mixdelay", "wavext20"):
             self.assertEqual(audio.playback_settle_seconds(command), 4)
 
+    def test_optional_icount_never_changes_default_qemu_clock(self):
+        self.assertEqual(audio.qemu_clock_options(False), [])
+        self.assertEqual(audio.qemu_clock_options(True),
+                         ["-icount", "shift=auto,sleep=on"])
+
     def test_volume_command_uses_qcode_spc_and_ret(self):
         qmp = audio.Qmp.__new__(audio.Qmp)
         events = []
