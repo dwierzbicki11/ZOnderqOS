@@ -308,9 +308,9 @@ jobs:
             audio-qemu-mixdelay-out/*.wav
             audio-qemu-mixdelay-out/*.ppm
             audio-qemu-mixqueue-out/*.log
-          audio-qemu-mixqueue-1ms-out/*.log
-          audio-qemu-mixqueue-1ms-out/*.wav
-          audio-qemu-mixqueue-1ms-out/*.ppm
+            audio-qemu-mixqueue-1ms-out/*.log
+            audio-qemu-mixqueue-1ms-out/*.wav
+            audio-qemu-mixqueue-1ms-out/*.ppm
             audio-qemu-mixqueue-out/*.wav
             audio-qemu-mixqueue-out/*.ppm
             audio-qemu-mixsequence-out/*.log
