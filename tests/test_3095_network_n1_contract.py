@@ -14,6 +14,23 @@ HTTP_VALIDATOR = (ROOT / "tests/verify_3095_network_n6.py").read_text()
 MAIN = (ROOT / "Kernel.cs").read_text()
 
 class NetworkN1Isolation(unittest.TestCase):
+    def test_n1_requires_real_driverkit_pci_binding_before_raw_tx(self):
+        source = SOURCE
+        helper = source.index("private static bool TryGetE1000EDriverKitHealth(")
+        health = source.index("candidate.Path == \"pci:0000:00:02.0\"", helper)
+        self.assertLess(helper, health)
+        n1 = source.index("E1000E PCI DriverKit binding invalid")
+        marker = source.index("DRIVER_BOUND=PASS node=", n1)
+        send = source.index("bool queued = NetworkManager.Send(frame, frame.Length);")
+        self.assertLess(n1, marker)
+        self.assertLess(marker, send)
+        self.assertIn("TryGetE1000EDriverKitHealth(out var n1DriverNode)", source[:send])
+        self.assertIn("irq_sources=", source[marker:send])
+        self.assertIn("handler_faults=0 isr_executions=unknown", source[marker:send])
+        verifier = (ROOT / "tests/verify_3095_network_n1.py").read_text()
+        self.assertIn("missing, duplicated or malformed E1000E DriverKit binding", verifier)
+        self.assertIn("invalid E1000E PCI resources or IRQ source registration", verifier)
+
     def test_n1_rechecks_live_e1000e_after_raw_tx(self):
         start = SOURCE.index("bool queued = NetworkManager.Send(frame, frame.Length);")
         check = SOURCE.index("NetworkAdapter txAdapter = NetworkManager.Primary;", start)

@@ -93,6 +93,17 @@ namespace ZonderqOS
             for (int i = 0; i < payload.Length; i++)
                 frame[14 + i] = payload[i];
 
+            // Prove the live PCI DriverKit binding, not just an adapter name.
+            // IRQ source registration is not proof of ISR execution.
+            if (!TryGetE1000EDriverKitHealth(out var n1DriverNode))
+            {
+                Log("[NET3095-N1][FAIL] E1000E PCI DriverKit binding invalid");
+                return;
+            }
+            Log("[NET3095-N1] DRIVER_BOUND=PASS node=" + n1DriverNode.Path +
+                " resources=" + n1DriverNode.HeldResourceCount +
+                " irq_sources=" + n1DriverNode.InterruptCount +
+                " handler_faults=0 isr_executions=unknown");
             bool queued = NetworkManager.Send(frame, frame.Length);
             Log("[NET3095-N1] TX_QUEUED=" + (queued ? "yes" : "no"));
             if (!queued)
@@ -556,7 +567,6 @@ namespace ZonderqOS
         }
 #endif
 
-#if ZONDERQ_NETWORK_N6_HTTP
         // Stock Cosmos 3.0.95 exposes DriverKit node snapshots, but NOT the
         // internal E1000EState.InterruptCount. A zero handler-fault count
         // therefore cannot prove that an ISR ran; the driver also polls.
@@ -584,6 +594,7 @@ namespace ZonderqOS
                 candidate.PublishedDeviceCount == 1 && candidate.InterruptCount >= 1;
         }
 
+#if ZONDERQ_NETWORK_N6_HTTP
         private static bool CheckE1000EDriverKitHealth(int expectedResources, int expectedIrqSources)
         {
             if (!TryGetE1000EDriverKitHealth(out var candidate) ||

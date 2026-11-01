@@ -20,6 +20,11 @@ ACCEPT = re.compile(r"^\[NET3095-N1\] PASS READY_LINK=(\d+)$")
 PAYLOAD = b"ZONDERQ3095TX"
 ETHER_TYPE = b"\x88\xb5"
 BROADCAST = b"\xff" * 6
+DRIVER = re.compile(
+    r"^\[NET3095-N1\] DRIVER_BOUND=PASS node=pci:0000:00:02\.0 "
+    r"resources=([0-9]+) irq_sources=([0-9]+) "
+    r"handler_faults=0 isr_executions=unknown$"
+)
 
 
 def validate_serial(data: str) -> bytes:
@@ -34,6 +39,13 @@ def validate_serial(data: str) -> bytes:
     found = [m for line in lines if (m := DISCOVER.fullmatch(line))]
     ready = [m for line in lines if (m := ACCEPT.fullmatch(line))]
     devices = [m for line in lines if (m := DEVICE.fullmatch(line))]
+    bindings = [m for line in lines if (m := DRIVER.fullmatch(line))]
+    binding_claims = [line for line in lines
+                      if line.startswith("[NET3095-N1] DRIVER_BOUND=")]
+    if len(bindings) != 1 or binding_claims != [bindings[0].group(0)]:
+        raise ValueError("missing, duplicated or malformed E1000E DriverKit binding")
+    if int(bindings[0].group(1)) < 1 or int(bindings[0].group(2)) < 1:
+        raise ValueError("invalid E1000E PCI resources or IRQ source registration")
     if len(found) != 1 or len(ready) != 1 or len(devices) != 1:
         raise ValueError("expected one inventory, ready count and E1000E")
     adapter_claims = [line for line in lines
@@ -51,6 +63,7 @@ def validate_serial(data: str) -> bytes:
         raise ValueError("invalid unicast MAC")
     offsets = [lines.index(BOOT), lines.index(found[0].group(0)),
                lines.index(devices[0].group(0)), lines.index(ready[0].group(0)),
+               lines.index(bindings[0].group(0)),
                lines.index(TX), lines.index(END)]
     if offsets != sorted(set(offsets)):
         raise ValueError("out-of-order or duplicated probe markers")
@@ -132,6 +145,7 @@ def self_test() -> None:
         "[NET3095-N1] discovered=1",
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
         "[NET3095-N1] PASS READY_LINK=1",
+        "[NET3095-N1] DRIVER_BOUND=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown",
         TX, END,
     ])
     frame = BROADCAST + bytes.fromhex("525400123456") + ETHER_TYPE + PAYLOAD
@@ -153,6 +167,11 @@ def self_test() -> None:
         serial.replace("ready=yes", "ready=no"),
         serial.replace("link=up", "link=down"),
         serial.replace("READY_LINK=1", "READY_LINK=0"),
+        serial.replace("[NET3095-N1] DRIVER_BOUND=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown", ""),
+        serial + "\n[NET3095-N1] DRIVER_BOUND=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown",
+        serial.replace("resources=8 irq_sources=1", "resources=0 irq_sources=1"),
+        serial.replace("resources=8 irq_sources=1", "resources=8 irq_sources=0"),
+        serial.replace("node=pci:0000:00:02.0", "node=pci:0000:00:03.0"),
         serial.replace(TX, "[NET3095-N1] TX_QUEUED=no"),
         serial.replace(TX + "\n", ""),
         serial.replace(END, ""),

@@ -234,7 +234,8 @@ def self_test() -> None:
     serial = "\n".join([
         "[NET3095-N1] BOOT", "[NET3095-N1] discovered=1",
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
-        "[NET3095-N1] PASS READY_LINK=1", "[NET3095-N1] TX_QUEUED=yes",
+        "[NET3095-N1] PASS READY_LINK=1",
+        "[NET3095-N1] DRIVER_BOUND=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown", "[NET3095-N1] TX_QUEUED=yes",
         "[NET3095-N1] DHCP=NOT_ATTEMPTED IP=UNASSIGNED",
         START, "[NET3095-N2] DHCP=PASS ip=10.0.2.15 mask=255.255.255.0 gateway=10.0.2.2"
     ])
