@@ -108,6 +108,10 @@ jobs:
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-out --boot-seconds 45 --command mixqueue
       - name: Boot and verify four nonperiodic PCM frequency steps through HDA
+        id: mixsequence
+        # Keep the failed capture as a real failure at the final gate, but
+        # continue independent WAV/volume boots instead of silently skipping them.
+        continue-on-error: true
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixsequence-out --boot-seconds 45 --command mixsequence
@@ -224,10 +228,10 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-muted-out --boot-seconds 45 --command tone --volume 0
-      - name: Enforce scheduled HDA queue quality gate
-        if: always() && steps.mixqueue.outcome == 'failure'
+      - name: Enforce scheduled HDA queue and sequence quality gates
+        if: always() && (steps.mixqueue.outcome == 'failure' || steps.mixsequence.outcome == 'failure')
         run: |
-          echo "::error::mixqueue real QEMU PCM timing/quality verification failed; see captured.wav artifact"
+          echo "::error::Scheduled mixqueue/mixsequence real QEMU PCM quality verification failed; see captured WAV artifacts"
           exit 1
       - name: Inspect potential 16KiB HDA ring replay (diagnostic, not IRQ proof)
         if: always()
