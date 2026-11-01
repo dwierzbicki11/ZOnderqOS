@@ -206,30 +206,7 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertLess(SOURCE.index('POST_STRESS_LINK=PASS'),
                         SOURCE.index('if (!CheckE1000EDriverKitHealth())'))
         self.assertIn('check_driver_health(serial)', health)
-        self.assertIn('isr_executions=unknown
-        # Require identical byte-varying formulas in the C# guest and
-        # Python host, including connection and position dependence.
-        # Uniform 1 KiB blocks can hide shifted/stale DMA fragments.
-        for term in ("offset * 37", "(offset / 90) * 11",
-                     "(offset / 1024) * 23", "attempt * 29"):
-            self.assertIn(term, SOURCE)
-        for term in ("offset * 37", "(offset // 90) * 11",
-                     "(offset // 1024) * 23", "attempt * 29"):
-            self.assertIn(term, HTTP_HOST)
-        self.assertIn("expected[prefix.Length + offset]", SOURCE)
-        self.assertIn("patterned_body(attempt)", HTTP_HOST)
-        self.assertIn("len(set(chunk)) > 50", HTTP_HOST)
-        self.assertNotIn("new string((char)(", SOURCE)
-        self.assertIn('readCalls++', SOURCE)
-        self.assertIn('if (read > largestRead)', SOURCE)
-        self.assertIn('HTTP_RX_STATS attempt=', SOURCE)
-        self.assertIn(
-            'check_rx_stats(serial)',
-            (ROOT / 'tests/verify_3095_network_n6_post_http.py').read_text())
-
-if __name__ == "__main__":
-    unittest.main(verbosity=2)
-, health)
+        self.assertIn('isr_executions=unknown$', health)
         self.assertIn('ISR-UNPROVEN', health)
         self.assertIn('python3 "$ROOT/tests/verify_3095_e1000e_irq_binding.py" "$LOG"', SMOKE)
         self.assertNotIn('binding.TryRequestInterrupt(', SOURCE)
