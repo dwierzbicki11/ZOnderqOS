@@ -105,6 +105,16 @@ internal static class IconDirectScaleSmoke
                             sizes[i, 3], x, y, pattern);
                         checks++;
                     }
+        // Extreme off-screen coordinates must be rejected before converting
+        // negative offsets to int or touching the framebuffer.
+        Canvas extreme = new Canvas(96, 80);
+        int[] tiny = Source(3, 3, 0);
+        Production(extreme, tiny, 3, 3, int.MinValue, 0, 40, 40);
+        Production(extreme, tiny, 3, 3, 0, int.MinValue, 40, 40);
+        Production(extreme, tiny, 3, 3, int.MaxValue, 0, 40, 40);
+        Production(extreme, tiny, 3, 3, 0, int.MaxValue, 40, 40);
+        if (extreme.DrawCalls != 0)
+            throw new Exception("Off-screen icon touched framebuffer");
         Console.WriteLine("Direct icon scaling: " + checks +
             " production C# pixel/call equivalence checks, including clipping and alpha.");
 
