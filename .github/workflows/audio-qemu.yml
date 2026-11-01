@@ -112,6 +112,23 @@ jobs:
           else
             echo '[AUDIO-QUEUE-DIAG] no WAV artifact available; not a playback PASS'
           fi
+      - name: Experimental HDA output-only codec mixqueue A/B (not a replacement gate)
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-output-only-out \
+            --boot-seconds 45 --command mixqueue --output-only
+      - name: Diagnose output-only codec PCM separately from mandatory duplex baseline
+        if: always()
+        run: |
+          if [ -s audio-qemu-mixqueue-output-only-out/captured.wav ]; then
+            python3 tools/analyze-audio-queue-dropouts.py audio-qemu-mixqueue-output-only-out/captured.wav
+            python3 tools/analyze-audio-hda-replay.py audio-qemu-mixqueue-output-only-out/captured.wav
+          else
+            echo '[AUDIO-QUEUE-OUTPUT-ONLY] no WAV artifact; diagnostic inconclusive'
+          fi
+          echo '[AUDIO-QUEUE-OUTPUT-ONLY] diagnostic only; duplex mixqueue quality gate remains mandatory'
       - name: Experimental mixqueue TCG icount A/B (diagnostic, not a replacement gate)
         if: always()
         continue-on-error: true
@@ -222,6 +239,7 @@ jobs:
           tail -n 200 audio-qemu-mix-out/serial.log audio-qemu-mix-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-mixdelay-out/serial.log audio-qemu-mixdelay-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-mixqueue-out/serial.log audio-qemu-mixqueue-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-mixqueue-output-only-out/serial.log audio-qemu-mixqueue-output-only-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-wav-out/serial.log audio-qemu-wav-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-mono-out/serial.log audio-qemu-mono-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-44100-out/serial.log audio-qemu-44100-out/qemu.stderr.log 2>/dev/null || true
@@ -264,6 +282,9 @@ jobs:
             audio-qemu-mixqueue-out/*.log
             audio-qemu-mixqueue-out/*.wav
             audio-qemu-mixqueue-out/*.ppm
+            audio-qemu-mixqueue-output-only-out/*.log
+            audio-qemu-mixqueue-output-only-out/*.wav
+            audio-qemu-mixqueue-output-only-out/*.ppm
             audio-qemu-mixqueue-icount-out/*.log
             audio-qemu-mixqueue-icount-out/*.wav
             audio-qemu-mixqueue-icount-out/*.ppm
