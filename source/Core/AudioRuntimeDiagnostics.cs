@@ -146,7 +146,11 @@ namespace ZonderqOS.SystemCore
         /// </summary>
         public static bool PlayScheduledMixedTestTones()
         {
-            return PlayScheduledMixedTestTones(false);
+            // Real QEMU HDA capture on 3.0.95 verified the stock scheduler-
+            // thread AudioPlayback path while boot-thread ring feeding replayed
+            // stale DMA data. Keep the direct 1ms path opt-in for diagnosis.
+            // STARTED is not proof of audible output: CI checks captured WAV.
+            return PlayScheduledMixedTestTones(false, true);
         }
 
         /// <summary>
@@ -210,7 +214,9 @@ namespace ZonderqOS.SystemCore
         /// </summary>
         public static bool PlayFrequencySequenceTestTones()
         {
-            return PlayFrequencySequenceTestTones(false);
+            // Match the measured scheduler-thread path used by mixqueue.
+            // The 1ms boot-thread experiment remains separately selectable.
+            return PlayFrequencySequenceTestTones(false, true);
         }
 
         public static bool PlayFrequencySequenceTestTonesAsync()

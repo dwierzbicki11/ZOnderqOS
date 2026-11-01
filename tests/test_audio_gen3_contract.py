@@ -223,6 +223,20 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("--command mixqueue1ms", workflow)
         self.assertIn("stock mixqueue remains mandatory", workflow)
 
+    def test_scheduled_pcm_defaults_to_stock_scheduler_thread(self):
+        runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
+        queue = runtime.split("public static bool PlayScheduledMixedTestTones()", 1)[1].split(
+            "public static bool PlayScheduledMixedTestTonesAsync()", 1)[0]
+        sequence = runtime.split("public static bool PlayFrequencySequenceTestTones()", 1)[1].split(
+            "public static bool PlayFrequencySequenceTestTonesAsync()", 1)[0]
+        self.assertIn("return PlayScheduledMixedTestTones(false, true);", queue)
+        self.assertIn("return PlayFrequencySequenceTestTones(false, true);", sequence)
+        self.assertIn("AudioPlayback.TryStart(output,", runtime)
+        self.assertIn("if (useOneMillisecondDiagnostic)", runtime)
+        self.assertIn("if (useAsyncDiagnostic)", runtime)
+        self.assertLess(runtime.index("if (useOneMillisecondDiagnostic)"),
+                        runtime.index("if (useAsyncDiagnostic)"))
+
     def test_real_pcm_path_is_opt_in_only(self):
         runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
         kernel = read("Kernel.cs")
