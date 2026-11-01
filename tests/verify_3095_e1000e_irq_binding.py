@@ -29,6 +29,8 @@ STREAM = re.compile(r"^\[NET3095-N6\] HTTP_DRIVER_STABLE=PASS attempt=([1-6]) "
                     r"resources=(\d+) irq_sources=(\d+)$")
 BURST = re.compile(r"^\[NET3095-N6\] TX_DRIVER_STABLE=PASS count=128 checks=5 "
                    r"resources=(\d+) irq_sources=(\d+)$")
+TX_CHECK = re.compile(r"^\[NET3095-N6\] TX_DRIVER_CHECK=PASS sent=(\d+) "
+                      r"resources=(\d+) irq_sources=(\d+)$")
 
 
 def check_guest_line(serial: str) -> str:
@@ -103,18 +105,35 @@ def check_driver_health(serial: str) -> str:
     # proof of DMA or IRQ execution; the independent PCAP validates TX.
     burst_claims = [line for line in lines
                     if line.startswith("[NET3095-N6] TX_DRIVER_STABLE")]
+    burst_start = "[NET3095-N6] TX_BURST_ATTEMPT=START count=128"
     burst_queued = "[NET3095-N6] TX_BURST=QUEUED count=128"
     post_burst = "[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START"
-    if (len(burst_claims) != 1 or lines.count(burst_queued) != 1 or
-            lines.count(post_burst) != 1):
+    if (len(burst_claims) != 1 or lines.count(burst_start) != 1 or
+            lines.count(burst_queued) != 1 or lines.count(post_burst) != 1):
         raise ValueError("missing/duplicate TX DriverKit ownership checkpoint")
     burst = BURST.fullmatch(burst_claims[0])
     if (burst is None or burst.group(1) != resources or
             burst.group(2) != sources or not
-            (lines.index(baseline_lines[0]) < lines.index(burst_queued) <
-             lines.index(burst_claims[0]) < lines.index(post_burst) <
-             lines.index(claims[0]))):
+            (lines.index(baseline_lines[0]) < lines.index(burst_start) <
+             lines.index(burst_queued) < lines.index(burst_claims[0]) <
+             lines.index(post_burst) < lines.index(claims[0]))):
         raise ValueError("TX DriverKit ownership changed or checkpoint out of order")
+    # A summary claiming checks=5 is insufficient: require five individual
+    # read-only DriverDiagnostics snapshots across the 32-slot TX ring.
+    tx_checks = [line for line in lines
+                 if line.startswith("[NET3095-N6] TX_DRIVER_CHECK")]
+    if len(tx_checks) != 5:
+        raise ValueError("missing or duplicate individual TX DriverKit checkpoints")
+    previous_check = lines.index(burst_start)
+    for expected_sent, claim in zip((0, 32, 64, 96, 128), tx_checks):
+        checkpoint = TX_CHECK.fullmatch(claim)
+        if (checkpoint is None or int(checkpoint.group(1)) != expected_sent or
+                checkpoint.group(2) != resources or checkpoint.group(3) != sources):
+            raise ValueError("invalid TX DriverKit checkpoint count or ownership")
+        check_index = lines.index(claim)
+        if not previous_check < check_index < lines.index(burst_queued):
+            raise ValueError("TX DriverKit checkpoints missing or out of order")
+        previous_check = check_index
     # Require six independent, ordered ownership snapshots. A single final
     # snapshot cannot detect a resource/IRQ registration that churned and
     # recovered between TCP sessions. These remain source counts, not ISRs.
@@ -135,6 +154,9 @@ def check_driver_health(serial: str) -> str:
         if not (previous_nic_index < stream_index < nic_index <
                 lines.index(claims[0])):
             raise ValueError("per-stream DriverKit snapshots out of order")
+        if (attempt <= 2 and nic_index >= lines.index(burst_start)) or (
+                attempt >= 3 and stream_index <= lines.index(post_burst)):
+            raise ValueError("HTTP DriverKit snapshot on wrong side of TX burst")
         previous_nic_index = nic_index
     if any("[NET3095-N6][FAIL]" in line for line in lines):
         raise ValueError("guest reported N6 failure despite DriverKit marker")
@@ -168,6 +190,11 @@ def self_test() -> None:
             f"[NET3095-N6] HTTP_DRIVER_STABLE=PASS attempt={attempt} resources=8 irq_sources=1\n"
             f"[NET3095-N6] HTTP_NIC_STABLE=PASS attempt={attempt}\n"
             for attempt in range(1, 3)
+        )
+        + "[NET3095-N6] TX_BURST_ATTEMPT=START count=128\n"
+        + "".join(
+            f"[NET3095-N6] TX_DRIVER_CHECK=PASS sent={count} resources=8 irq_sources=1\n"
+            for count in (0, 32, 64, 96, 128)
         )
         + "[NET3095-N6] TX_BURST=QUEUED count=128\n"
         + "[NET3095-N6] TX_DRIVER_STABLE=PASS count=128 checks=5 resources=8 irq_sources=1\n"
@@ -245,6 +272,9 @@ def self_test() -> None:
     burst_marker = ("[NET3095-N6] TX_DRIVER_STABLE=PASS count=128 checks=5 "
                     "resources=8 irq_sources=1\n")
     burst_queued = "[NET3095-N6] TX_BURST=QUEUED count=128\n"
+    burst_start = "[NET3095-N6] TX_BURST_ATTEMPT=START count=128\n"
+    check32 = "[NET3095-N6] TX_DRIVER_CHECK=PASS sent=32 resources=8 irq_sources=1\n"
+    check64 = "[NET3095-N6] TX_DRIVER_CHECK=PASS sent=64 resources=8 irq_sources=1\n"
     bad_health += (
         serial.replace(burst_marker, ""),
         serial + burst_marker,
@@ -253,6 +283,17 @@ def self_test() -> None:
         serial.replace(burst_marker, burst_marker.replace("checks=5", "checks=4")),
         serial.replace(burst_queued, ""),
         serial.replace(burst_queued + burst_marker, burst_marker + burst_queued),
+        serial.replace(burst_start, ""),
+        serial + burst_start,
+        serial.replace(check32, ""),
+        serial + check32,
+        serial.replace(check32, check32.replace("sent=32", "sent=33")),
+        serial.replace(check32, check32.replace("resources=8", "resources=9")),
+        serial.replace(check32, check32.replace("irq_sources=1", "irq_sources=2")),
+        serial.replace(check32 + check64, check64 + check32),
+        serial.replace(check64, check64.replace("TX_DRIVER_CHECK=PASS", "TX_DRIVER_CHECK=FAIL")),
+        serial.replace(check32, "").replace(burst_queued, burst_queued + check32),
+        serial.replace(burst_start, "").replace(burst_queued, burst_queued + burst_start),
     )
     for bad in bad_health:
         try:
