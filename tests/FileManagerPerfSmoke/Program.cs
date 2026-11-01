@@ -485,11 +485,36 @@ internal static class Program
             for (int i = 0; i < source.Length; i++)
                 Assert(object.ReferenceEquals(expected[i], actual[i]),
                     "sparse inversions stable order swaps=" + swaps + " i=" + i);
+            if (swaps <= ZonderqOS.GUI.Apps.FileEntrySorter.MaxLocalInversions)
+                Assert(scratch == null, "sparse local repair allocated scratch swaps=" + swaps);
+            else
+                Assert(scratch != null, "over-budget sparse inversions did not use merge");
             if (scratch != null)
                 for (int i = 0; i < source.Length; i++)
                     Assert(scratch[i] == null, "sparse inversion scratch retained entry");
         }
-        Console.WriteLine("PASS: 6 sparse-swap cases (5..32), exact stable references");
+        // Repeated directory refreshes should not allocate after warming,
+        // even when sixteen independent names move in the snapshot.
+        var repeated = MakeSparseSwaps(16);
+        var work = new List<ZonderqOS.GUI.Apps.FileEntry>(repeated.Length);
+        ZonderqOS.GUI.Apps.FileEntry[] warmScratch = null;
+        for (int i = 0; i < 8; i++)
+        {
+            work.Clear();
+            work.AddRange(repeated);
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(work, ref warmScratch);
+        }
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 64; i++)
+        {
+            work.Clear();
+            work.AddRange(repeated);
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(work, ref warmScratch);
+        }
+        long bytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        Assert(bytes == 0, "sixteen-swap refresh allocated " + bytes + " B");
+        Assert(warmScratch == null, "sixteen-swap refresh allocated scratch");
+        Console.WriteLine("PASS: 6 sparse-swap cases (5..32), exact stable references; 16-swap refresh 0 B warm allocations");
     }
 
     private static void BenchmarkSparseSwaps()
