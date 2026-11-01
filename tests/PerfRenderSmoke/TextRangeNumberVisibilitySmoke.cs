@@ -50,6 +50,20 @@ internal static class TextRangeNumberVisibilitySmoke
         }
     }
 
+    private static void PreviousInt(Canvas canvas, long value, int x, int y, Color color)
+    {
+        if (value >= 0)
+        {
+            PreviousUInt(canvas, (ulong)value, x, y, color);
+            return;
+        }
+        DrawChar(canvas, '-', x, y, color);
+        ulong magnitude = value == long.MinValue
+            ? ((ulong)long.MaxValue + 1UL)
+            : (ulong)(-value);
+        PreviousUInt(canvas, magnitude, x + 6, y, color);
+    }
+
     private static void Compare(Canvas expected, Canvas actual, string label,
         bool allowFewerCalls = false)
     {
@@ -116,7 +130,19 @@ internal static class TextRangeNumberVisibilitySmoke
         }
         if (reduced < 3)
             throw new Exception("Numeric clipping did not reduce Canvas calls");
-        Console.WriteLine("Text range/number: 37 visible and 7 partial numeric framebuffer comparisons.");
+        // Signed numbers have a separate minus-sign entry point; preserve
+        // its pixels while culling fully hidden signs and magnitudes.
+        foreach (long value in new[] { long.MinValue, -123456789L, -42L })
+            foreach (int x in offsets)
+            {
+                Canvas oldFrame = new Canvas(128, 48);
+                Canvas newFrame = new Canvas(128, 48);
+                PreviousInt(oldFrame, value, x, 0, Color.White);
+                SmallTextRenderer.DrawInt(newFrame, value, x, 0, Color.White);
+                Compare(oldFrame, newFrame, "partial signed " + value + "/" + x, true);
+            }
+        Console.WriteLine("Text range/number: 37 visible, 7 unsigned and 21 signed " +
+            "partial framebuffer comparisons.");
     }
 
     private static void VerifyOffscreen()
@@ -139,7 +165,16 @@ internal static class TextRangeNumberVisibilitySmoke
         // No pixels, no Canvas calls and no NullReferenceException.
         SmallTextRenderer.DrawRange(null, text, 2, 20, 0, 0, Color.White);
         SmallTextRenderer.DrawUInt(null, 42, 0, 0, Color.White);
-        Console.WriteLine("Text range/number: 16 offscreen culls and 2 null-canvas guards.");
+        SmallTextRenderer.DrawInt(null, -42, 0, 0, Color.White);
+        foreach (int x in new[] { int.MinValue, int.MaxValue })
+        {
+            Canvas extreme = new Canvas(128, 48);
+            SmallTextRenderer.DrawInt(extreme, long.MinValue, x, 0, Color.White);
+            if (extreme.DrawCalls != 0)
+                throw new Exception("Extreme signed number reached Canvas");
+        }
+        Console.WriteLine("Text range/number: 16 offscreen culls, 2 signed extreme " +
+            "guards and 3 null-canvas guards.");
     }
 
     private static double TimeRange(bool optimized, Canvas canvas, string text, int repetitions, int x)
