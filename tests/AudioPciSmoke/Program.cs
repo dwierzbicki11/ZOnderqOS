@@ -1301,6 +1301,43 @@ static class Test
         try { AudioPcmMixer.MixStereo16(mixA, mixB, 100, 101); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "mix rejects second gain over 100");
+        // Delayed mixing must preserve whole PCM frames and source immutability.
+        // Frame zero is first-only; frame one overlaps; frame two is second-only.
+        byte[] delayed = AudioPcmMixer.MixStereo16WithDelay(mixA, mixB, 100, 100, 1);
+        Expect(delayed.Length == 12, "one-frame delay extends mixed duration");
+        Expect(BitConverter.ToInt16(delayed, 0) == 32767 &&
+            BitConverter.ToInt16(delayed, 2) == -32768, "delay preserves first-only frame");
+        Expect(BitConverter.ToInt16(delayed, 4) == 10001 &&
+            BitConverter.ToInt16(delayed, 6) == 9999, "delay mixes only overlapping frame");
+        Expect(BitConverter.ToInt16(delayed, 8) == 10000 &&
+            BitConverter.ToInt16(delayed, 10) == -10000, "delay preserves second-only tail");
+        Expect(mixA.AsSpan().SequenceEqual(mixACopy) &&
+            mixB.AsSpan().SequenceEqual(mixBCopy), "delay leaves both inputs unchanged");
+        Expect(AudioPcmMixer.MixStereo16WithDelay(mixA, mixB, 100, 100, 0)
+            .AsSpan().SequenceEqual(mixed), "zero-delay mixing is byte-exact with legacy API");
+        byte[] delayedNoOverlap = AudioPcmMixer.MixStereo16WithDelay(
+            mixA, mixB, 100, 100, 2);
+        Expect(delayedNoOverlap.Length == 16 &&
+            BitConverter.ToInt16(delayedNoOverlap, 8) == 1 &&
+            BitConverter.ToInt16(delayedNoOverlap, 10) == -1,
+            "non-overlapping clips retain independent samples");
+        byte[] delayedBoundary = AudioPcmMixer.MixStereo16WithDelay(
+            new byte[4], new byte[4], 100, 100, 95999);
+        Expect(delayedBoundary.Length == 384000, "delay accepts exact two-second boundary");
+        rejected = false;
+        try { AudioPcmMixer.MixStereo16WithDelay(mixA, mixB, 100, 100, -1); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "delay rejects negative frame offset");
+        rejected = false;
+        try { AudioPcmMixer.MixStereo16WithDelay(mixA, mixB, 100, 100, 96000); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "delay rejects clip extending beyond output budget");
+        rejected = false;
+        try { AudioPcmMixer.MixStereo16WithDelay(new byte[384000], new byte[4],
+            100, 100, 1); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "delay refuses truncation of second clip");
+
         // Reproduce the exact two independent 440/880 Hz sources used by
         // the isolated QEMU 'mix' command, then compare every PCM byte with
         // the already validated true-stereo reference generator.
