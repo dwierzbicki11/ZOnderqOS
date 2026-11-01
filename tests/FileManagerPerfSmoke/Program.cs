@@ -313,6 +313,27 @@ internal static class Program
             }
         }
 
+        // Adversarial input: the last eight suffix pairs look sorted, but
+        // there is another inversion earlier in that suffix. The sampling
+        // gate must NOT mistake it for two sorted runs.
+        var adversarial = new List<ZonderqOS.GUI.Apps.FileEntry>(64);
+        for (int i = 32; i < 64; i++)
+            adversarial.Add(new ZonderqOS.GUI.Apps.FileEntry("file" + i.ToString("D6"), false));
+        for (int i = 0; i < 32; i++)
+            adversarial.Add(new ZonderqOS.GUI.Apps.FileEntry("file" + i.ToString("D6"), false));
+        var swapped = adversarial[40];
+        adversarial[40] = adversarial[41];
+        adversarial[41] = swapped;
+        var adversarialExpected = new List<ZonderqOS.GUI.Apps.FileEntry>(adversarial);
+        LegacySort(adversarialExpected);
+        ZonderqOS.GUI.Apps.FileEntry[] adversarialScratch = null;
+        ZonderqOS.GUI.Apps.FileEntrySorter.Sort(adversarial, ref adversarialScratch);
+        for (int i = 0; i < adversarial.Count; i++)
+            Assert(object.ReferenceEquals(adversarialExpected[i], adversarial[i]),
+                "sampled-tail false positive at i=" + i);
+        Assert(adversarialScratch != null && adversarialScratch[0] == null,
+            "sampled-tail fallback did not clear scratch");
+
         // A warm two-run merge must reuse both the caller's List and its
         // scratch buffer, with no per-refresh allocations.
         const int count = 2048;
