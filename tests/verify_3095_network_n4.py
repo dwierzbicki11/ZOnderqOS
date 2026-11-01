@@ -30,12 +30,12 @@ PORT = 18095
 # serial marker. Only reconstruct this EXACT known N4 start tear; arbitrary
 # inserted text, malformed markers and duplicates remain hard failures.
 TCP_SCHED_TEAR = re.compile(
-    r"(?m)^\\[NET3095-N4\\] TCP\\[SCHED\\] Tick [0-9]+ enabled=1\\n_ATTEMPT=START$"
+    r"(?m)^\[NET3095-N4\] TCP\[SCHED\] Tick [0-9]+ enabled=1\n_ATTEMPT=START$"
 )
 
 
 def normalize_tcp_serial(serial: str) -> str:
-    return TCP_SCHED_TEAR.sub(TCP_START, serial.replace("\\r", ""))
+    return TCP_SCHED_TEAR.sub(TCP_START, serial.replace("\r", ""))
 
 
 def tcp_frame(frame: bytes):
