@@ -8,6 +8,7 @@ on:
       - 'tests/test_3094_responsive_gui.py'
       - 'tests/GuiScrollBarSmoke/**'
       - 'tests/test_gui_modified_keys.py'
+      - 'tests/test_gui_taskmanager_tiny_view.py'
       - 'tests/test_3094_storage_policy.py'
       - 'tools/qmp-gui-login.py'
       - 'tools/qmp-gui-filemanager.py'
@@ -40,6 +41,7 @@ jobs:
         run: |
           python3 tests/test_3094_responsive_gui.py
           python3 tests/test_gui_modified_keys.py
+          python3 tests/test_gui_taskmanager_tiny_view.py
       - name: Exercise QMP framebuffer diff parser with synthetic PPM images
         run: |
           python3 tests/test_qmp_gui_filemanager.py
