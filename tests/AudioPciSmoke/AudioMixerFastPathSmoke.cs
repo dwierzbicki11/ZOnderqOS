@@ -28,6 +28,32 @@ internal static class AudioMixerFastPathSmoke
         }
         return output;
     }
+    // Independent pre-fast-path reference: sum signed PCM contributions,
+    // then saturate once, including silent gaps and an optional silent tail.
+    private static byte[] LegacyScheduled(
+        byte[][] clips, int[] starts, int[] gains, int tailFrames)
+    {
+        int length = 0;
+        for (int i = 0; i < clips.Length; i++)
+            length = Math.Max(length, starts[i] * 4 + clips[i].Length);
+        byte[] output = new byte[length + tailFrames * 4];
+        for (int at = 0; at < length; at += 2)
+        {
+            int sum = 0;
+            for (int i = 0; i < clips.Length; i++)
+            {
+                int sourceAt = at - starts[i] * 4;
+                if (sourceAt < 0 || sourceAt >= clips[i].Length) continue;
+                int sample = (short)(clips[i][sourceAt] | (clips[i][sourceAt + 1] << 8));
+                sum += sample * gains[i] / 100;
+            }
+            sum = Math.Min(short.MaxValue, Math.Max(short.MinValue, sum));
+            output[at] = (byte)sum;
+            output[at + 1] = (byte)(sum >> 8);
+        }
+        return output;
+    }
+
     private static void Same(byte[] a, byte[] b, string message)
         => Check(a.AsSpan().SequenceEqual(b), message);
 
@@ -94,6 +120,63 @@ internal static class AudioMixerFastPathSmoke
             "zero-fade fast path preserves the HDA drain");
         zeroFadeResult[2400 * 4] ^= 0xff;
         Same(owned, originalOwned, "zero-fade output may not alias source PCM");
+
+        // Unsorted disjoint schedules, adjacent boundaries, overlaps and
+        // non-unity gains must all retain the exact pre-optimization samples.
+        for (int scenario = 0; scenario < 80; scenario++)
+        {
+            int count = 1 + scenario % 8;
+            byte[][] clips = new byte[count][];
+            byte[][] originals = new byte[count][];
+            int[] starts = new int[count];
+            int[] gains = new int[count];
+            int[] noFades = new int[count];
+            for (int i = 0; i < count; i++)
+            {
+                int frames = 1 + random.Next(1, 65);
+                clips[i] = new byte[frames * 4];
+                random.NextBytes(clips[i]);
+                originals[i] = (byte[])clips[i].Clone();
+                // Alternate disjoint (including exact adjacency) with
+                // overlapping schedules. Reverse ordering in disjoint cases.
+                starts[i] = scenario % 2 == 0
+                    ? (count - 1 - i) * 80
+                    : i * 12;
+                gains[i] = scenario % 3 == 0 ? 100
+                    : scenario % 3 == 1 ? 25 : (i % 2 == 0 ? 100 : 0);
+            }
+            int tail = scenario % 2 == 0 ? 4096 : 0;
+            byte[] expected = LegacyScheduled(clips, starts, gains, tail);
+            byte[] scheduled = AudioPcmMixer.MixScheduledStereo16(clips, starts, gains);
+            Same(scheduled, LegacyScheduled(clips, starts, gains, 0),
+                "random scheduled PCM matches independent reference");
+            Same(AudioPcmMixer.MixScheduledStereo16WithFade(
+                    clips, starts, gains, 0, tail),
+                expected, "random zero-fade PCM matches reference and tail");
+            Same(AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+                    clips, starts, gains, noFades, tail),
+                expected, "random per-clip zero-fade PCM matches reference and tail");
+            for (int i = 0; i < count; i++)
+                Same(clips[i], originals[i], "schedule cannot mutate source clips");
+            scheduled[0] ^= 0xff;
+            for (int i = 0; i < count; i++)
+                Same(clips[i], originals[i], "schedule output must not alias input");
+        }
+        // A boundary shared by two clips is disjoint, while a one-frame
+        // overlap must still take the saturating arithmetic path.
+        byte[][] edgeClips = {
+            new byte[] { 0xff, 0x7f, 0x00, 0x80 },
+            new byte[] { 0xff, 0x7f, 0x00, 0x80 }
+        };
+        int[] edgeGains = { 100, 100 };
+        foreach (int[] edgeStarts in new[] {
+            new[] { 1, 0 }, new[] { 0, 0 }, new[] { 0, 1 }
+        })
+        {
+            Same(AudioPcmMixer.MixScheduledStereo16(edgeClips, edgeStarts, edgeGains),
+                LegacyScheduled(edgeClips, edgeStarts, edgeGains, 0),
+                "adjacent/overlapping clips preserve exact PCM");
+        }
 
         byte[] a = { 0xff, 0x7f, 0x00, 0x80 };
         byte[] b = { 0x34, 0x12, 0x78, 0x56 };
