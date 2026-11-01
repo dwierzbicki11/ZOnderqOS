@@ -472,6 +472,37 @@ internal static class Program
         return entries;
     }
 
+    private static void VerifyDenseSwapsFallback()
+    {
+        foreach (int swaps in new[] { 4, 8, 16 })
+        {
+            const int count = 2048;
+            var source = new ZonderqOS.GUI.Apps.FileEntry[count];
+            for (int i = 0; i < count; i++)
+                source[i] = new ZonderqOS.GUI.Apps.FileEntry("file" + i.ToString("D6"), false);
+            for (int i = 0; i < swaps; i++)
+            {
+                int at = i * 2 + 2;
+                var tmp = source[at];
+                source[at] = source[at + 1];
+                source[at + 1] = tmp;
+            }
+            var expected = new List<ZonderqOS.GUI.Apps.FileEntry>(source);
+            var actual = new List<ZonderqOS.GUI.Apps.FileEntry>(source);
+            LegacySort(expected);
+            ZonderqOS.GUI.Apps.FileEntry[] scratch = null;
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(actual, ref scratch);
+            Assert(scratch != null, "dense inversion scan did not fall back to merge");
+            for (int i = 0; i < count; i++)
+            {
+                Assert(object.ReferenceEquals(expected[i], actual[i]),
+                    "dense inversion fallback stable reference swaps=" + swaps + " i=" + i);
+                Assert(scratch[i] == null, "dense inversion fallback retained old entry");
+            }
+        }
+        Console.WriteLine("PASS: dense-inversion early merge fallback, stable order and cleared scratch");
+    }
+
     private static void VerifySparseSwaps()
     {
         foreach (int swaps in new[] { 5, 8, 12, 16, 32, 33, 64 })
@@ -967,6 +998,7 @@ internal static class Program
         VerifyAlreadySortedFastPath();
         VerifyAdaptiveRepair();
         VerifySparseSwaps();
+        VerifyDenseSwapsFallback();
         VerifyTwoRunMerge();
         VerifyDescendingFastPath();
         BenchmarkAdaptiveRepair();
