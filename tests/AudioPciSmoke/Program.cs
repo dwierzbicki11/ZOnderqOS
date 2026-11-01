@@ -1408,6 +1408,22 @@ static class Test
             new[] { mixA, mixB }, new[] { 0, 1 }, new[] { 100, 100 });
         Expect(scheduledTwo.AsSpan().SequenceEqual(delayed),
             "two-source schedule matches existing delayed mixer byte-for-byte");
+        // Regression: an HDA startup pre-roll must preserve the exact
+        // scheduled sample positions without introducing extra audio.
+        const int preRollFrames = 12000; // 250 ms at 48 kHz
+        byte[] preRolled = AudioPcmMixer.MixScheduledStereo16(
+            new[] { mixA, mixB }, new[] { preRollFrames, preRollFrames + 1 },
+            new[] { 100, 100 });
+        Expect(preRolled.Length == preRollFrames * 4 + delayed.Length,
+            "HDA pre-roll extends the scheduled output by exactly 250ms");
+        bool leadingSilence = true;
+        for (int at = 0; at < preRollFrames * 4; at++)
+        {
+            if (preRolled[at] != 0) { leadingSilence = false; break; }
+        }
+        Expect(leadingSilence, "HDA pre-roll contains only silent PCM frames");
+        Expect(preRolled.AsSpan(preRollFrames * 4).SequenceEqual(delayed),
+            "HDA pre-roll preserves the complete mixed PCM waveform");
         byte[] thirdScheduled = AudioPcmMixer.MixScheduledStereo16(
             new[] { mixA, mixB, positive30000 },
             new[] { 0, 1, 3 }, new[] { 100, 50, 50 });
