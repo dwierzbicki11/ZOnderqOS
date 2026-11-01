@@ -79,6 +79,11 @@ def playback_settle_seconds(command):
     return 8 if command == "mixqueue" else 4
 
 
+def qemu_hda_codec(output_only):
+    """Opt-in output-only HDA codec A/B; default duplex stays unchanged."""
+    return "hda-output" if output_only else "hda-duplex"
+
+
 def qemu_clock_options(icount_auto):
     """Keep default QEMU timebase unchanged; experimental TCG A/B is opt-in."""
     return ["-icount", "shift=auto,sleep=on"] if icount_auto else []
@@ -133,6 +138,8 @@ def main():
     parser.add_argument("iso", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--boot-seconds", type=int, default=35)
+    parser.add_argument("--output-only", action="store_true",
+                        help="diagnostic HDA output-only codec A/B; default remains duplex")
     parser.add_argument("--icount-auto", action="store_true",
                         help="experimental TCG virtual clock pacing; diagnostic only")
     parser.add_argument("--command", choices=("tone", "stereosplit", "mix", "mixdelay", "mixqueue", "wavtone", "wavmono", "wav44", "wav8k", "wav11k", "wav16k", "wav22k", "wav24k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
@@ -173,7 +180,7 @@ def main():
         "-serial", f"file:{out / 'serial.log'}",
         "-qmp", f"unix:{qmp_socket},server=on,wait=off",
         "-audiodev", f"wav,id=audio0,path={wav}",
-        "-device", "intel-hda", "-device", "hda-duplex,audiodev=audio0",
+        "-device", "intel-hda", "-device", qemu_hda_codec(args.output_only) + ",audiodev=audio0",
         "-no-reboot", "-no-shutdown",
     ]
     # Diagnostic A/B for HDA DMA refill under TCG; never changes default
