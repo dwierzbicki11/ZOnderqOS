@@ -76,7 +76,7 @@ namespace ZonderqOS.GUI.Apps
         // cross the client boundary and share this count with hit-testing.
         internal int ToolbarButtonCountForView => Math.Min(4,
             Math.Max(0, (view.Width - 44) / 42 + 1));
-        internal int GridWidthForView => Math.Max(TileWidth, view.Width - SidebarWidthForView - 12);
+        internal int GridWidthForView => Math.Max(1, view.Width - SidebarWidthForView - 12);
         internal int GridHeightForView => Math.Max(40, view.Height - FooterHeight - ContentTop - 8);
         // Use a final partial row only when >=40px is available. Compact
         // tiles fit inside that space; smaller fragments stay noninteractive.
@@ -1594,7 +1594,8 @@ namespace ZonderqOS.GUI.Apps
         private void Grid(Canvas canvas, int x, int y, int width, int height)
         {
             int iconSize = 42;
-            int labelWidth = 88;
+            int tileWidth = Math.Min(FileManagerApp.TileWidth, width);
+            int labelWidth = Math.Min(88, Math.Max(1, tileWidth - 12));
             int labelHeight = 18;
             int cols = Math.Max(1, (width + FileManagerApp.TileGap) /
                 (FileManagerApp.TileWidth + FileManagerApp.TileGap));
@@ -1619,35 +1620,36 @@ namespace ZonderqOS.GUI.Apps
                 if (index == app.SelectedIndex)
                 {
                     canvas.DrawFilledRectangle(Color.FromArgb(41, 66, 87), tileX, tileY,
-                        FileManagerApp.TileWidth, visibleTileHeight);
+                        tileWidth, visibleTileHeight);
                     canvas.DrawRectangle(Accent, tileX, tileY,
-                        FileManagerApp.TileWidth, visibleTileHeight);
-                    canvas.DrawFilledRectangle(Accent, tileX, tileY, 3, visibleTileHeight);
+                        tileWidth, visibleTileHeight);
+                    canvas.DrawFilledRectangle(Accent, tileX, tileY, Math.Min(3, tileWidth), visibleTileHeight);
                 }
 
-                if (visibleTileHeight < iconSize + 33)
+                if (visibleTileHeight < iconSize + 33 || tileWidth < 88)
                 {
-                    // A 320x220 window leaves a 40px grid. The full-size
-                    // icon and two-line label would spill into the footer.
-                    // Use a horizontal compact tile fully inside the grid.
-                    if (visibleTileHeight >= 32)
+                    // A short grid or narrow framebuffer cannot contain the
+                    // full icon and label. Clip both to the painted tile.
+                    if (visibleTileHeight >= 32 && tileWidth >= 32)
                     {
+                        int compactIconSize = Math.Min(24, tileWidth - 8);
                         IconManager.DrawScaled(canvas, ResolveEntryIcon(entry),
-                            tileX + 6, tileY + 7, 24, 24);
-                        SmallTextRenderer.DrawClipped(canvas, entry.Name ?? "",
-                            tileX + 36, tileY + 17, FileManagerApp.TileWidth - 42,
-                            index == app.SelectedIndex ? Color.WhiteSmoke : MainText);
+                            tileX + 6, tileY + 7, compactIconSize, compactIconSize);
+                        if (tileWidth >= 48)
+                            SmallTextRenderer.DrawClipped(canvas, entry.Name ?? "",
+                                tileX + 36, tileY + 17, tileWidth - 42,
+                                index == app.SelectedIndex ? Color.WhiteSmoke : MainText);
                     }
                 }
                 else
                 {
-                    int iconX = tileX + (FileManagerApp.TileWidth - iconSize) / 2;
+                    int iconX = tileX + (tileWidth - iconSize) / 2;
                     canvas.DrawFilledRectangle(Color.FromArgb(34, 40, 47), iconX - 5, tileY + 3, iconSize + 10, iconSize + 8);
                     IconManager.DrawScaled(canvas, ResolveEntryIcon(entry),
                         iconX, tileY + 7, iconSize, iconSize);
 
                     DrawWrappedName(canvas, entry.Name ?? "",
-                        tileX + (FileManagerApp.TileWidth - labelWidth) / 2,
+                        tileX + (tileWidth - labelWidth) / 2,
                         tileY + iconSize + 15,
                         labelWidth,
                         labelHeight,
