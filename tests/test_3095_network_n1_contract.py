@@ -269,6 +269,13 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('for expected_sent, claim in zip((0, 32, 64, 96, 128), tx_checks):',
                       health)
         self.assertIn('HTTP DriverKit snapshot on wrong side of TX burst', health)
+        self.assertIn('HTTP DriverKit ownership changed after TX attempt=', SOURCE)
+        self.assertIn('HTTP DriverKit ownership changed during RX attempt=', SOURCE)
+        http_body = SOURCE.split('private static bool TryHttpExchange(', 1)[1]
+        self.assertLess(http_body.index('received += read;'),
+                        http_body.index('HTTP DriverKit ownership changed during RX attempt='))
+        self.assertLess(http_body.index('HTTP DriverKit ownership changed during RX attempt='),
+                        http_body.index('HTTP NIC/lease changed during RX attempt='))
         self.assertIn('isr_executions=unknown' + chr(36), health)
         self.assertIn('ISR-UNPROVEN', health)
         self.assertIn('python3 "$ROOT/tests/verify_3095_e1000e_irq_binding.py" "$LOG"', SMOKE)
