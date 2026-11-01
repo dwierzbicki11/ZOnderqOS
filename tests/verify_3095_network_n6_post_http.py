@@ -15,7 +15,7 @@ from verify_3095_network_n1 import pcap_frames
 from verify_3095_network_n2 import LEASE, synthetic_capture
 from verify_3095_network_n4 import tcp_frame
 from verify_3095_network_n6 import (
-    fake_http, find_http_transaction,
+    HTTP_PASS, HTTP_REPEAT_PASS, fake_http, find_http_transaction,
 )
 from verify_3095_e1000e_irq_binding import GUEST
 from verify_3095_network_n6_burst import (
@@ -32,6 +32,41 @@ REPEATS = tuple(
     f"from=10.0.2.2 port={PORT} bytes={len(RESPONSE)}"
     for attempt in range(4, 7)
 )
+
+
+RX_STATS = re.compile(
+    r"^\\[NET3095-N6\\] HTTP_RX_STATS attempt=(\\d+) reads=(\\d+) "
+    r"max_chunk=(\\d+) bytes=(\\d+)$"
+)
+
+
+def check_rx_stats(serial: str) -> None:
+    """Check guest socket-read telemetry for all six independently proven RX streams.
+
+    These serial counters are NOT proof of an IRQ handler. PCAP and guest
+    payload verification remain mandatory; this only guards observability.
+    """
+    lines = [line.strip() for line in serial.replace("\\r", "").splitlines()]
+    entries = [(index, line) for index, line in enumerate(lines)
+               if line.startswith("[NET3095-N6] HTTP_RX_STATS")]
+    if len(entries) != 6:
+        raise ValueError("expected six unique guest HTTP RX telemetry records")
+    markers = (HTTP_PASS, HTTP_REPEAT_PASS, PASS) + REPEATS
+    previous_pass = -1
+    for attempt, ((index, line), marker) in enumerate(zip(entries, markers), 1):
+        match = RX_STATS.fullmatch(line)
+        if match is None or int(match.group(1)) != attempt:
+            raise ValueError("malformed, duplicate or reordered HTTP RX telemetry")
+        reads, largest, received = (int(match.group(i)) for i in (2, 3, 4))
+        if (received != len(RESPONSE) or not 1 <= reads <= received or
+                not 1 <= largest <= received or reads * largest < received):
+            raise ValueError("impossible guest HTTP RX read statistics")
+        if lines.count(marker) != 1:
+            raise ValueError("missing unique HTTP completion after RX telemetry")
+        completion = lines.index(marker)
+        if not previous_pass < index < completion:
+            raise ValueError("guest HTTP RX telemetry not ordered before completion")
+        previous_pass = completion
 
 
 def check_link_markers(serial: str) -> None:
@@ -100,6 +135,7 @@ def validate(serial: str, pcap: bytes) -> str:
     if not (lines.index(POST_PASS) < lines.index(START) < lines.index(PASS)):
         raise ValueError("post-burst HTTP markers out of order")
     check_link_markers(serial)
+    check_rx_stats(serial)
     leases = [m for line in lines if (m := LEASE.fullmatch(line))]
     if len(leases) != 1:
         raise ValueError("missing unique guest lease")
@@ -185,6 +221,34 @@ def self_test() -> None:
         "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
     ))
     check_link_markers(serial)
+    telemetry = "\\n".join(
+        line for attempt, marker in enumerate(
+            (HTTP_PASS, HTTP_REPEAT_PASS, PASS) + REPEATS, 1)
+        for line in (
+            f"[NET3095-N6] HTTP_RX_STATS attempt={attempt} reads=5 max_chunk=1024 bytes=4208",
+            marker,
+        )
+    )
+    # Use the exact expected HTTP response byte count; a stale hard-coded
+    # value must fail this gate rather than being silently accepted.
+    telemetry = telemetry.replace("bytes=4208", f"bytes={len(RESPONSE)}")
+    check_rx_stats(telemetry)
+    bad_telemetry = (
+        telemetry.replace("reads=5", "reads=0", 1),
+        telemetry.replace("max_chunk=1024", "max_chunk=0", 1),
+        telemetry.replace(f"bytes={len(RESPONSE)}", "bytes=4115", 1),
+        telemetry.replace("attempt=3", "attempt=2", 1),
+        telemetry.replace("reads=5", "reads=1", 1),
+        telemetry.replace("HTTP_RX_STATS attempt=6", "HTTP_RX_STATS attempt=7", 1),
+        telemetry + "\\n[NET3095-N6] HTTP_RX_STATS attempt=6 reads=5 max_chunk=1024 bytes=4116",
+        telemetry.replace("[NET3095-N6] HTTP_RX_STATS attempt=4", "[NET3095-N6] HTTP_RX_STATS attempt=9"),
+    )
+    for invalid_stats in bad_telemetry:
+        try:
+            check_rx_stats(invalid_stats)
+        except ValueError:
+            continue
+        raise AssertionError("accepted invalid guest HTTP RX telemetry")
     for invalid in (
         serial.replace("POST_STRESS_LINK=PASS", "POST_STRESS_LINK=FAIL"),
         serial.replace("POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
