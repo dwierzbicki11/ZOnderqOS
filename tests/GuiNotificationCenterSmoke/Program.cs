@@ -18,7 +18,7 @@ namespace Cosmos.Kernel.System.Graphics
 
 namespace Cosmos.Kernel.System.Input
 {
-    public enum Key { Escape, LeftArrow, RightArrow, UpArrow, DownArrow, Enter, NumEnter, Delete }
+    public enum Key { Escape, LeftArrow, RightArrow, UpArrow, DownArrow, PageUp, PageDown, Home, End, Enter, NumEnter, Delete }
     public sealed class KeyEvent
     {
         public Key Key { get; set; }
@@ -214,8 +214,42 @@ internal static class Program
         Check(!NotificationService.TryGetById(old, out _), "evicted ID is absent");
     }
 
+    private static void PageNavigationTracksVisibleRows()
+    {
+        foreach (int height in new[] { 600, 768, 1080 })
+        {
+            NotificationService.ResetForSession();
+            ulong[] ids = new ulong[18];
+            for (int i = 0; i < ids.Length; i++)
+                ids[i] = Post("row" + i);
+            var center = new NotificationCenter(height == 600 ? 800 : height == 768 ? 1366 : 1920,
+                height, 44);
+            center.Toggle();
+            int rows = height == 600 ? 3 : height == 768 ? 5 : 8;
+            Check(SelectedId(center) == ids[17], "initial page selects newest at " + height);
+            KeyPress(center, Key.PageDown);
+            Check(SelectedId(center) == ids[17 - rows],
+                "PageDown advances exactly one visible page at " + height);
+            KeyPress(center, Key.End);
+            Check(SelectedId(center) == ids[0], "End selects oldest at " + height);
+            KeyPress(center, Key.PageDown);
+            Check(SelectedId(center) == ids[0], "PageDown clamps at oldest");
+            KeyPress(center, Key.Home);
+            Check(SelectedId(center) == ids[17], "Home selects newest");
+            KeyPress(center, Key.PageUp);
+            Check(SelectedId(center) == ids[17], "PageUp clamps at newest");
+            KeyPress(center, Key.PageDown);
+            ulong original = SelectedId(center);
+            ulong incoming = Post("incoming");
+            KeyPress(center, Key.Delete);
+            Check(Entry(original).IsDismissed, "page-selected entry survives incoming alert");
+            Check(!Entry(incoming).IsDismissed, "new alert survives page-selected Delete");
+        }
+    }
+
     public static int Main()
     {
+        PageNavigationTracksVisibleRows();
         NewPostDoesNotRetargetDelete();
         NewPostDoesNotRetargetEnter();
         FilterSwitchResetsIdentity();
