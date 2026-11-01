@@ -1047,13 +1047,7 @@ namespace ZonderqOS.GUI.Apps
 
         private bool IsEntryActive(SidebarEntry entry)
         {
-            if (entry == null || string.IsNullOrEmpty(entry.Path))
-                return false;
-            if (entry.Path == "/")
-                return app.CurrentPath == "/";
-            if (app.CurrentPath == entry.Path)
-                return true;
-            return app.CurrentPath.StartsWith(entry.Path + "/", StringComparison.Ordinal);
+            return entry != null && FileManagerPathMatcher.IsActive(app.CurrentPath, entry.Path);
         }
 
         private void RenderFooter(Canvas canvas, int footerY)
