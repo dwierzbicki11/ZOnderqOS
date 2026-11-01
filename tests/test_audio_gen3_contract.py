@@ -467,7 +467,7 @@ class AudioGen3Contract(unittest.TestCase):
         # Keep the command-set gate extensible: adding a new opt-in probe
         # must not invalidate the previous WAV choices by exact tuple text.
         self.assertIn('choices=("tone", "stereosplit", "mix",', harness)
-        self.assertIn('"wavext20")', harness)
+        self.assertIn('"wavext20", "wavext24in32")', harness)
         for forbidden in ("System.IO", "File.", "Disk.", "TryMount(", "WriteBlock(",
                           "NetworkManager.", "PciSysfsProvider"):
             self.assertNotIn(forbidden, parser)
