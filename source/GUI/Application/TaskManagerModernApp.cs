@@ -320,7 +320,48 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
             if (activePage == PagePerformance)
+            {
+                // The performance dashboard used to be mouse-only. Keep
+                // global Ctrl/Alt and modified keys out of this navigation.
+                if (key.Modifiers != 0)
+                    return;
+
+                if (key.Key == ConsoleKeyEx.UpArrow || key.Key == ConsoleKeyEx.DownArrow)
+                {
+                    performanceResource = TaskManagerPerformanceNavigation.StepResource(
+                        performanceResource, key.Key == ConsoleKeyEx.UpArrow ? -1 : 1);
+                    status = performanceResource == PerfCpu ? "CPU" :
+                        performanceResource == PerfMemory ? "Pamiec" : "System";
+                    return;
+                }
+
+                if (performanceResource != PerfCpu)
+                    return;
+
+                // G switches the total/logical CPU graphs. PageUp/PageDown
+                // and Home/End navigate logical CPU pages without a mouse.
+                if (key.KeyChar == 'g' || key.KeyChar == 'G')
+                {
+                    cpuGraphMode = cpuGraphMode == CpuGraphTotal ? CpuGraphLogical : CpuGraphTotal;
+                    status = cpuGraphMode == CpuGraphTotal ? "CPU: lacznie" : "CPU: logiczne procesory";
+                    return;
+                }
+
+                if (cpuGraphMode != CpuGraphLogical)
+                    return;
+                if (key.Key == ConsoleKeyEx.PageUp)
+                    logicalPage = TaskManagerPerformanceNavigation.ClampLogicalPage(
+                        logicalPage - 1, LogicalPageCount);
+                else if (key.Key == ConsoleKeyEx.PageDown)
+                    logicalPage = TaskManagerPerformanceNavigation.ClampLogicalPage(
+                        logicalPage + 1, LogicalPageCount);
+                else if (key.Key == ConsoleKeyEx.Home)
+                    logicalPage = 0;
+                else if (key.Key == ConsoleKeyEx.End)
+                    logicalPage = TaskManagerPerformanceNavigation.ClampLogicalPage(
+                        int.MaxValue, LogicalPageCount);
                 return;
+            }
             if (key.Key == ConsoleKeyEx.UpArrow) Select(-1);
             else if (key.Key == ConsoleKeyEx.DownArrow) Select(1);
             else if (key.Key == ConsoleKeyEx.PageUp) Select(-view.VisibleRows);
