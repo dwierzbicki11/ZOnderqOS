@@ -2,6 +2,8 @@ name: ZonderqOS Gen3 performance contracts
 on:
   pull_request:
     paths:
+      - "source/Core/HtopMonitor.cs"
+      - "tests/HtopPerfSmoke/**"
       - "source/GUI/SmallTextRenderer.cs"
       - "source/GUI/UiPainter.cs"
       - "tests/PerfRenderSmoke/PanelVisibilitySmoke.cs"
@@ -33,5 +35,7 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Compile and execute production C# glyph renderer with a fake Canvas
         run: dotnet run --project tests/PerfRenderSmoke/PerfRenderSmoke.csproj --configuration Release
+      - name: Production htop process join equivalence and measured host A/B
+        run: dotnet run --project tests/HtopPerfSmoke/HtopPerfSmoke.csproj --configuration Release
       - name: Preserve stock Cosmos and disabled custom SMP
         run: python3 tests/test_upstream_smp_disabled.py

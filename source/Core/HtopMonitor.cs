@@ -69,6 +69,7 @@ namespace ZonderqOS.SystemCore
         }
 
         private readonly List<KernelProcess> processes = new List<KernelProcess>();
+        private readonly HtopProcessIndex processIndex = new HtopProcessIndex();
         private readonly List<Row> rows = new List<Row>();
         private readonly List<string> lines = new List<string>();
         private PreviousThread[] previousThreads = Array.Empty<PreviousThread>();
@@ -131,6 +132,7 @@ namespace ZonderqOS.SystemCore
             ulong pageSize = MemoryInfo.PageSizeBytes;
             lines.Add("Mem: " + ((total - free) * pageSize / 1048576UL) + " / " + (total * pageSize / 1048576UL) + " MiB");
             ProcessManager.FillActiveProcesses(processes);
+            processIndex.Rebuild(processes);
             lines.Add("Processes: " + processes.Count + "  Threads: " + SchedulerInfo.ThreadCount);
             lines.Add("  PID    TID  CPU  STATE       CPU%  NAME");
 
@@ -159,15 +161,10 @@ namespace ZonderqOS.SystemCore
                 }
                 int pid = 0;
                 string name = info.IsManaged ? "managed thread" : "kernel thread";
-                for (int index = 0; index < processes.Count; index++)
+                if (processIndex.TryResolve(info.Id, out KernelProcess process))
                 {
-                    if (processes[index].KernelThreadId != info.Id)
-                    {
-                        continue;
-                    }
-                    pid = processes[index].PID;
-                    name = processes[index].Name;
-                    break;
+                    pid = process.PID;
+                    name = process.Name;
                 }
                 rows.Add(new Row { Thread = info, Percent = Percent(delta, elapsedNs), Pid = pid, Name = name });
             }
@@ -180,16 +177,7 @@ namespace ZonderqOS.SystemCore
             }
             foreach (KernelProcess process in processes)
             {
-                bool found = false;
-                foreach (Row row in rows)
-                {
-                    if (row.Pid == process.PID)
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-                if (!found)
+                if (!processIndex.WasSeen(process.PID))
                 {
                     lines.Add(process.PID.ToString().PadLeft(5) + "      -    -  START/EXIT    -   " + process.Name);
                 }
@@ -216,5 +204,42 @@ namespace ZonderqOS.SystemCore
             }
             return (int)((double)busy * 100d / elapsed);
         }
+    }
+
+    /// <summary>
+    /// Reusable index for htop's per-refresh thread/process join. The first
+    /// registered process for a TID wins, matching the old linear scan.
+    /// Clearing retains capacity, avoiding a new dictionary/HashSet each tick.
+    /// This is a display snapshot only; it does not change process ownership.
+    /// </summary>
+    internal sealed class HtopProcessIndex
+    {
+        private readonly Dictionary<uint, KernelProcess> byThread =
+            new Dictionary<uint, KernelProcess>();
+        private readonly HashSet<int> seenPids = new HashSet<int>();
+
+        internal void Rebuild(IReadOnlyList<KernelProcess> processes)
+        {
+            byThread.Clear();
+            seenPids.Clear();
+            for (int i = 0; i < processes.Count; i++)
+            {
+                KernelProcess process = processes[i];
+                uint tid = process.KernelThreadId;
+                // Preserve the first match when two entries report one TID.
+                if (!byThread.ContainsKey(tid))
+                    byThread.Add(tid, process);
+            }
+        }
+
+        internal bool TryResolve(uint threadId, out KernelProcess process)
+        {
+            if (!byThread.TryGetValue(threadId, out process))
+                return false;
+            seenPids.Add(process.PID);
+            return true;
+        }
+
+        internal bool WasSeen(int pid) => seenPids.Contains(pid);
     }
 }
