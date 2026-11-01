@@ -12,7 +12,7 @@ internal static class IconTwoSizeCacheSmoke
     private static readonly Func<IconType, int[], int, int, int, int, int[]> GetScaled =
         (Func<IconType, int[], int, int, int, int, int[]>)Manager
             .GetMethod("GetScaledPixels", BindingFlags.Static | BindingFlags.NonPublic)
-            .CreateDelegate(typeof(Func<IconType, int[], int, int, int, int, int, int[]>));
+            .CreateDelegate(typeof(Func<IconType, int[], int, int, int, int, int[]>));
     private static readonly IconType[] Types = (IconType[])Manager
         .GetField("scaledTypes", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
     private static readonly int[] Widths = (int[])Manager
