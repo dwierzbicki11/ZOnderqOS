@@ -324,7 +324,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void SelectAbsolute(int index)
         {
-            if (visibleRows.Count == 0)
+            if (visibleRows.Count == 0 || view.VisibleRows == 0)
                 return;
             selectedIndex = Math.Max(0, Math.Min(visibleRows.Count - 1, index));
             EnsureSelectionVisible();
@@ -333,7 +333,8 @@ namespace ZonderqOS.GUI.Apps
 
         private void EndSelectedTask()
         {
-            if (activePage == PagePerformance || selectedIndex < 0 || selectedIndex >= visibleRows.Count)
+            if (activePage == PagePerformance || view.VisibleRows == 0 ||
+                selectedIndex < 0 || selectedIndex >= visibleRows.Count)
             {
                 status = "Wybierz zadanie";
                 return;
@@ -864,8 +865,10 @@ namespace ZonderqOS.GUI.Apps
         // The full CPU graph and system details require vertical space too.
         private bool CompactPerformanceLayout => Width < 900 || Height < 460;
         private int ListTopForView => CompactProcessLayout ? 64 : ListTop;
-        private int ListHeightForView => Math.Max(RowHeight, Height - ListTopForView - FooterHeight - 6);
-        public int VisibleRows => Math.Max(1, ListHeightForView / RowHeight);
+        // No synthetic row may overlap the footer on a short firmware mode.
+        // A zero-row view is intentionally noninteractive, including Delete.
+        private int ListHeightForView => Math.Max(0, Height - ListTopForView - FooterHeight - 6);
+        public int VisibleRows => ListHeightForView / RowHeight;
 
         public int NavAt(int x, int y)
         {
@@ -949,7 +952,7 @@ namespace ZonderqOS.GUI.Apps
 
         public int RowAt(int x, int y)
         {
-            if (app.ActivePage == TaskManagerModernApp.PagePerformance) return -1;
+            if (app.ActivePage == TaskManagerModernApp.PagePerformance || VisibleRows == 0) return -1;
             int contentX = SidebarWidth + 8;
             int listTop = ListTopForView;
             int listH = ListHeightForView;
@@ -965,7 +968,7 @@ namespace ZonderqOS.GUI.Apps
 
         public bool HandleScrollMouse(int mouseX, int mouseY, bool left, bool oldLeft)
         {
-            if (app.ActivePage == TaskManagerModernApp.PagePerformance) return false;
+            if (app.ActivePage == TaskManagerModernApp.PagePerformance || VisibleRows == 0) return false;
             UpdateScrollBar();
             return scrollBar.HandleMouse(mouseX, mouseY, left, oldLeft);
         }
@@ -1122,6 +1125,10 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderTable(Canvas canvas, int x, int width)
         {
+            // The sidebar can occupy nearly the whole view in tiny modes.
+            // Never send negative table/scrollbar dimensions to Canvas.
+            if (width <= ScrollReserve + 4 || VisibleRows == 0)
+                return;
             int headerY = Y + TableHeaderTop;
             if (!CompactProcessLayout)
             {
