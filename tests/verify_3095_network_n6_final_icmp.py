@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import re
 import struct
 
 from verify_3095_network_n1 import pcap_frames
@@ -22,6 +23,8 @@ from verify_3095_network_n6_post_http import (
 
 START = "[NET3095-N6] FINAL_ICMP_ATTEMPT=START"
 PASS = "[NET3095-N6] FINAL_ICMP=PASS from=10.0.2.2 seq=1"
+RTT = re.compile(r"\[NET3095-N6\] FINAL_ICMP_RTT seq=1 elapsed_ms=([0-9]+)")
+RTT_PREFIX = "[NET3095-N6] FINAL_ICMP_RTT "
 IDENT = 0x3097
 SEQ = 1
 
@@ -90,6 +93,15 @@ def check_final_markers(serial: str) -> None:
         raise ValueError("missing unique post-stress link marker")
     if not lines.index(REPEATS[-1]) < lines.index(START) < lines.index(PASS) < links[0]:
         raise ValueError("final ICMP markers are not after HTTP and before link health")
+    # Guest-observed RTT is additional telemetry, never an ISR proof.
+    samples = [(i, RTT.fullmatch(line)) for i, line in enumerate(lines)
+               if line.startswith(RTT_PREFIX)]
+    if len(samples) != 1 or samples[0][1] is None:
+        raise ValueError("missing, malformed or duplicated final ICMP RTT sample")
+    if int(samples[0][1].group(1)) > 5000:
+        raise ValueError("final ICMP RTT exceeds receive timeout")
+    if not lines.index(START) < samples[0][0] < lines.index(PASS):
+        raise ValueError("final ICMP RTT marker out of order")
 
 
 def last_http_fin_ack(frames: list[bytes], guest: bytes) -> int:
@@ -142,8 +154,9 @@ def self_test() -> None:
     frames = [bytes(60), request, reply]
     check_final_pair(frames, 0, guest)
     assert len(list(pcap_frames(synthetic_capture(frames)))) == 3
+    rtt = "[NET3095-N6] FINAL_ICMP_RTT seq=1 elapsed_ms=17"
     serial = "\n".join((
-        REPEATS[-1], START, PASS,
+        REPEATS[-1], START, rtt, PASS,
         "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
     ))
     check_final_markers(serial)
@@ -155,6 +168,13 @@ def self_test() -> None:
         serial.replace(REPEATS[-1], ""),
         serial.replace("POST_STRESS_LINK=PASS", "POST_STRESS_LINK=FAIL") +
         "\n[NET3095-N6][FAIL] bad",
+        serial.replace(rtt, ""),
+        serial + "\n" + rtt,
+        serial.replace(rtt, rtt.replace("elapsed_ms=17", "elapsed_ms=5001")),
+        serial.replace(rtt, rtt.replace("elapsed_ms=17", "elapsed_ms=bad")),
+        serial.replace(rtt, rtt.replace("seq=1", "seq=2")),
+        serial.replace(START + "\n" + rtt, rtt + "\n" + START),
+        serial.replace(rtt + "\n" + PASS, PASS + "\n" + rtt),
     )
     for bad in bad_serial:
         try:
