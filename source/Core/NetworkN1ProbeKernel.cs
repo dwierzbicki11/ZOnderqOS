@@ -124,6 +124,16 @@ namespace ZonderqOS
                 Log("[NET3095-N1][FAIL] E1000E binding/link/MAC changed during TX");
                 return;
             }
+            // A stable published adapter alone cannot detect resource/IRQ
+            // ownership churn between the pre-TX snapshot and Send().
+            if (!TryGetE1000EDriverKitHealth(out var txDriverNode) ||
+                txDriverNode.Path != n1DriverNode.Path ||
+                txDriverNode.HeldResourceCount != n1DriverNode.HeldResourceCount ||
+                txDriverNode.InterruptCount != n1DriverNode.InterruptCount)
+            {
+                Log("[NET3095-N1][FAIL] E1000E DriverKit binding changed during TX");
+                return;
+            }
             Log("[NET3095-N1] DHCP=NOT_ATTEMPTED IP=UNASSIGNED");
 #if ZONDERQ_NETWORK_N2_DHCP
             // Opt-in second-stage RX proof. DHCP only runs in the isolated
@@ -570,7 +580,7 @@ namespace ZonderqOS
         // Stock Cosmos 3.0.95 exposes DriverKit node snapshots, but NOT the
         // internal E1000EState.InterruptCount. A zero handler-fault count
         // therefore cannot prove that an ISR ran; the driver also polls.
-        // Keep this check read-only and confined to the isolated N6 kernel.
+        // Keep this check read-only and confined to isolated N1-N6 kernels.
         private static bool TryGetE1000EDriverKitHealth(out DeviceNodeInfo candidate)
         {
             candidate = default;

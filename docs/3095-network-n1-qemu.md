@@ -14,6 +14,14 @@ Only a real guest serial log with initialized NetworkManager, a registered
 `e1000e` interface, nonzero unicast MAC, ready state and link up, followed
 by eight seconds of guest survival, may satisfy the runtime gate.
 
+The N1 probe also requires one live stock DriverKit `E1000EDriver`
+bound to `pci:0000:00:02.0`, with exactly one published device, no
+recorded handler faults, and nonzero PCI resource/interrupt-source counts.
+It samples DriverKit ownership before and after the raw TX queue call and
+rejects a changed resource/interrupt-source inventory. The N1 serial
+validator requires this checkpoint in the correct order. These counts
+prove only registration, **not guest ISR execution**.
+
 The parser self-test and static source contract **do not prove real NIC
 operation**. After reporting ready/link, the isolated probe sends one 60-byte broadcast
 Ethernet frame with experimental EtherType 0x88B5 and payload
