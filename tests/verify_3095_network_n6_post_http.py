@@ -67,7 +67,7 @@ def check_rx_stats(serial: str) -> None:
         if match is None or int(match.group(1)) != attempt:
             raise ValueError("malformed, duplicate or reordered HTTP RX telemetry")
         reads, largest, received = (int(match.group(i)) for i in (2, 3, 4))
-        if (received != len(RESPONSE) or not 1 <= reads <= received or
+        if (received != len(RESPONSE) or not 1 <= reads <= 64 or
                 not 1 <= largest <= received or reads * largest < received):
             raise ValueError("impossible guest HTTP RX read statistics")
         if lines.count(marker) != 1:
@@ -276,6 +276,7 @@ def self_test() -> None:
     )
     check_rx_stats(telemetry)
     bad_telemetry = (
+        telemetry.replace("reads=5", "reads=65", 1),
         telemetry.replace("reads=5", "reads=0", 1),
         telemetry.replace("max_chunk=1024", "max_chunk=0", 1),
         telemetry.replace(f"bytes={len(RESPONSE)}", "bytes=4115", 1),
