@@ -151,9 +151,22 @@ namespace ZonderqOS.GUI
 
         public static void DrawUIntWithSuffix(Canvas canvas, ulong value, string suffix, int x, int y, Color color)
         {
+            int digits = DigitCount(value);
+            long suffixX = (long)x + digits * 6 + 5;
+            long right = string.IsNullOrEmpty(suffix)
+                ? (long)x + digits * 6
+                : suffixX + (long)suffix.Length * 6;
+            // Numeric status labels with units are often scrolled out with
+            // their parent panel. Skip both renderers before glyph work.
+            // Keep suffix coordinates wide until visibility is established.
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
+                right <= 0 || (long)y + 7 <= 0)
+                return;
+
             DrawUInt(canvas, value, x, y, color);
-            if (!string.IsNullOrEmpty(suffix))
-                Draw(canvas, suffix, x + WidthUInt(value) + 6, y, color);
+            if (!string.IsNullOrEmpty(suffix) && suffixX >= int.MinValue &&
+                suffixX <= int.MaxValue)
+                Draw(canvas, suffix, (int)suffixX, y, color);
         }
 
         public static void DrawClipped(Canvas canvas, string text, int x, int y, int maxWidth, Color color)
