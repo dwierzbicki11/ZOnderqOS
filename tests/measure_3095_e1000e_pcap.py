@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""QEMU-only Ethernet timing telemetry. Never an IRQ/ISR or physical NIC proof.
+
+Run only after the independent fail-closed N1-N6 PCAP validators. Measures
+capture-side HTTP response span and ICMP request/reply deltas, not guest ISR
+latency, DMA ownership, or network throughput.
+"""
+from __future__ import annotations
+
+import argparse
+from collections import defaultdict
+from pathlib import Path
+import re
+import struct
+
+STATS = re.compile(r'^\[NET3095-N6\] HTTP_RX_STATS attempt=(\d+) reads=(\d+) max_chunk=(\d+) bytes=(\d+)$')
+TIMING = re.compile(r'^\[NET3095-N6\] HTTP_RX_TIMING attempt=(\d+) first_byte_ms=(\d+) total_ms=(\d+) \(socket Read; ISR unproven\)$')
+
+
+def records(data: bytes):
+    if len(data) < 24:
+        raise ValueError('missing PCAP header')
+    magic = data[:4]
+    if magic in (b'\xd4\xc3\xb2\xa1', b'\x4d\x3c\xb2\xa1'):
+        endian = '<'
+    elif magic in (b'\xa1\xb2\xc3\xd4', b'\xa1\xb2\x3c\x4d'):
+        endian = '>'
+    else:
+        raise ValueError('invalid PCAP magic')
+    nanos = magic in (b'\x4d\x3c\xb2\xa1', b'\xa1\xb2\x3c\x4d')
+    major, minor, _tz, _sig, snaplen, linktype = struct.unpack_from(endian+'HHIIII', data, 4)
+    if (major, minor, linktype) != (2, 4, 1) or snaplen < 60:
+        raise ValueError('expected full Ethernet PCAP v2.4')
+    pos = 24
+    while pos < len(data):
+        if len(data) - pos < 16:
+            raise ValueError('truncated PCAP record header')
+        sec, sub, captured, original = struct.unpack_from(endian+'IIII', data, pos)
+        pos += 16
+        if captured < 14 or captured > snaplen or captured != original or pos+captured > len(data):
+            raise ValueError('truncated or invalid PCAP record')
+        if sub >= (1_000_000_000 if nanos else 1_000_000):
+            raise ValueError('invalid PCAP timestamp fraction')
+        frame = data[pos:pos+captured]
+        pos += captured
+        yield sec + sub/(1_000_000_000 if nanos else 1_000_000), frame
+
+
+def decode(time: float, frame: bytes):
+    if len(frame) < 34 or frame[12:14] != b'\x08\x00' or frame[14] >> 4 != 4:
+        return None
+    ihl = (frame[14] & 15)*4
+    if ihl < 20 or len(frame) < 14+ihl:
+        return None
+    length = struct.unpack_from('!H', frame, 16)[0]
+    if length < ihl or 14+length > len(frame):
+        return None
+    proto = frame[23]
+    start = 14+ihl
+    src, dst = frame[26:30], frame[30:34]
+    if proto == 1 and length >= ihl+8:
+        return ('icmp', time, src, dst, frame[start],
+                struct.unpack_from('!HH', frame, start+4))
+    if proto == 6 and length >= ihl+20:
+        sport, dport, seq = struct.unpack_from('!HHI', frame, start)
+        tcp_hlen = (frame[start+12] >> 4)*4
+        if tcp_hlen < 20 or length < ihl+tcp_hlen:
+            return None
+        return ('tcp', time, src, dst, sport, dport, seq, length-ihl-tcp_hlen)
+    return None
+
+
+def measure(pcap: bytes, serial: str):
+    http = defaultdict(list)
+    icmp_requests = {}
+    icmp_rtts = []
+    for time, frame in records(pcap):
+        packet = decode(time, frame)
+        if packet is None:
+            continue
+        if packet[0] == 'tcp':
+            _, _, src, dst, sport, dport, seq, size = packet
+            if sport == 18096 and size > 0 and src == b'\x0a\x00\x02\x02' and dst == b'\x0a\x00\x02\x0f':
+                http[dport].append((time, seq, size))
+        elif packet[0] == 'icmp':
+            _, _, src, dst, kind, key = packet
+            if kind == 8 and src == b'\x0a\x00\x02\x0f' and dst == b'\x0a\x00\x02\x02':
+                icmp_requests[key] = time
+            elif kind == 0 and src == b'\x0a\x00\x02\x02' and dst == b'\x0a\x00\x02\x0f' and key in icmp_requests:
+                icmp_rtts.append((key, round((time-icmp_requests.pop(key))*1000, 3)))
+    if len(http) != 6:
+        raise ValueError(f'expected six HTTP response flows, found {len(http)}')
+    lines = [line.strip() for line in serial.replace('\r', '').splitlines()]
+    stats = [m for line in lines if (m := STATS.fullmatch(line))]
+    timings = [m for line in lines if (m := TIMING.fullmatch(line))]
+    if len(stats) != 6 or (timings and len(timings) != 6):
+        raise ValueError('missing or malformed guest HTTP RX telemetry')
+    for attempt, (port, segments) in enumerate(sorted(http.items(), key=lambda item: min(x[0] for x in item[1])), 1):
+        unique = {(seq, size) for _, seq, size in segments}
+        if sum(size for _, size in unique) != 4202:
+            raise ValueError(f'HTTP response {attempt} has incomplete/duplicate payload')
+        span_ms = round((max(t for t, _, _ in segments)-min(t for t, _, _ in segments))*1000, 2)
+        m = stats[attempt-1]
+        if int(m.group(1)) != attempt or int(m.group(4)) != 4202:
+            raise ValueError('guest RX statistics do not match PCAP flow count')
+        guest = ''
+        if timings:
+            t = timings[attempt-1]
+            if int(t.group(1)) != attempt:
+                raise ValueError('guest RX timing attempt order invalid')
+            guest = f' guest_first_read_ms={t.group(2)} guest_total_read_ms={t.group(3)}'
+        print(f'[NET3095-E1000E-METRICS] HTTP attempt={attempt} port={port} '
+              f'wire_response_span_ms={span_ms} unique_segments={len(unique)} '
+              f'guest_reads={m.group(2)}{guest} ISR=UNPROVEN')
+    print('[NET3095-E1000E-METRICS] ICMP wire_RTT_ms=' +
+          ','.join(f'{ident:04x}:{seq}:{rtt}' for (ident, seq), rtt in icmp_rtts) +
+          ' ISR=UNPROVEN')
+    return len(http), len(icmp_rtts)
+
+
+def self_test():
+    frame = b'\xff'*6 + b'\x52\x54\x00\x12\x34\x56' + b'\x08\x00'
+    ip = bytearray(20)
+    ip[0] = 0x45
+    ip[9] = 6
+    ip[12:16] = b'\x0a\x00\x02\x02'
+    ip[16:20] = b'\x0a\x00\x02\x0f'
+    tcp = bytearray(20)
+    struct.pack_into('!HHI', tcp, 0, 18096, 49153, 42)
+    tcp[12] = 0x50
+    payload = b'x'*20
+    struct.pack_into('!H', ip, 2, len(ip)+len(tcp)+len(payload))
+    packet = frame + ip + tcp + payload
+    header = struct.pack('<IHHIIII', 0xa1b2c3d4, 2, 4, 0, 0, 65535, 1)
+    rec = struct.pack('<IIII', 1, 1000, len(packet), len(packet)) + packet
+    assert list(records(header+rec))[0][1] == packet
+    assert decode(1.001, packet)[-1] == 20
+    for bad in (b'', header+rec[:-1], header+rec+b'\x00', header[:4]+b'\x00'*20+rec):
+        try:
+            list(records(bad))
+        except ValueError:
+            continue
+        raise AssertionError('accepted malformed PCAP')
+    print('[NET3095-E1000E-METRICS-CONTRACT] PASS parser synthetic cases; no QEMU proof')
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('serial', type=Path, nargs='?')
+    parser.add_argument('pcap', type=Path, nargs='?')
+    parser.add_argument('--self-test', action='store_true')
+    args = parser.parse_args()
+    if args.self_test:
+        self_test()
+    else:
+        if args.serial is None or args.pcap is None:
+            parser.error('real QEMU serial and PCAP required')
+        try:
+            measure(args.pcap.read_bytes(), args.serial.read_text(errors='replace'))
+        except (OSError, ValueError) as exc:
+            parser.exit(1, f'[NET3095-E1000E-METRICS][FAIL] {exc}\n')
