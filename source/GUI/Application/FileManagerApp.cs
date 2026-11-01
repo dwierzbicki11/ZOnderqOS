@@ -157,7 +157,12 @@ namespace ZonderqOS.GUI.Apps
             // changes. A selected file must not disappear after shrinking,
             // and a larger window must not show an empty scrolled page.
             if (view.Width != previousViewWidth || view.Height != previousViewHeight)
+            {
+                // A click before a resize must not complete a double-click
+                // on a different tile occupying the same index afterward.
+                ResetClickSequence();
                 EnsureSelectionVisible();
+            }
 
             // The menu may have been opened before a window resize. Refit
             // its origin to the current client area so it remains clickable.
