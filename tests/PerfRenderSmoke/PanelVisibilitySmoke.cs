@@ -231,7 +231,16 @@ internal static class PanelVisibilitySmoke
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
         if (allocated != 0)
             throw new Exception("Visible panel drawing allocated " + allocated + " bytes");
+
+        Canvas clippedFrame = new Canvas(140, 100);
+        UiPainter.RoundedPanel(clippedFrame, -450, -1020, 1024, 1024, 512, Ink, Edge);
+        allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++)
+            UiPainter.RoundedPanel(clippedFrame, -450, -1020, 1024, 1024, 512, Ink, Edge);
+        long clippedAllocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        if (clippedAllocated != 0)
+            throw new Exception("Clipped panel drawing allocated " + clippedAllocated + " bytes");
         Console.WriteLine("Panel visibility: " + checks +
-            " exact framebuffer comparisons, extreme/null guards, 0 B warm visible allocations.");
+            " exact framebuffer comparisons, extreme/null guards, 0 B warm visible/clipped allocations.");
     }
 }
