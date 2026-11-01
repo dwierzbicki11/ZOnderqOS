@@ -301,3 +301,24 @@ The driver still polls every 10 ms, so QEMU RX and legacy IRQ emission
 cannot establish interrupt-driven delivery. No SDK changes or
 production NIC activation are involved. The new gate is considered
 unverified until its own current QEMU workflow finishes.
+
+## N6 final ICMP after all HTTP socket teardowns (2026-11-01)
+
+The isolated N6 guest now sends one additional IPv4 ICMP echo
+(`id=0x3097, seq=1`) **after** the sixth independent HTTP/1.0
+connection has completed and its socket has been disposed. This is
+separate from the four echoes sent immediately after the 128-frame TX
+burst. A real QEMU `filter-dump` PCAP must show exactly one final
+request and matching reply, with valid IPv4/ICMP checksums, a 32-byte
+echoed payload, the same Ethernet peer and an index strictly after
+the sixth TCP FIN acknowledgment. Guest serial markers must occur
+after the sixth HTTP completion and before the final link/IPv4 health
+snapshot. Missing, duplicated, damaged, out-of-order or wrong-peer
+evidence fails the new `verify_3095_network_n6_final_icmp.py` gate.
+
+This extends RX liveness coverage across repeated TCP teardown and
+reopening. It does **not** demonstrate ISR invocation (stock E1000E
+still polls), physical Realtek RTL810xE support, HTTPS, or production
+GUI networking. The opt-in probe performs no disk operations. A
+synthetic validator self-test is not a substitute for a successful
+real QEMU PCAP run on the current commit.
