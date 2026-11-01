@@ -166,8 +166,24 @@ namespace ZonderqOS.GUI
                 (long)x + (long)characters * 6 <= 0 || (long)y + 7 <= 0)
                 return;
 
-            for (int i = start; i < end; i++)
-                DrawChar(canvas, text[i], x + (i - start) * 6, y, color);
+            // A horizontal scroll can leave only a handful of glyphs visible.
+            // Each glyph paints columns [x + 6*i, x + 6*i + 4], so skip
+            // complete offscreen glyphs before the expensive row/span loop.
+            int first = 0;
+            if (x < -4)
+            {
+                long skip = (-(long)x + 1) / 6;
+                if (skip >= characters)
+                    return;
+                first = (int)skip;
+            }
+            int last = characters;
+            long visibleEnd = ((long)canvas.Width - x + 5) / 6;
+            if (visibleEnd < last)
+                last = (int)visibleEnd;
+
+            for (int i = first; i < last; i++)
+                DrawChar(canvas, text[start + i], x + i * 6, y, color);
         }
 
         private static int DigitCount(ulong value)
