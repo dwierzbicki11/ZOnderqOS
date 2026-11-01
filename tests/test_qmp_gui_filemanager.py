@@ -38,7 +38,7 @@ class FramebufferProbeTests(unittest.TestCase):
         for y in range(100, 350):
             for x in range(90, 410):
                 pos = (y * width + x) * 3
-                panel[pos:pos + 3] = b"\\x80\\x80\\x80"
+                panel[pos:pos + 3] = bytes((128, 128, 128))
         opened = (width, height, bytes(panel))
         region = (80, 80, 420, 400)
         changed = PROBE.changed_pixels_in_region(blank, opened, *region, threshold=8)
@@ -67,7 +67,7 @@ class FramebufferProbeTests(unittest.TestCase):
         for y in range(height // 7, height * 3 // 5, 4):
             for x in range(width // 6, width * 5 // 6, 4):
                 pos = (y * width + x) * 3
-                opened[pos:pos + 3] = b"\\xff\\xff\\xff"
+                opened[pos:pos + 3] = bytes((255, 255, 255))
         changed, samples = PROBE.difference((width, height, baseline),
                                             (width, height, bytes(opened)), upper_only=True)
         self.assertGreater(changed / samples, 0.06)
