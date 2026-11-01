@@ -54,6 +54,9 @@ namespace ZonderqOS.GUI
         private int filter;
         private int visibleCount;
         private int selectedIndex;
+        // Keep the selected notification stable when a new toast arrives.
+        // A cached newest-offset is not a stable identity: new posts shift it.
+        private ulong selectedNotificationId;
         private int offset;
         private int hoveredFilter = -1;
         private int hoveredRow = -1;
@@ -141,6 +144,7 @@ namespace ZonderqOS.GUI
                 if (filter < 0)
                     filter = FilterLabels.Length - 1;
                 selectedIndex = 0;
+                selectedNotificationId = 0;
                 offset = 0;
                 RebuildFilter();
                 return true;
@@ -260,6 +264,7 @@ namespace ZonderqOS.GUI
             {
                 filter = hoveredFilter;
                 selectedIndex = 0;
+                selectedNotificationId = 0;
                 offset = 0;
                 RebuildFilter();
                 return true;
@@ -286,7 +291,10 @@ namespace ZonderqOS.GUI
                     selectedIndex = visibleIndex;
                     NotificationEntry entry;
                     if (TryGetVisible(visibleIndex, out entry))
+                    {
+                        selectedNotificationId = entry.Id;
                         NotificationService.MarkRead(entry.Id);
+                    }
                     EnsureFresh();
                     KeepSelectionVisible();
                 }
@@ -594,6 +602,7 @@ namespace ZonderqOS.GUI
         {
             cachedVersion = NotificationService.Version;
             visibleCount = 0;
+            int preservedSelection = -1;
             for (int newestOffset = 0; newestOffset < NotificationService.Count; newestOffset++)
             {
                 NotificationEntry entry;
@@ -605,21 +614,38 @@ namespace ZonderqOS.GUI
                     continue;
 
                 if (visibleCount < visibleOffsets.Length)
-                    visibleOffsets[visibleCount++] = newestOffset;
+                {
+                    visibleOffsets[visibleCount] = newestOffset;
+                    if (selectedNotificationId != 0 && entry.Id == selectedNotificationId)
+                        preservedSelection = visibleCount;
+                    visibleCount++;
+                }
             }
 
             if (visibleCount <= 0)
             {
                 selectedIndex = 0;
+                selectedNotificationId = 0;
                 offset = 0;
                 return;
             }
 
+            // If the selected entry survived the filter/store change, keep
+            // its ID rather than silently selecting a newly arrived entry.
+            if (preservedSelection >= 0)
+                selectedIndex = preservedSelection;
             if (selectedIndex >= visibleCount)
                 selectedIndex = visibleCount - 1;
             if (selectedIndex < 0)
                 selectedIndex = 0;
             KeepSelectionVisible();
+            RememberSelection();
+        }
+
+        private void RememberSelection()
+        {
+            NotificationEntry entry;
+            selectedNotificationId = TryGetVisible(selectedIndex, out entry) ? entry.Id : 0;
         }
 
         private bool TryGetVisible(int visibleIndex, out NotificationEntry entry)
@@ -643,6 +669,7 @@ namespace ZonderqOS.GUI
             else if (selectedIndex >= visibleCount)
                 selectedIndex = 0;
             KeepSelectionVisible();
+            RememberSelection();
         }
 
         private void KeepSelectionVisible()
@@ -666,6 +693,9 @@ namespace ZonderqOS.GUI
 
         private void MarkSelectedRead()
         {
+            // Keyboard input can arrive before the next Render after Post().
+            // Refresh offsets before resolving a selected notification.
+            EnsureFresh();
             if (VisibleRowCount <= 0)
                 return;
             NotificationEntry entry;
@@ -678,6 +708,7 @@ namespace ZonderqOS.GUI
 
         private void DismissSelected()
         {
+            EnsureFresh();
             if (VisibleRowCount <= 0)
                 return;
             NotificationEntry entry;
