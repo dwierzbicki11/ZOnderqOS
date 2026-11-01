@@ -42,12 +42,26 @@ namespace ZonderqOS.GUI.Apps
             // adjacent inversions before allocating a merge buffer.
             int inversions = 0;
             int firstInversion = -1;
+            bool cannotRepairLocally = false;
             for (int i = 1; i < count; i++)
             {
                 if (Compare(entries[i - 1], entries[i]) <= 0)
                     continue;
                 if (inversions++ == 0)
+                {
                     firstInversion = i;
+                    // If neither side of the first inversion fits past its
+                    // opposite neighbor, this is not a single moved entry.
+                    // Skip the remaining scan and use merge sort immediately;
+                    // this avoids a second half-scan on rotated large runs.
+                    if (i > 1 && i + 1 < count &&
+                        Compare(entries[i - 2], entries[i]) > 0 &&
+                        Compare(entries[i - 1], entries[i + 1]) > 0)
+                    {
+                        cannotRepairLocally = true;
+                        break;
+                    }
+                }
                 if (inversions > 4)
                     break;
             }
@@ -71,7 +85,7 @@ namespace ZonderqOS.GUI.Apps
             // displaced entries. Cap total shifts at 2*n to avoid quadratic
             // work on adversarial nearly sorted snapshots. If the budget
             // expires, restore the displaced item before stable merge sort.
-            if (inversions <= 4 && likelyLocalDisplacement)
+            if (inversions <= 4 && !cannotRepairLocally && likelyLocalDisplacement)
             {
                 long shifts = 0;
                 long budget = (long)count * 2;
