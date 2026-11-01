@@ -160,6 +160,20 @@ internal static class CursorDamageSmoke
             !extreme.TryMove(1, 1))
             throw new Exception("extreme coordinates rejected");
 
+        // Cursor-only motion must not allocate a new pixel buffer, bitmap,
+        // delegate or temporary collection per move after initialization.
+        var allocationCanvas = new Canvas(128, 96);
+        var allocationMover = new CursorDamageRenderer(allocationCanvas);
+        allocationMover.DrawAfterScene(5, 5);
+        for (int i = 0; i < 200; i++)
+            allocationMover.TryMove(i % 117, i % 87);
+        long startBytes = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 5000; i++)
+            allocationMover.TryMove(i % 117, i % 87);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - startBytes;
+        if (allocated != 0)
+            throw new Exception("Cursor motion allocated " + allocated + " B per 5000 moves");
+
         Time(false, 300);
         Time(true, 300);
         double[] before = new double[7], after = new double[7];
@@ -183,6 +197,6 @@ internal static class CursorDamageSmoke
             after[3].ToString("F2") + "ms ratio=" +
             (before[3] / after[3]).ToString("F2") +
             "x (7 alternating samples; fake Canvas, not QEMU FPS)");
-        Console.WriteLine("PASS: cursor damage exact framebuffer, edge clipping, reset and extreme-coordinate checks");
+        Console.WriteLine("PASS: cursor damage exact framebuffer, edge clipping, reset, extreme coordinates and 0 B per 5000 warmed moves");
     }
 }
