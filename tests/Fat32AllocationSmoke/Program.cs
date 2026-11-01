@@ -20,7 +20,7 @@ class Image : IFatSectorReader
         Boot = new byte[size]; Fat0 = new byte[FatSectors * size]; Fat1 = new byte[Fat0.Length];
         Set16(Boot, 11, size); Boot[13] = clusterSectors; Set16(Boot, 14, 32); Boot[16] = 2;
         Set32(Boot, 32, (uint)SectorCount); Set32(Boot, 36, FatSectors); Set32(Boot, 44, 2);
-        Boot[510] = 0x55; Boot[511] = 0xAA;
+        Boot[21] = 0xF8; Boot[510] = 0x55; Boot[511] = 0xAA;
         Entry(0, 0x0FFFFFF8); Entry(1, 0x0FFFFFFF); Entry(2, 0x0FFFFFFF);
     }
     public static void Set16(byte[] b, int p, uint v) { b[p] = (byte)v; b[p + 1] = (byte)(v >> 8); }
@@ -105,6 +105,28 @@ class Program
             var i = new Image(); ulong initial = Read(i).FreeBytes;
             i.Entry(3, 0x0FFFFFFF); Check(Read(i).FreeBytes == initial-512, "allocation not observed");
             i.Entry(3, 0); Check(Read(i).FreeBytes == initial, "release not observed");
+        });
+        Test("free root cluster rejected", () => { var i = new Image(); i.Entry(2, 0); Reject(i); });
+        Test("bad root cluster rejected", () => { var i = new Image(); i.Entry(2, 0x0FFFFFF7); Reject(i); });
+        Test("root cluster in later FAT sector validated", () => {
+            var i = new Image(); Image.Set32(i.Boot,44,1000); Reject(i);
+            i.Entry(1000,0x0FFFFFFF); Read(i);
+        });
+        Test("multi-cluster root accepted", () => {
+            var i = new Image(); i.Entry(2,3); i.Entry(3,0x0FFFFFFF);
+            Check(Read(i).AllocatedBytes == 1024, "root chain counted incorrectly");
+        });
+        Test("invalid FAT media header rejected", () => { var i = new Image(); i.Entry(0,0); Reject(i); });
+        Test("FAT media header must match BPB", () => { var i = new Image(); i.Boot[21]=0xF0; Reject(i); });
+        Test("invalid reserved FAT entry one rejected", () => { var i = new Image(); i.Entry(1,0); Reject(i); });
+        Test("FAT clean and error flags do not invalidate header", () => {
+            var i = new Image(); i.Entry(1,0x03FFFFFF); Read(i);
+        });
+        Test("invalid mirrored FAT header rejected", () => {
+            var i = new Image(); Image.Set32(i.Fat1,0,0); Reject(i);
+        });
+        Test("inactive FAT header ignored", () => {
+            var i = new Image(); Image.Set16(i.Boot,40,0x81); Image.Set32(i.Fat0,0,0); Read(i);
         });
         Test("null reader rejected", () => Check(!Fat32Allocation.TryRead(null,out var s,out var e) && s.DataBytes==0, "null accepted"));
         Console.WriteLine(passed + " allocation checks passed");
