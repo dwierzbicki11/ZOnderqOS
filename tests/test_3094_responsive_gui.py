@@ -249,7 +249,9 @@ class ResponsiveGui3094(unittest.TestCase):
         dispatch = APPLICATION_MANAGER.split(
             "public void HandleMouse(int mouseX, int mouseY, bool leftClicked,", 1
         )[1].split("public void Update()", 1)[0]
-        self.assertIn("bool wasHeld = leftWasClicked || rightWasClicked;", dispatch)
+        self.assertIn("bool wasHeld = physicalWasHeld || leftWasClicked || rightWasClicked;", dispatch)
+        self.assertIn("bool physicalWasHeld = false", APPLICATION_MANAGER)
+        self.assertIn("previousLeftButtonState || previousRightButtonState);", DESKTOP)
         self.assertIn("target = mouseCapture;", dispatch)
         self.assertIn("if (wasHeld)", dispatch)
         self.assertIn("!applications.Contains(target)", dispatch)
