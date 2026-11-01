@@ -188,7 +188,20 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('0xB5', SOURCE)
         self.assertIn('DHCP=NOT_ATTEMPTED IP=UNASSIGNED', SOURCE)
         self.assertIn('new DhcpClient().SendDiscoverPacket()', SOURCE)
-        self.assertIn('NetworkManager.Primary.IPConfig', SOURCE)
+        self.assertIn('NetworkAdapter leasedAdapter = NetworkManager.Primary;', SOURCE)
+        self.assertIn('IPConfig? config = leasedAdapter.IPConfig;', SOURCE)
+        self.assertIn('E1000E binding/link/MAC changed during DHCP', SOURCE)
+        self.assertIn('Unexpected QEMU DHCP lease', SOURCE)
+        dhcp = SOURCE.split('new DhcpClient().SendDiscoverPacket()', 1)[1].split(
+            '#if ZONDERQ_NETWORK_N3_ICMP', 1)[0]
+        for check in ('leasedAdapter.IsValid', 'leasedAdapter.Ready',
+                      'leasedAdapter.LinkUp', 'leasedAdapter.MacAddress',
+                      'config.Address.ToString() != "10.0.2.15"',
+                      'config.SubnetMask.ToString() != "255.255.255.0"',
+                      'config.DefaultGateway.ToString() != "10.0.2.2"'):
+            self.assertIn(check, dhcp)
+        self.assertLess(dhcp.index('Unexpected QEMU DHCP lease'),
+                        dhcp.index('[NET3095-N2] DHCP=PASS ip='))
         self.assertIn('[NET3095-N2] DHCP=PASS ip=', SOURCE)
         self.assertIn('network-n2)', BUILD)
         self.assertIn('-p:ZonderqNetworkN2Dhcp="$network_n2"', BUILD)
