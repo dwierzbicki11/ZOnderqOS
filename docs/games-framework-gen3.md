@@ -18,6 +18,7 @@ Gry są widoczne w App Center (kategoria GRY) i menu Start.
 Utwórz `source/Games/MojaGra/MojaGra.cs`:
 
 ```csharp
+using System;
 using System.Drawing;
 using Cosmos.Kernel.System.Graphics;
 using ZonderqOS.Games.Framework;
