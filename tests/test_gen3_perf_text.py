@@ -65,7 +65,11 @@ class Gen3TextRendererPerformanceContracts(unittest.TestCase):
         self.assertIn("rows[offset + row] = (byte)Glyph((char)ch, row);", SOURCE)
         self.assertIn("int glyphOffset = ch < 128 ? ch * 7 : -1;", SOURCE)
         self.assertIn("CachedAsciiGlyphRows[glyphOffset + row]", SOURCE)
-        self.assertIn(": Glyph(ch, row);", SOURCE)
+        self.assertIn("private static readonly byte[] CachedFallbackGlyphRows = BuildFallbackGlyphRows();", SOURCE)
+        self.assertIn("rows[row] = (byte)Glyph('\\uFFFF', row);", SOURCE)
+        self.assertIn("char upper = char.ToUpperInvariant(ch);", SOURCE)
+        self.assertIn("if (upper < 128)", SOURCE)
+        self.assertIn(": CachedFallbackGlyphRows[row];", SOURCE)
         self.assertIn("ch = NormalizeGlyph(ch);", SOURCE)
 
     def test_blank_glyph_fast_path_preserves_ink(self):
