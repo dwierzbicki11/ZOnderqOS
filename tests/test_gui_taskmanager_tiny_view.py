@@ -166,7 +166,11 @@ class TinyTaskManagerViewTests(unittest.TestCase):
     def test_performance_keyboard_shortcuts_are_bounded_and_non_destructive(self):
         keyboard = section("public override void HandleKeyboard(KeyEvent key)",
                            "private void SetPage(int page)")
-        perf = keyboard.split("if (activePage == PagePerformance)", 1)[1]
+        # Stop at the ordinary process-list navigation after the performance
+        # branch. Delete is intentionally present there, but unreachable from
+        # the performance page because its branch returns first.
+        perf = keyboard.split("if (activePage == PagePerformance)", 1)[1].split(
+            "if (key.Key == ConsoleKeyEx.UpArrow) Select(-1);", 1)[0]
         self.assertIn("if (key.Modifiers != 0)", perf)
         self.assertIn("TaskManagerPerformanceNavigation.StepResource(", perf)
         self.assertIn("TaskManagerPerformanceNavigation.ClampLogicalPage(", perf)
