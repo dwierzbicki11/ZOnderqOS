@@ -177,12 +177,34 @@ namespace ZonderqOS
                         stream.Write(request, 0, request.Length);
                         byte[] response = new byte[expected.Length];
                         int received = 0;
+                        // A five-second per-read socket timeout does not
+                        // prevent a slow peer from keeping the TCP echo open
+                        // indefinitely. Bound the entire response as well.
+                        long echoStart = Stopwatch.GetTimestamp();
+                        long echoFrequency = Stopwatch.Frequency;
+                        if (echoFrequency <= 0 || echoStart <= 0)
+                        {
+                            Log("[NET3095-N4][FAIL] TCP echo monotonic clock unavailable");
+                            return;
+                        }
                         while (received < response.Length)
                         {
+                            long echoElapsed = Stopwatch.GetTimestamp() - echoStart;
+                            if (echoElapsed < 0 || echoElapsed / echoFrequency >= 20)
+                            {
+                                Log("[NET3095-N4][FAIL] TCP echo total deadline exceeded");
+                                return;
+                            }
                             int read = stream.Read(response, received, response.Length - received);
                             if (read <= 0)
                                 break;
                             received += read;
+                            echoElapsed = Stopwatch.GetTimestamp() - echoStart;
+                            if (echoElapsed < 0 || echoElapsed / echoFrequency >= 20)
+                            {
+                                Log("[NET3095-N4][FAIL] TCP echo total deadline exceeded");
+                                return;
+                            }
                         }
                         if (received != expected.Length)
                         {
