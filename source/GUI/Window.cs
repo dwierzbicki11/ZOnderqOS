@@ -406,7 +406,11 @@ namespace ZonderqOS.GUI
                 return;
             }
 
-            bool inTitle = mouseY >= Y && mouseY < Y + TitleBarHeight && mouseX >= X && mouseX < X + Width;
+            // A short window has no painted caption; clicks in the
+            // theoretical 38px strip outside its bounds cannot start a drag.
+            bool inTitle = Height >= TitleBarHeight &&
+                mouseY >= Y && mouseY < Y + TitleBarHeight && mouseY < Y + Height &&
+                mouseX >= X && mouseX < X + Width;
             int controlsLeft = X + Width - RightPadding - visibleControls * ButtonSize;
             if (!inTitle || (visibleControls > 0 && mouseX >= controlsLeft))
             {
