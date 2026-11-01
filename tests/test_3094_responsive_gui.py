@@ -2522,7 +2522,8 @@ class FileManagerShortClient3095(unittest.TestCase):
             "private void GoUp()", 1)[0]
         page = FILE_MANAGER.split("private void SelectPage(int direction)", 1)[1].split(
             "private void Select(int delta)", 1)[0]
-        render = FILE_MANAGER.split("public override void Render(Canvas canvas)", 1)[2].split(
+        render = FILE_MANAGER.split("internal sealed class FileManagerView", 1)[1].split(
+            "public override void Render(Canvas canvas)", 1)[1].split(
             "private void RenderToolbar(", 1)[0]
         grid = FILE_MANAGER.split("private void Grid(Canvas canvas", 1)[1].split(
             "private static IconType ResolveEntryIcon(", 1)[0]
