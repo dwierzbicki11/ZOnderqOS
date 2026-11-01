@@ -19,6 +19,17 @@ namespace Cosmos.Kernel.System.Graphics
             pixels = new int[checked(width * height)];
         }
 
+        public int DisplayCalls { get; private set; }
+
+        public Color GetPointColor(int x, int y)
+        {
+            if (x < 0 || y < 0 || x >= Width || y >= Height)
+                throw new ArgumentOutOfRangeException();
+            return Color.FromArgb(pixels[y * Width + x]);
+        }
+
+        public void Display() => DisplayCalls++;
+
         public void DrawPoint(Color color, int x, int y)
         {
             DrawCalls++;

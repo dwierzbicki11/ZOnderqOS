@@ -94,46 +94,44 @@ namespace ZonderqOS.GUI
             }
         }
 
+        // Clip once per damage rectangle instead of checking four bounds for
+        // each of its 672 pixels. Offscreen savedPixels entries are never read
+        // by Restore, so they need not be overwritten with Color.Black.
+        // Wide arithmetic also avoids overflow at extreme pointer coordinates.
+        private void VisibleRegion(int x, int y, out long baseX, out long baseY,
+            out int firstCol, out int lastCol, out int firstRow, out int lastRow)
+        {
+            baseX = (long)x - LeftHalo;
+            baseY = (long)y - TopHalo;
+            firstCol = (int)Math.Min(DamageWidth, Math.Max(0L, -baseX));
+            lastCol = (int)Math.Max(0L, Math.Min(DamageWidth, (long)canvas.Width - baseX));
+            firstRow = (int)Math.Min(DamageHeight, Math.Max(0L, -baseY));
+            lastRow = (int)Math.Max(0L, Math.Min(DamageHeight, (long)canvas.Height - baseY));
+        }
+
         private void Capture(int x, int y)
         {
-            int baseX = x - LeftHalo;
-            int baseY = y - TopHalo;
-            int width = (int)canvas.Width;
-            int height = (int)canvas.Height;
-
-            for (int row = 0; row < DamageHeight; row++)
+            VisibleRegion(x, y, out long baseX, out long baseY,
+                out int firstCol, out int lastCol, out int firstRow, out int lastRow);
+            for (int row = firstRow; row < lastRow; row++)
             {
-                int py = baseY + row;
+                int py = (int)(baseY + row);
                 int offset = row * DamageWidth;
-                for (int col = 0; col < DamageWidth; col++)
-                {
-                    int px = baseX + col;
-                    savedPixels[offset + col] = px >= 0 && py >= 0 && px < width && py < height
-                        ? canvas.GetPointColor(px, py) : Color.Black;
-                }
+                for (int col = firstCol; col < lastCol; col++)
+                    savedPixels[offset + col] = canvas.GetPointColor((int)(baseX + col), py);
             }
         }
 
         private void Restore(int x, int y)
         {
-            int baseX = x - LeftHalo;
-            int baseY = y - TopHalo;
-            int width = (int)canvas.Width;
-            int height = (int)canvas.Height;
-
-            for (int row = 0; row < DamageHeight; row++)
+            VisibleRegion(x, y, out long baseX, out long baseY,
+                out int firstCol, out int lastCol, out int firstRow, out int lastRow);
+            for (int row = firstRow; row < lastRow; row++)
             {
-                int py = baseY + row;
-                if (py < 0 || py >= height)
-                    continue;
-
+                int py = (int)(baseY + row);
                 int offset = row * DamageWidth;
-                for (int col = 0; col < DamageWidth; col++)
-                {
-                    int px = baseX + col;
-                    if (px >= 0 && px < width)
-                        canvas.DrawPoint(savedPixels[offset + col], px, py);
-                }
+                for (int col = firstCol; col < lastCol; col++)
+                    canvas.DrawPoint(savedPixels[offset + col], (int)(baseX + col), py);
             }
         }
     }
