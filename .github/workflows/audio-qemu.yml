@@ -11,6 +11,8 @@ on:
       - 'tools/verify-audio-wav-capture.py'
       - 'tools/verify-audio-stereo-capture.py'
       - 'tests/test_audio_stereo_validator.py'
+      - 'tools/verify-audio-delay-capture.py'
+      - 'tests/test_audio_delay_validator.py'
       - 'tools/verify-audio-volume-capture.py'
       - 'tools/verify-audio-mute-capture.py'
       - 'tools/verify-audio-balance-capture.py'
@@ -49,10 +51,11 @@ jobs:
         run: |
           bash tools/verify-cosmos-3095-migration.sh
           bash -n run.sh tools/build-cosmos-3095-local.sh
-          python3 -m py_compile tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py tools/verify-audio-stereo-capture.py tools/verify-audio-volume-capture.py tools/verify-audio-mute-capture.py tools/verify-audio-balance-capture.py tools/verify-audio-fade-capture.py
+          python3 -m py_compile tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py tools/verify-audio-stereo-capture.py tools/verify-audio-delay-capture.py tools/verify-audio-volume-capture.py tools/verify-audio-mute-capture.py tools/verify-audio-balance-capture.py tools/verify-audio-fade-capture.py
           python3 tests/test_audio_gen3_contract.py
           python3 tests/test_audio_wav_validator.py
           python3 tests/test_audio_stereo_validator.py
+          python3 tests/test_audio_delay_validator.py
           python3 tests/test_audio_volume_validator.py
           python3 tests/test_audio_mute_validator.py
           python3 tests/test_audio_qmp_keys.py
@@ -80,6 +83,10 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-mix-out --boot-seconds 45 --command mix
+      - name: Boot and capture 50ms delayed independent PCM mixing
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixdelay-out --boot-seconds 45 --command mixdelay
       - name: Boot again and capture decoded in-memory RIFF/WAV playback
         run: |
           python3 tools/smoke-audio-qemu.py \
@@ -159,6 +166,7 @@ jobs:
           tail -n 200 audio-qemu-fade-out/serial.log audio-qemu-fade-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-stereo-out/serial.log audio-qemu-stereo-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-mix-out/serial.log audio-qemu-mix-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-mixdelay-out/serial.log audio-qemu-mixdelay-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-wav-out/serial.log audio-qemu-wav-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-mono-out/serial.log audio-qemu-mono-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-44100-out/serial.log audio-qemu-44100-out/qemu.stderr.log 2>/dev/null || true
@@ -195,6 +203,9 @@ jobs:
             audio-qemu-mix-out/*.log
             audio-qemu-mix-out/*.wav
             audio-qemu-mix-out/*.ppm
+            audio-qemu-mixdelay-out/*.log
+            audio-qemu-mixdelay-out/*.wav
+            audio-qemu-mixdelay-out/*.ppm
             audio-qemu-wav-out/*.log
             audio-qemu-wav-out/*.wav
             audio-qemu-wav-out/*.ppm
