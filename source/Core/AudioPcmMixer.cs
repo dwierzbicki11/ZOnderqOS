@@ -67,14 +67,11 @@ namespace ZonderqOS.SystemCore
             }
 
             byte[] output = new byte[length];
-            // Common single unity-gain notification: copy exact PCM bytes
-            // without per-sample decoding, scaling and repacking.
+            // Non-overlapping unity-gain notifications need no arithmetic.
+            // Copy whole PCM buffers, retaining zero-filled gaps and ownership.
             if (allMuted) return output;
-            if (clips.Length == 1 && gainsPercent[0] == 100)
-            {
-                Array.Copy(clips[0], 0, output, startFrames[0] * 4, clips[0].Length);
+            if (TryCopyDisjointUnityClips(clips, startFrames, gainsPercent, null, 0, output))
                 return output;
-            }
             for (int at = 0; at < length; at += 2)
             {
                 int total = 0;
@@ -178,13 +175,11 @@ namespace ZonderqOS.SystemCore
                     "Scheduled PCM and silent drain exceed two seconds.");
             byte[] output = new byte[length + trailingSilenceFrames * 4];
             if (allMuted) return output;
-            // Preserve the silent HDA drain without a second PCM allocation.
-            if (clips.Length == 1 && gainsPercent[0] == 100 &&
-                (individualFades == null ? uniformFade : individualFades[0]) == 0)
-            {
-                Array.Copy(clips[0], 0, output, startFrames[0] * 4, clips[0].Length);
+            // Preserve the silent HDA drain and bypass sample mixing for
+            // independent, unfaded unity-gain clips, including out-of-order schedules.
+            if (TryCopyDisjointUnityClips(clips, startFrames, gainsPercent,
+                individualFades, uniformFade, output))
                 return output;
-            }
             for (int at = 0; at < length; at += 2)
             {
                 int total = 0;
@@ -223,6 +218,34 @@ namespace ZonderqOS.SystemCore
             return output;
         }
 
+
+        // Called only after complete schedule, gain, fade and duration validation.
+        // A strict half-open overlap check prevents Array.Copy from replacing
+        // samples that must instead be summed and saturated by the mixer.
+        // The output is always newly allocated; caller PCM never aliases it.
+        private static bool TryCopyDisjointUnityClips(
+            byte[][] clips, int[] startFrames, int[] gainsPercent,
+            int[] individualFades, int uniformFade, byte[] output)
+        {
+            for (int i = 0; i < clips.Length; i++)
+            {
+                if (gainsPercent[i] != 100 ||
+                    (individualFades == null ? uniformFade : individualFades[i]) != 0)
+                    return false;
+                int start = startFrames[i] * 4;
+                int end = start + clips[i].Length;
+                for (int j = 0; j < i; j++)
+                {
+                    int otherStart = startFrames[j] * 4;
+                    int otherEnd = otherStart + clips[j].Length;
+                    if (start < otherEnd && otherStart < end)
+                        return false;
+                }
+            }
+            for (int i = 0; i < clips.Length; i++)
+                Array.Copy(clips[i], 0, output, startFrames[i] * 4, clips[i].Length);
+            return true;
+        }
 
         public static byte[] MixStereo16WithDelay(
             byte[] first, byte[] second, int firstPercent, int secondPercent,
