@@ -174,6 +174,64 @@ internal static class Program
         return checksum;
     }
 
+    // Compare only dictionary construction: the previous two-probe
+    // ContainsKey+Add path against production HtopProcessIndex.Rebuild.
+    // Both maps and the process snapshot are reused between samples.
+    private static void BenchmarkIndexBuild(int count, int unique)
+    {
+        var processes = new KernelProcess[count];
+        for (int i = 0; i < count; i++)
+            processes[i] = new KernelProcess(i + 1, "p", (uint)(10000 + i % unique));
+        var legacy = new Dictionary<uint, KernelProcess>();
+        var index = new HtopProcessIndex();
+        Func<long> before = () =>
+        {
+            legacy.Clear();
+            for (int i = 0; i < processes.Length; i++)
+            {
+                uint tid = processes[i].KernelThreadId;
+                if (!legacy.ContainsKey(tid))
+                    legacy.Add(tid, processes[i]);
+            }
+            return legacy.Count;
+        };
+        Func<long> after = () =>
+        {
+            index.Rebuild(processes);
+            return unique;
+        };
+
+        Assert(before() == after(), "index build count mismatch");
+        for (int i = 0; i < 12; i++) { before(); after(); }
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 50; i++) sink ^= after();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Assert(allocated == 0, "index build allocated after warmup: " + allocated);
+        double[] oldSamples = new double[7];
+        double[] newSamples = new double[7];
+        int repetitions = count <= 512 ? 60 : count <= 2048 ? 25 : 8;
+        for (int sample = 0; sample < 7; sample++)
+        {
+            if ((sample & 1) == 0)
+            {
+                oldSamples[sample] = Time(before, repetitions);
+                newSamples[sample] = Time(after, repetitions);
+            }
+            else
+            {
+                newSamples[sample] = Time(after, repetitions);
+                oldSamples[sample] = Time(before, repetitions);
+            }
+        }
+        double oldMs = Median(oldSamples);
+        double newMs = Median(newSamples);
+        Console.WriteLine("Host .NET htop index build " + count + " processes / " + unique +
+            " distinct TIDs: ContainsKey+Add=" + oldMs.ToString("F4") +
+            "ms TryAdd=" + newMs.ToString("F4") + "ms ratio=" +
+            (oldMs / newMs).ToString("F2") + "x warm-alloc=" + allocated +
+            "B (7 alternating samples; not kernel CPU).");
+    }
+
     private static double Time(Func<long> action, int repetitions)
     {
         long start = Stopwatch.GetTimestamp();
@@ -235,6 +293,9 @@ internal static class Program
         Benchmark(2048, 2048);
         Benchmark(1024, 8);
         Benchmark(64, 4096);
+        BenchmarkIndexBuild(512, 512);
+        BenchmarkIndexBuild(2048, 1024);
+        BenchmarkIndexBuild(8192, 8192);
         GC.KeepAlive(sink);
         Console.WriteLine("PASS: host-only htop index equivalence, allocation and measured A/B; not kernel CPU/idle.");
         return 0;
