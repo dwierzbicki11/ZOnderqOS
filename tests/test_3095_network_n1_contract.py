@@ -268,7 +268,7 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('for expected_sent, claim in zip((0, 32, 64, 96, 128), tx_checks):',
                       health)
         self.assertIn('HTTP DriverKit snapshot on wrong side of TX burst', health)
-        self.assertIn('isr_executions=unknown
+        self.assertIn('isr_executions=unknown' + chr(36), health)
         self.assertIn('ISR-UNPROVEN', health)
         self.assertIn('python3 "$ROOT/tests/verify_3095_e1000e_irq_binding.py" "$LOG"', SMOKE)
         self.assertNotIn('binding.TryRequestInterrupt(', SOURCE)
