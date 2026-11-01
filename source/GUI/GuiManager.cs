@@ -8,6 +8,9 @@ using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Input;
 using ZonderqOS.GUI.Apps;
 using ZonderqOS.GUI.Icons;
+using ZonderqOS.Games.Pong;
+using ZonderqOS.Games.Snake;
+using ZonderqOS.Games.Tetris;
 
 namespace ZonderqOS.GUI
 {
@@ -335,9 +338,11 @@ namespace ZonderqOS.GUI
 
                     applicationManager.Update();
 
-                    int heartbeatFrames = applicationManager.HasLiveTelemetryWindow
-                        ? global::ZonderqOS.SystemSettings.TelemetryHeartbeatFrames
-                        : global::ZonderqOS.SystemSettings.IdleHeartbeatFrames;
+                    int heartbeatFrames = applicationManager.HasActiveGame
+                        ? 1
+                        : applicationManager.HasLiveTelemetryWindow
+                            ? global::ZonderqOS.SystemSettings.TelemetryHeartbeatFrames
+                            : global::ZonderqOS.SystemSettings.IdleHeartbeatFrames;
                     if (heartbeatFrames < 1)
                         heartbeatFrames = 1;
                     bool heartbeat = frameCounter % heartbeatFrames == 0;
@@ -553,6 +558,27 @@ namespace ZonderqOS.GUI
                 "Katalog wbudowanych aplikacji ZOnderqOS",
                 AppCategory.System, IconType.AppCenter, () => LaunchAppCenter(145, 76),
                 StartMenuPlacement.Tool, 3, 10, false));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Pong, "Pong", "Pong", "Pong",
+                "Gry: klasyczny Pong przeciwko CPU",
+                AppCategory.Games, IconType.AppCenter,
+                () => applicationManager.Launch(new PongGame(90, 65)),
+                StartMenuPlacement.Tool, 6, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Snake, "Snake (szkielet)", "Snake", "Snake",
+                "Pionowy szablon do rozwijania Snake",
+                AppCategory.Games, IconType.AppCenter,
+                () => applicationManager.Launch(new SnakeGame(95, 40)),
+                StartMenuPlacement.Tool, 7, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Tetris, "Tetris (szkielet)", "Tetris", "Tetris",
+                "Pionowy szablon do rozwijania Tetris",
+                AppCategory.Games, IconType.AppCenter,
+                () => applicationManager.Launch(new TetrisGame(115, 40)),
+                StartMenuPlacement.Tool, 8, -1, true));
         }
 
         private void PopulateStartMenu()
