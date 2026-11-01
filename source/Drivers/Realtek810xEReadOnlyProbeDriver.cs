@@ -98,6 +98,17 @@ namespace ZonderqOS.Drivers
                 if (window.Length < MinimumRegisterBytes)
                     return Decline("mapped BAR2 window too short");
 
+                // Mapping must not silently change PCI command or BAR2/BAR3.
+                // Reject such transitions BEFORE the first device MMIO read,
+                // rather than detecting them only after sampling registers.
+                ushort commandAfterMap = pci.ReadConfig16(0x04);
+                if (!Realtek810xERegisterDecoder.IsStablePciCommand(
+                        commandBefore, commandAfterMap))
+                    return Decline("PCI command changed while mapping; no MMIO reads");
+                if (!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
+                        barPairBefore, ReadRegisterBarPair(pci)))
+                    return Decline("BAR2/BAR3 changed while mapping; no MMIO reads");
+
                 if (!Realtek810xERegisterSampler.TrySample(
                         new WindowReader(window), out var snapshot))
                     return Decline("invalid or unstable MAC/PHY/TxConfig snapshot; no link proof");
