@@ -686,7 +686,7 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject PCM24 duration exceeding two seconds");
         rejected = false;
-        try { AudioWavePcm.EncodePcm24AtRate(new byte[3], 11025, 1); }
+        try { AudioWavePcm.EncodePcm24AtRate(new byte[3], 12345, 1); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "reject unsupported PCM24 sample rate");
 
