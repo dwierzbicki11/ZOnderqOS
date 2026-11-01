@@ -33,10 +33,12 @@ namespace ZonderqOS.GUI.Icons
         private static int scaledCacheCount;
         private static int nextScaledEvictionSlot;
 
-        // Per-icon most-recent-size slot: 47 integers instead of searching
-        // up to 256 entries every time an icon is drawn at its usual size.
-        // A miss still uses the original exhaustive lookup and eviction rules.
+        // Two recent sizes per icon: desktop and file-manager views often
+        // alternate sizes each frame. A single recent slot still scanned up
+        // to 256 cache entries on every second draw. Keep both hints bounded;
+        // eviction may invalidate either, so every hit checks the full key.
         private static readonly int[] scaledRecentSlots = new int[IconCount];
+        private static readonly int[] scaledPreviousSlots = new int[IconCount];
 
         public static void Preload()
         {
@@ -172,6 +174,17 @@ namespace ZonderqOS.GUI.Icons
                     scaledWidths[recent] == width &&
                     scaledHeights[recent] == height)
                     return scaledPixels[recent];
+
+                int previous = scaledPreviousSlots[typeIndex];
+                if (previous != recent && previous < scaledCacheCount &&
+                    scaledTypes[previous] == type &&
+                    scaledWidths[previous] == width &&
+                    scaledHeights[previous] == height)
+                {
+                    scaledPreviousSlots[typeIndex] = recent;
+                    scaledRecentSlots[typeIndex] = previous;
+                    return scaledPixels[previous];
+                }
             }
 
             for (int i = 0; i < scaledCacheCount; i++)
@@ -179,7 +192,10 @@ namespace ZonderqOS.GUI.Icons
                 if (scaledTypes[i] == type && scaledWidths[i] == width && scaledHeights[i] == height)
                 {
                     if (validType)
+                    {
+                        scaledPreviousSlots[typeIndex] = scaledRecentSlots[typeIndex];
                         scaledRecentSlots[typeIndex] = i;
+                    }
                     return scaledPixels[i];
                 }
             }
@@ -235,7 +251,10 @@ namespace ZonderqOS.GUI.Icons
             scaledPixels[slot] = destination;
             scaledUseRuns[slot] = ShouldCoalesce(destination, width, height);
             if (validType)
+            {
+                scaledPreviousSlots[typeIndex] = scaledRecentSlots[typeIndex];
                 scaledRecentSlots[typeIndex] = slot;
+            }
             return destination;
         }
 
