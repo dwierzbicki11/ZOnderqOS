@@ -72,6 +72,10 @@ namespace ZonderqOS.GUI.Apps
         // just enough to preserve one full 112px file tile.
         internal int SidebarWidthForView => view.Width < 220
             ? 0 : Math.Min(SidebarWidth, view.Width - TileWidth - 12);
+        // Four 36px buttons spaced 42px apart; hide any that would
+        // cross the client boundary and share this count with hit-testing.
+        internal int ToolbarButtonCountForView => Math.Min(4,
+            Math.Max(0, (view.Width - 44) / 42 + 1));
         internal int GridWidthForView => Math.Max(TileWidth, view.Width - SidebarWidthForView - 12);
         internal int GridHeightForView => Math.Max(40, view.Height - FooterHeight - ContentTop - 8);
         // Use a final partial row only when >=40px is available. Compact
@@ -371,19 +375,24 @@ namespace ZonderqOS.GUI.Apps
         private void Toolbar(int x)
         {
             ResetClickSequence();
-            if (x < 42)
-            {
+            // Match the painted 36px controls at x=8,50,92,134 exactly.
+            // The old broad x<42/84/... hit boxes also activated controls
+            // from their unpainted margins, including hidden buttons on a
+            // narrow framebuffer.
+            if (x < 8)
+                return;
+            int offset = x - 8;
+            int button = offset / 42;
+            if (button >= ToolbarButtonCountForView || offset % 42 >= 36)
+                return;
+
+            if (button == 0)
                 GoUp();
-            }
-            else if (x < 84)
-            {
+            else if (button == 1)
                 NavigateTo("/root");
-            }
-            else if (x < 126)
-            {
+            else if (button == 2)
                 RefreshAll();
-            }
-            else if (x < 168)
+            else if (button == 3)
             {
                 searchText = "";
                 ApplySearchFilter();
@@ -1453,10 +1462,14 @@ namespace ZonderqOS.GUI.Apps
         private void RenderToolbar(Canvas canvas)
         {
             canvas.DrawFilledRectangle(ChromeRaised, X + 4, Y + 4, Width - 8, 40);
-            ToolbarButton(canvas, IconType.ArrowUp, 8);
-            ToolbarButton(canvas, IconType.Start, 50);
-            ToolbarButton(canvas, IconType.Refresh, 92);
-            ToolbarButton(canvas, IconType.Search, 134);
+            if (app.ToolbarButtonCountForView > 0)
+                ToolbarButton(canvas, IconType.ArrowUp, 8);
+            if (app.ToolbarButtonCountForView > 1)
+                ToolbarButton(canvas, IconType.Start, 50);
+            if (app.ToolbarButtonCountForView > 2)
+                ToolbarButton(canvas, IconType.Refresh, 92);
+            if (app.ToolbarButtonCountForView > 3)
+                ToolbarButton(canvas, IconType.Search, 134);
 
             // The location bar begins after four 36px buttons. Hide it
             // instead of drawing 120px past the right edge on tiny clients.
