@@ -90,8 +90,10 @@ internal static class IconEvictionReuseSmoke
                 bool reuse = (sample & 1) != 0;
                 evictionField.SetValue(null, slot);
                 types[slot] = IconType.File;
-                widths[slot] = 8;
-                heights[slot] = 8;
+                // Previous cached geometry is 80x80, whereas the new
+                // request is 64x100: equal area, different row stride.
+                widths[slot] = 80;
+                heights[slot] = 80;
                 pixels[slot] = reuse ? reusable : wrongLength;
 
                 long before = GC.GetAllocatedBytesForCurrentThread();
