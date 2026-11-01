@@ -47,6 +47,41 @@ def visible_rows(window_height, list_top, bottom_offset, row_height, row_gap):
 
 
 class ResponsiveGui3094(unittest.TestCase):
+    def test_ultranarrow_taskbar_keeps_switcher_visible_without_invisible_tray_hits(self):
+        # Geometry-only regression for widths below the QEMU 240px probe.
+        # At these widths the old fixed 132px tray hid every app button.
+        self.assertIn("if (Width < 178)\\n                return 0;", TASKBAR.replace("\r", ""))
+        self.assertIn("if (Width < 240)", TASKBAR)
+        self.assertIn("if (Width >= 240)", TASKBAR)
+        self.assertIn("if (Width < 178)\\n                return;", TASKBAR.replace("\r", ""))
+        self.assertIn("notificationClick?.Invoke();", TASKBAR)
+        self.assertIn("applicationManager.CycleWindow(false);", TASKBAR)
+
+        for width in range(100, 241):
+            if width < 178:
+                tray_width = 0
+            elif width < 240:
+                tray_width = min(132, max(0, width - 100))
+            else:
+                tray_width = 132
+            tray_left = width - tray_width
+            slots = max(0, (tray_left - 60 + 5) // 45)
+            self.assertGreaterEqual(slots, 1, width)
+            for count in (0, 1, 2, 3, 10, 50):
+                overflow = count > slots
+                page_slots = slots - 1 if overflow else slots
+                if overflow:
+                    self.assertLessEqual(60 + page_slots * 45 + 40, tray_left,
+                                         (width, count))
+                elif count:
+                    self.assertLessEqual(60 + (count - 1) * 45 + 40,
+                                         tray_left, (width, count))
+            if 178 <= width < 240:
+                # Clock fits entirely after the 40px switcher; notification
+                # is intentionally hidden rather than painted over the clock.
+                self.assertGreaterEqual(width - 78, tray_left)
+                self.assertLessEqual(width - 78 + 68, width)
+
     def test_gui_keyboard_dispatch_has_finite_per_frame_budget(self):
         # A continuous stream of key-repeat events must not prevent the
         # mouse, lock timer and application updates from running. This is a
