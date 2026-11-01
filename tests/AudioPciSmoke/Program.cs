@@ -1355,6 +1355,36 @@ static class Test
         Expect(mixedStereoProbe.AsSpan().SequenceEqual(referenceStereoProbe),
             "mixed stereo probe matches independent 440/880 Hz reference byte-for-byte");
 
+        // Exact PCM fixture used by QEMU mixdelay: 2400 frames = 50 ms.
+        // Check channel onset and tail at frame boundaries before HDA playback.
+        byte[] delayedStereoProbe = AudioPcmMixer.MixStereo16WithDelay(
+            mixLeft, mixRight, 100, 100, 2400);
+        Expect(delayedStereoProbe.Length == 57600,
+            "50ms delay extends 250ms fixture to exactly 300ms");
+        foreach (int frame in new[] { 0, 2399 })
+        {
+            int at = frame * 4;
+            Expect(BitConverter.ToInt16(delayedStereoProbe, at + 2) == 0,
+                "right channel remains silent before delayed onset");
+            Expect(BitConverter.ToInt16(delayedStereoProbe, at) ==
+                BitConverter.ToInt16(mixLeft, at), "left begins immediately");
+        }
+        foreach (int frame in new[] { 2400, 11999 })
+        {
+            int at = frame * 4;
+            Expect(BitConverter.ToInt16(delayedStereoProbe, at + 2) ==
+                BitConverter.ToInt16(mixRight, at - 2400 * 4 + 2),
+                "right source starts on exact scheduled PCM frame");
+        }
+        foreach (int frame in new[] { 12000, 14399 })
+        {
+            int at = frame * 4;
+            Expect(BitConverter.ToInt16(delayedStereoProbe, at) == 0,
+                "left clip ends after its original 250ms duration");
+            Expect(BitConverter.ToInt16(delayedStereoProbe, at + 2) ==
+                BitConverter.ToInt16(mixRight, at - 2400 * 4 + 2),
+                "right clip retains its 50ms trailing interval");
+        }
         Console.WriteLine("[AUDIO-PCI-HOST] PCM16 mixer saturation, gains, bounds and source immutability PASS");
 
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
