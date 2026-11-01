@@ -42,8 +42,9 @@ def nav_target(bounds, page):
     return view_x + 52, view_y + 60 + page * 42 + 20
 
 
-def measure(label, before, after, minimum=None, maximum=None):
-    changed, samples = qmp.difference(before, after)
+def measure(label, before, after, minimum=None, maximum=None, region=None):
+    changed, samples = (qmp.difference(before, after) if region is None else
+                        difference_in_region(before, after, region))
     fraction = changed / max(1, samples)
     print(f"[TASK-QMP] {label}: {changed}/{samples} pixels ({fraction:.1%})", flush=True)
     if minimum is not None and fraction < minimum:
@@ -52,6 +53,40 @@ def measure(label, before, after, minimum=None, maximum=None):
         raise RuntimeError(f"{label}: framebuffer did not return to expected view")
     return fraction
 
+
+
+def difference_in_region(first, second, bounds):
+    """Compare real guest pixels inside the resized window, not the whole desktop.
+
+    At Full HD a 1040x220 compact window occupies only about a tenth of the
+    sampled desktop. A global percentage can reject a genuine page change
+    even though the same interaction passes at 800x600. Keep the exact same
+    4px sample pitch and RGB threshold as the desktop gate, but scope the
+    denominator to the actual window. Changes outside it cannot satisfy
+    the gate (for example, a transient toast or clock update).
+    """
+    width, height, before = first
+    other_width, other_height, after = second
+    if (width, height) != (other_width, other_height):
+        raise ValueError("framebuffer dimensions changed during compact probe")
+    if len(before) != width * height * 3 or len(after) != width * height * 3:
+        raise ValueError("incomplete framebuffer during compact probe")
+    x, y, window_width, window_height = bounds
+    if window_width <= 0 or window_height <= 0:
+        raise ValueError("invalid compact window bounds")
+    left, top = max(0, x), max(0, y)
+    right, bottom = min(width, x + window_width), min(height, y + window_height)
+    if right <= left or bottom <= top:
+        raise ValueError("compact window is outside framebuffer")
+    changed = samples = 0
+    for row in range(top, bottom, 4):
+        for column in range(left, right, 4):
+            index = (row * width + column) * 3
+            samples += 1
+            if any(abs(before[index + channel] - after[index + channel]) > 24
+                   for channel in range(3)):
+                changed += 1
+    return changed, samples
 
 
 def resize_steps(delta):
@@ -191,8 +226,12 @@ def main():
         short_processes = qmp.read_ppm(prefix + ".taskmanager-short-processes.ppm")
         resize_restored = qmp.read_ppm(prefix + ".taskmanager-resize-restored.ppm")
         measure("short-window-resize", resize_before, short, minimum=0.015)
-        measure("compact-performance-tab", short, short_performance, minimum=0.015)
-        measure("compact-processes-tab", short_performance, short_processes, minimum=0.015)
+        # Use a real, clipped compact-window ROI. Full HD must not dilute
+        # the transition with hundreds of thousands of unrelated pixels.
+        measure("compact-performance-tab", short, short_performance,
+                minimum=0.025, region=compact_bounds)
+        measure("compact-processes-tab", short_performance, short_processes,
+                minimum=0.025, region=compact_bounds)
         measure("compact-processes-restored", short, short_processes, maximum=0.15)
         measure("short-window-restored", resize_before, resize_restored, maximum=0.10)
     measure("desktop-restored", desktop, closed, maximum=0.10)
