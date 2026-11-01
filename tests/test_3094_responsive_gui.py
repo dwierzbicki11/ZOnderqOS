@@ -2408,7 +2408,7 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
 
     def test_file_manager_partial_rows_use_remaining_screen_space_safely(self):
         self.assertIn("internal const int MinPartialTileHeight = 40;", FILE_MANAGER)
-        self.assertIn("internal int GridRowsForView => GridHeightForView < MinPartialTileHeight ? 0 :", FILE_MANAGER)
+        self.assertIn("internal int GridRowsForView => GridWidthForView <= 0 || GridHeightForView < MinPartialTileHeight ? 0 :", FILE_MANAGER)
         self.assertIn("GridHeightForView + TileHeight + TileGap - MinPartialTileHeight", FILE_MANAGER)
         hit = FILE_MANAGER.split("private int HitEntryIndex(int x, int y)", 1)[1].split(
             "private bool ContextClick(", 1)[0]
@@ -2482,7 +2482,7 @@ class FileManagerToolbarBounds3095(unittest.TestCase):
 
 class FileManagerClippedTiles3095(unittest.TestCase):
     def test_grid_stays_within_client_on_narrow_framebuffers(self):
-        self.assertIn("GridWidthForView => Math.Max(1, view.Width - SidebarWidthForView - 12)", FILE_MANAGER)
+        self.assertIn("GridWidthForView => Math.Max(0, view.Width - SidebarWidthForView - 12)", FILE_MANAGER)
         grid = FILE_MANAGER.split("private void Grid(Canvas canvas", 1)[1].split(
             "private static IconType ResolveEntryIcon(", 1)[0]
         hit = FILE_MANAGER.split("private int HitEntryIndex(int x, int y)", 1)[1].split(
@@ -2515,7 +2515,7 @@ class FileManagerClippedTiles3095(unittest.TestCase):
 class FileManagerShortClient3095(unittest.TestCase):
     def test_grid_has_no_fake_rows_and_never_overlaps_footer(self):
         self.assertIn("GridHeightForView => Math.Max(0, view.Height - FooterHeight - ContentTop - 8)", FILE_MANAGER)
-        self.assertIn("GridRowsForView => GridHeightForView < MinPartialTileHeight ? 0 :", FILE_MANAGER)
+        self.assertIn("GridRowsForView => GridWidthForView <= 0 || GridHeightForView < MinPartialTileHeight ? 0 :", FILE_MANAGER)
         hit = FILE_MANAGER.split("private int HitEntryIndex(int x, int y)", 1)[1].split(
             "private bool ContextClick(", 1)[0]
         selection = FILE_MANAGER.split("private void EnsureSelectionVisible()", 1)[1].split(
@@ -2530,7 +2530,7 @@ class FileManagerShortClient3095(unittest.TestCase):
         self.assertIn("if (GridRowsForView == 0 ||", hit)
         self.assertIn("if (rows == 0)", selection)
         self.assertIn("if (rows == 0)", page)
-        self.assertIn("if (contentH > 0)", render)
+        self.assertIn("if (contentH > 0 && gridW > 0)", render)
         self.assertIn("if (height < FileManagerApp.MinPartialTileHeight)", grid)
         for height in range(1, 1001):
             grid_height = max(0, height - 24 - 50 - 8)
@@ -2698,6 +2698,32 @@ class FileManagerResizeClickSequence3095(unittest.TestCase):
                               ((300, 170), (300, 170))):
             self.assertEqual(before != after,
                              before[0] != after[0] or before[1] != after[1])
+
+
+
+class FileManagerZeroWidthGrid3095(unittest.TestCase):
+    def test_no_phantom_grid_on_extremely_narrow_client(self):
+        self.assertIn("GridWidthForView => Math.Max(0, view.Width - SidebarWidthForView - 12)", FILE_MANAGER)
+        self.assertIn("GridRowsForView => GridWidthForView <= 0 ||", FILE_MANAGER)
+        render = FILE_MANAGER.split("internal sealed class FileManagerView", 1)[1].split(
+            "public override void Render(Canvas canvas)", 1)[1].split(
+            "private void RenderToolbar(", 1)[0]
+        self.assertIn("if (contentH > 0 && gridW > 0)", render)
+        for view_width in range(1, 401):
+            sidebar = 0 if view_width < 220 else min(176, view_width - 124)
+            grid_width = max(0, view_width - sidebar - 12)
+            grid_x = sidebar + 8
+            if grid_width:
+                self.assertGreaterEqual(grid_width, 1)
+                self.assertLessEqual(grid_x + grid_width, view_width - 4)
+            else:
+                self.assertLessEqual(view_width, 12)
+            for view_height in (1, 40, 81, 82, 121, 122, 170, 550):
+                grid_height = max(0, view_height - 24 - 50 - 8)
+                rows = (0 if grid_width <= 0 or grid_height < 40
+                        else max(1, (grid_height + 60) // 100))
+                if grid_width <= 0:
+                    self.assertEqual(rows, 0)
 
 
 if __name__ == "__main__":
