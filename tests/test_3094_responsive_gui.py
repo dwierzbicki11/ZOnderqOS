@@ -285,7 +285,7 @@ class ResponsiveGui3094(unittest.TestCase):
             (True, False, True, True, True),      # second right during left drag
             (True, False, False, True, True),     # release left + press right
             (False, True, True, False, True),     # release right + press left
-            (False, True, True, True, False),     # left filtered while right held
+            (False, True, True, True, True),      # new left joins held right (no UI press)
             (True, True, True, True, False),      # no new press
             (True, False, False, False, False),   # plain release
         ):
