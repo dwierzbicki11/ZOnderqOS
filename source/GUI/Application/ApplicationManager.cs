@@ -12,6 +12,7 @@ namespace ZonderqOS.GUI.Apps
         // windows. Reuse the buffer to avoid allocating on every GUI frame.
         private readonly List<Application> updateSnapshot = new List<Application>();
         private bool updating;
+        private bool desktopGesture;
 
         public List<Application> Applications { get { return applications; } }
 
@@ -148,6 +149,7 @@ namespace ZonderqOS.GUI.Apps
             finally
             {
                 closingAll = false;
+                desktopGesture = false;
                 SetActiveStates(null);
             }
         }
@@ -255,21 +257,15 @@ namespace ZonderqOS.GUI.Apps
                 return;
 
             Application target = ActiveApplication;
-
-            // A fresh press outside every window belongs to the desktop or
-            // taskbar, never to the active application's client controls.
-            // Keep forwarding motion and release events to the active window
-            // so a drag can finish even after the pointer leaves its bounds.
             bool newPress = (leftClicked && !leftWasClicked) ||
                 (rightClicked && !rightWasClicked);
             if (newPress)
-                target = null;
-
-            // Both mouse buttons must focus the window under the pointer.
-            // Otherwise right-clicking a background File Manager could send
-            // its context-menu event to the unrelated foreground window.
-            if (newPress)
             {
+                // A press on the desktop or taskbar belongs to that surface
+                // for its ENTIRE gesture, including held motion and release.
+                // Otherwise a held desktop click could resume a stale title
+                // drag in the previously active window.
+                target = null;
                 for (int i = applications.Count - 1; i >= 0; i--)
                 {
                     Application application = applications[i];
@@ -283,6 +279,13 @@ namespace ZonderqOS.GUI.Apps
                         break;
                     }
                 }
+                desktopGesture = target == null;
+            }
+            else if (desktopGesture)
+            {
+                if (!leftClicked && !rightClicked)
+                    desktopGesture = false;
+                return;
             }
 
             target?.HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked, rightClicked, rightWasClicked);
