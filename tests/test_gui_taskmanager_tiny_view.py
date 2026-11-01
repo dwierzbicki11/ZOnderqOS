@@ -102,6 +102,34 @@ class TinyTaskManagerViewTests(unittest.TestCase):
         self.assertIn("if (!row.CanEnd)", destructive)
 
 
+    def test_logical_cpu_grid_stays_above_footer_at_every_full_height(self):
+        # 16 logical CPUs require 4 rows of at least 72px, plus 8px gaps.
+        # RenderLogicalCpu starts at 64 + 58 + 22 = 144 from the view top.
+        # The 28px footer must retain an 18px clearance.
+        layout = section("private bool CompactPerformanceLayout =>",
+                         "private int ListTopForView =>")
+        self.assertIn("Width < 900 || Height < 502;", layout)
+        draw = section("private void RenderLogicalCpu(", "private void DrawArrow(")
+        self.assertIn("int availableH = Math.Max(220, Height - (gridY - Y) - FooterHeight - 18);", draw)
+        self.assertIn("int cellH = Math.Max(72,", draw)
+        self.assertIn("int gap = 8;", draw)
+
+        for width in (900, 1020, 1366, 1920):
+            for height in range(220, 901):
+                compact = width < 900 or height < 502
+                if compact:
+                    continue
+                for count in range(1, 17):
+                    columns = 2 if count <= 4 else 3 if count <= 9 else 4
+                    rows = (count + columns - 1) // columns
+                    available = max(220, height - 190)
+                    cell_height = max(72, (available - 8 * (rows - 1)) // rows)
+                    grid_bottom = 144 + rows * cell_height + 8 * (rows - 1)
+                    self.assertLessEqual(grid_bottom, height - 28 - 18,
+                                         (width, height, count))
+        self.assertLess(501, 502)
+        self.assertEqual(144 + 4 * 72 + 3 * 8 + 18 + 28, 502)
+
     def test_cpu_pager_hitboxes_match_rendered_arrows(self):
         hit = section("public int CpuLogicalPageActionAt(", "public int RowAt(")
         draw = section("private void RenderLogicalCpu(", "private void DrawArrow(")
