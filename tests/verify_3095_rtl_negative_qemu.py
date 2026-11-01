@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Fail-closed serial gate for isolated RTL810xE negative QEMU boots.
 
-The unrelated QEMU RTL8139 can trigger a scheduler tick *inside* the
-serial diagnostic marker. Only that observed, exact tick splice is
-normalized; a missing or malformed decline is never treated as PASS.
+A scheduler tick can interrupt a serial diagnostic write at any character.
+Only a single *complete*, valid scheduler tick inserted strictly inside the
+exact expected decline marker is removed. Arbitrary fragments and extra
+failure markers are not normalized.
 """
 from __future__ import annotations
 
@@ -15,17 +16,7 @@ PREFIX = "[NET3095-RTL810XE]"
 BOOT = PREFIX + " BOOT read-only physical probe"
 DECLINE = (PREFIX + "[FAIL] no unique valid MMIO snapshot; "
            "offers=0 samples=0 reason=no matching PCI probe offer")
-TICK_SPLICE = re.compile(r"(?<=\[NET)\[SCHED\] Tick [0-9]+ enabled=1\n"
-                         r"(?=3095-RTL810XE\]\[FAIL\])")
-# Observed in real no-NIC QEMU 41225440865: a scheduler tick split
-# the literal word 'valid' inside the exact decline line. Match the
-# COMPLETE expected decline around the one allowed tick, not arbitrary
-# partial strings or unrelated injected log lines.
-_VALID_SPLIT = DECLINE.index("valid") + 1
-TICK_SPLICE_VALID = re.compile(
-    re.escape(DECLINE[:_VALID_SPLIT]) +
-    r"\[SCHED\] Tick [0-9]+ enabled=1\n" +
-    re.escape(DECLINE[_VALID_SPLIT:]))
+TICK_LINE = re.compile(r"\[SCHED\] Tick [0-9]+ enabled=1\n")
 HEARTBEAT = re.compile(r"^\[NET3095-RTL810XE\] HEARTBEAT=([0-9]+)$", re.MULTILINE)
 PCI_FUNCTIONS = re.compile(r"^\[Drivers\] platform:pci@cf8 PciHostDriver: ([0-9]+) functions on 1 buses$", re.MULTILINE)
 FATAL = re.compile(r"kernel panic|fatal: exception|page fault|unhandled exception|"
@@ -33,14 +24,38 @@ FATAL = re.compile(r"kernel panic|fatal: exception|page fault|unhandled exceptio
                    r"double fault|triple fault|stack overflow", re.IGNORECASE)
 
 
+
+def normalize_decline_tick(raw: str) -> str:
+    """Reassemble exactly one scheduler-preempted decline, never other text.
+
+    Real QEMU may splice a tick within 'valid' or 'samples' (among other
+    byte boundaries). The complete reconstructed line must equal DECLINE.
+    Ticks elsewhere, including their complete lines, remain untouched.
+    """
+    found = []
+    for tick in TICK_LINE.finditer(raw):
+        start = raw.rfind("\n", 0, tick.start()) + 1
+        end = raw.find("\n", tick.end())
+        if end < 0:
+            end = len(raw)
+        # Tick must interrupt *inside* the marker, not precede/follow it.
+        if start == tick.start() or end == tick.end():
+            continue
+        if raw[start:tick.start()] + raw[tick.end():end] == DECLINE:
+            found.append((start, end))
+    if len(found) > 1:
+        raise ValueError("duplicate scheduler-preempted RTL810xE decline")
+    if not found:
+        return raw
+    start, end = found[0]
+    return raw[:start] + DECLINE + raw[end:]
+
+
 def verify(serial: str, mode: str) -> str:
     if mode not in ("none", "rtl8139"):
         raise ValueError("unsupported NIC mode")
     raw = serial.replace("\r", "")
-    # Do not remove arbitrary trace lines or reconstruct arbitrary fragments.
-    # A scheduler tick between '[NET' and '3095-RTL...' was observed in
-    # the real RTL8139 QEMU artifact, run 41215345464.
-    cleaned = TICK_SPLICE_VALID.sub(DECLINE, TICK_SPLICE.sub("", raw))
+    cleaned = normalize_decline_tick(raw)
     lines = cleaned.splitlines()
     if lines.count(BOOT) != 1 or lines.count(DECLINE) != 1:
         raise ValueError("missing/duplicate RTL810xE boot or exact decline marker")
@@ -77,18 +92,11 @@ def self_test() -> None:
     rtl = base.replace("5 functions", "6 functions").replace(
         BOOT, "[Drivers] pci:0000:00:02.0 no driver\n" + BOOT)
     assert "PASS mode=rtl8139" in verify(rtl, "rtl8139")
-    # Exact splice from real QEMU log: tick preempts a single diagnostic write.
-    spliced = rtl.replace(DECLINE, "[NET[SCHED] Tick 6 enabled=1\n" +
-                          DECLINE[len("[NET"):])
-    assert "PASS mode=rtl8139" in verify(spliced, "rtl8139")
-    mid_spliced = base.replace(
-        DECLINE, DECLINE[:_VALID_SPLIT] +
-        "[SCHED] Tick 6 enabled=1\n" + DECLINE[_VALID_SPLIT:])
-    assert "PASS mode=none" in verify(mid_spliced, "none")
-    mid_spliced_rtl = rtl.replace(
-        DECLINE, DECLINE[:_VALID_SPLIT] +
-        "[SCHED] Tick 6 enabled=1\n" + DECLINE[_VALID_SPLIT:])
-    assert "PASS mode=rtl8139" in verify(mid_spliced_rtl, "rtl8139")
+    # Check every internal split position; no dependence on scheduler timing.
+    for pos in range(1, len(DECLINE)):
+        split = DECLINE[:pos] + "[SCHED] Tick 6 enabled=1\n" + DECLINE[pos:]
+        assert "PASS mode=none" in verify(base.replace(DECLINE, split), "none")
+        assert "PASS mode=rtl8139" in verify(rtl.replace(DECLINE, split), "rtl8139")
     bad = [
         rtl.replace("offers=0", "offers=1"),
         rtl.replace("samples=0", "samples=1"),
@@ -100,10 +108,15 @@ def self_test() -> None:
         rtl.replace(DECLINE, DECLINE + "\n" + DECLINE),
         rtl.replace(BOOT, BOOT + "\n" + BOOT),
         rtl.replace(DECLINE, "[NET[UNKNOWN] noise\n" + DECLINE[len("[NET"):]),
-        mid_spliced_rtl.replace("enabled=1\n", "enabled=0\n"),
-        mid_spliced_rtl.replace("[SCHED] Tick 6", "[OTHER] Tick 6"),
-        mid_spliced_rtl.replace("offers=0", "offers=1"),
-        mid_spliced_rtl + "\n" + DECLINE,
+        rtl.replace(DECLINE, DECLINE[:60] + "[SCHED] Tick 6 enabled=0\n" + DECLINE[60:]),
+        rtl.replace(DECLINE, DECLINE[:60] + "[OTHER] Tick 6 enabled=1\n" + DECLINE[60:]),
+        rtl.replace(DECLINE, DECLINE[:60] + "[SCHED] Tick 6 enabled=1\n" +
+                    DECLINE[60:].replace("samples=0", "samples=1")),
+        rtl.replace(DECLINE, DECLINE[:60] + "[SCHED] Tick 6 enabled=1\n" +
+                    DECLINE[60:] + "\n" + DECLINE),
+        rtl.replace(DECLINE, DECLINE[:60] + "[SCHED] Tick 6 enabled=1\n" +
+                    DECLINE[60:]).replace("[SCHED] Tick 6 enabled=1\n",
+                                          "[SCHED] Tick 6 enabled=1\n[SCHED] Tick 7 enabled=1\n"),
         rtl + "[NET3095-RTL810XE] SNAPSHOT=PASS mac=02:11:22:33:44:55\n",
         rtl + "Exception 14 CR2=0xC\n",
         rtl + "[NET3095-RTL810XE][FAIL] unexpected\n",
