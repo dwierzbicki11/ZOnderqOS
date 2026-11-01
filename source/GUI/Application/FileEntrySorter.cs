@@ -12,6 +12,9 @@ namespace ZonderqOS.GUI.Apps
     internal static class FileEntrySorter
     {
         internal const int InsertionLimit = 32;
+        // Up to sixteen sparse inversions are common after a batch of file
+        // renames. The separate 2*n shift budget still bounds worst-case work.
+        internal const int MaxLocalInversions = 16;
 
         internal static void Sort(List<FileEntry> entries, ref FileEntry[] scratch)
         {
@@ -62,7 +65,7 @@ namespace ZonderqOS.GUI.Apps
                         break;
                     }
                 }
-                if (inversions > 4)
+                if (inversions > MaxLocalInversions)
                     break;
             }
             if (inversions == 0)
@@ -81,11 +84,11 @@ namespace ZonderqOS.GUI.Apps
                 (firstInversion + 1 < count &&
                     Compare(entries[firstInversion - 1], entries[firstInversion + 1]) <= 0);
 
-            // A bounded stable insertion repair is O(n) for a handful of
-            // displaced entries. Cap total shifts at 2*n to avoid quadratic
+            // A bounded stable insertion repair is O(n) for up to sixteen
+            // sparse displaced entries. Cap total shifts at 2*n to avoid quadratic
             // work on adversarial nearly sorted snapshots. If the budget
             // expires, restore the displaced item before stable merge sort.
-            if (inversions <= 4 && !cannotRepairLocally && likelyLocalDisplacement)
+            if (inversions <= MaxLocalInversions && !cannotRepairLocally && likelyLocalDisplacement)
             {
                 long shifts = 0;
                 long budget = (long)count * 2;
@@ -122,7 +125,7 @@ namespace ZonderqOS.GUI.Apps
             // Only probe this path when the first inversion was near the
             // beginning; sample both ends before scanning the whole folder.
             if (firstInversion > 0 && firstInversion <= 8 &&
-                (cannotRepairLocally || inversions > 4) &&
+                (cannotRepairLocally || inversions > MaxLocalInversions) &&
                 IsDescending(entries, count))
             {
                 ReverseStableDescending(entries, count);
