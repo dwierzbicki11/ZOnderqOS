@@ -134,8 +134,19 @@ namespace ZonderqOS.GUI
         {
             if (value < 0) value = 0;
             if (value > 100) value = 100;
+            int digits = DigitCount((ulong)value);
+            // The task manager draws many percentages. If a row is entirely
+            // outside the framebuffer, avoid entering the numeric renderer
+            // and drawing the percent glyph into a clipped Canvas.
+            // Wide arithmetic also prevents overflow in the suffix position.
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
+                (long)x + digits * 6L + 6 <= 0 || (long)y + 7 <= 0)
+                return;
+
             DrawUInt(canvas, (ulong)value, x, y, color);
-            DrawChar(canvas, '%', x + WidthUInt((ulong)value) + 2, y, color);
+            long percentX = (long)x + digits * 6 + 1;
+            if (percentX >= -4 && percentX < canvas.Width && percentX <= int.MaxValue)
+                DrawChar(canvas, '%', (int)percentX, y, color);
         }
 
         public static void DrawUIntWithSuffix(Canvas canvas, ulong value, string suffix, int x, int y, Color color)
