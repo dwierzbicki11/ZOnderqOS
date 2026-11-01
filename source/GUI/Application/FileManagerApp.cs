@@ -79,13 +79,15 @@ namespace ZonderqOS.GUI.Apps
         internal int ToolbarButtonCountForView => view.Width < 44 ? 0 :
             Math.Min(4, (view.Width - 44) / 42 + 1);
         internal int GridWidthForView => Math.Max(1, view.Width - SidebarWidthForView - 12);
-        internal int GridHeightForView => Math.Max(40, view.Height - FooterHeight - ContentTop - 8);
+        // Do not invent a 40px grid when the client is shorter than the
+        // toolbar + footer. A 200x200 framebuffer can leave only 24px.
+        internal int GridHeightForView => Math.Max(0, view.Height - FooterHeight - ContentTop - 8);
         // Use a final partial row only when >=40px is available. Compact
         // tiles fit inside that space; smaller fragments stay noninteractive.
         internal const int MinPartialTileHeight = 40;
-        internal int GridRowsForView => Math.Max(1,
-            (GridHeightForView + TileHeight + TileGap - MinPartialTileHeight) /
-            (TileHeight + TileGap));
+        internal int GridRowsForView => GridHeightForView < MinPartialTileHeight ? 0 :
+            Math.Max(1, (GridHeightForView + TileHeight + TileGap - MinPartialTileHeight) /
+                (TileHeight + TileGap));
 
         public FileManagerApp(int x, int y, Action<string> openFile) : base("File Manager")
         {
@@ -299,7 +301,8 @@ namespace ZonderqOS.GUI.Apps
         private int HitEntryIndex(int x, int y)
         {
             int contentBottom = view.Height - FooterHeight - 8;
-            if (x < SidebarWidthForView + 8 || y < ContentTop || y >= contentBottom)
+            if (GridRowsForView == 0 ||
+                x < SidebarWidthForView + 8 || y < ContentTop || y >= contentBottom)
                 return -1;
 
             int gridLeft = SidebarWidthForView + 8;
@@ -902,6 +905,8 @@ namespace ZonderqOS.GUI.Apps
             // Page navigation advances by exactly the number of tiles
             // painted in the current viewport, not a fixed row count.
             int rows = GridRowsForView;
+            if (rows == 0)
+                return;
             Select(direction * Columns() * rows);
         }
 
@@ -925,6 +930,11 @@ namespace ZonderqOS.GUI.Apps
         {
             int cols = Columns();
             int rows = GridRowsForView;
+            if (rows == 0)
+            {
+                scrollIndex = 0;
+                return;
+            }
             int visible = cols * rows;
 
             if (selectedIndex >= 0)
@@ -1442,16 +1452,19 @@ namespace ZonderqOS.GUI.Apps
             int gridX = X + sidebarW + 8;
             int gridW = app.GridWidthForView;
 
-            if (sidebarW > 0)
+            if (sidebarW > 0 && contentH > 0)
             {
                 canvas.DrawFilledRectangle(SidebarBackground, sidebarX, contentY, sidebarW, contentH);
                 canvas.DrawRectangle(Color.FromArgb(53, 62, 72), sidebarX, contentY, sidebarW, contentH);
                 RenderSidebar(canvas, sidebarX, contentY, sidebarW, contentH);
             }
 
-            canvas.DrawFilledRectangle(ContentBackground, gridX, contentY, gridW, contentH);
-            canvas.DrawRectangle(Color.FromArgb(53, 62, 72), gridX, contentY, gridW, contentH);
-            Grid(canvas, gridX, contentY, gridW, contentH);
+            if (contentH > 0)
+            {
+                canvas.DrawFilledRectangle(ContentBackground, gridX, contentY, gridW, contentH);
+                canvas.DrawRectangle(Color.FromArgb(53, 62, 72), gridX, contentY, gridW, contentH);
+                Grid(canvas, gridX, contentY, gridW, contentH);
+            }
 
             RenderFooter(canvas, footerY);
 
@@ -1595,6 +1608,10 @@ namespace ZonderqOS.GUI.Apps
 
         private void Grid(Canvas canvas, int x, int y, int width, int height)
         {
+            // The remaining strip below the toolbar is too short for even
+            // the compact 40px tile; keep it noninteractive and unpainted.
+            if (height < FileManagerApp.MinPartialTileHeight)
+                return;
             int iconSize = 42;
             int tileWidth = Math.Min(FileManagerApp.TileWidth, width);
             int labelWidth = Math.Min(88, Math.Max(1, tileWidth - 12));
