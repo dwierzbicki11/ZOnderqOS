@@ -52,7 +52,29 @@ internal static class Program
         monitor.Refresh();
         Assert(object.ReferenceEquals(first, monitor.Lines[3]),
             "stock CPU row was reallocated between monitor refreshes");
-        Console.WriteLine("PASS: 194 exact stock CPU N/A row/reference checks across refreshes");
+
+        // Exercise the actual production Refresh loop with a 64-CPU host
+        // scheduler snapshot. It must reuse every complete N/A row on
+        // successive refreshes, not merely expose a cached helper method.
+        SchedulerInfo.CpuCount = 64;
+        try
+        {
+            monitor.Refresh();
+            for (int cpu = 0; cpu < 64; cpu++)
+                Assert(object.ReferenceEquals(monitor.Lines[3 + cpu],
+                    HtopMonitor.CpuUnavailableLine(cpu)),
+                    "64-CPU refresh did not reuse N/A line " + cpu);
+            monitor.Refresh();
+            for (int cpu = 0; cpu < 64; cpu++)
+                Assert(object.ReferenceEquals(monitor.Lines[3 + cpu],
+                    HtopMonitor.CpuUnavailableLine(cpu)),
+                    "second 64-CPU refresh allocated N/A line " + cpu);
+        }
+        finally
+        {
+            SchedulerInfo.CpuCount = 1;
+        }
+        Console.WriteLine("PASS: 322 exact stock CPU N/A row/reference checks across refreshes");
     }
 
     private static void BenchmarkCpuUnavailableLines()
