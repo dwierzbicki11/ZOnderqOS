@@ -343,6 +343,7 @@ internal static class Program
     private static void Main()
     {
         Verify();
+        IconResolverSmoke.Run();
         VerifyFilter();
         BenchmarkFilter();
         Benchmark(32, true);
