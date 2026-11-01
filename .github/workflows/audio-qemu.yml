@@ -112,6 +112,13 @@ jobs:
           else
             echo '[AUDIO-QUEUE-DIAG] no WAV artifact available; not a playback PASS'
           fi
+      - name: Experimental mixqueue TCG icount A/B (diagnostic, not a replacement gate)
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-icount-out \
+            --boot-seconds 45 --command mixqueue --icount-auto
       - name: Boot again and capture decoded in-memory RIFF/WAV playback
         run: |
           python3 tools/smoke-audio-qemu.py \
@@ -248,6 +255,9 @@ jobs:
             audio-qemu-mixqueue-out/*.log
             audio-qemu-mixqueue-out/*.wav
             audio-qemu-mixqueue-out/*.ppm
+            audio-qemu-mixqueue-icount-out/*.log
+            audio-qemu-mixqueue-icount-out/*.wav
+            audio-qemu-mixqueue-icount-out/*.ppm
             audio-qemu-wav-out/*.log
             audio-qemu-wav-out/*.wav
             audio-qemu-wav-out/*.ppm
