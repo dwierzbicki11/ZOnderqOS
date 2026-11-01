@@ -498,6 +498,11 @@ namespace ZonderqOS
                         ((offset * 37 + (offset / 90) * 11 +
                           (offset / 1024) * 23 + attempt * 29) % 90));
                 stream.Write(request, 0, request.Length);
+                if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
+                {
+                    Log("[NET3095-N6][FAIL] HTTP DriverKit ownership changed after TX attempt=" + attempt);
+                    return false;
+                }
                 if (!IsE1000ELeaseStable(expectedMac, expectedIp, expectedMask, expectedGateway))
                 {
                     Log("[NET3095-N6][FAIL] HTTP NIC/lease changed after TX attempt=" + attempt);
@@ -525,6 +530,14 @@ namespace ZonderqOS
                     if (read > largestRead)
                         largestRead = read;
                     received += read;
+                    // Catch a resource/IRQ registration change between RX
+                    // completions, not only before and after the TCP stream.
+                    // These are source counts, never guest ISR counters.
+                    if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
+                    {
+                        Log("[NET3095-N6][FAIL] HTTP DriverKit ownership changed during RX attempt=" + attempt);
+                        return false;
+                    }
                     if (!IsE1000ELeaseStable(expectedMac, expectedIp, expectedMask, expectedGateway))
                     {
                         Log("[NET3095-N6][FAIL] HTTP NIC/lease changed during RX attempt=" + attempt);
