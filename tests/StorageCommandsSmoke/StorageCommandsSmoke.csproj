@@ -8,5 +8,6 @@
   <ItemGroup>
     <Compile Include="../../source/Shell/Commands/CmdCp.cs" Link="CmdCp.cs" />
     <Compile Include="../../source/Shell/Commands/CmdMv.cs" Link="CmdMv.cs" />
+    <Compile Include="../../source/Shell/Commands/RamTextTransfer.cs" Link="RamTextTransfer.cs" />
   </ItemGroup>
 </Project>

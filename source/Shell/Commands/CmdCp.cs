@@ -96,7 +96,7 @@ namespace ZonderqOS.Commands
                     return;
                 }
 
-                string content = File.ReadAllText(source);
+                string content = RamTextTransfer.ReadLossless(source);
                 Disk.CreateFile(destination, content);
                 return;
             }

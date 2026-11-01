@@ -15,13 +15,27 @@ dotnet run --project tests/StorageCommandsSmoke/StorageCommandsSmoke.csproj
 
 The repository's current `global.json` requests `10.0.0`, which is not a valid SDK
 feature-band version. Until that shared build configuration is fixed, run a copy
-of this harness and its two linked production sources outside that SDK resolver
+of this harness and its linked production sources outside that SDK resolver
 scope using an installed SDK and matching target framework. Do not change the
 Cosmos package versions to run this test.
 
 These checks validate command orchestration and error propagation, not the
-Cosmos FAT driver, persistence on reboot, device removal, binary-safe transfers,
+Cosmos FAT driver, persistence on reboot, device removal, arbitrary binary transfers,
 or free-space accounting. Cross-filesystem transfers still use the existing text
 API. A failed source deletion intentionally leaves both copies and reports failure.
 A failed physical copy may leave a partial destination; the command must not
 report it as a successful copy or update destination permissions.
+
+Disk-to-RAM transfers now use the linked production `RamTextTransfer.cs` helper.
+It reads raw bytes, decodes UTF-8 without BOM detection/removal, then verifies an
+exact byte-for-byte encoding round trip before creating any RAM destination.
+A non-round-trippable file is rejected and its source remains untouched, including
+for `mv`. This is a conservative guard for the existing string-only RAM storage,
+not arbitrary binary-file support. It allocates whole-file byte/string buffers;
+streaming, durable writes and concurrent source mutation are outside this test.
+
+Twelve additional cases (23 total command checks) cover copy and move of invalid
+UTF-8, UTF-16 BOM input, a lone continuation byte, empty data, UTF-8 BOM and
+embedded NUL/non-ASCII/supplementary characters. The old commands fail the new
+regression with `lossy transfer reported success`. Fault-injected read exceptions
+also run through the new raw-byte boundary. No physical disks are accessed.

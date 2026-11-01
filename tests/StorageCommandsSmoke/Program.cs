@@ -38,6 +38,21 @@ internal static class Program
         string source = Path.Combine(root, "source"), dest = Path.Combine(root, "dest");
         try
         {
+            foreach (bool move in new[] { false, true })
+            {
+                foreach (byte[] payload in new[] { new byte[] { 0xff, 0xfe, 0x41, 0 }, new byte[] { 0xc3, 0x28 }, new byte[] { 0x80 } })
+                {
+                    Run("lossy disk to RAM transfer rejected " + move, move, source, "/tmp/dest",
+                        () => System.IO.File.WriteAllBytes(source, payload),
+                        () => { Check(!CommandIO.LastCommandSuccess, "lossy transfer reported success"); Check(!VirtualFs.Files.ContainsKey("/tmp/dest"), "lossy destination created"); Check(System.IO.File.Exists(source) && Convert.ToHexString(System.IO.File.ReadAllBytes(source)) == Convert.ToHexString(payload), "original bytes lost"); });
+                }
+                foreach (byte[] payload in new[] { Array.Empty<byte>(), new byte[] { 0xef, 0xbb, 0xbf, 0x41 }, new byte[] { 0, 0x41, 0xc4, 0x85, 0xf0, 0x9f, 0x98, 0x80 } })
+                {
+                    Run("lossless disk to RAM transfer " + move, move, source, "/tmp/dest",
+                        () => System.IO.File.WriteAllBytes(source, payload),
+                        () => { Check(CommandIO.LastCommandSuccess, "lossless transfer failed"); Check(Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(VirtualFs.Files["/tmp/dest"])) == Convert.ToHexString(payload), "bytes changed during transfer"); Check(System.IO.File.Exists(source) != move, "wrong source lifetime"); });
+                }
+            }
             Run("partial copy cannot report success", false, source, dest,
                 () => { System.IO.File.WriteAllText(source, "complete"); Disk.FailCopy = true; },
                 () => { Check(!CommandIO.LastCommandSuccess, "partial copy succeeded"); Check(System.IO.File.Exists(dest), "fault must leave partial destination"); Check(PermissionManager.Copies == 0, "permissions copied after failure"); });
@@ -159,6 +174,11 @@ namespace ZonderqOS.Commands
     static class File
     {
         public static bool Exists(string p) => System.IO.File.Exists(p);
+        public static byte[] ReadAllBytes(string p)
+        {
+            if (TestFaults.ThrowRead) throw new IOException("Device disconnected");
+            return System.IO.File.ReadAllBytes(p);
+        }
         public static string ReadAllText(string p)
         {
             if (TestFaults.ThrowRead) throw new IOException("Device disconnected");
