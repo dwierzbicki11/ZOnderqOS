@@ -112,6 +112,31 @@ namespace ZonderqOS.SystemCore
             return PlayPcm(mixed);
         }
 
+        /// <summary>
+        /// Two independent PCM sources with a frame-accurate 50 ms offset.
+        /// Left 440 Hz begins immediately; right 880 Hz begins 2400 frames
+        /// later. QEMU capture must verify the relative channel onset.
+        /// No guest filesystem, DMA configuration or GUI audio activation.
+        /// </summary>
+        public static bool PlayDelayedMixedTestTone()
+        {
+            byte[] left = AudioTonePcm.GenerateSquareStereo16(48000, 440, 250, 4096);
+            byte[] right = AudioTonePcm.GenerateSquareStereo16(48000, 880, 250, 4096);
+            for (int at = 0; at < left.Length; at += 4)
+            {
+                left[at + 2] = 0;
+                left[at + 3] = 0;
+                right[at] = 0;
+                right[at + 1] = 0;
+            }
+            const int delayFrames = 2400; // 50 ms at 48 kHz
+            byte[] mixed = AudioPcmMixer.MixStereo16WithDelay(
+                left, right, 100, 100, delayFrames);
+            Console.WriteLine("[AUDIO] MIXDELAY 48kHz stereo16 left=440Hz right=880Hz rightDelayFrames=" +
+                delayFrames + " bytes=" + mixed.Length);
+            return PlayPcm(mixed);
+        }
+
         public static bool PlayStereoSplitTestTone()
         {
             byte[] pcm = AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 880, 250, 4096);
