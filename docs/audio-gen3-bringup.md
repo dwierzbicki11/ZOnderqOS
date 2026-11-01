@@ -490,3 +490,37 @@ physical speaker.
 **Next:** compare the two real QEMU captures, then investigate stock
 HDA DMA ring refill and guest ISR delivery with independent counters
 or controlled emulation; do not remove the quality gate to obtain green CI.
+
+
+## 2026-11-01: controlled QEMU clock A/B — default PCM passes, icount fails
+
+The actual stock-Cosmos-3.0.95 [QEMU run #41308709107](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41308709107)
+completed successfully. In the **default TCG clock** capture, the strict
+`mixqueue` WAV validator found all three independently scheduled effects:
+left 437.6 Hz then 660.3 Hz, right 875.2 Hz, right onset +50.0 ms.
+The separately measured 44.1 kHz capture had 36,725 frames; all three
+active diagnostic windows exceeded 99.7% active samples, the left-channel
+gap was silent, and both post-effect windows were silent. This confirms
+emulated PCM output for this particular boot, not physical audio or IRQ
+handler execution.
+
+The **experimental** `-icount shift=auto,sleep=on` run in the same
+workflow **failed** the strict WAV quality gate: its first left effect
+contained only **71.17%** sustained samples. The workflow explicitly marks
+this experiment non-blocking; the overall workflow SUCCESS must not be
+reported as a PASS for the icount variant. This A/B result does **not**
+establish that the Cosmos driver is defective: altered TCG virtual-clock
+pacing is an independent variable, and there is no guest ISR execution
+counter or DMA-refill timing trace yet.
+
+The dropout analyzer now warns separately for incomplete **first left,
+right and final left** clips, abnormal +50 ms onset, leaked audio during
+the left-channel gap and unexpected post-effect signal. Synthetic tests
+cover each added diagnostic case. The QEMU workflow also runs the same
+analyzer on the experimental icount WAV when present, without weakening
+the mandatory default-clock `mixqueue` gate.
+
+**Next investigation:** compare per-buffer HDA playback timing with
+stock-Cosmos instrumentation if available, preserving the unchanged
+SDK 3.0.95, diskless QEMU image, production audio isolation and strict
+sample-level verification. Do not infer hardware speaker or ISR success.
