@@ -14,6 +14,33 @@ HTTP_VALIDATOR = (ROOT / "tests/verify_3095_network_n6.py").read_text()
 MAIN = (ROOT / "Kernel.cs").read_text()
 
 class NetworkN1Isolation(unittest.TestCase):
+    def test_n5_dns_rechecks_live_nic_and_dhcp_after_rx(self):
+        # Source contract: the DNS response alone is insufficient when the
+        # E1000E link, MAC or DHCP lease changed while Receive() blocked.
+        n5 = SOURCE.split("#if ZONDERQ_NETWORK_N5_DNS", 1)[1].split(
+            "#if ZONDERQ_NETWORK_N6_HTTP", 1)[0]
+        response = n5.index('answer.ToString() != "127.0.0.1"')
+        live = n5.index("NetworkAdapter dnsAdapter = NetworkManager.Primary;", response)
+        lease = n5.index("IPConfig? dnsLease = dnsAdapter.IPConfig;", live)
+        checks = n5.index('dnsLease.DefaultGateway.ToString() != "10.0.2.2"', lease)
+        failure = n5.index("E1000E link/MAC/DHCP lease changed during DNS", checks)
+        passed = n5.index("DNS=PASS host=localhost", failure)
+        self.assertLess(response, live)
+        self.assertLess(live, lease)
+        self.assertLess(lease, checks)
+        self.assertLess(checks, failure)
+        self.assertLess(failure, passed)
+        for condition in (
+            "NetworkManager.IsEnabled", "NetworkManager.IsInitialized",
+            "dnsAdapter.IsValid", 'dnsAdapter.Name != "e1000e"',
+            "dnsAdapter.Ready", "dnsAdapter.LinkUp",
+            'dnsAdapter.MacAddress?.ToString() ?? ""',
+            "!= sourceMac", "dnsLease == null",
+            'dnsLease.Address.ToString() != "10.0.2.15"',
+            'dnsLease.SubnetMask.ToString() != "255.255.255.0"',
+        ):
+            self.assertIn(condition, n5[live:passed])
+
     def test_n4_tcp_echo_total_rx_deadline(self):
         # The 21-byte echo must not take 21 * ReceiveTimeout seconds
         # when a malicious peer trickles one byte per successful read.
