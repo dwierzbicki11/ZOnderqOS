@@ -9,22 +9,43 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import struct
+import re
 
 from verify_3095_network_n1 import pcap_frames
 from verify_3095_network_n2 import (
     LEASE, MAC, SERVER, START, fake_dhcp, synthetic_capture,
 )
 from verify_3095_network_n3 import (PING_START, PING_PASS, fake_icmp, icmp_frame,
-                                    internet_checksum)
+                                    internet_checksum, normalize_icmp_serial)
 from verify_3095_network_n4 import (
     TCP_START, TCP_PASS, REQUEST, RESPONSE, PORT, fake_tcp,
-    validate as validate_n4,
+    normalize_tcp_serial, validate as validate_n4,
 )
 
 DNS_SERVER = bytes([10, 0, 2, 3])
 LOOPBACK = bytes([127, 0, 0, 1])
 DNS_START = "[NET3095-N5] DNS_ATTEMPT=START"
 DNS_PASS = "[NET3095-N5] DNS=PASS host=localhost ip=127.0.0.1 server=10.0.2.3"
+
+
+def normalize_dns_serial(serial: str) -> str:
+    """Repair only exact N5 markers torn by a single known SCHED tick."""
+    lines = serial.replace("\r", "").splitlines()
+    repaired = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("[NET3095-N5"):
+            head, sep, tick = line.partition("[SCHED] Tick ")
+            if (sep and re.fullmatch(r"[0-9]+ enabled=1", tick)
+                    and i + 1 < len(lines)
+                    and head + lines[i + 1] in (DNS_START, DNS_PASS)):
+                repaired.append(head + lines[i + 1])
+                i += 2
+                continue
+        repaired.append(line)
+        i += 1
+    return "\n".join(repaired)
 
 
 def udp_frame(frame: bytes):
@@ -180,6 +201,11 @@ def verify_arp_for_dns(frames: list[bytes], guest: bytes) -> int:
 
 
 def validate(serial: str, pcap: bytes) -> str:
+    # N4 validates normalized N3/N4 internally, but its caller must use
+    # the same reconstructed markers for cross-stage ordering checks.
+    # Otherwise a valid TCP reply can fail the later DNS gate solely
+    # because a scheduler tick split its serial PASS marker.
+    serial = normalize_dns_serial(normalize_tcp_serial(normalize_icmp_serial(serial)))
     validate_n4(serial, pcap)
     lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
     if any("[NET3095-N5][FAIL]" in line for line in lines):
@@ -308,6 +334,14 @@ def self_test() -> None:
         PING_START, PING_PASS, TCP_START, TCP_PASS, DNS_START, DNS_PASS,
     ])
     assert "PASS" in validate(serial, synthetic_capture(frames))
+    # N5 must preserve the N3/N4 repairs when checking cross-stage order,
+    # and handle its own DNS start/pass scheduler-only splices.
+    for marker in (PING_PASS, TCP_START, TCP_PASS, DNS_START, DNS_PASS):
+        for offset in range(len(marker.split("]")[0]) + 1, len(marker)):
+            torn = (marker[:offset] + "[SCHED] Tick 6 enabled=1\n" +
+                    marker[offset:])
+            assert "PASS" in validate(
+                serial.replace(marker, torn), synthetic_capture(frames))
     # IPv4 explicitly permits a zero UDP checksum; this case must stay
     # accepted even though the normal synthetic fixture uses RFC 768.
     assert "PASS" in validate(serial, synthetic_capture(
@@ -331,6 +365,9 @@ def self_test() -> None:
         (serial, frames[:-2] + [flip(frames[-2], 40), frames[-1]]),
         (serial, frames[:-1] + [frames[-1][:38] + b"\x00\x08" + frames[-1][40:]]),
         (serial.replace(DNS_START, ""), frames),
+        (serial.replace(DNS_PASS, "[NET3095-N5] DNS=PASS host=local[SCHED] Tick 6 enabled=0\nhost ip=127.0.0.1 server=10.0.2.3"), frames),
+        (serial.replace(DNS_PASS, "[NET3095-N5] DNS=PASS host=local[SCHED] Tick BAD enabled=1\nhost ip=127.0.0.1 server=10.0.2.3"), frames),
+        (serial.replace(DNS_PASS, "[NET3095-N5] DNS=PASS host=local[SCHED] Tick 6 enabled=1\nhost ip=127.0.0.2 server=10.0.2.3"), frames),
         (serial.replace(DNS_PASS, ""), frames),
         (serial + "\n" + DNS_PASS, frames),
         (serial + "\n[NET3095-N5][FAIL] timeout", frames),
