@@ -169,9 +169,9 @@ namespace ZonderqOS.GUI
                 return true;
             }
 
-            if (key.Key == ConsoleKeyEx.Enter)
+            if (key.Key == ConsoleKeyEx.Enter || key.Key == ConsoleKeyEx.NumEnter)
             {
-                // Shift+Enter is not a notification acknowledgement.
+                // Shift+Enter (including numpad Enter) is not an acknowledgement.
                 if (key.Modifiers == 0)
                     MarkSelectedRead();
                 return true;
