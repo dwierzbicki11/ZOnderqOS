@@ -19,6 +19,9 @@ DRIVER = re.compile(r"^\[Drivers\] " + NODE + r" E1000EDriver: mac " + MAC +
                     r", link up, line (\d{1,3}), polling every 10 ms$")
 GUEST = re.compile(r"^\[NET3095-N1\] cpu=bsp adapter=0 name=e1000e mac=" + MAC +
                    r" ready=yes link=up$")
+HEALTH = re.compile(r"^\[NET3095-N6\] DRIVER_HEALTH=PASS node=" + NODE +
+                    r" driver=E1000EDriver resources=(\d+) published=(\d+)" +
+                    r" irq_sources=(\d+) handler_faults=(\d+) isr_executions=unknown$")
 
 
 def check_guest_line(serial: str) -> str:
@@ -49,6 +52,33 @@ def check_guest_line(serial: str) -> str:
 
 
 
+def check_driver_health(serial: str) -> str:
+    """Validate the read-only DriverKit node snapshot after all six HTTP sessions.
+
+    irq_sources is a count of PCI sources, not E1000E ISR executions.
+    A zero handler-fault count only means no exception was observed.
+    """
+    lines = serial.replace("\r", "").splitlines()
+    claims = [line for line in lines
+              if line.startswith("[NET3095-N6] DRIVER_HEALTH")]
+    if len(claims) != 1:
+        raise ValueError("missing or duplicate E1000E DriverKit health marker")
+    match = HEALTH.fullmatch(claims[0])
+    if not match:
+        raise ValueError("malformed E1000E DriverKit health marker")
+    node, resources, published, sources, faults = match.groups()
+    if node != "pci:0000:00:02.0" or int(resources) < 1 or \
+            int(published) != 1 or int(sources) < 1 or int(faults) != 0:
+        raise ValueError("E1000E DriverKit state invalid after stress")
+    link = "[NET3095-N6] POST_STRESS_LINK=PASS mac="
+    link_lines = [line for line in lines if line.startswith(link)]
+    if len(link_lines) != 1 or lines.index(link_lines[0]) >= lines.index(claims[0]):
+        raise ValueError("E1000E health was not sampled after post-stress link")
+    if any("[NET3095-N6][FAIL]" in line for line in lines):
+        raise ValueError("guest reported N6 failure despite DriverKit marker")
+    return f"driverkit-bound=yes irq-sources={sources} handler-faults=0 ISR-UNPROVEN"
+
+
 def check_legacy_notification(serial: str, qemu_stderr: str) -> str:
     """Correlate an assigned guest legacy line with a QEMU legacy assertion.
 
@@ -56,10 +86,11 @@ def check_legacy_notification(serial: str, qemu_stderr: str) -> str:
     This does not observe guest ISR execution: the driver also polls.
     """
     binding = check_guest_line(serial)
+    health = check_driver_health(serial)
     legacy, msi, msix = count_notifications(qemu_stderr)
     if legacy < 1:
         raise ValueError("no QEMU E1000E legacy IRQ assertion for guest legacy line")
-    return (f"{binding} qemu-legacy-assertions={legacy} "
+    return (f"{binding} {health} qemu-legacy-assertions={legacy} "
             f"msi={msi} msix={msix}; guest handler execution UNPROVEN")
 
 
@@ -68,8 +99,11 @@ def self_test() -> None:
         "[Drivers] pci:0000:00:02.0 E1000EDriver: mac 52:54:00:12:34:56, link up, line 11, polling every 10 ms\n"
         "[Drivers] pci:0000:00:02.0 offer E1000EDriver -> bound\n"
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up\n"
+        "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\n"
+        "[NET3095-N6] DRIVER_HEALTH=PASS node=pci:0000:00:02.0 driver=E1000EDriver resources=8 published=1 irq_sources=1 handler_faults=0 isr_executions=unknown\n"
     )
     assert "line=11" in check_guest_line(serial)
+    assert "ISR-UNPROVEN" in check_driver_health(serial)
     trace = "e1000e_irq_legacy_notify IRQ line state: 1\n"
     assert "qemu-legacy-assertions=1" in check_legacy_notification(serial, trace)
     for invalid_trace in ("", "e1000e_irq_legacy_notify IRQ line state: 0\n",
@@ -82,6 +116,25 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted QEMU trace without a live legacy assertion")
+    bad_health = (
+        serial.replace("handler_faults=0", "handler_faults=1"),
+        serial.replace("resources=8", "resources=0"),
+        serial.replace("published=1", "published=0"),
+        serial.replace("irq_sources=1", "irq_sources=0"),
+        serial.replace("isr_executions=unknown", "isr_executions=1"),
+        serial.replace("node=pci:0000:00:02.0", "node=pci:0000:00:03.0"),
+        serial.replace("[NET3095-N6] DRIVER_HEALTH=PASS", "[NET3095-N6] DRIVER_HEALTH=FAIL"),
+        serial.replace("[NET3095-N6] POST_STRESS_LINK=PASS", "[NET3095-N6] POST_STRESS_LINK=FAIL"),
+        serial.replace("[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\n", ""),
+        serial.replace("[NET3095-N6] DRIVER_HEALTH=PASS", "[NET3095-N6][FAIL] bad\\n[NET3095-N6] DRIVER_HEALTH=PASS"),
+        serial + serial.split("[NET3095-N6] DRIVER_HEALTH=PASS", 1)[1].join([]) if False else serial + serial.splitlines()[-1] + "\\n",
+    )
+    for bad in bad_health:
+        try:
+            check_driver_health(bad)
+        except ValueError:
+            continue
+        raise AssertionError("accepted invalid DriverKit health: " + repr(bad))
     negatives = (
         serial.replace("line 11", "no line"),
         serial.replace("line 11", "line 255"),
