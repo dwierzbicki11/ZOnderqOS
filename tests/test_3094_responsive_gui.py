@@ -232,21 +232,18 @@ class ResponsiveGui3094(unittest.TestCase):
         )[1].split("public void Update()", 1)[0]
         self.assertIn("bool newPress = (leftClicked && !leftWasClicked) ||", dispatch)
         self.assertIn("(rightClicked && !rightWasClicked);", dispatch)
-        self.assertIn("if (newPress)\n                target = null;", dispatch)
         self.assertIn("if (newPress)\n            {", dispatch)
-        self.assertIn("target?.HandleMouse(mouseX, mouseY", dispatch)
+        self.assertIn("target = null;", dispatch)
         self.assertLess(dispatch.index("target = null;"),
                         dispatch.index("for (int i = applications.Count - 1;"))
-        # A new desktop/taskbar press has no window target, but an
-        # ongoing drag still delivers motion and button release.
-        for left, old_left, right, old_right in (
-            (True, False, False, False), (False, False, True, False),
-            (True, True, False, False), (False, True, False, False),
-        ):
-            new_press = (left and not old_left) or (right and not old_right)
-            has_window_under_pointer = False
-            target_active = not new_press or has_window_under_pointer
-            self.assertEqual(target_active, not new_press)
+        # A desktop/taskbar press must own held motion and release, not
+        # just the initial edge. Host C# smoke exercises actual dispatch.
+        self.assertIn("desktopGesture = target == null;", dispatch)
+        self.assertIn("else if (desktopGesture)", dispatch)
+        self.assertIn("if (!leftClicked && !rightClicked)", dispatch)
+        self.assertIn("desktopGesture = false;", dispatch)
+        self.assertIn("target?.HandleMouse(mouseX, mouseY", dispatch)
+
 
     def test_drag_respects_same_work_area_inset_as_restore(self):
         drag = WINDOW.split("if (dragging)", 1)[1].split(
