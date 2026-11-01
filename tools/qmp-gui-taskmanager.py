@@ -140,6 +140,25 @@ def main():
             qmp.screenshot(channel, prefix + ".taskmanager-resize-before.ppm")
             resize_bottom_edge(channel, -shrink)
             qmp.screenshot(channel, prefix + ".taskmanager-short-wide.ppm")
+
+            # Exercise the actual compact 2x2 sidebar after the resize.
+            # Both pages are read-only; no END TASK or storage action is used.
+            compact_bounds = (bounds[0], bounds[1], bounds[2], bounds[3] - shrink)
+            x, y = nav_target(compact_bounds, 1)
+            qmp.move_mouse_to_from_corner(channel, x, y, frame_width, frame_height)
+            qmp.click_mouse(channel)
+            time.sleep(0.8)
+            qmp.screenshot(channel, prefix + ".taskmanager-short-performance.ppm")
+            x, y = nav_target(compact_bounds, 0)
+            qmp.move_mouse_to_from_corner(channel, x, y, frame_width, frame_height)
+            qmp.click_mouse(channel)
+            time.sleep(0.8)
+            qmp.screenshot(channel, prefix + ".taskmanager-short-processes.ppm")
+
+            # Navigation moved the PS/2 cursor away from the resize edge.
+            # Reacquire the *new* bottom border before dragging it back.
+            qmp.move_mouse_to_from_corner(channel, resize_x, resize_y - shrink,
+                                          frame_width, frame_height)
             resize_bottom_edge(channel, shrink)
             qmp.screenshot(channel, prefix + ".taskmanager-resize-restored.ppm")
         else:
@@ -168,8 +187,13 @@ def main():
     if shrink:
         resize_before = qmp.read_ppm(prefix + ".taskmanager-resize-before.ppm")
         short = qmp.read_ppm(prefix + ".taskmanager-short-wide.ppm")
+        short_performance = qmp.read_ppm(prefix + ".taskmanager-short-performance.ppm")
+        short_processes = qmp.read_ppm(prefix + ".taskmanager-short-processes.ppm")
         resize_restored = qmp.read_ppm(prefix + ".taskmanager-resize-restored.ppm")
         measure("short-window-resize", resize_before, short, minimum=0.015)
+        measure("compact-performance-tab", short, short_performance, minimum=0.015)
+        measure("compact-processes-tab", short_performance, short_processes, minimum=0.015)
+        measure("compact-processes-restored", short, short_processes, maximum=0.15)
         measure("short-window-restored", resize_before, resize_restored, maximum=0.10)
     measure("desktop-restored", desktop, closed, maximum=0.10)
     print("[TASK-QMP] PASS: real Task Manager launch, PS/2 tab navigation, "
