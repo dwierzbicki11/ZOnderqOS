@@ -16,15 +16,19 @@ namespace ZonderqOS.GUI
         // Wide coordinates avoid overflow at extreme window offsets.
         private static bool IsInvisible(Canvas canvas, int x, int y, int width, int height)
         {
-            return canvas == null || width <= 0 || height <= 0 ||
-                (long)x >= canvas.Width || (long)y >= canvas.Height ||
+            return (long)x >= canvas.Width || (long)y >= canvas.Height ||
                 (long)x + width <= 0 || (long)y + height <= 0;
         }
 
         internal static void RoundedPanel(Canvas canvas, int x, int y, int width, int height,
             int radius, Color fill, Color border)
         {
-            if (IsInvisible(canvas, x, y, width, height))
+            if (canvas == null || width <= 0 || height <= 0)
+                return;
+            // Small radii are cheap to scan, and the extra clipping tests
+            // slowed down visible panels in the host A/B benchmark.
+            // Only large corners pay for the whole-panel culling guard.
+            if (radius >= 16 && IsInvisible(canvas, x, y, width, height))
                 return;
 
             int r = Math.Min(Math.Min(radius, width / 2), height / 2);
@@ -64,7 +68,12 @@ namespace ZonderqOS.GUI
         internal static void RoundedFill(Canvas canvas, int x, int y, int width, int height,
             int radius, Color fill)
         {
-            if (IsInvisible(canvas, x, y, width, height))
+            if (canvas == null || width <= 0 || height <= 0)
+                return;
+            // Small radii are cheap to scan, and the extra clipping tests
+            // slowed down visible panels in the host A/B benchmark.
+            // Only large corners pay for the whole-panel culling guard.
+            if (radius >= 16 && IsInvisible(canvas, x, y, width, height))
                 return;
             int r = Math.Min(Math.Min(radius, width / 2), height / 2);
             if (r <= 0)
@@ -90,7 +99,12 @@ namespace ZonderqOS.GUI
         {
             if (canvas == null || width <= 0 || height <= 0)
                 return;
-            if (IsInvisible(canvas, x, y, width, height))
+            if (canvas == null || width <= 0 || height <= 0)
+                return;
+            // Small radii are cheap to scan, and the extra clipping tests
+            // slowed down visible panels in the host A/B benchmark.
+            // Only large corners pay for the whole-panel culling guard.
+            if (radius >= 16 && IsInvisible(canvas, x, y, width, height))
                 return;
             int r = Math.Min(Math.Min(radius, width / 2), height);
             Fill(canvas, fill, x, y + r, width, height - r);
