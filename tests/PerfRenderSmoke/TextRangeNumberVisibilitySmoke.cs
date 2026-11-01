@@ -79,7 +79,10 @@ internal static class TextRangeNumberVisibilitySmoke
             {
                 Canvas oldFrame = new Canvas(128, 48);
                 Canvas newFrame = new Canvas(128, 48);
-                int x = positions[i, 0], y = positions[i, 1];
+                // The shortest numeric label is only six pixels wide;
+                // keep it partially visible when comparing draw-call counts.
+                int x = positions[i, 0] == -20 ? -3 : positions[i, 0];
+                int y = positions[i, 1];
                 PreviousUInt(oldFrame, numbers[n], x, y, Color.White);
                 SmallTextRenderer.DrawUInt(newFrame, numbers[n], x, y, Color.White);
                 Compare(oldFrame, newFrame, "visible uint " + n + "/" + i);
