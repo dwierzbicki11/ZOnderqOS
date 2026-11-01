@@ -2307,6 +2307,39 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
             self.assertLessEqual(bounds[1][1], bounds[2][0])
 
 
+    def test_task_manager_refresh_preserves_manual_scroll_and_safe_end_task(self):
+        # The periodic 500ms snapshot must not snap the list back to a
+        # selected row after the user deliberately scrolled away.
+        snapshot = TASK_MANAGER.split("private void RefreshSnapshot()", 1)[1].split(
+            "private ModernTaskRow AcquireRow(", 1)[0]
+        rebuild = TASK_MANAGER.split("private void RebuildVisibleRows(", 1)[1].split(
+            "private void UpdateMemorySnapshot()", 1)[0]
+        toolbar = TASK_MANAGER.split("public int ToolbarActionAt(", 1)[1].split(
+            "public int PerformanceResourceAt(", 1)[0]
+        termination = TASK_MANAGER.split("private void EndSelectedTask()", 1)[1].split(
+            "private void RefreshSnapshot()", 1)[0]
+        self.assertIn("bool selectedWasVisible = view.HasPaintedProcessRows", snapshot)
+        self.assertIn("TaskManagerSelectionPolicy.IsVisible(", snapshot)
+        self.assertIn("RebuildVisibleRows(selectedApp, selectedPid, selectedWasVisible);", snapshot)
+        self.assertIn("bool keepSelectedVisible)", TASK_MANAGER)
+        self.assertIn("if (keepSelectedVisible)\\n                EnsureSelectionVisible();".replace("\\n", "\n"), rebuild)
+        self.assertIn("RebuildVisibleRows(null, -1, false);", TASK_MANAGER)
+        self.assertIn("app.CanEndSelectedTask &&", toolbar)
+        self.assertIn("!TaskManagerSelectionPolicy.IsVisible(", termination)
+        self.assertIn('"END TASK", IconType.Close, true, app.CanEndSelectedTask', TASK_MANAGER)
+
+        for count in (0, 1, 4, 20, 100):
+            for visible in (0, 1, 4, 10):
+                for scroll in (0, 1, 12, 90):
+                    for selected in (-1, 0, 1, 5, 19, 99):
+                        was_visible = (0 <= selected < count and visible > 0 and
+                                       selected >= scroll and selected - scroll < visible)
+                        # Refresh preserves the selected identity but only
+                        # requests scrolling when it was actually on screen.
+                        self.assertEqual(was_visible,
+                                         0 <= selected < count and visible > 0 and
+                                         scroll <= selected < scroll + visible)
+
     def test_task_manager_keyboard_pages_and_modifier_safety(self):
         keyboard = TASK_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
             "private void SetPage(", 1)[0]

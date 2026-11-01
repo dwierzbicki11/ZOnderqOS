@@ -174,9 +174,8 @@ namespace ZonderqOS.GUI.Apps
             // Preserve a selected row that was actually on screen before
             // shrinking the window. Do not snap back to selections that the
             // user intentionally scrolled away from.
-            bool selectionWasVisible = previousVisibleRows > 0 &&
-                selectedIndex >= scrollIndex &&
-                selectedIndex < scrollIndex + previousVisibleRows;
+            bool selectionWasVisible = TaskManagerSelectionPolicy.IsVisible(
+                selectedIndex, scrollIndex, previousVisibleRows, visibleRows.Count);
             if (rows > 0 && view.HasPaintedProcessRows &&
                 rows != previousVisibleRows && selectionWasVisible)
                 EnsureSelectionVisible();
@@ -378,7 +377,7 @@ namespace ZonderqOS.GUI.Apps
             activePage = page;
             selectedIndex = -1;
             scrollIndex = 0;
-            RebuildVisibleRows(null, -1);
+            RebuildVisibleRows(null, -1, false);
             status = page == PageProcesses ? "Procesy" : page == PagePerformance ? "Wydajnosc" : page == PageDetails ? "Szczegoly" : "Uslugi";
         }
 
@@ -448,6 +447,13 @@ namespace ZonderqOS.GUI.Apps
 
         private void RefreshSnapshot()
         {
+            // A user may scroll away from the selected task while the 500ms
+            // telemetry timer keeps refreshing. Do not jump back to that old
+            // selection on every sample; keep it visible only if it was visible
+            // immediately before the refresh.
+            bool selectedWasVisible = view.HasPaintedProcessRows &&
+                TaskManagerSelectionPolicy.IsVisible(selectedIndex, scrollIndex,
+                    view.VisibleRows, visibleRows.Count);
             Application selectedApp = null;
             int selectedPid = -1;
             if (selectedIndex >= 0 && selectedIndex < visibleRows.Count)
@@ -460,7 +466,7 @@ namespace ZonderqOS.GUI.Apps
             UpdateMemorySnapshot();
             UpdateCpuSnapshot();
             UpdateSystemSnapshot();
-            RebuildVisibleRows(selectedApp, selectedPid);
+            RebuildVisibleRows(selectedApp, selectedPid, selectedWasVisible);
             // Start the interval after expensive sampling completes, including
             // F5 and toolbar refreshes, rather than immediately sampling again.
             lastRefreshTicks = Stopwatch.GetTimestamp();
@@ -509,7 +515,7 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
-        private void RebuildVisibleRows(Application selectedApp, int selectedPid)
+        private void RebuildVisibleRows(Application selectedApp, int selectedPid, bool keepSelectedVisible)
         {
             visibleRows.Clear();
             if (activePage != PagePerformance)
@@ -534,7 +540,8 @@ namespace ZonderqOS.GUI.Apps
                 }
             }
             ClampScroll();
-            EnsureSelectionVisible();
+            if (keepSelectedVisible)
+                EnsureSelectionVisible();
         }
 
         private void UpdateMemorySnapshot()
