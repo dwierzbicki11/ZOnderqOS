@@ -52,6 +52,18 @@ class TinyTaskManagerViewTests(unittest.TestCase):
             self.assertGreaterEqual(samples, 7)
             self.assertLessEqual(samples, 9)
 
+    def test_mouse_uses_current_window_geometry_before_hit_testing(self):
+        mouse = section("public override void HandleMouse(",
+                        "public override void HandleKeyboard(")
+        self.assertIn("if (!Window.Visible || Window.IsMinimized || !IsRunning)", mouse)
+        self.assertIn("view.X != Window.X + 10", mouse)
+        self.assertIn("view.Y != Window.Y + 40", mouse)
+        self.assertIn("view.Width != Math.Max(1, Window.Width - 20)", mouse)
+        self.assertIn("view.Height != Math.Max(1, Window.Height - 50)", mouse)
+        self.assertLess(mouse.index("Window.HandleMouse("), mouse.index("UpdateLayout();"))
+        self.assertLess(mouse.index("UpdateLayout();"), mouse.index("view.HandleScrollMouse("))
+        self.assertLess(mouse.index("UpdateLayout();"), mouse.index("view.NavAt("))
+
     def test_resize_keeps_previously_visible_selection_without_hijacking_scroll(self):
         layout = section("private void UpdateLayout()", "private void UpdateClock()")
         self.assertIn("int rows = view.VisibleRows;", layout)

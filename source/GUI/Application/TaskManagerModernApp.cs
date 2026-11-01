@@ -217,8 +217,15 @@ namespace ZonderqOS.GUI.Apps
         public override void HandleMouse(int mouseX, int mouseY, bool left, bool oldLeft)
         {
             Window.HandleMouse(mouseX, mouseY, left, oldLeft);
-            if (!Window.Visible || !IsRunning)
+            if (!Window.Visible || Window.IsMinimized || !IsRunning)
                 return;
+            // A move, resize or display-mode change may occur in the same
+            // input frame, before Update(). Hit-test against the new client
+            // coordinates rather than the previous frame's row positions.
+            if (view.X != Window.X + 10 || view.Y != Window.Y + 40 ||
+                view.Width != Math.Max(1, Window.Width - 20) ||
+                view.Height != Math.Max(1, Window.Height - 50))
+                UpdateLayout();
             if (view.HandleScrollMouse(mouseX, mouseY, left, oldLeft))
                 return;
             if (!left || oldLeft)
