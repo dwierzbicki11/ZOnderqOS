@@ -10,6 +10,8 @@ namespace ZonderqOS.GUI.Icons
         private const int LargeIconSize = 40;
         private const int IconCount = (int)IconType.FileTxt + 1;
         private const int MaxScaledCacheEntries = 256;
+        // Do not replace a small cached icon with a huge, transient zoom size.
+        private const int MaxReplacementArea = 128 * 128;
         private const string CacheDirectory = "/root/.zonderq-icons";
 
         // Source PNGs are decoded once during GUI startup and held strongly for the
@@ -29,6 +31,7 @@ namespace ZonderqOS.GUI.Icons
         private static readonly int[] scaledWidths = new int[MaxScaledCacheEntries];
         private static readonly int[] scaledHeights = new int[MaxScaledCacheEntries];
         private static int scaledCacheCount;
+        private static int nextScaledEvictionSlot;
 
         // Per-icon most-recent-size slot: 47 integers instead of searching
         // up to 256 entries every time an icon is drawn at its usual size.
@@ -174,7 +177,11 @@ namespace ZonderqOS.GUI.Icons
                 }
             }
 
-            if (scaledCacheCount >= MaxScaledCacheEntries)
+            // A permanently full cache used to force division-heavy direct
+            // scaling on every subsequent frame. Recycle one bounded slot for
+            // normal icon sizes; very large transient requests stay uncached.
+            if (scaledCacheCount >= MaxScaledCacheEntries &&
+                (long)width * height > MaxReplacementArea)
                 return null;
 
             int[] destination;
@@ -206,12 +213,20 @@ namespace ZonderqOS.GUI.Icons
             }
 
             int slot = scaledCacheCount;
+            if (slot == MaxScaledCacheEntries)
+            {
+                slot = nextScaledEvictionSlot;
+                nextScaledEvictionSlot = (nextScaledEvictionSlot + 1) % MaxScaledCacheEntries;
+            }
+            else
+            {
+                scaledCacheCount = slot + 1;
+            }
             scaledTypes[slot] = type;
             scaledWidths[slot] = width;
             scaledHeights[slot] = height;
             scaledPixels[slot] = destination;
             scaledUseRuns[slot] = ShouldCoalesce(destination, width, height);
-            scaledCacheCount = slot + 1;
             if (validType)
                 scaledRecentSlots[typeIndex] = slot;
             return destination;
@@ -335,7 +350,7 @@ namespace ZonderqOS.GUI.Icons
             }
         }
 
-        // When all 256 scaled-icon slots are occupied, render directly without
+        // When a very large icon cannot be cached, render directly without
         // allocating a per-frame buffer. The old fallback divided once for
         // every pixel; a quotient/remainder accumulator produces the SAME
         // nearest-neighbor source column using only additions and one carry.
