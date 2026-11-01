@@ -40,19 +40,34 @@ class TinyTaskManagerViewTests(unittest.TestCase):
         hit = section("public int RowAt(int x, int y)", "public bool HandleScrollMouse(")
         mouse = section("public bool HandleScrollMouse(", "private void UpdateScrollBar()")
         table = section("private void RenderTable(Canvas canvas", "private void DrawRow(")
-        self.assertIn("VisibleRows == 0", hit)
-        self.assertIn("VisibleRows == 0", mouse)
-        self.assertIn("if (width <= ScrollReserve + 4 || VisibleRows == 0)", table)
-        self.assertLess(table.index("if (width <= ScrollReserve + 4 || VisibleRows == 0)"),
+        self.assertIn("!HasPaintedProcessRows", hit)
+        self.assertIn("!HasPaintedProcessRows", mouse)
+        self.assertIn("if (!HasPaintedProcessRows)", table)
+        self.assertLess(table.index("if (!HasPaintedProcessRows)"),
                         table.index("canvas.DrawFilledRectangle("))
         self.assertIn("if (rowOffset >= VisibleRows)", hit)
+
+    def test_no_row_or_column_means_no_process_interaction(self):
+        self.assertIn("internal bool HasPaintedProcessRows => VisibleRows > 0 &&", SOURCE)
+        self.assertIn("Width - SidebarWidth - 12 > ScrollReserve + 4;", SOURCE)
+        # The view has a 176px sidebar, 12px content inset and 14px
+        # scrollbar reserve; a 4px safety gap must remain.
+        for width in range(1, 321):
+            for height in (40, 100, 120, 146, 170, 220):
+                top = 64 if width < 550 or height < 216 else 146
+                rows = max(0, height - top - 28 - 6) // 36
+                painted = rows > 0 and width - 176 - 12 > 14 + 4
+                if width <= 206 or rows == 0:
+                    self.assertFalse(painted)
+                else:
+                    self.assertTrue(painted)
 
     def test_keyboard_and_end_task_reject_hidden_selection(self):
         selection = section("private void SelectAbsolute(int index)", "private void EndSelectedTask()")
         destructive = section("private void EndSelectedTask()", "private void RefreshSnapshot()")
-        self.assertIn("view.VisibleRows == 0", selection)
-        self.assertIn("view.VisibleRows == 0", destructive)
-        self.assertLess(destructive.index("view.VisibleRows == 0"),
+        self.assertIn("!view.HasPaintedProcessRows", selection)
+        self.assertIn("!view.HasPaintedProcessRows", destructive)
+        self.assertLess(destructive.index("!view.HasPaintedProcessRows"),
                         destructive.index("ModernTaskRow row = visibleRows[selectedIndex];"))
         self.assertIn("if (!row.CanEnd)", destructive)
 
