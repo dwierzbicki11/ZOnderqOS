@@ -227,7 +227,7 @@ namespace ZonderqOS
                     // Two independent TCP connections exercise RX descriptor reuse and socket teardown.
                     for (int attempt = 1; attempt <= 2; attempt++)
                     {
-                        if (!TryHttpExchange(attempt))
+                        if (!TryHttpExchange(attempt, sourceMac, initialIp, initialMask, initialGateway))
                             return;
                     }
                 }
@@ -292,7 +292,7 @@ namespace ZonderqOS
                 {
                     for (int attempt = 3; attempt <= 6; attempt++)
                     {
-                        if (!TryHttpExchange(attempt))
+                        if (!TryHttpExchange(attempt, sourceMac, initialIp, initialMask, initialGateway))
                             return;
                     }
                 }
@@ -410,8 +410,31 @@ namespace ZonderqOS
             return true;
         }
 
-        private static bool TryHttpExchange(int attempt)
+        // Check the live, published NIC and the ORIGINAL DHCP values during
+        // each HTTP RX stream, not just after all stress has completed. A
+        // mutable IPConfig instance must not be used as its own baseline.
+        private static bool IsE1000ELeaseStable(string expectedMac, string expectedIp,
+            string expectedMask, string expectedGateway)
         {
+            NetworkAdapter adapter = NetworkManager.Primary;
+            if (!adapter.IsValid || adapter.Name != "e1000e" ||
+                !adapter.Ready || !adapter.LinkUp ||
+                (adapter.MacAddress?.ToString() ?? "") != expectedMac)
+                return false;
+            IPConfig? lease = adapter.IPConfig;
+            return lease != null && lease.Address.ToString() == expectedIp &&
+                lease.SubnetMask.ToString() == expectedMask &&
+                lease.DefaultGateway.ToString() == expectedGateway;
+        }
+
+        private static bool TryHttpExchange(int attempt, string expectedMac,
+            string expectedIp, string expectedMask, string expectedGateway)
+        {
+            if (!IsE1000ELeaseStable(expectedMac, expectedIp, expectedMask, expectedGateway))
+            {
+                Log("[NET3095-N6][FAIL] HTTP NIC/lease invalid before attempt=" + attempt);
+                return false;
+            }
             using (var http = new System.Net.Sockets.TcpClient())
             {
                 http.Connect(System.Net.IPAddress.Parse("10.0.2.2"), 18096);
@@ -435,6 +458,11 @@ namespace ZonderqOS
                         ((offset * 37 + (offset / 90) * 11 +
                           (offset / 1024) * 23 + attempt * 29) % 90));
                 stream.Write(request, 0, request.Length);
+                if (!IsE1000ELeaseStable(expectedMac, expectedIp, expectedMask, expectedGateway))
+                {
+                    Log("[NET3095-N6][FAIL] HTTP NIC/lease changed after TX attempt=" + attempt);
+                    return false;
+                }
                 byte[] response = new byte[expected.Length];
                 int received = 0;
                 int readCalls = 0;
@@ -448,6 +476,11 @@ namespace ZonderqOS
                     if (read > largestRead)
                         largestRead = read;
                     received += read;
+                    if (!IsE1000ELeaseStable(expectedMac, expectedIp, expectedMask, expectedGateway))
+                    {
+                        Log("[NET3095-N6][FAIL] HTTP NIC/lease changed during RX attempt=" + attempt);
+                        return false;
+                    }
                 }
                 if (received != expected.Length)
                 {
@@ -462,6 +495,9 @@ namespace ZonderqOS
                         return false;
                     }
                 }
+                // Only claim per-stream stability after all RX chunks and
+                // exact payload verification. This is not a hardware IRQ proof.
+                Log("[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=" + attempt);
                 // Guest-side socket-read telemetry supplements the independent
                 // PCAP evidence. It measures actual managed Read() completions,
                 // not IRQ/ISR delivery or physical NIC DMA ownership.
