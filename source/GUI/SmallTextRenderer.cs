@@ -295,6 +295,10 @@ namespace ZonderqOS.GUI
 
         private static char NormalizeGlyph(char ch)
         {
+            // All printable ASCII glyphs are unchanged by normalization.
+            // Avoid the non-ASCII switch for the common file-name/UI path.
+            if (ch < 128)
+                return ch;
             switch (ch)
             {
                 case 'ą': case 'Ą': return 'A';
