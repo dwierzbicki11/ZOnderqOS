@@ -64,6 +64,13 @@ namespace ZonderqOS.Hardware
             return offset >= 0x40 && offset <= 0xF8 && (offset & 3) == 0;
         }
 
+        // The read-only probe must not cause PCI command changes, especially
+        // enabling bus mastering or disabling the MMIO decoder.
+        public static bool IsStablePciCommand(ushort before, ushort after)
+        {
+            return before == after && (before & 0x0002) != 0;
+        }
+
         // BAR2 contains the RTL810xE register aperture. Compare both raw
         // BAR2 and BAR3 words before/after MMIO: BAR3 is the upper address
         // half when BAR2 is 64-bit. Never size BARs or write PCI config.
@@ -76,7 +83,16 @@ namespace ZonderqOS.Hardware
             if ((bar2 & 1u) != 0)
                 return false; // I/O BAR, not an MMIO register aperture.
             uint memoryType = (bar2 >> 1) & 3u;
-            return memoryType == 0u || memoryType == 2u;
+            bool supportedType = memoryType == 0u || memoryType == 2u;
+            if (!supportedType)
+                return false;
+            // A zero-based MMIO BAR is not an assigned register aperture,
+            // even if stale DriverKit metadata claims the BAR is mapped.
+            // For a 64-bit BAR the address may live entirely in BAR3.
+            ulong baseAddress = memoryType == 2u
+                ? before & ~0xFUL
+                : (ulong)(bar2 & ~0xFu);
+            return baseAddress != 0;
         }
 
         public const ushort StationAddressOffset = 0x00;
