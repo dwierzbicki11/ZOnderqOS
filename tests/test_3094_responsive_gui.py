@@ -2034,7 +2034,7 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertLess(menu.index("if (modified)"), menu.index("ConsoleKeyEx.UpArrow"))
         self.assertIn("contextMenuSelection = -1;", menu)
         self.assertIn("if (key.Key == ConsoleKeyEx.Escape)", menu)
-        self.assertRegex(menu, r"(?s)if \(key.Key == ConsoleKeyEx.Enter && key.Modifiers == 0\).*?return;\s*}\s*return;\s*}")
+        self.assertRegex(menu, r"(?s)if \(\(key.Key == ConsoleKeyEx.Enter \|\| key.Key == ConsoleKeyEx.NumEnter\) &&\s*key.Modifiers == 0\).*?return;\s*}\s*return;\s*}")
         # The modal branch must consume all keys before clipboard, search,
         # refresh and navigation dispatch. A modified Enter cannot create.
         self.assertLess(keyboard.index("if (contextMenuVisible)"), keyboard.index("bool control ="))
@@ -2919,6 +2919,35 @@ class PaintedControlHitbox3095(unittest.TestCase):
                 top = 130 + row * (82 + 7)
                 self.assertLessEqual(top + 82, panel_height - 72,
                                      (panel_height, row, rows))
+
+
+
+class WindowInterruptedGesture3095(unittest.TestCase):
+    def test_fresh_press_discards_drag_or_resize_after_modal_consumes_release(self):
+        mouse = WINDOW.split("public void HandleMouse(int mouseX", 1)[1].split(
+            "private int GetResizeMode(", 1)[0]
+        guard = mouse.split("SyncDesktopBounds();", 1)[1].split(
+            "int visibleControls = VisibleCaptionControls();", 1)[0]
+        self.assertIn("if (isClicked && !wasClicked && (dragging || resizing))", guard)
+        for reset in ("dragging = false;", "resizing = false;",
+                      "resizeMode = 0;", "lastTitleClickTimestamp = 0;"):
+            self.assertIn(reset, guard)
+        self.assertLess(mouse.index("if (isClicked && !wasClicked && (dragging || resizing))"),
+                        mouse.index("if (resizing)"))
+        self.assertLess(mouse.index("if (isClicked && !wasClicked && (dragging || resizing))"),
+                        mouse.index("if (dragging)"))
+
+        # Model the event boundary: an overlay can swallow a release, but
+        # the next fresh press must not continue the previous gesture.
+        for dragging, resizing in ((False, False), (True, False), (False, True)):
+            for is_clicked, was_clicked in ((False, True), (True, True), (True, False)):
+                interrupted = is_clicked and not was_clicked and (dragging or resizing)
+                remaining_drag = dragging and not interrupted
+                remaining_resize = resizing and not interrupted
+                if is_clicked and not was_clicked:
+                    self.assertFalse(remaining_drag or remaining_resize)
+                elif is_clicked and was_clicked:
+                    self.assertEqual((remaining_drag, remaining_resize), (dragging, resizing))
 
 
 if __name__ == "__main__":
