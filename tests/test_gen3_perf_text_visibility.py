@@ -50,6 +50,14 @@ class TextRangeVisibilityContracts(unittest.TestCase):
         self.assertNotIn("DrawChar(", draw)
         self.assertNotIn("Substring(", draw)
 
+    def test_numeric_glyph_culling_preserves_full_visibility_fast_path(self):
+        numeric = SOURCE.split("public static void DrawUInt(Canvas", 1)[1].split(
+            "public static void DrawInt(", 1)[0]
+        self.assertIn("bool partiallyClipped =", numeric)
+        self.assertIn("if (skip >= digits)", numeric)
+        self.assertIn("if (!partiallyClipped || (i >= first && i < last))", numeric)
+        self.assertIn("DrawChar(canvas, (char)('0' + (int)digit)", numeric)
+
     def test_production_source_uses_wide_culling_and_saturation(self):
         self.assertIn("int end = count >= text.Length - start ? text.Length : start + count;", SOURCE)
         self.assertIn("long skip = (-(long)x + 1) / 6;", SOURCE)
