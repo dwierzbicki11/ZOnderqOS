@@ -149,7 +149,17 @@ namespace ZonderqOS.SystemCore
             return PlayScheduledMixedTestTones(false);
         }
 
-        public static bool PlayScheduledMixedTestTones(bool useOneMillisecondDiagnostic)
+        /// <summary>
+        /// Use stock AudioPlayback's scheduler thread and atomic output claim,
+        /// rather than the boot/idle thread. This A/B diagnostic still uses
+        /// the unmodified 5ms AudioPlayer ring-full wait.
+        /// </summary>
+        public static bool PlayScheduledMixedTestTonesAsync()
+        {
+            return PlayScheduledMixedTestTones(false, true);
+        }
+
+        public static bool PlayScheduledMixedTestTones(bool useOneMillisecondDiagnostic, bool useAsyncDiagnostic = false)
         {
             byte[] left = AudioTonePcm.GenerateSquareStereo16(48000, 440, 250, 4096);
             byte[] right = AudioTonePcm.GenerateSquareStereo16(48000, 880, 250, 4096);
@@ -188,7 +198,7 @@ namespace ZonderqOS.SystemCore
                 new[] { clipFadeMilliseconds, clipFadeMilliseconds, clipFadeMilliseconds }, 4096);
             Console.WriteLine("[AUDIO] MIXQUEUE 48kHz stereo16 clips=3 preroll=250ms clipFade=5ms tail=4096frames " +
                 "left=440Hz@0ms right=880Hz@50ms left=660Hz@300ms bytes=" + mixed.Length);
-            return PlayPcm(mixed, useOneMillisecondDiagnostic);
+            return PlayPcm(mixed, useOneMillisecondDiagnostic, useAsyncDiagnostic);
         }
 
         /// <summary>
@@ -203,7 +213,12 @@ namespace ZonderqOS.SystemCore
             return PlayFrequencySequenceTestTones(false);
         }
 
-        public static bool PlayFrequencySequenceTestTones(bool useOneMillisecondDiagnostic)
+        public static bool PlayFrequencySequenceTestTonesAsync()
+        {
+            return PlayFrequencySequenceTestTones(false, true);
+        }
+
+        public static bool PlayFrequencySequenceTestTones(bool useOneMillisecondDiagnostic, bool useAsyncDiagnostic = false)
         {
             int[] frequencies = { 400, 700, 1000, 1300 };
             byte[][] clips = new byte[frequencies.Length][];
@@ -223,7 +238,7 @@ namespace ZonderqOS.SystemCore
                 clips, starts, gains, fades, 4096);
             Console.WriteLine("[AUDIO] MIXSEQUENCE 48kHz stereo16 four 90ms tones=400/700/1000/1300Hz " +
                 "preroll=250ms fade=5ms tail=4096frames bytes=" + pcm.Length);
-            return PlayPcm(pcm, useOneMillisecondDiagnostic);
+            return PlayPcm(pcm, useOneMillisecondDiagnostic, useAsyncDiagnostic);
         }
 
         public static bool PlayStereoSplitTestTone()
@@ -650,7 +665,7 @@ namespace ZonderqOS.SystemCore
             return PlayPcm(pcm, false);
         }
 
-        private static bool PlayPcm(byte[] pcm, bool useOneMillisecondDiagnostic)
+        private static bool PlayPcm(byte[] pcm, bool useOneMillisecondDiagnostic, bool useAsyncDiagnostic = false)
         {
             // Fail closed before touching the primary device or allocating
             // a scaled copy. The probe emits only 48 kHz stereo PCM16; a
@@ -714,8 +729,27 @@ namespace ZonderqOS.SystemCore
                     ? AudioPcmVolume.ScaleStereo16ChannelsOrReuse(pcm, leftGain, rightGain)
                     : AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
                         pcm, leftGain, rightGain, fadeMilliseconds, drainBytes);
+                if (useOneMillisecondDiagnostic && useAsyncDiagnostic)
+                {
+                    Console.WriteLine("[AUDIO] REFUSED: conflicting diagnostic playback modes.");
+                    return false;
+                }
                 if (useOneMillisecondDiagnostic)
                     return AudioProbeDirectPlayback.TryPlay(output, scaled, sampleRate);
+                if (useAsyncDiagnostic)
+                {
+                    // Stock Cosmos claims the output atomically before starting
+                    // a scheduler thread. This is safer than direct ring access.
+                    // Returning true means STARTED only: QEMU must still inspect
+                    // captured PCM and reject underruns or replay.
+                    bool started = AudioPlayback.TryStart(output,
+                        new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled),
+                        null, out AudioPlayback playback);
+                    Console.WriteLine(started
+                        ? "[AUDIO] ASYNC STARTED (not proof of audible PCM)"
+                        : "[AUDIO] ASYNC REFUSED (scheduler unavailable or output busy)");
+                    return started;
+                }
                 bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled));
                 Console.WriteLine(accepted
                     ? "[AUDIO] PCM ACCEPTED_AND_DRAINED (not proof of audible output)"

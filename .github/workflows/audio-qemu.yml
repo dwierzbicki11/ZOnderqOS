@@ -152,6 +152,34 @@ jobs:
           fi
           echo '[AUDIO-1MS-SEQUENCE] experimental only; stock mixsequence remains mandatory'
 
+      - name: Experimental stock AudioPlayback scheduler-thread mixqueue A/B
+        id: mixqueueasync
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-async-out \
+            --boot-seconds 45 --command mixqueueasync
+      - name: Experimental stock AudioPlayback scheduler-thread four-tone A/B
+        id: mixsequenceasync
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixsequence-async-out \
+            --boot-seconds 45 --command mixsequenceasync
+      - name: Diagnose scheduler-thread playback without treating startup as audio proof
+        if: always()
+        run: |
+          for wav in audio-qemu-mixqueue-async-out/captured.wav audio-qemu-mixsequence-async-out/captured.wav; do
+            if [ -s "$wav" ]; then
+              python3 tools/analyze-audio-hda-replay.py "$wav"
+            else
+              echo "[AUDIO-ASYNC] no WAV at $wav; playback not verified"
+            fi
+          done
+          echo '[AUDIO-ASYNC] stock 5ms wait, scheduler-thread A/B; baseline stock quality gate remains mandatory'
+
       - name: Quantify actual mixqueue dropouts without relaxing the strict quality gate
         if: always()
         run: |
@@ -286,6 +314,11 @@ jobs:
         run: |
           echo "::error::Experimental 1ms HDA PCM failed real QEMU quality verification"
           exit 1
+      - name: Enforce separate stock scheduler-thread HDA quality gates
+        if: always() && (steps.mixqueueasync.outcome == 'failure' || steps.mixsequenceasync.outcome == 'failure')
+        run: |
+          echo "::error::Stock scheduler-thread HDA PCM failed real QEMU quality verification"
+          exit 1
       - name: Inspect potential 16KiB HDA ring replay (diagnostic, not IRQ proof)
         if: always()
         run: |
@@ -355,6 +388,12 @@ jobs:
             audio-qemu-mixsequence-1ms-out/*.log
             audio-qemu-mixsequence-1ms-out/*.wav
             audio-qemu-mixsequence-1ms-out/*.ppm
+            audio-qemu-mixqueue-async-out/*.log
+            audio-qemu-mixqueue-async-out/*.wav
+            audio-qemu-mixqueue-async-out/*.ppm
+            audio-qemu-mixsequence-async-out/*.log
+            audio-qemu-mixsequence-async-out/*.wav
+            audio-qemu-mixsequence-async-out/*.ppm
             audio-qemu-mixqueue-output-only-out/*.log
             audio-qemu-mixqueue-output-only-out/*.wav
             audio-qemu-mixqueue-output-only-out/*.ppm
