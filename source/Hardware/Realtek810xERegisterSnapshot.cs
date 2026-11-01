@@ -95,6 +95,27 @@ namespace ZonderqOS.Hardware
             return baseAddress != 0;
         }
 
+        // Require the raw PCI BAR and DriverKit resource to describe the
+        // same physical MMIO aperture before sampling any device registers.
+        // This pure check never sizes BARs, writes PCI config or accesses MMIO.
+        public static bool IsBar2MetadataConsistent(ulong rawPair,
+            ulong mappedBase, ulong mappedLength)
+        {
+            uint bar2 = (uint)rawPair;
+            if ((bar2 & 1u) != 0 || mappedLength < 0x6D)
+                return false;
+            uint memoryType = (bar2 >> 1) & 3u;
+            ulong rawBase;
+            if (memoryType == 0u)
+                rawBase = (ulong)(bar2 & ~0xFu);
+            else if (memoryType == 2u)
+                rawBase = rawPair & ~0xFUL;
+            else
+                return false;
+            return rawBase != 0 && mappedBase == rawBase &&
+                mappedBase <= ulong.MaxValue - (mappedLength - 1);
+        }
+
         public const ushort StationAddressOffset = 0x00;
         public const ushort PhyStatusOffset = 0x6C;
         public const ushort TxConfigOffset = 0x40;

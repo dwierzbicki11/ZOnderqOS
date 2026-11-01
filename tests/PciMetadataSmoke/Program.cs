@@ -252,6 +252,34 @@ foreach (ulong unassigned in new[] {
 Check(Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
       0x0000000100000004UL, 0x0000000100000004UL),
     "A valid 64-bit BAR2 with its base entirely in BAR3 must be accepted");
+// Verify the physical BAR used by MapRegisters matches PCI config space.
+Check(Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
+      bar2Mmio32, 0xFEBF0000UL, 0x1000UL),
+    "Matching 32-bit BAR2 resource metadata must be accepted");
+Check(Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
+      bar2Mmio64, 0x00000001FEBF0000UL, 0x1000UL),
+    "Matching 64-bit BAR2 resource metadata must be accepted");
+Check(Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
+      0x0000000100000004UL, 0x0000000100000000UL, 0x1000UL),
+    "64-bit BAR2 whose base is entirely in BAR3 must be accepted");
+foreach (ulong wrongBase in new ulong[] { 0UL, 0xFEBE0000UL, 0x00000001FEBF0000UL })
+    Check(!Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
+          bar2Mmio32, wrongBase, 0x1000UL),
+        "Mismatched DriverKit BAR2 base must be rejected");
+Check(!Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
+      bar2Mmio64, 0xFEBF0000UL, 0x1000UL),
+    "Truncated 64-bit BAR2 base must be rejected");
+Check(!Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
+      bar2Mmio32, 0xFEBF0000UL, 0x6CUL),
+    "Too-short mapped register aperture must be rejected");
+Check(!Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
+      0xFFFFFFFFFFFFF004UL, 0xFFFFFFFFFFFFF000UL, 0x2000UL),
+    "Wrapped mapped register aperture must be rejected");
+foreach (ulong invalidRaw in new ulong[] { 0UL, 0xFEBF0001UL, 0xFEBF0002UL, 0xFEBF0006UL })
+    Check(!Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
+          invalidRaw, 0xFEBF0000UL, 0x1000UL),
+        "Invalid raw BAR2 type or address must be rejected");
+Console.WriteLine("[NET3095-RTL810XE-BAR-METADATA] PASS C# physical BAR/resource consistency guards; no hardware access");
 Console.WriteLine("[NET3095-RTL810XE-BAR-STABILITY] PASS C# BAR2/BAR3 MMIO type and relocation guards; no hardware MMIO proof");
 
 // The probe must not enable bus mastering, disable MMIO or otherwise

@@ -94,6 +94,12 @@ namespace ZonderqOS.Drivers
                         barPairBefore, barPairBefore))
                     return Decline("BAR2 is not a supported PCI MMIO BAR; no MMIO reads");
 
+                // Refuse a stale or mismatched DriverKit BAR mapping before
+                // the first MMIO access, even when the raw PCI BAR is valid.
+                if (!Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
+                        barPairBefore, bar.Base, bar.Length))
+                    return Decline("BAR2 PCI config and DriverKit resource disagree; no MMIO reads");
+
                 RegisterWindow window = binding.MapRegisters(RegisterBar);
                 if (window.Length < MinimumRegisterBytes)
                     return Decline("mapped BAR2 window too short");

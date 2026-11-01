@@ -100,6 +100,14 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
         self.assertIn("Changed BAR2 address must invalidate", SMOKE)
         self.assertIn("Changed 64-bit BAR3 upper address must invalidate", SMOKE)
         self.assertIn("Unsupported BAR2 encoding must be rejected", SMOKE)
+        self.assertIn("IsBar2MetadataConsistent(ulong rawPair", SAMPLER)
+        self.assertIn("barPairBefore, bar.Base, bar.Length", DRIVER)
+        self.assertIn("BAR2 PCI config and DriverKit resource disagree; no MMIO reads", DRIVER)
+        self.assertIn("[NET3095-RTL810XE-BAR-METADATA] PASS", SMOKE)
+        self.assertIn("Truncated 64-bit BAR2 base must be rejected", SMOKE)
+        self.assertIn("Wrapped mapped register aperture must be rejected", SMOKE)
+        self.assertLess(DRIVER.index("barPairBefore, bar.Base, bar.Length"),
+                        DRIVER.index("binding.MapRegisters(RegisterBar)"))
         self.assertIn("binding.MapRegisters(RegisterBar)", DRIVER)
         self.assertIn("Realtek810xERegisterSampler.TrySample", DRIVER)
         # MapRegisters must not be allowed to change PCI command or BARs
