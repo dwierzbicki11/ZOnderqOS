@@ -174,6 +174,32 @@ namespace ZonderqOS.GUI
                 return true;
             }
 
+            // Large notification histories should not require dozens of
+            // individual arrow presses at 800x600 (only three cards fit).
+            // Page/Home/End clamp to real visible entries, not an offscreen row.
+            if (key.Key == ConsoleKeyEx.PageUp || key.Key == ConsoleKeyEx.PageDown ||
+                key.Key == ConsoleKeyEx.Home || key.Key == ConsoleKeyEx.End)
+            {
+                EnsureFresh();
+                int rows = VisibleRowCount;
+                if (rows > 0 && visibleCount > 0)
+                {
+                    if (key.Key == ConsoleKeyEx.Home)
+                        selectedIndex = 0;
+                    else if (key.Key == ConsoleKeyEx.End)
+                        selectedIndex = visibleCount - 1;
+                    else
+                    {
+                        int delta = key.Key == ConsoleKeyEx.PageDown ? rows : -rows;
+                        selectedIndex = System.Math.Max(0,
+                            System.Math.Min(visibleCount - 1, selectedIndex + delta));
+                    }
+                    KeepSelectionVisible();
+                    RememberSelection();
+                }
+                return true;
+            }
+
             if (key.Key == ConsoleKeyEx.Enter || key.Key == ConsoleKeyEx.NumEnter)
             {
                 // Shift+Enter (including numpad Enter) is not an acknowledgement.
