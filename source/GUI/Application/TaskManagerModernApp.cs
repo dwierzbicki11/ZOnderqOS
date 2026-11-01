@@ -1153,7 +1153,15 @@ namespace ZonderqOS.GUI.Apps
                     Sidebar, compactX, compactY, 76, 32);
                 if (compactActive)
                     canvas.DrawFilledRectangle(Accent, compactX, compactY + 4, 3, 24);
-                IconManager.DrawScaled(canvas, icon, compactX + 29, compactY + 7, 18, 18);
+                // Icons alone are ambiguous in the short, wide layout
+                // (especially at Full HD). Keep a short readable label inside
+                // the same 76x32 hitbox without spilling into the next tile.
+                IconManager.DrawScaled(canvas, icon, compactX + 7, compactY + 7, 18, 18);
+                string compactLabel = page == 0 ? "PROC" : page == 1 ? "CPU" :
+                    page == 2 ? "DET" : "USL";
+                SmallTextRenderer.DrawClipped(canvas, compactLabel,
+                    compactX + 29, compactY + 12, 42,
+                    compactActive ? Color.WhiteSmoke : Color.FromArgb(196, 205, 213));
                 return;
             }
             int y = Y + NavTop + page * NavHeight;
