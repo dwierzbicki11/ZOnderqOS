@@ -203,6 +203,19 @@ internal static class TextRangeNumberVisibilitySmoke
         return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
     }
 
+    private static double TimeSigned(bool optimized, Canvas canvas, int repetitions, int x)
+    {
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repetitions; i++)
+        {
+            if (optimized)
+                SmallTextRenderer.DrawInt(canvas, long.MinValue, x, 0, Color.White);
+            else
+                PreviousInt(canvas, long.MinValue, x, 0, Color.White);
+        }
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
     private static void Benchmark(string label, Func<bool, Canvas, int, double> time,
         bool expectNoDraw = true)
     {
@@ -256,5 +269,9 @@ internal static class TextRangeNumberVisibilitySmoke
             TimeNumber(optimized, canvas, iterations, -100), false);
         Benchmark("fully visible DrawUInt", (optimized, canvas, iterations) =>
             TimeNumber(optimized, canvas, iterations, 0), false);
+        Benchmark("partially visible DrawInt", (optimized, canvas, iterations) =>
+            TimeSigned(optimized, canvas, iterations, -100), false);
+        Benchmark("fully visible DrawInt", (optimized, canvas, iterations) =>
+            TimeSigned(optimized, canvas, iterations, 0), false);
     }
 }
