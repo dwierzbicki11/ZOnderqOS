@@ -113,6 +113,17 @@ internal static class IconDirectScaleSmoke
         Canvas after = new Canvas(200, 140);
         Time(false, before, source, 20);
         Time(true, after, source, 20);
+        // Warmed production fallback must not allocate a temporary scaled
+        // bitmap on each frame, even after the fixed icon cache is exhausted.
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 50; i++)
+            Production(after, source, 128, 96, 0, 0, 192, 128);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        if (allocated != 0)
+            throw new Exception("Direct scaling allocated " + allocated + " bytes");
+        Console.WriteLine("Direct icon scaling: 50 warmed blits, " + allocated +
+            " B managed allocations (host .NET).");
+
         const int iterations = 200;
         double[] baseline = new double[5];
         double[] optimized = new double[5];
