@@ -368,9 +368,12 @@ internal static class Program
         manager.Launch(app);
         manager.HandleMouse(500, 500, false, false, true, false);
         manager.HandleMouse(10, 10, false, false, true, true);
-        manager.HandleMouse(10, 10, false, false, false, true);
+        // Adding left while holding the desktop-owned right button must
+        // not focus or click the window beneath the pointer.
+        manager.HandleMouse(10, 10, true, false, true, true);
+        manager.HandleMouse(10, 10, false, true, false, true);
         Check(app.MouseCount == 0,
-            "right desktop press and release cannot open active app context menu");
+            "desktop right/left chord and release cannot click active app");
         manager.HandleMouse(10, 10, false, false, true, false);
         Check(app.MouseCount == 1 && app.LastRightPress,
             "new right press inside window works after desktop gesture");
