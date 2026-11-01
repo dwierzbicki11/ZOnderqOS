@@ -163,6 +163,29 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertLess(second, completed)
         self.assertIn("client.Client.ReceiveTimeout = 5000;", n4)
 
+    def test_n6_http_rx_latency_is_measured_not_claimed_as_irq(self):
+        # Runtime telemetry must be measured on the guest using the same
+        # monotonic clock as the bounded HTTP receive loop. It is NOT a
+        # hardware ISR counter, and the PCAP gate remains mandatory.
+        method = SOURCE.split("private static bool TryHttpExchange(", 1)[1]
+        start = method.index("long rxStart = Stopwatch.GetTimestamp();")
+        first = method.index("firstByteTicks = Stopwatch.GetTimestamp() - rxStart;", start)
+        completed = method.index("long totalTicks = Stopwatch.GetTimestamp() - rxStart;", first)
+        marker = method.index("HTTP_RX_TIMING attempt=", completed)
+        success = method.index('string marker = attempt == 1', marker)
+        self.assertLess(start, first)
+        self.assertLess(first, completed)
+        self.assertLess(completed, marker)
+        self.assertLess(marker, success)
+        self.assertIn("firstByteTicks < 0 || totalTicks < firstByteTicks", method)
+        self.assertIn("totalTicks / rxFrequency >= 45", method)
+        self.assertIn("(socket Read; ISR unproven)", method)
+        validator = (ROOT / "tests/verify_3095_network_n6_post_http.py").read_text()
+        self.assertIn("RX_TIMING = re.compile(", validator)
+        self.assertIn("len(timings) != 6", validator)
+        self.assertIn("first_byte_ms > total_ms or total_ms >= 45000", validator)
+        self.assertIn("entries[attempt - 1][0] < index < lines.index(markers[attempt - 1])", validator)
+
     def test_n6_http_total_rx_deadline(self):
         # Socket ReceiveTimeout is per read, not a complete-stream limit.
         # The N6 opt-in guest must reject a trickle peer even when every
