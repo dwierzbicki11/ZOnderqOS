@@ -312,6 +312,27 @@ def main():
         time.sleep(1.2)
         screenshot(channel, prefix + ".notification-click-closed.ppm")
 
+        # Opt-in real PS/2 Start/taskbar regression. The Start button must
+        # toggle the menu; clicking the notification tile must dismiss Start
+        # and open notifications on the same press. The second click closes
+        # notifications, leaving the original File Manager unobscured.
+        probe_start_taskbar = os.environ.get("SERVICE_QEMU_PROBE_START_TASKBAR") == "1"
+        if probe_start_taskbar:
+            screenshot(channel, prefix + ".start-taskbar-before.ppm")
+            move_mouse_to_from_corner(channel, 22, frame_height - 22,
+                                      frame_width, frame_height)
+            click_mouse(channel)
+            time.sleep(1.0)
+            move_mouse_to_from_corner(channel, notification_x, notification_y,
+                                      frame_width, frame_height)
+            screenshot(channel, prefix + ".start-taskbar-open.ppm")
+            click_mouse(channel)
+            time.sleep(1.0)
+            screenshot(channel, prefix + ".start-taskbar-notifications.ppm")
+            click_mouse(channel)
+            time.sleep(1.0)
+            screenshot(channel, prefix + ".start-taskbar-dismissed.ppm")
+
         # A full-width File Manager cannot be dragged horizontally at
         # 800x600; still exercise a real bottom-edge resize at that mode.
         # Coordinates are derived from Window.ConstrainToDesktop, never
@@ -484,6 +505,21 @@ def main():
     print(f"[GUI-QMP] notification-click-closed: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
     if fraction > 0.10:
         raise RuntimeError("second PS/2 click did not restore File Manager viewport; inspect PPMs")
+
+    if probe_start_taskbar:
+        start_before = read_ppm(prefix + ".start-taskbar-before.ppm")
+        start_open = read_ppm(prefix + ".start-taskbar-open.ppm")
+        start_dismissed = read_ppm(prefix + ".start-taskbar-dismissed.ppm")
+        # Compare inside the painted Start menu, away from the tray, clock,
+        # and stationary PS/2 cursor. A QMP send-event ACK is not sufficient.
+        start_region = (80, 80, min(420, frame_width - 20), min(400, frame_height - 70))
+        start_pixels = changed_pixels_in_region(start_before, start_open, *start_region, threshold=8)
+        remaining_pixels = changed_pixels_in_region(start_before, start_dismissed,
+                                                    *start_region, threshold=8)
+        print(f"[GUI-QMP] start-taskbar: opened={start_pixels}, remaining={remaining_pixels} "
+              "changed pixels after notification toggle")
+        if start_pixels < 1500 or remaining_pixels * 3 >= start_pixels:
+            raise RuntimeError("Start menu did not open and dismiss through the real taskbar click")
 
     if can_drag:
         drag_before = read_ppm(prefix + ".filemanager-drag-before.ppm")
