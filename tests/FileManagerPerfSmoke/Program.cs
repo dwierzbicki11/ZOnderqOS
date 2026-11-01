@@ -228,6 +228,161 @@ internal static class Program
         Console.WriteLine("PASS: 2048 ordered entries preserve references, scratch=null, 0 B warm allocations");
     }
 
+    // Reproduce directory refreshes that are almost sorted: a renamed entry
+    // moving in either direction, two adjacent swaps, and a pathological
+    // rotation of two sorted halves. The last case forces the shift budget
+    // to fall back to merge sort instead of doing quadratic work.
+    private static ZonderqOS.GUI.Apps.FileEntry[] MakeNearlySorted(int mode)
+    {
+        var entries = new List<ZonderqOS.GUI.Apps.FileEntry>(Make(2048, 309500 + mode, false));
+        LegacySort(entries);
+        if (mode == 0 || mode == 1)
+        {
+            int from = mode == 0 ? 250 : 1400;
+            int to = mode == 0 ? 1400 : 250;
+            var displaced = entries[from];
+            entries.RemoveAt(from);
+            entries.Insert(to, displaced);
+        }
+        else if (mode == 2)
+        {
+            var first = entries[512];
+            entries[512] = entries[513];
+            entries[513] = first;
+            first = entries[1500];
+            entries[1500] = entries[1501];
+            entries[1501] = first;
+        }
+        else if (mode == 3)
+        {
+            var rotated = new List<ZonderqOS.GUI.Apps.FileEntry>(2048);
+            for (int i = 1024; i < entries.Count; i++)
+                rotated.Add(entries[i]);
+            for (int i = 0; i < 1024; i++)
+                rotated.Add(entries[i]);
+            entries = rotated;
+        }
+        return entries.ToArray();
+    }
+
+    private static void VerifyAdaptiveRepair()
+    {
+        for (int mode = 0; mode < 4; mode++)
+        {
+            var source = MakeNearlySorted(mode);
+            var expected = new List<ZonderqOS.GUI.Apps.FileEntry>(source);
+            var actual = new List<ZonderqOS.GUI.Apps.FileEntry>(source);
+            LegacySort(expected);
+            ZonderqOS.GUI.Apps.FileEntry[] scratch = null;
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(actual, ref scratch);
+            for (int i = 0; i < source.Length; i++)
+                Assert(object.ReferenceEquals(expected[i], actual[i]),
+                    "adaptive stable order mode=" + mode + " i=" + i);
+            if (mode < 3)
+                Assert(scratch == null, "near-sorted repair allocated merge buffer mode=" + mode);
+            else
+                Assert(scratch != null, "pathological rotation did not use bounded fallback");
+            if (scratch != null)
+                for (int i = 0; i < source.Length; i++)
+                    Assert(scratch[i] == null, "fallback retained file entry i=" + i);
+        }
+
+        // Reset the same preallocated list on each iteration, with a cold
+        // scratch reference. Neither the repair nor the List reset may
+        // allocate after warming up.
+        var almostSorted = MakeNearlySorted(0);
+        var work = new List<ZonderqOS.GUI.Apps.FileEntry>(almostSorted.Length);
+        ZonderqOS.GUI.Apps.FileEntry[] buffer = null;
+        for (int i = 0; i < 8; i++)
+        {
+            work.Clear();
+            work.AddRange(almostSorted);
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(work, ref buffer);
+        }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 64; i++)
+        {
+            work.Clear();
+            work.AddRange(almostSorted);
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(work, ref buffer);
+        }
+        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert(bytes == 0, "adaptive repair allocated " + bytes + " B");
+        Assert(buffer == null, "adaptive repair allocated a scratch buffer");
+        Console.WriteLine("PASS: 4 adaptive cases including bounded fallback, stable references, 0 B warm allocations");
+    }
+
+    // Exact pre-adaptive production behavior for unsorted large folders:
+    // scan until the first inversion, then run the existing stable merge.
+    private static void PreviousOrderedGateSort(List<ZonderqOS.GUI.Apps.FileEntry> entries,
+        ref ZonderqOS.GUI.Apps.FileEntry[] scratch)
+    {
+        for (int i = 1; i < entries.Count; i++)
+            if (Compare(entries[i - 1], entries[i]) > 0)
+            {
+                PreviousPerfSort(entries, ref scratch);
+                return;
+            }
+    }
+
+    private static double TimedAdaptive(bool optimized,
+        ZonderqOS.GUI.Apps.FileEntry[] source,
+        List<ZonderqOS.GUI.Apps.FileEntry> work,
+        ref ZonderqOS.GUI.Apps.FileEntry[] scratch)
+    {
+        const int repetitions = 8;
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repetitions; i++)
+        {
+            work.Clear();
+            work.AddRange(source);
+            if (optimized)
+                ZonderqOS.GUI.Apps.FileEntrySorter.Sort(work, ref scratch);
+            else
+                PreviousOrderedGateSort(work, ref scratch);
+            sink += work[0].Name.Length;
+        }
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 /
+            Stopwatch.Frequency / repetitions;
+    }
+
+    private static void BenchmarkAdaptiveRepair()
+    {
+        for (int mode = 0; mode < 5; mode++)
+        {
+            var source = mode == 4 ? Make(2048, 309504, false) : MakeNearlySorted(mode);
+            var work = new List<ZonderqOS.GUI.Apps.FileEntry>(source.Length);
+            ZonderqOS.GUI.Apps.FileEntry[] oldScratch =
+                new ZonderqOS.GUI.Apps.FileEntry[source.Length];
+            ZonderqOS.GUI.Apps.FileEntry[] newScratch =
+                new ZonderqOS.GUI.Apps.FileEntry[source.Length];
+            for (int i = 0; i < 8; i++)
+            {
+                TimedAdaptive(false, source, work, ref oldScratch);
+                TimedAdaptive(true, source, work, ref newScratch);
+            }
+            double[] before = new double[7], after = new double[7];
+            for (int i = 0; i < 7; i++)
+            {
+                if ((i & 1) == 0)
+                {
+                    before[i] = TimedAdaptive(false, source, work, ref oldScratch);
+                    after[i] = TimedAdaptive(true, source, work, ref newScratch);
+                }
+                else
+                {
+                    after[i] = TimedAdaptive(true, source, work, ref newScratch);
+                    before[i] = TimedAdaptive(false, source, work, ref oldScratch);
+                }
+            }
+            double a = Median(before), b = Median(after);
+            Console.WriteLine("HOST A/B adaptive directory n=2048 mode=" + mode +
+                " old=" + a.ToString("F4") + " ms new=" + b.ToString("F4") +
+                " ms ratio=" + (a / b).ToString("F2") +
+                "x (7 alternating samples, 8 sorts each; no FAT32 I/O)");
+        }
+    }
+
     private static double TimedOrdered(bool optimized,
         ZonderqOS.GUI.Apps.FileEntry[] source,
         List<ZonderqOS.GUI.Apps.FileEntry> work,
@@ -521,6 +676,8 @@ internal static class Program
         PathMatcherSmoke.Run();
         VerifyFilter();
         VerifyAlreadySortedFastPath();
+        VerifyAdaptiveRepair();
+        BenchmarkAdaptiveRepair();
         BenchmarkAlreadySorted();
         BenchmarkUnsortedControl();
         BenchmarkFilter();
