@@ -37,6 +37,7 @@ EXPECTED_TONE_HZ = {
     "tone": 440,
     "stereosplit": 440,
     "mix": 440,  # left channel; right channel checked by stereo validator
+    "mixdelay": 440,  # both pitch and onset checked by dedicated validators
     "wavtone": 440,
     "wavmono": 660,
     "wav44": 880,
@@ -54,6 +55,10 @@ EXPECTED_TONE_HZ = {
     "wavext20": 3080,
 }
 
+
+delay_spec = spec_from_file_location("delay_capture", ROOT / "tools/verify-audio-delay-capture.py")
+delay_capture = module_from_spec(delay_spec)
+delay_spec.loader.exec_module(delay_capture)
 
 stereo_spec = spec_from_file_location("stereo_capture", ROOT / "tools/verify-audio-stereo-capture.py")
 stereo_capture = module_from_spec(stereo_spec)
@@ -109,7 +114,7 @@ def main():
     parser.add_argument("iso", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--boot-seconds", type=int, default=35)
-    parser.add_argument("--command", choices=("tone", "stereosplit", "mix", "wavtone", "wavmono", "wav44", "wav8k", "wav11k", "wav16k", "wav22k", "wav24k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
+    parser.add_argument("--command", choices=("tone", "stereosplit", "mix", "mixdelay", "wavtone", "wavmono", "wav44", "wav8k", "wav11k", "wav16k", "wav22k", "wav24k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
                         help="isolated guest command to execute; WAV probe never reads guest disks")
     parser.add_argument("--volume", type=int, default=100, help="software gain 0..100 percent")
     parser.add_argument("--balance", type=int, default=0, help="-100 left-only, +100 right-only")
@@ -190,6 +195,10 @@ def main():
                 print(balance_capture.inspect(wav))
             elif args.command == "stereosplit":
                 print(stereo_capture.inspect(wav))
+            elif args.command == "mixdelay":
+                # Two independent pitches AND a real ~50ms relative onset.
+                print(stereo_capture.inspect(wav))
+                print(delay_capture.inspect(wav))
             elif args.command in ("wavstereo32", "mix"):
                 # Require both independent channel contributions, not just a 440 Hz tone.
                 print(stereo_capture.inspect(wav))
