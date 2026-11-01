@@ -21,7 +21,19 @@ namespace ZonderqOS.GUI.Apps
 
             if (count <= InsertionLimit)
             {
-                InsertionSort(entries);
+                // Keep the old small-folder loop in this method to avoid
+                // an extra call on the common <=32-entry path.
+                for (int i = 1; i < count; i++)
+                {
+                    FileEntry value = entries[i];
+                    int j = i - 1;
+                    while (j >= 0 && Compare(entries[j], value) > 0)
+                    {
+                        entries[j + 1] = entries[j];
+                        j--;
+                    }
+                    entries[j + 1] = value;
+                }
                 return;
             }
 
@@ -116,21 +128,6 @@ namespace ZonderqOS.GUI.Apps
                 FileEntry item = sorted[i];
                 if (item.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
                     visible.Add(item);
-            }
-        }
-
-        private static void InsertionSort(List<FileEntry> entries)
-        {
-            for (int i = 1; i < entries.Count; i++)
-            {
-                FileEntry value = entries[i];
-                int j = i - 1;
-                while (j >= 0 && Compare(entries[j], value) > 0)
-                {
-                    entries[j + 1] = entries[j];
-                    j--;
-                }
-                entries[j + 1] = value;
             }
         }
 
