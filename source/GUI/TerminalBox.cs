@@ -13,7 +13,6 @@ namespace ZonderqOS.GUI
         private const int TrimBatch = 24;
         private const int HeaderHeight = 26;
         private const int ContentPadding = 10;
-        private static readonly char[] CommandOutputSeparators = { '\r', '\n' };
 
         private readonly ScrollBar scrollBar;
         private int scrollOffset;
@@ -137,30 +136,27 @@ namespace ZonderqOS.GUI
                 return;
 
             int start = 0;
-            while (start < output.Length)
+            for (int i = 0; i <= output.Length; i++)
             {
-                // Runtime's native string search can skip long stretches of
-                // ordinary text faster than a managed per-character loop.
-                int end = output.IndexOfAny(CommandOutputSeparators, start);
-                if (end < 0)
-                    end = output.Length;
+                if (i < output.Length && output[i] != '\r' && output[i] != '\n')
+                    continue;
 
-                if (end > start)
+                int length = i - start;
+                if (length > 0)
                 {
-                    string line = output.Substring(start, end - start);
+                    string line = output.Substring(start, length);
                     if (line == "\u0001GUI_CLEAR\u0001")
                         ClearOutput();
                     else
                         PrintLine(line);
                 }
 
-                if (end == output.Length)
-                    break;
-
-                start = end + 1;
-                if (output[end] == '\r' && start < output.Length &&
-                    output[start] == '\n')
-                    start++;
+                // The legacy Replace("\r\n", "\n").Replace("\r", "\n")
+                // treats CRLF as one separator, not two empty lines.
+                if (i < output.Length && output[i] == '\r' &&
+                    i + 1 < output.Length && output[i + 1] == '\n')
+                    i++;
+                start = i + 1;
             }
         }
 
