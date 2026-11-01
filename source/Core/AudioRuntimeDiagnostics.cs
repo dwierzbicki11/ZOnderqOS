@@ -176,10 +176,11 @@ namespace ZonderqOS.SystemCore
             // the last effect. The mixer allocates only one output array and
             // does not alter the stock HDA driver.
             const int clipFadeMilliseconds = 5;
-            byte[] mixed = AudioPcmMixer.MixScheduledStereo16WithFade(
+            byte[] mixed = AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
                 new[] { left, right, finalLeft },
                 new[] { preRollFrames, preRollFrames + 2400, preRollFrames + 14400 },
-                new[] { 100, 100, 100 }, clipFadeMilliseconds, 4096);
+                new[] { 100, 100, 100 },
+                new[] { clipFadeMilliseconds, clipFadeMilliseconds, clipFadeMilliseconds }, 4096);
             Console.WriteLine("[AUDIO] MIXQUEUE 48kHz stereo16 clips=3 preroll=250ms clipFade=5ms tail=4096frames " +
                 "left=440Hz@0ms right=880Hz@50ms left=660Hz@300ms bytes=" + mixed.Length);
             return PlayPcm(mixed);
