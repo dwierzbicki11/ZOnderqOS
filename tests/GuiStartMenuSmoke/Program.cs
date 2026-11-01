@@ -29,7 +29,7 @@ namespace Cosmos.Kernel.System.Graphics.Fonts
 
 namespace Cosmos.Kernel.System.Input
 {
-    public enum Key { None, Backspace, UpArrow, DownArrow, Home, End, Enter, NumEnter, PageUp, PageDown }
+    public enum Key { None, Backspace, UpArrow, DownArrow, Home, End, Enter, NumEnter, PageUp, PageDown, Escape }
     public sealed class KeyEvent
     {
         public Key Key { get; set; }
@@ -52,7 +52,7 @@ namespace ZonderqOS
 
 namespace ZonderqOS.GUI.Icons
 {
-    public enum IconType { File, Start, Settings, Close, Reboot, Shutdown, Search }
+    public enum IconType { File, Start, Settings, Close, Reboot, Shutdown, Search, Terminal, Folder, Refresh }
     public static class IconManager
     {
         public static void DrawScaled(Cosmos.Kernel.System.Graphics.Canvas canvas,
@@ -429,6 +429,59 @@ internal static class Program
         Check(power[3] == 1, "shutdown only fires from its own button");
     }
 
+    private static void DesktopContextMenuResponsive()
+    {
+        int[] actions = new int[5];
+        var menu = new DesktopContextMenu(
+            () => actions[0]++, () => actions[1]++, () => actions[2]++,
+            () => actions[3]++, () => actions[4]++);
+        int[] widths = { 100, 160, 200, 320, 640, 800, 1366, 1920 };
+        int[] heights = { 80, 120, 200, 240, 480, 600, 768, 1080 };
+        for (int mode = 0; mode < widths.Length; mode++)
+        {
+            int screenWidth = widths[mode], screenHeight = heights[mode];
+            menu.ShowAt(screenWidth - 1, screenHeight - 1, screenWidth, screenHeight);
+            Check(menu.X >= 0 && menu.Y >= 0 &&
+                  menu.X + menu.Width <= screenWidth &&
+                  menu.Y + menu.Height <= screenHeight,
+                  "desktop context menu stays in framebuffer");
+            Check(menu.Width == Math.Min(222, screenWidth - 12) &&
+                  menu.Height == Math.Min(192, screenHeight - 12),
+                  "desktop context menu adapts to framebuffer dimensions");
+            menu.Render(Canvas);
+            int padding = Math.Min(6, Math.Max(0, (menu.Height - 5) / 2));
+            int rowHeight = Math.Max(1, (menu.Height - padding * 2) / 5);
+            for (int i = 0; i < 5; i++)
+            {
+                menu.ShowAt(0, 0, screenWidth, screenHeight);
+                int clickY = menu.Y + padding + i * rowHeight + rowHeight / 2;
+                Check(menu.UpdateInteractions(menu.X + menu.Width / 2, clickY, true, false),
+                      "desktop context menu consumes its own row click");
+                Check(!menu.Visible, "context action closes desktop menu");
+                Check(actions[i] == mode + 1, "correct context action fired exactly once");
+            }
+        }
+        menu.ShowAt(799, 599, 800, 600);
+        Check(menu.Width == 222 && menu.Height == 192,
+              "normal menu size restored after tiny mode");
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.DownArrow });
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
+        Check(actions[0] == widths.Length + 1, "keyboard activates first item");
+        menu.ShowAt(159, 119, 160, 120);
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.End });
+        menu.HandleKeyboard(new KeyEvent {
+            Key = ConsoleKeyEx.Enter, Modifiers = ConsoleModifiers.Control
+        });
+        Check(menu.Visible && actions[4] == widths.Length,
+              "modified Enter cannot launch context command");
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
+        Check(!menu.Visible && actions[4] == widths.Length + 1,
+              "unmodified Enter launches selected context command");
+        menu.ShowAt(159, 119, 160, 120);
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Escape });
+        Check(!menu.Visible, "Escape dismisses context menu");
+    }
+
     public static int Main()
     {
         Tiny320x240();
@@ -439,6 +492,7 @@ internal static class Program
         TinySelectionAfterResize();
         TinyKeyboardHomeEnd();
         TinyNormalSelectionTransition();
+        DesktopContextMenuResponsive();
         Console.WriteLine("PASS: " + assertions + " production StartMenu/Button C# assertions");
         return 0;
     }

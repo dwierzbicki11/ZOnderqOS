@@ -9,6 +9,7 @@
     <Compile Include="../../source/GUI/Widget.cs" Link="Widget.cs" />
     <Compile Include="../../source/GUI/Button.cs" Link="Button.cs" />
     <Compile Include="../../source/GUI/StartMenu.cs" Link="StartMenu.cs" />
+    <Compile Include="../../source/GUI/DesktopContextMenu.cs" Link="DesktopContextMenu.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>
