@@ -133,7 +133,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("PlayStereoSplitTestTone()", runtime)
         self.assertIn("GenerateDualSquareStereo16", read("source/Core/AudioTonePcm.cs"))
         self.assertIn('"wav16k": 1500', harness)
-        self.assertIn('"wav24k": 4000', harness)
+        self.assertIn('"wav24k": 740', harness)
         self.assertIn('if (command == "wav16k")', kernel)
         self.assertIn('if (command == "wav24k")', kernel)
         self.assertIn("PlayWave16000MonoTestTone()", runtime)
