@@ -363,9 +363,9 @@ jobs:
         working-directory: zonderq
         run: |
           set -euo pipefail
-          bash tools/smoke-network-rtl-negative-3095-qemu.sh \\
+          bash tools/smoke-network-rtl-negative-3095-qemu.sh \
             output-3095/ZonderqOS-3095-network-rtl-readonly.iso rtl-readonly-e1000e.serial.log e1000e
-          bash tools/smoke-network-rtl-negative-3095-qemu.sh \\
+          bash tools/smoke-network-rtl-negative-3095-qemu.sh \
             output-3095/ZonderqOS-3095-network-rtl-screen.iso rtl-screen-e1000e.serial.log e1000e
 
       - name: Upload negative QEMU boot evidence (NOT physical Realtek proof)
