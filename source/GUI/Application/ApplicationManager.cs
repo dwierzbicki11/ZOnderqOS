@@ -6,6 +6,7 @@ namespace ZonderqOS.GUI.Apps
     public class ApplicationManager
     {
         private readonly List<Application> applications = new List<Application>();
+        private bool closingAll;
 
         public List<Application> Applications { get { return applications; } }
 
@@ -42,7 +43,7 @@ namespace ZonderqOS.GUI.Apps
 
         public void Launch(Application application)
         {
-            if (application == null || !application.IsRunning)
+            if (closingAll || application == null || !application.IsRunning)
                 return;
 
             // Never create a new interactive window after the authentication state has
@@ -60,7 +61,7 @@ namespace ZonderqOS.GUI.Apps
 
         public void Activate(Application application)
         {
-            if (application == null || !application.IsRunning || application.Window == null)
+            if (closingAll || application == null || !application.IsRunning || application.Window == null)
                 return;
 
             // Focusing an already-visible window must not restart its opening
@@ -97,11 +98,14 @@ namespace ZonderqOS.GUI.Apps
 
         public void Close(Application application)
         {
-            if (application == null)
+            // Detach first. A Close callback may close another window, re-enter
+            // Close for the same instance, or tear down the entire session.
+            // Never invoke an unregistered app's Close callback twice.
+            if (application == null || !applications.Remove(application))
                 return;
 
-            application.Close();
-            applications.Remove(application);
+            if (application.IsRunning)
+                application.Close();
             SetActiveStates(ActiveApplication);
         }
 
@@ -111,21 +115,30 @@ namespace ZonderqOS.GUI.Apps
         /// </summary>
         public void CloseAll()
         {
-            // Closing an application can invoke its CloseAction, which may
-            // remove other applications or re-enter CloseAll during logout.
-            // Detach each entry before invoking user callbacks: a reverse
-            // for-loop over a mutating list can skip windows or throw.
-            // No temporary list is allocated on this session teardown path.
-            while (applications.Count > 0)
-            {
-                int last = applications.Count - 1;
-                Application application = applications[last];
-                applications.RemoveAt(last);
-                if (application != null && application.IsRunning)
-                    application.Close();
-            }
+            // A closing app may invoke another CloseAll or try to launch/focus
+            // a replacement window. Block those actions during session teardown:
+            // otherwise a Close callback can keep appending windows forever.
+            if (closingAll)
+                return;
 
-            SetActiveStates(null);
+            closingAll = true;
+            try
+            {
+                // Detach before invoking callbacks; no temporary list is needed.
+                while (applications.Count > 0)
+                {
+                    int last = applications.Count - 1;
+                    Application application = applications[last];
+                    applications.RemoveAt(last);
+                    if (application != null && application.IsRunning)
+                        application.Close();
+                }
+            }
+            finally
+            {
+                closingAll = false;
+                SetActiveStates(null);
+            }
         }
 
         /// <summary>
