@@ -76,6 +76,12 @@ internal static class TextUnicodeGlyphSmoke
         for (int code = 0; code <= char.MaxValue; code++)
         {
             char ch = Normalize((char)code);
+            // Independently verify the Latin fast-path bound. If a Unicode
+            // code point above U+017F uppercases to ASCII on this runtime,
+            // the optimized renderer must not silently change its glyph.
+            if (ch > '\u017F' && char.ToUpperInvariant(ch) < 128)
+                throw new Exception("Non-Latin uppercase reaches ASCII U+" +
+                    code.ToString("X4"));
             int glyphIndex = ch < 128 ? ch : char.ToUpperInvariant(ch);
             if (glyphIndex >= 128)
                 nonAscii++;
