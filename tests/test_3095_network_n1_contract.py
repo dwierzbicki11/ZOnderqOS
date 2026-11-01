@@ -14,6 +14,32 @@ HTTP_VALIDATOR = (ROOT / "tests/verify_3095_network_n6.py").read_text()
 MAIN = (ROOT / "Kernel.cs").read_text()
 
 class NetworkN1Isolation(unittest.TestCase):
+    def test_n3_icmp_rechecks_live_nic_and_dhcp_after_rx(self):
+        # The PCAP proves an ICMP exchange, but the guest must not claim
+        # a healthy NIC after a concurrent unbind, link loss or lease reset.
+        n3 = SOURCE.split("#if ZONDERQ_NETWORK_N3_ICMP", 1)[1].split(
+            "#if ZONDERQ_NETWORK_N4_TCP", 1)[0]
+        received = n3.index("ping.Receive(ref remote, 5000)")
+        live = n3.index("NetworkAdapter icmpAdapter = NetworkManager.Primary;", received)
+        lease = n3.index("IPConfig? icmpLease = icmpAdapter.IPConfig;", live)
+        failed = n3.index("E1000E link/MAC/DHCP lease changed during ICMP echo", lease)
+        passed = n3.index("ICMP=PASS from=", failed)
+        self.assertLess(received, live)
+        self.assertLess(live, lease)
+        self.assertLess(lease, failed)
+        self.assertLess(failed, passed)
+        for condition in (
+            "NetworkManager.IsEnabled", "NetworkManager.IsInitialized",
+            "icmpAdapter.IsValid", 'icmpAdapter.Name != "e1000e"',
+            "icmpAdapter.Ready", "icmpAdapter.LinkUp",
+            'icmpAdapter.MacAddress?.ToString() ?? ""',
+            "!= sourceMac", "icmpLease == null",
+            'icmpLease.Address.ToString() != "10.0.2.15"',
+            'icmpLease.SubnetMask.ToString() != "255.255.255.0"',
+            'icmpLease.DefaultGateway.ToString() != "10.0.2.2"',
+        ):
+            self.assertIn(condition, n3[live:passed])
+
     def test_n4_tcp_rechecks_live_nic_and_dhcp_after_rx(self):
         # A valid TCP payload does not establish that the original E1000E
         # remained bound and configured at the moment of the PASS marker.
