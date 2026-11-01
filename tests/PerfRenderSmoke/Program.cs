@@ -56,6 +56,7 @@ internal static class Program
         Verify("Polish glyph normalization", "Zażółć gęślą jaźń", false);
         Verify("Signed integer minimum", "-9223372036854775808", true);
         RoundedPanelSmoke.Verify();
+        PanelVisibilitySmoke.Verify();
         CornerInsetSmoke.Verify();
         CornerBandSmoke.Verify();
         TextWhitespaceSmoke.Verify();

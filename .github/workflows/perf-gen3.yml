@@ -4,6 +4,8 @@ on:
     paths:
       - "source/GUI/SmallTextRenderer.cs"
       - "source/GUI/UiPainter.cs"
+      - "tests/PerfRenderSmoke/PanelVisibilitySmoke.cs"
+      - "tests/PerfRenderSmoke/UiPainterLegacy.cs"
       - "source/GUI/Icons/IconManager.cs"
       - "source/GUI/Icons/IconType.cs"
       - "source/GUI/Icons/IconResources.cs"
