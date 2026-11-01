@@ -1499,6 +1499,96 @@ static class Test
             scheduledAllocated < scheduledMeasured.Length + 1024,
             "scheduled mixer allocates only the bounded output PCM buffer");
 
+
+        // Per-effect attack/release prevents hard-edged GUI effects while
+        // preserving exact scheduling and one final saturating mix.
+        byte[] zeroFade = AudioPcmMixer.MixScheduledStereo16WithFade(
+            measuredScheduleClips, measuredScheduleStarts, measuredScheduleGains, 0);
+        Expect(zeroFade.AsSpan().SequenceEqual(scheduledMeasured),
+            "zero fade is byte-exact with the original scheduled mixer");
+        byte[] envelopeClip = new byte[16];
+        for (int frame = 0; frame < 4; frame++)
+        {
+            int at = frame * 4;
+            envelopeClip[at] = 0xe0; envelopeClip[at + 1] = 0x2e; // +12000
+            envelopeClip[at + 2] = 0x20; envelopeClip[at + 3] = 0xd1; // -12000
+        }
+        byte[] envelopeCopy = (byte[])envelopeClip.Clone();
+        byte[] fadedSchedule = AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { envelopeClip }, new[] { 2 }, new[] { 50 }, 5);
+        Expect(fadedSchedule.Length == 24,
+            "fade preserves scheduled onset and output duration");
+        foreach (int frame in new[] { 0, 1, 2, 5 })
+        {
+            Expect(BitConverter.ToInt16(fadedSchedule, frame * 4) == 0 &&
+                BitConverter.ToInt16(fadedSchedule, frame * 4 + 2) == 0,
+                "per-clip fade has silent edges and silent pre-roll");
+        }
+        foreach (int frame in new[] { 3, 4 })
+        {
+            Expect(BitConverter.ToInt16(fadedSchedule, frame * 4) == 3000 &&
+                BitConverter.ToInt16(fadedSchedule, frame * 4 + 2) == -3000,
+                "gain is applied before symmetric per-clip fade");
+        }
+        Expect(envelopeClip.AsSpan().SequenceEqual(envelopeCopy),
+            "per-clip fade never mutates source PCM");
+
+        byte[] fadedCancellation = AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { envelopeClip, envelopeClip, envelopeClip },
+            new[] { 0, 0, 0 }, new[] { 100, 100, 100 }, 5);
+        Expect(BitConverter.ToInt16(fadedCancellation, 4) == 18000 &&
+            BitConverter.ToInt16(fadedCancellation, 6) == -18000,
+            "three faded contributions are summed before final clipping");
+        byte[] reversedCancellation = AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { envelopeClip, envelopeClip, envelopeClip },
+            new[] { 0, 0, 0 }, new[] { 100, 100, 100 }, 5);
+        Expect(fadedCancellation.AsSpan().SequenceEqual(reversedCancellation),
+            "faded scheduled mix is deterministic");
+
+        byte[] oneFrameFade = AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { envelopeClip.AsSpan(0, 4).ToArray() },
+            new[] { 95999 }, new[] { 100 }, 5);
+        Expect(oneFrameFade.Length == 384000 &&
+            oneFrameFade[oneFrameFade.Length - 4] == 0,
+            "one-frame effect at exact two-second boundary fades to silence");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { envelopeClip }, new[] { 0 }, new[] { 100 }, -1); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "reject negative per-effect fade");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { envelopeClip }, new[] { 0 }, new[] { 100 }, 51); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "reject per-effect fade over 50 ms");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { envelopeClip }, new[] { 95999 }, new[] { 100 }, 5); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "faded schedule cannot overrun two-second budget");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { new byte[3] }, new[] { 0 }, new[] { 100 }, 5); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "faded schedule rejects incomplete PCM frames");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { envelopeClip }, new[] { 0 }, new[] { 101 }, 5); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "faded schedule rejects invalid gain");
+        byte[][] fadeMeasuredClips = { envelopeClip, envelopeClip };
+        int[] fadeMeasuredStarts = { 0, 1 };
+        int[] fadeMeasuredGains = { 100, 50 };
+        AudioPcmMixer.MixScheduledStereo16WithFade(
+            fadeMeasuredClips, fadeMeasuredStarts, fadeMeasuredGains, 5);
+        long fadeBefore = GC.GetAllocatedBytesForCurrentThread();
+        byte[] fadeMeasured = AudioPcmMixer.MixScheduledStereo16WithFade(
+            fadeMeasuredClips, fadeMeasuredStarts, fadeMeasuredGains, 5);
+        long fadeAllocated = GC.GetAllocatedBytesForCurrentThread() - fadeBefore;
+        Expect(fadeAllocated >= fadeMeasured.Length &&
+            fadeAllocated < fadeMeasured.Length + 1024,
+            "per-effect fade allocates only its bounded output PCM array");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PCM16 mixer saturation, gains, bounds and source immutability PASS");
 
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");

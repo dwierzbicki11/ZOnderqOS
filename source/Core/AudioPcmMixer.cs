@@ -85,6 +85,81 @@ namespace ZonderqOS.SystemCore
             return output;
         }
 
+
+        /// <summary>
+        /// Schedule up to eight short effects with a symmetric, per-clip
+        /// attack/release envelope. A nonzero fade is 1..50 ms at 48 kHz,
+        /// limited to half of each clip; it does not move scheduled onsets
+        /// or change the output duration. Sum all faded contributions before
+        /// final saturation so cancellation is independent of clip order.
+        /// No intermediate PCM arrays, codec or DMA access are required.
+        /// </summary>
+        public static byte[] MixScheduledStereo16WithFade(
+            byte[][] clips, int[] startFrames, int[] gainsPercent, int fadeMilliseconds)
+        {
+            if (fadeMilliseconds < 0 || fadeMilliseconds > 50)
+                throw new ArgumentOutOfRangeException(nameof(fadeMilliseconds));
+            if (fadeMilliseconds == 0)
+                return MixScheduledStereo16(clips, startFrames, gainsPercent);
+
+            if (clips == null || startFrames == null || gainsPercent == null ||
+                clips.Length == 0 || clips.Length > 8 ||
+                startFrames.Length != clips.Length || gainsPercent.Length != clips.Length)
+                throw new ArgumentException("Schedule requires 1..8 clips with matching offsets and gains.");
+
+            int length = 0;
+            for (int i = 0; i < clips.Length; i++)
+            {
+                byte[] clip = clips[i];
+                if (clip == null || clip.Length == 0 ||
+                    clip.Length > MaxPcmBytes || clip.Length % 4 != 0)
+                    throw new ArgumentException("Every clip must be nonempty, frame-aligned stereo16 and at most two seconds.");
+                if (startFrames[i] < 0 || startFrames[i] > MaxPcmBytes / 4)
+                    throw new ArgumentOutOfRangeException(nameof(startFrames));
+                if (gainsPercent[i] < 0 || gainsPercent[i] > 100)
+                    throw new ArgumentOutOfRangeException(nameof(gainsPercent));
+
+                long end = (long)startFrames[i] * 4 + clip.Length;
+                if (end > MaxPcmBytes)
+                    throw new ArgumentOutOfRangeException(nameof(startFrames),
+                        "Scheduled clip would exceed the two-second PCM budget.");
+                if (end > length) length = (int)end;
+            }
+
+            byte[] output = new byte[length];
+            for (int at = 0; at < length; at += 2)
+            {
+                int total = 0;
+                for (int i = 0; i < clips.Length; i++)
+                {
+                    int sourceAt = at - startFrames[i] * 4;
+                    byte[] clip = clips[i];
+                    if (sourceAt < 0 || sourceAt >= clip.Length)
+                        continue;
+
+                    int clipFrames = clip.Length / 4;
+                    int frame = sourceAt / 4;
+                    int fadeFrames = Math.Min(fadeMilliseconds * 48, clipFrames / 2);
+                    if (fadeFrames == 0)
+                        continue; // A one-frame effect fades to silence.
+
+                    int envelope = Math.Min(fadeFrames,
+                        Math.Min(frame, clipFrames - 1 - frame));
+                    if (envelope == 0)
+                        continue;
+
+                    int sample = (short)(clip[sourceAt] | (clip[sourceAt + 1] << 8));
+                    int scaled = sample * gainsPercent[i] / 100;
+                    total += scaled * envelope / fadeFrames;
+                }
+                if (total > short.MaxValue) total = short.MaxValue;
+                else if (total < short.MinValue) total = short.MinValue;
+                output[at] = (byte)total;
+                output[at + 1] = (byte)(total >> 8);
+            }
+            return output;
+        }
+
         public static byte[] MixStereo16WithDelay(
             byte[] first, byte[] second, int firstPercent, int secondPercent,
             int secondDelayFrames)
