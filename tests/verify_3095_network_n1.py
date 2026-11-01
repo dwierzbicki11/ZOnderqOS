@@ -36,10 +36,15 @@ def validate_serial(data: str) -> bytes:
     devices = [m for line in lines if (m := DEVICE.fullmatch(line))]
     if len(found) != 1 or len(ready) != 1 or len(devices) != 1:
         raise ValueError("expected one inventory, ready count and E1000E")
+    adapter_claims = [line for line in lines
+                      if line.startswith("[NET3095-N1] cpu=bsp adapter=")]
+    if len(adapter_claims) != 1 or adapter_claims[0] != devices[0].group(0):
+        raise ValueError("unexpected or malformed additional NIC inventory")
     count = int(found[0].group(1))
     ready_count = int(ready[0].group(1))
     index = int(devices[0].group(1))
-    if not 1 <= count <= 8 or not 1 <= ready_count <= count or index >= count:
+    # This isolated QEMU profile must not silently accept an extra NIC.
+    if count != 1 or ready_count != 1 or index != 0:
         raise ValueError("invalid NIC count or registration index")
     mac = bytes.fromhex(devices[0].group(2).replace(":", ""))
     if mac == b"\x00" * 6 or mac == BROADCAST or (mac[0] & 1):
@@ -132,6 +137,11 @@ def self_test() -> None:
         serial.replace(BOOT, ""),
         serial + "\n" + BOOT,
         serial.replace("discovered=1", "discovered=0"),
+        serial.replace("discovered=1", "discovered=2"),
+        serial.replace("READY_LINK=1", "READY_LINK=2"),
+        serial.replace("adapter=0", "adapter=1"),
+        serial + "\n[NET3095-N1] cpu=bsp adapter=1 name=rtl8139 mac=52:54:00:12:34:99 ready=no link=down",
+        serial + "\n[NET3095-N1] cpu=bsp adapter=1 name=e1000e mac=52:54:00:12:34:99 ready=yes link=up",
         serial.replace("name=e1000e", "name=virtio-net"),
         serial.replace("mac=52:54:00:12:34:56", "mac=00:00:00:00:00:00"),
         serial.replace("mac=52:54:00:12:34:56", "mac=53:54:00:12:34:56"),

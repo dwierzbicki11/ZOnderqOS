@@ -31,9 +31,10 @@ namespace ZonderqOS
 
             int count = NetworkManager.DeviceCount;
             Log("[NET3095-N1] discovered=" + count);
-            if (count <= 0 || count > 8)
+            if (count != 1)
             {
-                Log("[NET3095-N1][FAIL] No valid NIC registration");
+                // Only one E1000E is configured in the isolated QEMU profile.
+                Log("[NET3095-N1][FAIL] Expected exactly one E1000E registration");
                 return;
             }
 
@@ -58,7 +59,7 @@ namespace ZonderqOS
                     readyLinks++;
             }
 
-            if (readyLinks == 0)
+            if (readyLinks != 1)
             {
                 Log("[NET3095-N1][FAIL] NIC registered but link not ready");
                 return;
@@ -121,7 +122,9 @@ namespace ZonderqOS
                 // disappeared, its MAC changed or the guest accepted an
                 // unexpected address/mask/gateway. The independent PCAP gate
                 // still proves the actual DORA packets on the wire.
-                if (!leasedAdapter.IsValid || leasedAdapter.Name != "e1000e" ||
+                if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized ||
+                     NetworkManager.DeviceCount != 1 ||
+                     !leasedAdapter.IsValid || leasedAdapter.Name != "e1000e" ||
                     !leasedAdapter.Ready || !leasedAdapter.LinkUp ||
                     (leasedAdapter.MacAddress?.ToString() ?? "") != sourceMac)
                 {
@@ -179,7 +182,8 @@ namespace ZonderqOS
                     NetworkAdapter icmpAdapter = NetworkManager.Primary;
                     IPConfig? icmpLease = icmpAdapter.IPConfig;
                     if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized ||
-                        !icmpAdapter.IsValid || icmpAdapter.Name != "e1000e" ||
+                        NetworkManager.DeviceCount != 1 ||
+                         !icmpAdapter.IsValid || icmpAdapter.Name != "e1000e" ||
                         !icmpAdapter.Ready || !icmpAdapter.LinkUp ||
                         (icmpAdapter.MacAddress?.ToString() ?? "") != sourceMac ||
                         icmpLease == null ||
@@ -269,7 +273,8 @@ namespace ZonderqOS
                         NetworkAdapter echoAdapter = NetworkManager.Primary;
                         IPConfig? echoLease = echoAdapter.IPConfig;
                         if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized ||
-                            !echoAdapter.IsValid || echoAdapter.Name != "e1000e" ||
+                            NetworkManager.DeviceCount != 1 ||
+                         !echoAdapter.IsValid || echoAdapter.Name != "e1000e" ||
                             !echoAdapter.Ready || !echoAdapter.LinkUp ||
                             (echoAdapter.MacAddress?.ToString() ?? "") != sourceMac ||
                             echoLease == null ||
@@ -314,7 +319,8 @@ namespace ZonderqOS
                         NetworkAdapter dnsAdapter = NetworkManager.Primary;
                         IPConfig? dnsLease = dnsAdapter.IPConfig;
                         if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized ||
-                            !dnsAdapter.IsValid || dnsAdapter.Name != "e1000e" ||
+                            NetworkManager.DeviceCount != 1 ||
+                         !dnsAdapter.IsValid || dnsAdapter.Name != "e1000e" ||
                             !dnsAdapter.Ready || !dnsAdapter.LinkUp ||
                             (dnsAdapter.MacAddress?.ToString() ?? "") != sourceMac ||
                             dnsLease == null ||
@@ -481,7 +487,9 @@ namespace ZonderqOS
                 // Read-only post-stress adapter check: catch a dropped link,
                 // lost binding or changed MAC before reporting N6 success.
                 NetworkAdapter postStress = NetworkManager.Primary;
-                if (!postStress.IsValid || postStress.Name != "e1000e" ||
+                if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized ||
+                     NetworkManager.DeviceCount != 1 ||
+                     !postStress.IsValid || postStress.Name != "e1000e" ||
                     !postStress.Ready || !postStress.LinkUp ||
                     (postStress.MacAddress?.ToString() ?? "") != sourceMac)
                 {
@@ -586,6 +594,9 @@ namespace ZonderqOS
         private static bool IsE1000ELeaseStable(string expectedMac, string expectedIp,
             string expectedMask, string expectedGateway)
         {
+            if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized ||
+                NetworkManager.DeviceCount != 1)
+                return false;
             NetworkAdapter adapter = NetworkManager.Primary;
             if (!adapter.IsValid || adapter.Name != "e1000e" ||
                 !adapter.Ready || !adapter.LinkUp ||

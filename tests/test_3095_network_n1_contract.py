@@ -14,6 +14,16 @@ HTTP_VALIDATOR = (ROOT / "tests/verify_3095_network_n6.py").read_text()
 MAIN = (ROOT / "Kernel.cs").read_text()
 
 class NetworkN1Isolation(unittest.TestCase):
+    def test_isolated_nic_registration_remains_unique(self):
+        self.assertIn("if (count != 1)", SOURCE)
+        self.assertIn("if (readyLinks != 1)", SOURCE)
+        self.assertGreaterEqual(SOURCE.count("NetworkManager.DeviceCount != 1"), 6)
+        helper = SOURCE.split("private static bool IsE1000ELeaseStable(", 1)[1]
+        self.assertIn("NetworkManager.IsEnabled", helper)
+        self.assertIn("NetworkManager.IsInitialized", helper)
+        self.assertIn("NetworkManager.DeviceCount != 1", helper)
+
+
     def test_n3_icmp_rechecks_live_nic_and_dhcp_after_rx(self):
         # The PCAP proves an ICMP exchange, but the guest must not claim
         # a healthy NIC after a concurrent unbind, link loss or lease reset.
