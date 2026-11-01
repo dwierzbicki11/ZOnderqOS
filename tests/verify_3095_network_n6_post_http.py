@@ -53,11 +53,16 @@ def check_rx_stats(serial: str) -> None:
     lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
     entries = [(index, line) for index, line in enumerate(lines)
                if line.startswith("[NET3095-N6] HTTP_RX_STATS")]
-    if len(entries) != 6:
-        raise ValueError("expected six unique guest HTTP RX telemetry records")
+    stable = [(index, line) for index, line in enumerate(lines)
+              if line.startswith("[NET3095-N6] HTTP_NIC_STABLE")]
+    if len(entries) != 6 or len(stable) != 6:
+        raise ValueError("expected six unique guest HTTP RX and NIC/lease records")
     markers = (HTTP_PASS, HTTP_REPEAT_PASS, PASS) + REPEATS
     previous_pass = -1
-    for attempt, ((index, line), marker) in enumerate(zip(entries, markers), 1):
+    for attempt, (((index, line), (stable_index, stable_line)), marker) in enumerate(
+            zip(zip(entries, stable), markers), 1):
+        if stable_line != f"[NET3095-N6] HTTP_NIC_STABLE=PASS attempt={attempt}":
+            raise ValueError("missing, malformed or reordered NIC/lease stability claim")
         match = RX_STATS.fullmatch(line)
         if match is None or int(match.group(1)) != attempt:
             raise ValueError("malformed, duplicate or reordered HTTP RX telemetry")
@@ -68,8 +73,8 @@ def check_rx_stats(serial: str) -> None:
         if lines.count(marker) != 1:
             raise ValueError("missing unique HTTP completion after RX telemetry")
         completion = lines.index(marker)
-        if not previous_pass < index < completion:
-            raise ValueError("guest HTTP RX telemetry not ordered before completion")
+        if not previous_pass < stable_index < index < completion:
+            raise ValueError("NIC/lease check or HTTP RX telemetry not ordered before completion")
         previous_pass = completion
 
 
@@ -264,6 +269,7 @@ def self_test() -> None:
         line for attempt, marker in enumerate(
             (HTTP_PASS, HTTP_REPEAT_PASS, PASS) + REPEATS, 1)
         for line in (
+            f"[NET3095-N6] HTTP_NIC_STABLE=PASS attempt={attempt}",
             f"[NET3095-N6] HTTP_RX_STATS attempt={attempt} reads=5 max_chunk=1024 bytes={len(RESPONSE)}",
             marker,
         )
@@ -278,6 +284,16 @@ def self_test() -> None:
         telemetry.replace("HTTP_RX_STATS attempt=6", "HTTP_RX_STATS attempt=7", 1),
         telemetry + f"\n[NET3095-N6] HTTP_RX_STATS attempt=6 reads=5 max_chunk=1024 bytes={len(RESPONSE)}",
         telemetry.replace("[NET3095-N6] HTTP_RX_STATS attempt=4", "[NET3095-N6] HTTP_RX_STATS attempt=9"),
+        telemetry.replace("[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=3",
+                          "[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=4", 1),
+        telemetry.replace("[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=5",
+                          "[NET3095-N6] HTTP_NIC_STABLE=FAIL attempt=5", 1),
+        telemetry.replace("[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=6", "", 1),
+        telemetry + "\n[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=6",
+        telemetry.replace(
+            "[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=1\n[NET3095-N6] HTTP_RX_STATS",
+            "[NET3095-N6] HTTP_RX_STATS attempt=1 reads=5 max_chunk=1024 bytes=" +
+            str(len(RESPONSE)) + "\n[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=1\n[NET3095-N6] HTTP_RX_STATS", 1),
     )
     for invalid_stats in bad_telemetry:
         try:
