@@ -102,7 +102,12 @@ namespace ZonderqOS.Hardware
             ulong mappedBase, ulong mappedLength)
         {
             uint bar2 = (uint)rawPair;
-            if ((bar2 & 1u) != 0 || mappedLength < 0x6D)
+            // RTL810xE BAR2 is a device register aperture, not prefetchable
+            // framebuffer/RAM. Reject a prefetchable BAR before MapRegisters:
+            // speculative/cached reads could invalidate a read-only snapshot.
+            // The generic BAR stability check intentionally accepts either
+            // memory attribute; this stricter check is specific to RTL810xE.
+            if ((bar2 & 0x9u) != 0 || mappedLength < 0x6D)
                 return false;
             uint memoryType = (bar2 >> 1) & 3u;
             ulong rawBase;
