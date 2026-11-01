@@ -56,7 +56,8 @@ class TinyTaskManagerViewTests(unittest.TestCase):
         layout = section("private void UpdateLayout()", "private void UpdateClock()")
         self.assertIn("int rows = view.VisibleRows;", layout)
         self.assertIn("bool selectionWasVisible = previousVisibleRows > 0", layout)
-        self.assertIn("if (rows != previousVisibleRows && selectionWasVisible)", layout)
+        self.assertIn("if (rows > 0 && view.HasPaintedProcessRows &&", layout)
+        self.assertIn("rows != previousVisibleRows && selectionWasVisible)", layout)
         self.assertIn("EnsureSelectionVisible();", layout)
         self.assertIn("else\n                ClampScroll();", layout)
 
