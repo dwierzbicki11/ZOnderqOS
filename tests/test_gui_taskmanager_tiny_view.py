@@ -163,6 +163,26 @@ class TinyTaskManagerViewTests(unittest.TestCase):
         for height in range(1, 134):
             self.assertGreater(64 + 42 + 28, height)
 
+    def test_performance_keyboard_shortcuts_are_bounded_and_non_destructive(self):
+        keyboard = section("public override void HandleKeyboard(KeyEvent key)",
+                           "private void SetPage(int page)")
+        perf = keyboard.split("if (activePage == PagePerformance)", 1)[1]
+        self.assertIn("if (key.Modifiers != 0)", perf)
+        self.assertIn("TaskManagerPerformanceNavigation.StepResource(", perf)
+        self.assertIn("TaskManagerPerformanceNavigation.ClampLogicalPage(", perf)
+        self.assertIn("ConsoleKeyEx.PageUp", perf)
+        self.assertIn("ConsoleKeyEx.PageDown", perf)
+        self.assertIn("ConsoleKeyEx.Home", perf)
+        self.assertIn("ConsoleKeyEx.End", perf)
+        self.assertIn("key.KeyChar == 'g' || key.KeyChar == 'G'", perf)
+        self.assertLess(perf.index("if (key.Modifiers != 0)"),
+                        perf.index("TaskManagerPerformanceNavigation.StepResource("))
+        self.assertLess(perf.index("if (performanceResource != PerfCpu)"),
+                        perf.index("TaskManagerPerformanceNavigation.ClampLogicalPage("))
+        self.assertLess(perf.index("if (cpuGraphMode != CpuGraphLogical)"),
+                        perf.index("ConsoleKeyEx.PageUp"))
+        self.assertNotIn("EndSelectedTask();", perf)
+
     def test_keyboard_and_end_task_reject_hidden_selection(self):
         selection = section("private void SelectAbsolute(int index)", "private void EndSelectedTask()")
         destructive = section("private void EndSelectedTask()", "private void RefreshSnapshot()")
