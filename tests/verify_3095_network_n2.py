@@ -103,8 +103,11 @@ def dhcp_frame(frame: bytes):
     return {
         "type": typ, "xid": bootp[4:8], "chaddr": bootp[28:34],
         "yiaddr": bootp[16:20], "requested": opts.get(50),
+        "ciaddr": bootp[12:16], "giaddr": bootp[24:28],
+        "server_id": opts.get(54), "subnet": opts.get(1),
+        "router": opts.get(3), "dns": opts.get(6),
         "source_mac": frame[6:12], "source_ip": frame[26:30],
-        "destination_mac": frame[:6],
+        "destination_mac": frame[:6], "destination_ip": frame[30:34],
     }
 
 
@@ -127,11 +130,18 @@ def validate(serial: str, pcap: bytes) -> str:
     mac = bytes.fromhex(n1.split("mac=")[-1].replace(":", ""))
     records = [r for frame in pcap_frames(pcap) if (r := dhcp_frame(frame))]
     broadcast = b"\xff" * 6
+    zero_ip = b"\x00" * 4
+    broadcast_ip = b"\xff" * 4
+    subnet = bytes([255, 255, 255, 0])
+    dns_proxy = bytes([10, 0, 2, 3])
     # Pair DISCOVER/OFFER and REQUEST/ACK separately: stock Cosmos v3.0.95
     # allocates a fresh BOOTP transaction ID for each outbound packet.
     for i, discover in enumerate(records):
         if (discover["type"] != 1 or discover["chaddr"] != mac or
-            discover["source_mac"] != mac or discover["destination_mac"] != broadcast):
+            discover["source_mac"] != mac or discover["destination_mac"] != broadcast or
+            discover["source_ip"] != zero_ip or discover["destination_ip"] != broadcast_ip or
+            discover["ciaddr"] != zero_ip or discover["giaddr"] != zero_ip or
+            discover["yiaddr"] != zero_ip):
             continue
         for j in range(i + 1, len(records)):
             offer = records[j]
@@ -139,6 +149,10 @@ def validate(serial: str, pcap: bytes) -> str:
             server_mac = offer["source_mac"]
             if (offer["type"] != 2 or offer["chaddr"] != mac or
                 offer["xid"] != discover["xid"] or offer["source_ip"] != SERVER or
+                offer["destination_ip"] != broadcast_ip or
+                offer["ciaddr"] != zero_ip or offer["giaddr"] != zero_ip or
+                offer["server_id"] != SERVER or offer["subnet"] != subnet or
+                offer["router"] != SERVER or offer["dns"] != dns_proxy or
                 server_mac in (mac, b"\x00" * 6, broadcast) or
                 (server_mac[0] & 1) != 0 or
                 offer["destination_mac"] not in (mac, broadcast)):
@@ -147,6 +161,9 @@ def validate(serial: str, pcap: bytes) -> str:
                 request = records[k]
                 if (request["type"] != 3 or request["chaddr"] != mac or
                     request["source_mac"] != mac or
+                    request["source_ip"] != zero_ip or request["destination_ip"] != broadcast_ip or
+                    request["ciaddr"] != zero_ip or request["giaddr"] != zero_ip or
+                    request["yiaddr"] != zero_ip or
                     request["destination_mac"] not in (broadcast, server_mac) or
                     request["requested"] != offer["yiaddr"]):
                     continue
@@ -154,6 +171,10 @@ def validate(serial: str, pcap: bytes) -> str:
                     if (ack["type"] == 5 and ack["chaddr"] == mac and
                         ack["xid"] == request["xid"] and ack["source_ip"] == SERVER and
                         ack["source_mac"] == server_mac and
+                        ack["destination_ip"] == broadcast_ip and
+                        ack["ciaddr"] == zero_ip and ack["giaddr"] == zero_ip and
+                        ack["server_id"] == SERVER and ack["subnet"] == subnet and
+                        ack["router"] == SERVER and ack["dns"] == dns_proxy and
                         ack["destination_mac"] in (mac, broadcast) and
                         ack["yiaddr"] == ip.packed and ack["yiaddr"] == offer["yiaddr"]):
                         return "[NET3095-N2-GATE] PASS real QEMU DHCP DISCOVER/OFFER/REQUEST/ACK + guest IPv4 lease " + str(ip)
@@ -161,7 +182,9 @@ def validate(serial: str, pcap: bytes) -> str:
 
 
 def fake_dhcp(typ: int, xid: int, mac: bytes, ip: bytes, requested: bytes | None = None,
-              source: bytes | None = None) -> bytes:
+              source: bytes | None = None, server_id: bytes = SERVER,
+              subnet: bytes = bytes([255, 255, 255, 0]),
+              gateway: bytes = SERVER, dns_proxy: bytes = bytes([10, 0, 2, 3])) -> bytes:
     """Synthetic packet fixture; deliberately not a hardware proof."""
     client = typ in (1, 3)
     bootp = bytearray(240)
@@ -172,6 +195,11 @@ def fake_dhcp(typ: int, xid: int, mac: bytes, ip: bytes, requested: bytes | None
     bootp[28:34] = mac
     bootp[236:240] = bytes.fromhex("63825363")
     options = bytearray([53, 1, typ])
+    if not client:
+        options += bytes([54, 4]) + server_id
+        options += bytes([1, 4]) + subnet
+        options += bytes([3, 4]) + gateway
+        options += bytes([6, 4]) + dns_proxy
     if requested is not None:
         options += bytes([50, 4]) + requested
     options.append(255)
@@ -278,6 +306,16 @@ def self_test() -> None:
         (serial, [frames[0], frames[1], frames[2], frames[3], fake_dhcp(5, 7, mac, ip)]),
         (serial, [frames[0], frames[1], fake_dhcp(2, 9, mac, ip), frames[3], frames[4]]),
         (serial, [frames[0], frames[1], fake_dhcp(2, 1, bytes([2, 0, 0, 0, 0, 1]), ip), frames[3], frames[4]]),
+        # A valid DHCP ACK address is insufficient when the server's
+        # configuration options disagree with the guest's lease.
+        (serial, frames[:2] + [fake_dhcp(2, 1, mac, ip, server_id=bytes([10, 0, 2, 99]))] + frames[3:]),
+        (serial, frames[:2] + [fake_dhcp(2, 1, mac, ip, subnet=bytes([255, 255, 0, 0]))] + frames[3:]),
+        (serial, frames[:2] + [fake_dhcp(2, 1, mac, ip, gateway=bytes([10, 0, 2, 99]))] + frames[3:]),
+        (serial, frames[:2] + [fake_dhcp(2, 1, mac, ip, dns_proxy=bytes([10, 0, 2, 99]))] + frames[3:]),
+        (serial, frames[:4] + [fake_dhcp(5, 2, mac, ip, server_id=bytes([10, 0, 2, 99]))]),
+        (serial, frames[:4] + [fake_dhcp(5, 2, mac, ip, subnet=bytes([255, 255, 0, 0]))]),
+        (serial, frames[:4] + [fake_dhcp(5, 2, mac, ip, gateway=bytes([10, 0, 2, 99]))]),
+        (serial, frames[:4] + [fake_dhcp(5, 2, mac, ip, dns_proxy=bytes([10, 0, 2, 99]))]),
         # Keep valid DHCP payloads but tamper with Ethernet provenance.
         (serial, frames[:4] + [frames[4][:6] + bytes.fromhex("020000000099") + frames[4][12:]]),
         (serial, frames[:2] + [frames[2][:6] + bytes.fromhex("010000000099") + frames[2][12:]] + frames[3:]),
