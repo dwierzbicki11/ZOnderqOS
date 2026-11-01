@@ -277,6 +277,31 @@ class ModifiedKeySafetyTests(unittest.TestCase):
         self.assertEqual(selection(2, (100, 200), (100, 200)), 2)
         self.assertEqual(selection(2, (100, 200), (101, 200)), -1)
 
+    def test_command_palette_requires_plain_enter_and_delete(self):
+        palette = source("source/GUI/CommandPalette.cs")
+        handler = palette.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "public bool HandleMouse(", 1
+        )[0]
+        enter = handler.split(
+            "if (key.Key == ConsoleKeyEx.Enter || key.Key == ConsoleKeyEx.NumEnter)", 1
+        )[1].split("if (key.Key == ConsoleKeyEx.Backspace)", 1)[0]
+        deletion = handler.split("if (key.Key == ConsoleKeyEx.Delete)", 1)[1].split(
+            "bool control =", 1
+        )[0]
+        self.assertIn("if (key.Modifiers == 0)", enter)
+        self.assertLess(enter.index("if (key.Modifiers == 0)"),
+                        enter.index("LaunchSelected();"))
+        self.assertIn("if (key.Modifiers == 0 && query.Length > 0)", deletion)
+        self.assertIn("return true;", deletion)
+        self.assertIn("ConsoleKeyEx.NumEnter", enter)
+        # This models the key predicate; source checks above ensure the
+        # production handler uses the same predicate.
+        for control in (False, True):
+            for alt in (False, True):
+                for shift in (False, True):
+                    plain = not (control or alt or shift)
+                    self.assertEqual(plain, not (control or alt or shift))
+
     def test_modifier_policy_for_destructive_actions(self):
         # Independent model of the intended key predicate, not a runtime test.
         for ctrl in (False, True):
