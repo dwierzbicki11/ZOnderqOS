@@ -13,6 +13,81 @@ internal static class Program
         if (!ok) throw new Exception(message);
     }
 
+    private static string LegacyCpuBar(int percent) =>
+        new string('|', percent / 5).PadRight(20);
+
+    private static void VerifyCpuBars()
+    {
+        for (int percent = 0; percent <= 100; percent++)
+        {
+            string expected = LegacyCpuBar(percent);
+            string actual = HtopMonitor.CpuBar(percent);
+            Assert(expected == actual, "CPU bar pixel columns " + percent);
+            Assert(actual.Length == 20, "CPU bar width " + percent);
+            Assert(object.ReferenceEquals(actual, HtopMonitor.CpuBar(percent)),
+                "CPU bar must reuse cached string " + percent);
+        }
+        Console.WriteLine("PASS: 303 exact CPU bar output/width/reference checks (0..100%)");
+    }
+
+    private static void BenchmarkCpuBars()
+    {
+        // The same 1024 deterministic percentages feed both paths. Measure
+        // allocations separately from elapsed time; neither result is kernel CPU.
+        int[] usage = new int[1024];
+        for (int i = 0; i < usage.Length; i++)
+            usage[i] = (i * 37 + i / 7) % 101;
+        Func<long> legacy = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < usage.Length; i++)
+            {
+                string bar = LegacyCpuBar(usage[i]);
+                checksum += bar.Length + bar[0] + bar[19];
+            }
+            return checksum;
+        };
+        Func<long> cached = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < usage.Length; i++)
+            {
+                string bar = HtopMonitor.CpuBar(usage[i]);
+                checksum += bar.Length + bar[0] + bar[19];
+            }
+            return checksum;
+        };
+        Assert(legacy() == cached(), "CPU bar benchmark checksum mismatch");
+        for (int i = 0; i < 15; i++) { sink ^= legacy(); sink ^= cached(); }
+        long startBytes = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= legacy();
+        long legacyBytes = GC.GetAllocatedBytesForCurrentThread() - startBytes;
+        startBytes = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= cached();
+        long cachedBytes = GC.GetAllocatedBytesForCurrentThread() - startBytes;
+        Assert(legacyBytes > 0, "legacy CPU bars must allocate");
+        Assert(cachedBytes == 0, "cached CPU bars allocated " + cachedBytes + " B");
+        double[] before = new double[7], after = new double[7];
+        for (int sample = 0; sample < before.Length; sample++)
+        {
+            if ((sample & 1) == 0)
+            {
+                before[sample] = Time(legacy, 200);
+                after[sample] = Time(cached, 200);
+            }
+            else
+            {
+                after[sample] = Time(cached, 200);
+                before[sample] = Time(legacy, 200);
+            }
+        }
+        double a = Median(before), b = Median(after);
+        Console.WriteLine("HOST A/B CPU bar 1024 values: legacy=" + a.ToString("F4") +
+            "ms cached=" + b.ToString("F4") + "ms ratio=" +
+            (a / b).ToString("F2") + "x allocations=" + legacyBytes +
+            "B -> " + cachedBytes + "B per 1024 bars (7 alternating samples)");
+    }
+
     private static KernelProcess LegacyResolve(KernelProcess[] processes, uint tid)
     {
         for (int i = 0; i < processes.Length; i++)
@@ -285,6 +360,8 @@ internal static class Program
 
     private static int Main()
     {
+        VerifyCpuBars();
+        BenchmarkCpuBars();
         VerifyIndex();
         VerifyMonitorIntegration();
         Benchmark(16, 16);

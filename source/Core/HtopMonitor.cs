@@ -76,6 +76,24 @@ namespace ZonderqOS.SystemCore
         private long[] previousCpu = Array.Empty<long>();
         private int[] cpuUsage = Array.Empty<int>();
         private long previousTimestamp;
+
+        // CPU bars are redrawn on every htop refresh. Construct the 21 possible
+        // 20-column strings once, rather than allocating one or two strings per
+        // CPU on every sample (including the stock BSP's N/A accounting path).
+        private static readonly string[] CachedCpuBars = BuildCpuBars();
+
+        private static string[] BuildCpuBars()
+        {
+            var bars = new string[21];
+            for (int filled = 0; filled < bars.Length; filled++)
+                bars[filled] = new string('|', filled).PadRight(20);
+            return bars;
+        }
+
+        // Percent() returns 0..100; every five percent is one column.
+        // Exposed internally so the host smoke test uses the production cache.
+        internal static string CpuBar(int percent) => CachedCpuBars[percent / 5];
+
         internal bool SortByCpu = true;
         internal int Scroll;
         internal int CpuCount { get; private set; }
@@ -119,7 +137,7 @@ namespace ZonderqOS.SystemCore
                 int usage = warm && hasAccounting ? Percent(delta, (ulong)elapsed) : 0;
                 cpuUsage[cpu] = usage;
                 string value = !hasAccounting ? "N/A" : !warm ? "..." : usage + "%";
-                lines.Add("CPU " + cpu.ToString().PadLeft(3) + " [" + new string('|', usage / 5).PadRight(20) + "] " + value);
+                lines.Add("CPU " + cpu.ToString().PadLeft(3) + " [" + CpuBar(usage) + "] " + value);
                 previousCpu[cpu] = busy;
             }
             ulong totalCapacity = warm && count > 0 ? (ulong)elapsed * (ulong)count : 0;
