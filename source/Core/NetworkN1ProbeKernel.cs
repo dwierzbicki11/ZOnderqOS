@@ -601,6 +601,12 @@ namespace ZonderqOS
                 {
                     if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
                         return false;
+                    // The five snapshots are observable individually in serial.
+                    // A final summary alone cannot establish that intermediate
+                    // ring-wrap boundaries were actually sampled.
+                    Log("[NET3095-N6] TX_DRIVER_CHECK=PASS sent=" + sequence +
+                        " resources=" + expectedResources +
+                        " irq_sources=" + expectedIrqSources);
                     NetworkAdapter current = NetworkManager.Primary;
                     if (!current.IsValid || current.Name != "e1000e" ||
                         !current.Ready || !current.LinkUp ||
@@ -622,7 +628,11 @@ namespace ZonderqOS
             }
             // Include the final descriptor cycle, not just the pre-send
             // snapshots taken at sequence 0, 32, 64 and 96.
-            return IsE1000EDriverKitStable(expectedResources, expectedIrqSources);
+            if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
+                return false;
+            Log("[NET3095-N6] TX_DRIVER_CHECK=PASS sent=128 resources=" +
+                expectedResources + " irq_sources=" + expectedIrqSources);
+            return true;
         }
 #endif
 
