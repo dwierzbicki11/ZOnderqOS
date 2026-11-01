@@ -119,6 +119,37 @@ namespace ZonderqOS.GUI.Apps
                 values[itemCount] = "SRC " + mount.Source;
                 itemCount++;
             }
+
+            // This runs only on view selection or explicit F5 refresh, never
+            // in RenderContent. The reader is bound to Disk's approved root.
+            if (itemCount < MaxItems)
+            {
+                names[itemCount] = "ROOT FAT32 - KLASTRY DANYCH";
+                if (Disk.TryGetRootSpace(out Fat32Space space, out string error))
+                {
+                    descriptions[itemCount] = "Zajete " + SpaceMiB(space.AllocatedBytes) +
+                        " | uszkodzone " + SpaceMiB(space.BadBytes);
+                    values[itemCount] = "Wolne " + SpaceMiB(space.FreeBytes);
+                }
+                else
+                {
+                    descriptions[itemCount] = error;
+                    values[itemCount] = "NIEDOSTEPNE";
+                }
+                itemCount++;
+            }
+            if (itemCount < MaxItems)
+            {
+                names[itemCount] = "ODCZYT FAT Z DYSKU";
+                descriptions[itemCount] = "Bez metadanych; zapis w trakcie skanu moze zmienic wynik";
+                values[itemCount] = "F5: nowy skan";
+                itemCount++;
+            }
+        }
+
+        private static string SpaceMiB(ulong bytes)
+        {
+            return ((double)bytes / (1024 * 1024)).ToString("0.##") + " MiB";
         }
 
         protected override void OnClick(int mouseX, int mouseY)

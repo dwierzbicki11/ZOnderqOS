@@ -1,0 +1,112 @@
+using System;
+using System.IO;
+using ZonderqOS;
+
+// Disposable FAT32 sector images, no mounted filesystem or physical device.
+class Image : IFatSectorReader
+{
+    public uint SectorSize { get; set; } = 512;
+    public ulong SectorCount { get; set; }
+    public uint Clusters = 65525;
+    public uint FatSectors;
+    public byte[] Boot, Fat0, Fat1;
+    public ulong FailAt = ulong.MaxValue;
+    public int Reads;
+    public Image(uint size = 512, byte clusterSectors = 1)
+    {
+        SectorSize = size;
+        FatSectors = (uint)(((ulong)Clusters + 2) * 4 + size - 1) / size;
+        SectorCount = 32 + 2UL * FatSectors + (ulong)Clusters * clusterSectors;
+        Boot = new byte[size]; Fat0 = new byte[FatSectors * size]; Fat1 = new byte[Fat0.Length];
+        Set16(Boot, 11, size); Boot[13] = clusterSectors; Set16(Boot, 14, 32); Boot[16] = 2;
+        Set32(Boot, 32, (uint)SectorCount); Set32(Boot, 36, FatSectors); Set32(Boot, 44, 2);
+        Boot[510] = 0x55; Boot[511] = 0xAA;
+        Entry(0, 0x0FFFFFF8); Entry(1, 0x0FFFFFFF); Entry(2, 0x0FFFFFFF);
+    }
+    public static void Set16(byte[] b, int p, uint v) { b[p] = (byte)v; b[p + 1] = (byte)(v >> 8); }
+    public static void Set32(byte[] b, int p, uint v) { for (int i = 0; i < 4; i++) b[p+i] = (byte)(v >> (i*8)); }
+    public void Entry(uint cluster, uint value) { Set32(Fat0, (int)cluster*4, value); Set32(Fat1, (int)cluster*4, value); }
+    public void ReadSector(ulong sector, byte[] buffer)
+    {
+        Reads++;
+        if (sector >= SectorCount) throw new Exception("Read outside partition");
+        if (sector == FailAt) throw new IOException("Device removed");
+        if (sector == 0) { Array.Copy(Boot, buffer, buffer.Length); return; }
+        if (sector >= 32 && sector < 32 + FatSectors)
+            Array.Copy(Fat0, (long)(sector-32)*SectorSize, buffer, 0, buffer.Length);
+        else if (sector >= 32 + FatSectors && sector < 32 + 2UL*FatSectors)
+            Array.Copy(Fat1, (long)(sector-32-FatSectors)*SectorSize, buffer, 0, buffer.Length);
+        else throw new Exception("Unexpected non-FAT read (FSInfo/data must not be scanned)");
+    }
+}
+class Program
+{
+    static int passed;
+    static void Check(bool ok, string message) { if (!ok) throw new Exception(message); }
+    static Fat32Space Read(Image i)
+    {
+        Check(Fat32Allocation.TryRead(i, out var s, out var error), error);
+        Check(s.FreeBytes + s.AllocatedBytes + s.BadBytes == s.DataBytes, "accounting invariant");
+        return s;
+    }
+    static void Reject(Image i)
+    {
+        Check(!Fat32Allocation.TryRead(i, out var s, out var error), "invalid image accepted");
+        Check(s.DataBytes == 0 && s.FreeBytes == 0 && s.AllocatedBytes == 0 && s.BadBytes == 0, "partial statistics leaked");
+        Check(!string.IsNullOrEmpty(error), "missing error");
+    }
+    static void Test(string name, Action test) { test(); passed++; Console.WriteLine("PASS " + name); }
+    static void Main()
+    {
+        Test("free clusters exclude reserved entries and FAT padding", () => {
+            var i = new Image(); var s = Read(i);
+            Check(s.FreeBytes == 65524UL*512 && s.AllocatedBytes == 512, "wrong cluster count");
+        });
+        Test("bad clusters and upper reserved bits", () => {
+            var i = new Image(); i.Entry(3, 0xFFFFFFF7); i.Entry(4, 0xF0000000); i.Entry(5, 0xFFFFFFFF);
+            var s = Read(i); Check(s.BadBytes == 512 && s.AllocatedBytes == 1024, "mask/bad count");
+        });
+        Test("full disk has zero free space", () => {
+            var i = new Image(); for (uint c = 2; c < i.Clusters+2; c++) i.Entry(c, 0x0FFFFFFF);
+            var s = Read(i); Check(s.FreeBytes == 0 && s.AllocatedBytes == s.DataBytes, "full disk misreported");
+        });
+        Test("active FAT one selected when mirroring disabled", () => {
+            var i = new Image(); Image.Set16(i.Boot, 40, 0x81); Image.Set32(i.Fat1, 12, 0x0FFFFFFF);
+            Check(Read(i).AllocatedBytes == 1024, "wrong active FAT");
+        });
+        Test("mirrored FAT mismatch fails closed", () => {
+            var i = new Image(); Image.Set32(i.Fat1, 12, 0x0FFFFFFF); Reject(i);
+        });
+        Test("invalid active FAT rejected", () => { var i = new Image(); Image.Set16(i.Boot,40,0x82); Reject(i); });
+        Test("4096 byte sectors and multi-sector clusters", () => {
+            var i = new Image(4096,8); Check(Read(i).AllocatedBytes == 32768, "cluster byte size");
+        });
+        Test("truncated partition rejected before FAT reads", () => {
+            var i = new Image(); i.SectorCount--; Reject(i); Check(i.Reads == 1, "read beyond boot");
+        });
+        Test("too-small FAT rejected", () => { var i = new Image(); Image.Set32(i.Boot,36,1); Reject(i); });
+        Test("FAT16 geometry rejected", () => { var i = new Image(); Image.Set16(i.Boot,17,512); Reject(i); });
+        Test("invalid cluster geometry rejected", () => { var i = new Image(); i.Boot[13]=3; Reject(i); });
+        Test("invalid boot signature rejected", () => { var i = new Image(); i.Boot[510]=0; Reject(i); });
+        Test("invalid FAT pointer rejected", () => { var i = new Image(); i.Entry(3, 1); Reject(i); });
+        Test("out-of-range FAT pointer rejected", () => { var i = new Image(); i.Entry(3, i.Clusters+2); Reject(i); });
+        Test("reserved FAT entry rejected", () => { var i = new Image(); i.Entry(3, 0x0FFFFFF0); Reject(i); });
+        Test("disconnect during scan yields no partial result", () => { var i = new Image(); i.FailAt=35; Reject(i); });
+        Test("trailing incomplete cluster excluded", () => {
+            var i = new Image(512,8); i.SectorCount+=7; Image.Set32(i.Boot,32,(uint)i.SectorCount);
+            Check(Read(i).DataBytes == 65525UL*4096, "trailing sectors counted");
+        });
+        Test("FSInfo ignored", () => { var i = new Image(); Image.Set16(i.Boot,48,1); Read(i); });
+        Test("scan budget rejects enormous FAT before reading it", () => {
+            var i = new Image(); Image.Set32(i.Boot,36,100000); i.SectorCount=10000000; Image.Set32(i.Boot,32,10000000);
+            Reject(i); Check(i.Reads==1, "budget checked too late");
+        });
+        Test("fresh scan reflects allocation and release", () => {
+            var i = new Image(); ulong initial = Read(i).FreeBytes;
+            i.Entry(3, 0x0FFFFFFF); Check(Read(i).FreeBytes == initial-512, "allocation not observed");
+            i.Entry(3, 0); Check(Read(i).FreeBytes == initial, "release not observed");
+        });
+        Test("null reader rejected", () => Check(!Fat32Allocation.TryRead(null,out var s,out var e) && s.DataBytes==0, "null accepted"));
+        Console.WriteLine(passed + " allocation checks passed");
+    }
+}

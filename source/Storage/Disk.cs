@@ -12,6 +12,29 @@ namespace ZonderqOS
     {
         private static FatFileSystemType fat;
         private static VfsMount _currentMount;
+        private static Partition _rootPartition;
+
+        private sealed class RootSectorReader : IFatSectorReader
+        {
+            private readonly Partition partition;
+            public RootSectorReader(Partition value) { partition = value; }
+            public ulong SectorCount => partition.BlockCount;
+            public uint SectorSize => checked((uint)partition.BlockSize);
+            public void ReadSector(ulong sector, byte[] buffer)
+            {
+                if (sector >= partition.BlockCount)
+                    throw new ArgumentOutOfRangeException(nameof(sector));
+                partition.ReadBlock(sector, 1UL, buffer);
+            }
+        }
+
+        public static bool TryGetRootSpace(out Fat32Space space, out string error)
+        {
+            // Keep the approved object selected at mount time. A discovery-list
+            // reorder must not redirect diagnostics to a different device.
+            return Fat32Allocation.TryRead(_rootPartition == null ? null :
+                new RootSectorReader(_rootPartition), out space, out error);
+        }
 
         public static bool Initialize()
         {
@@ -76,6 +99,7 @@ namespace ZonderqOS
 #endif
 
                 _currentMount = mount;
+                _rootPartition = data;
 #if ZONDERQ_3094_RAM_ROOT
                 WriteMessage.WriteOK("Mounted ephemeral ZonderqOS FAT32 RAM root at '/' (no physical writes).", "VFS");
 #else
@@ -452,7 +476,8 @@ namespace ZonderqOS
             try
             {
                 var partitions = StorageManager.Partitions;
-                if (partitions == null || partitions.Count == 0)
+                int partitionCount = partitions == null ? 0 : partitions.Count;
+                if (partitionCount == 0 && _rootPartition == null)
                 {
                     CommandIO.WriteLine("No partitions found.");
                     CommandIO.LastCommandSuccess = true;
@@ -460,7 +485,7 @@ namespace ZonderqOS
                 }
 
                 CommandIO.WriteLine("=== Storage Space (All Partitions) ===");
-                for (int i = 0; i < partitions.Count; i++)
+                for (int i = 0; i < partitionCount; i++)
                 {
                     var partition = partitions[i];
                     ulong totalBytes = (ulong)partition.BlockCount * (ulong)partition.BlockSize;
@@ -468,6 +493,17 @@ namespace ZonderqOS
                     // File lengths also exclude FAT metadata and cluster slack,
                     // so directory traversal cannot measure free filesystem space.
                     CommandIO.WriteLine($"Partition [{i}]: Capacity: {FormatBytes(totalBytes)}; used/free: unavailable");
+                }
+                if (_rootPartition != null)
+                {
+                    if (!TryGetRootSpace(out Fat32Space space, out string error))
+                    {
+                        WriteMessage.WriteError($"Root FAT allocation unavailable: {error}", "FS");
+                        CommandIO.LastCommandSuccess = false;
+                        return;
+                    }
+                    CommandIO.WriteLine($"Root FAT32 on-disk scan: data {FormatBytes(space.DataBytes)}; allocated {FormatBytes(space.AllocatedBytes)}; free {FormatBytes(space.FreeBytes)}; bad {FormatBytes(space.BadBytes)}");
+                    CommandIO.WriteLine("Data clusters only (metadata excluded); non-atomic scan, concurrent writes may change values.");
                 }
                 CommandIO.LastCommandSuccess = true;
             }
