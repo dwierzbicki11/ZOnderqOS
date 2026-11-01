@@ -42,6 +42,10 @@ RX_STATS = re.compile(
     r"^\[NET3095-N6\] HTTP_RX_STATS attempt=(\d+) reads=(\d+) "
     r"max_chunk=(\d+) bytes=(\d+)$"
 )
+RX_TIMING = re.compile(
+    r"^\[NET3095-N6\] HTTP_RX_TIMING attempt=(\d+) "
+    r"first_byte_ms=(\d+) total_ms=(\d+) \(socket Read; ISR unproven\)$"
+)
 
 
 def check_rx_stats(serial: str) -> None:
@@ -55,8 +59,10 @@ def check_rx_stats(serial: str) -> None:
                if line.startswith("[NET3095-N6] HTTP_RX_STATS")]
     stable = [(index, line) for index, line in enumerate(lines)
               if line.startswith("[NET3095-N6] HTTP_NIC_STABLE")]
-    if len(entries) != 6 or len(stable) != 6:
-        raise ValueError("expected six unique guest HTTP RX and NIC/lease records")
+    timings = [(index, line) for index, line in enumerate(lines)
+               if line.startswith("[NET3095-N6] HTTP_RX_TIMING")]
+    if len(entries) != 6 or len(stable) != 6 or len(timings) != 6:
+        raise ValueError("expected six unique guest HTTP RX, timing and NIC/lease records")
     markers = (HTTP_PASS, HTTP_REPEAT_PASS, PASS) + REPEATS
     previous_pass = -1
     for attempt, (((index, line), (stable_index, stable_line)), marker) in enumerate(
@@ -76,6 +82,19 @@ def check_rx_stats(serial: str) -> None:
         if not previous_pass < stable_index < index < completion:
             raise ValueError("NIC/lease check or HTTP RX telemetry not ordered before completion")
         previous_pass = completion
+
+    # Timing is diagnostic, not a replacement for PCAP RX or guest payload
+    # checks. Require six monotonic, bounded observations, each emitted after
+    # its socket-read stats and before the corresponding HTTP PASS marker.
+    for attempt, (index, line) in enumerate(timings, 1):
+        match = RX_TIMING.fullmatch(line)
+        if match is None or int(match.group(1)) != attempt:
+            raise ValueError("malformed, duplicate or reordered HTTP RX timing")
+        first_byte_ms, total_ms = int(match.group(2)), int(match.group(3))
+        if first_byte_ms > total_ms or total_ms >= 45000:
+            raise ValueError("impossible guest HTTP RX timing")
+        if not entries[attempt - 1][0] < index < lines.index(markers[attempt - 1]):
+            raise ValueError("HTTP RX timing outside its successful socket exchange")
 
 
 def check_link_markers(serial: str) -> None:
@@ -271,12 +290,20 @@ def self_test() -> None:
         for line in (
             f"[NET3095-N6] HTTP_NIC_STABLE=PASS attempt={attempt}",
             f"[NET3095-N6] HTTP_RX_STATS attempt={attempt} reads=5 max_chunk=1024 bytes={len(RESPONSE)}",
+            f"[NET3095-N6] HTTP_RX_TIMING attempt={attempt} first_byte_ms=10 total_ms=520 (socket Read; ISR unproven)",
             marker,
         )
     )
     check_rx_stats(telemetry)
     bad_telemetry = (
         telemetry.replace("reads=5", "reads=65", 1),
+        telemetry.replace("HTTP_RX_TIMING attempt=1", "HTTP_RX_TIMING attempt=2", 1),
+        telemetry.replace("first_byte_ms=10", "first_byte_ms=521", 1),
+        telemetry.replace("total_ms=520", "total_ms=45000", 1),
+        telemetry.replace("total_ms=520", "total_ms=invalid", 1),
+        telemetry.replace("HTTP_RX_TIMING attempt=1", "HTTP_RX_TIMING attempt=0", 1),
+        telemetry.replace("HTTP_RX_TIMING attempt=1 first_byte_ms=10 total_ms=520 (socket Read; ISR unproven)", "", 1),
+        telemetry + "\n[NET3095-N6] HTTP_RX_TIMING attempt=6 first_byte_ms=10 total_ms=520 (socket Read; ISR unproven)",
         telemetry.replace("reads=5", "reads=0", 1),
         telemetry.replace("max_chunk=1024", "max_chunk=0", 1),
         telemetry.replace(f"bytes={len(RESPONSE)}", "bytes=4115", 1),
