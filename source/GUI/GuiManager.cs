@@ -304,6 +304,12 @@ namespace ZonderqOS.GUI
 
                     // Right-click dismisses a modal overlay without passing the same
                     // event to an underlying app (e.g. File Manager context menu).
+                    // Right-button chords never activate left-button controls.
+                    // Compare the previous left state against the CURRENT right
+                    // state: releasing right while left stays held must not
+                    // synthesize a new left click on Start, a window or a file.
+                    bool leftForUi = currentLeftButtonState && !currentRightButtonState;
+                    bool oldLeftForUi = previousLeftButtonState && !currentRightButtonState;
                     bool rightPressed = currentRightButtonState && !previousRightButtonState;
                     bool paletteCaptured = false;
                     if (commandPalette != null && commandPalette.Visible)
@@ -316,7 +322,7 @@ namespace ZonderqOS.GUI
                         else
                         {
                             paletteCaptured = commandPalette.HandleMouse(mouseX, mouseY,
-                                currentLeftButtonState, previousLeftButtonState);
+                                leftForUi, oldLeftForUi);
                         }
                     }
 
@@ -331,7 +337,7 @@ namespace ZonderqOS.GUI
                         else
                         {
                             notificationCaptured = notificationCenter.UpdateInteractions(mouseX, mouseY,
-                                currentLeftButtonState, previousLeftButtonState);
+                                leftForUi, oldLeftForUi);
                         }
                     }
 
@@ -379,7 +385,7 @@ namespace ZonderqOS.GUI
                                 desktopContextMenu.Visible = false;
                             else
                                 desktopContextMenu.UpdateInteractions(mouseX, mouseY,
-                                    currentLeftButtonState, previousLeftButtonState);
+                                    leftForUi, oldLeftForUi);
                         }
 
                         // Snapshot ownership before a title-bar action closes
@@ -405,14 +411,14 @@ namespace ZonderqOS.GUI
                         }
                         else if (!startMenuCaptures && !desktopMenuCaptures)
                         {
-                            applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
+                            applicationManager.HandleMouse(mouseX, mouseY, leftForUi, oldLeftForUi,
                                 currentRightButtonState, previousRightButtonState);
                         }
                         // A simultaneous right press or a File Manager menu
                         // dismissal must never invoke an underlying Start action.
                         if (!rightPressed && !fileManagerMenuCaptures)
                             startMenu.UpdateInteractions(mouseX, mouseY,
-                                currentLeftButtonState, previousLeftButtonState);
+                                leftForUi, oldLeftForUi);
 
                         // A lock requested from Start must take over before the taskbar or desktop
                         // can process the same click. Open applications remain alive and untouched.
@@ -435,12 +441,12 @@ namespace ZonderqOS.GUI
                         }
 
                         if (!desktopMenuCaptures && !fileManagerMenuCaptures)
-                            taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
+                            taskbar.UpdateInteractions(mouseX, mouseY, leftForUi, oldLeftForUi);
                         // A Start-menu action may close the menu in this frame.
                         // Use the pre-dispatch capture flags so that same click
                         // cannot open a desktop shortcut beneath the old overlay.
                         if (!startMenuCaptures && !desktopMenuCaptures && !fileManagerMenuCaptures && !windowCapturedClick)
-                            UpdateDesktopInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
+                            UpdateDesktopInteractions(mouseX, mouseY, leftForUi, oldLeftForUi,
                                 currentRightButtonState, previousRightButtonState);
                     }
 
