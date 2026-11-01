@@ -285,6 +285,42 @@ internal static class Program
             "x (7 alternating samples, same entries and reused lists; not FAT32 I/O)");
     }
 
+    // Control case: the early ordered-input check must not silently hide a
+    // major regression when FAT32 returns a genuinely unsorted directory.
+    private static void BenchmarkUnsortedControl()
+    {
+        var source = Make(2048, 55095, false);
+        var work = new List<ZonderqOS.GUI.Apps.FileEntry>(source.Length);
+        ZonderqOS.GUI.Apps.FileEntry[] oldScratch =
+            new ZonderqOS.GUI.Apps.FileEntry[source.Length];
+        ZonderqOS.GUI.Apps.FileEntry[] newScratch =
+            new ZonderqOS.GUI.Apps.FileEntry[source.Length];
+        for (int i = 0; i < 8; i++)
+        {
+            TimedOrdered(false, source, work, ref oldScratch);
+            TimedOrdered(true, source, work, ref newScratch);
+        }
+        double[] before = new double[7], after = new double[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if ((i & 1) == 0)
+            {
+                before[i] = TimedOrdered(false, source, work, ref oldScratch);
+                after[i] = TimedOrdered(true, source, work, ref newScratch);
+            }
+            else
+            {
+                after[i] = TimedOrdered(true, source, work, ref newScratch);
+                before[i] = TimedOrdered(false, source, work, ref oldScratch);
+            }
+        }
+        double a = Median(before), b = Median(after);
+        Console.WriteLine("HOST A/B unsorted control n=2048 previous-merge=" +
+            a.ToString("F4") + " ms ordered-gate=" + b.ToString("F4") +
+            " ms ratio=" + (a / b).ToString("F2") +
+            "x (7 alternating samples, warmed scratch; not FAT32 I/O)");
+    }
+
     private static void BenchmarkGuiBranch(int n)
     {
         var source = Make(n, 2026 + n, false);
@@ -486,6 +522,7 @@ internal static class Program
         VerifyFilter();
         VerifyAlreadySortedFastPath();
         BenchmarkAlreadySorted();
+        BenchmarkUnsortedControl();
         BenchmarkFilter();
         Benchmark(32, true);
         Benchmark(128, false);
