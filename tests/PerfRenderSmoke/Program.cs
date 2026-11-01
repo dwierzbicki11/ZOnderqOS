@@ -74,6 +74,7 @@ internal static class Program
         NumericDigitCountSmoke.Verify();
         NumericPow10Smoke.Verify();
         TextPercentVisibilitySmoke.Verify();
+        IconEvictionReuseSmoke.Verify();
         Console.WriteLine("PASS: production C# text/panel renderers tested with stub Canvas; not QEMU.");
         return 0;
     }
