@@ -156,6 +156,7 @@ namespace ZonderqOS.GUI
                 if (filter >= FilterLabels.Length)
                     filter = 0;
                 selectedIndex = 0;
+                selectedNotificationId = 0;
                 offset = 0;
                 RebuildFilter();
                 return true;
