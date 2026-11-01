@@ -152,9 +152,10 @@ internal static class TextRangeNumberVisibilitySmoke
     private static void Benchmark(string label, Func<bool, Canvas, int, double> time,
         bool expectNoDraw = true)
     {
-        Canvas frame = new Canvas(128, 48);
-        time(false, frame, 100);
-        time(true, frame, 100);
+        Canvas beforeFrame = new Canvas(128, 48);
+        Canvas afterFrame = new Canvas(128, 48);
+        time(false, beforeFrame, 100);
+        time(true, afterFrame, 100);
         const int iterations = 10000;
         double[] baseline = new double[5];
         double[] optimized = new double[5];
@@ -162,19 +163,22 @@ internal static class TextRangeNumberVisibilitySmoke
         {
             if ((i & 1) == 0)
             {
-                baseline[i] = time(false, frame, iterations);
-                optimized[i] = time(true, frame, iterations);
+                baseline[i] = time(false, beforeFrame, iterations);
+                optimized[i] = time(true, afterFrame, iterations);
             }
             else
             {
-                optimized[i] = time(true, frame, iterations);
-                baseline[i] = time(false, frame, iterations);
+                optimized[i] = time(true, afterFrame, iterations);
+                baseline[i] = time(false, beforeFrame, iterations);
             }
         }
         Array.Sort(baseline);
         Array.Sort(optimized);
-        if (expectNoDraw && frame.DrawCalls != 0)
-            throw new Exception("Offscreen benchmark unexpectedly drew pixels");
+        if (expectNoDraw && afterFrame.DrawCalls != 0)
+            throw new Exception("Optimized offscreen benchmark reached Canvas");
+        for (int pixel = 0; pixel < beforeFrame.Pixels.Length; pixel++)
+            if (beforeFrame.Pixels[pixel] != afterFrame.Pixels[pixel])
+                throw new Exception(label + ": benchmark framebuffer mismatch");
         Console.WriteLine("Host .NET " + label + ": " + iterations +
             " calls, median of 5 alternating A/B; baseline " +
             baseline[2].ToString("F2") + " ms, optimized " +
