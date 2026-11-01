@@ -2219,7 +2219,7 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
     def test_task_manager_short_wide_layout_and_unpainted_rows_are_not_clickable(self):
         manager = TASK_MANAGER
         self.assertIn("Height < ListTop + FooterHeight + RowHeight + 6", manager)
-        self.assertIn("private bool CompactPerformanceLayout => Width < 900 || Height < 460;", manager)
+        self.assertIn("private bool CompactPerformanceLayout => Width < 900 || Height < 502;", manager)
         self.assertIn("private int ListTopForView => CompactProcessLayout ? 64 : ListTop;", manager)
         process = manager.split("private void RenderProcessPage(Canvas canvas)", 1)[1].split(
             "private void DrawSummary(", 1)[0]
@@ -2247,8 +2247,8 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
                     row_offset = (y - list_top) // 36
                     clickable = row_offset < painted_rows
                     self.assertEqual(clickable, y < list_top + painted_rows * 36)
-                self.assertEqual(width < 900 or height < 460,
-                                 not (width >= 900 and height >= 460))
+                self.assertEqual(width < 900 or height < 502,
+                                 not (width >= 900 and height >= 502))
 
     def test_window_minimize_and_restore_cancel_stale_mouse_gestures(self):
         minimize = WINDOW.split("public void Minimize()", 1)[1].split(
