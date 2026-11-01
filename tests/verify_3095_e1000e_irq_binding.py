@@ -19,9 +19,9 @@ DRIVER = re.compile(r"^\[Drivers\] " + NODE + r" E1000EDriver: mac " + MAC +
                     r", link up, line (\d{1,3}), polling every 10 ms$")
 GUEST = re.compile(r"^\[NET3095-N1\] cpu=bsp adapter=0 name=e1000e mac=" + MAC +
                    r" ready=yes link=up$")
-BASELINE = re.compile(r"^\\[NET3095-N6\\] DRIVER_BASELINE=PASS node=" + NODE +
-                      r" resources=(\\d+) irq_sources=(\\d+) "
-                      r"handler_faults=0 isr_executions=unknown$".replace("\\\\", "\\"))
+BASELINE = re.compile(r"^\[NET3095-N6\] DRIVER_BASELINE=PASS node=" + NODE +
+                      r" resources=(\d+) irq_sources=(\d+) "
+                      r"handler_faults=0 isr_executions=unknown$")
 HEALTH = re.compile(r"^\[NET3095-N6\] DRIVER_HEALTH=PASS node=" + NODE +
                     r" driver=E1000EDriver resources=(\d+) published=(\d+)" +
                     r" irq_sources=(\d+) handler_faults=(\d+) isr_executions=unknown$")
@@ -144,32 +144,32 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted QEMU trace without a live legacy assertion")
+    baseline_marker = ("[NET3095-N6] DRIVER_BASELINE=PASS node=pci:0000:00:02.0 "
+                       "resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown\n")
+    link_marker = "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\n"
     bad_health = (
-        serial.replace("DRIVER_BASELINE=PASS", "DRIVER_BASELINE=FAIL"),
-        serial.replace("[NET3095-N6] DRIVER_BASELINE=PASS", "[NET3095-N6] DRIVER_BASELINE=FAIL"),
-        serial.replace("resources=8 irq_sources=1", "resources=9 irq_sources=1"),
-        serial.replace("resources=8 irq_sources=1", "resources=8 irq_sources=2"),
-        serial.replace("DRIVER_BASELINE=PASS node=pci:0000:00:02.0", "DRIVER_BASELINE=PASS node=pci:0000:00:03.0"),
-        serial.replace("[NET3095-N6] DRIVER_BASELINE=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown\\n", ""),
-        serial + "[NET3095-N6] DRIVER_BASELINE=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown\\n",
-        serial.replace(
-            "[NET3095-N6] DRIVER_BASELINE=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown\\n",
-            "").replace(
-            "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\\n",
-            "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\\n"
-            "[NET3095-N6] DRIVER_BASELINE=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown\\n"),
         serial.replace("handler_faults=0", "handler_faults=1"),
         serial.replace("resources=8", "resources=0"),
         serial.replace("published=1", "published=0"),
         serial.replace("irq_sources=1", "irq_sources=0"),
-        serial.replace("POST_STRESS_LINK=PASS mac=52:54:00:12:34:56", "POST_STRESS_LINK=PASS mac=02:54:00:12:34:56"),
+        serial.replace("resources=8 irq_sources=1", "resources=9 irq_sources=1"),
+        serial.replace("resources=8 irq_sources=1", "resources=8 irq_sources=2"),
+        serial.replace("DRIVER_BASELINE=PASS", "DRIVER_BASELINE=FAIL"),
+        serial.replace("DRIVER_BASELINE=PASS node=pci:0000:00:02.0",
+                       "DRIVER_BASELINE=PASS node=pci:0000:00:03.0"),
+        serial.replace(baseline_marker, ""),
+        serial + baseline_marker,
+        serial.replace(baseline_marker, "").replace(link_marker, link_marker + baseline_marker),
+        serial.replace("POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
+                       "POST_STRESS_LINK=PASS mac=02:54:00:12:34:56"),
         serial.replace("isr_executions=unknown", "isr_executions=1"),
         serial.replace("node=pci:0000:00:02.0", "node=pci:0000:00:03.0"),
         serial.replace("pci:0000:00:02.0 offer", "pci:0000:00:03.0 offer"),
         serial.replace("[NET3095-N6] DRIVER_HEALTH=PASS", "[NET3095-N6] DRIVER_HEALTH=FAIL"),
         serial.replace("[NET3095-N6] POST_STRESS_LINK=PASS", "[NET3095-N6] POST_STRESS_LINK=FAIL"),
-        serial.replace("[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\n", ""),
-        serial.replace("[NET3095-N6] DRIVER_HEALTH=PASS", "[NET3095-N6][FAIL] bad\n[NET3095-N6] DRIVER_HEALTH=PASS"),
+        serial.replace(link_marker, ""),
+        serial.replace("[NET3095-N6] DRIVER_HEALTH=PASS",
+                       "[NET3095-N6][FAIL] bad\n[NET3095-N6] DRIVER_HEALTH=PASS"),
         serial + serial.splitlines()[-1] + "\n",
     )
     for bad in bad_health:
