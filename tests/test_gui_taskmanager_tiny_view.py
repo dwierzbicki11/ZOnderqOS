@@ -242,6 +242,35 @@ class TinyTaskManagerViewTests(unittest.TestCase):
         self.assertFalse((550 - 210) - max(298, 550 - 364) >= 72)
         self.assertTrue((580 - 210) - max(298, 580 - 364) >= 72)
 
+    def test_toolbar_clicks_match_visible_painted_buttons(self):
+        toolbar = section("public int ToolbarActionAt(", "public int PerformanceResourceAt(")
+        self.assertIn("Height < HeaderHeight + 2", toolbar)
+        self.assertIn("x >= Width || y < 10 || y >= 40", toolbar)
+        self.assertNotIn("y < 8 || y >= 42", toolbar)
+
+        # The painted refresh/end-task buttons are at y=10..39. A
+        # destructive click at y=8,9,40,41 must never be accepted.
+        for width in (234, 320, 549, 550, 580, 800, 1020, 1920):
+            for height in (40, 41, 42, 55, 56, 220, 635):
+                for page in (0, 1, 2, 3):
+                    for y in (8, 9, 10, 39, 40, 41):
+                        for x in (width - 211, width - 210, width - 114,
+                                  width - 42, width - 11, width - 10):
+                            visible = width >= 234 and height >= 56 and 10 <= y < 40
+                            if width < 550:
+                                action = 1 if visible and width - 42 <= x < width - 10 else 0
+                            else:
+                                action = 0
+                                if visible and x >= 170 and x < width:
+                                    if width - 210 <= x < width - 122:
+                                        action = 1
+                                    elif page != 1 and width - 114 <= x < width - 14:
+                                        action = 2
+                            if y in (8, 9, 40, 41) or height < 56:
+                                self.assertEqual(action, 0, (width, height, page, x, y))
+                            if page == 1:
+                                self.assertNotEqual(action, 2)
+
     def test_disabled_performance_end_task_is_not_clickable(self):
         toolbar = section("public int ToolbarActionAt(", "public int PerformanceResourceAt(")
         self.assertIn(
