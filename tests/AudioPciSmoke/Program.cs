@@ -1269,6 +1269,36 @@ static class Test
                 }
             }
         }
+        // This is the actual no-fade path used by volume 0 in the probe.
+        // Compare against the pre-optimization sample loop independently.
+        foreach (int leftGain in new[] { 0, 25, 100 })
+        {
+            foreach (int rightGain in new[] { 0, 50, 100 })
+            {
+                byte[] expected = ReferenceGainFadeDrain(
+                    fadeSource, leftGain, rightGain, 0, 0);
+                byte[] actual = AudioPcmVolume.ScaleStereo16Channels(
+                    fadeSource, leftGain, rightGain);
+                Expect(!ReferenceEquals(actual, fadeSource),
+                    "direct gain must preserve output ownership");
+                Expect(actual.Length == expected.Length, "direct gain length");
+                for (int i = 0; i < actual.Length; i++)
+                    Expect(actual[i] == expected[i],
+                        "direct gain equals independent sample reference");
+            }
+        }
+        foreach (int gain in new[] { 0, 100 })
+        {
+            int capturedGain = gain;
+            double referenceMs = MedianPcmMilliseconds(
+                () => ReferenceGainFadeDrain(fadeSource, capturedGain, capturedGain, 0, 0), 96);
+            double fastMs = MedianPcmMilliseconds(
+                () => AudioPcmVolume.ScaleStereo16Channels(
+                    fadeSource, capturedGain, capturedGain), 96);
+            Console.WriteLine("[AUDIO-PCI-HOST] direct PCM gain=" + capturedGain +
+                "% baseline=" + referenceMs.ToString("F3") + "ms fast=" +
+                fastMs.ToString("F3") + "ms iterations=96 (host only; no speed assertion)");
+        }
         // Compare the new mute/unity fast paths against an independent
         // per-sample implementation, including negative PCM and zero tails.
         byte[] fastPathSource = (byte[])fadeSource.Clone();
