@@ -287,6 +287,75 @@ internal static class Program
         Check(manager.ActiveApplication == left, "minimized window is excluded from active focus");
     }
 
+    private static void WindowGestureSurvivesFocusAndSecondButton()
+    {
+        var manager = new ApplicationManager();
+        var first = new ClosingApp();
+        var second = new ClosingApp();
+        second.Window.X = 200;
+        manager.Launch(first);
+        manager.Launch(second);
+
+        manager.HandleMouse(10, 20, true, false, false, false);
+        Check(manager.ActiveApplication == first && first.MouseCount == 1,
+            "initial press captures first window");
+        // A keyboard shortcut may change focus while the left button is held.
+        manager.Activate(second);
+        manager.HandleMouse(220, 20, true, true, true, false);
+        Check(first.MouseCount == 2 && first.LastRightPress,
+            "second button must stay with original gesture owner");
+        Check(second.MouseCount == 0 && manager.ActiveApplication == second,
+            "second button cannot steal focus or click another window");
+        manager.HandleMouse(220, 20, false, true, false, true);
+        Check(first.MouseCount == 3 && first.LastLeftRelease,
+            "release goes to captured window after focus changes");
+        Check(second.MouseCount == 0, "release never reaches newly focused window");
+        manager.HandleMouse(220, 20, false, false, false, false);
+        Check(second.MouseCount == 1, "ordinary hover resumes after release");
+        manager.CloseAll();
+    }
+
+    private static void ClosingCapturedWindowDoesNotLeakRelease()
+    {
+        var manager = new ApplicationManager();
+        var first = new ClosingApp();
+        var second = new ClosingApp();
+        second.Window.X = 200;
+        manager.Launch(second);
+        manager.Launch(first);
+        manager.HandleMouse(10, 20, true, false, false, false);
+        Check(first.MouseCount == 1, "first window owns initial held press");
+        manager.Close(first);
+        manager.HandleMouse(220, 20, true, true, false, false);
+        manager.HandleMouse(220, 20, false, true, false, false);
+        Check(second.MouseCount == 0,
+            "closing captured window consumes held motion and release");
+        manager.HandleMouse(220, 20, true, false, false, false);
+        Check(second.MouseCount == 1,
+            "fresh press after captured close reaches surviving window");
+        manager.CloseAll();
+    }
+
+    private static void MinimizingCapturedWindowDoesNotLeakRelease()
+    {
+        var manager = new ApplicationManager();
+        var first = new ClosingApp();
+        var second = new ClosingApp();
+        second.Window.X = 200;
+        manager.Launch(second);
+        manager.Launch(first);
+        manager.HandleMouse(10, 20, true, false, false, false);
+        first.Window.Minimize();
+        manager.HandleMouse(220, 20, true, true, false, false);
+        manager.HandleMouse(220, 20, false, true, false, false);
+        Check(second.MouseCount == 0,
+            "minimizing captured window cannot redirect held motion or release");
+        manager.HandleMouse(220, 20, true, false, false, false);
+        Check(second.MouseCount == 1,
+            "new press works after minimizing gesture owner");
+        manager.CloseAll();
+    }
+
     private static void FocusReorderDuringUpdate()
     {
         var manager = new ApplicationManager();
@@ -414,6 +483,9 @@ internal static class Program
         CloseCallbackReentrancy();
         LogoutCallbackCannotReopenWindows();
         MouseFocusAndCapture();
+        WindowGestureSurvivesFocusAndSecondButton();
+        ClosingCapturedWindowDoesNotLeakRelease();
+        MinimizingCapturedWindowDoesNotLeakRelease();
         FocusReorderDuringUpdate();
         LaunchDuringUpdate();
         CloseAnotherDuringUpdate();
