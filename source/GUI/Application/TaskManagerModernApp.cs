@@ -934,8 +934,11 @@ namespace ZonderqOS.GUI.Apps
 
         public int ToolbarActionAt(int x, int y)
         {
-            if (Width < SidebarWidth + 64 || Height < 42 ||
-                x < SidebarWidth || y < 8 || y >= 42) return 0;
+            // Match the painted 30px header buttons exactly (Y+10..Y+39).
+            // The old 8..41 hitbox could end a task on invisible pixels;
+            // a short client must not accept clicks when RenderHeader skips.
+            if (Width < SidebarWidth + 64 || Height < HeaderHeight + 2 ||
+                x < SidebarWidth || x >= Width || y < 10 || y >= 40) return 0;
             if (Width < 550)
                 return x >= Width - 42 && x < Width - 10 ? 1 : 0;
             int refresh = Width - 210;
