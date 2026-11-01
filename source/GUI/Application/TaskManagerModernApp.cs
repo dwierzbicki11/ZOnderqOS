@@ -66,6 +66,7 @@ namespace ZonderqOS.GUI.Apps
         private int logicalPage;
         private int selectedIndex = -1;
         private int scrollIndex;
+        private int previousVisibleRows = -1;
         private long lastRefreshTicks = -1;
         private bool samplingPaused;
         private string status = "Gotowy";
@@ -169,7 +170,18 @@ namespace ZonderqOS.GUI.Apps
             view.Y = Window.Y + 40;
             view.Width = Math.Max(1, Window.Width - 20);
             view.Height = Math.Max(1, Window.Height - 50);
-            ClampScroll();
+            int rows = view.VisibleRows;
+            // Preserve a selected row that was actually on screen before
+            // shrinking the window. Do not snap back to selections that the
+            // user intentionally scrolled away from.
+            bool selectionWasVisible = previousVisibleRows > 0 &&
+                selectedIndex >= scrollIndex &&
+                selectedIndex < scrollIndex + previousVisibleRows;
+            if (rows != previousVisibleRows && selectionWasVisible)
+                EnsureSelectionVisible();
+            else
+                ClampScroll();
+            previousVisibleRows = rows;
             ClampLogicalPage();
         }
 
