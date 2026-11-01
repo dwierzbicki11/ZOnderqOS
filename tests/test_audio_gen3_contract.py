@@ -227,7 +227,8 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("--volume", harness)
         self.assertIn("verify-audio-volume-capture.py", workflow)
         gain = read("source/Core/AudioPcmVolume.cs")
-        self.assertIn("percent < 0 || percent > 100", gain)
+        self.assertIn("leftPercent < 0 || leftPercent > 100", gain)
+        self.assertIn("rightPercent < 0 || rightPercent > 100", gain)
         for forbidden in ("Disk.", "File.", "TryMount(", "WriteBlock("):
             self.assertNotIn(forbidden, gain)
 
