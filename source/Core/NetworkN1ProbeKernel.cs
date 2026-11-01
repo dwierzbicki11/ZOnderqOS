@@ -489,6 +489,15 @@ namespace ZonderqOS
                 int largestRead = 0;
                 while (received < response.Length)
                 {
+                    // An isolated probe must not wait indefinitely for a peer
+                    // trickling one byte per timed Read(). Real QEMU typically
+                    // completes this 4202-byte fixture in about six reads.
+                    // Cap successful chunks as well as the socket timeout.
+                    if (readCalls >= 64)
+                    {
+                        Log("[NET3095-N6][FAIL] HTTP response fragmented into too many reads");
+                        return false;
+                    }
                     int read = stream.Read(response, received, response.Length - received);
                     if (read <= 0)
                         break;
