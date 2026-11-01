@@ -33,7 +33,7 @@ def response_for_attempt(attempt: int) -> bytes:
         raise ValueError("HTTP fixture attempt outside 1..6")
     if attempt == 1:
         return RESPONSE
-    first_body_block = RESPONSE.index(b"ZONDERQ3095-HTTP-OK\\n") + len(b"ZONDERQ3095-HTTP-OK\\n")
+    first_body_block = RESPONSE.index(b"ZONDERQ3095-HTTP-OK\n") + len(b"ZONDERQ3095-HTTP-OK\n")
     return (RESPONSE[:first_body_block] +
             b"".join(bytes([ord("A") + block + attempt - 1]) * 1024
                      for block in range(4)))
@@ -122,7 +122,7 @@ def self_test() -> None:
             raise AssertionError(f"HTTP server failed on attempt {attempt + 1}: {errors}")
     assert len({response_for_attempt(i) for i in range(1, 7)}) == 6
     assert all(len(response_for_attempt(i)) == len(RESPONSE) for i in range(1, 7))
-    body_start = RESPONSE.index(b"ZONDERQ3095-HTTP-OK\\n") + len(b"ZONDERQ3095-HTTP-OK\\n")
+    body_start = RESPONSE.index(b"ZONDERQ3095-HTTP-OK\n") + len(b"ZONDERQ3095-HTTP-OK\n")
     for attempt in range(1, 7):
         body_blocks = response_for_attempt(attempt)[body_start:]
         assert len(body_blocks) == 4096
