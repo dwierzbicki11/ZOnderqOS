@@ -35,7 +35,26 @@ TCP_SCHED_TEAR = re.compile(
 
 
 def normalize_tcp_serial(serial: str) -> str:
-    return TCP_SCHED_TEAR.sub(TCP_START, serial.replace("\r", ""))
+    # Preserve the historical exact N4 START repair, then handle the same
+    # scheduler-only tear at any position of either expected N4 marker.
+    # This is not a global log filter: the full reconstructed marker must
+    # match exactly, and a malformed/disabled tick must remain a failure.
+    lines = TCP_SCHED_TEAR.sub(TCP_START, serial.replace("\r", "")).splitlines()
+    repaired = []
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        if line.startswith("[NET3095-N4"):
+            head, sep, tick = line.partition("[SCHED] Tick ")
+            if (sep and re.fullmatch(r"[0-9]+ enabled=1", tick)
+                    and i + 1 < len(lines)
+                    and head + lines[i + 1] in (TCP_START, TCP_PASS)):
+                repaired.append(head + lines[i + 1])
+                i += 2
+                continue
+        repaired.append(line)
+        i += 1
+    return "\n".join(repaired)
 
 
 def tcp_frame(frame: bytes):
@@ -219,12 +238,22 @@ def self_test() -> None:
     torn_tcp = serial.replace(
         TCP_START, "[NET3095-N4] TCP[SCHED] Tick 6 enabled=1\n_ATTEMPT=START")
     assert "PASS" in validate(torn_tcp, synthetic_capture(frames))
+    for marker in (TCP_START, TCP_PASS):
+        for offset in range(len("[NET3095-N4"), len(marker)):
+            torn_anywhere = (marker[:offset] +
+                             "[SCHED] Tick 6 enabled=1\n" + marker[offset:])
+            assert "PASS" in validate(
+                serial.replace(marker, torn_anywhere),
+                synthetic_capture(frames))
     # The repair must not manufacture missing markers, accept arbitrary
     # noise, or silently collapse a duplicated start marker.
     for bad in (
         serial.replace(TCP_START, "[NET3095-N4] TCP[NOISE] Tick 6 enabled=1\n_ATTEMPT=START"),
         serial.replace(TCP_START, "[NET3095-N4] TCP[SCHED] Tick 6 enabled=0\n_ATTEMPT=START"),
         serial + "\n[NET3095-N4] TCP[SCHED] Tick 6 enabled=1\n_ATTEMPT=START",
+        serial.replace(TCP_PASS, "[NET3095-N4] TCP=PASS from=10[SCHED] Tick 6 enabled=0\n.0.2.2 port=18095 bytes=21"),
+        serial.replace(TCP_PASS, "[NET3095-N4] TCP=PASS from=10[SCHED] Tick 6 enabled=1\n.0.2.3 port=18095 bytes=21"),
+        serial.replace(TCP_PASS, "[NET3095-N4] TCP=PASS from=10[SCHED] Tick BAD enabled=1\n.0.2.2 port=18095 bytes=21"),
     ):
         try:
             validate(bad, synthetic_capture(frames))
