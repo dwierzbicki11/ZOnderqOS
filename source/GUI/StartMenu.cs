@@ -552,15 +552,23 @@ namespace ZonderqOS.GUI
             lastPointerY = mouseY;
 
             UpdateLayout();
-            UpdateButtonInteractions(pinnedButtons, mouseX, mouseY, isClicked, wasClicked);
-            UpdateButtonInteractions(toolButtons, mouseX, mouseY, isClicked, wasClicked);
-            UpdatePowerInteraction(lockButton, mouseX, mouseY, isClicked, wasClicked);
-            UpdatePowerInteraction(exitButton, mouseX, mouseY, isClicked, wasClicked);
-            UpdatePowerInteraction(rebootButton, mouseX, mouseY, isClicked, wasClicked);
+            // A button callback may launch an app, lock the session or power
+            // off the machine. Never dispatch the same press to a second
+            // overlapping control (possible on very small framebuffers).
+            if (UpdateButtonInteractions(pinnedButtons, mouseX, mouseY, isClicked, wasClicked))
+                return;
+            if (UpdateButtonInteractions(toolButtons, mouseX, mouseY, isClicked, wasClicked))
+                return;
+            if (UpdatePowerInteraction(lockButton, mouseX, mouseY, isClicked, wasClicked))
+                return;
+            if (UpdatePowerInteraction(exitButton, mouseX, mouseY, isClicked, wasClicked))
+                return;
+            if (UpdatePowerInteraction(rebootButton, mouseX, mouseY, isClicked, wasClicked))
+                return;
             UpdatePowerInteraction(shutdownButton, mouseX, mouseY, isClicked, wasClicked);
         }
 
-        private static void UpdateButtonInteractions(List<Button> buttons, int mouseX, int mouseY,
+        private static bool UpdateButtonInteractions(List<Button> buttons, int mouseX, int mouseY,
             bool isClicked, bool wasClicked)
         {
             for (int i = 0; i < buttons.Count; i++)
@@ -577,21 +585,26 @@ namespace ZonderqOS.GUI
                 if (over && isClicked && !wasClicked)
                 {
                     button.InvokeClick();
-                    return;
+                    return true;
                 }
             }
+            return false;
         }
 
-        private static void UpdatePowerInteraction(Button button, int mouseX, int mouseY,
+        private static bool UpdatePowerInteraction(Button button, int mouseX, int mouseY,
             bool isClicked, bool wasClicked)
         {
-            if (button == null)
-                return;
+            if (button == null || !button.Visible)
+                return false;
 
             bool over = button.Contains(mouseX, mouseY);
             button.IsHovered = over;
             if (over && isClicked && !wasClicked)
+            {
                 button.InvokeClick();
+                return true;
+            }
+            return false;
         }
     }
 }
