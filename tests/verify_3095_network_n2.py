@@ -123,9 +123,10 @@ def validate(serial: str, pcap: bytes) -> str:
     if lines.index(START) >= lines.index(lease_lines[0].group(0)):
         raise ValueError("DHCP markers out of order")
     ip = ipaddress.IPv4Address(lease_lines[0].group(1))
-    if ip not in ipaddress.IPv4Network("10.0.2.0/24") or ip.packed in (
-        bytes([10, 0, 2, 0]), SERVER, bytes([10, 0, 2, 255])
-    ):
+    # The isolated guest explicitly rejects any lease except 10.0.2.15.
+    # A different, otherwise valid /24 address must not pass this independent
+    # wire gate merely because the serial and PCAP agree with each other.
+    if ip != ipaddress.IPv4Address("10.0.2.15"):
         raise ValueError("unexpected QEMU DHCP lease")
     mac = bytes.fromhex(n1.split("mac=")[-1].replace(":", ""))
     records = [r for frame in pcap_frames(pcap) if (r := dhcp_frame(frame))]
@@ -238,6 +239,20 @@ def self_test() -> None:
         START, "[NET3095-N2] DHCP=PASS ip=10.0.2.15 mask=255.255.255.0 gateway=10.0.2.2"
     ])
     assert "PASS" in validate(serial, synthetic_capture(frames))
+    # A fully self-consistent DORA for another address in the same subnet
+    # must fail: the guest's fixed SLIRP profile only permits 10.0.2.15.
+    alternate_ip = bytes([10, 0, 2, 16])
+    alternate_frames = [raw, fake_dhcp(1, 1, mac, alternate_ip),
+                        fake_dhcp(2, 1, mac, alternate_ip),
+                        fake_dhcp(3, 2, mac, alternate_ip, alternate_ip),
+                        fake_dhcp(5, 2, mac, alternate_ip)]
+    alternate_serial = serial.replace("ip=10.0.2.15", "ip=10.0.2.16")
+    try:
+        validate(alternate_serial, synthetic_capture(alternate_frames))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted unexpected but self-consistent QEMU DHCP lease")
 
     def with_udp_checksum(frame: bytes) -> bytes:
         changed = bytearray(frame)
