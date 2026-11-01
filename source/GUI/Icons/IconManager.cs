@@ -207,14 +207,31 @@ namespace ZonderqOS.GUI.Icons
                 (long)width * height > MaxReplacementArea)
                 return null;
 
-            int[] destination;
-            try
-            {
-                destination = new int[width * height];
-            }
-            catch
-            {
+            // When a full cache recycles a slot with the same pixel count,
+            // overwrite its private buffer instead of allocating another array.
+            // No caller retains these arrays outside a synchronous DrawScaled.
+            // A differently shaped icon with equal area is safe: the new width
+            // and height are recorded below, after every pixel is rewritten.
+            int slot = scaledCacheCount == MaxScaledCacheEntries
+                ? nextScaledEvictionSlot : scaledCacheCount;
+            int[] destination = null;
+            long pixelCount = (long)width * height;
+            if (pixelCount <= 0 || pixelCount > int.MaxValue)
                 return null;
+            if (scaledCacheCount == MaxScaledCacheEntries &&
+                scaledPixels[slot] != null &&
+                scaledPixels[slot].Length == (int)pixelCount)
+                destination = scaledPixels[slot];
+            if (destination == null)
+            {
+                try
+                {
+                    destination = new int[(int)pixelCount];
+                }
+                catch
+                {
+                    return null;
+                }
             }
 
             int xRatio = ((sourceWidth << 16) / width) + 1;
@@ -235,16 +252,10 @@ namespace ZonderqOS.GUI.Icons
                 }
             }
 
-            int slot = scaledCacheCount;
-            if (slot == MaxScaledCacheEntries)
-            {
-                slot = nextScaledEvictionSlot;
+            if (scaledCacheCount == MaxScaledCacheEntries)
                 nextScaledEvictionSlot = (nextScaledEvictionSlot + 1) % MaxScaledCacheEntries;
-            }
             else
-            {
                 scaledCacheCount = slot + 1;
-            }
             scaledTypes[slot] = type;
             scaledWidths[slot] = width;
             scaledHeights[slot] = height;
