@@ -50,18 +50,23 @@ class TinyTaskManagerViewTests(unittest.TestCase):
     def test_no_row_or_column_means_no_process_interaction(self):
         self.assertIn("internal bool HasPaintedProcessRows => VisibleRows > 0 &&", SOURCE)
         self.assertIn("private int TableRowWidthForView => Width - SidebarWidth - 12 - ScrollReserve;", SOURCE)
-        self.assertIn("TableRowWidthForView > 4;", SOURCE)
-        # The view has a 170px sidebar, 12px content inset and 16px
-        # scrollbar reserve; a 4px safety gap must remain.
+        self.assertIn("TableRowWidthForView >= 60;", SOURCE)
+        # A 170px sidebar, 12px inset and 16px scrollbar reserve leave
+        # the 52px Details PID/name offset inside a 60px painted row.
         for width in range(1, 321):
             for height in (40, 100, 120, 146, 170, 220):
                 top = 64 if width < 550 or height < 216 else 146
                 rows = max(0, height - top - 28 - 6) // 36
-                painted = rows > 0 and width - 170 - 12 > 16 + 4
-                if width <= 202 or rows == 0:
+                row_width = width - 170 - 12 - 16
+                painted = rows > 0 and row_width >= 60
+                if width < 258 or rows == 0:
                     self.assertFalse(painted)
                 else:
                     self.assertTrue(painted)
+                    # Both process and Details name offsets stay inside.
+                    for offset in (34, 52):
+                        self.assertLessEqual(offset + max(1, row_width - offset - 4),
+                                             row_width)
 
     def test_compact_navigation_is_fully_inside_client(self):
         hit = section("public int NavAt(int x, int y)", "public int ToolbarActionAt(")
