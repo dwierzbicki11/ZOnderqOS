@@ -24,10 +24,15 @@ namespace ZonderqOS.GUI
         public bool Visible = true;
         public bool IsMinimized;
         public bool IsActive;
+        public int X;
+        public int Y;
+        public int Width = 100;
+        public int Height = 100;
         public Action? CloseAction;
         public void RestoreFromMinimized() { IsMinimized = false; Visible = true; }
         public void Minimize() { IsMinimized = true; Visible = false; }
-        public bool ContainsPoint(int x, int y) => Visible && !IsMinimized;
+        public bool ContainsPoint(int x, int y) => Visible && !IsMinimized &&
+            x >= X && x < X + Width && y >= Y && y < Y + Height;
     }
 }
 
@@ -53,6 +58,9 @@ internal sealed class ClosingApp : Application
 {
     public int CloseCount;
     public int UpdateCount;
+    public int MouseCount;
+    public bool LastRightPress;
+    public bool LastLeftRelease;
     public Action? OnClose;
     public Action? OnUpdate;
 
@@ -67,6 +75,13 @@ internal sealed class ClosingApp : Application
     {
         UpdateCount++;
         OnUpdate?.Invoke();
+    }
+
+    public override void HandleMouse(int x, int y, bool left, bool oldLeft, bool right, bool oldRight)
+    {
+        MouseCount++;
+        LastRightPress = right && !oldRight;
+        LastLeftRelease = !left && oldLeft;
     }
 }
 
@@ -229,6 +244,42 @@ internal static class Program
         Check(attempted.CloseCount == 1, "subsequent teardown closes new session");
     }
 
+    private static void MouseFocusAndCapture()
+    {
+        var manager = new ApplicationManager();
+        var left = new ClosingApp();
+        var right = new ClosingApp();
+        right.Window.X = 200;
+        manager.Launch(left);
+        manager.Launch(right);
+
+        // Right-clicking a background window must focus and dispatch to it.
+        manager.HandleMouse(10, 20, false, false, true, false);
+        Check(manager.ActiveApplication == left, "right press focuses background window");
+        Check(left.MouseCount == 1 && left.LastRightPress, "right press reaches focused app");
+        Check(right.MouseCount == 0, "foreground app does not receive background right press");
+
+        // A left press on another window should change focus and target.
+        manager.HandleMouse(220, 20, true, false, false, false);
+        Check(manager.ActiveApplication == right, "left press focuses other window");
+        Check(right.MouseCount == 1 && left.MouseCount == 1,
+            "left press reaches only the hit window");
+
+        // Clicking empty desktop must not trigger a foreground control.
+        manager.HandleMouse(500, 500, true, false, false, false);
+        Check(right.MouseCount == 1, "desktop press is not sent to app");
+
+        // A held gesture can end outside the window: forward the release.
+        manager.HandleMouse(500, 500, false, true, false, false);
+        Check(right.MouseCount == 2 && right.LastLeftRelease,
+            "drag release reaches active window outside its bounds");
+
+        right.Window.Minimize();
+        manager.HandleMouse(220, 20, true, false, false, false);
+        Check(right.MouseCount == 2, "minimized window cannot receive new press");
+        Check(manager.ActiveApplication == left, "minimized window is excluded from active focus");
+    }
+
     public static int Main()
     {
         OrdinaryLogout();
@@ -239,6 +290,7 @@ internal static class Program
         RemoveEarlierDuringUpdate();
         CloseCallbackReentrancy();
         LogoutCallbackCannotReopenWindows();
+        MouseFocusAndCapture();
         Console.WriteLine("PASS: " + checks + " production ApplicationManager C# assertions");
         return 0;
     }
