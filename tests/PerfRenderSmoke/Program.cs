@@ -60,6 +60,7 @@ internal static class Program
         CornerInsetSmoke.Verify();
         CornerBandSmoke.Verify();
         TextWhitespaceSmoke.Verify();
+        TextNormalizeSmoke.Verify();
         IconBlitSmoke.Verify();
         IconCacheSmoke.Verify();
         IconTwoSizeCacheSmoke.Verify();
