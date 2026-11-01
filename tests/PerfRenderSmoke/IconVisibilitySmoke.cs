@@ -33,8 +33,10 @@ internal static class IconVisibilitySmoke
 
     private static void SamePixels(Canvas actual, Canvas expected, string label)
     {
-        if (actual.DrawCalls != expected.DrawCalls)
-            throw new Exception(label + ": Canvas call count changed");
+        // The production renderer may coalesce repeated opaque pixels into
+        // rectangles, so fewer Canvas calls are correct when pixels match.
+        if (actual.DrawCalls > expected.DrawCalls)
+            throw new Exception(label + ": Canvas call count increased");
         for (int i = 0; i < actual.Pixels.Length; i++)
             if (actual.Pixels[i] != expected.Pixels[i])
                 throw new Exception(label + ": pixel mismatch " + i);
