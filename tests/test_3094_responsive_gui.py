@@ -2358,7 +2358,7 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
             "private static IconType ResolveEntryIcon(", 1)[0]
         self.assertIn("if (visibleTileHeight < iconSize + 33 || tileWidth < 88)", grid)
         self.assertIn("if (visibleTileHeight >= 32 && tileWidth >= 32)", grid)
-        self.assertIn("tileX + 6, tileY + 7, 24, 24", grid)
+        self.assertIn("tileX + 6, tileY + 7, compactIconSize, compactIconSize", grid)
         self.assertIn("tileX + 36, tileY + 17", grid)
         self.assertIn("tileWidth - 42", grid)
         # At 320x240 the window is constrained to 320x196: grid 64px.
