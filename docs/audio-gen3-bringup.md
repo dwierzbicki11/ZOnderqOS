@@ -362,3 +362,30 @@ The real-QEMU CI includes separate boots and backend WAV captures for both
 commands, with unique pitch expectations. Until those runs complete, these
 new paths are **implemented but not QEMU-verified**. Production audio remains
 disabled and external FAT32 WAV playback remains out of scope.
+
+### Two-source saturating PCM mixer (2026-11-01; new QEMU capture pending)
+
+`AudioPcmMixer.MixStereo16` combines **two independent 48 kHz signed
+stereo16 clips** with separate software gains (0..100%). It rejects null,
+empty, misaligned and over-two-second inputs before allocation. The output
+lasts as long as the longer input; a shorter input contributes silence
+after EOF. Each interleaved sample is scaled independently, added using
+32-bit arithmetic, and **saturated to signed 16-bit range** rather than
+wrapping or clipping unpredictably. Neither source buffer is modified.
+
+The opt-in diskless `mix` diagnostic synthesizes a 440 Hz left-only
+clip and an 880 Hz right-only clip, mixes them, then sends the resulting
+PCM through the existing stock Cosmos 3.0.95 HDA `AudioManager`. Host C#
+tests cover positive/negative saturation, cancellation, independent gain,
+different clip lengths, input immutability and duration/alignment limits.
+They also compare every sample of the `mix` fixture against the existing
+true-stereo generator.
+
+An **additional independent QEMU boot** captures `mix` through the
+emulated HDA WAV backend; the existing stereo validator must detect
+both 440 Hz left and 880 Hz right. This checks a real PCM output path,
+but does not prove physical speakers, kernel IRQ delivery, general-purpose
+concurrent playback scheduling or GUI audio integration. The new capture
+must complete before a QEMU PASS claim. Production disk GUI audio remains
+disabled; there are no guest disks, FAT32 mounts, new DMA operations,
+custom SMP/SMT or Cosmos SDK modifications in this change.
