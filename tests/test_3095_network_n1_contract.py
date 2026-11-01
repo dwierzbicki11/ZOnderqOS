@@ -223,6 +223,18 @@ class NetworkN1Isolation(unittest.TestCase):
             self.assertIn(term, HTTP_HOST)
         self.assertIn("expected[prefix.Length + offset]", SOURCE)
         self.assertIn("patterned_body(attempt)", HTTP_HOST)
+        # All six requests must have distinct bytes, checked independently
+        # by the loopback host and PCAP verifier (not only serial markers).
+        self.assertIn('"X-Zonderq-Attempt: " + attempt', SOURCE)
+        self.assertIn("def request_for_attempt(attempt: int)", HTTP_HOST)
+        self.assertIn("request_for_attempt(attempt)", HTTP_HOST)
+        self.assertIn("request_for_attempt(request_index + 1)", HTTP_HOST)
+        self.assertIn("request_for_attempt(attempt), server_mac", HTTP_VALIDATOR)
+        self.assertIn("request_for_attempt(2)", HTTP_VALIDATOR)
+        self.assertIn("accepted stale third-session HTTP TX bytes",
+                      (ROOT / "tests/verify_3095_network_n6_post_http.py").read_text())
+        self.assertIn("accepted stale post-burst HTTP TX attempt=",
+                      (ROOT / "tests/verify_3095_network_n6_post_http.py").read_text())
         self.assertIn("len(set(chunk)) > 50", HTTP_HOST)
         self.assertNotIn("new string((char)(", SOURCE)
         self.assertIn('readCalls++', SOURCE)

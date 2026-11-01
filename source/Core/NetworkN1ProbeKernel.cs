@@ -367,7 +367,8 @@ namespace ZonderqOS
                 http.Client.SendTimeout = 5000;
                 System.Net.Sockets.NetworkStream stream = http.GetStream();
                 byte[] request = System.Text.Encoding.ASCII.GetBytes(
-                    "GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n\r\n");
+                    "GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n" +
+                    "X-Zonderq-Attempt: " + attempt + "\r\n\r\n");
                 byte[] prefix = System.Text.Encoding.ASCII.GetBytes(
                     "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 4116\r\nConnection: close\r\n\r\nZONDERQ3095-HTTP-OK\n");
                 byte[] expected = new byte[prefix.Length + 4096];

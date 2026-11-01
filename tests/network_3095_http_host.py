@@ -12,7 +12,20 @@ import sys
 import time
 
 PORT = 18096
-REQUEST = b"GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n\r\n"
+REQUEST = (b"GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\n"
+           b"Connection: close\r\nX-Zonderq-Attempt: 1\r\n\r\n")
+
+
+def request_for_attempt(attempt: int) -> bytes:
+    """Distinct equal-length guest TX bytes for each of six TCP sessions.
+
+    The host and PCAP verifier both reject a replayed/stale TX descriptor
+    even if the TCP sequence and response bytes happen to be valid.
+    """
+    if not 1 <= attempt <= 6:
+        raise ValueError("HTTP request attempt outside 1..6")
+    return REQUEST.replace(b"X-Zonderq-Attempt: 1\r\n",
+                           f"X-Zonderq-Attempt: {attempt}\r\n".encode("ascii"))
 def patterned_body(attempt: int) -> bytes:
     """Deterministic, printable byte-varying 4 KiB RX stress payload.
 
@@ -65,7 +78,7 @@ def serve(port: int = PORT) -> None:
                     if not chunk:
                         break
                     request.extend(chunk)
-                if bytes(request) != REQUEST:
+                if bytes(request) != request_for_attempt(attempt):
                     raise ValueError(f"unexpected HTTP request length={len(request)}")
                 # Force the guest through multiple TCP/IP packets and E1000E DMA
                 # RX descriptors. The PCAP gate must independently establish the
@@ -117,7 +130,7 @@ def self_test() -> None:
                 connection = socket.create_connection(("127.0.0.1", port), timeout=1)
             with connection:
                 connection.settimeout(5)
-                connection.sendall(REQUEST)
+                connection.sendall(request_for_attempt(request_index + 1))
                 received = bytearray()
                 while len(received) < len(RESPONSE):
                     part = connection.recv(len(RESPONSE) - len(received))
@@ -129,6 +142,16 @@ def self_test() -> None:
         worker.join(timeout=5)
         if worker.is_alive() or errors:
             raise AssertionError(f"HTTP server failed on attempt {attempt + 1}: {errors}")
+    assert request_for_attempt(1) == REQUEST
+    assert len({request_for_attempt(i) for i in range(1, 7)}) == 6
+    assert all(len(request_for_attempt(i)) == len(REQUEST) for i in range(1, 7))
+    for invalid_attempt in (0, 7):
+        try:
+            request_for_attempt(invalid_attempt)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted out-of-range HTTP TX attempt")
     assert len({response_for_attempt(i) for i in range(1, 7)}) == 6
     assert all(len(response_for_attempt(i)) == len(RESPONSE) for i in range(1, 7))
     body_start = RESPONSE.index(b"ZONDERQ3095-HTTP-OK\n") + len(b"ZONDERQ3095-HTTP-OK\n")

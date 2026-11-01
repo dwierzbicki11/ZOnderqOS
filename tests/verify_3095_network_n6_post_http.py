@@ -10,7 +10,7 @@ import argparse
 from pathlib import Path
 import re
 
-from network_3095_http_host import PORT, REQUEST, RESPONSE, response_for_attempt
+from network_3095_http_host import PORT, REQUEST, RESPONSE, request_for_attempt, response_for_attempt
 from verify_3095_network_n1 import pcap_frames
 from verify_3095_network_n2 import LEASE, synthetic_capture
 from verify_3095_network_n4 import tcp_frame
@@ -169,7 +169,7 @@ def self_test() -> None:
         fake_http(False, 0x02, 50000, 0, client_port=port),
         fake_http(True, 0x12, 60000, 50001, client_port=port),
         fake_http(False, 0x10, 50001, 60001, client_port=port),
-        fake_http(False, 0x18, 50001, 60001, REQUEST, client_port=port),
+        fake_http(False, 0x18, 50001, 60001, request_for_attempt(3), client_port=port),
     ]
     boundary = RESPONSE.index(b"\r\n\r\n") + 4
     cuts = [0, boundary]
@@ -189,6 +189,17 @@ def self_test() -> None:
     third = handshake + response + teardown
     frames = [bytes(60)] + third
     check_third_http(frames, guest, 0, (49153, 49154))
+    # A stale first-session TX descriptor must not be accepted as
+    # the third session's request despite a valid TCP handshake.
+    stale_tx_third = list(frames)
+    stale_tx_third[1 + 3] = fake_http(
+        False, 0x18, 50001, 60001, REQUEST, client_port=port)
+    try:
+        check_third_http(stale_tx_third, guest, 0, (49153, 49154))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted stale third-session HTTP TX bytes")
     # Detect a stale/replayed first-session DMA payload after the TX burst.
     stale_third = ([bytes(60)] + handshake +
                    [fake_http(True, 0x18, 60001 + start,
@@ -307,7 +318,7 @@ def self_test() -> None:
             fake_http(True, 0x12, server_seq, client_seq + 1, client_port=port),
             fake_http(False, 0x10, client_seq + 1, server_seq + 1, client_port=port),
             fake_http(False, 0x18, client_seq + 1, server_seq + 1,
-                      REQUEST, client_port=port),
+                      request_for_attempt(attempt), client_port=port),
         ])
         extended.extend(
             fake_http(True, 0x18, server_seq + 1 + start,
@@ -322,6 +333,20 @@ def self_test() -> None:
                       server_seq + 2 + len(RESPONSE), client_port=port),
         ])
     check_followup_http(extended, guest, 0, (49153, 49154))
+    for attempt in range(4, 7):
+        # One stale guest request in ANY post-burst session must fail.
+        client_port = 49152 + attempt
+        client_seq = 10000 * attempt + 1
+        server_seq = 10000 * (attempt + 1) + 1
+        request_index = len(frames) + (attempt - 4) * session_frames + 3
+        stale_tx = list(extended)
+        stale_tx[request_index] = fake_http(
+            False, 0x18, client_seq, server_seq, REQUEST, client_port=client_port)
+        try:
+            check_followup_http(stale_tx, guest, 0, (49153, 49154))
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted stale post-burst HTTP TX attempt={attempt}")
     # Every body segment in all three later sessions must reject stale
     # first-session RX data, even when TCP sequence/ACK and FIN are valid.
     session_frames = 4 + (len(cuts) - 1) + 2  # handshake/request, response, FIN/ACK

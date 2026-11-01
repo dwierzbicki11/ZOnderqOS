@@ -21,7 +21,7 @@ from verify_3095_network_n4 import (
 from verify_3095_network_n5 import (
     DNS_START, DNS_PASS, fake_arp, fake_dns, validate as validate_n5,
 )
-from network_3095_http_host import PORT, REQUEST, RESPONSE, response_for_attempt
+from network_3095_http_host import PORT, REQUEST, RESPONSE, request_for_attempt, response_for_attempt
 
 HTTP_START = "[NET3095-N6] HTTP_ATTEMPT=START"
 HTTP_PASS = f"[NET3095-N6] HTTP=PASS from=10.0.2.2 port={PORT} bytes={len(RESPONSE)}"
@@ -144,7 +144,7 @@ def find_http_transaction(packets, guest: bytes, first: int, excluded_port: int 
                     continue
                 end_request = stream_payload(
                     packets, k + 1, guest, client_port, "client",
-                    client_seq, server_seq, REQUEST, server_mac)
+                    client_seq, server_seq, request_for_attempt(attempt), server_mac)
                 if end_request is None:
                     continue
                 end_response = stream_payload(
@@ -236,7 +236,7 @@ def self_test() -> None:
         fake_http(True, 0x12, 40000, 30001, client_port=49154),
         fake_http(False, 0x10, 30001, 40001, client_port=49154),
     ]
-    second_request = [fake_http(False, 0x18, 30001, 40001, REQUEST, client_port=49154)]
+    second_request = [fake_http(False, 0x18, 30001, 40001, request_for_attempt(2), client_port=49154)]
     second_response = [
         fake_http(True, 0x18, 40001 + start, 30001 + len(REQUEST),
                   response_for_attempt(2)[start:end], client_port=49154)
@@ -402,6 +402,11 @@ def self_test() -> None:
     second_negatives = [
         second_frames[:-1],  # second FIN without the guest ACK
         second_handshake + second_request + second_response[:2] + second_teardown,
+        # Replayed TX payload from the first session must not count as
+        # a fresh request even when the TCP tuple and ACKs are valid.
+        second_handshake +
+            [fake_http(False, 0x18, 30001, 40001, REQUEST, client_port=49154)] +
+            second_response + second_teardown,
         second_handshake + second_request +
             [corrupt_mac(second_response[0], 6)] + second_response[1:] + second_teardown,
         second_handshake + second_request + second_response +
