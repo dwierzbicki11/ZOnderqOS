@@ -12,6 +12,7 @@ on:
       - 'tests/GuiStartMenuSmoke/**'
       - 'tests/GuiTaskbarTelemetrySmoke/**'
       - 'tests/GuiNotificationCenterSmoke/**'
+      - 'tests/GuiTaskManagerRefreshSmoke/**'
       - 'tests/test_gui_modified_keys.py'
       - 'tests/test_gui_taskmanager_tiny_view.py'
       - 'tests/test_3094_storage_policy.py'
@@ -66,3 +67,5 @@ jobs:
         run: dotnet run --project tests/GuiTaskbarTelemetrySmoke/GuiTaskbarTelemetrySmoke.csproj --configuration Release
       - name: Exercise production notification selection under incoming alerts in host C#
         run: dotnet run --project tests/GuiNotificationCenterSmoke/GuiNotificationCenterSmoke.csproj --configuration Release
+      - name: Exercise Task Manager monotonic telemetry cadence in host C#
+        run: dotnet run --project tests/GuiTaskManagerRefreshSmoke/GuiTaskManagerRefreshSmoke.csproj --configuration Release
