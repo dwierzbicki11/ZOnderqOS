@@ -58,6 +58,14 @@ class TextRangeVisibilityContracts(unittest.TestCase):
         self.assertIn("if (!partiallyClipped || (i >= first && i < last))", numeric)
         self.assertIn("DrawChar(canvas, (char)('0' + (int)digit)", numeric)
 
+    def test_signed_numbers_cull_before_drawing_minus(self):
+        signed = SOURCE.split("public static void DrawInt(Canvas", 1)[1].split(
+            "public static void DrawPercent(", 1)[0]
+        self.assertLess(signed.index("int characters = DigitCount(magnitude) + 1;"),
+                        signed.index("DrawChar(canvas, '-', x, y, color);"))
+        self.assertIn("long magnitudeX = (long)x + 6;", signed)
+        self.assertIn("DrawUInt(canvas, magnitude, (int)magnitudeX, y, color);", signed)
+
     def test_production_source_uses_wide_culling_and_saturation(self):
         self.assertIn("int end = count >= text.Length - start ? text.Length : start + count;", SOURCE)
         self.assertIn("long skip = (-(long)x + 1) / 6;", SOURCE)
