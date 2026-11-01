@@ -9,6 +9,7 @@ on:
       - 'tests/GuiScrollBarSmoke/**'
       - 'tests/GuiWindowInputSmoke/**'
       - 'tests/GuiStartMenuSmoke/**'
+      - 'tests/GuiTaskbarTelemetrySmoke/**'
       - 'tests/test_gui_modified_keys.py'
       - 'tests/test_gui_taskmanager_tiny_view.py'
       - 'tests/test_3094_storage_policy.py'
@@ -57,3 +58,5 @@ jobs:
         run: dotnet run --project tests/GuiWindowInputSmoke/GuiWindowInputSmoke.csproj --configuration Release
       - name: Exercise production Start menu interactions in host C#
         run: dotnet run --project tests/GuiStartMenuSmoke/GuiStartMenuSmoke.csproj --configuration Release
+      - name: Exercise production taskbar telemetry gate in host C#
+        run: dotnet run --project tests/GuiTaskbarTelemetrySmoke/GuiTaskbarTelemetrySmoke.csproj --configuration Release

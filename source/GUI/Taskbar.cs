@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Drawing;
 using Cosmos.Kernel.System.Graphics;
 using Cosmos.Kernel.System.Storage;
@@ -26,6 +27,7 @@ namespace ZonderqOS.GUI
         private int cachedClockKey = -1;
         private int cachedDay = -1;
         private int cachedVolumeCount = -1;
+        private long lastStoragePollTicks = -1;
         private int cachedTimeZone = int.MinValue;
         private bool cachedSecondsMode;
         private bool cachedNetworkReady;
@@ -345,14 +347,24 @@ namespace ZonderqOS.GUI
                     networkReady ? "Interfejs sieciowy jest gotowy do pracy." : "Polaczenie sieciowe nie jest obecnie gotowe.");
             }
 
-            int volumeCount = 0;
+            // The partition table can involve device/driver work. Do not
+            // enumerate it on every rendered frame (typically ~60 Hz).
+            // Keep the last valid value on transient storage exceptions,
+            // rather than inventing a disconnect and posting a false alert.
+            long nowTicks = Stopwatch.GetTimestamp();
+            if (!TaskbarTelemetryGate.ShouldPoll(nowTicks, lastStoragePollTicks, Stopwatch.Frequency))
+                return;
+            lastStoragePollTicks = nowTicks;
+
+            int volumeCount;
             try
             {
                 volumeCount = StorageManager.Partitions.Count;
             }
             catch
             {
-                volumeCount = 0;
+                // Retry on the next polling interval, not on every frame.
+                return;
             }
 
             if (volumeCount != cachedVolumeCount)

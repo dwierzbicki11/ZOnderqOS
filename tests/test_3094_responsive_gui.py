@@ -98,6 +98,19 @@ class ResponsiveGui3094(unittest.TestCase):
                 path_width = max(120, view_width - 188)
                 self.assertLessEqual(180 + path_width, view_width)
 
+    def test_taskbar_storage_poll_is_bounded_and_failed_reads_keep_last_valid_state(self):
+        # Source integration contract: the monotonic gate runs before storage
+        # enumeration; a transient exception must not masquerade as VOL 0.
+        self.assertIn("TaskbarTelemetryGate.ShouldPoll(", TASKBAR)
+        self.assertIn("lastStoragePollTicks = nowTicks;", TASKBAR)
+        storage = TASKBAR.split("long nowTicks = Stopwatch.GetTimestamp();", 1)[1].split(
+            "if (volumeCount != cachedVolumeCount)", 1)[0]
+        self.assertLess(storage.index("TaskbarTelemetryGate.ShouldPoll("),
+                        storage.index("StorageManager.Partitions.Count"))
+        self.assertIn("catch\n            {\n                // Retry on the next polling interval, not on every frame.\n                return;\n            }", storage)
+        self.assertNotIn("volumeCount = 0;", storage)
+        self.assertIn("if (volumeStateInitialized)", TASKBAR)
+
     def test_ultranarrow_taskbar_keeps_switcher_visible_without_invisible_tray_hits(self):
         # Geometry-only regression for widths below the QEMU 240px probe.
         # At these widths the old fixed 132px tray hid every app button.
