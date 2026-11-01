@@ -20,7 +20,7 @@ namespace ZonderqOS.GUI.Apps
 
         internal static int ClampLogicalPage(int page, int pageCount)
         {
-            int last = Math.Max(0, pageCount - 1);
+            int last = pageCount > 0 ? pageCount - 1 : 0;
             return Math.Max(0, Math.Min(page, last));
         }
     }
