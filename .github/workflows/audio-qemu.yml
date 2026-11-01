@@ -92,7 +92,7 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-16000-out --boot-seconds 45 --command wav16k
-      - name: Boot and capture 24 kHz PCM16 stereo WAV (4000 Hz)
+      - name: Boot and capture 24 kHz PCM16 stereo WAV (740 Hz)
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-24000-out --boot-seconds 45 --command wav24k
