@@ -97,8 +97,8 @@ def self_test() -> None:
     # A driver binding or missing unbound PCI node must never be accepted.
     for bad_e1000e in (
         rtl.replace("no driver", "offer E1000EDriver -> bound"),
-        rtl.replace("[Drivers] pci:0000:00:02.0 no driver\\n", ""),
-        rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver: mac 52:54:00:12:34:56\\n",
+        rtl.replace("[Drivers] pci:0000:00:02.0 no driver\n", ""),
+        rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver: mac 52:54:00:12:34:56\n",
     ):
         try:
             verify(bad_e1000e, "e1000e")
