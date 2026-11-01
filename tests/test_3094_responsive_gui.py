@@ -2750,7 +2750,7 @@ class NarrowCaptionControls3095(unittest.TestCase):
             "if (!inTitle || (visibleControls > 0 && mouseX >= controlsLeft))",
             mouse)
         self.assertIn("int titleWidth = Width - visibleControls * ButtonSize - 28;", render)
-        self.assertIn("if (titleWidth > 0)", render)
+        self.assertIn("if (Height >= TitleBarHeight && titleWidth > 0)", render)
 
     def test_tiny_height_never_exposes_caption_controls_or_draws_title_outside(self):
         helper = WINDOW.split("private int VisibleCaptionControls()", 1)[1].split(
