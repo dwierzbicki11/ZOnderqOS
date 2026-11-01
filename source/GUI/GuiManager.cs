@@ -309,14 +309,19 @@ namespace ZonderqOS.GUI
                     // state: releasing right while left stays held must not
                     // synthesize a new left click on Start, a window or a file.
                     bool leftForUi = currentLeftButtonState && !currentRightButtonState;
-                    bool oldLeftForUi = previousLeftButtonState && !currentRightButtonState;
+                    // If right is released in the same sample that left is
+                    // pressed, the previous right-owned gesture still owns
+                    // that left hold. Treat it as held, not a new Start/taskbar
+                    // or notification click on an exposed control.
+                    bool oldLeftForUi = (previousLeftButtonState ||
+                        (previousRightButtonState && currentLeftButtonState)) && !currentRightButtonState;
                     bool rightPressed = currentRightButtonState && !previousRightButtonState;
                     // A second button cannot start a desktop action during an
                     // existing physical gesture. This also covers releasing
                     // right and pressing left in the same input sample: the
                     // sanitized left state otherwise looks like a fresh click.
                     bool desktopChordPress = (previousLeftButtonState || previousRightButtonState) &&
-                        ((leftForUi && !oldLeftForUi) || rightPressed);
+                        ((currentLeftButtonState && !previousLeftButtonState) || rightPressed);
                     if (desktopChordPress)
                     {
                         lastShortcutClick = -1;

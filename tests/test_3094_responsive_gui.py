@@ -271,7 +271,8 @@ class ResponsiveGui3094(unittest.TestCase):
         input_loop = DESKTOP.split("bool leftForUi =", 1)[1].split(
             "applicationManager.Update();", 1)[0]
         self.assertIn("bool desktopChordPress = (previousLeftButtonState || previousRightButtonState)", input_loop)
-        self.assertIn("((leftForUi && !oldLeftForUi) || rightPressed)", input_loop)
+        self.assertIn("((currentLeftButtonState && !previousLeftButtonState) || rightPressed)", input_loop)
+        self.assertIn("(previousRightButtonState && currentLeftButtonState)) && !currentRightButtonState;", input_loop)
         self.assertIn("!windowCapturedClick && !desktopChordPress)", input_loop)
         self.assertIn("lastShortcutClickTimestamp = 0;", input_loop)
         self.assertEqual(DESKTOP.count("UpdateDesktopInteractions(mouseX, mouseY, leftForUi"), 1)
@@ -289,11 +290,15 @@ class ResponsiveGui3094(unittest.TestCase):
             (True, False, False, False, False),   # plain release
         ):
             left_for_ui = current_left and not current_right
-            old_left_for_ui = previous_left and not current_right
+            old_left_for_ui = (previous_left or (previous_right and current_left)) and not current_right
             right_pressed = current_right and not previous_right
             chord = (previous_left or previous_right) and (
-                (left_for_ui and not old_left_for_ui) or right_pressed)
+                (current_left and not previous_left) or right_pressed)
             self.assertEqual(bool(chord), expected)
+            if previous_right and current_left and not current_right:
+                self.assertTrue(old_left_for_ui)
+                self.assertTrue(left_for_ui)
+                self.assertFalse(left_for_ui and not old_left_for_ui)
 
     def test_window_mouse_capture_survives_focus_and_disposal(self):
         dispatch = APPLICATION_MANAGER.split(
@@ -760,7 +765,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertLess(dispatch.index("desktopContextMenu.UpdateInteractions("),
                         dispatch.index("applicationManager.HandleMouse("))
         self.assertIn("if (!desktopMenuCaptures && !fileManagerMenuCaptures)\n                            taskbar.UpdateInteractions(", dispatch)
-        self.assertIn("if (!startMenuCaptures && !desktopMenuCaptures && !fileManagerMenuCaptures && !windowCapturedClick)\n                            UpdateDesktopInteractions(", dispatch)
+        self.assertIn("if (!startMenuCaptures && !desktopMenuCaptures && !fileManagerMenuCaptures &&\n                            !windowCapturedClick && !desktopChordPress)\n                            UpdateDesktopInteractions(", dispatch)
         # The menu is handled once at the top-level dispatch, before the
         # ShowDesktopIcons=false early return. Do not double-dispatch actions.
         self.assertNotIn("desktopContextMenu.UpdateInteractions(", desktop)
@@ -1009,7 +1014,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertLess(dispatch.index("IsPointOverWindow(mouseX, mouseY);"),
                         dispatch.index("applicationManager.HandleMouse("))
         self.assertIn(
-            "if (!startMenuCaptures && !desktopMenuCaptures && !fileManagerMenuCaptures && !windowCapturedClick)",
+            "if (!startMenuCaptures && !desktopMenuCaptures && !fileManagerMenuCaptures &&\n                            !windowCapturedClick && !desktopChordPress)",
             dispatch
         )
         self.assertLess(dispatch.index("applicationManager.HandleMouse("),
@@ -1465,7 +1470,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("else if (!startMenuCaptures && !desktopMenuCaptures)", dispatch)
         self.assertIn("if (!rightPressed && !fileManagerMenuCaptures)", dispatch)
         self.assertIn("if (!desktopMenuCaptures && !fileManagerMenuCaptures)", DESKTOP)
-        self.assertIn("!fileManagerMenuCaptures && !windowCapturedClick", DESKTOP)
+        self.assertIn("!fileManagerMenuCaptures &&\n                            !windowCapturedClick && !desktopChordPress", DESKTOP)
         self.assertLess(dispatch.index("bool fileManagerMenuCaptures ="),
                         dispatch.index("applicationManager.HandleMouse("))
 
