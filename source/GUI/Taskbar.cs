@@ -485,6 +485,12 @@ namespace ZonderqOS.GUI
                 }
             }
 
+            // App tiles and the overflow switcher are painted at Y+3 with
+            // Height-6. The taskbar's top/bottom borders are not buttons.
+            // Start and notification controls have their own hitboxes above.
+            if (mouseY < Y + 3 || mouseY >= Y + Height - 3)
+                return;
+
             if (applicationManager == null)
                 return;
 
