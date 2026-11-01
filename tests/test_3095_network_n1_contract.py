@@ -14,6 +14,26 @@ HTTP_VALIDATOR = (ROOT / "tests/verify_3095_network_n6.py").read_text()
 MAIN = (ROOT / "Kernel.cs").read_text()
 
 class NetworkN1Isolation(unittest.TestCase):
+    def test_n4_tcp_echo_total_rx_deadline(self):
+        # The 21-byte echo must not take 21 * ReceiveTimeout seconds
+        # when a malicious peer trickles one byte per successful read.
+        n4 = SOURCE.split("#if ZONDERQ_NETWORK_N4_TCP", 1)[1].split(
+            "#if ZONDERQ_NETWORK_N5_DNS", 1)[0]
+        self.assertIn("long echoStart = Stopwatch.GetTimestamp();", n4)
+        self.assertIn("long echoFrequency = Stopwatch.Frequency;", n4)
+        self.assertIn("echoFrequency <= 0 || echoStart <= 0", n4)
+        self.assertEqual(n4.count("echoElapsed / echoFrequency >= 20"), 2)
+        self.assertEqual(n4.count("TCP echo total deadline exceeded"), 2)
+        before = n4.index("while (received < response.Length)")
+        first = n4.index("echoElapsed / echoFrequency >= 20", before)
+        read = n4.index("int read = stream.Read(", before)
+        second = n4.index("echoElapsed / echoFrequency >= 20", read)
+        completed = n4.index("if (received != expected.Length)", read)
+        self.assertLess(first, read)
+        self.assertLess(read, second)
+        self.assertLess(second, completed)
+        self.assertIn("client.Client.ReceiveTimeout = 5000;", n4)
+
     def test_n6_http_total_rx_deadline(self):
         # Socket ReceiveTimeout is per read, not a complete-stream limit.
         # The N6 opt-in guest must reject a trickle peer even when every
