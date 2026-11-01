@@ -143,7 +143,11 @@ namespace ZonderqOS.GUI
 
             if (key.Key == ConsoleKeyEx.Enter || key.Key == ConsoleKeyEx.NumEnter)
             {
-                LaunchSelected();
+                // Shift+Enter (including keypad Enter) must not launch an
+                // application behind a modifier chord. Plain Enter is the
+                // only confirmation key; Shift remains usable for typing.
+                if (key.Modifiers == 0)
+                    LaunchSelected();
                 return true;
             }
 
@@ -161,7 +165,8 @@ namespace ZonderqOS.GUI
 
             if (key.Key == ConsoleKeyEx.Delete)
             {
-                if (query.Length > 0)
+                // Modified Delete is not a request to discard the search.
+                if (key.Modifiers == 0 && query.Length > 0)
                 {
                     query = string.Empty;
                     selectedIndex = 0;
