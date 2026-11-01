@@ -508,10 +508,16 @@ namespace ZonderqOS.SystemCore
                 // Keep one ring of zero PCM *inside* the bounded source stream
                 // for opt-in fade probes, without changing the stock driver.
                 const int hdaDrainSilenceBytes = 16 * 1024;
+                const int maxPcmBytes = 48000 * 2 * 4;
+                // Long, otherwise-valid WAVs must remain playable: reserve
+                // only the room left inside the existing two-second cap.
+                // AudioPlayer itself still drains one silent ring at EOF.
+                int drainBytes = Math.Min(hdaDrainSilenceBytes,
+                    Math.Max(0, maxPcmBytes - pcm.Length));
                 byte[] scaled = fadeMilliseconds == 0
                     ? AudioPcmVolume.ScaleStereo16Channels(pcm, leftGain, rightGain)
                     : AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
-                        pcm, leftGain, rightGain, fadeMilliseconds, hdaDrainSilenceBytes);
+                        pcm, leftGain, rightGain, fadeMilliseconds, drainBytes);
                 bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled));
                 Console.WriteLine(accepted
                     ? "[AUDIO] PCM ACCEPTED_AND_DRAINED (not proof of audible output)"
