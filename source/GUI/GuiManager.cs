@@ -311,6 +311,17 @@ namespace ZonderqOS.GUI
                     bool leftForUi = currentLeftButtonState && !currentRightButtonState;
                     bool oldLeftForUi = previousLeftButtonState && !currentRightButtonState;
                     bool rightPressed = currentRightButtonState && !previousRightButtonState;
+                    // A second button cannot start a desktop action during an
+                    // existing physical gesture. This also covers releasing
+                    // right and pressing left in the same input sample: the
+                    // sanitized left state otherwise looks like a fresh click.
+                    bool desktopChordPress = (previousLeftButtonState || previousRightButtonState) &&
+                        ((leftForUi && !oldLeftForUi) || rightPressed);
+                    if (desktopChordPress)
+                    {
+                        lastShortcutClick = -1;
+                        lastShortcutClickTimestamp = 0;
+                    }
                     bool paletteCaptured = false;
                     if (commandPalette != null && commandPalette.Visible)
                     {
@@ -449,7 +460,8 @@ namespace ZonderqOS.GUI
                         // A Start-menu action may close the menu in this frame.
                         // Use the pre-dispatch capture flags so that same click
                         // cannot open a desktop shortcut beneath the old overlay.
-                        if (!startMenuCaptures && !desktopMenuCaptures && !fileManagerMenuCaptures && !windowCapturedClick)
+                        if (!startMenuCaptures && !desktopMenuCaptures && !fileManagerMenuCaptures &&
+                            !windowCapturedClick && !desktopChordPress)
                             UpdateDesktopInteractions(mouseX, mouseY, leftForUi, oldLeftForUi,
                                 currentRightButtonState, previousRightButtonState);
                     }

@@ -264,6 +264,37 @@ class ResponsiveGui3094(unittest.TestCase):
         ):
             self.assertIn(scenario + "();", smoke)
 
+    def test_desktop_context_menu_rejects_mouse_chords(self):
+        # A right press while dragging a window across the desktop must not
+        # open the desktop menu; a simultaneous right-release/left-press
+        # must not launch an icon. The guard applies with icons on or off.
+        input_loop = DESKTOP.split("bool leftForUi =", 1)[1].split(
+            "applicationManager.Update();", 1)[0]
+        self.assertIn("bool desktopChordPress = (previousLeftButtonState || previousRightButtonState)", input_loop)
+        self.assertIn("((leftForUi && !oldLeftForUi) || rightPressed)", input_loop)
+        self.assertIn("!windowCapturedClick && !desktopChordPress)", input_loop)
+        self.assertIn("lastShortcutClickTimestamp = 0;", input_loop)
+        self.assertEqual(DESKTOP.count("UpdateDesktopInteractions(mouseX, mouseY, leftForUi"), 1)
+
+        # Pure state model; the production C# behavior needs a QEMU input
+        # probe before it can be called a hardware/guest interaction PASS.
+        for previous_left, previous_right, current_left, current_right, expected in (
+            (False, False, False, True, False),   # genuine desktop right click
+            (False, False, True, False, False),   # genuine desktop left click
+            (True, False, True, True, True),      # second right during left drag
+            (True, False, False, True, True),     # release left + press right
+            (False, True, True, False, True),     # release right + press left
+            (False, True, True, True, False),     # left filtered while right held
+            (True, True, True, True, False),      # no new press
+            (True, False, False, False, False),   # plain release
+        ):
+            left_for_ui = current_left and not current_right
+            old_left_for_ui = previous_left and not current_right
+            right_pressed = current_right and not previous_right
+            chord = (previous_left or previous_right) and (
+                (left_for_ui and not old_left_for_ui) or right_pressed)
+            self.assertEqual(bool(chord), expected)
+
     def test_window_mouse_capture_survives_focus_and_disposal(self):
         dispatch = APPLICATION_MANAGER.split(
             "public void HandleMouse(int mouseX, int mouseY, bool leftClicked,", 1
