@@ -1389,6 +1389,100 @@ static class Test
                 BitConverter.ToInt16(mixRight, at - 2400 * 4 + 2),
                 "right clip retains its 50ms trailing interval");
         }
+        // Multi-effect GUI scheduling is a pure bounded PCM operation. Verify
+        // that simultaneous clipping is applied only after all sources sum.
+        byte[] positive30000 = { 0x30, 0x75, 0x30, 0x75 };
+        byte[] negative30000 = { 0xd0, 0x8a, 0xd0, 0x8a };
+        byte[] scheduledCancellation = AudioPcmMixer.MixScheduledStereo16(
+            new[] { positive30000, positive30000, negative30000 },
+            new[] { 0, 0, 0 }, new[] { 100, 100, 100 });
+        Expect(BitConverter.ToInt16(scheduledCancellation, 0) == 30000 &&
+            BitConverter.ToInt16(scheduledCancellation, 2) == 30000,
+            "three-source cancellation happens before final PCM16 saturation");
+        byte[] reorderedCancellation = AudioPcmMixer.MixScheduledStereo16(
+            new[] { negative30000, positive30000, positive30000 },
+            new[] { 0, 0, 0 }, new[] { 100, 100, 100 });
+        Expect(scheduledCancellation.AsSpan().SequenceEqual(reorderedCancellation),
+            "scheduled mixer does not depend on source order");
+        byte[] scheduledTwo = AudioPcmMixer.MixScheduledStereo16(
+            new[] { mixA, mixB }, new[] { 0, 1 }, new[] { 100, 100 });
+        Expect(scheduledTwo.AsSpan().SequenceEqual(delayed),
+            "two-source schedule matches existing delayed mixer byte-for-byte");
+        byte[] thirdScheduled = AudioPcmMixer.MixScheduledStereo16(
+            new[] { mixA, mixB, positive30000 },
+            new[] { 0, 1, 3 }, new[] { 100, 50, 50 });
+        Expect(thirdScheduled.Length == 16, "three clips extend timeline to last scheduled frame");
+        Expect(BitConverter.ToInt16(thirdScheduled, 0) == 32767 &&
+            BitConverter.ToInt16(thirdScheduled, 2) == -32768,
+            "first frame remains untouched by future clips");
+        Expect(BitConverter.ToInt16(thirdScheduled, 4) == 10000 &&
+            BitConverter.ToInt16(thirdScheduled, 6) == 10000,
+            "second frame applies independent gain to delayed clip");
+        Expect(BitConverter.ToInt16(thirdScheduled, 12) == 15000 &&
+            BitConverter.ToInt16(thirdScheduled, 14) == 15000,
+            "third scheduled clip begins on its exact frame");
+        Expect(mixA.AsSpan().SequenceEqual(mixACopy) &&
+            mixB.AsSpan().SequenceEqual(mixBCopy) &&
+            positive30000[0] == 0x30 && negative30000[0] == 0xd0,
+            "multi-source schedule never mutates input PCM");
+
+        byte[] scheduledMuted = AudioPcmMixer.MixScheduledStereo16(
+            new[] { mixA, mixB }, new[] { 0, 3 }, new[] { 0, 0 });
+        Expect(scheduledMuted.Length == 20 &&
+            Array.TrueForAll(scheduledMuted, value => value == 0),
+            "muted clips retain scheduled timeline but produce silence");
+        byte[] scheduledBoundary = AudioPcmMixer.MixScheduledStereo16(
+            new[] { new byte[4] }, new[] { 95999 }, new[] { 100 });
+        Expect(scheduledBoundary.Length == 384000,
+            "schedule accepts a final single frame at the two-second boundary");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16(
+            new[] { new byte[8] }, new[] { 95999 }, new[] { 100 }); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "schedule refuses a clip extending beyond the two-second limit");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16(
+            new[] { mixA }, new[] { -1 }, new[] { 100 }); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "schedule rejects negative frame offsets");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16(
+            new[] { mixA }, new[] { 0 }, new[] { 101 }); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "schedule rejects gains outside 0..100");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16(
+            new[] { mixA }, Array.Empty<int>(), new[] { 100 }); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "schedule rejects mismatched array lengths");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16(
+            new byte[9][], new int[9], new int[9]); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "schedule rejects more than eight sources");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16(
+            new[] { new byte[3] }, new[] { 0 }, new[] { 100 }); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "schedule rejects partial PCM frames");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16(
+            new byte[][] { null }, new[] { 0 }, new[] { 100 }); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "schedule rejects null clips");
+        byte[][] measuredScheduleClips = { mixA, mixB, positive30000 };
+        int[] measuredScheduleStarts = { 0, 1, 3 };
+        int[] measuredScheduleGains = { 100, 50, 50 };
+        AudioPcmMixer.MixScheduledStereo16(measuredScheduleClips,
+            measuredScheduleStarts, measuredScheduleGains);
+        long scheduledBefore = GC.GetAllocatedBytesForCurrentThread();
+        byte[] scheduledMeasured = AudioPcmMixer.MixScheduledStereo16(
+            measuredScheduleClips, measuredScheduleStarts, measuredScheduleGains);
+        long scheduledAllocated = GC.GetAllocatedBytesForCurrentThread() - scheduledBefore;
+        Expect(scheduledAllocated >= scheduledMeasured.Length &&
+            scheduledAllocated < scheduledMeasured.Length + 1024,
+            "scheduled mixer allocates only the bounded output PCM buffer");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PCM16 mixer saturation, gains, bounds and source immutability PASS");
 
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
