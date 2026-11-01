@@ -74,7 +74,9 @@ namespace ZonderqOS.GUI.Apps
                 long shifts = 0;
                 long budget = (long)count * 2;
                 bool repaired = true;
-                for (int i = 1; i < count; i++)
+                // Everything before the first inversion is already sorted.
+                // Do not rescan that prefix during the insertion repair.
+                for (int i = firstInversion; i < count; i++)
                 {
                     FileEntry value = entries[i];
                     int j = i - 1;
