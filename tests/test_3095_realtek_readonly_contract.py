@@ -83,8 +83,10 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
         self.assertIn("BAR2/BAR3 changed or became invalid after sampling; no link proof", DRIVER)
         self.assertLess(DRIVER.index("ulong barPairBefore = ReadRegisterBarPair(pci)"),
                         DRIVER.index("binding.MapRegisters(RegisterBar)"))
+        # The first BAR recheck must precede MMIO; the second must follow
+        # sampling. The old index() assertion selected the new pre-read check.
         self.assertLess(DRIVER.index("Realtek810xERegisterSampler.TrySample"),
-                        DRIVER.index("barPairBefore, ReadRegisterBarPair(pci)"))
+                        DRIVER.rindex("barPairBefore, ReadRegisterBarPair(pci)"))
         self.assertIn("[NET3095-RTL810XE-BAR-STABILITY] PASS", SMOKE)
         self.assertIn("Changed BAR2 address must invalidate", SMOKE)
         self.assertIn("Changed 64-bit BAR3 upper address must invalidate", SMOKE)
