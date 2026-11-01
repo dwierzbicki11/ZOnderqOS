@@ -49,11 +49,22 @@ namespace ZonderqOS.GUI
         private const int ToolsTop = 360;
         private const int ToolHeight = 42;
         private const int FooterHeight = 76;
+        private const int TinyFooterHeight = 48;
+        private const int TinyResultsTop = 70;
+        private const int TinyRowHeight = 42;
+        private const int TinyRowGap = 4;
+        private const int TinyColumnGap = 6;
 
         // The 560px design fits 800x600, but a 640x480 desktop gives Start
         // only 420px. Keep both result grids above the footer in that mode.
         // Render and hit-testing use the same Button geometry.
         private bool CompactLayout => Height < 530;
+        // Below 400px the normal two-grid layout overlaps the power footer.
+        // A compact searchable result strip replaces the overlapping controls.
+        private bool TinyLayout => Height < 400;
+        private int TinyColumns => Width >= 270 ? 3 : Width >= 160 ? 2 : 1;
+        private int TinyRows => Math.Max(0, (Height - TinyFooterHeight - TinyResultsTop - 6 + TinyRowGap) /
+            (TinyRowHeight + TinyRowGap));
         private int PinnedLabelY => CompactLayout ? 118 : PinnedLabelTop;
         private int PinnedCardsY => CompactLayout ? 134 : PinnedTop;
         private int PinnedCardsHeight => CompactLayout ? 53 : PinnedCardHeight;
@@ -167,6 +178,13 @@ namespace ZonderqOS.GUI
 
         private void UpdateLayout()
         {
+            if (TinyLayout)
+            {
+                UpdateTinyLayout();
+                return;
+            }
+
+            SetPowerVisibility(true);
             int cardWidth = PinnedCardWidth;
             int visiblePinned = 0;
             for (int i = 0; i < pinnedButtons.Count; i++)
@@ -250,6 +268,64 @@ namespace ZonderqOS.GUI
             }
         }
 
+        private void SetPowerVisibility(bool visible)
+        {
+            if (lockButton != null) lockButton.Visible = visible;
+            if (exitButton != null) exitButton.Visible = visible;
+            if (rebootButton != null) rebootButton.Visible = visible;
+            if (shutdownButton != null) shutdownButton.Visible = visible;
+        }
+
+        private void UpdateTinyLayout()
+        {
+            // The same clipped Button rectangles drive both rendering and
+            // hit-testing. No application control may overlap the power row.
+            int columns = TinyColumns;
+            int rows = TinyRows;
+            int capacity = columns * rows;
+            int buttonWidth = Math.Max(1, (Width - Padding * 2 - (columns - 1) * TinyColumnGap) / columns);
+            int index = 0;
+            for (int group = 0; group < 2; group++)
+            {
+                List<Button> buttons = group == 0 ? pinnedButtons : toolButtons;
+                List<string> labels = group == 0 ? pinnedLabels : toolLabels;
+                for (int i = 0; i < buttons.Count; i++)
+                {
+                    Button button = buttons[i];
+                    bool show = Matches(labels[i]) && index < capacity;
+                    button.Visible = show;
+                    if (!show)
+                        continue;
+                    button.X = X + Padding + (index % columns) * (buttonWidth + TinyColumnGap);
+                    button.Y = Y + TinyResultsTop + (index / columns) * (TinyRowHeight + TinyRowGap);
+                    button.Width = buttonWidth;
+                    button.Height = TinyRowHeight;
+                    index++;
+                }
+            }
+
+            // Keep the four session actions separate and fully inside the
+            // panel. On impossibly narrow firmware modes hide them rather
+            // than exposing invisible/overlapping power hitboxes.
+            bool powerFits = Width >= 160 && Height >= TinyFooterHeight;
+            SetPowerVisibility(powerFits);
+            int gap = 6;
+            int width = Math.Max(1, (Width - Padding * 2 - 3 * gap) / 4);
+            int right = X + Width - Padding;
+            int y = Y + Height - TinyFooterHeight + 6;
+            Button[] power = { shutdownButton, rebootButton, exitButton, lockButton };
+            for (int i = 0; i < power.Length; i++)
+            {
+                Button button = power[i];
+                if (button == null)
+                    continue;
+                button.X = right - (i + 1) * width - i * gap;
+                button.Y = y;
+                button.Width = width;
+                button.Height = 36;
+            }
+        }
+
         public override void Render(Canvas canvas)
         {
             if (!Visible)
@@ -270,11 +346,69 @@ namespace ZonderqOS.GUI
             UiPainter.RoundedPanel(canvas, X, Y, Width, Height,
                 UiMetrics.MenuRadius, UiPalette.Surface, UiPalette.Border);
 
+            if (TinyLayout)
+            {
+                RenderTiny(canvas);
+                return;
+            }
+
             RenderHeader(canvas);
             RenderSearch(canvas);
             RenderPinned(canvas);
             RenderTools(canvas);
             RenderFooter(canvas);
+        }
+
+        private void RenderTiny(Canvas canvas)
+        {
+            // A 320x240 framebuffer leaves a 304x180 menu. The regular
+            // header/search and footer would overlap the pinned cards.
+            SmallTextRenderer.DrawClipped(canvas, "START", X + 12, Y + 9,
+                Math.Max(1, Width - 24), Text);
+            int searchWidth = Math.Max(1, Width - 24);
+            UiPainter.RoundedPanel(canvas, X + 12, Y + 30, searchWidth, 30,
+                UiMetrics.ButtonRadius, UiPalette.SurfaceRaised, UiPalette.Border);
+            SmallTextRenderer.DrawClipped(canvas,
+                string.IsNullOrEmpty(searchText) ? "Szukaj aplikacji..." : searchText,
+                X + 20, Y + 40, Math.Max(1, searchWidth - 16),
+                string.IsNullOrEmpty(searchText) ? Muted : Text);
+
+            int index = 0;
+            for (int group = 0; group < 2; group++)
+            {
+                List<Button> buttons = group == 0 ? pinnedButtons : toolButtons;
+                List<string> labels = group == 0 ? pinnedLabels : toolLabels;
+                List<IconType> icons = group == 0 ? pinnedIcons : toolIcons;
+                for (int i = 0; i < buttons.Count; i++)
+                {
+                    Button button = buttons[i];
+                    if (!button.Visible)
+                        continue;
+                    bool highlighted = selectedResult >= 0
+                        ? selectedResult == index : button.IsHovered;
+                    UiPainter.RoundedPanel(canvas, button.X, button.Y,
+                        button.Width, button.Height, UiMetrics.TileRadius,
+                        highlighted ? PanelHover : Panel,
+                        highlighted ? SystemTheme.AccentBorder : Border);
+                    IconManager.DrawScaled(canvas, icons[i], button.X + 7,
+                        button.Y + 11, 18, 18);
+                    SmallTextRenderer.DrawClipped(canvas, labels[i], button.X + 29,
+                        button.Y + 17, Math.Max(1, button.Width - 34), Text);
+                    index++;
+                }
+            }
+
+            int footerY = Y + Height - TinyFooterHeight;
+            UiPainter.RoundedFill(canvas, X + 2, footerY, Width - 4,
+                TinyFooterHeight - 2, UiMetrics.ButtonRadius, Header);
+            if (lockButton != null && lockButton.Visible)
+                RenderPowerButton(canvas, lockButton, IconType.Settings, "BLOKUJ", false);
+            if (exitButton != null && exitButton.Visible)
+                RenderPowerButton(canvas, exitButton, IconType.Close, "WYLOGUJ", false);
+            if (rebootButton != null && rebootButton.Visible)
+                RenderPowerButton(canvas, rebootButton, IconType.Reboot, "REBOOT", false);
+            if (shutdownButton != null && shutdownButton.Visible)
+                RenderPowerButton(canvas, shutdownButton, IconType.Shutdown, "WYLACZ", true);
         }
 
         private void RenderHeader(Canvas canvas)
