@@ -324,7 +324,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void SelectAbsolute(int index)
         {
-            if (visibleRows.Count == 0 || view.VisibleRows == 0)
+            if (visibleRows.Count == 0 || !view.HasPaintedProcessRows)
                 return;
             selectedIndex = Math.Max(0, Math.Min(visibleRows.Count - 1, index));
             EnsureSelectionVisible();
@@ -333,7 +333,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void EndSelectedTask()
         {
-            if (activePage == PagePerformance || view.VisibleRows == 0 ||
+            if (activePage == PagePerformance || !view.HasPaintedProcessRows ||
                 selectedIndex < 0 || selectedIndex >= visibleRows.Count)
             {
                 status = "Wybierz zadanie";
@@ -869,10 +869,15 @@ namespace ZonderqOS.GUI.Apps
         // A zero-row view is intentionally noninteractive, including Delete.
         private int ListHeightForView => Math.Max(0, Height - ListTopForView - FooterHeight - 6);
         public int VisibleRows => ListHeightForView / RowHeight;
+        // Both a complete row and a drawable table column are required.
+        // An offscreen selected task must never be actionable by Delete.
+        internal bool HasPaintedProcessRows => VisibleRows > 0 &&
+            Width - SidebarWidth - 12 > ScrollReserve + 4;
 
         public int NavAt(int x, int y)
         {
-            if (x < 6 || x >= SidebarWidth - 6 || y < NavTop) return -1;
+            if (x < 0 || x >= Width || y < 0 || y >= Height ||
+                x < 6 || x >= SidebarWidth - 6 || y < NavTop) return -1;
             if (Height < 300)
             {
                 // Same 2x2 navigation layout as DrawNav on short screens.
@@ -952,7 +957,7 @@ namespace ZonderqOS.GUI.Apps
 
         public int RowAt(int x, int y)
         {
-            if (app.ActivePage == TaskManagerModernApp.PagePerformance || VisibleRows == 0) return -1;
+            if (app.ActivePage == TaskManagerModernApp.PagePerformance || !HasPaintedProcessRows) return -1;
             int contentX = SidebarWidth + 8;
             int listTop = ListTopForView;
             int listH = ListHeightForView;
@@ -968,7 +973,7 @@ namespace ZonderqOS.GUI.Apps
 
         public bool HandleScrollMouse(int mouseX, int mouseY, bool left, bool oldLeft)
         {
-            if (app.ActivePage == TaskManagerModernApp.PagePerformance || VisibleRows == 0) return false;
+            if (app.ActivePage == TaskManagerModernApp.PagePerformance || !HasPaintedProcessRows) return false;
             UpdateScrollBar();
             return scrollBar.HandleMouse(mouseX, mouseY, left, oldLeft);
         }
@@ -1127,7 +1132,7 @@ namespace ZonderqOS.GUI.Apps
         {
             // The sidebar can occupy nearly the whole view in tiny modes.
             // Never send negative table/scrollbar dimensions to Canvas.
-            if (width <= ScrollReserve + 4 || VisibleRows == 0)
+            if (!HasPaintedProcessRows)
                 return;
             int headerY = Y + TableHeaderTop;
             if (!CompactProcessLayout)
@@ -1515,6 +1520,8 @@ namespace ZonderqOS.GUI.Apps
             int x = X + SidebarWidth + 8;
             int y = Y + Height - FooterHeight;
             int width = Width - SidebarWidth - 12;
+            if (width <= 0 || Height < FooterHeight)
+                return;
             canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), x, y, width, FooterHeight - 4);
             canvas.DrawLine(Color.FromArgb(58, 69, 80), x, y, x + width, y);
             if (width < 520)
