@@ -62,6 +62,13 @@ namespace ZonderqOS.GUI
         public static void DrawUInt(Canvas canvas, ulong value, int x, int y, Color color)
         {
             int digits = DigitCount(value);
+            // Numeric labels are drawn frequently by the task manager. Avoid
+            // digit division and glyph scans when the whole label is clipped.
+            // Wide bounds keep extreme window offsets from wrapping.
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
+                (long)x + (long)digits * 6 <= 0 || (long)y + 7 <= 0)
+                return;
+
             ulong divisor = Pow10(digits - 1);
             for (int i = 0; i < digits; i++)
             {
@@ -152,7 +159,13 @@ namespace ZonderqOS.GUI
             if (string.IsNullOrEmpty(text) || count <= 0 || start < 0 || start >= text.Length)
                 return;
 
-            int end = Math.Min(text.Length, start + count);
+            // Saturate the range before adding: start + count can overflow.
+            int end = count >= text.Length - start ? text.Length : start + count;
+            int characters = end - start;
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
+                (long)x + (long)characters * 6 <= 0 || (long)y + 7 <= 0)
+                return;
+
             for (int i = start; i < end; i++)
                 DrawChar(canvas, text[i], x + (i - start) * 6, y, color);
         }
