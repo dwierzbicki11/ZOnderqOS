@@ -418,3 +418,35 @@ including `mix`, WAV decoding, volume, balance and fade. That run does
 **not** cover the new `mixdelay` path; wait for the new commit's QEMU
 run before claiming sample-accurate delayed playback on the emulator.
 Physical codec output, IRQ execution and GUI sound effects remain unverified.
+
+### Multi-effect frame-scheduled PCM mixer (2026-11-01)
+
+The opt-in audio probe now exposes
+`AudioPcmMixer.MixScheduledStereo16(byte[][] clips, int[] startFrames,
+int[] gainsPercent)`: up to eight independent, nonempty 48 kHz stereo PCM16
+effects with per-clip 0..100% gain and whole-frame start offsets. All inputs
+and the **two-second total output limit** are validated before the single
+output allocation. All contributions are summed in 32-bit integers before
+the final PCM16 saturation, preventing order-dependent intermediate
+clipping when three or more sounds overlap. Source buffers are never
+modified. This is offline mixing, **not** a real-time interrupt/DMA queue.
+
+The new diskless `mixqueue` diagnostic uses three different sound effects:
+440 Hz left at 0..250 ms, 880 Hz right at 50..300 ms, and 660 Hz left at
+300..400 ms. A separate real-QEMU HDA backend capture gate checks both
+channel onsets, the 50 ms left-channel silence between clips, the 440/660/880
+Hz pitches and the end-of-clip silence. Host C# tests check three-source
+cancellation before saturation, input immutability, frame offsets,
+boundary rejection and allocation count. Python fixtures deliberately
+reject incorrect onset, missing gap, missing/wrong final tone and trailing
+right-channel audio.
+
+**Previously verified QEMU baseline:** the prior head `1e39f797` completed
+[real QEMU HDA capture run #41290921214](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41290921214)
+successfully on 2026-11-01, including a measured **49.0 ms** right-channel
+delay for `mixdelay` at the 44.1 kHz WAV backend. That result is real
+emulated PCM evidence, **not** proof of physical speakers or ISR execution.
+The new `mixqueue` path requires its own successful captured-WAV run;
+do not infer a PASS from the previous head or host tests. Stock Cosmos
+3.0.95, one vCPU, no guest disk, production GUI audio disabled, no
+SMP/SMT modifications and no ZONDERQDATA access remain unchanged.
