@@ -11,5 +11,6 @@
     <Compile Include="../../source/Core/AudioWavePcm.cs" Link="AudioWavePcm.cs" />
     <Compile Include="../../source/Core/AudioWaveInput.cs" Link="AudioWaveInput.cs" />
     <Compile Include="../../source/Core/AudioPcmVolume.cs" Link="AudioPcmVolume.cs" />
+    <Compile Include="../../source/Core/AudioPcmMixer.cs" Link="AudioPcmMixer.cs" />
   </ItemGroup>
 </Project>
