@@ -15,7 +15,8 @@ spec.loader.exec_module(validator)
 
 
 def fixture(path, rate=48000, right_delay=50, last_hz=660,
-            last_enabled=True, gap=True, right_overrun=False, channels=2):
+            last_enabled=True, gap=True, right_overrun=False, channels=2,
+            first_dropout=False):
     frames = rate * 8 // 10
     origin = rate // 10
     first_end = origin + (250 if gap else 300) * rate // 1000
@@ -33,6 +34,8 @@ def fixture(path, rate=48000, right_delay=50, last_hz=660,
         right = 0
         if origin <= frame < first_end:
             left = square(frame, origin, 440)
+            if first_dropout and origin + rate * 60 // 1000 <= frame < origin + rate * 100 // 1000:
+                left = 0  # simulate a 40ms HDA underrun in the first effect
         if last_enabled and last_start <= frame < last_end:
             left = square(frame, last_start, last_hz)
         if right_start <= frame < right_end:
@@ -81,6 +84,16 @@ class AudioQueueValidatorTests(unittest.TestCase):
             path = Path(tmp) / "right-overrun.wav"
             fixture(path, right_overrun=True)
             with self.assertRaisesRegex(ValueError, "right after EOF"):
+                validator.inspect(path)
+
+    def test_rejects_actual_hda_style_startup_underrun(self):
+        # The 2026-11-01 QEMU capture contained a large inactive span
+        # inside the first 440Hz effect. An audible later effect must not
+        # mask a dropout in the first clip or produce a false timing PASS.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "first-underrun.wav"
+            fixture(path, first_dropout=True)
+            with self.assertRaisesRegex(ValueError, "first left clip"):
                 validator.inspect(path)
 
     def test_rejects_mono_and_corrupt_capture(self):
