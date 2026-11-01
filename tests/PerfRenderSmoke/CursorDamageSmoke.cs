@@ -129,7 +129,7 @@ internal static class CursorDamageSmoke
             throw new Exception("Reset must require full redraw");
     }
 
-    private static double Time(bool optimized, int repeats)
+    private static double Time(bool optimized, int repeats, bool edge)
     {
         var canvas = new Canvas(128, 96);
         var oldMover = optimized ? null : new LegacyMover(canvas);
@@ -139,8 +139,8 @@ internal static class CursorDamageSmoke
         long start = Stopwatch.GetTimestamp();
         for (int i = 0; i < repeats; i++)
         {
-            int x = i % 7 == 0 ? -3 : (i * 13) % 119;
-            int y = i % 11 == 0 ? 91 : (i * 17) % 90;
+            int x = edge ? i % 6 : i % 7 == 0 ? -3 : (i * 13) % 119;
+            int y = edge ? i % 8 : i % 11 == 0 ? 91 : (i * 17) % 90;
             if (optimized) newMover.TryMove(x, y);
             else oldMover.TryMove(x, y);
         }
@@ -174,29 +174,32 @@ internal static class CursorDamageSmoke
         if (allocated != 0)
             throw new Exception("Cursor motion allocated " + allocated + " B per 5000 moves");
 
-        Time(false, 300);
-        Time(true, 300);
-        double[] before = new double[7], after = new double[7];
-        for (int sample = 0; sample < 7; sample++)
+        foreach (bool edge in new[] { false, true })
         {
-            if ((sample & 1) == 0)
+            Time(false, 300, edge);
+            Time(true, 300, edge);
+            double[] before = new double[7], after = new double[7];
+            for (int sample = 0; sample < 7; sample++)
             {
-                before[sample] = Time(false, 4000);
-                after[sample] = Time(true, 4000);
+                if ((sample & 1) == 0)
+                {
+                    before[sample] = Time(false, 4000, edge);
+                    after[sample] = Time(true, 4000, edge);
+                }
+                else
+                {
+                    after[sample] = Time(true, 4000, edge);
+                    before[sample] = Time(false, 4000, edge);
+                }
             }
-            else
-            {
-                after[sample] = Time(true, 4000);
-                before[sample] = Time(false, 4000);
-            }
+            Array.Sort(before);
+            Array.Sort(after);
+            Console.WriteLine("Host .NET cursor damage " + (edge ? "screen edge" : "mixed positions") +
+                " 4000 moves: old per-pixel bounds=" + before[3].ToString("F2") +
+                "ms clipped rectangles=" + after[3].ToString("F2") +
+                "ms ratio=" + (before[3] / after[3]).ToString("F2") +
+                "x (7 alternating samples; fake Canvas, not QEMU FPS)");
         }
-        Array.Sort(before);
-        Array.Sort(after);
-        Console.WriteLine("Host .NET cursor damage 4000 moves: old per-pixel bounds=" +
-            before[3].ToString("F2") + "ms clipped rectangles=" +
-            after[3].ToString("F2") + "ms ratio=" +
-            (before[3] / after[3]).ToString("F2") +
-            "x (7 alternating samples; fake Canvas, not QEMU FPS)");
         Console.WriteLine("PASS: cursor damage exact framebuffer, edge clipping, reset, extreme coordinates and 0 B per 5000 warmed moves");
     }
 }
