@@ -5,6 +5,7 @@ namespace ZonderqOS.SystemCore
     /// <summary>
     /// Pure signed PCM16 stereo tone generator. No HAL, DMA, disk or audio
     /// device dependency; the same bytes can be checked by host-side C# tests.
+    /// The maximum output is two seconds of 48 kHz stereo PCM16 (384,000 bytes).
     /// </summary>
     public static class AudioTonePcm
     {
@@ -21,7 +22,7 @@ namespace ZonderqOS.SystemCore
                 throw new ArgumentOutOfRangeException(nameof(amplitude));
 
             long framesLong = (long)sampleRate * durationMs / 1000;
-            if (framesLong <= 0 || framesLong > int.MaxValue / 4)
+            if (framesLong <= 0 || framesLong > 48000 * 2)
                 throw new ArgumentOutOfRangeException(nameof(durationMs));
             int frames = (int)framesLong;
             byte[] pcm = new byte[frames * 4];
@@ -65,7 +66,7 @@ namespace ZonderqOS.SystemCore
                 throw new ArgumentOutOfRangeException(nameof(amplitude));
 
             long framesLong = (long)sampleRate * durationMs / 1000;
-            if (framesLong <= 0 || framesLong > int.MaxValue / 4)
+            if (framesLong <= 0 || framesLong > 48000 * 2)
                 throw new ArgumentOutOfRangeException(nameof(durationMs));
             int frames = (int)framesLong;
             byte[] stereo = new byte[frames * 4];

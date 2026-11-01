@@ -134,6 +134,14 @@ static class Test
         try { AudioTonePcm.GenerateSquareStereo16(48000, 440, 3000, 4096); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "duration guard");
+        // The probe must never allocate more than two seconds of 48k stereo16,
+        // even when a caller supplies an unusually high sample rate.
+        Expect(AudioTonePcm.GenerateSquareStereo16(48000, 440, 2000, 4096).Length == 384000,
+            "single-tone exact two-second PCM allocation boundary");
+        rejected = false;
+        try { AudioTonePcm.GenerateSquareStereo16(96000, 440, 2000, 4096); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "single-tone high-rate output cap");
 
         // Pure C# RIFF/WAVE round-trip; no Cosmos HAL or filesystem access.
         byte[] encoded = AudioWavePcm.EncodeStereo16(pcm);
@@ -1107,6 +1115,12 @@ static class Test
         try { AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 24000, 250, 4096); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "optimized right-channel Nyquist guard");
+        Expect(AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 880, 2000, 4096).Length == 384000,
+            "dual-tone exact two-second PCM allocation boundary");
+        rejected = false;
+        try { AudioTonePcm.GenerateDualSquareStereo16(96000, 440, 880, 2000, 4096); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "dual-tone high-rate output cap");
 
 
         // One-pass gain + envelope must match the two-stage reference for
