@@ -59,8 +59,13 @@ namespace ZonderqOS.GUI.Apps
         // The menu must remain usable even when the window is resized to its
         // minimum size (320x220, with a 300x170 client view).
         internal int ContextMenuWidthForView => Math.Min(ContextMenuWidth, Math.Max(1, view.Width - 8));
+        // A 200px firmware framebuffer can leave a 106px client. Compact
+        // rows to a 9px glyph instead of overflowing the footer with a
+        // forced 16px minimum. Below that size, do not open an invisible menu.
+        internal bool CanShowContextMenu => view.Width >= 32 &&
+            view.Height >= FooterHeight + 12 + 9 * ContextMenuItemCount;
         internal int ContextMenuItemHeightForView =>
-            Math.Max(16, Math.Min(ContextMenuItemHeight,
+            Math.Max(9, Math.Min(ContextMenuItemHeight,
                 (view.Height - FooterHeight - 12) / ContextMenuItemCount));
         internal int ContextMenuHeightForView => ContextMenuItemHeightForView * ContextMenuItemCount;
 
@@ -156,6 +161,11 @@ namespace ZonderqOS.GUI.Apps
 
             // The menu may have been opened before a window resize. Refit
             // its origin to the current client area so it remains clickable.
+            if (contextMenuVisible && !CanShowContextMenu)
+            {
+                contextMenuVisible = false;
+                contextMenuSelection = -1;
+            }
             if (contextMenuVisible)
             {
                 contextMenuX = Math.Max(4, Math.Min(contextMenuX,
@@ -228,6 +238,11 @@ namespace ZonderqOS.GUI.Apps
 
                 if (x >= SidebarWidthForView + 6 && y >= ContentTop && y < contentBottom)
                 {
+                    if (!CanShowContextMenu)
+                    {
+                        status = "Enlarge window for context menu";
+                        return;
+                    }
                     selectedIndex = HitEntryIndex(x, y);
                     // A fixed sidebar offset used to push the 240px menu off the
                     // right edge of narrow windows. Prefer viewport bounds.
@@ -1612,11 +1627,18 @@ namespace ZonderqOS.GUI.Apps
             int hintX = Math.Max(X + Width / 2, X + Width - 10 - hintWidth);
             int hintMaxWidth = Math.Max(0, X + Width - 10 - hintX);
             int statusX = X + 10;
-            int statusMaxWidth = Math.Max(18, hintX - statusX - 12);
+            // A forced 18px label overran the right edge on very narrow
+            // clients. Never request text beyond the actual footer bounds.
+            int statusMaxWidth = Math.Max(0, Math.Min(hintX - statusX - 12,
+                X + Width - 10 - statusX));
             int textY = footerY + 8;
 
-            SmallTextRenderer.DrawClipped(canvas, app.Status ?? "", statusX, textY, statusMaxWidth, FooterText);
-            SmallTextRenderer.DrawClipped(canvas, hint, hintX, textY, hintMaxWidth, SecondaryText);
+            if (statusMaxWidth > 0)
+                SmallTextRenderer.DrawClipped(canvas, app.Status ?? "",
+                    statusX, textY, statusMaxWidth, FooterText);
+            if (hintMaxWidth > 0)
+                SmallTextRenderer.DrawClipped(canvas, hint,
+                    hintX, textY, hintMaxWidth, SecondaryText);
         }
 
         private void Grid(Canvas canvas, int x, int y, int width, int height)
@@ -1780,6 +1802,8 @@ namespace ZonderqOS.GUI.Apps
 
         private void Menu(Canvas canvas)
         {
+            if (!app.CanShowContextMenu)
+                return;
             int x = X + app.ContextMenuX;
             int y = Y + app.ContextMenuY;
 
@@ -1810,16 +1834,22 @@ namespace ZonderqOS.GUI.Apps
                     x + 4, y + 1, Math.Max(1, app.ContextMenuWidthForView - 8),
                     Math.Max(1, app.ContextMenuItemHeightForView - 2));
             Color color = enabled ? MainText : Color.FromArgb(91, 103, 114);
-            int textOffset = Math.Max(4, (app.ContextMenuItemHeightForView - 9) / 2);
-            SmallTextRenderer.Draw(canvas, text, x + 10, y + textOffset, color);
+            int menuWidth = app.ContextMenuWidthForView;
+            int textOffset = Math.Max(0, (app.ContextMenuItemHeightForView - 9) / 2);
+            // At 24-159px there is no room for shortcut labels. Clip the
+            // action name and never draw a shortcut left of the menu.
+            bool showShortcut = !string.IsNullOrEmpty(shortcut) && menuWidth >= 160;
+            int shortcutWidth = showShortcut ? SmallTextRenderer.Width(shortcut) : 0;
+            int labelWidth = Math.Max(0, menuWidth - 20 -
+                (showShortcut ? shortcutWidth + 10 : 0));
+            if (labelWidth > 0)
+                SmallTextRenderer.DrawClipped(canvas, text,
+                    x + 10, y + textOffset, labelWidth, color);
 
-            if (!string.IsNullOrEmpty(shortcut))
-            {
-                int width = SmallTextRenderer.Width(shortcut);
+            if (showShortcut)
                 SmallTextRenderer.Draw(canvas, shortcut,
-                    x + app.ContextMenuWidthForView - width - 10, y + textOffset,
+                    x + menuWidth - shortcutWidth - 10, y + textOffset,
                     enabled ? SecondaryText : Color.FromArgb(75, 86, 96));
-            }
         }
 
         private void Dialog(Canvas canvas)
