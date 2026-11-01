@@ -327,3 +327,16 @@ every generated left/right frame against independent reference generators
 at 32 and 48 kHz and measure thread-local .NET allocation bytes. This is
 an allocation optimization only: no claim is made about guest CPU, GC,
 hardware DMA or audible playback until the respective CI/QEMU checks pass.
+
+### One-pass software gain/balance + fade (2026-11-01; CI pending)
+
+The opt-in playback path now combines independent channel gain and the
+bounded fade envelope into one PCM16 output allocation when fade is enabled.
+Integer rounding is deliberately identical to the former two-stage path
+(gain truncation first, then envelope truncation). `fade 0` continues to
+use the original gain-only path, and no source buffer is modified. Host C#
+tests compare all bytes across 36 gain/fade combinations and check
+thread-local allocation bytes. This removes one 48,000-byte temporary PCM
+array for a 250 ms 48 kHz stereo diagnostic tone by construction; it is
+**not** a measured guest CPU/GC speedup. QEMU sample-level fade validation
+is still required before claiming an audible output improvement.

@@ -54,6 +54,47 @@ namespace ZonderqOS.SystemCore
             return result;
         }
 
+        /// <summary>
+        /// Apply independent software gains and a symmetric 48 kHz PCM fade
+        /// in one pass, allocating exactly one output array. The two integer
+        /// truncations match ScaleStereo16Channels followed by FadeStereo16.
+        /// Source PCM is never modified.
+        /// </summary>
+        public static byte[] ScaleStereo16ChannelsWithFade(
+            byte[] pcm, int leftPercent, int rightPercent, int fadeMilliseconds)
+        {
+            if (pcm == null || pcm.Length == 0 || pcm.Length % 4 != 0 ||
+                pcm.Length > 48000 * 2 * 4)
+                throw new ArgumentException("Up to two seconds of 48 kHz PCM16 stereo required.", nameof(pcm));
+            if (leftPercent < 0 || leftPercent > 100)
+                throw new ArgumentOutOfRangeException(nameof(leftPercent));
+            if (rightPercent < 0 || rightPercent > 100)
+                throw new ArgumentOutOfRangeException(nameof(rightPercent));
+            if (fadeMilliseconds < 0 || fadeMilliseconds > 50)
+                throw new ArgumentOutOfRangeException(nameof(fadeMilliseconds));
+
+            int frames = pcm.Length / 4;
+            int fadeFrames = Math.Min(fadeMilliseconds * 48, frames / 2);
+            byte[] output = new byte[pcm.Length];
+            for (int frame = 0; frame < frames; frame++)
+            {
+                int envelope = fadeMilliseconds == 0 ? 1 :
+                    Math.Min(fadeFrames, Math.Min(frame, frames - 1 - frame));
+                int divisor = fadeMilliseconds == 0 ? 1 : fadeFrames;
+                for (int channel = 0; channel < 2; channel++)
+                {
+                    int offset = frame * 4 + channel * 2;
+                    short sample = (short)(pcm[offset] | (pcm[offset + 1] << 8));
+                    int gain = channel == 0 ? leftPercent : rightPercent;
+                    int scaled = sample * gain / 100;
+                    scaled = divisor == 0 ? 0 : scaled * envelope / divisor;
+                    output[offset] = (byte)scaled;
+                    output[offset + 1] = (byte)(scaled >> 8);
+                }
+            }
+            return output;
+        }
+
         public static byte[] ScaleStereo16(byte[] pcm, int percent)
         {
             return ScaleStereo16Channels(pcm, percent, percent);

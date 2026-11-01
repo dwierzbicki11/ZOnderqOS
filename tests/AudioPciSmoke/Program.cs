@@ -1003,6 +1003,45 @@ static class Test
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "optimized right-channel Nyquist guard");
 
+
+        // One-pass gain + envelope must match the two-stage reference for
+        // both channels, including negative samples and integer truncation.
+        foreach (int fadeMs in new[] { 0, 1, 20, 50 })
+        {
+            foreach (int leftGain in new[] { 0, 25, 100 })
+            {
+                foreach (int rightGain in new[] { 0, 50, 100 })
+                {
+                    byte[] reference = AudioPcmVolume.FadeStereo16(
+                        AudioPcmVolume.ScaleStereo16Channels(fadeSource, leftGain, rightGain),
+                        fadeMs);
+                    byte[] combined = AudioPcmVolume.ScaleStereo16ChannelsWithFade(
+                        fadeSource, leftGain, rightGain, fadeMs);
+                    Expect(combined.Length == reference.Length, "combined fade length");
+                    for (int i = 0; i < combined.Length; i++)
+                        Expect(combined[i] == reference[i], "one-pass PCM gain/fade bit exact");
+                }
+            }
+        }
+        AudioPcmVolume.ScaleStereo16ChannelsWithFade(fadeSource, 100, 100, 20);
+        long combinedBefore = GC.GetAllocatedBytesForCurrentThread();
+        byte[] combinedMeasured = AudioPcmVolume.ScaleStereo16ChannelsWithFade(
+            fadeSource, 75, 25, 20);
+        long combinedAllocated = GC.GetAllocatedBytesForCurrentThread() - combinedBefore;
+        Expect(combinedAllocated >= combinedMeasured.Length &&
+            combinedAllocated < combinedMeasured.Length + 1024,
+            "combined gain/fade uses one PCM allocation");
+        Console.WriteLine("[AUDIO-PCI-HOST] combined gain/fade allocated=" +
+            combinedAllocated + " bytes for " + combinedMeasured.Length + " PCM bytes");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16ChannelsWithFade(fadeSource, 100, 100, 51); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "combined gain/fade rejects invalid envelope");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16ChannelsWithFade(fadeSource, 101, 100, 20); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "combined gain/fade rejects invalid gain");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
     }
 }

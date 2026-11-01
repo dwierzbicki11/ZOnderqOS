@@ -421,9 +421,12 @@ namespace ZonderqOS.SystemCore
                 // Apply channel balance without changing codec or DMA configuration.
                 int leftGain = volumePercent * (balancePercent > 0 ? 100 - balancePercent : 100) / 100;
                 int rightGain = volumePercent * (balancePercent < 0 ? 100 + balancePercent : 100) / 100;
-                byte[] scaled = AudioPcmVolume.ScaleStereo16Channels(pcm, leftGain, rightGain);
-                if (fadeMilliseconds != 0)
-                    scaled = AudioPcmVolume.FadeStereo16(scaled, fadeMilliseconds);
+                // Fade-enabled playback uses one PCM output allocation
+                // instead of creating an intermediate scaled copy.
+                byte[] scaled = fadeMilliseconds == 0
+                    ? AudioPcmVolume.ScaleStereo16Channels(pcm, leftGain, rightGain)
+                    : AudioPcmVolume.ScaleStereo16ChannelsWithFade(
+                        pcm, leftGain, rightGain, fadeMilliseconds);
                 bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled));
                 Console.WriteLine(accepted
                     ? "[AUDIO] PCM ACCEPTED_AND_DRAINED (not proof of audible output)"
