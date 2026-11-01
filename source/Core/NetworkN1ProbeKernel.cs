@@ -200,11 +200,7 @@ namespace ZonderqOS
                             // to the remaining monotonic budget instead.
                             client.Client.ReceiveTimeout = RemainingSocketReadTimeoutMs(
                                 echoElapsed, echoFrequency, 20);
-                            // Keep each blocking read within the remaining 45s RX
-                    // budget; successful short reads must not reset it.
-                    http.Client.ReceiveTimeout = RemainingSocketReadTimeoutMs(
-                        rxElapsed, rxFrequency, 45);
-                    int read = stream.Read(response, received, response.Length - received);
+                            int read = stream.Read(response, received, response.Length - received);
                             if (read <= 0)
                                 break;
                             received += read;
@@ -633,6 +629,10 @@ namespace ZonderqOS
                         Log("[NET3095-N6][FAIL] HTTP response fragmented into too many reads");
                         return false;
                     }
+                    // Keep each blocking read within the remaining 45s RX
+                    // budget; successful short reads must not reset it.
+                    http.Client.ReceiveTimeout = RemainingSocketReadTimeoutMs(
+                        rxElapsed, rxFrequency, 45);
                     int read = stream.Read(response, received, response.Length - received);
                     if (read <= 0)
                         break;
