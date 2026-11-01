@@ -114,6 +114,13 @@ namespace ZonderqOS
                     Log("[NET3095-N2][FAIL] DHCP timed out or returned an invalid lease");
                     return;
                 }
+#if ZONDERQ_NETWORK_N6_HTTP
+                // Snapshot values before stress: IPConfig may be mutable and
+                // re-reading the same object later would miss in-place changes.
+                string initialIp = config.Address.ToString();
+                string initialMask = config.SubnetMask.ToString();
+                string initialGateway = config.DefaultGateway.ToString();
+#endif
                 Log("[NET3095-N2] DHCP=PASS ip=" + config.Address +
                     " mask=" + config.SubnetMask +
                     " gateway=" + config.DefaultGateway);
@@ -310,9 +317,9 @@ namespace ZonderqOS
                 // Inspect the original address, mask and gateway read-only.
                 IPConfig? postStressConfig = postStress.IPConfig;
                 if (postStressConfig == null ||
-                    postStressConfig.Address.ToString() != config.Address.ToString() ||
-                    postStressConfig.SubnetMask.ToString() != config.SubnetMask.ToString() ||
-                    postStressConfig.DefaultGateway.ToString() != config.DefaultGateway.ToString())
+                    postStressConfig.Address.ToString() != initialIp ||
+                    postStressConfig.SubnetMask.ToString() != initialMask ||
+                    postStressConfig.DefaultGateway.ToString() != initialGateway)
                 {
                     Log("[NET3095-N6][FAIL] IPv4 lease changed after TX/RX stress");
                     return;

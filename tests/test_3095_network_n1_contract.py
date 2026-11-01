@@ -149,9 +149,13 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('POST_STRESS_LINK=PASS', SOURCE)
         self.assertIn('POST_STRESS_IPV4=PASS', SOURCE)
         self.assertIn('postStress.IPConfig', SOURCE)
-        self.assertIn('postStressConfig.Address.ToString() != config.Address.ToString()', SOURCE)
-        self.assertIn('postStressConfig.SubnetMask.ToString() != config.SubnetMask.ToString()', SOURCE)
-        self.assertIn('postStressConfig.DefaultGateway.ToString() != config.DefaultGateway.ToString()', SOURCE)
+        for field, snapshot in (('Address', 'initialIp'),
+                                ('SubnetMask', 'initialMask'),
+                                ('DefaultGateway', 'initialGateway')):
+            self.assertIn(f'string {snapshot} = config.{field}.ToString();', SOURCE)
+            self.assertIn(f'postStressConfig.{field}.ToString() != {snapshot}', SOURCE)
+        self.assertLess(SOURCE.index('string initialIp = config.Address.ToString();'),
+                        SOURCE.index('POST_BURST_HTTP_ATTEMPT=START'))
         self.assertLess(SOURCE.index('POST_STRESS_LINK=PASS'),
                         SOURCE.index('POST_STRESS_IPV4=PASS'))
         self.assertLess(SOURCE.index('POST_STRESS_IPV4=PASS'),
