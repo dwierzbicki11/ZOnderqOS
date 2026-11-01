@@ -13,13 +13,14 @@ from verify_3095_network_n1 import pcap_frames
 from verify_3095_network_n2 import (
     LEASE, MAC, SERVER, START, fake_dhcp, synthetic_capture,
 )
-from verify_3095_network_n3 import PING_START, PING_PASS, fake_icmp
+from verify_3095_network_n3 import PING_START, PING_PASS, fake_icmp, normalize_icmp_serial
 from verify_3095_network_n4 import (
     TCP_START, TCP_PASS, REQUEST as ECHO_REQUEST,
-    RESPONSE as ECHO_RESPONSE, fake_tcp, tcp_frame,
+    RESPONSE as ECHO_RESPONSE, fake_tcp, tcp_frame, normalize_tcp_serial,
 )
 from verify_3095_network_n5 import (
-    DNS_START, DNS_PASS, fake_arp, fake_dns, validate as validate_n5,
+    DNS_START, DNS_PASS, fake_arp, fake_dns, normalize_dns_serial,
+    validate as validate_n5,
 )
 from network_3095_http_host import PORT, REQUEST, RESPONSE, request_for_attempt, response_for_attempt
 
@@ -162,6 +163,10 @@ def find_http_transaction(packets, guest: bytes, first: int, excluded_port: int 
 
 
 def validate(serial: str, pcap: bytes) -> str:
+    # Earlier validators normalize their own serial markers, but that
+    # normalized text is not returned. Reuse the same exact-marker repairs
+    # before N6 checks DNS_PASS ordering to avoid false QEMU failures.
+    serial = normalize_dns_serial(normalize_tcp_serial(normalize_icmp_serial(serial)))
     validate_n5(serial, pcap)
     lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
     if any("[NET3095-N6][FAIL]" in line for line in lines):
@@ -268,6 +273,13 @@ def self_test() -> None:
     ])
     frames = base + handshake + request + response + teardown + second_frames
     assert "PASS" in validate(serial, synthetic_capture(frames))
+    # N6's own cross-stage ordering must see the same repaired N3/N4/N5
+    # markers as their independent packet validators.
+    for marker in (PING_PASS, TCP_PASS, DNS_PASS):
+        offset = len(marker) // 2
+        torn = marker[:offset] + "[SCHED] Tick 6 enabled=1\n" + marker[offset:]
+        assert "PASS" in validate(
+            serial.replace(marker, torn), synthetic_capture(frames))
     try:
         validate(serial, synthetic_capture(
             base + handshake + request + response + teardown + stale_second_frames))
