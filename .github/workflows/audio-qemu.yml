@@ -119,6 +119,7 @@ jobs:
         run: |
           if [ -s audio-qemu-mixqueue-1ms-out/captured.wav ]; then
             python3 tools/analyze-audio-queue-dropouts.py audio-qemu-mixqueue-1ms-out/captured.wav
+            python3 tools/analyze-audio-hda-replay.py audio-qemu-mixqueue-1ms-out/captured.wav
           else
             echo '[AUDIO-1MS] no WAV artifact; experiment inconclusive'
           fi
@@ -173,6 +174,17 @@ jobs:
             echo '[AUDIO-QUEUE-ICOUNT] no WAV artifact; experimental capture unverified'
           fi
           echo '[AUDIO-QUEUE-ICOUNT] diagnostic only; baseline mixqueue quality gate remains mandatory'
+      - name: Diagnose mandatory stock HDA queue and sequence replay (not a PASS gate)
+        if: always()
+        run: |
+          for wav in audio-qemu-mixqueue-out/captured.wav audio-qemu-mixsequence-out/captured.wav; do
+            if [ -s "$wav" ]; then
+              python3 tools/analyze-audio-hda-replay.py "$wav"
+            else
+              echo "[AUDIO-DMA] no capture at $wav; diagnosis inconclusive"
+            fi
+          done
+
       - name: Boot again and capture decoded in-memory RIFF/WAV playback
         run: |
           python3 tools/smoke-audio-qemu.py \

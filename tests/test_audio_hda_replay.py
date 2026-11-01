@@ -91,6 +91,36 @@ class HdaReplayTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, 'no two sufficiently active'):
                 replay.analyze(path)
 
+    def test_resampled_nonperiodic_ring_replay_correlation(self):
+        # A 2% gain perturbation destroys exact sample equality but keeps
+        # the resampled/repeated waveform highly correlated at the DMA lag.
+        # The original three-value analyze() API remains compatible.
+        tone = [(2908 + i % 97) *
+                (1 if math.sin(2 * math.pi * 440 * i / RATE) >= 0 else -1)
+                for i in range(RATE // 2)]
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'nonperiodic.wav'
+            for repeated in (False, True):
+                samples = tone.copy()
+                if repeated:
+                    samples[RING:RING + WINDOW] = [
+                        int(value * .98) for value in tone[:WINDOW]]
+                with wave.open(str(path), 'wb') as output:
+                    output.setnchannels(2)
+                    output.setsampwidth(2)
+                    output.setframerate(RATE)
+                    output.writeframes(b''.join(
+                        struct.pack('<hh', value, value) for value in samples))
+                exact = replay.analyze(path)
+                detailed = replay.analyze_channels(path, include_correlation=True)[0]
+                self.assertEqual(len(exact), 3)
+                self.assertEqual(len(detailed), 5)
+                if repeated:
+                    self.assertLess(exact[0], .97)
+                    self.assertGreater(detailed[3], .995)
+                else:
+                    self.assertLess(detailed[3], .995)
+
     def test_rejects_mono_and_invalid_wav(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'broken.wav'
