@@ -56,6 +56,52 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("http.Client.ReceiveTimeout = 5000;", method)
         self.assertIn("if (readCalls >= 64)", method)
 
+    def test_n4_n6_blocking_reads_use_remaining_monotonic_budget(self):
+        # A post-read deadline check rejects late success, but a fixed 5s
+        # blocking timeout can still make the probe finish up to 5s late.
+        # Both opt-in paths must bound each Read to the remaining budget.
+        helper = SOURCE.split("private static int RemainingSocketReadTimeoutMs(", 1)[1]
+        helper = helper.split("#endif", 1)[0]
+        self.assertIn("long seconds = elapsedTicks / frequency;", helper)
+        self.assertIn("long fractionalTicks = elapsedTicks % frequency;", helper)
+        self.assertIn("long remainingMs = (long)deadlineSeconds * 1000 - elapsedMs;", helper)
+        self.assertIn("if (remainingMs <= 1)", helper)
+        self.assertIn("return 1;", helper)  # Socket timeout 0 means infinite.
+        self.assertIn("remainingMs < 5000 ? remainingMs : 5000", helper)
+        n4 = SOURCE.split("#if ZONDERQ_NETWORK_N4_TCP", 1)[1].split(
+            "#if ZONDERQ_NETWORK_N5_DNS", 1)[0]
+        self.assertIn("client.Client.ReceiveTimeout = RemainingSocketReadTimeoutMs(\n"
+                      "                                echoElapsed, echoFrequency, 20);", n4)
+        n6 = SOURCE.split("private static bool TryHttpExchange(", 1)[1]
+        self.assertIn("http.Client.ReceiveTimeout = RemainingSocketReadTimeoutMs(\n"
+                      "                        rxElapsed, rxFrequency, 45);", n6)
+        self.assertLess(n4.index("ReceiveTimeout = RemainingSocketReadTimeoutMs("),
+                        n4.index("int read = stream.Read("))
+        self.assertLess(n6.index("ReceiveTimeout = RemainingSocketReadTimeoutMs("),
+                        n6.index("int read = stream.Read("))
+        self.assertIn("#if ZONDERQ_NETWORK_N4_TCP\n"
+                      "        // Socket ReceiveTimeout", SOURCE)
+        self.assertIn("#endif\n\n#if ZONDERQ_NETWORK_N6_HTTP\n"
+                      "        // Stock Cosmos", SOURCE)
+
+        # Arithmetic reference for 1GHz Stopwatch ticks, including the
+        # final millisecond. This tests the intended timeout contract, not
+        # a Cosmos socket implementation or real guest execution.
+        def timeout_ms(elapsed_ticks, frequency, deadline_seconds):
+            seconds, fractional_ticks = divmod(elapsed_ticks, frequency)
+            elapsed_ms = seconds * 1000 + fractional_ticks * 1000 // frequency
+            remaining = deadline_seconds * 1000 - elapsed_ms
+            return 1 if remaining <= 1 else min(remaining, 5000)
+
+        for deadline in (20, 45):
+            self.assertEqual(timeout_ms(0, 1_000_000_000, deadline), 5000)
+            self.assertEqual(timeout_ms((deadline - 3) * 1_000_000_000,
+                                        1_000_000_000, deadline), 3000)
+            self.assertEqual(timeout_ms(deadline * 1_000_000_000 - 500_000,
+                                        1_000_000_000, deadline), 1)
+            self.assertEqual(timeout_ms(deadline * 1_000_000_000 - 2_000_000,
+                                        1_000_000_000, deadline), 2)
+
     def test_upstream_3095_and_off_by_default(self):
         self.assertIn('Sdk="Cosmos.Sdk/3.0.95"', PROJECT)
         self.assertIn('Version="3.0.95"', PROJECT)
