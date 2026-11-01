@@ -294,6 +294,22 @@ internal static class Program
         CheckSingleAction(0, 0, 1);
     }
 
+    private static void NarrowTall()
+    {
+        var menu = MakeMenu(184, 540);
+        int footerTop = menu.Y + menu.Height - 48;
+        foreach (Button button in Buttons(menu, "pinnedButtons"))
+            Check(!button.Visible || (button.X >= menu.X &&
+                button.X + button.Width <= menu.X + menu.Width &&
+                button.Y + button.Height <= footerTop),
+                "tall narrow menu does not paint offscreen pinned buttons");
+        foreach (Button button in Buttons(menu, "toolButtons"))
+            Check(!button.Visible || (button.X >= menu.X &&
+                button.X + button.Width <= menu.X + menu.Width &&
+                button.Y + button.Height <= footerTop),
+                "tall narrow menu does not paint offscreen tool buttons");
+    }
+
     private static void Normal640x480()
     {
         var menu = MakeMenu(480, 420);
@@ -314,6 +330,7 @@ internal static class Program
     {
         Tiny320x240();
         Tiny200x200();
+        NarrowTall();
         Normal640x480();
         Console.WriteLine("PASS: " + assertions + " production StartMenu/Button C# assertions");
         return 0;
