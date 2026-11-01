@@ -315,6 +315,33 @@ internal static class Program
         manager.CloseAll();
     }
 
+    private static void FilteredChordKeepsPhysicalGestureOwner()
+    {
+        var manager = new ApplicationManager();
+        var first = new ClosingApp();
+        var second = new ClosingApp();
+        second.Window.X = 200;
+        manager.Launch(first);
+        manager.Launch(second);
+        manager.HandleMouse(10, 20, true, false, false, false);
+        manager.Activate(second);
+
+        // GuiManager suppresses leftClicked/leftWasClicked while right is
+        // down. The seventh argument preserves the physical held-left state.
+        manager.HandleMouse(220, 20, false, false, true, false, true);
+        Check(first.MouseCount == 2 && first.LastRightPress,
+            "filtered right chord stays with original window");
+        Check(second.MouseCount == 0 && manager.ActiveApplication == second,
+            "filtered chord cannot click newly focused window");
+        manager.HandleMouse(220, 20, false, false, false, true, true);
+        Check(first.MouseCount == 3 && second.MouseCount == 0,
+            "filtered chord release stays with original window");
+        manager.HandleMouse(220, 20, false, false, false, false);
+        Check(second.MouseCount == 1,
+            "hover resumes on active window after filtered chord");
+        manager.CloseAll();
+    }
+
     private static void ClosingCapturedWindowDoesNotLeakRelease()
     {
         var manager = new ApplicationManager();
@@ -484,6 +511,7 @@ internal static class Program
         LogoutCallbackCannotReopenWindows();
         MouseFocusAndCapture();
         WindowGestureSurvivesFocusAndSecondButton();
+        FilteredChordKeepsPhysicalGestureOwner();
         ClosingCapturedWindowDoesNotLeakRelease();
         MinimizingCapturedWindowDoesNotLeakRelease();
         FocusReorderDuringUpdate();
