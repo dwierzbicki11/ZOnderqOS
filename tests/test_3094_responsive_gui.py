@@ -47,6 +47,28 @@ def visible_rows(window_height, list_top, bottom_offset, row_height, row_gap):
 
 
 class ResponsiveGui3094(unittest.TestCase):
+    def test_file_manager_initial_client_matches_constrained_window_before_first_frame(self):
+        constructor = FILE_MANAGER.split(
+            "public FileManagerApp(int x, int y, Action<string> openFile)", 1
+        )[1].split("public bool DismissTransientUi()", 1)[0]
+        update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
+            "public override void HandleMouse(", 1
+        )[0]
+        self.assertIn("Math.Max(1, Window.Width - 20)", constructor)
+        self.assertIn("Math.Max(1, Window.Height - 50)", constructor)
+        self.assertIn("view.Width = Math.Max(1, Window.Width - 20);", update)
+        self.assertIn("view.Height = Math.Max(1, Window.Height - 50);", update)
+        for screen_width, screen_height in (
+            (200, 200), (240, 240), (320, 240), (640, 480),
+            (800, 600), (1366, 768), (1920, 1080),
+        ):
+            x, y, width, height = fit_window(
+                100, 100, 820, 520, screen_width, screen_height)
+            view_width = max(1, width - 20)
+            view_height = max(1, height - 50)
+            self.assertLessEqual(view_width + 20, width)
+            self.assertLessEqual(view_height + 50, height)
+
     def test_file_manager_small_client_preserves_full_tile_and_mount_hitbox(self):
         self.assertIn("internal int SidebarWidthForView => view.Width < 220", FILE_MANAGER)
         self.assertIn("view.Width - TileWidth - 12", FILE_MANAGER)
