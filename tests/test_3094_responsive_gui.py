@@ -2802,5 +2802,24 @@ class NarrowCaptionControls3095(unittest.TestCase):
             self.assertEqual(count, expected)
 
 
+
+class TaskbarNotificationHitbox3095(unittest.TestCase):
+    def test_notification_click_matches_visible_tile_not_entire_tray_height(self):
+        render = TASKBAR.split("private void RenderSystemTray(", 1)[1].split(
+            "private void DrawNotificationTile(", 1)[0]
+        mouse = TASKBAR.split("public void UpdateInteractions(", 1)[1]
+        self.assertIn("DrawNotificationTile(canvas, trayX + 9, 34);", render)
+        self.assertIn("mouseX >= notificationX && mouseX < notificationX + 34", mouse)
+        self.assertIn("mouseY >= Y + 6 && mouseY < Y + Height - 6", mouse)
+        self.assertIn("if (Height > 12 &&", mouse)
+        for height in range(1, 101):
+            for local_y in range(-2, height + 3):
+                hit = height > 12 and 6 <= local_y < height - 6
+                if height <= 12 or local_y < 6 or local_y >= height - 6:
+                    self.assertFalse(hit)
+                else:
+                    self.assertTrue(hit)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
