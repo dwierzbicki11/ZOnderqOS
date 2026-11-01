@@ -144,6 +144,13 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected about 2640Hz"):
             audio.inspect(self.path, expected_hz=2640)
 
+    def test_distinct_extensible_24in32_probe_pitch(self):
+        # Synthetic validator fixture only; QEMU must capture its own PCM.
+        self.make_wave(frequency=3700)
+        self.assertIn("PASS captured PCM", audio.inspect(self.path, expected_hz=3700))
+        with self.assertRaisesRegex(ValueError, "expected about 3080Hz"):
+            audio.inspect(self.path, expected_hz=3080)
+
     def test_distinct_32000_resampler_probe_pitch(self):
         # Synthetic 3520 Hz capture: this only verifies the validator, not HDA.
         self.make_wave(frequency=3520)

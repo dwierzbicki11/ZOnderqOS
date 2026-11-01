@@ -397,6 +397,8 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("--command wavext24in32", workflow)
         self.assertIn("audio-qemu-extensible24in32-out/*.wav", workflow)
         self.assertIn('"wavext24in32": 3700', harness)
+        self.assertIn("3700", read("tools/verify-audio-wav-capture.py"))
+        self.assertIn("test_distinct_extensible_24in32_probe_pitch", read("tests/test_audio_wav_validator.py"))
         self.assertIn('if (command == "wavext24in32")', kernel)
         self.assertIn("PlayWaveExtensible24In32TestTone()", runtime)
         self.assertIn("EncodeExtensiblePcm32AtRate(mono32, 48000, 1, 24)", runtime)
