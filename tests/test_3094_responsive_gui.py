@@ -77,7 +77,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("if (sidebarW > 0 && contentH > 0)", FILE_MANAGER)
         self.assertIn("int sidebarW = app.SidebarWidthForView;", FILE_MANAGER)
         self.assertIn("int gridX = X + sidebarW + 8;", FILE_MANAGER)
-        self.assertIn("if (Width >= 300)", FILE_MANAGER)
+        self.assertIn("if (Width >= 308 && Height >= 44)", FILE_MANAGER)
         self.assertIn("if (width >= 140)", FILE_MANAGER)
 
         # Same view-relative widths drive painting, hit testing, tile
@@ -2452,7 +2452,7 @@ class FileManagerToolbarBounds3095(unittest.TestCase):
         self.assertIn("int button = offset / 42;", toolbar)
         self.assertIn("offset % 42 >= 36", toolbar)
         self.assertIn("button >= ToolbarButtonCountForView", toolbar)
-        self.assertIn("ToolbarButtonCountForView => view.Width < 44 ? 0 :", FILE_MANAGER)
+        self.assertIn("ToolbarButtonCountForView => view.Width < 44 || view.Height < 44 ? 0 :", FILE_MANAGER)
         # C# truncates negative integer division toward zero; the explicit
         # guard is required for clients narrower than the first 36px button.
         for button in range(4):
@@ -2544,6 +2544,80 @@ class FileManagerShortClient3095(unittest.TestCase):
                     visible = min(94, grid_height - row * 100)
                     self.assertGreaterEqual(visible, 40)
                     self.assertLessEqual(row * 100 + visible, grid_height)
+
+
+
+class FileManagerTinyChrome3095(unittest.TestCase):
+    def test_modal_shadow_input_and_caption_stay_inside_client(self):
+        dialog = FILE_MANAGER.split("private void Dialog(Canvas canvas)", 1)[1]
+        self.assertIn("int width = Math.Min(430, Math.Max(0, Width - 16));", dialog)
+        self.assertIn("int height = Math.Min(126, Math.Max(0, Height - 16));", dialog)
+        self.assertIn("if (width < 32 || height < 28)", dialog)
+        self.assertIn("int fieldHeight = Math.Min(30, Math.Max(0,", dialog)
+        self.assertIn("if (width >= 48 && fieldHeight >= 18)", dialog)
+        self.assertIn("if (height >= 108 && width >= 200)", dialog)
+        self.assertIn("SmallTextRenderer.DrawClipped(canvas, title,", dialog)
+        self.assertNotIn("Math.Max(280, Width - 40)", dialog)
+
+        # Geometry model of the production formulas. Check the shadow's
+        # extra four pixels, field, caption and hint at small/normal/HD/FHD.
+        for client_width in range(1, 601):
+            width = min(430, max(0, client_width - 16))
+            if width < 32:
+                continue
+            x = (client_width - width) // 2
+            self.assertGreaterEqual(x, 4)
+            self.assertLessEqual(x + width + 4, client_width)
+            self.assertGreaterEqual(width - 24, 8)
+            for client_height in (1, 16, 27, 43, 44, 45, 63, 64, 80,
+                                  100, 123, 124, 125, 126, 142, 170, 400):
+                height = min(126, max(0, client_height - 16))
+                if height < 28:
+                    continue
+                y = (client_height - height) // 2
+                self.assertGreaterEqual(y, 4)
+                self.assertLessEqual(y + height + 4, client_height)
+                field_y = min(42, max(24, height - 40))
+                field_height = min(30, max(0, height - field_y - 8))
+                if width >= 48 and field_height >= 18:
+                    self.assertGreaterEqual(field_y, 24)
+                    self.assertLessEqual(field_y + field_height, height - 8)
+                    self.assertGreaterEqual(width - 36, 12)
+                    self.assertLessEqual(
+                        field_y + min(12, field_height - 9) + 9,
+                        field_y + field_height)
+                if height >= 108 and width >= 200:
+                    self.assertLessEqual(94 + 9, height)
+
+    def test_toolbar_and_footer_never_submit_negative_chrome_rectangles(self):
+        toolbar = FILE_MANAGER.split("private void RenderToolbar(Canvas canvas)", 1)[1].split(
+            "private void RenderSidebar(", 1)[0]
+        footer = FILE_MANAGER.split("private void RenderFooter(Canvas canvas, int footerY)", 1)[1].split(
+            "private void Grid(Canvas canvas", 1)[0]
+        self.assertIn("if (Width <= 8 || Height <= 4)", toolbar)
+        self.assertIn("Width - 8, Math.Min(40, Height - 4)", toolbar)
+        self.assertIn("if (Width >= 308 && Height >= 44)", toolbar)
+        self.assertIn("int pathW = Width - 188;", toolbar)
+        self.assertIn("if (Width <= 8 || Height < FileManagerApp.FooterHeight + 4)", footer)
+        self.assertIn("view.Height < 44", FILE_MANAGER)
+
+        for width in range(1, 601):
+            for height in (1, 4, 5, 27, 28, 43, 44, 45, 80, 170, 500):
+                if width > 8 and height > 4:
+                    self.assertGreater(width - 8, 0)
+                    self.assertGreater(min(40, height - 4), 0)
+                    self.assertLessEqual(4 + min(40, height - 4), height)
+                if width >= 308 and height >= 44:
+                    self.assertGreaterEqual(width - 188, 120)
+                    self.assertEqual(180 + width - 188, width - 8)
+                if width > 8 and height >= 28:
+                    self.assertGreater(width - 8, 0)
+                    self.assertGreaterEqual(height - 28, 0)
+                count = (min(4, (width - 44) // 42 + 1)
+                         if width >= 44 and height >= 44 else 0)
+                self.assertTrue(0 <= count <= 4)
+                for index in range(count):
+                    self.assertLessEqual(8 + index * 42 + 36, width)
 
 
 if __name__ == "__main__":
