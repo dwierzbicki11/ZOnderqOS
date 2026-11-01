@@ -1,5 +1,7 @@
 using System;
 using System.Diagnostics;
+using System.Drawing;
+using Cosmos.Kernel.System.Graphics;
 using System.Reflection;
 using ZonderqOS.GUI.Icons;
 
@@ -25,6 +27,16 @@ internal static class IconTwoSizeCacheSmoke
         .GetField("scaledRecentSlots", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
     private static readonly int[] Previous = (int[])Manager
         .GetField("scaledPreviousSlots", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+    private static readonly int[][] Sources = (int[][])Manager
+        .GetField("sourcePixels", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+    private static readonly int[] SourceWidths = (int[])Manager
+        .GetField("sourceWidths", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+    private static readonly int[] SourceHeights = (int[])Manager
+        .GetField("sourceHeights", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+    private static readonly Action<Canvas, int[], int, int, int, int> DrawPoints =
+        (Action<Canvas, int[], int, int, int, int>)Manager
+            .GetMethod("BlitPoints", BindingFlags.Static | BindingFlags.NonPublic)
+            .CreateDelegate(typeof(Action<Canvas, int[], int, int, int, int>));
     private static readonly FieldInfo Count = Manager
         .GetField("scaledCacheCount", BindingFlags.Static | BindingFlags.NonPublic);
 
@@ -98,6 +110,39 @@ internal static class IconTwoSizeCacheSmoke
                 throw new Exception("Two-size cache lost buffer identity");
         }
 
+        // Exercise the public production entry point, not just the private
+        // lookup. A stale size hint could otherwise select the wrong run/point
+        // blitter even when the cache returned the right bitmap.
+        int[] oldSource = Sources[index];
+        int oldWidth = SourceWidths[index];
+        int oldHeight = SourceHeights[index];
+        try
+        {
+            Sources[index] = source;
+            SourceWidths[index] = 8;
+            SourceHeights[index] = 8;
+            for (int i = 0; i < 16; i++)
+            {
+                bool first = (i & 1) == 0;
+                int width = first ? WidthA : WidthB;
+                int height = first ? HeightA : HeightB;
+                int[] scaled = first ? a : b;
+                Canvas expected = new Canvas(128, 128);
+                Canvas actual = new Canvas(128, 128);
+                DrawPoints(expected, scaled, width, height, -12, 9);
+                IconManager.DrawScaled(actual, type, -12, 9, width, height);
+                for (int pixel = 0; pixel < expected.Pixels.Length; pixel++)
+                    if (expected.Pixels[pixel] != actual.Pixels[pixel])
+                        throw new Exception("Alternating icon changed framebuffer at " + pixel);
+            }
+        }
+        finally
+        {
+            Sources[index] = oldSource;
+            SourceWidths[index] = oldWidth;
+            SourceHeights[index] = oldHeight;
+        }
+
         // Warmed hits must not allocate new scaled bitmaps or per-call objects.
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 2000; i++)
@@ -144,7 +189,7 @@ internal static class IconTwoSizeCacheSmoke
         }
         Array.Sort(before);
         Array.Sort(after);
-        Console.WriteLine("Two-size icon cache: 2000 identity checks, stale-hint recovery, " +
+        Console.WriteLine("Two-size icon cache: 2000 identity checks, 16 exact framebuffers, stale-hint recovery, " +
             "2000 warmed calls with " + allocated + " B allocations.");
         Console.WriteLine("Host .NET alternating icon sizes: " + repeats +
             " lookups, median of 5 alternating A/B; old single-slot " +
