@@ -53,6 +53,12 @@ def expanded_group_rows(radius):
 
 
 class RoundedPanelPerformanceContracts(unittest.TestCase):
+    def test_all_rounded_shapes_cull_before_corner_work(self):
+        # The same overflow-safe rectangle test must guard all three
+        # rounded primitives, not only bordered panels.
+        self.assertEqual(
+            SOURCE.count("if (IsInvisible(canvas, x, y, width, height))"), 3)
+
     def test_border_geometry_is_identical(self):
         for radius in range(1, 65):
             with self.subTest(radius=radius):
