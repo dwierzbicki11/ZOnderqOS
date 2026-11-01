@@ -14,7 +14,7 @@ spec.loader.exec_module(balance)
 
 
 class BalanceCaptureValidatorTests(unittest.TestCase):
-    def capture(self, left_hz=0, right_hz=880, duration_ms=300):
+    def capture(self, left_hz=0, right_hz=880, duration_ms=300, active_channel="right"):
         rate = 48000
         frames = rate * duration_ms // 1000
         samples = bytearray()
@@ -29,7 +29,7 @@ class BalanceCaptureValidatorTests(unittest.TestCase):
                 stream.setsampwidth(2)
                 stream.setframerate(rate)
                 stream.writeframes(samples)
-            return balance.inspect(path)
+            return balance.inspect(path, active_channel=active_channel)
 
     def test_right_only_880_hz_passes(self):
         self.assertIn("PASS", self.capture())
@@ -53,6 +53,33 @@ class BalanceCaptureValidatorTests(unittest.TestCase):
     def test_short_signal_rejected(self):
         with self.assertRaises(ValueError):
             self.capture(duration_ms=100)
+
+    def test_left_only_440_hz_passes(self):
+        self.assertIn("left-only", self.capture(left_hz=440, right_hz=0, active_channel="left"))
+
+    def test_left_only_swapped_channels_rejected(self):
+        with self.assertRaises(ValueError):
+            self.capture(left_hz=0, right_hz=440, active_channel="left")
+
+    def test_left_only_both_channels_active_rejected(self):
+        with self.assertRaises(ValueError):
+            self.capture(left_hz=440, right_hz=880, active_channel="left")
+
+    def test_left_only_silence_rejected(self):
+        with self.assertRaises(ValueError):
+            self.capture(left_hz=0, right_hz=0, active_channel="left")
+
+    def test_left_only_wrong_pitch_rejected(self):
+        with self.assertRaises(ValueError):
+            self.capture(left_hz=880, right_hz=0, active_channel="left")
+
+    def test_left_only_short_signal_rejected(self):
+        with self.assertRaises(ValueError):
+            self.capture(left_hz=440, right_hz=0, duration_ms=100, active_channel="left")
+
+    def test_invalid_active_channel_rejected(self):
+        with self.assertRaises(ValueError):
+            self.capture(active_channel="center")
 
 
 if __name__ == "__main__":
