@@ -231,8 +231,11 @@ class NetworkN1Isolation(unittest.TestCase):
                         n6.index("int read = stream.Read("))
         self.assertIn("#if ZONDERQ_NETWORK_N4_TCP\n"
                       "        // Socket ReceiveTimeout", SOURCE)
-        self.assertIn("#endif\n\n#if ZONDERQ_NETWORK_N6_HTTP\n"
-                      "        // Stock Cosmos", SOURCE)
+        # The read-only DriverKit health snapshot is shared by N1-N6.
+        # Only the N6 stress helpers remain behind the N6 preprocessor gate.
+        self.assertIn("#endif\n\n        // Stock Cosmos", SOURCE)
+        self.assertIn("#if ZONDERQ_NETWORK_N6_HTTP\n"
+                      "        private static bool CheckE1000EDriverKitHealth", SOURCE)
 
         # Arithmetic reference for 1GHz Stopwatch ticks, including the
         # final millisecond. This tests the intended timeout contract, not
