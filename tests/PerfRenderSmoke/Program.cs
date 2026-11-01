@@ -61,6 +61,7 @@ internal static class Program
         TextWhitespaceSmoke.Verify();
         IconBlitSmoke.Verify();
         IconCacheSmoke.Verify();
+        IconDirectScaleSmoke.Verify();
         Console.WriteLine("PASS: production C# text/panel renderers tested with stub Canvas; not QEMU.");
         return 0;
     }
