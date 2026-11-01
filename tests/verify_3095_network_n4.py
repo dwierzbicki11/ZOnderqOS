@@ -193,14 +193,14 @@ def self_test() -> None:
     # scheduler inserted a tick in the middle of TCP_ATTEMPT=START even
     # though TCP echo, six HTTP exchanges and the PCAP were all valid.
     torn_tcp = serial.replace(
-        TCP_START, "[NET3095-N4] TCP[SCHED] Tick 6 enabled=1\\n_ATTEMPT=START")
+        TCP_START, "[NET3095-N4] TCP[SCHED] Tick 6 enabled=1\n_ATTEMPT=START")
     assert "PASS" in validate(torn_tcp, synthetic_capture(frames))
     # The repair must not manufacture missing markers, accept arbitrary
     # noise, or silently collapse a duplicated start marker.
     for bad in (
-        serial.replace(TCP_START, "[NET3095-N4] TCP[NOISE] Tick 6 enabled=1\\n_ATTEMPT=START"),
-        serial.replace(TCP_START, "[NET3095-N4] TCP[SCHED] Tick 6 enabled=0\\n_ATTEMPT=START"),
-        serial + "\\n[NET3095-N4] TCP[SCHED] Tick 6 enabled=1\\n_ATTEMPT=START",
+        serial.replace(TCP_START, "[NET3095-N4] TCP[NOISE] Tick 6 enabled=1\n_ATTEMPT=START"),
+        serial.replace(TCP_START, "[NET3095-N4] TCP[SCHED] Tick 6 enabled=0\n_ATTEMPT=START"),
+        serial + "\n[NET3095-N4] TCP[SCHED] Tick 6 enabled=1\n_ATTEMPT=START",
     ):
         try:
             validate(bad, synthetic_capture(frames))
