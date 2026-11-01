@@ -74,6 +74,10 @@ namespace ZonderqOS.GUI
         // Maximize and Minimize only when each complete button fits.
         private int VisibleCaptionControls()
         {
+            // A 38px caption cannot fit on a shorter desktop. In that
+            // case do not expose clickable controls outside the window.
+            if (Height < TitleBarHeight)
+                return 0;
             int usableWidth = Width - RightPadding;
             return usableWidth < ButtonSize ? 0 :
                 System.Math.Min(3, usableWidth / ButtonSize);
@@ -528,15 +532,21 @@ namespace ZonderqOS.GUI
 
             UiPainter.RoundedPanel(canvas, X, Y, Width, Height,
                 IsMaximized ? 0 : UiMetrics.WindowRadius, UiPalette.Surface, border);
-            if (IsMaximized)
-                canvas.DrawFilledRectangle(titleBar, X + 1, Y + 1, Width - 2, TitleBarHeight - 1);
-            else
-                UiPainter.RoundedTop(canvas, X + 1, Y + 1, Width - 2,
-                    TitleBarHeight - 1, UiMetrics.WindowRadius - 1, titleBar);
+            // On exceptionally small firmware modes, the normal 38px
+            // caption is taller than the entire window. Do not submit
+            // negative or off-window title rectangles to the framebuffer.
+            if (Width >= 3 && Height >= TitleBarHeight)
+            {
+                if (IsMaximized)
+                    canvas.DrawFilledRectangle(titleBar, X + 1, Y + 1, Width - 2, TitleBarHeight - 1);
+                else
+                    UiPainter.RoundedTop(canvas, X + 1, Y + 1, Width - 2,
+                        TitleBarHeight - 1, UiMetrics.WindowRadius - 1, titleBar);
+            }
 
             if (openingFrames > 0)
                 openingFrames--;
-            if (focusProgress > 0f)
+            if (focusProgress > 0f && Width > 24 && Height >= 4)
             {
                 int width = Width - 24;
                 int reveal = openingFrames > 0 ? width * (8 - openingFrames) / 8 : width;
@@ -544,11 +554,12 @@ namespace ZonderqOS.GUI
                     System.Math.Max(1, reveal), 2);
             }
 
-            canvas.DrawLine(Color.FromArgb(48, 57, 67), X + 1, Y + TitleBarHeight,
-                X + Width - 2, Y + TitleBarHeight);
+            if (Width >= 3 && Height > TitleBarHeight)
+                canvas.DrawLine(Color.FromArgb(48, 57, 67), X + 1, Y + TitleBarHeight,
+                    X + Width - 2, Y + TitleBarHeight);
             int visibleControls = VisibleCaptionControls();
             int titleWidth = Width - visibleControls * ButtonSize - 28;
-            if (titleWidth > 0)
+            if (Height >= TitleBarHeight && titleWidth > 0)
                 UiTypography.Heading(canvas, Title, X + 12, Y + 4,
                     titleWidth, titleText);
 
