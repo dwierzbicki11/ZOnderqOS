@@ -607,10 +607,33 @@ namespace ZonderqOS.SystemCore
 
         private static bool PlayPcm(byte[] pcm)
         {
+            // Fail closed before touching the primary device or allocating
+            // a scaled copy. The probe emits only 48 kHz stereo PCM16; a
+            // different physical codec format must never be assumed safe.
+            const int sampleRate = 48000;
+            const int maxPcmBytes = sampleRate * 2 * 4;
+            if (pcm == null || pcm.Length == 0 || pcm.Length > maxPcmBytes ||
+                pcm.Length % 4 != 0)
+            {
+                Console.WriteLine("[AUDIO] PCM REFUSED: invalid stereo16 length.");
+                return false;
+            }
+            if (!AudioManager.IsEnabled)
+            {
+                Console.WriteLine("[AUDIO] TONE REFUSED: audio subsystem disabled.");
+                return false;
+            }
+
             AudioDevice output = AudioManager.Primary;
-            if (!AudioManager.IsEnabled || output == null || output.IsWithdrawn)
+            if (output == null || output.IsWithdrawn)
             {
                 Console.WriteLine("[AUDIO] TONE REFUSED: no published output.");
+                return false;
+            }
+            if (output.SampleRate != sampleRate || output.Format.Channels != 2 ||
+                output.Format.ChannelSize != 2)
+            {
+                Console.WriteLine("[AUDIO] PCM REFUSED: output is not 48000Hz stereo16.");
                 return false;
             }
 
@@ -620,7 +643,6 @@ namespace ZonderqOS.SystemCore
                 return false;
             }
 
-            const int sampleRate = 48000;
             try
             {
                 // Apply channel balance without changing codec or DMA configuration.
@@ -634,7 +656,6 @@ namespace ZonderqOS.SystemCore
                 // Keep one ring of zero PCM *inside* the bounded source stream
                 // for opt-in fade probes, without changing the stock driver.
                 const int hdaDrainSilenceBytes = 16 * 1024;
-                const int maxPcmBytes = 48000 * 2 * 4;
                 // Long, otherwise-valid WAVs must remain playable: reserve
                 // only the room left inside the existing two-second cap.
                 // AudioPlayer itself still drains one silent ring at EOF.
