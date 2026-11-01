@@ -2452,7 +2452,9 @@ class FileManagerToolbarBounds3095(unittest.TestCase):
         self.assertIn("int button = offset / 42;", toolbar)
         self.assertIn("offset % 42 >= 36", toolbar)
         self.assertIn("button >= ToolbarButtonCountForView", toolbar)
-        self.assertIn("internal int ToolbarButtonCountForView =>", FILE_MANAGER)
+        self.assertIn("ToolbarButtonCountForView => view.Width < 44 ? 0 :", FILE_MANAGER)
+        # C# truncates negative integer division toward zero; the explicit
+        # guard is required for clients narrower than the first 36px button.
         for button in range(4):
             self.assertIn(f"if (app.ToolbarButtonCountForView > {button})", render)
 
