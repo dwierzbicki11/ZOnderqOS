@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using System.Drawing;
 using System.Reflection;
 using Cosmos.Kernel.System.Graphics;
@@ -71,19 +70,6 @@ internal static class IconDirectScaleSmoke
                     " at " + x + "," + y + " pattern " + pattern);
     }
 
-    private static double Time(bool optimized, Canvas canvas, int[] source, int repeats)
-    {
-        long start = Stopwatch.GetTimestamp();
-        for (int i = 0; i < repeats; i++)
-        {
-            if (optimized)
-                Production(canvas, source, 128, 96, 0, 0, 192, 128);
-            else
-                Baseline(canvas, source, 128, 96, 0, 0, 192, 128);
-        }
-        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
-    }
-
     internal static void Verify()
     {
         int[,] sizes = {
@@ -119,42 +105,17 @@ internal static class IconDirectScaleSmoke
             " production C# pixel/call equivalence checks, including clipping and alpha.");
 
         int[] source = Source(128, 96, 0);
-        Canvas before = new Canvas(200, 140);
-        Canvas after = new Canvas(200, 140);
-        Time(false, before, source, 20);
-        Time(true, after, source, 20);
-        // Warmed production fallback must not allocate a temporary scaled
-        // bitmap on each frame, even after the fixed icon cache is exhausted.
+        Canvas frame = new Canvas(200, 140);
+        for (int i = 0; i < 20; i++)
+            Production(frame, source, 128, 96, 0, 0, 192, 128);
+        // The fallback must not allocate a temporary scaled image per frame.
         long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 50; i++)
-            Production(after, source, 128, 96, 0, 0, 192, 128);
+            Production(frame, source, 128, 96, 0, 0, 192, 128);
         long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
         if (allocated != 0)
             throw new Exception("Direct scaling allocated " + allocated + " bytes");
         Console.WriteLine("Direct icon scaling: 50 warmed blits, " + allocated +
             " B managed allocations (host .NET).");
-
-        const int iterations = 200;
-        double[] baseline = new double[5];
-        double[] optimized = new double[5];
-        for (int sample = 0; sample < 5; sample++)
-        {
-            if ((sample & 1) == 0)
-            {
-                baseline[sample] = Time(false, before, source, iterations);
-                optimized[sample] = Time(true, after, source, iterations);
-            }
-            else
-            {
-                optimized[sample] = Time(true, after, source, iterations);
-                baseline[sample] = Time(false, before, source, iterations);
-            }
-        }
-        Array.Sort(baseline);
-        Array.Sort(optimized);
-        Console.WriteLine("Host .NET direct icon scaling (cache full): " + iterations +
-            " blits, median of 5 alternating A/B; per-pixel divide " +
-            baseline[2].ToString("F2") + " ms, quotient/remainder " +
-            optimized[2].ToString("F2") + " ms (not QEMU FPS).");
     }
 }
