@@ -11,6 +11,12 @@ namespace ZonderqOS.GUI
         // Built once; non-ASCII characters still use the original fallback.
         private static readonly byte[] CachedAsciiGlyphRows = BuildAsciiGlyphRows();
 
+        // Unsupported Unicode characters use Glyph's default 5x7 pattern.
+        // Cache those seven rows once rather than running the glyph switch,
+        // pattern lookup and bit decoding seven times per character/frame.
+        // Unicode characters uppercasing to ASCII retain their original glyph.
+        private static readonly byte[] CachedFallbackGlyphRows = BuildFallbackGlyphRows();
+
         private static byte[] BuildAsciiGlyphRows()
         {
             byte[] rows = new byte[128 * 7];
@@ -20,6 +26,14 @@ namespace ZonderqOS.GUI
                 for (int row = 0; row < 7; row++)
                     rows[offset + row] = (byte)Glyph((char)ch, row);
             }
+            return rows;
+        }
+
+        private static byte[] BuildFallbackGlyphRows()
+        {
+            byte[] rows = new byte[7];
+            for (int row = 0; row < rows.Length; row++)
+                rows[row] = (byte)Glyph('\uFFFF', row);
             return rows;
         }
 
@@ -266,11 +280,19 @@ namespace ZonderqOS.GUI
             if (ch == ' ')
                 return;
             int glyphOffset = ch < 128 ? ch * 7 : -1;
+            if (glyphOffset < 0)
+            {
+                // Some Unicode code points uppercase to an ASCII letter.
+                // Preserve Glyph(char,row)'s behavior for those characters.
+                char upper = char.ToUpperInvariant(ch);
+                if (upper < 128)
+                    glyphOffset = upper * 7;
+            }
             for (int row = 0; row < 7; row++)
             {
                 int bits = glyphOffset >= 0
                     ? CachedAsciiGlyphRows[glyphOffset + row]
-                    : Glyph(ch, row);
+                    : CachedFallbackGlyphRows[row];
                 // Punctuation and sparse glyphs often have empty rows.
                 if (bits == 0)
                     continue;
