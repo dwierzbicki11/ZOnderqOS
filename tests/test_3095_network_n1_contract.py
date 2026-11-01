@@ -14,6 +14,28 @@ HTTP_VALIDATOR = (ROOT / "tests/verify_3095_network_n6.py").read_text()
 MAIN = (ROOT / "Kernel.cs").read_text()
 
 class NetworkN1Isolation(unittest.TestCase):
+    def test_n6_http_total_rx_deadline(self):
+        # Socket ReceiveTimeout is per read, not a complete-stream limit.
+        # The N6 opt-in guest must reject a trickle peer even when every
+        # individual read succeeds within five seconds.
+        method = SOURCE.split("private static bool TryHttpExchange(", 1)[1]
+        self.assertIn("using System.Diagnostics;", SOURCE)
+        self.assertIn("long rxStart = Stopwatch.GetTimestamp();", method)
+        self.assertIn("long rxFrequency = Stopwatch.Frequency;", method)
+        self.assertIn("rxFrequency <= 0 || rxStart <= 0", method)
+        self.assertEqual(method.count("rxElapsed / rxFrequency >= 45"), 2)
+        self.assertEqual(method.count("HTTP RX total deadline exceeded"), 2)
+        before = method.index("while (received < response.Length)")
+        guard1 = method.index("rxElapsed / rxFrequency >= 45", before)
+        read = method.index("int read = stream.Read(", before)
+        guard2 = method.index("rxElapsed / rxFrequency >= 45", read)
+        check = method.index("if (!IsE1000EDriverKitStable(", read)
+        self.assertLess(guard1, read)
+        self.assertLess(read, guard2)
+        self.assertLess(guard2, check)
+        self.assertIn("http.Client.ReceiveTimeout = 5000;", method)
+        self.assertIn("if (readCalls >= 64)", method)
+
     def test_upstream_3095_and_off_by_default(self):
         self.assertIn('Sdk="Cosmos.Sdk/3.0.95"', PROJECT)
         self.assertIn('Version="3.0.95"', PROJECT)
