@@ -264,13 +264,34 @@ namespace ZonderqOS.GUI
 
         private static int DigitCount(ulong value)
         {
-            int count = 1;
-            while (value >= 10)
+            // Avoid up to 19 sequential 64-bit divisions on the task-manager
+            // numeric hot path. The common 0..99 range takes two comparisons;
+            // larger values use a bounded decimal threshold tree.
+            if (value < 100UL)
+                return value < 10UL ? 1 : 2;
+            if (value < 100000000UL)
             {
-                value /= 10;
-                count++;
+                if (value < 10000UL)
+                    return value < 1000UL ? 3 : 4;
+                if (value < 1000000UL)
+                    return value < 100000UL ? 5 : 6;
+                return value < 10000000UL ? 7 : 8;
             }
-            return count;
+            if (value < 10000000000000000UL)
+            {
+                if (value < 1000000000000UL)
+                {
+                    if (value < 10000000000UL)
+                        return value < 1000000000UL ? 9 : 10;
+                    return value < 100000000000UL ? 11 : 12;
+                }
+                if (value < 100000000000000UL)
+                    return value < 10000000000000UL ? 13 : 14;
+                return value < 1000000000000000UL ? 15 : 16;
+            }
+            if (value < 1000000000000000000UL)
+                return value < 100000000000000000UL ? 17 : 18;
+            return value < 10000000000000000000UL ? 19 : 20;
         }
 
         private static ulong Pow10(int exponent)

@@ -94,6 +94,45 @@ class TextRangeVisibilityContracts(unittest.TestCase):
                                     divisor = 0
                     self.assertEqual(actual, expected, (value, width, x))
 
+
+    def test_decimal_thresholds_preserve_ulong_digit_count(self):
+        import random
+        source = SOURCE.split("private static int DigitCount(ulong value)", 1)[1].split(
+            "private static ulong Pow10(", 1)[0]
+        self.assertNotIn("value /= 10", source)
+        self.assertIn("value < 100UL", source)
+        self.assertIn("value < 10000000000000000000UL", source)
+
+        def count(value):
+            if value < 100:
+                return 1 if value < 10 else 2
+            if value < 100000000:
+                if value < 10000:
+                    return 3 if value < 1000 else 4
+                if value < 1000000:
+                    return 5 if value < 100000 else 6
+                return 7 if value < 10000000 else 8
+            if value < 10000000000000000:
+                if value < 1000000000000:
+                    if value < 10000000000:
+                        return 9 if value < 1000000000 else 10
+                    return 11 if value < 100000000000 else 12
+                if value < 100000000000000:
+                    return 13 if value < 10000000000000 else 14
+                return 15 if value < 1000000000000000 else 16
+            if value < 1000000000000000000:
+                return 17 if value < 100000000000000000 else 18
+            return 19 if value < 10000000000000000000 else 20
+
+        values = [0, 2**64 - 1]
+        for exponent in range(1, 20):
+            power = 10**exponent
+            values.extend((power - 1, power, power + 1))
+        rng = random.Random(20261101)
+        values.extend(rng.getrandbits(64) for _ in range(10000))
+        for value in values:
+            self.assertEqual(count(value), len(str(value)), value)
+
     def test_signed_numbers_cull_before_drawing_minus(self):
         signed = SOURCE.split("public static void DrawInt(Canvas", 1)[1].split(
             "public static void DrawPercent(", 1)[0]
