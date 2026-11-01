@@ -172,6 +172,24 @@ namespace ZonderqOS
                         Log("[NET3095-N3][FAIL] ICMP echo timeout or wrong peer");
                         return;
                     }
+                    // A valid echo can arrive just before the NIC is rebound,
+                    // the link drops or the original DHCP lease is replaced.
+                    // Check the live adapter AFTER Receive(), not the mutable
+                    // IPConfig object captured before the ICMP exchange.
+                    NetworkAdapter icmpAdapter = NetworkManager.Primary;
+                    IPConfig? icmpLease = icmpAdapter.IPConfig;
+                    if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized ||
+                        !icmpAdapter.IsValid || icmpAdapter.Name != "e1000e" ||
+                        !icmpAdapter.Ready || !icmpAdapter.LinkUp ||
+                        (icmpAdapter.MacAddress?.ToString() ?? "") != sourceMac ||
+                        icmpLease == null ||
+                        icmpLease.Address.ToString() != "10.0.2.15" ||
+                        icmpLease.SubnetMask.ToString() != "255.255.255.0" ||
+                        icmpLease.DefaultGateway.ToString() != "10.0.2.2")
+                    {
+                        Log("[NET3095-N3][FAIL] E1000E link/MAC/DHCP lease changed during ICMP echo");
+                        return;
+                    }
                     Log("[NET3095-N3] ICMP=PASS from=" + remote.Address);
                 }
                 finally
