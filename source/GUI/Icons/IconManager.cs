@@ -96,38 +96,6 @@ namespace ZonderqOS.GUI.Icons
                 return;
             }
 
-            // Most frames draw an icon at one of its two recently used sizes.
-            // Handle validated hits here, without entering the cold scaling
-            // method (which is too large for the host JIT to inline).
-            // A recycled slot is never trusted without a full key check.
-            int recent = scaledRecentSlots[sourceIndex];
-            if (recent < scaledCacheCount &&
-                scaledTypes[recent] == type &&
-                scaledWidths[recent] == width &&
-                scaledHeights[recent] == height)
-            {
-                if (scaledUseRuns[recent])
-                    BlitRuns(canvas, scaledPixels[recent], width, height, x, y);
-                else
-                    BlitPoints(canvas, scaledPixels[recent], width, height, x, y);
-                return;
-            }
-
-            int previous = scaledPreviousSlots[sourceIndex];
-            if (previous != recent && previous < scaledCacheCount &&
-                scaledTypes[previous] == type &&
-                scaledWidths[previous] == width &&
-                scaledHeights[previous] == height)
-            {
-                scaledPreviousSlots[sourceIndex] = recent;
-                scaledRecentSlots[sourceIndex] = previous;
-                if (scaledUseRuns[previous])
-                    BlitRuns(canvas, scaledPixels[previous], width, height, x, y);
-                else
-                    BlitPoints(canvas, scaledPixels[previous], width, height, x, y);
-                return;
-            }
-
             int[] pixels = GetScaledPixels(type, source, sourceWidth, sourceHeight, width, height);
             if (pixels != null)
             {
