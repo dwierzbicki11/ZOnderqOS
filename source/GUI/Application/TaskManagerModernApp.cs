@@ -862,8 +862,11 @@ namespace ZonderqOS.GUI.Apps
         // Otherwise the 146px table origin can overlap the footer or leave the client.
         private bool CompactProcessLayout => Width < 550 ||
             Height < ListTop + FooterHeight + RowHeight + 6;
-        // The full CPU graph and system details require vertical space too.
-        private bool CompactPerformanceLayout => Width < 900 || Height < 460;
+        // The 16-logical-CPU grid needs four 72px rows and three 8px gaps.
+        // Its top is 144px from the client origin; keep an 18px gap above
+        // the 28px footer (144 + 4 * 72 + 3 * 8 + 18 + 28 = 502).
+        // A full layout at 460-501px otherwise draws CPU cards over the footer.
+        private bool CompactPerformanceLayout => Width < 900 || Height < 502;
         private int ListTopForView => CompactProcessLayout ? 64 : ListTop;
         // No synthetic row may overlap the footer on a short firmware mode.
         // A zero-row view is intentionally noninteractive, including Delete.
