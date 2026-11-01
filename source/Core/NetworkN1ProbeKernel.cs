@@ -327,11 +327,13 @@ namespace ZonderqOS
                     "GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n\r\n");
                 byte[] expected = System.Text.Encoding.ASCII.GetBytes(
                     "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 4116\r\nConnection: close\r\n\r\nZONDERQ3095-HTTP-OK\n" +
-                    // Distinct byte per TCP connection catches stale RX
-                    // buffers reused across six independent E1000E sessions.
-                    new string((char)('A' + attempt - 1), 1) +
-                    new string('A', 1023) + new string('B', 1024) +
-                    new string('C', 1024) + new string('D', 1024));
+                    // Every 1 KiB block differs between connections, not
+                    // just its first byte. A stale DMA/RX descriptor reused
+                    // for any later segment must fail the byte-for-byte test.
+                    new string((char)('A' + attempt - 1), 1024) +
+                    new string((char)('B' + attempt - 1), 1024) +
+                    new string((char)('C' + attempt - 1), 1024) +
+                    new string((char)('D' + attempt - 1), 1024));
                 stream.Write(request, 0, request.Length);
                 byte[] response = new byte[expected.Length];
                 int received = 0;
