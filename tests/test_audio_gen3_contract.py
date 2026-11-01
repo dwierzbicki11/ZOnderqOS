@@ -132,6 +132,16 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn('if (command == "stereosplit")', kernel)
         self.assertIn("PlayStereoSplitTestTone()", runtime)
         self.assertIn("GenerateDualSquareStereo16", read("source/Core/AudioTonePcm.cs"))
+        self.assertIn('"wav16k": 1500', harness)
+        self.assertIn('"wav24k": 4000', harness)
+        self.assertIn('if (command == "wav16k")', kernel)
+        self.assertIn('if (command == "wav24k")', kernel)
+        self.assertIn("PlayWave16000MonoTestTone()", runtime)
+        self.assertIn("PlayWave24000TestTone()", runtime)
+        self.assertIn("--command wav16k", workflow)
+        self.assertIn("--command wav24k", workflow)
+        self.assertIn("audio-qemu-16000-out/*.wav", workflow)
+        self.assertIn("audio-qemu-24000-out/*.wav", workflow)
         self.assertIn('"wav22k": 1100', harness)
         self.assertIn('"wav32k": 3520', harness)
         self.assertIn('if (command == "wav44")', kernel)
@@ -236,7 +246,7 @@ class AudioGen3Contract(unittest.TestCase):
             self.assertNotIn(forbidden, gain)
 
         self.assertIn("--command wavtone", workflow)
-        self.assertIn('choices=("tone", "stereosplit", "wavtone", "wavmono", "wav44", "wav22k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20")', harness)
+        self.assertIn('choices=("tone", "stereosplit", "wavtone", "wavmono", "wav44", "wav16k", "wav22k", "wav24k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20")', harness)
         for forbidden in ("System.IO", "File.", "Disk.", "TryMount(", "WriteBlock(",
                           "NetworkManager.", "PciSysfsProvider"):
             self.assertNotIn(forbidden, parser)
