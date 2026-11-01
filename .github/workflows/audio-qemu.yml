@@ -119,6 +119,15 @@ jobs:
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-icount-out \
             --boot-seconds 45 --command mixqueue --icount-auto
+      - name: Diagnose experimental icount HDA PCM separately from mandatory baseline
+        if: always()
+        run: |
+          if [ -s audio-qemu-mixqueue-icount-out/captured.wav ]; then
+            python3 tools/analyze-audio-queue-dropouts.py audio-qemu-mixqueue-icount-out/captured.wav
+          else
+            echo '[AUDIO-QUEUE-ICOUNT] no WAV artifact; experimental capture unverified'
+          fi
+          echo '[AUDIO-QUEUE-ICOUNT] diagnostic only; baseline mixqueue quality gate remains mandatory'
       - name: Boot again and capture decoded in-memory RIFF/WAV playback
         run: |
           python3 tools/smoke-audio-qemu.py \
