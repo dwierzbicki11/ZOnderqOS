@@ -36,6 +36,12 @@ namespace ZonderqOS
                 new RootSectorReader(_rootPartition), out space, out error);
         }
 
+        public static bool TryBeginRootSpaceScan(out Fat32Allocation.Scan scan, out string error)
+        {
+            return Fat32Allocation.TryBegin(_rootPartition == null ? null :
+                new RootSectorReader(_rootPartition), out scan, out error);
+        }
+
         public static bool Initialize()
         {
             try

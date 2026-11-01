@@ -12,8 +12,9 @@ class Image : IFatSectorReader
     public byte[] Boot, Fat0, Fat1;
     public ulong FailAt = ulong.MaxValue;
     public int Reads;
-    public Image(uint size = 512, byte clusterSectors = 1)
+    public Image(uint size = 512, byte clusterSectors = 1, uint clusters = 65525)
     {
+        Clusters = clusters;
         SectorSize = size;
         FatSectors = (uint)(((ulong)Clusters + 2) * 4 + size - 1) / size;
         SectorCount = 32 + 2UL * FatSectors + (ulong)Clusters * clusterSectors;
@@ -129,6 +130,62 @@ class Program
             var i = new Image(); Image.Set16(i.Boot,40,0x81); Image.Set32(i.Fat0,0,0); Read(i);
         });
         Test("null reader rejected", () => Check(!Fat32Allocation.TryRead(null,out var s,out var e) && s.DataBytes==0, "null accepted"));
+        Test("incremental scan bounds reads and publishes only on completion", () => {
+            var i = new Image(); var expected = Read(i);
+            Check(Fat32Allocation.TryBegin(i, out var scan, out var error), error);
+            Fat32Space result = default;
+            while (!scan.IsComplete) {
+                int before = i.Reads;
+                Check(scan.TryAdvance(3, out result, out error), error);
+                Check(i.Reads-before <= 6, "step exceeded mirrored read budget");
+                if (!scan.IsComplete) Check(result.DataBytes == 0 && result.FreeBytes == 0, "early totals");
+            }
+            Check(result.FreeBytes == expected.FreeBytes && result.AllocatedBytes == expected.AllocatedBytes, "incremental totals differ");
+            int reads = i.Reads;
+            Check(scan.TryAdvance(3, out result, out error) && i.Reads == reads, "completed scan reread device");
+        });
+        Test("incremental large volume exceeds synchronous budget", () => {
+            var i = new Image(512, 1, 2200000); Reject(i);
+            Check(Fat32Allocation.TryBegin(i, out var scan, out var error), error);
+            Fat32Space result = default;
+            while (!scan.IsComplete) Check(scan.TryAdvance(127, out result, out error), error);
+            Check(result.FreeBytes == 2199999UL*512, "large volume totals");
+        });
+        Test("disconnect after progress permanently fails session", () => {
+            var i = new Image(); Check(Fat32Allocation.TryBegin(i, out var scan, out var error), error);
+            Check(scan.TryAdvance(1, out var result, out error), error);
+            i.FailAt = 33;
+            Check(!scan.TryAdvance(1, out result, out error) && result.DataBytes == 0, "disconnect accepted");
+            i.FailAt = ulong.MaxValue; int before = i.Reads;
+            Check(!scan.TryAdvance(1, out result, out error) && i.Reads == before && !scan.IsComplete, "failed session resumed");
+        });
+        Test("mirror mismatch after progress yields no totals", () => {
+            var i = new Image(); Check(Fat32Allocation.TryBegin(i, out var scan, out var error), error);
+            Check(scan.TryAdvance(1, out var result, out error), error);
+            Image.Set32(i.Fat1, 512, 0x0FFFFFFF);
+            Check(!scan.TryAdvance(1, out result, out error) && result.DataBytes == 0, "mirror failure leaked totals");
+        });
+        Test("zero step rejected without reads and can be retried", () => {
+            var i = new Image(); Check(Fat32Allocation.TryBegin(i, out var scan, out var error), error);
+            int before = i.Reads;
+            Check(!scan.TryAdvance(0, out var result, out error) && i.Reads == before && error != null, "zero budget accepted");
+            Check(scan.TryAdvance(1, out result, out error) && error == null, "valid retry failed");
+        });
+        Test("active FAT step reads only selected table", () => {
+            var i = new Image(); Image.Set16(i.Boot, 40, 0x81); i.FailAt = 32;
+            Check(Fat32Allocation.TryBegin(i, out var scan, out var error), error);
+            int before = i.Reads;
+            Check(scan.TryAdvance(2, out var result, out error) && i.Reads-before == 2, "inactive FAT read");
+        });
+        Test("independent sessions do not share progress or totals", () => {
+            var a = new Image(); var b = new Image(); b.Entry(3, 0x0FFFFFFF);
+            Check(Fat32Allocation.TryBegin(a, out var sa, out var error), error);
+            Check(Fat32Allocation.TryBegin(b, out var sb, out error), error);
+            Check(sa.TryAdvance(1, out var ra, out error), error);
+            Check(sb.TryAdvance(uint.MaxValue, out var rb, out error), error);
+            Check(sa.TryAdvance(uint.MaxValue, out ra, out error), error);
+            Check(ra.FreeBytes == rb.FreeBytes+512, "sessions mixed");
+        });
         Console.WriteLine(passed + " allocation checks passed");
     }
 }

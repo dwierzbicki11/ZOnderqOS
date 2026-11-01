@@ -15,6 +15,35 @@ namespace ZonderqOS.GUI.Apps
         private int itemCount;
         private int viewMode; // 0 devices, 1 partitions, 2 mounts
         private int offset;
+        private Fat32Allocation.Scan allocationScan;
+        private int allocationRow;
+
+        public override void Update()
+        {
+            if (!IsRunning || Window == null || !Window.Visible || Window.IsMinimized || allocationScan == null)
+                return;
+            // At most eight reads (four sectors from each mirrored FAT) per update.
+            // This bounds I/O count, not driver latency. Rendering performs no I/O.
+            if (!allocationScan.TryAdvance(4, out Fat32Space space, out string error))
+            {
+                descriptions[allocationRow] = error;
+                values[allocationRow] = "NIEDOSTEPNE";
+                allocationScan = null;
+            }
+            else if (allocationScan.IsComplete)
+            {
+                descriptions[allocationRow] = "Zajete " + SpaceMiB(space.AllocatedBytes) +
+                    " | uszkodzone " + SpaceMiB(space.BadBytes);
+                values[allocationRow] = "Wolne " + SpaceMiB(space.FreeBytes);
+                allocationScan = null;
+            }
+            else
+            {
+                values[allocationRow] = "SKAN " +
+                    (allocationScan.CompletedFatSectors * 100 / allocationScan.TotalFatSectors) + "%";
+            }
+        }
+
 
         public StorageInfoApp(int x, int y)
             : base("Dyski i partycje", "Magazyn danych - ZOnderqOS", x, y, 940, 620)
@@ -49,6 +78,8 @@ namespace ZonderqOS.GUI.Apps
 
         protected override void RefreshData()
         {
+            // Dropping the session cancels it; switching view/F5 never reuses totals.
+            allocationScan = null;
             for (int i = 0; i < MaxItems; i++)
             {
                 names[i] = null;
@@ -120,16 +151,15 @@ namespace ZonderqOS.GUI.Apps
                 itemCount++;
             }
 
-            // This runs only on view selection or explicit F5 refresh, never
-            // in RenderContent. The reader is bound to Disk's approved root.
+            // Start on selection/F5, then advance through Update, never RenderContent.
             if (itemCount < MaxItems)
             {
                 names[itemCount] = "ROOT FAT32 - KLASTRY DANYCH";
-                if (Disk.TryGetRootSpace(out Fat32Space space, out string error))
+                allocationRow = itemCount;
+                if (Disk.TryBeginRootSpaceScan(out allocationScan, out string error))
                 {
-                    descriptions[itemCount] = "Zajete " + SpaceMiB(space.AllocatedBytes) +
-                        " | uszkodzone " + SpaceMiB(space.BadBytes);
-                    values[itemCount] = "Wolne " + SpaceMiB(space.FreeBytes);
+                    descriptions[itemCount] = "Odczyt porcjami; wynik po zakonczeniu";
+                    values[itemCount] = "SKAN 0%";
                 }
                 else
                 {

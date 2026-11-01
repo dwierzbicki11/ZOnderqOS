@@ -37,25 +37,58 @@ namespace ZonderqOS
                 throw new Exception("Invalid reserved FAT header.");
         }
 
+        public static bool TryBegin(IFatSectorReader reader, out Scan scan, out string error)
+        {
+            scan = null;
+            error = null;
+            try { scan = new Scan(reader); return true; }
+            catch (Exception ex) { error = ex.Message; return false; }
+        }
+
         public static bool TryRead(IFatSectorReader reader, out Fat32Space space, out string error)
         {
             space = default;
-            error = null;
-            try
+            if (!TryBegin(reader, out Scan scan, out error)) return false;
+            if (scan.RequiredReadBytes > MaxScanBytes)
             {
+                error = "FAT allocation scan exceeds the synchronous read budget.";
+                return false;
+            }
+            return scan.TryAdvance((uint)scan.TotalFatSectors, out space, out error);
+        }
+
+        // A session owns its device reference and two reusable sector buffers.
+        // The caller schedules steps; no thread, device writes or global cache.
+        public sealed class Scan
+        {
+            private readonly IFatSectorReader reader;
+            private readonly uint bytes, clusterSectors, reserved, fatSectors, media, root;
+            private readonly ulong clusters, sectorsToRead, fatStart;
+            private readonly byte[] sector, mirror;
+            private ulong nextSector, free, bad;
+            private string failure;
+            private Fat32Space result;
+            public bool IsComplete { get; private set; }
+            public ulong CompletedFatSectors => nextSector;
+            public ulong TotalFatSectors => sectorsToRead;
+            public ulong RequiredReadBytes => sectorsToRead * bytes * (mirror == null ? 1UL : 2UL);
+
+            internal Scan(IFatSectorReader reader)
+            {
+                this.reader = reader;
                 if (reader == null) throw new Exception("No bound volume.");
-                uint bytes = reader.SectorSize;
+                bytes = reader.SectorSize;
                 if (bytes != 512 && bytes != 1024 && bytes != 2048 && bytes != 4096)
                     throw new Exception("Unsupported sector size.");
-                byte[] sector = new byte[(int)bytes];
+                sector = new byte[(int)bytes];
                 reader.ReadSector(0, sector);
-                uint clusterSectors = sector[13];
-                uint reserved = U16(sector, 14);
+                clusterSectors = sector[13];
+                reserved = U16(sector, 14);
                 uint fats = sector[16];
                 uint total = U32(sector, 32);
-                uint fatSectors = U32(sector, 36);
+                fatSectors = U32(sector, 36);
                 uint flags = U16(sector, 40);
-                uint media = sector[21];
+                media = sector[21];
                 if (sector[510] != 0x55 || sector[511] != 0xAA || U16(sector, 11) != bytes ||
                     clusterSectors == 0 || clusterSectors > 128 ||
                     (clusterSectors & (clusterSectors - 1)) != 0 || reserved == 0 ||
@@ -68,65 +101,86 @@ namespace ZonderqOS
 
                 ulong dataStart = reserved + (ulong)fats * fatSectors;
                 if (dataStart >= total) throw new Exception("FAT extends outside volume.");
-                ulong clusters = (total - dataStart) / clusterSectors;
+                clusters = (total - dataStart) / clusterSectors;
                 if (clusters < 65525 || clusters > 0x0FFFFFEEUL ||
                     (ulong)fatSectors * bytes / 4 < clusters + 2)
                     throw new Exception("Invalid FAT32 cluster count or FAT capacity.");
-                uint root = U32(sector, 44);
+                root = U32(sector, 44);
                 if (root < 2 || root >= clusters + 2)
                     throw new Exception("Invalid root cluster.");
                 bool mirrored = (flags & 0x80) == 0;
                 uint active = mirrored ? 0 : flags & 0x0F;
                 if (active >= fats) throw new Exception("Invalid active FAT index.");
-                ulong sectorsToRead = ((clusters + 2) * 4 + bytes - 1) / bytes;
-                if (sectorsToRead * bytes * (mirrored ? fats : 1) > MaxScanBytes)
-                    throw new Exception("FAT allocation scan exceeds the synchronous read budget.");
+                sectorsToRead = ((clusters + 2) * 4 + bytes - 1) / bytes;
 
-                ulong fatStart = reserved + (ulong)active * fatSectors;
-                byte[] mirror = mirrored && fats == 2 ? new byte[(int)bytes] : null;
-                ulong free = 0, bad = 0;
-                uint entriesPerSector = bytes / 4;
-                for (ulong s = 0; s < sectorsToRead; s++)
-                {
-                    reader.ReadSector(fatStart + s, sector);
-                    if (mirror != null) reader.ReadSector(reserved + (ulong)fatSectors + s, mirror);
-                    if (s == 0)
-                    {
-                        ValidateHeader(sector, media);
-                        if (mirror != null) ValidateHeader(mirror, media);
-                    }
-                    for (uint e = 0; e < entriesPerSector; e++)
-                    {
-                        ulong cluster = s * entriesPerSector + e;
-                        if (cluster < 2 || cluster >= clusters + 2) continue;
-                        int offset = (int)(e * 4);
-                        uint value = U32(sector, offset) & 0x0FFFFFFF;
-                        if (mirror != null && value != (U32(mirror, offset) & 0x0FFFFFFF))
-                            throw new Exception("Mirrored FATs disagree; allocation unavailable.");
-                        if (cluster == root && (value == 0 || value == 0x0FFFFFF7))
-                            throw new Exception("Root directory cluster is free or bad.");
-                        if (value == 0) free++;
-                        else if (value == 0x0FFFFFF7) bad++;
-                        else if (value < 2 || (value < 0x0FFFFFF8 && value >= clusters + 2))
-                            throw new Exception("Invalid FAT cluster entry.");
-                    }
-                }
-
-                ulong clusterBytes = (ulong)bytes * clusterSectors;
-                // Publish only after every required read succeeds. Metadata and
-                // any trailing incomplete cluster are outside the data region.
-                space = new Fat32Space {
-                    DataBytes = clusters * clusterBytes,
-                    FreeBytes = free * clusterBytes,
-                    BadBytes = bad * clusterBytes,
-                    AllocatedBytes = (clusters - free - bad) * clusterBytes
-                };
-                return true;
+                fatStart = reserved + (ulong)active * fatSectors;
+                mirror = mirrored && fats == 2 ? new byte[(int)bytes] : null;
             }
-            catch (Exception ex)
+
+            // Each unit reads one sector from the selected FAT and, if mirrored,
+            // one from its mirror. True means the step succeeded, not completion.
+            // Space remains zero until IsComplete; any I/O failure is terminal.
+            public bool TryAdvance(uint maxFatSectors, out Fat32Space space, out string error)
             {
-                error = ex.Message;
-                return false;
+                space = default;
+                error = failure;
+                if (failure != null) return false;
+                if (IsComplete) { space = result; return true; }
+                if (maxFatSectors == 0)
+                {
+                    error = "A scan step must allow at least one FAT sector.";
+                    return false;
+                }
+                try
+                {
+                    uint entriesPerSector = bytes / 4;
+                    uint processed = 0;
+                    while (nextSector < sectorsToRead && processed < maxFatSectors)
+                    {
+                        reader.ReadSector(fatStart + nextSector, sector);
+                        if (mirror != null) reader.ReadSector(reserved + (ulong)fatSectors + nextSector, mirror);
+                        if (nextSector == 0)
+                        {
+                            ValidateHeader(sector, media);
+                            if (mirror != null) ValidateHeader(mirror, media);
+                        }
+                        for (uint e = 0; e < entriesPerSector; e++)
+                        {
+                            ulong cluster = nextSector * entriesPerSector + e;
+                            if (cluster < 2 || cluster >= clusters + 2) continue;
+                            int offset = (int)(e * 4);
+                            uint value = U32(sector, offset) & 0x0FFFFFFF;
+                            if (mirror != null && value != (U32(mirror, offset) & 0x0FFFFFFF))
+                                throw new Exception("Mirrored FATs disagree; allocation unavailable.");
+                            if (cluster == root && (value == 0 || value == 0x0FFFFFF7))
+                                throw new Exception("Root directory cluster is free or bad.");
+                            if (value == 0) free++;
+                            else if (value == 0x0FFFFFF7) bad++;
+                            else if (value < 2 || (value < 0x0FFFFFF8 && value >= clusters + 2))
+                                throw new Exception("Invalid FAT cluster entry.");
+                        }
+                        nextSector++;
+                        processed++;
+                    }
+                    if (nextSector != sectorsToRead) return true;
+                    ulong clusterBytes = (ulong)bytes * clusterSectors;
+                    // Publish only after every required read succeeds. Metadata and
+                    // any trailing incomplete cluster are outside the data region.
+                    space = new Fat32Space {
+                        DataBytes = clusters * clusterBytes,
+                        FreeBytes = free * clusterBytes,
+                        BadBytes = bad * clusterBytes,
+                        AllocatedBytes = (clusters - free - bad) * clusterBytes
+                    };
+                    result = space;
+                    IsComplete = true;
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    failure = error = ex.Message;
+                    return false;
+                }
             }
         }
     }
