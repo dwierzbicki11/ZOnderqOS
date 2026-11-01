@@ -218,7 +218,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn('command.StartsWith("balance ", StringComparison.Ordinal)', kernel)
         self.assertIn("AudioRuntimeDiagnostics.SetBalancePercent(percent)", kernel)
         self.assertIn("percent < -100 || percent > 100", runtime)
-        self.assertIn("ScaleStereo16Channels", gain)
+        self.assertIn("ScaleStereo16Channels", read("source/Core/AudioPcmVolume.cs"))
         self.assertIn("--balance 100", workflow)
         self.assertIn("audio-qemu-balance-out/*.wav", workflow)
         self.assertIn("balance_capture.inspect(wav)", harness)
