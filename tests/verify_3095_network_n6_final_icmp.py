@@ -151,7 +151,7 @@ def self_test() -> None:
         serial.replace(START, ""),
         serial.replace(PASS, ""),
         serial + "\n" + PASS,
-        serial.replace(START, PASS).replace(PASS + "\n" + PASS, START + "\n" + PASS),
+        serial.replace(START + "\n" + PASS, PASS + "\n" + START),
         serial.replace(REPEATS[-1], ""),
         serial.replace("POST_STRESS_LINK=PASS", "POST_STRESS_LINK=FAIL") +
         "\n[NET3095-N6][FAIL] bad",
