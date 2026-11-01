@@ -318,7 +318,7 @@ class NetworkN1Isolation(unittest.TestCase):
         # Queueing 128 frames is not DMA proof. While the isolated guest
         # reuses its TX buffer, reject link loss or a rebound NIC at each
         # ring boundary; the separate QEMU PCAP remains mandatory.
-        burst = SOURCE.split("private static bool TrySendBurst(byte[] template)", 1)[1]
+        burst = SOURCE.split("private static bool TrySendBurst(byte[] template,", 1)[1]
         burst = burst.split("private static int HexDigit", 1)[0]
         for term in (
             "for (int sequence = 0; sequence < 128; sequence++)",
@@ -333,6 +333,9 @@ class NetworkN1Isolation(unittest.TestCase):
         ):
             self.assertIn(term, burst)
         self.assertLess(burst.index("if ((sequence & 31) == 0)"),
+                        burst.index("if (!NetworkManager.Send(burst, burst.Length))"))
+        self.assertIn("IsE1000EDriverKitStable(expectedResources, expectedIrqSources)", burst)
+        self.assertLess(burst.index("IsE1000EDriverKitStable(expectedResources, expectedIrqSources)"),
                         burst.index("if (!NetworkManager.Send(burst, burst.Length))"))
         self.assertIn("verify_3095_network_n6_burst.py", SMOKE)
 
