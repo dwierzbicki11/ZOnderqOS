@@ -145,6 +145,15 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('POST_BURST_HTTP_ATTEMPT=START', SOURCE)
         self.assertIn('POST_BURST_HTTP=PASS', SOURCE)
         self.assertIn('POST_STRESS_LINK=PASS', SOURCE)
+        self.assertIn('POST_STRESS_IPV4=PASS', SOURCE)
+        self.assertIn('postStress.IPConfig', SOURCE)
+        self.assertIn('postStressConfig.Address.ToString() != config.Address.ToString()', SOURCE)
+        self.assertIn('postStressConfig.SubnetMask.ToString() != config.SubnetMask.ToString()', SOURCE)
+        self.assertIn('postStressConfig.DefaultGateway.ToString() != config.DefaultGateway.ToString()', SOURCE)
+        self.assertLess(SOURCE.index('POST_STRESS_LINK=PASS'),
+                        SOURCE.index('POST_STRESS_IPV4=PASS'))
+        self.assertLess(SOURCE.index('POST_STRESS_IPV4=PASS'),
+                        SOURCE.index('if (!CheckE1000EDriverKitHealth())'))
         self.assertIn('postStress.LinkUp', SOURCE)
         self.assertIn('postStress.MacAddress', SOURCE)
         self.assertIn('verify_3095_network_n6_post_http.py', SMOKE)

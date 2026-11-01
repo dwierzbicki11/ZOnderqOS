@@ -26,6 +26,10 @@ from verify_3095_network_n6_burst import (
 START = "[NET3095-N6] POST_BURST_HTTP_ATTEMPT=START"
 PASS = f"[NET3095-N6] POST_BURST_HTTP=PASS from=10.0.2.2 port={PORT} bytes={len(RESPONSE)}"
 LINK = re.compile(r"^\[NET3095-N6\] POST_STRESS_LINK=PASS mac=([0-9a-fA-F]{2}(?::[0-9a-fA-F]{2}){5})$")
+IPV4 = re.compile(
+    r"^\[NET3095-N6\] POST_STRESS_IPV4=PASS ip=(10\.0\.2\.[0-9]{1,3}) "
+    r"mask=(255\.255\.255\.0) gateway=(10\.0\.2\.2)$"
+)
 
 REPEATS = tuple(
     f"[NET3095-N6] POST_BURST_HTTP_REPEAT=PASS attempt={attempt} "
@@ -73,13 +77,21 @@ def check_link_markers(serial: str) -> None:
     lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
     guest = [match for line in lines if (match := GUEST.fullmatch(line))]
     link = [match for line in lines if (match := LINK.fullmatch(line))]
+    lease = [match for line in lines if (match := LEASE.fullmatch(line))]
+    ipv4_claims = [line for line in lines
+                   if line.startswith("[NET3095-N6] POST_STRESS_IPV4")]
+    ipv4 = [match for line in ipv4_claims if (match := IPV4.fullmatch(line))]
     if len(guest) != 1 or len(link) != 1:
         raise ValueError("missing or duplicate guest NIC/post-stress link marker")
+    if len(lease) != 1 or len(ipv4_claims) != 1 or len(ipv4) != 1:
+        raise ValueError("missing, malformed or duplicate post-stress IPv4 lease")
+    if ipv4[0].groups() != lease[0].groups():
+        raise ValueError("post-stress IPv4 address, mask or gateway changed")
     if any(lines.count(marker) != 1 for marker in REPEATS):
         raise ValueError("missing or duplicate post-burst repeat HTTP marker")
-    markers = (PASS,) + REPEATS + (link[0].group(0),)
+    markers = (PASS,) + REPEATS + (link[0].group(0), ipv4[0].group(0))
     if [lines.index(marker) for marker in markers] != sorted(lines.index(marker) for marker in markers):
-        raise ValueError("post-stress link marker preceded complete repeated HTTP RX")
+        raise ValueError("post-stress link/IPv4 markers preceded complete HTTP RX")
     if guest[0].group(1).upper() != link[0].group(1).upper():
         raise ValueError("post-stress NIC MAC differs from original E1000E")
 
@@ -241,9 +253,11 @@ def self_test() -> None:
         raise AssertionError(f"accepted shifted third HTTP RX block {block}")
     serial = "\n".join((
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
+        "[NET3095-N2] DHCP=PASS ip=10.0.2.15 mask=255.255.255.0 gateway=10.0.2.2",
         PASS,
         *REPEATS,
         "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
+        "[NET3095-N6] POST_STRESS_IPV4=PASS ip=10.0.2.15 mask=255.255.255.0 gateway=10.0.2.2",
     ))
     check_link_markers(serial)
     telemetry = "\n".join(
@@ -273,6 +287,18 @@ def self_test() -> None:
         raise AssertionError("accepted invalid guest HTTP RX telemetry")
     for invalid in (
         serial.replace("POST_STRESS_LINK=PASS", "POST_STRESS_LINK=FAIL"),
+        serial.replace("POST_STRESS_IPV4=PASS", "POST_STRESS_IPV4=FAIL"),
+        serial.replace("POST_STRESS_IPV4=PASS ip=10.0.2.15",
+                       "POST_STRESS_IPV4=PASS ip=10.0.2.16"),
+        serial.replace("POST_STRESS_IPV4=PASS ip=10.0.2.15 mask=255.255.255.0",
+                       "POST_STRESS_IPV4=PASS ip=10.0.2.15 mask=255.255.0.0"),
+        serial.replace("POST_STRESS_IPV4=PASS ip=10.0.2.15 mask=255.255.255.0 gateway=10.0.2.2",
+                       "POST_STRESS_IPV4=PASS ip=10.0.2.15 mask=255.255.255.0 gateway=10.0.2.3"),
+        serial.replace("[NET3095-N6] POST_STRESS_IPV4=PASS ip=10.0.2.15 mask=255.255.255.0 gateway=10.0.2.2", ""),
+        serial + "\n[NET3095-N6] POST_STRESS_IPV4=PASS ip=10.0.2.15 mask=255.255.255.0 gateway=10.0.2.2",
+        serial.replace("[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\n"
+                       "[NET3095-N6] POST_STRESS_IPV4=PASS",
+                       "[NET3095-N6] POST_STRESS_IPV4=PASS", 1),
         serial.replace("POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
                        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:57"),
         serial + "\n[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",

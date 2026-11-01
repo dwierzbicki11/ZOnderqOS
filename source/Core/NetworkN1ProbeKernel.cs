@@ -306,6 +306,20 @@ namespace ZonderqOS
                     return;
                 }
                 Log("[NET3095-N6] POST_STRESS_LINK=PASS mac=" + sourceMac);
+                // Link/MAC can remain valid while the DHCP lease disappears.
+                // Inspect the original address, mask and gateway read-only.
+                IPConfig? postStressConfig = postStress.IPConfig;
+                if (postStressConfig == null ||
+                    postStressConfig.Address.ToString() != config.Address.ToString() ||
+                    postStressConfig.SubnetMask.ToString() != config.SubnetMask.ToString() ||
+                    postStressConfig.DefaultGateway.ToString() != config.DefaultGateway.ToString())
+                {
+                    Log("[NET3095-N6][FAIL] IPv4 lease changed after TX/RX stress");
+                    return;
+                }
+                Log("[NET3095-N6] POST_STRESS_IPV4=PASS ip=" + postStressConfig.Address +
+                    " mask=" + postStressConfig.SubnetMask +
+                    " gateway=" + postStressConfig.DefaultGateway);
                 if (!CheckE1000EDriverKitHealth())
                 {
                     Log("[NET3095-N6][FAIL] E1000E DriverKit health invalid after TX/RX stress");
