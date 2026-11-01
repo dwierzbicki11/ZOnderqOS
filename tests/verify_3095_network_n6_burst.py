@@ -308,7 +308,9 @@ def self_test() -> None:
         serial + "\n" + QUEUED,
         serial + "\n" + POST_PASS,
         serial.replace(START + "\n" + QUEUED, QUEUED + "\n" + START),
-        serial.replace(POST_START + "\n" + POST_PASS, POST_PASS + "\n" + POST_START),
+        serial.replace(POST_START, "__SWAP_POST_START__")
+              .replace(POST_PASS, POST_START)
+              .replace("__SWAP_POST_START__", POST_PASS),
         serial + "\n[NET3095-N6][FAIL] queue rejected",
         serial.replace(rtt_markers[0], ""),
         serial.replace(rtt_markers[0], rtt_markers[1]),
