@@ -88,6 +88,14 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-44100-out --boot-seconds 45 --command wav44
+      - name: Boot and capture 16 kHz PCM8 mono voice-rate WAV (1500 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-16000-out --boot-seconds 45 --command wav16k
+      - name: Boot and capture 24 kHz PCM16 stereo WAV (4000 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-24000-out --boot-seconds 45 --command wav24k
       - name: Boot and capture resampled 22.05 kHz stereo WAV (1100 Hz)
         run: |
           python3 tools/smoke-audio-qemu.py \
@@ -141,6 +149,8 @@ jobs:
           tail -n 200 audio-qemu-wav-out/serial.log audio-qemu-wav-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-mono-out/serial.log audio-qemu-mono-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-44100-out/serial.log audio-qemu-44100-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-16000-out/serial.log audio-qemu-16000-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-24000-out/serial.log audio-qemu-24000-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-22050-out/serial.log audio-qemu-22050-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-32000-out/serial.log audio-qemu-32000-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-stereo32-out/serial.log audio-qemu-stereo32-out/qemu.stderr.log 2>/dev/null || true
@@ -176,6 +186,12 @@ jobs:
             audio-qemu-44100-out/*.log
             audio-qemu-44100-out/*.wav
             audio-qemu-44100-out/*.ppm
+            audio-qemu-16000-out/*.log
+            audio-qemu-16000-out/*.wav
+            audio-qemu-16000-out/*.ppm
+            audio-qemu-24000-out/*.log
+            audio-qemu-24000-out/*.wav
+            audio-qemu-24000-out/*.ppm
             audio-qemu-22050-out/*.log
             audio-qemu-22050-out/*.wav
             audio-qemu-22050-out/*.ppm
