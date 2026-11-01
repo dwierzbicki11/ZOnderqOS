@@ -72,8 +72,11 @@ def check_driver_health(serial: str) -> str:
         raise ValueError("E1000E DriverKit state invalid after stress")
     link = "[NET3095-N6] POST_STRESS_LINK=PASS mac="
     link_lines = [line for line in lines if line.startswith(link)]
-    if len(link_lines) != 1 or lines.index(link_lines[0]) >= lines.index(claims[0]):
-        raise ValueError("E1000E health was not sampled after post-stress link")
+    guest = [m for line in lines if (m := GUEST.fullmatch(line))]
+    if (len(link_lines) != 1 or len(guest) != 1 or
+            link_lines[0] != link + guest[0].group(1) or
+            lines.index(link_lines[0]) >= lines.index(claims[0])):
+        raise ValueError("E1000E health was not sampled after matching post-stress link")
     if any("[NET3095-N6][FAIL]" in line for line in lines):
         raise ValueError("guest reported N6 failure despite DriverKit marker")
     return f"driverkit-bound=yes irq-sources={sources} handler-faults=0 ISR-UNPROVEN"
@@ -121,13 +124,14 @@ def self_test() -> None:
         serial.replace("resources=8", "resources=0"),
         serial.replace("published=1", "published=0"),
         serial.replace("irq_sources=1", "irq_sources=0"),
+        serial.replace("POST_STRESS_LINK=PASS mac=52:54:00:12:34:56", "POST_STRESS_LINK=PASS mac=02:54:00:12:34:56"),
         serial.replace("isr_executions=unknown", "isr_executions=1"),
         serial.replace("node=pci:0000:00:02.0", "node=pci:0000:00:03.0"),
         serial.replace("[NET3095-N6] DRIVER_HEALTH=PASS", "[NET3095-N6] DRIVER_HEALTH=FAIL"),
         serial.replace("[NET3095-N6] POST_STRESS_LINK=PASS", "[NET3095-N6] POST_STRESS_LINK=FAIL"),
         serial.replace("[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\n", ""),
-        serial.replace("[NET3095-N6] DRIVER_HEALTH=PASS", "[NET3095-N6][FAIL] bad\\n[NET3095-N6] DRIVER_HEALTH=PASS"),
-        serial + serial.split("[NET3095-N6] DRIVER_HEALTH=PASS", 1)[1].join([]) if False else serial + serial.splitlines()[-1] + "\\n",
+        serial.replace("[NET3095-N6] DRIVER_HEALTH=PASS", "[NET3095-N6][FAIL] bad\n[NET3095-N6] DRIVER_HEALTH=PASS"),
+        serial + serial.splitlines()[-1] + "\n",
     )
     for bad in bad_health:
         try:
