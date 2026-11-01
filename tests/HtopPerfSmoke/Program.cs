@@ -30,6 +30,82 @@ internal static class Program
         Console.WriteLine("PASS: 303 exact CPU bar output/width/reference checks (0..100%)");
     }
 
+    private static string LegacyCpuPrefix(int cpu) =>
+        "CPU " + cpu.ToString().PadLeft(3) + " [";
+
+    private static void VerifyCpuPrefixes()
+    {
+        for (int cpu = 0; cpu <= 127; cpu++)
+        {
+            string expected = LegacyCpuPrefix(cpu);
+            string actual = HtopMonitor.CpuPrefix(cpu);
+            Assert(actual == expected, "CPU prefix exact text " + cpu);
+            if (cpu < 64)
+                Assert(object.ReferenceEquals(actual, HtopMonitor.CpuPrefix(cpu)),
+                    "CPU prefix must reuse cached string " + cpu);
+        }
+        // Unusual CPU indices still follow the original formatting path.
+        Assert(HtopMonitor.CpuPrefix(1000) == LegacyCpuPrefix(1000),
+            "four-digit CPU index formatting");
+        Console.WriteLine("PASS: 193 CPU prefix equivalence/reference checks (0..127 and 1000)");
+    }
+
+    private static void BenchmarkCpuPrefixes()
+    {
+        int[] indices = new int[1024];
+        for (int i = 0; i < indices.Length; i++)
+            indices[i] = (i * 13) % 64;
+        Func<long> legacy = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < indices.Length; i++)
+            {
+                string label = LegacyCpuPrefix(indices[i]);
+                checksum += label.Length + label[0] + label[label.Length - 1];
+            }
+            return checksum;
+        };
+        Func<long> cached = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < indices.Length; i++)
+            {
+                string label = HtopMonitor.CpuPrefix(indices[i]);
+                checksum += label.Length + label[0] + label[label.Length - 1];
+            }
+            return checksum;
+        };
+        Assert(legacy() == cached(), "CPU prefix benchmark checksum mismatch");
+        for (int i = 0; i < 15; i++) { sink ^= legacy(); sink ^= cached(); }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= legacy();
+        long oldBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        before = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= cached();
+        long newBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert(oldBytes > 0, "legacy CPU prefixes must allocate");
+        Assert(newBytes == 0, "cached CPU prefixes allocated " + newBytes + " B");
+        double[] oldMs = new double[7], newMs = new double[7];
+        for (int sample = 0; sample < 7; sample++)
+        {
+            if ((sample & 1) == 0)
+            {
+                oldMs[sample] = Time(legacy, 200);
+                newMs[sample] = Time(cached, 200);
+            }
+            else
+            {
+                newMs[sample] = Time(cached, 200);
+                oldMs[sample] = Time(legacy, 200);
+            }
+        }
+        double a = Median(oldMs), b = Median(newMs);
+        Console.WriteLine("HOST A/B CPU prefix 1024 values: legacy=" + a.ToString("F4") +
+            "ms cached=" + b.ToString("F4") + "ms ratio=" +
+            (a / b).ToString("F2") + "x allocations=" + oldBytes +
+            "B -> " + newBytes + "B per 1024 prefixes (7 alternating samples)");
+    }
+
     private static void BenchmarkCpuBars()
     {
         // The same 1024 deterministic percentages feed both paths. Measure
@@ -362,6 +438,8 @@ internal static class Program
     {
         VerifyCpuBars();
         BenchmarkCpuBars();
+        VerifyCpuPrefixes();
+        BenchmarkCpuPrefixes();
         VerifyIndex();
         VerifyMonitorIntegration();
         Benchmark(16, 16);

@@ -94,6 +94,24 @@ namespace ZonderqOS.SystemCore
         // Exposed internally so the host smoke test uses the production cache.
         internal static string CpuBar(int percent) => CachedCpuBars[percent / 5];
 
+        // Prefix formatting used ToString, PadLeft and concatenation for every
+        // CPU on every refresh. Keep the common 0..63 labels immutable and
+        // format unusual larger CPU indices on demand without a hard limit.
+        private static readonly string[] CachedCpuPrefixes = BuildCpuPrefixes();
+
+        private static string[] BuildCpuPrefixes()
+        {
+            var labels = new string[64];
+            for (int cpu = 0; cpu < labels.Length; cpu++)
+                labels[cpu] = "CPU " + cpu.ToString().PadLeft(3) + " [";
+            return labels;
+        }
+
+        internal static string CpuPrefix(int cpu) =>
+            (uint)cpu < (uint)CachedCpuPrefixes.Length
+                ? CachedCpuPrefixes[cpu]
+                : "CPU " + cpu.ToString().PadLeft(3) + " [";
+
         internal bool SortByCpu = true;
         internal int Scroll;
         internal int CpuCount { get; private set; }
@@ -137,7 +155,7 @@ namespace ZonderqOS.SystemCore
                 int usage = warm && hasAccounting ? Percent(delta, (ulong)elapsed) : 0;
                 cpuUsage[cpu] = usage;
                 string value = !hasAccounting ? "N/A" : !warm ? "..." : usage + "%";
-                lines.Add("CPU " + cpu.ToString().PadLeft(3) + " [" + CpuBar(usage) + "] " + value);
+                lines.Add(CpuPrefix(cpu) + CpuBar(usage) + "] " + value);
                 previousCpu[cpu] = busy;
             }
             ulong totalCapacity = warm && count > 0 ? (ulong)elapsed * (ulong)count : 0;
