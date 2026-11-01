@@ -60,6 +60,8 @@ namespace ZonderqOS.GUI.Apps
             // inversion must still fit in the surrounding sorted order.
             // This is only a performance hint; merge sort handles all cases.
             bool likelyLocalDisplacement = inversions != 1 ||
+                // A single displaced first/last item costs at most n shifts.
+                firstInversion == 1 || firstInversion == count - 1 ||
                 (firstInversion >= 2 &&
                     Compare(entries[firstInversion - 2], entries[firstInversion]) <= 0) ||
                 (firstInversion + 1 < count &&
