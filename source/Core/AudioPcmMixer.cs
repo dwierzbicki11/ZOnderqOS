@@ -101,13 +101,38 @@ namespace ZonderqOS.SystemCore
             byte[][] clips, int[] startFrames, int[] gainsPercent, int fadeMilliseconds,
             int trailingSilenceFrames = 0)
         {
-            if (trailingSilenceFrames < 0 || trailingSilenceFrames > 4096)
-                throw new ArgumentOutOfRangeException(nameof(trailingSilenceFrames));
             if (fadeMilliseconds < 0 || fadeMilliseconds > 50)
                 throw new ArgumentOutOfRangeException(nameof(fadeMilliseconds));
-            if (fadeMilliseconds == 0 && trailingSilenceFrames == 0)
+            if (trailingSilenceFrames == 0 && fadeMilliseconds == 0)
                 return MixScheduledStereo16(clips, startFrames, gainsPercent);
+            return MixScheduledStereo16WithFadeCore(
+                clips, startFrames, gainsPercent, null, fadeMilliseconds, trailingSilenceFrames);
+        }
 
+        /// <summary>
+        /// Schedule up to eight effects with independent 0..50 ms attack/release
+        /// envelopes. A short notification can fade quickly while a longer
+        /// alert fades more gradually. No temporary per-clip PCM arrays are
+        /// allocated: the result is one bounded stereo16 buffer.
+        /// This does not start hardware, DMA, IRQ or production GUI audio.
+        /// </summary>
+        public static byte[] MixScheduledStereo16WithIndividualFades(
+            byte[][] clips, int[] startFrames, int[] gainsPercent,
+            int[] fadeMilliseconds, int trailingSilenceFrames = 0)
+        {
+            if (fadeMilliseconds == null || clips == null ||
+                fadeMilliseconds.Length != clips.Length)
+                throw new ArgumentException("Each clip requires one fade duration.", nameof(fadeMilliseconds));
+            return MixScheduledStereo16WithFadeCore(
+                clips, startFrames, gainsPercent, fadeMilliseconds, 0, trailingSilenceFrames);
+        }
+
+        private static byte[] MixScheduledStereo16WithFadeCore(
+            byte[][] clips, int[] startFrames, int[] gainsPercent,
+            int[] individualFades, int uniformFade, int trailingSilenceFrames)
+        {
+            if (trailingSilenceFrames < 0 || trailingSilenceFrames > 4096)
+                throw new ArgumentOutOfRangeException(nameof(trailingSilenceFrames));
             if (clips == null || startFrames == null || gainsPercent == null ||
                 clips.Length == 0 || clips.Length > 8 ||
                 startFrames.Length != clips.Length || gainsPercent.Length != clips.Length)
@@ -124,6 +149,10 @@ namespace ZonderqOS.SystemCore
                     throw new ArgumentOutOfRangeException(nameof(startFrames));
                 if (gainsPercent[i] < 0 || gainsPercent[i] > 100)
                     throw new ArgumentOutOfRangeException(nameof(gainsPercent));
+                if (individualFades != null &&
+                    (individualFades[i] < 0 || individualFades[i] > 50))
+                    throw new ArgumentOutOfRangeException(nameof(individualFades),
+                        "Per-clip fade must be between 0 and 50 milliseconds.");
 
                 long end = (long)startFrames[i] * 4 + clip.Length;
                 if (end > MaxPcmBytes)
@@ -146,19 +175,20 @@ namespace ZonderqOS.SystemCore
                     if (sourceAt < 0 || sourceAt >= clip.Length)
                         continue;
 
-                    int clipFrames = clip.Length / 4;
-                    int frame = sourceAt / 4;
                     int sample = (short)(clip[sourceAt] | (clip[sourceAt + 1] << 8));
                     int scaled = sample * gainsPercent[i] / 100;
+                    int fadeMilliseconds = individualFades == null ? uniformFade : individualFades[i];
                     if (fadeMilliseconds == 0)
                     {
                         total += scaled;
                         continue;
                     }
+
+                    int clipFrames = clip.Length / 4;
+                    int frame = sourceAt / 4;
                     int fadeFrames = Math.Min(fadeMilliseconds * 48, clipFrames / 2);
                     if (fadeFrames == 0)
                         continue; // A one-frame effect fades to silence.
-
                     int envelope = Math.Min(fadeFrames,
                         Math.Min(frame, clipFrames - 1 - frame));
                     if (envelope == 0)
@@ -172,6 +202,7 @@ namespace ZonderqOS.SystemCore
             }
             return output;
         }
+
 
         public static byte[] MixStereo16WithDelay(
             byte[] first, byte[] second, int firstPercent, int secondPercent,
