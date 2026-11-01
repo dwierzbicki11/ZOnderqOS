@@ -42,6 +42,30 @@ def count_notifications(stderr: str) -> tuple[int, int, int]:
     return legacy, msi, msix
 
 
+def count_legacy_cycles(stderr: str) -> int:
+    """Count distinct low-then-high INTx transitions in QEMU's trace.
+
+    Repeated 'state: 1' notifications without any intervening deassertion
+    must not be reported as independent interrupt cycles. This measures
+    QEMU device-side line activity, NEVER guest ISR execution.
+    """
+    armed = False
+    cycles = 0
+    for line in stderr.replace("\r", "").splitlines():
+        line = line.strip()
+        if re.match(r"^qemu-system-[^:]+: terminating on signal ", line):
+            break
+        match = LEGACY.fullmatch(line)
+        if match is None:
+            continue
+        if match.group(1) == "0":
+            armed = True
+        elif armed:
+            cycles += 1
+            armed = False
+    return cycles
+
+
 def report(stderr: str, require_notify: bool = False) -> str:
     legacy, msi, msix = count_notifications(stderr)
     total = legacy + msi + msix
@@ -58,6 +82,12 @@ def self_test() -> None:
              "1@123.458:e1000e_irq_msi_notify MSI notify 0x80\n"
              "e1000e_irq_msix_notify_vec MSI-X notify vector 0x0\n")
     assert count_notifications(trace) == (1, 1, 1)
+    assert count_legacy_cycles(trace) == 1
+    assert count_legacy_cycles(
+        "e1000e_irq_legacy_notify IRQ line state: 1\n" * 8) == 0
+    assert count_legacy_cycles(
+        ("e1000e_irq_legacy_notify IRQ line state: 0\n"
+         "e1000e_irq_legacy_notify IRQ line state: 1\n") * 4) == 4
     assert "EMITTED legacy=1 msi=1 msix=1" in report(trace, True)
     bad = ("", "e1000e_irq_pending_interrupts ICR PENDING: 0x80\n",
            "e1000e_irq_legacy_notify IRQ line state: 0\n",
@@ -79,6 +109,10 @@ def self_test() -> None:
     before = "e1000e_irq_legacy_notify IRQ line state: 1\n"
     assert count_notifications(before + termination + before) == (1, 0, 0)
     assert count_notifications(termination + before) == (0, 0, 0)
+    assert count_legacy_cycles(
+        "e1000e_irq_legacy_notify IRQ line state: 0\n" +
+        before + termination +
+        "e1000e_irq_legacy_notify IRQ line state: 0\n" + before) == 1
     try:
         report(termination + before, True)
     except ValueError:
