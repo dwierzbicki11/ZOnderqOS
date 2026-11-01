@@ -2357,7 +2357,7 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         grid = FILE_MANAGER.split("private void Grid(Canvas canvas", 1)[1].split(
             "private static IconType ResolveEntryIcon(", 1)[0]
         self.assertIn("if (visibleTileHeight < iconSize + 33 || tileWidth < 88)", grid)
-        self.assertIn("if (visibleTileHeight >= 32)", grid)
+        self.assertIn("if (visibleTileHeight >= 32 && tileWidth >= 32)", grid)
         self.assertIn("tileX + 6, tileY + 7, 24, 24", grid)
         self.assertIn("tileX + 36, tileY + 17", grid)
         self.assertIn("tileWidth - 42", grid)
