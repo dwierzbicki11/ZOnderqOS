@@ -302,6 +302,37 @@ namespace ZonderqOS
                         postHttpException.GetType().Name);
                     return;
                 }
+                // Final independent RX proof after all six HTTP socket closes.
+                // The QEMU PCAP gate must correlate this echo and its reply
+                // strictly AFTER the sixth TCP FIN/ACK, not merely trust serial.
+                Log("[NET3095-N6] FINAL_ICMP_ATTEMPT=START");
+                try
+                {
+                    IcmpClient finalPing = new IcmpClient();
+                    try
+                    {
+                        finalPing.Connect(new Address4(10, 0, 2, 2));
+                        finalPing.SendEcho(id: 0x3097, sequence: 1);
+                        EndPoint finalRemote = new EndPoint(Address4.Zero, 0);
+                        int finalElapsedMs = finalPing.Receive(ref finalRemote, 5000);
+                        if (finalElapsedMs < 0 || finalRemote.Address.ToString() != "10.0.2.2")
+                        {
+                            Log("[NET3095-N6][FAIL] final ICMP timeout or wrong peer");
+                            return;
+                        }
+                        Log("[NET3095-N6] FINAL_ICMP=PASS from=10.0.2.2 seq=1");
+                    }
+                    finally
+                    {
+                        finalPing.Close();
+                    }
+                }
+                catch (Exception finalIcmpException)
+                {
+                    Log("[NET3095-N6][FAIL] final ICMP exception " +
+                        finalIcmpException.GetType().Name);
+                    return;
+                }
                 // Read-only post-stress adapter check: catch a dropped link,
                 // lost binding or changed MAC before reporting N6 success.
                 NetworkAdapter postStress = NetworkManager.Primary;
