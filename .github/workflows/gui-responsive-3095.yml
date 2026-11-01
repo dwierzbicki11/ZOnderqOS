@@ -11,6 +11,7 @@ on:
       - 'tests/GuiApplicationManagerSmoke/**'
       - 'tests/GuiStartMenuSmoke/**'
       - 'tests/GuiTaskbarTelemetrySmoke/**'
+      - 'tests/GuiNotificationCenterSmoke/**'
       - 'tests/test_gui_modified_keys.py'
       - 'tests/test_gui_taskmanager_tiny_view.py'
       - 'tests/test_3094_storage_policy.py'
@@ -63,3 +64,5 @@ jobs:
         run: dotnet run --project tests/GuiStartMenuSmoke/GuiStartMenuSmoke.csproj --configuration Release
       - name: Exercise production taskbar telemetry gate in host C#
         run: dotnet run --project tests/GuiTaskbarTelemetrySmoke/GuiTaskbarTelemetrySmoke.csproj --configuration Release
+      - name: Exercise production notification selection under incoming alerts in host C#
+        run: dotnet run --project tests/GuiNotificationCenterSmoke/GuiNotificationCenterSmoke.csproj --configuration Release
