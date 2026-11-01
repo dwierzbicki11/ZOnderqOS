@@ -14,33 +14,43 @@ def section(start, end):
 class TinyTaskManagerViewTests(unittest.TestCase):
     def test_minimized_manager_skips_hidden_telemetry_polling(self):
         update = section("public override void Update()", "private void UpdateLayout()")
+        refresh = section("private void RefreshSnapshot()", "private ModernTaskRow AcquireRow")
         self.assertIn("if (!Window.Visible || Window.IsMinimized)", update)
-        self.assertIn("refreshFrame = RefreshIntervalFrames;", update)
+        self.assertIn("lastRefreshTicks = -1;", update)
+        self.assertIn("lastCpuTimestamp = 0;", update)
+        self.assertIn("Array.Clear(previousThreadValid, 0, previousThreadValid.Length);", update)
+        self.assertIn("if (!samplingPaused)", update)
         self.assertLess(update.index("if (!Window.Visible || Window.IsMinimized)"),
                         update.index("UpdateLayout();"))
         self.assertLess(update.index("return;"), update.index("UpdateClock();"))
         self.assertLess(update.index("return;"), update.index("RefreshSnapshot();"))
+        self.assertIn("TaskManagerRefreshGate.ShouldRefresh(", update)
+        self.assertIn("lastRefreshTicks = Stopwatch.GetTimestamp();", refresh)
+        self.assertNotIn("refreshFrame", update)
 
-        # Reference state-machine for the new early-return policy.
-        interval = 30
-        def tick(frame, hidden):
+        # Reference model: hidden updates do no polling; restoring samples
+        # immediately, then at most once per elapsed 500ms (independent of FPS).
+        def tick(now, last, hidden):
             if hidden:
-                return interval, False
-            frame += 1
-            return (0, True) if frame >= interval else (frame, False)
+                return -1, False
+            if last < 0 or now - last >= 500:
+                return now, True
+            return last, False
 
-        frame, sampled = 10, False
-        for _ in range(1000):
-            frame, sampled = tick(frame, True)
-            self.assertFalse(sampled)
-        frame, sampled = tick(frame, False)
-        self.assertTrue(sampled)
-        self.assertEqual(frame, 0)
-        for _ in range(interval - 1):
-            frame, sampled = tick(frame, False)
-            self.assertFalse(sampled)
-        frame, sampled = tick(frame, False)
-        self.assertTrue(sampled)
+        for fps in (2, 10, 30, 60, 120, 240):
+            last = 0
+            for frame in range(1000):
+                last, sampled = tick(frame * 1000 // fps, last, True)
+                self.assertFalse(sampled)
+            last, sampled = tick(10_000, last, False)
+            self.assertTrue(sampled)
+            samples = 1
+            for frame in range(1, fps * 4 + 1):
+                now = 10_000 + frame * 1000 // fps
+                last, sampled = tick(now, last, False)
+                samples += sampled
+            self.assertGreaterEqual(samples, 7)
+            self.assertLessEqual(samples, 9)
 
     def test_zero_rows_are_representable(self):
         self.assertIn(
