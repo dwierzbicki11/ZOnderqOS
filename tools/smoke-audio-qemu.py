@@ -61,6 +61,7 @@ EXPECTED_TONE_HZ = {
     "wav32": 2200,
     "wavext": 2640,
     "wavext20": 3080,
+    "wavext24in32": 3700,
 }
 
 
@@ -153,7 +154,7 @@ def main():
                         help="diagnostic HDA output-only codec A/B; default remains duplex")
     parser.add_argument("--icount-auto", action="store_true",
                         help="experimental TCG virtual clock pacing; diagnostic only")
-    parser.add_argument("--command", choices=("tone", "stereosplit", "mix", "mixdelay", "mixqueue", "mixsequence", "mixqueue1ms", "mixsequence1ms", "mixqueueasync", "mixsequenceasync", "mixqueueboot", "mixsequenceboot", "wavtone", "wavmono", "wav44", "wav8k", "wav11k", "wav16k", "wav22k", "wav24k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
+    parser.add_argument("--command", choices=("tone", "stereosplit", "mix", "mixdelay", "mixqueue", "mixsequence", "mixqueue1ms", "mixsequence1ms", "mixqueueasync", "mixsequenceasync", "mixqueueboot", "mixsequenceboot", "wavtone", "wavmono", "wav44", "wav8k", "wav11k", "wav16k", "wav22k", "wav24k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20", "wavext24in32"), default="tone",
                         help="isolated guest command to execute; WAV probe never reads guest disks")
     parser.add_argument("--volume", type=int, default=100, help="software gain 0..100 percent")
     parser.add_argument("--balance", type=int, default=0, help="-100 left-only, +100 right-only")

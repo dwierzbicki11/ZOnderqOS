@@ -659,6 +659,39 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
+        /// Distinct 3700 Hz mono WAVE_FORMAT_EXTENSIBLE PCM24 in a signed
+        /// 32-bit container (24 valid bits). The low eight padding bits are
+        /// zero; the next eight are nonzero valid precision. The upper 16
+        /// bits carry the signed tone. RAM-only, bounded read-only stream,
+        /// then the existing stock HDA output; no guest disk or codec writes.
+        /// </summary>
+        public static bool PlayWaveExtensible24In32TestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 3700, 250, 4096);
+                byte[] mono32 = new byte[source.Length];
+                for (int i = 0; i < mono32.Length / 4; i++)
+                {
+                    int at = i * 4;
+                    mono32[at] = 0; // eight unused low container bits
+                    mono32[at + 1] = 0x5A; // additional valid PCM precision
+                    mono32[at + 2] = source[at];
+                    mono32[at + 3] = source[at + 1];
+                }
+                byte[] wave = AudioWavePcm.EncodeExtensiblePcm32AtRate(mono32, 48000, 1, 24);
+                Console.WriteLine("[AUDIO] WAV extensible 24-in-32 mono -> 48000Hz PCM16 stereo HDA");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV EXTENSIBLE24IN32 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Caller owns the stream and is responsible for obtaining it from an
         /// explicitly authorized read-only source. No filesystem is opened here.
         /// The bounded loader rejects oversized, truncated and malformed WAVs.

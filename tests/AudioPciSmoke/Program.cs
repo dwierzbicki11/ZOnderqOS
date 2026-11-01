@@ -824,6 +824,33 @@ static class Test
         for (int i = 0; i < pcm.Length; i++)
             Expect(decoded16in32[i] == pcm[i], "16-in-32 valid padding round-trip");
 
+        // Independent mono 24-valid-bits-in-32 fixture: the valid low
+        // precision byte is nonzero, but the unused lowest byte is zero.
+        // Check the same path that the diskless HDA QEMU command exercises.
+        byte[] source24in32 = AudioTonePcm.GenerateSquareStereo16(48000, 3700, 250, 4096);
+        byte[] mono24in32 = new byte[source24in32.Length];
+        for (int frame = 0; frame < mono24in32.Length / 4; frame++)
+        {
+            int at = frame * 4;
+            mono24in32[at] = 0;
+            mono24in32[at + 1] = 0x5A;
+            mono24in32[at + 2] = source24in32[at];
+            mono24in32[at + 3] = source24in32[at + 1];
+        }
+        byte[] wav24in32 = AudioWavePcm.EncodeExtensiblePcm32AtRate(mono24in32, 48000, 1, 24);
+        byte[] decoded24in32;
+        using (var readOnly24in32 = new MemoryStream(wav24in32, false))
+            decoded24in32 = AudioWaveInput.DecodeBounded(readOnly24in32);
+        Expect(decoded24in32.Length == source24in32.Length, "24-in-32 mono QEMU fixture duration");
+        for (int i = 0; i < source24in32.Length; i++)
+            Expect(decoded24in32[i] == source24in32[i], "24-in-32 mono upmix bit-exact");
+        byte[] invalid24in32 = (byte[])wav24in32.Clone();
+        invalid24in32[68] = 1;
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(invalid24in32); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "24-in-32 mono rejects nonzero unused bits");
+
         byte[] stereo32 = AudioWavePcm.EncodePcm32AtRate(pcm32, 48000, 2);
         byte[] decoded32 = AudioWavePcm.DecodeStereo16(stereo32);
         Expect(decoded32.Length == pcm.Length, "PCM32 stereo output frame count");
