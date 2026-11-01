@@ -49,7 +49,8 @@ class TinyTaskManagerViewTests(unittest.TestCase):
 
     def test_no_row_or_column_means_no_process_interaction(self):
         self.assertIn("internal bool HasPaintedProcessRows => VisibleRows > 0 &&", SOURCE)
-        self.assertIn("Width - SidebarWidth - 12 > ScrollReserve + 4;", SOURCE)
+        self.assertIn("private int TableRowWidthForView => Width - SidebarWidth - 12 - ScrollReserve;", SOURCE)
+        self.assertIn("TableRowWidthForView > 4;", SOURCE)
         # The view has a 170px sidebar, 12px content inset and 16px
         # scrollbar reserve; a 4px safety gap must remain.
         for width in range(1, 321):
@@ -148,6 +149,26 @@ class TinyTaskManagerViewTests(unittest.TestCase):
             "app.ActivePage != TaskManagerModernApp.PagePerformance &&", toolbar
         )
         self.assertIn("x >= end && x < end + 100) return 2;", toolbar)
+
+
+    def test_process_hitbox_excludes_unpainted_scrollbar_gap(self):
+        hit = section("public int RowAt(int x, int y)", "public bool HandleScrollMouse(")
+        table = section("private void RenderTable(Canvas canvas", "private void DrawRow(")
+        self.assertIn("x >= contentX + TableRowWidthForView", hit)
+        self.assertIn("int rowW = TableRowWidthForView;", table)
+        for width in (203, 220, 320, 550, 800, 1366, 1920):
+            row_width = width - 170 - 12 - 16
+            content_x = 170 + 8
+            row_end = content_x + row_width
+            self.assertEqual(row_end, width - 20)
+            for x in range(content_x, width):
+                selected = x < row_end
+                if x >= row_end:
+                    self.assertFalse(selected)
+                else:
+                    self.assertTrue(selected)
+            # Old hit-test admitted four pixels beyond the painted rows.
+            self.assertEqual((width - 16) - row_end, 4)
 
 
 if __name__ == "__main__":
