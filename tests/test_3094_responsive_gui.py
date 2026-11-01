@@ -47,6 +47,35 @@ def visible_rows(window_height, list_top, bottom_offset, row_height, row_gap):
 
 
 class ResponsiveGui3094(unittest.TestCase):
+    def test_file_manager_small_client_preserves_full_tile_and_mount_hitbox(self):
+        self.assertIn("internal int SidebarWidthForView => view.Width < 220", FILE_MANAGER)
+        self.assertIn("view.Width - TileWidth - 12", FILE_MANAGER)
+        self.assertIn("view.Width - SidebarWidthForView - 12", FILE_MANAGER)
+        self.assertIn("if (SidebarWidthForView <= 0)", FILE_MANAGER)
+        self.assertIn("if (sidebarW > 0)", FILE_MANAGER)
+        self.assertIn("int sidebarW = app.SidebarWidthForView;", FILE_MANAGER)
+        self.assertIn("int gridX = X + sidebarW + 8;", FILE_MANAGER)
+        self.assertIn("if (Width >= 300)", FILE_MANAGER)
+        self.assertIn("if (width >= 140)", FILE_MANAGER)
+
+        # Same view-relative widths drive painting, hit testing, tile
+        # columns and the volume M/U button. No host storage is accessed.
+        for view_width in (180, 200, 219, 220, 239, 260, 299, 300, 400, 800):
+            sidebar = 0 if view_width < 220 else min(176, view_width - 124)
+            grid_left = sidebar + 8
+            grid_width = max(112, view_width - sidebar - 12)
+            self.assertGreaterEqual(grid_width, 112)
+            self.assertLessEqual(grid_left + 112, view_width - 4)
+            self.assertLessEqual(grid_left + grid_width, view_width - 4)
+            if sidebar:
+                action_left = 4 + sidebar - 27
+                self.assertGreaterEqual(action_left, 4)
+                self.assertLessEqual(action_left + 20, 4 + sidebar)
+                self.assertLess(action_left + 20, grid_left)
+            if view_width >= 300:
+                path_width = max(120, view_width - 188)
+                self.assertLessEqual(180 + path_width, view_width)
+
     def test_ultranarrow_taskbar_keeps_switcher_visible_without_invisible_tray_hits(self):
         # Geometry-only regression for widths below the QEMU 240px probe.
         # At these widths the old fixed 132px tray hid every app button.
@@ -2010,7 +2039,7 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         render = FILE_MANAGER.split("private void RenderSidebar(", 1)[1].split(
             "private bool IsEntryActive(", 1)[0]
         self.assertIn("IsVolumeActionHit(entry, x, y)", click)
-        self.assertIn("const int actionLeft = 4 + SidebarWidth - 27;", click)
+        self.assertIn("int actionLeft = 4 + SidebarWidthForView - 27;", click)
         self.assertIn("x >= actionLeft + 20", click)
         self.assertIn("y >= rowY + 7 && y < rowY + 29", click)
         self.assertIn("rowY + rowHeight > sidebarBottom", click)
