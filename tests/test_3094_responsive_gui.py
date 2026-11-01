@@ -2676,5 +2676,29 @@ class FileManagerCompactMenuAndFooter3095(unittest.TestCase):
                     self.assertLessEqual(hint_x + hint_max, width - 10)
 
 
+
+class FileManagerResizeClickSequence3095(unittest.TestCase):
+    def test_resize_clears_double_click_before_new_tile_layout(self):
+        update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
+            "public override void HandleMouse(", 1)[0]
+        self.assertIn(
+            "if (view.Width != previousViewWidth || view.Height != previousViewHeight)",
+            update)
+        resize = update.split(
+            "if (view.Width != previousViewWidth || view.Height != previousViewHeight)", 1
+        )[1].split("if (contextMenuVisible", 1)[0]
+        self.assertIn("ResetClickSequence();", resize)
+        self.assertIn("EnsureSelectionVisible();", resize)
+        self.assertLess(resize.index("ResetClickSequence();"),
+                        resize.index("EnsureSelectionVisible();"))
+        # A width-only or height-only resize must invalidate the old pair.
+        for before, after in (((300, 170), (460, 170)),
+                              ((460, 170), (460, 300)),
+                              ((460, 300), (300, 170)),
+                              ((300, 170), (300, 170))):
+            self.assertEqual(before != after,
+                             before[0] != after[0] or before[1] != after[1])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
