@@ -42,6 +42,19 @@ class IsolatedFramebufferBuildTests(unittest.TestCase):
             for path in common:
                 self.assertIn("- '" + path + "'", workflow, name + ": " + path)
 
+    def test_qemu_runners_have_ubuntu_apt_repositories_for_audio_video_tools(self):
+        # A hosted ubuntu-latest runner was provisioned as Ubuntu 26.04
+        # with only the Microsoft apt source enabled: clang, nasm, QEMU,
+        # mtools and OVMF could not be installed (exit 100). Pin the two
+        # real framebuffer workflows rather than masking missing QEMU.
+        for name in ("gui-800-qemu.yml", "gui-hd-qemu.yml"):
+            workflow = (ROOT / ".github/workflows" / name).read_text()
+            self.assertIn("runs-on: ubuntu-24.04", workflow, name)
+            self.assertNotIn("runs-on: ubuntu-latest", workflow, name)
+            self.assertIn("sudo apt-get update", workflow, name)
+            self.assertIn("qemu-system-x86", workflow, name)
+            self.assertIn("mtools", workflow, name)
+
     def test_compact_qemu_matrix_uses_real_framebuffer_gates_for_both_modes(self):
         compact = (ROOT / ".github/workflows/gui-800-qemu.yml").read_text()
         self.assertIn("resolution: ['640x480', '800x600']", compact)
