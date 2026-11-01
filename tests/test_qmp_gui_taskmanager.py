@@ -75,6 +75,48 @@ class TaskManagerQmpContract(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "did not return"):
             PROBE.measure("desktop-restored", before, after, maximum=0.10)
 
+    def test_compact_region_gate_is_resolution_independent_and_fail_closed(self):
+        # Synthetic host frames exercise the *actual* pixel comparison, not
+        # guest input. A compact 1040x220 window is identical on HD and FHD.
+        for screen_width, screen_height in ((1366, 768), (1920, 1080)):
+            bounds = PROBE.expected_taskmanager_bounds(screen_width, screen_height)
+            compact = (bounds[0], bounds[1], bounds[2], 220)
+            size = screen_width * screen_height * 3
+            before = bytearray(size)
+            after = bytearray(size)
+            # Simulate a small real page change (64x64 pixels), much less
+            # than 2.5% of the whole FHD desktop but >2.5% of the window.
+            for y in range(compact[1] + 70, compact[1] + 134):
+                for x in range(compact[0] + 100, compact[0] + 164):
+                    after[(y * screen_width + x) * 3] = 255
+            baseline = (screen_width, screen_height, bytes(before))
+            changed = (screen_width, screen_height, bytes(after))
+            self.assertGreaterEqual(
+                PROBE.measure("compact", baseline, changed,
+                              minimum=0.025, region=compact), 0.025)
+            with self.assertRaisesRegex(RuntimeError, "insufficient"):
+                PROBE.measure("compact-unchanged", baseline, baseline,
+                              minimum=0.025, region=compact)
+            # An unrelated toast outside the compact window cannot pass.
+            after[:] = before
+            after[(screen_width * (screen_height - 50) + 30) * 3] = 255
+            with self.assertRaisesRegex(RuntimeError, "insufficient"):
+                PROBE.measure("outside", baseline,
+                              (screen_width, screen_height, bytes(after)),
+                              minimum=0.025, region=compact)
+
+    def test_compact_region_rejects_bad_frames_and_bounds(self):
+        frame = (32, 32, bytes(32 * 32 * 3))
+        with self.assertRaises(ValueError):
+            PROBE.difference_in_region(frame, (33, 32, bytes(33 * 32 * 3)),
+                                       (0, 0, 20, 20))
+        with self.assertRaises(ValueError):
+            PROBE.difference_in_region(frame, (32, 32, b"truncated"),
+                                       (0, 0, 20, 20))
+        for bounds in ((0, 0, 0, 10), (0, 0, 10, -1), (40, 40, 10, 10)):
+            with self.assertRaises(ValueError):
+                PROBE.difference_in_region(frame, frame, bounds)
+
     def test_real_guest_identity_is_checked_by_persistent_log(self):
         smoke = (ROOT / "tools/smoke-services-qemu.sh").read_text()
         self.assertIn("SERVICE_QEMU_PROBE_TASK_MANAGER", smoke)
@@ -99,8 +141,9 @@ class TaskManagerQmpContract(unittest.TestCase):
         self.assertIn("compact_bounds = (bounds[0], bounds[1], bounds[2], bounds[3] - shrink)", source)
         self.assertIn('prefix + ".taskmanager-short-performance.ppm"', source)
         self.assertIn('prefix + ".taskmanager-short-processes.ppm"', source)
-        self.assertIn('measure("compact-performance-tab", short, short_performance, minimum=0.015)', source)
-        self.assertIn('measure("compact-processes-tab", short_performance, short_processes, minimum=0.015)', source)
+        self.assertIn('measure("compact-performance-tab", short, short_performance,', source)
+        self.assertIn('measure("compact-processes-tab", short_performance, short_processes,', source)
+        self.assertEqual(source.count('minimum=0.025, region=compact_bounds'), 2)
         self.assertIn('measure("compact-processes-restored", short, short_processes, maximum=0.15)', source)
         self.assertIn("resize_x, resize_y - shrink,", source)
         self.assertLess(source.index('prefix + ".taskmanager-short-performance.ppm"'),
