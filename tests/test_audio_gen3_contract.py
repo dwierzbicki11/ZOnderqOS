@@ -141,6 +141,16 @@ class AudioGen3Contract(unittest.TestCase):
         kernel = read("Kernel.cs")
         self.assertTrue(runtime.startswith("#if ZONDERQ_AUDIO_PROBE"))
         self.assertIn("AudioManager.Primary", runtime)
+        playback = runtime.split("private static bool PlayPcm(byte[] pcm)", 1)[1]
+        self.assertIn("pcm.Length > maxPcmBytes", playback)
+        self.assertIn("pcm.Length % 4 != 0", playback)
+        self.assertIn("output.SampleRate != sampleRate", playback)
+        self.assertIn("output.Format.Channels != 2", playback)
+        self.assertIn("output.Format.ChannelSize != 2", playback)
+        self.assertLess(playback.index("if (!AudioManager.IsEnabled)"),
+                        playback.index("AudioDevice output = AudioManager.Primary"))
+        self.assertLess(playback.index("output.SampleRate != sampleRate"),
+                        playback.index("AudioManager.Play(new MemoryAudioStream"))
         self.assertIn("AudioTonePcm.GenerateSquareStereo16(sampleRate, 440, 250, 4096)", runtime)
         tone = read("source/Core/AudioTonePcm.cs")
         self.assertIn("(long)i * frequency * 2", tone)
