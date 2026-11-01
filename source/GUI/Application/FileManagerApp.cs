@@ -76,7 +76,7 @@ namespace ZonderqOS.GUI.Apps
         // cross the client boundary and share this count with hit-testing.
         // Guard the negative range explicitly: C# integer division rounds
         // toward zero, so (43 - 44) / 42 + 1 would incorrectly draw a button.
-        internal int ToolbarButtonCountForView => view.Width < 44 ? 0 :
+        internal int ToolbarButtonCountForView => view.Width < 44 || view.Height < 44 ? 0 :
             Math.Min(4, (view.Width - 44) / 42 + 1);
         internal int GridWidthForView => Math.Max(1, view.Width - SidebarWidthForView - 12);
         // Do not invent a 40px grid when the client is shorter than the
@@ -1476,7 +1476,13 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderToolbar(Canvas canvas)
         {
-            canvas.DrawFilledRectangle(ChromeRaised, X + 4, Y + 4, Width - 8, 40);
+            // A firmware mode can be shorter than the normal 40px toolbar.
+            // Never submit a negative rectangle or paint controls outside
+            // the actual client. The same height gate applies to hit-testing.
+            if (Width <= 8 || Height <= 4)
+                return;
+            canvas.DrawFilledRectangle(ChromeRaised, X + 4, Y + 4,
+                Width - 8, Math.Min(40, Height - 4));
             if (app.ToolbarButtonCountForView > 0)
                 ToolbarButton(canvas, IconType.ArrowUp, 8);
             if (app.ToolbarButtonCountForView > 1)
@@ -1488,10 +1494,12 @@ namespace ZonderqOS.GUI.Apps
 
             // The location bar begins after four 36px buttons. Hide it
             // instead of drawing 120px past the right edge on tiny clients.
-            if (Width >= 300)
+            if (Width >= 308 && Height >= 44)
             {
                 int pathX = X + 180;
-                int pathW = Math.Max(120, Width - 188);
+                // Reserve the same 8px right inset as the toolbar background.
+                // At 300-307px a forced 120px bar overran the client edge.
+                int pathW = Width - 188;
                 UiPainter.RoundedPanel(canvas, pathX, Y + 9, pathW, 30,
                     UiMetrics.ButtonRadius, UiPalette.Surface, UiPalette.AccentBorder);
 
@@ -1585,6 +1593,11 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderFooter(Canvas canvas, int footerY)
         {
+            // The footer is optional on tiny firmware framebuffers. Its
+            // 24px background must not be drawn with a negative width or
+            // above the top of the view.
+            if (Width <= 8 || Height < FileManagerApp.FooterHeight + 4)
+                return;
             int footerX = X + 4;
             int footerW = Width - 8;
 
@@ -1811,8 +1824,13 @@ namespace ZonderqOS.GUI.Apps
 
         private void Dialog(Canvas canvas)
         {
-            int width = Math.Min(430, Math.Max(280, Width - 40));
-            int height = 126;
+            // The old 280x126 minimum escaped the client on 240px displays
+            // and when an existing window was shrunk after a mode change.
+            // Keep even the 4px shadow inside the actual view.
+            int width = Math.Min(430, Math.Max(0, Width - 16));
+            int height = Math.Min(126, Math.Max(0, Height - 16));
+            if (width < 32 || height < 28)
+                return;
             int x = X + (Width - width) / 2;
             int y = Y + (Height - height) / 2;
 
@@ -1821,14 +1839,27 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawRectangle(Accent, x, y, width, height);
 
             string title = app.DialogMode == 1 ? "New file" : "New folder";
-            canvas.DrawString(title, font, Color.FromArgb(235, 239, 243), x + 12, y + 10);
+            SmallTextRenderer.DrawClipped(canvas, title, x + 12, y + 12,
+                width - 24, Color.FromArgb(235, 239, 243));
 
-            canvas.DrawFilledRectangle(Color.FromArgb(26, 31, 37), x + 12, y + 42, width - 24, 30);
-            canvas.DrawRectangle(Color.FromArgb(83, 96, 110), x + 12, y + 42, width - 24, 30);
-            SmallTextRenderer.DrawClipped(canvas, app.DialogName + "_", x + 18, y + 54,
-                width - 36, Color.FromArgb(226, 232, 238));
+            // Compact the input field vertically; omit it rather than draw
+            // beyond the client when the framebuffer is extremely short.
+            int fieldY = y + Math.Min(42, Math.Max(24, height - 40));
+            int fieldHeight = Math.Min(30, Math.Max(0, height - (fieldY - y) - 8));
+            if (width >= 48 && fieldHeight >= 18)
+            {
+                canvas.DrawFilledRectangle(Color.FromArgb(26, 31, 37),
+                    x + 12, fieldY, width - 24, fieldHeight);
+                canvas.DrawRectangle(Color.FromArgb(83, 96, 110),
+                    x + 12, fieldY, width - 24, fieldHeight);
+                SmallTextRenderer.DrawClipped(canvas, app.DialogName + "_",
+                    x + 18, fieldY + Math.Min(12, fieldHeight - 9),
+                    width - 36, Color.FromArgb(226, 232, 238));
+            }
 
-            SmallTextRenderer.Draw(canvas, "ENTER CREATE   ESC CANCEL", x + 12, y + 94, SecondaryText);
+            if (height >= 108 && width >= 200)
+                SmallTextRenderer.DrawClipped(canvas, "ENTER CREATE   ESC CANCEL",
+                    x + 12, y + 94, width - 24, SecondaryText);
         }
     }
 }
