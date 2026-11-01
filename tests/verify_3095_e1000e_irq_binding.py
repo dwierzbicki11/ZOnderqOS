@@ -19,6 +19,9 @@ DRIVER = re.compile(r"^\[Drivers\] " + NODE + r" E1000EDriver: mac " + MAC +
                     r", link up, line (\d{1,3}), polling every 10 ms$")
 GUEST = re.compile(r"^\[NET3095-N1\] cpu=bsp adapter=0 name=e1000e mac=" + MAC +
                    r" ready=yes link=up$")
+BASELINE = re.compile(r"^\\[NET3095-N6\\] DRIVER_BASELINE=PASS node=" + NODE +
+                      r" resources=(\\d+) irq_sources=(\\d+) "
+                      r"handler_faults=0 isr_executions=unknown$".replace("\\\\", "\\"))
 HEALTH = re.compile(r"^\[NET3095-N6\] DRIVER_HEALTH=PASS node=" + NODE +
                     r" driver=E1000EDriver resources=(\d+) published=(\d+)" +
                     r" irq_sources=(\d+) handler_faults=(\d+) isr_executions=unknown$")
@@ -66,7 +69,18 @@ def check_driver_health(serial: str) -> str:
     match = HEALTH.fullmatch(claims[0])
     if not match:
         raise ValueError("malformed E1000E DriverKit health marker")
+    baseline_lines = [line for line in lines
+                      if line.startswith("[NET3095-N6] DRIVER_BASELINE")]
+    if len(baseline_lines) != 1:
+        raise ValueError("missing or duplicate E1000E DriverKit baseline")
+    baseline = BASELINE.fullmatch(baseline_lines[0])
+    if baseline is None:
+        raise ValueError("malformed E1000E DriverKit baseline")
     node, resources, published, sources, faults = match.groups()
+    baseline_node, baseline_resources, baseline_sources = baseline.groups()
+    if (baseline_node != node or baseline_resources != resources or
+            baseline_sources != sources):
+        raise ValueError("E1000E DriverKit resources/IRQ sources changed during N6 stress")
     bound = [m for line in lines if (m := BOUND.fullmatch(line))]
     if (node != "pci:0000:00:02.0" or len(bound) != 1 or
             bound[0].group(1) != node or int(resources) < 1 or
@@ -77,7 +91,8 @@ def check_driver_health(serial: str) -> str:
     guest = [m for line in lines if (m := GUEST.fullmatch(line))]
     if (len(link_lines) != 1 or len(guest) != 1 or
             link_lines[0] != link + guest[0].group(1) or
-            lines.index(link_lines[0]) >= lines.index(claims[0])):
+            not lines.index(baseline_lines[0]) < lines.index(link_lines[0]) <
+            lines.index(claims[0])):
         raise ValueError("E1000E health was not sampled after matching post-stress link")
     if any("[NET3095-N6][FAIL]" in line for line in lines):
         raise ValueError("guest reported N6 failure despite DriverKit marker")
@@ -106,6 +121,7 @@ def self_test() -> None:
         "[Drivers] pci:0000:00:02.0 E1000EDriver: mac 52:54:00:12:34:56, link up, line 11, polling every 10 ms\n"
         "[Drivers] pci:0000:00:02.0 offer E1000EDriver -> bound\n"
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up\n"
+        "[NET3095-N6] DRIVER_BASELINE=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown\n"
         "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\n"
         "[NET3095-N6] DRIVER_HEALTH=PASS node=pci:0000:00:02.0 driver=E1000EDriver resources=8 published=1 irq_sources=1 handler_faults=0 isr_executions=unknown\n"
     )
@@ -129,6 +145,19 @@ def self_test() -> None:
         else:
             raise AssertionError("accepted QEMU trace without a live legacy assertion")
     bad_health = (
+        serial.replace("DRIVER_BASELINE=PASS", "DRIVER_BASELINE=FAIL"),
+        serial.replace("[NET3095-N6] DRIVER_BASELINE=PASS", "[NET3095-N6] DRIVER_BASELINE=FAIL"),
+        serial.replace("resources=8 irq_sources=1", "resources=9 irq_sources=1"),
+        serial.replace("resources=8 irq_sources=1", "resources=8 irq_sources=2"),
+        serial.replace("DRIVER_BASELINE=PASS node=pci:0000:00:02.0", "DRIVER_BASELINE=PASS node=pci:0000:00:03.0"),
+        serial.replace("[NET3095-N6] DRIVER_BASELINE=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown\\n", ""),
+        serial + "[NET3095-N6] DRIVER_BASELINE=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown\\n",
+        serial.replace(
+            "[NET3095-N6] DRIVER_BASELINE=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown\\n",
+            "").replace(
+            "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\\n",
+            "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\\n"
+            "[NET3095-N6] DRIVER_BASELINE=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown\\n"),
         serial.replace("handler_faults=0", "handler_faults=1"),
         serial.replace("resources=8", "resources=0"),
         serial.replace("published=1", "published=0"),
