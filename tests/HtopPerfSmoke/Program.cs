@@ -68,6 +68,97 @@ internal static class Program
         Console.WriteLine("PASS: 404 exact CPU percent text/padding/reference checks (0..100%)");
     }
 
+    // Exercise the real production HtopMonitor row sorter, not an isolated
+    // replacement implementation. Sorting must remain allocation-free once
+    // the monitor and its row storage have been warmed.
+    private static void VerifyProductionRowSortAllocations()
+    {
+        var threads = new KernelThreadInfo[128];
+        for (int i = 0; i < threads.Length; i++)
+            threads[i] = new KernelThreadInfo
+            {
+                Id = (uint)(2000 + i), CpuId = 0, TotalRuntimeNs = (ulong)(i * 37),
+                State = "READY", IsManaged = true
+            };
+        ProcessManager.TestProcesses = Array.Empty<KernelProcess>();
+        SchedulerInfo.Threads = threads;
+        var monitor = new HtopMonitor();
+        monitor.Refresh();
+        for (int i = 0; i < 20; i++)
+        {
+            monitor.SortByCpu = (i & 1) == 0;
+            monitor.SortRows();
+        }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1024; i++)
+        {
+            monitor.SortByCpu = (i & 1) == 0;
+            monitor.SortRows();
+        }
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert(allocated == 0, "production htop row sort allocated " + allocated + " B");
+        ProcessManager.TestProcesses = Array.Empty<KernelProcess>();
+        SchedulerInfo.Threads = Array.Empty<KernelThreadInfo>();
+        Console.WriteLine("PASS: production htop 1024 warmed row sorts, allocations=" +
+            allocated + " B (host .NET; no QEMU)");
+    }
+
+    private sealed class DelegateSortProbe
+    {
+        internal int Compare(int a, int b) => a.CompareTo(b);
+    }
+
+    // Isolate the .NET instance method-group allocation removed by production
+    // HtopMonitor. Same List.Sort and same comparator on both sides; the only
+    // difference is constructing a delegate per call vs reusing it.
+    private static void BenchmarkRowSortDelegate()
+    {
+        var values = new List<int>(128);
+        for (int i = 0; i < 128; i++) values.Add(128 - i);
+        var probe = new DelegateSortProbe();
+        Comparison<int> cachedComparison = probe.Compare;
+        Func<long> old = () =>
+        {
+            values.Sort(new Comparison<int>(probe.Compare));
+            return values[0] + values[127];
+        };
+        Func<long> optimized = () =>
+        {
+            values.Sort(cachedComparison);
+            return values[0] + values[127];
+        };
+        Assert(old() == optimized(), "row comparison delegate equivalence");
+        for (int i = 0; i < 20; i++) { sink ^= old(); sink ^= optimized(); }
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1024; i++) sink ^= old();
+        long oldBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1024; i++) sink ^= optimized();
+        long newBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        Assert(oldBytes > 0, "uncached instance delegate unexpectedly allocation-free");
+        Assert(newBytes == 0, "cached instance delegate allocated " + newBytes + " B");
+        double[] before = new double[7], after = new double[7];
+        for (int sample = 0; sample < 7; sample++)
+        {
+            if ((sample & 1) == 0)
+            {
+                before[sample] = Time(old, 2048);
+                after[sample] = Time(optimized, 2048);
+            }
+            else
+            {
+                after[sample] = Time(optimized, 2048);
+                before[sample] = Time(old, 2048);
+            }
+        }
+        double a = Median(before), b = Median(after);
+        Console.WriteLine("HOST A/B List.Sort delegate 128 items: new-per-sort=" +
+            a.ToString("F5") + " ms cached=" + b.ToString("F5") +
+            " ms ratio=" + (a / b).ToString("F2") +
+            "x, allocations per 1024 sorts=" + oldBytes + " B -> " +
+            newBytes + " B (analogue of production delegate path; not kernel CPU)");
+    }
+
     private static void BenchmarkCpuPercentText(bool padded)
     {
         int[] usage = new int[1024];
@@ -522,6 +613,8 @@ internal static class Program
         BenchmarkCpuPrefixes();
         VerifyIndex();
         VerifyMonitorIntegration();
+        VerifyProductionRowSortAllocations();
+        BenchmarkRowSortDelegate();
         Benchmark(16, 16);
         Benchmark(128, 128);
         Benchmark(512, 512);
