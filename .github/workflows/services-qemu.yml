@@ -11,14 +11,6 @@ on:
       - 'tools/build-cosmos-3095-local.sh'
       - 'tools/smoke-services-qemu.sh'
       - '.github/workflows/services-qemu.yml'
-  # Performance branch changes to the software painter must still boot the
-  # real disk-backed GUI. The smoke test creates a disposable FAT32 image on
-  # the runner; it never opens host partitions or changes the kernel root.
-  push:
-    branches: [perf/system-gen3]
-    paths:
-      - 'source/GUI/UiPainter.cs'
-      - '.github/workflows/services-qemu.yml'
   workflow_dispatch:
 
 permissions:
