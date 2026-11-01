@@ -100,6 +100,19 @@ namespace ZonderqOS
                 Log("[NET3095-N1][FAIL] E1000E TX queue rejected the frame");
                 return;
             }
+            // Queueing is not proof of a live interface. Sample the NIC
+            // again after Send() before any higher-level RX/TX tests begin.
+            // The independent PCAP gate remains the actual frame TX proof.
+            NetworkAdapter txAdapter = NetworkManager.Primary;
+            if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized ||
+                NetworkManager.DeviceCount != 1 || !txAdapter.IsValid ||
+                txAdapter.Name != "e1000e" || !txAdapter.Ready ||
+                !txAdapter.LinkUp ||
+                (txAdapter.MacAddress?.ToString() ?? "") != sourceMac)
+            {
+                Log("[NET3095-N1][FAIL] E1000E binding/link/MAC changed during TX");
+                return;
+            }
             Log("[NET3095-N1] DHCP=NOT_ATTEMPTED IP=UNASSIGNED");
 #if ZONDERQ_NETWORK_N2_DHCP
             // Opt-in second-stage RX proof. DHCP only runs in the isolated

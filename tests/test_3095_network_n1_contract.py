@@ -14,6 +14,22 @@ HTTP_VALIDATOR = (ROOT / "tests/verify_3095_network_n6.py").read_text()
 MAIN = (ROOT / "Kernel.cs").read_text()
 
 class NetworkN1Isolation(unittest.TestCase):
+    def test_n1_rechecks_live_e1000e_after_raw_tx(self):
+        start = SOURCE.index("bool queued = NetworkManager.Send(frame, frame.Length);")
+        check = SOURCE.index("NetworkAdapter txAdapter = NetworkManager.Primary;", start)
+        fail = SOURCE.index("E1000E binding/link/MAC changed during TX", check)
+        end = SOURCE.index("DHCP=NOT_ATTEMPTED IP=UNASSIGNED", fail)
+        self.assertLess(start, check)
+        self.assertLess(check, fail)
+        self.assertLess(fail, end)
+        for condition in (
+            "NetworkManager.IsEnabled", "NetworkManager.IsInitialized",
+            "NetworkManager.DeviceCount != 1", "txAdapter.IsValid",
+            'txAdapter.Name != "e1000e"', "txAdapter.Ready",
+            "txAdapter.LinkUp", "!= sourceMac",
+        ):
+            self.assertIn(condition, SOURCE[check:end])
+
     def test_isolated_nic_registration_remains_unique(self):
         self.assertIn("if (count != 1)", SOURCE)
         self.assertIn("if (readyLinks != 1)", SOURCE)
