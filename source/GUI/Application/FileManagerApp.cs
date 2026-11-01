@@ -848,12 +848,14 @@ namespace ZonderqOS.GUI.Apps
         public readonly string Name;
         public readonly string FullPath;
         public readonly bool IsDirectory;
+        public readonly IconType Icon;
 
         public FileEntry(string name, string fullPath, bool isDirectory)
         {
             Name = name;
             FullPath = fullPath;
             IsDirectory = isDirectory;
+            Icon = FileEntryIconResolver.Resolve(name, isDirectory);
         }
     }
 
@@ -1109,7 +1111,7 @@ namespace ZonderqOS.GUI.Apps
 
                 int iconX = tileX + (FileManagerApp.TileWidth - iconSize) / 2;
                 canvas.DrawFilledRectangle(Color.FromArgb(34, 40, 47), iconX - 5, tileY + 3, iconSize + 10, iconSize + 8);
-                IconManager.DrawScaled(canvas, ResolveEntryIcon(entry),
+                IconManager.DrawScaled(canvas, entry.Icon,
                     iconX, tileY + 7, iconSize, iconSize);
 
                 DrawWrappedName(canvas, entry.Name ?? "",
@@ -1118,43 +1120,6 @@ namespace ZonderqOS.GUI.Apps
                     labelWidth,
                     labelHeight,
                     index == app.SelectedIndex ? Color.WhiteSmoke : MainText);
-            }
-        }
-
-        private static IconType ResolveEntryIcon(FileEntry entry)
-        {
-            if (entry == null)
-                return IconType.File;
-            if (entry.IsDirectory)
-                return IconType.Folder;
-
-            string extension;
-            try
-            {
-                extension = Path.GetExtension(entry.Name ?? "").ToLowerInvariant();
-            }
-            catch
-            {
-                return IconType.File;
-            }
-
-            switch (extension)
-            {
-                case ".bmp": return IconType.FileBmp;
-                case ".doc": return IconType.FileDoc;
-                case ".docx": return IconType.FileDocx;
-                case ".jpg":
-                case ".jpeg": return IconType.FileJpg;
-                case ".pdf": return IconType.FilePdf;
-                case ".png": return IconType.FilePng;
-                case ".svg": return IconType.FileSvg;
-                case ".txt":
-                case ".log":
-                case ".md":
-                case ".cfg":
-                case ".conf":
-                case ".ini": return IconType.FileTxt;
-                default: return IconType.File;
             }
         }
 
