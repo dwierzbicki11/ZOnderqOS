@@ -281,10 +281,11 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('verify_3095_network_n6_post_http.py', SMOKE)
         self.assertIn('POST_BURST_PASS HTTP/1.0 GET /health 200', SMOKE)
         self.assertIn('HTTP_REPEAT=PASS', SOURCE)
-        self.assertIn('TrySendBurst(frame, baselineResources, baselineIrqSources)', SOURCE)
+        self.assertIn('TrySendBurst(frame, sourceMac, initialIp, initialMask,', SOURCE)
         self.assertIn('TX_DRIVER_STABLE=PASS count=128 checks=5', SOURCE)
         self.assertIn('if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))', SOURCE)
         self.assertIn('TX_DRIVER_CHECK=PASS sent=128 resources=', SOURCE)
+        self.assertIn('TX_NIC_CHECK=PASS sent=128', SOURCE)
         self.assertIn('for (int sequence = 0; sequence < 128; sequence++)', SOURCE)
         self.assertIn("burst[14 + tag.Length] = (byte)('0' + sequence / 100);", SOURCE)
         self.assertIn("burst[15 + tag.Length] = (byte)('0' + (sequence / 10) % 10);", SOURCE)
@@ -458,6 +459,12 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("IsE1000EDriverKitStable(expectedResources, expectedIrqSources)", burst)
         self.assertLess(burst.index("IsE1000EDriverKitStable(expectedResources, expectedIrqSources)"),
                         burst.index("if (!NetworkManager.Send(burst, burst.Length))"))
+        self.assertIn('TX_NIC_CHECK=PASS sent=128', burst)
+        self.assertIn('IsE1000ELeaseStable(expectedMac, expectedIp,', burst)
+        self.assertLess(burst.index('IsE1000ELeaseStable(expectedMac, expectedIp,'),
+                        burst.index('TX_NIC_CHECK=PASS sent='))
+        self.assertLess(burst.index('TX_NIC_CHECK=PASS sent='),
+                        burst.index('if (!NetworkManager.Send(burst, burst.Length))'))
         self.assertIn("verify_3095_network_n6_burst.py", SMOKE)
 
 

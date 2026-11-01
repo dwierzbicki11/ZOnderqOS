@@ -342,3 +342,15 @@ E1000E driver still polls. This diagnostic code remains isolated from
 the disk-backed production GUI, with no storage writes and no SDK
 downgrade. The new checks require a fresh passing QEMU run on their
 commit before any runtime success claim.
+
+## N6 live NIC/lease checkpoints during TX burst (2026-11-01)
+
+The isolated E1000E probe now verifies the **original DHCP address, mask,
+gateway, MAC and link** alongside DriverKit resource/IRQ-source ownership at
+five 32-descriptor TX-ring checkpoints (0, 32, 64, 96 and 128 frames).
+The guest emits `TX_NIC_CHECK=PASS sent=N` only after a successful read-only
+check. This detects transient lease/link changes that a single post-burst
+snapshot could miss. The independent QEMU PCAP proof is still mandatory:
+neither guest checkpoints nor successful queueing prove wire transmission,
+ISR execution or DMA completion. The opt-in probe never touches storage or
+activates production GUI networking.

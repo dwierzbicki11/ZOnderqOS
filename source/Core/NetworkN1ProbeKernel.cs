@@ -282,7 +282,8 @@ namespace ZonderqOS
                 // Each distinct frame must be independently observed in QEMU
                 // filter-dump; successful queueing alone is NOT a DMA proof.
                 Log("[NET3095-N6] TX_BURST_ATTEMPT=START count=128");
-                if (!TrySendBurst(frame, baselineResources, baselineIrqSources))
+                if (!TrySendBurst(frame, sourceMac, initialIp, initialMask,
+                        initialGateway, baselineResources, baselineIrqSources))
                 {
                     Log("[NET3095-N6][FAIL] E1000E raw TX burst queue rejected");
                     return;
@@ -708,7 +709,8 @@ namespace ZonderqOS
 
 #if ZONDERQ_NETWORK_N6_HTTP
         private static bool TrySendBurst(byte[] template,
-            int expectedResources, int expectedIrqSources)
+            string expectedMac, string expectedIp, string expectedMask,
+            string expectedGateway, int expectedResources, int expectedIrqSources)
         {
             // 128 paced frames exercise four complete 32-descriptor TX ring cycles
             // without exposing the NIC in the production GUI.
@@ -732,12 +734,6 @@ namespace ZonderqOS
                 {
                     if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
                         return false;
-                    // The five snapshots are observable individually in serial.
-                    // A final summary alone cannot establish that intermediate
-                    // ring-wrap boundaries were actually sampled.
-                    Log("[NET3095-N6] TX_DRIVER_CHECK=PASS sent=" + sequence +
-                        " resources=" + expectedResources +
-                        " irq_sources=" + expectedIrqSources);
                     NetworkAdapter current = NetworkManager.Primary;
                     if (!current.IsValid || current.Name != "e1000e" ||
                         !current.Ready || !current.LinkUp ||
@@ -748,6 +744,16 @@ namespace ZonderqOS
                         if (liveMacFrame[6 + macByte] != template[6 + macByte])
                             return false;
                     }
+                    // The link can stay up while the DHCP lease disappears.
+                    // Detect this at each ring boundary, not just after stress.
+                    if (!IsE1000ELeaseStable(expectedMac, expectedIp,
+                            expectedMask, expectedGateway))
+                        return false;
+                    // Only report PASS after the live NIC/lease checks.
+                    Log("[NET3095-N6] TX_DRIVER_CHECK=PASS sent=" + sequence +
+                        " resources=" + expectedResources +
+                        " irq_sources=" + expectedIrqSources);
+                    Log("[NET3095-N6] TX_NIC_CHECK=PASS sent=" + sequence);
                 }
                 // Fixed-width decimal tag survives 099 -> 100 and 127.
                 burst[14 + tag.Length] = (byte)('0' + sequence / 100);
@@ -759,10 +765,13 @@ namespace ZonderqOS
             }
             // Include the final descriptor cycle, not just the pre-send
             // snapshots taken at sequence 0, 32, 64 and 96.
-            if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
+            if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources) ||
+                !IsE1000ELeaseStable(expectedMac, expectedIp,
+                    expectedMask, expectedGateway))
                 return false;
             Log("[NET3095-N6] TX_DRIVER_CHECK=PASS sent=128 resources=" +
                 expectedResources + " irq_sources=" + expectedIrqSources);
+            Log("[NET3095-N6] TX_NIC_CHECK=PASS sent=128");
             return true;
         }
 #endif
