@@ -159,6 +159,30 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("test_audio_sequence_validator.py", host_workflow)
         self.assertNotIn("Disk.", runtime.split("public static bool PlayFrequencySequenceTestTones()", 1)[1].split("public static bool PlayStereoSplitTestTone()", 1)[0])
 
+    def test_qemu_sequence_failure_keeps_independent_wav_checks_running(self):
+        workflow = read(".github/workflows/audio-qemu.yml")
+        queue_step = workflow.split(
+            "- name: Boot and verify three frame-scheduled PCM effects through HDA", 1)[1]
+        sequence_step = workflow.split(
+            "- name: Boot and verify four nonperiodic PCM frequency steps through HDA", 1)[1]
+        queue_header = queue_step.split("run: |", 1)[0]
+        sequence_header = sequence_step.split("run: |", 1)[0]
+        self.assertIn("id: mixqueue", queue_header)
+        self.assertIn("continue-on-error: true", queue_header)
+        self.assertIn("id: mixsequence", sequence_header)
+        self.assertIn("continue-on-error: true", sequence_header)
+        # A failed sequence must not suppress independent WAV/volume boots.
+        self.assertLess(workflow.index("--command mixsequence"),
+                        workflow.index("--command wavtone"))
+        self.assertLess(workflow.index("--command wavtone"),
+                        workflow.index("--command tone --volume 25"))
+        # But neither failed real HDA capture may turn the job green.
+        gate = workflow.split(
+            "- name: Enforce scheduled HDA queue and sequence quality gates", 1)[1]
+        self.assertIn("steps.mixqueue.outcome == 'failure'", gate)
+        self.assertIn("steps.mixsequence.outcome == 'failure'", gate)
+        self.assertIn("exit 1", gate.split("- name:", 1)[0])
+
     def test_real_pcm_path_is_opt_in_only(self):
         runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
         kernel = read("Kernel.cs")
