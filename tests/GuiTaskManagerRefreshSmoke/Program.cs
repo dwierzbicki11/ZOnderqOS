@@ -94,6 +94,20 @@ internal static class Program
             }
         }
 
+        // A selection hidden by manual scrolling must not be killable.
+        // Verify boundary/overflow cases against the production policy.
+        foreach (int count in new[] { 0, 1, 2, 16, 128, int.MaxValue })
+        foreach (int scroll in new[] { -1, 0, 1, 15, 16, 127, int.MaxValue })
+        foreach (int rows in new[] { -1, 0, 1, 2, 8, 16, int.MaxValue })
+        foreach (int selected in new[] { -1, 0, 1, 15, 16, 127, int.MaxValue })
+        {
+            bool expected = selected >= 0 && selected < count &&
+                scroll >= 0 && rows > 0 && selected >= scroll &&
+                (long)selected - scroll < rows;
+            Check(TaskManagerSelectionPolicy.IsVisible(selected, scroll, rows, count) == expected,
+                "destructive selection visibility " + selected + "/" + scroll + "/" + rows + "/" + count);
+        }
+
         Console.WriteLine("Task Manager refresh/navigation C# PASS: " + assertions + " assertions");
         return 0;
     }

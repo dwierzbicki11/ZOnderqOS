@@ -400,12 +400,21 @@ namespace ZonderqOS.GUI.Apps
             status = visibleRows[selectedIndex].Name;
         }
 
+        // A selected task may be scrolled out of view. Never terminate an
+        // invisible row: the user must see what the Delete/END TASK action targets.
+        internal bool CanEndSelectedTask => activePage != PagePerformance &&
+            view.HasPaintedProcessRows &&
+            TaskManagerSelectionPolicy.IsVisible(selectedIndex, scrollIndex,
+                view.VisibleRows, visibleRows.Count) &&
+            visibleRows[selectedIndex].CanEnd && visibleRows[selectedIndex].GuiApplication != this;
+
         private void EndSelectedTask()
         {
             if (activePage == PagePerformance || !view.HasPaintedProcessRows ||
-                selectedIndex < 0 || selectedIndex >= visibleRows.Count)
+                !TaskManagerSelectionPolicy.IsVisible(selectedIndex, scrollIndex,
+                    view.VisibleRows, visibleRows.Count))
             {
-                status = "Wybierz zadanie";
+                status = "Wybierz widoczne zadanie";
                 return;
             }
 
@@ -985,7 +994,7 @@ namespace ZonderqOS.GUI.Apps
             int refresh = Width - 210;
             int end = Width - 114;
             if (x >= refresh && x < refresh + 88) return 1;
-            if (app.ActivePage != TaskManagerModernApp.PagePerformance &&
+            if (app.CanEndSelectedTask &&
                 x >= end && x < end + 100) return 2;
             return 0;
         }
@@ -1173,7 +1182,7 @@ namespace ZonderqOS.GUI.Apps
                 SmallTextRenderer.Draw(canvas, app.DateText, clock, Y + 31, Muted);
             }
             DrawButton(canvas, refresh, Y + 10, 88, "REFRESH", IconType.Refresh, false, true);
-            DrawButton(canvas, end, Y + 10, 100, "END TASK", IconType.Close, true, app.ActivePage != 1);
+            DrawButton(canvas, end, Y + 10, 100, "END TASK", IconType.Close, true, app.CanEndSelectedTask);
             canvas.DrawLine(Color.FromArgb(52, 63, 74), contentX, Y + HeaderHeight, X + Width - 4, Y + HeaderHeight);
         }
 
