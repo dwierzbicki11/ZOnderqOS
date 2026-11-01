@@ -119,13 +119,24 @@ internal static class TextSpanLookupSmoke
         }
         Console.WriteLine("PASS: 3 exact framebuffer and Canvas-call comparisons");
 
-        const string text = "CPU 123% PID READY 8MiB ZOnderqOS /root/foo.txt";
+        Benchmark("status", "CPU 123% PID READY 8MiB ZOnderqOS /root/foo.txt", 1500);
+        Benchmark("digits", "0123456789012345678901234567890123456789", 1500);
+        Benchmark("punctuation", "!?.,-:; /\\\\ % @ # [] ()", 1500);
+    }
+
+    private static void Benchmark(string label, string text, int iterations)
+    {
         byte[] prepared = BuildLegacyRows(text);
         Canvas oldCanvas = new Canvas(800, 40);
         Canvas newCanvas = new Canvas(800, 40);
         Measure(oldCanvas, prepared, text, false, 100);
         Measure(newCanvas, prepared, text, true, 100);
-        const int iterations = 1500;
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 128; i++)
+            SmallTextRenderer.Draw(newCanvas, text, 8, 8, Color.White);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        if (allocated != 0)
+            throw new Exception("Production text render allocated " + allocated + " B after warmup");
         double[] oldMs = new double[7];
         double[] newMs = new double[7];
         for (int sample = 0; sample < 7; sample++)
@@ -143,10 +154,12 @@ internal static class TextSpanLookupSmoke
         }
         Array.Sort(oldMs);
         Array.Sort(newMs);
-        Console.WriteLine("HOST A/B 1500 ASCII text draws, median 7 alternating samples: " +
-            "legacy span scan=" + oldMs[3].ToString("F3") + " ms, packed lookup=" +
+        Console.WriteLine("HOST A/B glyph " + label + ", " + iterations +
+            " draws, median 7 alternating samples: legacy span scan=" +
+            oldMs[3].ToString("F3") + " ms, packed lookup=" +
             newMs[3].ToString("F3") + " ms, ratio=" +
             (oldMs[3] / newMs[3]).ToString("F2") +
-            "x (fake Canvas, not Cosmos FPS), sink=" + sink);
+            "x, warmed production allocations=" + allocated +
+            " B / 128 draws (fake Canvas, not Cosmos FPS), sink=" + sink);
     }
 }
