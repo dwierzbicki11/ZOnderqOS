@@ -2837,5 +2837,58 @@ class TaskbarNotificationHitbox3095(unittest.TestCase):
                     self.assertTrue(hit)
 
 
+
+class PaintedControlHitbox3095(unittest.TestCase):
+    def test_file_manager_toolbar_blank_vertical_chrome_cannot_navigate(self):
+        mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
+            "private void ResetClickSequence()", 1)[0]
+        render = FILE_MANAGER.split("private void RenderToolbar(Canvas canvas)", 1)[1].split(
+            "private void RenderSidebar(", 1)[0]
+        self.assertIn("if (y >= 7 && y < 37)", mouse)
+        self.assertIn("Toolbar(x);", mouse)
+        self.assertIn("UiPainter.RoundedPanel(canvas, buttonX, Y + 7, 36, 30", FILE_MANAGER)
+        self.assertIn("if (app.ToolbarButtonCountForView > 0)", render)
+        for view_width in (44, 80, 86, 128, 170, 220, 300, 780, 1346, 1900):
+            count = min(4, max(0, (view_width - 44) // 42 + 1))
+            for y in range(0, 51):
+                for x in range(0, view_width, max(1, view_width // 110)):
+                    button = (x - 8) // 42 if x >= 8 else -1
+                    painted = (7 <= y < 37 and 0 <= button < count
+                               and (x - 8) % 42 < 36)
+                    decoded = (4 <= y < 44 and 7 <= y < 37
+                               and 0 <= button < count
+                               and (x - 8) % 42 < 36)
+                    self.assertEqual(painted, decoded, (view_width, x, y))
+
+    def test_taskbar_app_and_pager_ignore_unpainted_top_bottom_border(self):
+        render = TASKBAR.split("public override void Render(Canvas canvas)", 1)[1].split(
+            "private void UpdateTrayCache()", 1)[0]
+        mouse = TASKBAR.split("public void UpdateInteractions(", 1)[1]
+        self.assertIn("UiPainter.RoundedPanel(canvas, appX, Y + 3, AppButtonSize, Height - 6", render)
+        self.assertIn("UiPainter.RoundedPanel(canvas, arrowX, Y + 3, AppButtonSize, Height - 6", render)
+        self.assertIn("if (mouseY < Y + 3 || mouseY >= Y + Height - 3)", mouse)
+        self.assertLess(mouse.index("if (mouseY < Y + 3"), mouse.index("int appX = StartButtonWidth"))
+        for height in range(13, 101):
+            for y in range(-2, height + 3):
+                painted = 3 <= y < height - 3
+                hit = not (y < 3 or y >= height - 3)
+                self.assertEqual(painted, hit, (height, y))
+
+    def test_notification_empty_state_uses_visible_card_height(self):
+        render = NOTIFICATIONS.split("private void RenderList(Canvas canvas)", 1)[1].split(
+            "private void RenderFooter(", 1)[0]
+        self.assertIn("UiPainter.RoundedPanel(canvas, cardX, cy, cardWidth, CardHeight,", render)
+        self.assertNotIn("UiPainter.RoundedPanel(canvas, cardX, cy, cardWidth, 92,", render)
+        # The last row must end before the reserved 72px footer gap,
+        # including the empty state; previous 92px placeholder crossed it.
+        for panel_height in range(203, 1081):
+            available = max(0, panel_height - 130 - 72)
+            rows = max(0, min(8, (available + 7) // (82 + 7)))
+            for row in range(rows):
+                top = 130 + row * (82 + 7)
+                self.assertLessEqual(top + 82, panel_height - 72,
+                                     (panel_height, row, rows))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
