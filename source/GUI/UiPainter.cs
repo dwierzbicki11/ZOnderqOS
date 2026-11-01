@@ -98,6 +98,8 @@ namespace ZonderqOS.GUI
         internal static void RoundedTop(Canvas canvas, int x, int y, int width, int height,
             int radius, Color fill)
         {
+            if (canvas == null || width <= 0 || height <= 0)
+                return;
             int r = Math.Min(Math.Min(radius, width / 2), height);
             Fill(canvas, fill, x, y + r, width, height - r);
             // Host A/B showed grouping overhead on this one-sided strip.
