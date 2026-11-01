@@ -441,12 +441,12 @@ static class Test
         for (int i = 0; i < monoConverted44100.Length; i++)
             Expect(monoConverted44100[i] == converted44100[i], "mono 44.1k upmix matches stereo source");
         byte[] invalidRate44100 = (byte[])encoded.Clone();
-        WriteLittle32(invalidRate44100, 24, 16000);
-        WriteLittle32(invalidRate44100, 28, 16000 * 4);
+        WriteLittle32(invalidRate44100, 24, 11025);
+        WriteLittle32(invalidRate44100, 28, 11025 * 4);
         rejected = false;
         try { AudioWavePcm.DecodeStereo16(invalidRate44100); }
         catch (ArgumentException) { rejected = true; }
-        Expect(rejected, "unsupported 16k WAV still refused");
+        Expect(rejected, "unsupported 11.025kHz WAV still refused");
         byte[] overlong44100 = new byte[44 + 44100 * 2 * 4 + 4];
         Array.Copy(wave44100, overlong44100, wave44100.Length);
         WriteLittle32(overlong44100, 4, overlong44100.Length - 8);
@@ -456,7 +456,7 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "44.1k WAV longer than two seconds refused");
         rejected = false;
-        try { AudioWavePcm.EncodeStereo16AtRate(source44100, 16000); }
+        try { AudioWavePcm.EncodeStereo16AtRate(source44100, 11025); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "unsupported encoder rate refused");
 
@@ -686,7 +686,7 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject PCM24 duration exceeding two seconds");
         rejected = false;
-        try { AudioWavePcm.EncodePcm24AtRate(new byte[3], 16000, 1); }
+        try { AudioWavePcm.EncodePcm24AtRate(new byte[3], 11025, 1); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "reject unsupported PCM24 sample rate");
 
@@ -815,7 +815,7 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject PCM32 duration exceeding two seconds");
         rejected = false;
-        try { AudioWavePcm.EncodePcm32AtRate(new byte[4], 16000, 1); }
+        try { AudioWavePcm.EncodePcm32AtRate(new byte[4], 11025, 1); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "reject unsupported PCM32 sample rate");
 
