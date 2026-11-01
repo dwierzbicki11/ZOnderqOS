@@ -290,6 +290,23 @@ def self_test() -> None:
         except ValueError:
             continue
         raise AssertionError(f"accepted stale second HTTP RX block {block}")
+    # The old uniform 1 KiB body would silently accept a shifted DMA
+    # fragment inside the same block. Keep length, TCP sequence and all
+    # other packets valid; rotate only one body segment by one byte.
+    for block in range(1, 5):
+        shifted_segment = list(second_response)
+        start, end = cuts[block], cuts[block + 1]
+        original = response_for_attempt(2)[start:end]
+        shifted_segment[block] = fake_http(
+            True, 0x18, 40001 + start, 30001 + len(REQUEST),
+            original[1:] + original[:1], client_port=49154)
+        bad_second = second_handshake + second_request + shifted_segment + second_teardown
+        try:
+            validate(serial, synthetic_capture(
+                base + handshake + request + response + teardown + bad_second))
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted shifted second HTTP RX block {block}")
     # A complete one- or two-packet response cannot satisfy the large RX
     # segmentation proof, even when the payload bytes are otherwise valid.
     for insufficient in (single_response, two_response):
