@@ -264,8 +264,9 @@ namespace ZonderqOS.SystemCore
             {
                 KernelProcess process = snapshot[i];
                 uint tid = process.KernelThreadId;
-                if (!byThread.ContainsKey(tid))
-                    byThread.Add(tid, process);
+                // Preserve first-owner semantics for duplicate TIDs with one
+                // dictionary probe instead of ContainsKey followed by Add.
+                byThread.TryAdd(tid, process);
             }
         }
 
