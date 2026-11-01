@@ -1350,7 +1350,10 @@ class ResponsiveGui3094(unittest.TestCase):
         mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
             "private int HitEntryIndex(", 1)[0]
         self.assertIn("if (left && !oldLeft && dialogMode == 0 && contextMenuVisible)", mouse)
-        self.assertIn("if (right && !oldRight && dialogMode == 0 && contextMenuVisible)", mouse)
+        self.assertIn("if (right && dialogMode == 0 && contextMenuVisible)", mouse)
+        self.assertIn("if (!oldRight || (left && !oldLeft))", mouse)
+        self.assertLess(mouse.index("if (right && dialogMode == 0 && contextMenuVisible)"),
+                        mouse.index("if (left && !oldLeft && dialogMode == 0 && contextMenuVisible)"))
         self.assertLess(mouse.index("if (ContextClick(x, y))"),
                         mouse.index("Window.HandleMouse(mouseX, mouseY, left, oldLeft);"))
         self.assertLess(mouse.index("ResetClickSequence();\n                return;"),
