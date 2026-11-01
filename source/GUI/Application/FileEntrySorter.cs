@@ -71,6 +71,19 @@ namespace ZonderqOS.GUI.Apps
             if (inversions == 0)
                 return;
 
+            // Check descending snapshots BEFORE insertion repair: a small
+            // descending folder can have fewer than MaxLocalInversions
+            // inversions. Repairing it first would consume the shift budget
+            // and destroy the descending fast path. The first/last samples
+            // in IsDescending reject ordinary random folders cheaply.
+            if (firstInversion > 0 && firstInversion <= 8 &&
+                (cannotRepairLocally || inversions > 1) &&
+                IsDescending(entries, count))
+            {
+                ReverseStableDescending(entries, count);
+                return;
+            }
+
             // A rotated pair of large sorted runs also has one inversion,
             // but repairing it with insertion shifts would be quadratic.
             // For one displaced entry, at least one neighbor across the
@@ -116,20 +129,6 @@ namespace ZonderqOS.GUI.Apps
                 }
                 if (repaired)
                     return;
-            }
-
-            // FAT32 may enumerate a directory in reverse name order. A
-            // descending snapshot can be reversed in O(n) without allocating
-            // a merge buffer. Reverse equal-key groups a second time to
-            // preserve the old stable order of case-insensitive duplicates.
-            // Only probe this path when the first inversion was near the
-            // beginning; sample both ends before scanning the whole folder.
-            if (firstInversion > 0 && firstInversion <= 8 &&
-                (cannotRepairLocally || inversions > MaxLocalInversions) &&
-                IsDescending(entries, count))
-            {
-                ReverseStableDescending(entries, count);
-                return;
             }
 
             // Two sorted runs separated by one large inversion (for example,
