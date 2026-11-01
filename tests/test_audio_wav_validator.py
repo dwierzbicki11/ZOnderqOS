@@ -80,6 +80,19 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected about 660Hz"):
             audio.inspect(self.path, expected_hz=660)
 
+    def test_distinct_16000_voice_rate_probe_pitch(self):
+        # Synthetic 48kHz backend fixture, not a real 16kHz guest capture.
+        self.make_wave(frequency=1500)
+        self.assertIn("PASS captured PCM", audio.inspect(self.path, expected_hz=1500))
+        with self.assertRaisesRegex(ValueError, "expected about 1320Hz"):
+            audio.inspect(self.path, expected_hz=1320)
+
+    def test_distinct_24000_stereo_probe_pitch(self):
+        self.make_wave(frequency=4000)
+        self.assertIn("PASS captured PCM", audio.inspect(self.path, expected_hz=4000))
+        with self.assertRaisesRegex(ValueError, "expected about 3520Hz"):
+            audio.inspect(self.path, expected_hz=3520)
+
     def test_distinct_22050_resampler_probe_pitch(self):
         # Host-side validator fixture, not a QEMU or hardware playback claim.
         self.make_wave(frequency=1100)
