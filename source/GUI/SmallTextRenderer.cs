@@ -49,14 +49,11 @@ namespace ZonderqOS.GUI
             if (string.IsNullOrEmpty(text))
                 return;
 
-            // Scrolled-out labels should not scan glyph rows or issue clipped
-            // Canvas calls. Long bounds avoid overflow for extreme offsets.
-            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
-                (long)x + (long)text.Length * 6 <= 0 || (long)y + 7 <= 0)
-                return;
-
-            for (int i = 0; i < text.Length; i++)
-                DrawChar(canvas, text[i], x + i * 6, y, color);
+            // Use the same wide-coordinate, per-glyph visibility window as
+            // DrawRange. Partially scrolled labels previously decoded every
+            // hidden glyph (and could overflow x + i * 6 for long strings).
+            // No substring allocation or separate rasterization path.
+            DrawRange(canvas, text, 0, text.Length, x, y, color);
         }
 
         public static void DrawUInt(Canvas canvas, ulong value, int x, int y, Color color)
