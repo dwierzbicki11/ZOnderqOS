@@ -23,6 +23,17 @@ MAC = bytes.fromhex("525400123456")
 SERVER = bytes([10, 0, 2, 2])
 
 
+def checksum16(data: bytes) -> int:
+    """Internet one's-complement checksum, including an odd trailing byte."""
+    if len(data) & 1:
+        data += b"\x00"
+    total = sum(int.from_bytes(data[i:i + 2], "big")
+                for i in range(0, len(data), 2))
+    while total >> 16:
+        total = (total & 0xFFFF) + (total >> 16)
+    return (~total) & 0xFFFF
+
+
 def dhcp_frame(frame: bytes):
     """Return a DHCP record or None. Reject truncated/malformed DHCP records."""
     if len(frame) < 14 or frame[12:14] != b"\x08\x00":
@@ -38,7 +49,9 @@ def dhcp_frame(frame: bytes):
     if (int.from_bytes(frame[20:22], "big") & 0x3FFF) or iplen < ihl + 8 or len(frame) < 14 + iplen:
         return None
     udp_start = 14 + ihl
-    sport, dport, udplen, _checksum = struct.unpack_from(">HHHH", frame, udp_start)
+    sport, dport, udplen, udp_checksum = struct.unpack_from(">HHHH", frame, udp_start)
+    if (sport, dport) not in ((68, 67), (67, 68)):
+        return None
     if udplen < 8 + 240 or udplen > iplen - ihl:
         return None
     bootp = frame[udp_start + 8:udp_start + udplen]
@@ -46,6 +59,18 @@ def dhcp_frame(frame: bytes):
         return None
     if bootp[236:240] != b"\x63\x82\x53\x63":
         return None
+    # The candidate is a DHCP packet, not arbitrary UDP. Reject corrupted
+    # IPv4/UDP wire evidence rather than skipping it and accepting a later
+    # valid retransmission. IPv4 UDP checksum 0 is legal (Cosmos emits it);
+    # QEMU SLIRP's nonzero reply checksums must validate in full.
+    if frame[22] == 0 or checksum16(frame[14:14 + ihl]) != 0:
+        raise ValueError("invalid DHCP IPv4 TTL or header checksum")
+    if udplen != iplen - ihl:
+        raise ValueError("invalid DHCP UDP/IP length")
+    if udp_checksum:
+        pseudo = frame[26:34] + b"\x00\x11" + udplen.to_bytes(2, "big")
+        if checksum16(pseudo + frame[udp_start:udp_start + udplen]) != 0:
+            raise ValueError("invalid DHCP UDP checksum")
     opts = {}
     at = 240
     end = False
@@ -160,6 +185,7 @@ def fake_dhcp(typ: int, xid: int, mac: bytes, ip: bytes, requested: bytes | None
     iphdr[2:4] = (20 + len(udp)).to_bytes(2, "big")
     iphdr[8:10] = bytes([64, 17])
     iphdr[12:16], iphdr[16:20] = src, dst
+    iphdr[10:12] = checksum16(iphdr).to_bytes(2, "big")
     eth = (bytes([255] * 6) if client else mac) + (mac if client else bytes([0x52, 0x54, 0, 0x12, 0x34, 0x99])) + b"\x08\x00"
     return eth + iphdr + udp
 
@@ -184,6 +210,51 @@ def self_test() -> None:
         START, "[NET3095-N2] DHCP=PASS ip=10.0.2.15 mask=255.255.255.0 gateway=10.0.2.2"
     ])
     assert "PASS" in validate(serial, synthetic_capture(frames))
+
+    def with_udp_checksum(frame: bytes) -> bytes:
+        changed = bytearray(frame)
+        start = 14 + (changed[14] & 15) * 4
+        length = int.from_bytes(changed[start + 4:start + 6], "big")
+        pseudo = changed[26:34] + b"\x00\x11" + length.to_bytes(2, "big")
+        value = checksum16(pseudo + changed[start:start + length])
+        changed[start + 6:start + 8] = (value or 0xFFFF).to_bytes(2, "big")
+        return bytes(changed)
+
+    # Both IPv4-legal zero UDP checksums and validated nonzero UDP
+    # checksums must pass. Real QEMU emits both forms in the same DORA.
+    checksummed = [frames[0]] + [with_udp_checksum(frame) for frame in frames[1:]]
+    assert "PASS" in validate(serial, synthetic_capture(checksummed))
+    assert all(checksum16(frame[14:34]) == 0 for frame in frames[1:])
+    for index in range(1, 5):
+        changed = bytearray(checksummed[index])
+        changed[22] ^= 1  # TTL changed, IP checksum no longer valid.
+        try:
+            validate(serial, synthetic_capture(checksummed[:index] + [bytes(changed)] +
+                                               checksummed[index + 1:]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted corrupted DHCP IPv4 checksum")
+        changed = bytearray(checksummed[index])
+        changed[14 + 20 + 8 + 4] ^= 1  # BOOTP xid changed; UDP checksum stale.
+        try:
+            validate(serial, synthetic_capture(checksummed[:index] + [bytes(changed)] +
+                                               checksummed[index + 1:]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted corrupted DHCP UDP checksum")
+    # Reject a corrupted candidate even if a valid duplicate follows it.
+    corrupted = bytearray(checksummed[2])
+    corrupted[22] ^= 1
+    try:
+        validate(serial, synthetic_capture(checksummed[:2] +
+                                           [bytes(corrupted), checksummed[2]] +
+                                           checksummed[3:]))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted corrupted DHCP OFFER preceding valid duplicate")
     # Keep the Ethernet payload intact while marking the IPv4 datagram as
     # fragmented: a fail-open DHCP parser must not accept these captures.
     def fragment(frame: bytes, flags_offset: int) -> bytes:
