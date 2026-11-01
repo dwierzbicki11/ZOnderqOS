@@ -115,6 +115,96 @@ internal static class Program
         Console.WriteLine("PASS: " + checks + " exact stable-order/reference checks; warm allocations=" + bytes + " B");
     }
 
+    // Snapshot of the independent GUI branch implementation at 5fe8f293:
+    // stable merge sort, but a new FileEntry[] for every directory refresh.
+    // This is a comparison baseline, not production code for this branch.
+    private static void GuiBranchSort(List<ZonderqOS.GUI.Apps.FileEntry> destination)
+    {
+        int count = destination.Count;
+        if (count < 2) return;
+        var scratch = new ZonderqOS.GUI.Apps.FileEntry[count];
+        for (int run = 1; run < count; run = run > count / 2 ? count : run * 2)
+        {
+            int start = 0;
+            while (start < count)
+            {
+                int middle = Math.Min(count, start + run);
+                int end = Math.Min(count, middle + run);
+                int left = start;
+                int right = middle;
+                for (int write = start; write < end; write++)
+                {
+                    if (left < middle && (right >= end ||
+                        Compare(destination[left], destination[right]) <= 0))
+                        scratch[write] = destination[left++];
+                    else
+                        scratch[write] = destination[right++];
+                }
+                start = end;
+            }
+            for (int i = 0; i < count; i++)
+                destination[i] = scratch[i];
+        }
+    }
+
+    private static void BenchmarkGuiBranch(int n)
+    {
+        var source = Make(n, 2026 + n, false);
+        var work = new List<ZonderqOS.GUI.Apps.FileEntry>(n);
+        ZonderqOS.GUI.Apps.FileEntry[] scratch = new ZonderqOS.GUI.Apps.FileEntry[n];
+        for (int i = 0; i < 4; i++)
+        {
+            work.Clear(); work.AddRange(source); GuiBranchSort(work);
+            work.Clear(); work.AddRange(source);
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(work, ref scratch);
+        }
+        double[] guiMs = new double[7], perfMs = new double[7];
+        for (int i = 0; i < 7; i++)
+        {
+            bool perfFirst = (i & 1) != 0;
+            for (int side = 0; side < 2; side++)
+            {
+                bool perf = side == 0 ? perfFirst : !perfFirst;
+                long start = Stopwatch.GetTimestamp();
+                for (int rep = 0; rep < 3; rep++)
+                {
+                    work.Clear();
+                    work.AddRange(source);
+                    if (perf)
+                        ZonderqOS.GUI.Apps.FileEntrySorter.Sort(work, ref scratch);
+                    else
+                        GuiBranchSort(work);
+                    sink += work[0].Name.Length;
+                }
+                double ms = (Stopwatch.GetTimestamp() - start) * 1000.0 /
+                    Stopwatch.Frequency / 3.0;
+                if (perf) perfMs[i] = ms;
+                else guiMs[i] = ms;
+            }
+        }
+        // Verify exact same order for the independent GUI branch implementation.
+        var expected = new List<ZonderqOS.GUI.Apps.FileEntry>(source);
+        var actual = new List<ZonderqOS.GUI.Apps.FileEntry>(source);
+        GuiBranchSort(expected);
+        ZonderqOS.GUI.Apps.FileEntrySorter.Sort(actual, ref scratch);
+        for (int i = 0; i < n; i++)
+            Assert(object.ReferenceEquals(expected[i], actual[i]), "GUI branch equivalence " + i);
+
+        double a = Median(guiMs), b = Median(perfMs);
+        Console.WriteLine("HOST A/B GUI branch 5fe8f293 vs perf n=" + n +
+            " gui=" + a.ToString("F4") + " ms perf=" + b.ToString("F4") +
+            " ms ratio=" + (a / b).ToString("F2") + "x");
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        GuiBranchSort(expected);
+        long guiBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        before = GC.GetAllocatedBytesForCurrentThread();
+        ZonderqOS.GUI.Apps.FileEntrySorter.Sort(actual, ref scratch);
+        long perfBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert(perfBytes == 0, "perf warm sort allocations");
+        Assert(guiBytes >= n * IntPtr.Size, "GUI branch expected temporary array allocation");
+        Console.WriteLine("HOST allocations GUI=" + guiBytes + " B perf=" + perfBytes + " B per warm sort");
+    }
+
     private static void VerifyFilter()
     {
         var source = new List<ZonderqOS.GUI.Apps.FileEntry>(Make(2048, 41, false));
@@ -259,6 +349,8 @@ internal static class Program
         Benchmark(128, false);
         Benchmark(512, false);
         Benchmark(2048, true);
+        BenchmarkGuiBranch(512);
+        BenchmarkGuiBranch(2048);
         Console.WriteLine("PASS: production FileEntrySorter smoke, sink=" + sink);
     }
 }
