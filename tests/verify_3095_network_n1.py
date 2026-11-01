@@ -90,12 +90,23 @@ def pcap_frames(data: bytes):
 def validate(serial: str, pcap: bytes) -> str:
     mac = validate_serial(serial)
     wanted = BROADCAST + mac + ETHER_TYPE + PAYLOAD
-    # Consume every record before accepting: a matching first frame must not
-    # hide a truncated or malformed tail later in the capture.
-    frames = list(pcap_frames(pcap))
-    if not any(frame.startswith(wanted) and len(frame) >= 60
-               for frame in frames):
-        raise ValueError("no real QEMU-captured E1000E TX frame")
+    expected = wanted + bytes(60 - len(wanted))
+    # N6 reuses this validator and legitimately adds tagged 128-frame bursts.
+    # Accept those only as a separate class: they must not substitute for,
+    # duplicate or conceal a malformed initial N1 Ethernet transmission.
+    burst_prefix = b"ZONDERQ3095-BURST-"
+    initial_count = 0
+    # Consume every record, including the tail, before accepting evidence.
+    for frame in pcap_frames(pcap):
+        if frame[12:14] != ETHER_TYPE:
+            continue
+        if frame[14:].startswith(burst_prefix):
+            continue  # N6's own validator checks every burst byte and order.
+        if frame != expected:
+            raise ValueError("malformed or unexpected N1 diagnostic Ethernet frame")
+        initial_count += 1
+    if initial_count != 1:
+        raise ValueError("expected exactly one complete QEMU-captured N1 TX frame")
     return f"[NET3095-N1-GATE] PASS E1000E_LINK_AND_RAW_TX mac={mac.hex(':')}"
 
 
@@ -153,6 +164,23 @@ def self_test() -> None:
         good + struct.pack("<IIII", 2, 0, 0, 0),
         good + struct.pack("<IIII", 2, 0, 13, 13) + frame[:13],
     ]
+    # The N1 proof must not accept a good prefix with corrupted padding,
+    # duplicate N1 transmissions, or a forged diagnostic EtherType.
+    burst = BROADCAST + bytes.fromhex("525400123456") + ETHER_TYPE + b"ZONDERQ3095-BURST-000"
+    burst += bytes(60 - len(burst))
+    assert "PASS" in validate(serial, synthetic_pcap(frame) +
+                              synthetic_pcap(burst)[24:])
+    bad_pcap.extend([
+        synthetic_pcap(frame + b"X"),
+        synthetic_pcap(frame[:-1] + b"X"),
+        synthetic_pcap(frame[:6] + bytes.fromhex("525400123499") + frame[12:]),
+        synthetic_pcap(frame) + synthetic_pcap(frame)[24:],
+        synthetic_pcap(frame) + synthetic_pcap(frame[:-1] + b"X")[24:],
+        synthetic_pcap(frame) + synthetic_pcap(
+            frame[:14] + b"ZONDERQ3095-OTHER" + bytes(60 - 14 - 18))[24:],
+        synthetic_pcap(frame) + synthetic_pcap(
+            burst[:14] + b"ZONDERQ3095-BURST" + burst[32:])[24:],
+    ])
     for data in bad_pcap:
         try:
             validate(serial, data)
