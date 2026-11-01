@@ -268,6 +268,17 @@ internal static class Program
         Check(!pins[0].Visible && pins[3].Visible,
             "mouse next-page control advances without launching an app");
         CheckSingleAction(2, 2, 1);
+
+        // A mode change can increase the number of visible columns/rows.
+        // The old page offset must realign to the new page capacity.
+        menu.Visible = true;
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.PageDown });
+        menu.Height = 260;
+        menu.Render(Canvas);
+        Check(pins[0].Visible, "mode change realigns the tiny page to its new capacity");
+        foreach (Button button in pins)
+            Check(!button.Visible || button.Y + button.Height <= menu.Y + menu.Height - 48,
+                "mode change keeps results outside power footer");
     }
 
     private static void Tiny200x200()
