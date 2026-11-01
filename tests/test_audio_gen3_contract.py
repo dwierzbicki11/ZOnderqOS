@@ -189,7 +189,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn('if (command == "wavstereo32")', kernel)
         self.assertIn("PlayWave32000StereoSplitTestTone()", runtime)
         self.assertIn("GenerateDualSquareStereo16(32000, 440, 880, 250, 4096)", runtime)
-        self.assertIn('elif args.command == "wavstereo32":', harness)
+        self.assertIn('elif args.command in ("wavstereo32", "mix"):', harness)
         self.assertIn("PlayWave32000TestTone()", runtime)
         self.assertIn('if (command == "wav32k")', kernel)
         self.assertIn("audio-qemu-32000-out/*.wav", workflow)
