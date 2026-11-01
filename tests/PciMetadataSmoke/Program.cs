@@ -243,7 +243,32 @@ foreach (ulong badBar in new[] {
 })
     Check(!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(badBar, badBar),
         "Unsupported BAR2 encoding must be rejected: " + badBar.ToString("X16"));
+// A BAR with only attribute bits set is not a valid register window.
+foreach (ulong unassigned in new[] {
+    0UL, 0x8UL, 0x4UL, 0x0000000100000000UL
+})
+    Check(!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(unassigned, unassigned),
+        "Zero-address BAR2 must fail closed even if metadata claims it is assigned");
+Check(Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
+      0x0000000100000004UL, 0x0000000100000004UL),
+    "A valid 64-bit BAR2 with its base entirely in BAR3 must be accepted");
 Console.WriteLine("[NET3095-RTL810XE-BAR-STABILITY] PASS C# BAR2/BAR3 MMIO type and relocation guards; no hardware MMIO proof");
+
+// The probe must not enable bus mastering, disable MMIO or otherwise
+// modify the command register while mapping and reading registers.
+foreach (ushort stableCommand in new ushort[] { 0x0002, 0x0003, 0x0006, 0x0402 })
+    Check(Realtek810xERegisterDecoder.IsStablePciCommand(stableCommand, stableCommand),
+        "Unchanged memory-enabled PCI command should be accepted");
+foreach (ushort disabled in new ushort[] { 0x0000, 0x0001, 0x0004 })
+    Check(!Realtek810xERegisterDecoder.IsStablePciCommand(disabled, disabled),
+        "Memory-disabled PCI command must be rejected");
+Check(!Realtek810xERegisterDecoder.IsStablePciCommand(0x0002, 0x0006),
+    "Unexpected bus-master enable must invalidate the sample");
+Check(!Realtek810xERegisterDecoder.IsStablePciCommand(0x0006, 0x0002),
+    "Unexpected bus-master disable must invalidate the sample");
+Check(!Realtek810xERegisterDecoder.IsStablePciCommand(0x0002, 0x0000),
+    "MMIO decoder disabled during sampling must invalidate the sample");
+Console.WriteLine("[NET3095-RTL810XE-COMMAND-STABILITY] PASS C# PCI command snapshot guard; no hardware access");
 
 // Exact PCI header guard executes as pure C#; it never accesses a real NIC.
 Check(Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
