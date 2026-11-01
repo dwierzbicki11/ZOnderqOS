@@ -184,6 +184,51 @@ internal static class Program
         Check(manager.Applications.Count == 2, "surviving windows remain registered");
     }
 
+    private static void CloseCallbackReentrancy()
+    {
+        var manager = new ApplicationManager();
+        var a = new ClosingApp();
+        var b = new ClosingApp();
+        manager.Launch(a);
+        manager.Launch(b);
+        a.OnClose = () =>
+        {
+            manager.Close(a); // Closing the same instance must be idempotent.
+            manager.Close(b); // Nested close must not skip the other instance.
+        };
+        manager.Close(a);
+        Check(a.CloseCount == 1, "reentrant Close invokes callback once");
+        Check(b.CloseCount == 1, "nested Close invokes other callback once");
+        Check(manager.Applications.Count == 0, "nested Close empties manager");
+        manager.Close(a);
+        Check(a.CloseCount == 1, "closing detached app is a no-op");
+    }
+
+    private static void LogoutCallbackCannotReopenWindows()
+    {
+        var manager = new ApplicationManager();
+        var a = new ClosingApp();
+        var b = new ClosingApp();
+        var attempted = new ClosingApp();
+        manager.Launch(a);
+        manager.Launch(b);
+        b.OnClose = () =>
+        {
+            manager.Launch(attempted);
+            manager.Activate(b);
+            manager.CloseAll(); // Nested teardown must not restart the loop.
+        };
+        manager.CloseAll();
+        Check(manager.Applications.Count == 0, "logout cannot reopen windows");
+        Check(a.CloseCount == 1 && b.CloseCount == 1, "logout closes originals once");
+        Check(attempted.CloseCount == 0, "rejected launch never starts closing callback");
+        Check(manager.ActiveApplication == null, "logout has no foreground window");
+        manager.Launch(attempted);
+        Check(manager.Applications.Count == 1, "new session can launch after teardown");
+        manager.CloseAll();
+        Check(attempted.CloseCount == 1, "subsequent teardown closes new session");
+    }
+
     public static int Main()
     {
         OrdinaryLogout();
@@ -192,6 +237,8 @@ internal static class Program
         LogoutDuringUpdate();
         CloseAllDuringUpdate();
         RemoveEarlierDuringUpdate();
+        CloseCallbackReentrancy();
+        LogoutCallbackCannotReopenWindows();
         Console.WriteLine("PASS: " + checks + " production ApplicationManager C# assertions");
         return 0;
     }
