@@ -661,8 +661,12 @@ namespace ZonderqOS.SystemCore
                 // AudioPlayer itself still drains one silent ring at EOF.
                 int drainBytes = Math.Min(hdaDrainSilenceBytes,
                     Math.Max(0, maxPcmBytes - pcm.Length));
+                // All probe sources are freshly generated or decoded and
+                // exclusively owned here. At 100/100 gain with no fade, reuse
+                // the exact PCM array rather than allocating a second copy.
+                // A fade or non-unity gain still gets a separate output buffer.
                 byte[] scaled = fadeMilliseconds == 0
-                    ? AudioPcmVolume.ScaleStereo16Channels(pcm, leftGain, rightGain)
+                    ? AudioPcmVolume.ScaleStereo16ChannelsOrReuse(pcm, leftGain, rightGain)
                     : AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
                         pcm, leftGain, rightGain, fadeMilliseconds, drainBytes);
                 bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled));
