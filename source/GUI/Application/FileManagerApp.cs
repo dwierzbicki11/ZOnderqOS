@@ -74,8 +74,10 @@ namespace ZonderqOS.GUI.Apps
             ? 0 : Math.Min(SidebarWidth, view.Width - TileWidth - 12);
         // Four 36px buttons spaced 42px apart; hide any that would
         // cross the client boundary and share this count with hit-testing.
-        internal int ToolbarButtonCountForView => Math.Min(4,
-            Math.Max(0, (view.Width - 44) / 42 + 1));
+        // Guard the negative range explicitly: C# integer division rounds
+        // toward zero, so (43 - 44) / 42 + 1 would incorrectly draw a button.
+        internal int ToolbarButtonCountForView => view.Width < 44 ? 0 :
+            Math.Min(4, (view.Width - 44) / 42 + 1);
         internal int GridWidthForView => Math.Max(1, view.Width - SidebarWidthForView - 12);
         internal int GridHeightForView => Math.Max(40, view.Height - FooterHeight - ContentTop - 8);
         // Use a final partial row only when >=40px is available. Compact
