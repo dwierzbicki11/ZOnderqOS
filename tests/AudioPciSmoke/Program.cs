@@ -1114,6 +1114,59 @@ static class Test
                 }
             }
         }
+        // The opt-in HDA fade path reserves exactly one 16 KiB DMA-ring
+        // duration of silence, without losing the release envelope or
+        // allocating a second intermediate PCM buffer.
+        const int hdaSilentTail = 16 * 1024;
+        byte[] fadedWithDrain = AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
+            fadeSource, 75, 25, 20, hdaSilentTail);
+        byte[] fadedReference = AudioPcmVolume.ScaleStereo16ChannelsWithFade(
+            fadeSource, 75, 25, 20);
+        Expect(fadedWithDrain.Length == fadedReference.Length + hdaSilentTail,
+            "fade HDA ring drain has exact bounded length");
+        for (int i = 0; i < fadedReference.Length; i++)
+            Expect(fadedWithDrain[i] == fadedReference[i],
+                "fade ring drain preserves every actual PCM sample");
+        for (int i = fadedReference.Length; i < fadedWithDrain.Length; i++)
+            Expect(fadedWithDrain[i] == 0, "fade ring drain contains only silence");
+        Expect(fadeSource[0] == fadeCopy[0] && fadeSource[fadeSource.Length - 1] ==
+            fadeCopy[fadeCopy.Length - 1], "ring drain does not mutate input");
+        byte[] maxDrainInput = new byte[48000 * 2 * 4 - hdaSilentTail];
+        byte[] maxDrainOutput = AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
+            maxDrainInput, 100, 100, 20, hdaSilentTail);
+        Expect(maxDrainOutput.Length == 48000 * 2 * 4,
+            "fade drain accepts exact two-second total budget");
+        rejected = false;
+        try
+        {
+            AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
+                new byte[48000 * 2 * 4 - hdaSilentTail + 4], 100, 100, 20, hdaSilentTail);
+        }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "fade drain rejects input exceeding total two-second budget");
+        foreach (int invalidTail in new[] { -4, 1, 16 * 1024 + 4 })
+        {
+            rejected = false;
+            try
+            {
+                AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
+                    fadeSource, 100, 100, 20, invalidTail);
+            }
+            catch (ArgumentOutOfRangeException) { rejected = true; }
+            Expect(rejected, "fade drain rejects invalid silence length");
+        }
+        AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
+            fadeSource, 75, 25, 20, hdaSilentTail);
+        long drainBefore = GC.GetAllocatedBytesForCurrentThread();
+        byte[] measuredDrain = AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
+            fadeSource, 75, 25, 20, hdaSilentTail);
+        long drainAllocated = GC.GetAllocatedBytesForCurrentThread() - drainBefore;
+        Expect(drainAllocated >= measuredDrain.Length &&
+            drainAllocated < measuredDrain.Length + 1024,
+            "fade ring drain uses one PCM allocation");
+        Console.WriteLine("[AUDIO-PCI-HOST] fade ring drain allocated=" +
+            drainAllocated + " bytes for " + measuredDrain.Length + " PCM bytes");
+
         AudioPcmVolume.ScaleStereo16ChannelsWithFade(fadeSource, 100, 100, 20);
         long combinedBefore = GC.GetAllocatedBytesForCurrentThread();
         byte[] combinedMeasured = AudioPcmVolume.ScaleStereo16ChannelsWithFade(
