@@ -113,6 +113,30 @@ namespace ZonderqOS.SystemCore
             return output;
         }
 
+        /// <summary>
+        /// Avoid a second full-size PCM allocation when the caller owns a
+        /// fresh buffer and requests bit-exact unity gain on both channels.
+        /// The returned array aliases pcm ONLY at 100/100: callers must not
+        /// mutate it while the audio stream is consuming it. Non-unity gains
+        /// still use the independent-copy path; all inputs are validated
+        /// before either branch. This is PCM memory handling, not DMA.
+        /// </summary>
+        public static byte[] ScaleStereo16ChannelsOrReuse(
+            byte[] pcm, int leftPercent, int rightPercent)
+        {
+            if (pcm == null || pcm.Length == 0 || pcm.Length % 4 != 0 ||
+                pcm.Length > 48000 * 2 * 4)
+                throw new ArgumentException("Up to two seconds of 48 kHz PCM16 stereo required.", nameof(pcm));
+            if (leftPercent < 0 || leftPercent > 100)
+                throw new ArgumentOutOfRangeException(nameof(leftPercent));
+            if (rightPercent < 0 || rightPercent > 100)
+                throw new ArgumentOutOfRangeException(nameof(rightPercent));
+
+            return leftPercent == 100 && rightPercent == 100
+                ? pcm
+                : ScaleStereo16Channels(pcm, leftPercent, rightPercent);
+        }
+
         public static byte[] ScaleStereo16(byte[] pcm, int percent)
         {
             return ScaleStereo16Channels(pcm, percent, percent);
