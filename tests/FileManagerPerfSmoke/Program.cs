@@ -275,6 +275,97 @@ internal static class Program
         return entries.ToArray();
     }
 
+    private static ZonderqOS.GUI.Apps.FileEntry[] MakeDescending(int n, int duplicateGroup)
+    {
+        var entries = new List<ZonderqOS.GUI.Apps.FileEntry>(n);
+        for (int i = 0; i < n; i++)
+        {
+            string name = "file" + (i / duplicateGroup).ToString("D6");
+            if (i % 3 == 1)
+                name = name.ToUpperInvariant();
+            entries.Add(new ZonderqOS.GUI.Apps.FileEntry(name, i < n / 4));
+        }
+        LegacySort(entries);
+        entries.Reverse();
+        return entries.ToArray();
+    }
+
+    private static void VerifyDescendingFastPath()
+    {
+        foreach (int n in new[] { 33, 64, 127, 512, 2048 })
+        {
+            foreach (int group in new[] { 1, 3 })
+            {
+                var source = MakeDescending(n, group);
+                var expected = new List<ZonderqOS.GUI.Apps.FileEntry>(source);
+                var actual = new List<ZonderqOS.GUI.Apps.FileEntry>(source);
+                LegacySort(expected);
+                ZonderqOS.GUI.Apps.FileEntry[] scratch = null;
+                ZonderqOS.GUI.Apps.FileEntrySorter.Sort(actual, ref scratch);
+                Assert(scratch == null,
+                    "descending directory unexpectedly allocated scratch n=" + n + " group=" + group);
+                for (int i = 0; i < n; i++)
+                    Assert(object.ReferenceEquals(expected[i], actual[i]),
+                        "descending stable reference n=" + n + " group=" + group + " i=" + i);
+            }
+        }
+
+        var input = MakeDescending(2048, 3);
+        var work = new List<ZonderqOS.GUI.Apps.FileEntry>(input.Length);
+        ZonderqOS.GUI.Apps.FileEntry[] scratchBuffer = null;
+        for (int i = 0; i < 8; i++)
+        {
+            work.Clear();
+            work.AddRange(input);
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(work, ref scratchBuffer);
+        }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 64; i++)
+        {
+            work.Clear();
+            work.AddRange(input);
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(work, ref scratchBuffer);
+        }
+        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert(bytes == 0 && scratchBuffer == null,
+            "descending warm sort allocated " + bytes + " B");
+        Console.WriteLine("PASS: descending directories stable with duplicate names and 0 B warm allocations");
+    }
+
+    private static void BenchmarkDescending()
+    {
+        var source = MakeDescending(2048, 3);
+        var work = new List<ZonderqOS.GUI.Apps.FileEntry>(source.Length);
+        ZonderqOS.GUI.Apps.FileEntry[] oldScratch =
+            new ZonderqOS.GUI.Apps.FileEntry[source.Length];
+        ZonderqOS.GUI.Apps.FileEntry[] newScratch = null;
+        for (int i = 0; i < 8; i++)
+        {
+            TimedAdaptive(false, source, work, ref oldScratch);
+            TimedAdaptive(true, source, work, ref newScratch);
+        }
+        double[] before = new double[7], after = new double[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if ((i & 1) == 0)
+            {
+                before[i] = TimedAdaptive(false, source, work, ref oldScratch);
+                after[i] = TimedAdaptive(true, source, work, ref newScratch);
+            }
+            else
+            {
+                after[i] = TimedAdaptive(true, source, work, ref newScratch);
+                before[i] = TimedAdaptive(false, source, work, ref oldScratch);
+            }
+        }
+        Assert(newScratch == null, "descending benchmark allocated scratch");
+        double a = Median(before), b = Median(after);
+        Console.WriteLine("HOST A/B descending directory n=2048 duplicates=3" +
+            " previous-merge=" + a.ToString("F4") + " ms in-place=" +
+            b.ToString("F4") + " ms ratio=" + (a / b).ToString("F2") +
+            "x (7 alternating samples, 8 sorts each; no FAT32 I/O)");
+    }
+
     // A rotated directory is two individually sorted runs. Check that
     // merging them preserves the exact reference order of the old stable
     // insertion sort, including case-insensitive duplicate names.
@@ -775,7 +866,9 @@ internal static class Program
         VerifyAlreadySortedFastPath();
         VerifyAdaptiveRepair();
         VerifyTwoRunMerge();
+        VerifyDescendingFastPath();
         BenchmarkAdaptiveRepair();
+        BenchmarkDescending();
         BenchmarkAlreadySorted();
         BenchmarkUnsortedControl();
         BenchmarkFilter();
