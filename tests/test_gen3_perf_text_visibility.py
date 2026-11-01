@@ -138,7 +138,7 @@ class TextRangeVisibilityContracts(unittest.TestCase):
         import re
         power_block = SOURCE.split("private static readonly ulong[] CachedPowersOfTen", 1)[1].split(
             "private static ulong Pow10(", 1)[0]
-        values = [int(n) for n in re.findall(r"(\\d+)UL", power_block)]
+        values = [int(n) for n in re.findall(r"(\d+)UL", power_block)]
         self.assertEqual(values, [10**i for i in range(20)])
         pow10 = SOURCE.split("private static ulong Pow10(int exponent)", 1)[1].split(
             "private static void DrawChar(", 1)[0]
