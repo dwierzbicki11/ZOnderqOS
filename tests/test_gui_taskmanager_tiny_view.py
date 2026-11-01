@@ -297,10 +297,15 @@ class TinyTaskManagerViewTests(unittest.TestCase):
 
     def test_disabled_performance_end_task_is_not_clickable(self):
         toolbar = section("public int ToolbarActionAt(", "public int PerformanceResourceAt(")
-        self.assertIn(
-            "app.ActivePage != TaskManagerModernApp.PagePerformance &&", toolbar
-        )
+        self.assertIn("app.CanEndSelectedTask &&", toolbar)
         self.assertIn("x >= end && x < end + 100) return 2;", toolbar)
+        # The enabled state must be shared with the painted button and the
+        # Delete action; hidden or protected tasks cannot be terminated.
+        manager = code("source/GUI/Application/TaskManagerModernApp.cs")
+        self.assertIn("activePage != PagePerformance &&", manager)
+        self.assertIn("TaskManagerSelectionPolicy.IsVisible(", manager)
+        self.assertIn("visibleRows[selectedIndex].CanEnd", manager)
+        self.assertIn('"END TASK", IconType.Close, true, app.CanEndSelectedTask', manager)
 
 
     def test_process_hitbox_excludes_unpainted_scrollbar_gap(self):
