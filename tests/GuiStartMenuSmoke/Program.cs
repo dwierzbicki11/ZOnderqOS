@@ -310,6 +310,41 @@ internal static class Program
                 "tall narrow menu does not paint offscreen tool buttons");
     }
 
+    private static void TinyKeyboardCrossPage()
+    {
+        var menu = MakeMenu(304, 180);
+        var pins = Buttons(menu, "pinnedButtons");
+        var extras = Buttons(menu, "toolButtons");
+
+        // The fourth Down press must leave the first three-item page.
+        for (int i = 0; i < 4; i++)
+            menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.DownArrow });
+        Check(!pins[0].Visible && pins[3].Visible,
+            "Down at the end of a tiny page reveals the next page");
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
+        Check(pinned[3] == 1, "Enter activates the first item of the next page");
+
+        menu.Visible = true;
+        menu.ResetSearch();
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.UpArrow });
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.UpArrow });
+        Check(extras[5].Visible && !pins[0].Visible,
+            "Up at the beginning of a tiny page wraps to the last page");
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
+        Check(tools[5] == 1, "Enter activates the last item of the previous page");
+        CheckSingleAction(1, 1, 0);
+
+        // A partial last page must select its actual final item, not an
+        // invisible tile left over from the preceding full page.
+        menu = MakeMenu(304, 180);
+        int extra = 0;
+        menu.AddTool("Extra", ZonderqOS.GUI.Icons.IconType.File, () => extra++);
+        for (int i = 0; i < 13; i++)
+            menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.DownArrow });
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
+        Check(extra == 1, "keyboard reaches and launches a partial last page");
+    }
+
     private static void Normal640x480()
     {
         var menu = MakeMenu(480, 420);
@@ -332,6 +367,7 @@ internal static class Program
         Tiny200x200();
         NarrowTall();
         Normal640x480();
+        TinyKeyboardCrossPage();
         Console.WriteLine("PASS: " + assertions + " production StartMenu/Button C# assertions");
         return 0;
     }

@@ -686,9 +686,30 @@ namespace ZonderqOS.GUI
                 else if (key.Key == ConsoleKeyEx.End)
                     selectedResult = count - 1;
                 else if (key.Key == ConsoleKeyEx.DownArrow)
-                    selectedResult = selectedResult < 0 ? 0 : (selectedResult + 1) % count;
+                {
+                    // On tiny screens only one page is painted. Crossing its
+                    // final tile must reveal the next page, not loop forever
+                    // within the same three visible results.
+                    if (TinyLayout && selectedResult == count - 1 &&
+                        CountMatchingResults() > TinyColumns * TinyRows)
+                    {
+                        ChangeTinyPage(1);
+                        selectedResult = 0;
+                    }
+                    else
+                        selectedResult = selectedResult < 0 ? 0 : (selectedResult + 1) % count;
+                }
                 else
-                    selectedResult = selectedResult < 0 ? count - 1 : (selectedResult + count - 1) % count;
+                {
+                    if (TinyLayout && selectedResult == 0 &&
+                        CountMatchingResults() > TinyColumns * TinyRows)
+                    {
+                        ChangeTinyPage(-1);
+                        selectedResult = CountVisibleResults() - 1;
+                    }
+                    else
+                        selectedResult = selectedResult < 0 ? count - 1 : (selectedResult + count - 1) % count;
+                }
                 UiAnimator.RequestFrames();
                 return true;
             }
