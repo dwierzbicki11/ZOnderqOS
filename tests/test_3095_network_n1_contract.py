@@ -272,5 +272,29 @@ class NetworkN1Isolation(unittest.TestCase):
             'check_rx_stats(serial)',
             (ROOT / 'tests/verify_3095_network_n6_post_http.py').read_text())
 
+
+    def test_n6_tx_ring_checks_live_nic_at_each_32_descriptor_boundary(self):
+        # Queueing 128 frames is not DMA proof. While the isolated guest
+        # reuses its TX buffer, reject link loss or a rebound NIC at each
+        # ring boundary; the separate QEMU PCAP remains mandatory.
+        burst = SOURCE.split("private static bool TrySendBurst(byte[] template)", 1)[1]
+        burst = burst.split("private static int HexDigit", 1)[0]
+        for term in (
+            "for (int sequence = 0; sequence < 128; sequence++)",
+            "if ((sequence & 31) == 0)",
+            "NetworkAdapter current = NetworkManager.Primary;",
+            '!current.IsValid || current.Name != "e1000e"',
+            "!current.Ready || !current.LinkUp",
+            'TryFillSourceMac(current.MacAddress?.ToString() ?? "", liveMacFrame)',
+            "liveMacFrame[6 + macByte] != template[6 + macByte]",
+            "if (!NetworkManager.Send(burst, burst.Length))",
+            "Thread.Sleep(5);",
+        ):
+            self.assertIn(term, burst)
+        self.assertLess(burst.index("if ((sequence & 31) == 0)"),
+                        burst.index("if (!NetworkManager.Send(burst, burst.Length))"))
+        self.assertIn("verify_3095_network_n6_burst.py", SMOKE)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
