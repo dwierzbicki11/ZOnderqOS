@@ -101,11 +101,16 @@ def validate(serial: str, pcap: bytes) -> str:
     # duplicate or conceal a malformed initial N1 Ethernet transmission.
     burst_prefix = b"ZONDERQ3095-BURST-"
     initial_count = 0
+    # Only N6 may transmit the 128-frame tagged burst. A stand-alone N1
+    # probe that emits unexpected diagnostics is not a valid single-TX proof.
+    allow_burst = "[NET3095-N6] TX_BURST_ATTEMPT=START count=128" in serial
     # Consume every record, including the tail, before accepting evidence.
     for frame in pcap_frames(pcap):
         if frame[12:14] != ETHER_TYPE:
             continue
         if frame[14:].startswith(burst_prefix):
+            if not allow_burst:
+                raise ValueError("unexpected N6 burst frame during N1-only proof")
             continue  # N6's own validator checks every burst byte and order.
         if frame != expected:
             raise ValueError("malformed or unexpected N1 diagnostic Ethernet frame")
@@ -178,8 +183,17 @@ def self_test() -> None:
     # duplicate N1 transmissions, or a forged diagnostic EtherType.
     burst = BROADCAST + bytes.fromhex("525400123456") + ETHER_TYPE + b"ZONDERQ3095-BURST-000"
     burst += bytes(60 - len(burst))
-    assert "PASS" in validate(serial, synthetic_pcap(frame) +
+    n6_serial = serial + "\n[NET3095-N6] TX_BURST_ATTEMPT=START count=128"
+    assert "PASS" in validate(n6_serial, synthetic_pcap(frame) +
                               synthetic_pcap(burst)[24:])
+    # N1-only cannot hide a second tagged TX; N6 uses a separate full
+    # sequence/PCAP validator for these 128 frames.
+    try:
+        validate(serial, synthetic_pcap(frame) + synthetic_pcap(burst)[24:])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted N6 burst in stand-alone N1 proof")
     bad_pcap.extend([
         synthetic_pcap(frame + b"X"),
         synthetic_pcap(frame[:-1] + b"X"),
