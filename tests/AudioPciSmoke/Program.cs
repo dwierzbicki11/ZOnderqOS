@@ -1589,6 +1589,31 @@ static class Test
             fadeAllocated < fadeMeasured.Length + 1024,
             "per-effect fade allocates only its bounded output PCM array");
 
+        byte[] fadedWithTail = AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { envelopeClip }, new[] { 2 }, new[] { 50 }, 5, 4096);
+        Expect(fadedWithTail.Length == fadedSchedule.Length + 16384 &&
+            fadedWithTail.AsSpan(0, fadedSchedule.Length).SequenceEqual(fadedSchedule),
+            "16KiB HDA drain tail preserves exact scheduled PCM prefix");
+        bool tailZero = true;
+        for (int i = fadedSchedule.Length; i < fadedWithTail.Length; i++)
+            if (fadedWithTail[i] != 0) { tailZero = false; break; }
+        Expect(tailZero, "scheduled PCM drain tail is entirely silent");
+        byte[] zeroFadeWithTail = AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { envelopeClip }, new[] { 0 }, new[] { 100 }, 0, 4);
+        Expect(zeroFadeWithTail.Length == envelopeClip.Length + 16 &&
+            zeroFadeWithTail.AsSpan(0, envelopeClip.Length).SequenceEqual(envelopeClip),
+            "zero-fade scheduling also supports a silent tail without modifying PCM");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { envelopeClip }, new[] { 0 }, new[] { 100 }, 5, 4097); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "reject drain tail larger than the stock 16KiB HDA ring");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16WithFade(
+            new[] { new byte[384000] }, new[] { 0 }, new[] { 100 }, 5, 1); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "reject silent drain exceeding the two-second PCM budget");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PCM16 mixer saturation, gains, bounds and source immutability PASS");
 
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");

@@ -92,14 +92,20 @@ namespace ZonderqOS.SystemCore
         /// limited to half of each clip; it does not move scheduled onsets
         /// or change the output duration. Sum all faded contributions before
         /// final saturation so cancellation is independent of clip order.
+        /// Optional 0..4096 zero frames at EOF let an HDA ring drain and
+        /// provide a measurable post-effect silence interval. The tail is
+        /// included in the same allocation and the two-second budget.
         /// No intermediate PCM arrays, codec or DMA access are required.
         /// </summary>
         public static byte[] MixScheduledStereo16WithFade(
-            byte[][] clips, int[] startFrames, int[] gainsPercent, int fadeMilliseconds)
+            byte[][] clips, int[] startFrames, int[] gainsPercent, int fadeMilliseconds,
+            int trailingSilenceFrames = 0)
         {
+            if (trailingSilenceFrames < 0 || trailingSilenceFrames > 4096)
+                throw new ArgumentOutOfRangeException(nameof(trailingSilenceFrames));
             if (fadeMilliseconds < 0 || fadeMilliseconds > 50)
                 throw new ArgumentOutOfRangeException(nameof(fadeMilliseconds));
-            if (fadeMilliseconds == 0)
+            if (fadeMilliseconds == 0 && trailingSilenceFrames == 0)
                 return MixScheduledStereo16(clips, startFrames, gainsPercent);
 
             if (clips == null || startFrames == null || gainsPercent == null ||
@@ -126,7 +132,10 @@ namespace ZonderqOS.SystemCore
                 if (end > length) length = (int)end;
             }
 
-            byte[] output = new byte[length];
+            if (length > MaxPcmBytes - trailingSilenceFrames * 4)
+                throw new ArgumentOutOfRangeException(nameof(trailingSilenceFrames),
+                    "Scheduled PCM and silent drain exceed two seconds.");
+            byte[] output = new byte[length + trailingSilenceFrames * 4];
             for (int at = 0; at < length; at += 2)
             {
                 int total = 0;
@@ -139,6 +148,13 @@ namespace ZonderqOS.SystemCore
 
                     int clipFrames = clip.Length / 4;
                     int frame = sourceAt / 4;
+                    int sample = (short)(clip[sourceAt] | (clip[sourceAt + 1] << 8));
+                    int scaled = sample * gainsPercent[i] / 100;
+                    if (fadeMilliseconds == 0)
+                    {
+                        total += scaled;
+                        continue;
+                    }
                     int fadeFrames = Math.Min(fadeMilliseconds * 48, clipFrames / 2);
                     if (fadeFrames == 0)
                         continue; // A one-frame effect fades to silence.
@@ -147,9 +163,6 @@ namespace ZonderqOS.SystemCore
                         Math.Min(frame, clipFrames - 1 - frame));
                     if (envelope == 0)
                         continue;
-
-                    int sample = (short)(clip[sourceAt] | (clip[sourceAt + 1] << 8));
-                    int scaled = sample * gainsPercent[i] / 100;
                     total += scaled * envelope / fadeFrames;
                 }
                 if (total > short.MaxValue) total = short.MaxValue;

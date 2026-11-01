@@ -70,23 +70,13 @@ stereo_capture = module_from_spec(stereo_spec)
 stereo_spec.loader.exec_module(stereo_capture)
 
 
-def wait_for_guest_audio_completion(serial_path, marker, timeout_seconds=20):
-    """Wait for this command's guest completion, not merely a QMP keypress.
+def playback_settle_seconds(command):
+    """Give TCG time to drain the longer mixqueue before QEMU quits.
 
-    TCG can process the injected command seconds after the host sends it.
-    The serial marker is only a timing gate: real PCM must still pass the
-    independent QEMU WAV backend validator after the guest exits.
+    This is only a capture timing allowance, never evidence of playback.
+    Actual WAV samples and timing still pass independent validators.
     """
-    deadline = time.monotonic() + timeout_seconds
-    while True:
-        if serial_path.is_file():
-            log = serial_path.read_text(encoding="utf-8", errors="replace")
-            start = log.find(marker)
-            if start >= 0 and "[AUDIO] PCM ACCEPTED_AND_DRAINED" in log[start:]:
-                return
-        if time.monotonic() >= deadline:
-            raise RuntimeError(f"guest did not finish {marker} within {timeout_seconds}s")
-        time.sleep(0.2)
+    return 8 if command == "mixqueue" else 4
 
 
 class Qmp:
@@ -201,16 +191,12 @@ def main():
             qmp.type_line(f"fade {args.fade_ms}")
             time.sleep(0.5)
             qmp.type_line(args.command)
-            if args.command == "mixqueue":
-                # The 650ms pre-rolled PCM queue is particularly sensitive
-                # to TCG scheduling. Do not quit while the guest is still
-                # processing the QMP-injected command. Serial completion is
-                # necessary but NEVER replaces the captured-WAV sample gate.
-                wait_for_guest_audio_completion(
-                    out / "serial.log", "[AUDIO] MIXQUEUE")
-                time.sleep(1.5)  # allow backend to flush after guest drain
-            else:
-                time.sleep(4)
+            # The real QEMU serial artifact contains kernel diagnostics but
+            # not Console.WriteLine AUDIO markers; waiting on a serial marker
+            # would time out. Keep the guest running longer for the 650ms
+            # scheduled queue plus 85ms silent drain. Captured PCM still
+            # decides PASS/FAIL, not elapsed wall time.
+            time.sleep(playback_settle_seconds(args.command))
             try:
                 qmp.execute("screendump", {"filename": str(out / "after.ppm")})
             except RuntimeError as exc:
