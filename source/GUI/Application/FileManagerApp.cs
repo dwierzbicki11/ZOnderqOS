@@ -196,17 +196,22 @@ namespace ZonderqOS.GUI.Apps
             // Consume dismissal before Window.HandleMouse: otherwise a click
             // on the titlebar can close the window, or a click on the sidebar
             // can mount/unmount a volume hidden beneath the menu.
+            // Right press wins if both buttons transition in the same frame.
+            // Never execute Copy/Cut/Paste/New under an ambiguous chord:
+            // a context-menu right click only dismisses the overlay.
+            if (right && !oldRight && dialogMode == 0 && contextMenuVisible)
+            {
+                contextMenuVisible = false;
+                contextMenuSelection = -1;
+                ResetClickSequence();
+                return;
+            }
             if (left && !oldLeft && dialogMode == 0 && contextMenuVisible)
             {
                 if (ContextClick(x, y))
                     return;
                 contextMenuVisible = false;
-                ResetClickSequence();
-                return;
-            }
-            if (right && !oldRight && dialogMode == 0 && contextMenuVisible)
-            {
-                contextMenuVisible = false;
+                contextMenuSelection = -1;
                 ResetClickSequence();
                 return;
             }
