@@ -24,6 +24,10 @@ internal static class IconCacheSmoke
     private static readonly FieldInfo Count = typeof(IconManager)
         .GetField("scaledCacheCount", BindingFlags.Static | BindingFlags.NonPublic);
 
+    private static readonly Action<Canvas, int[], int, int, int, int> DrawCachedPoints =
+        (Action<Canvas, int[], int, int, int, int>)typeof(IconManager)
+            .GetMethod("BlitPoints", BindingFlags.Static | BindingFlags.NonPublic)
+            .CreateDelegate(typeof(Action<Canvas, int[], int, int, int, int>));
     private static readonly Action<Canvas, int[], int, int, int, int> DrawCachedRuns =
         (Action<Canvas, int[], int, int, int, int>)typeof(IconManager)
             .GetMethod("BlitRuns", BindingFlags.Static | BindingFlags.NonPublic)
@@ -34,7 +38,7 @@ internal static class IconCacheSmoke
             .CreateDelegate(typeof(Action<Canvas, int[], int, int, int, int, int, int>));
 
     private static double TimeCacheFullDraw(bool cached, Canvas canvas, IconType type,
-        int[] source, int repeats)
+        int[] source, bool useRuns, int repeats)
     {
         long start = Stopwatch.GetTimestamp();
         for (int i = 0; i < repeats; i++)
@@ -42,7 +46,10 @@ internal static class IconCacheSmoke
             if (cached)
             {
                 int[] pixels = GetScaled(type, source, 8, 8, 80, 80);
-                DrawCachedRuns(canvas, pixels, 80, 80, 0, 0);
+                if (useRuns)
+                    DrawCachedRuns(canvas, pixels, 80, 80, 0, 0);
+                else
+                    DrawCachedPoints(canvas, pixels, 80, 80, 0, 0);
             }
             else
             {
@@ -189,21 +196,21 @@ internal static class IconCacheSmoke
         for (int i = 0; i < oldFrame.Pixels.Length; i++)
             if (oldFrame.Pixels[i] != newFrame.Pixels[i])
                 throw new Exception("Cache-full icon frame changed at pixel " + i);
-        TimeCacheFullDraw(false, oldFrame, overflowType, solid, 20);
-        TimeCacheFullDraw(true, newFrame, overflowType, solid, 20);
+        TimeCacheFullDraw(false, oldFrame, overflowType, solid, true, 20);
+        TimeCacheFullDraw(true, newFrame, overflowType, solid, true, 20);
         double[] oldTimes = new double[5];
         double[] newTimes = new double[5];
         for (int sample = 0; sample < 5; sample++)
         {
             if ((sample & 1) == 0)
             {
-                oldTimes[sample] = TimeCacheFullDraw(false, oldFrame, overflowType, solid, 200);
-                newTimes[sample] = TimeCacheFullDraw(true, newFrame, overflowType, solid, 200);
+                oldTimes[sample] = TimeCacheFullDraw(false, oldFrame, overflowType, solid, true, 200);
+                newTimes[sample] = TimeCacheFullDraw(true, newFrame, overflowType, solid, true, 200);
             }
             else
             {
-                newTimes[sample] = TimeCacheFullDraw(true, newFrame, overflowType, solid, 200);
-                oldTimes[sample] = TimeCacheFullDraw(false, oldFrame, overflowType, solid, 200);
+                newTimes[sample] = TimeCacheFullDraw(true, newFrame, overflowType, solid, true, 200);
+                oldTimes[sample] = TimeCacheFullDraw(false, oldFrame, overflowType, solid, true, 200);
             }
         }
         Array.Sort(oldTimes);
@@ -211,5 +218,43 @@ internal static class IconCacheSmoke
         Console.WriteLine("Host .NET cache-full solid icon: 200 blits, median of 5 A/B; " +
             "old direct fallback " + oldTimes[2].ToString("F2") + " ms, " +
             "bounded cached runs " + newTimes[2].ToString("F2") + " ms (not QEMU FPS).");
+        // Also measure a transparent/gradient icon, where the point renderer
+        // (not the opaque-run renderer) is selected. This avoids extrapolating
+        // the solid-icon benchmark to ordinary alpha PNGs.
+        int[] mixed = new int[64];
+        for (int i = 0; i < mixed.Length; i++)
+            mixed[i] = i % 5 == 0 ? 0 : unchecked((int)0xFF000000u) | (i * 997);
+        IconType mixedType = (IconType)45;
+        int[] mixedScaled = GetScaled(mixedType, mixed, 8, 8, 80, 80);
+        if (mixedScaled == null || !object.ReferenceEquals(mixedScaled,
+                BaselineLookup(mixedType, 80, 80)))
+            throw new Exception("Cache-full mixed-alpha icon was not retained");
+        Canvas mixedOld = new Canvas(100, 100);
+        Canvas mixedNew = new Canvas(100, 100);
+        DrawDirect(mixedOld, mixed, 8, 8, 0, 0, 80, 80);
+        DrawCachedPoints(mixedNew, mixedScaled, 80, 80, 0, 0);
+        for (int i = 0; i < mixedOld.Pixels.Length; i++)
+            if (mixedOld.Pixels[i] != mixedNew.Pixels[i])
+                throw new Exception("Mixed-alpha cached icon changed pixel " + i);
+        TimeCacheFullDraw(false, mixedOld, mixedType, mixed, false, 20);
+        TimeCacheFullDraw(true, mixedNew, mixedType, mixed, false, 20);
+        for (int sample = 0; sample < 5; sample++)
+        {
+            if ((sample & 1) == 0)
+            {
+                oldTimes[sample] = TimeCacheFullDraw(false, mixedOld, mixedType, mixed, false, 200);
+                newTimes[sample] = TimeCacheFullDraw(true, mixedNew, mixedType, mixed, false, 200);
+            }
+            else
+            {
+                newTimes[sample] = TimeCacheFullDraw(true, mixedNew, mixedType, mixed, false, 200);
+                oldTimes[sample] = TimeCacheFullDraw(false, mixedOld, mixedType, mixed, false, 200);
+            }
+        }
+        Array.Sort(oldTimes);
+        Array.Sort(newTimes);
+        Console.WriteLine("Host .NET cache-full mixed-alpha icon: 200 blits, median of 5 A/B; " +
+            "old direct fallback " + oldTimes[2].ToString("F2") + " ms, " +
+            "bounded cached points " + newTimes[2].ToString("F2") + " ms (not QEMU FPS).");
     }
 }
