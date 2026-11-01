@@ -49,6 +49,12 @@ namespace ZonderqOS.GUI
             if (string.IsNullOrEmpty(text))
                 return;
 
+            // Scrolled-out labels should not scan glyph rows or issue clipped
+            // Canvas calls. Long bounds avoid overflow for extreme offsets.
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
+                (long)x + (long)text.Length * 6 <= 0 || (long)y + 7 <= 0)
+                return;
+
             for (int i = 0; i < text.Length; i++)
                 DrawChar(canvas, text[i], x + i * 6, y, color);
         }
