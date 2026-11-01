@@ -316,3 +316,14 @@ fixtures reject abrupt edges, missing fade in either channel, and short
 bursts. This is distinct from the host C# exact-sample checks. A successful
 serial message, compile or synthetic fixture alone does not establish
 actual captured fade; await the real QEMU workflow result.
+
+### True-stereo generator allocation reduction (2026-11-01; CI pending)
+
+`AudioTonePcm.GenerateDualSquareStereo16` now synthesizes both channels
+directly into **one** stereo PCM16 array instead of allocating two full
+stereo arrays and copying the right channel. At 48 kHz/250 ms this avoids
+one 48,000-byte temporary array by construction. Host C# tests compare
+every generated left/right frame against independent reference generators
+at 32 and 48 kHz and measure thread-local .NET allocation bytes. This is
+an allocation optimization only: no claim is made about guest CPU, GC,
+hardware DMA or audible playback until the respective CI/QEMU checks pass.

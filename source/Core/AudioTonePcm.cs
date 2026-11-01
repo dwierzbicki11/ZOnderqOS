@@ -50,14 +50,38 @@ namespace ZonderqOS.SystemCore
         public static byte[] GenerateDualSquareStereo16(int sampleRate,
             int leftFrequency, int rightFrequency, int durationMs, short amplitude)
         {
-            byte[] left = GenerateSquareStereo16(sampleRate, leftFrequency, durationMs, amplitude);
-            byte[] right = GenerateSquareStereo16(sampleRate, rightFrequency, durationMs, amplitude);
-            for (int i = 0; i < left.Length; i += 4)
+            // The previous implementation allocated two full stereo buffers
+            // and discarded three quarters of the second one. Generate both
+            // independent channels directly into one bounded output buffer.
+            if (sampleRate <= 0)
+                throw new ArgumentOutOfRangeException(nameof(sampleRate));
+            if (leftFrequency <= 0 || (long)leftFrequency * 2 >= sampleRate)
+                throw new ArgumentOutOfRangeException(nameof(leftFrequency));
+            if (rightFrequency <= 0 || (long)rightFrequency * 2 >= sampleRate)
+                throw new ArgumentOutOfRangeException(nameof(rightFrequency));
+            if (durationMs <= 0 || durationMs > 2000)
+                throw new ArgumentOutOfRangeException(nameof(durationMs));
+            if (amplitude <= 0)
+                throw new ArgumentOutOfRangeException(nameof(amplitude));
+
+            long framesLong = (long)sampleRate * durationMs / 1000;
+            if (framesLong <= 0 || framesLong > int.MaxValue / 4)
+                throw new ArgumentOutOfRangeException(nameof(durationMs));
+            int frames = (int)framesLong;
+            byte[] stereo = new byte[frames * 4];
+            for (int frame = 0; frame < frames; frame++)
             {
-                left[i + 2] = right[i + 2];
-                left[i + 3] = right[i + 3];
+                short left = (short)(((((long)frame * leftFrequency * 2) / sampleRate) & 1) == 0
+                    ? amplitude : -amplitude);
+                short right = (short)(((((long)frame * rightFrequency * 2) / sampleRate) & 1) == 0
+                    ? amplitude : -amplitude);
+                int at = frame * 4;
+                stereo[at] = (byte)left;
+                stereo[at + 1] = (byte)(left >> 8);
+                stereo[at + 2] = (byte)right;
+                stereo[at + 3] = (byte)(right >> 8);
             }
-            return left;
+            return stereo;
         }
     }
 }

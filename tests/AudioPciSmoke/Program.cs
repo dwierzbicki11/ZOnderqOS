@@ -970,6 +970,39 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject fade buffer longer than two seconds");
 
+
+        // The optimized true-stereo generator must remain bit-for-bit equal
+        // to two independently generated reference tones at both source rates.
+        foreach (int rate in new[] { 32000, 48000 })
+        {
+            byte[] referenceLeft = AudioTonePcm.GenerateSquareStereo16(rate, 440, 250, 4096);
+            byte[] referenceRight = AudioTonePcm.GenerateSquareStereo16(rate, 880, 250, 4096);
+            byte[] generated = AudioTonePcm.GenerateDualSquareStereo16(rate, 440, 880, 250, 4096);
+            Expect(generated.Length == referenceLeft.Length, "single-buffer stereo length");
+            for (int at = 0; at < generated.Length; at += 4)
+            {
+                Expect(generated[at] == referenceLeft[at] &&
+                    generated[at + 1] == referenceLeft[at + 1],
+                    "optimized left channel bit exact");
+                Expect(generated[at + 2] == referenceRight[at + 2] &&
+                    generated[at + 3] == referenceRight[at + 3],
+                    "optimized right channel bit exact");
+            }
+        }
+        // Host .NET allocation measurement, not a Cosmos runtime benchmark.
+        AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 880, 250, 4096);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        byte[] oneBuffer = AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 880, 250, 4096);
+        long allocatedBytes = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Expect(allocatedBytes >= oneBuffer.Length && allocatedBytes < oneBuffer.Length + 1024,
+            "dual-tone generator allocates only one PCM output array");
+        Console.WriteLine("[AUDIO-PCI-HOST] true-stereo allocated=" + allocatedBytes +
+            " bytes for " + oneBuffer.Length + " PCM bytes");
+        rejected = false;
+        try { AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 24000, 250, 4096); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "optimized right-channel Nyquist guard");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
     }
 }
