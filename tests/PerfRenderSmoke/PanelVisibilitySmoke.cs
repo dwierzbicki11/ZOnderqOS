@@ -76,12 +76,15 @@ internal static class PanelVisibilitySmoke
         if (extreme.DrawCalls != 0)
             throw new Exception("Offscreen extreme coordinates touched Canvas");
 
+        // Fill/Top are unchanged production methods and serve as negative
+        // controls for runner/JIT timing noise; do not interpret small deltas
+        // in RoundedPanel without comparing these controls.
         // Benchmark both cases. The culling guard must not hide a meaningful
         // regression in the common fully visible drawing path.
         for (int mode = 0; mode < 2; mode++)
         {
             bool onscreen = mode == 1;
-            int repeats = onscreen ? 1000 : 20000;
+            int repeats = onscreen ? 5000 : 20000;
             for (int op = 0; op < 3; op++)
             {
                 Canvas beforeFrame = new Canvas(140, 100);
