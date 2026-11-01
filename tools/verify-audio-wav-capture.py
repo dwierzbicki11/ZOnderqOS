@@ -13,7 +13,7 @@ import wave
 
 
 def inspect(path: Path, expected_hz: int = 440):
-    if expected_hz not in (440, 660, 740, 880, 1320, 1500, 1760, 2200, 2640, 3080, 3520, 4000):
+    if expected_hz not in (440, 660, 740, 880, 1100, 1320, 1500, 1760, 2200, 2640, 3080, 3520):
         raise ValueError("unsupported expected test frequency")
     with wave.open(str(path), "rb") as wav:
         channels = wav.getnchannels()
@@ -93,7 +93,7 @@ def inspect(path: Path, expected_hz: int = 440):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("wav", type=Path, help="QEMU WAV backend output file")
-    parser.add_argument("--expected-hz", type=int, choices=(440, 660, 740, 880, 1320, 1500, 1760, 2200, 2640, 3080, 3520, 4000), default=440)
+    parser.add_argument("--expected-hz", type=int, choices=(440, 660, 740, 880, 1100, 1320, 1500, 1760, 2200, 2640, 3080, 3520), default=440)
     args = parser.parse_args()
     try:
         print(inspect(args.wav, expected_hz=args.expected_hz))
