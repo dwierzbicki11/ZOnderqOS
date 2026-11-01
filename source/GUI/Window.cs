@@ -288,6 +288,18 @@ namespace ZonderqOS.GUI
 
             SyncDesktopBounds();
 
+            // A modal overlay can consume the release of a title-bar drag or
+            // edge resize. A later fresh press must start a NEW gesture,
+            // not continue moving/resizing the window from stale coordinates.
+            // A normal held press (wasClicked == true) keeps its gesture.
+            if (isClicked && !wasClicked && (dragging || resizing))
+            {
+                dragging = false;
+                resizing = false;
+                resizeMode = 0;
+                lastTitleClickTimestamp = 0;
+            }
+
             int visibleControls = VisibleCaptionControls();
             int closeX = X + Width - RightPadding - ButtonSize;
             int maximizeX = closeX - ButtonSize;
