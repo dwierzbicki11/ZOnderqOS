@@ -65,6 +65,16 @@ namespace ZonderqOS.GUI.Apps
                         break;
                     }
                 }
+                // Dense inversions are usually an unsorted enumeration,
+                // not independent renames. Stop probing after four inversions
+                // in a twelve-entry window; the stable merge is cheaper than
+                // scanning up to 33 inversions and attempting local repair.
+                // Widely spaced renames still reach the bounded O(n) path.
+                if (inversions == 4 && i - firstInversion <= 12)
+                {
+                    cannotRepairLocally = true;
+                    break;
+                }
                 if (inversions > MaxLocalInversions)
                     break;
             }
