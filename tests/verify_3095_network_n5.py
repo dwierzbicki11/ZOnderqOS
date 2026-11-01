@@ -14,7 +14,8 @@ from verify_3095_network_n1 import pcap_frames
 from verify_3095_network_n2 import (
     LEASE, MAC, SERVER, START, fake_dhcp, synthetic_capture,
 )
-from verify_3095_network_n3 import PING_START, PING_PASS, fake_icmp, icmp_frame
+from verify_3095_network_n3 import (PING_START, PING_PASS, fake_icmp, icmp_frame,
+                                    internet_checksum)
 from verify_3095_network_n4 import (
     TCP_START, TCP_PASS, REQUEST, RESPONSE, PORT, fake_tcp,
     validate as validate_n4,
@@ -41,9 +42,22 @@ def udp_frame(frame: bytes):
     if len(frame) < 14 + length:
         return None
     off = 14 + ihl
-    sport, dport, udp_len, _checksum = struct.unpack_from(">HHHH", frame, off)
-    if udp_len < 8 + 12 or udp_len > length - ihl:
+    sport, dport, udp_len, checksum = struct.unpack_from(">HHHH", frame, off)
+    if sport != 53 and dport != 53:
         return None
+    # A DNS candidate with a corrupt wire checksum must fail the proof,
+    # even if a later retransmission happens to be valid. UDP checksum 0
+    # is explicitly legal for IPv4, but nonzero values must validate
+    # against the IPv4 pseudoheader (RFC 768).
+    if udp_len < 8 + 12 or udp_len != length - ihl:
+        raise ValueError("DNS UDP length inconsistent with IPv4 payload")
+    if frame[22] == 0 or internet_checksum(frame[14:14 + ihl]) != 0:
+        raise ValueError("DNS IPv4 header checksum or TTL invalid")
+    if checksum:
+        pseudo = (frame[26:34] + b"\x00\x11" +
+                  udp_len.to_bytes(2, "big"))
+        if internet_checksum(pseudo + frame[off:off + udp_len]) != 0:
+            raise ValueError("DNS UDP checksum invalid")
     return {
         "src": frame[26:30], "dst": frame[30:34],
         "src_mac": frame[6:12], "dst_mac": frame[:6],
@@ -240,21 +254,27 @@ def fake_dns(reply: bool, txid: int = 0x3095, host: bytes = b"localhost",
              answer: bytes = LOOPBACK, sport: int = 53,
              dest_mac: bytes = MAC,
              request_dest_mac: bytes = bytes.fromhex("52550a000203"),
-             reply_src_mac: bytes = bytes.fromhex("525400123499")) -> bytes:
+             reply_src_mac: bytes = bytes.fromhex("525400123499"),
+             zero_checksum: bool = False) -> bytes:
     qname = bytes([len(host)]) + host + b"\x00"
     question = qname + struct.pack(">HH", 1, 1)
     dns = struct.pack(">HHHHHH", txid, 0x8180 if reply else 0x0100,
                       1, 1 if reply else 0, 0, 0) + question
     if reply:
         dns += b"\xc0\x0c" + struct.pack(">HHIH", 1, 1, 60, len(answer)) + answer
-    udp = struct.pack(">HHHH", sport if reply else 53095,
-                      53095 if reply else 53, len(dns) + 8, 0) + dns
+    udp = bytearray(struct.pack(">HHHH", sport if reply else 53095,
+                                53095 if reply else 53, len(dns) + 8, 0) + dns)
     ip = bytearray(20)
     ip[0] = 0x45
     ip[2:4] = (len(udp) + 20).to_bytes(2, "big")
     ip[8:10] = bytes([64, 17])
     ip[12:16] = DNS_SERVER if reply else bytes([10, 0, 2, 15])
     ip[16:20] = bytes([10, 0, 2, 15]) if reply else DNS_SERVER
+    ip[10:12] = internet_checksum(ip).to_bytes(2, "big")
+    if not zero_checksum:
+        pseudo = ip[12:20] + b"\x00\x11" + len(udp).to_bytes(2, "big")
+        wire_checksum = internet_checksum(pseudo + udp)
+        udp[6:8] = (wire_checksum or 0xFFFF).to_bytes(2, "big")
     eth = ((dest_mac if reply else request_dest_mac) +
            (reply_src_mac if reply else MAC) + b"\x08\x00")
     return eth + ip + udp
@@ -284,7 +304,22 @@ def self_test() -> None:
         PING_START, PING_PASS, TCP_START, TCP_PASS, DNS_START, DNS_PASS,
     ])
     assert "PASS" in validate(serial, synthetic_capture(frames))
+    # IPv4 explicitly permits a zero UDP checksum; this case must stay
+    # accepted even though the normal synthetic fixture uses RFC 768.
+    assert "PASS" in validate(serial, synthetic_capture(
+        frames[:-2] + [fake_dns(False, zero_checksum=True),
+                       fake_dns(True, zero_checksum=True)]))
+    def flip(frame: bytes, offset: int) -> bytes:
+        return frame[:offset] + bytes([frame[offset] ^ 1]) + frame[offset + 1:]
     bad = [
+        # The DNS answer still decodes correctly when only its TTL changes,
+        # but its UDP checksum must now reject the corrupted wire payload.
+        (serial, frames[:-1] + [flip(frames[-1], 75)]),
+        (serial, frames[:-1] + [flip(frames[-1], 22)]),
+        (serial, frames[:-1] + [flip(frames[-1], 40)]),
+        (serial, frames[:-2] + [flip(frames[-2], 22), frames[-1]]),
+        (serial, frames[:-2] + [flip(frames[-2], 40), frames[-1]]),
+        (serial, frames[:-1] + [frames[-1][:38] + b"\x00\x08" + frames[-1][40:]]),
         (serial.replace(DNS_START, ""), frames),
         (serial.replace(DNS_PASS, ""), frames),
         (serial + "\n" + DNS_PASS, frames),
