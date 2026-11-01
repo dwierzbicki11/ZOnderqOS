@@ -389,3 +389,32 @@ concurrent playback scheduling or GUI audio integration. The new capture
 must complete before a QEMU PASS claim. Production disk GUI audio remains
 disabled; there are no guest disks, FAT32 mounts, new DMA operations,
 custom SMP/SMT or Cosmos SDK modifications in this change.
+
+### Frame-accurate two-source PCM scheduling (2026-11-01)
+
+`AudioPcmMixer.MixStereo16WithDelay(first, second, firstGain, secondGain,
+secondDelayFrames)` schedules the second 48 kHz stereo16 source at a whole-frame
+offset. The original `MixStereo16` delegates to zero delay. The mixer
+rejects negative delays, misaligned/empty/oversized inputs, invalid gains,
+and offsets that would extend either clip past the two-second output budget;
+it never silently truncates the delayed source or mutates the inputs.
+
+The diskless `mixdelay` diagnostic plays a 440 Hz left-only tone followed
+by an 880 Hz right-only tone beginning **2,400 frames (50 ms)** later.
+It still uses stock Cosmos 3.0.95 HDA and the same `AudioManager.Play`;
+there is no new DMA/IRQ implementation, guest disk, filesystem access or
+production GUI activation.
+
+The real-QEMU workflow now includes a fresh ISO boot and backend WAV capture
+for `mixdelay`. It requires **both** the existing independent-channel
+440/880 Hz validator and a new onset validator measuring a right-channel
+delay of 50 ± 18 ms from PCM samples. Host-side C# tests cover exact
+frame placement, overlap, non-overlap, immutability and output bounds.
+Synthetic Python fixtures exercise accepted and rejected capture timing.
+
+**Evidence boundary:** the previous head `1121e172` passed the actual
+QEMU HDA capture workflow [#41286519260](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41286519260),
+including `mix`, WAV decoding, volume, balance and fade. That run does
+**not** cover the new `mixdelay` path; wait for the new commit's QEMU
+run before claiming sample-accurate delayed playback on the emulator.
+Physical codec output, IRQ execution and GUI sound effects remain unverified.
