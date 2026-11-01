@@ -64,7 +64,7 @@ namespace ZonderqOS.GUI
         private bool CompactLayout => Height < 530;
         // Below 400px the normal two-grid layout overlaps the power footer.
         // A compact searchable result strip replaces the overlapping controls.
-        private bool TinyLayout => Height < 400;
+        private bool TinyLayout => Height < 400 || Width < 320;
         private int TinyColumns => Width >= 270 ? 3 : Width >= 160 ? 2 : 1;
         private int TinyRows => Math.Max(0, (Height - TinyFooterHeight - TinyResultsTop - 6 + TinyRowGap) /
             (TinyRowHeight + TinyRowGap));
