@@ -23,25 +23,28 @@ ECHO_SEQ = 1
 
 
 def normalize_icmp_serial(serial: str) -> str:
-    """Repair only a *verified* BSP timer-log splice inside the N3 PASS line.
+    """Repair only exact N3 markers split by a known BSP timer-log splice.
 
-    The single-vCPU timer can preempt a serial WriteString mid-marker and
-    inject its LAPIC/SCHED debug lines. Do not discard arbitrary log content
-    or accept a partial IP: the reconstructed marker must match exactly.
-    Independent request/reply PCAP evidence remains mandatory.
+    A single-vCPU timer can interrupt DiagnosticLog.WriteString at any
+    character, including before the closing bracket of ICMP_ATTEMPT=START.
+    Require a matching LAPIC/SCHED tick pair and reconstruct ONLY one of the
+    two exact N3 markers. Arbitrary insertions, malformed fragments and
+    duplicate markers must still fail. Independent PCAP evidence is mandatory.
     """
     lines = serial.replace("\r", "").splitlines()
     repaired = []
     i = 0
     while i < len(lines):
         line = lines[i]
-        if line.startswith("[NET3095-N3] ICMP=PASS from="):
+        if line.startswith("[NET3095-N3"):
             head, sep, tick = line.partition("[LAPIC] Timer tick ")
-            if (sep and re.fullmatch(r"[0-9]+ RSP=[0-9A-Fa-f]+", tick)
-                and i + 2 < len(lines)
-                and re.fullmatch(r"\[SCHED\] Tick [0-9]+ enabled=[01]", lines[i + 1])
-                and head + lines[i + 2] == PING_PASS):
-                repaired.append(PING_PASS)
+            lapic = re.fullmatch(r"([0-9]+) RSP=[0-9A-Fa-f]+", tick) if sep else None
+            sched = (re.fullmatch(r"\[SCHED\] Tick ([0-9]+) enabled=[01]", lines[i + 1])
+                     if i + 1 < len(lines) else None)
+            if (lapic and sched and lapic.group(1) == sched.group(1)
+                    and i + 2 < len(lines)
+                    and head + lines[i + 2] in (PING_START, PING_PASS)):
+                repaired.append(head + lines[i + 2])
                 i += 3
                 continue
         repaired.append(line)
@@ -167,7 +170,19 @@ def self_test() -> None:
         "[SCHED] Tick 5 enabled=1\n0.2.2",
     )
     assert "PASS" in validate(torn, synthetic_capture(frames))
+    # Real N5 QEMU failure: the timer interrupted the START marker before
+    # its closing bracket. The PCAP had the actual ICMP request and reply.
+    torn_start = serial.replace(
+        PING_START,
+        "[NET3095-N3[LAPIC] Timer tick 5 RSP=FFFF80007F5C0BA0\n"
+        "[SCHED] Tick 5 enabled=1\n] ICMP_ATTEMPT=START",
+    )
+    assert "PASS" in validate(torn_start, synthetic_capture(frames))
     bad = [
+        (torn_start.replace("[SCHED] Tick 5", "[SCHED] Tick 6"), frames),
+        (torn_start.replace("RSP=FFFF80007F5C0BA0", "RSP=NOTHEX"), frames),
+        (torn_start.replace("] ICMP_ATTEMPT=START", "] ICMP_ATTEMPT=OTHER"), frames),
+        (torn_start + "\n" + PING_START, frames),
         (torn.replace("\n0.2.2", "\n0.2.3"), frames),
         (torn.replace("[SCHED] Tick 5 enabled=1", "[OTHER] injected"), frames),
         (torn.replace("RSP=FFFF80007F651C90", "RSP=NOTHEX"), frames),
