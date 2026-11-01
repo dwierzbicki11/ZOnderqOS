@@ -332,6 +332,7 @@ def self_test() -> None:
             fake_http(False, 0x10, client_seq + 1 + len(REQUEST),
                       server_seq + 2 + len(RESPONSE), client_port=port),
         ])
+    session_frames = 4 + (len(cuts) - 1) + 2  # handshake/request, response, FIN/ACK
     check_followup_http(extended, guest, 0, (49153, 49154))
     for attempt in range(4, 7):
         # One stale guest request in ANY post-burst session must fail.
@@ -349,7 +350,6 @@ def self_test() -> None:
         raise AssertionError(f"accepted stale post-burst HTTP TX attempt={attempt}")
     # Every body segment in all three later sessions must reject stale
     # first-session RX data, even when TCP sequence/ACK and FIN are valid.
-    session_frames = 4 + (len(cuts) - 1) + 2  # handshake/request, response, FIN/ACK
     for attempt in range(4, 7):
         client_port = 49152 + attempt
         client_seq = 10000 * attempt + 1
