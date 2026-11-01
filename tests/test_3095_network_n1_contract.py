@@ -56,6 +56,27 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("http.Client.ReceiveTimeout = 5000;", method)
         self.assertIn("if (readCalls >= 64)", method)
 
+    def test_n6_http_rechecks_live_lease_before_stream_pass(self):
+        # Per-chunk checks alone miss link/lease churn after the final Read.
+        # This is a source contract; only QEMU PCAP and guest logs prove RX.
+        method = SOURCE.split("private static bool TryHttpExchange(", 1)[1]
+        final_bytes = method.index("if (received != expected.Length)")
+        exact_payload = method.index("if (response[i] != expected[i])", final_bytes)
+        final_driver = method.index(
+            'HTTP DriverKit ownership changed during attempt=', exact_payload)
+        final_lease = method.index(
+            'HTTP NIC/lease changed at completion attempt=', final_driver)
+        driver_pass = method.index('HTTP_DRIVER_STABLE=PASS attempt=', final_lease)
+        nic_pass = method.index('HTTP_NIC_STABLE=PASS attempt=', driver_pass)
+        self.assertLess(exact_payload, final_driver)
+        self.assertLess(final_driver, final_lease)
+        self.assertLess(final_lease, driver_pass)
+        self.assertLess(driver_pass, nic_pass)
+        guard = method[final_driver:final_lease]
+        self.assertIn(
+            "IsE1000ELeaseStable(expectedMac, expectedIp, expectedMask, expectedGateway)",
+            guard)
+
     def test_n4_n6_blocking_reads_use_remaining_monotonic_budget(self):
         # A post-read deadline check rejects late success, but a fixed 5s
         # blocking timeout can still make the probe finish up to 5s late.
