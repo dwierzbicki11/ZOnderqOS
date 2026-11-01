@@ -118,6 +118,11 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("(long)startFrames[i] * 4 + clip.Length", mixer)
         self.assertIn("total += sample * gainsPercent[i] / 100", mixer)
         self.assertIn("PlayScheduledMixedTestTones()", runtime)
+        # The real HDA capture uses a bounded silent lead-in to avoid
+        # initial TCG underruns; all three relative effect offsets stay exact.
+        self.assertIn("const int preRollFrames = 12000;", runtime)
+        self.assertIn("new[] { preRollFrames, preRollFrames + 2400, preRollFrames + 14400 }", runtime)
+        self.assertIn("preroll=250ms", runtime)
         self.assertIn('if (command == "mixqueue")', kernel)
         self.assertIn('"mixqueue": 440', harness)
         self.assertIn('elif args.command == "mixqueue":', harness)
