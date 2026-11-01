@@ -1333,7 +1333,7 @@ static class Test
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "delay rejects clip extending beyond output budget");
         rejected = false;
-        try { AudioPcmMixer.MixStereo16WithDelay(new byte[384000], new byte[4],
+        try { AudioPcmMixer.MixStereo16WithDelay(new byte[4], new byte[384000],
             100, 100, 1); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "delay refuses truncation of second clip");
