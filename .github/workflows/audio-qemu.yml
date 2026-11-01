@@ -91,6 +91,10 @@ jobs:
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixdelay-out --boot-seconds 45 --command mixdelay
       - name: Boot and verify three frame-scheduled PCM effects through HDA
+        id: mixqueue
+        # A failing timing-quality probe must not hide later independent
+        # WAV format captures. Preserve the failure at the final gate.
+        continue-on-error: true
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-out --boot-seconds 45 --command mixqueue
@@ -166,6 +170,11 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-muted-out --boot-seconds 45 --command tone --volume 0
+      - name: Enforce scheduled HDA queue quality gate
+        if: always() && steps.mixqueue.outcome == 'failure'
+        run: |
+          echo "::error::mixqueue real QEMU PCM timing/quality verification failed; see captured.wav artifact"
+          exit 1
       - name: Diagnostic logs
         if: always()
         run: |
