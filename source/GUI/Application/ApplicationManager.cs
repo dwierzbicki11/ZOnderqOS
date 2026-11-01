@@ -259,6 +259,16 @@ namespace ZonderqOS.GUI.Apps
             Application target = ActiveApplication;
             bool newPress = (leftClicked && !leftWasClicked) ||
                 (rightClicked && !rightWasClicked);
+            // A second button pressed during an existing desktop gesture
+            // must not retarget the chord onto an obscured application.
+            // A genuinely fresh press (both previous buttons up) can
+            // recover if a modal overlay swallowed the previous release.
+            if (desktopGesture && (leftWasClicked || rightWasClicked))
+            {
+                if (!leftClicked && !rightClicked)
+                    desktopGesture = false;
+                return;
+            }
             if (newPress)
             {
                 // A press on the desktop or taskbar belongs to that surface
