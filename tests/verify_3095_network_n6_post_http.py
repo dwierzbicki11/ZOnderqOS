@@ -35,8 +35,8 @@ REPEATS = tuple(
 
 
 RX_STATS = re.compile(
-    r"^\\[NET3095-N6\\] HTTP_RX_STATS attempt=(\\d+) reads=(\\d+) "
-    r"max_chunk=(\\d+) bytes=(\\d+)$"
+    r"^\[NET3095-N6\] HTTP_RX_STATS attempt=(\d+) reads=(\d+) "
+    r"max_chunk=(\d+) bytes=(\d+)$"
 )
 
 
@@ -46,7 +46,7 @@ def check_rx_stats(serial: str) -> None:
     These serial counters are NOT proof of an IRQ handler. PCAP and guest
     payload verification remain mandatory; this only guards observability.
     """
-    lines = [line.strip() for line in serial.replace("\\r", "").splitlines()]
+    lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
     entries = [(index, line) for index, line in enumerate(lines)
                if line.startswith("[NET3095-N6] HTTP_RX_STATS")]
     if len(entries) != 6:
@@ -221,17 +221,14 @@ def self_test() -> None:
         "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
     ))
     check_link_markers(serial)
-    telemetry = "\\n".join(
+    telemetry = "\n".join(
         line for attempt, marker in enumerate(
             (HTTP_PASS, HTTP_REPEAT_PASS, PASS) + REPEATS, 1)
         for line in (
-            f"[NET3095-N6] HTTP_RX_STATS attempt={attempt} reads=5 max_chunk=1024 bytes=4208",
+            f"[NET3095-N6] HTTP_RX_STATS attempt={attempt} reads=5 max_chunk=1024 bytes={len(RESPONSE)}",
             marker,
         )
     )
-    # Use the exact expected HTTP response byte count; a stale hard-coded
-    # value must fail this gate rather than being silently accepted.
-    telemetry = telemetry.replace("bytes=4208", f"bytes={len(RESPONSE)}")
     check_rx_stats(telemetry)
     bad_telemetry = (
         telemetry.replace("reads=5", "reads=0", 1),
@@ -240,7 +237,7 @@ def self_test() -> None:
         telemetry.replace("attempt=3", "attempt=2", 1),
         telemetry.replace("reads=5", "reads=1", 1),
         telemetry.replace("HTTP_RX_STATS attempt=6", "HTTP_RX_STATS attempt=7", 1),
-        telemetry + "\\n[NET3095-N6] HTTP_RX_STATS attempt=6 reads=5 max_chunk=1024 bytes=4116",
+        telemetry + f"\n[NET3095-N6] HTTP_RX_STATS attempt=6 reads=5 max_chunk=1024 bytes={len(RESPONSE)}",
         telemetry.replace("[NET3095-N6] HTTP_RX_STATS attempt=4", "[NET3095-N6] HTTP_RX_STATS attempt=9"),
     )
     for invalid_stats in bad_telemetry:
