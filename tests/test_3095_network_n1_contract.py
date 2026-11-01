@@ -147,6 +147,19 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('POST_BURST_HTTP_ATTEMPT=START', SOURCE)
         self.assertIn('POST_BURST_HTTP=PASS', SOURCE)
         self.assertIn('POST_STRESS_LINK=PASS', SOURCE)
+        # Final RX liveness must follow all six TCP closes and precede
+        # the post-stress NIC/lease snapshot; serial alone is insufficient.
+        self.assertIn('finalPing.SendEcho(id: 0x3097, sequence: 1)', SOURCE)
+        self.assertIn('FINAL_ICMP_ATTEMPT=START', SOURCE)
+        self.assertIn('FINAL_ICMP=PASS from=10.0.2.2 seq=1', SOURCE)
+        self.assertLess(SOURCE.index('for (int attempt = 3; attempt <= 6; attempt++)'),
+                        SOURCE.index('FINAL_ICMP_ATTEMPT=START'))
+        self.assertLess(SOURCE.index('FINAL_ICMP=PASS from=10.0.2.2 seq=1'),
+                        SOURCE.index('POST_STRESS_LINK=PASS'))
+        self.assertIn('verify_3095_network_n6_final_icmp.py', SMOKE)
+        self.assertIn('No final ICMP RX/TX after six HTTP teardowns', SMOKE)
+        self.assertIn('check_final_pair(frames, last_http_fin_ack(frames, guest), guest)',
+                      (ROOT / 'tests/verify_3095_network_n6_final_icmp.py').read_text())
         self.assertIn('POST_STRESS_IPV4=PASS', SOURCE)
         self.assertIn('postStress.IPConfig', SOURCE)
         for field, snapshot in (('Address', 'initialIp'),
