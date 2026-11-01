@@ -829,6 +829,37 @@ class ResponsiveGui3094(unittest.TestCase):
                 manual_page = old_page + old_slots
                 self.assertNotEqual(manual_page, focus_page)
 
+    def test_start_menu_taskbar_click_dismisses_but_start_button_toggles(self):
+        dispatch = DESKTOP.split("bool startMenuWasVisible =", 1)[1].split(
+            "int priorMouseX =", 1
+        )[0]
+        self.assertIn("bool startMenuTaskbarDismiss = startMenuWasVisible && !startMenuInside &&", dispatch)
+        self.assertIn("currentLeftButtonState && !previousLeftButtonState &&", dispatch)
+        self.assertIn("mouseY >= taskbar.Y && mouseY < taskbar.Y + taskbar.Height &&", dispatch)
+        self.assertIn("!taskbar.IsStartButtonHit(mouseX, mouseY);", dispatch)
+        self.assertIn("if (startMenuTaskbarDismiss)\n                            startMenu.Visible = false;", dispatch)
+        self.assertIn("bool startMenuCaptures = startMenuInside || startMenuOutsideClick;", dispatch)
+        self.assertLess(dispatch.index("if (startMenuTaskbarDismiss)"),
+                        dispatch.index("taskbar.UpdateInteractions("))
+        self.assertIn("private readonly Button startButton;", TASKBAR)
+        self.assertIn("startButton = new Button(4, Y + 4, StartButtonWidth - 8, height - 8", TASKBAR)
+        self.assertIn("return startButton != null && startButton.Contains(mouseX, mouseY);", TASKBAR)
+        # Independent hitbox model for 800p/HD/FHD: an app tile or tray
+        # click closes Start and still reaches the taskbar. Start itself
+        # stays open until the normal button callback toggles it.
+        for screen_width in (240, 640, 800, 1366, 1920):
+            taskbar_y = 600
+            for x in (0, 3, 4, 24, 43, 44, 60, 100, screen_width - 1):
+                for y in (taskbar_y - 1, taskbar_y, taskbar_y + 3,
+                          taskbar_y + 4, taskbar_y + 39, taskbar_y + 43, taskbar_y + 44):
+                    on_taskbar = 0 <= x < screen_width and taskbar_y <= y < taskbar_y + 44
+                    on_start = 4 <= x < 44 and taskbar_y + 4 <= y < taskbar_y + 40
+                    dismiss = on_taskbar and not on_start
+                    if on_start:
+                        self.assertFalse(dismiss, (screen_width, x, y))
+                    elif on_taskbar:
+                        self.assertTrue(dismiss, (screen_width, x, y))
+
     def test_start_menu_outside_click_dismisses_without_click_through(self):
         dispatch = DESKTOP.split("bool startMenuWasVisible =", 1)[1].split(
             "int priorMouseX =", 1
