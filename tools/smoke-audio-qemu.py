@@ -238,8 +238,8 @@ def main():
                 print(fade_capture.inspect(wav))
             elif args.volume == 0:
                 print(mute_capture.inspect(wav))
-            elif args.command == "stereosplit" and args.balance == 100:
-                print(balance_capture.inspect(wav))
+            elif args.command == "stereosplit" and abs(args.balance) == 100:
+                print(balance_capture.inspect(wav, active_channel="left" if args.balance < 0 else "right"))
             elif args.command == "stereosplit":
                 print(stereo_capture.inspect(wav))
             elif args.command == "mixqueue":
