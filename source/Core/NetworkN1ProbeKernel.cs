@@ -685,6 +685,15 @@ namespace ZonderqOS
                     Log("[NET3095-N6][FAIL] HTTP DriverKit ownership changed during attempt=" + attempt);
                     return false;
                 }
+                // The last RX completion may race a link drop, NIC rebind or
+                // DHCP lease mutation before the per-stream PASS markers.
+                // Recheck the original MAC/link/lease AFTER exact payload
+                // verification, even when the response arrived in one read.
+                if (!IsE1000ELeaseStable(expectedMac, expectedIp, expectedMask, expectedGateway))
+                {
+                    Log("[NET3095-N6][FAIL] HTTP NIC/lease changed at completion attempt=" + attempt);
+                    return false;
+                }
                 Log("[NET3095-N6] HTTP_DRIVER_STABLE=PASS attempt=" + attempt +
                     " resources=" + expectedResources + " irq_sources=" + expectedIrqSources);
                 // Only claim per-stream stability after all RX chunks and
