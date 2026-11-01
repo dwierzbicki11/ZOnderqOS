@@ -337,11 +337,16 @@ namespace ZonderqOS
                 stream.Write(request, 0, request.Length);
                 byte[] response = new byte[expected.Length];
                 int received = 0;
+                int readCalls = 0;
+                int largestRead = 0;
                 while (received < response.Length)
                 {
                     int read = stream.Read(response, received, response.Length - received);
                     if (read <= 0)
                         break;
+                    readCalls++;
+                    if (read > largestRead)
+                        largestRead = read;
                     received += read;
                 }
                 if (received != expected.Length)
@@ -357,6 +362,12 @@ namespace ZonderqOS
                         return false;
                     }
                 }
+                // Guest-side socket-read telemetry supplements the independent
+                // PCAP evidence. It measures actual managed Read() completions,
+                // not IRQ/ISR delivery or physical NIC DMA ownership.
+                Log("[NET3095-N6] HTTP_RX_STATS attempt=" + attempt +
+                    " reads=" + readCalls + " max_chunk=" + largestRead +
+                    " bytes=" + received);
                 string marker = attempt == 1 ? "HTTP=PASS" :
                     attempt == 2 ? "HTTP_REPEAT=PASS" :
                     attempt == 3 ? "POST_BURST_HTTP=PASS" :
