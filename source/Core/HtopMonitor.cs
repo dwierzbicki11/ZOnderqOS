@@ -115,6 +115,24 @@ namespace ZonderqOS.SystemCore
                 ? CachedCpuPrefixes[cpu]
                 : "CPU " + cpu.ToString().PadLeft(3) + " [";
 
+        // Stock Cosmos 3.0.95 does not expose per-CPU busy accounting. Reuse
+        // the entire immutable N/A line for common 1..16 CPU configurations,
+        // rather than allocating two concatenated strings every refresh.
+        private static readonly string[] CachedCpuUnavailableLines = BuildCpuUnavailableLines();
+
+        private static string[] BuildCpuUnavailableLines()
+        {
+            var lines = new string[16];
+            for (int cpu = 0; cpu < lines.Length; cpu++)
+                lines[cpu] = CpuPrefix(cpu) + CpuBar(0) + "] N/A";
+            return lines;
+        }
+
+        internal static string CpuUnavailableLine(int cpu) =>
+            (uint)cpu < (uint)CachedCpuUnavailableLines.Length
+                ? CachedCpuUnavailableLines[cpu]
+                : CpuPrefix(cpu) + CpuBar(0) + "] N/A";
+
         // Cached immutable numeric CPU labels avoid allocating strings for each
         // core, process row and total on every monitor refresh. Percent() always
         // returns 0..100, so array indexing is safe for all production callers.
@@ -182,8 +200,10 @@ namespace ZonderqOS.SystemCore
                 }
                 int usage = warm && hasAccounting ? Percent(delta, (ulong)elapsed) : 0;
                 cpuUsage[cpu] = usage;
-                string value = !hasAccounting ? "N/A" : !warm ? "..." : CpuPercentText(usage);
-                lines.Add(CpuPrefix(cpu) + CpuBar(usage) + "] " + value);
+                lines.Add(!hasAccounting
+                    ? CpuUnavailableLine(cpu)
+                    : CpuPrefix(cpu) + CpuBar(usage) + "] " +
+                        (!warm ? "..." : CpuPercentText(usage)));
                 previousCpu[cpu] = busy;
             }
             ulong totalCapacity = warm && count > 0 ? (ulong)elapsed * (ulong)count : 0;
