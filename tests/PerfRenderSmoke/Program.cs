@@ -57,6 +57,7 @@ internal static class Program
         Verify("Signed integer minimum", "-9223372036854775808", true);
         RoundedPanelSmoke.Verify();
         PanelVisibilitySmoke.Verify();
+        FillFastPathSmoke.Verify();
         OffscreenFillTopSmoke.Verify();
         CornerInsetSmoke.Verify();
         CornerBandSmoke.Verify();
