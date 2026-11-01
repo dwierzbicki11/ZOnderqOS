@@ -12,7 +12,7 @@ import sys
 import wave
 
 
-def analyze(path: Path, ring_bytes=16384, source_rate=48000):
+def analyze_channels(path: Path, ring_bytes=16384, source_rate=48000):
     with wave.open(str(path), 'rb') as stream:
         rate = stream.getframerate()
         channels = stream.getnchannels()
@@ -28,26 +28,38 @@ def analyze(path: Path, ring_bytes=16384, source_rate=48000):
         samples.byteswap()
     if len(samples) != frames * 2:
         raise ValueError('truncated stereo PCM capture')
-    left = samples[::2]
     ring_frames = round(rate * ring_bytes / (source_rate * 4))
     window = rate * 40 // 1000
-    if len(left) < ring_frames + window:
+    if frames < ring_frames + window:
         raise ValueError('capture too short for DMA ring replay analysis')
-    best_fraction = -1.0
-    best_start = 0
-    for start in range(0, len(left) - ring_frames - window + 1, max(1, window // 2)):
-        first = left[start:start + window]
-        second = left[start + ring_frames:start + ring_frames + window]
-        if (sum(abs(value) >= 256 for value in first) < window * 0.95 or
-                sum(abs(value) >= 256 for value in second) < window * 0.95):
-            continue
-        fraction = sum(a == b for a, b in zip(first, second)) / window
-        if fraction > best_fraction:
-            best_fraction = fraction
-            best_start = start
-    if best_fraction < 0:
+    results = []
+    for channel in (samples[::2], samples[1::2]):
+        best_fraction = -1.0
+        best_start = 0
+        for start in range(0, len(channel) - ring_frames - window + 1, max(1, window // 2)):
+            first = channel[start:start + window]
+            second = channel[start + ring_frames:start + ring_frames + window]
+            if (sum(abs(value) >= 256 for value in first) < window * 0.95 or
+                    sum(abs(value) >= 256 for value in second) < window * 0.95):
+                continue
+            fraction = sum(a == b for a, b in zip(first, second)) / window
+            if fraction > best_fraction:
+                best_fraction = fraction
+                best_start = start
+        results.append(None if best_fraction < 0 else
+                       (best_fraction, best_start / rate * 1000,
+                        ring_frames / rate * 1000))
+    if all(result is None for result in results):
         raise ValueError('no two sufficiently active windows for replay analysis')
-    return best_fraction, best_start / rate * 1000, ring_frames / rate * 1000
+    return tuple(results)
+
+
+def analyze(path: Path, ring_bytes=16384, source_rate=48000):
+    """Backwards-compatible left-channel analysis; silent left is inconclusive."""
+    left, _ = analyze_channels(path, ring_bytes, source_rate)
+    if left is None:
+        raise ValueError('no two sufficiently active left windows for replay analysis')
+    return left
 
 
 def main():
@@ -57,13 +69,20 @@ def main():
                         help='fail if active PCM repeats at the ring interval')
     args = parser.parse_args()
     try:
-        fraction, start_ms, period_ms = analyze(args.wav)
-        suspected = fraction >= 0.97
-        level = 'WARN suspected ring replay' if suspected else 'INFO no ring replay detected'
-        print(f'[AUDIO-DMA] {level}: identical active PCM={fraction:.2%} '
-              f'at {start_ms:.1f}ms and {start_ms + period_ms:.1f}ms '
-              f'(16KiB/48kHz stereo16 period={period_ms:.2f}ms); '
-              f'not proof of guest ISR delivery')
+        channels = analyze_channels(args.wav)
+        suspected = False
+        for name, result in zip(('left', 'right'), channels):
+            if result is None:
+                print(f'[AUDIO-DMA] {name}: INCONCLUSIVE (no active window pair)')
+                continue
+            fraction, start_ms, period_ms = result
+            replay = fraction >= 0.97
+            suspected = suspected or replay
+            level = 'WARN suspected ring replay' if replay else 'INFO no ring replay detected'
+            print(f'[AUDIO-DMA] {name}: {level}: identical active PCM={fraction:.2%} '
+                  f'at {start_ms:.1f}ms and {start_ms + period_ms:.1f}ms '
+                  f'(16KiB/48kHz stereo16 period={period_ms:.2f}ms); '
+                  f'not proof of guest ISR delivery')
         return 1 if args.strict and suspected else 0
     except (OSError, EOFError, ValueError, wave.Error) as exc:
         print(f'[AUDIO-DMA] INCONCLUSIVE {exc}', file=sys.stderr)
