@@ -15,6 +15,7 @@ namespace ZonderqOS.GUI
 
         private readonly ApplicationManager applicationManager;
         private readonly Action notificationClick;
+        private readonly Button startButton;
         private int hoveredAppIndex = -1;
         private bool overflowHovered;
         private int firstVisibleAppIndex;
@@ -72,10 +73,18 @@ namespace ZonderqOS.GUI
             applicationManager = manager;
             notificationClick = onNotificationClick;
 
-            var startButton = new Button(4, Y + 4, StartButtonWidth - 8, height - 8, "", onStartClick);
+            startButton = new Button(4, Y + 4, StartButtonWidth - 8, height - 8, "", onStartClick);
             startButton.BackgroundColor = Color.FromArgb(27, 34, 42);
             startButton.TextColor = Color.White;
             Children.Add(startButton);
+        }
+
+        // Share the actual Start button hitbox with the desktop overlay
+        // dispatcher. A click on another taskbar control must dismiss Start,
+        // but a click on Start itself must still toggle the menu normally.
+        public bool IsStartButtonHit(int mouseX, int mouseY)
+        {
+            return startButton != null && startButton.Contains(mouseX, mouseY);
         }
 
         private IconType GetApplicationIcon(Application app)
