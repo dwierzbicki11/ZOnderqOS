@@ -280,10 +280,12 @@ namespace ZonderqOS.GUI
             if (ch == ' ')
                 return;
             int glyphOffset = ch < 128 ? ch * 7 : -1;
-            if (glyphOffset < 0)
+            if (glyphOffset < 0 && ch <= '\u017F')
             {
-                // Some Unicode code points uppercase to an ASCII letter.
-                // Preserve Glyph(char,row)'s behavior for those characters.
+                // Only the Latin-range Unicode exceptions can uppercase to
+                // ASCII. Skip Unicode casing for CJK, Cyrillic, symbols and
+                // surrogate code units; the exhaustive UTF-16 test verifies
+                // the boundary against the original Glyph implementation.
                 char upper = char.ToUpperInvariant(ch);
                 if (upper < 128)
                     glyphOffset = upper * 7;
