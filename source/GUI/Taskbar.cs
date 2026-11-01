@@ -472,7 +472,11 @@ namespace ZonderqOS.GUI
             {
                 int trayX = Width - GetTrayWidth();
                 int notificationX = trayX + 9;
-                if (mouseX >= notificationX && mouseX < notificationX + 34)
+                // Match the painted notification tile (Y+6..Y+Height-6).
+                // Clicks on the tray separator or bottom border must not
+                // open a panel that was not under the pointer.
+                if (Height > 12 && mouseX >= notificationX && mouseX < notificationX + 34 &&
+                    mouseY >= Y + 6 && mouseY < Y + Height - 6)
                 {
                     notificationHovered = true;
                     if (isClicked && !wasClicked)
