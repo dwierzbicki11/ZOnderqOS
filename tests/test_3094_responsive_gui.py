@@ -1020,7 +1020,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertNotIn("frameCounter - clickFrame", FILE_MANAGER)
         self.assertIn("ResetClickSequence();\n                if (dialogMode != 0)", mouse)
         self.assertIn("ResetClickSequence();", refresh)
-        self.assertIn("ResetClickSequence();\n            if (x < 42)", FILE_MANAGER)
+        self.assertIn("ResetClickSequence();\n            // Match the painted 36px controls", FILE_MANAGER)
         self.assertIn("ResetClickSequence();\n            SidebarEntry entry =", FILE_MANAGER)
 
         # Two clicks on the same index open once, then the sequence is
@@ -2439,6 +2439,42 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertEqual(max(1, (612 + 6) // 118), 5)
         self.assertEqual(max(1, (388 + 6) // 100), 3)
         self.assertEqual(max(1, (388 + 60) // 100), 4)
+
+
+
+class FileManagerToolbarBounds3095(unittest.TestCase):
+    def test_toolbar_uses_same_bounds_for_paint_and_click(self):
+        toolbar = FILE_MANAGER.split("private void Toolbar(int x)", 1)[1].split(
+            "private void SidebarClick(", 1)[0]
+        render = FILE_MANAGER.split("private void RenderToolbar(Canvas canvas)", 1)[1].split(
+            "private void RenderSidebar(", 1)[0]
+        self.assertIn("int offset = x - 8;", toolbar)
+        self.assertIn("int button = offset / 42;", toolbar)
+        self.assertIn("offset % 42 >= 36", toolbar)
+        self.assertIn("button >= ToolbarButtonCountForView", toolbar)
+        self.assertIn("internal int ToolbarButtonCountForView =>", FILE_MANAGER)
+        for button in range(4):
+            self.assertIn(f"if (app.ToolbarButtonCountForView > {button})", render)
+
+        # Exhaustively compare the drawn 36px rectangles with the click
+        # decoder for small/standard/HD/FHD client widths.
+        for width in (1, 20, 43, 44, 79, 80, 85, 86, 127, 128,
+                      169, 170, 180, 220, 300, 780, 1346, 1900):
+            count = min(4, max(0, (width - 44) // 42 + 1))
+            painted = set()
+            for button in range(count):
+                painted.update(range(8 + 42 * button, 44 + 42 * button))
+            for x in range(width):
+                decoded = -1
+                if x >= 8:
+                    offset = x - 8
+                    button = offset // 42
+                    if button < count and offset % 42 < 36:
+                        decoded = button
+                self.assertEqual(x in painted, decoded >= 0,
+                                 (width, x, count, decoded))
+            self.assertTrue(all(8 + 42 * i + 36 <= width
+                                for i in range(count)))
 
 
 if __name__ == "__main__":
