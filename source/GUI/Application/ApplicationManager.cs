@@ -66,9 +66,13 @@ namespace ZonderqOS.GUI.Apps
 
         public void Activate(Application application)
         {
-            if (closingAll || application == null || !application.IsRunning || application.Window == null)
+            if (closingAll || !global::ZonderqOS.SecurityContext.IsAuthenticated ||
+                application == null || !application.IsRunning || application.Window == null ||
+                !applications.Contains(application))
                 return;
 
+            // Only Launch may register a new window. Activating a stale or
+            // never-launched instance must not resurrect it after logout.
             // Focusing an already-visible window must not restart its opening
             // animation or reset its layout on every mouse click.
             if (application.Window.IsMinimized)
@@ -80,7 +84,9 @@ namespace ZonderqOS.GUI.Apps
 
         public void ToggleMinimize(Application application)
         {
-            if (application == null || !application.IsRunning || application.Window == null)
+            if (closingAll || !global::ZonderqOS.SecurityContext.IsAuthenticated ||
+                application == null || !application.IsRunning || application.Window == null ||
+                !applications.Contains(application))
                 return;
 
             if (application.Window.IsMinimized)
