@@ -1,3 +1,4 @@
+using System;
 using System.Drawing;
 using Cosmos.Kernel.System.Graphics;
 using ZonderqOS.Games.Framework;
