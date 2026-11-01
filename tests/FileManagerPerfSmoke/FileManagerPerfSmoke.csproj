@@ -8,5 +8,7 @@
   <ItemGroup>
     <!-- Exercise the exact production sorting implementation, not a copy. -->
     <Compile Include="../../source/GUI/Application/FileEntrySorter.cs" Link="FileEntrySorter.cs" />
+    <Compile Include="../../source/GUI/Application/FileEntryIconResolver.cs" Link="FileEntryIconResolver.cs" />
+    <Compile Include="../../source/GUI/Icons/IconType.cs" Link="IconType.cs" />
   </ItemGroup>
 </Project>
