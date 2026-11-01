@@ -22,6 +22,10 @@ class QmpKeyTests(unittest.TestCase):
         self.assertEqual(audio.qemu_clock_options(True),
                          ["-icount", "shift=auto,sleep=on"])
 
+    def test_output_only_hda_is_explicit_opt_in(self):
+        self.assertEqual(audio.qemu_hda_codec(False), "hda-duplex")
+        self.assertEqual(audio.qemu_hda_codec(True), "hda-output")
+
     def test_volume_command_uses_qcode_spc_and_ret(self):
         qmp = audio.Qmp.__new__(audio.Qmp)
         events = []
