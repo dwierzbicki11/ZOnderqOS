@@ -26,8 +26,9 @@ internal static class Program
         var index = new HtopProcessIndex();
         var random = new Random(3095);
         int checks = 0;
-        for (int n = 0; n <= 129; n++)
+        for (int scenario = 0; scenario < 132; scenario++)
         {
+            int n = scenario < 130 ? scenario : scenario == 130 ? 512 : 1024;
             var processes = new KernelProcess[n];
             for (int i = 0; i < n; i++)
             {
@@ -36,7 +37,8 @@ internal static class Program
                     i % 11 == 0 ? 0u : (uint)random.Next(1, 110);
                 processes[i] = new KernelProcess(i + 1, "p" + i, tid);
             }
-            index.Rebuild(processes);
+            index.Rebuild(processes, n);
+            Assert(index.UsesDictionary == (n >= 512), "adaptive threshold n=" + n);
             var seen = new HashSet<int>();
             for (uint tid = 0; tid <= 111; tid++)
             {
@@ -59,9 +61,16 @@ internal static class Program
                 checks++;
             }
         }
-        index.Rebuild(Array.Empty<KernelProcess>());
+        index.Rebuild(Array.Empty<KernelProcess>(), 0);
         Assert(!index.TryResolve(0, out _), "stale TID after empty rebuild");
         Assert(!index.WasSeen(1), "stale PID after empty rebuild");
+        var large = new KernelProcess[1024];
+        for (int i = 0; i < large.Length; i++)
+            large[i] = new KernelProcess(i + 1, "p", (uint)(i + 100));
+        index.Rebuild(large, 8);
+        Assert(!index.UsesDictionary, "few scheduler threads should avoid index build");
+        index.Rebuild(large, 1024);
+        Assert(index.UsesDictionary, "large join should use dictionary");
         Console.WriteLine("PASS: " + checks + " exact legacy first-match and missing-PID checks");
     }
 
@@ -133,7 +142,7 @@ internal static class Program
 
     private static long IndexedJoin(HtopProcessIndex index, KernelProcess[] processes, uint[] tids)
     {
-        index.Rebuild(processes);
+        index.Rebuild(processes, tids.Length);
         long checksum = 0;
         for (int t = 0; t < tids.Length; t++)
             if (index.TryResolve(tids[t], out KernelProcess process))
@@ -159,21 +168,19 @@ internal static class Program
         return samples[samples.Length / 2];
     }
 
-    private static void Benchmark(int count)
+    private static void Benchmark(int count, int threads)
     {
         var processes = new KernelProcess[count];
-        var tids = new uint[count];
-        var rowPids = new int[count];
+        var tids = new uint[threads];
+        var rowPids = new int[threads];
         for (int i = 0; i < count; i++)
-        {
-            uint tid = i % 8 == 0 ? (uint)(500000 + i) : (uint)(10000 + i);
             processes[i] = new KernelProcess(i + 1, "p", (uint)(10000 + i));
-            tids[i] = tid;
-        }
+        for (int i = 0; i < threads; i++)
+            tids[i] = i % 8 == 0 ? (uint)(500000 + i) : (uint)(10000 + i % count);
         var index = new HtopProcessIndex();
         Func<long> old = () => LegacyJoin(processes, tids, rowPids);
         Func<long> current = () => IndexedJoin(index, processes, tids);
-        Assert(old() == current(), "A/B checksum mismatch n=" + count);
+        Assert(old() == current(), "A/B checksum mismatch n=" + count + " threads=" + threads);
         for (int i = 0; i < 10; i++) { old(); current(); }
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 50; i++) sink ^= current();
@@ -187,7 +194,8 @@ internal static class Program
             optimized[i] = Time(current, repetitions);
         }
         double a = Median(legacy), b = Median(optimized);
-        Console.WriteLine("A/B n=" + count + " legacy=" + a.ToString("F4") +
+        Console.WriteLine("A/B processes=" + count + " threads=" + threads +
+            " legacy=" + a.ToString("F4") +
             "ms indexed=" + b.ToString("F4") + "ms ratio=" + (a / b).ToString("F2") +
             "x warm-index-alloc=" + allocated + "B (median 7 interleaved runs)");
     }
@@ -196,9 +204,12 @@ internal static class Program
     {
         VerifyIndex();
         VerifyMonitorIntegration();
-        Benchmark(128);
-        Benchmark(512);
-        Benchmark(2048);
+        Benchmark(16, 16);
+        Benchmark(128, 128);
+        Benchmark(512, 512);
+        Benchmark(2048, 2048);
+        Benchmark(1024, 8);
+        Benchmark(64, 4096);
         GC.KeepAlive(sink);
         Console.WriteLine("PASS: host-only htop index equivalence, allocation and measured A/B; not kernel CPU/idle.");
         return 0;

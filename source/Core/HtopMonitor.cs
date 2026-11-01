@@ -132,7 +132,7 @@ namespace ZonderqOS.SystemCore
             ulong pageSize = MemoryInfo.PageSizeBytes;
             lines.Add("Mem: " + ((total - free) * pageSize / 1048576UL) + " / " + (total * pageSize / 1048576UL) + " MiB");
             ProcessManager.FillActiveProcesses(processes);
-            processIndex.Rebuild(processes);
+            processIndex.Rebuild(processes, SchedulerInfo.ThreadSlotCount);
             lines.Add("Processes: " + processes.Count + "  Threads: " + SchedulerInfo.ThreadCount);
             lines.Add("  PID    TID  CPU  STATE       CPU%  NAME");
 
@@ -207,9 +207,10 @@ namespace ZonderqOS.SystemCore
     }
 
     /// <summary>
-    /// Reusable index for htop's per-refresh thread/process join. The first
-    /// registered process for a TID wins, matching the old linear scan.
-    /// Clearing retains capacity, avoiding a new dictionary/HashSet each tick.
+    /// Reusable, adaptive index for htop's per-refresh thread/process join.
+    /// Small snapshots keep a linear TID lookup to avoid hash construction;
+    /// large joins use a dictionary. The first process for a TID wins.
+    /// Clearing retains capacity without per-refresh collections allocations.
     /// This is a display snapshot only; it does not change process ownership.
     /// </summary>
     internal sealed class HtopProcessIndex
@@ -217,14 +218,25 @@ namespace ZonderqOS.SystemCore
         private readonly Dictionary<uint, KernelProcess> byThread =
             new Dictionary<uint, KernelProcess>();
         private readonly HashSet<int> seenPids = new HashSet<int>();
+        private IReadOnlyList<KernelProcess> processes;
+        private bool useIndex;
 
-        internal void Rebuild(IReadOnlyList<KernelProcess> processes)
+        // Hashing a tiny process table is slower than scanning it. Select the
+        // indexed path only when the expected join work is large enough.
+        internal bool UsesDictionary => useIndex;
+
+        internal void Rebuild(IReadOnlyList<KernelProcess> snapshot, int threadSlots)
         {
+            processes = snapshot;
             byThread.Clear();
             seenPids.Clear();
-            for (int i = 0; i < processes.Count; i++)
+            useIndex = snapshot.Count >= 256 &&
+                (long)snapshot.Count * Math.Max(0, threadSlots) >= 131072;
+            if (!useIndex)
+                return;
+            for (int i = 0; i < snapshot.Count; i++)
             {
-                KernelProcess process = processes[i];
+                KernelProcess process = snapshot[i];
                 uint tid = process.KernelThreadId;
                 // Preserve the first match when two entries report one TID.
                 if (!byThread.ContainsKey(tid))
@@ -234,8 +246,25 @@ namespace ZonderqOS.SystemCore
 
         internal bool TryResolve(uint threadId, out KernelProcess process)
         {
-            if (!byThread.TryGetValue(threadId, out process))
-                return false;
+            if (useIndex)
+            {
+                if (!byThread.TryGetValue(threadId, out process))
+                    return false;
+            }
+            else
+            {
+                process = null;
+                for (int i = 0; i < processes.Count; i++)
+                {
+                    KernelProcess candidate = processes[i];
+                    if (candidate.KernelThreadId != threadId)
+                        continue;
+                    process = candidate;
+                    break;
+                }
+                if (process == null)
+                    return false;
+            }
             seenPids.Add(process.PID);
             return true;
         }
