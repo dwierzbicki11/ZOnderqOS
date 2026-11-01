@@ -302,6 +302,29 @@ class ModifiedKeySafetyTests(unittest.TestCase):
                     plain = not (control or alt or shift)
                     self.assertEqual(plain, not (control or alt or shift))
 
+    def test_file_manager_right_press_dismisses_menu_before_simultaneous_left(self):
+        text = source("source/GUI/Application/FileManagerApp.cs")
+        handler = text.split(
+            "public override void HandleMouse(int mouseX, int mouseY, bool left,", 1
+        )[1].split("private void ResetClickSequence()", 1)[0]
+        right = "if (right && !oldRight && dialogMode == 0 && contextMenuVisible)"
+        left = "if (left && !oldLeft && dialogMode == 0 && contextMenuVisible)"
+        self.assertIn(right, handler)
+        self.assertIn(left, handler)
+        self.assertLess(handler.index(right), handler.index(left))
+        right_branch = handler.split(right, 1)[1].split(left, 1)[0]
+        self.assertIn("contextMenuVisible = false;", right_branch)
+        self.assertIn("contextMenuSelection = -1;", right_branch)
+        self.assertIn("return;", right_branch)
+        self.assertNotIn("ContextClick(", right_branch)
+        self.assertNotIn("ExecuteContextAction(", right_branch)
+        # With both buttons freshly pressed, right-dismissal must win.
+        for left_pressed in (False, True):
+            for right_pressed in (False, True):
+                dismiss = right_pressed
+                activate = left_pressed and not right_pressed
+                self.assertFalse(dismiss and activate)
+
     def test_modifier_policy_for_destructive_actions(self):
         # Independent model of the intended key predicate, not a runtime test.
         for ctrl in (False, True):
