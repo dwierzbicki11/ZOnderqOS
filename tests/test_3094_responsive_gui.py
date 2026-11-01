@@ -2752,6 +2752,27 @@ class NarrowCaptionControls3095(unittest.TestCase):
         self.assertIn("int titleWidth = Width - visibleControls * ButtonSize - 28;", render)
         self.assertIn("if (titleWidth > 0)", render)
 
+    def test_tiny_height_never_exposes_caption_controls_or_draws_title_outside(self):
+        helper = WINDOW.split("private int VisibleCaptionControls()", 1)[1].split(
+            "public static void ConfigureDesktop(", 1)[0]
+        render = WINDOW.split("public override void Render(Canvas canvas)", 1)[1].split(
+            "private void DrawResizeHint(", 1)[0]
+        self.assertIn("if (Height < TitleBarHeight)", helper)
+        self.assertIn("if (Width >= 3 && Height >= TitleBarHeight)", render)
+        self.assertIn("if (Width >= 3 && Height > TitleBarHeight)", render)
+        self.assertIn("if (Height >= TitleBarHeight && titleWidth > 0)", render)
+        self.assertIn("focusProgress > 0f && Width > 24 && Height >= 4", render)
+        for width in (1, 24, 33, 34, 64, 93, 94, 320, 800, 1366, 1920):
+            for height in range(1, 220):
+                count = (0 if height < 38 or width - 4 < 30
+                         else min(3, (width - 4) // 30))
+                if height < 38:
+                    self.assertEqual(count, 0)
+                for i in range(count):
+                    left = width - 4 - (i + 1) * 30
+                    self.assertGreaterEqual(left, 0)
+                    self.assertLessEqual(left + 30, width)
+
     def test_all_caption_buttons_and_titles_fit_extreme_client_widths(self):
         # The rightmost Close button has priority. At tiny widths, hidden
         # Maximize/Minimize must not intercept clicks outside the window.
