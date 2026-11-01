@@ -147,6 +147,144 @@ internal static class Program
         }
     }
 
+    // Snapshot of the preceding performance-branch merge algorithm.
+    // Reuses scratch exactly like production did before the ordered-input gate.
+    // This is the A/B baseline, not the GUI branch's allocating sorter.
+    private static void PreviousPerfSort(List<ZonderqOS.GUI.Apps.FileEntry> entries,
+        ref ZonderqOS.GUI.Apps.FileEntry[] scratch)
+    {
+        int count = entries.Count;
+        if (count < 2) return;
+        if (scratch == null || scratch.Length < count)
+            scratch = new ZonderqOS.GUI.Apps.FileEntry[count];
+        bool sourceIsList = true;
+        int run = 1;
+        while (run < count)
+        {
+            int start = 0;
+            while (start < count)
+            {
+                int middle = start + Math.Min(run, count - start);
+                int end = middle + Math.Min(run, count - middle);
+                int left = start, right = middle, output = start;
+                while (left < middle && right < end)
+                {
+                    var a = sourceIsList ? entries[left] : scratch[left];
+                    var b = sourceIsList ? entries[right] : scratch[right];
+                    if (Compare(a, b) <= 0)
+                    {
+                        if (sourceIsList) scratch[output] = a;
+                        else entries[output] = a;
+                        left++;
+                    }
+                    else
+                    {
+                        if (sourceIsList) scratch[output] = b;
+                        else entries[output] = b;
+                        right++;
+                    }
+                    output++;
+                }
+                while (left < middle)
+                {
+                    var item = sourceIsList ? entries[left++] : scratch[left++];
+                    if (sourceIsList) scratch[output++] = item;
+                    else entries[output++] = item;
+                }
+                while (right < end)
+                {
+                    var item = sourceIsList ? entries[right++] : scratch[right++];
+                    if (sourceIsList) scratch[output++] = item;
+                    else entries[output++] = item;
+                }
+                start = end;
+            }
+            sourceIsList = !sourceIsList;
+            if (run >= count - run) break;
+            run *= 2;
+        }
+        if (!sourceIsList)
+            for (int i = 0; i < count; i++) entries[i] = scratch[i];
+        Array.Clear(scratch, 0, count);
+    }
+
+    private static void VerifyAlreadySortedFastPath()
+    {
+        var entries = new List<ZonderqOS.GUI.Apps.FileEntry>(Make(2048, 33095, false));
+        LegacySort(entries);
+        var references = entries.ToArray();
+        ZonderqOS.GUI.Apps.FileEntry[] scratch = null;
+        ZonderqOS.GUI.Apps.FileEntrySorter.Sort(entries, ref scratch);
+        Assert(scratch == null, "already sorted directory must not allocate scratch");
+        for (int i = 0; i < entries.Count; i++)
+            Assert(object.ReferenceEquals(entries[i], references[i]),
+                "ordered fast path changed stable reference at " + i);
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 64; i++)
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(entries, ref scratch);
+        long bytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        Assert(bytes == 0, "ordered fast path allocated " + bytes + " B");
+        Assert(scratch == null, "ordered fast path created a scratch array");
+        Console.WriteLine("PASS: 2048 ordered entries preserve references, scratch=null, 0 B warm allocations");
+    }
+
+    private static double TimedOrdered(bool optimized,
+        ZonderqOS.GUI.Apps.FileEntry[] source,
+        List<ZonderqOS.GUI.Apps.FileEntry> work,
+        ref ZonderqOS.GUI.Apps.FileEntry[] scratch)
+    {
+        const int repetitions = 8;
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repetitions; i++)
+        {
+            work.Clear();
+            work.AddRange(source);
+            if (optimized)
+                ZonderqOS.GUI.Apps.FileEntrySorter.Sort(work, ref scratch);
+            else
+                PreviousPerfSort(work, ref scratch);
+            sink += work[0].Name.Length;
+        }
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 /
+            Stopwatch.Frequency / repetitions;
+    }
+
+    private static void BenchmarkAlreadySorted()
+    {
+        var ordered = new List<ZonderqOS.GUI.Apps.FileEntry>(Make(2048, 44095, false));
+        LegacySort(ordered);
+        var source = ordered.ToArray();
+        var work = new List<ZonderqOS.GUI.Apps.FileEntry>(source.Length);
+        ZonderqOS.GUI.Apps.FileEntry[] oldScratch =
+            new ZonderqOS.GUI.Apps.FileEntry[source.Length];
+        ZonderqOS.GUI.Apps.FileEntry[] newScratch = null;
+        for (int i = 0; i < 8; i++)
+        {
+            TimedOrdered(false, source, work, ref oldScratch);
+            TimedOrdered(true, source, work, ref newScratch);
+        }
+        double[] before = new double[7], after = new double[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if ((i & 1) == 0)
+            {
+                before[i] = TimedOrdered(false, source, work, ref oldScratch);
+                after[i] = TimedOrdered(true, source, work, ref newScratch);
+            }
+            else
+            {
+                after[i] = TimedOrdered(true, source, work, ref newScratch);
+                before[i] = TimedOrdered(false, source, work, ref oldScratch);
+            }
+        }
+        Assert(newScratch == null, "ordered benchmark allocated scratch");
+        double a = Median(before), b = Median(after);
+        Console.WriteLine("HOST A/B ordered directory n=2048 previous-merge=" +
+            a.ToString("F4") + " ms ordered-gate=" + b.ToString("F4") +
+            " ms ratio=" + (a / b).ToString("F2") +
+            "x (7 alternating samples, same entries and reused lists; not FAT32 I/O)");
+    }
+
     private static void BenchmarkGuiBranch(int n)
     {
         var source = Make(n, 2026 + n, false);
@@ -346,6 +484,8 @@ internal static class Program
         IconResolverSmoke.Run();
         PathMatcherSmoke.Run();
         VerifyFilter();
+        VerifyAlreadySortedFastPath();
+        BenchmarkAlreadySorted();
         BenchmarkFilter();
         Benchmark(32, true);
         Benchmark(128, false);
