@@ -88,8 +88,23 @@ def format_report(path):
     lines = [f"[AUDIO-QUEUE-DIAG] {rate}Hz frames={frames} right_offset={offset:.1f}ms (diagnostic, not PASS)"]
     for name, (active, longest) in windows.items():
         lines.append(f"[AUDIO-QUEUE-DIAG] {name}: active={active:.2%} longest_silence={longest:.1f}ms")
-    if windows["left-last"][0] < 0.85:
-        lines.append("[AUDIO-QUEUE-DIAG] WARN last effect incomplete; possible HDA DMA refill/TCG underrun, not proven ISR failure")
+    # Report all three active windows, not only the final left clip.
+    # The experimental QEMU -icount capture has shown an incomplete FIRST
+    # clip while the normal clock passed, so a last-only warning misses it.
+    for key, label in (
+        ("left-first", "first left effect"),
+        ("right-effect", "right effect"),
+        ("left-last", "last effect"),
+    ):
+        if windows[key][0] < 0.85:
+            lines.append(
+                f"[AUDIO-QUEUE-DIAG] WARN {label} incomplete; "
+                "possible HDA DMA refill/TCG underrun, not proven ISR failure"
+            )
+    if not 45.0 <= offset <= 55.0:
+        lines.append("[AUDIO-QUEUE-DIAG] WARN right onset outside expected 50ms +/-5ms")
+    if windows["left-gap"][0] > 0.08:
+        lines.append("[AUDIO-QUEUE-DIAG] WARN left channel active in scheduled gap")
     if windows["right-after-end"][0] > 0.08:
         lines.append("[AUDIO-QUEUE-DIAG] WARN right-channel PCM persists beyond scheduled end")
     if windows["left-after-end"][0] > 0.08:
