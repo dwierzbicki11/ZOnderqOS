@@ -145,6 +145,149 @@ internal static class TextRangeNumberVisibilitySmoke
             "partial framebuffer comparisons.");
     }
 
+
+    // Exact pre-change DrawUInt (including its clipped-digit division loop).
+    // Benchmark A/B therefore compares two implementations on the same host
+    // and the same Canvas; it is not a kernel FPS or CPU-idle measurement.
+    private static void BeforeSkipUInt(Canvas canvas, ulong value, int x, int y, Color color)
+    {
+        int digits = 1;
+        ulong remaining = value;
+        while (remaining >= 10)
+        {
+            remaining /= 10;
+            digits++;
+        }
+        if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
+            (long)x + (long)digits * 6 <= 0 || (long)y + 7 <= 0)
+            return;
+        int first = 0;
+        int last = digits;
+        bool partiallyClipped = x < -4 || (long)x + (long)digits * 6 > canvas.Width;
+        if (partiallyClipped)
+        {
+            if (x < -4)
+            {
+                long skip = (-(long)x + 1) / 6;
+                if (skip >= digits)
+                    return;
+                first = (int)skip;
+            }
+            long visibleEnd = ((long)canvas.Width - x + 5) / 6;
+            if (visibleEnd < last)
+                last = (int)visibleEnd;
+        }
+        ulong divisor = 1;
+        for (int i = 1; i < digits; i++)
+            divisor *= 10;
+        for (int i = 0; i < digits; i++)
+        {
+            ulong digit = divisor == 0 ? 0 : value / divisor;
+            if (!partiallyClipped || (i >= first && i < last))
+                DrawChar(canvas, (char)('0' + (int)digit), x + i * 6, y, color);
+            if (divisor > 1)
+            {
+                value %= divisor;
+                divisor /= 10;
+            }
+            else
+                divisor = 0;
+        }
+    }
+
+    private static double TimeSkippedDigits(bool optimized, Canvas frame, int x, int repeats)
+    {
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repeats; i++)
+        {
+            if (optimized)
+                SmallTextRenderer.DrawUInt(frame, ulong.MaxValue, x, 0, Color.White);
+            else
+                BeforeSkipUInt(frame, ulong.MaxValue, x, 0, Color.White);
+        }
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
+    private static void VerifySkippedDigits()
+    {
+        ulong[] values = { 0, 1, 9, 10, 42, 999, 1000, 12345678901234567890UL, ulong.MaxValue };
+        int[] widths = { 5, 24, 128, 256 };
+        int[] offsets = { int.MinValue, -130, -120, -100, -40, -20, -5, -4, -1,
+            0, 7, 24, 127, 256, int.MaxValue };
+        int checks = 0;
+        foreach (ulong value in values)
+            foreach (int width in widths)
+                foreach (int x in offsets)
+                {
+                    Canvas baseline = new Canvas(width, 16);
+                    Canvas optimized = new Canvas(width, 16);
+                    BeforeSkipUInt(baseline, value, x, 0, Color.White);
+                    SmallTextRenderer.DrawUInt(optimized, value, x, 0, Color.White);
+                    Compare(baseline, optimized, "skipped digits " + value + "/" + width + "/" + x);
+                    checks++;
+                }
+
+        // Deterministic additional 64-bit values, including 20-digit numbers.
+        ulong seed = 0x9E3779B97F4A7C15UL;
+        for (int i = 0; i < 256; i++)
+        {
+            seed = unchecked(seed * 6364136223846793005UL + 1442695040888963407UL);
+            int x = -120 + i % 145;
+            Canvas baseline = new Canvas(48, 16);
+            Canvas optimized = new Canvas(48, 16);
+            BeforeSkipUInt(baseline, seed, x, 0, Color.White);
+            SmallTextRenderer.DrawUInt(optimized, seed, x, 0, Color.White);
+            Compare(baseline, optimized, "random skipped digits " + i);
+            checks++;
+        }
+
+        Canvas allocationFrame = new Canvas(24, 16);
+        for (int i = 0; i < 100; i++)
+            SmallTextRenderer.DrawUInt(allocationFrame, ulong.MaxValue, 0, 0, Color.White);
+        long beforeAlloc = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++)
+            SmallTextRenderer.DrawUInt(allocationFrame, ulong.MaxValue, 0, 0, Color.White);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - beforeAlloc;
+        if (allocated != 0)
+            throw new Exception("Clipped numeric renderer allocated " + allocated + " B");
+
+        // Each A/B scenario is warmed up and alternates measurement order.
+        foreach (int scenario in new[] { 0, 1, 2 })
+        {
+            int width = scenario == 0 ? 24 : scenario == 1 ? 128 : 256;
+            int x = scenario == 1 ? -100 : 0;
+            Canvas beforeFrame = new Canvas(width, 16);
+            Canvas afterFrame = new Canvas(width, 16);
+            TimeSkippedDigits(false, beforeFrame, x, 1000);
+            TimeSkippedDigits(true, afterFrame, x, 1000);
+            const int repetitions = 100000;
+            double[] before = new double[5];
+            double[] after = new double[5];
+            for (int sample = 0; sample < 5; sample++)
+            {
+                if ((sample & 1) == 0)
+                {
+                    before[sample] = TimeSkippedDigits(false, beforeFrame, x, repetitions);
+                    after[sample] = TimeSkippedDigits(true, afterFrame, x, repetitions);
+                }
+                else
+                {
+                    after[sample] = TimeSkippedDigits(true, afterFrame, x, repetitions);
+                    before[sample] = TimeSkippedDigits(false, beforeFrame, x, repetitions);
+                }
+            }
+            Compare(beforeFrame, afterFrame, "benchmark clipped digits " + scenario);
+            Array.Sort(before);
+            Array.Sort(after);
+            Console.WriteLine("Host .NET numeric digit skip " + (scenario == 0 ? "right clipped" :
+                scenario == 1 ? "left clipped" : "fully visible") + ": " + repetitions +
+                " calls, median 5 alternating A/B; before " + before[2].ToString("F2") +
+                " ms, after " + after[2].ToString("F2") + " ms (not QEMU FPS).");
+        }
+        Console.WriteLine("Numeric skip: " + checks +
+            " exact framebuffers and call counts; 1000 calls = 0 B allocated.");
+    }
+
     private static void VerifyOffscreen()
     {
         const string text = "ZonderqOS task manager memory and filesystem";
@@ -256,6 +399,7 @@ internal static class TextRangeNumberVisibilitySmoke
     {
         VerifyVisible();
         VerifyOffscreen();
+        VerifySkippedDigits();
         string text = new string('X', 160);
         Benchmark("offscreen DrawRange", (optimized, canvas, iterations) =>
             TimeRange(optimized, canvas, text, iterations, 128));

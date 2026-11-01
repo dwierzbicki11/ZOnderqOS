@@ -100,12 +100,21 @@ namespace ZonderqOS.GUI
                     last = (int)visibleEnd;
             }
 
-            ulong divisor = Pow10(digits - 1);
-            for (int i = 0; i < digits; i++)
+            if (last <= first)
+                return;
+
+            // Jump over completely hidden leading digits without decoding
+            // them. When first > 0, digits - first <= 19, so Pow10 fits
+            // ulong even when rendering the full 20-digit ulong.MaxValue.
+            if (first > 0)
+                value %= Pow10(digits - first);
+            ulong divisor = Pow10(digits - first - 1);
+            // Stop at the last visible digit instead of dividing/modulo
+            // through the entire invisible tail of a clipped numeric label.
+            for (int i = first; i < last; i++)
             {
-                ulong digit = divisor == 0 ? 0 : value / divisor;
-                if (!partiallyClipped || (i >= first && i < last))
-                    DrawChar(canvas, (char)('0' + (int)digit), x + i * 6, y, color);
+                ulong digit = value / divisor;
+                DrawChar(canvas, (char)('0' + (int)digit), x + i * 6, y, color);
                 if (divisor > 1)
                 {
                     value %= divisor;

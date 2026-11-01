@@ -55,8 +55,44 @@ class TextRangeVisibilityContracts(unittest.TestCase):
             "public static void DrawInt(", 1)[0]
         self.assertIn("bool partiallyClipped =", numeric)
         self.assertIn("if (skip >= digits)", numeric)
-        self.assertIn("if (!partiallyClipped || (i >= first && i < last))", numeric)
+        self.assertIn("if (first > 0)", numeric)
+        self.assertIn("value %= Pow10(digits - first);", numeric)
+        self.assertIn("ulong divisor = Pow10(digits - first - 1);", numeric)
+        self.assertIn("for (int i = first; i < last; i++)", numeric)
+        self.assertIn("if (last <= first)", numeric)
+        self.assertNotIn("for (int i = 0; i < digits; i++)", numeric)
         self.assertIn("DrawChar(canvas, (char)('0' + (int)digit)", numeric)
+
+
+    def test_numeric_digit_skip_matches_decimal_baseline(self):
+        values = [0, 1, 9, 10, 42, 999, 1000,
+                  12345678901234567890, 2**64 - 1]
+        widths = (1, 5, 6, 24, 128, 256)
+        xs = list(range(-125, 131)) + [-2**31, 2**31 - 1]
+        for value in values:
+            s = str(value)
+            digits = len(s)
+            for width in widths:
+                for x in xs:
+                    expected = [(i, int(ch)) for i, ch in enumerate(s)
+                                if x + i * 6 + 4 >= 0 and x + i * 6 < width]
+                    if x >= width or x + digits * 6 <= 0:
+                        actual = []
+                    else:
+                        first = max(0, (-x + 1) // 6) if x < -4 else 0
+                        last = min(digits, (width - x + 5) // 6)
+                        actual = []
+                        if last > first:
+                            remainder = value % 10**(digits - first) if first else value
+                            divisor = 10**(digits - first - 1)
+                            for i in range(first, last):
+                                actual.append((i, remainder // divisor))
+                                if divisor > 1:
+                                    remainder %= divisor
+                                    divisor //= 10
+                                else:
+                                    divisor = 0
+                    self.assertEqual(actual, expected, (value, width, x))
 
     def test_signed_numbers_cull_before_drawing_minus(self):
         signed = SOURCE.split("public static void DrawInt(Canvas", 1)[1].split(
