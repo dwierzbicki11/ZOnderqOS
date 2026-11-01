@@ -66,6 +66,23 @@ namespace ZonderqOS.GUI
                 return false;
             }
 
+            try
+            {
+                return TryPasteCore(destinationDirectory, out destinationPath, out error);
+            }
+            catch (Exception ex)
+            {
+                // Preflight (including permission storage and path handling) can
+                // fail before a destination is selected. Keep the clipboard intact.
+                error = "Paste preparation failed: " + ex.Message;
+                return false;
+            }
+        }
+
+        private static bool TryPasteCore(string destinationDirectory, out string destinationPath, out string error)
+        {
+            destinationPath = null;
+            error = null;
             string source = Normalize(sourcePath);
             string destinationRoot = Normalize(destinationDirectory);
             string user = SecurityContext.CurrentUser ?? "root";
@@ -328,10 +345,10 @@ namespace ZonderqOS.GUI
             if (string.IsNullOrEmpty(path))
                 return path;
 
-            string normalized = path.Replace('\\', '/');
-            while (normalized.Length > 1 && normalized.EndsWith("/", StringComparison.Ordinal))
-                normalized = normalized.Substring(0, normalized.Length - 1);
-            return normalized;
+            // Use the same lexical POSIX normalization as the shell before
+            // checking home/read-only boundaries or folder ancestry. This also
+            // ensures permission keys and I/O refer to the same resolved path.
+            return PathResolver.GetAbsolutePath("/", path.Replace('\\', '/'));
         }
 
     }

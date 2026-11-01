@@ -28,6 +28,53 @@ class Program
             Console.WriteLine("PASS " + name); passed++;
         } finally { Faults.Reset(); IODirectory.Delete(root,true); }
     }
+    static void PathChecks()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "clipboard-path-" + Guid.NewGuid());
+        string source = Path.Combine(root, "source"), target = Path.Combine(root, "target");
+        IODirectory.CreateDirectory(source); IODirectory.CreateDirectory(target);
+        IOFile.WriteAllText(Path.Combine(source, "a"), "A");
+        try {
+            Faults.Reset(); FileClipboard.Set(source, true, false);
+            // Lexically outside source, but resolves to source. Never start recursion.
+            Faults.ForbidCopy = true;
+            bool ok = FileClipboard.TryPaste(target + "/../source", out string path, out string error);
+            Check(!ok && path == null && error == "Cannot paste a folder inside itself" && Faults.Copies == 0,
+                "dot-dot self-copy was not rejected before I/O");
+            Console.WriteLine("PASS canonical self-copy rejection"); passed++;
+
+            Faults.Reset(); FileClipboard.Set(source + "/./a", false, true);
+            ok = FileClipboard.TryPaste(source + "//", out path, out error);
+            Check(!ok && path == null && IOFile.Exists(Path.Combine(source,"a")) && !IOFile.Exists(Path.Combine(source,"a - Copy")), "same-location alias moved source");
+            Console.WriteLine("PASS same-location aliases do not rename"); passed++;
+
+            Faults.Reset(); SecurityContext.CurrentUser = "test"; UserManager.Home = target;
+            FileClipboard.Set(Path.Combine(source,"a"), false, false);
+            ok = FileClipboard.TryPaste(target + "/../source", out path, out error);
+            Check(!ok && path == null && error.Contains("outside user home"), "dot-dot escaped home policy");
+            Console.WriteLine("PASS canonical home boundary"); passed++;
+
+            Faults.Reset(); SecurityContext.CurrentUser = "root";
+            VirtualFs.ReadOnlyRoot = source;
+            FileClipboard.Set(target + "/../source/a", false, false);
+            ok = FileClipboard.TryPaste(target, out path, out error);
+            Check(!ok && path == null && error == "Read-only virtual filesystem", "alias bypassed read-only policy");
+            Console.WriteLine("PASS canonical read-only boundary"); passed++;
+
+            Faults.Reset(); FileClipboard.Set(Path.Combine(source,"a"), false, false);
+            Faults.ThrowAccess = true;
+            ok = FileClipboard.TryPaste(target, out path, out error);
+            Check(!ok && path == null && error.Contains("Permission store unavailable") && FileClipboard.HasItem,
+                "preflight failure not reported safely");
+            Console.WriteLine("PASS permission preflight exception contained"); passed++;
+
+            Faults.Reset(); FileClipboard.Set(source + "/./a", false, false);
+            ok = FileClipboard.TryPaste(target + "/../target//", out path, out error);
+            Check(ok && path == Path.Combine(target,"a") && IOFile.ReadAllText(path) == "A", "valid normalized copy failed");
+            Console.WriteLine("PASS normalized copy succeeds"); passed++;
+        } finally { Faults.Reset(); FileClipboard.Clear(); IODirectory.Delete(root,true); }
+    }
+
     static void Main()
     {
         Run("permission failure after native move preserves only copy", false,true,
@@ -56,6 +103,7 @@ class Program
             (s,d,ok,p,e) => Check(ok && !IODirectory.Exists(s) && IOFile.ReadAllText(Path.Combine(d,"b"))=="B" && !FileClipboard.HasItem,"fallback failed"));
         Run("copy permission failure retains completed data",false,false,(s,d)=>Faults.PermissionFailure=true,
             (s,d,ok,p,e) => Check(!ok && IOFile.Exists(s) && IOFile.Exists(d),"copy removed after metadata failure"));
+        PathChecks();
         Console.WriteLine(passed + " clipboard checks passed");
     }
 }
@@ -63,16 +111,18 @@ namespace ZonderqOS.GUI
 {
     static class Faults
     {
+        public static bool ForbidCopy,ThrowAccess;
         public static bool RejectMove,ThrowAfterMove,PermissionFailure,PartialCopy,Collision;
         public static string PartialDelete,DeleteFailure;
         public static int Copies;
-        public static void Reset() { RejectMove=ThrowAfterMove=PermissionFailure=PartialCopy=Collision=false; PartialDelete=DeleteFailure=null; Copies=0; }
+        public static void Reset() { RejectMove=ThrowAfterMove=PermissionFailure=PartialCopy=Collision=false; PartialDelete=DeleteFailure=null; Copies=0; ForbidCopy=ThrowAccess=false; SecurityContext.CurrentUser="root"; UserManager.Home=null; VirtualFs.ReadOnlyRoot=null; }
     }
     static class File
     {
         public static bool Exists(string p)=>IOFile.Exists(p);
         public static void Copy(string s,string d) {
             Faults.Copies++;
+            if(Faults.ForbidCopy) throw new IOException("Unexpected recursive copy");
             if(Faults.Collision) IOFile.WriteAllText(d,"other writer");
             if(Faults.PartialCopy) { IOFile.WriteAllText(d,"partial"); throw new IOException("Full disk"); }
             IOFile.Copy(s,d);
@@ -100,12 +150,12 @@ namespace ZonderqOS.GUI
 namespace ZonderqOS.SystemCore
 {
     static class SecurityContext { public static string CurrentUser="root"; }
-    static class VirtualFs { public static bool IsReadOnlyPath(string p)=>false; }
-    static class UserManager { public static string GetHomeDirectory(string u)=>"/home/"+u; }
+    static class VirtualFs { public static string ReadOnlyRoot; public static bool IsReadOnlyPath(string p)=>ReadOnlyRoot != null && (p == ReadOnlyRoot || p.StartsWith(ReadOnlyRoot + "/")); }
+    static class UserManager { public static string Home; public static string GetHomeDirectory(string u)=>Home ?? "/home/"+u; }
     static class SecurityLogger { public static void LogEvent(string l,string m) {} }
     static class PermissionManager
     {
-        public static bool CanRead(string p,string u)=>true;
+        public static bool CanRead(string p,string u) { if(Faults.ThrowAccess) throw new IOException("Permission store unavailable"); return true; }
         public static bool CanWrite(string p,string u)=>true;
         public static void MovePermissionsUnder(string s,string d) { if(Faults.PermissionFailure) throw new IOException("Permission metadata write failed"); }
         public static void CopyPermissionsUnder(string s,string d,string u) { if(Faults.PermissionFailure) throw new IOException("Permission metadata write failed"); }
