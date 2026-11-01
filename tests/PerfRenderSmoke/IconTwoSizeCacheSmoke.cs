@@ -39,6 +39,8 @@ internal static class IconTwoSizeCacheSmoke
             .CreateDelegate(typeof(Action<Canvas, int[], int, int, int, int>));
     private static readonly FieldInfo Count = Manager
         .GetField("scaledCacheCount", BindingFlags.Static | BindingFlags.NonPublic);
+    private static readonly FieldInfo Eviction = Manager
+        .GetField("nextScaledEvictionSlot", BindingFlags.Static | BindingFlags.NonPublic);
 
     private const int WidthA = 79;
     private const int HeightA = 73;
@@ -51,6 +53,18 @@ internal static class IconTwoSizeCacheSmoke
             if (Types[i] == type && Widths[i] == width && Heights[i] == height)
                 return i;
         return -1;
+    }
+
+    // Faithful old single-recent-slot hit/miss lookup, kept outside the timed
+    // loop so its method-call overhead is not unfairly omitted.
+    private static int[] OldLookup(IconType type, int width, int height,
+        int count, ref int recent)
+    {
+        if (recent >= 0 && recent < count && Types[recent] == type &&
+            Widths[recent] == width && Heights[recent] == height)
+            return Pixels[recent];
+        recent = FindSlot(type, width, height, count);
+        return recent < 0 ? null : Pixels[recent];
     }
 
     private static double Time(bool optimized, IconType type, int[] source,
@@ -71,10 +85,7 @@ internal static class IconTwoSizeCacheSmoke
             }
             else
             {
-                if (oldRecent < 0 || Types[oldRecent] != type ||
-                    Widths[oldRecent] != width || Heights[oldRecent] != height)
-                    oldRecent = FindSlot(type, width, height, count);
-                pixels = oldRecent < 0 ? null : Pixels[oldRecent];
+                pixels = OldLookup(type, width, height, count, ref oldRecent);
             }
             if (pixels == null || pixels.Length != width * height)
                 throw new Exception("Alternating-size lookup returned invalid pixels");
@@ -169,6 +180,35 @@ internal static class IconTwoSizeCacheSmoke
             !object.ReferenceEquals(b, GetScaled(type, source, 8, 8, WidthB, HeightB)))
             throw new Exception("Stale two-size hints returned the wrong bitmap");
 
+        Benchmark(type, source, count, "early cache slots");
+
+        // Exercise the same workload with the two sizes at the END of a
+        // saturated cache. Both positions occur with FIFO slot recycling.
+        // Report both: a tiny early linear scan can beat the extra hint check,
+        // while late-slot scans are the actual target of this optimization.
+        int oldEviction = (int)Eviction.GetValue(null);
+        try
+        {
+            Eviction.SetValue(null, 254);
+            IconType lateType = IconType.FileDocx;
+            int[] lateA = GetScaled(lateType, source, 8, 8, WidthA, HeightA);
+            int[] lateB = GetScaled(lateType, source, 8, 8, WidthB, HeightB);
+            if (lateA == null || lateB == null ||
+                FindSlot(lateType, WidthA, HeightA, count) < 254 ||
+                FindSlot(lateType, WidthB, HeightB, count) < 254)
+                throw new Exception("Could not seed late-slot cache benchmark");
+            Benchmark(lateType, source, count, "late cache slots");
+        }
+        finally
+        {
+            Eviction.SetValue(null, oldEviction);
+        }
+        Console.WriteLine("Two-size icon cache: 2000 identity checks, 16 exact framebuffers, stale-hint recovery, " +
+            "2000 warmed calls with " + allocated + " B allocations.");
+    }
+
+    private static void Benchmark(IconType type, int[] source, int count, string label)
+    {
         Time(false, type, source, count, 1000);
         Time(true, type, source, count, 1000);
         const int repeats = 100000;
@@ -189,9 +229,7 @@ internal static class IconTwoSizeCacheSmoke
         }
         Array.Sort(before);
         Array.Sort(after);
-        Console.WriteLine("Two-size icon cache: 2000 identity checks, 16 exact framebuffers, stale-hint recovery, " +
-            "2000 warmed calls with " + allocated + " B allocations.");
-        Console.WriteLine("Host .NET alternating icon sizes: " + repeats +
+        Console.WriteLine("Host .NET alternating icon sizes (" + label + "): " + repeats +
             " lookups, median of 5 alternating A/B; old single-slot " +
             before[2].ToString("F2") + " ms, production two-slot " +
             after[2].ToString("F2") + " ms (not QEMU FPS).");
