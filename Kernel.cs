@@ -261,6 +261,12 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "mixdelay")
+            {
+                AudioRuntimeDiagnostics.PlayDelayedMixedTestTone();
+                return;
+            }
+
             if (command == "wavtone")
             {
                 AudioRuntimeDiagnostics.PlayWaveTestTone();
