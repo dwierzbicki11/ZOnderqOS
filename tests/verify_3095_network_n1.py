@@ -75,8 +75,12 @@ def pcap_frames(data: bytes):
             endian + "IIII", data[offset:offset + 16]
         )
         offset += 16
-        if captured > snaplen or original < captured or captured > 65535:
-            raise ValueError("invalid PCAP record length")
+        # A truncated snapshot can contain a valid-looking header and proof
+        # payload while concealing the remainder of a damaged Ethernet frame.
+        # QEMU filter-dump is configured for complete frames: reject partial
+        # records instead of treating them as successful TX/RX evidence.
+        if captured > snaplen or captured != original or captured < 14 or captured > 65535:
+            raise ValueError("truncated or invalid Ethernet PCAP record")
         if offset + captured > len(data):
             raise ValueError("truncated PCAP frame")
         yield data[offset:offset + captured]
@@ -145,6 +149,9 @@ def self_test() -> None:
         synthetic_pcap(frame[:12] + b"\x08\x00" + frame[14:]),
         good[:20] + b"\x00\x00\x00\x00" + good[24:],
         good + b"\x00",  # Corrupt tail after an otherwise matching frame.
+        good[:24] + struct.pack("<IIII", 1, 0, len(frame), len(frame) + 4) + frame,
+        good + struct.pack("<IIII", 2, 0, 0, 0),
+        good + struct.pack("<IIII", 2, 0, 13, 13) + frame[:13],
     ]
     for data in bad_pcap:
         try:

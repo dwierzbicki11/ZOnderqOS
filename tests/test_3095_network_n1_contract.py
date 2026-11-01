@@ -63,6 +63,8 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('-smp 1', SMOKE)
         self.assertIn('-device e1000e,netdev=net0', SMOKE)
         self.assertIn('tests/verify_3095_network_n1.py', SMOKE)
+        self.assertIn('captured != original',
+                      (ROOT / 'tests/verify_3095_network_n1.py').read_text())
         self.assertIn('sleep 8', SMOKE)
         self.assertIn('filter-dump', SMOKE)
         self.assertIn('Refusing to overwrite existing evidence', SMOKE)
