@@ -194,21 +194,21 @@ def self_test() -> None:
     # Replay the exact scheduler-only splice seen in real N5 serial evidence.
     torn_sched = serial.replace(
         PING_PASS,
-        "[NET3095-N3] ICMP=PASS from=10[SCHED] Tick 6 enabled=1\\n.0.2.2",
+        "[NET3095-N3] ICMP=PASS from=10[SCHED] Tick 6 enabled=1\n.0.2.2",
     )
     assert "PASS" in validate(torn_sched, synthetic_capture(frames))
     # A tick can split any part of the marker, not only 'from=10'.
     for marker in (PING_START, PING_PASS):
         for offset in range(len("[NET3095-N3"), len(marker)):
-            split = (marker[:offset] + "[SCHED] Tick 6 enabled=1\\n" +
+            split = (marker[:offset] + "[SCHED] Tick 6 enabled=1\n" +
                      marker[offset:])
             assert "PASS" in validate(
                 serial.replace(marker, split), synthetic_capture(frames))
     bad = [
         (torn_sched.replace("Tick 6", "Tick not-a-number"), frames),
         (torn_sched.replace("enabled=1", "enabled=2"), frames),
-        (torn_sched.replace("\\n.0.2.2", "\\n.0.2.3"), frames),
-        (torn_sched + "\\n" + PING_PASS, frames),
+        (torn_sched.replace("\n.0.2.2", "\n.0.2.3"), frames),
+        (torn_sched + "\n" + PING_PASS, frames),
         (torn_start.replace("[SCHED] Tick 5", "[SCHED] Tick 6"), frames),
         (torn_start.replace("RSP=FFFF80007F5C0BA0", "RSP=NOTHEX"), frames),
         (torn_start.replace("] ICMP_ATTEMPT=START", "] ICMP_ATTEMPT=OTHER"), frames),
