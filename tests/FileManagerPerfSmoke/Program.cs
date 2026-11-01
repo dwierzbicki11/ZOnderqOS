@@ -344,6 +344,7 @@ internal static class Program
     {
         Verify();
         IconResolverSmoke.Run();
+        PathMatcherSmoke.Run();
         VerifyFilter();
         BenchmarkFilter();
         Benchmark(32, true);
