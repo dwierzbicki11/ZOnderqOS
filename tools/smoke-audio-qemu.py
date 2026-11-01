@@ -132,7 +132,7 @@ class Qmp:
     def type_line(self, line):
         for character in line + "\n":
             # QMP QKeyCode calls the space key "spc", not the literal " ".
-            key = "ret" if character == "\n" else "spc" if character == " " else character
+            key = "ret" if character == "\n" else "spc" if character == " " else "minus" if character == "-" else character
             for down in (True, False):
                 self.execute("input-send-event", {"events": [
                     {"type": "key", "data": {"down": down, "key": {"type": "qcode", "data": key}}}
