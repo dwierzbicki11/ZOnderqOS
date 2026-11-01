@@ -873,10 +873,12 @@ namespace ZonderqOS.GUI.Apps
         private int ListHeightForView => Math.Max(0, Height - ListTopForView - FooterHeight - 6);
         private int TableRowWidthForView => Width - SidebarWidth - 12 - ScrollReserve;
         public int VisibleRows => ListHeightForView / RowHeight;
-        // Both a complete row and a drawable table column are required.
-        // An offscreen selected task must never be actionable by Delete.
+        // A complete row needs enough width for the Details page's
+        // 52px PID/name offset plus at least one clipped name glyph.
+        // Below 60px the old renderer painted outside the row while its
+        // invisible selection remained actionable by Delete.
         internal bool HasPaintedProcessRows => VisibleRows > 0 &&
-            TableRowWidthForView > 4;
+            TableRowWidthForView >= 60;
 
         public int NavAt(int x, int y)
         {
