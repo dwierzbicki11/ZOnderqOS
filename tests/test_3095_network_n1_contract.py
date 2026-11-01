@@ -243,10 +243,11 @@ class NetworkN1Isolation(unittest.TestCase):
         health = (ROOT / 'tests/verify_3095_e1000e_irq_binding.py').read_text()
         for token in (
             'DriverDiagnostics.TryGetNode(i, out var node)',
-            'candidate.State != DeviceNodeState.Bound',
-            'candidate.FaultCount != 0',
-            'candidate.PublishedDeviceCount != 1',
-            'candidate.InterruptCount < 1',
+            'candidate.State == DeviceNodeState.Bound',
+            'candidate.FaultCount == 0',
+            'candidate.HeldResourceCount >= 1',
+            'candidate.PublishedDeviceCount == 1',
+            'candidate.InterruptCount >= 1',
             'handler_faults=0 isr_executions=unknown',
             'if (!CheckE1000EDriverKitHealth(baselineResources, baselineIrqSources))',
         ):
