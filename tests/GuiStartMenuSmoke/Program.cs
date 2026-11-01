@@ -345,6 +345,28 @@ internal static class Program
         Check(extra == 1, "keyboard reaches and launches a partial last page");
     }
 
+    private static void TinySelectionAfterResize()
+    {
+        var menu = MakeMenu(304, 180);
+        for (int i = 0; i < 3; i++)
+            menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.DownArrow });
+        menu.Width = 184; // Three visible tiles become two after mode change.
+        menu.Render(Canvas);
+        var pins = Buttons(menu, "pinnedButtons");
+        Check(pins[0].Visible && pins[1].Visible && !pins[2].Visible,
+            "resized tiny viewport hides the old third tile");
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
+        Check(pinned[1] == 1 && pinned[2] == 0,
+            "Enter uses a visible selected tile after shrinking the viewport");
+
+        menu.Visible = true;
+        menu.ResetSearch();
+        menu.Height = 140; // No full tile fits; keyboard must not launch one.
+        menu.Render(Canvas);
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
+        CheckSingleAction(1, 0, 0);
+    }
+
     private static void Normal640x480()
     {
         var menu = MakeMenu(480, 420);
@@ -368,6 +390,7 @@ internal static class Program
         NarrowTall();
         Normal640x480();
         TinyKeyboardCrossPage();
+        TinySelectionAfterResize();
         Console.WriteLine("PASS: " + assertions + " production StartMenu/Button C# assertions");
         return 0;
     }

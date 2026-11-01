@@ -347,6 +347,15 @@ namespace ZonderqOS.GUI
                 }
             }
 
+            // A resolution change can shrink the page from three columns
+            // to two (or remove the last row). Never retain keyboard focus
+            // on a tile that was just hidden by the new viewport.
+            int visibleResults = Math.Min(capacity, Math.Max(0, total - tinyFirstResult));
+            if (visibleResults == 0)
+                selectedResult = -1;
+            else if (selectedResult >= visibleResults)
+                selectedResult = visibleResults - 1;
+
             // Keep the four session actions separate and fully inside the
             // panel. On impossibly narrow firmware modes hide them rather
             // than exposing invisible/overlapping power hitboxes.
