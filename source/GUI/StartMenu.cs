@@ -356,17 +356,23 @@ namespace ZonderqOS.GUI
             int width = Math.Max(1, (Width - Padding * 2 - 3 * gap) / 4);
             int right = X + Width - Padding;
             int y = Y + Height - TinyFooterHeight + 6;
-            Button[] power = { shutdownButton, rebootButton, exitButton, lockButton };
-            for (int i = 0; i < power.Length; i++)
-            {
-                Button button = power[i];
-                if (button == null)
-                    continue;
-                button.X = right - (i + 1) * width - i * gap;
-                button.Y = y;
-                button.Width = width;
-                button.Height = 36;
-            }
+            // Layout runs on every render and pointer event. Do not allocate
+            // a temporary Button[] on the hot GUI path.
+            PlaceTinyPower(shutdownButton, 0, width, gap, right, y);
+            PlaceTinyPower(rebootButton, 1, width, gap, right, y);
+            PlaceTinyPower(exitButton, 2, width, gap, right, y);
+            PlaceTinyPower(lockButton, 3, width, gap, right, y);
+        }
+
+        private static void PlaceTinyPower(Button button, int index, int width,
+            int gap, int right, int y)
+        {
+            if (button == null)
+                return;
+            button.X = right - (index + 1) * width - index * gap;
+            button.Y = y;
+            button.Width = width;
+            button.Height = 36;
         }
 
         public override void Render(Canvas canvas)
