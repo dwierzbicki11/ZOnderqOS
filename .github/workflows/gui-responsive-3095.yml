@@ -8,6 +8,7 @@ on:
       - 'tests/test_3094_responsive_gui.py'
       - 'tests/GuiScrollBarSmoke/**'
       - 'tests/GuiWindowInputSmoke/**'
+      - 'tests/GuiApplicationManagerSmoke/**'
       - 'tests/GuiStartMenuSmoke/**'
       - 'tests/GuiTaskbarTelemetrySmoke/**'
       - 'tests/test_gui_modified_keys.py'
@@ -56,6 +57,8 @@ jobs:
         run: dotnet run --project tests/GuiScrollBarSmoke/GuiScrollBarSmoke.csproj --configuration Release
       - name: Exercise production Window mouse gestures in host C#
         run: dotnet run --project tests/GuiWindowInputSmoke/GuiWindowInputSmoke.csproj --configuration Release
+      - name: Exercise production ApplicationManager teardown in host C#
+        run: dotnet run --project tests/GuiApplicationManagerSmoke/GuiApplicationManagerSmoke.csproj --configuration Release
       - name: Exercise production Start menu interactions in host C#
         run: dotnet run --project tests/GuiStartMenuSmoke/GuiStartMenuSmoke.csproj --configuration Release
       - name: Exercise production taskbar telemetry gate in host C#
