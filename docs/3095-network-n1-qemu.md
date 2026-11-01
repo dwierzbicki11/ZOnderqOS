@@ -245,16 +245,24 @@ an IRQ/ISR proof or a physical Realtek test.
 The isolated N6 guest now opens **four independent HTTP/1.0 TCP
 connections after** the 128-frame raw Ethernet TX burst and four ICMP
 echo round-trips (attempts 3–6; six HTTP connections in total). Each
-connection requests the exact 4116-byte test body from the loopback-only
+connection requests a 4116-byte test body from the loopback-only
 CI HTTP fixture, verifies the entire response in the guest, and closes
-its TCP socket. The fixture emits six distinct host completion markers.
+its TCP socket. Each connection now uses four **independently changing
+1 KiB body blocks**, so a stale RX descriptor containing a block from
+any earlier connection is detectable (not only the first byte). The
+fixture emits six distinct host completion markers.
 
 The post-burst PCAP validator requires **four distinct client source
 ports**, ordered TCP handshakes, complete segmented HTTP RX payloads,
 and server FIN acknowledgments, all after the final post-burst ICMP
 reply. The serial gate also requires all four ordered guest completion
 markers and a final unchanged MAC/link snapshot. The QEMU smoke runner
-checks each corresponding host marker.
+checks each corresponding host marker. The isolated guest additionally
+reports per-session `HTTP_RX_STATS` (successful socket Read() calls,
+largest returned chunk and total bytes). The post-HTTP validator
+requires six ordered, internally consistent telemetry records; these
+counters measure guest-side managed reads, **not** guest ISR execution.
+The independent PCAP remains mandatory for real TX/RX proof.
 
 This tests additional repeated RX/TCP teardown under the existing stock
 Cosmos 3.0.95 E1000E driver and remains opt-in N6-only. It is **not**
