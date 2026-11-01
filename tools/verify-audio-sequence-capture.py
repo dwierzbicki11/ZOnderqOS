@@ -94,6 +94,7 @@ def inspect(path: Path):
         raise ValueError("stereo channel onset mismatch")
 
     pitches = []
+    peaks = []
     for i, expected in enumerate(FREQUENCIES):
         for name, channel in (("left", left), ("right", right)):
             require_continuous(segment(channel, rate, origin, i * 90 + 5, i * 90 + 85),
@@ -108,7 +109,14 @@ def inspect(path: Path):
                 raise ValueError(f"{name} segment {i + 1}: {pitch:.1f} Hz, expected {expected} Hz")
             if name == "left":
                 pitches.append(pitch)
+                peaks.append(max(abs(value) for value in window))
         require_stereo_coherence(left, right, rate, origin, i)
+    # All four generated effects use the same gain. A stale/partially
+    # refilled DMA period can preserve pitch while reducing its amplitude.
+    # Allow 40% peak variation for emulator backends; the captured baseline
+    # is 2908/2908/2908/2908, not a hardware loudness calibration.
+    if min(peaks) == 0 or max(peaks) * 100 > min(peaks) * 140:
+        raise ValueError("PCM amplitude drift across frequency steps")
     for name, channel in (("left", left), ("right", right)):
         tail = segment(channel, rate, origin, 375, 395)
         if sum(abs(x) >= 256 for x in tail) / len(tail) > 0.08:
