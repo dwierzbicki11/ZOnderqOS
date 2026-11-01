@@ -819,11 +819,13 @@ static class Test
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "reject unsupported PCM32 sample rate");
 
-        // Common 22.05/32 kHz PCM16 WAV inputs must use the real bounded
+        // Common 16/22.05/24/32 kHz PCM16 WAV inputs must use the real bounded
         // read-only stream loader and the existing integer 48 kHz resampler.
-        foreach (int inputRate in new[] { 22050, 32000 })
+        foreach (int inputRate in new[] { 16000, 22050, 24000, 32000 })
         {
-            byte[] sourceLowRate = AudioTonePcm.GenerateSquareStereo16(inputRate, inputRate == 22050 ? 1100 : 3520, 250, 4096);
+            int expectedPitch = inputRate == 16000 ? 1500 : inputRate == 22050 ? 1100 :
+                inputRate == 24000 ? 1800 : 3520;
+            byte[] sourceLowRate = AudioTonePcm.GenerateSquareStereo16(inputRate, expectedPitch, 250, 4096);
             byte[] lowRateWave = AudioWavePcm.EncodeStereo16AtRate(sourceLowRate, inputRate);
             using (var lowRateInput = new MemoryStream(lowRateWave, false))
             {
@@ -842,8 +844,8 @@ static class Test
                     if ((current < 0) != (prior < 0)) crossings++;
                 }
                 double pitch = crossings * 48000.0 / (2 * (resampled.Length / 4 - 1));
-                Expect(Math.Abs(pitch - (inputRate == 22050 ? 1100 : 3520)) < 60,
-                    "low-rate resampler preserves independently selected 1100/3520Hz pitch");
+                Expect(Math.Abs(pitch - expectedPitch) < 60,
+                    "low-rate resampler preserves 16/22.05/24/32kHz tone pitch");
             }
         }
         // The same 32 kHz source is supported in unsigned PCM8 and signed
@@ -861,9 +863,26 @@ static class Test
             AudioWavePcm.EncodePcm32AtRate(new byte[32000 / 4 * 4], 32000, 1));
         Expect(low32.Length == 48000, "32kHz signed PCM32 mono resamples to stereo16");
         rejected = false;
-        try { AudioWavePcm.EncodeStereo16AtRate(new byte[4], 16000); }
+        try { AudioWavePcm.EncodeStereo16AtRate(new byte[4], 11025); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
-        Expect(rejected, "unsupported 16kHz rate remains rejected");
+        Expect(rejected, "unsupported 11.025kHz rate remains rejected");
+
+        // Voice-rate mono PCM8 must decode to the same bounded 48kHz
+        // stereo duration without accessing an audio device or a disk.
+        foreach (int voiceRate in new[] { 16000, 24000 })
+        {
+            byte[] voicePcm8 = new byte[voiceRate / 4];
+            for (int i = 0; i < voicePcm8.Length; i++)
+                voicePcm8[i] = (byte)((i & 1) == 0 ? 192 : 64);
+            byte[] voiceWave = AudioWavePcm.EncodePcm8AtRate(voicePcm8, voiceRate, 1);
+            using var voiceStream = new MemoryStream(voiceWave, false);
+            byte[] voiceOutput = AudioWaveInput.DecodeBounded(voiceStream);
+            Expect(voiceOutput.Length == 48000, "voice-rate PCM8 mono keeps 250ms duration");
+            for (int i = 0; i < voiceOutput.Length; i += 4)
+                Expect(voiceOutput[i] == voiceOutput[i + 2] &&
+                    voiceOutput[i + 1] == voiceOutput[i + 3],
+                    "voice-rate mono PCM8 upmix keeps left/right equal");
+        }
 
         // The real PCM16 decoder must preserve channel independence when
         // resampling a 32 kHz RIFF source to the 48 kHz HDA stream.
