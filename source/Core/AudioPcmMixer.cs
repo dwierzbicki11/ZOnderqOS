@@ -19,6 +19,21 @@ namespace ZonderqOS.SystemCore
         public static byte[] MixStereo16(
             byte[] first, byte[] second, int firstPercent, int secondPercent)
         {
+            return MixStereo16WithDelay(first, second, firstPercent, secondPercent, 0);
+        }
+
+        /// <summary>
+        /// Schedule the second clip a whole number of 48 kHz stereo frames
+        /// after the first. The output remains bounded to two seconds; an
+        /// overlong delayed clip is rejected rather than silently truncated.
+        /// This is pure PCM arithmetic, not a hardware scheduling guarantee.
+        /// </summary>
+        public static byte[] MixStereo16WithDelay(
+            byte[] first, byte[] second, int firstPercent, int secondPercent,
+            int secondDelayFrames)
+        {
+            if (secondDelayFrames < 0 || secondDelayFrames > MaxPcmBytes / 4)
+                throw new ArgumentOutOfRangeException(nameof(secondDelayFrames));
             if (first == null || second == null ||
                 first.Length == 0 || second.Length == 0 ||
                 first.Length > MaxPcmBytes || second.Length > MaxPcmBytes ||
@@ -29,14 +44,20 @@ namespace ZonderqOS.SystemCore
             if (secondPercent < 0 || secondPercent > 100)
                 throw new ArgumentOutOfRangeException(nameof(secondPercent));
 
-            int length = Math.Max(first.Length, second.Length);
+            int delayBytes = secondDelayFrames * 4;
+            if ((long)delayBytes + second.Length > MaxPcmBytes)
+                throw new ArgumentOutOfRangeException(nameof(secondDelayFrames),
+                    "Delayed PCM clip would exceed the two-second output budget.");
+
+            int length = Math.Max(first.Length, delayBytes + second.Length);
             byte[] output = new byte[length];
             for (int at = 0; at < length; at += 2)
             {
                 int a = at < first.Length
                     ? (short)(first[at] | (first[at + 1] << 8)) : 0;
-                int b = at < second.Length
-                    ? (short)(second[at] | (second[at + 1] << 8)) : 0;
+                int secondAt = at - delayBytes;
+                int b = secondAt >= 0 && secondAt < second.Length
+                    ? (short)(second[secondAt] | (second[secondAt + 1] << 8)) : 0;
                 int sum = a * firstPercent / 100 + b * secondPercent / 100;
                 if (sum > short.MaxValue) sum = short.MaxValue;
                 else if (sum < short.MinValue) sum = short.MinValue;
