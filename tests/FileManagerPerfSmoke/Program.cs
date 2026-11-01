@@ -262,12 +262,22 @@ internal static class Program
                 rotated.Add(entries[i]);
             entries = rotated;
         }
+        else if (mode == 4 || mode == 5)
+        {
+            // FAT32 enumeration can append a newly created file whose name
+            // belongs at the opposite end of the sorted view.
+            int from = mode == 4 ? 0 : entries.Count - 1;
+            int to = mode == 4 ? entries.Count - 1 : 0;
+            var displaced = entries[from];
+            entries.RemoveAt(from);
+            entries.Insert(to, displaced);
+        }
         return entries.ToArray();
     }
 
     private static void VerifyAdaptiveRepair()
     {
-        for (int mode = 0; mode < 4; mode++)
+        for (int mode = 0; mode < 6; mode++)
         {
             var source = MakeNearlySorted(mode);
             var expected = new List<ZonderqOS.GUI.Apps.FileEntry>(source);
@@ -278,7 +288,7 @@ internal static class Program
             for (int i = 0; i < source.Length; i++)
                 Assert(object.ReferenceEquals(expected[i], actual[i]),
                     "adaptive stable order mode=" + mode + " i=" + i);
-            if (mode < 3)
+            if (mode != 3)
                 Assert(scratch == null, "near-sorted repair allocated merge buffer mode=" + mode);
             else
                 Assert(scratch != null, "pathological rotation did not use bounded fallback");
@@ -309,7 +319,7 @@ internal static class Program
         long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
         Assert(bytes == 0, "adaptive repair allocated " + bytes + " B");
         Assert(buffer == null, "adaptive repair allocated a scratch buffer");
-        Console.WriteLine("PASS: 4 adaptive cases including bounded fallback, stable references, 0 B warm allocations");
+        Console.WriteLine("PASS: 6 adaptive cases including boundary moves and bounded fallback, stable references, 0 B warm allocations");
     }
 
     // Exact pre-adaptive production behavior for unsorted large folders:
@@ -348,9 +358,9 @@ internal static class Program
 
     private static void BenchmarkAdaptiveRepair()
     {
-        for (int mode = 0; mode < 5; mode++)
+        for (int mode = 0; mode < 7; mode++)
         {
-            var source = mode == 4 ? Make(2048, 309504, false) : MakeNearlySorted(mode);
+            var source = mode == 6 ? Make(2048, 309506, false) : MakeNearlySorted(mode);
             var work = new List<ZonderqOS.GUI.Apps.FileEntry>(source.Length);
             ZonderqOS.GUI.Apps.FileEntry[] oldScratch =
                 new ZonderqOS.GUI.Apps.FileEntry[source.Length];
