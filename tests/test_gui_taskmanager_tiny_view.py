@@ -301,7 +301,7 @@ class TinyTaskManagerViewTests(unittest.TestCase):
         self.assertIn("x >= end && x < end + 100) return 2;", toolbar)
         # The enabled state must be shared with the painted button and the
         # Delete action; hidden or protected tasks cannot be terminated.
-        manager = code("source/GUI/Application/TaskManagerModernApp.cs")
+        manager = SOURCE
         self.assertIn("activePage != PagePerformance &&", manager)
         self.assertIn("TaskManagerSelectionPolicy.IsVisible(", manager)
         self.assertIn("visibleRows[selectedIndex].CanEnd", manager)
