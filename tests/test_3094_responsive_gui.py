@@ -2956,7 +2956,7 @@ class WindowInterruptedGesture3095(unittest.TestCase):
 
 class TinyStartMenu3095(unittest.TestCase):
     def test_tiny_search_results_never_overlap_power_footer(self):
-        self.assertIn("private bool TinyLayout => Height < 400;", START_MENU)
+        self.assertIn("private bool TinyLayout => Height < 400 || Width < 320;", START_MENU)
         self.assertIn("private void UpdateTinyLayout()", START_MENU)
         self.assertIn("private void RenderTiny(Canvas canvas)", START_MENU)
         self.assertIn("button.Visible = show;", START_MENU)
