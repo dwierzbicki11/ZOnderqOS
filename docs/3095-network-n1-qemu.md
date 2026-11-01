@@ -274,3 +274,30 @@ proof of guest ISR execution, physical RTL810xE operation, TLS/HTTPS,
 or production desktop networking. New code requires fresh CI/QEMU
 evidence before claiming success; older three-session evidence does not
 validate the six-session extension.
+
+## N6 stock DriverKit post-stress health snapshot (2026-11-01)
+
+After all six independently checked HTTP sessions, 128 raw Ethernet TX
+frames and four ICMP round trips, the isolated N6 guest now inspects
+**public Cosmos 3.0.95** `DriverDiagnostics.TryGetNode` snapshots. It
+requires exactly one bound `E1000EDriver` on the expected QEMU PCI
+function, one published network device, nonzero held resources and
+interrupt sources, and **zero recorded interrupt-handler exceptions**.
+The post-stress MAC/link check must pass first. The read-only marker
+`DRIVER_HEALTH=PASS` is required by the N6 smoke gate even without
+QEMU IRQ tracing; the IRQ-trace gate additionally correlates it with the
+real guest driver-binding log and device-side legacy IRQ assertions.
+The Python verifier rejects missing, duplicated, reordered, mismatched
+or malformed health markers, including changed PCI node or MAC.
+
+This adds a genuine guest-side **binding/health observation**, not a
+guest ISR invocation count. In stock Cosmos 3.0.95 the
+`E1000EState.InterruptCount` property exists but its declaring type
+is internal to the upstream driver assembly. The public
+`DeviceNodeInfo.InterruptCount` is the **number of available IRQ
+sources**, not how often the E1000E handler executed. A zero
+`FaultCount` proves only that no handler exception was recorded.
+The driver still polls every 10 ms, so QEMU RX and legacy IRQ emission
+cannot establish interrupt-driven delivery. No SDK changes or
+production NIC activation are involved. The new gate is considered
+unverified until its own current QEMU workflow finishes.
