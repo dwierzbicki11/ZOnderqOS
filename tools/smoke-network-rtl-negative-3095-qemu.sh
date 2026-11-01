@@ -3,7 +3,7 @@
 # This is NOT physical Realtek proof and does not validate text framebuffer.
 set -euo pipefail
 ISO="${1:?usage: smoke-network-rtl-negative-3095-qemu.sh ISO SERIAL-LOG}"
-LOG="${2:?usage: smoke-network-rtl-negative-3095-qemu.sh ISO SERIAL-LOG [none|rtl8139]}"
+LOG="${2:?usage: smoke-network-rtl-negative-3095-qemu.sh ISO SERIAL-LOG [none|rtl8139|e1000e]}"
 NIC_MODE="${3:-none}"
 # None, RTL8139 and E1000E are all nonmatching PCI devices.
 # QEMU user networking is restricted; this is NOT an RTL810xE emulator.
