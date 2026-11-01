@@ -244,6 +244,24 @@ namespace ZonderqOS
                                 return;
                             }
                         }
+                        // A correct echo can arrive just before a NIC rebind,
+                        // link loss or DHCP reset. Sample live adapter state
+                        // after the last Read and byte comparison; never use
+                        // the original mutable IPConfig object as the proof.
+                        NetworkAdapter echoAdapter = NetworkManager.Primary;
+                        IPConfig? echoLease = echoAdapter.IPConfig;
+                        if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized ||
+                            !echoAdapter.IsValid || echoAdapter.Name != "e1000e" ||
+                            !echoAdapter.Ready || !echoAdapter.LinkUp ||
+                            (echoAdapter.MacAddress?.ToString() ?? "") != sourceMac ||
+                            echoLease == null ||
+                            echoLease.Address.ToString() != "10.0.2.15" ||
+                            echoLease.SubnetMask.ToString() != "255.255.255.0" ||
+                            echoLease.DefaultGateway.ToString() != "10.0.2.2")
+                        {
+                            Log("[NET3095-N4][FAIL] E1000E link/MAC/DHCP lease changed during TCP echo");
+                            return;
+                        }
                         Log("[NET3095-N4] TCP=PASS from=10.0.2.2 port=18095 bytes=" + received);
                     }
                 }
