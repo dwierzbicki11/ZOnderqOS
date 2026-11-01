@@ -296,5 +296,20 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("verify_3095_network_n6_burst.py", SMOKE)
 
 
+
+    def test_dns_reply_mac_correlates_with_real_icmp_gateway(self):
+        # The QEMU DNS proxy ARP address and the Ethernet source of its
+        # UDP answer differ. Trust the N3-proven gateway MAC for RX, not
+        # an arbitrary source address or the DNS proxy's ARP MAC.
+        dns = (ROOT / "tests/verify_3095_network_n5.py").read_text()
+        self.assertIn("packet := icmp_frame(frame)", dns)
+        self.assertIn('packet["src"] == SERVER', dns)
+        self.assertIn('packet["dst_mac"] == MAC', dns)
+        self.assertIn("gateway_mac = next(iter(gateway_macs))", dns)
+        self.assertIn('reply["src_mac"] == gateway_mac', dns)
+        self.assertIn("reply_src_mac=b", dns)
+        self.assertIn("verify_arp_for_dns(frames, guest)", dns)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
