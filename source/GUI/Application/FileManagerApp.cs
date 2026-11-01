@@ -86,7 +86,11 @@ namespace ZonderqOS.GUI.Apps
             nanoLauncher = openFile;
             Window = new Window(x, y, 820, 520, "ZonderqOS File Manager");
             Window.CloseAction = Close;
-            view = new FileManagerView(10, 40, 800, 465, this);
+            // The first frame may be rendered before Update() runs.
+            // Initialize the client to the already-constrained Window size,
+            // otherwise an 800px view can spill outside a 320px desktop.
+            view = new FileManagerView(10, 40,
+                Math.Max(1, Window.Width - 20), Math.Max(1, Window.Height - 50), this);
             Window.AddChild(view);
             RebuildSidebar();
             Refresh();
