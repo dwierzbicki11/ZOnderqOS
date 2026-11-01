@@ -922,6 +922,27 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject partial stereo frame");
 
+        // Every software-gain entry point must enforce the same 2-second
+        // 48 kHz stereo budget before allocating an output buffer.
+        byte[] maxGainPcm = new byte[48000 * 2 * 4];
+        byte[] maxGainOutput = AudioPcmVolume.ScaleStereo16Channels(maxGainPcm, 100, 0);
+        Expect(maxGainOutput.Length == maxGainPcm.Length,
+            "accept exactly two seconds of stereo gain input");
+        Expect(!ReferenceEquals(maxGainOutput, maxGainPcm),
+            "bounded gain returns an independent output");
+        byte[] tooLongGainPcm = new byte[48000 * 2 * 4 + 4];
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16(tooLongGainPcm, 100); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "master gain rejects more than two seconds");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16Channels(tooLongGainPcm, 100, 100); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "channel gain rejects more than two seconds");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16ChannelsWithFade(tooLongGainPcm, 100, 100, 20); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "combined gain/fade rejects more than two seconds");
 
         // Production C# PCM envelope: verify both channel edges, plateau,
         // short-clip clamping, signed extremes and immutable input.
