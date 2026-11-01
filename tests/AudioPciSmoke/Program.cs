@@ -1301,6 +1301,23 @@ static class Test
         try { AudioPcmMixer.MixStereo16(mixA, mixB, 100, 101); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "mix rejects second gain over 100");
+        // Reproduce the exact two independent 440/880 Hz sources used by
+        // the isolated QEMU 'mix' command, then compare every PCM byte with
+        // the already validated true-stereo reference generator.
+        byte[] mixLeft = AudioTonePcm.GenerateSquareStereo16(48000, 440, 250, 4096);
+        byte[] mixRight = AudioTonePcm.GenerateSquareStereo16(48000, 880, 250, 4096);
+        for (int at = 0; at < mixLeft.Length; at += 4)
+        {
+            mixLeft[at + 2] = 0;
+            mixLeft[at + 3] = 0;
+            mixRight[at] = 0;
+            mixRight[at + 1] = 0;
+        }
+        byte[] mixedStereoProbe = AudioPcmMixer.MixStereo16(mixLeft, mixRight, 100, 100);
+        byte[] referenceStereoProbe = AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 880, 250, 4096);
+        Expect(mixedStereoProbe.AsSpan().SequenceEqual(referenceStereoProbe),
+            "mixed stereo probe matches independent 440/880 Hz reference byte-for-byte");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PCM16 mixer saturation, gains, bounds and source immutability PASS");
 
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
