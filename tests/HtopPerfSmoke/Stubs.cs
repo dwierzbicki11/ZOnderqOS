@@ -15,7 +15,7 @@ namespace Cosmos.Kernel.System.Diagnostics
 
     internal static class SchedulerInfo
     {
-        internal static uint CpuCount => 1;
+        internal static uint CpuCount = 1; // host test can exercise 1..64 logical CPU snapshots
         internal static string SchedulerName => "stub-scheduler";
         internal static KernelThreadInfo[] Threads = Array.Empty<KernelThreadInfo>();
         internal static int ThreadCount => Threads.Length;
