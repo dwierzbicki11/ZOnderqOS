@@ -17,6 +17,8 @@ on:
       - 'tests/test_audio_wav_validator.py'
       - 'tests/test_audio_stereo_validator.py'
       - 'tools/verify-audio-stereo-capture.py'
+      - 'tests/test_audio_delay_validator.py'
+      - 'tools/verify-audio-delay-capture.py'
       - 'tests/test_audio_volume_validator.py'
       - 'tests/test_audio_mute_validator.py'
       - 'tools/verify-audio-mute-capture.py'
@@ -43,6 +45,8 @@ on:
       - 'tests/test_audio_wav_validator.py'
       - 'tests/test_audio_stereo_validator.py'
       - 'tools/verify-audio-stereo-capture.py'
+      - 'tests/test_audio_delay_validator.py'
+      - 'tools/verify-audio-delay-capture.py'
       - 'tests/test_audio_volume_validator.py'
       - 'tests/test_audio_mute_validator.py'
       - 'tools/verify-audio-mute-capture.py'
@@ -76,6 +80,7 @@ jobs:
           python3 tests/test_audio_gen3_contract.py
           python3 tests/test_audio_wav_validator.py
           python3 tests/test_audio_stereo_validator.py
+          python3 tests/test_audio_delay_validator.py
           python3 tests/test_audio_volume_validator.py
           python3 tests/test_audio_mute_validator.py
           python3 tests/test_audio_qmp_keys.py
