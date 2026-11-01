@@ -74,7 +74,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("view.Width - TileWidth - 12", FILE_MANAGER)
         self.assertIn("view.Width - SidebarWidthForView - 12", FILE_MANAGER)
         self.assertIn("if (SidebarWidthForView <= 0)", FILE_MANAGER)
-        self.assertIn("if (sidebarW > 0)", FILE_MANAGER)
+        self.assertIn("if (sidebarW > 0 && contentH > 0)", FILE_MANAGER)
         self.assertIn("int sidebarW = app.SidebarWidthForView;", FILE_MANAGER)
         self.assertIn("int gridX = X + sidebarW + 8;", FILE_MANAGER)
         self.assertIn("if (Width >= 300)", FILE_MANAGER)
@@ -2408,7 +2408,7 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
 
     def test_file_manager_partial_rows_use_remaining_screen_space_safely(self):
         self.assertIn("internal const int MinPartialTileHeight = 40;", FILE_MANAGER)
-        self.assertIn("internal int GridRowsForView => Math.Max(1,", FILE_MANAGER)
+        self.assertIn("internal int GridRowsForView => GridHeightForView < MinPartialTileHeight ? 0 :", FILE_MANAGER)
         self.assertIn("GridHeightForView + TileHeight + TileGap - MinPartialTileHeight", FILE_MANAGER)
         hit = FILE_MANAGER.split("private int HitEntryIndex(int x, int y)", 1)[1].split(
             "private bool ContextClick(", 1)[0]
@@ -2509,6 +2509,40 @@ class FileManagerClippedTiles3095(unittest.TestCase):
                 col = relative_x // 118
                 if col < cols and relative_x % 118 < 112:
                     self.assertLessEqual(col * 118 + min(112, grid_width - col * 118), grid_width)
+
+
+
+class FileManagerShortClient3095(unittest.TestCase):
+    def test_grid_has_no_fake_rows_and_never_overlaps_footer(self):
+        self.assertIn("GridHeightForView => Math.Max(0, view.Height - FooterHeight - ContentTop - 8)", FILE_MANAGER)
+        self.assertIn("GridRowsForView => GridHeightForView < MinPartialTileHeight ? 0 :", FILE_MANAGER)
+        hit = FILE_MANAGER.split("private int HitEntryIndex(int x, int y)", 1)[1].split(
+            "private bool ContextClick(", 1)[0]
+        selection = FILE_MANAGER.split("private void EnsureSelectionVisible()", 1)[1].split(
+            "private void GoUp()", 1)[0]
+        page = FILE_MANAGER.split("private void SelectPage(int direction)", 1)[1].split(
+            "private void Select(int delta)", 1)[0]
+        render = FILE_MANAGER.split("public override void Render(Canvas canvas)", 1)[2].split(
+            "private void RenderToolbar(", 1)[0]
+        grid = FILE_MANAGER.split("private void Grid(Canvas canvas", 1)[1].split(
+            "private static IconType ResolveEntryIcon(", 1)[0]
+        self.assertIn("if (GridRowsForView == 0 ||", hit)
+        self.assertIn("if (rows == 0)", selection)
+        self.assertIn("if (rows == 0)", page)
+        self.assertIn("if (contentH > 0)", render)
+        self.assertIn("if (height < FileManagerApp.MinPartialTileHeight)", grid)
+        for height in range(1, 1001):
+            grid_height = max(0, height - 24 - 50 - 8)
+            rows = 0 if grid_height < 40 else max(1, (grid_height + 60) // 100)
+            self.assertLessEqual(50 + grid_height, height - 28 if height >= 82 else 50)
+            if grid_height < 40:
+                self.assertEqual(rows, 0)
+            else:
+                self.assertGreater(rows, 0)
+                for row in range(rows):
+                    visible = min(94, grid_height - row * 100)
+                    self.assertGreaterEqual(visible, 40)
+                    self.assertLessEqual(row * 100 + visible, grid_height)
 
 
 if __name__ == "__main__":
