@@ -876,7 +876,7 @@ namespace ZonderqOS.GUI.Apps
 
         public int NavAt(int x, int y)
         {
-            if (x < 0 || x >= Width || y < 0 || y >= Height ||
+            if (Width < SidebarWidth || x < 0 || x >= Width || y < 0 || y >= Height ||
                 x < 6 || x >= SidebarWidth - 6 || y < NavTop) return -1;
             if (Height < 300)
             {
@@ -886,7 +886,7 @@ namespace ZonderqOS.GUI.Apps
                 int column = relativeX / 80;
                 int row = relativeY / 36;
                 if (column > 1 || row > 1 || relativeX % 80 >= 76 ||
-                    relativeY % 36 >= 32)
+                    relativeY % 36 >= 32 || NavTop + row * 36 + 32 > Height)
                     return -1;
                 return row * 2 + column;
             }
@@ -897,7 +897,8 @@ namespace ZonderqOS.GUI.Apps
 
         public int ToolbarActionAt(int x, int y)
         {
-            if (x < SidebarWidth || y < 8 || y >= 42) return 0;
+            if (Width <= SidebarWidth + 12 || Height < 42 ||
+                x < SidebarWidth || y < 8 || y >= 42) return 0;
             if (Width < 550)
                 return x >= Width - 42 && x < Width - 10 ? 1 : 0;
             int refresh = Width - 210;
@@ -909,7 +910,8 @@ namespace ZonderqOS.GUI.Apps
 
         public int PerformanceResourceAt(int x, int y)
         {
-            if (app.ActivePage != TaskManagerModernApp.PagePerformance) return -1;
+            if (app.ActivePage != TaskManagerModernApp.PagePerformance ||
+                Width <= SidebarWidth + 24 || Height < 134) return -1;
             if (CompactPerformanceLayout)
             {
                 // Compact mode renders three horizontal resource buttons.
@@ -1003,8 +1005,13 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderSidebar(Canvas canvas)
         {
-            canvas.DrawFilledRectangle(Sidebar, X + 1, Y + 1, SidebarWidth - 1, Height - 2);
-            canvas.DrawLine(Color.FromArgb(52, 62, 72), X + SidebarWidth, Y + 1, X + SidebarWidth, Y + Height - 2);
+            if (Width < 2 || Height < 3)
+                return;
+            int paintedWidth = Math.Min(SidebarWidth, Width - 1);
+            canvas.DrawFilledRectangle(Sidebar, X + 1, Y + 1, paintedWidth - 1, Height - 2);
+            canvas.DrawLine(Color.FromArgb(52, 62, 72), X + paintedWidth, Y + 1, X + paintedWidth, Y + Height - 2);
+            if (Width < SidebarWidth || Height < 36)
+                return;
             IconManager.DrawScaled(canvas, IconType.Settings, X + 16, Y + 16, 20, 20);
             SmallTextRenderer.Draw(canvas, "TASK MANAGER", X + 46, Y + 23, Text);
             DrawNav(canvas, 0, "Procesy", IconType.FileManager);
@@ -1024,6 +1031,8 @@ namespace ZonderqOS.GUI.Apps
         {
             if (Height < 300)
             {
+                if (NavTop + (page / 2) * 36 + 32 > Height)
+                    return;
                 int compactX = X + 6 + (page % 2) * 80;
                 int compactY = Y + NavTop + (page / 2) * 36;
                 bool compactActive = app.ActivePage == page;
@@ -1047,6 +1056,8 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderHeader(Canvas canvas)
         {
+            if (Width <= SidebarWidth + 12 || Height < HeaderHeight + 2)
+                return;
             int contentX = X + SidebarWidth + 8;
             string title = app.ActivePage == 0 ? "Procesy" : app.ActivePage == 1 ? "Wydajnosc" : app.ActivePage == 2 ? "Szczegoly" : "Uslugi";
             if (Width < 550)
@@ -1228,6 +1239,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderPerformance(Canvas canvas)
         {
+            // At very short resolutions the selectors would overlap the footer.
+            if (Width <= SidebarWidth + 24 || Height < 134)
+                return;
             if (CompactPerformanceLayout)
             {
                 // The normal graph needs both a wide and a tall client:
