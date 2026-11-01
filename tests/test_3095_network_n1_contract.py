@@ -187,5 +187,20 @@ class NetworkN1Isolation(unittest.TestCase):
                       (ROOT / 'tests/verify_3095_e1000e_irq_trace.py').read_text())
         self.assertIn('trap cleanup EXIT INT TERM', SMOKE)
 
+    def test_n6_all_rx_segments_and_guest_read_telemetry(self):
+        # Host and guest must vary all four body blocks per connection,
+        # otherwise a stale later E1000E RX descriptor can go undetected.
+        for block in ("A", "B", "C", "D"):
+            self.assertIn(
+                f"new string((char)('{block}' + attempt - 1), 1024)", SOURCE)
+        self.assertIn('for block in range(4)', HTTP_HOST)
+        self.assertIn('bytes([ord("A") + block + attempt - 1]) * 1024', HTTP_HOST)
+        self.assertIn('readCalls++', SOURCE)
+        self.assertIn('if (read > largestRead)', SOURCE)
+        self.assertIn('HTTP_RX_STATS attempt=', SOURCE)
+        self.assertIn(
+            'check_rx_stats(serial)',
+            (ROOT / 'tests/verify_3095_network_n6_post_http.py').read_text())
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
