@@ -301,6 +301,15 @@ namespace ZonderqOS.GUI.Apps
                     }
                     if (applications.Count == 0)
                         return;
+
+                    // If a callback removed an earlier entry, this window
+                    // moved to a lower index. Resume below its NEW position
+                    // so it is not updated twice in the same frame.
+                    int currentIndex = i < applications.Count &&
+                        object.ReferenceEquals(applications[i], application)
+                        ? i : applications.IndexOf(application);
+                    if (currentIndex >= 0 && currentIndex < i)
+                        i = currentIndex;
                 }
             }
 
