@@ -162,8 +162,9 @@ class NetworkN1Isolation(unittest.TestCase):
                       (ROOT / 'tests/verify_3095_network_n6_final_icmp.py').read_text())
         self.assertIn('if (readCalls >= 64)', SOURCE)
         self.assertIn('HTTP response fragmented into too many reads', SOURCE)
-        self.assertLess(SOURCE.index('if (readCalls >= 64)'),
-                        SOURCE.index('int read = stream.Read('))
+        n6_http = SOURCE.split('private static bool TryHttpExchange(', 1)[1]
+        self.assertLess(n6_http.index('if (readCalls >= 64)'),
+                        n6_http.index('int read = stream.Read('))
         self.assertIn('POST_STRESS_IPV4=PASS', SOURCE)
         self.assertIn('postStress.IPConfig', SOURCE)
         for field, snapshot in (('Address', 'initialIp'),
