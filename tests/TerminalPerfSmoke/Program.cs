@@ -103,6 +103,24 @@ internal sealed class LegacyOutput
         }
     }
 
+    internal void PrintCommandOutput(string output)
+    {
+        if (string.IsNullOrEmpty(output))
+            return;
+        string normalized = output.Replace("\r\n", "\n").Replace("\r", "\n");
+        string[] lines = normalized.Split('\n');
+        foreach (string line in lines)
+        {
+            if (line == "\u0001GUI_CLEAR\u0001")
+            {
+                ClearOutput();
+                continue;
+            }
+            if (line.Length > 0)
+                PrintLine(line);
+        }
+    }
+
     internal void ClearOutput()
     {
         OutputLines.Clear();
@@ -205,6 +223,21 @@ internal static class Program
             old.ShowMonitor(Array.Empty<string>(), 0);
             Same(current, old, "empty monitor");
             checks++;
+            string[] outputs = {
+                null, "", "\r\n", "abc", "abc\rdef", "abc\n\ndef",
+                "abc\r\n\r\nxyz", "\r\r\n", "\nfirst\rsecond\n",
+                "a\r\r\nb", "before\n\u0001GUI_CLEAR\u0001\nafter",
+                "\u0001GUI_CLEAR\u0001", "\u0001GUI_CLEAR\u0001\r\n" +
+                    new string('z', 5000) + "\r\nend",
+                "Zażółć\r\n gęślą \n jaźń"
+            };
+            foreach (string output in outputs)
+            {
+                current.PrintCommandOutput(output);
+                old.PrintCommandOutput(output);
+                Same(current, old, "command stream");
+                checks++;
+            }
         }
         Console.WriteLine("PASS: " + checks +
             " production TerminalBox vs pre-batch reference state comparisons");
@@ -282,7 +315,18 @@ internal static class Program
             () => legacyPrint.PrintLine(wrapped),
             () => currentPrint.PrintLine(wrapped), 1500);
         Same(currentPrint, legacyPrint, "benchmark print");
-        Console.WriteLine("PASS: host C# terminal batching equivalence; timing is informational.");
+
+        var legacyCommand = new LegacyOutput(820, 520);
+        var currentCommand = new TerminalBox(0, 0, 820, 520);
+        var commandRows = new string[400];
+        for (int i = 0; i < commandRows.Length; i++)
+            commandRows[i] = "file " + i + " -- " + new string('x', 40);
+        string commandOutput = string.Join("\r\n", commandRows) + "\r\n";
+        Benchmark("command output CRLF 400 lines x200",
+            () => legacyCommand.PrintCommandOutput(commandOutput),
+            () => currentCommand.PrintCommandOutput(commandOutput), 200);
+        Same(currentCommand, legacyCommand, "benchmark command");
+        Console.WriteLine("PASS: production C# terminal equivalence; timing is informational.");
         return 0;
     }
 }

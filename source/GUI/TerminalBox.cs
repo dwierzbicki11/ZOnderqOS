@@ -125,6 +125,41 @@ namespace ZonderqOS.GUI
                 FinishOutputUpdate();
         }
 
+        /// <summary>
+        /// Stream command output directly into terminal lines. Avoid allocating
+        /// a normalized copy of the entire output and a Split() array, which
+        /// can be large for directory listings and diagnostics.
+        /// </summary>
+        public void PrintCommandOutput(string output)
+        {
+            if (string.IsNullOrEmpty(output))
+                return;
+
+            int start = 0;
+            for (int i = 0; i <= output.Length; i++)
+            {
+                if (i < output.Length && output[i] != '\r' && output[i] != '\n')
+                    continue;
+
+                int length = i - start;
+                if (length > 0)
+                {
+                    string line = output.Substring(start, length);
+                    if (line == "\u0001GUI_CLEAR\u0001")
+                        ClearOutput();
+                    else
+                        PrintLine(line);
+                }
+
+                // The legacy Replace("\r\n", "\n").Replace("\r", "\n")
+                // treats CRLF as one separator, not two empty lines.
+                if (i < output.Length && output[i] == '\r' &&
+                    i + 1 < output.Length && output[i + 1] == '\n')
+                    i++;
+                start = i + 1;
+            }
+        }
+
         public void ClearOutput()
         {
             OutputLines.Clear();
