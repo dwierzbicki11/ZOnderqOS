@@ -322,6 +322,27 @@ while (( SECONDS - started < TIMEOUT )); do
         sleep 1
       done
       python3 "$ROOT/tests/verify_3095_network_n6_post_http.py" "$LOG" "$PCAP"
+      # A seventh ICMP exchange must be observed on the wire AFTER the
+      # sixth HTTP FIN/ACK. This catches RX failure after repeated socket
+      # teardown, rather than trusting the guest's success marker.
+      final_icmp_start=$SECONDS
+      until python3 "$ROOT/tests/verify_3095_network_n6_final_icmp.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
+        qemu_alive || {
+          echo "[NET3095-N6][FAIL] Guest exited before final ICMP RX proof" >&2; exit 1;
+        }
+        if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
+          tail -n 90 "$LOG" >&2
+          echo "[NET3095-N6][FAIL] Guest rejected final ICMP RX" >&2
+          exit 1
+        fi
+        if (( SECONDS - final_icmp_start >= 15 )); then
+          python3 "$ROOT/tests/verify_3095_network_n6_final_icmp.py" "$LOG" "$PCAP"
+          echo "[NET3095-N6][FAIL] No final ICMP RX/TX after six HTTP teardowns" >&2
+          exit 1
+        fi
+        sleep 1
+      done
+      python3 "$ROOT/tests/verify_3095_network_n6_final_icmp.py" "$LOG" "$PCAP"
       if ! grep -Fq '[NET3095-N6-HOST] POST_BURST_PASS HTTP/1.0 GET /health 200' "$LOG.http-host"; then
         cat "$LOG.http-host" >&2
         echo "[NET3095-N6][FAIL] Host did not complete post-burst HTTP" >&2
@@ -356,6 +377,7 @@ while (( SECONDS - started < TIMEOUT )); do
       python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
       python3 "$ROOT/tests/verify_3095_network_n6_burst.py" "$LOG" "$PCAP"
       python3 "$ROOT/tests/verify_3095_network_n6_post_http.py" "$LOG" "$PCAP"
+      python3 "$ROOT/tests/verify_3095_network_n6_final_icmp.py" "$LOG" "$PCAP"
       # A complete PCAP is not enough: also require the guest to read back
       # the bound stock E1000E DriverKit node after all TX/RX stress. This
       # checks binding, published interface and handler faults, NOT ISR count.
@@ -372,7 +394,7 @@ while (( SECONDS - started < TIMEOUT )); do
         python3 "$ROOT/tests/verify_3095_e1000e_irq_trace.py" \
           "$LOG.stderr" --require-notify
       fi
-      echo "[NET3095-N6-QEMU] PASS six E1000E HTTP sessions (four after 128 TX + 4 ICMP) + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
+      echo "[NET3095-N6-QEMU] PASS six E1000E HTTP sessions (four after 128 TX + 4 ICMP) + final ICMP after FIN/ACK + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
     elif [[ "$MODE" == n5 ]]; then
       python3 "$ROOT/tests/verify_3095_network_n5.py" "$LOG" "$PCAP"
       echo "[NET3095-N5-QEMU] PASS real E1000E DNS query/answer + TCP/DHCP/ICMP + 8s stability; production networking disabled"
