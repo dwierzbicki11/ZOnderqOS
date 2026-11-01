@@ -3,6 +3,10 @@ on:
   pull_request:
     paths:
       - "source/Core/HtopMonitor.cs"
+      - "source/GUI/Application/FileManagerApp.cs"
+      - "source/GUI/Application/FileEntrySorter.cs"
+      - "tests/FileManagerPerfSmoke/**"
+      - "tests/test_gen3_perf_filemanager.py"
       - "tests/HtopPerfSmoke/**"
       - "source/GUI/SmallTextRenderer.cs"
       - "source/GUI/UiPainter.cs"
@@ -37,5 +41,9 @@ jobs:
         run: dotnet run --project tests/PerfRenderSmoke/PerfRenderSmoke.csproj --configuration Release
       - name: Production htop process join equivalence and measured host A/B
         run: dotnet run --project tests/HtopPerfSmoke/HtopPerfSmoke.csproj --configuration Release
+      - name: File manager sort/filter integration guard
+        run: python3 tests/test_gen3_perf_filemanager.py
+      - name: Production file manager stable ordering and measured host A/B
+        run: dotnet run --project tests/FileManagerPerfSmoke/FileManagerPerfSmoke.csproj --configuration Release
       - name: Preserve stock Cosmos and disabled custom SMP
         run: python3 tests/test_upstream_smp_disabled.py

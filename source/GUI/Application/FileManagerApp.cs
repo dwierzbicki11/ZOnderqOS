@@ -16,6 +16,7 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action<string> nanoLauncher;
         private readonly FileManagerView view;
         private readonly List<FileEntry> entries = new List<FileEntry>();
+        private FileEntry[] sortScratch = new FileEntry[0];
         private readonly List<SidebarEntry> sidebarEntries = new List<SidebarEntry>();
 
         private string currentPath = "/root";
@@ -795,34 +796,14 @@ namespace ZonderqOS.GUI.Apps
 
         private void Sort()
         {
-            for (int i = 1; i < entries.Count; i++)
-            {
-                FileEntry value = entries[i];
-                int j = i - 1;
-                while (j >= 0 && Compare(entries[j], value) > 0)
-                {
-                    entries[j + 1] = entries[j];
-                    j--;
-                }
-
-                entries[j + 1] = value;
-            }
-        }
-
-        private int Compare(FileEntry a, FileEntry b)
-        {
-            if (a.IsDirectory != b.IsDirectory)
-                return a.IsDirectory ? -1 : 1;
-
-            return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
+            FileEntrySorter.Sort(entries, ref sortScratch);
         }
 
         private void Filter()
         {
-            string filter = searchText.ToLowerInvariant();
             for (int i = entries.Count - 1; i >= 0; i--)
             {
-                if (!entries[i].Name.ToLowerInvariant().Contains(filter))
+                if (!entries[i].Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0)
                     entries.RemoveAt(i);
             }
         }
