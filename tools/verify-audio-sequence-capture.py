@@ -54,6 +54,24 @@ def require_continuous(samples, rate, name):
         raise ValueError(f"{name} has a PCM dropout or incomplete segment")
 
 
+def require_stereo_coherence(left, right, rate, origin, index):
+    """The sequence fixture is dual-mono: detect inverted, delayed or attenuated channels.
+
+    Pitch and activity alone would accept an out-of-phase right channel or
+    a 50% gain regression. Compare corresponding signed PCM samples, while
+    tolerating up to 12% relative backend amplitude/sample variation.
+    This is a WAV-output check, not a codec/IRQ assertion.
+    """
+    start_ms = index * 90 + 20
+    end_ms = index * 90 + 65
+    a = segment(left, rate, origin, start_ms, end_ms)
+    b = segment(right, rate, origin, start_ms, end_ms)
+    energy = sum(max(abs(x), abs(y)) for x, y in zip(a, b))
+    difference = sum(abs(x - y) for x, y in zip(a, b))
+    if energy == 0 or difference * 100 > energy * 12:
+        raise ValueError(f"segment {index + 1} stereo phase/gain mismatch")
+
+
 def inspect(path: Path):
     with wave.open(str(path), "rb") as wav:
         rate, channels, width, frames = (wav.getframerate(), wav.getnchannels(),
@@ -90,6 +108,7 @@ def inspect(path: Path):
                 raise ValueError(f"{name} segment {i + 1}: {pitch:.1f} Hz, expected {expected} Hz")
             if name == "left":
                 pitches.append(pitch)
+        require_stereo_coherence(left, right, rate, origin, i)
     for name, channel in (("left", left), ("right", right)):
         tail = segment(channel, rate, origin, 375, 395)
         if sum(abs(x) >= 256 for x in tail) / len(tail) > 0.08:
