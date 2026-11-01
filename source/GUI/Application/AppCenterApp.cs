@@ -29,7 +29,7 @@ namespace ZonderqOS.GUI.Apps
         // AppCategory values intentionally map to these tab indexes.
         private static readonly string[] CategoryLabels =
         {
-            "WSZYSTKIE", "SYSTEM", "NARZEDZIA", "PLIKI"
+            "WSZYSTKIE", "SYSTEM", "NARZEDZIA", "PLIKI", "GRY"
         };
 
         private static readonly Color Surface = Color.FromArgb(19, 24, 30);
@@ -236,7 +236,7 @@ namespace ZonderqOS.GUI.Apps
             int y = Window.Y + 111;
             int totalWidth = Window.Width - 36;
             const int gap = 7;
-            int tabWidth = (totalWidth - gap * 3) / 4;
+            int tabWidth = (totalWidth - gap * (CategoryLabels.Length - 1)) / CategoryLabels.Length;
 
             for (int i = 0; i < CategoryLabels.Length; i++)
             {
@@ -425,7 +425,7 @@ namespace ZonderqOS.GUI.Apps
             int tabsY = Window.Y + 111;
             int totalWidth = Window.Width - 36;
             const int gap = 7;
-            int tabWidth = (totalWidth - gap * 3) / 4;
+            int tabWidth = (totalWidth - gap * (CategoryLabels.Length - 1)) / CategoryLabels.Length;
             for (int i = 0; i < CategoryLabels.Length; i++)
             {
                 int tx = tabsX + i * (tabWidth + gap);
