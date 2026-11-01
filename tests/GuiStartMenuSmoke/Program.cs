@@ -326,8 +326,10 @@ internal static class Program
 
         menu.Visible = true;
         menu.ResetSearch();
-        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.UpArrow });
-        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.UpArrow });
+        // First Up selects the last tile on the current page. Three
+        // further presses reach its first tile and cross to the prior page.
+        for (int i = 0; i < 4; i++)
+            menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.UpArrow });
         Check(extras[5].Visible && !pins[0].Visible,
             "Up at the beginning of a tiny page wraps to the last page");
         menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
