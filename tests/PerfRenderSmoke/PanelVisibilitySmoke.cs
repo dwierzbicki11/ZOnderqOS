@@ -31,11 +31,17 @@ internal static class PanelVisibilitySmoke
         }
     }
 
-    private static double Time(bool optimized, int op, Canvas canvas, int repeats)
+    private static double Time(bool optimized, int op, Canvas canvas, int repeats,
+        bool onscreen)
     {
         long start = Stopwatch.GetTimestamp();
         for (int i = 0; i < repeats; i++)
-            Draw(optimized, op, canvas, 600 + (i & 7) * 13, 350, 180, 100, 32);
+        {
+            if (onscreen)
+                Draw(optimized, op, canvas, 15, 12, 60, 42, 12);
+            else
+                Draw(optimized, op, canvas, 600 + (i & 7) * 13, 350, 180, 100, 32);
+        }
         return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
     }
 
@@ -70,39 +76,56 @@ internal static class PanelVisibilitySmoke
         if (extreme.DrawCalls != 0)
             throw new Exception("Offscreen extreme coordinates touched Canvas");
 
-        const int repeats = 20000;
-        for (int op = 0; op < 3; op++)
+        // Benchmark both cases. The culling guard must not hide a meaningful
+        // regression in the common fully visible drawing path.
+        for (int mode = 0; mode < 2; mode++)
         {
-            Canvas beforeFrame = new Canvas(140, 100);
-            Canvas afterFrame = new Canvas(140, 100);
-            Time(false, op, beforeFrame, 1000);
-            Time(true, op, afterFrame, 1000);
-            double[] before = new double[5];
-            double[] after = new double[5];
-            for (int sample = 0; sample < 5; sample++)
+            bool onscreen = mode == 1;
+            int repeats = onscreen ? 1000 : 20000;
+            for (int op = 0; op < 3; op++)
             {
-                if ((sample & 1) == 0)
+                Canvas beforeFrame = new Canvas(140, 100);
+                Canvas afterFrame = new Canvas(140, 100);
+                Time(false, op, beforeFrame, 100, onscreen);
+                Time(true, op, afterFrame, 100, onscreen);
+                double[] before = new double[5];
+                double[] after = new double[5];
+                for (int sample = 0; sample < 5; sample++)
                 {
-                    before[sample] = Time(false, op, beforeFrame, repeats);
-                    after[sample] = Time(true, op, afterFrame, repeats);
+                    if ((sample & 1) == 0)
+                    {
+                        before[sample] = Time(false, op, beforeFrame, repeats, onscreen);
+                        after[sample] = Time(true, op, afterFrame, repeats, onscreen);
+                    }
+                    else
+                    {
+                        after[sample] = Time(true, op, afterFrame, repeats, onscreen);
+                        before[sample] = Time(false, op, beforeFrame, repeats, onscreen);
+                    }
                 }
-                else
-                {
-                    after[sample] = Time(true, op, afterFrame, repeats);
-                    before[sample] = Time(false, op, beforeFrame, repeats);
-                }
+                Array.Sort(before);
+                Array.Sort(after);
+                if (!onscreen && (beforeFrame.DrawCalls != 0 || afterFrame.DrawCalls != 0))
+                    throw new Exception("Offscreen benchmark touched framebuffer");
+                if (onscreen && (beforeFrame.DrawCalls == 0 || afterFrame.DrawCalls == 0))
+                    throw new Exception("Onscreen benchmark did not draw");
+                Console.WriteLine("Host .NET " + (onscreen ? "onscreen " : "offscreen ") +
+                    (op == 0 ? "RoundedPanel" : op == 1 ? "RoundedFill" : "RoundedTop") +
+                    ": " + repeats + " calls, median 5 alternating A/B; old " +
+                    before[2].ToString("F2") + " ms, culled " + after[2].ToString("F2") +
+                    " ms (not QEMU FPS).");
             }
-            Array.Sort(before);
-            Array.Sort(after);
-            if (beforeFrame.DrawCalls != 0 || afterFrame.DrawCalls != 0)
-                throw new Exception("Offscreen benchmark touched framebuffer");
-            Console.WriteLine("Host .NET offscreen " +
-                (op == 0 ? "RoundedPanel" : op == 1 ? "RoundedFill" : "RoundedTop") +
-                ": " + repeats + " calls, median 5 alternating A/B; old " +
-                before[2].ToString("F2") + " ms, culled " + after[2].ToString("F2") +
-                " ms (not QEMU FPS).");
         }
+
+        Canvas allocationFrame = new Canvas(140, 100);
+        UiPainter.RoundedPanel(allocationFrame, 15, 12, 60, 42, 12, Ink, Edge);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++)
+            UiPainter.RoundedPanel(allocationFrame, 15, 12, 60, 42, 12, Ink, Edge);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        if (allocated != 0)
+            throw new Exception("Visible panel drawing allocated " + allocated + " bytes");
         Console.WriteLine("Panel visibility: " + checks +
-            " exact framebuffer comparisons and extreme/null guards.");
+            " exact framebuffer comparisons, extreme/null guards, 0 B warm visible allocations.");
     }
 }
