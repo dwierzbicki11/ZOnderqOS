@@ -115,14 +115,16 @@ namespace ZonderqOS.SystemCore
                 ? CachedCpuPrefixes[cpu]
                 : "CPU " + cpu.ToString().PadLeft(3) + " [";
 
-        // Stock Cosmos 3.0.95 does not expose per-CPU busy accounting. Reuse
-        // the entire immutable N/A line for common 1..16 CPU configurations,
-        // rather than allocating two concatenated strings every refresh.
+        // Stock Cosmos 3.0.95 does not expose per-CPU busy accounting.
+        // Cache the complete N/A line for the same 0..63 logical CPUs as
+        // CachedCpuPrefixes. Previously CPU 16..63 formatted a fresh line
+        // on every htop refresh even though their values never change.
+        // The small, bounded cache is allocated once, never in Refresh().
         private static readonly string[] CachedCpuUnavailableLines = BuildCpuUnavailableLines();
 
         private static string[] BuildCpuUnavailableLines()
         {
-            var lines = new string[16];
+            var lines = new string[64];
             for (int cpu = 0; cpu < lines.Length; cpu++)
                 lines[cpu] = CpuPrefix(cpu) + CpuBar(0) + "] N/A";
             return lines;
