@@ -30,6 +30,87 @@ internal static class Program
         Console.WriteLine("PASS: 303 exact CPU bar output/width/reference checks (0..100%)");
     }
 
+    private static string LegacyCpuUnavailableLine(int cpu) =>
+        HtopMonitor.CpuPrefix(cpu) + HtopMonitor.CpuBar(0) + "] N/A";
+
+    private static void VerifyCpuUnavailableLines()
+    {
+        for (int cpu = 0; cpu < 128; cpu++)
+        {
+            string expected = LegacyCpuUnavailableLine(cpu);
+            string actual = HtopMonitor.CpuUnavailableLine(cpu);
+            Assert(actual == expected, "stock N/A CPU row mismatch " + cpu);
+            if (cpu < 16)
+                Assert(object.ReferenceEquals(actual, HtopMonitor.CpuUnavailableLine(cpu)),
+                    "stock N/A CPU row was not cached " + cpu);
+        }
+        var monitor = new HtopMonitor();
+        monitor.Refresh();
+        string first = monitor.Lines[3];
+        Assert(object.ReferenceEquals(first, HtopMonitor.CpuUnavailableLine(0)),
+            "stock CPU row did not use production cache");
+        monitor.Refresh();
+        Assert(object.ReferenceEquals(first, monitor.Lines[3]),
+            "stock CPU row was reallocated between monitor refreshes");
+        Console.WriteLine("PASS: 146 exact stock CPU N/A row/reference checks across refreshes");
+    }
+
+    private static void BenchmarkCpuUnavailableLines()
+    {
+        int[] indices = new int[1024];
+        for (int i = 0; i < indices.Length; i++)
+            indices[i] = (i * 13) % 16;
+        Func<long> legacy = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < indices.Length; i++)
+            {
+                string line = LegacyCpuUnavailableLine(indices[i]);
+                checksum += line.Length + line[0] + line[line.Length - 1];
+            }
+            return checksum;
+        };
+        Func<long> cached = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < indices.Length; i++)
+            {
+                string line = HtopMonitor.CpuUnavailableLine(indices[i]);
+                checksum += line.Length + line[0] + line[line.Length - 1];
+            }
+            return checksum;
+        };
+        Assert(legacy() == cached(), "stock CPU N/A A/B checksum mismatch");
+        for (int i = 0; i < 15; i++) { sink ^= legacy(); sink ^= cached(); }
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= legacy();
+        long oldBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        start = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= cached();
+        long newBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        Assert(oldBytes > 0, "legacy N/A CPU rows must allocate");
+        Assert(newBytes == 0, "cached N/A CPU rows allocated " + newBytes + " B");
+        double[] before = new double[7], after = new double[7];
+        for (int sample = 0; sample < 7; sample++)
+        {
+            if ((sample & 1) == 0)
+            {
+                before[sample] = Time(legacy, 200);
+                after[sample] = Time(cached, 200);
+            }
+            else
+            {
+                after[sample] = Time(cached, 200);
+                before[sample] = Time(legacy, 200);
+            }
+        }
+        double a = Median(before), b = Median(after);
+        Console.WriteLine("HOST A/B stock CPU N/A 1024 rows: old=" + a.ToString("F4") +
+            "ms cached=" + b.ToString("F4") + "ms ratio=" +
+            (a / b).ToString("F2") + "x allocations=" + oldBytes +
+            "B -> " + newBytes + "B per 1024 rows (7 alternating samples)");
+    }
+
     private static string LegacyCpuPrefix(int cpu) =>
         "CPU " + cpu.ToString().PadLeft(3) + " [";
 
@@ -611,6 +692,8 @@ internal static class Program
         BenchmarkCpuBars();
         VerifyCpuPrefixes();
         BenchmarkCpuPrefixes();
+        VerifyCpuUnavailableLines();
+        BenchmarkCpuUnavailableLines();
         VerifyIndex();
         VerifyMonitorIntegration();
         VerifyProductionRowSortAllocations();
