@@ -298,12 +298,22 @@ namespace ZonderqOS.GUI
             return value < 10000000000000000000UL ? 19 : 20;
         }
 
+        // Fixed 160-byte table avoids repeated 64-bit multiplication while
+        // formatting visible numeric labels. Every caller uses 0..19 only.
+        private static readonly ulong[] CachedPowersOfTen =
+        {
+            1UL, 10UL, 100UL, 1000UL, 10000UL,
+            100000UL, 1000000UL, 10000000UL, 100000000UL,
+            1000000000UL, 10000000000UL, 100000000000UL,
+            1000000000000UL, 10000000000000UL, 100000000000000UL,
+            1000000000000000UL, 10000000000000000UL,
+            100000000000000000UL, 1000000000000000000UL,
+            10000000000000000000UL
+        };
+
         private static ulong Pow10(int exponent)
         {
-            ulong value = 1;
-            for (int i = 0; i < exponent; i++)
-                value *= 10;
-            return value;
+            return CachedPowersOfTen[exponent];
         }
 
         private static void DrawChar(Canvas canvas, char ch, int x, int y, Color color)

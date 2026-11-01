@@ -70,6 +70,7 @@ internal static class Program
         TextVisibilitySmoke.Verify();
         TextRangeNumberVisibilitySmoke.Verify();
         NumericDigitCountSmoke.Verify();
+        NumericPow10Smoke.Verify();
         TextPercentVisibilitySmoke.Verify();
         Console.WriteLine("PASS: production C# text/panel renderers tested with stub Canvas; not QEMU.");
         return 0;

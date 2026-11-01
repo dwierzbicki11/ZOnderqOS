@@ -133,6 +133,17 @@ class TextRangeVisibilityContracts(unittest.TestCase):
         for value in values:
             self.assertEqual(count(value), len(str(value)), value)
 
+
+    def test_cached_decimal_powers_are_exact_and_bounded(self):
+        import re
+        power_block = SOURCE.split("private static readonly ulong[] CachedPowersOfTen", 1)[1].split(
+            "private static ulong Pow10(", 1)[0]
+        values = [int(n) for n in re.findall(r"(\\d+)UL", power_block)]
+        self.assertEqual(values, [10**i for i in range(20)])
+        pow10 = SOURCE.split("private static ulong Pow10(int exponent)", 1)[1].split(
+            "private static void DrawChar(", 1)[0]
+        self.assertIn("return CachedPowersOfTen[exponent];", pow10)
+
     def test_signed_numbers_cull_before_drawing_minus(self):
         signed = SOURCE.split("public static void DrawInt(Canvas", 1)[1].split(
             "public static void DrawPercent(", 1)[0]
