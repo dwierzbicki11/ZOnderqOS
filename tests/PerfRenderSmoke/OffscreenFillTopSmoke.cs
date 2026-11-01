@@ -90,6 +90,69 @@ internal static class OffscreenFillTopSmoke
                     " x=" + x + " y=" + y + " radius=" + radius);
     }
 
+    // Reference uses the exact previous scanline loops above. A large
+    // radius with only a few visible corner rows makes wasted clipping work
+    // measurable without relying on a fake kernel boot or fabricated FPS.
+    private static void CompareTallClip(bool top, int y)
+    {
+        int height = top ? 512 : 1024;
+        Canvas oldFrame = new Canvas(140, 100);
+        Canvas newFrame = new Canvas(140, 100);
+        Draw(false, top, oldFrame, -450, y, 1024, height, 512);
+        Draw(true, top, newFrame, -450, y, 1024, height, 512);
+        if (oldFrame.DrawCalls != newFrame.DrawCalls)
+            throw new Exception("Tall clip changed Canvas calls: top=" + top + " y=" + y +
+                " old=" + oldFrame.DrawCalls + " new=" + newFrame.DrawCalls);
+        for (int i = 0; i < oldFrame.Pixels.Length; i++)
+            if (oldFrame.Pixels[i] != newFrame.Pixels[i])
+                throw new Exception("Tall clip pixel mismatch: top=" + top +
+                    " y=" + y + " pixel=" + i);
+    }
+
+    private static double TimeTallClip(bool current, bool top, Canvas canvas, int repeats)
+    {
+        int y = top ? -508 : -1020;
+        int height = top ? 512 : 1024;
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repeats; i++)
+            Draw(current, top, canvas, -450, y, 1024, height, 512);
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
+    private static void BenchmarkTallClip(bool top)
+    {
+        const int samples = 7;
+        const int repeats = 1500;
+        Canvas beforeFrame = new Canvas(140, 100);
+        Canvas afterFrame = new Canvas(140, 100);
+        TimeTallClip(false, top, beforeFrame, 100);
+        TimeTallClip(true, top, afterFrame, 100);
+        double[] before = new double[samples];
+        double[] after = new double[samples];
+        for (int i = 0; i < samples; i++)
+        {
+            if ((i & 1) == 0)
+            {
+                before[i] = TimeTallClip(false, top, beforeFrame, repeats);
+                after[i] = TimeTallClip(true, top, afterFrame, repeats);
+            }
+            else
+            {
+                after[i] = TimeTallClip(true, top, afterFrame, repeats);
+                before[i] = TimeTallClip(false, top, beforeFrame, repeats);
+            }
+        }
+        Array.Sort(before);
+        Array.Sort(after);
+        if (beforeFrame.DrawCalls != afterFrame.DrawCalls || beforeFrame.DrawCalls == 0)
+            throw new Exception("Tall clip benchmark changed visible Canvas calls");
+        Console.WriteLine("Host .NET tall vertically clipped " +
+            (top ? "RoundedTop" : "RoundedFill") + ": " + repeats +
+            " calls, median 7 alternating A/B, previous " +
+            before[3].ToString("F3") + " ms, optimized " +
+            after[3].ToString("F3") + " ms (not QEMU FPS).");
+    }
+
     private static double Time(bool current, bool top, Canvas canvas, bool visible, int repeats)
     {
         long start = Stopwatch.GetTimestamp();
@@ -165,6 +228,16 @@ internal static class OffscreenFillTopSmoke
         }
         if (extreme.DrawCalls != 0)
             throw new Exception("Extreme fully offscreen panel reached Canvas");
+
+        // Near-screen corner strips, deep vertical clipping and mixed
+        // visible/hidden rows must preserve both pixels and Canvas calls.
+        foreach (int y in new[] { -1023, -1020, -1015, -1000, -800, -512,
+                                  -508, -500, -1, 0, 99 })
+            CompareTallClip(false, y);
+        foreach (int y in new[] { -511, -508, -505, -500, -300, -1, 0, 99 })
+            CompareTallClip(true, y);
+        BenchmarkTallClip(false);
+        BenchmarkTallClip(true);
 
         Benchmark(false, false);
         Benchmark(true, false);
