@@ -121,27 +121,27 @@ namespace ZonderqOS.GUI
             }
 
             Fill(canvas, fill, x, y + r, width, height - 2 * r);
-            // RoundedFill is common in layered shadows. On the host Canvas
-            // the grouping loop costs more than its saved draw calls at small
-            // radii; use cached insets with simple scanlines instead.
-            // The common fully-visible case keeps the original single loop.
-            // A tall window clipped by the screen edge can otherwise evaluate
-            // hundreds of invisible corner rows (including Math.Sqrt for r>32).
-            if (y >= 0 && (long)y + height <= canvas.Height)
+            // Keep the common on-screen draw loop compact. The much larger
+            // vertical clipping path is cold and lives in a separate method.
+            if (y < 0 || (long)y + height > canvas.Height)
             {
-                for (int row = 0; row < r; row++)
-                {
-                    int inset = CornerInset(r, row);
-                    Fill(canvas, fill, x + inset, y + row, width - 2 * inset, 1);
-                    Fill(canvas, fill, x + inset, y + height - row - 1, width - 2 * inset, 1);
-                }
+                FillClippedCorners(canvas, x, y, width, height, r, fill);
                 return;
             }
 
-            // Only visit rows whose top/bottom mirrored scanline intersects
-            // the framebuffer. Wide arithmetic avoids overflow at extreme
-            // negative window coordinates. Top and bottom never overlap for
-            // RoundedFill (r <= height/2), so drawing them separately is exact.
+            for (int row = 0; row < r; row++)
+            {
+                int inset = CornerInset(r, row);
+                Fill(canvas, fill, x + inset, y + row, width - 2 * inset, 1);
+                Fill(canvas, fill, x + inset, y + height - row - 1, width - 2 * inset, 1);
+            }
+        }
+
+        // Cold path: only mirrored corner scanlines intersecting the physical
+        // framebuffer are evaluated. RoundedFill clamps r to height/2.
+        private static void FillClippedCorners(Canvas canvas, int x, int y, int width,
+            int height, int r, Color fill)
+        {
             long topFirst = Math.Max(0L, -(long)y);
             long topEnd = Math.Min((long)r, (long)canvas.Height - y);
             for (int row = (int)topFirst; row < topEnd; row++)
@@ -168,17 +168,23 @@ namespace ZonderqOS.GUI
                 return;
             int r = Math.Min(Math.Min(radius, width / 2), height);
             Fill(canvas, fill, x, y + r, width, height - r);
-            // Host A/B showed grouping overhead on this one-sided strip.
-            // The cached inset avoids Math.Sqrt without extra band scans.
-            // Preserve the short fully-visible hot path. For a vertically
-            // clipped top edge, skip rows that cannot touch the framebuffer.
-            int firstRow = 0;
-            int lastRow = r;
             if (y < 0 || (long)y + r > canvas.Height)
             {
-                firstRow = (int)Math.Max(0L, -(long)y);
-                lastRow = (int)Math.Min((long)r, (long)canvas.Height - y);
+                FillClippedTopCorners(canvas, x, y, width, r, fill);
+                return;
             }
+            for (int row = 0; row < r; row++)
+            {
+                int inset = CornerInset(r, row);
+                Fill(canvas, fill, x + inset, y + row, width - 2 * inset, 1);
+            }
+        }
+
+        private static void FillClippedTopCorners(Canvas canvas, int x, int y, int width,
+            int r, Color fill)
+        {
+            int firstRow = (int)Math.Max(0L, -(long)y);
+            int lastRow = (int)Math.Min((long)r, (long)canvas.Height - y);
             for (int row = firstRow; row < lastRow; row++)
             {
                 int inset = CornerInset(r, row);
