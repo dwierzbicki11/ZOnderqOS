@@ -1024,6 +1024,34 @@ static class Test
         byte[] equalGain = AudioPcmVolume.ScaleStereo16Channels(pcm, 25, 25);
         for (int i = 0; i < quarter.Length; i++)
             Expect(equalGain[i] == quarter[i], "equal channel gains match master volume");
+
+        // The isolated playback probe exclusively owns each freshly built
+        // PCM buffer. Unity gain can reuse it without a second allocation;
+        // all non-unity gains must still return an independent scaled copy.
+        byte[] reusedUnity = AudioPcmVolume.ScaleStereo16ChannelsOrReuse(extremes, 100, 100);
+        Expect(ReferenceEquals(reusedUnity, extremes), "unity gain reuses owned PCM");
+        Expect(reusedUnity[0] == 0 && reusedUnity[1] == 128 &&
+            reusedUnity[2] == 255 && reusedUnity[3] == 127,
+            "unity gain retains exact signed samples");
+        byte[] copiedBalance = AudioPcmVolume.ScaleStereo16ChannelsOrReuse(extremes, 100, 50);
+        Expect(!ReferenceEquals(copiedBalance, extremes), "non-unity gain makes independent copy");
+        for (int i = 0; i < copiedBalance.Length; i++)
+            Expect(copiedBalance[i] == halfRight[i], "non-unity fast path matches existing gain");
+        byte[] copiedMute = AudioPcmVolume.ScaleStereo16ChannelsOrReuse(extremes, 0, 0);
+        Expect(!ReferenceEquals(copiedMute, extremes) &&
+            Array.TrueForAll(copiedMute, b => b == 0), "mute never aliases source");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16ChannelsOrReuse(new byte[3], 100, 100); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "unity fast path rejects incomplete frame");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16ChannelsOrReuse(extremes, 100, 101); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "unity fast path rejects invalid right gain");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16ChannelsOrReuse(new byte[48000 * 2 * 4 + 4], 100, 100); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "unity fast path enforces two-second PCM bound");
         rejected = false;
         try { AudioPcmVolume.ScaleStereo16Channels(extremes, -1, 100); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
