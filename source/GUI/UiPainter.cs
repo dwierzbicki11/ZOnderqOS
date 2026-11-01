@@ -182,15 +182,6 @@ namespace ZonderqOS.GUI
         {
             if (width <= 0 || height <= 0 || x >= canvas.Width || y >= canvas.Height)
                 return;
-            // Most panel spans are entirely inside the framebuffer. Avoid
-            // four Min/Max operations and wide clipping arithmetic for them.
-            // Subtraction is safe after x/y >= 0 and x/y < canvas bounds.
-            if (x >= 0 && y >= 0 &&
-                width <= canvas.Width - x && height <= canvas.Height - y)
-            {
-                canvas.DrawFilledRectangle(color, x, y, width, height);
-                return;
-            }
             long right = (long)x + width;
             long bottom = (long)y + height;
             if (right <= 0 || bottom <= 0)
