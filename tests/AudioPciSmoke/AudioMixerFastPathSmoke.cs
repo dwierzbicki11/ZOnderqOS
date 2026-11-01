@@ -192,6 +192,25 @@ internal static class AudioMixerFastPathSmoke
                 "adjacent/overlapping clips preserve exact PCM");
         }
 
+        // A zero-gain clip may overlap both audible clips without
+        // contributing samples. Its fade cannot change that invariant.
+        byte[][] mutedOverlapClips = {
+            new byte[] { 0xff, 0x7f, 0x00, 0x80 },
+            new byte[] { 0xff, 0x7f, 0x00, 0x80, 0x01, 0x00, 0xff, 0xff },
+            new byte[] { 0x34, 0x12, 0x78, 0x56 }
+        };
+        int[] mutedOverlapStarts = { 0, 0, 1 };
+        int[] mutedOverlapGains = { 100, 0, 100 };
+        Same(AudioPcmMixer.MixScheduledStereo16(
+                mutedOverlapClips, mutedOverlapStarts, mutedOverlapGains),
+            LegacyScheduled(mutedOverlapClips, mutedOverlapStarts, mutedOverlapGains, 0),
+            "muted overlap cannot change audible PCM samples");
+        Same(AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+                mutedOverlapClips, mutedOverlapStarts, mutedOverlapGains,
+                new[] { 0, 50, 0 }, 4096),
+            LegacyScheduled(mutedOverlapClips, mutedOverlapStarts, mutedOverlapGains, 4096),
+            "muted overlapping fade preserves audible PCM and silent tail");
+
         byte[] a = { 0xff, 0x7f, 0x00, 0x80 };
         byte[] b = { 0x34, 0x12, 0x78, 0x56 };
         byte[] silent = AudioPcmMixer.MixScheduledStereo16(
@@ -262,6 +281,40 @@ internal static class AudioMixerFastPathSmoke
         Console.WriteLine("[AUDIO-MIX-DISJOINT] HOST A/B 7x64 median legacy=" +
             (disjointBefore[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
             "ms optimized=" + (disjointAfter[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
+            "ms checksum=" + checksum + " (host only; no QEMU timing proof)");
+        // Host A/B for overlapping muted effects: only the four audible
+        // unity-gain clips are disjoint. Muted clips deliberately overlap
+        // them and must not force the per-sample summation path.
+        int[] mutedBenchStarts = (int[])benchStarts.Clone();
+        int[] mutedBenchGains = (int[])benchGains.Clone();
+        for (int i = 1; i < mutedBenchGains.Length; i += 2)
+        {
+            mutedBenchGains[i] = 0;
+            mutedBenchStarts[i] = mutedBenchStarts[i - 1];
+        }
+        Same(AudioPcmMixer.MixScheduledStereo16(benchClips, mutedBenchStarts, mutedBenchGains),
+            LegacyScheduled(benchClips, mutedBenchStarts, mutedBenchGains, 0),
+            "muted-overlap benchmark must use bit-exact reference output");
+        BatchDisjoint(benchClips, mutedBenchStarts, mutedBenchGains, false);
+        BatchDisjoint(benchClips, mutedBenchStarts, mutedBenchGains, true);
+        long[] mutedBefore = new long[7], mutedAfter = new long[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if (i % 2 == 0)
+            {
+                mutedBefore[i] = BatchDisjoint(benchClips, mutedBenchStarts, mutedBenchGains, false);
+                mutedAfter[i] = BatchDisjoint(benchClips, mutedBenchStarts, mutedBenchGains, true);
+            }
+            else
+            {
+                mutedAfter[i] = BatchDisjoint(benchClips, mutedBenchStarts, mutedBenchGains, true);
+                mutedBefore[i] = BatchDisjoint(benchClips, mutedBenchStarts, mutedBenchGains, false);
+            }
+        }
+        Array.Sort(mutedBefore); Array.Sort(mutedAfter);
+        Console.WriteLine("[AUDIO-MIX-MUTED-OVERLAP] HOST A/B 7x64 median legacy=" +
+            (mutedBefore[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
+            "ms optimized=" + (mutedAfter[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
             "ms checksum=" + checksum + " (host only; no QEMU timing proof)");
         Console.WriteLine("[AUDIO-MIX-FASTPATH] PASS " + checks +
             " exact-sample/bounds/immutability checks");
