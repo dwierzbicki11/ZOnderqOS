@@ -340,3 +340,25 @@ thread-local allocation bytes. This removes one 48,000-byte temporary PCM
 array for a 250 ms 48 kHz stereo diagnostic tone by construction; it is
 **not** a measured guest CPU/GC speedup. QEMU sample-level fade validation
 is still required before claiming an audible output improvement.
+
+### 16 kHz and 24 kHz WAV resampling (2026-11-01, QEMU confirmation pending)
+
+The isolated decoder now accepts **16,000 Hz** and **24,000 Hz** uncompressed
+PCM8/16/24/32 mono or stereo in addition to 22,050/32,000/44,100/48,000 Hz.
+Both new rates use the existing bounded integer linear resampler to produce
+48 kHz signed PCM16 stereo. The same 2-second output limit and 800 KiB RIFF
+limit apply; no disk, network, DMA or production GUI changes were made.
+
+The diskless diagnostic commands `wav16k` and `wav24k` respectively exercise
+16 kHz unsigned PCM8 mono at 1500 Hz and 24 kHz PCM16 stereo at 740 Hz.
+The 740 Hz fixture avoids the frequent exact-zero midpoint samples that a
+high-frequency square wave creates when linearly interpolated from 24 kHz
+to 48 kHz; otherwise the existing strict sustained-audio QEMU validator
+could reject correctly resampled audio. Independent host-side arithmetic
+confirmed 96.9% active samples and approximately 738 Hz in an 80 ms window
+for the 24 kHz fixture. This calculation is **not** a QEMU playback result.
+
+The real-QEMU CI includes separate boots and backend WAV captures for both
+commands, with unique pitch expectations. Until those runs complete, these
+new paths are **implemented but not QEMU-verified**. Production audio remains
+disabled and external FAT32 WAV playback remains out of scope.
