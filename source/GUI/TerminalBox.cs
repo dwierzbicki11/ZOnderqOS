@@ -51,6 +51,14 @@ namespace ZonderqOS.GUI
 
         private void AddOutputLine(string line)
         {
+            AppendOutputLine(line);
+            FinishOutputUpdate();
+        }
+
+        // Batch terminal output without recalculating scrollbar geometry after
+        // each wrapped line. The final range is published once per PrintLine.
+        private void AppendOutputLine(string line)
+        {
             if (OutputLines.Count >= MaxOutputLines)
             {
                 int remove = Math.Min(TrimBatch, OutputLines.Count);
@@ -59,7 +67,10 @@ namespace ZonderqOS.GUI
             }
 
             OutputLines.Add(line ?? "");
+        }
 
+        private void FinishOutputUpdate()
+        {
             if (!userScrolled)
                 ScrollToBottom();
             else
@@ -97,11 +108,14 @@ namespace ZonderqOS.GUI
                 if (take <= 0)
                     take = Math.Min(maxChars, remaining);
 
-                AddOutputLine(line.Substring(position, take).TrimEnd());
+                AppendOutputLine(line.Substring(position, take).TrimEnd());
                 position += take;
                 while (position < line.Length && line[position] == ' ')
                     position++;
             }
+
+            // Keep auto-follow and manually scrolled history behavior intact.
+            FinishOutputUpdate();
         }
 
         public void ClearOutput()
@@ -114,14 +128,19 @@ namespace ZonderqOS.GUI
 
         internal void ShowMonitor(IReadOnlyList<string> lines, int firstLine)
         {
-            ClearOutput();
+            // Htop replaces the entire visible snapshot on each refresh.
+            // Avoid ClearOutput plus a redundant scrollbar update per row.
+            OutputLines.Clear();
+            userScrolled = false;
+            scrollOffset = 0;
             int width = GetMaxChars();
             int count = Math.Max(1, GetVisibleLines() - 1);
             for (int index = Math.Max(0, firstLine); index < lines.Count && count > 0; index++, count--)
             {
                 string line = lines[index];
-                AddOutputLine(line.Length > width ? line.Substring(0, width) : line);
+                OutputLines.Add(line.Length > width ? line.Substring(0, width) : line);
             }
+            UpdateScrollBar();
         }
 
         private int GetCharWidth()
