@@ -219,6 +219,56 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
+        /// 16 kHz unsigned PCM8 mono voice-rate WAV -> 48 kHz stereo PCM16.
+        /// Distinct 1500 Hz fixture is generated in RAM for QEMU HDA capture.
+        /// No guest filesystem, codec register or host disk access.
+        /// </summary>
+        public static bool PlayWave16000MonoTestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(16000, 1500, 250, 4096);
+                byte[] mono8 = new byte[source.Length / 4];
+                for (int i = 0; i < mono8.Length; i++)
+                {
+                    int at = i * 4;
+                    short sample = (short)(source[at] | (source[at + 1] << 8));
+                    mono8[i] = (byte)(128 + (sample >> 8));
+                }
+                byte[] wave = AudioWavePcm.EncodePcm8AtRate(mono8, 16000, 1);
+                Console.WriteLine("[AUDIO] WAV 16000Hz PCM8 mono -> bounded stream -> 48000Hz HDA");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV 16000 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// 24 kHz stereo PCM16 WAV -> 48 kHz stereo PCM16, with distinct
+        /// 1800 Hz fixture for QEMU backend verification. RAM-only.
+        /// </summary>
+        public static bool PlayWave24000TestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(24000, 1800, 250, 4096);
+                byte[] wave = AudioWavePcm.EncodeStereo16AtRate(source, 24000);
+                Console.WriteLine("[AUDIO] WAV 24000Hz stereo16 -> bounded stream -> 48000Hz HDA");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV 24000 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Independent 22.05 kHz PCM16 stereo WAV with a distinct 1100 Hz
         /// test tone. Resamples to 48 kHz through the same bounded read-only
         /// stream used by other probes; no guest disk or GUI is involved.
