@@ -254,12 +254,17 @@ namespace ZonderqOS
                 // Each distinct frame must be independently observed in QEMU
                 // filter-dump; successful queueing alone is NOT a DMA proof.
                 Log("[NET3095-N6] TX_BURST_ATTEMPT=START count=128");
-                if (!TrySendBurst(frame))
+                if (!TrySendBurst(frame, baselineResources, baselineIrqSources))
                 {
                     Log("[NET3095-N6][FAIL] E1000E raw TX burst queue rejected");
                     return;
                 }
                 Log("[NET3095-N6] TX_BURST=QUEUED count=128");
+                // Five read-only DriverKit checks (0/32/64/96/128 TX)
+                // confirm stable PCI/IRQ ownership during descriptor reuse.
+                // QEMU PCAP remains the only evidence of frames on the wire.
+                Log("[NET3095-N6] TX_DRIVER_STABLE=PASS count=128 checks=5 resources=" +
+                    baselineResources + " irq_sources=" + baselineIrqSources);
                 // Verify that RX and the IPv4/ICMP stack still work after the
                 // 128 TX submissions, including repeated descriptor reuse. The
                 // independent PCAP gate must see this request and its reply
@@ -571,7 +576,8 @@ namespace ZonderqOS
 #endif
 
 #if ZONDERQ_NETWORK_N6_HTTP
-        private static bool TrySendBurst(byte[] template)
+        private static bool TrySendBurst(byte[] template,
+            int expectedResources, int expectedIrqSources)
         {
             // 128 paced frames exercise four complete 32-descriptor TX ring cycles
             // without exposing the NIC in the production GUI.
@@ -593,6 +599,8 @@ namespace ZonderqOS
             {
                 if ((sequence & 31) == 0)
                 {
+                    if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
+                        return false;
                     NetworkAdapter current = NetworkManager.Primary;
                     if (!current.IsValid || current.Name != "e1000e" ||
                         !current.Ready || !current.LinkUp ||
@@ -612,7 +620,9 @@ namespace ZonderqOS
                     return false;
                 Thread.Sleep(5);
             }
-            return true;
+            // Include the final descriptor cycle, not just the pre-send
+            // snapshots taken at sequence 0, 32, 64 and 96.
+            return IsE1000EDriverKitStable(expectedResources, expectedIrqSources);
         }
 #endif
 

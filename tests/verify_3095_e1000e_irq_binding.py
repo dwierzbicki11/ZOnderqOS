@@ -27,6 +27,8 @@ HEALTH = re.compile(r"^\[NET3095-N6\] DRIVER_HEALTH=PASS node=" + NODE +
                     r" irq_sources=(\d+) handler_faults=(\d+) isr_executions=unknown$")
 STREAM = re.compile(r"^\[NET3095-N6\] HTTP_DRIVER_STABLE=PASS attempt=([1-6]) "
                     r"resources=(\d+) irq_sources=(\d+)$")
+BURST = re.compile(r"^\[NET3095-N6\] TX_DRIVER_STABLE=PASS count=128 checks=5 "
+                   r"resources=(\d+) irq_sources=(\d+)$")
 
 
 def check_guest_line(serial: str) -> str:
@@ -96,6 +98,23 @@ def check_driver_health(serial: str) -> str:
             not lines.index(baseline_lines[0]) < lines.index(link_lines[0]) <
             lines.index(claims[0])):
         raise ValueError("E1000E health was not sampled after matching post-stress link")
+    # Confirm PCI and IRQ source ownership at all four 32-entry TX ring
+    # boundaries and after the final send. A queued TX marker alone is not
+    # proof of DMA or IRQ execution; the independent PCAP validates TX.
+    burst_claims = [line for line in lines
+                    if line.startswith("[NET3095-N6] TX_DRIVER_STABLE")]
+    burst_queued = "[NET3095-N6] TX_BURST=QUEUED count=128"
+    post_burst = "[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START"
+    if (len(burst_claims) != 1 or lines.count(burst_queued) != 1 or
+            lines.count(post_burst) != 1):
+        raise ValueError("missing/duplicate TX DriverKit ownership checkpoint")
+    burst = BURST.fullmatch(burst_claims[0])
+    if (burst is None or burst.group(1) != resources or
+            burst.group(2) != sources or not
+            (lines.index(baseline_lines[0]) < lines.index(burst_queued) <
+             lines.index(burst_claims[0]) < lines.index(post_burst) <
+             lines.index(claims[0]))):
+        raise ValueError("TX DriverKit ownership changed or checkpoint out of order")
     # Require six independent, ordered ownership snapshots. A single final
     # snapshot cannot detect a resource/IRQ registration that churned and
     # recovered between TCP sessions. These remain source counts, not ISRs.
@@ -148,7 +167,15 @@ def self_test() -> None:
         + "".join(
             f"[NET3095-N6] HTTP_DRIVER_STABLE=PASS attempt={attempt} resources=8 irq_sources=1\n"
             f"[NET3095-N6] HTTP_NIC_STABLE=PASS attempt={attempt}\n"
-            for attempt in range(1, 7)
+            for attempt in range(1, 3)
+        )
+        + "[NET3095-N6] TX_BURST=QUEUED count=128\n"
+        + "[NET3095-N6] TX_DRIVER_STABLE=PASS count=128 checks=5 resources=8 irq_sources=1\n"
+        + "[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START\n"
+        + "".join(
+            f"[NET3095-N6] HTTP_DRIVER_STABLE=PASS attempt={attempt} resources=8 irq_sources=1\n"
+            f"[NET3095-N6] HTTP_NIC_STABLE=PASS attempt={attempt}\n"
+            for attempt in range(3, 7)
         )
         + "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\n"
         "[NET3095-N6] DRIVER_HEALTH=PASS node=pci:0000:00:02.0 driver=E1000EDriver resources=8 published=1 irq_sources=1 handler_faults=0 isr_executions=unknown\n"
@@ -156,6 +183,7 @@ def self_test() -> None:
     assert "line=11" in check_guest_line(serial)
     assert "ISR-UNPROVEN" in check_driver_health(serial)
     assert "streams=6" in check_driver_health(serial)
+    assert "TX_DRIVER_STABLE" in serial
     trace = ("e1000e_irq_legacy_notify IRQ line state: 0\n"
              "e1000e_irq_legacy_notify IRQ line state: 1\n") * 4
     assert "qemu-legacy-assertions=4" in check_legacy_notification(serial, trace)
@@ -213,6 +241,18 @@ def self_test() -> None:
         serial.replace(nic_line, ""),
         serial + nic_line,
         serial.replace(stream_line + nic_line, nic_line + stream_line),
+    )
+    burst_marker = ("[NET3095-N6] TX_DRIVER_STABLE=PASS count=128 checks=5 "
+                    "resources=8 irq_sources=1\n")
+    burst_queued = "[NET3095-N6] TX_BURST=QUEUED count=128\n"
+    bad_health += (
+        serial.replace(burst_marker, ""),
+        serial + burst_marker,
+        serial.replace(burst_marker, burst_marker.replace("resources=8", "resources=9")),
+        serial.replace(burst_marker, burst_marker.replace("irq_sources=1", "irq_sources=2")),
+        serial.replace(burst_marker, burst_marker.replace("checks=5", "checks=4")),
+        serial.replace(burst_queued, ""),
+        serial.replace(burst_queued + burst_marker, burst_marker + burst_queued),
     )
     for bad in bad_health:
         try:
