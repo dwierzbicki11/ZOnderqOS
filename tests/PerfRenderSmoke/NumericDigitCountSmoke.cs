@@ -88,9 +88,11 @@ internal static class NumericDigitCountSmoke
         if (allocated != 0)
             throw new Exception("Decimal width allocated " + allocated + " B");
 
-        const int repetitions = 250000;
         for (int scenario = 0; scenario < 4; scenario++)
         {
+            // 0..99 takes sub-millisecond time at 250k calls, so give that
+            // scenario a longer sample to reduce timer noise.
+            int repetitions = scenario == 0 ? 2500000 : 250000;
             Time(false, scenario, 10000);
             Time(true, scenario, 10000);
             double[] before = new double[5];

@@ -267,8 +267,12 @@ namespace ZonderqOS.GUI
             // Avoid up to 19 sequential 64-bit divisions on the task-manager
             // numeric hot path. The common 0..99 range takes two comparisons;
             // larger values use a bounded decimal threshold tree.
+            // Order the common 1- and 2-digit cases first so small
+            // counters avoid the deeper decimal threshold tree entirely.
+            if (value < 10UL)
+                return 1;
             if (value < 100UL)
-                return value < 10UL ? 1 : 2;
+                return 2;
             if (value < 100000000UL)
             {
                 if (value < 10000UL)
