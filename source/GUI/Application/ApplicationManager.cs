@@ -277,6 +277,11 @@ namespace ZonderqOS.GUI.Apps
             bool removed = false;
             for (int i = applications.Count - 1; i >= 0; i--)
             {
+                // An app can close other windows (or the entire session)
+                // from its Update callback. Never index the old list size.
+                if (i >= applications.Count)
+                    continue;
+
                 Application application = applications[i];
                 if (application == null || !application.IsRunning || application.Window == null)
                 {
@@ -286,6 +291,16 @@ namespace ZonderqOS.GUI.Apps
                 else
                 {
                     application.Update();
+
+                    // Logout can happen inside Update. Stop this frame
+                    // immediately: no other user's windows may keep running.
+                    if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+                    {
+                        CloseAll();
+                        return;
+                    }
+                    if (applications.Count == 0)
+                        return;
                 }
             }
 
