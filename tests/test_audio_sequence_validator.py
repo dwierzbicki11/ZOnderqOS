@@ -15,14 +15,16 @@ spec.loader.exec_module(sequence)
 
 
 def fixture(path, pitches=(400, 700, 1000, 1300), rate=44100,
-            right=True, tail_ms=90, right_gain_percent=100, right_delay_ms=0):
+            right=True, tail_ms=90, right_gain_percent=100, right_delay_ms=0,
+            segment_gains_percent=(100, 100, 100, 100)):
     pcm = array.array("h")
     for _ in range(rate // 4):
         pcm.extend((0, 0))
-    for pitch in pitches:
+    for index, pitch in enumerate(pitches):
         frames = rate * 90 // 1000
         for frame in range(frames):
             value = 4096 if ((frame * pitch * 2) // rate) % 2 == 0 else -4096
+            value = value * segment_gains_percent[index] // 100
             pcm.extend((value, value * right_gain_percent // 100 if right else 0))
     for _ in range(rate * tail_ms // 1000):
         pcm.extend((0, 0))
@@ -105,6 +107,15 @@ class SequenceGate(unittest.TestCase):
                 with self.subTest(right_gain_percent=gain, right_delay_ms=delay):
                     with self.assertRaisesRegex(ValueError, "stereo phase/gain mismatch"):
                         sequence.inspect(path)
+
+    def test_reject_per_effect_amplitude_drift(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "quiet-third-effect.wav"
+            # Correct pitches, two coherent channels and no dropout; only
+            # the third DMA-period-sized effect loses half its amplitude.
+            fixture(path, segment_gains_percent=(100, 100, 50, 100))
+            with self.assertRaisesRegex(ValueError, "amplitude drift"):
+                sequence.inspect(path)
 
     def test_reject_non_pcm16(self):
         with tempfile.TemporaryDirectory() as tmp:
