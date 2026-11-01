@@ -315,6 +315,10 @@ namespace ZonderqOS
                                 Log("[NET3095-N6][FAIL] post-burst ICMP timeout or wrong peer seq=" + sequence);
                                 return;
                             }
+                            // Guest-observed receive latency complements PCAP
+                            // RTT, but does not establish ISR execution.
+                            Log("[NET3095-N6] POST_BURST_ICMP_RTT seq=" + sequence +
+                                " elapsed_ms=" + elapsedMs);
                         }
                         finally
                         {
@@ -375,6 +379,7 @@ namespace ZonderqOS
                             Log("[NET3095-N6][FAIL] final ICMP timeout or wrong peer");
                             return;
                         }
+                        Log("[NET3095-N6] FINAL_ICMP_RTT seq=1 elapsed_ms=" + finalElapsedMs);
                     }
                     finally
                     {
