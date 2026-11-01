@@ -286,6 +286,8 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))', SOURCE)
         self.assertIn('TX_DRIVER_CHECK=PASS sent=128 resources=', SOURCE)
         self.assertIn('TX_NIC_CHECK=PASS sent=128', SOURCE)
+        self.assertIn('TX_NIC_CHECK = re.compile',
+                      (ROOT / 'tests/verify_3095_e1000e_irq_binding.py').read_text())
         self.assertIn('for (int sequence = 0; sequence < 128; sequence++)', SOURCE)
         self.assertIn("burst[14 + tag.Length] = (byte)('0' + sequence / 100);", SOURCE)
         self.assertIn("burst[15 + tag.Length] = (byte)('0' + (sequence / 10) % 10);", SOURCE)

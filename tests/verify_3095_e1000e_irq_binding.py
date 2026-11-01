@@ -34,6 +34,7 @@ ICMP_CHECK = re.compile(r"^\[NET3095-N6\] ICMP_DRIVER_CHECK=PASS "
                         r"seq=(\d+) resources=(\d+) irq_sources=(\d+)$")
 TX_CHECK = re.compile(r"^\[NET3095-N6\] TX_DRIVER_CHECK=PASS sent=(\d+) "
                       r"resources=(\d+) irq_sources=(\d+)$")
+TX_NIC_CHECK = re.compile(r"^\[NET3095-N6\] TX_NIC_CHECK=PASS sent=(\d+)$")
 
 
 def check_guest_line(serial: str) -> str:
@@ -127,6 +128,11 @@ def check_driver_health(serial: str) -> str:
                  if line.startswith("[NET3095-N6] TX_DRIVER_CHECK")]
     if len(tx_checks) != 5:
         raise ValueError("missing or duplicate individual TX DriverKit checkpoints")
+    # Each DriverKit snapshot must be paired with a live NIC/lease snapshot.
+    tx_nic_checks = [line for line in lines
+                     if line.startswith("[NET3095-N6] TX_NIC_CHECK")]
+    if len(tx_nic_checks) != 5:
+        raise ValueError("missing or duplicate TX NIC/lease checkpoints")
     previous_check = lines.index(burst_start)
     for expected_sent, claim in zip((0, 32, 64, 96, 128), tx_checks):
         checkpoint = TX_CHECK.fullmatch(claim)
@@ -136,7 +142,13 @@ def check_driver_health(serial: str) -> str:
         check_index = lines.index(claim)
         if not previous_check < check_index < lines.index(burst_queued):
             raise ValueError("TX DriverKit checkpoints missing or out of order")
-        previous_check = check_index
+        nic_claim = tx_nic_checks[expected_sent // 32]
+        nic_match = TX_NIC_CHECK.fullmatch(nic_claim)
+        nic_index = lines.index(nic_claim)
+        if (nic_match is None or int(nic_match.group(1)) != expected_sent or
+                not check_index < nic_index < lines.index(burst_queued)):
+            raise ValueError("TX NIC/lease checkpoint invalid or out of order")
+        previous_check = nic_index
     # Sample the guest NIC, original DHCP lease and DriverKit ownership
     # before/after each post-burst ICMP echo and the final echo. These are
     # read-only source counts, NOT evidence of guest ISR execution.
@@ -237,6 +249,7 @@ def self_test() -> None:
         + "[NET3095-N6] TX_BURST_ATTEMPT=START count=128\n"
         + "".join(
             f"[NET3095-N6] TX_DRIVER_CHECK=PASS sent={count} resources=8 irq_sources=1\n"
+            f"[NET3095-N6] TX_NIC_CHECK=PASS sent={count}\n"
             for count in (0, 32, 64, 96, 128)
         )
         + "[NET3095-N6] TX_BURST=QUEUED count=128\n"
@@ -328,6 +341,8 @@ def self_test() -> None:
     burst_start = "[NET3095-N6] TX_BURST_ATTEMPT=START count=128\n"
     check32 = "[NET3095-N6] TX_DRIVER_CHECK=PASS sent=32 resources=8 irq_sources=1\n"
     check64 = "[NET3095-N6] TX_DRIVER_CHECK=PASS sent=64 resources=8 irq_sources=1\n"
+    nic32 = "[NET3095-N6] TX_NIC_CHECK=PASS sent=32\n"
+    nic64 = "[NET3095-N6] TX_NIC_CHECK=PASS sent=64\n"
     bad_health += (
         serial.replace(burst_marker, ""),
         serial + burst_marker,
@@ -345,6 +360,12 @@ def self_test() -> None:
         serial.replace(check32, check32.replace("irq_sources=1", "irq_sources=2")),
         serial.replace(check32 + check64, check64 + check32),
         serial.replace(check64, check64.replace("TX_DRIVER_CHECK=PASS", "TX_DRIVER_CHECK=FAIL")),
+        serial.replace(nic32, ""),
+        serial + nic32,
+        serial.replace(nic32, nic32.replace("sent=32", "sent=33")),
+        serial.replace(nic32, nic32.replace("TX_NIC_CHECK=PASS", "TX_NIC_CHECK=FAIL")),
+        serial.replace(nic32 + check64, check64 + nic32),
+        serial.replace(nic32 + check64 + nic64, nic64 + check64 + nic32),
         serial.replace(check32, "").replace(burst_queued, burst_queued + check32),
         serial.replace(burst_start, "").replace(burst_queued, burst_queued + burst_start),
     )
