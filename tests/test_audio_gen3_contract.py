@@ -132,6 +132,11 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("tests/test_audio_queue_validator.py", workflow)
         self.assertIn("tests/test_audio_queue_validator.py", host_workflow)
         self.assertIn("verify-audio-queue-capture.py", workflow)
+        self.assertIn('qemu_hda_codec(args.output_only)', harness)
+        self.assertIn('return "hda-output" if output_only else "hda-duplex"', harness)
+        self.assertIn("--command mixqueue --output-only", workflow)
+        self.assertIn("audio-qemu-mixqueue-output-only-out/*.wav", workflow)
+        self.assertIn("baseline mixqueue quality gate remains mandatory", workflow)
         for forbidden in ("Disk.", "File.", "WriteBlock(", "TryMount(",
                           "AllocateDma(", "EnableBusMastering(", "AudioManager."):
             self.assertNotIn(forbidden, mixer)
