@@ -69,6 +69,16 @@ namespace ZonderqOS.GUI
         private const int ResizeTop = 4;
         private const int ResizeBottom = 8;
 
+        // On very small firmware framebuffers, three 30px caption buttons
+        // would extend to the left of the window. Keep Close first, then
+        // Maximize and Minimize only when each complete button fits.
+        private int VisibleCaptionControls()
+        {
+            int usableWidth = Width - RightPadding;
+            return usableWidth < ButtonSize ? 0 :
+                System.Math.Min(3, usableWidth / ButtonSize);
+        }
+
         public static void ConfigureDesktop(int width, int height)
         {
             desktopWidth = width;
@@ -274,6 +284,7 @@ namespace ZonderqOS.GUI
 
             SyncDesktopBounds();
 
+            int visibleControls = VisibleCaptionControls();
             int closeX = X + Width - RightPadding - ButtonSize;
             int maximizeX = closeX - ButtonSize;
             int minimizeX = maximizeX - ButtonSize;
@@ -281,13 +292,13 @@ namespace ZonderqOS.GUI
 
             int previousHoveredControl = hoveredControl;
             hoveredControl = 0;
-            if (inControlsY)
+            if (inControlsY && mouseX >= X && mouseX < X + Width)
             {
-                if (mouseX >= closeX && mouseX < closeX + ButtonSize)
+                if (visibleControls >= 1 && mouseX >= closeX && mouseX < closeX + ButtonSize)
                     hoveredControl = 3;
-                else if (mouseX >= maximizeX && mouseX < maximizeX + ButtonSize)
+                else if (visibleControls >= 2 && mouseX >= maximizeX && mouseX < maximizeX + ButtonSize)
                     hoveredControl = 2;
-                else if (mouseX >= minimizeX && mouseX < minimizeX + ButtonSize)
+                else if (visibleControls >= 3 && mouseX >= minimizeX && mouseX < minimizeX + ButtonSize)
                     hoveredControl = 1;
             }
 
@@ -392,7 +403,8 @@ namespace ZonderqOS.GUI
             }
 
             bool inTitle = mouseY >= Y && mouseY < Y + TitleBarHeight && mouseX >= X && mouseX < X + Width;
-            if (!inTitle || mouseX >= minimizeX)
+            int controlsLeft = X + Width - RightPadding - visibleControls * ButtonSize;
+            if (!inTitle || (visibleControls > 0 && mouseX >= controlsLeft))
             {
                 lastTitleClickTimestamp = 0;
                 return;
@@ -534,19 +546,27 @@ namespace ZonderqOS.GUI
 
             canvas.DrawLine(Color.FromArgb(48, 57, 67), X + 1, Y + TitleBarHeight,
                 X + Width - 2, Y + TitleBarHeight);
-            UiTypography.Heading(canvas, Title, X + 12, Y + 4,
-                System.Math.Max(30, Width - 3 * ButtonSize - 28), titleText);
+            int visibleControls = VisibleCaptionControls();
+            int titleWidth = Width - visibleControls * ButtonSize - 28;
+            if (titleWidth > 0)
+                UiTypography.Heading(canvas, Title, X + 12, Y + 4,
+                    titleWidth, titleText);
 
             int closeX = X + Width - RightPadding - ButtonSize;
             int maximizeX = closeX - ButtonSize;
             int minimizeX = maximizeX - ButtonSize;
             int buttonY = Y + ButtonTop;
 
-            DrawCaptionButton(canvas, minimizeX, buttonY, 1);
-            canvas.DrawLine(Color.FromArgb(220, 226, 232), minimizeX + 9, buttonY + 18,
-                minimizeX + 21, buttonY + 18);
+            if (visibleControls >= 3)
+            {
+                DrawCaptionButton(canvas, minimizeX, buttonY, 1);
+                canvas.DrawLine(Color.FromArgb(220, 226, 232), minimizeX + 9, buttonY + 18,
+                    minimizeX + 21, buttonY + 18);
+            }
 
-            DrawCaptionButton(canvas, maximizeX, buttonY, 2);
+            if (visibleControls >= 2)
+            {
+                DrawCaptionButton(canvas, maximizeX, buttonY, 2);
 #if ZONDERQ_READONLY_HARDWARE_PROBE
             // The Gen3 PNG icon cache uses File.WriteAllBytes. Never invoke it
             // from a diskless read-only desktop on bare-metal 3.0.94.
@@ -555,8 +575,11 @@ namespace ZonderqOS.GUI
             IconManager.DrawScaled(canvas, IsMaximized ? IconType.Restore : IconType.Maximize,
                 maximizeX + 7, buttonY + 6, 16, 16);
 #endif
+            }
 
-            DrawCaptionButton(canvas, closeX, buttonY, 3);
+            if (visibleControls >= 1)
+            {
+                DrawCaptionButton(canvas, closeX, buttonY, 3);
 #if ZONDERQ_READONLY_HARDWARE_PROBE
             canvas.DrawLine(Color.White, closeX + 9, buttonY + 9,
                 closeX + 21, buttonY + 21);
@@ -565,6 +588,7 @@ namespace ZonderqOS.GUI
 #else
             IconManager.DrawScaled(canvas, IconType.Close, closeX + 7, buttonY + 6, 16, 16);
 #endif
+            }
 
             if (!IsMaximized && hoveredResizeMode != 0)
                 DrawResizeHint(canvas, hoveredResizeMode);
