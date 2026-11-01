@@ -1614,6 +1614,83 @@ static class Test
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "reject silent drain exceeding the two-second PCM budget");
 
+        // Independent fades allow short notifications and longer alerts to
+        // share one frame-accurate PCM schedule without extra clip buffers.
+        byte[][] individualClips = { envelopeClip, envelopeClip };
+        int[] individualStarts = { 0, 0 };
+        int[] individualGains = { 100, 100 };
+        int[] individualFades = { 5, 0 };
+        byte[] individualMixed = AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+            individualClips, individualStarts, individualGains, individualFades);
+        Expect(individualMixed.Length == envelopeClip.Length,
+            "independent fades preserve the scheduled duration");
+        foreach (int frame in new[] { 0, 3 })
+        {
+            Expect(BitConverter.ToInt16(individualMixed, frame * 4) == 12000 &&
+                BitConverter.ToInt16(individualMixed, frame * 4 + 2) == -12000,
+                "unfaded effect remains audible at faded clip boundaries");
+        }
+        foreach (int frame in new[] { 1, 2 })
+        {
+            Expect(BitConverter.ToInt16(individualMixed, frame * 4) == 18000 &&
+                BitConverter.ToInt16(individualMixed, frame * 4 + 2) == -18000,
+                "independent fades sum before final clipping");
+        }
+        byte[] equalFades = AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+            individualClips, individualStarts, individualGains, new[] { 5, 5 });
+        byte[] uniformFades = AudioPcmMixer.MixScheduledStereo16WithFade(
+            individualClips, individualStarts, individualGains, 5);
+        Expect(equalFades.AsSpan().SequenceEqual(uniformFades),
+            "identical per-clip fades match the original uniform envelope exactly");
+        byte[] noIndividualFades = AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+            individualClips, individualStarts, individualGains, new[] { 0, 0 });
+        Expect(noIndividualFades.AsSpan().SequenceEqual(
+            AudioPcmMixer.MixScheduledStereo16(individualClips, individualStarts, individualGains)),
+            "zero individual fades match the original unfaded mixer exactly");
+        byte[] individualTail = AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+            individualClips, individualStarts, individualGains, individualFades, 4);
+        Expect(individualTail.Length == individualMixed.Length + 16 &&
+            individualTail.AsSpan(0, individualMixed.Length).SequenceEqual(individualMixed) &&
+            individualTail.AsSpan(individualMixed.Length).IndexOfAnyExcept((byte)0) == -1,
+            "independent fades retain output and add only silent drain frames");
+        Expect(envelopeClip.AsSpan().SequenceEqual(envelopeCopy) &&
+            individualFades[0] == 5 && individualFades[1] == 0,
+            "independent fades do not mutate source PCM or scheduling parameters");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+            individualClips, individualStarts, individualGains, new[] { 5 }); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "independent fades reject mismatched parameter lengths");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+            individualClips, individualStarts, individualGains, new[] { 5, 51 }); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "independent fades reject overlong release");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+            individualClips, individualStarts, individualGains, new[] { -1, 5 }); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "independent fades reject negative attack");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+            individualClips, individualStarts, individualGains, individualFades, 4097); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "independent fades reject oversized HDA drain");
+        rejected = false;
+        try { AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+            new[] { new byte[384000] }, new[] { 0 }, new[] { 100 }, new[] { 5 }, 1); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "independent fades reject PCM plus drain beyond two seconds");
+        AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+            individualClips, individualStarts, individualGains, individualFades);
+        long individualBefore = GC.GetAllocatedBytesForCurrentThread();
+        byte[] individualMeasured = AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+            individualClips, individualStarts, individualGains, individualFades);
+        long individualAllocated = GC.GetAllocatedBytesForCurrentThread() - individualBefore;
+        Expect(individualAllocated >= individualMeasured.Length &&
+            individualAllocated < individualMeasured.Length + 1024,
+            "independent fades allocate only one bounded PCM output buffer");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PCM16 mixer saturation, gains, bounds and source immutability PASS");
 
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
