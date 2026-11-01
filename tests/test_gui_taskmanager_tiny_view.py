@@ -153,6 +153,12 @@ class TinyTaskManagerViewTests(unittest.TestCase):
         sidebar = section("private void RenderSidebar(Canvas canvas)", "private void DrawNav(")
         self.assertIn("NavTop + row * 36 + 32 > Height", hit)
         self.assertIn("NavTop + (page / 2) * 36 + 32 > Height", draw)
+        # Short labels must fit the same 76px compact navigation hitbox.
+        self.assertIn('page == 0 ? "PROC" : page == 1 ? "CPU"', draw)
+        self.assertIn('page == 2 ? "DET" : "USL"', draw)
+        self.assertIn("compactX + 29, compactY + 12, 42", draw)
+        self.assertIn("SmallTextRenderer.DrawClipped(canvas, compactLabel", draw)
+        self.assertLessEqual(29 + 42, 76)
         self.assertIn("int paintedWidth = Math.Min(SidebarWidth, Width - 1);", sidebar)
         self.assertIn("if (Width < SidebarWidth || Height < 36)", sidebar)
         for height in range(1, 300):
