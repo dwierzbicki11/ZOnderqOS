@@ -213,6 +213,15 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('tests/verify_3095_e1000e_irq_binding.py', SMOKE)
         self.assertIn('guest handler/IRQ delivery UNPROVEN',
                       (ROOT / 'tests/verify_3095_e1000e_irq_trace.py').read_text())
+        # A stuck-high or repeated legacy assertion is not four separate
+        # IRQ cycles. The QEMU trace must show low/high transitions.
+        irq_trace = (ROOT / 'tests/verify_3095_e1000e_irq_trace.py').read_text()
+        irq_binding = (ROOT / 'tests/verify_3095_e1000e_irq_binding.py').read_text()
+        self.assertIn('def count_legacy_cycles(', irq_trace)
+        self.assertIn('cycles = count_legacy_cycles(qemu_stderr)', irq_binding)
+        self.assertIn('if legacy < 4 or cycles < 4:', irq_binding)
+        self.assertIn('qemu-legacy-cycles=', irq_binding)
+
         self.assertIn('trap cleanup EXIT INT TERM', SMOKE)
 
     def test_n6_driverkit_health_is_read_only_and_not_an_isr_claim(self):
