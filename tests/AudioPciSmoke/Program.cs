@@ -1719,6 +1719,8 @@ static class Test
             individualAllocated < individualMeasured.Length + 1024,
             "independent fades allocate only one bounded PCM output buffer");
 
+        AudioMixerFastPathSmoke.Run();
+
         Console.WriteLine("[AUDIO-PCI-HOST] PCM16 mixer saturation, gains, bounds and source immutability PASS");
 
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");

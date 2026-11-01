@@ -46,6 +46,7 @@ namespace ZonderqOS.SystemCore
                 throw new ArgumentException("Schedule requires 1..8 clips with matching offsets and gains.");
 
             int length = 0;
+            bool allMuted = true;
             for (int i = 0; i < clips.Length; i++)
             {
                 byte[] clip = clips[i];
@@ -56,6 +57,7 @@ namespace ZonderqOS.SystemCore
                     throw new ArgumentOutOfRangeException(nameof(startFrames));
                 if (gainsPercent[i] < 0 || gainsPercent[i] > 100)
                     throw new ArgumentOutOfRangeException(nameof(gainsPercent));
+                if (gainsPercent[i] != 0) allMuted = false;
 
                 long end = (long)startFrames[i] * 4 + clip.Length;
                 if (end > MaxPcmBytes)
@@ -65,6 +67,14 @@ namespace ZonderqOS.SystemCore
             }
 
             byte[] output = new byte[length];
+            // Common single unity-gain notification: copy exact PCM bytes
+            // without per-sample decoding, scaling and repacking.
+            if (allMuted) return output;
+            if (clips.Length == 1 && gainsPercent[0] == 100)
+            {
+                Array.Copy(clips[0], 0, output, startFrames[0] * 4, clips[0].Length);
+                return output;
+            }
             for (int at = 0; at < length; at += 2)
             {
                 int total = 0;
@@ -139,6 +149,7 @@ namespace ZonderqOS.SystemCore
                 throw new ArgumentException("Schedule requires 1..8 clips with matching offsets and gains.");
 
             int length = 0;
+            bool allMuted = true;
             for (int i = 0; i < clips.Length; i++)
             {
                 byte[] clip = clips[i];
@@ -149,6 +160,7 @@ namespace ZonderqOS.SystemCore
                     throw new ArgumentOutOfRangeException(nameof(startFrames));
                 if (gainsPercent[i] < 0 || gainsPercent[i] > 100)
                     throw new ArgumentOutOfRangeException(nameof(gainsPercent));
+                if (gainsPercent[i] != 0) allMuted = false;
                 if (individualFades != null &&
                     (individualFades[i] < 0 || individualFades[i] > 50))
                     throw new ArgumentOutOfRangeException(nameof(individualFades),
@@ -165,6 +177,14 @@ namespace ZonderqOS.SystemCore
                 throw new ArgumentOutOfRangeException(nameof(trailingSilenceFrames),
                     "Scheduled PCM and silent drain exceed two seconds.");
             byte[] output = new byte[length + trailingSilenceFrames * 4];
+            if (allMuted) return output;
+            // Preserve the silent HDA drain without a second PCM allocation.
+            if (clips.Length == 1 && gainsPercent[0] == 100 &&
+                (individualFades == null ? uniformFade : individualFades[0]) == 0)
+            {
+                Array.Copy(clips[0], 0, output, startFrames[0] * 4, clips[0].Length);
+                return output;
+            }
             for (int at = 0; at < length; at += 2)
             {
                 int total = 0;
