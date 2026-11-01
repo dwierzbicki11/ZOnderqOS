@@ -240,7 +240,8 @@ namespace ZonderqOS
                     // Two independent TCP connections exercise RX descriptor reuse and socket teardown.
                     for (int attempt = 1; attempt <= 2; attempt++)
                     {
-                        if (!TryHttpExchange(attempt, sourceMac, initialIp, initialMask, initialGateway))
+                        if (!TryHttpExchange(attempt, sourceMac, initialIp, initialMask, initialGateway,
+                             baselineResources, baselineIrqSources))
                             return;
                     }
                 }
@@ -305,7 +306,8 @@ namespace ZonderqOS
                 {
                     for (int attempt = 3; attempt <= 6; attempt++)
                     {
-                        if (!TryHttpExchange(attempt, sourceMac, initialIp, initialMask, initialGateway))
+                        if (!TryHttpExchange(attempt, sourceMac, initialIp, initialMask, initialGateway,
+                             baselineResources, baselineIrqSources))
                             return;
                     }
                 }
@@ -447,9 +449,22 @@ namespace ZonderqOS
                 lease.DefaultGateway.ToString() == expectedGateway;
         }
 
-        private static bool TryHttpExchange(int attempt, string expectedMac,
-            string expectedIp, string expectedMask, string expectedGateway)
+        private static bool IsE1000EDriverKitStable(int expectedResources, int expectedIrqSources)
         {
+            return TryGetE1000EDriverKitHealth(out var node) &&
+                node.HeldResourceCount == expectedResources &&
+                node.InterruptCount == expectedIrqSources;
+        }
+
+        private static bool TryHttpExchange(int attempt, string expectedMac,
+            string expectedIp, string expectedMask, string expectedGateway,
+            int expectedResources, int expectedIrqSources)
+        {
+            if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
+            {
+                Log("[NET3095-N6][FAIL] HTTP DriverKit ownership invalid before attempt=" + attempt);
+                return false;
+            }
             if (!IsE1000ELeaseStable(expectedMac, expectedIp, expectedMask, expectedGateway))
             {
                 Log("[NET3095-N6][FAIL] HTTP NIC/lease invalid before attempt=" + attempt);
@@ -524,6 +539,17 @@ namespace ZonderqOS
                         return false;
                     }
                 }
+                // A successful TCP payload alone does not prove DriverKit kept
+                // its original PCI mappings and IRQ source registrations.
+                // Sample read-only ownership after EACH RX stream, not only
+                // once at the end of all six sessions.
+                if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
+                {
+                    Log("[NET3095-N6][FAIL] HTTP DriverKit ownership changed during attempt=" + attempt);
+                    return false;
+                }
+                Log("[NET3095-N6] HTTP_DRIVER_STABLE=PASS attempt=" + attempt +
+                    " resources=" + expectedResources + " irq_sources=" + expectedIrqSources);
                 // Only claim per-stream stability after all RX chunks and
                 // exact payload verification. This is not a hardware IRQ proof.
                 Log("[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=" + attempt);
