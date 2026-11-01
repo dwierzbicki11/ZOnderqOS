@@ -79,6 +79,11 @@ def playback_settle_seconds(command):
     return 8 if command == "mixqueue" else 4
 
 
+def qemu_clock_options(icount_auto):
+    """Keep default QEMU timebase unchanged; experimental TCG A/B is opt-in."""
+    return ["-icount", "shift=auto,sleep=on"] if icount_auto else []
+
+
 class Qmp:
     def __init__(self, path):
         self.socket = socket.socket(socket.AF_UNIX)
@@ -171,10 +176,9 @@ def main():
         "-device", "intel-hda", "-device", "hda-duplex,audiodev=audio0",
         "-no-reboot", "-no-shutdown",
     ]
-    if args.icount_auto:
-        # Diagnostic A/B for HDA DMA refill under TCG. Do not silently
-        # change the default timing or weaken the captured PCM validator.
-        cmd.extend(["-icount", "shift=auto,sleep=on"])
+    # Diagnostic A/B for HDA DMA refill under TCG; never changes default
+    # timing or relaxes the captured PCM quality validator.
+    cmd.extend(qemu_clock_options(args.icount_auto))
     with (out / "qemu.stderr.log").open("w") as stderr:
         guest = subprocess.Popen(cmd, stderr=stderr)
         qmp = None
