@@ -803,7 +803,7 @@ namespace ZonderqOS.GUI.Apps
         {
             for (int i = entries.Count - 1; i >= 0; i--)
             {
-                if (!entries[i].Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0)
+                if (entries[i].Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0)
                     entries.RemoveAt(i);
             }
         }
