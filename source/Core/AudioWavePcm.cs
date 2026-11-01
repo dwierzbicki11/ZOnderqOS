@@ -5,7 +5,7 @@ namespace ZonderqOS.SystemCore
     /// <summary>
     /// Strict, allocation-bounded RIFF/WAVE PCM8/PCM16/PCM24/PCM32 mono/stereo decoder for the
     /// opt-in diskless HDA probe. No filesystem, DMA or device access.
-    /// 8/16/22.05/24/32/44.1 kHz sources are explicitly resampled to 48 kHz stereo PCM16.
+    /// 8/11.025/16/22.05/24/32/44.1 kHz sources are explicitly resampled to 48 kHz stereo PCM16.
     /// </summary>
     public static class AudioWavePcm
     {
@@ -24,7 +24,7 @@ namespace ZonderqOS.SystemCore
         // The existing bounded integer resampler handles all of these rates.
         private static bool IsSupportedSourceRate(int rate)
         {
-            return rate == 8000 || rate == 16000 || rate == 22050 || rate == 24000 ||
+            return rate == 8000 || rate == 11025 || rate == 16000 || rate == 22050 || rate == 24000 ||
                 rate == 32000 || rate == 44100 || rate == SampleRate;
         }
 
@@ -143,7 +143,7 @@ namespace ZonderqOS.SystemCore
                         !IsSupportedSourceRate((int)rate) || (bits != 8 && bits != 16 && bits != 24 && bits != 32) ||
                         blockAlign != sourceChannels * (bits / 8) ||
                         byteRate != rate * sourceChannels * (uint)(bits / 8))
-                        throw new ArgumentException("Unsupported WAV format (requires 8/16/22.05/24/32/44.1/48kHz PCM8/PCM16/PCM24/PCM32 mono/stereo).", nameof(wave));
+                        throw new ArgumentException("Unsupported WAV format (requires 8/11.025/16/22.05/24/32/44.1/48kHz PCM8/PCM16/PCM24/PCM32 mono/stereo).", nameof(wave));
                     channels = sourceChannels;
                     sourceRate = (int)rate;
                     sourceBits = bits;

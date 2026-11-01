@@ -441,12 +441,12 @@ static class Test
         for (int i = 0; i < monoConverted44100.Length; i++)
             Expect(monoConverted44100[i] == converted44100[i], "mono 44.1k upmix matches stereo source");
         byte[] invalidRate44100 = (byte[])encoded.Clone();
-        WriteLittle32(invalidRate44100, 24, 11025);
-        WriteLittle32(invalidRate44100, 28, 11025 * 4);
+        WriteLittle32(invalidRate44100, 24, 12345);
+        WriteLittle32(invalidRate44100, 28, 12345 * 4);
         rejected = false;
         try { AudioWavePcm.DecodeStereo16(invalidRate44100); }
         catch (ArgumentException) { rejected = true; }
-        Expect(rejected, "unsupported 11.025kHz WAV still refused");
+        Expect(rejected, "unsupported 12.345kHz WAV still refused");
         byte[] overlong44100 = new byte[44 + 44100 * 2 * 4 + 4];
         Array.Copy(wave44100, overlong44100, wave44100.Length);
         WriteLittle32(overlong44100, 4, overlong44100.Length - 8);
@@ -456,7 +456,7 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "44.1k WAV longer than two seconds refused");
         rejected = false;
-        try { AudioWavePcm.EncodeStereo16AtRate(source44100, 11025); }
+        try { AudioWavePcm.EncodeStereo16AtRate(source44100, 12345); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "unsupported encoder rate refused");
 
@@ -815,15 +815,28 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject PCM32 duration exceeding two seconds");
         rejected = false;
-        try { AudioWavePcm.EncodePcm32AtRate(new byte[4], 11025, 1); }
+        try { AudioWavePcm.EncodePcm32AtRate(new byte[4], 12345, 1); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "reject unsupported PCM32 sample rate");
 
-        // Common 8/16/22.05/24/32 kHz PCM16 WAV inputs must use the real bounded
+        // A full two-second 11.025kHz PCM8 mono voice clip must stay inside
+        // the 48kHz stereo PCM16 output budget. One extra source frame is
+        // rejected before allocating a resampled output buffer.
+        byte[] max11025Mono8 = new byte[11025 * 2];
+        byte[] max11025Wave = AudioWavePcm.EncodePcm8AtRate(max11025Mono8, 11025, 1);
+        using (var max11025Input = new MemoryStream(max11025Wave, false))
+            Expect(AudioWaveInput.DecodeBounded(max11025Input).Length == 48000 * 2 * 4,
+                "two-second 11.025kHz PCM8 mono stays within output cap");
+        rejected = false;
+        try { AudioWavePcm.EncodePcm8AtRate(new byte[11025 * 2 + 1], 11025, 1); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "11.025kHz PCM8 mono refuses a source longer than two seconds");
+
+        // Common 8/11.025/16/22.05/24/32 kHz PCM16 WAV inputs must use the real bounded
         // read-only stream loader and the existing integer 48 kHz resampler.
-        foreach (int inputRate in new[] { 8000, 16000, 22050, 24000, 32000 })
+        foreach (int inputRate in new[] { 8000, 11025, 16000, 22050, 24000, 32000 })
         {
-            int expectedPitch = inputRate == 8000 ? 400 : inputRate == 16000 ? 1500 : inputRate == 22050 ? 1100 :
+            int expectedPitch = inputRate == 8000 ? 400 : inputRate == 11025 ? 550 : inputRate == 16000 ? 1500 : inputRate == 22050 ? 1100 :
                 inputRate == 24000 ? 740 : 3520;
             byte[] sourceLowRate = AudioTonePcm.GenerateSquareStereo16(inputRate, expectedPitch, 250, 4096);
             byte[] lowRateWave = AudioWavePcm.EncodeStereo16AtRate(sourceLowRate, inputRate);
@@ -846,7 +859,7 @@ static class Test
                 double pitch = crossings * 48000.0 / (2 * (resampled.Length / 4 - 1));
                 Expect(Math.Abs(pitch - expectedPitch) < 60,
                     "low-rate resampler preserves 8/16/22.05/24/32kHz tone pitch");
-                if (inputRate == 8000 || inputRate == 16000 || inputRate == 24000)
+                if (inputRate == 8000 || inputRate == 11025 || inputRate == 16000 || inputRate == 24000)
                 {
                     // The QEMU validator requires 95% active samples in
                     // two disjoint 80ms windows. Guard the actual C# output,
@@ -861,7 +874,7 @@ static class Test
                             if (Math.Abs((int)sample) >= 256) active++;
                         }
                         Expect(active * 100 >= 3840 * 95,
-                            "8/16/24kHz resampled tone has sustained 80ms activity");
+                            "8/11.025/16/24kHz resampled tone has sustained 80ms activity");
                     }
                 }
             }
@@ -881,13 +894,13 @@ static class Test
             AudioWavePcm.EncodePcm32AtRate(new byte[32000 / 4 * 4], 32000, 1));
         Expect(low32.Length == 48000, "32kHz signed PCM32 mono resamples to stereo16");
         rejected = false;
-        try { AudioWavePcm.EncodeStereo16AtRate(new byte[4], 11025); }
+        try { AudioWavePcm.EncodeStereo16AtRate(new byte[4], 12345); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
-        Expect(rejected, "unsupported 11.025kHz rate remains rejected");
+        Expect(rejected, "unsupported 12.345kHz rate remains rejected");
 
         // Voice-rate mono PCM8 must decode to the same bounded 48kHz
         // stereo duration without accessing an audio device or a disk.
-        foreach (int voiceRate in new[] { 8000, 16000, 24000 })
+        foreach (int voiceRate in new[] { 8000, 11025, 16000, 24000 })
         {
             byte[] voicePcm8 = new byte[voiceRate / 4];
             for (int i = 0; i < voicePcm8.Length; i++)
@@ -895,7 +908,8 @@ static class Test
             byte[] voiceWave = AudioWavePcm.EncodePcm8AtRate(voicePcm8, voiceRate, 1);
             using var voiceStream = new MemoryStream(voiceWave, false);
             byte[] voiceOutput = AudioWaveInput.DecodeBounded(voiceStream);
-            Expect(voiceOutput.Length == 48000, "voice-rate PCM8 mono keeps 250ms duration");
+            int expectedVoiceFrames = (int)(((long)voicePcm8.Length * 48000 + voiceRate - 1) / voiceRate);
+            Expect(voiceOutput.Length == expectedVoiceFrames * 4, "voice-rate PCM8 mono keeps source-frame duration");
             for (int i = 0; i < voiceOutput.Length; i += 4)
                 Expect(voiceOutput[i] == voiceOutput[i + 2] &&
                     voiceOutput[i + 1] == voiceOutput[i + 3],
