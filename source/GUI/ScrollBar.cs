@@ -90,6 +90,12 @@ namespace ZonderqOS.GUI
                 return false;
             }
 
+            // A modal overlay may swallow the release of an earlier drag.
+            // A new press is a new gesture, never a continuation of the
+            // stale drag with its old thumb offset.
+            if (isClicked && !wasClicked)
+                dragging = false;
+
             int thumbHeight = GetThumbHeight();
             int thumbY = GetThumbY();
 

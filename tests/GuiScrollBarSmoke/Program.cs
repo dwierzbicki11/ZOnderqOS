@@ -60,6 +60,32 @@ internal static class Program
         Check(!bar.HandleMouse(12, 180, true, true), "range change cancels drag");
         Check(bar.Value == 0, "stale drag does not change value");
 
+        var interrupted = new ScrollBar(10, 20, 6, 200);
+        interrupted.SetRange(1000, 10);
+        Check(interrupted.HandleMouse(12, 21, true, false), "interrupted drag starts");
+        Check(interrupted.HandleMouse(12, 100, true, true), "interrupted drag moves");
+        int valueBeforeFreshPress = interrupted.Value;
+        Check(valueBeforeFreshPress > 0, "interrupted drag changed value");
+        // A modal menu swallowed the release. The next fresh press is
+        // outside the scrollbar and must not continue its stale drag.
+        Check(!interrupted.HandleMouse(80, 190, true, false),
+            "fresh press outside does not continue stale drag");
+        Check(interrupted.Value == valueBeforeFreshPress,
+            "fresh outside press preserves scroll position");
+        Check(!interrupted.HandleMouse(80, 195, true, true),
+            "held outside press stays detached");
+        Check(interrupted.Value == valueBeforeFreshPress,
+            "held outside press preserves scroll position");
+        interrupted.HandleMouse(80, 195, false, true);
+        // A subsequent real press on the thumb starts a new gesture.
+        var afterInterruption = Thumb(interrupted);
+        Check(interrupted.HandleMouse(12, afterInterruption.Y, true, false),
+            "thumb can be grabbed after interrupted release");
+        Check(interrupted.HandleMouse(12, 219, true, true),
+            "new drag reaches bottom after interruption");
+        Check(interrupted.Value == interrupted.MaxValue,
+            "new drag uses fresh offset");
+
         var huge = new ScrollBar(0, 0, 6, 10_000);
         huge.SetRange(int.MaxValue, 1_000_000_000);
         huge.Value = huge.MaxValue - 1;
