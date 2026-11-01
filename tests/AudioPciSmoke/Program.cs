@@ -143,6 +143,39 @@ static class Test
         for (int i = 0; i < pcm.Length; i++)
             Expect(decoded[i] == pcm[i], "WAV round-trip preserves PCM");
 
+        // A large but valid RIFF metadata chunk is allowed up to the shared
+        // stream/direct-decoder limit; one byte beyond it must be rejected
+        // before the decoder scans chunks or allocates PCM output.
+        int junkBytes = AudioWavePcm.MaxRiffBytes - encoded.Length - 8;
+        Expect(junkBytes > 0 && junkBytes % 2 == 0, "RIFF limit fixture has even JUNK padding");
+        byte[] maxRiff = new byte[AudioWavePcm.MaxRiffBytes];
+        Array.Copy(encoded, 0, maxRiff, 0, 12);
+        WriteLittle32(maxRiff, 4, maxRiff.Length - 8);
+        maxRiff[12] = (byte)'J'; maxRiff[13] = (byte)'U';
+        maxRiff[14] = (byte)'N'; maxRiff[15] = (byte)'K';
+        WriteLittle32(maxRiff, 16, junkBytes);
+        Array.Copy(encoded, 12, maxRiff, 20 + junkBytes, encoded.Length - 12);
+        Expect(AudioWavePcm.DecodeStereo16(maxRiff).Length == pcm.Length,
+            "direct decoder accepts exact maximum RIFF file size");
+        using (var maxRiffStream = new MemoryStream(maxRiff, false))
+            Expect(AudioWaveInput.DecodeBounded(maxRiffStream).Length == pcm.Length,
+                "read-only stream accepts exact maximum RIFF file size");
+        byte[] oversizedRiff = new byte[maxRiff.Length + 2];
+        Array.Copy(maxRiff, oversizedRiff, maxRiff.Length);
+        WriteLittle32(oversizedRiff, 4, oversizedRiff.Length - 8);
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(oversizedRiff); }
+        catch (ArgumentException ex) { rejected = ex.Message.Contains("file limit"); }
+        Expect(rejected, "direct decoder rejects oversized RIFF before chunk scanning");
+        rejected = false;
+        try
+        {
+            using var oversizedStream = new MemoryStream(oversizedRiff, false);
+            AudioWaveInput.DecodeBounded(oversizedStream);
+        }
+        catch (ArgumentException ex) { rejected = ex.Message.Contains("file limit"); }
+        Expect(rejected, "read-only stream rejects oversized RIFF before allocation");
+
         // WAVE_FORMAT_EXTENSIBLE PCM16 is common in modern WAV exports.
         // Exercise the actual C# decoder, not a synthetic Python reimplementation.
         byte[] extensible = AudioWavePcm.EncodeExtensibleStereo16AtRate(pcm, 48000);
