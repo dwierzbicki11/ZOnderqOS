@@ -124,7 +124,7 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
         self.assertLess(DRIVER.index("ushort commandBefore"),
                         DRIVER.index("binding.MapRegisters(RegisterBar)"))
         self.assertLess(DRIVER.index("Realtek810xERegisterSampler.TrySample"),
-                        DRIVER.index("ushort commandAfter"))
+                        DRIVER.index("ushort commandAfter = pci.ReadConfig16(0x04);"))
         self.assertLess(DRIVER.index("Realtek810xERegisterSampler.TrySample"),
                         DRIVER.index("PCI identity changed after MMIO sampling"))
         self.assertIn("return ProbeResult.Declined", DRIVER)
