@@ -402,7 +402,10 @@ namespace ZonderqOS.GUI
                 {
                     if (row == 0 && visibleCount == 0)
                     {
-                        UiPainter.RoundedPanel(canvas, cardX, cy, cardWidth, 92,
+                        // Empty state uses the same 82px row geometry as
+                        // notifications. A 92px placeholder overlapped the
+                        // footer when only one row fitted after a resize.
+                        UiPainter.RoundedPanel(canvas, cardX, cy, cardWidth, CardHeight,
                             UiMetrics.TileRadius, Panel, Border);
                         IconManager.DrawScaled(canvas, IconType.About, cardX + 18, cy + 27, 28, 28);
                         SmallTextRenderer.Draw(canvas, "BRAK POWIADOMIEN", cardX + 60, cy + 29, Text);
