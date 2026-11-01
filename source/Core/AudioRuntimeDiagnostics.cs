@@ -249,13 +249,13 @@ namespace ZonderqOS.SystemCore
 
         /// <summary>
         /// 24 kHz stereo PCM16 WAV -> 48 kHz stereo PCM16, with distinct
-        /// 4000 Hz fixture for QEMU backend verification. RAM-only.
+        /// 740 Hz fixture for QEMU backend verification. RAM-only.
         /// </summary>
         public static bool PlayWave24000TestTone()
         {
             try
             {
-                byte[] source = AudioTonePcm.GenerateSquareStereo16(24000, 4000, 250, 4096);
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(24000, 740, 250, 4096);
                 byte[] wave = AudioWavePcm.EncodeStereo16AtRate(source, 24000);
                 Console.WriteLine("[AUDIO] WAV 24000Hz stereo16 -> bounded stream -> 48000Hz HDA");
                 using (var input = new MemoryStream(wave, false))
