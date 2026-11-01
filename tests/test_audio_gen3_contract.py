@@ -224,7 +224,7 @@ class AudioGen3Contract(unittest.TestCase):
             self.assertNotIn(forbidden, gain)
 
         self.assertIn("--command wavtone", workflow)
-        self.assertIn('choices=("tone", "stereosplit", "wavtone", "wavmono", "wav44", "wav22k", "wav32k", "wav8", "wav24", "wav32", "wavext", "wavext20")', harness)
+        self.assertIn('choices=("tone", "stereosplit", "wavtone", "wavmono", "wav44", "wav22k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20")', harness)
         for forbidden in ("System.IO", "File.", "Disk.", "TryMount(", "WriteBlock(",
                           "NetworkManager.", "PciSysfsProvider"):
             self.assertNotIn(forbidden, parser)
