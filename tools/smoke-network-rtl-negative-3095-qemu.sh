@@ -1,15 +1,17 @@
 #!/usr/bin/env bash
-# Negative QEMU gate: with no NIC or an unrelated RTL8139, probe MUST decline.
+# Negative QEMU gate: without a matching 10EC:8136 NIC, probe MUST decline.
 # This is NOT physical Realtek proof and does not validate text framebuffer.
 set -euo pipefail
 ISO="${1:?usage: smoke-network-rtl-negative-3095-qemu.sh ISO SERIAL-LOG}"
 LOG="${2:?usage: smoke-network-rtl-negative-3095-qemu.sh ISO SERIAL-LOG [none|rtl8139]}"
 NIC_MODE="${3:-none}"
-# Both profiles must decline a different Realtek PCI ID as well as no NIC.
+# None, RTL8139 and E1000E are all nonmatching PCI devices.
 # QEMU user networking is restricted; this is NOT an RTL810xE emulator.
 case "$NIC_MODE" in
   none) nic_args=(-nic none) ;;
   rtl8139) nic_args=(-nic user,model=rtl8139,restrict=on) ;;
+  e1000e) nic_args=(-netdev user,id=rtlnegative,restrict=on
+                    -device e1000e,netdev=rtlnegative) ;;
   *) echo "[NET3095-RTL-NEG][FAIL] Unknown NIC mode: $NIC_MODE" >&2; exit 2 ;;
 esac
 [[ -s "$ISO" ]] || { echo "[NET3095-RTL-NEG][FAIL] Missing ISO" >&2; exit 1; }

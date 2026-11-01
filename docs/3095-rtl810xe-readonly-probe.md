@@ -144,3 +144,15 @@ sequence, even if earlier sample markers appear valid.
   DMA, interrupt delivery, ARP, IPv4, DHCP, TCP or HTTPS.
 - The separate E1000E QEMU N1–N6 tests continue to prove only the
   corresponding captured QEMU network exchanges.
+
+## Negative QEMU Intel E1000E isolation check (2026-11-01)
+
+The two opt-in RTL810xE diagnostic ISOs also boot in QEMU with an unrelated
+Intel E1000E PCI NIC. The fail-closed serial gate requires a single unbound
+PCI function at `pci:0000:00:02.0`, exactly zero RTL810xE probe offers and
+samples, and two advancing managed guest heartbeats. An accidental E1000E
+binding or a fake MMIO success fails this check. The existing no-NIC and
+RTL8139 negative profiles remain mandatory. This is a **negative isolation
+check**, not an RTL810xE hardware probe, an Ethernet TX/RX test or an ISR
+execution proof; the stock Cosmos 3.0.95 network driver remains disabled in
+the RTL diagnostic images.

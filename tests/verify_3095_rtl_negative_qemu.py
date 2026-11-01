@@ -52,7 +52,7 @@ def normalize_decline_tick(raw: str) -> str:
 
 
 def verify(serial: str, mode: str) -> str:
-    if mode not in ("none", "rtl8139"):
+    if mode not in ("none", "rtl8139", "e1000e"):
         raise ValueError("unsupported NIC mode")
     raw = serial.replace("\r", "")
     cleaned = normalize_decline_tick(raw)
@@ -69,9 +69,10 @@ def verify(serial: str, mode: str) -> str:
     expected = 5 if mode == "none" else 6
     if functions != [expected]:
         raise ValueError("unexpected PCI function count for QEMU NIC mode")
-    # The q35 RTL8139 is an unrelated function and must remain unbound.
-    if mode == "rtl8139" and lines.count("[Drivers] pci:0000:00:02.0 no driver") != 1:
-        raise ValueError("unrelated RTL8139 PCI function not observed unbound")
+    # Both unrelated PCI functions must remain unbound. In particular, the
+    # RTL-only diagnostic must not accidentally bind the stock E1000E driver.
+    if mode in ("rtl8139", "e1000e") and lines.count("[Drivers] pci:0000:00:02.0 no driver") != 1:
+        raise ValueError("unrelated PCI NIC function not observed unbound")
     heartbeats = [(i, int(m.group(1))) for i, line in enumerate(lines)
                   if (m := HEARTBEAT.fullmatch(line))]
     if len(heartbeats) < 2 or heartbeats[0][1] != 1 or heartbeats[1][1] != 2:
@@ -92,11 +93,25 @@ def self_test() -> None:
     rtl = base.replace("5 functions", "6 functions").replace(
         BOOT, "[Drivers] pci:0000:00:02.0 no driver\n" + BOOT)
     assert "PASS mode=rtl8139" in verify(rtl, "rtl8139")
+    assert "PASS mode=e1000e" in verify(rtl, "e1000e")
+    # A driver binding or missing unbound PCI node must never be accepted.
+    for bad_e1000e in (
+        rtl.replace("no driver", "offer E1000EDriver -> bound"),
+        rtl.replace("[Drivers] pci:0000:00:02.0 no driver\\n", ""),
+        rtl + "[Drivers] pci:0000:00:02.0 E1000EDriver: mac 52:54:00:12:34:56\\n",
+    ):
+        try:
+            verify(bad_e1000e, "e1000e")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted E1000E binding in RTL-only QEMU profile")
     # Check every internal split position; no dependence on scheduler timing.
     for pos in range(1, len(DECLINE)):
         split = DECLINE[:pos] + "[SCHED] Tick 6 enabled=1\n" + DECLINE[pos:]
         assert "PASS mode=none" in verify(base.replace(DECLINE, split), "none")
         assert "PASS mode=rtl8139" in verify(rtl.replace(DECLINE, split), "rtl8139")
+        assert "PASS mode=e1000e" in verify(rtl.replace(DECLINE, split), "e1000e")
     bad = [
         rtl.replace("offers=0", "offers=1"),
         rtl.replace("samples=0", "samples=1"),
@@ -134,7 +149,7 @@ def self_test() -> None:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("serial", nargs="?", type=Path)
-    parser.add_argument("mode", nargs="?", choices=("none", "rtl8139"))
+    parser.add_argument("mode", nargs="?", choices=("none", "rtl8139", "e1000e"))
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
