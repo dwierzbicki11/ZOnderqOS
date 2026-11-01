@@ -325,15 +325,19 @@ namespace ZonderqOS
                 System.Net.Sockets.NetworkStream stream = http.GetStream();
                 byte[] request = System.Text.Encoding.ASCII.GetBytes(
                     "GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n\r\n");
-                byte[] expected = System.Text.Encoding.ASCII.GetBytes(
-                    "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 4116\r\nConnection: close\r\n\r\nZONDERQ3095-HTTP-OK\n" +
-                    // Every 1 KiB block differs between connections, not
-                    // just its first byte. A stale DMA/RX descriptor reused
-                    // for any later segment must fail the byte-for-byte test.
-                    new string((char)('A' + attempt - 1), 1024) +
-                    new string((char)('B' + attempt - 1), 1024) +
-                    new string((char)('C' + attempt - 1), 1024) +
-                    new string((char)('D' + attempt - 1), 1024));
+                byte[] prefix = System.Text.Encoding.ASCII.GetBytes(
+                    "HTTP/1.0 200 OK\r\nContent-Type: text/plain\r\nContent-Length: 4116\r\nConnection: close\r\n\r\nZONDERQ3095-HTTP-OK\n");
+                byte[] expected = new byte[prefix.Length + 4096];
+                for (int i = 0; i < prefix.Length; i++)
+                    expected[i] = prefix[i];
+                // Match the loopback-only host fixture byte for byte. Vary
+                // every offset within each 1 KiB segment, not just the
+                // segment's first byte: a shifted/stale RX DMA fragment
+                // must not pass simply because its block was uniform.
+                for (int offset = 0; offset < 4096; offset++)
+                    expected[prefix.Length + offset] = (byte)(33 +
+                        ((offset * 37 + (offset / 90) * 11 +
+                          (offset / 1024) * 23 + attempt * 29) % 90));
                 stream.Write(request, 0, request.Length);
                 byte[] response = new byte[expected.Length];
                 int received = 0;
