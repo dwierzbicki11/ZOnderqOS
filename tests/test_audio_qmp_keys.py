@@ -46,6 +46,19 @@ class QmpKeyTests(unittest.TestCase):
         self.assertEqual(up, down)
         self.assertEqual(len(events), 20)
 
+    def test_negative_balance_uses_qmp_minus_key_not_literal_hyphen(self):
+        qmp = audio.Qmp.__new__(audio.Qmp)
+        events = []
+        qmp.execute = lambda name, args=None: events.extend(args["events"])
+        with patch.object(audio.time, "sleep", return_value=None):
+            qmp.type_line("balance -100")
+        down = [event["data"]["key"]["data"] for event in events if event["data"]["down"]]
+        up = [event["data"]["key"]["data"] for event in events if not event["data"]["down"]]
+        self.assertEqual(down, list("balance") + ["spc", "minus", "1", "0", "0", "ret"])
+        self.assertEqual(up, down)
+        self.assertEqual(len(events), 26)
+
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
