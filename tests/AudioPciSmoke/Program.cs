@@ -851,6 +851,29 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "24-in-32 mono rejects nonzero unused bits");
 
+        // The same 24-in-32 mono container also passes the 44.1->48 kHz
+        // bounded resampler, preserving both output channels and signed PCM.
+        byte[] source24in32at44100 = AudioTonePcm.GenerateSquareStereo16(44100, 3700, 250, 4096);
+        byte[] mono24in32at44100 = new byte[source24in32at44100.Length];
+        for (int frame = 0; frame < mono24in32at44100.Length / 4; frame++)
+        {
+            int at = frame * 4;
+            mono24in32at44100[at] = 0;
+            mono24in32at44100[at + 1] = 0x5A;
+            mono24in32at44100[at + 2] = source24in32at44100[at];
+            mono24in32at44100[at + 3] = source24in32at44100[at + 1];
+        }
+        byte[] wav24in32at44100 =
+            AudioWavePcm.EncodeExtensiblePcm32AtRate(mono24in32at44100, 44100, 1, 24);
+        byte[] decoded24in32at44100 = AudioWavePcm.DecodeStereo16(wav24in32at44100);
+        byte[] expected24in32at44100 = AudioWavePcm.DecodeStereo16(
+            AudioWavePcm.EncodeStereo16AtRate(source24in32at44100, 44100));
+        Expect(decoded24in32at44100.Length == expected24in32at44100.Length,
+            "24-in-32 mono 44.1k resampler duration");
+        for (int i = 0; i < expected24in32at44100.Length; i++)
+            Expect(decoded24in32at44100[i] == expected24in32at44100[i],
+                "24-in-32 mono 44.1k resampler signed samples");
+
         byte[] stereo32 = AudioWavePcm.EncodePcm32AtRate(pcm32, 48000, 2);
         byte[] decoded32 = AudioWavePcm.DecodeStereo16(stereo32);
         Expect(decoded32.Length == pcm.Length, "PCM32 stereo output frame count");
