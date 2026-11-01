@@ -25,18 +25,18 @@ assert len(BODY) == 4116
 def response_for_attempt(attempt: int) -> bytes:
     """Give every connection a distinct payload to detect stale RX DMA data.
 
-    Only the first byte of the 4 KiB body changes. The length, HTTP headers,
-    segmentation and expected TCP sequence space remain identical.
+    Each 1 KiB body block changes on every connection. This catches stale
+    E1000E RX buffers even if only a later TCP segment is reused. HTTP headers,
+    total length and expected TCP sequence space remain unchanged.
     """
     if not 1 <= attempt <= 6:
         raise ValueError("HTTP fixture attempt outside 1..6")
     if attempt == 1:
         return RESPONSE
-    first_body_block = RESPONSE.index(b"ZONDERQ3095-HTTP-OK\n") + len(b"ZONDERQ3095-HTTP-OK\n")
-    return (RESPONSE[:first_body_block] + bytes([ord("A") + attempt - 1]) +
-            RESPONSE[first_body_block + 1:])
-
-
+    first_body_block = RESPONSE.index(b"ZONDERQ3095-HTTP-OK\\n") + len(b"ZONDERQ3095-HTTP-OK\\n")
+    return (RESPONSE[:first_body_block] +
+            b"".join(bytes([ord("A") + block + attempt - 1]) * 1024
+                     for block in range(4)))
 
 
 def serve(port: int = PORT) -> None:
@@ -122,6 +122,13 @@ def self_test() -> None:
             raise AssertionError(f"HTTP server failed on attempt {attempt + 1}: {errors}")
     assert len({response_for_attempt(i) for i in range(1, 7)}) == 6
     assert all(len(response_for_attempt(i)) == len(RESPONSE) for i in range(1, 7))
+    body_start = RESPONSE.index(b"ZONDERQ3095-HTTP-OK\\n") + len(b"ZONDERQ3095-HTTP-OK\\n")
+    for attempt in range(1, 7):
+        body_blocks = response_for_attempt(attempt)[body_start:]
+        assert len(body_blocks) == 4096
+        for block in range(4):
+            expected = bytes([ord("A") + block + attempt - 1]) * 1024
+            assert body_blocks[block * 1024:(block + 1) * 1024] == expected
     print("[NET3095-N6-HOST-CONTRACT] PASS six distinct HTTP RX payloads per server and sequential rebind")
 
 
