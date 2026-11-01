@@ -1136,6 +1136,15 @@ static class Test
             maxDrainInput, 100, 100, 20, hdaSilentTail);
         Expect(maxDrainOutput.Length == 48000 * 2 * 4,
             "fade drain accepts exact two-second total budget");
+        byte[] fullLengthFade = AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
+            maxGainPcm, 100, 100, 20, 0);
+        Expect(fullLengthFade.Length == maxGainPcm.Length,
+            "two-second fade remains valid when no silent headroom exists");
+        byte[] nearFullLengthFade = AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
+            new byte[48000 * 2 * 4 - 4], 100, 100, 20, 4);
+        Expect(nearFullLengthFade.Length == 48000 * 2 * 4 &&
+            nearFullLengthFade[nearFullLengthFade.Length - 1] == 0,
+            "near-two-second fade accepts a frame of silent headroom");
         rejected = false;
         try
         {
