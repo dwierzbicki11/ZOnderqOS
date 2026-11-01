@@ -354,6 +354,29 @@ internal static class Program
         manager.CloseAll();
     }
 
+    private static void ActivationRequiresRegisteredSession()
+    {
+        var manager = new ApplicationManager();
+        var registered = new ClosingApp();
+        var rogue = new ClosingApp();
+        manager.Launch(registered);
+        manager.Activate(rogue);
+        Check(manager.Applications.Count == 1 && manager.ActiveApplication == registered,
+            "Activate cannot register a never-launched app");
+        manager.ToggleMinimize(rogue);
+        Check(!rogue.Window.IsMinimized, "taskbar cannot minimize an unregistered app");
+
+        ZonderqOS.SecurityContext.IsAuthenticated = false;
+        manager.Activate(registered);
+        manager.ToggleMinimize(registered);
+        Check(!registered.Window.IsMinimized, "logged-out session cannot mutate window focus");
+        ZonderqOS.SecurityContext.IsAuthenticated = true;
+
+        manager.Close(registered);
+        manager.Activate(registered);
+        Check(manager.Applications.Count == 0, "stale activation cannot resurrect closed app");
+    }
+
     public static int Main()
     {
         OrdinaryLogout();
@@ -369,6 +392,7 @@ internal static class Program
         LaunchDuringUpdate();
         CloseAnotherDuringUpdate();
         ReentrantUpdateIsIgnored();
+        ActivationRequiresRegisteredSession();
         Console.WriteLine("PASS: " + checks + " production ApplicationManager C# assertions");
         return 0;
     }
