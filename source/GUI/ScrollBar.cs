@@ -63,7 +63,12 @@ namespace ZonderqOS.GUI
 
             // Large lists must not overflow the intermediate product.
             int thumb = (int)(((long)Height * visibleItems) / contentItems);
-            return Math.Min(Height, Math.Max(22, thumb));
+            // On short tracks the old 22px minimum filled the entire
+            // track, leaving no travel even with thousands of hidden rows.
+            // Reserve at least one pixel of travel whenever Height > 1.
+            int minimumThumb = Math.Min(22, Math.Max(1, Height / 2));
+            int maximumThumb = Height > 1 ? Height - 1 : Height;
+            return Math.Min(maximumThumb, Math.Max(minimumThumb, thumb));
         }
 
         private int GetThumbY()

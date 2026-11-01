@@ -80,6 +80,20 @@ internal static class Program
                 thumb.X + thumb.Width <= 4 + width, "thumb within narrow track");
         }
 
+        // Compact windows still need a draggable thumb. Previously a
+        // 22px minimum covered every 2..21px track and trapped the list.
+        foreach (int height in new[] { 2, 3, 10, 21, 22 })
+        {
+            var compact = new ScrollBar(4, 7, 6, height);
+            compact.SetRange(1000, 1);
+            var thumb = Thumb(compact);
+            Check(thumb.Height < height, "compact track has travel");
+            Check(compact.HandleMouse(6, 7, true, false), "compact thumb can be grabbed");
+            Check(compact.HandleMouse(6, 1000, true, true) &&
+                compact.Value == compact.MaxValue, "compact thumb reaches last row");
+            compact.HandleMouse(6, 1000, false, true);
+        }
+
         var zero = new ScrollBar(4, 7, 0, 0);
         zero.SetRange(100, 1);
         var empty = new RecordingCanvas();
