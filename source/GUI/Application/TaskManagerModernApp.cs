@@ -904,7 +904,8 @@ namespace ZonderqOS.GUI.Apps
             int refresh = Width - 210;
             int end = Width - 114;
             if (x >= refresh && x < refresh + 88) return 1;
-            if (x >= end && x < end + 100) return 2;
+            if (app.ActivePage != TaskManagerModernApp.PagePerformance &&
+                x >= end && x < end + 100) return 2;
             return 0;
         }
 
@@ -948,9 +949,15 @@ namespace ZonderqOS.GUI.Apps
 
         public int CpuLogicalPageActionAt(int x, int y)
         {
-            if (CompactPerformanceLayout || app.CpuGraphMode != TaskManagerModernApp.CpuGraphLogical || app.LogicalPageCount <= 1) return 0;
-            int top = 122;
-            int right = Width - 16;
+            if (app.ActivePage != TaskManagerModernApp.PagePerformance ||
+                app.PerformanceResource != TaskManagerModernApp.PerfCpu ||
+                CompactPerformanceLayout || app.CpuGraphMode != TaskManagerModernApp.CpuGraphLogical ||
+                app.LogicalPageCount <= 1) return 0;
+            // RenderCpu starts at y=64; RenderLogicalCpu at +58 and DrawArrow at -8.
+            // The arrow's actual top is 114, not the graph heading's 122.
+            int top = 114;
+            // RenderPerformance uses a 10px right inset for the graph panel.
+            int right = Width - 10;
             if (y < top || y >= top + 26) return 0;
             if (x >= right - 60 && x < right - 34) return -1;
             if (x >= right - 28 && x < right - 2) return 1;
@@ -1075,8 +1082,13 @@ namespace ZonderqOS.GUI.Apps
             int refresh = X + Width - 210;
             int end = X + Width - 114;
             int clock = Math.Max(contentX + 120, refresh - 154);
-            SmallTextRenderer.Draw(canvas, app.ClockText, clock, Y + 13, Color.WhiteSmoke);
-            SmallTextRenderer.Draw(canvas, app.DateText, clock, Y + 31, Muted);
+            // At 550-579px the fixed clock position overlaps REFRESH.
+            // Hide only the clock until a complete 72px slot fits before it.
+            if (refresh - clock >= 72)
+            {
+                SmallTextRenderer.Draw(canvas, app.ClockText, clock, Y + 13, Color.WhiteSmoke);
+                SmallTextRenderer.Draw(canvas, app.DateText, clock, Y + 31, Muted);
+            }
             DrawButton(canvas, refresh, Y + 10, 88, "REFRESH", IconType.Refresh, false, true);
             DrawButton(canvas, end, Y + 10, 100, "END TASK", IconType.Close, true, app.ActivePage != 1);
             canvas.DrawLine(Color.FromArgb(52, 63, 74), contentX, Y + HeaderHeight, X + Width - 4, Y + HeaderHeight);
