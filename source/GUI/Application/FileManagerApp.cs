@@ -66,7 +66,13 @@ namespace ZonderqOS.GUI.Apps
 
         // Shared grid geometry for painting, hit-testing, keyboard navigation
         // and scrolling. A two-pixel disagreement can hide a clickable column.
-        internal int GridWidthForView => Math.Max(TileWidth, view.Width - SidebarWidth - 12);
+        // A 240px framebuffer leaves a 220px client. The fixed 176px
+        // sidebar used to paint the file grid outside that client, making
+        // files inaccessible. Collapse it below 220px, otherwise shrink it
+        // just enough to preserve one full 112px file tile.
+        internal int SidebarWidthForView => view.Width < 220
+            ? 0 : Math.Min(SidebarWidth, view.Width - TileWidth - 12);
+        internal int GridWidthForView => Math.Max(TileWidth, view.Width - SidebarWidthForView - 12);
         internal int GridHeightForView => Math.Max(40, view.Height - FooterHeight - ContentTop - 8);
         // Use a final partial row only when >=40px is available. Compact
         // tiles fit inside that space; smaller fragments stay noninteractive.
@@ -202,13 +208,13 @@ namespace ZonderqOS.GUI.Apps
                 if (dialogMode != 0)
                     return;
 
-                if (x < SidebarWidth + 4 && y >= ContentTop && y < contentBottom)
+                if (SidebarWidthForView > 0 && x < SidebarWidthForView + 4 && y >= ContentTop && y < contentBottom)
                 {
                     SidebarRightClick(x, y);
                     return;
                 }
 
-                if (x >= SidebarWidth + 6 && y >= ContentTop && y < contentBottom)
+                if (x >= SidebarWidthForView + 6 && y >= ContentTop && y < contentBottom)
                 {
                     selectedIndex = HitEntryIndex(x, y);
                     // A fixed sidebar offset used to push the 240px menu off the
@@ -234,7 +240,7 @@ namespace ZonderqOS.GUI.Apps
             if (y < ContentTop || y >= contentBottom)
                 return;
 
-            if (x < SidebarWidth + 4)
+            if (SidebarWidthForView > 0 && x < SidebarWidthForView + 4)
             {
                 SidebarClick(x, y);
                 return;
@@ -283,10 +289,10 @@ namespace ZonderqOS.GUI.Apps
         private int HitEntryIndex(int x, int y)
         {
             int contentBottom = view.Height - FooterHeight - 8;
-            if (x < SidebarWidth + 8 || y < ContentTop || y >= contentBottom)
+            if (x < SidebarWidthForView + 8 || y < ContentTop || y >= contentBottom)
                 return -1;
 
-            int gridLeft = SidebarWidth + 8;
+            int gridLeft = SidebarWidthForView + 8;
             int columns = Columns();
             int relativeX = x - gridLeft;
             int relativeY = y - ContentTop;
@@ -430,7 +436,7 @@ namespace ZonderqOS.GUI.Apps
         {
             // Match RenderSidebar: sidebar origin X+4, action at width-27,
             // button Y+7, 20x22. Reject padding and clipped rows.
-            const int actionLeft = 4 + SidebarWidth - 27;
+            int actionLeft = 4 + SidebarWidthForView - 27;
             if (x < actionLeft || x >= actionLeft + 20)
                 return false;
 
@@ -467,6 +473,11 @@ namespace ZonderqOS.GUI.Apps
 
         private SidebarEntry GetSidebarEntryAt(int y)
         {
+            // When the sidebar is collapsed, no invisible volume action
+            // may be hit-tested from the blank left client margin.
+            if (SidebarWidthForView <= 0)
+                return null;
+
             // Match FileManagerView.RenderSidebar's fully-visible row limit.
             // A partially clipped volume row must not be clickable when the
             // window is shrunk, especially for mount/unmount actions.
@@ -1412,13 +1423,16 @@ namespace ZonderqOS.GUI.Apps
             int contentY = Y + FileManagerApp.ContentTop;
             int contentH = app.GridHeightForView;
             int sidebarX = X + 4;
-            int sidebarW = FileManagerApp.SidebarWidth;
-            int gridX = X + FileManagerApp.SidebarWidth + 8;
+            int sidebarW = app.SidebarWidthForView;
+            int gridX = X + sidebarW + 8;
             int gridW = app.GridWidthForView;
 
-            canvas.DrawFilledRectangle(SidebarBackground, sidebarX, contentY, sidebarW, contentH);
-            canvas.DrawRectangle(Color.FromArgb(53, 62, 72), sidebarX, contentY, sidebarW, contentH);
-            RenderSidebar(canvas, sidebarX, contentY, sidebarW, contentH);
+            if (sidebarW > 0)
+            {
+                canvas.DrawFilledRectangle(SidebarBackground, sidebarX, contentY, sidebarW, contentH);
+                canvas.DrawRectangle(Color.FromArgb(53, 62, 72), sidebarX, contentY, sidebarW, contentH);
+                RenderSidebar(canvas, sidebarX, contentY, sidebarW, contentH);
+            }
 
             canvas.DrawFilledRectangle(ContentBackground, gridX, contentY, gridW, contentH);
             canvas.DrawRectangle(Color.FromArgb(53, 62, 72), gridX, contentY, gridW, contentH);
@@ -1440,22 +1454,27 @@ namespace ZonderqOS.GUI.Apps
             ToolbarButton(canvas, IconType.Refresh, 92);
             ToolbarButton(canvas, IconType.Search, 134);
 
-            int pathX = X + 180;
-            int pathW = Math.Max(120, Width - 188);
-            UiPainter.RoundedPanel(canvas, pathX, Y + 9, pathW, 30,
-                UiMetrics.ButtonRadius, UiPalette.Surface, UiPalette.AccentBorder);
-
-            SmallTextRenderer.DrawClipped(canvas, app.CurrentPath, pathX + 10, Y + 20,
-                Math.Max(20, pathW - 20), MainText);
-
-            if (!string.IsNullOrEmpty(app.SearchText) && pathW >= 250)
+            // The location bar begins after four 36px buttons. Hide it
+            // instead of drawing 120px past the right edge on tiny clients.
+            if (Width >= 300)
             {
-                int searchWidth = Math.Min(170, pathW / 3);
-                int searchX = pathX + pathW - searchWidth - 8;
-                canvas.DrawFilledRectangle(Color.FromArgb(35, 47, 58), searchX, Y + 14, searchWidth, 20);
-                IconManager.DrawScaled(canvas, IconType.Search, searchX + 4, Y + 16, 14, 14);
-                SmallTextRenderer.DrawClipped(canvas, app.SearchText, searchX + 22, Y + 21,
-                    searchWidth - 27, Color.FromArgb(166, 202, 231));
+                int pathX = X + 180;
+                int pathW = Math.Max(120, Width - 188);
+                UiPainter.RoundedPanel(canvas, pathX, Y + 9, pathW, 30,
+                    UiMetrics.ButtonRadius, UiPalette.Surface, UiPalette.AccentBorder);
+
+                SmallTextRenderer.DrawClipped(canvas, app.CurrentPath, pathX + 10, Y + 20,
+                    Math.Max(20, pathW - 20), MainText);
+
+                if (!string.IsNullOrEmpty(app.SearchText) && pathW >= 250)
+                {
+                    int searchWidth = Math.Min(170, pathW / 3);
+                    int searchX = pathX + pathW - searchWidth - 8;
+                    canvas.DrawFilledRectangle(Color.FromArgb(35, 47, 58), searchX, Y + 14, searchWidth, 20);
+                    IconManager.DrawScaled(canvas, IconType.Search, searchX + 4, Y + 16, 14, 14);
+                    SmallTextRenderer.DrawClipped(canvas, app.SearchText, searchX + 22, Y + 21,
+                        searchWidth - 27, Color.FromArgb(166, 202, 231));
+                }
             }
         }
 
@@ -1492,10 +1511,15 @@ namespace ZonderqOS.GUI.Apps
                 IconManager.DrawScaled(canvas, entry.Icon, x + 14, iconY + 1, 18, 18);
 
                 int actionReserve = entry.IsVolume && entry.PartitionIndex > 0 ? 30 : 0;
-                SmallTextRenderer.DrawClipped(canvas, entry.Label, x + 44, itemY + 8,
-                    Math.Max(20, width - 52 - actionReserve), active ? Color.WhiteSmoke : MainText);
-                SmallTextRenderer.DrawClipped(canvas, entry.Detail, x + 44, itemY + 21,
-                    Math.Max(20, width - 52 - actionReserve), active ? Color.FromArgb(143, 190, 226) : SecondaryText);
+                // At 96-139px the icon and volume M/U control remain
+                // available; text would overlap the mount control.
+                if (width >= 140)
+                {
+                    SmallTextRenderer.DrawClipped(canvas, entry.Label, x + 44, itemY + 8,
+                        Math.Max(20, width - 52 - actionReserve), active ? Color.WhiteSmoke : MainText);
+                    SmallTextRenderer.DrawClipped(canvas, entry.Detail, x + 44, itemY + 21,
+                        Math.Max(20, width - 52 - actionReserve), active ? Color.FromArgb(143, 190, 226) : SecondaryText);
+                }
 
                 if (entry.IsVolume && entry.PartitionIndex > 0)
                 {
