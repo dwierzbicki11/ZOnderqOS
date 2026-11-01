@@ -112,11 +112,22 @@ namespace ZonderqOS.GUI
                 return;
             }
 
-            DrawChar(canvas, '-', x, y, color);
             ulong magnitude = value == long.MinValue
                 ? ((ulong)long.MaxValue + 1UL)
                 : (ulong)(-value);
-            DrawUInt(canvas, magnitude, x + 6, y, color);
+            // Negative task-manager values share the numeric clipping path.
+            // Check the entire label before drawing the minus sign and use
+            // wide arithmetic for the magnitude offset (x + 6 can overflow).
+            int characters = DigitCount(magnitude) + 1;
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
+                (long)x + (long)characters * 6 <= 0 || (long)y + 7 <= 0)
+                return;
+
+            if (x >= -4)
+                DrawChar(canvas, '-', x, y, color);
+            long magnitudeX = (long)x + 6;
+            if (magnitudeX < canvas.Width && magnitudeX <= int.MaxValue)
+                DrawUInt(canvas, magnitude, (int)magnitudeX, y, color);
         }
 
         public static void DrawPercent(Canvas canvas, int value, int x, int y, Color color)
