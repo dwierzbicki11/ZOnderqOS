@@ -256,6 +256,11 @@ def main():
             send_keys(channel, key)
         time.sleep(1.5)
         screenshot(channel, prefix + ".filemanager-palette.ppm")
+        # Shift+Enter must leave the launcher open. Only plain Enter may
+        # start an application; verify the guest framebuffer, not QMP ACK.
+        send_keys(channel, "shift", "ret")
+        time.sleep(1.0)
+        screenshot(channel, prefix + ".filemanager-palette-shift-enter.ppm")
         send_keys(channel, "ret")
         time.sleep(6)
         screenshot(channel, prefix + ".filemanager-after.ppm")
@@ -388,6 +393,12 @@ def main():
 
     before = read_ppm(prefix + ".filemanager-before.ppm")
     palette = read_ppm(prefix + ".filemanager-palette.ppm")
+    shift_enter = read_ppm(prefix + ".filemanager-palette-shift-enter.ppm")
+    changed, samples = difference(palette, shift_enter, upper_only=True)
+    fraction = changed / max(1, samples)
+    print(f"[GUI-QMP] palette-shift-enter: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
+    if fraction > 0.06:
+        raise RuntimeError("Shift+Enter unexpectedly launched an app or changed the palette")
     after = read_ppm(prefix + ".filemanager-after.ppm")
     mouse_before = read_ppm(prefix + ".filemanager-mouse-before.ppm")
     mouse_after = read_ppm(prefix + ".filemanager-mouse-after.ppm")
