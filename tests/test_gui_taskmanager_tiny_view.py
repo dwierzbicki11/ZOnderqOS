@@ -55,7 +55,8 @@ class TinyTaskManagerViewTests(unittest.TestCase):
     def test_resize_keeps_previously_visible_selection_without_hijacking_scroll(self):
         layout = section("private void UpdateLayout()", "private void UpdateClock()")
         self.assertIn("int rows = view.VisibleRows;", layout)
-        self.assertIn("bool selectionWasVisible = previousVisibleRows > 0", layout)
+        self.assertIn("bool selectionWasVisible = TaskManagerSelectionPolicy.IsVisible(", layout)
+        self.assertIn("selectedIndex, scrollIndex, previousVisibleRows, visibleRows.Count);", layout)
         self.assertIn("if (rows > 0 && view.HasPaintedProcessRows &&", layout)
         self.assertIn("rows != previousVisibleRows && selectionWasVisible)", layout)
         self.assertIn("EnsureSelectionVisible();", layout)
