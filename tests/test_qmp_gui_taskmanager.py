@@ -94,6 +94,31 @@ class TaskManagerQmpContract(unittest.TestCase):
         with self.assertRaises(TypeError):
             list(PROBE.resize_steps(True))
 
+    def test_short_resize_probes_real_compact_tabs_and_reacquires_border(self):
+        source = (ROOT / "tools/qmp-gui-taskmanager.py").read_text()
+        self.assertIn("compact_bounds = (bounds[0], bounds[1], bounds[2], bounds[3] - shrink)", source)
+        self.assertIn('prefix + ".taskmanager-short-performance.ppm"', source)
+        self.assertIn('prefix + ".taskmanager-short-processes.ppm"', source)
+        self.assertIn('measure("compact-performance-tab", short, short_performance, minimum=0.015)', source)
+        self.assertIn('measure("compact-processes-tab", short_performance, short_processes, minimum=0.015)', source)
+        self.assertIn('measure("compact-processes-restored", short, short_processes, maximum=0.15)', source)
+        self.assertIn("resize_x, resize_y - shrink,", source)
+        self.assertLess(source.index('prefix + ".taskmanager-short-performance.ppm"'),
+                        source.index('prefix + ".taskmanager-short-processes.ppm"'))
+        self.assertLess(source.index('prefix + ".taskmanager-short-processes.ppm"'),
+                        source.index("resize_x, resize_y - shrink,"))
+        for width, height in ((640, 480), (800, 600), (1366, 768), (1920, 1080)):
+            bounds = PROBE.expected_taskmanager_bounds(width, height)
+            shrink = min(470, max(0, bounds[3] - 220))
+            compact = (bounds[0], bounds[1], bounds[2], bounds[3] - shrink)
+            self.assertEqual(compact[3], 220)
+            self.assertLess(compact[3] - 50, 300)
+            for page in (0, 1):
+                x, y = PROBE.nav_target(compact, page)
+                self.assertGreaterEqual(x, compact[0] + 10)
+                self.assertLess(x, compact[0] + 10 + 170)
+                self.assertLess(y, compact[1] + compact[3] - 10)
+
     def test_taskmanager_probe_keeps_resize_evidence_separate_from_layout_proof(self):
         source = (ROOT / "tools/qmp-gui-taskmanager.py").read_text()
         self.assertIn("shrink = min(470, max(0, bounds[3] - 220))", source)
