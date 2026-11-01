@@ -453,6 +453,82 @@ internal static class Program
         Console.WriteLine("PASS: two-run rotated directory stable references, duplicate ties, 0 B warm allocations");
     }
 
+    // A FAT32 directory refresh can contain several independent renames or
+    // adjacent insertions. These disjoint inversions must retain exact stable
+    // reference order. The baseline deliberately uses the old merge path.
+    private static ZonderqOS.GUI.Apps.FileEntry[] MakeSparseSwaps(int swaps)
+    {
+        const int count = 2048;
+        var entries = new ZonderqOS.GUI.Apps.FileEntry[count];
+        for (int i = 0; i < count; i++)
+            entries[i] = new ZonderqOS.GUI.Apps.FileEntry("file" + i.ToString("D6"), false);
+        for (int i = 0; i < swaps; i++)
+        {
+            int at = 40 + i * (count - 80) / (swaps + 1);
+            var previous = entries[at];
+            entries[at] = entries[at + 1];
+            entries[at + 1] = previous;
+        }
+        return entries;
+    }
+
+    private static void VerifySparseSwaps()
+    {
+        foreach (int swaps in new[] { 5, 8, 12, 16, 17, 32 })
+        {
+            var source = MakeSparseSwaps(swaps);
+            var expected = new List<ZonderqOS.GUI.Apps.FileEntry>(source);
+            var actual = new List<ZonderqOS.GUI.Apps.FileEntry>(source);
+            LegacySort(expected);
+            ZonderqOS.GUI.Apps.FileEntry[] scratch = null;
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(actual, ref scratch);
+            for (int i = 0; i < source.Length; i++)
+                Assert(object.ReferenceEquals(expected[i], actual[i]),
+                    "sparse inversions stable order swaps=" + swaps + " i=" + i);
+            if (scratch != null)
+                for (int i = 0; i < source.Length; i++)
+                    Assert(scratch[i] == null, "sparse inversion scratch retained entry");
+        }
+        Console.WriteLine("PASS: 6 sparse-swap cases (5..32), exact stable references");
+    }
+
+    private static void BenchmarkSparseSwaps()
+    {
+        foreach (int swaps in new[] { 8, 16, 32 })
+        {
+            var source = MakeSparseSwaps(swaps);
+            var work = new List<ZonderqOS.GUI.Apps.FileEntry>(source.Length);
+            ZonderqOS.GUI.Apps.FileEntry[] baselineScratch =
+                new ZonderqOS.GUI.Apps.FileEntry[source.Length];
+            ZonderqOS.GUI.Apps.FileEntry[] optimizedScratch =
+                new ZonderqOS.GUI.Apps.FileEntry[source.Length];
+            for (int i = 0; i < 8; i++)
+            {
+                TimedAdaptive(false, source, work, ref baselineScratch);
+                TimedAdaptive(true, source, work, ref optimizedScratch);
+            }
+            double[] before = new double[7], after = new double[7];
+            for (int sample = 0; sample < 7; sample++)
+            {
+                if ((sample & 1) == 0)
+                {
+                    before[sample] = TimedAdaptive(false, source, work, ref baselineScratch);
+                    after[sample] = TimedAdaptive(true, source, work, ref optimizedScratch);
+                }
+                else
+                {
+                    after[sample] = TimedAdaptive(true, source, work, ref optimizedScratch);
+                    before[sample] = TimedAdaptive(false, source, work, ref baselineScratch);
+                }
+            }
+            double a = Median(before), b = Median(after);
+            Console.WriteLine("HOST A/B sparse swaps n=2048 swaps=" + swaps +
+                " baseline-merge=" + a.ToString("F4") + " ms current=" +
+                b.ToString("F4") + " ms ratio=" + (a / b).ToString("F2") +
+                "x (7 alternating samples, 8 sorts each; no FAT32 I/O)");
+        }
+    }
+
     private static void VerifyAdaptiveRepair()
     {
         for (int mode = 0; mode < 6; mode++)
@@ -865,9 +941,11 @@ internal static class Program
         VerifyFilter();
         VerifyAlreadySortedFastPath();
         VerifyAdaptiveRepair();
+        VerifySparseSwaps();
         VerifyTwoRunMerge();
         VerifyDescendingFastPath();
         BenchmarkAdaptiveRepair();
+        BenchmarkSparseSwaps();
         BenchmarkDescending();
         BenchmarkAlreadySorted();
         BenchmarkUnsortedControl();
