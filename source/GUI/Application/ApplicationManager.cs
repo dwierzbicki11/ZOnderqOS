@@ -13,6 +13,10 @@ namespace ZonderqOS.GUI.Apps
         private readonly List<Application> updateSnapshot = new List<Application>();
         private bool updating;
         private bool desktopGesture;
+        // The window which received the first button-down owns the entire
+        // multi-button gesture, even if focus changes or the pointer crosses
+        // another window. Null means the desktop/taskbar owns the gesture.
+        private Application mouseCapture;
 
         public List<Application> Applications { get { return applications; } }
 
@@ -116,6 +120,14 @@ namespace ZonderqOS.GUI.Apps
             if (application == null || !applications.Remove(application))
                 return;
 
+            // A closing window must never hand its held-button release to the
+            // newly exposed foreground window.
+            if (mouseCapture == application)
+            {
+                mouseCapture = null;
+                desktopGesture = true;
+            }
+
             if (application.IsRunning)
                 application.Close();
             SetActiveStates(ActiveApplication);
@@ -150,6 +162,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 closingAll = false;
                 desktopGesture = false;
+                mouseCapture = null;
                 SetActiveStates(null);
             }
         }
@@ -259,46 +272,80 @@ namespace ZonderqOS.GUI.Apps
             Application target = ActiveApplication;
             bool newPress = (leftClicked && !leftWasClicked) ||
                 (rightClicked && !rightWasClicked);
+            bool wasHeld = leftWasClicked || rightWasClicked;
+            bool isHeld = leftClicked || rightClicked;
+
             // A second button pressed during an existing desktop gesture
-            // must not retarget the chord onto an obscured application.
-            // A genuinely fresh press (both previous buttons up) can
-            // recover if a modal overlay swallowed the previous release.
-            if (desktopGesture && (leftWasClicked || rightWasClicked))
+            // cannot retarget the chord to a window underneath the pointer.
+            if (desktopGesture && wasHeld)
             {
-                if (!leftClicked && !rightClicked)
+                if (!isHeld)
                     desktopGesture = false;
                 return;
             }
+
             if (newPress)
             {
-                // A press on the desktop or taskbar belongs to that surface
-                // for its ENTIRE gesture, including held motion and release.
-                // Otherwise a held desktop click could resume a stale title
-                // drag in the previously active window.
-                target = null;
-                for (int i = applications.Count - 1; i >= 0; i--)
+                if (wasHeld)
                 {
-                    Application application = applications[i];
-                    if (application == null || !application.IsRunning || application.Window == null)
-                        continue;
-
-                    if (application.Window.ContainsPoint(mouseX, mouseY))
-                    {
-                        target = application;
-                        Activate(application);
-                        break;
-                    }
+                    // Another button joined an existing window gesture. Do
+                    // not re-hit-test or change focus in the middle of a drag.
+                    target = mouseCapture;
                 }
-                desktopGesture = target == null;
+                else
+                {
+                    // A genuinely new press recovers even if an overlay
+                    // consumed the previous gesture's release.
+                    desktopGesture = false;
+                    mouseCapture = null;
+                    target = null;
+                    for (int i = applications.Count - 1; i >= 0; i--)
+                    {
+                        Application application = applications[i];
+                        if (application == null || !application.IsRunning || application.Window == null)
+                            continue;
+
+                        if (application.Window.ContainsPoint(mouseX, mouseY))
+                        {
+                            target = application;
+                            Activate(application);
+                            break;
+                        }
+                    }
+                    mouseCapture = target;
+                    desktopGesture = target == null;
+                }
             }
             else if (desktopGesture)
             {
-                if (!leftClicked && !rightClicked)
+                if (!isHeld)
                     desktopGesture = false;
+                return;
+            }
+            else if (wasHeld)
+            {
+                // Motion and release belong to the original window, not the
+                // current MRU head (which may have changed during the drag).
+                target = mouseCapture;
+            }
+
+            if (desktopGesture)
+                return;
+
+            // Closing/minimizing the captured window must not leak a held
+            // button or release into the window now exposed beneath it.
+            if (wasHeld && (target == null || !applications.Contains(target) ||
+                !target.IsRunning || target.Window == null ||
+                !target.Window.Visible || target.Window.IsMinimized))
+            {
+                mouseCapture = null;
+                desktopGesture = isHeld;
                 return;
             }
 
             target?.HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked, rightClicked, rightWasClicked);
+            if (!isHeld)
+                mouseCapture = null;
         }
 
         public void Update()
