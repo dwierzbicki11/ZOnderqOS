@@ -15,7 +15,7 @@ spec.loader.exec_module(sequence)
 
 
 def fixture(path, pitches=(400, 700, 1000, 1300), rate=44100,
-            right=True, tail_ms=90):
+            right=True, tail_ms=90, right_gain_percent=100, right_delay_ms=0):
     pcm = array.array("h")
     for _ in range(rate // 4):
         pcm.extend((0, 0))
@@ -23,9 +23,15 @@ def fixture(path, pitches=(400, 700, 1000, 1300), rate=44100,
         frames = rate * 90 // 1000
         for frame in range(frames):
             value = 4096 if ((frame * pitch * 2) // rate) % 2 == 0 else -4096
-            pcm.extend((value, value if right else 0))
+            pcm.extend((value, value * right_gain_percent // 100 if right else 0))
     for _ in range(rate * tail_ms // 1000):
         pcm.extend((0, 0))
+    if right_delay_ms:
+        # A small right-channel skew is below the 4 ms onset tolerance,
+        # so the new sample-coherence gate must detect it independently.
+        delay = rate * right_delay_ms // 1000
+        for frame in range(len(pcm) // 2 - 1, -1, -1):
+            pcm[frame * 2 + 1] = pcm[(frame - delay) * 2 + 1] if frame >= delay else 0
     if sys.byteorder != "little":
         pcm.byteswap()
     with wave.open(str(path), "wb") as wav:
@@ -88,6 +94,17 @@ class SequenceGate(unittest.TestCase):
                 wav.writeframes(data.tobytes())
             with self.assertRaisesRegex(ValueError, "dropout"):
                 sequence.inspect(path)
+
+    def test_reject_stereo_phase_gain_and_subthreshold_skew(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "bad-stereo.wav"
+            # All retain both active channels and the expected four pitches;
+            # onset-only and pitch-only gates would otherwise accept them.
+            for gain, delay in ((-100, 0), (50, 0), (100, 1)):
+                fixture(path, right_gain_percent=gain, right_delay_ms=delay)
+                with self.subTest(right_gain_percent=gain, right_delay_ms=delay):
+                    with self.assertRaisesRegex(ValueError, "stereo phase/gain mismatch"):
+                        sequence.inspect(path)
 
     def test_reject_non_pcm16(self):
         with tempfile.TemporaryDirectory() as tmp:
