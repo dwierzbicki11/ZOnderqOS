@@ -128,6 +128,8 @@ def main():
     parser.add_argument("iso", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--boot-seconds", type=int, default=35)
+    parser.add_argument("--icount-auto", action="store_true",
+                        help="experimental TCG virtual clock pacing; diagnostic only")
     parser.add_argument("--command", choices=("tone", "stereosplit", "mix", "mixdelay", "mixqueue", "wavtone", "wavmono", "wav44", "wav8k", "wav11k", "wav16k", "wav22k", "wav24k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
                         help="isolated guest command to execute; WAV probe never reads guest disks")
     parser.add_argument("--volume", type=int, default=100, help="software gain 0..100 percent")
@@ -169,6 +171,10 @@ def main():
         "-device", "intel-hda", "-device", "hda-duplex,audiodev=audio0",
         "-no-reboot", "-no-shutdown",
     ]
+    if args.icount_auto:
+        # Diagnostic A/B for HDA DMA refill under TCG. Do not silently
+        # change the default timing or weaken the captured PCM validator.
+        cmd.extend(["-icount", "shift=auto,sleep=on"])
     with (out / "qemu.stderr.log").open("w") as stderr:
         guest = subprocess.Popen(cmd, stderr=stderr)
         qmp = None
