@@ -48,6 +48,42 @@ class HdaReplayTests(unittest.TestCase):
             self.assertGreater(fraction, 0.99)
             self.assertEqual(start, 0)
 
+    def test_right_only_replay_is_not_hidden_by_clean_left_channel(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'right_replay.wav'
+            left = [2908 if math.sin(2 * math.pi * 440 * i / RATE) >= 0
+                    else -2908 for i in range(RATE // 2)]
+            right = [2908 if math.sin(2 * math.pi * 880 * i / RATE) >= 0
+                     else -2908 for i in range(RATE // 2)]
+            right[RING:RING + WINDOW] = right[:WINDOW]
+            with wave.open(str(path), 'wb') as output:
+                output.setnchannels(2)
+                output.setsampwidth(2)
+                output.setframerate(RATE)
+                output.writeframes(b''.join(
+                    struct.pack('<hh', a, b) for a, b in zip(left, right)))
+            channels = replay.analyze_channels(path)
+            self.assertLess(channels[0][0], 0.5)
+            self.assertGreater(channels[1][0], 0.99)
+
+    def test_silent_left_does_not_hide_active_right_replay(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'silent_left.wav'
+            right = [2908 if math.sin(2 * math.pi * 880 * i / RATE) >= 0
+                     else -2908 for i in range(RATE // 2)]
+            right[RING:RING + WINDOW] = right[:WINDOW]
+            with wave.open(str(path), 'wb') as output:
+                output.setnchannels(2)
+                output.setsampwidth(2)
+                output.setframerate(RATE)
+                output.writeframes(b''.join(
+                    struct.pack('<hh', 0, b) for b in right))
+            left_result, right_result = replay.analyze_channels(path)
+            self.assertIsNone(left_result)
+            self.assertGreater(right_result[0], 0.99)
+            with self.assertRaisesRegex(ValueError, 'left windows'):
+                replay.analyze(path)
+
     def test_all_silence_cannot_be_mistaken_for_ring_replay(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'silent.wav'
