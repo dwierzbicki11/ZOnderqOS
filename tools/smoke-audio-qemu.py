@@ -238,12 +238,17 @@ def main():
                 print(balance_capture.inspect(wav))
             elif args.command == "stereosplit":
                 print(stereo_capture.inspect(wav))
-            elif args.command in ("mixqueue", "mixqueue1ms"):
+            elif args.command == "mixqueue":
                 # Verify two left-channel bursts, independent right onset,
                 # the intervening silence and distinct 440/660/880 Hz pitches.
                 print(queue_capture.inspect(wav))
-            elif args.command in ("mixsequence", "mixsequence1ms"):
+            elif args.command == "mixqueue1ms":
+                # Experimental A/B uses exactly the stock strict PCM quality gate.
+                print(queue_capture.inspect(wav))
+            elif args.command == "mixsequence":
                 # A four-step nonstationary PCM signal catches 16 KiB ring replay.
+                print(sequence_capture.inspect(wav))
+            elif args.command == "mixsequence1ms":
                 print(sequence_capture.inspect(wav))
             elif args.command == "mixdelay":
                 # Two independent pitches AND a real ~50ms relative onset.

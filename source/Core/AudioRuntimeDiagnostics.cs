@@ -715,42 +715,7 @@ namespace ZonderqOS.SystemCore
                     : AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
                         pcm, leftGain, rightGain, fadeMilliseconds, drainBytes);
                 if (useOneMillisecondDiagnostic)
-                {
-                    // Only the single-threaded, diskless diagnostic console may
-                    // bypass stock AudioPlayer's 5ms ring-full wait. AudioDevice
-                    // does not expose the player's claim protocol publicly:
-                    // NEVER call this from the production GUI or a second thread.
-                    if (output.Name != "hda" || output.DriverName != "HdAudioDriver" ||
-                        output.Player != null || output.IsRunning)
-                    {
-                        Console.WriteLine("[AUDIO] 1MS REFUSED: requires idle stock HDA output.");
-                        return false;
-                    }
-                    if (!output.TrySetFormat(AudioFormat.Stereo16, sampleRate))
-                    {
-                        Console.WriteLine("[AUDIO] 1MS REFUSED: HDA format rejected.");
-                        return false;
-                    }
-                    bool started = false;
-                    try
-                    {
-                        output.Start();
-                        started = true;
-                        bool fed = AudioProbeRingFeeder.Feed(scaled,
-                            (data, offset, count) => output.Write(data.AsSpan(offset, count)),
-                            () => !output.IsWithdrawn && output.IsRunning,
-                            milliseconds => Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds),
-                            out int waits);
-                        Console.WriteLine("[AUDIO] 1MS diagnostic ring writer " +
-                            (fed ? "ACCEPTED_AND_DRAINED" : "FAILED") +
-                            " waits=" + waits + " (not proof of audible PCM)");
-                        return fed;
-                    }
-                    finally
-                    {
-                        if (started) output.Stop();
-                    }
-                }
+                    return AudioProbeDirectPlayback.TryPlay(output, scaled, sampleRate);
                 bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled));
                 Console.WriteLine(accepted
                     ? "[AUDIO] PCM ACCEPTED_AND_DRAINED (not proof of audible output)"
