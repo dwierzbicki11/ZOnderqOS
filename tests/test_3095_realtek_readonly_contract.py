@@ -95,6 +95,18 @@ class RealtekReadOnlyIsolation(unittest.TestCase):
         self.assertIn("PCI identity changed after MMIO sampling; no link proof", DRIVER)
         self.assertIn("PCI memory decoding disabled after sampling; no link proof", DRIVER)
         self.assertIn("PCI power state changed after sampling; no link proof", DRIVER)
+        self.assertIn("ushort commandBefore = pci.ReadConfig16(0x04);", DRIVER)
+        self.assertIn("ushort commandAfter = pci.ReadConfig16(0x04);", DRIVER)
+        self.assertIn("IsStablePciCommand(", DRIVER)
+        self.assertIn("PCI command changed after MMIO sampling; no link proof", DRIVER)
+        self.assertIn("IsStablePciCommand(ushort before, ushort after)", SAMPLER)
+        self.assertIn("return baseAddress != 0;", SAMPLER)
+        self.assertIn("Zero-address BAR2 must fail closed", SMOKE)
+        self.assertIn("[NET3095-RTL810XE-COMMAND-STABILITY] PASS", SMOKE)
+        self.assertLess(DRIVER.index("ushort commandBefore"),
+                        DRIVER.index("binding.MapRegisters(RegisterBar)"))
+        self.assertLess(DRIVER.index("Realtek810xERegisterSampler.TrySample"),
+                        DRIVER.index("ushort commandAfter"))
         self.assertLess(DRIVER.index("Realtek810xERegisterSampler.TrySample"),
                         DRIVER.index("PCI identity changed after MMIO sampling"))
         self.assertIn("return ProbeResult.Declined", DRIVER)
