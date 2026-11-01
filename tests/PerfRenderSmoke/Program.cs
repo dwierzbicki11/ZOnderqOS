@@ -69,6 +69,7 @@ internal static class Program
         IconDirectScaleSmoke.Verify();
         IconVisibilitySmoke.Verify();
         TextVisibilitySmoke.Verify();
+        TextClippedVisibilitySmoke.Verify();
         TextRangeNumberVisibilitySmoke.Verify();
         NumericDigitCountSmoke.Verify();
         NumericPow10Smoke.Verify();

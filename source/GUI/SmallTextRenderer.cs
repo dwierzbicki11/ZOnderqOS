@@ -197,7 +197,15 @@ namespace ZonderqOS.GUI
             if (string.IsNullOrEmpty(text) || maxWidth < 5)
                 return;
 
-            int maxChars = Math.Max(1, (maxWidth + 1) / 6);
+            // Scrolled-out file names and menu labels need no clipping math,
+            // glyph scans or ellipsis. Use wide edges for extreme offsets.
+            if (canvas == null || x >= canvas.Width || y >= canvas.Height ||
+                (long)x + maxWidth <= 0 || (long)y + 7 <= 0)
+                return;
+
+            // maxWidth can be int.MaxValue in a caller's unconstrained
+            // viewport; avoid overflow in the character budget.
+            int maxChars = Math.Max(1, (int)(((long)maxWidth + 1) / 6));
             if (text.Length <= maxChars)
             {
                 Draw(canvas, text, x, y, color);

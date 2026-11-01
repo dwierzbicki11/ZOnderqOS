@@ -50,6 +50,14 @@ class TextRangeVisibilityContracts(unittest.TestCase):
         self.assertNotIn("DrawChar(", draw)
         self.assertNotIn("Substring(", draw)
 
+    def test_clipped_labels_skip_offscreen_work_and_use_wide_width(self):
+        clipped = SOURCE.split("public static void DrawClipped(Canvas", 1)[1].split(
+            "public static void DrawCentered(", 1)[0]
+        self.assertIn("(long)x + maxWidth <= 0", clipped)
+        self.assertIn("(long)y + 7 <= 0", clipped)
+        self.assertIn("canvas == null", clipped)
+        self.assertIn("(int)(((long)maxWidth + 1) / 6)", clipped)
+
     def test_numeric_glyph_culling_preserves_full_visibility_fast_path(self):
         numeric = SOURCE.split("public static void DrawUInt(Canvas", 1)[1].split(
             "public static void DrawInt(", 1)[0]
