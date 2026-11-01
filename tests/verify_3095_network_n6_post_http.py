@@ -165,6 +165,19 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("accepted stale first-session RX bytes after DMA stress")
+    # Reject stale data in each body descriptor, including blocks 2-4.
+    # Replayed data may affect only one segment, not the whole response.
+    for block in range(1, 5):
+        start, end = cuts[block], cuts[block + 1]
+        stale = list(frames)
+        stale[1 + len(handshake) + block] = fake_http(
+            True, 0x18, 60001 + start, 50001 + len(REQUEST),
+            RESPONSE[start:end], client_port=port)
+        try:
+            check_third_http(stale, guest, 0, (49153, 49154))
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted stale third HTTP RX block {block}")
     serial = "\n".join((
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
         PASS,
@@ -234,19 +247,27 @@ def self_test() -> None:
                       server_seq + 2 + len(RESPONSE), client_port=port),
         ])
     check_followup_http(extended, guest, 0, (49153, 49154))
-    # A stale first-session body in the fourth RX stream must fail even if
-    # every TCP handshake, length and FIN/ACK is otherwise correct.
-    stale_fourth = list(extended)
-    fourth_body_index = len(frames) + 5  # SYN, SYN-ACK, ACK, request, headers, body
-    stale_fourth[fourth_body_index] = fake_http(
-        True, 0x18, 50001 + cuts[1], 40001 + len(REQUEST),
-        RESPONSE[cuts[1]:cuts[2]], client_port=49156)
-    try:
-        check_followup_http(stale_fourth, guest, 0, (49153, 49154))
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("accepted stale fourth-session HTTP RX payload")
+    # Every body segment in all three later sessions must reject stale
+    # first-session RX data, even when TCP sequence/ACK and FIN are valid.
+    session_frames = 4 + (len(cuts) - 1) + 2  # handshake/request, response, FIN/ACK
+    for attempt in range(4, 7):
+        client_port = 49152 + attempt
+        client_seq = 10000 * attempt + 1
+        server_seq = 10000 * (attempt + 1) + 1
+        response_base = len(frames) + (attempt - 4) * session_frames + 4
+        for block in range(1, 5):
+            start, end = cuts[block], cuts[block + 1]
+            stale = list(extended)
+            stale[response_base + block] = fake_http(
+                True, 0x18, server_seq + start,
+                client_seq + len(REQUEST), RESPONSE[start:end],
+                client_port=client_port)
+            try:
+                check_followup_http(stale, guest, 0, (49153, 49154))
+            except ValueError:
+                continue
+            raise AssertionError(
+                f"accepted stale post-burst HTTP block {block} in attempt {attempt}")
     for bad in (extended[:-1], extended[:len(frames)],
                 extended[:len(frames)] + extended[len(frames) + 1:]):
         try:
