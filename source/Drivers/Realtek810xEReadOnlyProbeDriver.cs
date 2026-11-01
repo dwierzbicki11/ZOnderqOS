@@ -107,6 +107,15 @@ namespace ZonderqOS.Drivers
                 // Mapping must not silently change PCI command or BAR2/BAR3.
                 // Reject such transitions BEFORE the first device MMIO read,
                 // rather than detecting them only after sampling registers.
+                // A hot reset or unexpected PCI rebinding during mapping
+                // must be detected BEFORE the first NIC register read. The
+                // post-sample identity check alone would be too late.
+                if (!Realtek810xERegisterDecoder.IsExactAsusRtl810xE(
+                        pci.ReadConfig16(0x00), pci.ReadConfig16(0x02),
+                        pci.ReadConfig16(0x08), pci.ReadConfig16(0x0A),
+                        pci.ReadConfig16(0x0E), pci.ReadConfig16(0x2C),
+                        pci.ReadConfig16(0x2E)))
+                    return Decline("PCI identity changed while mapping; no MMIO reads");
                 ushort commandAfterMap = pci.ReadConfig16(0x04);
                 if (!Realtek810xERegisterDecoder.IsStablePciCommand(
                         commandBefore, commandAfterMap))
