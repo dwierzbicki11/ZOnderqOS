@@ -40,7 +40,7 @@ internal static class Program
             string expected = LegacyCpuUnavailableLine(cpu);
             string actual = HtopMonitor.CpuUnavailableLine(cpu);
             Assert(actual == expected, "stock N/A CPU row mismatch " + cpu);
-            if (cpu < 16)
+            if (cpu < 64)
                 Assert(object.ReferenceEquals(actual, HtopMonitor.CpuUnavailableLine(cpu)),
                     "stock N/A CPU row was not cached " + cpu);
         }
@@ -52,7 +52,7 @@ internal static class Program
         monitor.Refresh();
         Assert(object.ReferenceEquals(first, monitor.Lines[3]),
             "stock CPU row was reallocated between monitor refreshes");
-        Console.WriteLine("PASS: 146 exact stock CPU N/A row/reference checks across refreshes");
+        Console.WriteLine("PASS: 194 exact stock CPU N/A row/reference checks across refreshes");
     }
 
     private static void BenchmarkCpuUnavailableLines()
@@ -109,6 +109,74 @@ internal static class Program
             "ms cached=" + b.ToString("F4") + "ms ratio=" +
             (a / b).ToString("F2") + "x allocations=" + oldBytes +
             "B -> " + newBytes + "B per 1024 rows (7 alternating samples)");
+    }
+
+
+    // Compare against the exact preceding production behavior: CPU 0..15
+    // used immutable lines, while 16..63 allocated on each refresh.
+    // This isolates the cache extension from unrelated formatting changes.
+    private static void BenchmarkExpandedCpuUnavailableCache()
+    {
+        var oldCache = new string[16];
+        for (int i = 0; i < oldCache.Length; i++)
+            oldCache[i] = HtopMonitor.CpuUnavailableLine(i);
+
+        int[] indices = new int[1024];
+        for (int i = 0; i < indices.Length; i++)
+            indices[i] = 16 + (i * 13) % 48;
+
+        Func<long> before = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < indices.Length; i++)
+            {
+                int cpu = indices[i];
+                string line = cpu < oldCache.Length ? oldCache[cpu] :
+                    LegacyCpuUnavailableLine(cpu);
+                checksum += line.Length + line[0] + line[line.Length - 1];
+            }
+            return checksum;
+        };
+        Func<long> after = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < indices.Length; i++)
+            {
+                string line = HtopMonitor.CpuUnavailableLine(indices[i]);
+                checksum += line.Length + line[0] + line[line.Length - 1];
+            }
+            return checksum;
+        };
+        Assert(before() == after(), "expanded stock N/A cache changed output");
+        for (int i = 0; i < 15; i++) { sink ^= before(); sink ^= after(); }
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= before();
+        long oldBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        start = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= after();
+        long newBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        Assert(oldBytes > 0, "previous stock CPU 16..63 must allocate");
+        Assert(newBytes == 0, "expanded CPU 16..63 cache allocated " + newBytes + " B");
+        double[] oldMs = new double[7], newMs = new double[7];
+        for (int sample = 0; sample < oldMs.Length; sample++)
+        {
+            if ((sample & 1) == 0)
+            {
+                oldMs[sample] = Time(before, 200);
+                newMs[sample] = Time(after, 200);
+            }
+            else
+            {
+                newMs[sample] = Time(after, 200);
+                oldMs[sample] = Time(before, 200);
+            }
+        }
+        double a = Median(oldMs), b = Median(newMs);
+        Console.WriteLine("HOST A/B stock CPU 16..63 N/A 1024 rows: old16=" +
+            a.ToString("F4") + "ms cached64=" + b.ToString("F4") +
+            "ms ratio=" + (a / b).ToString("F2") + "x allocations=" +
+            oldBytes + "B -> " + newBytes +
+            "B per 1024 rows (7 alternating samples; no kernel CPU measurement)");
     }
 
     private static string LegacyCpuPrefix(int cpu) =>
@@ -694,6 +762,7 @@ internal static class Program
         BenchmarkCpuPrefixes();
         VerifyCpuUnavailableLines();
         BenchmarkCpuUnavailableLines();
+        BenchmarkExpandedCpuUnavailableCache();
         VerifyIndex();
         VerifyMonitorIntegration();
         VerifyProductionRowSortAllocations();
