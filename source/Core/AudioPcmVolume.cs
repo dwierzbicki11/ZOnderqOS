@@ -172,6 +172,16 @@ namespace ZonderqOS.SystemCore
                 throw new ArgumentOutOfRangeException(nameof(rightPercent));
 
             byte[] result = new byte[pcm.Length];
+            // In the normal (no-fade) playback path, a software mute should
+            // not decode thousands of samples just to write zeroes. This
+            // output remains independently owned and frame-aligned.
+            if (leftPercent == 0 && rightPercent == 0)
+                return result;
+            if (leftPercent == 100 && rightPercent == 100)
+            {
+                Array.Copy(pcm, result, pcm.Length);
+                return result;
+            }
             for (int i = 0; i < pcm.Length; i += 4)
             {
                 short left = (short)(pcm[i] | (pcm[i + 1] << 8));
