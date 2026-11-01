@@ -291,9 +291,10 @@ def self_test() -> None:
         telemetry.replace("[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=6", "", 1),
         telemetry + "\n[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=6",
         telemetry.replace(
-            "[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=1\n[NET3095-N6] HTTP_RX_STATS",
-            "[NET3095-N6] HTTP_RX_STATS attempt=1 reads=5 max_chunk=1024 bytes=" +
-            str(len(RESPONSE)) + "\n[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=1\n[NET3095-N6] HTTP_RX_STATS", 1),
+            "[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=1\n"
+            f"[NET3095-N6] HTTP_RX_STATS attempt=1 reads=5 max_chunk=1024 bytes={len(RESPONSE)}",
+            f"[NET3095-N6] HTTP_RX_STATS attempt=1 reads=5 max_chunk=1024 bytes={len(RESPONSE)}\n"
+            "[NET3095-N6] HTTP_NIC_STABLE=PASS attempt=1", 1),
     )
     for invalid_stats in bad_telemetry:
         try:
