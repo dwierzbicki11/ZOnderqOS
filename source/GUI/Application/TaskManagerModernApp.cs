@@ -868,11 +868,12 @@ namespace ZonderqOS.GUI.Apps
         // No synthetic row may overlap the footer on a short firmware mode.
         // A zero-row view is intentionally noninteractive, including Delete.
         private int ListHeightForView => Math.Max(0, Height - ListTopForView - FooterHeight - 6);
+        private int TableRowWidthForView => Width - SidebarWidth - 12 - ScrollReserve;
         public int VisibleRows => ListHeightForView / RowHeight;
         // Both a complete row and a drawable table column are required.
         // An offscreen selected task must never be actionable by Delete.
         internal bool HasPaintedProcessRows => VisibleRows > 0 &&
-            Width - SidebarWidth - 12 > ScrollReserve + 4;
+            TableRowWidthForView > 4;
 
         public int NavAt(int x, int y)
         {
@@ -970,7 +971,9 @@ namespace ZonderqOS.GUI.Apps
             int contentX = SidebarWidth + 8;
             int listTop = ListTopForView;
             int listH = ListHeightForView;
-            if (x < contentX || x >= Width - ScrollReserve || y < listTop || y >= listTop + listH) return -1;
+            // Do not select a process in the 4px gap between painted rows and the scrollbar.
+            if (x < contentX || x >= contentX + TableRowWidthForView ||
+                y < listTop || y >= listTop + listH) return -1;
             int rowOffset = (y - listTop) / RowHeight;
             // RenderTable paints only VisibleRows complete rows. A click in
             // the unused bottom strip must not select an invisible process.
@@ -1183,7 +1186,7 @@ namespace ZonderqOS.GUI.Apps
 
             int listY = Y + ListTopForView;
             int listH = ListHeightForView;
-            int rowW = width - ScrollReserve;
+            int rowW = TableRowWidthForView;
             canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), x, listY, width, listH);
             canvas.DrawRectangle(Color.FromArgb(50, 60, 70), x, listY, width, listH);
 
