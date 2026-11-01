@@ -36,6 +36,7 @@ fade_spec.loader.exec_module(fade_capture)
 EXPECTED_TONE_HZ = {
     "tone": 440,
     "stereosplit": 440,
+    "mix": 440,  # left channel; right channel checked by stereo validator
     "wavtone": 440,
     "wavmono": 660,
     "wav44": 880,
@@ -108,7 +109,7 @@ def main():
     parser.add_argument("iso", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--boot-seconds", type=int, default=35)
-    parser.add_argument("--command", choices=("tone", "stereosplit", "wavtone", "wavmono", "wav44", "wav8k", "wav11k", "wav16k", "wav22k", "wav24k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
+    parser.add_argument("--command", choices=("tone", "stereosplit", "mix", "wavtone", "wavmono", "wav44", "wav8k", "wav11k", "wav16k", "wav22k", "wav24k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
                         help="isolated guest command to execute; WAV probe never reads guest disks")
     parser.add_argument("--volume", type=int, default=100, help="software gain 0..100 percent")
     parser.add_argument("--balance", type=int, default=0, help="-100 left-only, +100 right-only")
@@ -189,8 +190,8 @@ def main():
                 print(balance_capture.inspect(wav))
             elif args.command == "stereosplit":
                 print(stereo_capture.inspect(wav))
-            elif args.command == "wavstereo32":
-                # Require both independently resampled channels, not just a 440 Hz tone.
+            elif args.command in ("wavstereo32", "mix"):
+                # Require both independent channel contributions, not just a 440 Hz tone.
                 print(stereo_capture.inspect(wav))
             else:
                 # The mono decoder probe uses a different pitch to prevent a
