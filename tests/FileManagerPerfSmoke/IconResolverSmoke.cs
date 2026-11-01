@@ -153,9 +153,68 @@ internal static class IconResolverSmoke
             " B cached=" + cachedBytes + " B; sink=" + sink);
     }
 
+    private static double TimeSnapshot(bool optimized, string[] names)
+    {
+        const int repeats = 20;
+        long start = Stopwatch.GetTimestamp();
+        for (int rep = 0; rep < repeats; rep++)
+            for (int i = 0; i < names.Length; i++)
+                sink += (int)(optimized
+                    ? FileEntryIconResolver.Resolve(names[i], false)
+                    : Legacy(names[i], false));
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 /
+            Stopwatch.Frequency / repeats;
+    }
+
+    private static void BenchmarkSnapshot()
+    {
+        // A second A/B isolates the one-time cost paid during a FAT32
+        // directory refresh. No filesystem I/O is included.
+        string[] suffixes = { ".TXT", ".JPG", ".DOCX", ".PNG", ".pdf",
+            ".cfg", ".md", ".unknown", "", ".exe" };
+        string[] names = new string[2048];
+        for (int i = 0; i < names.Length; i++)
+            names[i] = "file" + i + suffixes[i % suffixes.Length];
+
+        for (int i = 0; i < 4; i++)
+        {
+            TimeSnapshot(false, names);
+            TimeSnapshot(true, names);
+        }
+        double[] oldMs = new double[7], newMs = new double[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if ((i & 1) == 0)
+            {
+                oldMs[i] = TimeSnapshot(false, names);
+                newMs[i] = TimeSnapshot(true, names);
+            }
+            else
+            {
+                newMs[i] = TimeSnapshot(true, names);
+                oldMs[i] = TimeSnapshot(false, names);
+            }
+        }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        TimeSnapshot(false, names);
+        long legacyBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        before = GC.GetAllocatedBytesForCurrentThread();
+        TimeSnapshot(true, names);
+        long optimizedBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        if (optimizedBytes != 0)
+            throw new Exception("snapshot icon classifier allocated " + optimizedBytes + " bytes");
+        double a = Median(oldMs), b = Median(newMs);
+        Console.WriteLine("HOST A/B 2048 icon classifications per snapshot: legacy=" +
+            a.ToString("F5") + " ms optimized=" + b.ToString("F5") +
+            " ms ratio=" + (a / b).ToString("F2") + "x");
+        Console.WriteLine("HOST allocation 20 snapshots: legacy=" + legacyBytes +
+            " B optimized=" + optimizedBytes + " B");
+    }
+
     internal static void Run()
     {
         Verify();
         Benchmark();
+        BenchmarkSnapshot();
     }
 }
