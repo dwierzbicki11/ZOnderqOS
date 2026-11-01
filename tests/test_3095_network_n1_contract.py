@@ -187,6 +187,53 @@ class NetworkN1Isolation(unittest.TestCase):
                       (ROOT / 'tests/verify_3095_e1000e_irq_trace.py').read_text())
         self.assertIn('trap cleanup EXIT INT TERM', SMOKE)
 
+    def test_n6_driverkit_health_is_read_only_and_not_an_isr_claim(self):
+        # Public stock 3.0.95 snapshots expose node binding and handler
+        # exceptions, but NOT E1000EState.InterruptCount (ISR invocations).
+        # Require the real N6 runner to check the guest snapshot even when
+        # QEMU IRQ tracing is disabled.
+        health = (ROOT / 'tests/verify_3095_e1000e_irq_binding.py').read_text()
+        for token in (
+            'DriverDiagnostics.TryGetNode(i, out var node)',
+            'candidate.State != DeviceNodeState.Bound',
+            'candidate.FaultCount != 0',
+            'candidate.PublishedDeviceCount != 1',
+            'candidate.InterruptCount < 1',
+            'handler_faults=0 isr_executions=unknown',
+            'if (!CheckE1000EDriverKitHealth())',
+        ):
+            self.assertIn(token, SOURCE)
+        self.assertLess(SOURCE.index('POST_STRESS_LINK=PASS'),
+                        SOURCE.index('if (!CheckE1000EDriverKitHealth())'))
+        self.assertIn('check_driver_health(serial)', health)
+        self.assertIn('isr_executions=unknown
+        # Require identical byte-varying formulas in the C# guest and
+        # Python host, including connection and position dependence.
+        # Uniform 1 KiB blocks can hide shifted/stale DMA fragments.
+        for term in ("offset * 37", "(offset / 90) * 11",
+                     "(offset / 1024) * 23", "attempt * 29"):
+            self.assertIn(term, SOURCE)
+        for term in ("offset * 37", "(offset // 90) * 11",
+                     "(offset // 1024) * 23", "attempt * 29"):
+            self.assertIn(term, HTTP_HOST)
+        self.assertIn("expected[prefix.Length + offset]", SOURCE)
+        self.assertIn("patterned_body(attempt)", HTTP_HOST)
+        self.assertIn("len(set(chunk)) > 50", HTTP_HOST)
+        self.assertNotIn("new string((char)(", SOURCE)
+        self.assertIn('readCalls++', SOURCE)
+        self.assertIn('if (read > largestRead)', SOURCE)
+        self.assertIn('HTTP_RX_STATS attempt=', SOURCE)
+        self.assertIn(
+            'check_rx_stats(serial)',
+            (ROOT / 'tests/verify_3095_network_n6_post_http.py').read_text())
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)
+, health)
+        self.assertIn('ISR-UNPROVEN', health)
+        self.assertIn('python3 "$ROOT/tests/verify_3095_e1000e_irq_binding.py" "$LOG"', SMOKE)
+        self.assertNotIn('binding.TryRequestInterrupt(', SOURCE)
+
     def test_n6_all_rx_segments_and_guest_read_telemetry(self):
         # Require identical byte-varying formulas in the C# guest and
         # Python host, including connection and position dependence.
