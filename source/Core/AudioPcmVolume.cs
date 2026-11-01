@@ -106,8 +106,12 @@ namespace ZonderqOS.SystemCore
         /// </summary>
         public static byte[] ScaleStereo16Channels(byte[] pcm, int leftPercent, int rightPercent)
         {
-            if (pcm == null || pcm.Length == 0 || pcm.Length % 4 != 0)
-                throw new ArgumentException("PCM16 stereo frames required.", nameof(pcm));
+            // Keep the non-faded path within the same two-second PCM budget
+            // as FadeStereo16 and ScaleStereo16ChannelsWithFade. Reject before
+            // allocating an output buffer for an untrusted caller.
+            if (pcm == null || pcm.Length == 0 || pcm.Length % 4 != 0 ||
+                pcm.Length > 48000 * 2 * 4)
+                throw new ArgumentException("Up to two seconds of 48 kHz PCM16 stereo required.", nameof(pcm));
             if (leftPercent < 0 || leftPercent > 100)
                 throw new ArgumentOutOfRangeException(nameof(leftPercent));
             if (rightPercent < 0 || rightPercent > 100)
