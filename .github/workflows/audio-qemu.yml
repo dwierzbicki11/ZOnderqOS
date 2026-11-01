@@ -14,6 +14,8 @@ on:
       - 'tools/verify-audio-delay-capture.py'
       - 'tools/verify-audio-queue-capture.py'
       - 'tests/test_audio_queue_validator.py'
+      - 'tests/test_audio_queue_dropout_diagnostics.py'
+      - 'tools/analyze-audio-queue-dropouts.py'
       - 'tests/test_audio_hda_replay.py'
       - 'tools/analyze-audio-hda-replay.py'
       - 'tests/test_audio_delay_validator.py'
@@ -55,7 +57,8 @@ jobs:
         run: |
           bash tools/verify-cosmos-3095-migration.sh
           bash -n run.sh tools/build-cosmos-3095-local.sh
-          python3 -m py_compile tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py tools/verify-audio-stereo-capture.py tools/verify-audio-delay-capture.py tools/verify-audio-queue-capture.py tools/analyze-audio-hda-replay.py tools/verify-audio-volume-capture.py tools/verify-audio-mute-capture.py tools/verify-audio-balance-capture.py tools/verify-audio-fade-capture.py
+          python3 tests/test_audio_queue_dropout_diagnostics.py
+          python3 -m py_compile tools/analyze-audio-queue-dropouts.py tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py tools/verify-audio-stereo-capture.py tools/verify-audio-delay-capture.py tools/verify-audio-queue-capture.py tools/analyze-audio-hda-replay.py tools/verify-audio-volume-capture.py tools/verify-audio-mute-capture.py tools/verify-audio-balance-capture.py tools/verify-audio-fade-capture.py
           python3 tests/test_audio_gen3_contract.py
           python3 tests/test_audio_wav_validator.py
           python3 tests/test_audio_stereo_validator.py
@@ -101,6 +104,14 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-out --boot-seconds 45 --command mixqueue
+      - name: Quantify actual mixqueue dropouts without relaxing the strict quality gate
+        if: always()
+        run: |
+          if [ -s audio-qemu-mixqueue-out/captured.wav ]; then
+            python3 tools/analyze-audio-queue-dropouts.py audio-qemu-mixqueue-out/captured.wav
+          else
+            echo '[AUDIO-QUEUE-DIAG] no WAV artifact available; not a playback PASS'
+          fi
       - name: Boot again and capture decoded in-memory RIFF/WAV playback
         run: |
           python3 tools/smoke-audio-qemu.py \
