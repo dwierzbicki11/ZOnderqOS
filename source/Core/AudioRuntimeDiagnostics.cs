@@ -169,11 +169,16 @@ namespace ZonderqOS.SystemCore
             // the 50 ms inter-effect gap, or the production GUI audio path.
             // Keep the lead-in inside the existing two-second PCM budget.
             const int preRollFrames = 12000; // 250 ms at 48 kHz
-            byte[] mixed = AudioPcmMixer.MixScheduledStereo16(
+            // Five-millisecond per-effect attack/release reduces hard PCM
+            // edges while keeping the 50 ms onset offset, 50 ms inter-clip
+            // gap and original total duration. The pure mixer still uses one
+            // output allocation and does not alter the stock HDA driver.
+            const int clipFadeMilliseconds = 5;
+            byte[] mixed = AudioPcmMixer.MixScheduledStereo16WithFade(
                 new[] { left, right, finalLeft },
                 new[] { preRollFrames, preRollFrames + 2400, preRollFrames + 14400 },
-                new[] { 100, 100, 100 });
-            Console.WriteLine("[AUDIO] MIXQUEUE 48kHz stereo16 clips=3 preroll=250ms " +
+                new[] { 100, 100, 100 }, clipFadeMilliseconds);
+            Console.WriteLine("[AUDIO] MIXQUEUE 48kHz stereo16 clips=3 preroll=250ms clipFade=5ms " +
                 "left=440Hz@0ms right=880Hz@50ms left=660Hz@300ms bytes=" + mixed.Length);
             return PlayPcm(mixed);
         }
