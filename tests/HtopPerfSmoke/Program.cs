@@ -37,8 +37,9 @@ internal static class Program
                     i % 11 == 0 ? 0u : (uint)random.Next(1, 110);
                 processes[i] = new KernelProcess(i + 1, "p" + i, tid);
             }
-            index.Rebuild(processes, n);
-            Assert(index.UsesDictionary == (n >= 512), "adaptive threshold n=" + n);
+            index.Rebuild(processes);
+            Assert(HtopProcessIndex.ShouldIndex(n, n) == (n >= 512),
+                "adaptive threshold n=" + n);
             var seen = new HashSet<int>();
             for (uint tid = 0; tid <= 111; tid++)
             {
@@ -61,16 +62,16 @@ internal static class Program
                 checks++;
             }
         }
-        index.Rebuild(Array.Empty<KernelProcess>(), 0);
+        index.Rebuild(Array.Empty<KernelProcess>());
         Assert(!index.TryResolve(0, out _), "stale TID after empty rebuild");
         Assert(!index.WasSeen(1), "stale PID after empty rebuild");
         var large = new KernelProcess[1024];
         for (int i = 0; i < large.Length; i++)
             large[i] = new KernelProcess(i + 1, "p", (uint)(i + 100));
-        index.Rebuild(large, 8);
-        Assert(!index.UsesDictionary, "few scheduler threads should avoid index build");
-        index.Rebuild(large, 1024);
-        Assert(index.UsesDictionary, "large join should use dictionary");
+        Assert(!HtopProcessIndex.ShouldIndex(large.Length, 8),
+            "few scheduler threads should retain old scan");
+        Assert(HtopProcessIndex.ShouldIndex(large.Length, 1024),
+            "large join should use dictionary");
         Console.WriteLine("PASS: " + checks + " exact legacy first-match and missing-PID checks");
     }
 
@@ -102,6 +103,26 @@ internal static class Program
         Assert(output.Contains("START/EXIT    -   unbound"), "unbound process row");
         Assert(output.Contains("START/EXIT    -   duplicate"), "duplicate TID keeps first owner");
         Assert(!output.Contains("START/EXIT    -   alpha"), "matched process must not be missing");
+        // Force the actual production monitor onto the indexed path.
+        var large = new KernelProcess[512];
+        var threads = new KernelThreadInfo[512];
+        for (int i = 0; i < large.Length; i++)
+        {
+            large[i] = new KernelProcess(i + 100, "bulk-" + i, (uint)(1000 + i));
+            threads[i] = new KernelThreadInfo
+            {
+                Id = (uint)(1000 + i), CpuId = 0, TotalRuntimeNs = 100,
+                State = "READY", IsManaged = true
+            };
+        }
+        ProcessManager.TestProcesses = large;
+        SchedulerInfo.Threads = threads;
+        monitor.Refresh();
+        output = string.Join("\n", monitor.Lines);
+        Assert(output.Contains("bulk-0") && output.Contains("bulk-511"),
+            "indexed monitor must resolve first and last process");
+        Assert(!output.Contains("START/EXIT    -   bulk-"),
+            "indexed monitor must not misclassify matched processes");
         ProcessManager.TestProcesses = Array.Empty<KernelProcess>();
         SchedulerInfo.Threads = Array.Empty<KernelThreadInfo>();
         monitor.Refresh();
@@ -142,7 +163,7 @@ internal static class Program
 
     private static long IndexedJoin(HtopProcessIndex index, KernelProcess[] processes, uint[] tids)
     {
-        index.Rebuild(processes, tids.Length);
+        index.Rebuild(processes);
         long checksum = 0;
         for (int t = 0; t < tids.Length; t++)
             if (index.TryResolve(tids[t], out KernelProcess process))
@@ -179,7 +200,11 @@ internal static class Program
             tids[i] = i % 8 == 0 ? (uint)(500000 + i) : (uint)(10000 + i % count);
         var index = new HtopProcessIndex();
         Func<long> old = () => LegacyJoin(processes, tids, rowPids);
-        Func<long> current = () => IndexedJoin(index, processes, tids);
+        // Benchmark the selected production path, not a slow linear lookup
+        // hidden behind an IReadOnlyList interface for small snapshots.
+        Func<long> current = HtopProcessIndex.ShouldIndex(count, threads)
+            ? () => IndexedJoin(index, processes, tids)
+            : () => LegacyJoin(processes, tids, rowPids);
         Assert(old() == current(), "A/B checksum mismatch n=" + count + " threads=" + threads);
         for (int i = 0; i < 10; i++) { old(); current(); }
         long before = GC.GetAllocatedBytesForCurrentThread();

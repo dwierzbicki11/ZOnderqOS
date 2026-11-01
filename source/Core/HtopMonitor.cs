@@ -132,11 +132,15 @@ namespace ZonderqOS.SystemCore
             ulong pageSize = MemoryInfo.PageSizeBytes;
             lines.Add("Mem: " + ((total - free) * pageSize / 1048576UL) + " / " + (total * pageSize / 1048576UL) + " MiB");
             ProcessManager.FillActiveProcesses(processes);
-            processIndex.Rebuild(processes, SchedulerInfo.ThreadSlotCount);
+            int slots = SchedulerInfo.ThreadSlotCount;
+            bool indexedJoin = HtopProcessIndex.ShouldIndex(processes.Count, slots);
+            if (indexedJoin)
+                processIndex.Rebuild(processes);
+            else
+                processIndex.Clear();
             lines.Add("Processes: " + processes.Count + "  Threads: " + SchedulerInfo.ThreadCount);
             lines.Add("  PID    TID  CPU  STATE       CPU%  NAME");
 
-            int slots = SchedulerInfo.ThreadSlotCount;
             if (previousThreads.Length < slots)
             {
                 Array.Resize(ref previousThreads, slots);
@@ -161,10 +165,26 @@ namespace ZonderqOS.SystemCore
                 }
                 int pid = 0;
                 string name = info.IsManaged ? "managed thread" : "kernel thread";
-                if (processIndex.TryResolve(info.Id, out KernelProcess process))
+                if (indexedJoin)
                 {
-                    pid = process.PID;
-                    name = process.Name;
+                    if (processIndex.TryResolve(info.Id, out KernelProcess process))
+                    {
+                        pid = process.PID;
+                        name = process.Name;
+                    }
+                }
+                else
+                {
+                    // Keep the original tight List<T> scan for small snapshots.
+                    // Building and probing a hash table regresses this hot path.
+                    for (int index = 0; index < processes.Count; index++)
+                    {
+                        if (processes[index].KernelThreadId != info.Id)
+                            continue;
+                        pid = processes[index].PID;
+                        name = processes[index].Name;
+                        break;
+                    }
                 }
                 rows.Add(new Row { Thread = info, Percent = Percent(delta, elapsedNs), Pid = pid, Name = name });
             }
@@ -177,7 +197,18 @@ namespace ZonderqOS.SystemCore
             }
             foreach (KernelProcess process in processes)
             {
-                if (!processIndex.WasSeen(process.PID))
+                bool found = indexedJoin && processIndex.WasSeen(process.PID);
+                if (!indexedJoin)
+                {
+                    foreach (Row row in rows)
+                    {
+                        if (row.Pid != process.PID)
+                            continue;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
                 {
                     lines.Add(process.PID.ToString().PadLeft(5) + "      -    -  START/EXIT    -   " + process.Name);
                 }
@@ -207,38 +238,32 @@ namespace ZonderqOS.SystemCore
     }
 
     /// <summary>
-    /// Reusable, adaptive index for htop's per-refresh thread/process join.
-    /// Small snapshots keep a linear TID lookup to avoid hash construction;
-    /// large joins use a dictionary. The first process for a TID wins.
-    /// Clearing retains capacity without per-refresh collections allocations.
-    /// This is a display snapshot only; it does not change process ownership.
+    /// Reusable hash index for large htop thread/process joins. Small joins
+    /// retain the original linear scans in HtopMonitor (faster on host .NET).
+    /// The first process for a TID wins; Clear releases stale references.
     /// </summary>
     internal sealed class HtopProcessIndex
     {
         private readonly Dictionary<uint, KernelProcess> byThread =
             new Dictionary<uint, KernelProcess>();
         private readonly HashSet<int> seenPids = new HashSet<int>();
-        private IReadOnlyList<KernelProcess> processes;
-        private bool useIndex;
 
-        // Hashing a tiny process table is slower than scanning it. Select the
-        // indexed path only when the expected join work is large enough.
-        internal bool UsesDictionary => useIndex;
+        internal static bool ShouldIndex(int processCount, int threadSlots) =>
+            processCount >= 256 && (long)processCount * Math.Max(0, threadSlots) >= 131072;
 
-        internal void Rebuild(IReadOnlyList<KernelProcess> snapshot, int threadSlots)
+        internal void Clear()
         {
-            processes = snapshot;
             byThread.Clear();
             seenPids.Clear();
-            useIndex = snapshot.Count >= 256 &&
-                (long)snapshot.Count * Math.Max(0, threadSlots) >= 131072;
-            if (!useIndex)
-                return;
+        }
+
+        internal void Rebuild(IReadOnlyList<KernelProcess> snapshot)
+        {
+            Clear();
             for (int i = 0; i < snapshot.Count; i++)
             {
                 KernelProcess process = snapshot[i];
                 uint tid = process.KernelThreadId;
-                // Preserve the first match when two entries report one TID.
                 if (!byThread.ContainsKey(tid))
                     byThread.Add(tid, process);
             }
@@ -246,25 +271,8 @@ namespace ZonderqOS.SystemCore
 
         internal bool TryResolve(uint threadId, out KernelProcess process)
         {
-            if (useIndex)
-            {
-                if (!byThread.TryGetValue(threadId, out process))
-                    return false;
-            }
-            else
-            {
-                process = null;
-                for (int i = 0; i < processes.Count; i++)
-                {
-                    KernelProcess candidate = processes[i];
-                    if (candidate.KernelThreadId != threadId)
-                        continue;
-                    process = candidate;
-                    break;
-                }
-                if (process == null)
-                    return false;
-            }
+            if (!byThread.TryGetValue(threadId, out process))
+                return false;
             seenPids.Add(process.PID);
             return true;
         }
