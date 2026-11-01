@@ -9,6 +9,13 @@ namespace ZonderqOS.GUI.Apps
 
         public List<Application> Applications { get { return applications; } }
 
+        // The regular idle desktop skips most full-screen redraws. An active game
+        // needs a frame on every GUI iteration so moving sprites stay visible.
+        public bool HasActiveGame
+        {
+            get { return ActiveApplication is global::ZonderqOS.Games.Framework.Game; }
+        }
+
         public Application ActiveApplication
         {
             get
