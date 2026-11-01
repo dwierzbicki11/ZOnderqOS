@@ -8,7 +8,7 @@ workflow = (root / ".github/workflows/perf-gen3.yml").read_text()
 assert "FileEntrySorter.Sort(entries, ref sortScratch);" in manager
 assert "private FileEntry[] sortScratch = new FileEntry[0];" in manager
 assert "entries[i].Name.ToLowerInvariant().Contains(filter)" not in manager
-assert "entries[i].Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase)" in manager
+assert "if (entries[i].Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0)" in manager
 assert "Array.Clear(scratch, 0, count);" in sorter
 assert "if (Compare(a, b) <= 0)" in sorter  # stable merge
 assert "dotnet run --project tests/FileManagerPerfSmoke/FileManagerPerfSmoke.csproj" in workflow
