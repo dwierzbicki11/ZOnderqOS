@@ -1332,6 +1332,10 @@ static class Test
         try { AudioPcmMixer.MixStereo16WithDelay(mixA, mixB, 100, 100, 96000); }
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "delay rejects clip extending beyond output budget");
+        byte[] longFirstMix = AudioPcmMixer.MixStereo16WithDelay(
+            new byte[384000], new byte[4], 100, 100, 1);
+        Expect(longFirstMix.Length == 384000,
+            "delayed short second clip fits within existing long first clip");
         rejected = false;
         try { AudioPcmMixer.MixStereo16WithDelay(new byte[4], new byte[384000],
             100, 100, 1); }
