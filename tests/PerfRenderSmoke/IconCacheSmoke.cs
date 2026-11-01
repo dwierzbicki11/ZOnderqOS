@@ -172,6 +172,11 @@ internal static class IconCacheSmoke
                 throw new Exception("Cache-full replacement missed subsequent hit");
         if (GetScaled((IconType)45, solid, 8, 8, 256, 256) != null)
             throw new Exception("Large transient icon unexpectedly replaced a cache slot");
+        // Force the exact stale-pointer state an eviction can leave behind.
+        int[] recentSlots = (int[])typeof(IconManager)
+            .GetField("scaledRecentSlots", BindingFlags.Static | BindingFlags.NonPublic)
+            .GetValue(null);
+        recentSlots[0] = 0; // slot 0 now contains FileTxt, not type 0.
         int[] original = GetScaled((IconType)0, source, 8, 8, 16, 18);
         if (original == null || !object.ReferenceEquals(original, BaselineLookup((IconType)0, 16, 18)))
             throw new Exception("Stale recent-slot pointer returned incorrect icon");
