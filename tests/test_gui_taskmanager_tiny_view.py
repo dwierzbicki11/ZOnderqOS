@@ -82,8 +82,12 @@ class TinyTaskManagerViewTests(unittest.TestCase):
     def test_tiny_performance_selectors_cannot_cover_footer(self):
         hit = section("public int PerformanceResourceAt(", "public int CpuGraphModeAt(")
         draw = section("private void RenderPerformance(Canvas canvas)", "private void DrawCompactResource(")
-        self.assertIn("Width <= SidebarWidth + 24 || Height < 134", hit)
-        self.assertIn("Width <= SidebarWidth + 24 || Height < 134", draw)
+        self.assertIn("Width < SidebarWidth + 96 || Height < 134", hit)
+        self.assertIn("Width < SidebarWidth + 96 || Height < 134", draw)
+        header = section("private void RenderHeader(Canvas canvas)", "private void DrawButton(")
+        toolbar = section("public int ToolbarActionAt(", "public int PerformanceResourceAt(")
+        self.assertIn("Width < SidebarWidth + 64", header)
+        self.assertIn("Width < SidebarWidth + 64", toolbar)
         for height in range(1, 134):
             self.assertGreater(64 + 42 + 28, height)
 
