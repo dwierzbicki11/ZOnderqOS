@@ -25,11 +25,12 @@ ECHO_SEQ = 1
 def normalize_icmp_serial(serial: str) -> str:
     """Repair only exact N3 markers split by a known BSP timer-log splice.
 
-    A single-vCPU timer can interrupt DiagnosticLog.WriteString at any
-    character, including before the closing bracket of ICMP_ATTEMPT=START.
-    Require a matching LAPIC/SCHED tick pair and reconstruct ONLY one of the
-    two exact N3 markers. Arbitrary insertions, malformed fragments and
-    duplicate markers must still fail. Independent PCAP evidence is mandatory.
+    A single-vCPU scheduler tick can interrupt DiagnosticLog.WriteString at
+    any character. Some boots emit a matching LAPIC/SCHED pair, while others
+    splice a standalone SCHED tick into the middle of an exact N3 marker.
+    Reconstruct ONLY an exact marker with a complete known tick record.
+    Arbitrary insertions, malformed fragments and duplicate markers must
+    still fail. Independent PCAP evidence is mandatory.
     """
     lines = serial.replace("\r", "").splitlines()
     repaired = []
@@ -37,6 +38,18 @@ def normalize_icmp_serial(serial: str) -> str:
     while i < len(lines):
         line = lines[i]
         if line.startswith("[NET3095-N3"):
+            # QEMU N5 evidence (run 41360128503) has an actual echo reply
+            # and a SCHED-only tick spliced into ICMP=PASS. Require the
+            # remaining line to reconstruct the exact expected marker;
+            # never strip arbitrary scheduler diagnostics globally.
+            head, sep, tick = line.partition("[SCHED] Tick ")
+            sched_only = (re.fullmatch(r"([0-9]+) enabled=[01]", tick)
+                          if sep else None)
+            if (sched_only and i + 1 < len(lines)
+                    and head + lines[i + 1] in (PING_START, PING_PASS)):
+                repaired.append(head + lines[i + 1])
+                i += 2
+                continue
             head, sep, tick = line.partition("[LAPIC] Timer tick ")
             lapic = re.fullmatch(r"([0-9]+) RSP=[0-9A-Fa-f]+", tick) if sep else None
             sched = (re.fullmatch(r"\[SCHED\] Tick ([0-9]+) enabled=[01]", lines[i + 1])
@@ -178,7 +191,24 @@ def self_test() -> None:
         "[SCHED] Tick 5 enabled=1\n] ICMP_ATTEMPT=START",
     )
     assert "PASS" in validate(torn_start, synthetic_capture(frames))
+    # Replay the exact scheduler-only splice seen in real N5 serial evidence.
+    torn_sched = serial.replace(
+        PING_PASS,
+        "[NET3095-N3] ICMP=PASS from=10[SCHED] Tick 6 enabled=1\\n.0.2.2",
+    )
+    assert "PASS" in validate(torn_sched, synthetic_capture(frames))
+    # A tick can split any part of the marker, not only 'from=10'.
+    for marker in (PING_START, PING_PASS):
+        for offset in range(len("[NET3095-N3"), len(marker)):
+            split = (marker[:offset] + "[SCHED] Tick 6 enabled=1\\n" +
+                     marker[offset:])
+            assert "PASS" in validate(
+                serial.replace(marker, split), synthetic_capture(frames))
     bad = [
+        (torn_sched.replace("Tick 6", "Tick not-a-number"), frames),
+        (torn_sched.replace("enabled=1", "enabled=2"), frames),
+        (torn_sched.replace("\\n.0.2.2", "\\n.0.2.3"), frames),
+        (torn_sched + "\\n" + PING_PASS, frames),
         (torn_start.replace("[SCHED] Tick 5", "[SCHED] Tick 6"), frames),
         (torn_start.replace("RSP=FFFF80007F5C0BA0", "RSP=NOTHEX"), frames),
         (torn_start.replace("] ICMP_ATTEMPT=START", "] ICMP_ATTEMPT=OTHER"), frames),
