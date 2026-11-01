@@ -100,7 +100,9 @@ def dns_packet(data: bytes):
     if len(data) < 12:
         return None
     txid, flags, qd, an, _ns, _ar = struct.unpack_from(">HHHHHH", data)
-    if qd != 1 or an > 64:
+    # DNS opcode must be QUERY; truncated (TC) or reserved-Z responses
+    # cannot prove a complete successful address resolution.
+    if qd != 1 or an > 64 or (flags & 0x7A40):
         return None
     try:
         name, pos = dns_name(data, 12)
@@ -255,10 +257,11 @@ def fake_dns(reply: bool, txid: int = 0x3095, host: bytes = b"localhost",
              dest_mac: bytes = MAC,
              request_dest_mac: bytes = bytes.fromhex("52550a000203"),
              reply_src_mac: bytes = bytes.fromhex("525400123499"),
-             zero_checksum: bool = False) -> bytes:
+             zero_checksum: bool = False, flags: int | None = None) -> bytes:
     qname = bytes([len(host)]) + host + b"\x00"
     question = qname + struct.pack(">HH", 1, 1)
-    dns = struct.pack(">HHHHHH", txid, 0x8180 if reply else 0x0100,
+    dns = struct.pack(">HHHHHH", txid,
+                      flags if flags is not None else (0x8180 if reply else 0x0100),
                       1, 1 if reply else 0, 0, 0) + question
     if reply:
         dns += b"\xc0\x0c" + struct.pack(">HHIH", 1, 1, 60, len(answer)) + answer
@@ -315,6 +318,12 @@ def self_test() -> None:
         # The DNS answer still decodes correctly when only its TTL changes,
         # but its UDP checksum must now reject the corrupted wire payload.
         (serial, frames[:-1] + [flip(frames[-1], 75)]),
+        # A valid retransmission must not hide an earlier corrupt DNS
+        # response; all candidate port-53 packets are checksum checked.
+        (serial, frames[:-1] + [flip(frames[-1], 75), frames[-1]]),
+        (serial, frames[:-1] + [fake_dns(True, flags=0x8380)]),  # TC
+        (serial, frames[:-1] + [fake_dns(True, flags=0x8980)]),  # opcode
+        (serial, frames[:-1] + [fake_dns(True, flags=0x81C0)]),  # reserved Z
         (serial, frames[:-1] + [flip(frames[-1], 22)]),
         (serial, frames[:-1] + [flip(frames[-1], 40)]),
         (serial, frames[:-2] + [flip(frames[-2], 22), frames[-1]]),
