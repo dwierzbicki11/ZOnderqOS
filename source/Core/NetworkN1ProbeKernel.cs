@@ -721,6 +721,7 @@ namespace ZonderqOS
                 int received = 0;
                 int readCalls = 0;
                 int largestRead = 0;
+                long firstByteTicks = -1;
                 // ReceiveTimeout bounds each individual blocking Read, but a
                 // peer sending one byte every few seconds can keep resetting
                 // that timeout. Bound the complete response independently.
@@ -758,6 +759,8 @@ namespace ZonderqOS
                     if (read <= 0)
                         break;
                     readCalls++;
+                    if (firstByteTicks < 0)
+                        firstByteTicks = Stopwatch.GetTimestamp() - rxStart;
                     if (read > largestRead)
                         largestRead = read;
                     received += read;
@@ -825,6 +828,24 @@ namespace ZonderqOS
                 Log("[NET3095-N6] HTTP_RX_STATS attempt=" + attempt +
                     " reads=" + readCalls + " max_chunk=" + largestRead +
                     " bytes=" + received);
+                // Measure actual managed socket RX latency on the guest. This
+                // helps compare polling/IRQ experiments in real QEMU, but is
+                // not evidence that an ISR ran or that a physical NIC works.
+                // Divide before multiplying to avoid overflowing tick counts.
+                long totalTicks = Stopwatch.GetTimestamp() - rxStart;
+                if (firstByteTicks < 0 || totalTicks < firstByteTicks ||
+                    totalTicks < 0 || totalTicks / rxFrequency >= 45)
+                {
+                    Log("[NET3095-N6][FAIL] HTTP RX timing invalid attempt=" + attempt);
+                    return false;
+                }
+                long firstByteMs = (firstByteTicks / rxFrequency) * 1000 +
+                    ((firstByteTicks % rxFrequency) * 1000) / rxFrequency;
+                long totalMs = (totalTicks / rxFrequency) * 1000 +
+                    ((totalTicks % rxFrequency) * 1000) / rxFrequency;
+                Log("[NET3095-N6] HTTP_RX_TIMING attempt=" + attempt +
+                    " first_byte_ms=" + firstByteMs + " total_ms=" + totalMs +
+                    " (socket Read; ISR unproven)");
                 string marker = attempt == 1 ? "HTTP=PASS" :
                     attempt == 2 ? "HTTP_REPEAT=PASS" :
                     attempt == 3 ? "POST_BURST_HTTP=PASS" :
