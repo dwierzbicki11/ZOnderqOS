@@ -39,7 +39,9 @@ EXPECTED_TONE_HZ = {
     "wavtone": 440,
     "wavmono": 660,
     "wav44": 880,
+    "wav16k": 1500,
     "wav22k": 1100,
+    "wav24k": 4000,
     "wav32k": 3520,
     "wavstereo32": 440,  # left; right checked separately by stereo validator
     "wav8": 1320,
@@ -104,7 +106,7 @@ def main():
     parser.add_argument("iso", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--boot-seconds", type=int, default=35)
-    parser.add_argument("--command", choices=("tone", "stereosplit", "wavtone", "wavmono", "wav44", "wav22k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
+    parser.add_argument("--command", choices=("tone", "stereosplit", "wavtone", "wavmono", "wav44", "wav16k", "wav22k", "wav24k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
                         help="isolated guest command to execute; WAV probe never reads guest disks")
     parser.add_argument("--volume", type=int, default=100, help="software gain 0..100 percent")
     parser.add_argument("--balance", type=int, default=0, help="-100 left-only, +100 right-only")
