@@ -216,7 +216,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("AudioPcmVolume.ScaleStereo16Channels(pcm, leftGain, rightGain)", runtime)
         self.assertIn('if (command == "balance")', kernel)
         self.assertIn('command.StartsWith("balance ", StringComparison.Ordinal)', kernel)
-        self.assertIn("SetBalancePercent(percent)", runtime)
+        self.assertIn("AudioRuntimeDiagnostics.SetBalancePercent(percent)", kernel)
         self.assertIn("percent < -100 || percent > 100", runtime)
         self.assertIn("ScaleStereo16Channels", gain)
         self.assertIn("--balance 100", workflow)
