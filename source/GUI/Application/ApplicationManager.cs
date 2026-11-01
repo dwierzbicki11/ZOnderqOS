@@ -264,7 +264,7 @@ namespace ZonderqOS.GUI.Apps
         }
 
         public void HandleMouse(int mouseX, int mouseY, bool leftClicked, bool leftWasClicked,
-            bool rightClicked, bool rightWasClicked)
+            bool rightClicked, bool rightWasClicked, bool physicalWasHeld = false)
         {
             if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
                 return;
@@ -272,7 +272,10 @@ namespace ZonderqOS.GUI.Apps
             Application target = ActiveApplication;
             bool newPress = (leftClicked && !leftWasClicked) ||
                 (rightClicked && !rightWasClicked);
-            bool wasHeld = leftWasClicked || rightWasClicked;
+            // GuiManager suppresses left clicks while right is down. Preserve
+            // the physical previous-button state for capture ownership even
+            // when the sanitized UI states look like a fresh right press.
+            bool wasHeld = physicalWasHeld || leftWasClicked || rightWasClicked;
             bool isHeld = leftClicked || rightClicked;
 
             // A second button pressed during an existing desktop gesture
