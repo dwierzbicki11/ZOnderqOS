@@ -194,6 +194,8 @@ internal static class TextRangeNumberVisibilitySmoke
             TimeRange(optimized, canvas, text, iterations, 128));
         Benchmark("partially visible DrawRange", (optimized, canvas, iterations) =>
             TimeRange(optimized, canvas, text, iterations, -930), false);
+        Benchmark("fully visible DrawRange", (optimized, canvas, iterations) =>
+            TimeRange(optimized, canvas, "Task Manager", iterations, 0), false);
         Benchmark("offscreen DrawUInt", TimeNumber);
     }
 }
