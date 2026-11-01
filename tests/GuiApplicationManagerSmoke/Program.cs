@@ -269,14 +269,21 @@ internal static class Program
         manager.HandleMouse(500, 500, true, false, false, false);
         Check(right.MouseCount == 1, "desktop press is not sent to app");
 
-        // A held gesture can end outside the window: forward the release.
+        // Desktop owns the whole gesture, including motion and release.
+        manager.HandleMouse(220, 20, true, true, false, false);
         manager.HandleMouse(500, 500, false, true, false, false);
-        Check(right.MouseCount == 2 && right.LastLeftRelease,
-            "drag release reaches active window outside its bounds");
+        Check(right.MouseCount == 1,
+            "desktop gesture cannot leak motion or release into active app");
+
+        // A genuine window drag must still deliver release outside its bounds.
+        manager.HandleMouse(220, 20, true, false, false, false);
+        manager.HandleMouse(500, 500, false, true, false, false);
+        Check(right.MouseCount == 3 && right.LastLeftRelease,
+            "window-owned drag release reaches owner outside bounds");
 
         right.Window.Minimize();
         manager.HandleMouse(220, 20, true, false, false, false);
-        Check(right.MouseCount == 2, "minimized window cannot receive new press");
+        Check(right.MouseCount == 3, "minimized window cannot receive new press");
         Check(manager.ActiveApplication == left, "minimized window is excluded from active focus");
     }
 
@@ -354,6 +361,22 @@ internal static class Program
         manager.CloseAll();
     }
 
+    private static void DesktopRightPressDoesNotLeak()
+    {
+        var manager = new ApplicationManager();
+        var app = new ClosingApp();
+        manager.Launch(app);
+        manager.HandleMouse(500, 500, false, false, true, false);
+        manager.HandleMouse(10, 10, false, false, true, true);
+        manager.HandleMouse(10, 10, false, false, false, true);
+        Check(app.MouseCount == 0,
+            "right desktop press and release cannot open active app context menu");
+        manager.HandleMouse(10, 10, false, false, true, false);
+        Check(app.MouseCount == 1 && app.LastRightPress,
+            "new right press inside window works after desktop gesture");
+        manager.CloseAll();
+    }
+
     private static void ActivationRequiresRegisteredSession()
     {
         var manager = new ApplicationManager();
@@ -393,6 +416,7 @@ internal static class Program
         CloseAnotherDuringUpdate();
         ReentrantUpdateIsIgnored();
         ActivationRequiresRegisteredSession();
+        DesktopRightPressDoesNotLeak();
         Console.WriteLine("PASS: " + checks + " production ApplicationManager C# assertions");
         return 0;
     }
