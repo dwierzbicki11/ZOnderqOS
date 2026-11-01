@@ -150,7 +150,7 @@ def check_driver_health(serial: str) -> str:
     if any(lines.count(marker) != 1 for marker in anchors):
         raise ValueError("missing or duplicate post-stress ICMP marker")
     post_start, post_done, http_start, final_start, final_done = map(lines.index, anchors)
-    if not (lines.index(post_burst) < post_start < post_done < http_start <
+    if not (lines.index(burst_claims[0]) < post_start < post_done < http_start <
             final_start < final_done < lines.index(link_lines[0])):
         raise ValueError("post-stress ICMP phases out of order")
     checkpoints = [line for line in lines
