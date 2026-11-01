@@ -41,23 +41,38 @@ namespace ZonderqOS.GUI.Apps
             // a few moved entries (for example a newly renamed file). Inspect
             // adjacent inversions before allocating a merge buffer.
             int inversions = 0;
+            int firstInversion = -1;
             for (int i = 1; i < count; i++)
             {
-                if (Compare(entries[i - 1], entries[i]) > 0 && ++inversions > 4)
+                if (Compare(entries[i - 1], entries[i]) <= 0)
+                    continue;
+                if (inversions++ == 0)
+                    firstInversion = i;
+                if (inversions > 4)
                     break;
             }
             if (inversions == 0)
                 return;
 
+            // A rotated pair of large sorted runs also has one inversion,
+            // but repairing it with insertion shifts would be quadratic.
+            // For one displaced entry, at least one neighbor across the
+            // inversion must still fit in the surrounding sorted order.
+            // This is only a performance hint; merge sort handles all cases.
+            bool likelyLocalDisplacement = inversions != 1 ||
+                (firstInversion >= 2 &&
+                    Compare(entries[firstInversion - 2], entries[firstInversion]) <= 0) ||
+                (firstInversion + 1 < count &&
+                    Compare(entries[firstInversion - 1], entries[firstInversion + 1]) <= 0);
+
             // A bounded stable insertion repair is O(n) for a handful of
-            // displaced entries. Cap total shifts at 4*n: two sorted blocks
-            // can have only one inversion yet require O(n^2) insertion work.
-            // If the budget expires, restore the displaced item before
-            // continuing with the ordinary stable merge sort.
-            if (inversions <= 4)
+            // displaced entries. Cap total shifts at 2*n to avoid quadratic
+            // work on adversarial nearly sorted snapshots. If the budget
+            // expires, restore the displaced item before stable merge sort.
+            if (inversions <= 4 && likelyLocalDisplacement)
             {
                 long shifts = 0;
-                long budget = (long)count * 4;
+                long budget = (long)count * 2;
                 bool repaired = true;
                 for (int i = 1; i < count; i++)
                 {
