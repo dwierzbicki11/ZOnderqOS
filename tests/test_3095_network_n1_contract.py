@@ -207,6 +207,24 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('for (ushort sequence = 2; sequence <= 5; sequence++)', SOURCE)
         self.assertIn('postBurstPing.SendEcho(id: 0x3096, sequence: sequence)', SOURCE)
         self.assertIn('POST_BURST_ICMP=PASS from=10.0.2.2 count=4', SOURCE)
+        # Read-only NIC/lease and DriverKit checks bracket every ICMP echo,
+        # including the final echo after all six HTTP TCP teardowns.
+        for phase in ("post_before", "post_after", "final_before", "final_after"):
+            self.assertIn(f'CheckE1000ECheckpoint("{phase}"', SOURCE)
+        self.assertIn('ICMP_DRIVER_CHECK=PASS phase=', SOURCE)
+        self.assertLess(SOURCE.index('CheckE1000ECheckpoint("post_before"'),
+                        SOURCE.index('postBurstPing.SendEcho(id: 0x3096'))
+        self.assertLess(SOURCE.index('postBurstPing.Close();'),
+                        SOURCE.index('CheckE1000ECheckpoint("post_after"'))
+        self.assertLess(SOURCE.index('CheckE1000ECheckpoint("final_before"'),
+                        SOURCE.index('finalPing.SendEcho(id: 0x3097'))
+        self.assertLess(SOURCE.index('finalPing.Close();'),
+                        SOURCE.index('CheckE1000ECheckpoint("final_after"'))
+        irq_gate = (ROOT / 'tests/verify_3095_e1000e_irq_binding.py').read_text()
+        self.assertIn('ICMP_CHECK = re.compile', irq_gate)
+        self.assertIn('missing or duplicate ICMP DriverKit checkpoints', irq_gate)
+        self.assertIn('final ICMP did not follow all six HTTP sessions', irq_gate)
+
         self.assertIn('POST_BURST_ICMP=PASS from=10.0.2.2', SOURCE)
         self.assertIn('verify_3095_network_n6_burst.py', SMOKE)
         self.assertIn('check_post_burst_icmp(frames, last_burst, guest)',

@@ -322,3 +322,23 @@ still polls), physical Realtek RTL810xE support, HTTPS, or production
 GUI networking. The opt-in probe performs no disk operations. A
 synthetic validator self-test is not a substitute for a successful
 real QEMU PCAP run on the current commit.
+
+## N6 DriverKit and lease checks around each post-stress ICMP (2026-11-01)
+
+The isolated N6 probe now samples the **public read-only** Cosmos 3.0.95
+DriverKit resource/IRQ-source counts and the original DHCP lease, MAC and
+link before and after each of the four post-burst ICMP echo exchanges.
+It also samples before and after the final ICMP echo, after all six HTTP
+TCP connections have closed: **10 checkpoints total**. These catch
+transient binding or lease changes that a single final snapshot misses.
+
+The serial validator requires each of the ten checkpoints exactly once,
+with matching PCI/IRQ ownership, ordered phases and ICMP sequences.
+It rejects missing, duplicate, reordered or altered records. The
+independent PCAP validators remain mandatory to prove actual packets
+crossed the emulated E1000E interface. A checkpoint is only a snapshot;
+it is **not proof of DMA completion or ISR execution**, and the stock
+E1000E driver still polls. This diagnostic code remains isolated from
+the disk-backed production GUI, with no storage writes and no SDK
+downgrade. The new checks require a fresh passing QEMU run on their
+commit before any runtime success claim.
