@@ -85,8 +85,11 @@ internal static class TextVisibilitySmoke
             Baseline(before, label, positions[i, 0], positions[i, 1], Color.White);
             SmallTextRenderer.Draw(after, label, positions[i, 0], positions[i, 1], Color.White);
             SamePixels(before, after, "visible text " + i);
-            if (before.DrawCalls != after.DrawCalls)
-                throw new Exception("Visible text changed Canvas call count");
+            if (after.DrawCalls > before.DrawCalls)
+                throw new Exception("Visible text increased Canvas call count");
+            if (positions[i, 0] == 0 && positions[i, 1] == 0 &&
+                before.DrawCalls != after.DrawCalls)
+                throw new Exception("Fully visible text changed Canvas call count");
         }
         int[,] offscreen = {
             { 128, 0 }, { 0, 48 }, { -200, 0 }, { 0, -7 },
@@ -100,8 +103,39 @@ internal static class TextVisibilitySmoke
             if (canvas.DrawCalls != 0)
                 throw new Exception("Offscreen text reached Canvas " + i);
         }
-        Console.WriteLine("Text visibility: 7 visible framebuffer/call equivalence checks, 8 fully offscreen culls.");
+        // A long, horizontally scrolled label leaves only a few glyphs on
+        // screen. Verify the actual production raster, not only the index math.
+        string longLabel = new string('X', 160);
+        int[] offsets = { -930, -929, -928, -500, -4, 127, 128 };
+        int improved = 0;
+        for (int i = 0; i < offsets.Length; i++)
+        {
+            Canvas before = new Canvas(128, 48);
+            Canvas after = new Canvas(128, 48);
+            Baseline(before, longLabel, offsets[i], 0, Color.White);
+            SmallTextRenderer.Draw(after, longLabel, offsets[i], 0, Color.White);
+            SamePixels(before, after, "long partial text " + offsets[i]);
+            if (after.DrawCalls > before.DrawCalls)
+                throw new Exception("Long partial text increased Canvas calls");
+            if (after.DrawCalls < before.DrawCalls)
+                improved++;
+        }
+        if (improved < 4)
+            throw new Exception("Long partial text did not cull hidden glyphs");
+
+        // Extremes must not overflow the coordinate multiplication.
+        foreach (int x in new[] { int.MinValue, int.MaxValue })
+        {
+            Canvas extreme = new Canvas(128, 48);
+            SmallTextRenderer.Draw(extreme, longLabel, x, 0, Color.White);
+            if (extreme.DrawCalls != 0)
+                throw new Exception("Extreme horizontal offset reached Canvas");
+        }
+
+        Console.WriteLine("Text visibility: 7 short and 7 long exact framebuffer checks, " +
+            "8 offscreen and 2 extreme guards; hidden glyph Canvas calls reduced.");
         Benchmark("offscreen text", label, 128, 0, 20000);
         Benchmark("visible text", label, 0, 0, 2000);
+        Benchmark("partially visible long text", longLabel, -930, 0, 10000);
     }
 }
