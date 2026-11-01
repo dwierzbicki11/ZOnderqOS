@@ -50,10 +50,10 @@ class ResponsiveGui3094(unittest.TestCase):
     def test_ultranarrow_taskbar_keeps_switcher_visible_without_invisible_tray_hits(self):
         # Geometry-only regression for widths below the QEMU 240px probe.
         # At these widths the old fixed 132px tray hid every app button.
-        self.assertIn("if (Width < 178)\\n                return 0;", TASKBAR.replace("\r", ""))
+        self.assertIn("if (Width < 178)\n                return 0;", TASKBAR.replace("\r", ""))
         self.assertIn("if (Width < 240)", TASKBAR)
         self.assertIn("if (Width >= 240)", TASKBAR)
-        self.assertIn("if (Width < 178)\\n                return;", TASKBAR.replace("\r", ""))
+        self.assertIn("if (Width < 178)\n                return;", TASKBAR.replace("\r", ""))
         self.assertIn("notificationClick?.Invoke();", TASKBAR)
         self.assertIn("applicationManager.CycleWindow(false);", TASKBAR)
 
