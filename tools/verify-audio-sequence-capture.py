@@ -37,6 +37,23 @@ def segment(samples, rate, origin, start_ms, end_ms):
     return samples[start:end]
 
 
+def require_continuous(samples, rate, name):
+    # A 5 ms attack/release is intentional. A longer interior gap is not:
+    # reject a stale/underrun HDA buffer even if its 45 ms pitch window passes.
+    longest = 0
+    current = 0
+    active = 0
+    for value in samples:
+        if abs(value) >= 256:
+            active += 1
+            current = 0
+        else:
+            current += 1
+            longest = max(longest, current)
+    if active * 100 < len(samples) * 85 or longest > rate * 8 // 1000:
+        raise ValueError(f"{name} has a PCM dropout or incomplete segment")
+
+
 def inspect(path: Path):
     with wave.open(str(path), "rb") as wav:
         rate, channels, width, frames = (wav.getframerate(), wav.getnchannels(),
@@ -61,6 +78,8 @@ def inspect(path: Path):
     pitches = []
     for i, expected in enumerate(FREQUENCIES):
         for name, channel in (("left", left), ("right", right)):
+            require_continuous(segment(channel, rate, origin, i * 90 + 5, i * 90 + 85),
+                               rate, f"{name} segment {i + 1}")
             window = segment(channel, rate, origin, i * 90 + 20, i * 90 + 65)
             fraction = sum(abs(x) >= 256 for x in window) / len(window)
             if fraction < 0.85:

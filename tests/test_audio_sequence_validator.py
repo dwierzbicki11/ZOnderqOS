@@ -63,6 +63,32 @@ class SequenceGate(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "capture too short"):
                 sequence.inspect(path)
 
+    def test_reject_interior_pcm_dropout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "dropout.wav"
+            fixture(path)
+            with wave.open(str(path), "rb") as wav:
+                rate = wav.getframerate()
+                data = array.array("h")
+                data.frombytes(wav.readframes(wav.getnframes()))
+            if sys.byteorder != "little":
+                data.byteswap()
+            # Remove 15 ms from the second effect, outside its 20..65 ms
+            # frequency window. A pitch-only validator would miss this.
+            start = (rate // 4 + rate * 90 // 1000 + rate * 68 // 1000) * 2
+            end = start + rate * 15 // 1000 * 2
+            for i in range(start, end):
+                data[i] = 0
+            if sys.byteorder != "little":
+                data.byteswap()
+            with wave.open(str(path), "wb") as wav:
+                wav.setnchannels(2)
+                wav.setsampwidth(2)
+                wav.setframerate(rate)
+                wav.writeframes(data.tobytes())
+            with self.assertRaisesRegex(ValueError, "dropout"):
+                sequence.inspect(path)
+
     def test_reject_non_pcm16(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "bad.wav"
