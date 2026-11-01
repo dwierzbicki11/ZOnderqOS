@@ -27,6 +27,10 @@ mute_spec = spec_from_file_location("audio_mute", ROOT / "tools/verify-audio-mut
 mute_capture = module_from_spec(mute_spec)
 mute_spec.loader.exec_module(mute_capture)
 
+fade_spec = spec_from_file_location("audio_fade", ROOT / "tools/verify-audio-fade-capture.py")
+fade_capture = module_from_spec(fade_spec)
+fade_spec.loader.exec_module(fade_capture)
+
 # Explicit pitch identity prevents one diagnostic command from being
 # accidentally certified by another command's captured PCM.
 EXPECTED_TONE_HZ = {
@@ -104,6 +108,8 @@ def main():
                         help="isolated guest command to execute; WAV probe never reads guest disks")
     parser.add_argument("--volume", type=int, default=100, help="software gain 0..100 percent")
     parser.add_argument("--balance", type=int, default=0, help="-100 left-only, +100 right-only")
+    parser.add_argument("--fade-ms", type=int, choices=(0, 20), default=0,
+                        help="opt-in 20ms stereo PCM fade, checked from actual WAV samples")
     args = parser.parse_args()
     if args.boot_seconds < 5 or args.boot_seconds > 120:
         parser.error("--boot-seconds must be 5..120")
@@ -113,6 +119,8 @@ def main():
         parser.error("--balance must be -100..100")
     if args.balance and args.command != "stereosplit":
         parser.error("--balance capture requires --command stereosplit")
+    if args.fade_ms and (args.command != "tone" or args.volume != 100 or args.balance):
+        parser.error("--fade-ms capture requires tone at volume 100 and balance 0")
     if not args.iso.is_file() or args.iso.stat().st_size == 0:
         parser.error("ISO missing or empty")
 
@@ -156,6 +164,8 @@ def main():
             time.sleep(0.5)
             qmp.type_line(f"balance {args.balance}")
             time.sleep(0.5)
+            qmp.type_line(f"fade {args.fade_ms}")
+            time.sleep(0.5)
             qmp.type_line(args.command)
             time.sleep(4)
             try:
@@ -166,7 +176,10 @@ def main():
             guest.wait(timeout=15)
             if guest.returncode != 0:
                 raise RuntimeError(f"QEMU quit with status {guest.returncode}")
-            if args.volume == 0:
+            if args.fade_ms:
+                # Inspect actual PCM attack/release, not just a guest serial message.
+                print(fade_capture.inspect(wav))
+            elif args.volume == 0:
                 print(mute_capture.inspect(wav))
             elif args.command == "stereosplit" and args.balance == 100:
                 print(balance_capture.inspect(wav))
@@ -179,7 +192,7 @@ def main():
                 # The mono decoder probe uses a different pitch to prevent a
                 # stray 440 Hz tone from masquerading as successful mono playback.
                 print(capture.inspect(wav, expected_hz=EXPECTED_TONE_HZ[args.command]))
-            print(f"[AUDIO-QEMU] PASS command={args.command} volume={args.volume} balance={args.balance} real QEMU HDA WAV capture; no physical speaker proof")
+            print(f"[AUDIO-QEMU] PASS command={args.command} volume={args.volume} balance={args.balance} fade_ms={args.fade_ms} real QEMU HDA WAV capture; no physical speaker proof")
             return 0
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
             print(f"[AUDIO-QEMU] FAIL {exc}", file=sys.stderr)

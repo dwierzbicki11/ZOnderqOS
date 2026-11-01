@@ -22,6 +22,8 @@ on:
       - 'tools/verify-audio-mute-capture.py'
       - 'tests/test_audio_qmp_keys.py'
       - 'tests/test_audio_balance_validator.py'
+      - 'tests/test_audio_fade_validator.py'
+      - 'tools/verify-audio-fade-capture.py'
       - 'tools/verify-audio-balance-capture.py'
       - 'tools/verify-audio-wav-capture.py'
       - 'tools/verify-audio-volume-capture.py'
@@ -46,6 +48,8 @@ on:
       - 'tools/verify-audio-mute-capture.py'
       - 'tests/test_audio_qmp_keys.py'
       - 'tests/test_audio_balance_validator.py'
+      - 'tests/test_audio_fade_validator.py'
+      - 'tools/verify-audio-fade-capture.py'
       - 'tools/verify-audio-balance-capture.py'
       - 'tools/verify-audio-wav-capture.py'
       - 'tools/verify-audio-volume-capture.py'
@@ -76,6 +80,7 @@ jobs:
           python3 tests/test_audio_mute_validator.py
           python3 tests/test_audio_qmp_keys.py
           python3 tests/test_audio_balance_validator.py
+          python3 tests/test_audio_fade_validator.py
       - name: Compile and execute real C# PCI classification
         run: dotnet run --project tests/AudioPciSmoke/AudioPciSmoke.csproj --configuration Release
       - name: Explicit scope

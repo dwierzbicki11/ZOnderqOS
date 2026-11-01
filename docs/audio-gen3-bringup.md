@@ -305,3 +305,14 @@ every output sample against the integer envelope and include malformed and
 signed edge cases. This feature remains opt-in, diskless, and isolated from
 the production GUI, FAT32, SMP/SMT, PCI configuration and codec registers.
 The new fade has **not yet been verified in a QEMU WAV capture**.
+
+### Independent QEMU PCM envelope gate (pending)
+
+A separate diskless QEMU boot now runs `tone` after `fade 20`. The
+`verify-audio-fade-capture.py` validator reads the **captured HDA backend
+WAV**, requires sustained stereo PCM, a full-level middle, and reduced
+amplitude in both the first and last 5 ms. Synthetic positive/negative
+fixtures reject abrupt edges, missing fade in either channel, and short
+bursts. This is distinct from the host C# exact-sample checks. A successful
+serial message, compile or synthetic fixture alone does not establish
+actual captured fade; await the real QEMU workflow result.
