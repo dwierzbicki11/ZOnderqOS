@@ -144,7 +144,12 @@ namespace ZonderqOS.SystemCore
         /// different final pitch prove that the third clip was scheduled.
         /// This is an opt-in diskless test, not production GUI sound.
         /// </summary>
-        public static bool PlayScheduledMixedTestTones(bool useOneMillisecondDiagnostic = false)
+        public static bool PlayScheduledMixedTestTones()
+        {
+            return PlayScheduledMixedTestTones(false);
+        }
+
+        public static bool PlayScheduledMixedTestTones(bool useOneMillisecondDiagnostic)
         {
             byte[] left = AudioTonePcm.GenerateSquareStereo16(48000, 440, 250, 4096);
             byte[] right = AudioTonePcm.GenerateSquareStereo16(48000, 880, 250, 4096);
@@ -193,7 +198,12 @@ namespace ZonderqOS.SystemCore
         /// a stale 16 KiB DMA replay cannot masquerade as all four tones.
         /// Diagnostic only; no hardware register, disk or GUI access.
         /// </summary>
-        public static bool PlayFrequencySequenceTestTones(bool useOneMillisecondDiagnostic = false)
+        public static bool PlayFrequencySequenceTestTones()
+        {
+            return PlayFrequencySequenceTestTones(false);
+        }
+
+        public static bool PlayFrequencySequenceTestTones(bool useOneMillisecondDiagnostic)
         {
             int[] frequencies = { 400, 700, 1000, 1300 };
             byte[][] clips = new byte[frequencies.Length][];
@@ -635,7 +645,12 @@ namespace ZonderqOS.SystemCore
             }
         }
 
-        private static bool PlayPcm(byte[] pcm, bool useOneMillisecondDiagnostic = false)
+        private static bool PlayPcm(byte[] pcm)
+        {
+            return PlayPcm(pcm, false);
+        }
+
+        private static bool PlayPcm(byte[] pcm, bool useOneMillisecondDiagnostic)
         {
             // Fail closed before touching the primary device or allocating
             // a scaled copy. The probe emits only 48 kHz stereo PCM16; a
