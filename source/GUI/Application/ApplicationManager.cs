@@ -111,14 +111,20 @@ namespace ZonderqOS.GUI.Apps
         /// </summary>
         public void CloseAll()
         {
-            for (int i = applications.Count - 1; i >= 0; i--)
+            // Closing an application can invoke its CloseAction, which may
+            // remove other applications or re-enter CloseAll during logout.
+            // Detach each entry before invoking user callbacks: a reverse
+            // for-loop over a mutating list can skip windows or throw.
+            // No temporary list is allocated on this session teardown path.
+            while (applications.Count > 0)
             {
-                Application application = applications[i];
+                int last = applications.Count - 1;
+                Application application = applications[last];
+                applications.RemoveAt(last);
                 if (application != null && application.IsRunning)
                     application.Close();
             }
 
-            applications.Clear();
             SetActiveStates(null);
         }
 
