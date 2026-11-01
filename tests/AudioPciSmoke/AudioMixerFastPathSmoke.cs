@@ -70,6 +70,20 @@ internal static class AudioMixerFastPathSmoke
         return Stopwatch.GetTimestamp() - start;
     }
 
+    private static long BatchDisjoint(
+        byte[][] clips, int[] starts, int[] gains, bool optimized)
+    {
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < 64; i++)
+        {
+            byte[] output = optimized
+                ? AudioPcmMixer.MixScheduledStereo16(clips, starts, gains)
+                : LegacyScheduled(clips, starts, gains, 0);
+            checksum = unchecked(checksum * 16777619 ^ output[(i % 8) * 300 * 4]);
+        }
+        return Stopwatch.GetTimestamp() - start;
+    }
+
     public static void Run()
     {
         var random = new Random(3095);
@@ -212,6 +226,42 @@ internal static class AudioMixerFastPathSmoke
         Console.WriteLine("[AUDIO-MIX-FASTPATH] HOST A/B 7x64 median legacy=" +
             (before[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
             "ms optimized=" + (after[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
+            "ms checksum=" + checksum + " (host only; no QEMU timing proof)");
+        // Host-only A/B baseline: 8 independent effects in reverse order.
+        // Both paths allocate an owned output; timing is informational.
+        byte[][] benchClips = new byte[8][];
+        int[] benchStarts = new int[8];
+        int[] benchGains = new int[8];
+        for (int i = 0; i < 8; i++)
+        {
+            benchClips[i] = new byte[250 * 4];
+            random.NextBytes(benchClips[i]);
+            benchStarts[i] = (7 - i) * 300;
+            benchGains[i] = 100;
+        }
+        Same(AudioPcmMixer.MixScheduledStereo16(benchClips, benchStarts, benchGains),
+            LegacyScheduled(benchClips, benchStarts, benchGains, 0),
+            "disjoint eight-clip benchmark uses identical output");
+        BatchDisjoint(benchClips, benchStarts, benchGains, false);
+        BatchDisjoint(benchClips, benchStarts, benchGains, true);
+        long[] disjointBefore = new long[7], disjointAfter = new long[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if (i % 2 == 0)
+            {
+                disjointBefore[i] = BatchDisjoint(benchClips, benchStarts, benchGains, false);
+                disjointAfter[i] = BatchDisjoint(benchClips, benchStarts, benchGains, true);
+            }
+            else
+            {
+                disjointAfter[i] = BatchDisjoint(benchClips, benchStarts, benchGains, true);
+                disjointBefore[i] = BatchDisjoint(benchClips, benchStarts, benchGains, false);
+            }
+        }
+        Array.Sort(disjointBefore); Array.Sort(disjointAfter);
+        Console.WriteLine("[AUDIO-MIX-DISJOINT] HOST A/B 7x64 median legacy=" +
+            (disjointBefore[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
+            "ms optimized=" + (disjointAfter[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
             "ms checksum=" + checksum + " (host only; no QEMU timing proof)");
         Console.WriteLine("[AUDIO-MIX-FASTPATH] PASS " + checks +
             " exact-sample/bounds/immutability checks");
