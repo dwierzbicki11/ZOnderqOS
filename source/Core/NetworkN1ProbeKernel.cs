@@ -493,8 +493,26 @@ namespace ZonderqOS
                 burst[i] = template[i];
             for (int i = 0; i < tag.Length; i++)
                 burst[14 + i] = tag[i];
+            // Re-read the published adapter every 32 TX descriptors, including
+            // before the first frame. A queued packet is not wire/DMA proof;
+            // this only detects a disappearing, unready or rebound NIC while
+            // the burst is in progress. The PCAP gate proves actual TX.
+            byte[] liveMacFrame = new byte[60];
             for (int sequence = 0; sequence < 128; sequence++)
             {
+                if ((sequence & 31) == 0)
+                {
+                    NetworkAdapter current = NetworkManager.Primary;
+                    if (!current.IsValid || current.Name != "e1000e" ||
+                        !current.Ready || !current.LinkUp ||
+                        !TryFillSourceMac(current.MacAddress?.ToString() ?? "", liveMacFrame))
+                        return false;
+                    for (int macByte = 0; macByte < 6; macByte++)
+                    {
+                        if (liveMacFrame[6 + macByte] != template[6 + macByte])
+                            return false;
+                    }
+                }
                 // Fixed-width decimal tag survives 099 -> 100 and 127.
                 burst[14 + tag.Length] = (byte)('0' + sequence / 100);
                 burst[15 + tag.Length] = (byte)('0' + (sequence / 10) % 10);
