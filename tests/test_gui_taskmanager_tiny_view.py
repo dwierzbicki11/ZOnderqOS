@@ -52,6 +52,31 @@ class TinyTaskManagerViewTests(unittest.TestCase):
             self.assertGreaterEqual(samples, 7)
             self.assertLessEqual(samples, 9)
 
+    def test_resize_keeps_previously_visible_selection_without_hijacking_scroll(self):
+        layout = section("private void UpdateLayout()", "private void UpdateClock()")
+        self.assertIn("int rows = view.VisibleRows;", layout)
+        self.assertIn("bool selectionWasVisible = previousVisibleRows > 0", layout)
+        self.assertIn("if (rows != previousVisibleRows && selectionWasVisible)", layout)
+        self.assertIn("EnsureSelectionVisible();", layout)
+        self.assertIn("else\n                ClampScroll();", layout)
+
+        def resize(previous_rows, rows, scroll, selected, count):
+            was_visible = (previous_rows > 0 and selected >= scroll and
+                           selected < scroll + previous_rows)
+            if rows != previous_rows and was_visible:
+                visible = max(1, rows)
+                if selected < scroll:
+                    scroll = selected
+                elif selected >= scroll + visible:
+                    scroll = selected - visible + 1
+            return max(0, min(scroll, max(0, count - max(1, rows))))
+
+        self.assertEqual(resize(12, 3, 3, 10, 20), 8)
+        self.assertEqual(resize(3, 2, 0, 10, 20), 0)
+        self.assertEqual(resize(3, 8, 6, 7, 20), 6)
+        self.assertEqual(resize(12, 3, 3, -1, 20), 3)
+        self.assertEqual(resize(3, 12, 8, 10, 14), 2)
+
     def test_zero_rows_are_representable(self):
         self.assertIn(
             "private int ListHeightForView => Math.Max(0, Height - ListTopForView - FooterHeight - 6);",
