@@ -824,7 +824,7 @@ static class Test
         foreach (int inputRate in new[] { 16000, 22050, 24000, 32000 })
         {
             int expectedPitch = inputRate == 16000 ? 1500 : inputRate == 22050 ? 1100 :
-                inputRate == 24000 ? 1800 : 3520;
+                inputRate == 24000 ? 4000 : 3520;
             byte[] sourceLowRate = AudioTonePcm.GenerateSquareStereo16(inputRate, expectedPitch, 250, 4096);
             byte[] lowRateWave = AudioWavePcm.EncodeStereo16AtRate(sourceLowRate, inputRate);
             using (var lowRateInput = new MemoryStream(lowRateWave, false))
