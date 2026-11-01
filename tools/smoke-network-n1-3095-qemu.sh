@@ -356,6 +356,10 @@ while (( SECONDS - started < TIMEOUT )); do
       python3 "$ROOT/tests/verify_3095_network_n6.py" "$LOG" "$PCAP"
       python3 "$ROOT/tests/verify_3095_network_n6_burst.py" "$LOG" "$PCAP"
       python3 "$ROOT/tests/verify_3095_network_n6_post_http.py" "$LOG" "$PCAP"
+      # A complete PCAP is not enough: also require the guest to read back
+      # the bound stock E1000E DriverKit node after all TX/RX stress. This
+      # checks binding, published interface and handler faults, NOT ISR count.
+      python3 "$ROOT/tests/verify_3095_e1000e_irq_binding.py" "$LOG"
       if [[ "$IRQ_TRACE" == 1 ]]; then
         # Correlate the guest's assigned legacy line with a real QEMU
         # legacy assertion. An MSI-only trace must not satisfy this check.
