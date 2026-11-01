@@ -14,6 +14,32 @@ HTTP_VALIDATOR = (ROOT / "tests/verify_3095_network_n6.py").read_text()
 MAIN = (ROOT / "Kernel.cs").read_text()
 
 class NetworkN1Isolation(unittest.TestCase):
+    def test_n4_tcp_rechecks_live_nic_and_dhcp_after_rx(self):
+        # A valid TCP payload does not establish that the original E1000E
+        # remained bound and configured at the moment of the PASS marker.
+        n4 = SOURCE.split("#if ZONDERQ_NETWORK_N4_TCP", 1)[1].split(
+            "#if ZONDERQ_NETWORK_N5_DNS", 1)[0]
+        payload = n4.index("if (response[i] != expected[i])")
+        live = n4.index("NetworkAdapter echoAdapter = NetworkManager.Primary;", payload)
+        lease = n4.index("IPConfig? echoLease = echoAdapter.IPConfig;", live)
+        failure = n4.index("E1000E link/MAC/DHCP lease changed during TCP echo", lease)
+        passed = n4.index("TCP=PASS from=10.0.2.2", failure)
+        self.assertLess(payload, live)
+        self.assertLess(live, lease)
+        self.assertLess(lease, failure)
+        self.assertLess(failure, passed)
+        for condition in (
+            "NetworkManager.IsEnabled", "NetworkManager.IsInitialized",
+            "echoAdapter.IsValid", 'echoAdapter.Name != "e1000e"',
+            "echoAdapter.Ready", "echoAdapter.LinkUp",
+            'echoAdapter.MacAddress?.ToString() ?? ""',
+            "!= sourceMac", "echoLease == null",
+            'echoLease.Address.ToString() != "10.0.2.15"',
+            'echoLease.SubnetMask.ToString() != "255.255.255.0"',
+            'echoLease.DefaultGateway.ToString() != "10.0.2.2"',
+        ):
+            self.assertIn(condition, n4[live:passed])
+
     def test_n5_dns_rechecks_live_nic_and_dhcp_after_rx(self):
         # Source contract: the DNS response alone is insufficient when the
         # E1000E link, MAC or DHCP lease changed while Receive() blocked.
