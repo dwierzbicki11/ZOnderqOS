@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate right-only PCM after balance +100 in real QEMU HDA WAV capture.
+"""Validate left/right-only PCM after balance -100/+100 in real QEMU HDA WAV capture.
 
 This is sample-level evidence, not a serial-log or physical-speaker test.
 """
@@ -10,7 +10,16 @@ import sys
 import wave
 
 
-def inspect(path: Path, expected_right: int = 880):
+def inspect(path: Path, expected_right: int = 880, active_channel: str = "right"):
+    """Require real captured PCM on exactly one stereo channel.
+
+    Balance +100 must mute left and retain right 880Hz; balance -100 must
+    mute right and retain left 440Hz. Neither a boot nor a serial marker
+    counts as successful output.
+    """
+    if active_channel not in ("left", "right"):
+        raise ValueError("active_channel must be left or right")
+    expected_hz = 440 if active_channel == "left" else expected_right
     with wave.open(str(path), "rb") as stream:
         rate = stream.getframerate()
         frames = stream.getnframes()
@@ -28,35 +37,37 @@ def inspect(path: Path, expected_right: int = 880):
         raise ValueError("truncated balance capture")
     left = samples[::2]
     right = samples[1::2]
-    if max(abs(v) for v in left) > 32:
-        raise ValueError("muted left channel contains PCM")
-    if max(abs(v) for v in right) < 512:
-        raise ValueError("right channel is silent")
-    if sum(abs(v) >= 256 for v in right) < rate // 5:
-        raise ValueError("right channel has no sustained 200ms signal")
+    active = left if active_channel == "left" else right
+    muted = right if active_channel == "left" else left
+    if max(abs(v) for v in muted) > 32:
+        raise ValueError(f"muted {'right' if active_channel == 'left' else 'left'} channel contains PCM")
+    if max(abs(v) for v in active) < 512:
+        raise ValueError(f"{active_channel} channel is silent")
+    if sum(abs(v) >= 256 for v in active) < rate // 5:
+        raise ValueError(f"{active_channel} channel has no sustained 200ms signal")
 
     window = rate * 8 // 100
     starts = []
     for start in range(0, frames - window + 1, max(1, rate // 200)):
-        segment = right[start:start + window]
+        segment = active[start:start + window]
         if sum(abs(v) >= 256 for v in segment) * 100 >= window * 95:
             if not starts or start >= starts[0] + window:
                 starts.append(start)
             if len(starts) == 2:
                 break
     if len(starts) != 2:
-        raise ValueError("no two disjoint 80ms right-channel windows")
+        raise ValueError(f"no two disjoint 80ms {active_channel}-channel windows")
 
     frequencies = []
     for start in starts:
-        segment = right[start:start + window]
+        segment = active[start:start + window]
         crossings = sum((a < 0) != (b < 0) for a, b in zip(segment, segment[1:]))
         hz = crossings * rate / (2 * (window - 1))
-        if not expected_right * 0.90 <= hz <= expected_right * 1.10:
-            raise ValueError(f"right channel {hz:.1f}Hz, expected about {expected_right}Hz")
+        if not expected_hz * 0.90 <= hz <= expected_hz * 1.10:
+            raise ValueError(f"{active_channel} channel {hz:.1f}Hz, expected about {expected_hz}Hz")
         frequencies.append(hz)
     mean = sum(frequencies) / len(frequencies)
-    return f"[AUDIO-BALANCE] PASS captured right-only {mean:.1f}Hz, silent left, frames={frames}"
+    return f"[AUDIO-BALANCE] PASS captured {active_channel}-only {mean:.1f}Hz, silent {'right' if active_channel == 'left' else 'left'}, frames={frames}"
 
 
 def main():
