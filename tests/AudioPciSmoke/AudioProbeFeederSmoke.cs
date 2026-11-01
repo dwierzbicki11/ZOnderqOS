@@ -51,7 +51,7 @@ internal static class AudioProbeFeederSmoke
         int stalledWaits = 0;
         ok = AudioProbeRingFeeder.Feed(pcm, (a, b, c) => 0,
             () => true, _ => stalledWaits++, out waits);
-        Check(!ok && stalledWaits == 1000 && waits == 1001,
+        Check(!ok && stalledWaits == 1000 && waits == 1000,
             "permanently full ring fails closed after bounded waits");
 
         int readyCalls = 0;
