@@ -332,12 +332,12 @@ class ModifiedKeySafetyTests(unittest.TestCase):
             "int priorMouseX =", 1
         )[0]
         self.assertIn("currentLeftButtonState && !currentRightButtonState;", dispatch)
+        self.assertIn("bool oldLeftForUi = (previousLeftButtonState ||", dispatch)
         self.assertIn(
-            "bool oldLeftForUi = previousLeftButtonState && !currentRightButtonState;",
+            "(previousRightButtonState && currentLeftButtonState)) && !currentRightButtonState;",
             dispatch)
         # Every actionable overlay/window/taskbar/desktop handler receives
-        # normalized left state; File Manager modal receives raw buttons and
-        # has its own right-first guard.
+        # normalized left state, including the File Manager modal.
         for call in ("commandPalette.HandleMouse(", "notificationCenter.UpdateInteractions(",
                      "desktopContextMenu.UpdateInteractions(", "applicationManager.HandleMouse(",
                      "startMenu.UpdateInteractions(", "taskbar.UpdateInteractions(",
@@ -345,18 +345,24 @@ class ModifiedKeySafetyTests(unittest.TestCase):
             start = dispatch.index(call)
             arguments = dispatch[start:dispatch.index(");", start) + 2]
             self.assertIn("leftForUi, oldLeftForUi", arguments, call)
-        self.assertIn("activeFileManager.HandleMouse(mouseX, mouseY, currentLeftButtonState,", dispatch)
+        self.assertIn("activeFileManager.HandleMouse(mouseX, mouseY, leftForUi,", dispatch)
+        self.assertIn("oldLeftForUi, currentRightButtonState, previousRightButtonState);", dispatch)
 
         for left in (False, True):
             for previous_left in (False, True):
                 for right in (False, True):
-                    effective = left and not right
-                    previous_effective = previous_left and not right
-                    if right:
-                        self.assertFalse(effective)
-                        self.assertFalse(previous_effective)
-                    if left and previous_left and not right:
-                        self.assertTrue(effective and previous_effective)
+                    for previous_right in (False, True):
+                        effective = left and not right
+                        previous_effective = (previous_left or
+                                              (previous_right and left)) and not right
+                        if right:
+                            self.assertFalse(effective)
+                            self.assertFalse(previous_effective)
+                        if left and previous_left and not right:
+                            self.assertTrue(effective and previous_effective)
+                        if left and previous_right and not right:
+                            self.assertTrue(previous_effective)
+                            self.assertFalse(effective and not previous_effective)
 
     def test_modifier_policy_for_destructive_actions(self):
         # Independent model of the intended key predicate, not a runtime test.
