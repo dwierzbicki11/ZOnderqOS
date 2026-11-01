@@ -13,6 +13,32 @@ SPEC.loader.exec_module(PROBE)
 
 
 class FramebufferProbeTests(unittest.TestCase):
+    def test_real_palette_shift_enter_does_not_launch_application(self):
+        script = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('send_keys(channel, "shift", "ret")', script)
+        self.assertIn('".filemanager-palette-shift-enter.ppm"', script)
+        self.assertIn("difference(palette, shift_enter, upper_only=True)", script)
+        self.assertIn("if fraction > 0.06:", script)
+        self.assertIn("Shift+Enter unexpectedly launched an app", script)
+        self.assertLess(script.index('send_keys(channel, "shift", "ret")'),
+                        script.index('send_keys(channel, "ret")'))
+        # Synthetic image comparison checks the numeric gate only; the
+        # workflow separately boots a real guest and captures its pixels.
+        width, height = 800, 600
+        baseline = bytes(width * height * 3)
+        changed, samples = PROBE.difference((width, height, baseline),
+                                            (width, height, baseline), upper_only=True)
+        self.assertEqual(changed, 0)
+        self.assertGreater(samples, 0)
+        opened = bytearray(baseline)
+        for y in range(height // 7, height * 3 // 5, 4):
+            for x in range(width // 6, width * 5 // 6, 4):
+                pos = (y * width + x) * 3
+                opened[pos:pos + 3] = b"\\xff\\xff\\xff"
+        changed, samples = PROBE.difference((width, height, baseline),
+                                            (width, height, bytes(opened)), upper_only=True)
+        self.assertGreater(changed / samples, 0.06)
+
     def test_real_qmp_bottom_edge_resize_has_two_visual_gates(self):
         source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
         self.assertIn('".filemanager-resize-before.ppm"', source)
