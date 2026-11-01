@@ -7,6 +7,7 @@ on:
       - 'ZonderqOS.csproj'
       - 'tests/test_3094_responsive_gui.py'
       - 'tests/GuiScrollBarSmoke/**'
+      - 'tests/GuiWindowInputSmoke/**'
       - 'tests/test_gui_modified_keys.py'
       - 'tests/test_gui_taskmanager_tiny_view.py'
       - 'tests/test_3094_storage_policy.py'
@@ -51,3 +52,5 @@ jobs:
         run: python3 tests/test_3094_storage_policy.py
       - name: Exercise production scrollbar in host C#
         run: dotnet run --project tests/GuiScrollBarSmoke/GuiScrollBarSmoke.csproj --configuration Release
+      - name: Exercise production Window mouse gestures in host C#
+        run: dotnet run --project tests/GuiWindowInputSmoke/GuiWindowInputSmoke.csproj --configuration Release
