@@ -314,8 +314,14 @@ namespace ZonderqOS.GUI
             int total = CountMatchingResults();
             if (capacity <= 0 || total == 0)
                 tinyFirstResult = 0;
-            else if (tinyFirstResult >= total)
-                tinyFirstResult = ((total - 1) / capacity) * capacity;
+            else
+            {
+                // Re-align when the framebuffer changes the number of
+                // columns/rows. A stale page offset must not hide a tile.
+                tinyFirstResult = (tinyFirstResult / capacity) * capacity;
+                if (tinyFirstResult >= total)
+                    tinyFirstResult = ((total - 1) / capacity) * capacity;
+            }
             int buttonWidth = Math.Max(1, (Width - Padding * 2 - (columns - 1) * TinyColumnGap) / columns);
             int matchIndex = 0;
             for (int group = 0; group < 2; group++)
