@@ -35,6 +35,9 @@ namespace ZonderqOS.GUI
         private int lastPointerY = int.MinValue;
         private bool wasDrawnOpen;
         private int openingFrames;
+        // Tiny displays show a page of matching Start entries at a time.
+        // Paging never changes the keyboard selection of a hidden button.
+        private int tinyFirstResult;
 
         private const int Padding = 14;
         private const int HeaderHeight = 66;
@@ -138,6 +141,7 @@ namespace ZonderqOS.GUI
         {
             searchText = string.Empty;
             selectedResult = -1;
+            tinyFirstResult = 0;
             lastPointerX = int.MinValue;
             lastPointerY = int.MinValue;
             UpdateLayout();
@@ -276,6 +280,30 @@ namespace ZonderqOS.GUI
             if (shutdownButton != null) shutdownButton.Visible = visible;
         }
 
+        private int CountMatchingResults()
+        {
+            int count = 0;
+            for (int i = 0; i < pinnedLabels.Count; i++)
+                if (Matches(pinnedLabels[i])) count++;
+            for (int i = 0; i < toolLabels.Count; i++)
+                if (Matches(toolLabels[i])) count++;
+            return count;
+        }
+
+        private void ChangeTinyPage(int direction)
+        {
+            int capacity = TinyColumns * TinyRows;
+            if (capacity <= 0)
+                return;
+            int total = CountMatchingResults();
+            int pages = Math.Max(1, (total + capacity - 1) / capacity);
+            int current = tinyFirstResult / capacity;
+            tinyFirstResult = ((current + direction + pages) % pages) * capacity;
+            selectedResult = -1;
+            UpdateLayout();
+            UiAnimator.RequestFrames();
+        }
+
         private void UpdateTinyLayout()
         {
             // The same clipped Button rectangles drive both rendering and
@@ -283,8 +311,13 @@ namespace ZonderqOS.GUI
             int columns = TinyColumns;
             int rows = TinyRows;
             int capacity = columns * rows;
+            int total = CountMatchingResults();
+            if (capacity <= 0 || total == 0)
+                tinyFirstResult = 0;
+            else if (tinyFirstResult >= total)
+                tinyFirstResult = ((total - 1) / capacity) * capacity;
             int buttonWidth = Math.Max(1, (Width - Padding * 2 - (columns - 1) * TinyColumnGap) / columns);
-            int index = 0;
+            int matchIndex = 0;
             for (int group = 0; group < 2; group++)
             {
                 List<Button> buttons = group == 0 ? pinnedButtons : toolButtons;
@@ -292,15 +325,19 @@ namespace ZonderqOS.GUI
                 for (int i = 0; i < buttons.Count; i++)
                 {
                     Button button = buttons[i];
-                    bool show = Matches(labels[i]) && index < capacity;
+                    bool matches = Matches(labels[i]);
+                    bool show = matches && matchIndex >= tinyFirstResult &&
+                        matchIndex < tinyFirstResult + capacity;
                     button.Visible = show;
+                    if (matches)
+                        matchIndex++;
                     if (!show)
                         continue;
+                    int index = matchIndex - tinyFirstResult - 1;
                     button.X = X + Padding + (index % columns) * (buttonWidth + TinyColumnGap);
                     button.Y = Y + TinyResultsTop + (index / columns) * (TinyRowHeight + TinyRowGap);
                     button.Width = buttonWidth;
                     button.Height = TinyRowHeight;
-                    index++;
                 }
             }
 
@@ -365,6 +402,11 @@ namespace ZonderqOS.GUI
             // header/search and footer would overlap the pinned cards.
             SmallTextRenderer.DrawClipped(canvas, "START", X + 12, Y + 9,
                 Math.Max(1, Width - 24), Text);
+            if (TinyColumns * TinyRows > 0 && CountMatchingResults() > TinyColumns * TinyRows && Width >= 160)
+            {
+                SmallTextRenderer.Draw(canvas, "<<", X + Width - 68, Y + 9, Muted);
+                SmallTextRenderer.Draw(canvas, ">>", X + Width - 36, Y + 9, Muted);
+            }
             int searchWidth = Math.Max(1, Width - 24);
             UiPainter.RoundedPanel(canvas, X + 12, Y + 30, searchWidth, 30,
                 UiMetrics.ButtonRadius, UiPalette.SurfaceRaised, UiPalette.Border);
@@ -602,8 +644,18 @@ namespace ZonderqOS.GUI
                 {
                     searchText = searchText.Substring(0, searchText.Length - 1);
                     selectedResult = -1;
+                    tinyFirstResult = 0;
                 }
                 UpdateLayout();
+                return true;
+            }
+
+            // Page through all matching results on a tiny display, even when
+            // only three buttons fit above the power controls.
+            if (TinyLayout && key.Modifiers == 0 &&
+                (key.Key == ConsoleKeyEx.PageUp || key.Key == ConsoleKeyEx.PageDown))
+            {
+                ChangeTinyPage(key.Key == ConsoleKeyEx.PageDown ? 1 : -1);
                 return true;
             }
 
@@ -665,6 +717,7 @@ namespace ZonderqOS.GUI
             {
                 searchText += ch;
                 selectedResult = -1;
+                tinyFirstResult = 0;
                 UpdateLayout();
                 return true;
             }
@@ -686,6 +739,23 @@ namespace ZonderqOS.GUI
             lastPointerY = mouseY;
 
             UpdateLayout();
+            // The two tiny-page controls are outside all app and power hitboxes.
+            // Consume their press before dispatching the result buttons.
+            if (TinyLayout && isClicked && !wasClicked && Width >= 160 &&
+                TinyColumns * TinyRows > 0 && CountMatchingResults() > TinyColumns * TinyRows &&
+                mouseY >= Y + 4 && mouseY < Y + 27)
+            {
+                if (mouseX >= X + Width - 68 && mouseX < X + Width - 40)
+                {
+                    ChangeTinyPage(-1);
+                    return;
+                }
+                if (mouseX >= X + Width - 36 && mouseX < X + Width - 8)
+                {
+                    ChangeTinyPage(1);
+                    return;
+                }
+            }
             // A button callback may launch an app, lock the session or power
             // off the machine. Never dispatch the same press to a second
             // overlapping control (possible on very small framebuffers).
