@@ -274,6 +274,22 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("accepted stale first-response DMA bytes as second HTTP RX")
+    # Every 1 KiB body segment must independently reject an old DMA buffer.
+    # A validator checking only the first block could accept corruption in
+    # later RX descriptors while the total TCP byte count still matches.
+    for block in range(1, 5):
+        stale_segment = list(second_response)
+        start, end = cuts[block], cuts[block + 1]
+        stale_segment[block] = fake_http(
+            True, 0x18, 40001 + start, 30001 + len(REQUEST),
+            RESPONSE[start:end], client_port=49154)
+        bad_second = second_handshake + second_request + stale_segment + second_teardown
+        try:
+            validate(serial, synthetic_capture(
+                base + handshake + request + response + teardown + bad_second))
+        except ValueError:
+            continue
+        raise AssertionError(f"accepted stale second HTTP RX block {block}")
     # A complete one- or two-packet response cannot satisfy the large RX
     # segmentation proof, even when the payload bytes are otherwise valid.
     for insufficient in (single_response, two_response):
