@@ -293,7 +293,7 @@ class ModifiedKeySafetyTests(unittest.TestCase):
                         enter.index("LaunchSelected();"))
         self.assertIn("if (key.Modifiers == 0 && query.Length > 0)", deletion)
         self.assertIn("return true;", deletion)
-        self.assertIn("ConsoleKeyEx.NumEnter", enter)
+        self.assertIn("ConsoleKeyEx.NumEnter", handler)
         # This models the key predicate; source checks above ensure the
         # production handler uses the same predicate.
         for control in (False, True):
