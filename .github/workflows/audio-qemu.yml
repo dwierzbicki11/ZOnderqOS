@@ -13,6 +13,8 @@ on:
       - 'tests/test_audio_stereo_validator.py'
       - 'tools/verify-audio-volume-capture.py'
       - 'tools/verify-audio-mute-capture.py'
+      - 'tools/verify-audio-balance-capture.py'
+      - 'tests/test_audio_balance_validator.py'
       - 'tests/test_audio_mute_validator.py'
       - 'tests/test_audio_wav_validator.py'
       - 'tests/test_audio_volume_validator.py'
@@ -45,13 +47,14 @@ jobs:
         run: |
           bash tools/verify-cosmos-3095-migration.sh
           bash -n run.sh tools/build-cosmos-3095-local.sh
-          python3 -m py_compile tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py tools/verify-audio-stereo-capture.py tools/verify-audio-volume-capture.py tools/verify-audio-mute-capture.py
+          python3 -m py_compile tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py tools/verify-audio-stereo-capture.py tools/verify-audio-volume-capture.py tools/verify-audio-mute-capture.py tools/verify-audio-balance-capture.py
           python3 tests/test_audio_gen3_contract.py
           python3 tests/test_audio_wav_validator.py
           python3 tests/test_audio_stereo_validator.py
           python3 tests/test_audio_volume_validator.py
           python3 tests/test_audio_mute_validator.py
           python3 tests/test_audio_qmp_keys.py
+          python3 tests/test_audio_balance_validator.py
       - name: Build isolated stock Cosmos 3.0.95 AUDIO ISO
         env:
           ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
@@ -108,6 +111,10 @@ jobs:
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-extensible-out --boot-seconds 45 --command wavext
       - name: Boot and capture WAVE_FORMAT_EXTENSIBLE 20 valid bits in PCM24 (3080 Hz)
         run: python3 tools/smoke-audio-qemu.py output-3095/ZonderqOS-3095-audio.iso audio-qemu-extensible20-out --boot-seconds 45 --command wavext20
+      - name: Boot and capture right-only 880 Hz balance (left must be silent)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-balance-out --boot-seconds 45 --command stereosplit --balance 100
       - name: Boot again at 25% software volume and compare actual output amplitude
         run: |
           python3 tools/smoke-audio-qemu.py \
@@ -136,6 +143,7 @@ jobs:
           tail -n 200 audio-qemu-extensible20-out/serial.log audio-qemu-extensible20-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-quiet-out/serial.log audio-qemu-quiet-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-muted-out/serial.log audio-qemu-muted-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-balance-out/serial.log audio-qemu-balance-out/qemu.stderr.log 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -187,3 +195,6 @@ jobs:
             audio-qemu-muted-out/*.log
             audio-qemu-muted-out/*.wav
             audio-qemu-muted-out/*.ppm
+            audio-qemu-balance-out/*.log
+            audio-qemu-balance-out/*.wav
+            audio-qemu-balance-out/*.ppm

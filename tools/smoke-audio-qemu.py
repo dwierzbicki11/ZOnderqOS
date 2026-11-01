@@ -19,6 +19,10 @@ spec = spec_from_file_location("audio_capture", ROOT / "tools/verify-audio-wav-c
 capture = module_from_spec(spec)
 spec.loader.exec_module(capture)
 
+balance_spec = spec_from_file_location("audio_balance", ROOT / "tools/verify-audio-balance-capture.py")
+balance_capture = module_from_spec(balance_spec)
+balance_spec.loader.exec_module(balance_capture)
+
 mute_spec = spec_from_file_location("audio_mute", ROOT / "tools/verify-audio-mute-capture.py")
 mute_capture = module_from_spec(mute_spec)
 mute_spec.loader.exec_module(mute_capture)
@@ -99,11 +103,16 @@ def main():
     parser.add_argument("--command", choices=("tone", "stereosplit", "wavtone", "wavmono", "wav44", "wav22k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
                         help="isolated guest command to execute; WAV probe never reads guest disks")
     parser.add_argument("--volume", type=int, default=100, help="software gain 0..100 percent")
+    parser.add_argument("--balance", type=int, default=0, help="-100 left-only, +100 right-only")
     args = parser.parse_args()
     if args.boot_seconds < 5 or args.boot_seconds > 120:
         parser.error("--boot-seconds must be 5..120")
     if not 0 <= args.volume <= 100:
         parser.error("--volume must be 0..100")
+    if not -100 <= args.balance <= 100:
+        parser.error("--balance must be -100..100")
+    if args.balance and args.command != "stereosplit":
+        parser.error("--balance capture requires --command stereosplit")
     if not args.iso.is_file() or args.iso.stat().st_size == 0:
         parser.error("ISO missing or empty")
 
@@ -145,6 +154,8 @@ def main():
             time.sleep(1)
             qmp.type_line(f"volume {args.volume}")
             time.sleep(0.5)
+            qmp.type_line(f"balance {args.balance}")
+            time.sleep(0.5)
             qmp.type_line(args.command)
             time.sleep(4)
             try:
@@ -157,6 +168,8 @@ def main():
                 raise RuntimeError(f"QEMU quit with status {guest.returncode}")
             if args.volume == 0:
                 print(mute_capture.inspect(wav))
+            elif args.command == "stereosplit" and args.balance == 100:
+                print(balance_capture.inspect(wav))
             elif args.command == "stereosplit":
                 print(stereo_capture.inspect(wav))
             elif args.command == "wavstereo32":
@@ -166,7 +179,7 @@ def main():
                 # The mono decoder probe uses a different pitch to prevent a
                 # stray 440 Hz tone from masquerading as successful mono playback.
                 print(capture.inspect(wav, expected_hz=EXPECTED_TONE_HZ[args.command]))
-            print(f"[AUDIO-QEMU] PASS command={args.command} volume={args.volume} real QEMU HDA WAV capture; no physical speaker proof")
+            print(f"[AUDIO-QEMU] PASS command={args.command} volume={args.volume} balance={args.balance} real QEMU HDA WAV capture; no physical speaker proof")
             return 0
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
             print(f"[AUDIO-QEMU] FAIL {exc}", file=sys.stderr)
