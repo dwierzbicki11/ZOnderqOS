@@ -43,6 +43,13 @@ class TextRangeVisibilityContracts(unittest.TestCase):
         end = text_length if count >= text_length - start else start + count
         self.assertEqual(end, text_length)
 
+    def test_draw_delegates_to_clipped_range_without_allocating(self):
+        draw = SOURCE.split("public static void Draw(Canvas", 1)[1].split(
+            "public static void DrawUInt(", 1)[0]
+        self.assertIn("DrawRange(canvas, text, 0, text.Length, x, y, color);", draw)
+        self.assertNotIn("DrawChar(", draw)
+        self.assertNotIn("Substring(", draw)
+
     def test_production_source_uses_wide_culling_and_saturation(self):
         self.assertIn("int end = count >= text.Length - start ? text.Length : start + count;", SOURCE)
         self.assertIn("long skip = (-(long)x + 1) / 6;", SOURCE)
