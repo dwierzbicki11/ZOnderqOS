@@ -846,6 +846,24 @@ static class Test
                 double pitch = crossings * 48000.0 / (2 * (resampled.Length / 4 - 1));
                 Expect(Math.Abs(pitch - expectedPitch) < 60,
                     "low-rate resampler preserves 16/22.05/24/32kHz tone pitch");
+                if (inputRate == 16000 || inputRate == 24000)
+                {
+                    // The QEMU validator requires 95% active samples in
+                    // two disjoint 80ms windows. Guard the actual C# output,
+                    // not only the pitch, against interpolation-induced zeros.
+                    for (int startFrame = 0; startFrame <= 4000; startFrame += 4000)
+                    {
+                        int active = 0;
+                        for (int frame = startFrame; frame < startFrame + 3840; frame++)
+                        {
+                            int at = frame * 4;
+                            short sample = (short)(resampled[at] | (resampled[at + 1] << 8));
+                            if (Math.Abs((int)sample) >= 256) active++;
+                        }
+                        Expect(active * 100 >= 3840 * 95,
+                            "16/24kHz resampled tone has sustained 80ms activity");
+                    }
+                }
             }
         }
         // The same 32 kHz source is supported in unsigned PCM8 and signed
