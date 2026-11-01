@@ -369,6 +369,28 @@ internal static class Program
         CheckSingleAction(1, 0, 0);
     }
 
+    private static void TinyKeyboardHomeEnd()
+    {
+        var menu = MakeMenu(304, 180);
+        int extra = 0;
+        menu.AddTool("Extra", ZonderqOS.GUI.Icons.IconType.File, () => extra++);
+        var pins = Buttons(menu, "pinnedButtons");
+        var extras = Buttons(menu, "toolButtons");
+
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.End });
+        Check(!pins[0].Visible && extras[6].Visible,
+            "End reveals the partial final page of tiny Start results");
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
+        Check(extra == 1, "End+Enter launches the final matching tool");
+
+        menu.Visible = true;
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Home });
+        Check(pins[0].Visible && !extras[6].Visible,
+            "Home returns to the first tiny Start page");
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
+        Check(pinned[0] == 1, "Home+Enter launches the first pinned app");
+    }
+
     private static void Normal640x480()
     {
         var menu = MakeMenu(480, 420);
@@ -393,6 +415,7 @@ internal static class Program
         Normal640x480();
         TinyKeyboardCrossPage();
         TinySelectionAfterResize();
+        TinyKeyboardHomeEnd();
         Console.WriteLine("PASS: " + assertions + " production StartMenu/Button C# assertions");
         return 0;
     }

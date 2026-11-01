@@ -691,9 +691,31 @@ namespace ZonderqOS.GUI
                 if (count == 0)
                     selectedResult = -1;
                 else if (key.Key == ConsoleKeyEx.Home)
+                {
+                    // Home/End are global search-result boundaries, even if
+                    // only one tiny page fits in the current framebuffer.
+                    if (TinyLayout && tinyFirstResult != 0)
+                    {
+                        tinyFirstResult = 0;
+                        UpdateLayout();
+                    }
                     selectedResult = 0;
+                }
                 else if (key.Key == ConsoleKeyEx.End)
+                {
+                    if (TinyLayout)
+                    {
+                        int capacity = TinyColumns * TinyRows;
+                        int total = CountMatchingResults();
+                        if (capacity > 0 && total > 0)
+                        {
+                            tinyFirstResult = ((total - 1) / capacity) * capacity;
+                            UpdateLayout();
+                            count = CountVisibleResults();
+                        }
+                    }
                     selectedResult = count - 1;
+                }
                 else if (key.Key == ConsoleKeyEx.DownArrow)
                 {
                     // On tiny screens only one page is painted. Crossing its
