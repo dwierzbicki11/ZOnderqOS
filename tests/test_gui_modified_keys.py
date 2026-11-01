@@ -307,12 +307,13 @@ class ModifiedKeySafetyTests(unittest.TestCase):
         handler = text.split(
             "public override void HandleMouse(int mouseX, int mouseY, bool left,", 1
         )[1].split("private void ResetClickSequence()", 1)[0]
-        right = "if (right && !oldRight && dialogMode == 0 && contextMenuVisible)"
+        right = "if (right && dialogMode == 0 && contextMenuVisible)"
         left = "if (left && !oldLeft && dialogMode == 0 && contextMenuVisible)"
         self.assertIn(right, handler)
         self.assertIn(left, handler)
         self.assertLess(handler.index(right), handler.index(left))
         right_branch = handler.split(right, 1)[1].split(left, 1)[0]
+        self.assertIn("if (!oldRight || (left && !oldLeft))", right_branch)
         self.assertIn("contextMenuVisible = false;", right_branch)
         self.assertIn("contextMenuSelection = -1;", right_branch)
         self.assertIn("return;", right_branch)
@@ -324,6 +325,38 @@ class ModifiedKeySafetyTests(unittest.TestCase):
                 dismiss = right_pressed
                 activate = left_pressed and not right_pressed
                 self.assertFalse(dismiss and activate)
+
+    def test_right_button_chords_never_activate_left_button_gui_controls(self):
+        desktop = source("source/GUI/GuiManager.cs")
+        dispatch = desktop.split("bool leftForUi =", 1)[1].split(
+            "int priorMouseX =", 1
+        )[0]
+        self.assertIn("currentLeftButtonState && !currentRightButtonState;", dispatch)
+        self.assertIn(
+            "bool oldLeftForUi = previousLeftButtonState && !currentRightButtonState;",
+            dispatch)
+        # Every actionable overlay/window/taskbar/desktop handler receives
+        # normalized left state; File Manager modal receives raw buttons and
+        # has its own right-first guard.
+        for call in ("commandPalette.HandleMouse(", "notificationCenter.UpdateInteractions(",
+                     "desktopContextMenu.UpdateInteractions(", "applicationManager.HandleMouse(",
+                     "startMenu.UpdateInteractions(", "taskbar.UpdateInteractions(",
+                     "UpdateDesktopInteractions("):
+            start = dispatch.index(call)
+            arguments = dispatch[start:dispatch.index(");", start) + 2]
+            self.assertIn("leftForUi, oldLeftForUi", arguments, call)
+        self.assertIn("activeFileManager.HandleMouse(mouseX, mouseY, currentLeftButtonState,", dispatch)
+
+        for left in (False, True):
+            for previous_left in (False, True):
+                for right in (False, True):
+                    effective = left and not right
+                    previous_effective = previous_left and not right
+                    if right:
+                        self.assertFalse(effective)
+                        self.assertFalse(previous_effective)
+                    if left and previous_left and not right:
+                        self.assertTrue(effective and previous_effective)
 
     def test_modifier_policy_for_destructive_actions(self):
         # Independent model of the intended key predicate, not a runtime test.
