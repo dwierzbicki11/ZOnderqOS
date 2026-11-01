@@ -73,9 +73,11 @@ def inspect(path: Path, expected_right: int = 880, active_channel: str = "right"
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("wav", type=Path)
+    parser.add_argument("--channel", choices=("left", "right"), default="right",
+                        help="channel expected to remain audible after balance -100/+100")
     args = parser.parse_args()
     try:
-        print(inspect(args.wav))
+        print(inspect(args.wav, active_channel=args.channel))
         return 0
     except (OSError, EOFError, ValueError, wave.Error) as exc:
         print(f"[AUDIO-BALANCE] FAIL {exc}", file=sys.stderr)
