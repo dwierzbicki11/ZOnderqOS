@@ -183,7 +183,8 @@ if __name__ == "__main__":
                 proof = check_legacy_notification(
                     serial, args.trace_stderr.read_text(errors="replace"))
             else:
-                proof = check_guest_line(serial) + "; handler execution UNPROVEN"
+                proof = (check_guest_line(serial) + " " +
+                         check_driver_health(serial) + "; handler execution UNPROVEN")
             print("[NET3095-E1000E-IRQ-BINDING] " + proof)
         except (OSError, ValueError) as exc:
             parser.exit(1, f"[NET3095-E1000E-IRQ-BINDING][FAIL] {exc}\n")
