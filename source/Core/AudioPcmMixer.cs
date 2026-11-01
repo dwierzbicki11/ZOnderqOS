@@ -229,6 +229,11 @@ namespace ZonderqOS.SystemCore
         {
             for (int i = 0; i < clips.Length; i++)
             {
+                // A muted effect contributes exactly zero, regardless of
+                // overlap or its (already validated) fade envelope. Do not
+                // force the expensive sample mixer for silent notifications.
+                if (gainsPercent[i] == 0)
+                    continue;
                 if (gainsPercent[i] != 100 ||
                     (individualFades == null ? uniformFade : individualFades[i]) != 0)
                     return false;
@@ -236,6 +241,8 @@ namespace ZonderqOS.SystemCore
                 int end = start + clips[i].Length;
                 for (int j = 0; j < i; j++)
                 {
+                    if (gainsPercent[j] == 0)
+                        continue;
                     int otherStart = startFrames[j] * 4;
                     int otherEnd = otherStart + clips[j].Length;
                     if (start < otherEnd && otherStart < end)
@@ -243,7 +250,8 @@ namespace ZonderqOS.SystemCore
                 }
             }
             for (int i = 0; i < clips.Length; i++)
-                Array.Copy(clips[i], 0, output, startFrames[i] * 4, clips[i].Length);
+                if (gainsPercent[i] == 100)
+                    Array.Copy(clips[i], 0, output, startFrames[i] * 4, clips[i].Length);
             return true;
         }
 
