@@ -263,7 +263,8 @@ internal static class Program
         return values[values.Length / 2];
     }
 
-    private static void Benchmark(string label, Action oldAction, Action newAction, int iterations)
+    private static void Benchmark(string label, Action oldAction, Action newAction,
+        int iterations, bool requireAllocationReduction = false)
     {
         for (int i = 0; i < 200; i++) { oldAction(); newAction(); }
         var oldTimes = new double[7];
@@ -293,6 +294,10 @@ internal static class Program
             (oldMs / newMs).ToString("F2") + "x, bytes/sample " +
             (oldBytes / 7) + " -> " + (newBytes / 7) +
             " (.NET Release host; not kernel/QEMU)");
+        // Timing is deliberately informational (shared CI runners are noisy).
+        // Allocation bytes are deterministic after warmup for this workload.
+        if (requireAllocationReduction && newBytes >= oldBytes)
+            throw new Exception(label + ": streaming allocation regression");
     }
 
     private static int Main()
@@ -324,7 +329,7 @@ internal static class Program
         string commandOutput = string.Join("\r\n", commandRows) + "\r\n";
         Benchmark("command output CRLF 400 lines x200",
             () => legacyCommand.PrintCommandOutput(commandOutput),
-            () => currentCommand.PrintCommandOutput(commandOutput), 200);
+            () => currentCommand.PrintCommandOutput(commandOutput), 200, true);
         Same(currentCommand, legacyCommand, "benchmark command");
         Console.WriteLine("PASS: production C# terminal equivalence; timing is informational.");
         return 0;
