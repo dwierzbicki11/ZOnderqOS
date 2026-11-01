@@ -67,6 +67,31 @@ internal static class TextUnicodeGlyphSmoke
         return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
     }
 
+    private static volatile int lookupSink;
+
+    // Same two-slot fallback lookup, with and without the Latin upper-bound.
+    // The full DrawChar benchmark below measures the complete renderer; this
+    // isolates the cost of unnecessary Unicode casing in non-Latin text.
+    private static double TimeFallbackLookup(bool latinBound, char[] glyphs, int repeats)
+    {
+        int checksum = 0;
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repeats; i++)
+        {
+            char ch = glyphs[i % glyphs.Length];
+            int glyphOffset = ch < 128 ? ch * 7 : -1;
+            if (glyphOffset < 0 && (!latinBound || ch <= '\u017F'))
+            {
+                char upper = char.ToUpperInvariant(ch);
+                if (upper < 128)
+                    glyphOffset = upper * 7;
+            }
+            checksum += glyphOffset >= 0 ? Ascii[glyphOffset] : Fallback[0];
+        }
+        lookupSink = checksum;
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
     internal static void Verify()
     {
         if (Ascii.Length != 128 * 7 || Fallback.Length != 7)
@@ -140,6 +165,32 @@ internal static class TextUnicodeGlyphSmoke
         long allocations = GC.GetAllocatedBytesForCurrentThread() - startAllocation;
         if (allocations != 0)
             throw new Exception("Warm Unicode glyph drawing allocated " + allocations + " B");
+
+        const int lookupRepeats = 3000000;
+        TimeFallbackLookup(false, fallbackText, 10000);
+        TimeFallbackLookup(true, fallbackText, 10000);
+        double[] unbounded = new double[5];
+        double[] bounded = new double[5];
+        for (int sample = 0; sample < 5; sample++)
+        {
+            if ((sample & 1) == 0)
+            {
+                unbounded[sample] = TimeFallbackLookup(false, fallbackText, lookupRepeats);
+                bounded[sample] = TimeFallbackLookup(true, fallbackText, lookupRepeats);
+            }
+            else
+            {
+                bounded[sample] = TimeFallbackLookup(true, fallbackText, lookupRepeats);
+                unbounded[sample] = TimeFallbackLookup(false, fallbackText, lookupRepeats);
+            }
+        }
+        Array.Sort(unbounded);
+        Array.Sort(bounded);
+        Console.WriteLine("Host .NET Unicode fallback lookup only: " + lookupRepeats +
+            " calls, median 5 alternating A/B; previous unconditional casing " +
+            unbounded[2].ToString("F2") + " ms, Latin-bound production " +
+            bounded[2].ToString("F2") + " ms, checksum=" + lookupSink +
+            " (not whole-frame FPS).");
 
         Console.WriteLine("Unicode glyph cache: 65536 UTF-16 characters x 7 rows, " +
             nonAscii + " fallback code units, exact Canvas output, 0 B warmed allocations.");
