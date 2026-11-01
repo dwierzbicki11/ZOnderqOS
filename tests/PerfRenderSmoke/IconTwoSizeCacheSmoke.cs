@@ -33,6 +33,10 @@ internal static class IconTwoSizeCacheSmoke
         .GetField("sourceWidths", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
     private static readonly int[] SourceHeights = (int[])Manager
         .GetField("sourceHeights", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
+    private static readonly Func<IconType, bool> EnsureSource =
+        (Func<IconType, bool>)Manager
+            .GetMethod("EnsureSource", BindingFlags.Static | BindingFlags.NonPublic)
+            .CreateDelegate(typeof(Func<IconType, bool>));
     private static readonly Action<Canvas, int[], int, int, int, int> DrawPoints =
         (Action<Canvas, int[], int, int, int, int>)Manager
             .GetMethod("BlitPoints", BindingFlags.Static | BindingFlags.NonPublic)
@@ -107,8 +111,17 @@ internal static class IconTwoSizeCacheSmoke
             }
             else
             {
-                // Previous production hot path: always enter GetScaledPixels,
-                // then choose the point blitter for this gradient icon.
+                // Previous production DrawScaled entry point: visibility,
+                // canonical type (FilePdf), EnsureSource, source validation,
+                // GetScaledPixels and point blit. Match its real overhead
+                // rather than comparing the new public API to a bare blitter.
+                if (frame == null || width <= 0 || height <= 0 ||
+                    -12 >= frame.Width || 9 >= frame.Height ||
+                    -12L + width <= 0 || 9L + height <= 0)
+                    continue;
+                if (!EnsureSource(type) || Sources[(int)type] == null ||
+                    SourceWidths[(int)type] <= 0 || SourceHeights[(int)type] <= 0)
+                    continue;
                 int[] pixels = GetScaled(type, source, 8, 8, width, height);
                 if (pixels == null)
                     throw new Exception("Missing cached bitmap in draw baseline");
