@@ -195,7 +195,16 @@ namespace ZonderqOS
                                 Log("[NET3095-N4][FAIL] TCP echo total deadline exceeded");
                                 return;
                             }
-                            int read = stream.Read(response, received, response.Length - received);
+                            // A 5s per-read timeout could overrun the 20s total
+                            // deadline by almost 5s. Clamp the next blocking read
+                            // to the remaining monotonic budget instead.
+                            client.Client.ReceiveTimeout = RemainingSocketReadTimeoutMs(
+                                echoElapsed, echoFrequency, 20);
+                            // Keep each blocking read within the remaining 45s RX
+                    // budget; successful short reads must not reset it.
+                    http.Client.ReceiveTimeout = RemainingSocketReadTimeoutMs(
+                        rxElapsed, rxFrequency, 45);
+                    int read = stream.Read(response, received, response.Length - received);
                             if (read <= 0)
                                 break;
                             received += read;
@@ -437,6 +446,24 @@ namespace ZonderqOS
         }
 
 #if ZONDERQ_NETWORK_N6_HTTP
+#if ZONDERQ_NETWORK_N4_TCP
+        // Socket ReceiveTimeout applies to ONE Read(), not a whole response.
+        // The caller checks the monotonic deadline before and after Read().
+        // This helper only limits how long the next blocking call may wait.
+        // Return at least 1ms near expiry: Socket timeout 0 means infinite.
+        private static int RemainingSocketReadTimeoutMs(long elapsedTicks,
+            long frequency, int deadlineSeconds)
+        {
+            long seconds = elapsedTicks / frequency;
+            long fractionalTicks = elapsedTicks % frequency;
+            long elapsedMs = seconds * 1000 + (fractionalTicks * 1000) / frequency;
+            long remainingMs = (long)deadlineSeconds * 1000 - elapsedMs;
+            if (remainingMs <= 1)
+                return 1;
+            return (int)(remainingMs < 5000 ? remainingMs : 5000);
+        }
+#endif
+
         // Stock Cosmos 3.0.95 exposes DriverKit node snapshots, but NOT the
         // internal E1000EState.InterruptCount. A zero handler-fault count
         // therefore cannot prove that an ISR ran; the driver also polls.
