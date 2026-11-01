@@ -158,6 +158,13 @@ namespace ZonderqOS.SystemCore
         /// rather than the boot/idle thread. This A/B diagnostic still uses
         /// the unmodified 5ms AudioPlayer ring-full wait.
         /// </summary>
+        // Preserve the measured boot-thread A/B baseline without making it
+        // the default scheduled playback path. Diagnostic ISO only.
+        public static bool PlayScheduledMixedTestTonesBootThread()
+        {
+            return PlayScheduledMixedTestTones(false, false);
+        }
+
         public static bool PlayScheduledMixedTestTonesAsync()
         {
             return PlayScheduledMixedTestTones(false, true);
@@ -217,6 +224,11 @@ namespace ZonderqOS.SystemCore
             // Match the measured scheduler-thread path used by mixqueue.
             // The 1ms boot-thread experiment remains separately selectable.
             return PlayFrequencySequenceTestTones(false, true);
+        }
+
+        public static bool PlayFrequencySequenceTestTonesBootThread()
+        {
+            return PlayFrequencySequenceTestTones(false, false);
         }
 
         public static bool PlayFrequencySequenceTestTonesAsync()

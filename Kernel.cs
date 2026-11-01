@@ -35,7 +35,7 @@ namespace ZonderqOS
                 Console.WriteLine();
 #if ZONDERQ_AUDIO_PROBE
                 Console.WriteLine("AUDIO HDA/PCM probe enabled: no disk mounts or account writes.");
-                Console.WriteLine("Commands: audiodiag | audioinfo | mixqueue1ms | mixsequence1ms | mixqueueasync | mixsequenceasync | tone | wavtone | wavmono | stereosplit | mix | wav44 | wav8k | wav11k | wav16k | wav22k | wav24k | wav32k | wavstereo32 | wav8 | wav24 | wav32 | wavext | wavext20 | volume N | balance N | fade N | inputscan | volumes | help");
+                Console.WriteLine("Commands: audiodiag | audioinfo | mixqueue1ms | mixsequence1ms | mixqueueasync | mixsequenceasync | mixqueueboot | mixsequenceboot | tone | wavtone | wavmono | stereosplit | mix | wav44 | wav8k | wav11k | wav16k | wav22k | wav24k | wav32k | wavstereo32 | wav8 | wav24 | wav32 | wavext | wavext20 | volume N | balance N | fade N | inputscan | volumes | help");
                 AudioRuntimeDiagnostics.PrintStatus();
 #else
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
@@ -273,6 +273,12 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "mixqueueboot")
+            {
+                AudioRuntimeDiagnostics.PlayScheduledMixedTestTonesBootThread();
+                return;
+            }
+
             if (command == "mixqueue1ms")
             {
                 AudioRuntimeDiagnostics.PlayScheduledMixedTestTones(true);
@@ -288,6 +294,12 @@ namespace ZonderqOS
             if (command == "mixsequenceasync")
             {
                 AudioRuntimeDiagnostics.PlayFrequencySequenceTestTonesAsync();
+                return;
+            }
+
+            if (command == "mixsequenceboot")
+            {
+                AudioRuntimeDiagnostics.PlayFrequencySequenceTestTonesBootThread();
                 return;
             }
 
@@ -522,6 +534,8 @@ namespace ZonderqOS
                 Console.WriteLine("audioinfo - show outputs published by the stock Cosmos audio driver");
                 Console.WriteLine("tone      - play 250 ms 440 Hz PCM through primary HDA output");
                 Console.WriteLine("mix       - mix two PCM clips (440Hz left, 880Hz right) via HDA");
+                Console.WriteLine("mixqueue / mixsequence - verified stock scheduler-thread HDA PCM probes");
+                Console.WriteLine("mixqueueboot / mixsequenceboot - experimental boot-thread A/B (may underrun)");
                 Console.WriteLine("wavtone   - decode RAM-only RIFF/WAV then play through HDA");
                 Console.WriteLine("wavmono   - upmix RAM-only 48kHz mono WAV to stereo");
                 Console.WriteLine("wav44     - resample RAM-only 44.1kHz stereo WAV to 48kHz");

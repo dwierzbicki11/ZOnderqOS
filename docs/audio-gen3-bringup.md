@@ -540,3 +540,10 @@ Run `python3 tests/test_audio_sequence_validator.py` for synthetic
 positive/negative fixtures. The separate `mixsequence` QEMU boot in
 `.github/workflows/audio-qemu.yml` is mandatory and fails if its actual
 captured WAV does not match. The production disk GUI remains audio-disabled.
+
+
+## 2026-11-01 — measured scheduler-thread HDA A/B (PR #194)
+
+The real QEMU run [41349515121](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41349515121) used the same stock Cosmos 3.0.95 HDA driver and strict backend WAV validators. The boot-thread `mixqueue` failed (last left effect active only **20.91%**) and `mixsequence` failed its second PCM segment. The 1ms boot-thread experiments also failed (queue right effect **73.13%** active; sequence second segment incomplete). In contrast, `mixqueueasync` **PASS** (440/660 Hz left, 875 Hz right, +50.0 ms onset) and `mixsequenceasync` **PASS** (400.3/700.5/1000.8/1301.0 Hz, trailing silence). These are actual QEMU WAV measurements, **not** speaker, ISR, or physical hardware verification.
+
+Consequently the default diskless `mixqueue` and `mixsequence` probes now use stock `AudioPlayback.TryStart` and its scheduler thread. The old synchronous paths remain available as `mixqueueboot` and `mixsequenceboot` for A/B diagnosis; 1ms remains experimental. The CI quality gate still requires the **default** strict captures plus independent repeated boots, while legacy/1ms failures are recorded as warnings and captured artifacts, not misreported as PASS. This change does **not** enable AUDIO in production GUI or modify stock Cosmos.

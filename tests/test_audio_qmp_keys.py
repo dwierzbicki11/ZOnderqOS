@@ -13,7 +13,9 @@ spec.loader.exec_module(audio)
 
 class QmpKeyTests(unittest.TestCase):
     def test_mixqueue_has_extra_tcg_capture_settle_time(self):
-        self.assertEqual(audio.playback_settle_seconds("mixqueue"), 8)
+        for command in ("mixqueue", "mixsequence", "mixqueueasync", "mixsequenceasync",
+                        "mixqueueboot", "mixsequenceboot", "mixqueue1ms", "mixsequence1ms"):
+            self.assertEqual(audio.playback_settle_seconds(command), 8)
         for command in ("tone", "wavtone", "mixdelay", "wavext20"):
             self.assertEqual(audio.playback_settle_seconds(command), 4)
 
