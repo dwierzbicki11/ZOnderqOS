@@ -108,6 +108,8 @@ namespace ZonderqOS.Drivers
                 if (!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
                         barPairBefore, ReadRegisterBarPair(pci)))
                     return Decline("BAR2/BAR3 changed while mapping; no MMIO reads");
+                if (pm != 0 && (pci.ReadConfig16((ushort)(pm + 4)) & 0x0003) != 0)
+                    return Decline("PCI device left D0 while mapping; no MMIO reads");
 
                 if (!Realtek810xERegisterSampler.TrySample(
                         new WindowReader(window), out var snapshot))
