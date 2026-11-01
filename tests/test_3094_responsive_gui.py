@@ -353,7 +353,10 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("if (CompactPerformanceLayout)", render)
         self.assertIn("if (CompactPerformanceLayout)", hit)
         self.assertIn("if (CompactPerformanceLayout || app.ActivePage", TASK_MANAGER)
-        self.assertIn("if (CompactPerformanceLayout || app.CpuGraphMode", TASK_MANAGER)
+        pager = TASK_MANAGER.split("public int CpuLogicalPageActionAt(int x, int y)", 1)[1].split(
+            "public int RowAt(int x, int y)", 1)[0]
+        self.assertIn("CompactPerformanceLayout || app.CpuGraphMode", pager)
+        self.assertIn("app.PerformanceResource != TaskManagerModernApp.PerfCpu", pager)
         self.assertIn("int buttonWidth = Math.Max(1, (available - 8) / 3);", render)
         self.assertIn("int buttonWidth = Math.Max(1, (available - 8) / 3);", hit)
         self.assertIn("DrawCompactResource(canvas", render)
