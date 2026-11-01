@@ -280,6 +280,80 @@ internal static class Program
         Check(manager.ActiveApplication == left, "minimized window is excluded from active focus");
     }
 
+    private static void FocusReorderDuringUpdate()
+    {
+        var manager = new ApplicationManager();
+        var a = new ClosingApp();
+        var b = new ClosingApp();
+        var c = new ClosingApp();
+        manager.Launch(a);
+        manager.Launch(b);
+        manager.Launch(c);
+        c.OnUpdate = () => manager.Activate(a);
+        manager.Update();
+        Check(a.UpdateCount == 1, "MRU activation cannot skip earlier window");
+        Check(b.UpdateCount == 1, "MRU activation preserves other updates");
+        Check(c.UpdateCount == 1, "MRU activation cannot double-update current window");
+        Check(manager.ActiveApplication == a, "focus change survives update");
+        manager.CloseAll();
+    }
+
+    private static void LaunchDuringUpdate()
+    {
+        var manager = new ApplicationManager();
+        var a = new ClosingApp();
+        var b = new ClosingApp();
+        var launched = new ClosingApp();
+        manager.Launch(a);
+        manager.Launch(b);
+        b.OnUpdate = () =>
+        {
+            if (!manager.Applications.Contains(launched))
+                manager.Launch(launched);
+        };
+        manager.Update();
+        Check(a.UpdateCount == 1 && b.UpdateCount == 1,
+            "existing windows updated once when new window launches");
+        Check(launched.UpdateCount == 0, "new window waits for next frame");
+        manager.Update();
+        Check(launched.UpdateCount == 1, "new window updates next frame");
+        Check(a.UpdateCount == 2 && b.UpdateCount == 2,
+            "reused snapshot preserves next frame's windows");
+        manager.CloseAll();
+    }
+
+    private static void CloseAnotherDuringUpdate()
+    {
+        var manager = new ApplicationManager();
+        var a = new ClosingApp();
+        var b = new ClosingApp();
+        var c = new ClosingApp();
+        manager.Launch(a);
+        manager.Launch(b);
+        manager.Launch(c);
+        c.OnUpdate = () => manager.Close(b);
+        manager.Update();
+        Check(b.UpdateCount == 0 && b.CloseCount == 1,
+            "closed window cannot update from snapshot");
+        Check(a.UpdateCount == 1 && c.UpdateCount == 1,
+            "other windows update exactly once");
+        manager.CloseAll();
+    }
+
+    private static void ReentrantUpdateIsIgnored()
+    {
+        var manager = new ApplicationManager();
+        var a = new ClosingApp();
+        var b = new ClosingApp();
+        manager.Launch(a);
+        manager.Launch(b);
+        b.OnUpdate = () => manager.Update();
+        manager.Update();
+        Check(a.UpdateCount == 1 && b.UpdateCount == 1,
+            "nested Update cannot invalidate outer snapshot");
+        manager.CloseAll();
+    }
+
     public static int Main()
     {
         OrdinaryLogout();
@@ -291,6 +365,10 @@ internal static class Program
         CloseCallbackReentrancy();
         LogoutCallbackCannotReopenWindows();
         MouseFocusAndCapture();
+        FocusReorderDuringUpdate();
+        LaunchDuringUpdate();
+        CloseAnotherDuringUpdate();
+        ReentrantUpdateIsIgnored();
         Console.WriteLine("PASS: " + checks + " production ApplicationManager C# assertions");
         return 0;
     }
