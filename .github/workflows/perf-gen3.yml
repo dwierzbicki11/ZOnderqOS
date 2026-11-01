@@ -5,6 +5,7 @@ on:
       - "source/Core/HtopMonitor.cs"
       - "source/GUI/Application/FileManagerApp.cs"
       - "source/GUI/Application/FileEntrySorter.cs"
+      - "source/GUI/Application/FileEntryIconResolver.cs"
       - "tests/FileManagerPerfSmoke/**"
       - "tests/test_gen3_perf_filemanager.py"
       - "tests/HtopPerfSmoke/**"
