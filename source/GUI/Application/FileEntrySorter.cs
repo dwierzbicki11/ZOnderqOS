@@ -12,9 +12,9 @@ namespace ZonderqOS.GUI.Apps
     internal static class FileEntrySorter
     {
         internal const int InsertionLimit = 32;
-        // Up to sixteen sparse inversions are common after a batch of file
+        // Up to thirty-two sparse inversions are common after a batch of file
         // renames. The separate 2*n shift budget still bounds worst-case work.
-        internal const int MaxLocalInversions = 16;
+        internal const int MaxLocalInversions = 32;
 
         internal static void Sort(List<FileEntry> entries, ref FileEntry[] scratch)
         {
@@ -84,7 +84,7 @@ namespace ZonderqOS.GUI.Apps
                 (firstInversion + 1 < count &&
                     Compare(entries[firstInversion - 1], entries[firstInversion + 1]) <= 0);
 
-            // A bounded stable insertion repair is O(n) for up to sixteen
+            // A bounded stable insertion repair is O(n) for up to thirty-two
             // sparse displaced entries. Cap total shifts at 2*n to avoid quadratic
             // work on adversarial nearly sorted snapshots. If the budget
             // expires, restore the displaced item before stable merge sort.
