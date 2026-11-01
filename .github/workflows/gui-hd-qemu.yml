@@ -38,7 +38,9 @@ jobs:
             video: 'virtio-edid'
           - resolution: '1920x1080'
             video: 'std'
-    runs-on: ubuntu-latest
+    # ubuntu-latest can resolve to a 26.04 runner without Ubuntu apt sources;
+    # QEMU/OVMF/clang/nasm must be installable for a meaningful framebuffer gate.
+    runs-on: ubuntu-24.04
     timeout-minutes: 110
     steps:
       - uses: actions/checkout@v4
