@@ -262,17 +262,21 @@ namespace ZonderqOS.GUI
                 DrawChar(canvas, text[start + i], x + i * 6, y, color);
         }
 
+        // Keep this tiny wrapper inlineable for the very common 0..99
+        // counters. A large threshold tree in this method prevented the JIT
+        // from inlining WidthUInt's hot path and regressed small labels.
         private static int DigitCount(ulong value)
         {
-            // Avoid up to 19 sequential 64-bit divisions on the task-manager
-            // numeric hot path. The common 0..99 range takes two comparisons;
-            // larger values use a bounded decimal threshold tree.
-            // Order the common 1- and 2-digit cases first so small
-            // counters avoid the deeper decimal threshold tree entirely.
             if (value < 10UL)
                 return 1;
             if (value < 100UL)
                 return 2;
+            return DigitCountLarge(value);
+        }
+
+        // Large 3..20 digit values avoid up to 19 sequential divisions.
+        private static int DigitCountLarge(ulong value)
+        {
             if (value < 100000000UL)
             {
                 if (value < 10000UL)
