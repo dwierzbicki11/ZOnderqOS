@@ -138,6 +138,16 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Update()
         {
+            // ApplicationManager updates minimized apps too. Collecting CPU,
+            // process and storage snapshots every 30 hidden frames wastes
+            // work and can itself distort the reported idle CPU usage.
+            // Arm one immediate refresh for the first visible frame.
+            if (!Window.Visible || Window.IsMinimized)
+            {
+                refreshFrame = RefreshIntervalFrames;
+                return;
+            }
+
             UpdateLayout();
             UpdateClock();
             refreshFrame++;

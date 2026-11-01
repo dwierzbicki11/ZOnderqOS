@@ -12,6 +12,36 @@ def section(start, end):
 
 
 class TinyTaskManagerViewTests(unittest.TestCase):
+    def test_minimized_manager_skips_hidden_telemetry_polling(self):
+        update = section("public override void Update()", "private void UpdateLayout()")
+        self.assertIn("if (!Window.Visible || Window.IsMinimized)", update)
+        self.assertIn("refreshFrame = RefreshIntervalFrames;", update)
+        self.assertLess(update.index("if (!Window.Visible || Window.IsMinimized)"),
+                        update.index("UpdateLayout();"))
+        self.assertLess(update.index("return;"), update.index("UpdateClock();"))
+        self.assertLess(update.index("return;"), update.index("RefreshSnapshot();"))
+
+        # Reference state-machine for the new early-return policy.
+        interval = 30
+        def tick(frame, hidden):
+            if hidden:
+                return interval, False
+            frame += 1
+            return (0, True) if frame >= interval else (frame, False)
+
+        frame, sampled = 10, False
+        for _ in range(1000):
+            frame, sampled = tick(frame, True)
+            self.assertFalse(sampled)
+        frame, sampled = tick(frame, False)
+        self.assertTrue(sampled)
+        self.assertEqual(frame, 0)
+        for _ in range(interval - 1):
+            frame, sampled = tick(frame, False)
+            self.assertFalse(sampled)
+        frame, sampled = tick(frame, False)
+        self.assertTrue(sampled)
+
     def test_zero_rows_are_representable(self):
         self.assertIn(
             "private int ListHeightForView => Math.Max(0, Height - ListTopForView - FooterHeight - 6);",
