@@ -101,5 +101,54 @@ class TinyTaskManagerViewTests(unittest.TestCase):
         self.assertIn("if (!row.CanEnd)", destructive)
 
 
+    def test_cpu_pager_hitboxes_match_rendered_arrows(self):
+        hit = section("public int CpuLogicalPageActionAt(", "public int RowAt(")
+        draw = section("private void RenderLogicalCpu(", "private void DrawArrow(")
+        self.assertIn("int top = 114;", hit)
+        self.assertIn("int right = Width - 10;", hit)
+        self.assertIn("app.PerformanceResource != TaskManagerModernApp.PerfCpu", hit)
+        self.assertIn("app.ActivePage != TaskManagerModernApp.PagePerformance", hit)
+        self.assertIn('DrawArrow(canvas, right - 60, y - 8, "<");', draw)
+        self.assertIn('DrawArrow(canvas, right - 28, y - 8, ">");', draw)
+        # RenderCpu begins at 64, RenderLogicalCpu at +58, arrow at -8.
+        top = 64 + 58 - 8
+        for width in (900, 1024, 1366, 1920):
+            right = width - 10
+            for y in (113, 114, 122, 139, 140):
+                for x in (right - 61, right - 60, right - 35, right - 34,
+                          right - 29, right - 28, right - 3, right - 2):
+                    left = right - 60 <= x < right - 34 and top <= y < top + 26
+                    right_arrow = right - 28 <= x < right - 2 and top <= y < top + 26
+                    # The same bounds must be used by hit-test and paint.
+                    self.assertEqual(left or right_arrow,
+                                     (top <= y < top + 26 and
+                                      (right - 60 <= x < right - 34 or
+                                       right - 28 <= x < right - 2)))
+
+    def test_narrow_full_header_hides_overlapping_clock(self):
+        header = section("private void RenderHeader(Canvas canvas)", "private void DrawButton(")
+        self.assertIn("if (refresh - clock >= 72)", header)
+        self.assertLess(header.index("if (refresh - clock >= 72)"),
+                        header.index("SmallTextRenderer.Draw(canvas, app.ClockText"))
+        for width in range(550, 1201):
+            content_x = 170 + 8
+            refresh = width - 210
+            clock = max(content_x + 120, refresh - 154)
+            painted = refresh - clock >= 72
+            if painted:
+                self.assertLessEqual(clock + 72, refresh)
+            else:
+                self.assertLess(width, 580)
+        self.assertFalse((550 - 210) - max(298, 550 - 364) >= 72)
+        self.assertTrue((580 - 210) - max(298, 580 - 364) >= 72)
+
+    def test_disabled_performance_end_task_is_not_clickable(self):
+        toolbar = section("public int ToolbarActionAt(", "public int PerformanceResourceAt(")
+        self.assertIn(
+            "app.ActivePage != TaskManagerModernApp.PagePerformance &&", toolbar
+        )
+        self.assertIn("x >= end && x < end + 100) return 2;", toolbar)
+
+
 if __name__ == "__main__":
     unittest.main()
