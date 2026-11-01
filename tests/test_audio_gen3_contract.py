@@ -218,7 +218,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("steps.mixsequenceasync.outcome == 'failure'", workflow)
         self.assertIn("ZonderqReadOnlyHardwareProbe", project)
         self.assertIn('elif args.command == "mixqueue":', harness)
-        self.assertIn('elif args.command == "mixqueue1ms":', harness)
+        self.assertIn('elif args.command in ("mixqueue1ms", "mixqueueasync"):', harness)
         self.assertIn("queue_capture.inspect(wav)", harness)
         self.assertIn("--command mixqueue1ms", workflow)
         self.assertIn("stock mixqueue remains mandatory", workflow)
