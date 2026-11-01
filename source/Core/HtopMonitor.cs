@@ -71,6 +71,9 @@ namespace ZonderqOS.SystemCore
         private readonly List<KernelProcess> processes = new List<KernelProcess>();
         private readonly HtopProcessIndex processIndex = new HtopProcessIndex();
         private readonly List<Row> rows = new List<Row>();
+        // An instance method-group conversion allocates a Comparison<Row> delegate.
+        // Reuse it across htop refreshes; the callback reads SortByCpu live.
+        private readonly Comparison<Row> rowComparison;
         private readonly List<string> lines = new List<string>();
         private PreviousThread[] previousThreads = Array.Empty<PreviousThread>();
         private long[] previousCpu = Array.Empty<long>();
@@ -131,6 +134,11 @@ namespace ZonderqOS.SystemCore
 
         internal static string CpuPercentText(int percent) => CachedCpuPercents[percent];
         internal static string PaddedCpuPercentText(int percent) => CachedPaddedCpuPercents[percent];
+
+        internal HtopMonitor()
+        {
+            rowComparison = CompareRows;
+        }
 
         internal bool SortByCpu = true;
         internal int Scroll;
@@ -244,7 +252,7 @@ namespace ZonderqOS.SystemCore
                 }
                 rows.Add(new Row { Thread = info, Percent = Percent(delta, elapsedNs), Pid = pid, Name = name });
             }
-            rows.Sort(CompareRows);
+            SortRows();
             foreach (Row row in rows)
             {
                 lines.Add((row.Pid == 0 ? "-" : row.Pid.ToString()).PadLeft(5) + " " + row.Thread.Id.ToString().PadLeft(6) + " " +
@@ -271,6 +279,13 @@ namespace ZonderqOS.SystemCore
             }
             previousTimestamp = now;
             Scroll = Math.Max(0, Math.Min(Scroll, Math.Max(0, lines.Count - 1)));
+        }
+
+        // Internal entry point lets the host smoke test exercise the actual
+        // production sort without scheduler sampling or output allocations.
+        internal void SortRows()
+        {
+            rows.Sort(rowComparison);
         }
 
         private int CompareRows(Row a, Row b)
