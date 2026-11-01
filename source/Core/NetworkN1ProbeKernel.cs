@@ -445,7 +445,6 @@ namespace ZonderqOS
 #endif
         }
 
-#if ZONDERQ_NETWORK_N6_HTTP
 #if ZONDERQ_NETWORK_N4_TCP
         // Socket ReceiveTimeout applies to ONE Read(), not a whole response.
         // The caller checks the monotonic deadline before and after Read().
@@ -464,6 +463,7 @@ namespace ZonderqOS
         }
 #endif
 
+#if ZONDERQ_NETWORK_N6_HTTP
         // Stock Cosmos 3.0.95 exposes DriverKit node snapshots, but NOT the
         // internal E1000EState.InterruptCount. A zero handler-fault count
         // therefore cannot prove that an ISR ran; the driver also polls.
