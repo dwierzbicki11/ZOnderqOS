@@ -897,7 +897,7 @@ namespace ZonderqOS.GUI.Apps
 
         public int ToolbarActionAt(int x, int y)
         {
-            if (Width <= SidebarWidth + 12 || Height < 42 ||
+            if (Width < SidebarWidth + 64 || Height < 42 ||
                 x < SidebarWidth || y < 8 || y >= 42) return 0;
             if (Width < 550)
                 return x >= Width - 42 && x < Width - 10 ? 1 : 0;
@@ -911,7 +911,7 @@ namespace ZonderqOS.GUI.Apps
         public int PerformanceResourceAt(int x, int y)
         {
             if (app.ActivePage != TaskManagerModernApp.PagePerformance ||
-                Width <= SidebarWidth + 24 || Height < 134) return -1;
+                Width < SidebarWidth + 96 || Height < 134) return -1;
             if (CompactPerformanceLayout)
             {
                 // Compact mode renders three horizontal resource buttons.
@@ -1056,7 +1056,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderHeader(Canvas canvas)
         {
-            if (Width <= SidebarWidth + 12 || Height < HeaderHeight + 2)
+            if (Width < SidebarWidth + 64 || Height < HeaderHeight + 2)
                 return;
             int contentX = X + SidebarWidth + 8;
             string title = app.ActivePage == 0 ? "Procesy" : app.ActivePage == 1 ? "Wydajnosc" : app.ActivePage == 2 ? "Szczegoly" : "Uslugi";
@@ -1240,7 +1240,7 @@ namespace ZonderqOS.GUI.Apps
         private void RenderPerformance(Canvas canvas)
         {
             // At very short resolutions the selectors would overlap the footer.
-            if (Width <= SidebarWidth + 24 || Height < 134)
+            if (Width < SidebarWidth + 96 || Height < 134)
                 return;
             if (CompactPerformanceLayout)
             {
