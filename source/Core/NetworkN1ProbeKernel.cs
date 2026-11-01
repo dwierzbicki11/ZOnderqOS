@@ -270,6 +270,25 @@ namespace ZonderqOS
                             Log("[NET3095-N5][FAIL] DNS response missing or unexpected");
                             return;
                         }
+                        // A DNS answer alone is not a stable RX proof: the
+                        // adapter could have been removed, rebound or lost its
+                        // original DHCP lease while Receive() was blocking.
+                        // Re-read live state rather than trusting the mutable
+                        // IPConfig object captured before the DNS request.
+                        NetworkAdapter dnsAdapter = NetworkManager.Primary;
+                        IPConfig? dnsLease = dnsAdapter.IPConfig;
+                        if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized ||
+                            !dnsAdapter.IsValid || dnsAdapter.Name != "e1000e" ||
+                            !dnsAdapter.Ready || !dnsAdapter.LinkUp ||
+                            (dnsAdapter.MacAddress?.ToString() ?? "") != sourceMac ||
+                            dnsLease == null ||
+                            dnsLease.Address.ToString() != "10.0.2.15" ||
+                            dnsLease.SubnetMask.ToString() != "255.255.255.0" ||
+                            dnsLease.DefaultGateway.ToString() != "10.0.2.2")
+                        {
+                            Log("[NET3095-N5][FAIL] E1000E link/MAC/DHCP lease changed during DNS");
+                            return;
+                        }
                         Log("[NET3095-N5] DNS=PASS host=localhost ip=127.0.0.1 server=10.0.2.3");
                     }
                 }
