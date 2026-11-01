@@ -342,8 +342,8 @@ namespace ZonderqOS.GUI.Icons
         private static void BlitScaledDirect(Canvas canvas, int[] source, int sourceWidth, int sourceHeight,
             int x, int y, int width, int height)
         {
-            int startX = x < 0 ? (int)Math.Min((long)width, -(long)x) : 0;
-            int startY = y < 0 ? (int)Math.Min((long)height, -(long)y) : 0;
+            int startX = x < 0 ? (int)System.Math.Min((long)width, -(long)x) : 0;
+            int startY = y < 0 ? (int)System.Math.Min((long)height, -(long)y) : 0;
             int endX = width;
             int endY = height;
 
