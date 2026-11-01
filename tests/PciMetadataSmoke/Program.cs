@@ -272,6 +272,14 @@ Check(!Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
 Check(!Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
       bar2Mmio32, 0xFEBF0000UL, 0x6CUL),
     "Too-short mapped register aperture must be rejected");
+// RTL810xE BAR2 holds live device registers: a prefetchable BAR would be
+// unsafe for a read-only MMIO probe even when DriverKit metadata agrees.
+foreach (ulong prefetchable in new ulong[] {
+    0x00000000FEBF0008UL, 0x00000001FEBF000CUL
+})
+    Check(!Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
+          prefetchable, prefetchable & ~0xFUL, 0x1000UL),
+        "Prefetchable RTL810xE register BAR must fail closed");
 Check(!Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
       0xFFFFFFFFFFFFF004UL, 0xFFFFFFFFFFFFF000UL, 0x2000UL),
     "Wrapped mapped register aperture must be rejected");
