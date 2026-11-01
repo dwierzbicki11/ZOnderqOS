@@ -12,6 +12,11 @@ namespace ZonderqOS.GUI.Apps
         // windows. Reuse the buffer to avoid allocating on every GUI frame.
         private readonly List<Application> updateSnapshot = new List<Application>();
         private bool updating;
+        // Painting callbacks can close, launch or reorder windows just like Update.
+        // Keep a separate reusable snapshot: new windows paint next frame and
+        // closed windows cannot be painted after removal from the live roster.
+        private readonly List<Application> renderSnapshot = new List<Application>();
+        private bool rendering;
         private bool desktopGesture;
         // The window which received the first button-down owns the entire
         // multi-button gesture, even if focus changes or the pointer crosses
@@ -427,15 +432,49 @@ namespace ZonderqOS.GUI.Apps
 
         public void Render(Canvas canvas)
         {
-            if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+            // A painting callback may synchronously request another frame.
+            // Only the outer render owns the snapshot, so nested calls are inert.
+            if (rendering)
                 return;
-
-            for (int i = 0; i < applications.Count; i++)
+            if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
             {
-                Application application = applications[i];
-                if (application != null && application.IsRunning && application.Window != null &&
-                    application.Window.Visible && !application.Window.IsMinimized)
+                CloseAll();
+                return;
+            }
+
+            rendering = true;
+            try
+            {
+                // Preserve bottom-to-top Z order for this entire frame even if
+                // a Render callback activates/closes an app or launches another.
+                renderSnapshot.Clear();
+                renderSnapshot.AddRange(applications);
+                for (int i = 0; i < renderSnapshot.Count; i++)
+                {
+                    if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+                    {
+                        CloseAll();
+                        return;
+                    }
+
+                    Application application = renderSnapshot[i];
+                    if (application == null || !application.IsRunning ||
+                        application.Window == null || !applications.Contains(application) ||
+                        !application.Window.Visible || application.Window.IsMinimized)
+                        continue;
+
                     application.Render(canvas);
+                    if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
+                    {
+                        CloseAll();
+                        return;
+                    }
+                }
+            }
+            finally
+            {
+                renderSnapshot.Clear();
+                rendering = false;
             }
         }
 

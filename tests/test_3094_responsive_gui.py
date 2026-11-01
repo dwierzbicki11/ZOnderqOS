@@ -245,6 +245,25 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("mouseCapture = target;", dispatch)
         self.assertIn("target?.HandleMouse(mouseX, mouseY", dispatch)
 
+    def test_application_manager_render_snapshot_survives_window_callbacks(self):
+        render = APPLICATION_MANAGER.split("public void Render(Canvas canvas)", 1)[1].split(
+            "private void SetActiveStates(", 1)[0]
+        self.assertIn("if (rendering)", render)
+        self.assertIn("renderSnapshot.AddRange(applications);", render)
+        self.assertIn("applications.Contains(application)", render)
+        self.assertIn("renderSnapshot.Clear();", render)
+        self.assertIn("finally", render)
+        self.assertIn("CloseAll();", render)
+        smoke = code("tests/GuiApplicationManagerSmoke/Program.cs")
+        for scenario in (
+            "RenderMutationDoesNotSkipOrDuplicate",
+            "RenderLaunchWaitsForNextFrame",
+            "RenderReorderAndNestedCall",
+            "RenderLogoutStopsImmediately",
+            "RenderSkipsClosedWindowInSnapshot",
+        ):
+            self.assertIn(scenario + "();", smoke)
+
     def test_window_mouse_capture_survives_focus_and_disposal(self):
         dispatch = APPLICATION_MANAGER.split(
             "public void HandleMouse(int mouseX, int mouseY, bool leftClicked,", 1

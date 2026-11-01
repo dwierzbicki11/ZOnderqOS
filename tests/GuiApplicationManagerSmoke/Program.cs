@@ -58,11 +58,13 @@ internal sealed class ClosingApp : Application
 {
     public int CloseCount;
     public int UpdateCount;
+    public int RenderCount;
     public int MouseCount;
     public bool LastRightPress;
     public bool LastLeftRelease;
     public Action? OnClose;
     public Action? OnUpdate;
+    public Action? OnRender;
     public Action? OnMouse;
 
     public override void Close()
@@ -78,6 +80,12 @@ internal sealed class ClosingApp : Application
         OnUpdate?.Invoke();
     }
 
+    public override void Render(Cosmos.Kernel.System.Graphics.Canvas canvas)
+    {
+        RenderCount++;
+        OnRender?.Invoke();
+    }
+
     public override void HandleMouse(int x, int y, bool left, bool oldLeft, bool right, bool oldRight)
     {
         MouseCount++;
@@ -86,6 +94,8 @@ internal sealed class ClosingApp : Application
         OnMouse?.Invoke();
     }
 }
+
+internal sealed class StubCanvas : Cosmos.Kernel.System.Graphics.Canvas { }
 
 internal static class Program
 {
@@ -482,6 +492,106 @@ internal static class Program
         manager.CloseAll();
     }
 
+
+    private static void RenderMutationDoesNotSkipOrDuplicate()
+    {
+        var manager = new ApplicationManager();
+        var a = new ClosingApp();
+        var b = new ClosingApp();
+        var c = new ClosingApp();
+        manager.Launch(a);
+        manager.Launch(b);
+        manager.Launch(c);
+        a.OnRender = () => manager.Close(a);
+        manager.Render(new StubCanvas());
+        Check(a.RenderCount == 1 && a.CloseCount == 1,
+            "window closing itself during paint is rendered and closed once");
+        Check(b.RenderCount == 1 && c.RenderCount == 1,
+            "removing the first window cannot skip later windows");
+        Check(manager.Applications.Count == 2, "render callback removes closed window");
+        manager.CloseAll();
+    }
+
+    private static void RenderLaunchWaitsForNextFrame()
+    {
+        var manager = new ApplicationManager();
+        var a = new ClosingApp();
+        var b = new ClosingApp();
+        var launched = new ClosingApp();
+        manager.Launch(a);
+        manager.Launch(b);
+        a.OnRender = () =>
+        {
+            if (!manager.Applications.Contains(launched))
+                manager.Launch(launched);
+        };
+        var canvas = new StubCanvas();
+        manager.Render(canvas);
+        Check(a.RenderCount == 1 && b.RenderCount == 1,
+            "existing windows paint once while a callback launches another");
+        Check(launched.RenderCount == 0, "new window starts painting next frame");
+        manager.Render(canvas);
+        Check(a.RenderCount == 2 && b.RenderCount == 2 && launched.RenderCount == 1,
+            "reused render snapshot includes new window on following frame");
+        manager.CloseAll();
+    }
+
+    private static void RenderReorderAndNestedCall()
+    {
+        var manager = new ApplicationManager();
+        var a = new ClosingApp();
+        var b = new ClosingApp();
+        var c = new ClosingApp();
+        var canvas = new StubCanvas();
+        manager.Launch(a);
+        manager.Launch(b);
+        manager.Launch(c);
+        a.OnRender = () => manager.Activate(a);
+        b.OnRender = () => manager.Render(canvas);
+        manager.Render(canvas);
+        Check(a.RenderCount == 1 && b.RenderCount == 1 && c.RenderCount == 1,
+            "focus changes and recursive paint cannot skip or double-render windows");
+        Check(manager.ActiveApplication == a, "render callback may update focus for next frame");
+        manager.CloseAll();
+    }
+
+    private static void RenderLogoutStopsImmediately()
+    {
+        var manager = new ApplicationManager();
+        var a = new ClosingApp();
+        var b = new ClosingApp();
+        var c = new ClosingApp();
+        manager.Launch(a);
+        manager.Launch(b);
+        manager.Launch(c);
+        a.OnRender = () => ZonderqOS.SecurityContext.IsAuthenticated = false;
+        manager.Render(new StubCanvas());
+        Check(a.RenderCount == 1 && b.RenderCount == 0 && c.RenderCount == 0,
+            "logout during paint prevents subsequent windows from rendering");
+        Check(manager.Applications.Count == 0, "logout during paint closes session");
+        Check(a.CloseCount == 1 && b.CloseCount == 1 && c.CloseCount == 1,
+            "logout during paint closes each app once");
+        ZonderqOS.SecurityContext.IsAuthenticated = true;
+    }
+
+    private static void RenderSkipsClosedWindowInSnapshot()
+    {
+        var manager = new ApplicationManager();
+        var a = new ClosingApp();
+        var b = new ClosingApp();
+        var c = new ClosingApp();
+        manager.Launch(a);
+        manager.Launch(b);
+        manager.Launch(c);
+        a.OnRender = () => manager.Close(c);
+        manager.Render(new StubCanvas());
+        Check(a.RenderCount == 1 && b.RenderCount == 1,
+            "surviving windows render when another closes during paint");
+        Check(c.RenderCount == 0 && c.CloseCount == 1,
+            "detached window is not painted from stale render snapshot");
+        manager.CloseAll();
+    }
+
     private static void DesktopRightPressDoesNotLeak()
     {
         var manager = new ApplicationManager();
@@ -544,6 +654,11 @@ internal static class Program
         LaunchDuringUpdate();
         CloseAnotherDuringUpdate();
         ReentrantUpdateIsIgnored();
+        RenderMutationDoesNotSkipOrDuplicate();
+        RenderLaunchWaitsForNextFrame();
+        RenderReorderAndNestedCall();
+        RenderLogoutStopsImmediately();
+        RenderSkipsClosedWindowInSnapshot();
         ActivationRequiresRegisteredSession();
         DesktopRightPressDoesNotLeak();
         Console.WriteLine("PASS: " + checks + " production ApplicationManager C# assertions");
