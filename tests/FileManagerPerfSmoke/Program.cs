@@ -275,6 +275,72 @@ internal static class Program
         return entries.ToArray();
     }
 
+    // A rotated directory is two individually sorted runs. Check that
+    // merging them preserves the exact reference order of the old stable
+    // insertion sort, including case-insensitive duplicate names.
+    private static void VerifyTwoRunMerge()
+    {
+        int[] sizes = { 33, 64, 127, 512, 2048 };
+        foreach (int n in sizes)
+        {
+            for (int duplicates = 0; duplicates <= 1; duplicates++)
+            {
+                var ordered = new List<ZonderqOS.GUI.Apps.FileEntry>(n);
+                for (int i = 0; i < n; i++)
+                {
+                    string name = "file" + (duplicates == 1 ? i / 3 : i).ToString("D6");
+                    if (duplicates == 1 && i % 3 == 1)
+                        name = name.ToUpperInvariant();
+                    ordered.Add(new ZonderqOS.GUI.Apps.FileEntry(name, false));
+                }
+                int split = n / 2;
+                var rotated = new List<ZonderqOS.GUI.Apps.FileEntry>(n);
+                for (int i = split; i < n; i++) rotated.Add(ordered[i]);
+                for (int i = 0; i < split; i++) rotated.Add(ordered[i]);
+
+                var expected = new List<ZonderqOS.GUI.Apps.FileEntry>(rotated);
+                LegacySort(expected);
+                ZonderqOS.GUI.Apps.FileEntry[] scratch = null;
+                ZonderqOS.GUI.Apps.FileEntrySorter.Sort(rotated, ref scratch);
+                Assert(scratch != null, "rotated runs must use a merge buffer n=" + n);
+                for (int i = 0; i < n; i++)
+                {
+                    Assert(object.ReferenceEquals(expected[i], rotated[i]),
+                        "two-run stable order n=" + n + " duplicates=" + duplicates + " i=" + i);
+                    Assert(scratch[i] == null,
+                        "two-run scratch retained file path n=" + n + " i=" + i);
+                }
+            }
+        }
+
+        // A warm two-run merge must reuse both the caller's List and its
+        // scratch buffer, with no per-refresh allocations.
+        const int count = 2048;
+        var input = new ZonderqOS.GUI.Apps.FileEntry[count];
+        for (int i = 0; i < count; i++)
+            input[i] = new ZonderqOS.GUI.Apps.FileEntry("file" + ((i + count / 2) % count).ToString("D6"), false);
+        var work = new List<ZonderqOS.GUI.Apps.FileEntry>(count);
+        ZonderqOS.GUI.Apps.FileEntry[] reused = new ZonderqOS.GUI.Apps.FileEntry[count];
+        for (int repeat = 0; repeat < 8; repeat++)
+        {
+            work.Clear();
+            work.AddRange(input);
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(work, ref reused);
+        }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int repeat = 0; repeat < 64; repeat++)
+        {
+            work.Clear();
+            work.AddRange(input);
+            ZonderqOS.GUI.Apps.FileEntrySorter.Sort(work, ref reused);
+        }
+        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert(bytes == 0, "two-run warm merge allocated " + bytes + " B");
+        Assert(reused[0] == null && reused[count - 1] == null,
+            "two-run warm merge retained file entries");
+        Console.WriteLine("PASS: two-run rotated directory stable references, duplicate ties, 0 B warm allocations");
+    }
+
     private static void VerifyAdaptiveRepair()
     {
         for (int mode = 0; mode < 6; mode++)
@@ -687,6 +753,7 @@ internal static class Program
         VerifyFilter();
         VerifyAlreadySortedFastPath();
         VerifyAdaptiveRepair();
+        VerifyTwoRunMerge();
         BenchmarkAdaptiveRepair();
         BenchmarkAlreadySorted();
         BenchmarkUnsortedControl();
