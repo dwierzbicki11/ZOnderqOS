@@ -88,6 +88,10 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-44100-out --boot-seconds 45 --command wav44
+      - name: Boot and capture 8 kHz PCM8 mono voice-rate WAV (400 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-8000-out --boot-seconds 45 --command wav8k
       - name: Boot and capture 16 kHz PCM8 mono voice-rate WAV (1500 Hz)
         run: |
           python3 tools/smoke-audio-qemu.py \
@@ -149,6 +153,7 @@ jobs:
           tail -n 200 audio-qemu-wav-out/serial.log audio-qemu-wav-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-mono-out/serial.log audio-qemu-mono-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-44100-out/serial.log audio-qemu-44100-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-8000-out/serial.log audio-qemu-8000-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-16000-out/serial.log audio-qemu-16000-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-24000-out/serial.log audio-qemu-24000-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-22050-out/serial.log audio-qemu-22050-out/qemu.stderr.log 2>/dev/null || true
@@ -186,6 +191,9 @@ jobs:
             audio-qemu-44100-out/*.log
             audio-qemu-44100-out/*.wav
             audio-qemu-44100-out/*.ppm
+            audio-qemu-8000-out/*.log
+            audio-qemu-8000-out/*.wav
+            audio-qemu-8000-out/*.ppm
             audio-qemu-16000-out/*.log
             audio-qemu-16000-out/*.wav
             audio-qemu-16000-out/*.ppm

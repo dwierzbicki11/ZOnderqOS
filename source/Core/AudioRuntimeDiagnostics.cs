@@ -219,6 +219,35 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
+        /// 8 kHz unsigned PCM8 mono voice WAV -> 48 kHz stereo PCM16.
+        /// The 400 Hz test fixture is RAM-only; QEMU captures actual HDA output.
+        /// No guest filesystem, codec register or host disk access.
+        /// </summary>
+        public static bool PlayWave8000MonoTestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(8000, 400, 250, 4096);
+                byte[] mono8 = new byte[source.Length / 4];
+                for (int i = 0; i < mono8.Length; i++)
+                {
+                    int at = i * 4;
+                    short sample = (short)(source[at] | (source[at + 1] << 8));
+                    mono8[i] = (byte)(128 + (sample >> 8));
+                }
+                byte[] wave = AudioWavePcm.EncodePcm8AtRate(mono8, 8000, 1);
+                Console.WriteLine("[AUDIO] WAV 8000Hz PCM8 mono -> bounded stream -> 48000Hz HDA");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV 8000 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
         /// 16 kHz unsigned PCM8 mono voice-rate WAV -> 48 kHz stereo PCM16.
         /// Distinct 1500 Hz fixture is generated in RAM for QEMU HDA capture.
         /// No guest filesystem, codec register or host disk access.

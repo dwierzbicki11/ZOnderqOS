@@ -819,11 +819,11 @@ static class Test
         catch (ArgumentOutOfRangeException) { rejected = true; }
         Expect(rejected, "reject unsupported PCM32 sample rate");
 
-        // Common 16/22.05/24/32 kHz PCM16 WAV inputs must use the real bounded
+        // Common 8/16/22.05/24/32 kHz PCM16 WAV inputs must use the real bounded
         // read-only stream loader and the existing integer 48 kHz resampler.
-        foreach (int inputRate in new[] { 16000, 22050, 24000, 32000 })
+        foreach (int inputRate in new[] { 8000, 16000, 22050, 24000, 32000 })
         {
-            int expectedPitch = inputRate == 16000 ? 1500 : inputRate == 22050 ? 1100 :
+            int expectedPitch = inputRate == 8000 ? 400 : inputRate == 16000 ? 1500 : inputRate == 22050 ? 1100 :
                 inputRate == 24000 ? 740 : 3520;
             byte[] sourceLowRate = AudioTonePcm.GenerateSquareStereo16(inputRate, expectedPitch, 250, 4096);
             byte[] lowRateWave = AudioWavePcm.EncodeStereo16AtRate(sourceLowRate, inputRate);
@@ -845,8 +845,8 @@ static class Test
                 }
                 double pitch = crossings * 48000.0 / (2 * (resampled.Length / 4 - 1));
                 Expect(Math.Abs(pitch - expectedPitch) < 60,
-                    "low-rate resampler preserves 16/22.05/24/32kHz tone pitch");
-                if (inputRate == 16000 || inputRate == 24000)
+                    "low-rate resampler preserves 8/16/22.05/24/32kHz tone pitch");
+                if (inputRate == 8000 || inputRate == 16000 || inputRate == 24000)
                 {
                     // The QEMU validator requires 95% active samples in
                     // two disjoint 80ms windows. Guard the actual C# output,
@@ -861,7 +861,7 @@ static class Test
                             if (Math.Abs((int)sample) >= 256) active++;
                         }
                         Expect(active * 100 >= 3840 * 95,
-                            "16/24kHz resampled tone has sustained 80ms activity");
+                            "8/16/24kHz resampled tone has sustained 80ms activity");
                     }
                 }
             }
@@ -887,7 +887,7 @@ static class Test
 
         // Voice-rate mono PCM8 must decode to the same bounded 48kHz
         // stereo duration without accessing an audio device or a disk.
-        foreach (int voiceRate in new[] { 16000, 24000 })
+        foreach (int voiceRate in new[] { 8000, 16000, 24000 })
         {
             byte[] voicePcm8 = new byte[voiceRate / 4];
             for (int i = 0; i < voicePcm8.Length; i++)
