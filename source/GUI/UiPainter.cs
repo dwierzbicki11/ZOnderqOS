@@ -188,6 +188,16 @@ namespace ZonderqOS.GUI
         {
             if (width <= 0 || height <= 0 || x >= canvas.Width || y >= canvas.Height)
                 return;
+            // Most desktop rectangles are entirely within the framebuffer.
+            // Skip four clamp operations and wide-coordinate arithmetic for
+            // that common case; clipped/overflowing spans still use the
+            // original conservative long-arithmetic path below.
+            if (x >= 0 && y >= 0 &&
+                width <= canvas.Width - x && height <= canvas.Height - y)
+            {
+                canvas.DrawFilledRectangle(color, x, y, width, height);
+                return;
+            }
             long right = (long)x + width;
             long bottom = (long)y + height;
             if (right <= 0 || bottom <= 0)
