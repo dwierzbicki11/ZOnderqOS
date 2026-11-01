@@ -14,7 +14,7 @@ from verify_3095_network_n1 import pcap_frames
 from verify_3095_network_n2 import (
     LEASE, MAC, SERVER, START, fake_dhcp, synthetic_capture,
 )
-from verify_3095_network_n3 import PING_START, PING_PASS, fake_icmp
+from verify_3095_network_n3 import PING_START, PING_PASS, fake_icmp, icmp_frame
 from verify_3095_network_n4 import (
     TCP_START, TCP_PASS, REQUEST, RESPONSE, PORT, fake_tcp,
     validate as validate_n4,
@@ -177,6 +177,18 @@ def validate(serial: str, pcap: bytes) -> str:
         raise ValueError("missing unique guest lease")
     guest = bytes(int(part) for part in leases[0].group(1).split("."))
     frames = list(pcap_frames(pcap))
+    # QEMU SLIRP answers DNS from its gateway L2 address (10.0.2.2),
+    # not the ARP-proxy MAC for 10.0.2.3. Correlate the reply with the
+    # independently verified N3 ICMP peer rather than accepting any MAC.
+    gateway_macs = {
+        packet["src_mac"] for frame in frames
+        if (packet := icmp_frame(frame)) and packet["type"] == 0 and
+        packet["src"] == SERVER and packet["dst"] == guest and
+        packet["dst_mac"] == MAC
+    }
+    if len(gateway_macs) != 1:
+        raise ValueError("missing or ambiguous QEMU gateway Ethernet peer")
+    gateway_mac = next(iter(gateway_macs))
     arp_reply_index, dns_proxy_mac = verify_arp_for_dns(frames, guest)
     packets = []
     for index, frame in enumerate(frames):
@@ -199,7 +211,7 @@ def validate(serial: str, pcap: bytes) -> str:
         for reply, answer in packets[i + 1:]:
             if (
                 reply["src"] == DNS_SERVER and reply["dst"] == guest and
-                reply["dst_mac"] == MAC and reply["src_mac"] != MAC and
+                reply["dst_mac"] == MAC and reply["src_mac"] == gateway_mac and
                 reply["sport"] == 53 and reply["dport"] == req["sport"] and
                 answer["reply"] and answer["rcode"] == 0 and
                 answer["id"] == query["id"] and LOOPBACK in answer["answers"]
@@ -227,7 +239,8 @@ def fake_arp(reply: bool, sender_ip: bytes | None = None,
 def fake_dns(reply: bool, txid: int = 0x3095, host: bytes = b"localhost",
              answer: bytes = LOOPBACK, sport: int = 53,
              dest_mac: bytes = MAC,
-             request_dest_mac: bytes = bytes.fromhex("52550a000203")) -> bytes:
+             request_dest_mac: bytes = bytes.fromhex("52550a000203"),
+             reply_src_mac: bytes = bytes.fromhex("525400123499")) -> bytes:
     qname = bytes([len(host)]) + host + b"\x00"
     question = qname + struct.pack(">HH", 1, 1)
     dns = struct.pack(">HHHHHH", txid, 0x8180 if reply else 0x0100,
@@ -242,9 +255,8 @@ def fake_dns(reply: bool, txid: int = 0x3095, host: bytes = b"localhost",
     ip[8:10] = bytes([64, 17])
     ip[12:16] = DNS_SERVER if reply else bytes([10, 0, 2, 15])
     ip[16:20] = bytes([10, 0, 2, 15]) if reply else DNS_SERVER
-    gateway_mac = bytes.fromhex("525400123499")
     eth = ((dest_mac if reply else request_dest_mac) +
-           (gateway_mac if reply else MAC) + b"\x08\x00")
+           (reply_src_mac if reply else MAC) + b"\x08\x00")
     return eth + ip + udp
 
 
@@ -291,6 +303,7 @@ def self_test() -> None:
         (serial, frames[:-1] + [fake_dns(True, host=b"wronghost")]),
         (serial, frames[:-1] + [fake_dns(True, sport=54)]),
         (serial, frames[:-1] + [fake_dns(True, dest_mac=b"\x02\x00\x00\x00\x00\x01")]),
+        (serial, frames[:-1] + [fake_dns(True, reply_src_mac=b"\x02\x00\x00\x00\x00\x01")]),
         (serial, frames[:-2] + [fake_dns(False, request_dest_mac=b"\x02\x00\x00\x00\x00\x02"), frames[-1]]),
         (serial, frames[:12] + [frames[-1]]),
     ]
