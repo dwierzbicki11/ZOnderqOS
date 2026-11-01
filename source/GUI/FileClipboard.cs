@@ -160,9 +160,11 @@ namespace ZonderqOS.GUI
             }
             catch (Exception ex)
             {
-                TryRemoveDestination(destinationPath, sourceIsDirectory);
-                destinationPath = null;
-                error = ex.Message;
+                // A move/delete may have changed the source before throwing, or
+                // the data operation may have succeeded before metadata failed.
+                // Never delete a destination whose ownership/completeness is now
+                // uncertain: it may be the only surviving copy (or another writer's).
+                error = ex.Message + " Destination may contain complete or partial data; preserved for recovery: " + destinationPath;
                 return false;
             }
         }
@@ -236,24 +238,21 @@ namespace ZonderqOS.GUI
             }
             catch
             {
-                // Moving across mounted filesystems may not be supported directly.
-                // Fall back to copy + delete while keeping the source until copy succeeds.
+                // Retry only when the observable state still permits a fresh copy.
+                // A driver can throw after moving data; do not overwrite or delete
+                // an existing destination, or retry from a source that disappeared.
+                if (!Exists(source) || Exists(destination))
+                    throw;
             }
 
             CopyItem(source, destination, directory);
 
-            try
-            {
-                if (directory)
-                    Directory.Delete(source, true);
-                else
-                    File.Delete(source);
-            }
-            catch
-            {
-                TryRemoveDestination(destination, directory);
-                throw;
-            }
+            // Recursive deletion is not atomic: an exception may mean some source
+            // files are already gone. Keep the completed destination on any failure.
+            if (directory)
+                Directory.Delete(source, true);
+            else
+                File.Delete(source);
         }
 
         private static void CopyDirectory(string source, string destination)
@@ -335,23 +334,5 @@ namespace ZonderqOS.GUI
             return normalized;
         }
 
-        private static void TryRemoveDestination(string destination, bool directory)
-        {
-            if (string.IsNullOrEmpty(destination))
-                return;
-
-            try
-            {
-                if (directory && Directory.Exists(destination))
-                    Directory.Delete(destination, true);
-                else if (!directory && File.Exists(destination))
-                    File.Delete(destination);
-            }
-            catch
-            {
-            }
-
-            PermissionManager.RemovePermissionsUnder(destination);
-        }
     }
 }
