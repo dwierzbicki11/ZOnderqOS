@@ -1066,7 +1066,7 @@ class ResponsiveGui3094(unittest.TestCase):
             "private static IconType ResolveEntryIcon", 1)[0]
         self.assertIn("int visibleTileHeight = Math.Min(FileManagerApp.TileHeight, y + height - tileY);", grid)
         self.assertIn("if (visibleTileHeight <= 0)", grid)
-        self.assertEqual(grid.count("FileManagerApp.TileWidth, visibleTileHeight"), 2)
+        self.assertEqual(grid.count("tileWidth, visibleTileHeight"), 2)
         self.assertIn("tileY, 3, visibleTileHeight", grid)
         # Minimum Window(320x220): view 300x170, grid height 88,
         # selection used to extend 6px into the footer.
@@ -2360,7 +2360,7 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertIn("if (visibleTileHeight >= 32)", grid)
         self.assertIn("tileX + 6, tileY + 7, 24, 24", grid)
         self.assertIn("tileX + 36, tileY + 17", grid)
-        self.assertIn("FileManagerApp.TileWidth - 42", grid)
+        self.assertIn("tileWidth - 42", grid)
         # At 320x240 the window is constrained to 320x196: grid 64px.
         # Normal 42px icon + two-line label needs 75px; compact layout
         # fits both icon and single-line text without touching the footer.
@@ -2475,6 +2475,38 @@ class FileManagerToolbarBounds3095(unittest.TestCase):
                                  (width, x, count, decoded))
             self.assertTrue(all(8 + 42 * i + 36 <= width
                                 for i in range(count)))
+
+
+
+class FileManagerClippedTiles3095(unittest.TestCase):
+    def test_grid_stays_within_client_on_narrow_framebuffers(self):
+        self.assertIn("GridWidthForView => Math.Max(1, view.Width - SidebarWidthForView - 12)", FILE_MANAGER)
+        grid = FILE_MANAGER.split("private void Grid(Canvas canvas", 1)[1].split(
+            "private static IconType ResolveEntryIcon(", 1)[0]
+        hit = FILE_MANAGER.split("private int HitEntryIndex(int x, int y)", 1)[1].split(
+            "private bool ContextClick(", 1)[0]
+        self.assertIn("int tileWidth = Math.Min(FileManagerApp.TileWidth, width);", grid)
+        self.assertIn("tileWidth < 88", grid)
+        self.assertIn("tileWidth >= 48", grid)
+        self.assertIn("tileWidth - 42", grid)
+        self.assertIn("relativeX >= GridWidthForView", hit)
+        for view_width in range(13, 401):
+            sidebar = 0 if view_width < 220 else min(176, view_width - 124)
+            grid_left = sidebar + 8
+            grid_width = max(1, view_width - sidebar - 12)
+            tile_width = min(112, grid_width)
+            self.assertGreaterEqual(tile_width, 1)
+            self.assertLessEqual(grid_left + grid_width, view_width - 4)
+            self.assertLessEqual(grid_left + tile_width, view_width - 4)
+            if tile_width >= 48:
+                self.assertLessEqual(36 + tile_width - 42, tile_width)
+            if tile_width >= 32:
+                self.assertLessEqual(6 + min(24, tile_width - 8), tile_width)
+            cols = max(1, (grid_width + 6) // 118)
+            for relative_x in range(grid_width):
+                col = relative_x // 118
+                if col < cols and relative_x % 118 < 112:
+                    self.assertLessEqual(col * 118 + min(112, grid_width - col * 118), grid_width)
 
 
 if __name__ == "__main__":
