@@ -108,14 +108,21 @@ namespace ZonderqOS.GUI
                 if (take <= 0)
                     take = Math.Min(maxChars, remaining);
 
-                AppendOutputLine(line.Substring(position, take).TrimEnd());
+                // When the user has scrolled up, preserve the legacy per-line
+                // range/value callbacks: trimming can clamp the scrollbar
+                // between wrapped rows. Auto-follow can safely batch them.
+                string wrapped = line.Substring(position, take).TrimEnd();
+                if (userScrolled)
+                    AddOutputLine(wrapped);
+                else
+                    AppendOutputLine(wrapped);
                 position += take;
                 while (position < line.Length && line[position] == ' ')
                     position++;
             }
 
-            // Keep auto-follow and manually scrolled history behavior intact.
-            FinishOutputUpdate();
+            if (!userScrolled)
+                FinishOutputUpdate();
         }
 
         public void ClearOutput()
