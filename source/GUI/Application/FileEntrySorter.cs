@@ -115,6 +115,42 @@ namespace ZonderqOS.GUI.Apps
                     return;
             }
 
+            // Two sorted runs separated by one large inversion (for example,
+            // a FAT32 enumeration rotated at a directory boundary) can be
+            // merged in O(n), rather than using log2(n) merge passes.
+            // Only try this after the local-displacement check rejected the
+            // inversion. Sample the tail first: random directories must not
+            // pay for another complete O(n) scan.
+            if (cannotRepairLocally && inversions == 1 &&
+                firstInversion > 1 && firstInversion < count - 1 &&
+                HasSortedTail(entries, firstInversion, count))
+            {
+                if (scratch == null || scratch.Length < count)
+                    scratch = new FileEntry[count];
+
+                int left = 0;
+                int right = firstInversion;
+                int output = 0;
+                while (left < firstInversion && right < count)
+                {
+                    // Left-first on equality preserves the exact stable
+                    // ordering of case-insensitive duplicate file names.
+                    scratch[output++] = Compare(entries[left], entries[right]) <= 0
+                        ? entries[left++] : entries[right++];
+                }
+                while (left < firstInversion)
+                    scratch[output++] = entries[left++];
+                while (right < count)
+                    scratch[output++] = entries[right++];
+                for (int i = 0; i < count; i++)
+                    entries[i] = scratch[i];
+
+                // A reused scratch buffer must never keep references to
+                // entries from a directory that has since been unmounted.
+                Array.Clear(scratch, 0, count);
+                return;
+            }
+
             if (scratch == null || scratch.Length < count)
                 scratch = new FileEntry[count];
 
@@ -185,6 +221,21 @@ namespace ZonderqOS.GUI.Apps
             // Otherwise old entries would remain strongly referenced after
             // navigating to another (smaller) folder.
             Array.Clear(scratch, 0, count);
+        }
+
+        // A full suffix scan is only worthwhile when its final few pairs
+        // already look ordered. Prefix [0, split) is known sorted because
+        // split is the first inversion found by Sort().
+        private static bool HasSortedTail(List<FileEntry> entries, int split, int count)
+        {
+            int sampleStart = Math.Max(split + 1, count - 8);
+            for (int i = sampleStart; i < count; i++)
+                if (Compare(entries[i - 1], entries[i]) > 0)
+                    return false;
+            for (int i = split + 1; i < sampleStart; i++)
+                if (Compare(entries[i - 1], entries[i]) > 0)
+                    return false;
+            return true;
         }
 
         /// <summary>
