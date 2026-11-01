@@ -177,7 +177,8 @@ namespace ZonderqOS.GUI.Apps
             bool selectionWasVisible = previousVisibleRows > 0 &&
                 selectedIndex >= scrollIndex &&
                 selectedIndex < scrollIndex + previousVisibleRows;
-            if (rows != previousVisibleRows && selectionWasVisible)
+            if (rows > 0 && view.HasPaintedProcessRows &&
+                rows != previousVisibleRows && selectionWasVisible)
                 EnsureSelectionVisible();
             else
                 ClampScroll();
