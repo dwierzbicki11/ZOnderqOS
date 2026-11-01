@@ -35,7 +35,7 @@ namespace ZonderqOS
                 Console.WriteLine();
 #if ZONDERQ_AUDIO_PROBE
                 Console.WriteLine("AUDIO HDA/PCM probe enabled: no disk mounts or account writes.");
-                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | wavmono | stereosplit | mix | wav44 | wav8k | wav11k | wav16k | wav22k | wav24k | wav32k | wavstereo32 | wav8 | wav24 | wav32 | wavext | wavext20 | volume N | balance N | fade N | inputscan | volumes | help");
+                Console.WriteLine("Commands: audiodiag | audioinfo | mixqueue1ms | mixsequence1ms | tone | wavtone | wavmono | stereosplit | mix | wav44 | wav8k | wav11k | wav16k | wav22k | wav24k | wav32k | wavstereo32 | wav8 | wav24 | wav32 | wavext | wavext20 | volume N | balance N | fade N | inputscan | volumes | help");
                 AudioRuntimeDiagnostics.PrintStatus();
 #else
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
@@ -270,6 +270,18 @@ namespace ZonderqOS
             if (command == "mixqueue")
             {
                 AudioRuntimeDiagnostics.PlayScheduledMixedTestTones();
+                return;
+            }
+
+            if (command == "mixqueue1ms")
+            {
+                AudioRuntimeDiagnostics.PlayScheduledMixedTestTones(true);
+                return;
+            }
+
+            if (command == "mixsequence1ms")
+            {
+                AudioRuntimeDiagnostics.PlayFrequencySequenceTestTones(true);
                 return;
             }
 

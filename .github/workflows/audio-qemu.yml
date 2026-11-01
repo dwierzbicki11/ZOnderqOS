@@ -107,6 +107,23 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-out --boot-seconds 45 --command mixqueue
+      - name: Experimental 1ms ring-full wait mixqueue A/B (diagnostic only)
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-1ms-out \
+            --boot-seconds 45 --command mixqueue1ms
+      - name: Quantify 1ms ring writer capture without overriding stock quality gate
+        if: always()
+        run: |
+          if [ -s audio-qemu-mixqueue-1ms-out/captured.wav ]; then
+            python3 tools/analyze-audio-queue-dropouts.py audio-qemu-mixqueue-1ms-out/captured.wav
+          else
+            echo '[AUDIO-1MS] no WAV artifact; experiment inconclusive'
+          fi
+          echo '[AUDIO-1MS] experimental only; stock mixqueue remains mandatory'
+
       - name: Boot and verify four nonperiodic PCM frequency steps through HDA
         id: mixsequence
         # Keep the failed capture as a real failure at the final gate, but
@@ -291,6 +308,9 @@ jobs:
             audio-qemu-mixdelay-out/*.wav
             audio-qemu-mixdelay-out/*.ppm
             audio-qemu-mixqueue-out/*.log
+          audio-qemu-mixqueue-1ms-out/*.log
+          audio-qemu-mixqueue-1ms-out/*.wav
+          audio-qemu-mixqueue-1ms-out/*.ppm
             audio-qemu-mixqueue-out/*.wav
             audio-qemu-mixqueue-out/*.ppm
             audio-qemu-mixsequence-out/*.log

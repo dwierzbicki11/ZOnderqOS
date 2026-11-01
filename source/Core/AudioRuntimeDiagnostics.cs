@@ -144,7 +144,7 @@ namespace ZonderqOS.SystemCore
         /// different final pitch prove that the third clip was scheduled.
         /// This is an opt-in diskless test, not production GUI sound.
         /// </summary>
-        public static bool PlayScheduledMixedTestTones()
+        public static bool PlayScheduledMixedTestTones(bool useOneMillisecondDiagnostic = false)
         {
             byte[] left = AudioTonePcm.GenerateSquareStereo16(48000, 440, 250, 4096);
             byte[] right = AudioTonePcm.GenerateSquareStereo16(48000, 880, 250, 4096);
@@ -183,7 +183,7 @@ namespace ZonderqOS.SystemCore
                 new[] { clipFadeMilliseconds, clipFadeMilliseconds, clipFadeMilliseconds }, 4096);
             Console.WriteLine("[AUDIO] MIXQUEUE 48kHz stereo16 clips=3 preroll=250ms clipFade=5ms tail=4096frames " +
                 "left=440Hz@0ms right=880Hz@50ms left=660Hz@300ms bytes=" + mixed.Length);
-            return PlayPcm(mixed);
+            return PlayPcm(mixed, useOneMillisecondDiagnostic);
         }
 
         /// <summary>
@@ -193,7 +193,7 @@ namespace ZonderqOS.SystemCore
         /// a stale 16 KiB DMA replay cannot masquerade as all four tones.
         /// Diagnostic only; no hardware register, disk or GUI access.
         /// </summary>
-        public static bool PlayFrequencySequenceTestTones()
+        public static bool PlayFrequencySequenceTestTones(bool useOneMillisecondDiagnostic = false)
         {
             int[] frequencies = { 400, 700, 1000, 1300 };
             byte[][] clips = new byte[frequencies.Length][];
@@ -213,7 +213,7 @@ namespace ZonderqOS.SystemCore
                 clips, starts, gains, fades, 4096);
             Console.WriteLine("[AUDIO] MIXSEQUENCE 48kHz stereo16 four 90ms tones=400/700/1000/1300Hz " +
                 "preroll=250ms fade=5ms tail=4096frames bytes=" + pcm.Length);
-            return PlayPcm(pcm);
+            return PlayPcm(pcm, useOneMillisecondDiagnostic);
         }
 
         public static bool PlayStereoSplitTestTone()
@@ -635,7 +635,7 @@ namespace ZonderqOS.SystemCore
             }
         }
 
-        private static bool PlayPcm(byte[] pcm)
+        private static bool PlayPcm(byte[] pcm, bool useOneMillisecondDiagnostic = false)
         {
             // Fail closed before touching the primary device or allocating
             // a scaled copy. The probe emits only 48 kHz stereo PCM16; a
@@ -699,6 +699,43 @@ namespace ZonderqOS.SystemCore
                     ? AudioPcmVolume.ScaleStereo16ChannelsOrReuse(pcm, leftGain, rightGain)
                     : AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
                         pcm, leftGain, rightGain, fadeMilliseconds, drainBytes);
+                if (useOneMillisecondDiagnostic)
+                {
+                    // Only the single-threaded, diskless diagnostic console may
+                    // bypass stock AudioPlayer's 5ms ring-full wait. AudioDevice
+                    // does not expose the player's claim protocol publicly:
+                    // NEVER call this from the production GUI or a second thread.
+                    if (output.Name != "hda" || output.DriverName != "HdAudioDriver" ||
+                        output.Player != null || output.IsRunning)
+                    {
+                        Console.WriteLine("[AUDIO] 1MS REFUSED: requires idle stock HDA output.");
+                        return false;
+                    }
+                    if (!output.TrySetFormat(AudioFormat.Stereo16, sampleRate))
+                    {
+                        Console.WriteLine("[AUDIO] 1MS REFUSED: HDA format rejected.");
+                        return false;
+                    }
+                    bool started = false;
+                    try
+                    {
+                        output.Start();
+                        started = true;
+                        bool fed = AudioProbeRingFeeder.Feed(scaled,
+                            (data, offset, count) => output.Write(data.AsSpan(offset, count)),
+                            () => !output.IsWithdrawn && output.IsRunning,
+                            milliseconds => Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds),
+                            out int waits);
+                        Console.WriteLine("[AUDIO] 1MS diagnostic ring writer " +
+                            (fed ? "ACCEPTED_AND_DRAINED" : "FAILED") +
+                            " waits=" + waits + " (not proof of audible PCM)");
+                        return fed;
+                    }
+                    finally
+                    {
+                        if (started) output.Stop();
+                    }
+                }
                 bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled));
                 Console.WriteLine(accepted
                     ? "[AUDIO] PCM ACCEPTED_AND_DRAINED (not proof of audible output)"

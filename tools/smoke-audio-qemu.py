@@ -38,8 +38,10 @@ EXPECTED_TONE_HZ = {
     "stereosplit": 440,
     "mix": 440,  # left channel; right channel checked by stereo validator
     "mixdelay": 440,  # both pitch and onset checked by dedicated validators
-    "mixqueue": 440,  # three independent scheduled clips checked by queue validator
-    "mixsequence": 400,  # four frequency steps checked by sequence validator
+    "mixqueue": 440,
+    "mixqueue1ms": 440,  # three independent scheduled clips checked by queue validator
+    "mixsequence": 400,
+    "mixsequence1ms": 400,  # four frequency steps checked by sequence validator
     "wavtone": 440,
     "wavmono": 660,
     "wav44": 880,
@@ -81,7 +83,7 @@ def playback_settle_seconds(command):
     This is only a capture timing allowance, never evidence of playback.
     Actual WAV samples and timing still pass independent validators.
     """
-    return 8 if command in ("mixqueue", "mixsequence") else 4
+    return 8 if command in ("mixqueue", "mixsequence", "mixqueue1ms", "mixsequence1ms") else 4
 
 
 def qemu_hda_codec(output_only):
@@ -147,7 +149,7 @@ def main():
                         help="diagnostic HDA output-only codec A/B; default remains duplex")
     parser.add_argument("--icount-auto", action="store_true",
                         help="experimental TCG virtual clock pacing; diagnostic only")
-    parser.add_argument("--command", choices=("tone", "stereosplit", "mix", "mixdelay", "mixqueue", "mixsequence", "wavtone", "wavmono", "wav44", "wav8k", "wav11k", "wav16k", "wav22k", "wav24k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
+    parser.add_argument("--command", choices=("tone", "stereosplit", "mix", "mixdelay", "mixqueue", "mixsequence", "mixqueue1ms", "mixsequence1ms", "wavtone", "wavmono", "wav44", "wav8k", "wav11k", "wav16k", "wav22k", "wav24k", "wav32k", "wavstereo32", "wav8", "wav24", "wav32", "wavext", "wavext20"), default="tone",
                         help="isolated guest command to execute; WAV probe never reads guest disks")
     parser.add_argument("--volume", type=int, default=100, help="software gain 0..100 percent")
     parser.add_argument("--balance", type=int, default=0, help="-100 left-only, +100 right-only")
@@ -236,11 +238,11 @@ def main():
                 print(balance_capture.inspect(wav))
             elif args.command == "stereosplit":
                 print(stereo_capture.inspect(wav))
-            elif args.command == "mixqueue":
+            elif args.command in ("mixqueue", "mixqueue1ms"):
                 # Verify two left-channel bursts, independent right onset,
                 # the intervening silence and distinct 440/660/880 Hz pitches.
                 print(queue_capture.inspect(wav))
-            elif args.command == "mixsequence":
+            elif args.command in ("mixsequence", "mixsequence1ms"):
                 # A four-step nonstationary PCM signal catches 16 KiB ring replay.
                 print(sequence_capture.inspect(wav))
             elif args.command == "mixdelay":
