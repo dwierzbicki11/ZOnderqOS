@@ -2773,6 +2773,19 @@ class NarrowCaptionControls3095(unittest.TestCase):
                     self.assertGreaterEqual(left, 0)
                     self.assertLessEqual(left + 30, width)
 
+    def test_hidden_caption_cannot_start_drag_outside_short_window(self):
+        mouse = WINDOW.split("public void HandleMouse(int mouseX", 1)[1].split(
+            "private int GetResizeMode(", 1)[0]
+        self.assertIn("bool inTitle = Height >= TitleBarHeight &&", mouse)
+        self.assertIn("mouseY >= Y && mouseY < Y + TitleBarHeight && mouseY < Y + Height", mouse)
+        for height in range(1, 100):
+            for local_y in range(-2, 102):
+                allowed = height >= 38 and 0 <= local_y < 38 and local_y < height
+                if height < 38 or local_y < 0 or local_y >= 38:
+                    self.assertFalse(allowed)
+                elif height >= 38:
+                    self.assertTrue(allowed)
+
     def test_all_caption_buttons_and_titles_fit_extreme_client_widths(self):
         # The rightmost Close button has priority. At tiny widths, hidden
         # Maximize/Minimize must not intercept clicks outside the window.
