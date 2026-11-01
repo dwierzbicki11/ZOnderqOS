@@ -98,10 +98,47 @@ class Gen3TextRendererPerformanceContracts(unittest.TestCase):
         self.assertEqual(list(glyph_rows(match.group(1))), ["00000"] * 7)
 
     def test_span_renderer_is_used(self):
-        self.assertIn("int runStart = col++;", SOURCE)
-        self.assertIn("while (col < 5 && (bits & (1 << (4 - col))) != 0)", SOURCE)
-        self.assertIn("canvas.DrawFilledRectangle(color, x + runStart, y + row, col - runStart, 1);", SOURCE)
+        # The hot path decodes one of 32 precomputed run layouts instead of
+        # rescanning five glyph columns. C# host tests also verify all 32
+        # packed patterns and exact framebuffer/Canvas-call equivalence.
+        self.assertIn("private static readonly int[] CachedSpanRuns = BuildSpanRuns();", SOURCE)
+        self.assertIn("var table = new int[32];", SOURCE)
+        self.assertIn("packed |= (start | ((col - start) << 3)) << (2 + count * 6);", SOURCE)
+        self.assertIn("int packed = CachedSpanRuns[bits];", SOURCE)
+        self.assertIn("int runCount = packed & 3;", SOURCE)
+        self.assertIn("int runStart = packed & 7;", SOURCE)
+        self.assertIn("int runLength = (packed >> 3) & 7;", SOURCE)
+        self.assertIn("canvas.DrawFilledRectangle(color, x + runStart, y + row, runLength, 1);", SOURCE)
         self.assertNotIn("canvas.DrawFilledRectangle(color, x + col, y + row, 1, 1);", SOURCE)
+
+    def test_packed_row_math_for_all_32_patterns(self):
+        for bits in range(32):
+            packed = count = col = 0
+            while col < 5:
+                if not bits & (1 << (4 - col)):
+                    col += 1
+                    continue
+                start = col
+                col += 1
+                while col < 5 and bits & (1 << (4 - col)):
+                    col += 1
+                packed |= (start | ((col - start) << 3)) << (2 + count * 6)
+                count += 1
+            self.assertLessEqual(count, 3)
+            packed |= count
+            runs = packed & 3
+            packed >>= 2
+            reconstructed = 0
+            for _ in range(runs):
+                start = packed & 7
+                length = (packed >> 3) & 7
+                self.assertGreater(length, 0)
+                self.assertLessEqual(start + length, 5)
+                for i in range(start, start + length):
+                    reconstructed |= 1 << (4 - i)
+                packed >>= 6
+            self.assertEqual(reconstructed, bits)
+            self.assertEqual(packed, 0)
 
 
 if __name__ == "__main__":
