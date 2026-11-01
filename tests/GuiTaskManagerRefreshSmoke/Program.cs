@@ -67,7 +67,34 @@ internal static class Program
         Check(!TaskManagerRefreshGate.ShouldRefresh(5, 0, 11), "odd frequency before threshold");
         Check(TaskManagerRefreshGate.ShouldRefresh(6, 0, 11), "odd frequency at threshold");
 
-        Console.WriteLine("Task Manager monotonic refresh C# PASS: " + assertions + " assertions");
+        // Exercise the exact production keyboard navigation helper, including
+        // wraparound and invalid states, without loading Cosmos graphics.
+        for (int resource = 0; resource < 3; resource++)
+        {
+            Check(TaskManagerPerformanceNavigation.StepResource(resource, 1) ==
+                (resource + 1) % 3, "next performance resource " + resource);
+            Check(TaskManagerPerformanceNavigation.StepResource(resource, -1) ==
+                (resource + 2) % 3, "previous performance resource " + resource);
+            Check(TaskManagerPerformanceNavigation.StepResource(resource, 0) ==
+                resource, "unchanged performance resource " + resource);
+        }
+        Check(TaskManagerPerformanceNavigation.StepResource(-1, 0) == 0,
+            "invalid resource resets to CPU");
+        Check(TaskManagerPerformanceNavigation.StepResource(3, -1) == 2,
+            "invalid resource safely wraps");
+
+        foreach (int count in new[] { -1, 0, 1, 2, 16, 256 })
+        {
+            int last = Math.Max(0, count - 1);
+            foreach (int page in new[] { int.MinValue, -10, -1, 0, 1, 2, 15, 16, 255, int.MaxValue })
+            {
+                int expected = Math.Max(0, Math.Min(page, last));
+                Check(TaskManagerPerformanceNavigation.ClampLogicalPage(page, count) ==
+                    expected, "logical CPU page clamp " + page + "/" + count);
+            }
+        }
+
+        Console.WriteLine("Task Manager refresh/navigation C# PASS: " + assertions + " assertions");
         return 0;
     }
 }
