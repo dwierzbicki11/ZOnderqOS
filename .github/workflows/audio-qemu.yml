@@ -331,6 +331,10 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-balance-out --boot-seconds 45 --command stereosplit --balance 100
+      - name: Boot and capture left-only 440 Hz balance (right must be silent)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-balance-left-out --boot-seconds 45 --command stereosplit --balance -100
       - name: Boot again at 25% software volume and compare actual output amplitude
         run: |
           python3 tools/smoke-audio-qemu.py \
@@ -400,6 +404,7 @@ jobs:
           tail -n 200 audio-qemu-quiet-out/serial.log audio-qemu-quiet-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-muted-out/serial.log audio-qemu-muted-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-balance-out/serial.log audio-qemu-balance-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-balance-left-out/serial.log audio-qemu-balance-left-out/qemu.stderr.log 2>/dev/null || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -507,3 +512,6 @@ jobs:
             audio-qemu-balance-out/*.log
             audio-qemu-balance-out/*.wav
             audio-qemu-balance-out/*.ppm
+            audio-qemu-balance-left-out/*.log
+            audio-qemu-balance-left-out/*.wav
+            audio-qemu-balance-left-out/*.ppm
