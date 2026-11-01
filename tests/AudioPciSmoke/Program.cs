@@ -113,6 +113,35 @@ static class Test
         Expect(Math.Abs(leftPitch - 440) < 5, "left channel 440Hz");
         Expect(Math.Abs(rightPitch - 880) < 5, "right channel 880Hz");
         Expect(rightTransitions > leftTransitions * 1.9, "independent stereo periods");
+        // Four distinct, adjacent PCM tones for the nonperiodic HDA ring
+        // replay probe. Check the production mixer, not a Python model.
+        int[] sequenceHz = { 400, 700, 1000, 1300 };
+        byte[][] sequenceClips = new byte[4][];
+        int[] sequenceStarts = new int[4];
+        int[] sequenceGains = { 100, 100, 100, 100 };
+        int[] sequenceFades = { 5, 5, 5, 5 };
+        for (int i = 0; i < 4; i++)
+        {
+            sequenceClips[i] = AudioTonePcm.GenerateSquareStereo16(48000, sequenceHz[i], 90, 4096);
+            sequenceStarts[i] = 12000 + i * 4320;
+            Expect(sequenceClips[i].Length == 4320 * 4, "90ms sequence clip size");
+        }
+        byte[] sequencePcm = AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+            sequenceClips, sequenceStarts, sequenceGains, sequenceFades, 4096);
+        Expect(sequencePcm.Length == (12000 + 4 * 4320 + 4096) * 4,
+            "bounded four-tone sequence with pre-roll and HDA drain");
+        Expect(sequencePcm[0] == 0 && sequencePcm[12000 * 4 - 1] == 0,
+            "sequence starts with silent pre-roll");
+        for (int i = 0; i < 4; i++)
+        {
+            int source = 2400 * 4; // 50ms: safely inside the unfaded segment
+            int target = (sequenceStarts[i] + 2400) * 4;
+            for (int b = 0; b < 4; b++)
+                Expect(sequencePcm[target + b] == sequenceClips[i][source + b],
+                    "sequence preserves interior PCM samples");
+        }
+        Expect(sequencePcm[sequencePcm.Length - 1] == 0,
+            "sequence ends in silent HDA drain");
         // The independent mono WAV QEMU path uses 660Hz so a stray 440Hz tone cannot pass.
         byte[] monoProbeSource = AudioTonePcm.GenerateSquareStereo16(48000, 660, 250, 4096);
         int monoTransitions = 0;

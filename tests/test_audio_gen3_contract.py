@@ -141,6 +141,24 @@ class AudioGen3Contract(unittest.TestCase):
                           "AllocateDma(", "EnableBusMastering(", "AudioManager."):
             self.assertNotIn(forbidden, mixer)
 
+    def test_nonperiodic_hda_sequence_is_diskless_and_strict(self):
+        runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
+        kernel = read("Kernel.cs")
+        harness = read("tools/smoke-audio-qemu.py")
+        workflow = read(".github/workflows/audio-qemu.yml")
+        host_workflow = read(".github/workflows/audio-gen3.yml")
+        self.assertIn("PlayFrequencySequenceTestTones()", runtime)
+        self.assertIn("int[] frequencies = { 400, 700, 1000, 1300 }", runtime)
+        self.assertIn("MixScheduledStereo16WithIndividualFades(", runtime)
+        self.assertIn('if (command == "mixsequence")', kernel)
+        self.assertIn('"mixsequence": 400', harness)
+        self.assertIn("sequence_capture.inspect(wav)", harness)
+        self.assertIn("--command mixsequence", workflow)
+        self.assertIn("audio-qemu-mixsequence-out/*.wav", workflow)
+        self.assertIn("test_audio_sequence_validator.py", workflow)
+        self.assertIn("test_audio_sequence_validator.py", host_workflow)
+        self.assertNotIn("Disk.", runtime.split("public static bool PlayFrequencySequenceTestTones()", 1)[1].split("public static bool PlayStereoSplitTestTone()", 1)[0])
+
     def test_real_pcm_path_is_opt_in_only(self):
         runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
         kernel = read("Kernel.cs")

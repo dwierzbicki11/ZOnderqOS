@@ -186,6 +186,36 @@ namespace ZonderqOS.SystemCore
             return PlayPcm(mixed);
         }
 
+        /// <summary>
+        /// Four distinct 90 ms PCM tones (400/700/1000/1300 Hz) with a
+        /// 250 ms silent lead-in and 16 KiB drain. Unlike a single periodic
+        /// tone, this changes frequency across successive HDA ring periods:
+        /// a stale 16 KiB DMA replay cannot masquerade as all four tones.
+        /// Diagnostic only; no hardware register, disk or GUI access.
+        /// </summary>
+        public static bool PlayFrequencySequenceTestTones()
+        {
+            int[] frequencies = { 400, 700, 1000, 1300 };
+            byte[][] clips = new byte[frequencies.Length][];
+            int[] starts = new int[frequencies.Length];
+            int[] gains = new int[frequencies.Length];
+            int[] fades = new int[frequencies.Length];
+            const int preRollFrames = 12000; // 250 ms at 48 kHz
+            const int clipFrames = 4320; // 90 ms at 48 kHz
+            for (int i = 0; i < frequencies.Length; i++)
+            {
+                clips[i] = AudioTonePcm.GenerateSquareStereo16(48000, frequencies[i], 90, 4096);
+                starts[i] = preRollFrames + i * clipFrames;
+                gains[i] = 100;
+                fades[i] = 5;
+            }
+            byte[] pcm = AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+                clips, starts, gains, fades, 4096);
+            Console.WriteLine("[AUDIO] MIXSEQUENCE 48kHz stereo16 four 90ms tones=400/700/1000/1300Hz " +
+                "preroll=250ms fade=5ms tail=4096frames bytes=" + pcm.Length);
+            return PlayPcm(pcm);
+        }
+
         public static bool PlayStereoSplitTestTone()
         {
             byte[] pcm = AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 880, 250, 4096);

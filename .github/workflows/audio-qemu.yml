@@ -14,6 +14,8 @@ on:
       - 'tools/verify-audio-delay-capture.py'
       - 'tools/verify-audio-queue-capture.py'
       - 'tests/test_audio_queue_validator.py'
+      - 'tests/test_audio_sequence_validator.py'
+      - 'tools/verify-audio-sequence-capture.py'
       - 'tests/test_audio_queue_dropout_diagnostics.py'
       - 'tools/analyze-audio-queue-dropouts.py'
       - 'tests/test_audio_hda_replay.py'
@@ -58,12 +60,13 @@ jobs:
           bash tools/verify-cosmos-3095-migration.sh
           bash -n run.sh tools/build-cosmos-3095-local.sh
           python3 tests/test_audio_queue_dropout_diagnostics.py
-          python3 -m py_compile tools/analyze-audio-queue-dropouts.py tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py tools/verify-audio-stereo-capture.py tools/verify-audio-delay-capture.py tools/verify-audio-queue-capture.py tools/analyze-audio-hda-replay.py tools/verify-audio-volume-capture.py tools/verify-audio-mute-capture.py tools/verify-audio-balance-capture.py tools/verify-audio-fade-capture.py
+          python3 -m py_compile tools/analyze-audio-queue-dropouts.py tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py tools/verify-audio-stereo-capture.py tools/verify-audio-delay-capture.py tools/verify-audio-queue-capture.py tools/verify-audio-sequence-capture.py tools/analyze-audio-hda-replay.py tools/verify-audio-volume-capture.py tools/verify-audio-mute-capture.py tools/verify-audio-balance-capture.py tools/verify-audio-fade-capture.py
           python3 tests/test_audio_gen3_contract.py
           python3 tests/test_audio_wav_validator.py
           python3 tests/test_audio_stereo_validator.py
           python3 tests/test_audio_delay_validator.py
           python3 tests/test_audio_queue_validator.py
+          python3 tests/test_audio_sequence_validator.py
           python3 tests/test_audio_hda_replay.py
           python3 tests/test_audio_volume_validator.py
           python3 tests/test_audio_mute_validator.py
@@ -104,6 +107,10 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-out --boot-seconds 45 --command mixqueue
+      - name: Boot and verify four nonperiodic PCM frequency steps through HDA
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixsequence-out --boot-seconds 45 --command mixsequence
       - name: Quantify actual mixqueue dropouts without relaxing the strict quality gate
         if: always()
         run: |
@@ -282,6 +289,9 @@ jobs:
             audio-qemu-mixqueue-out/*.log
             audio-qemu-mixqueue-out/*.wav
             audio-qemu-mixqueue-out/*.ppm
+            audio-qemu-mixsequence-out/*.log
+            audio-qemu-mixsequence-out/*.wav
+            audio-qemu-mixsequence-out/*.ppm
             audio-qemu-mixqueue-output-only-out/*.log
             audio-qemu-mixqueue-output-only-out/*.wav
             audio-qemu-mixqueue-output-only-out/*.ppm

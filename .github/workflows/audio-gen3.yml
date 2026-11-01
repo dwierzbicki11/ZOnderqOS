@@ -21,6 +21,8 @@ on:
       - 'tools/verify-audio-delay-capture.py'
       - 'tools/verify-audio-queue-capture.py'
       - 'tests/test_audio_queue_validator.py'
+      - 'tests/test_audio_sequence_validator.py'
+      - 'tools/verify-audio-sequence-capture.py'
       - 'tests/test_audio_queue_dropout_diagnostics.py'
       - 'tools/analyze-audio-queue-dropouts.py'
       - 'tests/test_audio_hda_replay.py'
@@ -55,6 +57,8 @@ on:
       - 'tools/verify-audio-delay-capture.py'
       - 'tools/verify-audio-queue-capture.py'
       - 'tests/test_audio_queue_validator.py'
+      - 'tests/test_audio_sequence_validator.py'
+      - 'tools/verify-audio-sequence-capture.py'
       - 'tests/test_audio_queue_dropout_diagnostics.py'
       - 'tools/analyze-audio-queue-dropouts.py'
       - 'tests/test_audio_hda_replay.py'
@@ -94,6 +98,7 @@ jobs:
           python3 tests/test_audio_stereo_validator.py
           python3 tests/test_audio_delay_validator.py
           python3 tests/test_audio_queue_validator.py
+          python3 tests/test_audio_sequence_validator.py
           python3 tests/test_audio_queue_dropout_diagnostics.py
           python3 tests/test_audio_hda_replay.py
           python3 tests/test_audio_volume_validator.py

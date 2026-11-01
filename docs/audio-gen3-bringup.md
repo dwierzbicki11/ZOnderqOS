@@ -524,3 +524,19 @@ the mandatory default-clock `mixqueue` gate.
 stock-Cosmos instrumentation if available, preserving the unchanged
 SDK 3.0.95, diskless QEMU image, production audio isolation and strict
 sample-level verification. Do not infer hardware speaker or ISR success.
+
+## Nonperiodic HDA ring-replay probe (experimental)
+
+The diskless diagnostic command `mixsequence` submits four consecutive
+90 ms stereo PCM16 tones at 400, 700, 1000 and 1300 Hz. A 250 ms
+silent lead-in primes the stock HDA stream; a 5 ms per-clip fade and
+4096-frame silent tail preserve a bounded two-second output. The QEMU
+WAV validator checks **both channels**, the four ordered frequency windows
+and post-sequence silence. Replaying a stale 16 KiB HDA ring period cannot
+pass simply because a single periodic tone happens to repeat. This is
+evidence of PCM output continuity only, not a direct DMA/IRQ trace.
+
+Run `python3 tests/test_audio_sequence_validator.py` for synthetic
+positive/negative fixtures. The separate `mixsequence` QEMU boot in
+`.github/workflows/audio-qemu.yml` is mandatory and fails if its actual
+captured WAV does not match. The production disk GUI remains audio-disabled.
