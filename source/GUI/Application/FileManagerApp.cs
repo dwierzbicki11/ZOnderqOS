@@ -267,7 +267,11 @@ namespace ZonderqOS.GUI.Apps
 
             if (y >= ToolbarTop && y < ToolbarTop + ToolbarHeight)
             {
-                Toolbar(x);
+                // The toolbar background extends beyond the painted 30px
+                // buttons. Only their actual Y+7..Y+37 rectangles may
+                // navigate or refresh a filesystem; blank chrome is inert.
+                if (y >= 7 && y < 37)
+                    Toolbar(x);
                 return;
             }
 
