@@ -62,6 +62,31 @@ class TinyTaskManagerViewTests(unittest.TestCase):
                 else:
                     self.assertTrue(painted)
 
+    def test_compact_navigation_is_fully_inside_client(self):
+        hit = section("public int NavAt(int x, int y)", "public int ToolbarActionAt(")
+        draw = section("private void DrawNav(Canvas canvas", "private void RenderHeader(")
+        sidebar = section("private void RenderSidebar(Canvas canvas)", "private void DrawNav(")
+        self.assertIn("NavTop + row * 36 + 32 > Height", hit)
+        self.assertIn("NavTop + (page / 2) * 36 + 32 > Height", draw)
+        self.assertIn("int paintedWidth = Math.Min(SidebarWidth, Width - 1);", sidebar)
+        self.assertIn("if (Width < SidebarWidth || Height < 36)", sidebar)
+        for height in range(1, 300):
+            for page in range(4):
+                row = page // 2
+                painted = 60 + row * 36 + 32 <= height
+                if painted:
+                    self.assertLessEqual(60 + row * 36 + 32, height)
+                else:
+                    self.assertGreater(60 + row * 36 + 32, height)
+
+    def test_tiny_performance_selectors_cannot_cover_footer(self):
+        hit = section("public int PerformanceResourceAt(", "public int CpuGraphModeAt(")
+        draw = section("private void RenderPerformance(Canvas canvas)", "private void DrawCompactResource(")
+        self.assertIn("Width <= SidebarWidth + 24 || Height < 134", hit)
+        self.assertIn("Width <= SidebarWidth + 24 || Height < 134", draw)
+        for height in range(1, 134):
+            self.assertGreater(64 + 42 + 28, height)
+
     def test_keyboard_and_end_task_reject_hidden_selection(self):
         selection = section("private void SelectAbsolute(int index)", "private void EndSelectedTask()")
         destructive = section("private void EndSelectedTask()", "private void RefreshSnapshot()")
