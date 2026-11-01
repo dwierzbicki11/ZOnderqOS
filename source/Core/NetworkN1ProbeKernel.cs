@@ -2,6 +2,7 @@
 using System;
 using System.Threading;
 using DiagnosticLog = Cosmos.Kernel.System.Diagnostics.Log;
+using Cosmos.Kernel.System.Diagnostics;
 using Cosmos.Kernel.System.Network;
 using Sys = Cosmos.Kernel.System;
 
@@ -305,6 +306,11 @@ namespace ZonderqOS
                     return;
                 }
                 Log("[NET3095-N6] POST_STRESS_LINK=PASS mac=" + sourceMac);
+                if (!CheckE1000EDriverKitHealth())
+                {
+                    Log("[NET3095-N6][FAIL] E1000E DriverKit health invalid after TX/RX stress");
+                    return;
+                }
 #endif
             }
             catch (Exception ex)
@@ -315,6 +321,43 @@ namespace ZonderqOS
         }
 
 #if ZONDERQ_NETWORK_N6_HTTP
+        // Stock Cosmos 3.0.95 exposes DriverKit node snapshots, but NOT the
+        // internal E1000EState.InterruptCount. A zero handler-fault count
+        // therefore cannot prove that an ISR ran; the driver also polls.
+        // Keep this check read-only and confined to the isolated N6 kernel.
+        private static bool CheckE1000EDriverKitHealth()
+        {
+            DeviceNodeInfo candidate = default;
+            bool found = false;
+            for (int i = 0; i < DriverDiagnostics.NodeCount; i++)
+            {
+                if (!DriverDiagnostics.TryGetNode(i, out var node))
+                    return false;
+                if (node.DriverName != "E1000EDriver")
+                    continue;
+                if (found)
+                    return false; // An ambiguous second E1000E is not a proof.
+                candidate = node;
+                found = true;
+            }
+
+            if (!found || candidate.BusName != "pci" ||
+                candidate.State != DeviceNodeState.Bound ||
+                candidate.Path != "pci:0000:00:02.0" ||
+                candidate.FaultCount != 0 || candidate.HeldResourceCount < 1 ||
+                candidate.PublishedDeviceCount != 1 || candidate.InterruptCount < 1)
+                return false;
+
+            // InterruptCount here is the number of PCI interrupt SOURCES,
+            // not E1000EState.InterruptCount (actual ISR invocations).
+            Log("[NET3095-N6] DRIVER_HEALTH=PASS node=" + candidate.Path +
+                " driver=E1000EDriver resources=" + candidate.HeldResourceCount +
+                " published=" + candidate.PublishedDeviceCount +
+                " irq_sources=" + candidate.InterruptCount +
+                " handler_faults=0 isr_executions=unknown");
+            return true;
+        }
+
         private static bool TryHttpExchange(int attempt)
         {
             using (var http = new System.Net.Sockets.TcpClient())
