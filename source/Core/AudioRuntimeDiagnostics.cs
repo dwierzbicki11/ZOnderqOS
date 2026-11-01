@@ -89,6 +89,29 @@ namespace ZonderqOS.SystemCore
         /// Distinct left/right PCM16 signals (440/880 Hz) for independent
         /// stereo HDA capture verification. Diskless and opt-in only.
         /// </summary>
+        /// <summary>
+        /// Exercise two independent simultaneous PCM sources through the
+        /// bounded software mixer and the unmodified Cosmos HDA output.
+        /// The left-only 440 Hz and right-only 880 Hz inputs make both
+        /// contributions independently verifiable in QEMU's WAV capture.
+        /// No filesystem, new DMA path or production GUI activation.
+        /// </summary>
+        public static bool PlayMixedTestTone()
+        {
+            byte[] left = AudioTonePcm.GenerateSquareStereo16(48000, 440, 250, 4096);
+            byte[] right = AudioTonePcm.GenerateSquareStereo16(48000, 880, 250, 4096);
+            for (int at = 0; at < left.Length; at += 4)
+            {
+                left[at + 2] = 0;
+                left[at + 3] = 0;
+                right[at] = 0;
+                right[at + 1] = 0;
+            }
+            byte[] mixed = AudioPcmMixer.MixStereo16(left, right, 100, 100);
+            Console.WriteLine("[AUDIO] MIX two independent 48kHz stereo16 PCM sources left=440Hz right=880Hz bytes=" + mixed.Length);
+            return PlayPcm(mixed);
+        }
+
         public static bool PlayStereoSplitTestTone()
         {
             byte[] pcm = AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 880, 250, 4096);
