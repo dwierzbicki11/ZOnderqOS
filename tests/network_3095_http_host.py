@@ -13,8 +13,19 @@ import time
 
 PORT = 18096
 REQUEST = b"GET /health HTTP/1.0\r\nHost: 10.0.2.2\r\nConnection: close\r\n\r\n"
-BODY = (b"ZONDERQ3095-HTTP-OK\n" +
-        b"A" * 1024 + b"B" * 1024 + b"C" * 1024 + b"D" * 1024)
+def patterned_body(attempt: int) -> bytes:
+    """Deterministic, printable byte-varying 4 KiB RX stress payload.
+
+    Every position varies with both its offset and the TCP connection.
+    A repeated or shifted DMA fragment *inside* a 1 KiB block is no
+    longer masked by the old uniform A/B/C/D byte runs.
+    """
+    return bytes(33 + ((offset * 37 + (offset // 90) * 11 +
+                        (offset // 1024) * 23 + attempt * 29) % 90)
+                 for offset in range(4096))
+
+
+BODY = b"ZONDERQ3095-HTTP-OK\n" + patterned_body(1)
 RESPONSE = (b"HTTP/1.0 200 OK\r\n"
             b"Content-Type: text/plain\r\n"
             b"Content-Length: 4116\r\n"
@@ -25,18 +36,16 @@ assert len(BODY) == 4116
 def response_for_attempt(attempt: int) -> bytes:
     """Give every connection a distinct payload to detect stale RX DMA data.
 
-    Each 1 KiB body block changes on every connection. This catches stale
-    E1000E RX buffers even if only a later TCP segment is reused. HTTP headers,
-    total length and expected TCP sequence space remain unchanged.
+    Every byte position changes between connections and varies within each
+    1 KiB block. This detects shifted/stale fragments that uniform blocks
+    could conceal. HTTP headers and total length remain unchanged.
     """
     if not 1 <= attempt <= 6:
         raise ValueError("HTTP fixture attempt outside 1..6")
     if attempt == 1:
         return RESPONSE
     first_body_block = RESPONSE.index(b"ZONDERQ3095-HTTP-OK\n") + len(b"ZONDERQ3095-HTTP-OK\n")
-    return (RESPONSE[:first_body_block] +
-            b"".join(bytes([ord("A") + block + attempt - 1]) * 1024
-                     for block in range(4)))
+    return RESPONSE[:first_body_block] + patterned_body(attempt)
 
 
 def serve(port: int = PORT) -> None:
@@ -126,9 +135,17 @@ def self_test() -> None:
     for attempt in range(1, 7):
         body_blocks = response_for_attempt(attempt)[body_start:]
         assert len(body_blocks) == 4096
+        assert body_blocks == patterned_body(attempt)
         for block in range(4):
-            expected = bytes([ord("A") + block + attempt - 1]) * 1024
-            assert body_blocks[block * 1024:(block + 1) * 1024] == expected
+            chunk = body_blocks[block * 1024:(block + 1) * 1024]
+            assert len(set(chunk)) > 50, "uniform/low-diversity RX block"
+        if attempt > 1:
+            previous = patterned_body(attempt - 1)
+            assert all(a != b for a, b in zip(body_blocks, previous))
+    # The pattern must expose a one-byte shift even within one descriptor.
+    for attempt in range(1, 7):
+        block = patterned_body(attempt)[:1024]
+        assert block[1:] != block[:-1]
     print("[NET3095-N6-HOST-CONTRACT] PASS six distinct HTTP RX payloads per server and sequential rebind")
 
 
