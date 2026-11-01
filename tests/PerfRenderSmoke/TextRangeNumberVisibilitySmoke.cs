@@ -87,7 +87,9 @@ internal static class TextRangeNumberVisibilitySmoke
                 int y = positions[i, 1];
                 PreviousUInt(oldFrame, numbers[n], x, y, Color.White);
                 SmallTextRenderer.DrawUInt(newFrame, numbers[n], x, y, Color.White);
-                Compare(oldFrame, newFrame, "visible uint " + n + "/" + i);
+                Compare(oldFrame, newFrame, "visible uint " + n + "/" + i, true);
+                if (x == 0 && y == 0 && oldFrame.DrawCalls != newFrame.DrawCalls)
+                    throw new Exception("Fully visible number changed Canvas calls");
             }
 
         // The previous start + count overflowed for int.MaxValue. The
@@ -97,7 +99,24 @@ internal static class TextRangeNumberVisibilitySmoke
         PreviousRange(expected, text, 2, text.Length - 2, 1, 1, Color.White);
         SmallTextRenderer.DrawRange(actual, text, 2, int.MaxValue, 1, 1, Color.White);
         Compare(expected, actual, "saturated range", true);
-        Console.WriteLine("Text range/number: 37 exact visible framebuffer and call-count comparisons.");
+        // Long numeric labels often extend beyond narrow task-manager columns.
+        // The optimized path must draw the same visible digits with fewer
+        // Canvas calls, including when only the final digit is visible.
+        int[] offsets = { -110, -100, -80, -40, -4, 0, 127 };
+        int reduced = 0;
+        foreach (int x in offsets)
+        {
+            Canvas oldFrame = new Canvas(128, 48);
+            Canvas newFrame = new Canvas(128, 48);
+            PreviousUInt(oldFrame, ulong.MaxValue, x, 0, Color.White);
+            SmallTextRenderer.DrawUInt(newFrame, ulong.MaxValue, x, 0, Color.White);
+            Compare(oldFrame, newFrame, "partial uint " + x, true);
+            if (newFrame.DrawCalls < oldFrame.DrawCalls)
+                reduced++;
+        }
+        if (reduced < 3)
+            throw new Exception("Numeric clipping did not reduce Canvas calls");
+        Console.WriteLine("Text range/number: 37 visible and 7 partial numeric framebuffer comparisons.");
     }
 
     private static void VerifyOffscreen()
@@ -136,15 +155,15 @@ internal static class TextRangeNumberVisibilitySmoke
         return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
     }
 
-    private static double TimeNumber(bool optimized, Canvas canvas, int repetitions)
+    private static double TimeNumber(bool optimized, Canvas canvas, int repetitions, int x)
     {
         long start = Stopwatch.GetTimestamp();
         for (int i = 0; i < repetitions; i++)
         {
             if (optimized)
-                SmallTextRenderer.DrawUInt(canvas, ulong.MaxValue, 128, 0, Color.White);
+                SmallTextRenderer.DrawUInt(canvas, ulong.MaxValue, x, 0, Color.White);
             else
-                PreviousUInt(canvas, ulong.MaxValue, 128, 0, Color.White);
+                PreviousUInt(canvas, ulong.MaxValue, x, 0, Color.White);
         }
         return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
     }
@@ -196,6 +215,11 @@ internal static class TextRangeNumberVisibilitySmoke
             TimeRange(optimized, canvas, text, iterations, -930), false);
         Benchmark("fully visible DrawRange", (optimized, canvas, iterations) =>
             TimeRange(optimized, canvas, "Task Manager", iterations, 0), false);
-        Benchmark("offscreen DrawUInt", TimeNumber);
+        Benchmark("offscreen DrawUInt", (optimized, canvas, iterations) =>
+            TimeNumber(optimized, canvas, iterations, 128));
+        Benchmark("partially visible DrawUInt", (optimized, canvas, iterations) =>
+            TimeNumber(optimized, canvas, iterations, -100), false);
+        Benchmark("fully visible DrawUInt", (optimized, canvas, iterations) =>
+            TimeNumber(optimized, canvas, iterations, 0), false);
     }
 }
