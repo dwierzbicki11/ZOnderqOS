@@ -63,9 +63,27 @@ namespace ZonderqOS.SystemCore
         public static byte[] ScaleStereo16ChannelsWithFade(
             byte[] pcm, int leftPercent, int rightPercent, int fadeMilliseconds)
         {
+            return ScaleStereo16ChannelsWithFadeAndSilence(
+                pcm, leftPercent, rightPercent, fadeMilliseconds, 0);
+        }
+
+        /// <summary>
+        /// Opt-in HDA probe variant: append whole, zeroed PCM frames after the
+        /// fade in the same allocation. A 16 KiB silent tail covers one stock
+        /// HDA cyclic DMA buffer, giving the player time to flush the release
+        /// envelope before stopping the stream. This does not alter DMA/IRQ.
+        /// The combined output stays within the two-second PCM budget.
+        /// </summary>
+        public static byte[] ScaleStereo16ChannelsWithFadeAndSilence(
+            byte[] pcm, int leftPercent, int rightPercent, int fadeMilliseconds,
+            int trailingSilenceBytes)
+        {
+            if (trailingSilenceBytes < 0 || trailingSilenceBytes > 16 * 1024 ||
+                trailingSilenceBytes % 4 != 0)
+                throw new ArgumentOutOfRangeException(nameof(trailingSilenceBytes));
             if (pcm == null || pcm.Length == 0 || pcm.Length % 4 != 0 ||
-                pcm.Length > 48000 * 2 * 4)
-                throw new ArgumentException("Up to two seconds of 48 kHz PCM16 stereo required.", nameof(pcm));
+                pcm.Length > 48000 * 2 * 4 - trailingSilenceBytes)
+                throw new ArgumentException("Up to two seconds of 48 kHz PCM16 stereo including silence required.", nameof(pcm));
             if (leftPercent < 0 || leftPercent > 100)
                 throw new ArgumentOutOfRangeException(nameof(leftPercent));
             if (rightPercent < 0 || rightPercent > 100)
@@ -75,7 +93,7 @@ namespace ZonderqOS.SystemCore
 
             int frames = pcm.Length / 4;
             int fadeFrames = Math.Min(fadeMilliseconds * 48, frames / 2);
-            byte[] output = new byte[pcm.Length];
+            byte[] output = new byte[pcm.Length + trailingSilenceBytes];
             for (int frame = 0; frame < frames; frame++)
             {
                 int envelope = fadeMilliseconds == 0 ? 1 :
