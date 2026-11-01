@@ -502,10 +502,16 @@ namespace ZonderqOS.SystemCore
                 int rightGain = volumePercent * (balancePercent < 0 ? 100 + balancePercent : 100) / 100;
                 // Fade-enabled playback uses one PCM output allocation
                 // instead of creating an intermediate scaled copy.
+                // The stock HDA output uses a 16 KiB cyclic DMA ring. A
+                // short fade can lose its final frames when the player stops
+                // while the ring still contains older full-level samples.
+                // Keep one ring of zero PCM *inside* the bounded source stream
+                // for opt-in fade probes, without changing the stock driver.
+                const int hdaDrainSilenceBytes = 16 * 1024;
                 byte[] scaled = fadeMilliseconds == 0
                     ? AudioPcmVolume.ScaleStereo16Channels(pcm, leftGain, rightGain)
-                    : AudioPcmVolume.ScaleStereo16ChannelsWithFade(
-                        pcm, leftGain, rightGain, fadeMilliseconds);
+                    : AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
+                        pcm, leftGain, rightGain, fadeMilliseconds, hdaDrainSilenceBytes);
                 bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled));
                 Console.WriteLine(accepted
                     ? "[AUDIO] PCM ACCEPTED_AND_DRAINED (not proof of audible output)"
