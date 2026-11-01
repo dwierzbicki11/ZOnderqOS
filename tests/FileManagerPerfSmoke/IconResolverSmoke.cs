@@ -309,11 +309,52 @@ internal static class IconResolverSmoke
             oldBytes + " B dispatched=" + newBytes + " B");
     }
 
+    private static void BenchmarkSuffixDistribution(string label, string[] suffixes)
+    {
+        // Separate controls prevent a mixed-workload win from concealing a
+        // regression for recognized file types or unknown binary extensions.
+        string[] names = new string[4096];
+        for (int i = 0; i < names.Length; i++)
+            names[i] = "long-directory-entry-" + i + suffixes[i % suffixes.Length];
+        for (int i = 0; i < 6; i++)
+        {
+            TimeSuffixDispatch(false, names);
+            TimeSuffixDispatch(true, names);
+        }
+        double[] oldMs = new double[7], newMs = new double[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if ((i & 1) == 0)
+            {
+                oldMs[i] = TimeSuffixDispatch(false, names);
+                newMs[i] = TimeSuffixDispatch(true, names);
+            }
+            else
+            {
+                newMs[i] = TimeSuffixDispatch(true, names);
+                oldMs[i] = TimeSuffixDispatch(false, names);
+            }
+        }
+        double a = Median(oldMs), b = Median(newMs);
+        Console.WriteLine("HOST A/B 4096 " + label + " suffixes: previous=" +
+            a.ToString("F5") + " ms dispatched=" + b.ToString("F5") +
+            " ms ratio=" + (a / b).ToString("F2") + "x");
+    }
+
     internal static void Run()
     {
         Verify();
         Benchmark();
         BenchmarkSnapshot();
         BenchmarkSuffixDispatch();
+        BenchmarkSuffixDistribution("recognized", new string[]
+        {
+            ".txt", ".jpeg", ".png", ".cfg", ".docx", ".md", ".CONF",
+            ".bmp", ".doc", ".jpg", ".pdf", ".svg", ".log", ".ini"
+        });
+        BenchmarkSuffixDistribution("unknown", new string[]
+        {
+            ".exe", ".dat", ".unknown", ".tar.gz", "", ".bin", ".mp4", ".zip"
+        });
     }
 }
