@@ -38,6 +38,9 @@ namespace ZonderqOS.GUI
         // Tiny displays show a page of matching Start entries at a time.
         // Paging never changes the keyboard selection of a hidden button.
         private int tinyFirstResult;
+        // -1 means the full desktop grid was last used; otherwise this
+        // remembers the visible tiny page size across mode changes.
+        private int lastTinyCapacity = -1;
 
         private const int Padding = 14;
         private const int HeaderHeight = 66;
@@ -188,6 +191,16 @@ namespace ZonderqOS.GUI
                 return;
             }
 
+            // Tiny pages use page-local selection. Expand it back to a
+            // global filtered index before returning to the full grid.
+            if (lastTinyCapacity >= 0)
+            {
+                if (selectedResult >= 0)
+                    selectedResult += tinyFirstResult;
+                tinyFirstResult = 0;
+                lastTinyCapacity = -1;
+            }
+
             SetPowerVisibility(true);
             int cardWidth = PinnedCardWidth;
             int visiblePinned = 0;
@@ -312,6 +325,22 @@ namespace ZonderqOS.GUI
             int rows = TinyRows;
             int capacity = columns * rows;
             int total = CountMatchingResults();
+            if (capacity != lastTinyCapacity)
+            {
+                // Preserve the selected APPLICATION, not its old column
+                // number. Reflowing a 3-column page to 2 columns must not
+                // make Enter launch the neighboring tile.
+                int selectedGlobal = selectedResult >= 0
+                    ? tinyFirstResult + selectedResult : -1;
+                if (capacity > 0 && selectedGlobal >= 0 && selectedGlobal < total)
+                {
+                    tinyFirstResult = (selectedGlobal / capacity) * capacity;
+                    selectedResult = selectedGlobal - tinyFirstResult;
+                }
+                else if (capacity <= 0)
+                    selectedResult = -1;
+                lastTinyCapacity = capacity;
+            }
             if (capacity <= 0 || total == 0)
                 tinyFirstResult = 0;
             else

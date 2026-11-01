@@ -355,11 +355,11 @@ internal static class Program
         menu.Width = 184; // Three visible tiles become two after mode change.
         menu.Render(Canvas);
         var pins = Buttons(menu, "pinnedButtons");
-        Check(pins[0].Visible && pins[1].Visible && !pins[2].Visible,
-            "resized tiny viewport hides the old third tile");
+        Check(!pins[0].Visible && pins[2].Visible,
+            "resized tiny viewport follows the selected third tile");
         menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
-        Check(pinned[1] == 1 && pinned[2] == 0,
-            "Enter uses a visible selected tile after shrinking the viewport");
+        Check(pinned[2] == 1 && pinned[1] == 0,
+            "Enter preserves the selected application across a viewport shrink");
 
         menu.Visible = true;
         menu.ResetSearch();
@@ -391,6 +391,28 @@ internal static class Program
         Check(pinned[0] == 1, "Home+Enter launches the first pinned app");
     }
 
+    private static void TinyNormalSelectionTransition()
+    {
+        var menu = MakeMenu(304, 180);
+        for (int i = 0; i < 4; i++)
+            menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.DownArrow });
+        menu.Width = 480;
+        menu.Height = 420;
+        menu.Render(Canvas);
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
+        Check(pinned[3] == 1 && pinned[0] == 0,
+            "tiny-to-normal mode change keeps the selected app identity");
+
+        menu = MakeMenu(480, 420);
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.End });
+        menu.Width = 304;
+        menu.Height = 180;
+        menu.Render(Canvas);
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
+        Check(tools[5] == 1 && tools[0] == 0,
+            "normal-to-tiny mode change keeps the selected tool identity");
+    }
+
     private static void Normal640x480()
     {
         var menu = MakeMenu(480, 420);
@@ -416,6 +438,7 @@ internal static class Program
         TinyKeyboardCrossPage();
         TinySelectionAfterResize();
         TinyKeyboardHomeEnd();
+        TinyNormalSelectionTransition();
         Console.WriteLine("PASS: " + assertions + " production StartMenu/Button C# assertions");
         return 0;
     }
