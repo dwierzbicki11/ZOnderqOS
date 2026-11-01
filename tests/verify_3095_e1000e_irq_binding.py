@@ -10,7 +10,7 @@ import argparse
 from pathlib import Path
 import re
 
-from verify_3095_e1000e_irq_trace import count_notifications
+from verify_3095_e1000e_irq_trace import count_notifications, count_legacy_cycles
 
 MAC = r"([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})"
 NODE = r"(pci:[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7])"
@@ -93,10 +93,12 @@ def check_legacy_notification(serial: str, qemu_stderr: str) -> str:
     binding = check_guest_line(serial)
     health = check_driver_health(serial)
     legacy, msi, msix = count_notifications(qemu_stderr)
-    if legacy < 1:
-        raise ValueError("no QEMU E1000E legacy IRQ assertion for guest legacy line")
+    cycles = count_legacy_cycles(qemu_stderr)
+    if legacy < 4 or cycles < 4:
+        raise ValueError("fewer than four QEMU E1000E legacy INTx low/high cycles")
     return (f"{binding} {health} qemu-legacy-assertions={legacy} "
-            f"msi={msi} msix={msix}; guest handler execution UNPROVEN")
+            f"qemu-legacy-cycles={cycles} msi={msi} msix={msix}; "
+            "guest handler execution UNPROVEN")
 
 
 def self_test() -> None:
@@ -109,9 +111,14 @@ def self_test() -> None:
     )
     assert "line=11" in check_guest_line(serial)
     assert "ISR-UNPROVEN" in check_driver_health(serial)
-    trace = "e1000e_irq_legacy_notify IRQ line state: 1\n"
-    assert "qemu-legacy-assertions=1" in check_legacy_notification(serial, trace)
+    trace = ("e1000e_irq_legacy_notify IRQ line state: 0\n"
+             "e1000e_irq_legacy_notify IRQ line state: 1\n") * 4
+    assert "qemu-legacy-assertions=4" in check_legacy_notification(serial, trace)
+    assert "qemu-legacy-cycles=4" in check_legacy_notification(serial, trace)
     for invalid_trace in ("", "e1000e_irq_legacy_notify IRQ line state: 0\n",
+                          "e1000e_irq_legacy_notify IRQ line state: 1\n" * 5,
+                          ("e1000e_irq_legacy_notify IRQ line state: 0\n"
+                           "e1000e_irq_legacy_notify IRQ line state: 1\n") * 3,
                           "e1000e_irq_msi_notify MSI notify 0x80\n",
                           "e1000e_irq_msix_notify_vec MSI-X notify vector 0x0\n",
                           "qemu-system-x86_64: terminating on signal 15 from pid 12 (bash)\n" + trace):
