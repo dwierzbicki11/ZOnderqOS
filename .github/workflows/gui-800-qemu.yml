@@ -67,6 +67,7 @@ jobs:
           SERVICE_QEMU_PROBE_FILE_MANAGER: '1'
           SERVICE_QEMU_PROBE_TASK_MANAGER: '1'
           SERVICE_QEMU_PROBE_MODAL_ALT_F4: ${{ matrix.resolution == '800x600' && '1' || '0' }}
+          SERVICE_QEMU_PROBE_START_TASKBAR: ${{ matrix.resolution == '800x600' && '1' || '0' }}
         run: |
           set -euo pipefail
           bash tools/smoke-services-qemu.sh \
