@@ -72,6 +72,28 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertNotIn("-drive ", audio_section)
         self.assertNotIn("ZONDERQDATA", audio_section)
 
+    def test_bounded_pcm_mixer_is_isolated(self):
+        mixer = read("source/Core/AudioPcmMixer.cs")
+        runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
+        kernel = read("Kernel.cs")
+        host = read("tests/AudioPciSmoke/AudioPciSmoke.csproj")
+        harness = read("tools/smoke-audio-qemu.py")
+        workflow = read(".github/workflows/audio-qemu.yml")
+        self.assertIn("MixStereo16(", mixer)
+        self.assertIn("short.MaxValue", mixer)
+        self.assertIn("short.MinValue", mixer)
+        self.assertIn("MaxPcmBytes = 48000 * 2 * 4", mixer)
+        self.assertIn("AudioPcmMixer.cs", host)
+        self.assertIn("PlayMixedTestTone()", runtime)
+        self.assertIn('if (command == "mix")', kernel)
+        self.assertIn('"mix": 440', harness)
+        self.assertIn('args.command in ("wavstereo32", "mix")', harness)
+        self.assertIn("--command mix", workflow)
+        self.assertIn("audio-qemu-mix-out/*.wav", workflow)
+        for forbidden in ("Disk.", "File.", "WriteBlock(", "TryMount(",
+                          "AllocateDma(", "EnableBusMastering(", "AudioManager."):
+            self.assertNotIn(forbidden, mixer)
+
     def test_real_pcm_path_is_opt_in_only(self):
         runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
         kernel = read("Kernel.cs")
