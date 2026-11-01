@@ -2726,5 +2726,60 @@ class FileManagerZeroWidthGrid3095(unittest.TestCase):
                     self.assertEqual(rows, 0)
 
 
+
+class NarrowCaptionControls3095(unittest.TestCase):
+    def test_caption_render_and_hit_testing_share_visible_button_count(self):
+        self.assertIn("private int VisibleCaptionControls()", WINDOW)
+        self.assertIn("int usableWidth = Width - RightPadding;", WINDOW)
+        self.assertIn("usableWidth < ButtonSize ? 0 :", WINDOW)
+        self.assertIn("System.Math.Min(3, usableWidth / ButtonSize)", WINDOW)
+        mouse = WINDOW.split("public void HandleMouse(int mouseX", 1)[1].split(
+            "private int GetResizeMode(", 1)[0]
+        render = WINDOW.split("public override void Render(Canvas canvas)", 1)[1].split(
+            "private void DrawResizeHint(", 1)[0]
+        for section in (mouse, render):
+            self.assertIn("int visibleControls = VisibleCaptionControls();", section)
+            self.assertIn("if (visibleControls >= 1", section)
+            self.assertIn("if (visibleControls >= 2", section)
+            self.assertIn("if (visibleControls >= 3", section)
+        self.assertIn("mouseX >= X && mouseX < X + Width", mouse)
+        self.assertIn(
+            "int controlsLeft = X + Width - RightPadding - visibleControls * ButtonSize;",
+            mouse)
+        self.assertIn(
+            "if (!inTitle || (visibleControls > 0 && mouseX >= controlsLeft))",
+            mouse)
+        self.assertIn("int titleWidth = Width - visibleControls * ButtonSize - 28;", render)
+        self.assertIn("if (titleWidth > 0)", render)
+
+    def test_all_caption_buttons_and_titles_fit_extreme_client_widths(self):
+        # The rightmost Close button has priority. At tiny widths, hidden
+        # Maximize/Minimize must not intercept clicks outside the window.
+        for width in range(1, 4097):
+            count = 0 if width - 4 < 30 else min(3, (width - 4) // 30)
+            close = width - 4 - 30
+            positions = [close - i * 30 for i in range(count)]
+            self.assertGreaterEqual(count, 0)
+            self.assertLessEqual(count, 3)
+            for x in positions:
+                self.assertGreaterEqual(x, 0)
+                self.assertLessEqual(x + 30, width)
+            controls_left = width - 4 - count * 30
+            if count:
+                self.assertEqual(min(positions), controls_left)
+            title_width = width - count * 30 - 28
+            if title_width > 0:
+                self.assertLessEqual(12 + title_width, controls_left)
+            # The three standard controls must remain unchanged at 800px,
+            # 1366px and Full HD; only sub-94px windows collapse buttons.
+            if width >= 94:
+                self.assertEqual(count, 3)
+        for width, expected in ((1, 0), (33, 0), (34, 1), (63, 1),
+                                (64, 2), (93, 2), (94, 3), (320, 3),
+                                (800, 3), (1366, 3), (1920, 3)):
+            count = 0 if width - 4 < 30 else min(3, (width - 4) // 30)
+            self.assertEqual(count, expected)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
