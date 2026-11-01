@@ -67,9 +67,11 @@ def check_driver_health(serial: str) -> str:
     if not match:
         raise ValueError("malformed E1000E DriverKit health marker")
     node, resources, published, sources, faults = match.groups()
-    if node != "pci:0000:00:02.0" or int(resources) < 1 or \
-            int(published) != 1 or int(sources) < 1 or int(faults) != 0:
-        raise ValueError("E1000E DriverKit state invalid after stress")
+    bound = [m for line in lines if (m := BOUND.fullmatch(line))]
+    if (node != "pci:0000:00:02.0" or len(bound) != 1 or
+            bound[0].group(1) != node or int(resources) < 1 or
+            int(published) != 1 or int(sources) < 1 or int(faults) != 0):
+        raise ValueError("E1000E DriverKit state invalid or mismatched after stress")
     link = "[NET3095-N6] POST_STRESS_LINK=PASS mac="
     link_lines = [line for line in lines if line.startswith(link)]
     guest = [m for line in lines if (m := GUEST.fullmatch(line))]
@@ -127,6 +129,7 @@ def self_test() -> None:
         serial.replace("POST_STRESS_LINK=PASS mac=52:54:00:12:34:56", "POST_STRESS_LINK=PASS mac=02:54:00:12:34:56"),
         serial.replace("isr_executions=unknown", "isr_executions=1"),
         serial.replace("node=pci:0000:00:02.0", "node=pci:0000:00:03.0"),
+        serial.replace("pci:0000:00:02.0 offer", "pci:0000:00:03.0 offer"),
         serial.replace("[NET3095-N6] DRIVER_HEALTH=PASS", "[NET3095-N6] DRIVER_HEALTH=FAIL"),
         serial.replace("[NET3095-N6] POST_STRESS_LINK=PASS", "[NET3095-N6] POST_STRESS_LINK=FAIL"),
         serial.replace("[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\n", ""),
