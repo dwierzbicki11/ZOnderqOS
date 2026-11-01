@@ -1,5 +1,6 @@
 #if ZONDERQ_NETWORK_N1_PROBE
 using System;
+using System.Diagnostics;
 using System.Threading;
 using DiagnosticLog = Cosmos.Kernel.System.Diagnostics.Log;
 using Cosmos.Kernel.System.Diagnostics;
@@ -549,8 +550,26 @@ namespace ZonderqOS
                 int received = 0;
                 int readCalls = 0;
                 int largestRead = 0;
+                // ReceiveTimeout bounds each individual blocking Read, but a
+                // peer sending one byte every few seconds can keep resetting
+                // that timeout. Bound the complete response independently.
+                // Stopwatch is monotonic; use division rather than multiplying
+                // an arbitrary runtime frequency by the deadline.
+                long rxStart = Stopwatch.GetTimestamp();
+                long rxFrequency = Stopwatch.Frequency;
+                if (rxFrequency <= 0 || rxStart <= 0)
+                {
+                    Log("[NET3095-N6][FAIL] HTTP RX monotonic clock unavailable");
+                    return false;
+                }
                 while (received < response.Length)
                 {
+                    long rxElapsed = Stopwatch.GetTimestamp() - rxStart;
+                    if (rxElapsed < 0 || rxElapsed / rxFrequency >= 45)
+                    {
+                        Log("[NET3095-N6][FAIL] HTTP RX total deadline exceeded attempt=" + attempt);
+                        return false;
+                    }
                     // An isolated probe must not wait indefinitely for a peer
                     // trickling one byte per timed Read(). Real QEMU typically
                     // completes this 4202-byte fixture in about six reads.
@@ -567,6 +586,14 @@ namespace ZonderqOS
                     if (read > largestRead)
                         largestRead = read;
                     received += read;
+                    // A single blocking Read may cross the total deadline.
+                    // Recheck after the read as well as before the next one.
+                    rxElapsed = Stopwatch.GetTimestamp() - rxStart;
+                    if (rxElapsed < 0 || rxElapsed / rxFrequency >= 45)
+                    {
+                        Log("[NET3095-N6][FAIL] HTTP RX total deadline exceeded attempt=" + attempt);
+                        return false;
+                    }
                     // Catch a resource/IRQ registration change between RX
                     // completions, not only before and after the TCP stream.
                     // These are source counts, never guest ISR counters.
