@@ -39,7 +39,7 @@ internal static class AudioMixerFastPathSmoke
             byte[] result = optimized
                 ? AudioPcmMixer.MixScheduledStereo16(new[] { pcm }, new[] { 2400 }, new[] { 100 })
                 : LegacySingle(pcm, 2400, 100, 0);
-            checksum ^= result[2400 * 4 + i * 4];
+            checksum = unchecked(checksum * 16777619 ^ result[2400 * 4 + i * 4]);
         }
         return Stopwatch.GetTimestamp() - start;
     }
@@ -70,6 +70,31 @@ internal static class AudioMixerFastPathSmoke
             }
             Same(clip, original, "input PCM must remain unchanged");
         }
+        // Fast paths must own their output; never return a mutable alias.
+        byte[] owned = new byte[48000];
+        random.NextBytes(owned);
+        byte[] originalOwned = (byte[])owned.Clone();
+        byte[][] ownedClips = { owned };
+        int[] ownedStarts = { 2400 };
+        int[] ownedGains = { 100 };
+        AudioPcmMixer.MixScheduledStereo16(ownedClips, ownedStarts, ownedGains);
+        long allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
+        byte[] ownedResult = AudioPcmMixer.MixScheduledStereo16(
+            ownedClips, ownedStarts, ownedGains);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - allocatedBefore;
+        Check(allocated >= ownedResult.Length && allocated < ownedResult.Length + 512,
+            "unity fast path allocates only its output PCM buffer");
+        Same(ownedResult, LegacySingle(owned, 2400, 100, 0),
+            "unity fast path retains exact PCM and pre-roll");
+        ownedResult[2400 * 4] ^= 0xff;
+        Same(owned, originalOwned, "unity output may not alias source PCM");
+        byte[] zeroFadeResult = AudioPcmMixer.MixScheduledStereo16WithFade(
+            ownedClips, ownedStarts, ownedGains, 0, 4096);
+        Same(zeroFadeResult, LegacySingle(owned, 2400, 100, 4096),
+            "zero-fade fast path preserves the HDA drain");
+        zeroFadeResult[2400 * 4] ^= 0xff;
+        Same(owned, originalOwned, "zero-fade output may not alias source PCM");
+
         byte[] a = { 0xff, 0x7f, 0x00, 0x80 };
         byte[] b = { 0x34, 0x12, 0x78, 0x56 };
         byte[] silent = AudioPcmMixer.MixScheduledStereo16(
