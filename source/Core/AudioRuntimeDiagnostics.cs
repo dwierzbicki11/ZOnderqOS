@@ -162,11 +162,18 @@ namespace ZonderqOS.SystemCore
                 finalLeft[at + 3] = 0;
             }
 
+            // QEMU's TCG HDA backend can underrun during initial stream
+            // startup. Prime the unchanged stock AudioManager with 250 ms
+            // of leading zero PCM before the three scheduled effects. This
+            // does not change their relative frame offsets (0/50/300 ms),
+            // the 50 ms inter-effect gap, or the production GUI audio path.
+            // Keep the lead-in inside the existing two-second PCM budget.
+            const int preRollFrames = 12000; // 250 ms at 48 kHz
             byte[] mixed = AudioPcmMixer.MixScheduledStereo16(
                 new[] { left, right, finalLeft },
-                new[] { 0, 2400, 14400 },
+                new[] { preRollFrames, preRollFrames + 2400, preRollFrames + 14400 },
                 new[] { 100, 100, 100 });
-            Console.WriteLine("[AUDIO] MIXQUEUE 48kHz stereo16 clips=3 " +
+            Console.WriteLine("[AUDIO] MIXQUEUE 48kHz stereo16 clips=3 preroll=250ms " +
                 "left=440Hz@0ms right=880Hz@50ms left=660Hz@300ms bytes=" + mixed.Length);
             return PlayPcm(mixed);
         }
