@@ -276,6 +276,10 @@ namespace ZonderqOS
                     // 128 TX submissions. PCAP validates every sequence.
                     for (ushort sequence = 2; sequence <= 5; sequence++)
                     {
+                        if (!CheckE1000ECheckpoint("post_before", sequence, sourceMac,
+                            initialIp, initialMask, initialGateway,
+                            baselineResources, baselineIrqSources))
+                            return;
                         IcmpClient postBurstPing = new IcmpClient();
                         try
                         {
@@ -293,6 +297,10 @@ namespace ZonderqOS
                         {
                             postBurstPing.Close();
                         }
+                        if (!CheckE1000ECheckpoint("post_after", sequence, sourceMac,
+                            initialIp, initialMask, initialGateway,
+                            baselineResources, baselineIrqSources))
+                            return;
                     }
                     Log("[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2 count=4");
                 }
@@ -328,6 +336,10 @@ namespace ZonderqOS
                 Log("[NET3095-N6] FINAL_ICMP_ATTEMPT=START");
                 try
                 {
+                    if (!CheckE1000ECheckpoint("final_before", 1, sourceMac,
+                        initialIp, initialMask, initialGateway,
+                        baselineResources, baselineIrqSources))
+                        return;
                     IcmpClient finalPing = new IcmpClient();
                     try
                     {
@@ -340,12 +352,16 @@ namespace ZonderqOS
                             Log("[NET3095-N6][FAIL] final ICMP timeout or wrong peer");
                             return;
                         }
-                        Log("[NET3095-N6] FINAL_ICMP=PASS from=10.0.2.2 seq=1");
                     }
                     finally
                     {
                         finalPing.Close();
                     }
+                    if (!CheckE1000ECheckpoint("final_after", 1, sourceMac,
+                        initialIp, initialMask, initialGateway,
+                        baselineResources, baselineIrqSources))
+                        return;
+                    Log("[NET3095-N6] FINAL_ICMP=PASS from=10.0.2.2 seq=1");
                 }
                 catch (Exception finalIcmpException)
                 {
@@ -459,6 +475,27 @@ namespace ZonderqOS
             return TryGetE1000EDriverKitHealth(out var node) &&
                 node.HeldResourceCount == expectedResources &&
                 node.InterruptCount == expectedIrqSources;
+        }
+
+        // Verify read-only PCI/IRQ ownership AND the original DHCP lease
+        // around each post-burst ICMP exchange. This catches transient
+        // unbind/link/lease churn that a final snapshot could miss. Neither
+        // the source count nor a successful ICMP reply proves ISR execution.
+        private static bool CheckE1000ECheckpoint(string phase, ushort sequence,
+            string expectedMac, string expectedIp, string expectedMask,
+            string expectedGateway, int expectedResources, int expectedIrqSources)
+        {
+            if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources) ||
+                !IsE1000ELeaseStable(expectedMac, expectedIp, expectedMask, expectedGateway))
+            {
+                Log("[NET3095-N6][FAIL] ICMP driver/link/lease unstable phase=" +
+                    phase + " seq=" + sequence);
+                return false;
+            }
+            Log("[NET3095-N6] ICMP_DRIVER_CHECK=PASS phase=" + phase +
+                " seq=" + sequence + " resources=" + expectedResources +
+                " irq_sources=" + expectedIrqSources);
+            return true;
         }
 
         private static bool TryHttpExchange(int attempt, string expectedMac,
