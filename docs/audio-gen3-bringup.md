@@ -450,3 +450,43 @@ The new `mixqueue` path requires its own successful captured-WAV run;
 do not infer a PASS from the previous head or host tests. Stock Cosmos
 3.0.95, one vCPU, no guest disk, production GUI audio disabled, no
 SMP/SMT modifications and no ZONDERQDATA access remain unchanged.
+
+## 2026-11-01: real QEMU HDA scheduled-queue underrun investigation
+
+The [QEMU capture #41303330837](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41303330837)
+**FAILED** its strict `mixqueue` gate. The job built the stock 3.0.95
+ISO and independently passed the other HDA PCM/WAV capture commands.
+The failure was **not** a Python-only or synthetic fixture failure.
+
+Downloaded the job's actual `audio-qemu-mixqueue-out/captured.wav` artifact
+(44,100 Hz, stereo16, 42,115 frames = 955.0 ms) and measured:
+- right-channel onset: +50.0 ms relative to first sustained left PCM;
+- first left clip (60..140 ms window): 99.86% active;
+- right clip (100..180 ms window): 99.72% active;
+- final left clip (325..375 ms window): **20.82% active**, with a
+  **39.6 ms** contiguous silent gap;
+- right channel (325..345 ms) and left channel (425..445 ms) both remained
+  **99.77% active after their scheduled ends**.
+
+These are actual captured backend samples: the last effect was delayed /
+interrupted and prior channel audio persisted unexpectedly. The ~85.3 ms
+16 KiB HDA ring period makes a DMA refill/TCG timing problem plausible,
+**but neither the WAV nor QEMU's INTx line activity proves an ISR bug**.
+
+New `tools/analyze-audio-queue-dropouts.py` quantifies these windows on
+every QEMU run, and its synthetic positive/negative tests are wired into
+host CI. It is **diagnostic only**: the original
+`verify-audio-queue-capture.py` remains the strict PASS/FAIL gate.
+A second, explicitly experimental QEMU `mixqueue --icount-auto` boot
+compares TCG virtual clock pacing; it cannot override a failing default
+capture. No change to the stock driver, production GUI, SMP/SMT,
+root selection, FAT32 or host disk access.
+
+The opt-in C# playback entry also validates nonempty, frame-aligned,
+<=2-second PCM16 and the published 48 kHz stereo16 device format before
+attempting playback. It does not claim that accepted PCM reached a
+physical speaker.
+
+**Next:** compare the two real QEMU captures, then investigate stock
+HDA DMA ring refill and guest ISR delivery with independent counters
+or controlled emulation; do not remove the quality gate to obtain green CI.
