@@ -50,6 +50,83 @@ internal static class Program
         Console.WriteLine("PASS: 193 CPU prefix equivalence/reference checks (0..127 and 1000)");
     }
 
+    private static void VerifyCpuPercentText()
+    {
+        for (int percent = 0; percent <= 100; percent++)
+        {
+            string expected = percent.ToString() + "%";
+            string padded = percent.ToString().PadLeft(4) + "%";
+            Assert(HtopMonitor.CpuPercentText(percent) == expected,
+                "CPU percent text mismatch " + percent);
+            Assert(HtopMonitor.PaddedCpuPercentText(percent) == padded,
+                "padded CPU percent text mismatch " + percent);
+            Assert(object.ReferenceEquals(HtopMonitor.CpuPercentText(percent),
+                HtopMonitor.CpuPercentText(percent)), "CPU percent text cache " + percent);
+            Assert(object.ReferenceEquals(HtopMonitor.PaddedCpuPercentText(percent),
+                HtopMonitor.PaddedCpuPercentText(percent)), "padded CPU percent cache " + percent);
+        }
+        Console.WriteLine("PASS: 404 exact CPU percent text/padding/reference checks (0..100%)");
+    }
+
+    private static void BenchmarkCpuPercentText(bool padded)
+    {
+        int[] usage = new int[1024];
+        for (int i = 0; i < usage.Length; i++)
+            usage[i] = (i * 37 + i / 7) % 101;
+        Func<long> legacy = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < usage.Length; i++)
+            {
+                string digits = usage[i].ToString();
+                string value = (padded ? digits.PadLeft(4) : digits) + "%";
+                checksum += value.Length + value[0] + value[value.Length - 1];
+            }
+            return checksum;
+        };
+        Func<long> cached = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < usage.Length; i++)
+            {
+                string value = padded ? HtopMonitor.PaddedCpuPercentText(usage[i])
+                    : HtopMonitor.CpuPercentText(usage[i]);
+                checksum += value.Length + value[0] + value[value.Length - 1];
+            }
+            return checksum;
+        };
+        Assert(legacy() == cached(), "CPU percent benchmark checksum mismatch");
+        for (int i = 0; i < 15; i++) { sink ^= legacy(); sink ^= cached(); }
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= legacy();
+        long oldBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        before = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= cached();
+        long newBytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert(oldBytes > 0, "legacy percent formatting must allocate");
+        Assert(newBytes == 0, "cached percent formatting allocated " + newBytes + " B");
+        double[] oldMs = new double[7], newMs = new double[7];
+        for (int sample = 0; sample < 7; sample++)
+        {
+            if ((sample & 1) == 0)
+            {
+                oldMs[sample] = Time(legacy, 200);
+                newMs[sample] = Time(cached, 200);
+            }
+            else
+            {
+                newMs[sample] = Time(cached, 200);
+                oldMs[sample] = Time(legacy, 200);
+            }
+        }
+        double a = Median(oldMs), b = Median(newMs);
+        Console.WriteLine("HOST A/B CPU percent " + (padded ? "padded" : "plain") +
+            " 1024 values: legacy=" + a.ToString("F4") +
+            "ms cached=" + b.ToString("F4") + "ms ratio=" +
+            (a / b).ToString("F2") + "x allocations=" + oldBytes +
+            "B -> " + newBytes + "B per 1024 labels (7 alternating samples)");
+    }
+
     private static void BenchmarkCpuPrefixes()
     {
         int[] indices = new int[1024];
@@ -436,6 +513,9 @@ internal static class Program
 
     private static int Main()
     {
+        VerifyCpuPercentText();
+        BenchmarkCpuPercentText(false);
+        BenchmarkCpuPercentText(true);
         VerifyCpuBars();
         BenchmarkCpuBars();
         VerifyCpuPrefixes();

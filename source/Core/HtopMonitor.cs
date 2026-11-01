@@ -112,6 +112,26 @@ namespace ZonderqOS.SystemCore
                 ? CachedCpuPrefixes[cpu]
                 : "CPU " + cpu.ToString().PadLeft(3) + " [";
 
+        // Cached immutable numeric CPU labels avoid allocating strings for each
+        // core, process row and total on every monitor refresh. Percent() always
+        // returns 0..100, so array indexing is safe for all production callers.
+        private static readonly string[] CachedCpuPercents = BuildCpuPercents(false);
+        private static readonly string[] CachedPaddedCpuPercents = BuildCpuPercents(true);
+
+        private static string[] BuildCpuPercents(bool padded)
+        {
+            var values = new string[101];
+            for (int percent = 0; percent < values.Length; percent++)
+            {
+                string digits = percent.ToString();
+                values[percent] = (padded ? digits.PadLeft(4) : digits) + "%";
+            }
+            return values;
+        }
+
+        internal static string CpuPercentText(int percent) => CachedCpuPercents[percent];
+        internal static string PaddedCpuPercentText(int percent) => CachedPaddedCpuPercents[percent];
+
         internal bool SortByCpu = true;
         internal int Scroll;
         internal int CpuCount { get; private set; }
@@ -154,13 +174,13 @@ namespace ZonderqOS.SystemCore
                 }
                 int usage = warm && hasAccounting ? Percent(delta, (ulong)elapsed) : 0;
                 cpuUsage[cpu] = usage;
-                string value = !hasAccounting ? "N/A" : !warm ? "..." : usage + "%";
+                string value = !hasAccounting ? "N/A" : !warm ? "..." : CpuPercentText(usage);
                 lines.Add(CpuPrefix(cpu) + CpuBar(usage) + "] " + value);
                 previousCpu[cpu] = busy;
             }
             ulong totalCapacity = warm && count > 0 ? (ulong)elapsed * (ulong)count : 0;
             TotalCpuPercent = warm && hasAccounting ? Percent(totalBusyDelta, totalCapacity) : 0;
-            lines.Add("CPU total: " + (!hasAccounting ? "N/A" : !warm ? "..." : TotalCpuPercent + "%"));
+            lines.Add("CPU total: " + (!hasAccounting ? "N/A" : !warm ? "..." : CpuPercentText(TotalCpuPercent)));
 
             // These are Cosmos' real physical page-allocator figures, not GC heap estimates.
             ulong total = MemoryInfo.TotalPages;
@@ -229,7 +249,7 @@ namespace ZonderqOS.SystemCore
             {
                 lines.Add((row.Pid == 0 ? "-" : row.Pid.ToString()).PadLeft(5) + " " + row.Thread.Id.ToString().PadLeft(6) + " " +
                     row.Thread.CpuId.ToString().PadLeft(4) + "  " + row.Thread.State.ToString().PadRight(10) + " " +
-                    row.Percent.ToString().PadLeft(4) + "%  " + row.Name);
+                    PaddedCpuPercentText(row.Percent) + "  " + row.Name);
             }
             foreach (KernelProcess process in processes)
             {
