@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import re
 import struct
 
 from verify_3095_network_n1 import BROADCAST, ETHER_TYPE, pcap_frames
@@ -26,6 +27,8 @@ QUEUED = "[NET3095-N6] TX_BURST=QUEUED count=128"
 TAG = b"ZONDERQ3095-BURST-"
 POST_START = "[NET3095-N6] POST_BURST_ICMP_ATTEMPT=START"
 POST_PASS = "[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2 count=4"
+RTT = re.compile(r"\[NET3095-N6\] POST_BURST_ICMP_RTT seq=([0-9]+) elapsed_ms=([0-9]+)")
+RTT_PREFIX = "[NET3095-N6] POST_BURST_ICMP_RTT "
 
 
 def check_markers(serial: str) -> None:
@@ -37,6 +40,19 @@ def check_markers(serial: str) -> None:
         raise ValueError("missing or duplicate N6 burst/ICMP markers")
     if [lines.index(marker) for marker in markers] != sorted(lines.index(marker) for marker in markers):
         raise ValueError("N6 TX burst or post-burst ICMP markers out of order")
+    # Guest-side receive latency is diagnostic (not ISR evidence), but
+    # require all four distinct samples to reject missing/duplicated logs.
+    samples = [(i, RTT.fullmatch(line)) for i, line in enumerate(lines)
+               if line.startswith(RTT_PREFIX)]
+    if len(samples) != 4 or any(match is None for _, match in samples):
+        raise ValueError("missing or malformed post-burst ICMP RTT samples")
+    if [int(match.group(1)) for _, match in samples] != [2, 3, 4, 5]:
+        raise ValueError("post-burst ICMP RTT sequence order invalid")
+    if any(int(match.group(2)) > 5000 for _, match in samples):
+        raise ValueError("post-burst ICMP RTT exceeds receive timeout")
+    if not (lines.index(POST_START) < samples[0][0] < samples[1][0] <
+            samples[2][0] < samples[3][0] < lines.index(POST_PASS)):
+        raise ValueError("post-burst ICMP RTT markers out of order")
 
 def last_http_frame(serial: str, frames: list[bytes]) -> int:
     """Locate the second HTTP FIN acknowledgment in the original PCAP order."""
@@ -178,7 +194,10 @@ def validate(serial: str, pcap: bytes) -> str:
             "frames followed by correlated ICMP RX/TX; DMA ISR execution UNPROVEN")
 
 def self_test() -> None:
-    serial = "\n".join([HTTP_REPEAT_PASS, START, QUEUED, POST_START, POST_PASS])
+    rtt_markers = [f"[NET3095-N6] POST_BURST_ICMP_RTT seq={seq} elapsed_ms={seq * 10}"
+                   for seq in range(2, 6)]
+    serial = "\n".join([HTTP_REPEAT_PASS, START, QUEUED, POST_START,
+                        *rtt_markers, POST_PASS])
     frames = []
     for sequence in range(COUNT):
         raw = BROADCAST + MAC + ETHER_TYPE + TAG + f"{sequence:03d}".encode("ascii")
@@ -291,6 +310,14 @@ def self_test() -> None:
         serial.replace(START + "\n" + QUEUED, QUEUED + "\n" + START),
         serial.replace(POST_START + "\n" + POST_PASS, POST_PASS + "\n" + POST_START),
         serial + "\n[NET3095-N6][FAIL] queue rejected",
+        serial.replace(rtt_markers[0], ""),
+        serial.replace(rtt_markers[0], rtt_markers[1]),
+        serial.replace(rtt_markers[1], rtt_markers[1] + "\n" + rtt_markers[1]),
+        serial.replace(rtt_markers[0], rtt_markers[0].replace("seq=2", "seq=8")),
+        serial.replace(rtt_markers[0], rtt_markers[0].replace("elapsed_ms=20", "elapsed_ms=5001")),
+        serial.replace(rtt_markers[0], rtt_markers[0].replace("elapsed_ms=20", "elapsed_ms=bad")),
+        serial.replace(rtt_markers[0] + "\n" + rtt_markers[1],
+                       rtt_markers[1] + "\n" + rtt_markers[0]),
     ]
     for item in bad_serial:
         try:
