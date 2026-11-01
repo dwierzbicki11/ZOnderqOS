@@ -144,11 +144,6 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
-        /// Distinct 3520 Hz PCM16 stereo WAV at 32 kHz, resampled by the
-        /// bounded read-only loader to 48 kHz and played via stock HDA.
-        /// No filesystem, host disk or production GUI is accessed.
-        /// </summary>
-        /// <summary>
         /// Independent 440/880 Hz stereo channels in a 32 kHz PCM16 WAV.
         /// Exercises the bounded read-only RIFF loader, integer resampler,
         /// and stock HDA together. No guest disk or production GUI access.
@@ -170,6 +165,11 @@ namespace ZonderqOS.SystemCore
             }
         }
 
+        /// <summary>
+        /// Distinct 3520 Hz PCM16 stereo WAV at 32 kHz, resampled by the
+        /// bounded read-only loader to 48 kHz and played via stock HDA.
+        /// No filesystem, host disk or production GUI is accessed.
+        /// </summary>
         public static bool PlayWave32000TestTone()
         {
             try
