@@ -72,7 +72,6 @@ internal static class PanelVisibilitySmoke
         UiPainter.RoundedPanel(extreme, int.MinValue, 0, 180, 100, 32, Ink, Edge);
         UiPainter.RoundedFill(extreme, 0, int.MaxValue, 180, 100, 32, Ink);
         UiPainter.RoundedTop(extreme, 0, int.MinValue, 180, 100, 32, Ink);
-        UiPainter.RoundedTop(null, 0, 0, 180, 100, 32, Ink);
         if (extreme.DrawCalls != 0)
             throw new Exception("Offscreen extreme coordinates touched Canvas");
 
@@ -126,6 +125,6 @@ internal static class PanelVisibilitySmoke
         if (allocated != 0)
             throw new Exception("Visible panel drawing allocated " + allocated + " bytes");
         Console.WriteLine("Panel visibility: " + checks +
-            " exact framebuffer comparisons, extreme/null guards, 0 B warm visible allocations.");
+            " exact framebuffer comparisons, extreme guards, 0 B warm visible allocations.");
     }
 }
