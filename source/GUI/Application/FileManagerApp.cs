@@ -83,14 +83,16 @@ namespace ZonderqOS.GUI.Apps
         // toward zero, so (43 - 44) / 42 + 1 would incorrectly draw a button.
         internal int ToolbarButtonCountForView => view.Width < 44 || view.Height < 44 ? 0 :
             Math.Min(4, (view.Width - 44) / 42 + 1);
-        internal int GridWidthForView => Math.Max(1, view.Width - SidebarWidthForView - 12);
+        // A client narrower than the 12px chrome inset has no drawable grid.
+        // Returning a fake 1px width would paint outside the framebuffer.
+        internal int GridWidthForView => Math.Max(0, view.Width - SidebarWidthForView - 12);
         // Do not invent a 40px grid when the client is shorter than the
         // toolbar + footer. A 200x200 framebuffer can leave only 24px.
         internal int GridHeightForView => Math.Max(0, view.Height - FooterHeight - ContentTop - 8);
         // Use a final partial row only when >=40px is available. Compact
         // tiles fit inside that space; smaller fragments stay noninteractive.
         internal const int MinPartialTileHeight = 40;
-        internal int GridRowsForView => GridHeightForView < MinPartialTileHeight ? 0 :
+        internal int GridRowsForView => GridWidthForView <= 0 || GridHeightForView < MinPartialTileHeight ? 0 :
             Math.Max(1, (GridHeightForView + TileHeight + TileGap - MinPartialTileHeight) /
                 (TileHeight + TileGap));
 
@@ -1479,7 +1481,7 @@ namespace ZonderqOS.GUI.Apps
                 RenderSidebar(canvas, sidebarX, contentY, sidebarW, contentH);
             }
 
-            if (contentH > 0)
+            if (contentH > 0 && gridW > 0)
             {
                 canvas.DrawFilledRectangle(ContentBackground, gridX, contentY, gridW, contentH);
                 canvas.DrawRectangle(Color.FromArgb(53, 62, 72), gridX, contentY, gridW, contentH);
