@@ -67,10 +67,12 @@ namespace ZonderqOS.GUI.Apps
                 }
                 // Dense inversions are usually an unsorted enumeration,
                 // not independent renames. Stop probing after four inversions
-                // in a twelve-entry window; the stable merge is cheaper than
-                // scanning up to 65 inversions and attempting local repair.
+                // in a small fraction of the directory; the stable merge is
+                // cheaper than scanning up to 65 inversions. Scale the
+                // window for large folders so 128+ clustered swaps do not
+                // pay for a long scan only to fall back to merge.
                 // Widely spaced renames still reach the bounded O(n) path.
-                if (inversions == 4 && i - firstInversion <= 12)
+                if (inversions == 4 && i - firstInversion <= Math.Max(12, count / 32))
                 {
                     cannotRepairLocally = true;
                     break;
