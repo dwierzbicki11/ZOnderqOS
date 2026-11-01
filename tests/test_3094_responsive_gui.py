@@ -240,9 +240,27 @@ class ResponsiveGui3094(unittest.TestCase):
         # just the initial edge. Host C# smoke exercises actual dispatch.
         self.assertIn("desktopGesture = target == null;", dispatch)
         self.assertIn("else if (desktopGesture)", dispatch)
-        self.assertIn("if (!leftClicked && !rightClicked)", dispatch)
+        self.assertIn("if (!isHeld)", dispatch)
         self.assertIn("desktopGesture = false;", dispatch)
+        self.assertIn("mouseCapture = target;", dispatch)
         self.assertIn("target?.HandleMouse(mouseX, mouseY", dispatch)
+
+    def test_window_mouse_capture_survives_focus_and_disposal(self):
+        dispatch = APPLICATION_MANAGER.split(
+            "public void HandleMouse(int mouseX, int mouseY, bool leftClicked,", 1
+        )[1].split("public void Update()", 1)[0]
+        self.assertIn("bool wasHeld = leftWasClicked || rightWasClicked;", dispatch)
+        self.assertIn("target = mouseCapture;", dispatch)
+        self.assertIn("if (wasHeld)", dispatch)
+        self.assertIn("!applications.Contains(target)", dispatch)
+        self.assertIn("target.Window.IsMinimized", dispatch)
+        self.assertIn("desktopGesture = isHeld;", dispatch)
+        self.assertLess(dispatch.index("target = mouseCapture;"),
+                        dispatch.index("target?.HandleMouse("))
+        close = APPLICATION_MANAGER.split("public void Close(Application application)", 1)[1].split(
+            "public void CloseAll()", 1)[0]
+        self.assertIn("if (mouseCapture == application)", close)
+        self.assertIn("desktopGesture = true;", close)
 
 
     def test_drag_respects_same_work_area_inset_as_restore(self):
