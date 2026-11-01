@@ -2962,6 +2962,8 @@ class TinyStartMenu3095(unittest.TestCase):
         self.assertIn("button.Visible = show;", START_MENU)
         self.assertIn("bool powerFits = Width >= 160", START_MENU)
         self.assertIn("SetPowerVisibility(powerFits);", START_MENU)
+        self.assertIn("PlaceTinyPower(shutdownButton, 0", START_MENU)
+        self.assertNotIn("Button[] power =", START_MENU)
         self.assertIn("if (button == null || !button.Visible)", START_MENU)
 
         for width, height in ((304, 180), (184, 140), (224, 180),
