@@ -29,7 +29,7 @@ namespace Cosmos.Kernel.System.Graphics.Fonts
 
 namespace Cosmos.Kernel.System.Input
 {
-    public enum Key { None, Backspace, UpArrow, DownArrow, Home, End, Enter, NumEnter }
+    public enum Key { None, Backspace, UpArrow, DownArrow, Home, End, Enter, NumEnter, PageUp, PageDown }
     public sealed class KeyEvent
     {
         public Key Key { get; set; }
@@ -240,6 +240,34 @@ internal static class Program
         Check(extras[0].Visible, "search exposes a matching tool on tiny screen");
         menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.Enter });
         CheckSingleAction(1, 1, 1);
+
+        // Restore the unfiltered list and page past the first three entries.
+        menu.Visible = true;
+        menu.ResetSearch();
+        menu.Render(Canvas);
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.PageDown });
+        menu.Render(Canvas);
+        Check(!pins[0].Visible && pins[3].Visible,
+            "PageDown exposes the next three pinned results");
+        Click(menu, pins[3].X + 8, pins[3].Y + 8);
+        CheckSingleAction(2, 1, 1);
+        Check(pinned[3] == 1, "second page click opens the intended app");
+
+        menu.Visible = true;
+        menu.HandleKeyboard(new KeyEvent { Key = ConsoleKeyEx.PageDown });
+        menu.Render(Canvas);
+        Check(extras[0].Visible, "third page contains tool actions");
+        Click(menu, extras[0].X + 8, extras[0].Y + 8);
+        CheckSingleAction(2, 2, 1);
+        Check(tools[0] == 2, "tool can be launched from search or paging");
+
+        menu.Visible = true;
+        menu.ResetSearch();
+        menu.Render(Canvas);
+        Click(menu, menu.X + menu.Width - 30, menu.Y + 12);
+        Check(!pins[0].Visible && pins[3].Visible,
+            "mouse next-page control advances without launching an app");
+        CheckSingleAction(2, 2, 1);
     }
 
     private static void Tiny200x200()
