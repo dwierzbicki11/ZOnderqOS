@@ -57,7 +57,7 @@ class ModifiedKeySafetyTests(unittest.TestCase):
         )[0]
         # Dialog creation, context-menu action, and opening the selected entry.
         self.assertEqual(
-            handler.count("if (key.Key == ConsoleKeyEx.Enter && key.Modifiers == 0)"), 3
+            handler.count("if ((key.Key == ConsoleKeyEx.Enter || key.Key == ConsoleKeyEx.NumEnter) &&"), 3
         )
         self.assertNotIn("if (key.Key == ConsoleKeyEx.Enter)", handler)
         self.assertIn("if (key.KeyChar != '\\0' && !char.IsControl(key.KeyChar)", handler)
@@ -127,7 +127,7 @@ class ModifiedKeySafetyTests(unittest.TestCase):
         handler = text.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
             "public bool UpdateInteractions(", 1
         )[0]
-        enter = handler.split("if (key.Key == ConsoleKeyEx.Enter)", 1)[1].split(
+        enter = handler.split("if (key.Key == ConsoleKeyEx.Enter || key.Key == ConsoleKeyEx.NumEnter)", 1)[1].split(
             "if (key.Key == ConsoleKeyEx.Delete)", 1
         )[0]
         self.assertIn("if (key.Modifiers == 0)", enter)
