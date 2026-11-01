@@ -335,33 +335,54 @@ namespace ZonderqOS.GUI.Icons
             }
         }
 
+        // When all 256 scaled-icon slots are occupied, render directly without
+        // allocating a per-frame buffer. The old fallback divided once for
+        // every pixel; a quotient/remainder accumulator produces the SAME
+        // nearest-neighbor source column using only additions and one carry.
         private static void BlitScaledDirect(Canvas canvas, int[] source, int sourceWidth, int sourceHeight,
             int x, int y, int width, int height)
         {
-            int startX = x < 0 ? -x : 0;
-            int startY = y < 0 ? -y : 0;
+            int startX = x < 0 ? (int)Math.Min((long)width, -(long)x) : 0;
+            int startY = y < 0 ? (int)Math.Min((long)height, -(long)y) : 0;
             int endX = width;
             int endY = height;
 
-            if (x + endX > canvas.Width) endX = canvas.Width - x;
-            if (y + endY > canvas.Height) endY = canvas.Height - y;
+            if ((long)x + endX > canvas.Width) endX = (int)((long)canvas.Width - x);
+            if ((long)y + endY > canvas.Height) endY = (int)((long)canvas.Height - y);
             if (startX >= endX || startY >= endY)
                 return;
 
+            int columnStep = sourceWidth / width;
+            int remainderStep = sourceWidth % width;
+            long initialColumn = (long)startX * sourceWidth;
+            int firstSourceX = (int)(initialColumn / width);
+            int firstRemainder = (int)(initialColumn % width);
+            int carryThreshold = width - remainderStep;
+
             for (int dy = startY; dy < endY; dy++)
             {
-                int sy = (dy * sourceHeight) / height;
+                int sy = (int)((long)dy * sourceHeight / height);
                 int sourceRow = sy * sourceWidth;
                 int destinationY = y + dy;
+                int sx = firstSourceX;
+                int remainder = firstRemainder;
 
                 for (int dx = startX; dx < endX; dx++)
                 {
-                    int sx = (dx * sourceWidth) / width;
                     int argb = source[sourceRow + sx];
-                    if (((uint)argb >> 24) == 0)
-                        continue;
+                    if (((uint)argb >> 24) != 0)
+                        canvas.DrawPoint(Color.FromArgb(argb), x + dx, destinationY);
 
-                    canvas.DrawPoint(Color.FromArgb(argb), x + dx, destinationY);
+                    sx += columnStep;
+                    if (remainder >= carryThreshold)
+                    {
+                        remainder -= carryThreshold;
+                        sx++;
+                    }
+                    else
+                    {
+                        remainder += remainderStep;
+                    }
                 }
             }
         }
