@@ -2620,5 +2620,61 @@ class FileManagerTinyChrome3095(unittest.TestCase):
                     self.assertLessEqual(8 + index * 42 + 36, width)
 
 
+
+class FileManagerCompactMenuAndFooter3095(unittest.TestCase):
+    def test_compact_menu_stays_above_footer_and_dismisses_after_shrink(self):
+        self.assertIn("internal bool CanShowContextMenu => view.Width >= 32 &&", FILE_MANAGER)
+        self.assertIn("view.Height >= FooterHeight + 12 + 9 * ContextMenuItemCount", FILE_MANAGER)
+        self.assertIn("Math.Max(9, Math.Min(ContextMenuItemHeight,", FILE_MANAGER)
+        update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
+            "public override void HandleMouse(", 1)[0]
+        mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
+            "private void ResetClickSequence()", 1)[0]
+        menu = FILE_MANAGER.split("private void Menu(Canvas canvas)", 1)[1].split(
+            "private void Dialog(Canvas canvas)", 1)[0]
+        self.assertIn("if (contextMenuVisible && !CanShowContextMenu)", update)
+        self.assertIn("if (!CanShowContextMenu)", mouse)
+        self.assertIn("if (!app.CanShowContextMenu)", menu)
+        self.assertIn("bool showShortcut = !string.IsNullOrEmpty(shortcut) && menuWidth >= 160;", menu)
+        self.assertIn("SmallTextRenderer.DrawClipped(canvas, text,", menu)
+        self.assertIn("int textOffset = Math.Max(0,", menu)
+
+        for width in range(1, 601):
+            menu_width = min(240, max(1, width - 8))
+            for height in range(1, 501):
+                allowed = width >= 32 and height >= 24 + 12 + 9 * 7
+                if not allowed:
+                    continue
+                row_height = max(9, min(29, (height - 24 - 12) // 7))
+                menu_height = row_height * 7
+                menu_x = max(4, min(width // 2, width - menu_width - 4))
+                menu_y = max(4, min(height // 2, height - menu_height - 24 - 4))
+                self.assertLessEqual(menu_x + menu_width + 4, width)
+                self.assertLessEqual(menu_y + menu_height + 24 + 4, height)
+                self.assertGreaterEqual(row_height, 9)
+                self.assertGreaterEqual((row_height - 9) // 2, 0)
+                if menu_width < 160:
+                    self.assertGreaterEqual(menu_width - 20, 4)
+
+    def test_footer_labels_never_exceed_client_width(self):
+        footer = FILE_MANAGER.split("private void RenderFooter(Canvas canvas, int footerY)", 1)[1].split(
+            "private void Grid(Canvas canvas", 1)[0]
+        self.assertIn("int statusMaxWidth = Math.Max(0, Math.Min(", footer)
+        self.assertIn("X + Width - 10 - statusX", footer)
+        self.assertIn("if (statusMaxWidth > 0)", footer)
+        self.assertIn("if (hintMaxWidth > 0)", footer)
+        for width in range(9, 601):
+            for hint_width in (0, 30, 80, 180, 500):
+                hint_x = max(width // 2, width - 10 - hint_width)
+                status_x = 10
+                status_width = max(0, min(hint_x - status_x - 12,
+                                          width - 10 - status_x))
+                hint_max = max(0, width - 10 - hint_x)
+                if status_width:
+                    self.assertLessEqual(status_x + status_width, width - 10)
+                if hint_max:
+                    self.assertLessEqual(hint_x + hint_max, width - 10)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
