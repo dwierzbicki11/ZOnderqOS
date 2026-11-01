@@ -97,6 +97,28 @@ namespace ZonderqOS.GUI.Apps
             Array.Clear(scratch, 0, count);
         }
 
+        /// <summary>
+        /// Rebuild a visible view from an already sorted directory snapshot.
+        /// Single forward pass, stable order, no lowercase string allocations
+        /// or repeated RemoveAt shifts. The destination list is reused.
+        /// </summary>
+        internal static void Filter(List<FileEntry> sorted, List<FileEntry> visible, string search)
+        {
+            visible.Clear();
+            if (string.IsNullOrEmpty(search))
+            {
+                visible.AddRange(sorted);
+                return;
+            }
+
+            for (int i = 0; i < sorted.Count; i++)
+            {
+                FileEntry item = sorted[i];
+                if (item.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
+                    visible.Add(item);
+            }
+        }
+
         private static void InsertionSort(List<FileEntry> entries)
         {
             for (int i = 1; i < entries.Count; i++)

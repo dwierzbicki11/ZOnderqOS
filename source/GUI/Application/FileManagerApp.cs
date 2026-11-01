@@ -16,7 +16,10 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action<string> nanoLauncher;
         private readonly FileManagerView view;
         private readonly List<FileEntry> entries = new List<FileEntry>();
+        // Sorted directory snapshot; filtering must never re-enumerate FAT32 on each keypress.
+        private readonly List<FileEntry> allEntries = new List<FileEntry>();
         private FileEntry[] sortScratch = new FileEntry[0];
+        private bool directorySnapshotValid;
         private readonly List<SidebarEntry> sidebarEntries = new List<SidebarEntry>();
 
         private string currentPath = "/root";
@@ -482,8 +485,10 @@ namespace ZonderqOS.GUI.Apps
             if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar))
             {
                 if (searchText.Length < 48)
+                {
                     searchText += key.KeyChar;
-                Refresh();
+                    RefreshFromSnapshot();
+                }
             }
         }
 
@@ -677,6 +682,10 @@ namespace ZonderqOS.GUI.Apps
 
         private void RefreshInternal(string keep)
         {
+            // Refresh is the only path that reads a directory. Search keystrokes
+            // reuse this sorted snapshot; F5, navigation and file mutations refresh it.
+            directorySnapshotValid = false;
+            allEntries.Clear();
             entries.Clear();
             selectedIndex = -1;
             scrollIndex = 0;
@@ -690,16 +699,37 @@ namespace ZonderqOS.GUI.Apps
                 Add(Directory.GetDirectories(currentPath), true);
                 Add(Directory.GetFiles(currentPath), false);
                 Sort();
-
-                if (!string.IsNullOrEmpty(searchText))
-                    Filter();
-
+                directorySnapshotValid = true;
+                ApplyFilterFromSnapshot();
                 status = string.IsNullOrEmpty(keep) ? entries.Count + " item(s)" : keep;
             }
             catch (Exception ex)
             {
+                // Do not present a partial directory listing after an I/O failure.
+                allEntries.Clear();
+                entries.Clear();
                 status = "Read error: " + ex.Message;
             }
+        }
+
+        private void RefreshFromSnapshot()
+        {
+            if (!directorySnapshotValid)
+            {
+                Refresh();
+                return;
+            }
+
+            ApplyFilterFromSnapshot();
+            status = entries.Count + " item(s)";
+        }
+
+        private void ApplyFilterFromSnapshot()
+        {
+            FileEntrySorter.Filter(allEntries, entries, searchText);
+            selectedIndex = -1;
+            scrollIndex = 0;
+            contextMenuVisible = false;
         }
 
         private void RebuildSidebar()
@@ -790,22 +820,13 @@ namespace ZonderqOS.GUI.Apps
                 if (string.IsNullOrEmpty(name))
                     name = path;
 
-                entries.Add(new FileEntry(name, path.Replace('\\', '/'), directory));
+                allEntries.Add(new FileEntry(name, path.Replace('\\', '/'), directory));
             }
         }
 
         private void Sort()
         {
-            FileEntrySorter.Sort(entries, ref sortScratch);
-        }
-
-        private void Filter()
-        {
-            for (int i = entries.Count - 1; i >= 0; i--)
-            {
-                if (entries[i].Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) < 0)
-                    entries.RemoveAt(i);
-            }
+            FileEntrySorter.Sort(allEntries, ref sortScratch);
         }
 
         public string CurrentPath { get { return currentPath; } }

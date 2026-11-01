@@ -115,6 +115,86 @@ internal static class Program
         Console.WriteLine("PASS: " + checks + " exact stable-order/reference checks; warm allocations=" + bytes + " B");
     }
 
+    private static void VerifyFilter()
+    {
+        var source = new List<ZonderqOS.GUI.Apps.FileEntry>(Make(2048, 41, false));
+        ZonderqOS.GUI.Apps.FileEntry[] scratch = null;
+        ZonderqOS.GUI.Apps.FileEntrySorter.Sort(source, ref scratch);
+        var visible = new List<ZonderqOS.GUI.Apps.FileEntry>(source.Count);
+        string[] filters = { "", "file", "FILE", "file000", "dup", "DUPLICATE", "not-found", "0000" };
+        foreach (string filter in filters)
+        {
+            var expected = new List<ZonderqOS.GUI.Apps.FileEntry>(source);
+            if (filter.Length != 0)
+            {
+                string lowered = filter.ToLowerInvariant();
+                for (int i = expected.Count - 1; i >= 0; i--)
+                    if (!expected[i].Name.ToLowerInvariant().Contains(lowered))
+                        expected.RemoveAt(i);
+            }
+
+            ZonderqOS.GUI.Apps.FileEntrySorter.Filter(source, visible, filter);
+            Assert(expected.Count == visible.Count, "filter count " + filter);
+            for (int i = 0; i < expected.Count; i++)
+                Assert(object.ReferenceEquals(expected[i], visible[i]), "filter order " + filter + " i=" + i);
+        }
+
+        // Subsequent search edits must reuse list storage and never touch the source.
+        ZonderqOS.GUI.Apps.FileEntrySorter.Filter(source, visible, "");
+        int capacity = visible.Capacity;
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        ZonderqOS.GUI.Apps.FileEntrySorter.Filter(source, visible, "file");
+        long bytes = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert(bytes == 0, "warm filter allocated " + bytes + " bytes");
+        Assert(visible.Capacity == capacity, "filter grew warmed destination");
+        Assert(source.Count == 2048, "filter mutated sorted snapshot");
+        Console.WriteLine("PASS: production filter stable equivalence, 0 B warm allocations");
+    }
+
+    private static void BenchmarkFilter()
+    {
+        var source = new List<ZonderqOS.GUI.Apps.FileEntry>(Make(2048, 99, false));
+        var work = new List<ZonderqOS.GUI.Apps.FileEntry>(2048);
+        const string search = "file000";
+        for (int i = 0; i < 10; i++)
+            ZonderqOS.GUI.Apps.FileEntrySorter.Filter(source, work, search);
+        double[] oldMs = new double[7];
+        double[] newMs = new double[7];
+        for (int i = 0; i < 7; i++)
+        {
+            // Same source and filter, median of 20 repeats; alternate order.
+            bool newFirst = (i & 1) != 0;
+            for (int side = 0; side < 2; side++)
+            {
+                bool optimized = side == 0 ? newFirst : !newFirst;
+                long start = Stopwatch.GetTimestamp();
+                for (int rep = 0; rep < 20; rep++)
+                {
+                    if (optimized)
+                        ZonderqOS.GUI.Apps.FileEntrySorter.Filter(source, work, search);
+                    else
+                    {
+                        work.Clear();
+                        work.AddRange(source);
+                        string lowered = search.ToLowerInvariant();
+                        for (int j = work.Count - 1; j >= 0; j--)
+                            if (!work[j].Name.ToLowerInvariant().Contains(lowered))
+                                work.RemoveAt(j);
+                    }
+                    sink += work.Count;
+                }
+                double ms = (Stopwatch.GetTimestamp() - start) * 1000.0 /
+                    Stopwatch.Frequency / 20.0;
+                if (optimized) newMs[i] = ms;
+                else oldMs[i] = ms;
+            }
+        }
+        double a = Median(oldMs), b = Median(newMs);
+        Console.WriteLine("HOST A/B filter n=2048 search=" + search +
+            " old=" + a.ToString("F4") + " ms new=" + b.ToString("F4") +
+            " ms speedup=" + (a / b).ToString("F2") + "x");
+    }
+
     private static double Median(double[] values)
     {
         Array.Sort(values);
@@ -173,6 +253,8 @@ internal static class Program
     private static void Main()
     {
         Verify();
+        VerifyFilter();
+        BenchmarkFilter();
         Benchmark(32, true);
         Benchmark(128, false);
         Benchmark(512, false);
