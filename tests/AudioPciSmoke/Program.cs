@@ -922,6 +922,54 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject partial stereo frame");
 
+
+        // Production C# PCM envelope: verify both channel edges, plateau,
+        // short-clip clamping, signed extremes and immutable input.
+        byte[] fadeSource = AudioTonePcm.GenerateDualSquareStereo16(48000, 440, 880, 250, 4096);
+        byte[] fadeCopy = (byte[])fadeSource.Clone();
+        byte[] faded = AudioPcmVolume.FadeStereo16(fadeSource, 20);
+        Expect(faded.Length == fadeSource.Length, "fade preserves frame count");
+        int fadeFrames = 20 * 48;
+        for (int frame = 0; frame < fadeSource.Length / 4; frame++)
+        {
+            int at = frame * 4;
+            int envelope = Math.Min(fadeFrames, Math.Min(frame, fadeSource.Length / 4 - 1 - frame));
+            for (int channel = 0; channel < 2; channel++)
+            {
+                int offset = at + channel * 2;
+                short original = (short)(fadeSource[offset] | (fadeSource[offset + 1] << 8));
+                short actual = (short)(faded[offset] | (faded[offset + 1] << 8));
+                Expect(actual == original * envelope / fadeFrames, "fade exact signed sample");
+                Expect(fadeSource[offset] == fadeCopy[offset] &&
+                    fadeSource[offset + 1] == fadeCopy[offset + 1], "fade source immutable");
+            }
+        }
+        byte[] unchangedFade = AudioPcmVolume.FadeStereo16(fadeSource, 0);
+        Expect(!ReferenceEquals(unchangedFade, fadeSource), "zero fade returns distinct buffer");
+        for (int i = 0; i < fadeSource.Length; i++)
+            Expect(unchangedFade[i] == fadeSource[i], "zero fade is bit exact");
+        byte[] shortFade = AudioPcmVolume.FadeStereo16(new byte[] { 255, 127, 0, 128 }, 50);
+        Expect(shortFade.Length == 4 && shortFade[0] == 0 && shortFade[1] == 0 &&
+            shortFade[2] == 0 && shortFade[3] == 0, "single frame fades to silence");
+        byte[] twoFrames = AudioPcmVolume.FadeStereo16(new byte[] { 255, 127, 0, 128, 255, 127, 0, 128 }, 50);
+        Expect(Array.TrueForAll(twoFrames, b => b == 0), "two-frame fade has no edge transient");
+        rejected = false;
+        try { AudioPcmVolume.FadeStereo16(fadeSource, -1); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "reject negative fade");
+        rejected = false;
+        try { AudioPcmVolume.FadeStereo16(fadeSource, 51); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "reject fade above 50ms");
+        rejected = false;
+        try { AudioPcmVolume.FadeStereo16(new byte[3], 20); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject incomplete fade frame");
+        rejected = false;
+        try { AudioPcmVolume.FadeStereo16(new byte[48000 * 2 * 4 + 4], 20); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject fade buffer longer than two seconds");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
     }
 }

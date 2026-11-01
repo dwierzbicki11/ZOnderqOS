@@ -291,3 +291,17 @@ frequencies in two disjoint 80 ms windows; the C# host test checks decoded
 pitch, duration and channel separation. A successful host test alone does
 not establish that the QEMU output worked. No host disk, production audio,
 SMP/SMT or FAT32 write access is enabled by this diagnostic.
+
+### Optional 0..50 ms PCM fade (2026-11-01; verification pending)
+
+The isolated `fade N` console control applies a symmetric, integer linear
+attack/release envelope to 48 kHz stereo PCM16 **after** software volume and
+balance, before the stock HDA playback API. `fade 0` retains the previous
+bit-exact PCM path; `fade 20` suppresses abrupt start/end transitions for
+short notifications. The production helper rejects incomplete frames, clips
+over two seconds, and fades outside 0..50 ms. Short clips clamp the ramp to
+half their duration; input buffers are never mutated. Host C# tests check
+every output sample against the integer envelope and include malformed and
+signed edge cases. This feature remains opt-in, diskless, and isolated from
+the production GUI, FAT32, SMP/SMT, PCI configuration and codec registers.
+The new fade has **not yet been verified in a QEMU WAV capture**.

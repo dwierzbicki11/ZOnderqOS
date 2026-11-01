@@ -35,7 +35,7 @@ namespace ZonderqOS
                 Console.WriteLine();
 #if ZONDERQ_AUDIO_PROBE
                 Console.WriteLine("AUDIO HDA/PCM probe enabled: no disk mounts or account writes.");
-                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | wavmono | stereosplit | wav44 | wav22k | wav32k | wavstereo32 | wav8 | wav24 | wav32 | wavext | wavext20 | volume N | inputscan | volumes | help");
+                Console.WriteLine("Commands: audiodiag | audioinfo | tone | wavtone | wavmono | stereosplit | wav44 | wav22k | wav32k | wavstereo32 | wav8 | wav24 | wav32 | wavext | wavext20 | volume N | balance N | fade N | inputscan | volumes | help");
                 AudioRuntimeDiagnostics.PrintStatus();
 #else
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
@@ -337,6 +337,22 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "fade")
+            {
+                Console.WriteLine("[AUDIO] software fade=" + AudioRuntimeDiagnostics.FadeMilliseconds + "ms");
+                return;
+            }
+
+            if (command.StartsWith("fade ", StringComparison.Ordinal))
+            {
+                int milliseconds;
+                if (!int.TryParse(command.Substring(5).Trim(), out milliseconds))
+                    Console.WriteLine("[AUDIO] usage: fade 0..50");
+                else
+                    AudioRuntimeDiagnostics.SetFadeMilliseconds(milliseconds);
+                return;
+            }
+
             if (command == "volume")
             {
                 Console.WriteLine("[AUDIO] software volume=" + AudioRuntimeDiagnostics.VolumePercent + "%");
@@ -439,6 +455,8 @@ namespace ZonderqOS
                 Console.WriteLine("wav8      - decode RAM-only unsigned PCM8 mono WAV to stereo PCM16");
                 Console.WriteLine("wavext20  - decode RAM-only extensible PCM20-in-24 mono WAV");
                 Console.WriteLine("volume N  - software PCM gain 0..100%, opt-in AUDIO probe only");
+                Console.WriteLine("balance N - software stereo balance -100..100, opt-in only");
+                Console.WriteLine("fade N    - symmetric 0..50 ms PCM fade, opt-in only");
 #endif
                 Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");
                 Console.WriteLine("mousegui  - read-only fullscreen cursor and button test (ESC to exit)");

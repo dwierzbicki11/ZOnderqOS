@@ -15,6 +15,21 @@ namespace ZonderqOS.SystemCore
     {
         private static int volumePercent = 100;
         private static int balancePercent;
+        private static int fadeMilliseconds;
+
+        public static int FadeMilliseconds => fadeMilliseconds;
+
+        public static bool SetFadeMilliseconds(int milliseconds)
+        {
+            if (milliseconds < 0 || milliseconds > 50)
+            {
+                Console.WriteLine("[AUDIO] FADE REFUSED: expected 0..50 ms.");
+                return false;
+            }
+            fadeMilliseconds = milliseconds;
+            Console.WriteLine("[AUDIO] software fade=" + fadeMilliseconds + "ms (PCM envelope only)");
+            return true;
+        }
 
         public static int VolumePercent => volumePercent;
         // -100 = left only, +100 = right only; zero = equal channels.
@@ -407,6 +422,8 @@ namespace ZonderqOS.SystemCore
                 int leftGain = volumePercent * (balancePercent > 0 ? 100 - balancePercent : 100) / 100;
                 int rightGain = volumePercent * (balancePercent < 0 ? 100 + balancePercent : 100) / 100;
                 byte[] scaled = AudioPcmVolume.ScaleStereo16Channels(pcm, leftGain, rightGain);
+                if (fadeMilliseconds != 0)
+                    scaled = AudioPcmVolume.FadeStereo16(scaled, fadeMilliseconds);
                 bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled));
                 Console.WriteLine(accepted
                     ? "[AUDIO] PCM ACCEPTED_AND_DRAINED (not proof of audible output)"
