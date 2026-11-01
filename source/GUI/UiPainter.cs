@@ -77,24 +77,32 @@ namespace ZonderqOS.GUI
 
             long topFirst = Math.Max(0L, -(long)y);
             long topEnd = Math.Min((long)r, (long)canvas.Height - y);
-            for (int row = (int)topFirst; row < topEnd; row++)
+            if (topFirst < topEnd)
             {
-                int inset = CornerInset(r, row);
-                int next = row + 1 < r ? CornerInset(r, row + 1) : 0;
-                int edge = Math.Max(1, inset - next + 1);
-                Fill(canvas, border, x + inset, y + row, edge, 1);
-                Fill(canvas, border, x + width - inset - edge, y + row, edge, 1);
+                int inset = CornerInset(r, (int)topFirst);
+                for (int row = (int)topFirst; row < topEnd; row++)
+                {
+                    int next = row + 1 < r ? CornerInset(r, row + 1) : 0;
+                    int edge = Math.Max(1, inset - next + 1);
+                    Fill(canvas, border, x + inset, y + row, edge, 1);
+                    Fill(canvas, border, x + width - inset - edge, y + row, edge, 1);
+                    inset = next;
+                }
             }
 
             long bottomFirst = Math.Max(0L, (long)y + height - canvas.Height);
             long bottomEnd = Math.Min((long)r, (long)y + height);
-            for (int row = (int)bottomFirst; row < bottomEnd; row++)
+            if (bottomFirst < bottomEnd)
             {
-                int inset = CornerInset(r, row);
-                int next = row + 1 < r ? CornerInset(r, row + 1) : 0;
-                int edge = Math.Max(1, inset - next + 1);
-                Fill(canvas, border, x + inset, y + height - row - 1, edge, 1);
-                Fill(canvas, border, x + width - inset - edge, y + height - row - 1, edge, 1);
+                int inset = CornerInset(r, (int)bottomFirst);
+                for (int row = (int)bottomFirst; row < bottomEnd; row++)
+                {
+                    int next = row + 1 < r ? CornerInset(r, row + 1) : 0;
+                    int edge = Math.Max(1, inset - next + 1);
+                    Fill(canvas, border, x + inset, y + height - row - 1, edge, 1);
+                    Fill(canvas, border, x + width - inset - edge, y + height - row - 1, edge, 1);
+                    inset = next;
+                }
             }
         }
 
