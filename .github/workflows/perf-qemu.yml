@@ -5,6 +5,8 @@ on:
     branches: [perf/system-gen3]
     paths:
       - 'source/GUI/UiPainter.cs'
+      - 'source/GUI/TerminalBox.cs'
+      - 'source/GUI/Application/Terminal.cs'
       - '.github/workflows/perf-qemu.yml'
   workflow_dispatch:
 
