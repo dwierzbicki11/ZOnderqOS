@@ -33,10 +33,6 @@ internal static class IconTwoSizeCacheSmoke
         .GetField("sourceWidths", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
     private static readonly int[] SourceHeights = (int[])Manager
         .GetField("sourceHeights", BindingFlags.Static | BindingFlags.NonPublic).GetValue(null);
-    private static readonly Func<IconType, bool> EnsureSource =
-        (Func<IconType, bool>)Manager
-            .GetMethod("EnsureSource", BindingFlags.Static | BindingFlags.NonPublic)
-            .CreateDelegate(typeof(Func<IconType, bool>));
     private static readonly Action<Canvas, int[], int, int, int, int> DrawPoints =
         (Action<Canvas, int[], int, int, int, int>)Manager
             .GetMethod("BlitPoints", BindingFlags.Static | BindingFlags.NonPublic)
@@ -97,40 +93,6 @@ internal static class IconTwoSizeCacheSmoke
         return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
     }
 
-    private static double TimeDraw(bool optimized, IconType type, int[] source,
-        Canvas frame, int repeats)
-    {
-        long start = Stopwatch.GetTimestamp();
-        for (int i = 0; i < repeats; i++)
-        {
-            int width = (i & 1) == 0 ? WidthA : WidthB;
-            int height = (i & 1) == 0 ? HeightA : HeightB;
-            if (optimized)
-            {
-                IconManager.DrawScaled(frame, type, -12, 9, width, height);
-            }
-            else
-            {
-                // Previous production DrawScaled entry point: visibility,
-                // canonical type (FilePdf), EnsureSource, source validation,
-                // GetScaledPixels and point blit. Match its real overhead
-                // rather than comparing the new public API to a bare blitter.
-                if (frame == null || width <= 0 || height <= 0 ||
-                    -12 >= frame.Width || 9 >= frame.Height ||
-                    -12L + width <= 0 || 9L + height <= 0)
-                    continue;
-                if (!EnsureSource(type) || Sources[(int)type] == null ||
-                    SourceWidths[(int)type] <= 0 || SourceHeights[(int)type] <= 0)
-                    continue;
-                int[] pixels = GetScaled(type, source, 8, 8, width, height);
-                if (pixels == null)
-                    throw new Exception("Missing cached bitmap in draw baseline");
-                DrawPoints(frame, pixels, width, height, -12, 9);
-            }
-        }
-        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
-    }
-
     internal static void Verify()
     {
         int count = (int)Count.GetValue(null);
@@ -185,32 +147,7 @@ internal static class IconTwoSizeCacheSmoke
                         throw new Exception("Alternating icon changed framebuffer at " + pixel);
             }
 
-            Canvas oldFrame = new Canvas(128, 128);
-            Canvas newFrame = new Canvas(128, 128);
-            TimeDraw(false, type, source, oldFrame, 20);
-            TimeDraw(true, type, source, newFrame, 20);
-            const int renders = 200;
-            double[] beforeDraw = new double[5];
-            double[] afterDraw = new double[5];
-            for (int sample = 0; sample < 5; sample++)
-            {
-                if ((sample & 1) == 0)
-                {
-                    beforeDraw[sample] = TimeDraw(false, type, source, oldFrame, renders);
-                    afterDraw[sample] = TimeDraw(true, type, source, newFrame, renders);
-                }
-                else
-                {
-                    afterDraw[sample] = TimeDraw(true, type, source, newFrame, renders);
-                    beforeDraw[sample] = TimeDraw(false, type, source, oldFrame, renders);
-                }
-            }
-            Array.Sort(beforeDraw);
-            Array.Sort(afterDraw);
-            Console.WriteLine("Host .NET alternating icon DrawScaled: " + renders +
-                " rendered icons, median of 5 A/B; old scaler entry " +
-                beforeDraw[2].ToString("F2") + " ms, hot-size draw " +
-                afterDraw[2].ToString("F2") + " ms (not QEMU FPS).");
+
         }
         finally
         {
