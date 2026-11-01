@@ -66,11 +66,32 @@ namespace ZonderqOS.GUI
                 (long)x + (long)digits * 6 <= 0 || (long)y + 7 <= 0)
                 return;
 
+            // Avoid decoding invisible leading/trailing digits on partially
+            // scrolled numeric labels. Keep the fully visible fast path free
+            // of per-digit clipping checks.
+            int first = 0;
+            int last = digits;
+            bool partiallyClipped = x < -4 || (long)x + (long)digits * 6 > canvas.Width;
+            if (partiallyClipped)
+            {
+                if (x < -4)
+                {
+                    long skip = (-(long)x + 1) / 6;
+                    if (skip >= digits)
+                        return;
+                    first = (int)skip;
+                }
+                long visibleEnd = ((long)canvas.Width - x + 5) / 6;
+                if (visibleEnd < last)
+                    last = (int)visibleEnd;
+            }
+
             ulong divisor = Pow10(digits - 1);
             for (int i = 0; i < digits; i++)
             {
                 ulong digit = divisor == 0 ? 0 : value / divisor;
-                DrawChar(canvas, (char)('0' + (int)digit), x + i * 6, y, color);
+                if (!partiallyClipped || (i >= first && i < last))
+                    DrawChar(canvas, (char)('0' + (int)digit), x + i * 6, y, color);
                 if (divisor > 1)
                 {
                     value %= divisor;
