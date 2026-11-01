@@ -422,8 +422,12 @@ namespace ZonderqOS.GUI
                             activeFileManager != null && activeFileManager.ContextMenuVisible;
                         if (fileManagerMenuCaptures)
                         {
-                            activeFileManager.HandleMouse(mouseX, mouseY, currentLeftButtonState,
-                                previousLeftButtonState, currentRightButtonState, previousRightButtonState);
+                            // The modal menu must receive the same sanitized
+                            // left state as ordinary windows. Otherwise a left
+                            // press during right-release can execute a hidden
+                            // Copy/Cut/Paste item as a new click.
+                            activeFileManager.HandleMouse(mouseX, mouseY, leftForUi,
+                                oldLeftForUi, currentRightButtonState, previousRightButtonState);
                         }
                         else if (!startMenuCaptures && !desktopMenuCaptures)
                         {
