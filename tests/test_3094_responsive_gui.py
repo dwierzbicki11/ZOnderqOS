@@ -1067,7 +1067,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("int visibleTileHeight = Math.Min(FileManagerApp.TileHeight, y + height - tileY);", grid)
         self.assertIn("if (visibleTileHeight <= 0)", grid)
         self.assertEqual(grid.count("tileWidth, visibleTileHeight"), 2)
-        self.assertIn("tileY, 3, visibleTileHeight", grid)
+        self.assertIn("tileY, Math.Min(3, tileWidth), visibleTileHeight", grid)
         # Minimum Window(320x220): view 300x170, grid height 88,
         # selection used to extend 6px into the footer.
         for window_height in (220, 226, 240, 320, 520):
@@ -2356,7 +2356,7 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
     def test_file_manager_compact_tile_does_not_overpaint_footer(self):
         grid = FILE_MANAGER.split("private void Grid(Canvas canvas", 1)[1].split(
             "private static IconType ResolveEntryIcon(", 1)[0]
-        self.assertIn("if (visibleTileHeight < iconSize + 33)", grid)
+        self.assertIn("if (visibleTileHeight < iconSize + 33 || tileWidth < 88)", grid)
         self.assertIn("if (visibleTileHeight >= 32)", grid)
         self.assertIn("tileX + 6, tileY + 7, 24, 24", grid)
         self.assertIn("tileX + 36, tileY + 17", grid)
