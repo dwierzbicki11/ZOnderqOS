@@ -14,6 +14,8 @@ on:
       - 'tools/verify-audio-delay-capture.py'
       - 'tools/verify-audio-queue-capture.py'
       - 'tests/test_audio_queue_validator.py'
+      - 'tests/test_audio_hda_replay.py'
+      - 'tools/analyze-audio-hda-replay.py'
       - 'tests/test_audio_delay_validator.py'
       - 'tools/verify-audio-volume-capture.py'
       - 'tools/verify-audio-mute-capture.py'
@@ -53,12 +55,13 @@ jobs:
         run: |
           bash tools/verify-cosmos-3095-migration.sh
           bash -n run.sh tools/build-cosmos-3095-local.sh
-          python3 -m py_compile tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py tools/verify-audio-stereo-capture.py tools/verify-audio-delay-capture.py tools/verify-audio-queue-capture.py tools/verify-audio-volume-capture.py tools/verify-audio-mute-capture.py tools/verify-audio-balance-capture.py tools/verify-audio-fade-capture.py
+          python3 -m py_compile tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py tools/verify-audio-stereo-capture.py tools/verify-audio-delay-capture.py tools/verify-audio-queue-capture.py tools/analyze-audio-hda-replay.py tools/verify-audio-volume-capture.py tools/verify-audio-mute-capture.py tools/verify-audio-balance-capture.py tools/verify-audio-fade-capture.py
           python3 tests/test_audio_gen3_contract.py
           python3 tests/test_audio_wav_validator.py
           python3 tests/test_audio_stereo_validator.py
           python3 tests/test_audio_delay_validator.py
           python3 tests/test_audio_queue_validator.py
+          python3 tests/test_audio_hda_replay.py
           python3 tests/test_audio_volume_validator.py
           python3 tests/test_audio_mute_validator.py
           python3 tests/test_audio_qmp_keys.py
@@ -175,6 +178,14 @@ jobs:
         run: |
           echo "::error::mixqueue real QEMU PCM timing/quality verification failed; see captured.wav artifact"
           exit 1
+      - name: Inspect potential 16KiB HDA ring replay (diagnostic, not IRQ proof)
+        if: always()
+        run: |
+          for wav in audio-qemu-out/captured.wav audio-qemu-mixqueue-out/captured.wav; do
+            if [ -s "$wav" ]; then
+              python3 tools/analyze-audio-hda-replay.py "$wav"
+            fi
+          done
       - name: Diagnostic logs
         if: always()
         run: |
