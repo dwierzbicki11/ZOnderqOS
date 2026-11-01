@@ -411,8 +411,12 @@ namespace ZonderqOS.GUI
                         }
                         else if (!startMenuCaptures && !desktopMenuCaptures)
                         {
+                            // The left state is filtered while right is held to avoid
+                            // synthetic clicks. Pass physical previous-button ownership
+                            // separately so a second button cannot retarget a drag.
                             applicationManager.HandleMouse(mouseX, mouseY, leftForUi, oldLeftForUi,
-                                currentRightButtonState, previousRightButtonState);
+                                currentRightButtonState, previousRightButtonState,
+                                previousLeftButtonState || previousRightButtonState);
                         }
                         // A simultaneous right press or a File Manager menu
                         // dismissal must never invoke an underlying Start action.
