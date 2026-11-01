@@ -172,7 +172,14 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertLess(SOURCE.index('POST_STRESS_LINK=PASS'),
                         SOURCE.index('POST_STRESS_IPV4=PASS'))
         self.assertLess(SOURCE.index('POST_STRESS_IPV4=PASS'),
-                        SOURCE.index('if (!CheckE1000EDriverKitHealth())'))
+                        SOURCE.index('if (!CheckE1000EDriverKitHealth(baselineResources, baselineIrqSources))'))
+        self.assertIn('TryGetE1000EDriverKitHealth(out var baselineDriverNode)', SOURCE)
+        self.assertIn('candidate.HeldResourceCount != expectedResources', SOURCE)
+        self.assertIn('candidate.InterruptCount != expectedIrqSources', SOURCE)
+        self.assertLess(SOURCE.index('DRIVER_BASELINE=PASS'),
+                        SOURCE.index('POST_BURST_HTTP_ATTEMPT=START'))
+        self.assertLess(SOURCE.index('DRIVER_BASELINE=PASS'),
+                        SOURCE.index('DRIVER_HEALTH=PASS'))
         self.assertIn('postStress.LinkUp', SOURCE)
         self.assertIn('postStress.MacAddress', SOURCE)
         self.assertIn('verify_3095_network_n6_post_http.py', SMOKE)
@@ -237,11 +244,11 @@ class NetworkN1Isolation(unittest.TestCase):
             'candidate.PublishedDeviceCount != 1',
             'candidate.InterruptCount < 1',
             'handler_faults=0 isr_executions=unknown',
-            'if (!CheckE1000EDriverKitHealth())',
+            'if (!CheckE1000EDriverKitHealth(baselineResources, baselineIrqSources))',
         ):
             self.assertIn(token, SOURCE)
         self.assertLess(SOURCE.index('POST_STRESS_LINK=PASS'),
-                        SOURCE.index('if (!CheckE1000EDriverKitHealth())'))
+                        SOURCE.index('if (!CheckE1000EDriverKitHealth(baselineResources, baselineIrqSources))'))
         self.assertIn('check_driver_health(serial)', health)
         self.assertIn('isr_executions=unknown$', health)
         self.assertIn('ISR-UNPROVEN', health)
