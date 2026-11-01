@@ -12,9 +12,9 @@ namespace ZonderqOS.GUI.Apps
     internal static class FileEntrySorter
     {
         internal const int InsertionLimit = 32;
-        // Up to thirty-two sparse inversions are common after a batch of file
+        // Up to sixty-four sparse inversions are common after a batch of file
         // renames. The separate 2*n shift budget still bounds worst-case work.
-        internal const int MaxLocalInversions = 32;
+        internal const int MaxLocalInversions = 64;
 
         internal static void Sort(List<FileEntry> entries, ref FileEntry[] scratch)
         {
@@ -68,7 +68,7 @@ namespace ZonderqOS.GUI.Apps
                 // Dense inversions are usually an unsorted enumeration,
                 // not independent renames. Stop probing after four inversions
                 // in a twelve-entry window; the stable merge is cheaper than
-                // scanning up to 33 inversions and attempting local repair.
+                // scanning up to 65 inversions and attempting local repair.
                 // Widely spaced renames still reach the bounded O(n) path.
                 if (inversions == 4 && i - firstInversion <= 12)
                 {
@@ -107,7 +107,7 @@ namespace ZonderqOS.GUI.Apps
                 (firstInversion + 1 < count &&
                     Compare(entries[firstInversion - 1], entries[firstInversion + 1]) <= 0);
 
-            // A bounded stable insertion repair is O(n) for up to thirty-two
+            // A bounded stable insertion repair is O(n) for up to sixty-four
             // sparse displaced entries. Cap total shifts at 2*n to avoid quadratic
             // work on adversarial nearly sorted snapshots. If the budget
             // expires, restore the displaced item before stable merge sort.
