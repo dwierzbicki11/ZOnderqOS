@@ -27,7 +27,6 @@ namespace ZonderqOS.GUI.Apps
         internal const int CpuGraphTotal = 0;
         internal const int CpuGraphLogical = 1;
 
-        private const int RefreshIntervalFrames = 30;
         private const int HistoryLength = 120;
         private const int LogicalPerPage = 16;
         private const int InitialRowPool = 32;
@@ -67,7 +66,8 @@ namespace ZonderqOS.GUI.Apps
         private int logicalPage;
         private int selectedIndex = -1;
         private int scrollIndex;
-        private int refreshFrame;
+        private long lastRefreshTicks = -1;
+        private bool samplingPaused;
         private string status = "Gotowy";
 
         private int guiAppCount;
@@ -138,24 +138,29 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Update()
         {
-            // ApplicationManager updates minimized apps too. Collecting CPU,
-            // process and storage snapshots every 30 hidden frames wastes
-            // work and can itself distort the reported idle CPU usage.
-            // Arm one immediate refresh for the first visible frame.
+            // ApplicationManager updates minimized apps too. Never poll hidden
+            // telemetry. On the first hidden update invalidate the CPU delta
+            // baseline so a long pause cannot dilute the next utilization sample.
             if (!Window.Visible || Window.IsMinimized)
             {
-                refreshFrame = RefreshIntervalFrames;
+                if (!samplingPaused)
+                {
+                    lastCpuTimestamp = 0;
+                    Array.Clear(previousThreadValid, 0, previousThreadValid.Length);
+                    samplingPaused = true;
+                }
+                lastRefreshTicks = -1;
                 return;
             }
 
+            samplingPaused = false;
             UpdateLayout();
             UpdateClock();
-            refreshFrame++;
-            if (refreshFrame >= RefreshIntervalFrames)
-            {
-                refreshFrame = 0;
+            // The old 30-frame interval varied from 0.3s to 15s depending
+            // on GUI FPS. Snapshot cadence now uses monotonic elapsed time.
+            if (TaskManagerRefreshGate.ShouldRefresh(
+                Stopwatch.GetTimestamp(), lastRefreshTicks, Stopwatch.Frequency))
                 RefreshSnapshot();
-            }
         }
 
         private void UpdateLayout()
@@ -393,6 +398,9 @@ namespace ZonderqOS.GUI.Apps
             UpdateCpuSnapshot();
             UpdateSystemSnapshot();
             RebuildVisibleRows(selectedApp, selectedPid);
+            // Start the interval after expensive sampling completes, including
+            // F5 and toolbar refreshes, rather than immediately sampling again.
+            lastRefreshTicks = Stopwatch.GetTimestamp();
         }
 
         private ModernTaskRow AcquireRow(int index)
