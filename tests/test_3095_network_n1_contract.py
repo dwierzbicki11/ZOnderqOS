@@ -188,13 +188,19 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('trap cleanup EXIT INT TERM', SMOKE)
 
     def test_n6_all_rx_segments_and_guest_read_telemetry(self):
-        # Host and guest must vary all four body blocks per connection,
-        # otherwise a stale later E1000E RX descriptor can go undetected.
-        for block in ("A", "B", "C", "D"):
-            self.assertIn(
-                f"new string((char)('{block}' + attempt - 1), 1024)", SOURCE)
-        self.assertIn('for block in range(4)', HTTP_HOST)
-        self.assertIn('bytes([ord("A") + block + attempt - 1]) * 1024', HTTP_HOST)
+        # Require identical byte-varying formulas in the C# guest and
+        # Python host, including connection and position dependence.
+        # Uniform 1 KiB blocks can hide shifted/stale DMA fragments.
+        for term in ("offset * 37", "(offset / 90) * 11",
+                     "(offset / 1024) * 23", "attempt * 29"):
+            self.assertIn(term, SOURCE)
+        for term in ("offset * 37", "(offset // 90) * 11",
+                     "(offset // 1024) * 23", "attempt * 29"):
+            self.assertIn(term, HTTP_HOST)
+        self.assertIn("expected[prefix.Length + offset]", SOURCE)
+        self.assertIn("patterned_body(attempt)", HTTP_HOST)
+        self.assertIn("len(set(chunk)) > 50", HTTP_HOST)
+        self.assertNotIn("new string((char)(", SOURCE)
         self.assertIn('readCalls++', SOURCE)
         self.assertIn('if (read > largestRead)', SOURCE)
         self.assertIn('HTTP_RX_STATS attempt=', SOURCE)
