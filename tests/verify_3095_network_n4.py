@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import struct
+import re
 
 from verify_3095_network_n1 import pcap_frames
 from verify_3095_network_n2 import (
@@ -24,6 +25,17 @@ REQUEST = b"ZONDERQ3095-TCP-PING\n"
 RESPONSE = b"ZONDERQ3095-TCP-PONG\n"
 TCP_PASS = f"[NET3095-N4] TCP=PASS from=10.0.2.2 port=18095 bytes={len(RESPONSE)}"
 PORT = 18095
+
+# Stock Cosmos can print a scheduler tick between characters of a single
+# serial marker. Only reconstruct this EXACT known N4 start tear; arbitrary
+# inserted text, malformed markers and duplicates remain hard failures.
+TCP_SCHED_TEAR = re.compile(
+    r"(?m)^\\[NET3095-N4\\] TCP\\[SCHED\\] Tick [0-9]+ enabled=1\\n_ATTEMPT=START$"
+)
+
+
+def normalize_tcp_serial(serial: str) -> str:
+    return TCP_SCHED_TEAR.sub(TCP_START, serial.replace("\\r", ""))
 
 
 def tcp_frame(frame: bytes):
@@ -55,7 +67,7 @@ def tcp_frame(frame: bytes):
 
 
 def validate(serial: str, pcap: bytes) -> str:
-    serial = normalize_icmp_serial(serial)
+    serial = normalize_tcp_serial(normalize_icmp_serial(serial))
     validate_n3(serial, pcap)
     lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
     if any("[NET3095-N4][FAIL]" in line for line in lines):
@@ -177,6 +189,24 @@ def self_test() -> None:
         "[SCHED] Tick 5 enabled=1\n0.2.2",
     )
     assert "PASS" in validate(torn, synthetic_capture(frames))
+    # Reproduces an actual 2026-11-01 N6 QEMU serial race: the stock
+    # scheduler inserted a tick in the middle of TCP_ATTEMPT=START even
+    # though TCP echo, six HTTP exchanges and the PCAP were all valid.
+    torn_tcp = serial.replace(
+        TCP_START, "[NET3095-N4] TCP[SCHED] Tick 6 enabled=1\\n_ATTEMPT=START")
+    assert "PASS" in validate(torn_tcp, synthetic_capture(frames))
+    # The repair must not manufacture missing markers, accept arbitrary
+    # noise, or silently collapse a duplicated start marker.
+    for bad in (
+        serial.replace(TCP_START, "[NET3095-N4] TCP[NOISE] Tick 6 enabled=1\\n_ATTEMPT=START"),
+        serial.replace(TCP_START, "[NET3095-N4] TCP[SCHED] Tick 6 enabled=0\\n_ATTEMPT=START"),
+        serial + "\\n[NET3095-N4] TCP[SCHED] Tick 6 enabled=1\\n_ATTEMPT=START",
+    ):
+        try:
+            validate(bad, synthetic_capture(frames))
+        except ValueError:
+            continue
+        raise AssertionError("accepted malformed or duplicated torn TCP start marker")
     # The handshake must bind the subsequent echo to the same L2 peer,
     # not merely to a matching IPv4 address, port and TCP sequence.
     wrong_mac = bytes.fromhex("020000000001")
