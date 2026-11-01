@@ -353,6 +353,17 @@ namespace ZonderqOS.GUI
                         bool startMenuCaptures = startMenuInside || startMenuOutsideClick;
                         if (startMenuOutsideClick)
                             startMenu.Visible = false;
+                        // Taskbar app and notification buttons should dismiss an
+                        // open Start menu, while the same click still reaches the
+                        // taskbar. The Start button itself must retain toggle
+                        // semantics; otherwise a second click would reopen it.
+                        bool startMenuTaskbarDismiss = startMenuWasVisible && !startMenuInside &&
+                            currentLeftButtonState && !previousLeftButtonState &&
+                            mouseX >= taskbar.X && mouseX < taskbar.X + taskbar.Width &&
+                            mouseY >= taskbar.Y && mouseY < taskbar.Y + taskbar.Height &&
+                            !taskbar.IsStartButtonHit(mouseX, mouseY);
+                        if (startMenuTaskbarDismiss)
+                            startMenu.Visible = false;
                         // Handle the desktop menu before applications, regardless of
                         // whether desktop shortcuts are enabled. A click outside an
                         // open menu dismisses it without also activating a hidden
