@@ -120,6 +120,19 @@ namespace ZonderqOS
                 string initialIp = config.Address.ToString();
                 string initialMask = config.SubnetMask.ToString();
                 string initialGateway = config.DefaultGateway.ToString();
+                // Snapshot DriverKit resource ownership before any N6 HTTP/TX
+                // stress. An after-only "resources >= 1" check cannot detect
+                // leaked PCI mappings or duplicate interrupt registrations.
+                if (!TryGetE1000EDriverKitHealth(out var baselineDriverNode))
+                {
+                    Log("[NET3095-N6][FAIL] E1000E DriverKit baseline invalid");
+                    return;
+                }
+                int baselineResources = baselineDriverNode.HeldResourceCount;
+                int baselineIrqSources = baselineDriverNode.InterruptCount;
+                Log("[NET3095-N6] DRIVER_BASELINE=PASS node=" + baselineDriverNode.Path +
+                    " resources=" + baselineResources + " irq_sources=" +
+                    baselineIrqSources + " handler_faults=0 isr_executions=unknown");
 #endif
                 Log("[NET3095-N2] DHCP=PASS ip=" + config.Address +
                     " mask=" + config.SubnetMask +
@@ -358,7 +371,7 @@ namespace ZonderqOS
                 Log("[NET3095-N6] POST_STRESS_IPV4=PASS ip=" + postStressConfig.Address +
                     " mask=" + postStressConfig.SubnetMask +
                     " gateway=" + postStressConfig.DefaultGateway);
-                if (!CheckE1000EDriverKitHealth())
+                if (!CheckE1000EDriverKitHealth(baselineResources, baselineIrqSources))
                 {
                     Log("[NET3095-N6][FAIL] E1000E DriverKit health invalid after TX/RX stress");
                     return;
@@ -377,9 +390,9 @@ namespace ZonderqOS
         // internal E1000EState.InterruptCount. A zero handler-fault count
         // therefore cannot prove that an ISR ran; the driver also polls.
         // Keep this check read-only and confined to the isolated N6 kernel.
-        private static bool CheckE1000EDriverKitHealth()
+        private static bool TryGetE1000EDriverKitHealth(out DeviceNodeInfo candidate)
         {
-            DeviceNodeInfo candidate = default;
+            candidate = default;
             bool found = false;
             for (int i = 0; i < DriverDiagnostics.NodeCount; i++)
             {
@@ -393,11 +406,18 @@ namespace ZonderqOS
                 found = true;
             }
 
-            if (!found || candidate.BusName != "pci" ||
-                candidate.State != DeviceNodeState.Bound ||
-                candidate.Path != "pci:0000:00:02.0" ||
-                candidate.FaultCount != 0 || candidate.HeldResourceCount < 1 ||
-                candidate.PublishedDeviceCount != 1 || candidate.InterruptCount < 1)
+            return found && candidate.BusName == "pci" &&
+                candidate.State == DeviceNodeState.Bound &&
+                candidate.Path == "pci:0000:00:02.0" &&
+                candidate.FaultCount == 0 && candidate.HeldResourceCount >= 1 &&
+                candidate.PublishedDeviceCount == 1 && candidate.InterruptCount >= 1;
+        }
+
+        private static bool CheckE1000EDriverKitHealth(int expectedResources, int expectedIrqSources)
+        {
+            if (!TryGetE1000EDriverKitHealth(out var candidate) ||
+                candidate.HeldResourceCount != expectedResources ||
+                candidate.InterruptCount != expectedIrqSources)
                 return false;
 
             // InterruptCount here is the number of PCI interrupt SOURCES,
