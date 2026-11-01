@@ -321,6 +321,22 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "balance")
+            {
+                Console.WriteLine("[AUDIO] software balance=" + AudioRuntimeDiagnostics.BalancePercent);
+                return;
+            }
+
+            if (command.StartsWith("balance ", StringComparison.Ordinal))
+            {
+                int percent;
+                if (!int.TryParse(command.Substring(8).Trim(), out percent))
+                    Console.WriteLine("[AUDIO] usage: balance -100..100");
+                else
+                    AudioRuntimeDiagnostics.SetBalancePercent(percent);
+                return;
+            }
+
             if (command == "volume")
             {
                 Console.WriteLine("[AUDIO] software volume=" + AudioRuntimeDiagnostics.VolumePercent + "%");

@@ -14,8 +14,24 @@ namespace ZonderqOS.SystemCore
     public static class AudioRuntimeDiagnostics
     {
         private static int volumePercent = 100;
+        private static int balancePercent;
 
         public static int VolumePercent => volumePercent;
+        // -100 = left only, +100 = right only; zero = equal channels.
+        public static int BalancePercent => balancePercent;
+
+        public static bool SetBalancePercent(int percent)
+        {
+            if (percent < -100 || percent > 100)
+            {
+                Console.WriteLine("[AUDIO] BALANCE REFUSED: expected -100..100.");
+                return false;
+            }
+            balancePercent = percent;
+            Console.WriteLine("[AUDIO] software balance=" + balancePercent +
+                " (-100=left only, +100=right only)");
+            return true;
+        }
 
         public static bool SetVolumePercent(int percent)
         {
@@ -387,7 +403,10 @@ namespace ZonderqOS.SystemCore
             const int sampleRate = 48000;
             try
             {
-                byte[] scaled = AudioPcmVolume.ScaleStereo16(pcm, volumePercent);
+                // Apply channel balance without changing codec or DMA configuration.
+                int leftGain = volumePercent * (balancePercent > 0 ? 100 - balancePercent : 100) / 100;
+                int rightGain = volumePercent * (balancePercent < 0 ? 100 + balancePercent : 100) / 100;
+                byte[] scaled = AudioPcmVolume.ScaleStereo16Channels(pcm, leftGain, rightGain);
                 bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled));
                 Console.WriteLine(accepted
                     ? "[AUDIO] PCM ACCEPTED_AND_DRAINED (not proof of audible output)"

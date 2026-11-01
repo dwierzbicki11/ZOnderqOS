@@ -887,6 +887,41 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject incomplete stereo frame");
 
+        // Real production C# channel balance: independent gains, signed
+        // extremes and source immutability, without any hardware access.
+        byte[] extremes = { 0, 128, 255, 127, 255, 127, 0, 128 };
+        byte[] onlyRight = AudioPcmVolume.ScaleStereo16Channels(extremes, 0, 100);
+        Expect(onlyRight[0] == 0 && onlyRight[1] == 0 &&
+            onlyRight[2] == 255 && onlyRight[3] == 127, "right-only first frame");
+        Expect(onlyRight[4] == 0 && onlyRight[5] == 0 &&
+            onlyRight[6] == 0 && onlyRight[7] == 128, "right-only signed minimum");
+        byte[] onlyLeft = AudioPcmVolume.ScaleStereo16Channels(extremes, 100, 0);
+        Expect(onlyLeft[0] == 0 && onlyLeft[1] == 128 &&
+            onlyLeft[2] == 0 && onlyLeft[3] == 0, "left-only first frame");
+        Expect(onlyLeft[4] == 255 && onlyLeft[5] == 127 &&
+            onlyLeft[6] == 0 && onlyLeft[7] == 0, "left-only second frame");
+        byte[] halfRight = AudioPcmVolume.ScaleStereo16Channels(extremes, 100, 50);
+        Expect(halfRight[0] == 0 && halfRight[1] == 128 &&
+            halfRight[2] == 255 && halfRight[3] == 63, "half right gain");
+        Expect(halfRight[6] == 0 && halfRight[7] == 192, "half right signed minimum");
+        Expect(extremes[0] == 0 && extremes[1] == 128 &&
+            extremes[2] == 255 && extremes[3] == 127, "source remains unchanged");
+        byte[] equalGain = AudioPcmVolume.ScaleStereo16Channels(pcm, 25, 25);
+        for (int i = 0; i < quarter.Length; i++)
+            Expect(equalGain[i] == quarter[i], "equal channel gains match master volume");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16Channels(extremes, -1, 100); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "reject negative left gain");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16Channels(extremes, 100, 101); }
+        catch (ArgumentOutOfRangeException) { rejected = true; }
+        Expect(rejected, "reject excessive right gain");
+        rejected = false;
+        try { AudioPcmVolume.ScaleStereo16Channels(new byte[2], 100, 100); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "reject partial stereo frame");
+
         Console.WriteLine("[AUDIO-PCI-HOST] PASS " + checks + " checks (stubbed PCI provider; no hardware)");
     }
 }
