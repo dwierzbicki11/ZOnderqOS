@@ -176,10 +176,7 @@ namespace ZonderqOS.GUI.Icons
                     return scaledPixels[recent];
 
                 int previous = scaledPreviousSlots[typeIndex];
-                // An entry near the front costs only a handful of comparisons
-                // in the original scan. Avoid the extra second-hint key checks
-                // there; reserve the two-size shortcut for costly late slots.
-                if (previous >= 16 && previous != recent && previous < scaledCacheCount &&
+                if (previous != recent && previous < scaledCacheCount &&
                     scaledTypes[previous] == type &&
                     scaledWidths[previous] == width &&
                     scaledHeights[previous] == height)
