@@ -379,6 +379,40 @@ internal static class Program
         manager.CloseAll();
     }
 
+    private static void ShortcutCloseClearsCapturedGesture()
+    {
+        var manager = new ApplicationManager();
+        var exposed = new ClosingApp();
+        var closing = new ClosingApp();
+        exposed.Window.X = 200;
+        manager.Launch(exposed);
+        manager.Launch(closing);
+        closing.Window.CloseAction = closing.Close;
+
+        manager.HandleMouse(10, 20, true, false, false, false);
+        Check(closing.MouseCount == 1, "held press captured before Alt+F4");
+        Check(manager.RequestCloseActiveWindow(), "Alt+F4 closes active window");
+        Check(!closing.IsRunning && manager.Applications.Count == 1,
+            "shortcut removes closed window from live roster");
+
+        var capture = typeof(ApplicationManager).GetField("mouseCapture",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        var desktop = typeof(ApplicationManager).GetField("desktopGesture",
+            System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic);
+        Check(capture != null && capture.GetValue(manager) == null,
+            "Alt+F4 immediately releases stale mouse capture");
+        Check(desktop != null && (bool)desktop.GetValue(manager)!,
+            "shortcut close consumes the outstanding physical gesture");
+
+        manager.HandleMouse(220, 20, false, true, false, false);
+        Check(exposed.MouseCount == 0,
+            "shortcut-close release cannot reach newly exposed window");
+        manager.HandleMouse(220, 20, true, false, false, false);
+        Check(exposed.MouseCount == 1,
+            "fresh click after Alt+F4 reaches surviving window");
+        manager.CloseAll();
+    }
+
     private static void ClosingCapturedWindowDoesNotLeakRelease()
     {
         var manager = new ApplicationManager();
@@ -673,6 +707,7 @@ internal static class Program
         WindowGestureSurvivesFocusAndSecondButton();
         FilteredChordKeepsPhysicalGestureOwner();
         SecondButtonCannotOpenContextMenu();
+        ShortcutCloseClearsCapturedGesture();
         ClosingCapturedWindowDoesNotLeakRelease();
         MouseCallbackClosingOwnerDoesNotLeakRelease();
         MinimizingCapturedWindowDoesNotLeakRelease();

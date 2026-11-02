@@ -244,6 +244,14 @@ namespace ZonderqOS.GUI.Apps
             // dialog instead of closing, just like a mouse title-bar click.
             if (!active.IsRunning)
             {
+                // Alt+F4 can close a window while its mouse button is still
+                // held. Clear capture just like Close() does: a pending
+                // release must not be redirected to the exposed window.
+                if (mouseCapture == active)
+                {
+                    mouseCapture = null;
+                    desktopGesture = true;
+                }
                 applications.Remove(active);
                 SetActiveStates(ActiveApplication);
             }
