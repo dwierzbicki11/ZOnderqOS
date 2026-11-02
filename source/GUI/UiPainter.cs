@@ -293,10 +293,24 @@ namespace ZonderqOS.GUI
 
         // Defensive clipping prevents a shadow touching screen edges from writing
         // outside a framebuffer on firmware-only display implementations.
-        private static void Fill(Canvas canvas, Color color, int x, int y, int width, int height)
+        // Internal for exact host A/B tests of the production clipping path.
+        internal static void Fill(Canvas canvas, Color color, int x, int y, int width, int height)
         {
             if (width <= 0 || height <= 0 || x >= canvas.Width || y >= canvas.Height)
                 return;
+
+            // Most GUI scanlines are wholly inside the framebuffer. Bypass
+            // long-coordinate clipping and four Math.Min/Max operations while
+            // retaining the wide, overflow-safe path for dragged windows.
+            // Subtractions cannot overflow: x/y are nonnegative and already
+            // smaller than the corresponding Canvas dimension.
+            if (x >= 0 && y >= 0 &&
+                width <= canvas.Width - x && height <= canvas.Height - y)
+            {
+                canvas.DrawFilledRectangle(color, x, y, width, height);
+                return;
+            }
+
             long right = (long)x + width;
             long bottom = (long)y + height;
             if (right <= 0 || bottom <= 0)
