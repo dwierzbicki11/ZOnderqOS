@@ -876,6 +876,7 @@ internal static class Program
         VerifyIndex();
         VerifyMonitorIntegration();
         VerifyProductionRowSortAllocations();
+        RowSortFastPathSmoke.Run();
         BenchmarkRowSortDelegate();
         Benchmark(16, 16);
         Benchmark(128, 128);
