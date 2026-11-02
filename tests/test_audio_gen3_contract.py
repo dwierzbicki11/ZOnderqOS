@@ -197,13 +197,19 @@ class AudioGen3Contract(unittest.TestCase):
         project = read("ZonderqOS.csproj")
         self.assertTrue(direct.startswith("#if ZONDERQ_AUDIO_PROBE"))
         self.assertIn("AudioProbeDirectPlayback.TryPlay(output, scaled, sampleRate)", runtime)
-        self.assertIn("output.Player != null || output.IsRunning", direct)
-        self.assertIn('output.DriverName != "HdAudioDriver"', direct)
-        # The isolated direct path must use the already published format:
-        # reprogramming HDA just before Start can disturb the cyclic stream.
-        self.assertIn("output.SampleRate != sampleRate", direct)
-        self.assertIn("output.Format.Channels != 2", direct)
-        self.assertIn("output.Format.ChannelSize != 2", direct)
+        # A single predicate must validate the published unclaimed HDA
+        # identity and format before Start, after Start, before each ring
+        # write and after the final settle. This is NOT an atomic claim.
+        self.assertIn("private static bool IsCompatibleUnclaimedHda(", direct)
+        self.assertIn("output.Player == null", direct)
+        self.assertIn('output.DriverName == "HdAudioDriver"', direct)
+        self.assertIn("output.SampleRate == sampleRate", direct)
+        self.assertIn("output.Format.Channels == 2", direct)
+        self.assertIn("output.Format.ChannelSize == 2", direct)
+        self.assertIn("!IsCompatibleUnclaimedHda(output, sampleRate) || output.IsRunning", direct)
+        self.assertIn("!IsCompatibleUnclaimedHda(output, sampleRate) || !output.IsRunning", direct)
+        self.assertIn("() => IsCompatibleUnclaimedHda(output, sampleRate) && output.IsRunning", direct)
+        self.assertIn("sample-rate drift during Start", read("tests/AudioPciSmoke/AudioDirectProbeSmoke.cs"))
         self.assertNotIn("TrySetFormat(", direct)
         # Reject mutually exclusive output ownership modes before even
         # querying AudioManager or allocating a scaled PCM copy.
