@@ -136,11 +136,70 @@ static class AudioFloatWaveSmoke
         unknownFormat[20] = 7;
         expect(Rejects(unknownFormat), "reject unsupported float-like format tag");
 
-        // Extensible PCM is not silently interpreted as float. A mismatched
-        // subtype GUID must be refused, not sent to HDA as signed PCM.
-        byte[] ext = AudioWavePcm.EncodeExtensiblePcm32AtRate(Floats(0f), 48000, 1, 32);
-        ext[44] = 3;
-        expect(Rejects(ext), "reject unsupported extensible IEEE float GUID");
+        // WAVE_FORMAT_EXTENSIBLE IEEE_FLOAT is common in DAW exports.
+        // Its exact float subtype GUID must be recognized, while integer
+        // PCM and unrelated GUIDs must never be reinterpreted as float.
+        byte[] ext = AudioWavePcm.EncodeExtensibleFloat32AtRate(samples, 48000, 2);
+        expect(ext.Length == wave.Length + 22 && ext[16] == 40 &&
+            ext[20] == 0xFE && ext[21] == 0xFF &&
+            ext[36] == 22 && ext[38] == 32 && ext[44] == 3,
+            "extensible float32 fmt has 40 bytes and subtype 3");
+        expect(ext[60] == 'f' && ext[61] == 'a' &&
+            ext[72] == 'd' && ext[73] == 'a',
+            "extensible float retains fact and data chunks");
+        byte[] extDecoded = AudioWavePcm.DecodeStereo16(ext);
+        expect(extDecoded.Length == decoded.Length, "extensible float decoded duration");
+        for (int i = 0; i < decoded.Length; i++)
+            expect(extDecoded[i] == decoded[i],
+                "extensible float samples match canonical float");
+        using (var extInput = new MemoryStream(ext, false))
+        {
+            byte[] extStream = AudioWaveInput.DecodeBounded(extInput);
+            for (int i = 0; i < extDecoded.Length; i++)
+                expect(extStream[i] == extDecoded[i],
+                    "read-only extensible float stream matches decoded PCM");
+        }
+
+        byte[] extMono44 = AudioWavePcm.EncodeExtensibleFloat32AtRate(
+            Floats(0.5f, -0.5f), 44100, 1);
+        byte[] extResampled = AudioWavePcm.DecodeStereo16(extMono44);
+        expect(extResampled.Length == upmixed.Length,
+            "extensible float mono 44.1kHz resampled duration");
+        for (int i = 0; i < upmixed.Length; i++)
+            expect(extResampled[i] == upmixed[i],
+                "extensible float resampler matches canonical float");
+
+        foreach (float invalid in new[] { float.NaN, float.PositiveInfinity, float.NegativeInfinity })
+        {
+            expect(Rejects(AudioWavePcm.EncodeExtensibleFloat32AtRate(
+                Floats(invalid), 48000, 1)),
+                "reject non-finite extensible float32");
+        }
+        byte[] badExt = (byte[])ext.Clone();
+        badExt[38] = 24; // Float has no integer-style 24 valid bits.
+        expect(Rejects(badExt), "reject extensible float32 with 24 valid bits");
+        badExt = (byte[])ext.Clone();
+        badExt[34] = 24; // 24-bit container contradicts float32.
+        expect(Rejects(badExt), "reject extensible float with non-32-bit container");
+        badExt = (byte[])ext.Clone();
+        badExt[44] = 4; // Unknown subtype GUID.
+        expect(Rejects(badExt), "reject unknown extensible float subtype");
+        badExt = (byte[])ext.Clone();
+        badExt[55] = 0; // Corrupt canonical GUID tail.
+        expect(Rejects(badExt), "reject damaged extensible float GUID tail");
+        badExt = (byte[])ext.Clone();
+        badExt[40] = 4; // Mono mask is invalid for stereo.
+        expect(Rejects(badExt), "reject invalid extensible float speaker mask");
+        badExt = (byte[])ext.Clone();
+        Write32(badExt, 68, 3); // fact: expected four frames.
+        expect(Rejects(badExt), "reject inconsistent extensible float fact count");
+
+        byte[] extPcm = AudioWavePcm.EncodeExtensiblePcm32AtRate(
+            Floats(0.5f), 48000, 1, 32);
+        byte[] pcmInterpreted = AudioWavePcm.DecodeStereo16(extPcm);
+        expect(pcmInterpreted.Length == 4 &&
+            Sample(pcmInterpreted, 0) != 16383,
+            "integer PCM subtype is never interpreted as IEEE float");
 
         bool refused = false;
         try { AudioWavePcm.EncodeFloat32AtRate(new byte[3], 48000, 1); }
