@@ -500,7 +500,8 @@ namespace ZonderqOS
                 // filter-dump; successful queueing alone is NOT a DMA proof.
                 Log("[NET3095-N6] TX_BURST_ATTEMPT=START count=128");
                 if (!TrySendBurst(frame, sourceMac, initialIp, initialMask,
-                        initialGateway, baselineResources, baselineIrqSources))
+                        initialGateway, baselineResources, baselineIrqSources,
+                        pciCommand, pciBar0, pciIrqLine, pciIrqPin))
                 {
                     Log("[NET3095-N6][FAIL] E1000E raw TX burst queue rejected");
                     return;
@@ -1009,7 +1010,9 @@ namespace ZonderqOS
 #if ZONDERQ_NETWORK_N6_HTTP
         private static bool TrySendBurst(byte[] template,
             string expectedMac, string expectedIp, string expectedMask,
-            string expectedGateway, int expectedResources, int expectedIrqSources)
+            string expectedGateway, int expectedResources, int expectedIrqSources,
+            ushort expectedPciCommand, ulong expectedPciBar0,
+            byte expectedIrqLine, byte expectedIrqPin)
         {
             // 128 paced frames exercise four complete 32-descriptor TX ring cycles
             // without exposing the NIC in the production GUI.
@@ -1031,10 +1034,21 @@ namespace ZonderqOS
             // this only detects a disappearing, unready or rebound NIC while
             // the burst is in progress. The PCAP gate proves actual TX.
             byte[] liveMacFrame = new byte[60];
+            var pciConfig = new ZonderqOS.Platform.X64.PciConfigIoAccessor();
             for (int sequence = 0; sequence < 128; sequence++)
             {
                 if ((sequence & 31) == 0)
                 {
+                    // A stable MAC/lease and DriverKit resource count cannot
+                    // detect a transient BAR remap or INTx route change.
+                    // Read PCI config only, never write or rebind the device.
+                    if (!ZonderqOS.Hardware.E1000EPciIdentity.TryReadReady(
+                            pciConfig, out ushort command, out ulong bar0) ||
+                        command != expectedPciCommand || bar0 != expectedPciBar0 ||
+                        !ZonderqOS.Hardware.E1000EPciIdentity.TryReadLegacyIrqRoute(
+                            pciConfig, out byte irqLine, out byte irqPin) ||
+                        irqLine != expectedIrqLine || irqPin != expectedIrqPin)
+                        return false;
                     if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
                         return false;
                     NetworkAdapter current = NetworkManager.Primary;
@@ -1073,7 +1087,13 @@ namespace ZonderqOS
             }
             // Include the final descriptor cycle, not just the pre-send
             // snapshots taken at sequence 0, 32, 64 and 96.
-            if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources) ||
+            if (!ZonderqOS.Hardware.E1000EPciIdentity.TryReadReady(
+                    pciConfig, out ushort finalCommand, out ulong finalBar0) ||
+                finalCommand != expectedPciCommand || finalBar0 != expectedPciBar0 ||
+                !ZonderqOS.Hardware.E1000EPciIdentity.TryReadLegacyIrqRoute(
+                    pciConfig, out byte finalIrqLine, out byte finalIrqPin) ||
+                finalIrqLine != expectedIrqLine || finalIrqPin != expectedIrqPin ||
+                !IsE1000EDriverKitStable(expectedResources, expectedIrqSources) ||
                 !IsE1000ELeaseStable(expectedMac, expectedIp,
                     expectedMask, expectedGateway))
                 return false;
