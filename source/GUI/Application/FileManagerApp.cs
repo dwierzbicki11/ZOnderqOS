@@ -1016,6 +1016,22 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            // A cut changes the source parent directory as well as the entry.
+            // Reject it before staging the clipboard or showing success.
+            if (cut)
+            {
+                string sourceParent = Path.GetDirectoryName(entry.FullPath)?.Replace('\\', '/');
+                string user = SecurityContext.CurrentUser;
+                if (!FileClipboard.IsSafeAbsolutePath(sourceParent) ||
+                    !PermissionManager.CanWrite(sourceParent, user) ||
+                    (user != "root" &&
+                     !IsInsidePath(sourceParent, UserManager.GetHomeDirectory(user))))
+                {
+                    status = "Permission denied: cannot cut from source folder";
+                    return;
+                }
+            }
+
             FileClipboard.Set(entry.FullPath, entry.IsDirectory, cut);
             status = (cut ? "Cut: " : "Copied: ") + entry.Name + " - choose destination and paste";
         }
