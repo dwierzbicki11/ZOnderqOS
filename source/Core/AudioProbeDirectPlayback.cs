@@ -102,10 +102,16 @@ namespace ZonderqOS.SystemCore
                         // output during Start/Write/settle, stopping it here
                         // would tear down someone else's stream. A snapshot
                         // cannot make this path atomic: remain opt-in only.
-                        if (output.Player == null)
-                            output.Stop();
-                        else
+                        // A withdrawn AudioDevice is no longer a safe target
+                        // for driver Stop(): its backing HDA stream may have
+                        // been removed. Never call into a withdrawn device or
+                        // tear down a stream claimed by another player.
+                        if (output.IsWithdrawn)
+                            Console.WriteLine("[AUDIO] 1MS cleanup: output withdrawn; Stop skipped.");
+                        else if (output.Player != null)
                             Console.WriteLine("[AUDIO] 1MS cleanup: player claimed output; Stop skipped.");
+                        else
+                            output.Stop();
                     }
                 }
                 finally
