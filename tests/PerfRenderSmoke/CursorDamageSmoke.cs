@@ -383,8 +383,15 @@ internal static class CursorDamageSmoke
     {
         try
         {
-            TimeVerticalBulk(true, 200);
-            TimeVerticalBulk(false, 200);
+            // Tiered JIT/PGO can change the baseline by >2x during the
+            // first few thousand calls. Warm both branches repeatedly
+            // before measuring so a one-off tier transition is not
+            // mistaken for a production speedup.
+            for (int warm = 0; warm < 6; warm++)
+            {
+                TimeVerticalBulk(true, 4000);
+                TimeVerticalBulk(false, 4000);
+            }
             double[] before = new double[7], after = new double[7];
             for (int i = 0; i < 7; i++)
             {
