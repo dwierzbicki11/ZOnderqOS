@@ -326,6 +326,46 @@ internal static class CursorDamageSmoke
         Console.WriteLine("PASS: 250 vertical cursor moves, exact framebuffer and readback count");
     }
 
+    private static void VerifyVerticalUnderlayTransitions()
+    {
+        var baselineCanvas = new Canvas(128, 96);
+        var optimizedCanvas = new Canvas(128, 96);
+        for (int y = 0; y < 96; y++)
+        {
+            Color color = y < 55 ? Color.Navy : Color.Maroon;
+            baselineCanvas.DrawFilledRectangle(color, 0, y, 128, 1);
+            optimizedCanvas.DrawFilledRectangle(color, 0, y, 128, 1);
+        }
+        var baseline = new CursorDamageRenderer(baselineCanvas);
+        var optimized = new CursorDamageRenderer(optimizedCanvas);
+        try
+        {
+            baseline.DrawAfterScene(40, 20);
+            optimized.DrawAfterScene(40, 20);
+            // Walk through the color boundary, then return. The fast path
+            // must disable itself on a mixed capture and re-enable after
+            // the full 24x28 region becomes uniform again.
+            for (int i = 0; i < 130; i++)
+            {
+                int y = i < 65 ? 20 + i : 84 - (i - 65);
+                CursorDamageRenderer.DisableVerticalBulkCopyForBenchmark = true;
+                if (!baseline.TryMove(40, y))
+                    throw new Exception("vertical transition baseline failed " + i);
+                CursorDamageRenderer.DisableVerticalBulkCopyForBenchmark = false;
+                if (!optimized.TryMove(40, y))
+                    throw new Exception("vertical transition optimized failed " + i);
+                SamePixels(baselineCanvas, optimizedCanvas, "vertical color transition #" + i);
+            }
+            if (baselineCanvas.ReadbackCalls != optimizedCanvas.ReadbackCalls)
+                throw new Exception("vertical transition changed readback count");
+        }
+        finally
+        {
+            CursorDamageRenderer.DisableVerticalBulkCopyForBenchmark = false;
+        }
+        Console.WriteLine("PASS: vertical mixed-to-uniform transitions, exact framebuffer and readback count");
+    }
+
     private static double TimeVerticalBulk(bool disable, int repeats)
     {
         var canvas = new Canvas(128, 96);
@@ -533,6 +573,7 @@ internal static class CursorDamageSmoke
         VerifyOverlapReadbacks(true);
         VerifyMixedUnderlay();
         VerifyVerticalBulkCopy();
+        VerifyVerticalUnderlayTransitions();
         BenchmarkVerticalBulk();
         BenchmarkOverlap();
         BenchmarkUniformCurrent();
