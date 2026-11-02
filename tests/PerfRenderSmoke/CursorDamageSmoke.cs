@@ -366,6 +366,123 @@ internal static class CursorDamageSmoke
         Console.WriteLine("PASS: vertical mixed-to-uniform transitions, exact framebuffer and readback count");
     }
 
+    // Compare the newly deferred uniform overlap against the eager-copy path
+    // using the SAME production renderer. Check transitions where a flat
+    // underlay becomes patterned and the overlap must be materialized.
+    private static void VerifyDeferredUniformCopy()
+    {
+        var eagerCanvas = new Canvas(160, 128);
+        var deferredCanvas = new Canvas(160, 128);
+        for (int y = 0; y < 128; y++)
+        {
+            for (int x = 0; x < 160; x++)
+            {
+                Color color = y >= 60 && y < 72 ? Color.Maroon : Color.Navy;
+                if (x < 25 && y >= 40 && y < 80 && ((x + y) & 1) == 0)
+                    color = Color.White;
+                eagerCanvas.DrawPoint(color, x, y);
+                deferredCanvas.DrawPoint(color, x, y);
+            }
+        }
+        var eager = new CursorDamageRenderer(eagerCanvas);
+        var deferred = new CursorDamageRenderer(deferredCanvas);
+        try
+        {
+            eager.DrawAfterScene(40, 25);
+            deferred.DrawAfterScene(40, 25);
+            SamePixels(eagerCanvas, deferredCanvas, "deferred initial");
+            for (int i = 0; i < 320; i++)
+            {
+                int x, y;
+                if (i < 80)
+                {
+                    x = 40;
+                    y = 25 + i % 12; // repeated flat vertical overlap
+                }
+                else if (i < 192)
+                {
+                    x = 40;
+                    y = i < 136 ? 25 + i - 80 : 81 - (i - 136);
+                    // cross both edges of the horizontal colored band
+                }
+                else if (i < 260)
+                {
+                    x = 40 + (i % 3); // diagonal after deferred captures
+                    y = 25 + i % 12;
+                }
+                else
+                {
+                    x = i % 2 == 0 ? 1 : 40; // clipped to fully visible
+                    y = i % 3 == 0 ? 5 : 40 + i % 9;
+                }
+
+                CursorDamageRenderer.DisableDeferredUniformCopyForBenchmark = true;
+                if (!eager.TryMove(x, y))
+                    throw new Exception("eager uniform capture failed " + i);
+                CursorDamageRenderer.DisableDeferredUniformCopyForBenchmark = false;
+                if (!deferred.TryMove(x, y))
+                    throw new Exception("deferred uniform capture failed " + i);
+                SamePixels(eagerCanvas, deferredCanvas, "deferred capture #" + i);
+            }
+            if (eagerCanvas.ReadbackCalls != deferredCanvas.ReadbackCalls)
+                throw new Exception("deferred capture changed Canvas readback count");
+        }
+        finally
+        {
+            CursorDamageRenderer.DisableDeferredUniformCopyForBenchmark = false;
+        }
+        Console.WriteLine("PASS: 320 deferred/eager uniform cursor moves, exact framebuffer and readbacks");
+    }
+
+    private static double TimeDeferredUniform(bool disabled, int repeats)
+    {
+        var canvas = new Canvas(128, 96);
+        canvas.DrawFilledRectangle(Color.Navy, 0, 0, 128, 96);
+        CursorDamageRenderer.DisableDeferredUniformCopyForBenchmark = disabled;
+        var mover = new CursorDamageRenderer(canvas);
+        mover.DrawAfterScene(40, 40);
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repeats; i++)
+            mover.TryMove(40, 40 + i % 8);
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
+    private static void BenchmarkDeferredUniformCopy()
+    {
+        try
+        {
+            for (int warm = 0; warm < 6; warm++)
+            {
+                TimeDeferredUniform(true, 4000);
+                TimeDeferredUniform(false, 4000);
+            }
+            double[] before = new double[7], after = new double[7];
+            for (int i = 0; i < 7; i++)
+            {
+                if ((i & 1) == 0)
+                {
+                    before[i] = TimeDeferredUniform(true, 4000);
+                    after[i] = TimeDeferredUniform(false, 4000);
+                }
+                else
+                {
+                    after[i] = TimeDeferredUniform(false, 4000);
+                    before[i] = TimeDeferredUniform(true, 4000);
+                }
+            }
+            Array.Sort(before);
+            Array.Sort(after);
+            Console.WriteLine("HOST A/B uniform cursor deferred copy, 4000 moves median 7: eager=" +
+                before[3].ToString("F3") + " ms deferred=" + after[3].ToString("F3") +
+                " ms ratio=" + (before[3] / after[3]).ToString("F2") +
+                "x (production C#, fake Canvas, not QEMU FPS)");
+        }
+        finally
+        {
+            CursorDamageRenderer.DisableDeferredUniformCopyForBenchmark = false;
+        }
+    }
+
     private static double TimeVerticalBulk(bool disable, int repeats)
     {
         var canvas = new Canvas(128, 96);
@@ -581,6 +698,8 @@ internal static class CursorDamageSmoke
         VerifyMixedUnderlay();
         VerifyVerticalBulkCopy();
         VerifyVerticalUnderlayTransitions();
+        VerifyDeferredUniformCopy();
+        BenchmarkDeferredUniformCopy();
         BenchmarkVerticalBulk();
         BenchmarkOverlap();
         BenchmarkUniformCurrent();
