@@ -35,11 +35,16 @@ namespace ZonderqOS.GUI
         // Patterned underlays retain exact per-pixel restoration.
         private bool uniformCapture;
         private Color uniformColor;
+        // A uniform capture can be represented entirely by uniformColor.
+        // Its overlap pixels need materializing only if a later capture
+        // becomes patterned or moves into the generic overlap path.
+        private bool savedPixelsComplete = true;
 #if ZONDERQ_PERF_HOST_TEST
         // A/B only: the identical production capture path with per-pixel restore.
         internal static bool DisableUniformRestoreForBenchmark;
         internal static bool DisableOverlapReuseForBenchmark;
         internal static bool DisableVerticalBulkCopyForBenchmark;
+        internal static bool DisableDeferredUniformCopyForBenchmark;
 #endif
 
         internal CursorDamageRenderer(Canvas canvas)
@@ -163,8 +168,26 @@ namespace ZonderqOS.GUI
                 int reusedRows = DamageHeight - Math.Abs(shiftY);
                 int newStartRow = shiftY < 0 ? -shiftY : 0;
                 int oldStartRow = shiftY > 0 ? shiftY : 0;
-                Array.Copy(savedPixels, oldStartRow * DamageWidth,
-                    target, newStartRow * DamageWidth, reusedRows * DamageWidth);
+                // When the old underlay is flat, the reused pixels all have
+                // uniformColor. Avoid copying 24*(28-|dy|) Color structs on
+                // every small vertical movement. Materialize them only when
+                // the newly exposed rows break uniformity. This also avoids
+                // copying potentially stale savedPixels from a prior flat move.
+                bool deferCopy = true;
+#if ZONDERQ_PERF_HOST_TEST
+                deferCopy = !DisableDeferredUniformCopyForBenchmark;
+#endif
+                int overlapStart = newStartRow * DamageWidth;
+                int overlapEnd = overlapStart + reusedRows * DamageWidth;
+                if (!deferCopy)
+                {
+                    if (savedPixelsComplete)
+                        Array.Copy(savedPixels, oldStartRow * DamageWidth,
+                            target, overlapStart, reusedRows * DamageWidth);
+                    else
+                        for (int i = overlapStart; i < overlapEnd; i++)
+                            target[i] = uniformColor;
+                }
 
                 // Previously captured overlap is uniform. Only freshly
                 // exposed rows can invalidate the single-color fast restore.
@@ -184,7 +207,15 @@ namespace ZonderqOS.GUI
                             freshMatch = false;
                     }
                 }
+                if (deferCopy && !freshMatch)
+                {
+                    // The next restore will use individual pixels. Populate
+                    // only the reused rows; freshly captured rows stay intact.
+                    for (int i = overlapStart; i < overlapEnd; i++)
+                        target[i] = uniformColor;
+                }
                 uniformCapture = freshMatch;
+                savedPixelsComplete = !deferCopy || !freshMatch;
             }
             else if (overlap)
             {
@@ -213,8 +244,17 @@ namespace ZonderqOS.GUI
                             if (previousUniform && pixel.ToArgb() != previousArgb)
                                 freshMatch = false;
                         }
-                        Array.Copy(savedPixels, oldRow * DamageWidth + copyFirst + shiftX,
-                            target, offset + copyFirst, copyLast - copyFirst);
+                        if (savedPixelsComplete)
+                            Array.Copy(savedPixels, oldRow * DamageWidth + copyFirst + shiftX,
+                                target, offset + copyFirst, copyLast - copyFirst);
+                        else
+                        {
+                            // A preceding uniform vertical move deliberately
+                            // skipped storing its overlap. The color is known
+                            // exactly, so rebuild these pixels without readback.
+                            for (int col = copyFirst; col < copyLast; col++)
+                                target[offset + col] = uniformColor;
+                        }
                         copied = true;
                         for (int col = copyLast; col < lastCol; col++)
                         {
@@ -247,6 +287,7 @@ namespace ZonderqOS.GUI
                 {
                     UpdateUniformCapture(target, firstCol, lastCol, firstRow, lastRow);
                 }
+                savedPixelsComplete = true;
             }
             else
             {
@@ -274,6 +315,7 @@ namespace ZonderqOS.GUI
                     }
                 }
                 uniformCapture = !firstPixel && uniform;
+                savedPixelsComplete = true;
             }
             Color[] old = savedPixels;
             savedPixels = target;
