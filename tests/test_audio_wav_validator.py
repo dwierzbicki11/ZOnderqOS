@@ -140,6 +140,35 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected about 2200Hz"):
             audio.inspect(self.path, expected_hz=2200)
 
+    def test_float_hda_tail_requires_actual_captured_silence(self):
+        # Synthetic PCM fixture: 250ms tone followed by 80ms zero tail.
+        # A single nonzero final frame must fail the strict tail check.
+        self.make_wave(ms=250, silence_ms=0)
+        with wave.open(str(self.path), "rb") as wav:
+            raw = wav.readframes(wav.getnframes())
+        raw += bytes(48000 * 80 // 1000 * 4)
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(48000)
+            wav.writeframes(raw)
+        self.assertIn("PASS captured 20ms zero PCM tail",
+                      audio.inspect_silent_tail(self.path))
+        corrupt = bytearray(raw)
+        corrupt[-4:] = struct.pack("<hh", 4096, -4096)
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(48000)
+            wav.writeframes(corrupt)
+        with self.assertRaisesRegex(ValueError, "non-silent float WAV tail"):
+            audio.inspect_silent_tail(self.path)
+
+    def test_float_hda_tail_rejects_short_capture(self):
+        self.make_wave(ms=250, silence_ms=0)
+        with self.assertRaisesRegex(ValueError, "before 300ms"):
+            audio.inspect_silent_tail(self.path)
+
     def test_distinct_extensible_ieee_float_probe_pitch(self):
         # Synthetic capture only. Real QEMU must independently confirm
         # the new 44.1kHz extensible float decoder drove the HDA backend.
