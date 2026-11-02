@@ -1259,6 +1259,23 @@ namespace ZonderqOS.GUI.Apps
             status = mode == 1 ? "New file: type a name" : "New folder: type a name";
         }
 
+        private static bool IsSafeNewEntryName(string name)
+        {
+            if (string.IsNullOrEmpty(name) || name == "." || name == ".." ||
+                name[name.Length - 1] == '.')
+                return false;
+
+            for (int i = 0; i < name.Length; i++)
+            {
+                char c = name[i];
+                if (c < 32 || c == '/' || c == '\\' || c == ':' ||
+                    c == '*' || c == '?' || c == '"' || c == '<' ||
+                    c == '>' || c == '|')
+                    return false;
+            }
+            return true;
+        }
+
         private void FinishCreate()
         {
             // Defend the actual write path as well as the menu/keyboard
@@ -1278,7 +1295,11 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            if (name == "." || name == ".." || name.IndexOf('/') >= 0 || name.IndexOf('\\') >= 0)
+            // FAT32 cannot represent reserved DOS filename characters or
+            // control bytes. Reject them before Path.Combine and any write,
+            // rather than relying on driver-specific exception behavior.
+            // A trailing dot is also ambiguous on FAT-compatible volumes.
+            if (!IsSafeNewEntryName(name))
             {
                 status = "Invalid name";
                 return;
