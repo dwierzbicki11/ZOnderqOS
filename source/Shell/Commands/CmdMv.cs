@@ -137,7 +137,7 @@ namespace ZonderqOS.Commands
                     return;
                 }
 
-                string content = RamTextTransfer.ReadLossless(source);
+                string content = RamTextTransfer.ReadLossless(source, TmpFs.IsTmpPath(destination) ? TmpFs.MaxFileChars : RunFs.MaxFileChars);
                 Disk.CreateFile(destination, content);
                 if (!CommandIO.LastCommandSuccess)
                     return;

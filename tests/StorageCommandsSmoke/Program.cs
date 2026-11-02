@@ -23,6 +23,9 @@ internal static class Program
         PermissionManager.ReadAllowed = true;
         PermissionManager.Copies = PermissionManager.Moves = 0;
         CommandIO.LastCommandSuccess = true; // deliberately stale success
+        TestFaults.BytesRead = 0;
+        TestFaults.FailAfterBytes = -1;
+        TestFaults.Disposed = false;
         setup();
         string cwd = "/";
         ICommand command = move ? new CmdMv() : new CmdCp();
@@ -71,6 +74,26 @@ internal static class Program
                         System.IO.File.Delete(dest);
                     }
                 }
+            }
+            foreach (bool move in new[] { false, true })
+            {
+                foreach (string target in new[] { "/tmp/dest", "/run/dest" })
+                {
+                    int limit = target.StartsWith("/tmp/") ? 128 * 1024 : 64 * 1024;
+                    foreach (string payload in new[] { new string('x', 1024 * 1024), new string('x', limit), new string('\u0800', limit), new string('x', limit + 1), new string('\u0800', limit + 1) })
+                    {
+                        bool fits = payload.Length <= limit;
+                        Run("bounded disk to RAM transfer " + move + target + payload.Length, move, source, target,
+                            () => System.IO.File.WriteAllBytes(source, System.Text.Encoding.UTF8.GetBytes(payload)),
+                            () => { Check(TestFaults.BytesRead <= 3 * limit + 1, "unbounded physical read"); Check(TestFaults.Disposed, "input stream leaked"); Check(CommandIO.LastCommandSuccess == fits, "RAM character limit not enforced before write"); Check(VirtualFs.Files.ContainsKey(target) == fits, "incorrect destination lifetime"); if (fits) Check(VirtualFs.Files[target] == payload, "boundary content changed"); Check(System.IO.File.Exists(source) == (!move || !fits), "source deleted on quota rejection"); });
+                    }
+                }
+            }
+            foreach (bool move in new[] { false, true })
+            {
+                Run("disconnect after partial read " + move, move, source, "/tmp/dest",
+                    () => { System.IO.File.WriteAllText(source, new string('x', 4096)); TestFaults.FailAfterBytes = 512; },
+                    () => { Check(!CommandIO.LastCommandSuccess && !VirtualFs.Files.ContainsKey("/tmp/dest"), "partial read published"); Check(System.IO.File.Exists(source), "source deleted after read failure"); Check(TestFaults.Disposed, "failed input stream leaked"); });
             }
             Run("partial copy cannot report success", false, source, dest,
                 () => { System.IO.File.WriteAllText(source, "complete"); Disk.FailCopy = true; },
@@ -135,6 +158,7 @@ namespace ZonderqOS.SystemCore
     }
     static class RunFs
     {
+        public const int MaxFileChars = 64 * 1024;
         public static bool IsRunPath(string p) => p.StartsWith("/run/");
         public static bool FileExists(string p) => VirtualFs.Files.ContainsKey(p);
         public static bool DirectoryExists(string p) => false;
@@ -150,6 +174,7 @@ namespace ZonderqOS.SystemCore
     }
     static class TmpFs
     {
+        public const int MaxFileChars = 128 * 1024;
         // Test physical paths are under the host temp directory too. Only these
         // explicit names represent virtual nodes in the test boundary.
         public static bool IsTmpPath(string p) => p == "/tmp/source" || p == "/tmp/dest";
@@ -207,14 +232,38 @@ namespace ZonderqOS
 namespace ZonderqOS.Commands
 {
     interface ICommand { void Execute(string[] args, ref string cwd); }
-    static class TestFaults { public static bool ThrowRead; }
+    static class TestFaults { public static bool ThrowRead; public static int BytesRead; public static int FailAfterBytes; public static bool Disposed; }
+    sealed class TrackedStream : System.IO.FileStream
+    {
+        protected override void Dispose(bool disposing)
+        {
+            TestFaults.Disposed = true;
+            base.Dispose(disposing);
+        }
+        public TrackedStream(string path) : base(path, FileMode.Open, FileAccess.Read) {}
+        public override int Read(byte[] bytes, int offset, int count)
+        {
+            if (TestFaults.FailAfterBytes >= 0 && TestFaults.BytesRead >= TestFaults.FailAfterBytes) throw new IOException("Device disconnected during read");
+            // Force short reads, including splits inside UTF-8 sequences.
+            int read = base.Read(bytes, offset, Math.Min(count, 137));
+            TestFaults.BytesRead += read;
+            return read;
+        }
+    }
     static class File
     {
         public static bool Exists(string p) => System.IO.File.Exists(p);
+        public static Stream OpenRead(string p)
+        {
+            if (TestFaults.ThrowRead) throw new IOException("Device disconnected");
+            return new TrackedStream(p);
+        }
         public static byte[] ReadAllBytes(string p)
         {
             if (TestFaults.ThrowRead) throw new IOException("Device disconnected");
-            return System.IO.File.ReadAllBytes(p);
+            byte[] value = System.IO.File.ReadAllBytes(p);
+            TestFaults.BytesRead += value.Length;
+            return value;
         }
         public static string ReadAllText(string p)
         {

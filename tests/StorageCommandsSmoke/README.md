@@ -31,8 +31,8 @@ It reads raw bytes, decodes UTF-8 without BOM detection/removal, then verifies a
 exact byte-for-byte encoding round trip before creating any RAM destination.
 A non-round-trippable file is rejected and its source remains untouched, including
 for `mv`. This is a conservative guard for the existing string-only RAM storage,
-not arbitrary binary-file support. It allocates whole-file byte/string buffers;
-streaming, durable writes and concurrent source mutation are outside this test.
+not arbitrary binary-file support. The bounded implementation below replaces whole-file input allocation; durable
+writes and concurrent source mutation remain outside this test.
 
 Twelve additional cases (23 total command checks) cover copy and move of invalid
 UTF-8, UTF-16 BOM input, a lone continuation byte, empty data, UTF-8 BOM and
@@ -50,3 +50,18 @@ command suite to 63 checks. The previous command code fails with
 The new validator scans without allocation and applies only when exporting to
 a physical path; RAM-to-RAM transfers retain their existing string semantics.
 Encoder behavior on Cosmos remains unverified; no binary RAM support is claimed.
+
+Disk-to-RAM cp/mv now pass the destination's production MaxFileChars quota to
+ReadLossless. Input reads use a bounded byte buffer (three bytes per UTF-16 code
+unit plus one oversize sentinel) and 4 KiB requests, handling short reads until
+EOF or the bound without relying on file length. The decoded character count is
+also checked before creating the destination. UTF-8 round-trip validation remains.
+Twenty quota cases exercise both commands and both targets: 1 MiB oversize input,
+ASCII and three-byte characters exactly at and one character above each quota.
+The stream boundary forces 137-byte reads and checks bytes consumed and disposal.
+Two more cases inject disconnection during reading and assert failure, retained
+source, no destination and disposed stream. There are now 85 command checks.
+The previous production sources fail with `unbounded physical read`.
+This bounds transfer allocation, not read latency or the source's total size on
+disk. Available aggregate RAM/entry quotas are still enforced by TryWrite after
+reading; no reservation or atomic cross-filesystem transaction is claimed.

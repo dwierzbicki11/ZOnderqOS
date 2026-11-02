@@ -18,7 +18,7 @@ namespace ZonderqOS.SystemCore
 
         private const int MaxEntries = 256;
         private const int MaxPathLength = 192;
-        private const int MaxFileChars = 64 * 1024;
+        internal const int MaxFileChars = 64 * 1024;
         private const int MaxTotalChars = 512 * 1024;
 
         private static readonly object Sync = new object();
