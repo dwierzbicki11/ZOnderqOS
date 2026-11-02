@@ -92,6 +92,16 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
 }
 Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(null, out irqLine, out irqPin) &&
       irqLine == 0 && irqPin == 0, "Missing PCI accessor must not expose an IRQ route");
+// Read-only PCI routing can change between samples. Never publish a stale
+// legacy IRQ route after a changed line or newly disabled INTx command.
+var irqChanged = new FakeE1000EPciConfig { ChangeIrqOnSecondRead = true };
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqChanged, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "Changed legacy IRQ line must fail closed without stale outputs");
+var irqDisabled = new FakeE1000EPciConfig { DisableIntxAfterIrqRead = true };
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqDisabled, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "INTx disabled during PCI sampling must fail closed");
 Console.WriteLine("[NET3095-E1000E-IRQ] PASS C# legacy PCI IRQ routing metadata (synthetic; ISR unproven)");
 
 Console.WriteLine("[NET3095-E1000E-PCI] PASS C# read-only PCI identity/MMIO/DMA prerequisites (synthetic; no hardware)");
@@ -567,6 +577,9 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     public byte IrqLine { get; set; } = 11;
     public byte IrqPin { get; set; } = 1;
     public bool ThrowOnRead { get; set; }
+    public bool ChangeIrqOnSecondRead { get; set; }
+    public bool DisableIntxAfterIrqRead { get; set; }
+    private int irqLineReads;
     public int ReadCount { get; private set; }
 
     private void CheckTarget(byte bus, byte slot, byte function)
@@ -583,7 +596,8 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
         {
             0x00 => VendorId,
             0x02 => DeviceId,
-            0x04 => Command,
+            0x04 => DisableIntxAfterIrqRead && irqLineReads > 0
+                ? (ushort)(Command | 0x0400) : Command,
             0x10 => (ushort)Bar0Low,
             0x12 => (ushort)(Bar0Low >> 16),
             0x14 => (ushort)Bar0High,
@@ -601,7 +615,8 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x0A => Subclass,
             0x09 => ProgrammingInterface,
             0x0E => HeaderType,
-            0x3C => IrqLine,
+            0x3C => ChangeIrqOnSecondRead && ++irqLineReads > 1
+                ? (byte)(IrqLine ^ 1) : IrqLine,
             0x3D => IrqPin,
             _ => throw new InvalidOperationException("Unexpected E1000E PCI byte offset")
         };
