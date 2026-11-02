@@ -907,5 +907,43 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("len(recovery) != 2", validator)
 
 
+    def test_n6_http_and_icmp_revalidate_pci_mapping(self):
+        # Static gate only: actual RX/TX still requires independent QEMU PCAP.
+        # PCI COMMAND/BAR0/INTx must remain unchanged at each HTTP read
+        # and at all pre/post ICMP checkpoints, even if DriverKit is stable.
+        helper = SOURCE.split("private static bool IsE1000EProbePciMappingStable(", 1)[1]
+        helper = helper.split("private static bool CheckE1000ECheckpoint(", 1)[0]
+        self.assertIn("E1000EPciIdentity.TryReadReady(", helper)
+        self.assertIn("command == expectedCommand && bar0 == expectedBar0", helper)
+        self.assertIn("E1000EPciIdentity.TryReadLegacyIrqRoute(", helper)
+        self.assertIn("irqLine == expectedIrqLine && irqPin == expectedIrqPin", helper)
+        self.assertNotIn("Write", helper)
+        checkpoint = SOURCE.split("private static bool CheckE1000ECheckpoint(", 1)[1]
+        checkpoint = checkpoint.split("private static bool TryHttpExchange(", 1)[0]
+        self.assertLess(checkpoint.index("IsE1000EProbePciMappingStable("),
+                        checkpoint.index("IsE1000EDriverKitStable("))
+        for phase in ("post_before", "post_after", "final_before", "final_after"):
+            self.assertIn(f'CheckE1000ECheckpoint("{phase}"', SOURCE)
+        self.assertEqual(SOURCE.count("pciCommand, pciBar0, pciIrqLine, pciIrqPin))"), 6)
+        http = SOURCE.split("private static bool TryHttpExchange(", 1)[1]
+        http = http.split("private static bool TrySendBurst(", 1)[0]
+        self.assertIn("HTTP PCI mapping invalid before attempt=", http)
+        self.assertIn("HTTP PCI mapping changed after TX attempt=", http)
+        self.assertIn("HTTP PCI mapping changed during RX attempt=", http)
+        self.assertIn("HTTP PCI mapping changed at completion attempt=", http)
+        self.assertIn("HTTP_PCI_STABLE=PASS attempt=", http)
+        read = http.index("int read = stream.Read(")
+        during = http.index("HTTP PCI mapping changed during RX attempt=", read)
+        driver = http.index("HTTP DriverKit ownership changed during RX attempt=", during)
+        complete = http.index("HTTP PCI mapping changed at completion attempt=", driver)
+        passed = http.index("HTTP_PCI_STABLE=PASS attempt=", complete)
+        self.assertLess(read, during)
+        self.assertLess(during, driver)
+        self.assertLess(driver, complete)
+        self.assertLess(complete, passed)
+        self.assertEqual(http.count("IsE1000EProbePciMappingStable("), 4)
+        self.assertEqual(SOURCE.count("pciCommand, pciBar0, pciIrqLine, pciIrqPin,\n                             baselineResources, baselineIrqSources)"), 2)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

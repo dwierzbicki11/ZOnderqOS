@@ -486,7 +486,9 @@ namespace ZonderqOS
                     for (int attempt = 1; attempt <= 2; attempt++)
                     {
                         if (!TryHttpExchange(attempt, sourceMac, initialIp, initialMask, initialGateway,
-                             baselineResources, baselineIrqSources))
+                             pciCommand, pciBar0, pciIrqLine, pciIrqPin,
+                             baselineResources, baselineIrqSources,
+                            pciCommand, pciBar0, pciIrqLine, pciIrqPin))
                             return;
                     }
                 }
@@ -525,7 +527,8 @@ namespace ZonderqOS
                     {
                         if (!CheckE1000ECheckpoint("post_before", sequence, sourceMac,
                             initialIp, initialMask, initialGateway,
-                            baselineResources, baselineIrqSources))
+                            baselineResources, baselineIrqSources,
+                            pciCommand, pciBar0, pciIrqLine, pciIrqPin))
                             return;
                         IcmpClient postBurstPing = new IcmpClient();
                         try
@@ -550,7 +553,8 @@ namespace ZonderqOS
                         }
                         if (!CheckE1000ECheckpoint("post_after", sequence, sourceMac,
                             initialIp, initialMask, initialGateway,
-                            baselineResources, baselineIrqSources))
+                            baselineResources, baselineIrqSources,
+                            pciCommand, pciBar0, pciIrqLine, pciIrqPin))
                             return;
                     }
                     Log("[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2 count=4");
@@ -571,7 +575,9 @@ namespace ZonderqOS
                     for (int attempt = 3; attempt <= 6; attempt++)
                     {
                         if (!TryHttpExchange(attempt, sourceMac, initialIp, initialMask, initialGateway,
-                             baselineResources, baselineIrqSources))
+                             pciCommand, pciBar0, pciIrqLine, pciIrqPin,
+                             baselineResources, baselineIrqSources,
+                            pciCommand, pciBar0, pciIrqLine, pciIrqPin))
                             return;
                     }
                 }
@@ -589,7 +595,8 @@ namespace ZonderqOS
                 {
                     if (!CheckE1000ECheckpoint("final_before", 1, sourceMac,
                         initialIp, initialMask, initialGateway,
-                        baselineResources, baselineIrqSources))
+                        baselineResources, baselineIrqSources,
+                        pciCommand, pciBar0, pciIrqLine, pciIrqPin))
                         return;
                     IcmpClient finalPing = new IcmpClient();
                     try
@@ -611,7 +618,8 @@ namespace ZonderqOS
                     }
                     if (!CheckE1000ECheckpoint("final_after", 1, sourceMac,
                         initialIp, initialMask, initialGateway,
-                        baselineResources, baselineIrqSources))
+                        baselineResources, baselineIrqSources,
+                        pciCommand, pciBar0, pciIrqLine, pciIrqPin))
                         return;
                     Log("[NET3095-N6] FINAL_ICMP=PASS from=10.0.2.2 seq=1");
                 }
@@ -799,15 +807,37 @@ namespace ZonderqOS
                 node.InterruptCount == expectedIrqSources;
         }
 
+        // Verify the SAME PCI MMIO/DMA assignment and legacy INTx route
+        // throughout an opt-in N6 receive. A stable DriverKit source count
+        // cannot detect a BAR remap or a switch to MSI mid-stream. This only
+        // reads PCI config; it does not access NIC MMIO or prove guest ISR.
+        private static bool IsE1000EProbePciMappingStable(
+            ZonderqOS.Hardware.IPciConfigAccessor config,
+            ushort expectedCommand, ulong expectedBar0,
+            byte expectedIrqLine, byte expectedIrqPin)
+        {
+            return ZonderqOS.Hardware.E1000EPciIdentity.TryReadReady(
+                    config, out ushort command, out ulong bar0) &&
+                command == expectedCommand && bar0 == expectedBar0 &&
+                ZonderqOS.Hardware.E1000EPciIdentity.TryReadLegacyIrqRoute(
+                    config, out byte irqLine, out byte irqPin) &&
+                irqLine == expectedIrqLine && irqPin == expectedIrqPin;
+        }
+
         // Verify read-only PCI/IRQ ownership AND the original DHCP lease
         // around each post-burst ICMP exchange. This catches transient
         // unbind/link/lease churn that a final snapshot could miss. Neither
         // the source count nor a successful ICMP reply proves ISR execution.
         private static bool CheckE1000ECheckpoint(string phase, ushort sequence,
             string expectedMac, string expectedIp, string expectedMask,
-            string expectedGateway, int expectedResources, int expectedIrqSources)
+            string expectedGateway, int expectedResources, int expectedIrqSources,
+            ushort expectedPciCommand, ulong expectedPciBar0,
+            byte expectedIrqLine, byte expectedIrqPin)
         {
-            if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources) ||
+            var pciConfig = new ZonderqOS.Platform.X64.PciConfigIoAccessor();
+            if (!IsE1000EProbePciMappingStable(pciConfig, expectedPciCommand,
+                    expectedPciBar0, expectedIrqLine, expectedIrqPin) ||
+                !IsE1000EDriverKitStable(expectedResources, expectedIrqSources) ||
                 !IsE1000ELeaseStable(expectedMac, expectedIp, expectedMask, expectedGateway))
             {
                 Log("[NET3095-N6][FAIL] ICMP driver/link/lease unstable phase=" +
@@ -822,8 +852,17 @@ namespace ZonderqOS
 
         private static bool TryHttpExchange(int attempt, string expectedMac,
             string expectedIp, string expectedMask, string expectedGateway,
+            ushort expectedPciCommand, ulong expectedPciBar0,
+            byte expectedIrqLine, byte expectedIrqPin,
             int expectedResources, int expectedIrqSources)
         {
+            var pciConfig = new ZonderqOS.Platform.X64.PciConfigIoAccessor();
+            if (!IsE1000EProbePciMappingStable(pciConfig, expectedPciCommand,
+                    expectedPciBar0, expectedIrqLine, expectedIrqPin))
+            {
+                Log("[NET3095-N6][FAIL] HTTP PCI mapping invalid before attempt=" + attempt);
+                return false;
+            }
             if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
             {
                 Log("[NET3095-N6][FAIL] HTTP DriverKit ownership invalid before attempt=" + attempt);
@@ -857,6 +896,12 @@ namespace ZonderqOS
                         ((offset * 37 + (offset / 90) * 11 +
                           (offset / 1024) * 23 + attempt * 29) % 90));
                 stream.Write(request, 0, request.Length);
+                if (!IsE1000EProbePciMappingStable(pciConfig, expectedPciCommand,
+                        expectedPciBar0, expectedIrqLine, expectedIrqPin))
+                {
+                    Log("[NET3095-N6][FAIL] HTTP PCI mapping changed after TX attempt=" + attempt);
+                    return false;
+                }
                 if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
                 {
                     Log("[NET3095-N6][FAIL] HTTP DriverKit ownership changed after TX attempt=" + attempt);
@@ -922,9 +967,15 @@ namespace ZonderqOS
                         Log("[NET3095-N6][FAIL] HTTP RX total deadline exceeded attempt=" + attempt);
                         return false;
                     }
-                    // Catch a resource/IRQ registration change between RX
-                    // completions, not only before and after the TCP stream.
-                    // These are source counts, never guest ISR counters.
+                    // Catch PCI BAR/INTx changes even if DriverKit still reports the
+                    // original resources and the DHCP lease remains stable.
+                    if (!IsE1000EProbePciMappingStable(pciConfig, expectedPciCommand,
+                            expectedPciBar0, expectedIrqLine, expectedIrqPin))
+                    {
+                        Log("[NET3095-N6][FAIL] HTTP PCI mapping changed during RX attempt=" + attempt);
+                        return false;
+                    }
+                    // Source registration is NOT an ISR execution counter.
                     if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
                     {
                         Log("[NET3095-N6][FAIL] HTTP DriverKit ownership changed during RX attempt=" + attempt);
@@ -949,10 +1000,15 @@ namespace ZonderqOS
                         return false;
                     }
                 }
-                // A successful TCP payload alone does not prove DriverKit kept
-                // its original PCI mappings and IRQ source registrations.
-                // Sample read-only ownership after EACH RX stream, not only
-                // once at the end of all six sessions.
+                // A byte-exact TCP response is not sufficient if the PCI MMIO BAR or
+                // INTx route changed before the per-stream PASS markers.
+                if (!IsE1000EProbePciMappingStable(pciConfig, expectedPciCommand,
+                        expectedPciBar0, expectedIrqLine, expectedIrqPin))
+                {
+                    Log("[NET3095-N6][FAIL] HTTP PCI mapping changed at completion attempt=" + attempt);
+                    return false;
+                }
+                // Sample DriverKit ownership after EACH RX stream.
                 if (!IsE1000EDriverKitStable(expectedResources, expectedIrqSources))
                 {
                     Log("[NET3095-N6][FAIL] HTTP DriverKit ownership changed during attempt=" + attempt);
@@ -967,6 +1023,11 @@ namespace ZonderqOS
                     Log("[NET3095-N6][FAIL] HTTP NIC/lease changed at completion attempt=" + attempt);
                     return false;
                 }
+                Log("[NET3095-N6] HTTP_PCI_STABLE=PASS attempt=" + attempt +
+                    " command=0x" + expectedPciCommand.ToString("X4") +
+                    " bar0=0x" + expectedPciBar0.ToString("X") +
+                    " irq_line=" + expectedIrqLine + " irq_pin=" + expectedIrqPin +
+                    " (read-only; ISR unproven)");
                 Log("[NET3095-N6] HTTP_DRIVER_STABLE=PASS attempt=" + attempt +
                     " resources=" + expectedResources + " irq_sources=" + expectedIrqSources);
                 // Only claim per-stream stability after all RX chunks and
