@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 
 MARKER = re.compile(r"PERF_BOOT_INIT_MS=([0-9]+)")
+FREE_PAGES = re.compile(r"free_pages=([0-9]+)")
 
 
 def samples(log: str) -> list[int]:
@@ -38,16 +39,35 @@ def compare(first: str, after: str) -> dict:
     }
 
 
+def memory_samples(log: str) -> dict:
+    """Actual guest physical allocator free-page counts; not GC heap/RSS."""
+    values = [int(value) for value in FREE_PAGES.findall(log)]
+    if not values:
+        raise ValueError("memory service did not report free_pages")
+    return {
+        "scope": "second_boot_memory_service_free_physical_pages",
+        "samples": len(values),
+        "first_free_pages": values[0],
+        "last_free_pages": values[-1],
+        "minimum_free_pages": min(values),
+        "maximum_free_pages": max(values),
+    }
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("first_log", type=Path)
     parser.add_argument("second_log", type=Path)
     parser.add_argument("--output", type=Path)
+    parser.add_argument("--memory-log", type=Path)
     args = parser.parse_args()
     result = compare(
         args.first_log.read_text(encoding="utf-8", errors="replace"),
         args.second_log.read_text(encoding="utf-8", errors="replace"),
     )
+    if args.memory_log is not None:
+        result["memory"] = memory_samples(
+            args.memory_log.read_text(encoding="utf-8", errors="replace"))
     report = json.dumps(result, sort_keys=True, indent=2)
     print("[PERF-QEMU] guest initialization baseline (NOT full boot or FPS):")
     print(report)
