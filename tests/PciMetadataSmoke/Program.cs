@@ -214,6 +214,29 @@ for (int offset = 0; offset < 256; offset++)
     Check(Realtek810xERegisterDecoder.IsSafePowerManagementCapabilityOffset((byte)offset) == expected,
         "PM capability pointer exhaustive range/alignment guard failed: " + offset);
 }
+// Exhaustive 256x256 PM capability pointer transitions; no hardware access.
+Check(Realtek810xERegisterDecoder.IsStablePowerManagementCapability(0, 0),
+    "Consistently absent PM capability must remain valid");
+foreach (int offset in new[] { 0x40, 0x80, 0xF8 })
+{
+    Check(Realtek810xERegisterDecoder.IsStablePowerManagementCapability((byte)offset, (byte)offset),
+        "Stable aligned PM capability pointer must be accepted");
+    Check(!Realtek810xERegisterDecoder.IsStablePowerManagementCapability((byte)offset, 0),
+        "Disappearing PM capability must fail closed");
+    Check(!Realtek810xERegisterDecoder.IsStablePowerManagementCapability(0, (byte)offset),
+        "New PM capability must fail closed");
+}
+for (int before = 0; before < 256; before++)
+{
+    for (int after = 0; after < 256; after++)
+    {
+        bool expected = before == after &&
+            (before == 0 || (before >= 0x40 && before <= 0xF8 && (before & 3) == 0));
+        Check(Realtek810xERegisterDecoder.IsStablePowerManagementCapability((byte)before, (byte)after) == expected,
+            "PM capability stability guard mismatch: " + before + "/" + after);
+    }
+}
+Console.WriteLine("[NET3095-RTL810XE-PM-STABILITY] PASS C# exhaustive PM capability transition guard; no hardware access");
 Console.WriteLine("[NET3095-RTL810XE-PM-POINTER] PASS C# exhaustive conventional PCI PM capability pointer guard; no hardware access");
 
 // Fail closed when BAR2 is not MMIO or the register BAR pair changes

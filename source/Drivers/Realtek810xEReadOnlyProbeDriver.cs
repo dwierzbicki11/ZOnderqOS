@@ -123,8 +123,19 @@ namespace ZonderqOS.Drivers
                 if (!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
                         barPairBefore, ReadRegisterBarPair(pci)))
                     return Decline("BAR2/BAR3 changed while mapping; no MMIO reads");
+                if (!Realtek810xERegisterDecoder.IsStablePowerManagementCapability(
+                        pm, pci.FindCapability(0x01)))
+                    return Decline("PCI PM capability changed while mapping; no MMIO reads");
                 if (pm != 0 && (pci.ReadConfig16((ushort)(pm + 4)) & 0x0003) != 0)
                     return Decline("PCI device left D0 while mapping; no MMIO reads");
+                // Revalidate BAR metadata before any device register access.
+                PciBar mappedBar = pci.Bars[RegisterBar];
+                if (!mappedBar.IsAssigned || mappedBar.IsIo ||
+                    mappedBar.Base != bar.Base || mappedBar.Length != bar.Length ||
+                    !Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
+                        barPairBefore, mappedBar.Base, mappedBar.Length) ||
+                    window.Length > mappedBar.Length)
+                    return Decline("BAR2 resource changed while mapping; no MMIO reads");
 
                 if (!Realtek810xERegisterSampler.TrySample(
                         new WindowReader(window), out var snapshot))
@@ -145,11 +156,20 @@ namespace ZonderqOS.Drivers
                 if (!Realtek810xERegisterDecoder.IsStablePciCommand(
                         commandBefore, commandAfter))
                     return Decline("PCI command changed after MMIO sampling; no link proof");
+                if (!Realtek810xERegisterDecoder.IsStablePowerManagementCapability(
+                        pm, pci.FindCapability(0x01)))
+                    return Decline("PCI PM capability changed after sampling; no link proof");
                 if (pm != 0 && (pci.ReadConfig16((ushort)(pm + 4)) & 0x0003) != 0)
                     return Decline("PCI power state changed after sampling; no link proof");
                 if (!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
                         barPairBefore, ReadRegisterBarPair(pci)))
                     return Decline("BAR2/BAR3 changed or became invalid after sampling; no link proof");
+                PciBar sampledBar = pci.Bars[RegisterBar];
+                if (!sampledBar.IsAssigned || sampledBar.IsIo ||
+                    sampledBar.Base != bar.Base || sampledBar.Length != bar.Length ||
+                    !Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
+                        barPairBefore, sampledBar.Base, sampledBar.Length))
+                    return Decline("BAR2 resource changed after sampling; no link proof");
 
                 binding.Log("[NET3095-RTL810XE] MMIO_SNAPSHOT=READ mac=" +
                     snapshot.MacAddress + " link=" + (snapshot.Carrier ? "up" : "down") +

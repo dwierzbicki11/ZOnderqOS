@@ -56,6 +56,13 @@ namespace ZonderqOS.Hardware
                 subsystemVendorId == 0x1043 && subsystemDeviceId == 0x200F;
         }
 
+        // Reject PM capability relocation/removal across MMIO sampling.
+        public static bool IsStablePowerManagementCapability(byte before, byte after)
+        {
+            return before == after &&
+                (before == 0 || IsSafePowerManagementCapabilityOffset(before));
+        }
+
         // Conventional PCI PM capability is at least eight bytes long.
         // PMCSR occupies bytes offset+4..+5 within the 256-byte header.
         // Reject malformed/unaligned pointers before any config-space read.
