@@ -185,7 +185,7 @@ changed by this diagnostic trace.
 ## N6 ordered raw Ethernet TX burst (experimental, 2026-10-31)
 
 After the two verified HTTP/1.0 RX sessions, the isolated N6 kernel queues
-**128 paced, uniquely tagged 60-byte broadcast Ethernet frames** with
+**128 paced, uniquely tagged broadcast Ethernet frames** cycling through 60, 128, 512, 1024 and 1514 bytes (excluding FCS) with
 experimental EtherType `0x88B5` and payloads
 `ZONDERQ3095-BURST-000` through `ZONDERQ3095-BURST-127`.
 The 5 ms inter-frame sleep avoids treating a full software queue as a
@@ -198,7 +198,7 @@ N6 HTTP/PCAP proof, then checks that the guest emitted exactly one
 post-HTTP burst-start and burst-queued marker. It locates the second HTTP
 server FIN acknowledged by the guest in the actual PCAP and requires all
 128 unique raw Ethernet frames **after** that packet, in order, with the
-expected source MAC, broadcast destination, EtherType and payload.
+expected source MAC, broadcast destination, EtherType, exact length and every deterministic payload byte.
 A queue-success serial marker without the frames fails closed.
 Synthetic parser negatives cover missing, reordered, corrupted and
 misaddressed frames. After the burst, the guest performs **four sequential ICMP echo request/reply
