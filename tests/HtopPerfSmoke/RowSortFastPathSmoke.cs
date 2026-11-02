@@ -442,6 +442,8 @@ internal static class RowSortFastPathSmoke
         BenchmarkReversed(512);
         BenchmarkSingleMove(128, false);
         BenchmarkSingleMove(128, true);
+        BenchmarkSingleMove(256, false);
+        BenchmarkSingleMove(256, true);
         BenchmarkSingleMove(512, false);
         BenchmarkSingleMove(512, true);
         GC.KeepAlive(sink);
