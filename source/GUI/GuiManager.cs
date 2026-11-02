@@ -130,6 +130,9 @@ namespace ZonderqOS.GUI
 
                 bool previousLeftButtonState = false;
                 bool previousRightButtonState = false;
+                // A modal may close on mouse-down. The rest of that physical
+                // hold still belongs to the modal, not the newly exposed app.
+                bool modalLeftGestureOwned = false;
                 int previousMouseX = -1;
                 int previousMouseY = -1;
 
@@ -272,6 +275,8 @@ namespace ZonderqOS.GUI
                     int mouseY = (int)MouseManager.Y;
                     bool currentLeftButtonState = MouseManager.LeftButton;
                     bool currentRightButtonState = MouseManager.RightButton;
+                    if (!currentLeftButtonState)
+                        modalLeftGestureOwned = false;
 
                     bool pointerMoved = mouseX != previousMouseX || mouseY != previousMouseY;
                     bool buttonChanged = currentLeftButtonState != previousLeftButtonState ||
@@ -357,6 +362,9 @@ namespace ZonderqOS.GUI
                         }
                     }
 
+                    if (currentLeftButtonState && (paletteCaptured || notificationCaptured))
+                        modalLeftGestureOwned = true;
+
                     if (!paletteCaptured && !notificationCaptured)
                     {
                         // Overlay menus own clicks inside their bounds. Dispatching
@@ -430,6 +438,13 @@ namespace ZonderqOS.GUI
                             // menu, not to a window or taskbar behind it.
                             (leftForUi || currentRightButtonState) &&
                             activeFileManager != null && activeFileManager.ContextMenuVisible;
+                        if (currentLeftButtonState &&
+                            (startMenuCaptures || desktopMenuCaptures || fileManagerMenuCaptures))
+                            modalLeftGestureOwned = true;
+                        // Keep the original press for the modal itself, but
+                        // never replay its remaining held frames on an app.
+                        bool appLeftForUi = leftForUi && !modalLeftGestureOwned;
+                        bool appOldLeftForUi = oldLeftForUi && !modalLeftGestureOwned;
                         if (fileManagerMenuCaptures)
                         {
                             // The modal menu must receive the same sanitized
@@ -444,7 +459,7 @@ namespace ZonderqOS.GUI
                             // The left state is filtered while right is held to avoid
                             // synthetic clicks. Pass physical previous-button ownership
                             // separately so a second button cannot retarget a drag.
-                            applicationManager.HandleMouse(mouseX, mouseY, leftForUi, oldLeftForUi,
+                            applicationManager.HandleMouse(mouseX, mouseY, appLeftForUi, appOldLeftForUi,
                                 currentRightButtonState, previousRightButtonState,
                                 previousLeftButtonState || previousRightButtonState);
                         }
@@ -481,7 +496,7 @@ namespace ZonderqOS.GUI
                         // cannot open a desktop shortcut beneath the old overlay.
                         if (!startMenuCaptures && !desktopMenuCaptures && !fileManagerMenuCaptures &&
                             !windowCapturedClick && !desktopChordPress)
-                            UpdateDesktopInteractions(mouseX, mouseY, leftForUi, oldLeftForUi,
+                            UpdateDesktopInteractions(mouseX, mouseY, appLeftForUi, appOldLeftForUi,
                                 currentRightButtonState, previousRightButtonState);
                     }
 

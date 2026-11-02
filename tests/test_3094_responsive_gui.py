@@ -276,7 +276,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("activeFileManager.HandleMouse(mouseX, mouseY, leftForUi,", DESKTOP)
         self.assertIn("!windowCapturedClick && !desktopChordPress)", input_loop)
         self.assertIn("lastShortcutClickTimestamp = 0;", input_loop)
-        self.assertEqual(DESKTOP.count("UpdateDesktopInteractions(mouseX, mouseY, leftForUi"), 1)
+        self.assertEqual(DESKTOP.count("UpdateDesktopInteractions(mouseX, mouseY, appLeftForUi"), 1)
 
         # Pure state model; the production C# behavior needs a QEMU input
         # probe before it can be called a hardware/guest interaction PASS.
@@ -768,6 +768,30 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("Close();", outside)
         self.assertNotIn("return false;", outside)
         self.assertIn("return true;", outside)
+
+    def test_modal_mouse_hold_cannot_reach_exposed_window(self):
+        self.assertIn("bool modalLeftGestureOwned = false;", DESKTOP)
+        self.assertIn("if (!currentLeftButtonState)\n                        modalLeftGestureOwned = false;", DESKTOP)
+        self.assertIn("modalLeftGestureOwned = true;", DESKTOP)
+        self.assertIn("bool appLeftForUi = leftForUi && !modalLeftGestureOwned;", DESKTOP)
+        self.assertIn("bool appOldLeftForUi = oldLeftForUi && !modalLeftGestureOwned;", DESKTOP)
+        self.assertIn("applicationManager.HandleMouse(mouseX, mouseY, appLeftForUi, appOldLeftForUi,", DESKTOP)
+        self.assertIn("UpdateDesktopInteractions(mouseX, mouseY, appLeftForUi, appOldLeftForUi,", DESKTOP)
+
+        # An overlay closes on the first down edge. Its held continuation
+        # must not drag a newly exposed window; release resets ownership.
+        owned = False
+        forwarded = []
+        for held, modal_captured in (
+            (True, True), (True, False), (True, False),
+            (False, False), (True, False),
+        ):
+            if not held:
+                owned = False
+            if held and modal_captured:
+                owned = True
+            forwarded.append(held and not owned)
+        self.assertEqual(forwarded, [False, False, False, False, True])
 
     def test_desktop_context_menu_is_modal_with_or_without_shortcuts(self):
         dispatch = DESKTOP.split("bool startMenuCaptures =", 1)[1].split(
@@ -1502,9 +1526,13 @@ class ResponsiveGui3094(unittest.TestCase):
                         dispatch.index("applicationManager.HandleMouse("))
 
         # Held input is also captured; only a fresh press may dismiss.
+        def menu_owns(menu_open, start_owns, desktop_owns, left_down, right_down):
+            return (menu_open and not start_owns and not desktop_owns and
+                    (left_down or right_down))
         for left_down, right_down in ((True, False), (False, True), (True, True)):
-            self.assertTrue(left_down or right_down)
-            self.assertFalse(not (left_down or right_down))
+            self.assertTrue(menu_owns(True, False, False, left_down, right_down))
+            self.assertFalse(menu_owns(False, False, False, left_down, right_down))
+            self.assertFalse(menu_owns(True, True, False, left_down, right_down))
 
         # A click on another window or the taskbar while a File Manager
         # context menu is open must dismiss the menu without focus/volume
