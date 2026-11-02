@@ -25,9 +25,14 @@ namespace ZonderqOS.SystemCore
                 return false;
             }
 
-            if (!output.TrySetFormat(AudioFormat.Stereo16, sampleRate))
+            // The caller has already checked the published HDA format.
+            // Do not reprogram the codec merely to run a diagnostic: changing
+            // format here can reset a working cyclic stream or race a claim.
+            // The direct path is still single-caller/opt-in, never production.
+            if (output.SampleRate != sampleRate ||
+                output.Format.Channels != 2 || output.Format.ChannelSize != 2)
             {
-                Console.WriteLine("[AUDIO] 1MS REFUSED: HDA format rejected.");
+                Console.WriteLine("[AUDIO] 1MS REFUSED: existing HDA format is not stereo16/48kHz.");
                 return false;
             }
 
