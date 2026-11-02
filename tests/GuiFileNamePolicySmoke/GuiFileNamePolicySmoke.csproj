@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../source/GUI/FileManagerNamePolicy.cs" Link="FileManagerNamePolicy.cs" />
+    <Compile Include="../../source/GUI/FileManagerFileCreation.cs" Link="FileManagerFileCreation.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>

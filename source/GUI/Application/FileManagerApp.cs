@@ -1391,7 +1391,9 @@ namespace ZonderqOS.GUI.Apps
 
                 if (dialogMode == 1)
                 {
-                    File.WriteAllText(path, "");
+                    // Atomic exclusive create: a file appearing after the
+                    // case-insensitive scan must never be truncated.
+                    FileManagerFileCreation.CreateEmptyFile(path);
                     status = "Created file: " + name;
                 }
                 else

@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using ZonderqOS.GUI;
 
 // Compiles the exact production validator without Cosmos dependencies.
@@ -80,6 +81,47 @@ internal static class Program
         CheckCollision("report.txt", Array.Empty<string>(), new[] { "C:\\DATA\\REPORT.TXT\\" }, true);
         CheckCollision("report.txt", Array.Empty<string>(), new[] { "/" }, false);
         CheckCollision("notes", null, null, false);
+
+        // Exercise the exact production CreateNew path on the host. This
+        // verifies non-truncation under a duplicate-name race, not FAT32 QEMU.
+        string directory = Path.Combine(Path.GetTempPath(),
+            "zonderq-gui-create-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            string file = Path.Combine(directory, "notes.txt");
+            FileManagerFileCreation.CreateEmptyFile(file);
+            assertions++;
+            if (!File.Exists(file) || new FileInfo(file).Length != 0)
+                throw new InvalidOperationException("Exclusive creation did not create an empty file");
+
+            File.WriteAllText(file, "KEEP ORIGINAL DATA");
+            bool duplicateRejected = false;
+            try
+            {
+                FileManagerFileCreation.CreateEmptyFile(file);
+            }
+            catch (IOException)
+            {
+                duplicateRejected = true;
+            }
+            assertions++;
+            if (!duplicateRejected)
+                throw new InvalidOperationException("Duplicate create unexpectedly succeeded");
+            assertions++;
+            if (File.ReadAllText(file) != "KEEP ORIGINAL DATA")
+                throw new InvalidOperationException("Duplicate create truncated existing data");
+
+            string second = Path.Combine(directory, "second.txt");
+            FileManagerFileCreation.CreateEmptyFile(second);
+            assertions++;
+            if (!File.Exists(second) || new FileInfo(second).Length != 0)
+                throw new InvalidOperationException("Second exclusive creation failed");
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
 
         Console.WriteLine("GUI FAT32 filename policy: " + assertions + " C# assertions PASS");
     }

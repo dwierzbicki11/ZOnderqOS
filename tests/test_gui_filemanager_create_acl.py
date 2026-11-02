@@ -8,14 +8,19 @@ end = source.index("        private void RefreshAll()", begin)
 body = source[begin:end]
 
 checks = {
+    "exclusive create is used instead of truncating write": (
+        'FileManagerFileCreation.CreateEmptyFile(path)' in body
+        and 'File.WriteAllText(path, "")' not in body
+        and 'FileMode.CreateNew' in Path("source/GUI/FileManagerFileCreation.cs").read_text(encoding="utf-8")
+    ),
     "readonly virtual filesystem rejected": 'VirtualFs.IsReadOnlyPath(path)' in body,
     "create requires authenticated session": 'if (!SecurityContext.IsAuthenticated ||' in body,
     "missing user identity is rejected": 'string.IsNullOrEmpty(SecurityContext.CurrentUser)' in body,
     "no implicit root fallback": 'SecurityContext.CurrentUser ?? "root"' not in body,
-    "auth guard precedes disk writes": body.index('if (!SecurityContext.IsAuthenticated ||') < body.index('File.WriteAllText(path, "")'),
+    "auth guard precedes disk writes": body.index('if (!SecurityContext.IsAuthenticated ||') < body.index('FileManagerFileCreation.CreateEmptyFile(path)'),
     "nonroot parent must be inside home": '!IsInsidePath(currentPath, UserManager.GetHomeDirectory(user))' in body,
     "nonroot parent ACL checked": '!PermissionManager.CanWrite(currentPath, user)' in body,
-    "parent ACL checked before filesystem mutation": body.index('PermissionManager.CanWrite(currentPath, user)') < body.index('File.WriteAllText(path, "")'),
+    "parent ACL checked before filesystem mutation": body.index('PermissionManager.CanWrite(currentPath, user)') < body.index('FileManagerFileCreation.CreateEmptyFile(path)'),
     "new file gets user ACL": 'PermissionManager.SetPermission(path, user, dialogMode == 1 ? 644 : 700)' in body,
     "metadata failure leaves created data intact": 'Created, but ACL update failed:' in body,
     "metadata update occurs after successful create": body.index('Directory.CreateDirectory(path)') < body.index('PermissionManager.SetPermission(path, user, dialogMode == 1 ? 644 : 700)'),
@@ -24,7 +29,7 @@ checks = {
 checks["create ACL preflight stays inside filesystem exception guard"] = (
     body.index("try\n            {") < body.index("CanReadInSession(currentPath)")
     and body.index("try\n            {") < body.index("PermissionManager.CanWrite(currentPath, user)")
-    and body.rindex("catch (Exception ex)") > body.index('File.WriteAllText(path, "")')
+    and body.rindex("catch (Exception ex)") > body.index('FileManagerFileCreation.CreateEmptyFile(path)')
     and 'status = "Create error: " + ex.Message;' in body
 )
 
@@ -225,7 +230,7 @@ checks["create uses the exact dialog name without silently trimming"] = (
 checks["FAT32 creation checks case-insensitive file and directory collisions"] = (
     "FileManagerNamePolicy.HasCaseInsensitiveCollision(name," in body
     and "Directory.GetFiles(currentPath), Directory.GetDirectories(currentPath)" in body
-    and body.index("FileManagerNamePolicy.HasCaseInsensitiveCollision(name,") < body.index('File.WriteAllText(path, "")')
+    and body.index("FileManagerNamePolicy.HasCaseInsensitiveCollision(name,") < body.index('FileManagerFileCreation.CreateEmptyFile(path)')
     and "StringComparison.OrdinalIgnoreCase" in name_body
 )
 
