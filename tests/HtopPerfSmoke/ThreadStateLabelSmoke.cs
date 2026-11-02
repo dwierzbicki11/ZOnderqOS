@@ -60,7 +60,7 @@ internal static class ThreadStateLabelSmoke
         thread.State = (KernelThreadState)999;
         string unknown = monitor.GetThreadRowLine(0, thread, 12, 20, "worker");
         Assert(unknown.Contains("999       "), "future state fallback changed");
-        Console.WriteLine("PASS: 71 htop state-label equivalence/cache/production-row checks");
+        Console.WriteLine("PASS: 73 htop state-label equivalence/cache/production-row checks");
 
         var states = new KernelThreadState[1024];
         for (int i = 0; i < states.Length; i++)
