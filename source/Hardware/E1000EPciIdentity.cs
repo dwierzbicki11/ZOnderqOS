@@ -200,11 +200,14 @@ namespace ZonderqOS.Hardware
                         ((uint)config.Read16(bus, slot, function, 0x16) << 16);
                     address |= (ulong)high << 32;
                 }
-                // An unprogrammed 32-bit BAR may read back as 0xFFFFFFF0.
-                // Reject it as well as an all-ones 64-bit BAR; neither is
-                // evidence of an assigned, usable MMIO aperture.
+                // An unprogrammed BAR can retain an all-ones address
+                // field even when its 64-bit upper dword is zero or stale.
+                // Checking only the complete 64-bit all-ones value would
+                // accept 0x00000000FFFFFFF0 as an assigned MMIO window.
+                // Reject the low-dword sentinel for BOTH BAR widths; never
+                // write PCI BAR sizing probes to discover the aperture.
                 if (address == 0 ||
-                    (type == 0 && address == 0xFFFFFFF0UL) ||
+                    (low & 0xFFFFFFF0u) == 0xFFFFFFF0u ||
                     address == 0xFFFFFFFFFFFFFFF0UL)
                     return false;
 
