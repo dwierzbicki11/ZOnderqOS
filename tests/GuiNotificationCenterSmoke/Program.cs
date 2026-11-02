@@ -490,8 +490,45 @@ internal static class Program
         Check((int)field.GetValue(center) == 1, "plain arrow still switches filter");
     }
 
+    private static void TaskbarToggleClearsHoverState()
+    {
+        NotificationService.ResetForSession();
+        Post("hover");
+        var center = new NotificationCenter(800, 600, 44);
+        var flags = BindingFlags.NonPublic | BindingFlags.Instance;
+        var filter = typeof(NotificationCenter).GetField("hoveredFilter", flags);
+        var action = typeof(NotificationCenter).GetField("hoveredAction", flags);
+        var toast = typeof(NotificationCenter).GetField("toastHovered", flags);
+        Check(filter != null && action != null && toast != null,
+            "notification hover fields are available for production regression test");
+
+        center.Toggle();
+        center.UpdateInteractions(center.X + 20, center.Y + 90, false, false);
+        Check((int)filter.GetValue(center) == 0, "first filter can be hovered");
+        center.Toggle(); // close via taskbar, not Escape
+        Check(!center.Visible && (int)filter.GetValue(center) == -1,
+            "taskbar close clears stale filter hover");
+
+        center.Toggle();
+        Check((int)filter.GetValue(center) == -1,
+            "reopen does not highlight filter from previous session");
+        center.UpdateInteractions(center.X + 20, center.Y + center.Height - 43,
+            false, false);
+        Check((int)action.GetValue(center) == 0, "footer action can be hovered");
+        center.Toggle();
+        Check((int)action.GetValue(center) == -1,
+            "taskbar close clears destructive footer hover");
+
+        // An active toast may have been hovered while the panel was closed.
+        center.UpdateInteractions(380, 450, false, false);
+        Check((bool)toast.GetValue(center), "toast hover is tracked while closed");
+        center.Toggle();
+        Check(!(bool)toast.GetValue(center), "opening panel clears toast hover");
+    }
+
     public static int Main()
     {
+        TaskbarToggleClearsHoverState();
         CompactFiltersStayInsideTheirTabs();
         ModifiedArrowsDoNotChangeNotificationFilter();
         CompactRenderingNeverUsesInvalidTextClips();
