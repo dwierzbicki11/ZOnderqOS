@@ -76,13 +76,15 @@ namespace ZonderqOS.Drivers
                     return Decline("PCI memory decoding disabled; no MMIO reads");
 
                 byte pm = pci.FindCapability(0x01);
+                ushort pmcsrBefore = 0;
                 if (pm != 0)
                 {
                     // A malformed pointer must not turn a read-only probe
                     // into an access outside conventional PCI config space.
                     if (!Realtek810xERegisterDecoder.IsSafePowerManagementCapabilityOffset(pm))
                         return Decline("malformed PCI PM capability offset; no MMIO reads");
-                    if ((pci.ReadConfig16((ushort)(pm + 4)) & 0x0003) != 0)
+                    pmcsrBefore = pci.ReadConfig16((ushort)(pm + 4));
+                    if ((pmcsrBefore & 0x0003) != 0)
                         return Decline("PCI device not in D0; no MMIO reads");
                 }
 
@@ -126,8 +128,9 @@ namespace ZonderqOS.Drivers
                 if (!Realtek810xERegisterDecoder.IsStablePowerManagementCapability(
                         pm, pci.FindCapability(0x01)))
                     return Decline("PCI PM capability changed while mapping; no MMIO reads");
-                if (pm != 0 && (pci.ReadConfig16((ushort)(pm + 4)) & 0x0003) != 0)
-                    return Decline("PCI device left D0 while mapping; no MMIO reads");
+                if (pm != 0 && !Realtek810xERegisterDecoder.IsStablePowerManagementControl(
+                        pmcsrBefore, pci.ReadConfig16((ushort)(pm + 4))))
+                    return Decline("PCI device left D0 or PMCSR changed while mapping; no MMIO reads");
                 // Revalidate BAR metadata before any device register access.
                 PciBar mappedBar = pci.Bars[RegisterBar];
                 if (!mappedBar.IsAssigned || mappedBar.IsIo ||
@@ -159,8 +162,9 @@ namespace ZonderqOS.Drivers
                 if (!Realtek810xERegisterDecoder.IsStablePowerManagementCapability(
                         pm, pci.FindCapability(0x01)))
                     return Decline("PCI PM capability changed after sampling; no link proof");
-                if (pm != 0 && (pci.ReadConfig16((ushort)(pm + 4)) & 0x0003) != 0)
-                    return Decline("PCI power state changed after sampling; no link proof");
+                if (pm != 0 && !Realtek810xERegisterDecoder.IsStablePowerManagementControl(
+                        pmcsrBefore, pci.ReadConfig16((ushort)(pm + 4))))
+                    return Decline("PCI power state or PMCSR changed after sampling; no link proof");
                 if (!Realtek810xERegisterDecoder.IsStableMmioBar2Pair(
                         barPairBefore, ReadRegisterBarPair(pci)))
                     return Decline("BAR2/BAR3 changed or became invalid after sampling; no link proof");
@@ -168,7 +172,8 @@ namespace ZonderqOS.Drivers
                 if (!sampledBar.IsAssigned || sampledBar.IsIo ||
                     sampledBar.Base != bar.Base || sampledBar.Length != bar.Length ||
                     !Realtek810xERegisterDecoder.IsBar2MetadataConsistent(
-                        barPairBefore, sampledBar.Base, sampledBar.Length))
+                        barPairBefore, sampledBar.Base, sampledBar.Length) ||
+                    window.Length > sampledBar.Length)
                     return Decline("BAR2 resource changed after sampling; no link proof");
 
                 binding.Log("[NET3095-RTL810XE] MMIO_SNAPSHOT=READ mac=" +
