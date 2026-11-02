@@ -483,6 +483,25 @@ internal static class CursorDamageSmoke
         }
     }
 
+    private static void VerifyDeferredUniformAllocations()
+    {
+        var canvas = new Canvas(128, 96);
+        canvas.DrawFilledRectangle(Color.Navy, 0, 0, 128, 96);
+        var mover = new CursorDamageRenderer(canvas);
+        mover.DrawAfterScene(40, 40);
+        for (int i = 0; i < 500; i++)
+            if (!mover.TryMove(40, 40 + i % 8))
+                throw new Exception("deferred warmup failed");
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 5000; i++)
+            if (!mover.TryMove(40, 40 + i % 8))
+                throw new Exception("deferred move failed");
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        if (allocated != 0)
+            throw new Exception("deferred vertical cursor allocated " + allocated + " bytes");
+        Console.WriteLine("PASS: deferred uniform vertical cursor 5000 warmed moves, 0 B allocated");
+    }
+
     private static double TimeVerticalBulk(bool disable, int repeats)
     {
         var canvas = new Canvas(128, 96);
@@ -699,6 +718,7 @@ internal static class CursorDamageSmoke
         VerifyVerticalBulkCopy();
         VerifyVerticalUnderlayTransitions();
         VerifyDeferredUniformCopy();
+        VerifyDeferredUniformAllocations();
         BenchmarkDeferredUniformCopy();
         BenchmarkVerticalBulk();
         BenchmarkOverlap();
