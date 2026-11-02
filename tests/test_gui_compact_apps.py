@@ -104,6 +104,8 @@ class CompactNotepadTests(unittest.TestCase):
                         handler.index("int action = view.ToolbarActionAt(x, y);"))
         self.assertIn("if (Width < 280 || Height < requiredHeight)", NOTEPAD)
         self.assertIn("Math.Max(1, Width - 12), Math.Max(1, Height - 12)", NOTEPAD)
+        self.assertIn("if (app.DialogMode == 2 && Width >= 100 && Height >= 110)", NOTEPAD)
+        self.assertIn('SmallTextRenderer.DrawClipped(canvas, app.DialogText ?? ""', NOTEPAD)
 
 class CompactAboutTests(unittest.TestCase):
     def test_about_panel_rows_do_not_exceed_client_height(self):
