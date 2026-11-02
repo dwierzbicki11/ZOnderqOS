@@ -111,7 +111,7 @@ internal static class TrimmedSliceSmoke
         Benchmark("wrapped row with trailing spaces x20000",
             withSpaces, 6, 83, iterations, true);
         string noSpaces = "prefix" + new string('x', 84) + "suffix";
-        Benchmark("wrapped row without trailing spaces x20000",
+        Benchmark("standalone helper without spaces x20000 (production bypasses helper)",
             noSpaces, 6, 84, iterations, false);
     }
 }
