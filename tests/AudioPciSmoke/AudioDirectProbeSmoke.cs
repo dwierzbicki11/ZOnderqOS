@@ -157,6 +157,60 @@ internal static class AudioDirectProbeSmoke
                 !good.IsRunning && good.WrittenBytes == Pcm.Length + 16384 &&
                 waits == 1, "direct probe stops after one silent ring and settle");
 
+            // The public HDA name/driver can stay identical even after
+            // AudioManager.Primary changes to another device instance.
+            // The caller-provided reference check must refuse stale output
+            // before Start, after Start, after a write and during settle.
+            var staleBeforeStart = new Device();
+            check(!AudioProbeDirectPlayback.TryPlay(staleBeforeStart, Pcm, 48000,
+                () => false) && staleBeforeStart.StartCalls == 0 &&
+                staleBeforeStart.StopCalls == 0 && staleBeforeStart.WrittenBytes == 0,
+                "replaced primary refuses direct HDA before Start");
+
+            bool selectedPrimary = true;
+            var replacedDuringStart = new Device();
+            replacedDuringStart.OnStart = () => selectedPrimary = false;
+            check(!AudioProbeDirectPlayback.TryPlay(replacedDuringStart, Pcm, 48000,
+                () => selectedPrimary) && replacedDuringStart.StartCalls == 1 &&
+                replacedDuringStart.StopCalls == 0 && replacedDuringStart.WrittenBytes == 0,
+                "primary replacement during Start skips stale writes and Stop");
+
+            selectedPrimary = true;
+            var replacedAfterWrite = new Device();
+            replacedAfterWrite.OnWrite = () => selectedPrimary = false;
+            check(!AudioProbeDirectPlayback.TryPlay(replacedAfterWrite, Pcm, 48000,
+                () => selectedPrimary) && replacedAfterWrite.StartCalls == 1 &&
+                replacedAfterWrite.StopCalls == 0 &&
+                replacedAfterWrite.WrittenBytes == Pcm.Length,
+                "primary replacement after PCM write skips silent drain and Stop");
+
+            selectedPrimary = true;
+            var replacedDuringSettle = new Device();
+            int settleWaits = 0;
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "primary replacement occurs during final settle");
+                settleWaits++;
+                selectedPrimary = false;
+            };
+            check(!AudioProbeDirectPlayback.TryPlay(replacedDuringSettle, Pcm, 48000,
+                () => selectedPrimary) && replacedDuringSettle.StartCalls == 1 &&
+                replacedDuringSettle.StopCalls == 0 &&
+                replacedDuringSettle.WrittenBytes == Pcm.Length + 16384 &&
+                settleWaits == 1,
+                "primary replacement during settle skips Stop on stale device");
+            // Restore the normal successful 86ms wait callback for the
+            // remaining ownership and format regression cases.
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "successful direct probe waits one HDA ring period");
+                waits++;
+            };
+            var guardAfterPrimaryReplacement = new Device();
+            check(AudioProbeDirectPlayback.TryPlay(guardAfterPrimaryReplacement, Pcm, 48000) &&
+                guardAfterPrimaryReplacement.StopCalls == 1,
+                "primary replacement releases direct diagnostic guard");
+
             // Start may change the published sample rate or PCM format.
             // No bytes may reach a codec whose format changed during Start.
             var startRateDrift = new Device();
