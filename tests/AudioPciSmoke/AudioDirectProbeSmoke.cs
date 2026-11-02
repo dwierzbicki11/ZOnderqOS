@@ -29,12 +29,15 @@ namespace Cosmos.Kernel.System.Audio
         public int WrittenBytes;
         public bool ThrowOnStart;
         public bool ThrowOnWrite;
+        public bool ThrowOnStop;
         public bool StallWrites;
+        public Action OnStart;
 
         public void Start()
         {
             StartCalls++;
             if (ThrowOnStart) throw new InvalidOperationException("simulated start failure");
+            OnStart?.Invoke();
             IsRunning = true;
         }
 
@@ -50,6 +53,7 @@ namespace Cosmos.Kernel.System.Audio
         {
             StopCalls++;
             IsRunning = false;
+            if (ThrowOnStop) throw new InvalidOperationException("simulated stop failure");
         }
     }
 }
@@ -109,6 +113,36 @@ internal static class AudioDirectProbeSmoke
             check(good.StartCalls == 1 && good.StopCalls == 1 &&
                 !good.IsRunning && good.WrittenBytes == Pcm.Length + 16384 &&
                 waits == 1, "direct probe stops after one silent ring and settle");
+
+            // A nested diagnostic can arrive before Start marks the output
+            // running. Player == null is not an atomic ownership claim; the
+            // direct-probe guard must reject it without touching its device.
+            var nested = new Device();
+            bool nestedAccepted = true;
+            var outer = new Device
+            {
+                OnStart = () => nestedAccepted =
+                    AudioProbeDirectPlayback.TryPlay(nested, Pcm, 48000)
+            };
+            check(AudioProbeDirectPlayback.TryPlay(outer, Pcm, 48000) &&
+                !nestedAccepted && nested.StartCalls == 0 &&
+                nested.StopCalls == 0 && outer.StopCalls == 1,
+                "nested direct HDA probe refused before touching second output");
+            check(AudioProbeDirectPlayback.TryPlay(nested, Pcm, 48000) &&
+                nested.StartCalls == 1 && nested.StopCalls == 1,
+                "direct probe guard released after successful outer playback");
+
+            var brokenStop = new Device { ThrowOnStop = true };
+            bool stopThrew = false;
+            try { AudioProbeDirectPlayback.TryPlay(brokenStop, Pcm, 48000); }
+            catch (InvalidOperationException) { stopThrew = true; }
+            check(stopThrew && brokenStop.StopCalls == 1,
+                "simulated Stop exception propagates");
+            var afterStopFailure = new Device();
+            check(AudioProbeDirectPlayback.TryPlay(afterStopFailure, Pcm, 48000) &&
+                afterStopFailure.StartCalls == 1 &&
+                afterStopFailure.StopCalls == 1,
+                "direct probe guard released even when Stop throws");
 
             var brokenStart = new Device { ThrowOnStart = true };
             bool threw = false;
