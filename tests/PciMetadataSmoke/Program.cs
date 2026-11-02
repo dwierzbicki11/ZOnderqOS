@@ -67,6 +67,33 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
 }
 Check(!E1000EPciIdentity.TryReadReady(null, out e1000Command) &&
       e1000Command == 0, "Missing PCI accessor must fail closed");
+// The legacy IRQ route is PCI metadata, not an interrupt delivery/ISR
+// counter. Reject invalid INTx pins/lines and disabled legacy interrupts.
+var irqConfig = new FakeE1000EPciConfig();
+Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqConfig, out byte irqLine, out byte irqPin) &&
+      irqLine == 11 && irqPin == 1,
+    "Expected read-only QEMU legacy IRQ line/pin");
+foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[] {
+    x => x.Command = 0x0406, // PCI COMMAND.INTx Disable
+    x => x.IrqLine = 0,
+    x => x.IrqLine = 0xFF,
+    x => x.IrqPin = 0,
+    x => x.IrqPin = 5,
+    x => x.VendorId = 0x10EC,
+    x => x.Bar0Low = 0xFFFFFFF0u,
+    x => x.ThrowOnRead = true
+})
+{
+    var invalid = new FakeE1000EPciConfig();
+    corrupt(invalid);
+    Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(invalid, out irqLine, out irqPin) &&
+          irqLine == 0 && irqPin == 0,
+        "Invalid legacy IRQ route must fail closed without stale outputs");
+}
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(null, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0, "Missing PCI accessor must not expose an IRQ route");
+Console.WriteLine("[NET3095-E1000E-IRQ] PASS C# legacy PCI IRQ routing metadata (synthetic; ISR unproven)");
+
 Console.WriteLine("[NET3095-E1000E-PCI] PASS C# read-only PCI identity/MMIO/DMA prerequisites (synthetic; no hardware)");
 
 // Synthetic BAR register fixtures: these execute the production C# decoder,
@@ -537,6 +564,8 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     public byte Subclass { get; set; } = 0x00;
     public byte ProgrammingInterface { get; set; } = 0x00;
     public byte HeaderType { get; set; } = 0x00;
+    public byte IrqLine { get; set; } = 11;
+    public byte IrqPin { get; set; } = 1;
     public bool ThrowOnRead { get; set; }
     public int ReadCount { get; private set; }
 
@@ -572,6 +601,8 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x0A => Subclass,
             0x09 => ProgrammingInterface,
             0x0E => HeaderType,
+            0x3C => IrqLine,
+            0x3D => IrqPin,
             _ => throw new InvalidOperationException("Unexpected E1000E PCI byte offset")
         };
     }
