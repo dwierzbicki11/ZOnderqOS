@@ -32,6 +32,23 @@ checks["home containment rejects dot segments"] = (
     and "FileClipboard.IsSafeAbsolutePath(root)" in inside_body
 )
 
+# The home shortcut, toolbar and initial listing must all agree on the
+# authenticated user's home. Root keeps its legacy /root boot behavior.
+home_begin = source.index("        private static string ResolveSessionHome()")
+home_end = source.index("        public FileManagerApp(", home_begin)
+home_body = source[home_begin:home_end]
+checks["home follows authenticated session"] = (
+    'SecurityContext.CurrentUser == "root"' in home_body
+    and 'UserManager.GetHomeDirectory(SecurityContext.CurrentUser)' in home_body
+    and 'FileClipboard.IsSafeAbsolutePath(home)' in home_body
+)
+checks["unknown user does not inherit root home"] = (
+    'home == "/root"' in home_body and 'return "/";' in home_body
+)
+checks["home toolbar follows session"] = 'NavigateTo(ResolveSessionHome())' in source
+checks["home sidebar follows session"] = 'SidebarEntry.Location("Home", ResolveSessionHome()' in source
+checks["initial folder follows session"] = 'currentPath = ResolveSessionHome();' in source
+
 for name, ok in checks.items():
     if not ok:
         raise AssertionError(name)
