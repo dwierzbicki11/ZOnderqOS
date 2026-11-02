@@ -18,26 +18,25 @@ namespace ZonderqOS.SystemCore
         // This does not replace the stock AudioPlayback ownership protocol.
         private static int _directProbeBusy;
 
+        // A published output may be withdrawn or have its format changed
+        // between the initial probe and the next DMA-ring write. Never feed
+        // stereo16 into a stream that no longer advertises stereo16/48 kHz.
+        // This is a snapshot check, not a replacement for an atomic claim.
+        private static bool IsCompatibleUnclaimedHda(AudioDevice output, uint sampleRate)
+        {
+            return output != null && !output.IsWithdrawn &&
+                output.Name == "hda" && output.DriverName == "HdAudioDriver" &&
+                output.Player == null && output.SampleRate == sampleRate &&
+                output.Format.Channels == 2 && output.Format.ChannelSize == 2;
+        }
+
         internal static bool TryPlay(AudioDevice output, byte[] pcm, uint sampleRate)
         {
-            if (output == null || output.IsWithdrawn || output.Name != "hda" ||
-                output.DriverName != "HdAudioDriver" ||
-                output.Player != null || output.IsRunning ||
-                sampleRate != 48000 || pcm == null || pcm.Length == 0 ||
-                pcm.Length > AudioProbeRingFeeder.MaxPcmBytes || pcm.Length % 4 != 0)
+            if (sampleRate != 48000 || pcm == null || pcm.Length == 0 ||
+                pcm.Length > AudioProbeRingFeeder.MaxPcmBytes || pcm.Length % 4 != 0 ||
+                !IsCompatibleUnclaimedHda(output, sampleRate) || output.IsRunning)
             {
                 Console.WriteLine("[AUDIO] 1MS REFUSED: requires idle stock HDA and bounded stereo16.");
-                return false;
-            }
-
-            // The caller has already checked the published HDA format.
-            // Do not reprogram the codec merely to run a diagnostic: changing
-            // format here can reset a working cyclic stream or race a claim.
-            // The direct path is still single-caller/opt-in, never production.
-            if (output.SampleRate != sampleRate ||
-                output.Format.Channels != 2 || output.Format.ChannelSize != 2)
-            {
-                Console.WriteLine("[AUDIO] 1MS REFUSED: existing HDA format is not stereo16/48kHz.");
                 return false;
             }
 
@@ -53,15 +52,24 @@ namespace ZonderqOS.SystemCore
             {
                 // Recheck after acquiring our local diagnostic guard. A
                 // withdrawn, running or newly claimed device is not ours.
-                if (output.IsWithdrawn || output.Player != null || output.IsRunning)
+                if (!IsCompatibleUnclaimedHda(output, sampleRate) || output.IsRunning)
                     return false;
                 // Start can fail after partially enabling the stream engine.
                 // Mark cleanup as required before invoking the driver.
                 started = true;
                 output.Start();
+                // Start() can reconfigure a codec or lose the output. Check
+                // again before the FIRST write, then before every subsequent
+                // write and after the final settle wait. A format drift must
+                // abort without queuing any further incompatible PCM.
+                if (!IsCompatibleUnclaimedHda(output, sampleRate) || !output.IsRunning)
+                {
+                    Console.WriteLine("[AUDIO] 1MS REFUSED: HDA changed during Start.");
+                    return false;
+                }
                 bool fed = AudioProbeRingFeeder.FeedAndSettle(pcm,
                     (data, offset, count) => output.Write(data.AsSpan(offset, count)),
-                    () => !output.IsWithdrawn && output.IsRunning,
+                    () => IsCompatibleUnclaimedHda(output, sampleRate) && output.IsRunning,
                     milliseconds => Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds),
                     out int waits);
                 Console.WriteLine("[AUDIO] 1MS diagnostic ring writer " +
