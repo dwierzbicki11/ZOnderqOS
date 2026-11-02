@@ -127,6 +127,28 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("(!leftButtonDown || previewBitmap == null)", render)
         self.assertIn("previewWidth > areaWidth || previewHeight > areaHeight", render)
 
+    def test_image_viewer_enforces_acl_on_every_reload_and_sibling(self):
+        load = IMAGE_VIEWER.split("private void LoadImage(string path, bool rebuildSiblings)", 1)[1].split(
+            "private static bool CanReadImageInSession(string path)", 1
+        )[0]
+        acl = IMAGE_VIEWER.split("private static bool CanReadImageInSession(string path)", 1)[1].split(
+            "private bool IsCurrentDirectoryInSiblingList()", 1
+        )[0]
+        siblings = IMAGE_VIEWER.split("private void RebuildSiblingList(string path)", 1)[1].split(
+            "private void FindSiblingIndex(string path)", 1
+        )[0]
+        self.assertIn("using ZonderqOS.SystemCore;", IMAGE_VIEWER)
+        self.assertLess(load.index("if (!CanReadImageInSession(path))"), load.index("if (!File.Exists(path))"))
+        self.assertLess(load.index("if (!CanReadImageInSession(path))"), load.index("new Png(path)"))
+        self.assertLess(load.index("if (!CanReadImageInSession(path))"), load.index("new CosmosBitmap(path)"))
+        self.assertIn("SecurityContext.IsAuthenticated", acl)
+        self.assertIn("FileClipboard.IsSafeAbsolutePath(path)", acl)
+        self.assertIn("PermissionManager.CanRead(directory, SecurityContext.CurrentUser)", acl)
+        self.assertIn("PermissionManager.CanRead(path, SecurityContext.CurrentUser)", acl)
+        self.assertLess(siblings.index("!CanReadImageInSession(path)"), siblings.index("Directory.GetFiles(directory)"))
+        # This is a source-level authorization contract; a real ACL revocation
+        # during a QEMU session still requires an integration test.
+
     def test_image_viewer_navigation_skips_corrupt_and_missing_siblings(self):
         navigation = IMAGE_VIEWER.split("private void NavigateSibling(int delta)", 1)[1].split(
             "private void LoadImage(string path, bool rebuildSiblings)", 1
