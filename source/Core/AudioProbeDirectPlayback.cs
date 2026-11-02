@@ -95,6 +95,7 @@ namespace ZonderqOS.SystemCore
                 // position, IRQ delivery or physical sound.
                 int writeCalls = 0;
                 int zeroWrites = 0;
+                int settleRequests = 0;
                 int pcmQueued = 0;
                 int silenceQueued = 0;
                 bool fed = AudioProbeRingFeeder.FeedAndSettle(pcm,
@@ -115,7 +116,12 @@ namespace ZonderqOS.SystemCore
                         return accepted;
                     },
                     () => IsCompatibleUnclaimedHda(output, sampleRate, stillSelected) && output.IsRunning,
-                    milliseconds => Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds),
+                    milliseconds =>
+                    {
+                        if (milliseconds == 86)
+                            settleRequests++;
+                        Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds);
+                    },
                     out int waits);
                 Console.WriteLine("[AUDIO] 1MS diagnostic ring writer " +
                     (fed ? "ACCEPTED_TO_RING" : "FAILED") +
@@ -123,7 +129,9 @@ namespace ZonderqOS.SystemCore
                     " silenceQueued=" + silenceQueued +
                     " writeCalls=" + writeCalls +
                     " zeroWrites=" + zeroWrites +
-                    " waits=" + waits + " settle=86ms (DMA/IRQ and audible PCM not proven)");
+                    " waits=" + waits +
+                    " settleRequests=" + settleRequests +
+                    " settle=86ms (requested only; DMA/IRQ and audible PCM not proven)");
                 return fed;
             }
             finally
