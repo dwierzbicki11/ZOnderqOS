@@ -751,6 +751,24 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertFalse(contains(20, 548, 8, 8, 480, 540))
         self.assertTrue(contains(222, 206, 100, 100, 222, 192))
 
+    def test_modal_overlays_capture_held_gestures(self):
+        self.assertIn(
+            "if (startMenuWasVisible && mouseY < taskbar.Y &&", DESKTOP
+        )
+        self.assertIn(
+            "(currentLeftButtonState || currentRightButtonState))\n"
+            "                            startMenuCaptures = true;", DESKTOP
+        )
+        self.assertIn(
+            "currentLeftButtonState || currentRightButtonState);", DESKTOP
+        )
+        outside = NOTIFICATIONS.split("if (!inside)", 1)[1].split(
+            "UpdateHover(mouseX, mouseY);", 1
+        )[0]
+        self.assertIn("Close();", outside)
+        self.assertNotIn("return false;", outside)
+        self.assertIn("return true;", outside)
+
     def test_desktop_context_menu_is_modal_with_or_without_shortcuts(self):
         dispatch = DESKTOP.split("bool startMenuCaptures =", 1)[1].split(
             "int priorMouseX =", 1
@@ -772,13 +790,14 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertNotIn("desktopContextMenu.UpdateInteractions(", desktop)
 
         def capture(menu_open, inside, left_down, previous_left):
-            return menu_open and (inside or (left_down and not previous_left))
+            return menu_open and (inside or left_down)
 
         # Clicking a menu entry or outside the menu is consumed, even if
         # the action closes the overlay before other handlers are reached.
         for icons_visible in (True, False):
             self.assertTrue(capture(True, True, True, False), icons_visible)
             self.assertTrue(capture(True, False, True, False), icons_visible)
+            self.assertTrue(capture(True, False, True, True), icons_visible)
             self.assertFalse(capture(True, False, False, False), icons_visible)
             self.assertFalse(capture(False, True, True, False), icons_visible)
 

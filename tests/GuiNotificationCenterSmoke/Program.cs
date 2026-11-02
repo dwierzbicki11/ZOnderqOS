@@ -272,6 +272,24 @@ internal static class Program
         NotificationService.DoNotDisturb = false;
     }
 
+    private static void ModalPanelOwnsOutsidePointerUntilDismissed()
+    {
+        NotificationService.ResetForSession();
+        var center = Open();
+        int outsideX = center.X - 5;
+        int outsideY = center.Y + 20;
+        Check(center.UpdateInteractions(outsideX, outsideY, false, false),
+            "open panel captures outside pointer hover");
+        Check(center.UpdateInteractions(outsideX, outsideY, true, true),
+            "open panel captures held drag outside its bounds");
+        Check(center.Visible, "held gesture does not dismiss modal panel");
+        Check(center.UpdateInteractions(outsideX, outsideY, true, false),
+            "fresh outside press is consumed");
+        Check(!center.Visible, "fresh outside press dismisses panel");
+        Check(!center.UpdateInteractions(outsideX, outsideY, false, false),
+            "closed panel no longer captures pointer");
+    }
+
     private static void CompactRenderingNeverUsesInvalidTextClips()
     {
         // Exercise the production renderer with a host Canvas: any
@@ -297,6 +315,7 @@ internal static class Program
     public static int Main()
     {
         CompactRenderingNeverUsesInvalidTextClips();
+        ModalPanelOwnsOutsidePointerUntilDismissed();
         TinyPanelFooterDoesNotTriggerHiddenFilters();
         PageNavigationTracksVisibleRows();
         NewPostDoesNotRetargetDelete();

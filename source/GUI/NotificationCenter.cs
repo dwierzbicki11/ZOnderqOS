@@ -280,7 +280,10 @@ namespace ZonderqOS.GUI
                     Close();
                     return true;
                 }
-                return false;
+                // While the panel is open, even a held press outside its
+                // bounds belongs to the modal overlay. Otherwise an older
+                // window drag/resize can continue behind the notification UI.
+                return true;
             }
 
             UpdateHover(mouseX, mouseY);

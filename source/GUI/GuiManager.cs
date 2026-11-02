@@ -373,6 +373,12 @@ namespace ZonderqOS.GUI
                             ((currentLeftButtonState && !previousLeftButtonState && mouseY < taskbar.Y) ||
                              rightPressed);
                         bool startMenuCaptures = startMenuInside || startMenuOutsideClick;
+                        // An already-held gesture must not keep moving a window
+                        // behind Start. Only the desktop is modal: taskbar
+                        // controls still receive their normal click.
+                        if (startMenuWasVisible && mouseY < taskbar.Y &&
+                            (currentLeftButtonState || currentRightButtonState))
+                            startMenuCaptures = true;
                         if (startMenuOutsideClick)
                             startMenu.Visible = false;
                         // Taskbar app and notification buttons should dismiss an
@@ -394,7 +400,9 @@ namespace ZonderqOS.GUI
                         bool desktopMenuCaptures = desktopMenuWasVisible &&
                             ((mouseX >= desktopContextMenu.X && mouseX < desktopContextMenu.X + desktopContextMenu.Width &&
                               mouseY >= desktopContextMenu.Y && mouseY < desktopContextMenu.Y + desktopContextMenu.Height) ||
-                             (currentLeftButtonState && !previousLeftButtonState) || rightPressed);
+                             // Capture an already-held press as well as its first
+                             // edge: a menu must not resume an underlying drag.
+                             currentLeftButtonState || currentRightButtonState);
                         if (desktopMenuWasVisible)
                         {
                             if (rightPressed)
