@@ -174,6 +174,101 @@ internal static class Program
                 "/" + old.ScrollOffset + ", " + bar.Value + "/" + old.ScrollValue + ")");
     }
 
+    // Frozen implementation from immediately before the source-slice change.
+    // Unlike LegacyOutput, it still uses the current production PrintLine, so
+    // this benchmark isolates only the command-output parser's extra copy.
+    private static void PreviousCommandOutput(TerminalBox box, string output)
+    {
+        if (string.IsNullOrEmpty(output))
+            return;
+        int start = 0;
+        for (int i = 0; i <= output.Length; i++)
+        {
+            if (i < output.Length && output[i] != '\r' && output[i] != '\n')
+                continue;
+            int length = i - start;
+            if (length > 0)
+            {
+                string line = output.Substring(start, length);
+                if (line == "\u0001GUI_CLEAR\u0001")
+                    box.ClearOutput();
+                else
+                    box.PrintLine(line);
+            }
+            if (i < output.Length && output[i] == '\r' &&
+                i + 1 < output.Length && output[i + 1] == '\n')
+                i++;
+            start = i + 1;
+        }
+    }
+
+    private static void SameTerminals(TerminalBox current, TerminalBox previous, string label)
+    {
+        if (current.OutputLines.Count != previous.OutputLines.Count)
+            throw new Exception(label + ": output count mismatch");
+        for (int i = 0; i < current.OutputLines.Count; i++)
+            if (current.OutputLines[i] != previous.OutputLines[i])
+                throw new Exception(label + ": output mismatch at " + i);
+        ScrollBar currentBar = (ScrollBar)ScrollBarField.GetValue(current);
+        ScrollBar previousBar = (ScrollBar)ScrollBarField.GetValue(previous);
+        if ((int)ScrollOffset.GetValue(current) != (int)ScrollOffset.GetValue(previous) ||
+            (bool)UserScrolled.GetValue(current) != (bool)UserScrolled.GetValue(previous) ||
+            currentBar.Value != previousBar.Value || currentBar.MaxValue != previousBar.MaxValue)
+            throw new Exception(label + ": scroll state mismatch");
+    }
+
+    private static void VerifyCommandSlices()
+    {
+        const string marker = "\u0001GUI_CLEAR\u0001";
+        string[] fixedCases = {
+            "", "\r\n", "abc", "   ", "hello\rworld", "hello\nworld",
+            "first\r\nsecond\rthird\n", marker, "x" + marker,
+            marker + "x", "before\n" + marker + "\nafter",
+            "\n" + marker + "\r\n" + marker + "\r\nend",
+            new string(' ', 2048), new string('x', 5000),
+            "Zażółć gęślą jaźń\r\n雪\t  "
+        };
+        int checks = 0;
+        foreach (int width in new[] { 40, 80, 240, 820, 1920 })
+        {
+            var previous = new TerminalBox(0, 0, width, 160) { IsFocused = true };
+            var current = new TerminalBox(0, 0, width, 160) { IsFocused = true };
+            foreach (string output in fixedCases)
+            {
+                PreviousCommandOutput(previous, output);
+                current.PrintCommandOutput(output);
+                SameTerminals(current, previous, "fixed command slice");
+                checks++;
+            }
+            // Exercise the trim + scroll path and deterministic mixed separators.
+            for (int i = 0; i < 450; i++)
+            {
+                previous.PrintLine("history " + i);
+                current.PrintLine("history " + i);
+            }
+            previous.HandleKey(new KeyEvent { Key = ConsoleKeyEx.PageUp });
+            current.HandleKey(new KeyEvent { Key = ConsoleKeyEx.PageUp });
+            var random = new Random(3095 + width);
+            const string alphabet = "abc Z\t\r\ną 0123";
+            for (int caseId = 0; caseId < 300; caseId++)
+            {
+                int length = random.Next(0, 240);
+                var chars = new char[length];
+                for (int i = 0; i < chars.Length; i++)
+                    chars[i] = alphabet[random.Next(alphabet.Length)];
+                string output = new string(chars);
+                if (caseId % 17 == 0)
+                    output += "\r\n" + marker + "\nnext";
+                PreviousCommandOutput(previous, output);
+                current.PrintCommandOutput(output);
+                SameTerminals(current, previous, "random command slice");
+                checks++;
+            }
+        }
+        Console.WriteLine("PASS: " + checks +
+            " source-slice command parser vs previous production C# implementation");
+    }
+
     private static void Verify()
     {
         if (ScrollOffset == null || UserScrolled == null || ScrollBarField == null)
@@ -303,6 +398,7 @@ internal static class Program
     private static int Main()
     {
         Verify();
+        VerifyCommandSlices();
         var monitor = new string[128];
         for (int i = 0; i < monitor.Length; i++)
             monitor[i] = "CPU " + i + " " + new string('x', 64);
@@ -331,6 +427,13 @@ internal static class Program
             () => legacyCommand.PrintCommandOutput(commandOutput),
             () => currentCommand.PrintCommandOutput(commandOutput), 200, true);
         Same(currentCommand, legacyCommand, "benchmark command");
+
+        var previousSlice = new TerminalBox(0, 0, 820, 520);
+        var currentSlice = new TerminalBox(0, 0, 820, 520);
+        Benchmark("command source-slice vs previous parser CRLF 400 lines x200",
+            () => PreviousCommandOutput(previousSlice, commandOutput),
+            () => currentSlice.PrintCommandOutput(commandOutput), 200, true);
+        SameTerminals(currentSlice, previousSlice, "benchmark source slice");
         Console.WriteLine("PASS: production C# terminal equivalence; timing is informational.");
         return 0;
     }
