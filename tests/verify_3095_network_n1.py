@@ -257,6 +257,16 @@ def self_test() -> None:
     frame += b"\x00" * (60 - len(frame))
     good = synthetic_pcap(frame)
     assert "PASS" in validate(serial, good)
+    # Exact shape of the N2 QEMU serial failure from run 41478097771:
+    # a complete LAPIC/SCHED pair was injected into PCI_TX_STABLE.
+    real_n2 = serial.replace("command=0x0006", "command=0x0107")
+    real_n2 = real_n2.replace(
+        "[NET3095-N1] PCI_TX_STABLE=PASS",
+        "[NET3095-N1] PCI_TX_STABLE"
+        "[LAPIC] Timer tick 5 RSP=FFFF80007F64EB80\\n"
+        "[SCHED] Tick 5 enabled=1\\n=PASS",
+    )
+    assert "PASS" in validate(real_n2, good)
     # Real N6 QEMU run 41400794536 had a scheduler tick inserted into
     # TX_QUEUED=yes after '='; PCAP and all later HTTP/TCP exchanges existed.
     # Exercise every internal split position of every N1 marker, not
@@ -272,7 +282,7 @@ def self_test() -> None:
             paired = (
                 "[LAPIC] Timer tick 5 RSP=FFFF80007F64EB80\n"
                 "[SCHED] Tick 5 enabled=1\n"
-            ).replace("\\\n", "\n")
+            )
             paired_torn = serial.replace(
                 marker, marker[:pos] + paired + marker[pos:]
             )
