@@ -383,3 +383,35 @@ repeated E1000E link recovery in **emulated QEMU**, not physical RTL810xE
 or a confirmed guest ISR. A successful previous single-cycle run
 (#41383999788) does not validate this new two-cycle code; only the
 current workflow's real QEMU result can do that.
+
+
+## N6 TCP reconnect after two QMP link recoveries (2026-11-02)
+
+The isolated N6 guest now establishes a **new TCP connection after each**
+of two QMP-driven E1000E link down/up cycles, following the corresponding
+ICMP echo. Each connection sends a cycle-specific request and verifies a
+different exact reply from the loopback-only host fixture. The independent
+`verify_3095_network_n6_tcp_recovery.py` PCAP gate requires fresh ordered
+SYN/SYN-ACK/ACK handshakes and both exact request/reply byte streams after
+the respective link recovery. Serial markers or QMP acceptance alone are
+not proof of recovered TCP connectivity.
+
+**Observed real QEMU evidence:** GitHub Actions run
+[#41394844044](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41394844044)
+passed its N6 two-cycle link/TCP step on stock Cosmos 3.0.95. The logs
+include `[NET3095-N6-TCP-RECOVERY-GATE] PASS cycles=2` and
+`[NET3095-N6-LINK-QEMU] PASS QMP link cycles=2`. This confirms
+recovered TCP RX/TX in the emulated E1000E PCAP, **not** guest ISR
+execution, physical Realtek, HTTPS, or production desktop networking.
+
+That overall workflow nevertheless ended **FAILURE** in a later,
+independent **RTL810xE negative diagnostic**: the screen-mode QEMU
+serial output had a complete scheduler tick inserted inside the exact
+`[NET3095-RTL810XE] BOOT` marker. The previous fail-closed validator
+only normalized the same known splice inside the decline marker.
+Commit `bc7e682` extends exact-marker reconstruction to BOOT and
+adds positive and negative synthetic split-position cases. The
+downloaded failure artifact was checked locally against the new
+reconstruction, including all six RTL negative serial logs. This is
+a validator fix, **not** new physical RTL810xE evidence; the full CI
+rerun on that commit must still pass before the regression is closed.
