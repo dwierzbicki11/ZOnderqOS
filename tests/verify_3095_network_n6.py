@@ -77,6 +77,8 @@ def server_fin_acked(packets, first: int, guest: bytes,
     """
     client_end = (client_seq + len(REQUEST)) & 0xFFFFFFFF
     server_end = (server_seq + len(RESPONSE)) & 0xFFFFFFFF
+    client_fin_end = (client_end + 1) & 0xFFFFFFFF
+    server_fin_end = (server_end + 1) & 0xFFFFFFFF
     for i in range(first, len(packets)):
         fin = packets[i]
         if not (
@@ -84,22 +86,57 @@ def server_fin_acked(packets, first: int, guest: bytes,
             fin["src_mac"] == server_mac and fin["dst_mac"] == MAC and
             fin["sport"] == PORT and fin["dport"] == client_port and
             (fin["flags"] & 0x17) == 0x11 and
-            fin["seq"] == server_end and fin["ack"] == client_end and
+            fin["seq"] == server_end and
+            fin["ack"] in (client_end, client_fin_end) and
             not fin["payload"]
         ):
             continue
         for ack_index in range(i + 1, len(packets)):
             ack = packets[ack_index]
-            if (
+            if not (
                 ack["src"] == guest and ack["dst"] == SERVER and
                 ack["src_mac"] == MAC and ack["dst_mac"] == server_mac and
                 ack["sport"] == client_port and
                 ack["dport"] == PORT and (ack["flags"] & 0x17) == 0x10 and
-                ack["seq"] == client_end and
-                ack["ack"] == (server_end + 1) & 0xFFFFFFFF and
-                not ack["payload"]
+                ack["ack"] == server_fin_end and not ack["payload"]
             ):
+                continue
+            if ack["seq"] == client_end:
                 return ack_index
+            if ack["seq"] != client_fin_end:
+                continue
+            # A simultaneous close advances the guest's final ACK sequence
+            # by one. Require the guest FIN and the server's acknowledgment
+            # of that FIN, not merely an ACK claiming the extra sequence.
+            for guest_fin_index in range(first, ack_index):
+                guest_fin = packets[guest_fin_index]
+                if not (
+                    guest_fin["src"] == guest and guest_fin["dst"] == SERVER and
+                    guest_fin["src_mac"] == MAC and
+                    guest_fin["dst_mac"] == server_mac and
+                    guest_fin["sport"] == client_port and
+                    guest_fin["dport"] == PORT and
+                    (guest_fin["flags"] & 0x17) == 0x11 and
+                    guest_fin["seq"] == client_end and
+                    guest_fin["ack"] in (server_end, server_fin_end) and
+                    not guest_fin["payload"]
+                ):
+                    continue
+                for server_ack_index in range(guest_fin_index + 1, ack_index):
+                    server_ack = packets[server_ack_index]
+                    if (
+                        server_ack["src"] == SERVER and
+                        server_ack["dst"] == guest and
+                        server_ack["src_mac"] == server_mac and
+                        server_ack["dst_mac"] == MAC and
+                        server_ack["sport"] == PORT and
+                        server_ack["dport"] == client_port and
+                        (server_ack["flags"] & 0x16) == 0x10 and
+                        server_ack["ack"] == client_fin_end and
+                        server_ack["seq"] in (server_end, server_fin_end) and
+                        not server_ack["payload"]
+                    ):
+                        return ack_index
     return None
 
 
@@ -275,6 +312,50 @@ def self_test() -> None:
     ])
     frames = base + handshake + request + response + teardown + second_frames
     assert "PASS" in validate(serial, synthetic_capture(frames))
+    # Regression from real QEMU run 41455108481: the guest ACKed the
+    # server FIN, sent its own FIN, then ACKed a server FIN retransmission.
+    # The final ACK has client_end + 1 as its sequence number.
+    client_end = 30001 + len(REQUEST)
+    server_end = 40001 + len(RESPONSE)
+    simultaneous_close = [
+        fake_http(True, 0x11, server_end, client_end, client_port=49154),
+        fake_http(False, 0x10, client_end, server_end, client_port=49154),
+        fake_http(False, 0x11, client_end, server_end, client_port=49154),
+        fake_http(True, 0x11, server_end, client_end + 1, client_port=49154),
+        fake_http(False, 0x10, client_end + 1, server_end + 1, client_port=49154),
+    ]
+    second_prefix = second_handshake + second_request + second_response
+    first_prefix = base + handshake + request + response + teardown
+    assert "PASS" in validate(serial, synthetic_capture(
+        first_prefix + second_prefix + simultaneous_close))
+    # Client-first FIN is another valid simultaneous close.
+    client_first_close = [
+        fake_http(False, 0x11, client_end, server_end, client_port=49154),
+        fake_http(True, 0x11, server_end, client_end + 1, client_port=49154),
+        fake_http(False, 0x10, client_end + 1, server_end + 1, client_port=49154),
+    ]
+    assert "PASS" in validate(serial, synthetic_capture(
+        first_prefix + second_prefix + client_first_close))
+    bad_closes = (
+        # Final ACK sequence advanced without the guest FIN.
+        simultaneous_close[:2] + simultaneous_close[3:],
+        # Guest FIN without a server acknowledgment of it.
+        simultaneous_close[:3] + simultaneous_close[4:],
+        # Guest FIN at the wrong TCP sequence.
+        simultaneous_close[:2] +
+        [fake_http(False, 0x11, client_end + 2, server_end, client_port=49154)] +
+        simultaneous_close[3:],
+        # Server retransmission does not acknowledge the guest FIN.
+        simultaneous_close[:3] +
+        [fake_http(True, 0x11, server_end, client_end, client_port=49154)] +
+        simultaneous_close[4:],
+    )
+    for bad_close in bad_closes:
+        try:
+            validate(serial, synthetic_capture(first_prefix + second_prefix + bad_close))
+        except ValueError:
+            continue
+        raise AssertionError("accepted incomplete simultaneous TCP close")
     # N6's own cross-stage ordering must see the same repaired N3/N4/N5
     # markers as their independent packet validators.
     for marker in (PING_PASS, TCP_PASS, DNS_PASS):
