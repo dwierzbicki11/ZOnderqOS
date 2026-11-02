@@ -24,7 +24,7 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("config.Read16(bus, slot, function, 0x12)", pci)
         self.assertIn("config.Read16(bus, slot, function, 0x14)", pci)
         self.assertIn("config.Read16(bus, slot, function, 0x16)", pci)
-        self.assertIn("type == 0 && address == 0xFFFFFFF0UL", pci)
+        self.assertIn("(low & 0xFFFFFFF0u) == 0xFFFFFFF0u", pci)  # reject both 32/64-bit BAR sentinels
         self.assertIn("(low & 0x09u) != 0", pci)  # register BAR cannot be prefetchable
         self.assertIn("TryReadLegacyInterruptMode(", pci)
         self.assertIn("(status & 0x0010) == 0", pci)
