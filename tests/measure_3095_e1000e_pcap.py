@@ -70,6 +70,24 @@ def decode(time: float, frame: bytes):
     return None
 
 
+def burst_capture_stats(pcap: bytes) -> tuple[int, float]:
+    """QEMU PCAP paced TX telemetry; not a peak NIC throughput benchmark."""
+    tag = b'ZONDERQ3095-BURST-'
+    lengths = (60, 128, 512, 1024, 1514)
+    observed = [(stamp, len(frame)) for stamp, frame in records(pcap)
+                if frame[12:14] == bytes((0x88, 0xB5)) and
+                frame[14:14 + len(tag)] == tag]
+    if len(observed) != 128:
+        raise ValueError(f'expected 128 raw TX frames, found {len(observed)}')
+    for sequence, (_, size) in enumerate(observed):
+        if size != lengths[sequence % len(lengths)]:
+            raise ValueError(f'raw TX frame length mismatch at {sequence}')
+    span_ms = (observed[-1][0] - observed[0][0]) * 1000
+    if span_ms <= 0:
+        raise ValueError('raw TX PCAP timestamps not increasing')
+    return sum(size for _, size in observed), round(span_ms, 3)
+
+
 def measure(pcap: bytes, serial: str):
     http = defaultdict(list)
     icmp_requests = {}
@@ -115,6 +133,12 @@ def measure(pcap: bytes, serial: str):
     print('[NET3095-E1000E-METRICS] ICMP wire_RTT_ms=' +
           ','.join(f'{ident:04x}:{seq}:{rtt}' for (ident, seq), rtt in icmp_rtts) +
           ' ISR=UNPROVEN')
+    raw_bytes, raw_span_ms = burst_capture_stats(pcap)
+    paced_rate_mbps = round(raw_bytes * 8 / (raw_span_ms * 1000), 3)
+    print(f'[NET3095-E1000E-METRICS] paced_raw_TX_frames=128 '
+          f'bytes={raw_bytes} capture_span_ms={raw_span_ms} '
+          f'capture_rate_Mbps={paced_rate_mbps} (5ms pacing; NOT peak NIC throughput) '
+          'ISR=UNPROVEN')
     return len(http), len(icmp_rtts)
 
 
@@ -141,6 +165,28 @@ def self_test():
         except ValueError:
             continue
         raise AssertionError('accepted malformed PCAP')
+    # Synthetic PCAP with 5ms spacing. This is a parser test, not guest data.
+    prefix = bytes((255,)) * 6 + bytes((0x52, 0x54, 0, 0x12, 0x34, 0x56, 0x88, 0xB5))
+    tag = b'ZONDERQ3095-BURST-'
+    lengths = (60, 128, 512, 1024, 1514)
+    def capture(indices, step_us=5000):
+        output = bytearray(header)
+        for position, index in enumerate(indices):
+            raw = prefix + tag + f'{index:03d}'.encode('ascii')
+            frame = raw + bytes(lengths[index % len(lengths)] - len(raw))
+            output += struct.pack('<IIII', 1, position * step_us,
+                                  len(frame), len(frame)) + frame
+        return bytes(output)
+    total, span = burst_capture_stats(capture(range(128)))
+    assert total == 81650 and span == 635.0
+    for broken in (capture(range(127)), capture(range(129)),
+                   capture(range(128), step_us=0),
+                   capture([0, 2, 1] + list(range(3, 128)))):
+        try:
+            burst_capture_stats(broken)
+        except ValueError:
+            continue
+        raise AssertionError('accepted invalid raw TX timing/length capture')
     print('[NET3095-E1000E-METRICS-CONTRACT] PASS parser synthetic cases; no QEMU proof')
 
 
