@@ -1204,6 +1204,11 @@ namespace ZonderqOS.GUI.Apps
                 if (Width >= 100 && Height >= 85)
                     SmallTextRenderer.DrawClipped(canvas, "ENTER confirm / ESC cancel",
                         X + 14, Y + 50, Math.Max(1, Width - 28), SecondaryText);
+                // Save-As must never confirm a path the user cannot inspect.
+                // Even the keyboard-only compact dialog shows its destination.
+                if (app.DialogMode == 2 && Width >= 100 && Height >= 110)
+                    SmallTextRenderer.DrawClipped(canvas, app.DialogText ?? "",
+                        X + 14, Y + 78, Math.Max(1, Width - 28), MainText);
                 return;
             }
 
