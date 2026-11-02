@@ -3295,5 +3295,30 @@ class NotificationTinyPanelGeometry3095(unittest.TestCase):
                 self.assertLess(slot, 76)
                 self.assertGreaterEqual(slot, 18)
 
+class ApplicationManagerDesktopReflow3095(unittest.TestCase):
+    def test_live_window_reflow_precedes_update_and_render_callbacks(self):
+        update = APPLICATION_MANAGER.split("public void Update()", 1)[1].split(
+            "public void Render(Canvas canvas)", 1
+        )[0]
+        render = APPLICATION_MANAGER.split("public void Render(Canvas canvas)", 1)[1].split(
+            "private void SetActiveStates(", 1
+        )[0]
+        for method, callback in ((update, "application.Update();"),
+                                 (render, "application.Render(canvas);")):
+            self.assertIn("application.Window.EnsureDesktopBounds();", method)
+            self.assertLess(method.index("application.Window.EnsureDesktopBounds();"),
+                            method.index(callback))
+            self.assertLess(method.index("!applications.Contains(application)"),
+                            method.index("application.Window.EnsureDesktopBounds();"))
+            self.assertLess(method.index("if (!global::ZonderqOS.SecurityContext.IsAuthenticated)"),
+                            method.index("application.Window.EnsureDesktopBounds();"))
+
+        smoke = code("tests/GuiApplicationManagerSmoke/Program.cs")
+        self.assertIn("ReflowPrecedesUpdateAndPaint();", smoke)
+        self.assertIn("first.WidthAtUpdate == 320", smoke)
+        self.assertIn("last.WidthAtRender == 640", smoke)
+        self.assertIn("hidden.RenderCount == 0", smoke)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
