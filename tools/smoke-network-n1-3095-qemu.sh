@@ -414,9 +414,17 @@ while (( SECONDS - started < TIMEOUT )); do
         python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP"
         if [[ "$LINK_CYCLES" == 2 ]]; then
           # Second QMP flap must be followed by a NEW ICMP pair on the wire.
-          grep -Fq '[NET3095-N6] LINK2_ARMED=YES' "$LOG" || {
-            echo "[NET3095-N6-LINK][FAIL] Guest did not re-arm for second cycle" >&2; exit 1;
-          }
+          arm2_start=$SECONDS
+          until grep -Fq '[NET3095-N6] LINK2_ARMED=YES' "$LOG"; do
+            qemu_alive || { echo "[NET3095-N6-LINK][FAIL] Guest exited before second arm" >&2; exit 1; }
+            if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
+              tail -n 90 "$LOG" >&2; exit 1
+            fi
+            if (( SECONDS - arm2_start >= 12 )); then
+              echo "[NET3095-N6-LINK][FAIL] Guest did not re-arm for second cycle" >&2; exit 1
+            fi
+            sleep 1
+          done
           python3 "$ROOT/tools/network_3095_qmp_link.py" --socket "$LOG.qmp" --state down
           down2_start=$SECONDS
           until grep -Fq '[NET3095-N6] LINK2_DOWN_OBSERVED=YES' "$LOG"; do

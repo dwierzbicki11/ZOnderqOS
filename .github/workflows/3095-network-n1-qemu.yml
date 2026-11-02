@@ -339,6 +339,12 @@ jobs:
           set -euo pipefail
           bash tools/smoke-network-n1-3095-qemu.sh \
             output-3095/ZonderqOS-3095-network-n6.iso network-n6-link-3095.serial.log n6
+      - name: Report two-cycle QEMU PCAP RTT telemetry (not guest ISR proof)
+        working-directory: zonderq
+        run: |
+          set -euo pipefail
+          python3 tests/measure_3095_e1000e_pcap.py \
+            network-n6-link-3095.serial.log network-n6-link-3095.serial.log.pcap
       - name: Upload QMP link-recovery serial and independent PCAP evidence
         if: always()
         uses: actions/upload-artifact@v4
