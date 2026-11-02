@@ -206,9 +206,13 @@ namespace ZonderqOS.Hardware
                 // accept 0x00000000FFFFFFF0 as an assigned MMIO window.
                 // Reject the low-dword sentinel for BOTH BAR widths; never
                 // write PCI BAR sizing probes to discover the aperture.
+                // x86-64 defines at most 52 physical address bits. A
+                // BAR0 above that architectural limit is not a usable MMIO
+                // mapping even if its low dword looks assigned. This is an
+                // isolated x64 E1000E probe, not a generic PCI allocator.
                 if (address == 0 ||
                     (low & 0xFFFFFFF0u) == 0xFFFFFFF0u ||
-                    address == 0xFFFFFFFFFFFFFFF0UL)
+                    (type == 0x04u && (address >> 52) != 0))
                     return false;
 
                 // PCI configuration may change during hot-unplug, rebind or

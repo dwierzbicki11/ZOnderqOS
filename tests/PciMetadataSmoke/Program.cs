@@ -61,6 +61,8 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
     x => { x.Bar0Low = 0xFFFFFFF4u; x.Bar0High = 0; }, // 64-bit low sentinel, upper zero
     x => { x.Bar0Low = 0xFFFFFFF4u; x.Bar0High = 1; }, // 64-bit low sentinel, stale upper
     x => { x.Bar0Low = 0xFFFFFFF4u; x.Bar0High = 0xFFFFFFFFu; },
+    x => { x.Bar0Low = 0xFEBF0004u; x.Bar0High = 0x00100000u; }, // exceeds x64 52-bit physical limit
+    x => { x.Bar0Low = 0xFEBF0004u; x.Bar0High = 0xFFFFFFFFu; }, // invalid high address bits
     x => x.ThrowOnRead = true
 })
 {
