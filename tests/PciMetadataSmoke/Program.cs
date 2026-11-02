@@ -55,6 +55,7 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
     x => x.Bar0Low = 0xFEBF0002u, // reserved memory BAR type
     x => x.Bar0Low = 0xFEBF0006u, // reserved memory BAR type
     x => x.Bar0Low = 0xFFFFFFFFu, // absent function/all ones
+    x => x.Bar0Low = 0xFFFFFFF0u, // unassigned 32-bit MMIO BAR (masked all ones)
     x => { x.Bar0Low = 0xFFFFFFF4u; x.Bar0High = 0xFFFFFFFFu; },
     x => x.ThrowOnRead = true
 })
