@@ -98,6 +98,10 @@ var irqChanged = new FakeE1000EPciConfig { ChangeIrqOnSecondRead = true };
 Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqChanged, out irqLine, out irqPin) &&
       irqLine == 0 && irqPin == 0,
     "Changed legacy IRQ line must fail closed without stale outputs");
+var irqPinChanged = new FakeE1000EPciConfig { ChangeIrqPinOnSecondRead = true };
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqPinChanged, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "Changed legacy IRQ pin must fail closed without stale outputs");
 var irqDisabled = new FakeE1000EPciConfig { DisableIntxAfterIrqRead = true };
 Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqDisabled, out irqLine, out irqPin) &&
       irqLine == 0 && irqPin == 0,
@@ -578,8 +582,10 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     public byte IrqPin { get; set; } = 1;
     public bool ThrowOnRead { get; set; }
     public bool ChangeIrqOnSecondRead { get; set; }
+    public bool ChangeIrqPinOnSecondRead { get; set; }
     public bool DisableIntxAfterIrqRead { get; set; }
     private int irqLineReads;
+    private int irqPinReads;
     public int ReadCount { get; private set; }
 
     private void CheckTarget(byte bus, byte slot, byte function)
@@ -617,7 +623,8 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x0E => HeaderType,
             0x3C => ++irqLineReads > 1 && ChangeIrqOnSecondRead
                 ? (byte)(IrqLine ^ 1) : IrqLine,
-            0x3D => IrqPin,
+            0x3D => ++irqPinReads > 1 && ChangeIrqPinOnSecondRead
+                ? (byte)(IrqPin ^ 1) : IrqPin,
             _ => throw new InvalidOperationException("Unexpected E1000E PCI byte offset")
         };
     }
