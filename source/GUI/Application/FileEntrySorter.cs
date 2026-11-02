@@ -278,12 +278,9 @@ namespace ZonderqOS.GUI.Apps
         // runs. Reversal is by reference and does not allocate or touch FAT32.
         private static void ReverseRange(List<FileEntry> entries, int start, int end)
         {
-            for (int left = start, right = end - 1; left < right; left++, right--)
-            {
-                FileEntry item = entries[left];
-                entries[left] = entries[right];
-                entries[right] = item;
-            }
+            // List<T>.Reverse delegates to the backing array instead of
+            // repeatedly paying List<T> indexer checks on each swap.
+            entries.Reverse(start, end - start);
         }
 
         // First and last eight pairs reject almost every random folder
