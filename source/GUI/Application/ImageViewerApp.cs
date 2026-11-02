@@ -3,6 +3,7 @@ using System.Drawing;
 using System.IO;
 using Cosmos.Kernel.System.Graphics;
 using ZonderqOS.GUI.Icons;
+using ZonderqOS.SystemCore;
 using CosmosBitmap = Cosmos.Kernel.System.Graphics.Bitmap;
 
 namespace ZonderqOS.GUI.Apps
@@ -435,6 +436,15 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
+                // Image navigation bypasses File Manager's OpenEntry gate.
+                // Repeat the same session ACL checks for each sibling and
+                // reload; a cached directory listing is not authorization.
+                if (!CanReadImageInSession(path))
+                {
+                    status = "Brak uprawnien do obrazu";
+                    return;
+                }
+
                 // Even the existence check can fail on a removed FAT32 volume.
                 // Keep the previously decoded image when opening a bad sibling.
                 if (!File.Exists(path))
@@ -515,6 +525,19 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
+        private static bool CanReadImageInSession(string path)
+        {
+            if (!SecurityContext.IsAuthenticated ||
+                string.IsNullOrEmpty(SecurityContext.CurrentUser) ||
+                !FileClipboard.IsSafeAbsolutePath(path))
+                return false;
+
+            string directory = Path.GetDirectoryName(path);
+            return !string.IsNullOrEmpty(directory) &&
+                   PermissionManager.CanRead(directory, SecurityContext.CurrentUser) &&
+                   PermissionManager.CanRead(path, SecurityContext.CurrentUser);
+        }
+
         private bool IsCurrentDirectoryInSiblingList()
         {
             if (siblingCount <= 0 || string.IsNullOrEmpty(currentPath))
@@ -536,7 +559,8 @@ namespace ZonderqOS.GUI.Apps
             try
             {
                 string directory = Path.GetDirectoryName(path);
-                if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+                if (string.IsNullOrEmpty(directory) || !CanReadImageInSession(path) ||
+                    !Directory.Exists(directory))
                     return;
 
                 string[] files = Directory.GetFiles(directory);
