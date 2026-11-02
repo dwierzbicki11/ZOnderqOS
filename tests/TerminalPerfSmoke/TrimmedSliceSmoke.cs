@@ -135,9 +135,73 @@ internal static class TrimmedSliceSmoke
             " B (7 alternating .NET Release samples; not kernel CPU)");
     }
 
+    // Guard the common no-whitespace case against hidden extra allocations.
+    // Timing is diagnostic only: a shared CI runner cannot enforce speed ratios.
+    private static void BenchmarkUnpadded()
+    {
+        var inputs = new string[128];
+        for (int i = 0; i < inputs.Length; i++)
+            inputs[i] = "pre" + new string('x', 64 + i % 20) + "post";
+        Func<long> previous = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < 1024; i++)
+            {
+                string text = inputs[i % inputs.Length];
+                string value = Previous(text, 3, text.Length - 7);
+                checksum += value.Length + value[0] + value[value.Length - 1];
+            }
+            return checksum;
+        };
+        Func<long> optimized = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < 1024; i++)
+            {
+                string text = inputs[i % inputs.Length];
+                string value = TerminalBox.SliceTrimmedForOutput(text, 3, text.Length - 7);
+                checksum += value.Length + value[0] + value[value.Length - 1];
+            }
+            return checksum;
+        };
+        if (previous() != optimized())
+            throw new Exception("unpadded terminal A/B checksum mismatch");
+        for (int i = 0; i < 30; i++) { sink ^= previous(); sink ^= optimized(); }
+        double[] before = new double[7], after = new double[7];
+        long oldBytes = 0, newBytes = 0;
+        for (int sample = 0; sample < 7; sample++)
+        {
+            (double ms, long bytes) a, b;
+            if ((sample & 1) == 0)
+            {
+                a = Measure(previous, 100);
+                b = Measure(optimized, 100);
+            }
+            else
+            {
+                b = Measure(optimized, 100);
+                a = Measure(previous, 100);
+            }
+            before[sample] = a.ms;
+            after[sample] = b.ms;
+            oldBytes += a.bytes;
+            newBytes += b.bytes;
+        }
+        if (newBytes > oldBytes)
+            throw new Exception("unpadded terminal slices allocated more: " +
+                oldBytes + " -> " + newBytes);
+        double aMs = Median(before), bMs = Median(after);
+        Console.WriteLine("HOST A/B terminal unpadded slices, 1024 x 100: old=" +
+            aMs.ToString("F3") + "ms new=" + bMs.ToString("F3") +
+            "ms ratio=" + (aMs / bMs).ToString("F2") +
+            "x allocations/sample=" + (oldBytes / 7) + " -> " + (newBytes / 7) +
+            " B (7 alternating .NET Release samples; not kernel CPU)");
+    }
+
     internal static void Run()
     {
         Verify();
         Benchmark();
+        BenchmarkUnpadded();
     }
 }
