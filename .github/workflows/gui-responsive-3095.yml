@@ -8,6 +8,7 @@ on:
       - 'tests/test_3094_responsive_gui.py'
       - 'tests/GuiScrollBarSmoke/**'
       - 'tests/GuiFileClipboardSmoke/**'
+      - 'tests/GuiFileNamePolicySmoke/**'
       - 'tests/GuiWindowInputSmoke/**'
       - 'tests/GuiApplicationManagerSmoke/**'
       - 'tests/GuiStartMenuSmoke/**'
@@ -62,6 +63,8 @@ jobs:
         run: python3 tests/test_3094_storage_policy.py
       - name: Exercise production clipboard copy/cut failure recovery in host C#
         run: dotnet run --project tests/GuiFileClipboardSmoke/GuiFileClipboardSmoke.csproj --configuration Release
+      - name: Exercise production FAT32 filename policy in host C#
+        run: dotnet run --project tests/GuiFileNamePolicySmoke/GuiFileNamePolicySmoke.csproj --configuration Release
       - name: Exercise production scrollbar in host C#
         run: dotnet run --project tests/GuiScrollBarSmoke/GuiScrollBarSmoke.csproj --configuration Release
       - name: Exercise production Window mouse gestures in host C#
