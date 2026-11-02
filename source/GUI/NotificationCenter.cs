@@ -557,7 +557,10 @@ namespace ZonderqOS.GUI
 
         private void RenderFooter(Canvas canvas)
         {
-            if (Height < 57 || Width < 90)
+            // The 72px header and 57px footer need separate vertical space.
+            // A short panel must not paint destructive Clear/DND buttons over
+            // its title or expose hitboxes for controls that are not visible.
+            if (Height < 130 || Width < 90)
                 return;
             int y = Y + Height - 57;
             UiPainter.RoundedFill(canvas, X + 2, y, Width - 4, 54,
@@ -706,7 +709,7 @@ namespace ZonderqOS.GUI
                 }
             }
 
-            if (Height < 57 || Width < 90)
+            if (Height < 130 || Width < 90)
                 return;
             int footerY = Y + Height - 48;
             for (int i = 0; i < 3; i++)
