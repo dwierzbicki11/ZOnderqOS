@@ -261,6 +261,15 @@ namespace ZonderqOS.GUI
                 FinishOutputUpdate();
         }
 
+        // Return the absolute next CR/LF index, or Length when none exists.
+        // Exposed to host smoke tests to compare against the original scalar
+        // scanner; the production parser still handles CRLF as one separator.
+        internal static int FindNextOutputBreak(string output, int start)
+        {
+            int relative = output.AsSpan(start).IndexOfAny('\r', '\n');
+            return relative < 0 ? output.Length : start + relative;
+        }
+
         /// <summary>
         /// Stream command output directly into terminal lines. Avoid allocating
         /// a normalized copy of the entire output and a Split() array, which
@@ -273,12 +282,13 @@ namespace ZonderqOS.GUI
 
             int start = 0;
             bool deferredScrollUpdate = false;
-            for (int i = 0; i <= output.Length; i++)
+            while (start <= output.Length)
             {
-                if (i < output.Length && output[i] != '\r' && output[i] != '\n')
-                    continue;
-
-                int length = i - start;
+                // IndexOfAny scans long non-delimiter runs in the runtime's
+                // optimized span implementation. Do not allocate Split arrays,
+                // normalized strings, or a per-line delimiter buffer.
+                int end = FindNextOutputBreak(output, start);
+                int length = end - start;
                 if (length > 0)
                 {
                     // Compare the clear marker without allocating a line.
@@ -294,10 +304,12 @@ namespace ZonderqOS.GUI
 
                 // The legacy Replace("\r\n", "\n").Replace("\r", "\n")
                 // treats CRLF as one separator, not two empty lines.
-                if (i < output.Length && output[i] == '\r' &&
-                    i + 1 < output.Length && output[i + 1] == '\n')
-                    i++;
-                start = i + 1;
+                if (end == output.Length)
+                    break;
+                start = end + 1;
+                if (output[end] == '\r' && start < output.Length &&
+                    output[start] == '\n')
+                    start++;
             }
 
             // Publish the final scrollbar range once per command, including
