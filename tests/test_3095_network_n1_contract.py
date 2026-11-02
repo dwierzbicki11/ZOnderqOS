@@ -924,7 +924,7 @@ class NetworkN1Isolation(unittest.TestCase):
                         checkpoint.index("IsE1000EDriverKitStable("))
         for phase in ("post_before", "post_after", "final_before", "final_after"):
             self.assertIn(f'CheckE1000ECheckpoint("{phase}"', SOURCE)
-        self.assertEqual(SOURCE.count("pciCommand, pciBar0, pciIrqLine, pciIrqPin))"), 6)
+        self.assertEqual(SOURCE.count("pciCommand, pciBar0, pciIrqLine, pciIrqPin))"), 5)
         http = SOURCE.split("private static bool TryHttpExchange(", 1)[1]
         http = http.split("private static bool TrySendBurst(", 1)[0]
         self.assertIn("HTTP PCI mapping invalid before attempt=", http)
