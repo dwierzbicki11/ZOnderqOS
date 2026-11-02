@@ -26,6 +26,16 @@ DRIVER = re.compile(
     r"handler_faults=0 isr_executions=unknown$"
 )
 
+PCI = re.compile(
+    r"^\[NET3095-N1\] PCI_IDENTITY=PASS bdf=00:02\.0 vendor=8086 "
+    r"device=10D3 command=0x([0-9A-Fa-f]{4}) "
+    r"\(read-only; DMA/ISR unproven\)$"
+)
+PCI_TX = re.compile(
+    r"^\[NET3095-N1\] PCI_TX_STABLE=PASS command=0x([0-9A-Fa-f]{4}) "
+    r"\(read-only; PCAP required for TX proof\)$"
+)
+
 
 # Stock Cosmos serial output is not an atomic write: a scheduler tick may
 # interrupt an otherwise complete diagnostic marker. Repair only a COMPLETE
@@ -36,8 +46,8 @@ SCHED_TICK = re.compile(r"\[SCHED\] Tick [0-9]+ enabled=1\n")
 # tick as fixed BOOT/TX/END markers. Reconstruct only records that satisfy the
 # original strict full-line validators, never arbitrary diagnostic fragments.
 N1_MARKERS = (
-    re.compile(re.escape(BOOT)), DISCOVER, DEVICE, ACCEPT, DRIVER,
-    re.compile(re.escape(TX)), re.compile(re.escape(END)),
+    re.compile(re.escape(BOOT)), DISCOVER, DEVICE, ACCEPT, PCI, DRIVER,
+    re.compile(re.escape(TX)), PCI_TX, re.compile(re.escape(END)),
 )
 
 
@@ -82,12 +92,20 @@ def validate_serial(data: str) -> bytes:
             continue
         if (line not in (BOOT, TX, END) and
                 not any(pattern.fullmatch(line) for pattern in
-                        (DISCOVER, DEVICE, ACCEPT, DRIVER))):
+                        (DISCOVER, DEVICE, ACCEPT, PCI, DRIVER, PCI_TX))):
             raise ValueError("unexpected or malformed N1 diagnostic marker")
     found = [m for line in lines if (m := DISCOVER.fullmatch(line))]
     ready = [m for line in lines if (m := ACCEPT.fullmatch(line))]
     devices = [m for line in lines if (m := DEVICE.fullmatch(line))]
     bindings = [m for line in lines if (m := DRIVER.fullmatch(line))]
+    identities = [m for line in lines if (m := PCI.fullmatch(line))]
+    tx_states = [m for line in lines if (m := PCI_TX.fullmatch(line))]
+    if len(identities) != 1 or len(tx_states) != 1:
+        raise ValueError("missing, duplicated or malformed E1000E PCI identity/command")
+    before_command = int(identities[0].group(1), 16)
+    after_command = int(tx_states[0].group(1), 16)
+    if (before_command & 0x0006) != 0x0006 or after_command != before_command:
+        raise ValueError("E1000E PCI MMIO/busmaster missing or command changed during TX")
     binding_claims = [line for line in lines
                       if line.startswith("[NET3095-N1] DRIVER_BOUND=")]
     if len(bindings) != 1 or binding_claims != [bindings[0].group(0)]:
@@ -111,8 +129,8 @@ def validate_serial(data: str) -> bytes:
         raise ValueError("invalid unicast MAC")
     offsets = [lines.index(BOOT), lines.index(found[0].group(0)),
                lines.index(devices[0].group(0)), lines.index(ready[0].group(0)),
-               lines.index(bindings[0].group(0)),
-               lines.index(TX), lines.index(END)]
+               lines.index(identities[0].group(0)), lines.index(bindings[0].group(0)),
+               lines.index(TX), lines.index(tx_states[0].group(0)), lines.index(END)]
     if offsets != sorted(set(offsets)):
         raise ValueError("out-of-order or duplicated probe markers")
     return mac
@@ -193,8 +211,9 @@ def self_test() -> None:
         "[NET3095-N1] discovered=1",
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
         "[NET3095-N1] PASS READY_LINK=1",
+        "[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x0006 (read-only; DMA/ISR unproven)",
         "[NET3095-N1] DRIVER_BOUND=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown",
-        TX, END,
+        TX, "[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)", END,
     ])
     frame = BROADCAST + bytes.fromhex("525400123456") + ETHER_TYPE + PAYLOAD
     frame += b"\x00" * (60 - len(frame))
@@ -252,6 +271,19 @@ def self_test() -> None:
         serial.replace("resources=8 irq_sources=1", "resources=8 irq_sources=0"),
         serial.replace("node=pci:0000:00:02.0", "node=pci:0000:00:03.0"),
         serial.replace(TX, "[NET3095-N1] TX_QUEUED=no"),
+        serial.replace("[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x0006 (read-only; DMA/ISR unproven)", ""),
+        serial + "\n[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x0006 (read-only; DMA/ISR unproven)",
+        serial.replace("vendor=8086 device=10D3", "vendor=10EC device=8136"),
+        serial.replace("bdf=00:02.0", "bdf=00:03.0"),
+        serial.replace("PCI_IDENTITY=PASS", "PCI_IDENTITY=UNKNOWN"),
+        serial.replace("PCI_TX_STABLE=PASS", "PCI_TX_STABLE=UNKNOWN"),
+        serial.replace("[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x0006 (read-only; DMA/ISR unproven)", "[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x0002 (read-only; DMA/ISR unproven)"),
+        serial.replace("[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)", ""),
+        serial + "\n[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)",
+        serial.replace("[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)", "[NET3095-N1] PCI_TX_STABLE=PASS command=0x0002 (read-only; PCAP required for TX proof)"),
+        serial.replace("[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)", "[NET3095-N1] PCI_TX_STABLE=PASS command=0x0007 (read-only; PCAP required for TX proof)"),
+        serial.replace("[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)", "").replace(
+            "[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x0006 (read-only; DMA/ISR unproven)", "[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x0006 (read-only; DMA/ISR unproven)\n[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)"),
         serial + "\n[NET3095-N1] TX_QUEUED=no",
         serial + "\n[NET3095-N1] discovered=bad",
         serial + "\n[NET3095-N1] PASS READY_LINK=unknown",
