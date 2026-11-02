@@ -27,8 +27,37 @@ DRIVER = re.compile(
 )
 
 
+# Stock Cosmos serial output is not an atomic write: a scheduler tick may
+# interrupt an otherwise complete diagnostic marker. Repair only a COMPLETE
+# enabled tick inside one of these exact fixed N1 markers. Never globally
+# remove scheduler lines or synthesize a missing/altered marker.
+SCHED_TICK = re.compile(r"\[SCHED\\] Tick [0-9]+ enabled=1\n")
+
+
+def normalize_n1_serial(data: str) -> str:
+    raw = data.replace("\r", "")
+    for marker in (BOOT, TX, END):
+        found = []
+        for tick in SCHED_TICK.finditer(raw):
+            start = raw.rfind("\n", 0, tick.start()) + 1
+            end = raw.find("\n", tick.end())
+            if end < 0:
+                end = len(raw)
+            # A standalone tick before or after the marker is not a splice.
+            if start == tick.start() or end == tick.end():
+                continue
+            if raw[start:tick.start()] + raw[tick.end():end] == marker:
+                found.append((start, end))
+        if len(found) > 1:
+            raise ValueError("duplicate scheduler-preempted N1 marker")
+        if found:
+            start, end = found[0]
+            raw = raw[:start] + marker + raw[end:]
+    return raw
+
+
 def validate_serial(data: str) -> bytes:
-    lines = [line.strip() for line in data.replace("\r", "").splitlines()]
+    lines = [line.strip() for line in normalize_n1_serial(data).splitlines()]
     if any(re.search(r"kernel panic|fatal:\s*exception|page fault", line, re.I)
            or "[NET3095-N1][FAIL]" in line
            or "[SMP3094-MANAGED-STAGE23] PASS" in line
@@ -152,6 +181,37 @@ def self_test() -> None:
     frame += b"\x00" * (60 - len(frame))
     good = synthetic_pcap(frame)
     assert "PASS" in validate(serial, good)
+    # Real N6 QEMU run 41400794536 had a scheduler tick inserted into
+    # TX_QUEUED=yes after '='; PCAP and all later HTTP/TCP exchanges existed.
+    # Exercise every internal split position of all fixed N1 markers, not
+    # merely that one observed scheduler interleaving.
+    for marker in (BOOT, TX, END):
+        for pos in range(1, len(marker)):
+            torn = serial.replace(
+                marker, marker[:pos] + "[SCHED] Tick 7 enabled=1\n" + marker[pos:]
+            )
+            assert "PASS" in validate(torn, good)
+        for bad_tick in (
+            "[SCHED] Tick 7 enabled=0\n",
+            "[SCHED] Tick seven enabled=1\n",
+            "[SCHED] Tick 7 enabled=1",
+        ):
+            torn = serial.replace(marker, marker[:5] + bad_tick + marker[5:])
+            try:
+                validate(torn, good)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("accepted malformed scheduler-spliced N1 marker")
+        duplicate_torn = serial.replace(
+            marker, marker[:5] + "[SCHED] Tick 7 enabled=1\n" + marker[5:]
+        ) + "\n" + marker
+        try:
+            validate(duplicate_torn, good)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted duplicated N1 marker after splice")
     bad_serial = [
         serial.replace(BOOT, ""),
         serial + "\n" + BOOT,
