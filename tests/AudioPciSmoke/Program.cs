@@ -91,6 +91,7 @@ static class Test
         // Pure C# regression/benchmark for the delayed PCM mixer. This does
         // not claim hardware playback, HDA DMA, IRQ or GUI integration.
         AudioDelayedMixerSmoke.Run(Expect);
+        AudioFloatWaveSmoke.Run(Expect);
         Expect(AudioPciDiagnostics.IsAudioClass(0x04, 0x01), "legacy audio");
         Expect(AudioPciDiagnostics.IsAudioClass(0x04, 0x03), "HDA");
         Expect(!AudioPciDiagnostics.IsAudioClass(0x04, 0x00), "video must not be audio");
