@@ -1202,6 +1202,23 @@ namespace ZonderqOS.GUI.Apps
                     status = "Created folder: " + name;
                 }
 
+                // The Cosmos FAT driver does not assign Unix-style owners.
+                // Without an ACL for a new folder, the next create inside it
+                // would be rejected as root:600 by the parent write guard.
+                // A failed metadata save must never delete the file just
+                // created; report it and leave the data available for repair.
+                if (user != "root")
+                {
+                    try
+                    {
+                        PermissionManager.SetPermission(path, user, dialogMode == 1 ? 644 : 700);
+                    }
+                    catch (Exception aclError)
+                    {
+                        status = "Created, but ACL update failed: " + aclError.Message;
+                    }
+                }
+
                 dialogMode = 0;
                 dialogName = "";
                 RefreshKeepStatus();

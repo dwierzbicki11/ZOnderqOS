@@ -16,6 +16,7 @@ on:
       - 'tests/GuiTaskManagerRefreshSmoke/**'
       - 'tests/test_gui_modified_keys.py'
       - 'tests/test_gui_filemanager_invisible_selection.py'
+      - 'tests/test_gui_filemanager_create_acl.py'
       - 'tests/test_gui_taskmanager_tiny_view.py'
       - 'tests/test_3094_storage_policy.py'
       - 'tools/qmp-gui-login.py'
@@ -50,6 +51,7 @@ jobs:
           python3 tests/test_3094_responsive_gui.py
           python3 tests/test_gui_modified_keys.py
           python3 tests/test_gui_filemanager_invisible_selection.py
+          python3 tests/test_gui_filemanager_create_acl.py
           python3 tests/test_gui_taskmanager_tiny_view.py
       - name: Exercise QMP framebuffer diff parser with synthetic PPM images
         run: |
