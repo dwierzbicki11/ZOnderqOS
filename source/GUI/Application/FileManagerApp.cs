@@ -728,7 +728,17 @@ namespace ZonderqOS.GUI.Apps
                 !FileClipboard.IsSafeAbsolutePath(path))
                 return false;
 
-            return PermissionManager.CanRead(path, SecurityContext.CurrentUser);
+            // ACL metadata may be unavailable after FAT32 removal or a
+            // partially failed permission-store read. Never turn that error
+            // into permission to reuse filenames from a cached directory.
+            try
+            {
+                return PermissionManager.CanRead(path, SecurityContext.CurrentUser);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
         }
 
         private void NavigateTo(string path)
