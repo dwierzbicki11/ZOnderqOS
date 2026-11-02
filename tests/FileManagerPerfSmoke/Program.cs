@@ -890,6 +890,96 @@ internal static class Program
         Console.WriteLine("PASS: production filter stable equivalence, 0 B warm allocations");
     }
 
+    private static void VerifyIncrementalFilter()
+    {
+        var source = new List<ZonderqOS.GUI.Apps.FileEntry>(Make(4096, 131, false));
+        source.Add(new ZonderqOS.GUI.Apps.FileEntry("Résumé.txt", false));
+        source.Add(new ZonderqOS.GUI.Apps.FileEntry("RÉSUMÉ.TXT", false));
+        ZonderqOS.GUI.Apps.FileEntry[] scratch = null;
+        ZonderqOS.GUI.Apps.FileEntrySorter.Sort(source, ref scratch);
+        var visible = new List<ZonderqOS.GUI.Apps.FileEntry>(source.Count);
+        var expected = new List<ZonderqOS.GUI.Apps.FileEntry>(source.Count);
+        string previous = null;
+        string[] edits = {
+            "", "f", "fi", "fil", "file", "file0", "file00",
+            "file000", "file0001", "file00012", "file0001",
+            "FILE0001", "file", "x", "xy", "xyz", "",
+            "rés", "résu", "RÉSUM", "résumé", "rés", ""
+        };
+        foreach (string query in edits)
+        {
+            // Match the production FileManagerApp dispatch, including the
+            // fallback on backspace, replacement and a refreshed directory.
+            if (previous != null && query.Length > previous.Length &&
+                query.StartsWith(previous, StringComparison.OrdinalIgnoreCase))
+                ZonderqOS.GUI.Apps.FileEntrySorter.FilterNarrowed(visible, query);
+            else
+                ZonderqOS.GUI.Apps.FileEntrySorter.Filter(source, visible, query);
+
+            ZonderqOS.GUI.Apps.FileEntrySorter.Filter(source, expected, query);
+            Assert(expected.Count == visible.Count, "incremental count " + query);
+            for (int i = 0; i < expected.Count; i++)
+                Assert(object.ReferenceEquals(expected[i], visible[i]),
+                    "incremental stable order " + query + " at " + i);
+            previous = query;
+        }
+
+        // A fresh directory snapshot must always start from the full list.
+        visible.Clear();
+        ZonderqOS.GUI.Apps.FileEntrySorter.Filter(source, visible, "file0001");
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        ZonderqOS.GUI.Apps.FileEntrySorter.FilterNarrowed(visible, "file00012");
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert(allocated == 0, "incremental narrowing allocated " + allocated + " B");
+        ZonderqOS.GUI.Apps.FileEntrySorter.Filter(source, expected, "file00012");
+        Assert(visible.Count == expected.Count, "incremental allocation check count");
+        for (int i = 0; i < expected.Count; i++)
+            Assert(object.ReferenceEquals(visible[i], expected[i]), "incremental final order");
+        Assert(source.Count == 4098, "incremental filter modified source");
+        Console.WriteLine("PASS: production incremental search, reference-equivalent and 0 B warm allocations");
+    }
+
+    private static void BenchmarkIncrementalFilter()
+    {
+        var source = new List<ZonderqOS.GUI.Apps.FileEntry>(Make(8192, 229, false));
+        var work = new List<ZonderqOS.GUI.Apps.FileEntry>(source.Count);
+        const string prefix = "file0001";
+        const string query = "file00012";
+        double[] oldMs = new double[7];
+        double[] newMs = new double[7];
+        for (int round = 0; round < 7; round++)
+        {
+            bool narrowFirst = (round & 1) == 0;
+            for (int side = 0; side < 2; side++)
+            {
+                bool narrowed = side == 0 ? narrowFirst : !narrowFirst;
+                long elapsedTicks = 0;
+                for (int rep = 0; rep < 100; rep++)
+                {
+                    // The preceding keystroke was already applied. Exclude
+                    // preparing that state from both timed alternatives.
+                    ZonderqOS.GUI.Apps.FileEntrySorter.Filter(source, work, prefix);
+                    long start = Stopwatch.GetTimestamp();
+                    if (narrowed)
+                        ZonderqOS.GUI.Apps.FileEntrySorter.FilterNarrowed(work, query);
+                    else
+                        ZonderqOS.GUI.Apps.FileEntrySorter.Filter(source, work, query);
+                    elapsedTicks += Stopwatch.GetTimestamp() - start;
+                    sink += work.Count;
+                }
+                double ms = elapsedTicks * 1000.0 / Stopwatch.Frequency / 100.0;
+                if (narrowed) newMs[round] = ms;
+                else oldMs[round] = ms;
+            }
+        }
+        double baseline = Median(oldMs);
+        double optimized = Median(newMs);
+        Console.WriteLine("HOST A/B incremental search n=8192 prefix=" + prefix +
+            " query=" + query + " full=" + baseline.ToString("F4") +
+            " ms narrowed=" + optimized.ToString("F4") +
+            " ms ratio=" + (baseline / optimized).ToString("F2") + "x");
+    }
+
     private static void BenchmarkFilter()
     {
         var source = new List<ZonderqOS.GUI.Apps.FileEntry>(Make(2048, 99, false));
@@ -995,6 +1085,7 @@ internal static class Program
         IconResolverSmoke.Run();
         PathMatcherSmoke.Run();
         VerifyFilter();
+        VerifyIncrementalFilter();
         VerifyAlreadySortedFastPath();
         VerifyAdaptiveRepair();
         VerifySparseSwaps();
@@ -1007,6 +1098,7 @@ internal static class Program
         BenchmarkAlreadySorted();
         BenchmarkUnsortedControl();
         BenchmarkFilter();
+        BenchmarkIncrementalFilter();
         Benchmark(32, true);
         Benchmark(128, false);
         Benchmark(512, false);
