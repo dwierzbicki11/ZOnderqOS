@@ -297,6 +297,11 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleKeyboard(KeyEvent key)
         {
+            // Keyboard can arrive before Update after a resolution switch.
+            // Refresh the window and visible-row geometry before PageUp/Down,
+            // selection and the potentially destructive Delete action.
+            Window.EnsureDesktopBounds();
+            UpdateLayout();
             // A modified key belongs to the desktop/global shortcut layer.
             // In particular Ctrl+Alt+Delete must never end the selected task.
             if ((key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) != 0)
