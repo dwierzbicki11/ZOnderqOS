@@ -796,8 +796,8 @@ namespace ZonderqOS.SystemCore
             try
             {
                 // Apply channel balance without changing codec or DMA configuration.
-                int leftGain = volumePercent * (balancePercent > 0 ? 100 - balancePercent : 100) / 100;
-                int rightGain = volumePercent * (balancePercent < 0 ? 100 + balancePercent : 100) / 100;
+                AudioPcmVolume.ResolveStereoGains(
+                    volumePercent, balancePercent, out int leftGain, out int rightGain);
                 // Fade-enabled playback uses one PCM output allocation
                 // instead of creating an intermediate scaled copy.
                 // The stock HDA output uses a 16 KiB cyclic DMA ring. A
