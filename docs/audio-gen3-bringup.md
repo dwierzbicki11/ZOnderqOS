@@ -4,7 +4,7 @@
 
 This branch uses the **existing upstream** `Cosmos.Kernel.Drivers.Pci.Audio.HdAudio.HdAudioDriver` and `Cosmos.Kernel.System.Audio.AudioManager`. No AC97 driver or custom DMA/IRQ implementation is added. The driver matches PCI `04:03:00`, not a hardcoded vendor ID. The kernel's `audiodiag` command separately reports PCI `04:01` (legacy audio) and `04:03` (HD Audio), with binding explicitly **unverified**.
 
-The diagnostic playback path now rechecks the selected HDA identity, format, withdrawal state and primary-output reference immediately before dispatch. These checks are **not an atomic ownership claim** and cannot exclude all races with hotplug or a stock player; they do not enable the driver in the GUI.
+The diagnostic playback path now rechecks the selected HDA identity, format, withdrawal state and primary-output reference immediately before dispatch. The experimental 1 ms direct-ring path also receives a caller-supplied primary-reference predicate and rechecks it before/after reading the format, before every ring write, after the settle wait and before optional Stop() cleanup. A replacement primary with the same HDA name/driver is rejected; cleanup skips Stop() on a no-longer-selected device. These checks are **not an atomic ownership claim** and cannot exclude all races with hotplug or a stock player; they do not enable the driver in the GUI.
 
 The normal disk-backed GUI image has `CosmosEnableAudio=false`. To avoid changing the normal boot path, actual HDA initialization and playback are available **only** in an explicitly selected diskless diagnostic image. This image never mounts ZONDERQDATA, runs account setup, or writes to host partitions.
 
