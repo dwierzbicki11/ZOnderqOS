@@ -71,6 +71,14 @@ namespace ZonderqOS.Hardware
             return offset >= 0x40 && offset <= 0xF8 && (offset & 3) == 0;
         }
 
+        // A stable D0 bit alone is insufficient: PME enable/status changes or
+        // other PMCSR transitions during MapRegisters/MMIO invalidate a
+        // supposedly read-only diagnostic snapshot. PMCSR is read, never written.
+        public static bool IsStablePowerManagementControl(ushort before, ushort after)
+        {
+            return before == after && (before & 0x0003) == 0;
+        }
+
         // The read-only probe must not cause PCI command changes, especially
         // enabling bus mastering or disabling the MMIO decoder.
         public static bool IsStablePciCommand(ushort before, ushort after)
