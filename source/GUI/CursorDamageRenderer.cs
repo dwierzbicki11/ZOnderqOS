@@ -39,6 +39,7 @@ namespace ZonderqOS.GUI
         // A/B only: the identical production capture path with per-pixel restore.
         internal static bool DisableUniformRestoreForBenchmark;
         internal static bool DisableOverlapReuseForBenchmark;
+        internal static bool DisableVerticalBulkCopyForBenchmark;
 #endif
 
         internal CursorDamageRenderer(Canvas canvas)
@@ -141,7 +142,51 @@ namespace ZonderqOS.GUI
             overlap = overlap && !DisableOverlapReuseForBenchmark;
 #endif
             Color[] target = nextPixels;
-            if (overlap)
+            // Pure vertical motion on a fully visible, flat underlay has a
+            // contiguous overlapping span. Copy it once instead of issuing
+            // up to 27 separate Array.Copy calls (one per scanline).
+            // Do not use this path if the previous rectangle was clipped:
+            // offscreen savedPixels slots are deliberately left uninitialized.
+            bool bulkVertical = overlap && dx == 0 && dy != 0 &&
+                firstCol == 0 && lastCol == DamageWidth &&
+                firstRow == 0 && lastRow == DamageHeight &&
+                (long)previousX - LeftHalo >= 0 &&
+                (long)previousY - TopHalo >= 0 &&
+                (long)previousX - LeftHalo + DamageWidth <= canvas.Width &&
+                (long)previousY - TopHalo + DamageHeight <= canvas.Height;
+#if ZONDERQ_PERF_HOST_TEST
+            bulkVertical = bulkVertical && !DisableVerticalBulkCopyForBenchmark;
+#endif
+            if (bulkVertical)
+            {
+                int shiftY = (int)dy;
+                int reusedRows = DamageHeight - Math.Abs(shiftY);
+                int newStartRow = shiftY < 0 ? -shiftY : 0;
+                int oldStartRow = shiftY > 0 ? shiftY : 0;
+                Array.Copy(savedPixels, oldStartRow * DamageWidth,
+                    target, newStartRow * DamageWidth, reusedRows * DamageWidth);
+
+                // Previously captured overlap is uniform. Only freshly
+                // exposed rows can invalidate the single-color fast restore.
+                int freshStart = shiftY > 0 ? reusedRows : 0;
+                int freshEnd = shiftY > 0 ? DamageHeight : -shiftY;
+                int argb = uniformColor.ToArgb();
+                bool freshMatch = true;
+                for (int row = freshStart; row < freshEnd; row++)
+                {
+                    int py = (int)(baseY + row);
+                    int offset = row * DamageWidth;
+                    for (int col = 0; col < DamageWidth; col++)
+                    {
+                        Color pixel = canvas.GetPointColor((int)(baseX + col), py);
+                        target[offset + col] = pixel;
+                        if (freshMatch && pixel.ToArgb() != argb)
+                            freshMatch = false;
+                    }
+                }
+                uniformCapture = freshMatch;
+            }
+            else if (overlap)
             {
                 int shiftX = (int)dx;
                 int shiftY = (int)dy;
