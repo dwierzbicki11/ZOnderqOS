@@ -721,10 +721,26 @@ namespace ZonderqOS.GUI.Apps
             return path.StartsWith(root + "/", StringComparison.Ordinal);
         }
 
+        private static bool CanReadInSession(string path)
+        {
+            if (!SecurityContext.IsAuthenticated ||
+                string.IsNullOrEmpty(SecurityContext.CurrentUser) ||
+                !FileClipboard.IsSafeAbsolutePath(path))
+                return false;
+
+            return PermissionManager.CanRead(path, SecurityContext.CurrentUser);
+        }
+
         private void NavigateTo(string path)
         {
             try
             {
+                if (!CanReadInSession(path))
+                {
+                    status = "Permission denied: cannot open folder";
+                    return;
+                }
+
                 if (string.IsNullOrEmpty(path) || !Directory.Exists(path))
                 {
                     status = "Location unavailable";
@@ -1144,6 +1160,14 @@ namespace ZonderqOS.GUI.Apps
             }
             else if (nanoLauncher != null)
             {
+                // Opening a file launches a separate editor. Enforce the
+                // same ACL here instead of assuming listing grants read.
+                if (!CanReadInSession(entry.FullPath))
+                {
+                    status = "Permission denied: cannot open file";
+                    return;
+                }
+
                 nanoLauncher(entry.FullPath);
                 status = "Opened " + entry.Name;
             }
@@ -1295,6 +1319,15 @@ namespace ZonderqOS.GUI.Apps
                 if (!hasLoadedDirectory && targetPath == "/root" &&
                     !Directory.Exists(targetPath))
                     targetPath = "/";
+
+                // A refresh (F5) is also a read. Never bypass the ACL by
+                // scanning a path which the current session cannot enter.
+                if (!CanReadInSession(targetPath))
+                {
+                    status = "Permission denied: cannot list folder";
+                    return false;
+                }
+
                 // Directory.GetFiles can fail after GetDirectories succeeded
                 // (e.g. FAT32 media removed or an I/O error). Scan and sort
                 // into a temporary snapshot; never erase the last usable view

@@ -49,6 +49,29 @@ checks["home toolbar follows session"] = 'NavigateTo(ResolveSessionHome())' in s
 checks["home sidebar follows session"] = 'SidebarEntry.Location("Home", ResolveSessionHome()' in source
 checks["initial folder follows session"] = 'currentPath = ResolveSessionHome();' in source
 
+# File Manager listing, navigation and editor launches are all read
+# operations. Do not rely on a write-only ACL guard to protect file names.
+read_begin = source.index("        private static bool CanReadInSession(")
+read_end = source.index("        private void NavigateTo(", read_begin)
+read_body = source[read_begin:read_end]
+checks["read requires authenticated session"] = (
+    "SecurityContext.IsAuthenticated" in read_body
+    and "PermissionManager.CanRead(path, SecurityContext.CurrentUser)" in read_body
+    and "FileClipboard.IsSafeAbsolutePath(path)" in read_body
+)
+navigate_body = source[source.index("        private void NavigateTo("):source.index("        public override void HandleKeyboard(")]
+checks["navigation checks ACL before enumeration"] = "if (!CanReadInSession(path))" in navigate_body
+open_body = source[source.index("        private void OpenEntry("):source.index("        private void BeginCreate(")]
+checks["editor launch checks ACL"] = (
+    "if (!CanReadInSession(entry.FullPath))" in open_body
+    and open_body.index("CanReadInSession(entry.FullPath)") < open_body.index("nanoLauncher(entry.FullPath)")
+)
+refresh_body = source[source.index("        private bool RefreshInternal("):source.index("        private void ApplySearchFilter(")]
+checks["refresh checks ACL before listing"] = (
+    "if (!CanReadInSession(targetPath))" in refresh_body
+    and refresh_body.index("CanReadInSession(targetPath)") < refresh_body.index("Directory.GetDirectories(targetPath)")
+)
+
 for name, ok in checks.items():
     if not ok:
         raise AssertionError(name)
