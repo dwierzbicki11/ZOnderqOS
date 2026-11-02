@@ -60,17 +60,21 @@ class Gen3TextRendererPerformanceContracts(unittest.TestCase):
         self.assertLess(new, old * 0.8)
 
     def test_ascii_glyph_cache_uses_same_original_decoder(self):
-        self.assertIn("private static readonly byte[] CachedAsciiGlyphRows = BuildAsciiGlyphRows();", SOURCE)
-        self.assertIn("byte[] rows = new byte[128 * 7];", SOURCE)
-        self.assertIn("rows[offset + row] = (byte)Glyph((char)ch, row);", SOURCE)
+        # The hot table now stores packed runs instead of raw glyph bytes.
+        # The previous byte -> span path remains available in host A/B only.
+        self.assertIn("private static readonly int[] CachedAsciiPackedRows = BuildAsciiPackedRows();", SOURCE)
+        self.assertIn("var rows = new int[128 * 7];", SOURCE)
+        self.assertIn("rows[offset + row] = CachedSpanRuns[Glyph((char)ch, row)];", SOURCE)
         self.assertIn("int glyphOffset = ch < 128 ? ch * 7 : -1;", SOURCE)
-        self.assertIn("CachedAsciiGlyphRows[glyphOffset + row]", SOURCE)
-        self.assertIn("private static readonly byte[] CachedFallbackGlyphRows = BuildFallbackGlyphRows();", SOURCE)
-        self.assertIn("rows[row] = (byte)Glyph('\\uFFFF', row);", SOURCE)
+        self.assertIn("CachedAsciiPackedRows[glyphOffset + row]", SOURCE)
+        self.assertIn("private static readonly int[] CachedFallbackPackedRows = BuildFallbackPackedRows();", SOURCE)
+        self.assertIn("rows[row] = CachedSpanRuns[Glyph('\\uFFFF', row)];", SOURCE)
         self.assertIn("char upper = char.ToUpperInvariant(ch);", SOURCE)
         self.assertIn("if (upper < 128)", SOURCE)
-        self.assertIn(": CachedFallbackGlyphRows[row];", SOURCE)
+        self.assertIn(": CachedFallbackPackedRows[row];", SOURCE)
         self.assertIn("ch = NormalizeGlyph(ch);", SOURCE)
+        self.assertIn("#if ZONDERQ_PERF_HOST_TEST", SOURCE)
+        self.assertIn("UsePreviousGlyphRowLookupForBenchmark", SOURCE)
 
     def test_blank_glyph_fast_path_preserves_ink(self):
         # Only normalized ASCII space can bypass every row. NBSP is
@@ -81,7 +85,7 @@ class Gen3TextRendererPerformanceContracts(unittest.TestCase):
         self.assertLess(normalized, blank)
         self.assertLess(blank, offset)
         self.assertIn("case '\\u00A0': return ' ';", SOURCE)
-        self.assertIn("if (bits == 0)\\n                    continue;".replace("\\n", "\n"), SOURCE)
+        self.assertIn("if (packed == 0)\\n                    continue;".replace("\\n", "\n"), SOURCE)
 
         for pattern in PATTERNS:
             for bits in glyph_rows(pattern):
@@ -104,7 +108,8 @@ class Gen3TextRendererPerformanceContracts(unittest.TestCase):
         self.assertIn("private static readonly int[] CachedSpanRuns = BuildSpanRuns();", SOURCE)
         self.assertIn("var table = new int[32];", SOURCE)
         self.assertIn("packed |= (start | ((col - start) << 3)) << (2 + count * 6);", SOURCE)
-        self.assertIn("int packed = CachedSpanRuns[bits];", SOURCE)
+        self.assertIn("rows[offset + row] = CachedSpanRuns[Glyph((char)ch, row)];", SOURCE)
+        self.assertIn("? CachedAsciiPackedRows[glyphOffset + row]", SOURCE)
         self.assertIn("int runCount = packed & 3;", SOURCE)
         self.assertIn("int runStart = packed & 7;", SOURCE)
         self.assertIn("int runLength = (packed >> 3) & 7;", SOURCE)
