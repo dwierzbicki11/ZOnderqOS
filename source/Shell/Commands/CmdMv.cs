@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using ZonderqOS.SystemCore;
 
@@ -10,6 +11,20 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
+            CommandIO.LastCommandSuccess = false;
+            try
+            {
+                ExecuteCore(args, ref currentPath);
+            }
+            catch (Exception ex)
+            {
+                CommandIO.LastCommandSuccess = false;
+                WriteMessage.WriteError($"Move failed: {ex.Message}", "FS");
+            }
+        }
+
+        private static void ExecuteCore(string[] args, ref string currentPath)
+        {
             if (args.Length <= 2)
             {
                 WriteMessage.WriteError("Usage: mv <source> <destination>", "CMD");
@@ -19,6 +34,22 @@ namespace ZonderqOS.Commands
 
             string source = PathResolver.GetAbsolutePath(currentPath, args[1]);
             string destination = PathResolver.GetAbsolutePath(currentPath, args[2]);
+
+            // Rename within one RAM filesystem under its own lock. Copy/delete
+            // would need a second quota allocation and can fail on a full volume.
+            bool sameTmp = TmpFs.IsTmpPath(source) && TmpFs.IsTmpPath(destination);
+            bool sameRun = RunFs.IsRunPath(source) && RunFs.IsRunPath(destination);
+            if (sameTmp || sameRun)
+            {
+                string error;
+                bool moved = sameTmp
+                    ? TmpFs.TryMoveFile(source, destination, out error)
+                    : RunFs.TryMoveFile(source, destination, out error);
+                CommandIO.LastCommandSuccess = moved;
+                if (!moved)
+                    WriteMessage.WriteError($"Move failed: {error}", "FS");
+                return;
+            }
 
             if (IsRamFsPath(source))
             {
@@ -42,8 +73,7 @@ namespace ZonderqOS.Commands
                     if (!CommandIO.LastCommandSuccess)
                         return;
 
-                    VirtualFs.TryDeleteFile(source, out _);
-                    CommandIO.LastCommandSuccess = true;
+                    Disk.DeleteFile(source);
                     return;
                 }
 
@@ -61,12 +91,12 @@ namespace ZonderqOS.Commands
                     return;
                 }
 
+                RamTextTransfer.ValidateForDisk(content);
                 Disk.CreateFile(destination, content);
                 if (!CommandIO.LastCommandSuccess)
                     return;
 
-                VirtualFs.TryDeleteFile(source, out _);
-                CommandIO.LastCommandSuccess = true;
+                Disk.DeleteFile(source);
                 return;
             }
 
@@ -101,12 +131,21 @@ namespace ZonderqOS.Commands
                     return;
                 }
 
-                string content = File.ReadAllText(source);
+                if (!PermissionManager.CanRead(source, SecurityContext.CurrentUser))
+                {
+                    WriteMessage.WriteError($"Permission denied: Cannot read {source}", "SEC");
+                    return;
+                }
+
+                string content = RamTextTransfer.ReadLossless(source, TmpFs.IsTmpPath(destination) ? TmpFs.MaxFileChars : RunFs.MaxFileChars);
                 Disk.CreateFile(destination, content);
                 if (!CommandIO.LastCommandSuccess)
                     return;
 
-                File.Delete(source);
+                Disk.DeleteFile(source);
+                if (!CommandIO.LastCommandSuccess)
+                    return;
+
                 PermissionManager.RemovePermission(source);
                 CommandIO.LastCommandSuccess = true;
                 return;
@@ -127,7 +166,7 @@ namespace ZonderqOS.Commands
             }
 
             Disk.MoveFile(source, destination);
-            if (File.Exists(source) || !File.Exists(destination))
+            if (!CommandIO.LastCommandSuccess || File.Exists(source) || !File.Exists(destination))
             {
                 CommandIO.LastCommandSuccess = false;
                 return;

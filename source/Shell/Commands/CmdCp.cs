@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using ZonderqOS.SystemCore;
 
@@ -9,6 +10,20 @@ namespace ZonderqOS.Commands
         public string Description => "Copy file from source to destination";
 
         public void Execute(string[] args, ref string currentPath)
+        {
+            CommandIO.LastCommandSuccess = false;
+            try
+            {
+                ExecuteCore(args, ref currentPath);
+            }
+            catch (Exception ex)
+            {
+                CommandIO.LastCommandSuccess = false;
+                WriteMessage.WriteError($"Copy failed: {ex.Message}", "FS");
+            }
+        }
+
+        private static void ExecuteCore(string[] args, ref string currentPath)
         {
             if (args.Length <= 2)
             {
@@ -53,6 +68,9 @@ namespace ZonderqOS.Commands
                     return;
                 }
 
+                if (!destinationVirtual)
+                    RamTextTransfer.ValidateForDisk(virtualContent);
+
                 Disk.CreateFile(destination, virtualContent);
                 return;
             }
@@ -81,7 +99,7 @@ namespace ZonderqOS.Commands
                     return;
                 }
 
-                string content = File.ReadAllText(source);
+                string content = RamTextTransfer.ReadLossless(source, TmpFs.IsTmpPath(destination) ? TmpFs.MaxFileChars : RunFs.MaxFileChars);
                 Disk.CreateFile(destination, content);
                 return;
             }
@@ -101,7 +119,7 @@ namespace ZonderqOS.Commands
             }
 
             Disk.CopyFile(source, destination);
-            if (!File.Exists(destination))
+            if (!CommandIO.LastCommandSuccess || !File.Exists(destination))
             {
                 CommandIO.LastCommandSuccess = false;
                 return;

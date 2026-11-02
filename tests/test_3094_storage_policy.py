@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
-"""Source regression gate for the Cosmos 3.0.94 persistent-storage policy.
+"""Source regression gate for the stock Cosmos 3.0.95 storage policy.
 
 This is intentionally a *source contract* test, not proof of bare-metal I/O.
-Full compilation and the QEMU USB smoke run independently in the 3.0.94 CI.
+Kernel compilation and QEMU validation remain separate checks.
+The historical filename is retained for existing callers.
 """
 from pathlib import Path
 import re
 import unittest
+import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 POLICY = (ROOT / "source/Storage/DataVolumePolicy.cs").read_text()
@@ -14,6 +16,32 @@ DISK = (ROOT / "source/Storage/Disk.cs").read_text()
 KERNEL = (ROOT / "Kernel.cs").read_text()
 GUI = (ROOT / "source/GUI/StorageMountManager.cs").read_text()
 CSPROJ = (ROOT / "ZonderqOS.csproj").read_text()
+
+
+def require_stock_cosmos(project: str) -> None:
+    """Require the exact SDK and both unconditional stock package references."""
+    def require(condition, message):
+        if not condition:
+            raise AssertionError(message)
+
+    root = ET.fromstring(project)
+    require(root.attrib.get('Sdk') == 'Cosmos.Sdk/3.0.95', 'stock SDK 3.0.95 required')
+    expected = {'Cosmos.Kernel', 'Cosmos.Kernel.System'}
+    found = []
+    for group in root:
+        for item in group:
+            if item.tag != 'PackageReference':
+                continue
+            name = item.attrib.get('Include') or item.attrib.get('Update') or item.attrib.get('Remove', '')
+            if name not in expected:
+                continue
+            require(group.tag == 'ItemGroup', 'invalid package group')
+            require(not group.attrib.get('Condition') and not item.attrib.get('Condition'), 'conditional stock package')
+            require(item.attrib.get('Include') == name, 'stock package must use Include')
+            require(item.attrib.get('Version') == '3.0.95', 'stock package version mismatch: ' + name)
+            require('VersionOverride' not in item.attrib and len(item) == 0, 'package metadata overrides stock pin')
+            found.append(name)
+    require(sorted(found) == sorted(expected), 'missing or duplicate stock package')
 
 
 def method(code: str, signature: str) -> str:
@@ -31,10 +59,31 @@ def method(code: str, signature: str) -> str:
 
 
 class StorageSafetyRegression(unittest.TestCase):
-    def test_3094_only(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', CSPROJ)
-        self.assertIn('Version="3.0.94"', CSPROJ)
+    def test_stock_3095_only(self):
+        require_stock_cosmos(CSPROJ)
         self.assertIn('ZONDERQ_READONLY_HARDWARE_PROBE', KERNEL)
+
+    def test_stock_gate_rejects_sdk_downgrade(self):
+        with self.assertRaises(AssertionError):
+            require_stock_cosmos(CSPROJ.replace('Cosmos.Sdk/3.0.95', 'Cosmos.Sdk/3.0.94'))
+
+    def test_stock_gate_rejects_package_drift(self):
+        for name in ('Cosmos.Kernel', 'Cosmos.Kernel.System'):
+            for mutation in ('downgrade', 'missing', 'duplicate', 'conditional', 'override', 'child-version', 'update', 'conditional-group'):
+                with self.subTest(package=name, mutation=mutation):
+                    root = ET.fromstring(CSPROJ)
+                    group, item = next((g, i) for g in root for i in g
+                                       if i.tag == 'PackageReference' and i.attrib.get('Include') == name)
+                    if mutation == 'downgrade': item.set('Version', '3.0.94')
+                    elif mutation == 'missing': group.remove(item)
+                    elif mutation == 'duplicate': group.append(ET.fromstring(ET.tostring(item)))
+                    elif mutation == 'conditional': item.set('Condition', "'$(Configuration)' == 'Debug'")
+                    elif mutation == 'conditional-group': group.set('Condition', "'$(Configuration)' == 'Debug'")
+                    elif mutation == 'override': item.set('VersionOverride', '3.0.94')
+                    elif mutation == 'child-version': ET.SubElement(item, 'Version').text = '3.0.94'
+                    elif mutation == 'update': item.set('Update', item.attrib.pop('Include'))
+                    with self.assertRaises(AssertionError):
+                        require_stock_cosmos(ET.tostring(root, encoding='unicode'))
 
     def test_label_is_unique_fat32(self):
         self.assertIn('RequiredLabel = "ZONDERQDATA"', POLICY)

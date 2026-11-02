@@ -18,7 +18,7 @@ namespace ZonderqOS.SystemCore
 
         private const int MaxEntries = 256;
         private const int MaxPathLength = 192;
-        private const int MaxFileChars = 64 * 1024;
+        internal const int MaxFileChars = 64 * 1024;
         private const int MaxTotalChars = 512 * 1024;
 
         private static readonly object Sync = new object();
@@ -130,32 +130,37 @@ namespace ZonderqOS.SystemCore
                     return false;
                 }
 
-                string newContent = append && existing != null
-                    ? (existing.Content ?? string.Empty) + value
-                    : value;
-
-                if (newContent.Length > MaxFileChars)
+                int oldChars = existing == null || existing.Content == null ? 0 : existing.Content.Length;
+                int retainedChars = append ? oldChars : 0;
+                // Check lengths before concatenating: a rejected append must not
+                // allocate a second (possibly oversized) copy of the file.
+                // Subtraction also avoids overflow from untrusted input lengths.
+                if (value.Length > MaxFileChars - retainedChars)
                 {
                     error = "file exceeds runtime filesystem limit";
                     return false;
                 }
 
-                int oldChars = existing == null || existing.Content == null ? 0 : existing.Content.Length;
-                int projected = totalChars - oldChars + newContent.Length;
+                int newChars = retainedChars + value.Length;
+                int projected = totalChars - oldChars + newChars;
                 if (projected > MaxTotalChars)
                 {
                     error = "runtime filesystem memory limit reached";
                     return false;
                 }
 
+                if (existing == null && Entries.Count >= MaxEntries)
+                {
+                    error = "runtime filesystem entry limit reached";
+                    return false;
+                }
+
+                string newContent = append && existing != null
+                    ? (existing.Content ?? string.Empty) + value
+                    : value;
+
                 if (existing == null)
                 {
-                    if (Entries.Count >= MaxEntries)
-                    {
-                        error = "runtime filesystem entry limit reached";
-                        return false;
-                    }
-
                     existing = new Entry { Path = normalized, Directory = false, Content = string.Empty };
                     Entries.Add(existing);
                 }
@@ -210,6 +215,11 @@ namespace ZonderqOS.SystemCore
             string destination = Normalize(destinationPath);
             error = null;
 
+            // Transfers must not bypass the path rules enforced by TryWrite.
+            // Validate before mutating entries or their memory accounting.
+            if (!IsValidFilePath(source, out error) || !IsValidFilePath(destination, out error))
+                return false;
+
             lock (Sync)
             {
                 EnsureInitialized();
@@ -256,6 +266,11 @@ namespace ZonderqOS.SystemCore
             string source = Normalize(sourcePath);
             string destination = Normalize(destinationPath);
             error = null;
+
+            // Transfers must not bypass the path rules enforced by TryWrite.
+            // Validate before mutating entries or their memory accounting.
+            if (!IsValidFilePath(source, out error) || !IsValidFilePath(destination, out error))
+                return false;
 
             lock (Sync)
             {
