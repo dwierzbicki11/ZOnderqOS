@@ -14,6 +14,23 @@ HTTP_VALIDATOR = (ROOT / "tests/verify_3095_network_n6.py").read_text()
 MAIN = (ROOT / "Kernel.cs").read_text()
 
 class NetworkN1Isolation(unittest.TestCase):
+    def test_n1_requires_readonly_pci_identity_and_busmaster_before_tx(self):
+        # Source contract only: QEMU PCAP remains the actual frame TX proof.
+        pci = (ROOT / "source/Hardware/E1000EPciIdentity.cs").read_text()
+        self.assertIn("config.Read16(bus, slot, function, 0x00) != 0x8086", pci)
+        self.assertIn("config.Read16(bus, slot, function, 0x02) != 0x10D3", pci)
+        self.assertIn("(observed & 0x0006) != 0x0006", pci)
+        self.assertNotIn("Write16(", pci)
+        self.assertNotIn("Write8(", pci)
+        before = SOURCE.index("E1000E PCI identity/MMIO/busmaster invalid before TX")
+        bound = SOURCE.index("DRIVER_BOUND=PASS node=", before)
+        send = SOURCE.index("bool queued = NetworkManager.Send(frame, frame.Length);")
+        after = SOURCE.index("E1000E PCI identity/command changed during TX", send)
+        self.assertLess(before, bound)
+        self.assertLess(bound, send)
+        self.assertLess(send, after)
+        self.assertIn("txPciCommand != pciCommand", SOURCE[send:after])
+
     def test_n2_to_n5_preserve_original_driverkit_binding(self):
         # These checks are source contracts, not proof of ISR execution.
         # A rebind to the same MAC with a new resource/IRQ registration must

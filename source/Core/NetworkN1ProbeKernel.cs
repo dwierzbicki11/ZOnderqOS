@@ -93,6 +93,19 @@ namespace ZonderqOS
             for (int i = 0; i < payload.Length; i++)
                 frame[14 + i] = payload[i];
 
+            // Cross-check the live DriverKit binding against read-only PCI
+            // configuration at QEMU 0000:00:02.0. The driver must still own an
+            // Intel 82574L with MMIO and bus-master DMA enabled.
+            var pciConfig = new ZonderqOS.Platform.X64.PciConfigIoAccessor();
+            if (!ZonderqOS.Hardware.E1000EPciIdentity.TryReadReady(
+                    pciConfig, out ushort pciCommand))
+            {
+                Log("[NET3095-N1][FAIL] E1000E PCI identity/MMIO/busmaster invalid before TX");
+                return;
+            }
+            Log("[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x" +
+                pciCommand.ToString("X4") + " (read-only; DMA/ISR unproven)");
+
             // Prove the live PCI DriverKit binding, not just an adapter name.
             // IRQ source registration is not proof of ISR execution.
             if (!TryGetE1000EDriverKitHealth(out var n1DriverNode))
@@ -134,6 +147,16 @@ namespace ZonderqOS
                 Log("[NET3095-N1][FAIL] E1000E DriverKit binding changed during TX");
                 return;
             }
+            // A queued frame is not enough: verify that the same PCI command
+            // register still enables MMIO and DMA after the TX path ran.
+            if (!ZonderqOS.Hardware.E1000EPciIdentity.TryReadReady(
+                    pciConfig, out ushort txPciCommand) || txPciCommand != pciCommand)
+            {
+                Log("[NET3095-N1][FAIL] E1000E PCI identity/command changed during TX");
+                return;
+            }
+            Log("[NET3095-N1] PCI_TX_STABLE=PASS command=0x" +
+                txPciCommand.ToString("X4") + " (read-only; PCAP required for TX proof)");
             Log("[NET3095-N1] DHCP=NOT_ATTEMPTED IP=UNASSIGNED");
 #if ZONDERQ_NETWORK_N2_DHCP
             // Opt-in second-stage RX proof. DHCP only runs in the isolated

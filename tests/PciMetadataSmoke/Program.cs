@@ -25,6 +25,39 @@ var legacy = new DeviceDescriptor(new DeviceId("pci", "00:01.0"), 0x8086, 0x100E
 Check(legacy.RevisionId == 0xFF && legacy.SubsystemVendorId == 0xFFFF,
     "Legacy device descriptor construction must stay compatible");
 
+
+// The isolated E1000E probe must verify the actual QEMU PCI function and
+// MMIO/bus-master prerequisites, not merely a published DriverKit name.
+// All accesses here are synthetic reads; this is NOT a real DMA/IRQ test.
+var e1000 = new FakeE1000EPciConfig();
+Check(E1000EPciIdentity.TryReadReady(e1000, out ushort e1000Command) &&
+      e1000Command == 0x0006 && e1000.ReadCount == 7,
+    "Expected read-only E1000E PCI identity and bus-master/MMIO gate");
+e1000.HeaderType = 0x80;
+Check(E1000EPciIdentity.TryReadReady(e1000, out e1000Command),
+    "Multifunction bit must not invalidate a type-0 E1000E function");
+foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[] {
+    x => x.VendorId = 0x10EC,
+    x => x.DeviceId = 0x100E,
+    x => x.ClassCode = 0x06,
+    x => x.Subclass = 0x80,
+    x => x.ProgrammingInterface = 0x01,
+    x => x.HeaderType = 0x01,
+    x => x.Command = 0x0002, // MMIO but no DMA bus master
+    x => x.Command = 0x0004, // DMA but no MMIO decode
+    x => x.Command = 0x0000,
+    x => x.ThrowOnRead = true
+})
+{
+    var bad = new FakeE1000EPciConfig();
+    corrupt(bad);
+    Check(!E1000EPciIdentity.TryReadReady(bad, out e1000Command) &&
+          e1000Command == 0, "Invalid E1000E PCI configuration must fail closed");
+}
+Check(!E1000EPciIdentity.TryReadReady(null, out e1000Command) &&
+      e1000Command == 0, "Missing PCI accessor must fail closed");
+Console.WriteLine("[NET3095-E1000E-PCI] PASS C# read-only PCI identity/MMIO/DMA prerequisites (synthetic; no hardware)");
+
 // Synthetic BAR register fixtures: these execute the production C# decoder,
 // not a NIC driver and not real laptop hardware.
 var barConfig = new FakeBarConfig();
@@ -479,6 +512,52 @@ Console.WriteLine("[NET3095-PCI-METADATA] PASS C# read-only revision/subsystem p
 static void Check(bool ok, string message)
 {
     if (!ok) throw new Exception(message);
+}
+
+
+sealed class FakeE1000EPciConfig : IPciConfigAccessor
+{
+    public ushort VendorId { get; set; } = 0x8086;
+    public ushort DeviceId { get; set; } = 0x10D3;
+    public ushort Command { get; set; } = 0x0006;
+    public byte ClassCode { get; set; } = 0x02;
+    public byte Subclass { get; set; } = 0x00;
+    public byte ProgrammingInterface { get; set; } = 0x00;
+    public byte HeaderType { get; set; } = 0x00;
+    public bool ThrowOnRead { get; set; }
+    public int ReadCount { get; private set; }
+
+    private void CheckTarget(byte bus, byte slot, byte function)
+    {
+        if (ThrowOnRead || bus != 0 || slot != 2 || function != 0)
+            throw new InvalidOperationException("Invalid synthetic E1000E PCI read");
+        ReadCount++;
+    }
+
+    public ushort Read16(byte bus, byte slot, byte function, byte offset)
+    {
+        CheckTarget(bus, slot, function);
+        return offset switch
+        {
+            0x00 => VendorId,
+            0x02 => DeviceId,
+            0x04 => Command,
+            _ => throw new InvalidOperationException("Unexpected E1000E PCI word offset")
+        };
+    }
+
+    public byte Read8(byte bus, byte slot, byte function, byte offset)
+    {
+        CheckTarget(bus, slot, function);
+        return offset switch
+        {
+            0x0B => ClassCode,
+            0x0A => Subclass,
+            0x09 => ProgrammingInterface,
+            0x0E => HeaderType,
+            _ => throw new InvalidOperationException("Unexpected E1000E PCI byte offset")
+        };
+    }
 }
 
 sealed class FakePciConfig : IPciConfigAccessor

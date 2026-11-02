@@ -9,6 +9,7 @@
     <Compile Include="../../source/Hardware/DeviceModel.cs" Link="DeviceModel.cs" />
     <Compile Include="../../source/Hardware/PciDeviceModel.cs" Link="PciDeviceModel.cs" />
     <Compile Include="../../source/Hardware/PciConfigDiscoverySource.cs" Link="PciConfigDiscoverySource.cs" />
+    <Compile Include="../../source/Hardware/E1000EPciIdentity.cs" Link="E1000EPciIdentity.cs" />
     <Compile Include="../../source/Hardware/PciBarInventory.cs" Link="PciBarInventory.cs" />
     <Compile Include="../../source/Hardware/Realtek810xERegisterSnapshot.cs" Link="Realtek810xERegisterSnapshot.cs" />
   </ItemGroup>
