@@ -26,7 +26,11 @@ internal static class Program
             "a<b", "a>b", "a|b", "a\u0001b", "a\u001fb",
             "CON", "con.txt", "Con.log", "PRN", "prn.dat",
             "AUX", "aux.txt", "NUL", "nul.cfg", "CON .txt",
-            "COM1", "com9.txt", "LPT1", "lpt9.log"
+            "COM1", "com9.txt", "LPT1", "lpt9.log",
+            "COM\u00B9", "com\u00B2.txt", "LPT\u00B3", "lpt\u00B9.dat",
+            "bad\u007fname", "bad\u0085name", "\uD800", "\uDC00",
+            "broken\uD800name", "broken\uDC00name",
+            new string('a', 256)
         })
             Expect(value, false);
 
@@ -35,7 +39,8 @@ internal static class Program
             "notes.txt", "archive.tar.gz", "my file.txt",
             ".gitignore", "file_name-2026", "image(1).png",
             "COM0", "LPT0", "COM10", "LPT10",
-            "zażółć.txt", "report.final"
+            "zażółć.txt", "report.final",
+            new string('a', 255), "emoji-\uD83D\uDE00.txt"
         })
             Expect(value, true);
 
@@ -48,6 +53,10 @@ internal static class Program
             Expect("LPT" + number, false);
             Expect("lpt" + number + ".dat", false);
         }
+
+        // The LFN limit counts UTF-16 code units, not Unicode code points.
+        Expect(new string('a', 254) + "\uD83D\uDE00", false);
+        Expect(new string('a', 253) + "\uD83D\uDE00", true);
 
         Console.WriteLine("GUI FAT32 filename policy: " + assertions + " C# assertions PASS");
     }

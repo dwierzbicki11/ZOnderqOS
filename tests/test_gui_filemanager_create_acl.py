@@ -148,7 +148,7 @@ checks["FAT32 name policy runs before combining or writing paths"] = (
     and body.index("if (!FileManagerNamePolicy.IsSafeNewEntryName(name))") < body.index("Path.Combine(currentPath, name)")
 )
 checks["FAT32 name policy rejects reserved and control characters"] = (
-    "c < 32" in name_body
+    "char.IsControl(c)" in name_body
     and all(("c == '" + char + "'") in name_body for char in "/:*?<>|")
     and ("c == '\\\\'") in name_body
     and ("c == '\"'") in name_body
@@ -156,6 +156,16 @@ checks["FAT32 name policy rejects reserved and control characters"] = (
     and 'name == ".."' in name_body
 )
 
+checks["FAT32 name policy enforces LFN length and UTF-16 validity"] = (
+    "name.Length > 255" in name_body
+    and "c >= '\\uD800'" in name_body
+    and "c >= '\\uDC00'" in name_body
+)
+checks["create uses the exact dialog name without silently trimming"] = (
+    'string name = dialogName ?? "";' in body
+    and 'string name = (dialogName ?? "").Trim();' not in body
+    and 'string.IsNullOrWhiteSpace(name)' in body
+)
 checks["FAT32 device aliases are rejected even with extensions"] = (
     "int dot = name.IndexOf('.');" in name_body
     and "name.Substring(0, dot)" in name_body

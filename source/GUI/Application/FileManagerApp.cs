@@ -1271,8 +1271,11 @@ namespace ZonderqOS.GUI.Apps
                 status = "Create cancelled: destination not visible";
                 return;
             }
-            string name = (dialogName ?? "").Trim();
-            if (string.IsNullOrEmpty(name))
+            // Validate the exact name the user typed. Trimming here used to
+            // silently create "report" when the dialog showed "report ".
+            // The FAT32 policy below rejects trailing spaces instead.
+            string name = dialogName ?? "";
+            if (string.IsNullOrWhiteSpace(name))
             {
                 status = "Name cannot be empty";
                 return;
