@@ -2282,6 +2282,15 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
             allowed = not (control or alt) and ch in "dDrRcC"
             self.assertEqual(allowed, not (control or alt))
 
+    def test_notification_shift_arrows_do_not_switch_filters(self):
+        keyboard = NOTIFICATIONS.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
+            "public bool UpdateInteractions(", 1)[0]
+        self.assertIn("if ((key.Modifiers & ConsoleModifiers.Shift) != 0)", keyboard)
+        self.assertLess(keyboard.index("if ((key.Modifiers & ConsoleModifiers.Shift) != 0)"),
+                        keyboard.index("ConsoleKeyEx.LeftArrow"))
+        self.assertLess(keyboard.index("if ((key.Modifiers & ConsoleModifiers.Shift) != 0)"),
+                        keyboard.index("ConsoleKeyEx.RightArrow"))
+
     def test_notification_modified_navigation_cannot_dismiss_or_mark_read(self):
         keyboard = NOTIFICATIONS.split("public bool HandleKeyboard(KeyEvent key)", 1)[1].split(
             "public bool UpdateInteractions(", 1)[0]
@@ -2349,7 +2358,12 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertEqual(render.count("FooterButtonBounds("), 4)
         self.assertEqual(hover.count("FooterButtonBounds("), 1)
         self.assertIn("Hit(mouseX, mouseY, buttonX, footerY, buttonWidth, 38)", hover)
-        self.assertIn('Width < 380 && i == 1 ? "NOWE"', NOTIFICATIONS)
+        # Compact filter labels are clipped to each actual tab, rather than
+        # drawing a full centered string over the neighboring control.
+        self.assertIn("FilterLabelForWidth(i, tabWidth)", NOTIFICATIONS)
+        self.assertIn("SmallTextRenderer.DrawClipped(canvas, label, labelX, y + 15,", NOTIFICATIONS)
+        self.assertIn("tx + tabWidth - 4 - labelX", NOTIFICATIONS)
+        self.assertIn('return index == 0 ? "A" : index == 1 ? "N" : "!";', NOTIFICATIONS)
         for width in (300, 340, 380, 420, 462):
             gap = 4
             slot = max(1, (width - 28 - 2 * gap) // 3)
