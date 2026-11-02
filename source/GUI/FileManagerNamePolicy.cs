@@ -9,7 +9,7 @@ namespace ZonderqOS.GUI
         public static bool IsSafeNewEntryName(string name)
         {
             if (string.IsNullOrEmpty(name) || name == "." || name == ".." ||
-                name[name.Length - 1] == '.')
+                (name[name.Length - 1] == '.' || name[name.Length - 1] == ' '))
                 return false;
 
             for (int i = 0; i < name.Length; i++)
@@ -25,7 +25,7 @@ namespace ZonderqOS.GUI
             // reject them rather than creating files that cannot be managed
             // consistently after moving the volume between systems.
             int dot = name.IndexOf('.');
-            string stem = dot >= 0 ? name.Substring(0, dot) : name;
+            string stem = (dot >= 0 ? name.Substring(0, dot) : name).TrimEnd(' ');
             if (string.Equals(stem, "CON", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(stem, "PRN", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(stem, "AUX", StringComparison.OrdinalIgnoreCase) ||
