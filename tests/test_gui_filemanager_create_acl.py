@@ -85,8 +85,10 @@ checks["read requires authenticated session"] = (
 )
 navigate_body = source[source.index("        private void NavigateTo("):source.index("        public override void HandleKeyboard(")]
 checks["ACL metadata exceptions fail closed for every read entry point"] = (
-    "try\\n            {\\n                return PermissionManager.CanRead(path, SecurityContext.CurrentUser);" in read_body
+    "try" in read_body
     and "catch (Exception)" in read_body
+    and read_body.index("try") < read_body.index("return PermissionManager.CanRead(path, SecurityContext.CurrentUser);")
+    and read_body.index("return PermissionManager.CanRead(path, SecurityContext.CurrentUser);") < read_body.index("catch (Exception)")
     and read_body.index("catch (Exception)") < read_body.rindex("return false;")
 )
 checks["navigation checks ACL before enumeration"] = "if (!CanReadInSession(path))" in navigate_body
