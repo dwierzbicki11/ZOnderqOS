@@ -82,9 +82,17 @@ namespace ZonderqOS.GUI
             get { return System.Math.Max(0, screenWidth - ToastWidth - 18); }
         }
 
+        // A 98px toast fits a normal desktop, but not a 120px firmware mode.
+        // Reserve the taskbar even when the entire usable desktop is shorter
+        // than the notification. Hit-testing must use the painted height.
+        private int ToastHeight
+        {
+            get { return System.Math.Min(98, System.Math.Max(0, screenHeight - taskbarHeight)); }
+        }
+
         private int ToastY
         {
-            get { return System.Math.Max(0, screenHeight - taskbarHeight - 116); }
+            get { return System.Math.Max(0, screenHeight - taskbarHeight - ToastHeight - 18); }
         }
 
         public NotificationCenter(int screenWidth, int screenHeight, int taskbarHeight)
@@ -255,11 +263,14 @@ namespace ZonderqOS.GUI
 
             if (!Visible)
             {
+                if (ToastWidth < 8 || ToastHeight < 8)
+                    return false;
+
                 NotificationEntry toast;
                 if (!NotificationService.TryGetActiveToast(out toast))
                     return false;
 
-                toastHovered = Hit(mouseX, mouseY, ToastX, ToastY, ToastWidth, 98);
+                toastHovered = Hit(mouseX, mouseY, ToastX, ToastY, ToastWidth, ToastHeight);
                 if (toastHovered && isClicked && !wasClicked)
                 {
                     // Open through the same path as the keyboard/taskbar so
@@ -358,6 +369,11 @@ namespace ZonderqOS.GUI
                 return;
             }
 
+            // No drawable panel on a framebuffer smaller than its border.
+            // In particular, Width-2 must never become a negative rectangle.
+            if (Width < 3 || Height < 3)
+                return;
+
             EnsureFresh();
             UiPainter.Shadow(canvas, X, Y, Width, Height, UiMetrics.MenuRadius);
             UiPainter.RoundedPanel(canvas, X, Y, Width, Height,
@@ -371,10 +387,13 @@ namespace ZonderqOS.GUI
 
         private void RenderHeader(Canvas canvas)
         {
-            UiPainter.RoundedTop(canvas, X + 1, Y + 1, Width - 2, 72,
-                UiMetrics.MenuRadius - 1, Header);
-            canvas.DrawFilledRectangle(SystemTheme.Accent, X + 13, Y + 2,
-                Math.Max(1, (Width - 26) * (8 - openingFrames) / 8), 2);
+            int headerHeight = System.Math.Min(72, Height - 2);
+            if (headerHeight > 0)
+                UiPainter.RoundedTop(canvas, X + 1, Y + 1, Width - 2, headerHeight,
+                    UiMetrics.MenuRadius - 1, Header);
+            if (Width > 26 && Height >= 4)
+                canvas.DrawFilledRectangle(SystemTheme.Accent, X + 13, Y + 2,
+                    System.Math.Max(1, (Width - 26) * (8 - openingFrames) / 8), 2);
             if (openingFrames > 0)
                 openingFrames--;
             // On a 200px-wide framebuffer the badge used to overlap the
@@ -439,6 +458,10 @@ namespace ZonderqOS.GUI
             int startY = Y + 130;
             int cardWidth = Width - 28;
             int cardX = X + 14;
+            // At very narrow firmware widths the card would have a negative
+            // size and its dismiss button would sit outside the panel.
+            if (cardWidth < 20)
+                return;
 
             for (int row = 0; row < VisibleRowCount; row++)
             {
@@ -512,14 +535,20 @@ namespace ZonderqOS.GUI
                 if (cardWidth >= 110)
                     SmallTextRenderer.Draw(canvas, entry.TimeText, cardX + cardWidth - 86, cy + 56, Muted);
 
-                int dismissX = cardX + cardWidth - 35;
-                int dismissY = cy + 9;
-                bool dismissHover = hoveredDismissRow == row;
-                UiPainter.RoundedPanel(canvas, dismissX, dismissY, 24, 24,
-                    UiMetrics.TileRadius,
-                    dismissHover ? Color.FromArgb(68, 43, 48) : Color.FromArgb(34, 40, 47),
-                    dismissHover ? Danger : Border);
-                IconManager.DrawScaled(canvas, IconType.Close, dismissX + 5, dismissY + 5, 14, 14);
+                // A 24px dismiss button needs 11px of right inset and
+                // enough left inset to stay inside the card. Compact cards
+                // remain readable/selectable without an off-card delete hitbox.
+                if (cardWidth >= 46)
+                {
+                    int dismissX = cardX + cardWidth - 35;
+                    int dismissY = cy + 9;
+                    bool dismissHover = hoveredDismissRow == row;
+                    UiPainter.RoundedPanel(canvas, dismissX, dismissY, 24, 24,
+                        UiMetrics.TileRadius,
+                        dismissHover ? Color.FromArgb(68, 43, 48) : Color.FromArgb(34, 40, 47),
+                        dismissHover ? Danger : Border);
+                    IconManager.DrawScaled(canvas, IconType.Close, dismissX + 5, dismissY + 5, 14, 14);
+                }
 
                 if (unread)
                     canvas.DrawFilledRectangle(SystemTheme.Accent, cardX + cardWidth - 12, cy + 39, 5, 5);
@@ -589,29 +618,36 @@ namespace ZonderqOS.GUI
             int x = ToastX;
             int y = ToastY;
             int width = ToastWidth;
-            const int height = 98;
+            int height = ToastHeight;
+            if (width < 8 || height < 8)
+                return;
             Color kindColor = KindColor(entry.Kind);
 
-            UiPainter.Shadow(canvas, x, y, width, height, UiMetrics.MenuRadius);
+            // Avoid shadows spilling into the taskbar or off a tiny screen.
+            if (x >= UiMetrics.MenuRadius && y >= UiMetrics.MenuRadius &&
+                (long)x + width + UiMetrics.MenuRadius <= screenWidth &&
+                (long)y + height + UiMetrics.MenuRadius <= screenHeight - taskbarHeight)
+                UiPainter.Shadow(canvas, x, y, width, height, UiMetrics.MenuRadius);
             UiPainter.RoundedPanel(canvas, x, y, width, height, UiMetrics.MenuRadius,
                 toastHovered ? PanelHover : Header,
                 toastHovered ? SystemTheme.AccentBorder : Border);
-            canvas.DrawFilledRectangle(kindColor, x, y + 7, 4, height - 14);
+            if (height > 14)
+                canvas.DrawFilledRectangle(kindColor, x, y + 7, 4, height - 14);
             // Compact toasts omit metadata rather than passing a negative
             // clip width into the Cosmos text renderer.
-            bool showIcon = width >= 108;
+            bool showIcon = width >= 108 && height >= 48;
             if (showIcon)
                 IconManager.DrawScaled(canvas, KindIcon(entry.Kind), x + 16, y + 17, 28, 28);
             int textX = showIcon ? x + 57 : x + 10;
             int titleWidth = showIcon ? width - 92 : width - 20;
             int messageWidth = showIcon ? width - 75 : width - 20;
-            if (titleWidth > 0)
+            if (titleWidth > 0 && height >= 28)
                 SmallTextRenderer.DrawClipped(canvas, entry.Title, textX, y + 17, titleWidth, Text);
-            if (messageWidth > 0)
+            if (messageWidth > 0 && height >= 52)
                 SmallTextRenderer.DrawClipped(canvas, entry.Message, textX, y + 40, messageWidth, Muted);
-            if (width > 150)
+            if (width > 150 && height >= 76)
                 SmallTextRenderer.DrawClipped(canvas, entry.Source, x + 57, y + 66, width - 150, kindColor);
-            if (width >= 110)
+            if (width >= 110 && height >= 76)
                 SmallTextRenderer.Draw(canvas, entry.TimeText, x + width - 71, y + 66, Muted);
         }
 
@@ -645,6 +681,8 @@ namespace ZonderqOS.GUI
             int startY = Y + 130;
             int cardWidth = Width - 28;
             int cardX = X + 14;
+            if (cardWidth < 20)
+                return;
             for (int row = 0; row < VisibleRowCount; row++)
             {
                 int visibleIndex = offset + row;
@@ -654,7 +692,8 @@ namespace ZonderqOS.GUI
                 if (cy + CardHeight > Y + Height - 72)
                     break;
 
-                if (Hit(mouseX, mouseY, cardX + cardWidth - 35, cy + 9, 24, 24))
+                if (cardWidth >= 46 &&
+                    Hit(mouseX, mouseY, cardX + cardWidth - 35, cy + 9, 24, 24))
                 {
                     hoveredDismissRow = row;
                     hoveredRow = row;
