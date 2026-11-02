@@ -40,6 +40,11 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("classCode == 0x04 && (subclass == 0x01 || subclass == 0x03)", diag)
         self.assertIn("d.ProgrammingInterface.ToString(\"X2\")", diag)
         self.assertIn("driver=UNVERIFIED", diag)
+        self.assertIn("DescribePciIdentity(d.VendorId, d.DeviceId", diag)
+        self.assertIn("vendorId == 0x8086 && deviceId == 0x2668 && subclass == 0x03", diag)
+        self.assertIn("vendorId == 0x8086 && deviceId == 0x2415 && subclass == 0x01", diag)
+        self.assertIn("UNKNOWN_AUDIO_IDENTITY", diag)
+        self.assertIn("driver unverified", diag)
         for forbidden in ("WriteBlock(", "TryMount(", "AllocateDma(", "EnableBusMastering(",
                           "MapRegisters(", "NetworkManager.", "Disk.Initialize(", "File.Write"):
             self.assertNotIn(forbidden, diag)
