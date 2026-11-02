@@ -848,8 +848,12 @@ namespace ZonderqOS.SystemCore
                 Console.WriteLine("[AUDIO] PCM REFUSED: isolated probe requires stock HDA output.");
                 return false;
             }
-            if (output.SampleRate != sampleRate || output.Format.Channels != 2 ||
-                output.Format.ChannelSize != 2)
+            // Snapshot the published PCM format once. A withdrawn device
+            // can expose no format; never dereference it before the protected
+            // playback block or mix fields from two different publications.
+            var outputFormat = output.Format;
+            if (output.SampleRate != sampleRate || outputFormat is null ||
+                outputFormat.Channels != 2 || outputFormat.ChannelSize != 2)
             {
                 Console.WriteLine("[AUDIO] PCM REFUSED: output is not 48000Hz stereo16.");
                 return false;
