@@ -626,7 +626,9 @@ namespace ZonderqOS.SystemCore
                     short sample = (short)(source[src] | (source[src + 1] << 8));
                     // +/-0.125f is exactly representable in IEEE754 float32.
                     // 0x3E000000 / 0xBE000000 in little-endian byte order.
-                    monoFloat[dst + 3] = sample < 0 ? (byte)0xBE : (byte)0x3E;
+                    // Preserve the silent tail: zero PCM must remain 0.0f.
+                    if (sample != 0)
+                        monoFloat[dst + 3] = sample < 0 ? (byte)0xBE : (byte)0x3E;
                 }
                 byte[] wave = AudioWavePcm.EncodeFloat32AtRate(monoFloat, 48000, 1);
                 Console.WriteLine("[AUDIO] WAV IEEE_FLOAT32 mono 2860Hz -> bounded PCM16 stereo HDA");
@@ -658,7 +660,8 @@ namespace ZonderqOS.SystemCore
                     short sample = (short)(source[at] | (source[at + 1] << 8));
                     // Exactly representable +/-0.125f; all other bytes
                     // remain zero in the little-endian IEEE754 sample.
-                    monoFloat[at + 3] = sample < 0 ? (byte)0xBE : (byte)0x3E;
+                    if (sample != 0)
+                        monoFloat[at + 3] = sample < 0 ? (byte)0xBE : (byte)0x3E;
                 }
                 byte[] wave = AudioWavePcm.EncodeExtensibleFloat32AtRate(
                     monoFloat, 44100, 1);
