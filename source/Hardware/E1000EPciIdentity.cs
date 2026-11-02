@@ -27,6 +27,11 @@ namespace ZonderqOS.Hardware
 
             try
             {
+                // An INTx line/pin is not an active legacy interrupt route
+                // while the device has MSI or MSI-X enabled. Inspect the
+                // conventional capability list without writing PCI config.
+                if (!TryReadLegacyInterruptMode(config, out ulong initialMode))
+                    return false;
                 const byte bus = 0, slot = 2, function = 0;
                 byte line = config.Read8(bus, slot, function, 0x3C);
                 byte pin = config.Read8(bus, slot, function, 0x3D);
@@ -45,7 +50,9 @@ namespace ZonderqOS.Hardware
                     finalCommand != command || finalBar0 != initialBar0 ||
                     config.Read8(bus, slot, function, 0x3C) != line ||
                     config.Read8(bus, slot, function, 0x3D) != pin ||
-                    config.Read16(bus, slot, function, 0x04) != command)
+                    config.Read16(bus, slot, function, 0x04) != command ||
+                    !TryReadLegacyInterruptMode(config, out ulong finalMode) ||
+                    finalMode != initialMode)
                     return false;
                 irqLine = line;
                 irqPin = pin;
@@ -57,6 +64,71 @@ namespace ZonderqOS.Hardware
                 irqPin = 0;
                 return false;
             }
+        }
+
+        // PCI STATUS.CAP_LIST and conventional capabilities are read-only.
+        // Reject malformed lists, loops, duplicate MSI/MSI-X capabilities,
+        // enabled message-signaled interrupts, or changes between the two
+        // routing snapshots. This is NOT evidence of ISR execution.
+        private static bool TryReadLegacyInterruptMode(IPciConfigAccessor config,
+            out ulong signature)
+        {
+            signature = 0;
+            const byte bus = 0, slot = 2, function = 0;
+            ushort status = config.Read16(bus, slot, function, 0x06);
+            if ((status & 0x0010) == 0)
+            {
+                signature = status;
+                return true;
+            }
+
+            byte first = config.Read8(bus, slot, function, 0x34);
+            if (first == 0)
+                return false;
+            byte pointer = first;
+            ulong visited = 0;
+            ulong hash = 14695981039346656037UL;
+            bool seenMsi = false, seenMsiX = false;
+            int count = 0;
+            while (pointer != 0)
+            {
+                if (pointer < 0x40 || pointer > 0xFC ||
+                    (pointer & 3) != 0 || count++ >= 48)
+                    return false;
+                ulong bit = 1UL << ((pointer - 0x40) / 4);
+                if ((visited & bit) != 0)
+                    return false;
+                visited |= bit;
+                byte id = config.Read8(bus, slot, function, pointer);
+                byte next = config.Read8(bus, slot, function, (byte)(pointer + 1));
+                if (id == 0 || id == 0xFF)
+                    return false;
+                ushort control = 0;
+                if (id == 0x05 || id == 0x11)
+                {
+                    if (id == 0x05 ? seenMsi : seenMsiX)
+                        return false;
+                    if (id == 0x05) seenMsi = true;
+                    else seenMsiX = true;
+                    control = config.Read16(bus, slot, function, (byte)(pointer + 2));
+                    if ((id == 0x05 && (control & 0x0001) != 0) ||
+                        (id == 0x11 && (control & 0x8000) != 0))
+                        return false;
+                }
+                unchecked
+                {
+                    hash = (hash ^ pointer) * 1099511628211UL;
+                    hash = (hash ^ id) * 1099511628211UL;
+                    hash = (hash ^ next) * 1099511628211UL;
+                    hash = (hash ^ control) * 1099511628211UL;
+                }
+                pointer = next;
+            }
+            if (config.Read16(bus, slot, function, 0x06) != status ||
+                config.Read8(bus, slot, function, 0x34) != first)
+                return false;
+            signature = hash ^ ((ulong)status << 48);
+            return true;
         }
 
         // Preserve the original API for callers that only need the command

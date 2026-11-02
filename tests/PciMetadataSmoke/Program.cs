@@ -137,6 +137,34 @@ var irqBarHighChanged = new FakeE1000EPciConfig {
 Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqBarHighChanged, out irqLine, out irqPin) &&
       irqLine == 0 && irqPin == 0,
     "Changed 64-bit BAR high half between PCI and IRQ snapshots must fail closed");
+// A stable PCI INTx pin/line must not be reported as an active legacy route
+// when MSI or MSI-X is enabled. Exercise the production capability walker.
+var irqCaps = new FakeE1000EPciConfig { Status = 0x0010 };
+Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqCaps, out irqLine, out irqPin) &&
+      irqLine == 11 && irqPin == 1,
+    "Disabled MSI and MSI-X must preserve a valid legacy INTx route");
+foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[] {
+    x => x.MsiControl = 0x0001, // MSI enable
+    x => x.MsiXControl = 0x8000, // MSI-X enable
+    x => x.CapabilityPointer = 0x00, // advertised but missing list
+    x => x.CapabilityPointer = 0x42, // unaligned pointer
+    x => x.CapabilityPointer = 0x3C, // pointer into PCI header
+    x => x.MsiNext = 0x40, // capability cycle
+    x => x.MsiNext = 0x44, // unsupported intermediate offset
+    x => x.MsiXNext = 0x40, // cycle after MSI-X
+    x => x.MsiId = 0xFF, // malformed capability
+    x => x.ChangeStatusOnSecondRead = true,
+    x => x.ChangeCapabilityPointerOnSecondRead = true,
+    x => x.EnableMsiAfterFirstModeScan = true
+})
+{
+    var invalid = new FakeE1000EPciConfig { Status = 0x0010 };
+    corrupt(invalid);
+    Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(invalid, out irqLine, out irqPin) &&
+          irqLine == 0 && irqPin == 0,
+        "Enabled or unstable message-signaled IRQ configuration must fail closed");
+}
+Console.WriteLine("[NET3095-E1000E-IRQ-MODE] PASS C# bounded MSI/MSI-X/INTx metadata gate (synthetic; ISR unproven)");
 Console.WriteLine("[NET3095-E1000E-IRQ] PASS C# legacy PCI IRQ routing metadata (synthetic; ISR unproven)");
 
 Console.WriteLine("[NET3095-E1000E-PCI] PASS C# read-only PCI identity/MMIO/DMA prerequisites (synthetic; no hardware)");
@@ -611,6 +639,16 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     public byte HeaderType { get; set; } = 0x00;
     public byte IrqLine { get; set; } = 11;
     public byte IrqPin { get; set; } = 1;
+    public ushort Status { get; set; }
+    public byte CapabilityPointer { get; set; } = 0x40;
+    public byte MsiId { get; set; } = 0x05;
+    public byte MsiNext { get; set; } = 0x48;
+    public byte MsiXNext { get; set; }
+    public ushort MsiControl { get; set; }
+    public ushort MsiXControl { get; set; }
+    public bool ChangeStatusOnSecondRead { get; set; }
+    public bool ChangeCapabilityPointerOnSecondRead { get; set; }
+    public bool EnableMsiAfterFirstModeScan { get; set; }
     public bool ThrowOnRead { get; set; }
     public bool ChangeIrqOnSecondRead { get; set; }
     public bool ChangeIrqPinOnSecondRead { get; set; }
@@ -631,6 +669,9 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     private int headerReads;
     private int irqLineReads;
     private int irqPinReads;
+    private int statusReads;
+    private int capabilityPointerReads;
+    private int msiControlReads;
     public int ReadCount { get; private set; }
 
     private void CheckTarget(byte bus, byte slot, byte function)
@@ -674,6 +715,11 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x02 => ++deviceReads > 1 && ChangeDeviceOnSecondRead
                 ? (ushort)(DeviceId ^ 1) : DeviceId,
             0x04 => ReadCommand(),
+            0x06 => ++statusReads > 1 && ChangeStatusOnSecondRead
+                ? (ushort)(Status ^ 0x0010) : Status,
+            0x42 => ++msiControlReads > 2 && EnableMsiAfterFirstModeScan
+                ? (ushort)(MsiControl | 1) : MsiControl,
+            0x4A => MsiXControl,
             0x10 => ReadBarLow(),
             0x12 => (ushort)(Bar0Low >> 16),
             0x14 => ReadBarHigh(),
@@ -693,6 +739,12 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x09 => ProgrammingInterface,
             0x0E => ++headerReads > 1 && ChangeHeaderOnSecondRead
                 ? (byte)(HeaderType ^ 1) : HeaderType,
+            0x34 => ++capabilityPointerReads > 1 && ChangeCapabilityPointerOnSecondRead
+                ? (byte)(CapabilityPointer ^ 4) : CapabilityPointer,
+            0x40 => MsiId,
+            0x41 => MsiNext,
+            0x48 => (byte)0x11,
+            0x49 => MsiXNext,
             0x3C => ++irqLineReads > 1 && ChangeIrqOnSecondRead
                 ? (byte)(IrqLine ^ 1) : IrqLine,
             0x3D => ++irqPinReads > 1 && ChangeIrqPinOnSecondRead
