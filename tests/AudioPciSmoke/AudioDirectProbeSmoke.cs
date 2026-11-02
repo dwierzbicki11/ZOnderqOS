@@ -134,6 +134,14 @@ internal static class AudioDirectProbeSmoke
             formatWithdrawnOnRead.WrittenBytes == 0,
             "direct probe snapshots format once and catches drift on pre-Start recheck");
 
+        var withdrawnOnFormatRead = new Device();
+        withdrawnOnFormatRead.OnFormatRead = () => withdrawnOnFormatRead.IsWithdrawn = true;
+        check(!AudioProbeDirectPlayback.TryPlay(withdrawnOnFormatRead, Pcm, 48000) &&
+            withdrawnOnFormatRead.StartCalls == 0 &&
+            withdrawnOnFormatRead.StopCalls == 0 &&
+            withdrawnOnFormatRead.WrittenBytes == 0,
+            "withdrawal during format getter aborts before Start");
+
         int waits = 0;
         Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
         {
@@ -208,6 +216,10 @@ internal static class AudioDirectProbeSmoke
                 startWithdrawn.StartCalls == 1 && startWithdrawn.StopCalls == 0 &&
                 startWithdrawn.WrittenBytes == 0 && startWithdrawn.IsRunning,
                 "withdrawal during Start skips unsafe Stop and all PCM writes");
+            var afterWithdrawal = new Device();
+            check(AudioProbeDirectPlayback.TryPlay(afterWithdrawal, Pcm, 48000) &&
+                afterWithdrawal.StartCalls == 1 && afterWithdrawal.StopCalls == 1,
+                "direct diagnostic guard released after withdrawal during Start");
 
             var startClaimed = new Device();
             startClaimed.OnStart = () => startClaimed.Player = new object();
