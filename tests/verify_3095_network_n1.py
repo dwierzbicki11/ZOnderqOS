@@ -37,6 +37,18 @@ PCI_TX = re.compile(
 )
 
 
+# Optional in historical N1 fixtures, mandatory as a paired, ordered,
+# internally consistent claim whenever the new QEMU guest emits it.
+# PCI routing metadata does NOT establish execution of the guest ISR.
+PCI_IRQ_ROUTE = re.compile(
+    r"^\\[NET3095-N1\\] PCI_IRQ_ROUTE=PASS line=([0-9]+) pin=([0-9]+) "
+    r"\\(read-only; guest ISR unproven\\)$"
+)
+PCI_IRQ_STABLE = re.compile(
+    r"^\\[NET3095-N1\\] PCI_IRQ_ROUTE_STABLE=PASS line=([0-9]+) pin=([0-9]+) "
+    r"\\(read-only; guest ISR unproven\\)$"
+)
+
 # Stock Cosmos serial output is not an atomic write: a scheduler tick may
 # interrupt an otherwise complete diagnostic marker. Repair only a COMPLETE
 # enabled tick inside one of these exact fixed N1 markers. Never globally
@@ -46,8 +58,9 @@ SCHED_TICK = re.compile(r"\[SCHED\] Tick [0-9]+ enabled=1\n")
 # tick as fixed BOOT/TX/END markers. Reconstruct only records that satisfy the
 # original strict full-line validators, never arbitrary diagnostic fragments.
 N1_MARKERS = (
-    re.compile(re.escape(BOOT)), DISCOVER, DEVICE, ACCEPT, PCI, DRIVER,
-    re.compile(re.escape(TX)), PCI_TX, re.compile(re.escape(END)),
+    re.compile(re.escape(BOOT)), DISCOVER, DEVICE, ACCEPT, PCI,
+    PCI_IRQ_ROUTE, DRIVER, re.compile(re.escape(TX)), PCI_IRQ_STABLE,
+    PCI_TX, re.compile(re.escape(END)),
 )
 
 
@@ -92,7 +105,8 @@ def validate_serial(data: str) -> bytes:
             continue
         if (line not in (BOOT, TX, END) and
                 not any(pattern.fullmatch(line) for pattern in
-                        (DISCOVER, DEVICE, ACCEPT, PCI, DRIVER, PCI_TX))):
+                        (DISCOVER, DEVICE, ACCEPT, PCI, PCI_IRQ_ROUTE,
+                         DRIVER, PCI_IRQ_STABLE, PCI_TX))):
             raise ValueError("unexpected or malformed N1 diagnostic marker")
     found = [m for line in lines if (m := DISCOVER.fullmatch(line))]
     ready = [m for line in lines if (m := ACCEPT.fullmatch(line))]
@@ -106,6 +120,17 @@ def validate_serial(data: str) -> bytes:
     after_command = int(tx_states[0].group(1), 16)
     if (before_command & 0x0006) != 0x0006 or after_command != before_command:
         raise ValueError("E1000E PCI MMIO/busmaster missing or command changed during TX")
+    before_routes = [m for line in lines if (m := PCI_IRQ_ROUTE.fullmatch(line))]
+    after_routes = [m for line in lines if (m := PCI_IRQ_STABLE.fullmatch(line))]
+    if len(before_routes) != len(after_routes) or len(before_routes) > 1:
+        raise ValueError("missing, duplicated or unpaired E1000E PCI IRQ route")
+    if before_routes:
+        before_line, before_pin = map(int, before_routes[0].groups())
+        after_line, after_pin = map(int, after_routes[0].groups())
+        if (not 1 <= before_line <= 254 or not 1 <= before_pin <= 4 or
+                (before_line, before_pin) != (after_line, after_pin) or
+                before_command & 0x0400):
+            raise ValueError("invalid or changed E1000E legacy PCI INTx route")
     binding_claims = [line for line in lines
                       if line.startswith("[NET3095-N1] DRIVER_BOUND=")]
     if len(bindings) != 1 or binding_claims != [bindings[0].group(0)]:
@@ -131,6 +156,11 @@ def validate_serial(data: str) -> bytes:
                lines.index(devices[0].group(0)), lines.index(ready[0].group(0)),
                lines.index(identities[0].group(0)), lines.index(bindings[0].group(0)),
                lines.index(TX), lines.index(tx_states[0].group(0)), lines.index(END)]
+    if before_routes:
+        # New records are interleaved before DriverKit binding and before
+        # the TX-stability record; enforce that order in real QEMU serial.
+        offsets.insert(5, lines.index(before_routes[0].group(0)))
+        offsets.insert(-2, lines.index(after_routes[0].group(0)))
     if offsets != sorted(set(offsets)):
         raise ValueError("out-of-order or duplicated probe markers")
     return mac
@@ -212,8 +242,11 @@ def self_test() -> None:
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
         "[NET3095-N1] PASS READY_LINK=1",
         "[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x0006 (read-only; DMA/ISR unproven)",
+        "[NET3095-N1] PCI_IRQ_ROUTE=PASS line=11 pin=1 (read-only; guest ISR unproven)",
         "[NET3095-N1] DRIVER_BOUND=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown",
-        TX, "[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)", END,
+        TX,
+        "[NET3095-N1] PCI_IRQ_ROUTE_STABLE=PASS line=11 pin=1 (read-only; guest ISR unproven)",
+        "[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)", END,
     ])
     frame = BROADCAST + bytes.fromhex("525400123456") + ETHER_TYPE + PAYLOAD
     frame += b"\x00" * (60 - len(frame))
@@ -277,6 +310,18 @@ def self_test() -> None:
         serial.replace("bdf=00:02.0", "bdf=00:03.0"),
         serial.replace("PCI_IDENTITY=PASS", "PCI_IDENTITY=UNKNOWN"),
         serial.replace("PCI_TX_STABLE=PASS", "PCI_TX_STABLE=UNKNOWN"),
+        serial.replace("PCI_IRQ_ROUTE=PASS", "PCI_IRQ_ROUTE=UNKNOWN"),
+        serial.replace("PCI_IRQ_ROUTE_STABLE=PASS", "PCI_IRQ_ROUTE_STABLE=UNKNOWN"),
+        serial.replace("[NET3095-N1] PCI_IRQ_ROUTE=PASS line=11 pin=1 (read-only; guest ISR unproven)", ""),
+        serial.replace("[NET3095-N1] PCI_IRQ_ROUTE_STABLE=PASS line=11 pin=1 (read-only; guest ISR unproven)", ""),
+        serial.replace("PCI_IRQ_ROUTE=PASS line=11", "PCI_IRQ_ROUTE=PASS line=0"),
+        serial.replace("PCI_IRQ_ROUTE=PASS line=11", "PCI_IRQ_ROUTE=PASS line=255"),
+        serial.replace("PCI_IRQ_ROUTE=PASS line=11", "PCI_IRQ_ROUTE=PASS line=12"),
+        serial.replace("PCI_IRQ_ROUTE_STABLE=PASS line=11", "PCI_IRQ_ROUTE_STABLE=PASS line=12"),
+        serial.replace("PCI_IRQ_ROUTE=PASS line=11 pin=1", "PCI_IRQ_ROUTE=PASS line=11 pin=0"),
+        serial.replace("PCI_IRQ_ROUTE_STABLE=PASS line=11 pin=1", "PCI_IRQ_ROUTE_STABLE=PASS line=11 pin=5"),
+        serial + "\\n[NET3095-N1] PCI_IRQ_ROUTE=PASS line=11 pin=1 (read-only; guest ISR unproven)",
+        serial + "\\n[NET3095-N1] PCI_IRQ_ROUTE_STABLE=PASS line=11 pin=1 (read-only; guest ISR unproven)",
         serial.replace("[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x0006 (read-only; DMA/ISR unproven)", "[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x0002 (read-only; DMA/ISR unproven)"),
         serial.replace("[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)", ""),
         serial + "\n[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)",
