@@ -99,12 +99,15 @@ namespace ZonderqOS.GUI.Apps
             if (!left || oldLeft)
                 return;
 
+            // Save-As and discard confirmation are modal. Previously the
+            // toolbar was dispatched before this guard, allowing a click
+            // behind a confirmation to start a different document action.
+            if (dialogMode != 0)
+                return;
+
             int x = mouseX - view.X;
             int y = mouseY - view.Y;
             if (x < 0 || y < 0 || x >= view.Width || y >= view.Height)
-                return;
-
-            if (dialogMode != 0)
                 return;
 
             int action = view.ToolbarActionAt(x, y);
@@ -1182,6 +1185,25 @@ namespace ZonderqOS.GUI.Apps
             if (app.DialogMode == 1)
             {
                 RenderOpenDialog(canvas);
+                return;
+            }
+
+            int requiredHeight = app.DialogMode == 3 ? 118 : 142;
+            if (Width < 280 || Height < requiredHeight)
+            {
+                // Modal remains keyboard-operable even when the user shrinks
+                // the editor below the dialog's minimum size. Do not draw a
+                // negative-centered dialog into neighboring windows.
+                UiPainter.RoundedPanel(canvas, X + 6, Y + 6,
+                    Math.Max(1, Width - 12), Math.Max(1, Height - 12),
+                    UiMetrics.MenuRadius, UiPalette.SurfaceRaised, Accent);
+                if (Width >= 100 && Height >= 55)
+                    SmallTextRenderer.DrawClipped(canvas,
+                        app.DialogMode == 3 ? "Unsaved changes" : "Save as",
+                        X + 14, Y + 22, Math.Max(1, Width - 28), MainText);
+                if (Width >= 100 && Height >= 85)
+                    SmallTextRenderer.DrawClipped(canvas, "ENTER confirm / ESC cancel",
+                        X + 14, Y + 50, Math.Max(1, Width - 28), SecondaryText);
                 return;
             }
 
