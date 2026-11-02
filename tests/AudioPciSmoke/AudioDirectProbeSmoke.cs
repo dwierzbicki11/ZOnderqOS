@@ -47,7 +47,20 @@ namespace Cosmos.Kernel.System.Audio
         public int StartCalls;
         public int StopCalls;
         public int WrittenBytes;
-        public int WritableBytes = 16384;
+        private int _writableBytes = 16384;
+        public int WritableReadCalls;
+        public int WritableBytes
+        {
+            get
+            {
+                // Detect stale hardware reads after a simulated unplug.
+                if (IsWithdrawn)
+                    throw new InvalidOperationException("read of withdrawn HDA ring");
+                WritableReadCalls++;
+                return _writableBytes;
+            }
+            set => _writableBytes = value;
+        }
         public bool ThrowOnStart;
         public bool ThrowOnWrite;
         public bool ThrowOnStop;
@@ -218,8 +231,42 @@ internal static class AudioDirectProbeSmoke
                 capacityTrace.ToString().Contains("ringSamples=2 ringChanges=1") &&
                 capacityTrace.ToString().Contains("ringMin=0 ringMax=4096") &&
                 capacityTrace.ToString().Contains("ringIncreases=1 ringDecreases=0") &&
-                capacityTrace.ToString().Contains("writable=driver snapshot; DMA/IRQ not proven"),
+                capacityTrace.ToString().Contains("writable=driver snapshot; DMA/IRQ not proven") &&
+                movingCapacity.WritableReadCalls == 2,
                 "direct probe reports stock driver capacity movement without claiming DMA proof");
+
+            // A full-ring wait can reveal both newly freed capacity and
+            // subsequent consumption. Changes remain software snapshots,
+            // not evidence that a guest IRQ handler actually ran.
+            var changingCapacity = new Device { StallWrites = true, WritableBytes = 0 };
+            changingCapacity.OnStalledWrite = () => changingCapacity.StallWrites = false;
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                if (ms == 1) changingCapacity.WritableBytes = 4096;
+                else if (ms == 86) changingCapacity.WritableBytes = 1024;
+                else throw new Exception("Unexpected HDA wait duration");
+            };
+            using var changingTrace = new StringWriter();
+            bool changingResult;
+            try
+            {
+                Console.SetOut(changingTrace);
+                changingResult = AudioProbeDirectPlayback.TryPlay(changingCapacity, Pcm, 48000);
+            }
+            finally
+            {
+                Console.SetOut(priorOutput);
+                Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+                {
+                    check(ms == 86, "successful direct probe waits one HDA ring period");
+                    waits++;
+                };
+            }
+            check(changingResult && changingCapacity.WritableReadCalls == 3 &&
+                changingTrace.ToString().Contains("ringSamples=3 ringChanges=2") &&
+                changingTrace.ToString().Contains("ringMin=0 ringMax=4096") &&
+                changingTrace.ToString().Contains("ringIncreases=1 ringDecreases=1"),
+                "direct probe distinguishes driver-reported free-space increase and decrease");
 
             // A host-only device returning partial frame-aligned writes must
             // be counted by accepted bytes, not by requested block sizes.
@@ -692,8 +739,9 @@ internal static class AudioDirectProbeSmoke
             check(!AudioProbeDirectPlayback.TryPlay(withdrawnOnZeroWrite, Pcm, 48000) &&
                 withdrawnOnZeroWrite.StartCalls == 1 &&
                 withdrawnOnZeroWrite.StopCalls == 0 &&
-                withdrawnOnZeroWrite.IsRunning && waits == 0,
-                "direct HDA probe stops without waiting after zero-write withdrawal");
+                withdrawnOnZeroWrite.IsRunning && waits == 0 &&
+                withdrawnOnZeroWrite.WritableReadCalls == 1,
+                "direct HDA probe avoids stale capacity read after zero-write withdrawal");
 
             waits = 0;
             var withdrawn = new Device { StallWrites = true };
@@ -704,8 +752,9 @@ internal static class AudioDirectProbeSmoke
                 withdrawn.IsWithdrawn = true;
             };
             check(!AudioProbeDirectPlayback.TryPlay(withdrawn, Pcm, 48000) &&
-                withdrawn.StopCalls == 0 && withdrawn.IsRunning && waits == 1,
-                "device withdrawal during ring-full wait fails closed");
+                withdrawn.StopCalls == 0 && withdrawn.IsRunning && waits == 1 &&
+                withdrawn.WritableReadCalls == 1,
+                "device withdrawal during ring-full wait skips stale capacity reads");
         }
         finally
         {
