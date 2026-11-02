@@ -468,6 +468,16 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            // If the picker became invisible after a resolution change,
+            // Enter must not open a previously selected but unseen file.
+            // Keyboard events may arrive before the next Update() layout.
+            UpdateLayout();
+            if (view.Width < 360 || view.Height < 310)
+            {
+                status = "Enlarge window to browse files";
+                return;
+            }
+
             if (key.Key == ConsoleKeyEx.Backspace || key.Key == ConsoleKeyEx.LeftArrow)
             {
                 OpenParentDirectory();
