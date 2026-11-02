@@ -178,6 +178,9 @@ internal static class AudioDirectProbeSmoke
                 normalProgress.Contains("silenceQueued=16384") &&
                 normalProgress.Contains("writeCalls=5") &&
                 normalProgress.Contains("zeroWrites=0") &&
+                normalProgress.Contains("partialWrites=0") &&
+                normalProgress.Contains("longestZeroStreak=0") &&
+                normalProgress.Contains("minPositiveWrite=16") &&
                 normalProgress.Contains("waits=0") &&
                 normalProgress.Contains("settleRequests=1") &&
                 normalProgress.Contains("DMA/IRQ and audible PCM not proven"),
@@ -202,6 +205,9 @@ internal static class AudioDirectProbeSmoke
                 partialTrace.ToString().Contains("silenceQueued=16384") &&
                 partialTrace.ToString().Contains("writeCalls=17") &&
                 partialTrace.ToString().Contains("zeroWrites=0") &&
+                partialTrace.ToString().Contains("partialWrites=12") &&
+                partialTrace.ToString().Contains("longestZeroStreak=0") &&
+                partialTrace.ToString().Contains("minPositiveWrite=16") &&
                 partialTrace.ToString().Contains("settleRequests=1"),
                 "partial HDA writes count accepted bytes and actual calls");
 
@@ -239,9 +245,55 @@ internal static class AudioDirectProbeSmoke
                 stalledTrace.ToString().Contains("silenceQueued=16384") &&
                 stalledTrace.ToString().Contains("writeCalls=6") &&
                 stalledTrace.ToString().Contains("zeroWrites=1") &&
+                stalledTrace.ToString().Contains("partialWrites=0") &&
+                stalledTrace.ToString().Contains("longestZeroStreak=1") &&
                 stalledTrace.ToString().Contains("waits=1") &&
                 stalledTrace.ToString().Contains("settleRequests=1"),
                 "one stalled HDA write reports backpressure without inflating queued PCM");
+
+            // Two consecutive full-ring writes must be reported as one
+            // backpressure streak, not two independent DMA completions.
+            var twoStalls = new Device { StallWrites = true };
+            int stalledCalls = 0;
+            twoStalls.OnStalledWrite = () =>
+            {
+                stalledCalls++;
+                if (stalledCalls == 2)
+                    twoStalls.StallWrites = false;
+            };
+            int twoShortWaits = 0;
+            int twoSettleWaits = 0;
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                if (ms == 1) twoShortWaits++;
+                else if (ms == 86) twoSettleWaits++;
+                else throw new Exception("Unexpected audio wait duration");
+            };
+            using var twoStallTrace = new StringWriter();
+            bool twoStallResult;
+            try
+            {
+                Console.SetOut(twoStallTrace);
+                twoStallResult = AudioProbeDirectPlayback.TryPlay(twoStalls, Pcm, 48000);
+            }
+            finally
+            {
+                Console.SetOut(priorOutput);
+                Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+                {
+                    check(ms == 86, "successful direct probe waits one HDA ring period");
+                    waits++;
+                };
+            }
+            check(twoStallResult && twoShortWaits == 2 && twoSettleWaits == 1 &&
+                twoStalls.WrittenBytes == Pcm.Length + 16384 &&
+                twoStallTrace.ToString().Contains("writeCalls=7") &&
+                twoStallTrace.ToString().Contains("zeroWrites=2") &&
+                twoStallTrace.ToString().Contains("partialWrites=0") &&
+                twoStallTrace.ToString().Contains("longestZeroStreak=2") &&
+                twoStallTrace.ToString().Contains("minPositiveWrite=16") &&
+                twoStallTrace.ToString().Contains("waits=2"),
+                "consecutive full-ring writes report real backpressure streak");
 
             // The public HDA name/driver can stay identical even after
             // AudioManager.Primary changes to another device instance.
