@@ -3260,8 +3260,8 @@ class NotificationTinyPanelGeometry3095(unittest.TestCase):
             "private void RenderToast(", 1)[0]
         self.assertIn("if (Height < 166 || Width < 100)", render)
         self.assertIn("if (Height >= 166 && Width >= 100)", hover)
-        self.assertIn("if (Height < 57 || Width < 90)", footer)
-        self.assertIn("if (Height < 57 || Width < 90)", hover)
+        self.assertIn("if (Height < 130 || Width < 90)", footer)
+        self.assertIn("if (Height < 130 || Width < 90)", hover)
         self.assertIn("if (width < 76)", draw_button)
         self.assertIn("x + (width - 18) / 2", draw_button)
         for screen_w, screen_h in ((200, 200), (320, 240),
