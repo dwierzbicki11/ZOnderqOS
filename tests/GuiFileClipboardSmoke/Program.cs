@@ -5,7 +5,7 @@ using ZonderqOS.SystemCore;
 
 // Host-only dependencies. The test compiles the actual production FileClipboard
 // and uses real temporary files, not a simulated in-memory filesystem.
-namespace ZonderqOS.SystemCore
+namespace ZonderqOS
 {
     internal static class SecurityContext
     {
@@ -14,12 +14,8 @@ namespace ZonderqOS.SystemCore
 
     internal static class UserManager
     {
-        public static string GetHomeDirectory(string user) => Path.GetTempPath();
-    }
-
-    internal static class VirtualFs
-    {
-        public static bool IsReadOnlyPath(string path) => false;
+        public static string HomeDirectory = Path.GetTempPath();
+        public static string GetHomeDirectory(string user) => HomeDirectory;
     }
 
     internal static class SecurityLogger
@@ -32,8 +28,9 @@ namespace ZonderqOS.SystemCore
         public static bool FailMove;
         public static bool FailCopy;
         public static bool FailCleanup;
+        public static string DenyWritePath = "";
         public static bool CanRead(string path, string user) => true;
-        public static bool CanWrite(string path, string user) => true;
+        public static bool CanWrite(string path, string user) => path != DenyWritePath;
         public static void MovePermissionsUnder(string source, string destination)
         {
             if (FailMove)
@@ -49,6 +46,14 @@ namespace ZonderqOS.SystemCore
             if (FailCleanup)
                 throw new IOException("simulated cleanup metadata failure");
         }
+    }
+}
+
+namespace ZonderqOS.SystemCore
+{
+    internal static class VirtualFs
+    {
+        public static bool IsReadOnlyPath(string path) => false;
     }
 }
 
@@ -72,6 +77,9 @@ internal static class Program
         PermissionManager.FailMove = false;
         PermissionManager.FailCopy = false;
         PermissionManager.FailCleanup = false;
+        PermissionManager.DenyWritePath = "";
+        SecurityContext.CurrentUser = "root";
+        UserManager.HomeDirectory = root;
         try
         {
             action(root);
@@ -82,6 +90,8 @@ internal static class Program
             PermissionManager.FailMove = false;
             PermissionManager.FailCopy = false;
             PermissionManager.FailCleanup = false;
+            PermissionManager.DenyWritePath = "";
+            SecurityContext.CurrentUser = "root";
             Directory.Delete(root, true);
         }
     }
@@ -175,6 +185,32 @@ internal static class Program
         });
     }
 
+    private static void ReadOnlyAclDestinationIsRejected()
+    {
+        Case(root =>
+        {
+            string source = Path.Combine(root, "source.txt");
+            string destination = Path.Combine(root, "locked");
+            Directory.CreateDirectory(destination);
+            File.WriteAllText(source, "secret");
+            SecurityContext.CurrentUser = "alice";
+            PermissionManager.DenyWritePath = destination;
+            FileClipboard.Set(source, false, true);
+            Check(!FileClipboard.TryPaste(destination, out string retained, out string error),
+                "custom ACL denies cut into read-only destination");
+            Check(retained == null && error != null && error.Contains("not writable"),
+                "read-only destination error is explicit");
+            Check(File.Exists(source) && Directory.GetFiles(destination).Length == 0,
+                "denied cut does not modify either directory");
+            Check(FileClipboard.HasItem, "denied cut retains clipboard");
+            FileClipboard.Set(source, false, false);
+            Check(!FileClipboard.TryPaste(destination, out retained, out error),
+                "custom ACL denies copy into read-only destination");
+            Check(File.Exists(source) && Directory.GetFiles(destination).Length == 0,
+                "denied copy does not create a file");
+        });
+    }
+
     private static void MissingSourceIsRejected()
     {
         Case(root =>
@@ -197,6 +233,7 @@ internal static class Program
         CopyMetadataFailureCleansPartialDestination();
         SuccessfulCopyAndCut();
         MissingSourceIsRejected();
+        ReadOnlyAclDestinationIsRejected();
         Console.WriteLine("GUI clipboard host C#: " + assertions + " PASS");
         return 0;
     }

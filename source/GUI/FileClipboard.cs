@@ -92,6 +92,16 @@ namespace ZonderqOS.GUI
                     return false;
                 }
 
+                // Home containment alone is insufficient: the custom ACL
+                // may mark a nested destination read-only even though the
+                // underlying FAT driver does not enforce Unix permissions.
+                if (!PermissionManager.CanWrite(destinationRoot, user))
+                {
+                    error = "Permission denied: destination is not writable";
+                    SecurityLogger.LogEvent("WARN", $"Unauthorized clipboard destination write by {user}: {destinationRoot}");
+                    return false;
+                }
+
                 if (cutMode && sourceIsDirectory && !IsInside(source, home))
                 {
                     error = "Permission denied: cannot move system directory";

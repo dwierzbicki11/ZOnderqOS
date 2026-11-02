@@ -1171,6 +1171,18 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            // The FAT driver does not enforce ZonderqOS's user ACL by itself.
+            // A non-root session must not create files in /etc or in a
+            // read-only subfolder merely by using the graphical file manager.
+            string user = SecurityContext.CurrentUser ?? "root";
+            if (user != "root" &&
+                (!IsInsidePath(currentPath, UserManager.GetHomeDirectory(user)) ||
+                 !PermissionManager.CanWrite(currentPath, user)))
+            {
+                status = "Permission denied: cannot create in this folder";
+                return;
+            }
+
             try
             {
                 if (File.Exists(path) || Directory.Exists(path))
