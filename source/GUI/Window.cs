@@ -89,6 +89,14 @@ namespace ZonderqOS.GUI
             desktopHeight = height;
         }
 
+        // Keyboard events can arrive before the first Render/ContainsPoint
+        // after a display-mode change. Let app layout code synchronize the
+        // window before calculating visible controls or acting on a selection.
+        public void EnsureDesktopBounds()
+        {
+            SyncDesktopBounds();
+        }
+
         public Window(int x, int y, int width, int height, string title) : base(x, y, width, height)
         {
             Title = title;
