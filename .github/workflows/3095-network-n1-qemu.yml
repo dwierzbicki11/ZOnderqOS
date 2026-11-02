@@ -33,6 +33,8 @@ on:
       - 'tests/verify_3095_network_n6_burst.py'
       - 'tests/verify_3095_network_n6_post_http.py'
       - 'tests/verify_3095_network_n6_final_icmp.py'
+      - 'tests/verify_3095_network_n6_link_recovery.py'
+      - 'tools/network_3095_qmp_link.py'
       - 'tests/verify_3095_rtl_negative_qemu.py'
       - 'tests/verify_3095_network_heartbeat.py'
       - 'tests/verify_3095_e1000e_irq_trace.py'
@@ -80,6 +82,8 @@ jobs:
           python3 zonderq/tests/verify_3095_network_n6_burst.py --self-test
           python3 zonderq/tests/verify_3095_network_n6_post_http.py --self-test
           python3 zonderq/tests/verify_3095_network_n6_final_icmp.py --self-test
+          python3 zonderq/tests/verify_3095_network_n6_link_recovery.py --self-test
+          python3 zonderq/tools/network_3095_qmp_link.py --self-test
           python3 zonderq/tests/verify_3095_network_heartbeat.py --self-test
           python3 zonderq/tests/verify_3095_e1000e_irq_trace.py --self-test
           python3 zonderq/tests/verify_3095_e1000e_irq_binding.py --self-test
@@ -324,6 +328,28 @@ jobs:
           path: zonderq/output-3095/ZonderqOS-3095-network-n6.iso
           retention-days: 4
           if-no-files-found: error
+
+      - name: Boot isolated E1000E N6 again with QMP link down/up and post-up ICMP
+        working-directory: zonderq
+        env:
+          NET3095_N1_TIMEOUT: '220'
+          NET3095_LINK_CYCLE: '1'
+        run: |
+          set -euo pipefail
+          bash tools/smoke-network-n1-3095-qemu.sh \
+            output-3095/ZonderqOS-3095-network-n6.iso network-n6-link-3095.serial.log n6
+      - name: Upload QMP link-recovery serial and independent PCAP evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: zonderq3095-network-n6-link-recovery-evidence
+          path: |
+            zonderq/network-n6-link-3095.serial.log
+            zonderq/network-n6-link-3095.serial.log.stderr
+            zonderq/network-n6-link-3095.serial.log.pcap
+            zonderq/network-n6-link-3095.serial.log.tcp-host
+            zonderq/network-n6-link-3095.serial.log.http-host
+          if-no-files-found: ignore
 
       # This compiles the real DriverKit registration path against stock 3.0.95.
       # QEMU has no 10EC:8136 model; compilation is NOT a hardware MMIO proof.
