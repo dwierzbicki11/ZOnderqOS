@@ -11,7 +11,7 @@ import argparse
 import re
 from pathlib import Path
 
-from verify_3095_network_n1 import pcap_frames
+from verify_3095_network_n1 import SCHED_TICK, pcap_frames
 from verify_3095_network_n2 import LEASE, MAC, SERVER, synthetic_capture
 from verify_3095_network_n4 import PORT, fake_tcp, tcp_frame
 from verify_3095_network_n6_final_icmp import final_echo
@@ -25,6 +25,36 @@ TIMING = re.compile(
     r"\[NET3095-N6\] LINK_TCP_RX_TIMING cycle=([12]) "
     r"first_byte_ms=(\d+) total_ms=(\d+)"
 )
+START = re.compile(r"\[NET3095-N6\] LINK_TCP_ATTEMPT=START cycle=[12]")
+DONE = re.compile(r"\[NET3095-N6\] LINK_TCP=PASS cycle=[12] bytes=\d+")
+RECONNECT_MARKERS = (START, TIMING, DONE)
+
+
+def normalize_reconnect_serial(data: str) -> str:
+    """Repair only a complete reconnect marker interrupted by a valid stock tick.
+
+    Do not strip arbitrary scheduler output: a damaged or duplicated claim
+    must still fail the strict cycle/count/ordering checks below.
+    """
+    raw = data.replace("\r", "")
+    repairs = []
+    for tick in SCHED_TICK.finditer(raw):
+        start = raw.rfind("\n", 0, tick.start()) + 1
+        end = raw.find("\n", tick.end())
+        if end < 0:
+            end = len(raw)
+        if start == tick.start() or end == tick.end():
+            continue  # standalone scheduler tick, not a torn marker
+        candidate = raw[start:tick.start()] + raw[tick.end():end]
+        if any(pattern.fullmatch(candidate) for pattern in RECONNECT_MARKERS):
+            repairs.append((start, end, candidate))
+    # A single marker must not be reconstructed from overlapping ticks.
+    for left, right in zip(repairs, repairs[1:]):
+        if left[1] > right[0]:
+            raise ValueError("overlapping scheduler tears in TCP reconnect marker")
+    for start, end, candidate in reversed(repairs):
+        raw = raw[:start] + candidate + raw[end:]
+    return raw
 
 
 def reconnect_request(cycle: int) -> bytes:
@@ -38,7 +68,7 @@ def reconnect_response(cycle: int) -> bytes:
 def check_serial_and_host(serial: str, host: str, cycles: int) -> None:
     if cycles not in (1, 2):
         raise ValueError("invalid reconnect cycle count")
-    lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
+    lines = [line.strip() for line in normalize_reconnect_serial(serial).splitlines()]
     host_lines = [line.strip() for line in host.replace("\r", "").splitlines()]
     if any("[NET3095-N6][FAIL]" in line for line in lines) or (
         any("[NET3095-N4-HOST][FAIL]" in line for line in host_lines)
@@ -190,6 +220,26 @@ def self_test() -> None:
     serial, host = "\n".join(serial_lines), "\n".join(host_lines)
     check_serial_and_host(serial, host, 2)
     check_tcp_wire(frames, guest, 2)
+    # Cosmos serial writes are not atomic. Accept only an exact scheduler
+    # tick inserted inside a COMPLETE valid marker, including two torn cycles.
+    torn = serial
+    for cycle in (1, 2):
+        for marker in (serial_lines[(cycle - 1) * 4 + 1],
+                       serial_lines[(cycle - 1) * 4 + 2],
+                       serial_lines[(cycle - 1) * 4 + 3]):
+            cut = len(marker) // 2
+            torn = torn.replace(marker, marker[:cut] +
+                                f"[SCHED] Tick {cycle * 100 + cut} enabled=1\n" +
+                                marker[cut:], 1)
+    check_serial_and_host(torn, host, 2)
+    for invalid in (torn.replace("enabled=1", "enabled=0", 1),
+                    torn.replace("total_ms=12", "total_ms=10000", 1),
+                    torn + "\n" + serial_lines[2]):
+        try:
+            check_serial_and_host(invalid, host, 2)
+        except ValueError:
+            continue
+        raise AssertionError("accepted invalid scheduler-torn reconnect claim")
     check_serial_and_host("\n".join(serial_lines[:4]), "\n".join(host_lines[:2]), 1)
     check_tcp_wire(frames[:7], guest, 1)
     assert len(list(pcap_frames(synthetic_capture(frames)))) == len(frames)
