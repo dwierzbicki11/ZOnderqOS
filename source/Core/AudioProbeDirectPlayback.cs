@@ -1,6 +1,7 @@
 #if ZONDERQ_AUDIO_PROBE
 using System;
 using Cosmos.Kernel.HAL.Devices.Audio;
+using Cosmos.Kernel.System.Audio;
 
 namespace ZonderqOS.SystemCore
 {
