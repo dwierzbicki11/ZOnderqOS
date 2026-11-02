@@ -26,6 +26,23 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("config.Read16(bus, slot, function, 0x16)", pci)
         self.assertIn("type == 0 && address == 0xFFFFFFF0UL", pci)
         self.assertIn("address == 0xFFFFFFFFFFFFFFF0UL", pci)
+        # Read-only legacy INTx metadata is a prerequisite for QEMU's
+        # legacy IRQ trace, never a guest ISR invocation counter.
+        self.assertIn("TryReadLegacyIrqRoute(", pci)
+        self.assertIn("(command & 0x0400) != 0", pci)
+        self.assertIn("config.Read8(bus, slot, function, 0x3C)", pci)
+        self.assertIn("config.Read8(bus, slot, function, 0x3D)", pci)
+        self.assertIn("line == 0 || line == 0xFF || pin < 1 || pin > 4", pci)
+        self.assertIn("PCI_IRQ_ROUTE=PASS line=", SOURCE)
+        self.assertIn("PCI_IRQ_ROUTE_STABLE=PASS line=", SOURCE)
+        self.assertIn("txIrqLine != pciIrqLine || txIrqPin != pciIrqPin", SOURCE)
+        self.assertIn("stressIrqLine != pciIrqLine || stressIrqPin != pciIrqPin", SOURCE)
+        self.assertIn("s_linkCycleIrqLine = pciIrqLine;", SOURCE)
+        self.assertIn("s_linkCycleIrqPin = pciIrqPin;", SOURCE)
+        self.assertIn("irqLine == s_linkCycleIrqLine", SOURCE)
+        self.assertIn("irqPin == s_linkCycleIrqPin", SOURCE)
+        self.assertNotIn("Write16(", pci)
+        self.assertNotIn("Write8(", pci)
         self.assertIn("out ulong pciBar0", SOURCE)
         self.assertIn("txPciBar0 != pciBar0", SOURCE)
         # N6 must also check the original MMIO BAR after all HTTP, burst TX
