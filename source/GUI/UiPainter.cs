@@ -310,6 +310,34 @@ namespace ZonderqOS.GUI
                 return;
             }
 
+            // A rectangle clipped only on its horizontal axis is common
+            // while dragging windows across the left/right screen edge.
+            // Keep the fully-visible path above untouched; avoid the general
+            // long-coordinate/Math.Min clipping work for this case.
+            if ((uint)y < (uint)canvas.Height && height <= canvas.Height - y)
+            {
+                if (x < 0)
+                {
+                    long visibleRight = (long)x + width;
+                    if (visibleRight > 0)
+                    {
+                        int visibleWidth = (int)Math.Min((long)canvas.Width, visibleRight);
+                        if (visibleWidth > 0)
+                            canvas.DrawFilledRectangle(color, 0, y, visibleWidth, height);
+                    }
+                    return;
+                }
+
+                // x is inside the framebuffer here (the earlier checks
+                // rejected x >= Width). A failed fully-visible test means
+                // only the right edge needs clipping.
+                if ((uint)x < (uint)canvas.Width)
+                {
+                    canvas.DrawFilledRectangle(color, x, y, canvas.Width - x, height);
+                    return;
+                }
+            }
+
             long right = (long)x + width;
             long bottom = (long)y + height;
             if (right <= 0 || bottom <= 0)
