@@ -487,8 +487,7 @@ namespace ZonderqOS
                     {
                         if (!TryHttpExchange(attempt, sourceMac, initialIp, initialMask, initialGateway,
                              pciCommand, pciBar0, pciIrqLine, pciIrqPin,
-                             baselineResources, baselineIrqSources,
-                            pciCommand, pciBar0, pciIrqLine, pciIrqPin))
+                             baselineResources, baselineIrqSources))
                             return;
                     }
                 }
@@ -576,8 +575,7 @@ namespace ZonderqOS
                     {
                         if (!TryHttpExchange(attempt, sourceMac, initialIp, initialMask, initialGateway,
                              pciCommand, pciBar0, pciIrqLine, pciIrqPin,
-                             baselineResources, baselineIrqSources,
-                            pciCommand, pciBar0, pciIrqLine, pciIrqPin))
+                             baselineResources, baselineIrqSources))
                             return;
                     }
                 }
