@@ -6,6 +6,7 @@ on:
       - 'source/GUI/**'
       - 'ZonderqOS.csproj'
       - 'tests/test_3094_responsive_gui.py'
+      - 'tests/test_gui_compact_apps.py'
       - 'tests/GuiScrollBarSmoke/**'
       - 'tests/GuiFileClipboardSmoke/**'
       - 'tests/GuiFileNamePolicySmoke/**'
@@ -50,6 +51,7 @@ jobs:
       - name: Validate 3.0.95 GUI layout and desktop bounds (source/math only)
         run: |
           python3 tests/test_3094_responsive_gui.py
+          python3 tests/test_gui_compact_apps.py
           python3 tests/test_gui_modified_keys.py
           python3 tests/test_gui_filemanager_invisible_selection.py
           python3 tests/test_gui_filemanager_create_acl.py
