@@ -6,6 +6,9 @@ on:
     paths:
       - 'source/GUI/UiPainter.cs'
       - 'source/GUI/TerminalBox.cs'
+      - 'Kernel.cs'
+      - 'tools/perf_boot_baseline.py'
+      - 'tests/test_perf_boot_baseline.py'
       - 'source/GUI/Application/FileManagerApp.cs'
       - 'source/GUI/Application/FileEntrySorter.cs'
       - 'source/GUI/Application/Terminal.cs'
@@ -47,6 +50,12 @@ jobs:
           bash tools/smoke-services-qemu.sh \
             output-3095/ZonderqOS-3095-disk.iso services-qemu-output \
             2>&1 | tee services-qemu-smoke.log
+      - name: Extract guest-clock initialization baselines from persisted FAT32 logs
+        run: |
+          python3 tools/perf_boot_baseline.py \
+            services-qemu-output/system-first.log \
+            services-qemu-output/system-after.log \
+            --output services-qemu-output/perf-boot-baseline.json
       - name: Diagnostics
         if: always()
         run: |
@@ -62,3 +71,4 @@ jobs:
             services-qemu-smoke.log
             services-qemu-output/*.log
             services-qemu-output/*.conf
+            services-qemu-output/*.json
