@@ -29,6 +29,19 @@ internal static class Program
         bytes[offset + 3] = (byte)(value >> 24);
     }
 
+    // Independent fixture generator for the standard PNG CRC-32 polynomial.
+    private static void SealPngIhdr(byte[] bytes)
+    {
+        uint crc = 0xFFFFFFFFu;
+        for (int i = 12; i < 29; i++)
+        {
+            crc ^= bytes[i];
+            for (int bit = 0; bit < 8; bit++)
+                crc = (crc >> 1) ^ ((crc & 1u) == 0 ? 0u : 0xEDB88320u);
+        }
+        BigEndian(bytes, 29, ~crc);
+    }
+
     private static byte[] Png(uint width, uint height)
     {
         byte[] header = new byte[33];
@@ -38,6 +51,7 @@ internal static class Program
         BigEndian(header, 20, height);
         header[24] = 8; // PNG truecolor depth.
         header[25] = 2;
+        SealPngIhdr(header);
         return header;
     }
 
@@ -80,6 +94,9 @@ internal static class Program
 
         byte[] validPng = Png(800, 600);
         byte[] validBmp = Bmp(800, 600);
+        // Known CRC32 of IHDR for RGB8 800x600, cross-checked with zlib.
+        Check(validPng[29] == 0x15 && validPng[30] == 0x14 &&
+              validPng[31] == 0x15 && validPng[32] == 0x27, "known PNG IHDR CRC");
         for (int length = 0; length < 33; length++)
             Check(!ImageHeaderGuard.HasSafeDimensions(validPng, length, true),
                 "truncated PNG header " + length);
@@ -128,9 +145,17 @@ internal static class Program
         badPng = (byte[])validPng.Clone();
         badPng[25] = 3;
         badPng[24] = 4;
+        SealPngIhdr(badPng);
         Check(ImageHeaderGuard.HasSafeDimensions(badPng, 33, true), "valid indexed PNG");
         badPng[24] = 16;
+        SealPngIhdr(badPng);
         Check(!ImageHeaderGuard.HasSafeDimensions(badPng, 33, true), "invalid indexed PNG depth");
+        badPng = (byte[])validPng.Clone();
+        badPng[30] ^= 1;
+        Check(!ImageHeaderGuard.HasSafeDimensions(badPng, 33, true), "corrupted PNG CRC");
+        badPng = (byte[])validPng.Clone();
+        badPng[16] ^= 1; // Valid dimensions, invalid IHDR CRC.
+        Check(!ImageHeaderGuard.HasSafeDimensions(badPng, 33, true), "corrupted PNG width CRC");
 
         byte[] badBmp = (byte[])validBmp.Clone();
         LittleEndian(badBmp, 10, 53);
@@ -172,6 +197,11 @@ internal static class Program
                 "valid PNG file preflight");
             Check(!ImageHeaderGuard.IsSafeToDecode(temp, false),
                 "reject PNG interpreted as BMP");
+            byte[] corruptCrc = (byte[])validPng.Clone();
+            corruptCrc[32] ^= 1;
+            File.WriteAllBytes(temp, corruptCrc);
+            Check(!ImageHeaderGuard.IsSafeToDecode(temp, true),
+                "reject corrupted PNG CRC in file preflight");
             File.WriteAllBytes(temp, Png(65535, 65535));
             Check(!ImageHeaderGuard.IsSafeToDecode(temp, true),
                 "reject huge PNG file preflight");

@@ -72,7 +72,8 @@ namespace ZonderqOS.GUI
                 height = ReadBigEndian32(header, 20);
                 // Validate PNG IHDR metadata before entering Cosmos decoder.
                 if (!IsValidPngColorDepth(header[24], header[25]) ||
-                    header[26] != 0 || header[27] != 0 || header[28] > 1)
+                    header[26] != 0 || header[27] != 0 || header[28] > 1 ||
+                    !HasValidPngIhdrCrc(header))
                     return false;
             }
             else
@@ -97,6 +98,21 @@ namespace ZonderqOS.GUI
             return width > 0 && height > 0 &&
                    width <= MaxDimension && height <= MaxDimension &&
                    width * height <= MaxPixels;
+        }
+
+        // CRC-32 of IHDR type + 13 data bytes. The decoder must not be
+        // allowed to allocate pixels based on a corrupted width/height.
+        // This always processes 17 bytes, independent of the input file size.
+        private static bool HasValidPngIhdrCrc(byte[] header)
+        {
+            uint crc = 0xFFFFFFFFu;
+            for (int i = 12; i < 29; i++)
+            {
+                crc ^= header[i];
+                for (int bit = 0; bit < 8; bit++)
+                    crc = (crc & 1u) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+            }
+            return ~crc == ReadBigEndian32(header, 29);
         }
 
         private static bool IsValidPngColorDepth(byte depth, byte colorType)
