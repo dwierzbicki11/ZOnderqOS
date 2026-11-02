@@ -245,6 +245,7 @@ namespace ZonderqOS.GUI
         // A/B switch restores the previous Unicode path without changing
         // the production build or the old ASCII fast path.
         internal static bool DisableUnicodeTrimFastPathForBenchmark;
+        internal static bool DisableFastTrailingWhitespaceTrimForBenchmark;
 #endif
         internal static string SliceTrimmedForOutput(string source, int start, int length)
         {
@@ -269,10 +270,23 @@ namespace ZonderqOS.GUI
                     return source.Substring(start, length);
             }
 
-            // Span.TrimEnd uses the runtime's whitespace scanner without
-            // first allocating the untrimmed intermediate substring.
-            ReadOnlySpan<char> visible = source.AsSpan(start, length).TrimEnd();
-            return visible.IsEmpty ? string.Empty : visible.ToString();
+#if ZONDERQ_PERF_HOST_TEST
+            if (DisableFastTrailingWhitespaceTrimForBenchmark)
+            {
+                ReadOnlySpan<char> oldVisible = source.AsSpan(start, length).TrimEnd();
+                return oldVisible.IsEmpty ? string.Empty : oldVisible.ToString();
+            }
+#endif
+            // Spaces dominate padded command output. Scan them directly,
+            // then handle the remaining Unicode whitespace with exactly
+            // the same Char.IsWhiteSpace rules as Span.TrimEnd. Keep only
+            // one retained substring (or String.Empty for blank slices).
+            int end = start + length;
+            while (end > start && source[end - 1] == ' ')
+                end--;
+            while (end > start && char.IsWhiteSpace(source[end - 1]))
+                end--;
+            return end == start ? string.Empty : source.Substring(start, end - start);
         }
 
         // Decode directly from the command output's original string. A
