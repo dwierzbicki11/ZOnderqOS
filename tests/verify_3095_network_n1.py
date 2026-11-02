@@ -32,11 +32,18 @@ DRIVER = re.compile(
 # enabled tick inside one of these exact fixed N1 markers. Never globally
 # remove scheduler lines or synthesize a missing/altered marker.
 SCHED_TICK = re.compile(r"\[SCHED\] Tick [0-9]+ enabled=1\n")
+# Dynamic inventory and DriverKit records are just as vulnerable to a serial
+# tick as fixed BOOT/TX/END markers. Reconstruct only records that satisfy the
+# original strict full-line validators, never arbitrary diagnostic fragments.
+N1_MARKERS = (
+    re.compile(re.escape(BOOT)), DISCOVER, DEVICE, ACCEPT, DRIVER,
+    re.compile(re.escape(TX)), re.compile(re.escape(END)),
+)
 
 
 def normalize_n1_serial(data: str) -> str:
     raw = data.replace("\r", "")
-    for marker in (BOOT, TX, END):
+    for pattern in N1_MARKERS:
         found = []
         for tick in SCHED_TICK.finditer(raw):
             start = raw.rfind("\n", 0, tick.start()) + 1
@@ -46,13 +53,14 @@ def normalize_n1_serial(data: str) -> str:
             # A standalone tick before or after the marker is not a splice.
             if start == tick.start() or end == tick.end():
                 continue
-            if raw[start:tick.start()] + raw[tick.end():end] == marker:
-                found.append((start, end))
+            candidate = raw[start:tick.start()] + raw[tick.end():end]
+            if pattern.fullmatch(candidate):
+                found.append((start, end, candidate))
         if len(found) > 1:
             raise ValueError("duplicate scheduler-preempted N1 marker")
         if found:
-            start, end = found[0]
-            raw = raw[:start] + marker + raw[end:]
+            start, end, candidate = found[0]
+            raw = raw[:start] + candidate + raw[end:]
     return raw
 
 
@@ -183,9 +191,9 @@ def self_test() -> None:
     assert "PASS" in validate(serial, good)
     # Real N6 QEMU run 41400794536 had a scheduler tick inserted into
     # TX_QUEUED=yes after '='; PCAP and all later HTTP/TCP exchanges existed.
-    # Exercise every internal split position of all fixed N1 markers, not
+    # Exercise every internal split position of every N1 marker, not
     # merely that one observed scheduler interleaving.
-    for marker in (BOOT, TX, END):
+    for marker in serial.splitlines():
         for pos in range(1, len(marker)):
             torn = serial.replace(
                 marker, marker[:pos] + "[SCHED] Tick 7 enabled=1\n" + marker[pos:]
