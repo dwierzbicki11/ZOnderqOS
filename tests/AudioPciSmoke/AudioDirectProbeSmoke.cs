@@ -427,7 +427,7 @@ internal static class AudioDirectProbeSmoke
                 () => selectedPrimary) && replacedDuringSettle.StartCalls == 1 &&
                 replacedDuringSettle.StopCalls == 0 &&
                 replacedDuringSettle.WrittenBytes == Pcm.Length + 16384 &&
-                settleWaits == 1,
+                replacedDuringSettle.WritableReadCalls == 1 && settleWaits == 1,
                 "primary replacement during settle skips Stop on stale device");
             // Restore the normal successful 86ms wait callback for the
             // remaining ownership and format regression cases.
@@ -611,7 +611,8 @@ internal static class AudioDirectProbeSmoke
             };
             check(!AudioProbeDirectPlayback.TryPlay(settleRateDrift, Pcm, 48000) &&
                 settleRateDrift.StartCalls == 1 && settleRateDrift.StopCalls == 1 &&
-                settleRateDrift.WrittenBytes == Pcm.Length + 16384,
+                settleRateDrift.WrittenBytes == Pcm.Length + 16384 &&
+                settleRateDrift.WritableReadCalls == 1,
                 "direct probe rejects changed format after final settle");
             var settleDriverDrift = new Device();
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
@@ -647,7 +648,7 @@ internal static class AudioDirectProbeSmoke
             check(!AudioProbeDirectPlayback.TryPlay(settleClaimed, Pcm, 48000) &&
                 settleClaimed.StartCalls == 1 && settleClaimed.StopCalls == 0 &&
                 settleClaimed.WrittenBytes == Pcm.Length + 16384 &&
-                settleClaimed.IsRunning,
+                settleClaimed.WritableReadCalls == 1 && settleClaimed.IsRunning,
                 "direct probe does not stop a player claiming output during settle");
             var settleWithdrawn = new Device();
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
@@ -658,7 +659,7 @@ internal static class AudioDirectProbeSmoke
             check(!AudioProbeDirectPlayback.TryPlay(settleWithdrawn, Pcm, 48000) &&
                 settleWithdrawn.StartCalls == 1 && settleWithdrawn.StopCalls == 0 &&
                 settleWithdrawn.WrittenBytes == Pcm.Length + 16384 &&
-                settleWithdrawn.IsRunning,
+                settleWithdrawn.WritableReadCalls == 1 && settleWithdrawn.IsRunning,
                 "withdrawal during settle skips unsafe Stop after silent drain");
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {

@@ -119,6 +119,7 @@ namespace ZonderqOS.SystemCore
                     // reconfigure the codec or alter the feeder's readiness.
                     if (output.IsWithdrawn || output.Player != null || !output.IsRunning ||
                         output.Name != "hda" || output.DriverName != "HdAudioDriver" ||
+                        output.SampleRate != sampleRate ||
                         (stillSelected != null && !stillSelected()))
                         return;
                     long writable = (long)output.WritableBytes;
