@@ -20,6 +20,14 @@ namespace ZonderqOS.GUI
                 char c = name[i];
                 // C1/DEL controls are invisible in the file manager and can
                 // make names impossible to select or distinguish reliably.
+                // Unicode bidirectional controls can make a filename
+                // appear to have a different extension in the GUI.
+                // Refuse invisible direction overrides.
+                if (c == '\u061C' || c == '\u200E' || c == '\u200F' ||
+                    (c >= '\u202A' && c <= '\u202E') ||
+                    (c >= '\u2066' && c <= '\u2069'))
+                    return false;
+
                 if (char.IsControl(c) || c == '/' || c == '\\' || c == ':' ||
                     c == '*' || c == '?' || c == '"' || c == '<' ||
                     c == '>' || c == '|')
@@ -46,7 +54,9 @@ namespace ZonderqOS.GUI
             if (string.Equals(stem, "CON", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(stem, "PRN", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(stem, "AUX", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(stem, "NUL", StringComparison.OrdinalIgnoreCase))
+                string.Equals(stem, "NUL", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(stem, "CONIN$", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(stem, "CONOUT$", StringComparison.OrdinalIgnoreCase))
                 return false;
             // Windows also treats superscript ¹²³ as device numbers.
             if (stem.Length == 4 &&
