@@ -21,7 +21,7 @@ namespace ZonderqOS.Hardware
         {
             irqLine = 0;
             irqPin = 0;
-            if (!TryReadReady(config, out ushort command) ||
+            if (!TryReadReady(config, out ushort command, out ulong initialBar0) ||
                 (command & 0x0400) != 0) // PCI COMMAND.INTx Disable
                 return false;
 
@@ -38,9 +38,14 @@ namespace ZonderqOS.Hardware
                 // routing changes while the diagnostic is sampling it.
                 // Fail closed on a changed INTx enable bit, line or pin.
                 // This is only a stable PCI snapshot, NOT ISR proof.
-                if (config.Read16(bus, slot, function, 0x04) != command ||
+                // The route must still belong to the SAME PCI MMIO/DMA
+                // mapping. A stable IRQ line with a reprogrammed BAR is not
+                // evidence that the originally bound E1000E is still usable.
+                if (!TryReadReady(config, out ushort finalCommand, out ulong finalBar0) ||
+                    finalCommand != command || finalBar0 != initialBar0 ||
                     config.Read8(bus, slot, function, 0x3C) != line ||
-                    config.Read8(bus, slot, function, 0x3D) != pin)
+                    config.Read8(bus, slot, function, 0x3D) != pin ||
+                    config.Read16(bus, slot, function, 0x04) != command)
                     return false;
                 irqLine = line;
                 irqPin = pin;

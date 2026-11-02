@@ -125,6 +125,16 @@ var irqDisabled = new FakeE1000EPciConfig { DisableIntxAfterIrqRead = true };
 Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqDisabled, out irqLine, out irqPin) &&
       irqLine == 0 && irqPin == 0,
     "INTx disabled during PCI sampling must fail closed");
+var irqBarChanged = new FakeE1000EPciConfig { ChangeBarLowAfterFirstSnapshot = true };
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqBarChanged, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "Changed MMIO BAR between valid PCI and IRQ snapshots must fail closed");
+var irqBarHighChanged = new FakeE1000EPciConfig {
+    Bar0Low = 0xFEBF0004u, Bar0High = 1, ChangeBarHighAfterFirstSnapshot = true
+};
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqBarHighChanged, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "Changed 64-bit BAR high half between PCI and IRQ snapshots must fail closed");
 Console.WriteLine("[NET3095-E1000E-IRQ] PASS C# legacy PCI IRQ routing metadata (synthetic; ISR unproven)");
 
 Console.WriteLine("[NET3095-E1000E-PCI] PASS C# read-only PCI identity/MMIO/DMA prerequisites (synthetic; no hardware)");
@@ -608,6 +618,8 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     public bool ChangeCommandOnSecondRead { get; set; }
     public bool ChangeBarLowOnSecondRead { get; set; }
     public bool ChangeBarHighOnSecondRead { get; set; }
+    public bool ChangeBarLowAfterFirstSnapshot { get; set; }
+    public bool ChangeBarHighAfterFirstSnapshot { get; set; }
     public bool ChangeHeaderOnSecondRead { get; set; }
     private int deviceReads;
     private int classReads;
@@ -635,6 +647,22 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             ? (ushort)(Command ^ 0x0004) : Command;
     }
 
+    private ushort ReadBarLow()
+    {
+        barLowReads++;
+        return ((ChangeBarLowOnSecondRead && barLowReads > 1) ||
+                (ChangeBarLowAfterFirstSnapshot && barLowReads > 2))
+            ? (ushort)(Bar0Low ^ 0x1000u) : (ushort)Bar0Low;
+    }
+
+    private ushort ReadBarHigh()
+    {
+        barHighReads++;
+        return ((ChangeBarHighOnSecondRead && barHighReads > 1) ||
+                (ChangeBarHighAfterFirstSnapshot && barHighReads > 2))
+            ? (ushort)(Bar0High ^ 1u) : (ushort)Bar0High;
+    }
+
     public ushort Read16(byte bus, byte slot, byte function, byte offset)
     {
         CheckTarget(bus, slot, function);
@@ -644,11 +672,9 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x02 => ++deviceReads > 1 && ChangeDeviceOnSecondRead
                 ? (ushort)(DeviceId ^ 1) : DeviceId,
             0x04 => ReadCommand(),
-            0x10 => ++barLowReads > 1 && ChangeBarLowOnSecondRead
-                ? (ushort)(Bar0Low ^ 0x1000u) : (ushort)Bar0Low,
+            0x10 => ReadBarLow(),
             0x12 => (ushort)(Bar0Low >> 16),
-            0x14 => ++barHighReads > 1 && ChangeBarHighOnSecondRead
-                ? (ushort)(Bar0High ^ 1u) : (ushort)Bar0High,
+            0x14 => ReadBarHigh(),
             0x16 => (ushort)(Bar0High >> 16),
             _ => throw new InvalidOperationException("Unexpected E1000E PCI word offset")
         };
