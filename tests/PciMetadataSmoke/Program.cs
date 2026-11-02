@@ -54,6 +54,8 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
     x => x.Bar0Low = 0x0000C001u, // I/O BAR
     x => x.Bar0Low = 0xFEBF0002u, // reserved memory BAR type
     x => x.Bar0Low = 0xFEBF0006u, // reserved memory BAR type
+    x => x.Bar0Low = 0xFEBF0008u, // prefetchable MMIO32 registers are unsafe
+    x => { x.Bar0Low = 0xFEBF000Cu; x.Bar0High = 1; }, // prefetchable MMIO64 registers
     x => x.Bar0Low = 0xFFFFFFFFu, // absent function/all ones
     x => x.Bar0Low = 0xFFFFFFF0u, // unassigned 32-bit MMIO BAR (masked all ones)
     x => { x.Bar0Low = 0xFFFFFFF4u; x.Bar0High = 0xFFFFFFFFu; },

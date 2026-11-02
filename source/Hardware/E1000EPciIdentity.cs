@@ -95,11 +95,13 @@ namespace ZonderqOS.Hardware
                 // BAR0 is the E1000E MMIO aperture. Read the assigned
                 // address without writing all-ones sizing probes to PCI.
                 // Type 0 (32-bit) and type 2 (64-bit) memory BARs are valid.
-                // I/O, reserved types and unassigned/all-ones addresses fail.
+                // I/O, reserved types, prefetchable register BARs and
+                // unassigned/all-ones addresses fail. Intel 82574L BAR0
+                // contains side-effecting device registers, not cacheable RAM.
                 uint low = (uint)config.Read16(bus, slot, function, 0x10) |
                     ((uint)config.Read16(bus, slot, function, 0x12) << 16);
                 uint type = low & 0x06u;
-                if ((low & 0x01u) != 0 || (type != 0 && type != 0x04u))
+                if ((low & 0x09u) != 0 || (type != 0 && type != 0x04u))
                     return false;
 
                 ulong address = (ulong)(low & 0xFFFFFFF0u);
