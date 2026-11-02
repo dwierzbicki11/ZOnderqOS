@@ -95,6 +95,37 @@ def inspect(path: Path, expected_hz: int = 440):
     return f"[AUDIO-WAV] PASS captured PCM: {rate}Hz {channels}ch, peak={peak}, tone={hz:.1f}Hz, frames={frames}"
 
 
+def inspect_silent_tail(path: Path):
+    """Require captured zero PCM after a float probe's 250ms tone.
+
+    The guest fixture appends 4096 zero frames (>=85ms). A backend WAV
+    must contain at least 300ms total and finish with >=20ms of near-zero
+    samples. This is a captured-PCM check, not a guest DMA/IRQ assertion.
+    """
+    with wave.open(str(path), "rb") as wav:
+        channels = wav.getnchannels()
+        rate = wav.getframerate()
+        width = wav.getsampwidth()
+        frames = wav.getnframes()
+        if channels != 2 or width != 2 or rate not in (44100, 48000):
+            raise ValueError("float tail capture must be stereo PCM16")
+        if frames < rate * 3 // 10:
+            raise ValueError("float tail capture ended before 300ms")
+        raw = wav.readframes(frames)
+    samples = array.array("h")
+    samples.frombytes(raw)
+    if sys.byteorder != "little":
+        samples.byteswap()
+    tail_frames = rate // 50  # 20ms
+    tail = samples[-tail_frames * 2:]
+    if len(tail) != tail_frames * 2:
+        raise ValueError("missing 20ms float tail")
+    peak = max(abs(sample) for sample in tail)
+    if peak > 32:
+        raise ValueError(f"non-silent float WAV tail: peak={peak}")
+    return f"[AUDIO-TAIL] PASS captured 20ms zero PCM tail, peak={peak}, frames={frames}"
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("wav", type=Path, help="QEMU WAV backend output file")
