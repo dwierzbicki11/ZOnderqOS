@@ -179,6 +179,7 @@ internal static class AudioDirectProbeSmoke
                 normalProgress.Contains("writeCalls=5") &&
                 normalProgress.Contains("zeroWrites=0") &&
                 normalProgress.Contains("waits=0") &&
+                normalProgress.Contains("settleRequests=1") &&
                 normalProgress.Contains("DMA/IRQ and audible PCM not proven"),
                 "direct probe reports accepted bytes without claiming hardware DMA drain");
 
@@ -200,7 +201,8 @@ internal static class AudioDirectProbeSmoke
                 partialTrace.ToString().Contains("pcmQueued=16") &&
                 partialTrace.ToString().Contains("silenceQueued=16384") &&
                 partialTrace.ToString().Contains("writeCalls=17") &&
-                partialTrace.ToString().Contains("zeroWrites=0"),
+                partialTrace.ToString().Contains("zeroWrites=0") &&
+                partialTrace.ToString().Contains("settleRequests=1"),
                 "partial HDA writes count accepted bytes and actual calls");
 
             // A single zero-byte return is backpressure, not an accepted
@@ -237,7 +239,8 @@ internal static class AudioDirectProbeSmoke
                 stalledTrace.ToString().Contains("silenceQueued=16384") &&
                 stalledTrace.ToString().Contains("writeCalls=6") &&
                 stalledTrace.ToString().Contains("zeroWrites=1") &&
-                stalledTrace.ToString().Contains("waits=1"),
+                stalledTrace.ToString().Contains("waits=1") &&
+                stalledTrace.ToString().Contains("settleRequests=1"),
                 "one stalled HDA write reports backpressure without inflating queued PCM");
 
             // The public HDA name/driver can stay identical even after
@@ -441,10 +444,28 @@ internal static class AudioDirectProbeSmoke
 
             var writeWithdrawn = new Device();
             writeWithdrawn.OnWrite = () => writeWithdrawn.IsWithdrawn = true;
-            check(!AudioProbeDirectPlayback.TryPlay(writeWithdrawn, Pcm, 48000) &&
+            using var abortedTrace = new StringWriter();
+            bool abortedResult;
+            TextWriter priorAbortedOutput = Console.Out;
+            try
+            {
+                Console.SetOut(abortedTrace);
+                abortedResult = AudioProbeDirectPlayback.TryPlay(writeWithdrawn, Pcm, 48000);
+            }
+            finally
+            {
+                Console.SetOut(priorAbortedOutput);
+            }
+            check(!abortedResult &&
                 writeWithdrawn.StartCalls == 1 && writeWithdrawn.StopCalls == 0 &&
                 writeWithdrawn.WrittenBytes == Pcm.Length && writeWithdrawn.IsRunning,
                 "withdrawal after accepted PCM write skips further writes and Stop");
+            check(abortedTrace.ToString().Contains("FAILED") &&
+                abortedTrace.ToString().Contains("pcmQueued=16") &&
+                abortedTrace.ToString().Contains("silenceQueued=0") &&
+                abortedTrace.ToString().Contains("writeCalls=1") &&
+                abortedTrace.ToString().Contains("settleRequests=0"),
+                "withdrawal telemetry never reports an unrequested settle or silent tail");
 
             // Format drift during the 86ms settle is also a failure, even
             // though all bytes were already accepted by the fake ring.
