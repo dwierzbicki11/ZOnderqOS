@@ -49,11 +49,16 @@ PCI_IRQ_STABLE = re.compile(
     r"\(read-only; guest ISR unproven\)$"
 )
 
-# Stock Cosmos serial output is not an atomic write: a scheduler tick may
-# interrupt an otherwise complete diagnostic marker. Repair only a COMPLETE
-# enabled tick inside one of these exact fixed N1 markers. Never globally
-# remove scheduler lines or synthesize a missing/altered marker.
-SCHED_TICK = re.compile(r"\[SCHED\] Tick [0-9]+ enabled=1\n")
+# Stock Cosmos serial writes can be preempted by a timer callback.
+# A bare scheduler tick OR the complete LAPIC+SCHED pair may split one N1
+# marker (observed in real N2 QEMU run 41478097771). Repair only if removing
+# that exact, bounded diagnostic sequence reconstructs a STRICT N1 marker.
+# Never strip unrelated lines, partial ticks, or mismatched tick numbers.
+SCHED_TICK = re.compile(
+    r"(?:\[LAPIC\] Timer tick (?P<tick>[0-9]+) RSP=[0-9A-Fa-f]+\n"
+    r"\[SCHED\] Tick (?P=tick) enabled=1\n"
+    r"|\[SCHED\] Tick [0-9]+ enabled=1\n)"
+)
 # Dynamic inventory and DriverKit records are just as vulnerable to a serial
 # tick as fixed BOOT/TX/END markers. Reconstruct only records that satisfy the
 # original strict full-line validators, never arbitrary diagnostic fragments.
