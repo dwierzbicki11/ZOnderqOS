@@ -19,7 +19,7 @@ namespace ZonderqOS.SystemCore
                 output.DriverName != "HdAudioDriver" ||
                 output.Player != null || output.IsRunning ||
                 sampleRate != 48000 || pcm == null || pcm.Length == 0 ||
-                pcm.Length > 48000 * 2 * 4 || pcm.Length % 4 != 0)
+                pcm.Length > AudioProbeRingFeeder.MaxPcmBytes || pcm.Length % 4 != 0)
             {
                 Console.WriteLine("[AUDIO] 1MS REFUSED: requires idle stock HDA and bounded stereo16.");
                 return false;

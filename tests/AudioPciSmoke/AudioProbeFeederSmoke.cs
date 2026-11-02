@@ -48,6 +48,53 @@ internal static class AudioProbeFeederSmoke
         for (int i = pcm.Length; i < written.Count; i++)
             Check(written[i] == 0, "drain is silent");
 
+        // A two-second WAV is valid elsewhere in the pipeline. The opt-in
+        // direct HDA feeder must accept the same exact PCM bound, including
+        // partial-ring-sized tails, without truncation or source mutation.
+        Check(AudioProbeRingFeeder.MaxPcmBytes == 48000 * 2 * 4 * 2,
+            "two-second stereo16 diagnostic bound");
+        byte[] twoSeconds = new byte[AudioProbeRingFeeder.MaxPcmBytes];
+        twoSeconds[0] = 0x5A;
+        twoSeconds[twoSeconds.Length - 1] = 0xA5;
+        int pcmAccepted = 0;
+        int silenceAccepted = 0;
+        ok = AudioProbeRingFeeder.Feed(twoSeconds,
+            (source, offset, count) =>
+            {
+                Check(count > 0 && count <= 4096 && count % 4 == 0,
+                    "bounded frame-aligned writer request");
+                Check(offset >= 0 && offset + count <= source.Length,
+                    "writer request within source bounds");
+                if (ReferenceEquals(source, twoSeconds))
+                {
+                    Check(offset == pcmAccepted, "sequential PCM writes");
+                    pcmAccepted += count;
+                }
+                else
+                {
+                    Check(source.Length == 4096, "bounded silent ring block");
+                    for (int i = offset; i < offset + count; i++)
+                        Check(source[i] == 0, "silent ring contains only zeroes");
+                    silenceAccepted += count;
+                }
+                return count;
+            },
+            () => true, _ => throw new Exception("unexpected wait with unblocked writer"),
+            out waits);
+        Check(ok && waits == 0 && pcmAccepted == twoSeconds.Length &&
+            silenceAccepted == 16384, "full two-second PCM plus silent ring accepted");
+        Check(twoSeconds[0] == 0x5A && twoSeconds[twoSeconds.Length - 1] == 0xA5,
+            "two-second source remains unmodified");
+
+        bool overBoundRejected = false;
+        try
+        {
+            AudioProbeRingFeeder.Feed(new byte[AudioProbeRingFeeder.MaxPcmBytes + 4],
+                (a, b, c) => c, () => true, _ => { }, out waits);
+        }
+        catch (ArgumentException) { overBoundRejected = true; }
+        Check(overBoundRejected, "two seconds plus one frame rejected");
+
         // The output can disappear immediately after accepting the final
         // silent frame. A successful byte count alone is not enough.
         int acceptedBeforeWithdrawal = 0;
