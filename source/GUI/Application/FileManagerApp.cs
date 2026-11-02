@@ -1508,6 +1508,19 @@ namespace ZonderqOS.GUI.Apps
                 Add(scanned, Directory.GetFiles(targetPath), false);
                 Sort(scanned);
 
+                // ACLs may change while FAT32 enumerates a large directory.
+                // The initial check only protects the start of the scan:
+                // verify permission again before publishing names into the
+                // visible and cached lists. A revoked current folder must
+                // never gain a fresh snapshot from an in-flight F5.
+                if (!CanReadInSession(targetPath))
+                {
+                    if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))
+                        ClearDeniedListing();
+                    status = "Permission denied: cannot list folder";
+                    return false;
+                }
+
                 // An explicit F5 or a successful paste should not jump back
                 // to the first tile in a large directory. Compare the actual
                 // cached path, not currentPath: NavigateTo changes currentPath
