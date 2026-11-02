@@ -10,6 +10,7 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 CALCULATOR = (ROOT / "source/GUI/Application/CalculatorApp.cs").read_text(encoding="utf-8")
 NOTEPAD = (ROOT / "source/GUI/Application/NotepadApp.cs").read_text(encoding="utf-8")
+ABOUT = (ROOT / "source/GUI/Application/AboutApp.cs").read_text(encoding="utf-8")
 
 
 def fit_window(requested_width, requested_height, screen_width, screen_height):
@@ -103,6 +104,24 @@ class CompactNotepadTests(unittest.TestCase):
                         handler.index("int action = view.ToolbarActionAt(x, y);"))
         self.assertIn("if (Width < 280 || Height < requiredHeight)", NOTEPAD)
         self.assertIn("Math.Max(1, Width - 12), Math.Max(1, Height - 12)", NOTEPAD)
+
+class CompactAboutTests(unittest.TestCase):
+    def test_about_panel_rows_do_not_exceed_client_height(self):
+        self.assertIn("COSMOS KERNEL GEN 3  /  SDK 3.0.95", ABOUT)
+        self.assertNotIn("SDK 3.0.94", ABOUT)
+        for threshold in (64, 80, 110, 140, 168):
+            self.assertIn(f"height >= {threshold}", ABOUT)
+        for screen_width, screen_height in (
+            (320, 240), (640, 480), (800, 600),
+            (1366, 768), (1920, 1080),
+        ):
+            _, window_height = fit_window(560, 300, screen_width, screen_height)
+            panel_height = max(1, window_height - 72)
+            visible_lines = [offset for threshold, offset in
+                             ((110, 96), (140, 124), (168, 152))
+                             if panel_height >= threshold]
+            for offset in visible_lines:
+                self.assertLess(offset + 14, panel_height + 1)
 
 
 if __name__ == "__main__":
