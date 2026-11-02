@@ -94,7 +94,14 @@ namespace ZonderqOS.GUI
             if (visibleRow >= MaxOutputLines)
                 return line.Substring(0, maxChars);
             if (monitorClips == null || visibleRow >= monitorClips.Length)
-                Array.Resize(ref monitorClips, visibleRow + 1);
+            {
+                // Size for the visible viewport once. Growing one slot per
+                // clipped htop row created dozens of transient arrays on the
+                // first refresh of a narrow terminal window.
+                int capacity = Math.Min(MaxOutputLines,
+                    Math.Max(visibleRow + 1, Math.Max(1, GetVisibleLines() - 1)));
+                Array.Resize(ref monitorClips, capacity);
+            }
             ref RenderClip cached = ref monitorClips[visibleRow];
             if (!ReferenceEquals(cached.Source, line) || cached.MaxChars != maxChars)
             {
