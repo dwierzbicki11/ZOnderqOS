@@ -164,6 +164,30 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
           irqLine == 0 && irqPin == 0,
         "Enabled or unstable message-signaled IRQ configuration must fail closed");
 }
+// An E1000E in D3hot cannot receive legacy interrupts or perform DMA,
+// even if COMMAND, BAR0 and the INTx line appear unchanged. Check PMCSR
+// through the same read-only PCI capability walker used by the guest.
+var irqPm = new FakeE1000EPciConfig { Status = 0x0010, MsiXNext = 0x50 };
+Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqPm, out irqLine, out irqPin) &&
+      irqLine == 11 && irqPin == 1,
+    "D0 PMCSR must preserve the valid legacy IRQ route");
+foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[] {
+    x => x.PmControlStatus = 0x0001, // D1
+    x => x.PmControlStatus = 0x0002, // D2
+    x => x.PmControlStatus = 0x0003, // D3hot
+    x => x.PmId = 0xFF, // malformed PM capability
+    x => x.PmNext = 0x50, // self-loop
+    x => x.ChangePmStateOnSecondRead = true, // D0 -> D3hot
+    x => x.MsiXNext = 0xFC // PMCSR would wrap past PCI config space
+})
+{
+    var invalid = new FakeE1000EPciConfig { Status = 0x0010, MsiXNext = 0x50 };
+    corrupt(invalid);
+    Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(invalid, out irqLine, out irqPin) &&
+          irqLine == 0 && irqPin == 0,
+        "Invalid, non-D0 or unstable PMCSR must fail closed without stale IRQ outputs");
+}
+Console.WriteLine("[NET3095-E1000E-POWER] PASS C# read-only D0 PMCSR gate (synthetic; no DMA/ISR proof)");
 Console.WriteLine("[NET3095-E1000E-IRQ-MODE] PASS C# bounded MSI/MSI-X/INTx metadata gate (synthetic; ISR unproven)");
 Console.WriteLine("[NET3095-E1000E-IRQ] PASS C# legacy PCI IRQ routing metadata (synthetic; ISR unproven)");
 
@@ -646,6 +670,10 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     public byte MsiXNext { get; set; }
     public ushort MsiControl { get; set; }
     public ushort MsiXControl { get; set; }
+    public byte PmId { get; set; } = 0x01;
+    public byte PmNext { get; set; }
+    public ushort PmControlStatus { get; set; }
+    public bool ChangePmStateOnSecondRead { get; set; }
     public bool ChangeStatusOnSecondRead { get; set; }
     public bool ChangeCapabilityPointerOnSecondRead { get; set; }
     public bool EnableMsiAfterFirstModeScan { get; set; }
@@ -672,6 +700,7 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     private int statusReads;
     private int capabilityPointerReads;
     private int msiControlReads;
+    private int pmControlReads;
     public int ReadCount { get; private set; }
 
     private void CheckTarget(byte bus, byte slot, byte function)
@@ -720,6 +749,8 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x42 => ++msiControlReads > 1 && EnableMsiAfterFirstModeScan
                 ? (ushort)(MsiControl | 1) : MsiControl,
             0x4A => MsiXControl,
+            0x54 => ++pmControlReads > 1 && ChangePmStateOnSecondRead
+                ? (ushort)(PmControlStatus ^ 0x0003) : PmControlStatus,
             0x10 => ReadBarLow(),
             0x12 => (ushort)(Bar0Low >> 16),
             0x14 => ReadBarHigh(),
@@ -745,6 +776,10 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x41 => MsiNext,
             0x48 => (byte)0x11,
             0x49 => MsiXNext,
+            0x50 => PmId,
+            0x51 => PmNext,
+            0xFC => PmId,
+            0xFD => PmNext,
             0x3C => ++irqLineReads > 1 && ChangeIrqOnSecondRead
                 ? (byte)(IrqLine ^ 1) : IrqLine,
             0x3D => ++irqPinReads > 1 && ChangeIrqPinOnSecondRead

@@ -88,7 +88,7 @@ namespace ZonderqOS.Hardware
             byte pointer = first;
             ulong visited = 0;
             ulong hash = 14695981039346656037UL;
-            bool seenMsi = false, seenMsiX = false;
+            bool seenPm = false, seenMsi = false, seenMsiX = false;
             int count = 0;
             while (pointer != 0)
             {
@@ -104,7 +104,23 @@ namespace ZonderqOS.Hardware
                 if (id == 0 || id == 0xFF)
                     return false;
                 ushort control = 0;
-                if (id == 0x05 || id == 0x11)
+                if (id == 0x01) // PCI Power Management capability
+                {
+                    // PMCSR is at capability+4. Do not wrap a malformed
+                    // pointer past the 256-byte conventional PCI header.
+                    // A NIC in D1/D2/D3hot cannot be trusted for MMIO/DMA.
+                    if (seenPm || pointer > 0xF8)
+                        return false;
+                    seenPm = true;
+                    ushort pmcsr = config.Read16(bus, slot, function,
+                        (byte)(pointer + 4));
+                    if ((pmcsr & 0x0003) != 0) // Require D0
+                        return false;
+                    // Only power-state bits are relevant to this route.
+                    // PME status is asynchronous and must not destabilize it.
+                    control = (ushort)(pmcsr & 0x0003);
+                }
+                else if (id == 0x05 || id == 0x11)
                 {
                     if (id == 0x05 ? seenMsi : seenMsiX)
                         return false;
