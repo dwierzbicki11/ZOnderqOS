@@ -518,21 +518,28 @@ namespace ZonderqOS.SystemCore
                 samples.Length % frameBytes != 0)
                 throw new ArgumentException("Invalid float32 duration or frame alignment.", nameof(samples));
 
-            byte[] wave = new byte[44 + samples.Length];
+            // IEEE_FLOAT uses WAVEFORMATEX (18-byte fmt with cbSize=0) and
+            // a 4-byte fact chunk recording the number of source frames.
+            // This exercises realistic non-PCM RIFF metadata in the decoder.
+            byte[] wave = new byte[58 + samples.Length];
             PutTag(wave, 0, "RIFF");
             Write32(wave, 4, wave.Length - 8);
             PutTag(wave, 8, "WAVE");
             PutTag(wave, 12, "fmt ");
-            Write32(wave, 16, 16);
+            Write32(wave, 16, 18);
             Write16(wave, 20, 3); // WAVE_FORMAT_IEEE_FLOAT
             Write16(wave, 22, channels);
             Write32(wave, 24, sampleRate);
             Write32(wave, 28, sampleRate * frameBytes);
             Write16(wave, 32, frameBytes);
             Write16(wave, 34, 32);
-            PutTag(wave, 36, "data");
-            Write32(wave, 40, samples.Length);
-            Array.Copy(samples, 0, wave, 44, samples.Length);
+            Write16(wave, 36, 0); // WAVEFORMATEX.cbSize
+            PutTag(wave, 38, "fact");
+            Write32(wave, 42, 4);
+            Write32(wave, 46, samples.Length / frameBytes);
+            PutTag(wave, 50, "data");
+            Write32(wave, 54, samples.Length);
+            Array.Copy(samples, 0, wave, 58, samples.Length);
             return wave;
         }
 
