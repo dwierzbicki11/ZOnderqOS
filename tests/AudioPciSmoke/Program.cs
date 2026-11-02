@@ -1022,11 +1022,11 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject incorrect PCM32 block alignment");
         malformed32 = (byte[])stereo32.Clone();
-        malformed32[20] = 3; // IEEE float is not signed integer PCM
+        malformed32[20] = 7; // Unknown format must not be treated as integer or IEEE float.
         rejected = false;
         try { AudioWavePcm.DecodeStereo16(malformed32); }
         catch (ArgumentException) { rejected = true; }
-        Expect(rejected, "reject IEEE float PCM32 masquerading as signed integer");
+        Expect(rejected, "reject unknown PCM32-like format tag");
         rejected = false;
         try { AudioWavePcm.EncodePcm32AtRate(new byte[7], 48000, 2); }
         catch (ArgumentException) { rejected = true; }
