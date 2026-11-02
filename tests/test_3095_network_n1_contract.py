@@ -698,6 +698,11 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertLess(cycle.index("LINK_UP_OBSERVED=YES"),
                         cycle.index("ping.SendEcho(id: 0x3098"))
         self.assertIn("s_linkCycleArmed = true;", SOURCE)
+        self.assertIn("LINK2_DOWN_OBSERVED=YES", cycle)
+        self.assertIn("LINK2_UP_OBSERVED=YES", cycle)
+        self.assertIn("ping.SendEcho(id: 0x3099, sequence: 2)", cycle)
+        self.assertIn("LINK2_RECOVERY_ICMP=PASS", cycle)
+        self.assertIn("NET3095_LINK_CYCLES", SMOKE)
         self.assertIn("PollLinkCycle();", SOURCE)
         self.assertIn('NET3095_LINK_CYCLE', SMOKE)
         self.assertIn('network_3095_qmp_link.py', SMOKE)

@@ -9,6 +9,7 @@ PCAP="${NET3095_N1_PCAP:-$LOG.pcap}"
 MODE="${3:-n1}"
 IRQ_TRACE="${NET3095_IRQ_TRACE:-0}"
 LINK_CYCLE="${NET3095_LINK_CYCLE:-0}"
+LINK_CYCLES="${NET3095_LINK_CYCLES:-1}"
 [[ "$MODE" == n1 || "$MODE" == n2 || "$MODE" == n3 || "$MODE" == n4 || "$MODE" == n5 || "$MODE" == n6 ]] || {
   echo "[NET3095-N1][FAIL] Expected n1, n2, n3, n4, n5 or n6 mode" >&2; exit 2;
 }
@@ -26,6 +27,12 @@ LINK_CYCLE="${NET3095_LINK_CYCLE:-0}"
 }
 [[ "$LINK_CYCLE" == 0 || "$MODE" == n6 ]] || {
   echo "[NET3095-N6][FAIL] Link-cycle QMP requires isolated n6 mode" >&2; exit 2;
+}
+[[ "$LINK_CYCLES" == 1 || "$LINK_CYCLES" == 2 ]] || {
+  echo "[NET3095-N6][FAIL] NET3095_LINK_CYCLES must be 1 or 2" >&2; exit 2;
+}
+[[ "$LINK_CYCLES" == 1 || "$LINK_CYCLE" == 1 ]] || {
+  echo "[NET3095-N6][FAIL] Two link cycles require NET3095_LINK_CYCLE=1" >&2; exit 2;
 }
 [[ -s "$ISO" ]] || { echo "[NET3095-N1][FAIL] Missing ISO" >&2; exit 1; }
 command -v qemu-system-x86_64 >/dev/null || exit 1
@@ -405,6 +412,38 @@ while (( SECONDS - started < TIMEOUT )); do
           sleep 1
         done
         python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP"
+        if [[ "$LINK_CYCLES" == 2 ]]; then
+          # Second QMP flap must be followed by a NEW ICMP pair on the wire.
+          grep -Fq '[NET3095-N6] LINK2_ARMED=YES' "$LOG" || {
+            echo "[NET3095-N6-LINK][FAIL] Guest did not re-arm for second cycle" >&2; exit 1;
+          }
+          python3 "$ROOT/tools/network_3095_qmp_link.py" --socket "$LOG.qmp" --state down
+          down2_start=$SECONDS
+          until grep -Fq '[NET3095-N6] LINK2_DOWN_OBSERVED=YES' "$LOG"; do
+            qemu_alive || { echo "[NET3095-N6-LINK][FAIL] Guest exited during second link-down" >&2; exit 1; }
+            if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
+              tail -n 90 "$LOG" >&2; exit 1
+            fi
+            if (( SECONDS - down2_start >= 15 )); then
+              echo "[NET3095-N6-LINK][FAIL] Guest did not observe second link-down" >&2; exit 1
+            fi
+            sleep 1
+          done
+          python3 "$ROOT/tools/network_3095_qmp_link.py" --socket "$LOG.qmp" --state up
+          recovery2_start=$SECONDS
+          until python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP" --cycles 2 >/dev/null 2>&1; do
+            qemu_alive || { echo "[NET3095-N6-LINK][FAIL] Guest exited during second recovery" >&2; exit 1; }
+            if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
+              tail -n 90 "$LOG" >&2; exit 1
+            fi
+            if (( SECONDS - recovery2_start >= 20 )); then
+              python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP" --cycles 2
+              echo "[NET3095-N6-LINK][FAIL] No second verified post-up ICMP RX/TX" >&2; exit 1
+            fi
+            sleep 1
+          done
+          python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP" --cycles 2
+        fi
       fi
     fi
     # A running QEMU PID is not proof of a live guest (-no-shutdown).
@@ -446,8 +485,8 @@ while (( SECONDS - started < TIMEOUT )); do
           "$LOG.stderr" --require-notify
       fi
       if [[ "$LINK_CYCLE" == 1 ]]; then
-        python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP"
-        echo "[NET3095-N6-LINK-QEMU] PASS QMP link down/up, guest observation and new PCAP ICMP after recovery; no ISR proof"
+        python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP" --cycles "$LINK_CYCLES"
+        echo "[NET3095-N6-LINK-QEMU] PASS QMP link down/up cycles=$LINK_CYCLES, guest observation and distinct PCAP ICMP after each recovery; no ISR proof"
       fi
       echo "[NET3095-N6-QEMU] PASS six E1000E HTTP sessions (four after 128 TX + 4 ICMP) + final ICMP after FIN/ACK + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
     elif [[ "$MODE" == n5 ]]; then

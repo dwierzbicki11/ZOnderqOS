@@ -329,11 +329,12 @@ jobs:
           retention-days: 4
           if-no-files-found: error
 
-      - name: Boot isolated E1000E N6 again with QMP link down/up and post-up ICMP
+      - name: Boot isolated E1000E N6 with two QMP link flaps and independent ICMP RX/TX
         working-directory: zonderq
         env:
           NET3095_N1_TIMEOUT: '220'
           NET3095_LINK_CYCLE: '1'
+          NET3095_LINK_CYCLES: '2'
         run: |
           set -euo pipefail
           bash tools/smoke-network-n1-3095-qemu.sh \
