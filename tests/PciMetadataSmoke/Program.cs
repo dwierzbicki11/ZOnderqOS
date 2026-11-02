@@ -200,15 +200,28 @@ Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) 
       irqLine == 11 && irqPin == 1,
     "Complete 12-byte disabled MSI-X at F4 must remain valid");
 irqTail.TailCapabilityId = 0x05;
+irqTail.CapabilityPointer = 0xEC;
+irqTail.TailControl = 0x0100;
+Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
+      irqLine == 11 && irqPin == 1,
+    "Complete 20-byte masked 32-bit MSI at EC must remain valid");
+irqTail.CapabilityPointer = 0xF0;
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "20-byte masked 32-bit MSI at F0 must reject overflow");
+irqTail.TailControl = 0x0080;
+Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
+      irqLine == 11 && irqPin == 1,
+    "Complete 14-byte unmasked 64-bit MSI at F0 must remain valid");
 irqTail.CapabilityPointer = 0xE8;
 irqTail.TailControl = 0x0180;
 Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
       irqLine == 11 && irqPin == 1,
-    "Complete 22-byte 64-bit masked MSI at E8 must remain valid");
+    "Complete 24-byte 64-bit masked MSI at E8 must remain valid");
 irqTail.CapabilityPointer = 0xEC;
 Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
       irqLine == 0 && irqPin == 0,
-    "22-byte 64-bit masked MSI at EC must reject overflow");
+    "24-byte 64-bit masked MSI at EC must reject overflow");
 Console.WriteLine("[NET3095-E1000E-IRQ-CAP-LENGTH] PASS C# bounded MSI/MSI-X layouts (synthetic)");
 
 // An E1000E in D3hot cannot receive legacy interrupts or perform DMA,
@@ -808,7 +821,7 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x42 => ++msiControlReads > 1 && EnableMsiAfterFirstModeScan
                 ? (ushort)(MsiControl | 1) : MsiControl,
             0x4A => MsiXControl,
-            0xEA or 0xEE or 0xF6 or 0xFA => TailControl,
+            0xEA or 0xEE or 0xF2 or 0xF6 or 0xFA => TailControl,
             0x54 => ++pmControlReads > 1
                 ? (ushort)(PmControlStatus ^
                     (ChangePmStateOnSecondRead ? 0x0003 : 0) ^
@@ -843,8 +856,8 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x51 => PmNext,
             0x58 => PmId, // second PM cap used to reject duplicates
             0x59 => (byte)0,
-            0xE8 or 0xEC or 0xF4 or 0xF8 => TailCapabilityId,
-            0xE9 or 0xED or 0xF5 or 0xF9 => TailCapabilityNext,
+            0xE8 or 0xEC or 0xF0 or 0xF4 or 0xF8 => TailCapabilityId,
+            0xE9 or 0xED or 0xF1 or 0xF5 or 0xF9 => TailCapabilityNext,
             0xFC => PmId,
             0xFD => PmNext,
             0x3C => ++irqLineReads > 1 && ChangeIrqOnSecondRead
