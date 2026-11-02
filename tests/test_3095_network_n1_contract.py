@@ -35,7 +35,7 @@ class NetworkN1Isolation(unittest.TestCase):
         # executes boundary cases through the production capability walker.
         self.assertIn("int size = 10 +", pci)
         self.assertIn("(control & 0x0080) != 0 ? 4 : 0", pci)
-        self.assertIn("(control & 0x0100) != 0 ? 8 : 0", pci)
+        self.assertIn("(control & 0x0100) != 0 ? 10 : 0", pci)
         self.assertIn("pointer + size > 0x100", pci)
         self.assertIn("pointer > 0xF4", pci)  # MSI-X 12-byte minimum
         self.assertIn("if (id == 0x01)", pci)  # PCI PM capability
