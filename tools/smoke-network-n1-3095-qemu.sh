@@ -66,7 +66,8 @@ if [[ "$IRQ_TRACE" == 1 ]]; then
   trace_available="$(qemu-system-x86_64 -trace help 2>&1)" || {
     echo "[NET3095-E1000E-IRQ][FAIL] QEMU cannot list trace events" >&2; exit 1;
   }
-  for event in e1000e_irq_legacy_notify e1000e_irq_msi_notify e1000e_irq_msix_notify_vec; do
+  for event in e1000e_irq_legacy_notify e1000e_irq_msi_notify e1000e_irq_msix_notify_vec \
+      e1000e_tx_descr e1000e_rx_desc_buff_write e1000e_rx_written_to_guest; do
     grep -Eq "^[[:space:]]*${event}([[:space:]]|$)" <<< "$trace_available" || {
       echo "[NET3095-E1000E-IRQ][FAIL] QEMU lacks trace event: $event" >&2; exit 1;
     }
@@ -495,6 +496,11 @@ while (( SECONDS - started < TIMEOUT )); do
         # polling-based packet delivery. Guest ISR execution is STILL unproven.
         python3 "$ROOT/tests/verify_3095_e1000e_irq_trace.py" \
           "$LOG.stderr" --require-notify
+        # QEMU descriptor reads and guest-buffer writes are device-side DMA
+        # evidence. Independent PCAP/serial/host gates remain mandatory;
+        # neither DMA trace nor PCI IRQ notification proves guest ISR execution.
+        python3 "$ROOT/tests/verify_3095_e1000e_dma_trace.py" \
+          "$LOG.stderr" --min-tx 128
       fi
       if [[ "$LINK_CYCLE" == 1 ]]; then
         python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" --cycles "$LINK_CYCLES"
