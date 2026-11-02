@@ -393,13 +393,18 @@ internal static class Program
                 LegacySort(expected);
                 ZonderqOS.GUI.Apps.FileEntry[] scratch = null;
                 ZonderqOS.GUI.Apps.FileEntrySorter.Sort(rotated, ref scratch);
-                Assert(scratch != null, "rotated runs must use a merge buffer n=" + n);
+                // Strictly separated runs can rotate in place; an equal
+                // boundary must still use the stable two-run merge.
+                bool strict = Compare(ordered[split - 1], ordered[split]) < 0;
+                Assert(strict ? scratch == null : scratch != null,
+                    "rotation buffer policy n=" + n + " duplicates=" + duplicates);
                 for (int i = 0; i < n; i++)
                 {
                     Assert(object.ReferenceEquals(expected[i], rotated[i]),
                         "two-run stable order n=" + n + " duplicates=" + duplicates + " i=" + i);
-                    Assert(scratch[i] == null,
-                        "two-run scratch retained file path n=" + n + " i=" + i);
+                    if (scratch != null)
+                        Assert(scratch[i] == null,
+                            "two-run scratch retained file path n=" + n + " i=" + i);
                 }
             }
         }
@@ -600,8 +605,10 @@ internal static class Program
                     "adaptive stable order mode=" + mode + " i=" + i);
             if (mode != 3)
                 Assert(scratch == null, "near-sorted repair allocated merge buffer mode=" + mode);
+            else if (Compare(source[source.Length - 1], source[0]) < 0)
+                Assert(scratch == null, "strict rotation should not allocate scratch");
             else
-                Assert(scratch != null, "pathological rotation did not use bounded fallback");
+                Assert(scratch != null, "overlapping rotation must use stable merge");
             if (scratch != null)
                 for (int i = 0; i < source.Length; i++)
                     Assert(scratch[i] == null, "fallback retained file entry i=" + i);
@@ -1163,6 +1170,7 @@ internal static class Program
         VerifySparseSwaps();
         VerifyDenseSwapsFallback();
         VerifyTwoRunMerge();
+        RotatedRunSmoke.Run();
         VerifyDescendingFastPath();
         BenchmarkAdaptiveRepair();
         BenchmarkSparseSwaps();

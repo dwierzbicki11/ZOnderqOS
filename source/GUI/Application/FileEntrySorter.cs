@@ -15,6 +15,11 @@ namespace ZonderqOS.GUI.Apps
         // Up to sixty-four sparse inversions are common after a batch of file
         // renames. The separate 2*n shift budget still bounds worst-case work.
         internal const int MaxLocalInversions = 64;
+#if ZONDERQ_PERF_HOST_TEST
+        // Host-only A/B switch: compare the same production sort pipeline
+        // with its original two-run merge against the in-place rotation.
+        internal static bool DisableRotationForBenchmark;
+#endif
 
         internal static void Sort(List<FileEntry> entries, ref FileEntry[] scratch)
         {
@@ -153,6 +158,24 @@ namespace ZonderqOS.GUI.Apps
                 firstInversion > 1 && firstInversion < count - 1 &&
                 HasSortedTail(entries, firstInversion, count))
             {
+                // Two ordered runs can be rotated without a merge buffer when
+                // EVERY key in the tail is strictly below EVERY key in the
+                // head. Because each run is sorted, comparing their boundary
+                // keys proves this in O(1). Strictness matters: equal keys
+                // spanning the boundary must retain their original stable
+                // order, so they continue through the merge path below.
+                if (Compare(entries[count - 1], entries[0]) < 0
+#if ZONDERQ_PERF_HOST_TEST
+                    && !DisableRotationForBenchmark
+#endif
+                    )
+                {
+                    ReverseRange(entries, 0, firstInversion);
+                    ReverseRange(entries, firstInversion, count);
+                    ReverseRange(entries, 0, count);
+                    return;
+                }
+
                 if (scratch == null || scratch.Length < count)
                     scratch = new FileEntry[count];
 
@@ -249,6 +272,18 @@ namespace ZonderqOS.GUI.Apps
             // Otherwise old entries would remain strongly referenced after
             // navigating to another (smaller) folder.
             Array.Clear(scratch, 0, count);
+        }
+
+        // Three reversals rotate two strictly separated, already ordered
+        // runs. Reversal is by reference and does not allocate or touch FAT32.
+        private static void ReverseRange(List<FileEntry> entries, int start, int end)
+        {
+            for (int left = start, right = end - 1; left < right; left++, right--)
+            {
+                FileEntry item = entries[left];
+                entries[left] = entries[right];
+                entries[right] = item;
+            }
         }
 
         // First and last eight pairs reject almost every random folder
