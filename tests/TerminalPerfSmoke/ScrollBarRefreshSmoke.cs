@@ -73,6 +73,18 @@ internal static class ScrollBarRefreshSmoke
             box.HandleKey(new KeyEvent { Key = ConsoleKeyEx.PageUp });
             Check(box, oldBar, "page up");
             checks++;
+            // The real ScrollBar.Value setter invokes the production callback,
+            // just as thumb dragging and page clicks do.
+            ScrollBar liveBar = GetBar(box);
+            liveBar.Value = Math.Min(5, liveBar.MaxValue);
+            Check(box, oldBar, "scrollbar ValueChanged callback");
+            checks++;
+            box.HandleMouse(liveBar.X + 2, liveBar.Y + liveBar.Height - 2, true, false);
+            Check(box, oldBar, "scrollbar track click");
+            checks++;
+            box.HandleMouse(liveBar.X + 2, liveBar.Y + liveBar.Height - 2, false, true);
+            Check(box, oldBar, "scrollbar release");
+            checks++;
             box.HandleKey(new KeyEvent { Key = ConsoleKeyEx.PageDown });
             Check(box, oldBar, "page down");
             checks++;
