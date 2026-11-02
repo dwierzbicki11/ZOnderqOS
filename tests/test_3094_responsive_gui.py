@@ -1162,9 +1162,11 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("if (!Window.IsActive)\n            {\n                ResetClickSequence();", update)
         self.assertIn("contextMenuVisible = false;", update)
         self.assertLess(update.index("contextMenuVisible = false;"),
-                        update.index("int previousViewWidth = view.Width;"))
+                        update.index("SyncViewGeometry();"))
         self.assertLess(update.index("ResetClickSequence();"),
-                        update.index("int previousViewWidth = view.Width;"))
+                        update.index("SyncViewGeometry();"))
+        self.assertIn("int previousViewWidth = view.Width;", FILE_MANAGER.split(
+            "private void SyncViewGeometry()", 1)[1])
 
     def test_file_manager_double_click_uses_elapsed_time_not_frame_count(self):
         # An expensive filesystem operation can stall the GUI loop. Even if
@@ -1243,7 +1245,7 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertLessEqual(y + menu_h + 24 + 4, height)
 
     def test_file_manager_selection_survives_viewport_resize(self):
-        update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
+        update = FILE_MANAGER.split("private void SyncViewGeometry()", 1)[1].split(
             "public override void HandleMouse(", 1)[0]
         selection = FILE_MANAGER.split("private void EnsureSelectionVisible()", 1)[1].split(
             "private void GoUp()", 1)[0]
@@ -2836,7 +2838,7 @@ class FileManagerCompactMenuAndFooter3095(unittest.TestCase):
 
 class FileManagerResizeClickSequence3095(unittest.TestCase):
     def test_resize_clears_double_click_before_new_tile_layout(self):
-        update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
+        update = FILE_MANAGER.split("private void SyncViewGeometry()", 1)[1].split(
             "public override void HandleMouse(", 1)[0]
         self.assertIn(
             "if (view.Width != previousViewWidth || view.Height != previousViewHeight)",
@@ -3141,6 +3143,48 @@ class TinyStartMenu3095(unittest.TestCase):
         self.assertIn("GuiStartMenuSmoke", code(
             ".github/workflows/gui-responsive-3095.yml"))
 
+
+
+class FileManagerMouseGeometry3095(unittest.TestCase):
+    def test_input_syncs_client_before_and_after_window_mouse(self):
+        update = FILE_MANAGER.split("public override void Update()", 1)[1].split(
+            "private void SyncViewGeometry()", 1)[0]
+        geometry = FILE_MANAGER.split("private void SyncViewGeometry()", 1)[1].split(
+            "public override void HandleMouse(", 1)[0]
+        mouse = FILE_MANAGER.split("public override void HandleMouse(int mouseX", 1)[1].split(
+            "private void ResetClickSequence()", 1)[0]
+        self.assertIn("SyncViewGeometry();", update)
+        self.assertIn("if (view.X != previousViewX || view.Y != previousViewY)", geometry)
+        self.assertIn("ResetClickSequence();", geometry)
+        self.assertLess(geometry.index("view.X = Window.X + 10;"),
+                        geometry.index("if (view.X != previousViewX"))
+        self.assertLess(geometry.index("ResetClickSequence();"),
+                        geometry.index("EnsureSelectionVisible();"))
+        self.assertEqual(mouse.count("SyncViewGeometry();"), 2)
+        self.assertLess(mouse.index("SyncViewGeometry();"),
+                        mouse.index("int x = mouseX - view.X;"))
+        post_window = mouse.split("Window.HandleMouse(mouseX, mouseY, left, oldLeft);", 1)[1]
+        self.assertIn("if (!Window.Visible || Window.IsMinimized || !IsRunning)", post_window)
+        self.assertLess(post_window.index("SyncViewGeometry();"),
+                        post_window.index("x = mouseX - view.X;"))
+        self.assertLess(post_window.index("y = mouseY - view.Y;"),
+                        post_window.index("if (x < 0 || y < 0"))
+        self.assertLess(post_window.index("x = mouseX - view.X;"),
+                        post_window.index("int contentBottom = view.Height - FooterHeight - 8;"))
+
+    def test_mouse_hitboxes_use_new_window_geometry_after_drag_or_resize(self):
+        # A stale client origin maps a click to a different tile/toolbar
+        # position after a drag. A stale width can expose hidden controls.
+        for desktop_w, desktop_h in ((800, 600), (1366, 768), (1920, 1080)):
+            for old_x, old_y, new_x, new_y in ((10, 40, 60, 75),
+                                               (110, 90, 20, 55)):
+                mouse_x, mouse_y = new_x + 30, new_y + 75
+                self.assertEqual((mouse_x - new_x - 10,
+                                  mouse_y - new_y - 40), (20, 35))
+                self.assertNotEqual((mouse_x - old_x - 10,
+                                     mouse_y - old_y - 40), (20, 35))
+                self.assertTrue(0 <= new_x < desktop_w)
+                self.assertTrue(0 <= new_y < desktop_h)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

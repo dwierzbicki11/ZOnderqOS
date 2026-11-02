@@ -148,12 +148,25 @@ namespace ZonderqOS.GUI.Apps
                 contextMenuVisible = false;
             }
 
+            SyncViewGeometry();
+        }
+
+        private void SyncViewGeometry()
+        {
+            int previousViewX = view.X;
+            int previousViewY = view.Y;
             int previousViewWidth = view.Width;
             int previousViewHeight = view.Height;
             view.X = Window.X + 10;
             view.Y = Window.Y + 40;
             view.Width = Math.Max(1, Window.Width - 20);
             view.Height = Math.Max(1, Window.Height - 50);
+
+            // Moving the window invalidates screen-space double-click anchors.
+            // Even a small titlebar drag must not turn a later file click
+            // into an accidental open on the same tile index.
+            if (view.X != previousViewX || view.Y != previousViewY)
+                ResetClickSequence();
 
             // Recalculate visible rows/columns only when the client size
             // changes. A selected file must not disappear after shrinking,
@@ -189,6 +202,9 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleMouse(int mouseX, int mouseY, bool left, bool oldLeft, bool right, bool oldRight)
         {
+            // A mode change or an external move may precede this input frame.
+            // Refit modal menus before interpreting their screen-space hitboxes.
+            SyncViewGeometry();
             int x = mouseX - view.X;
             int y = mouseY - view.Y;
 
@@ -230,9 +246,15 @@ namespace ZonderqOS.GUI.Apps
             }
 
             Window.HandleMouse(mouseX, mouseY, left, oldLeft);
-            if (!Window.Visible)
+            if (!Window.Visible || Window.IsMinimized || !IsRunning)
                 return;
 
+            // Window.HandleMouse can move or resize the window immediately.
+            // Never dispatch a file/sidebar/toolbar click using the previous
+            // frame's client origin or dimensions.
+            SyncViewGeometry();
+            x = mouseX - view.X;
+            y = mouseY - view.Y;
             if (x < 0 || y < 0 || x >= view.Width || y >= view.Height)
                 return;
 
