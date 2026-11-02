@@ -48,6 +48,22 @@ class PerfBootBaselineTests(unittest.TestCase):
             "[2026-11-02][PERF] PERF_BOOT_INIT_MS=1001\r\n")
         self.assertEqual(result["second_boot_ms"], 1001)
 
+    def test_physical_free_page_samples(self):
+        log = ("2026-11-02 heartbeat\\n"
+               "2026-11-02 free_pages=1024\\n"
+               "2026-11-02 free_pages=1000\\n"
+               "2026-11-02 free_pages=1010\\n")
+        result = perf.memory_samples(log)
+        self.assertEqual(result["samples"], 3)
+        self.assertEqual(result["first_free_pages"], 1024)
+        self.assertEqual(result["last_free_pages"], 1010)
+        self.assertEqual(result["minimum_free_pages"], 1000)
+        self.assertEqual(result["maximum_free_pages"], 1024)
+
+    def test_missing_memory_samples(self):
+        with self.assertRaises(ValueError):
+            perf.memory_samples("heartbeat only")
+
     def test_does_not_parse_invalid_or_negative_values(self):
         self.assertEqual(perf.samples("PERF_BOOT_INIT_MS=-5\nPERF_BOOT_INIT_MS=NaN"), [])
 
