@@ -10,6 +10,7 @@ on:
       - 'tests/GuiScrollBarSmoke/**'
       - 'tests/GuiFileClipboardSmoke/**'
       - 'tests/GuiFileNamePolicySmoke/**'
+      - 'tests/GuiImageHeaderSmoke/**'
       - 'tests/GuiWindowInputSmoke/**'
       - 'tests/GuiApplicationManagerSmoke/**'
       - 'tests/GuiStartMenuSmoke/**'
@@ -67,6 +68,8 @@ jobs:
         run: dotnet run --project tests/GuiFileClipboardSmoke/GuiFileClipboardSmoke.csproj --configuration Release
       - name: Exercise production FAT32 filename policy in host C#
         run: dotnet run --project tests/GuiFileNamePolicySmoke/GuiFileNamePolicySmoke.csproj --configuration Release
+      - name: Reject oversized PNG/BMP before Cosmos image decoder in host C#
+        run: dotnet run --project tests/GuiImageHeaderSmoke/GuiImageHeaderSmoke.csproj --configuration Release
       - name: Exercise production scrollbar in host C#
         run: dotnet run --project tests/GuiScrollBarSmoke/GuiScrollBarSmoke.csproj --configuration Release
       - name: Exercise production Window mouse gestures in host C#
