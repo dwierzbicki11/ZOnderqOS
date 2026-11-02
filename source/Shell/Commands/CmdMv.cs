@@ -91,6 +91,7 @@ namespace ZonderqOS.Commands
                     return;
                 }
 
+                RamTextTransfer.ValidateForDisk(content);
                 Disk.CreateFile(destination, content);
                 if (!CommandIO.LastCommandSuccess)
                     return;

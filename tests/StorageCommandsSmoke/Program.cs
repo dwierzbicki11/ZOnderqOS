@@ -53,6 +53,25 @@ internal static class Program
                         () => { Check(CommandIO.LastCommandSuccess, "lossless transfer failed"); Check(Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(VirtualFs.Files["/tmp/dest"])) == Convert.ToHexString(payload), "bytes changed during transfer"); Check(System.IO.File.Exists(source) != move, "wrong source lifetime"); });
                 }
             }
+            foreach (bool move in new[] { false, true })
+            {
+                foreach (string ramSource in new[] { "/tmp/source", "/run/source" })
+                {
+                    foreach (string payload in new[] { "\ud800", "\udfff", "a\ud800b", "\ud800\ud800", "\udc00\ud800" })
+                    {
+                        Run("malformed RAM text rejected before disk write " + move + ramSource, move, ramSource, dest,
+                            () => VirtualFs.Files[ramSource] = payload,
+                            () => { Check(!CommandIO.LastCommandSuccess, "malformed transfer succeeded"); Check(VirtualFs.Files.TryGetValue(ramSource, out string remaining) && remaining == payload, "RAM source changed"); Check(!System.IO.File.Exists(dest), "malformed transfer created a physical destination"); });
+                    }
+                    foreach (string payload in new[] { "", "plain", "\ufeffA", "\0ą\ud83d\ude00", "\ud800\udc00\udbff\udfff" })
+                    {
+                        Run("valid RAM text copied losslessly " + move + ramSource, move, ramSource, dest,
+                            () => VirtualFs.Files[ramSource] = payload,
+                            () => { Check(CommandIO.LastCommandSuccess, "valid transfer failed"); Check(Convert.ToHexString(System.IO.File.ReadAllBytes(dest)) == Convert.ToHexString(System.Text.Encoding.UTF8.GetBytes(payload)), "encoded bytes differ"); Check(VirtualFs.Files.ContainsKey(ramSource) != move, "wrong RAM source lifetime"); });
+                        System.IO.File.Delete(dest);
+                    }
+                }
+            }
             Run("partial copy cannot report success", false, source, dest,
                 () => { System.IO.File.WriteAllText(source, "complete"); Disk.FailCopy = true; },
                 () => { Check(!CommandIO.LastCommandSuccess, "partial copy succeeded"); Check(System.IO.File.Exists(dest), "fault must leave partial destination"); Check(PermissionManager.Copies == 0, "permissions copied after failure"); });

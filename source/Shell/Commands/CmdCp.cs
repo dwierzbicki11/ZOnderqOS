@@ -68,6 +68,9 @@ namespace ZonderqOS.Commands
                     return;
                 }
 
+                if (!destinationVirtual)
+                    RamTextTransfer.ValidateForDisk(virtualContent);
+
                 Disk.CreateFile(destination, virtualContent);
                 return;
             }

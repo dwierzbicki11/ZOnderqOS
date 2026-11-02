@@ -39,3 +39,14 @@ UTF-8, UTF-16 BOM input, a lone continuation byte, empty data, UTF-8 BOM and
 embedded NUL/non-ASCII/supplementary characters. The old commands fail the new
 regression with `lossy transfer reported success`. Fault-injected read exceptions
 also run through the new raw-byte boundary. No physical disks are accessed.
+
+RAM-to-disk cp/mv now validate UTF-16 before opening a physical destination.
+Twenty malformed cases (five payloads, both commands, both RAM roots) assert
+failure, exact source preservation and no physical destination. Twenty valid
+cases assert exact UTF-8 bytes and source lifetime, including BOM, NUL, Polish
+text, supplementary characters and boundary surrogate pairs. This brings the
+command suite to 63 checks. The previous command code fails with
+`malformed transfer created a physical destination` using real host WriteAllText.
+The new validator scans without allocation and applies only when exporting to
+a physical path; RAM-to-RAM transfers retain their existing string semantics.
+Encoder behavior on Cosmos remains unverified; no binary RAM support is claimed.

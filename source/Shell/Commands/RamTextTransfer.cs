@@ -8,6 +8,26 @@ namespace ZonderqOS.Commands
     // silently replace undecodable bytes or strip a BOM before mv deletes FAT data.
     internal static class RamTextTransfer
     {
+        // RAM files can contain isolated UTF-16 surrogates. Reject these before
+        // opening a physical destination: encoders may replace them or throw
+        // after creating/truncating the file. Valid surrogate pairs need no copy.
+        public static void ValidateForDisk(string content)
+        {
+            if (content == null) return;
+            for (int i = 0; i < content.Length; i++)
+            {
+                char value = content[i];
+                if (value >= '\uD800' && value <= '\uDBFF')
+                {
+                    if (i + 1 >= content.Length || content[i + 1] < '\uDC00' || content[i + 1] > '\uDFFF')
+                        throw new IOException("RAM content contains invalid UTF-16; source preserved");
+                    i++;
+                }
+                else if (value >= '\uDC00' && value <= '\uDFFF')
+                    throw new IOException("RAM content contains invalid UTF-16; source preserved");
+            }
+        }
+
         public static string ReadLossless(string source)
         {
             byte[] bytes = File.ReadAllBytes(source);
