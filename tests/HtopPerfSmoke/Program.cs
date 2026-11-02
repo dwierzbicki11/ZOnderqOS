@@ -865,6 +865,7 @@ internal static class Program
         BenchmarkHeaderCache();
         MemoryLineSmoke.Run();
         StatusLineSmoke.Run();
+        ThreadRowSmoke.Run();
         VerifyCpuBars();
         BenchmarkCpuBars();
         VerifyCpuPrefixes();

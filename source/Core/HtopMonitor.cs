@@ -63,6 +63,7 @@ namespace ZonderqOS.SystemCore
         private struct Row
         {
             internal KernelThreadInfo Thread;
+            internal int Slot;
             internal int Percent;
             internal int Pid;
             internal string Name;
@@ -74,6 +75,20 @@ namespace ZonderqOS.SystemCore
         // An instance method-group conversion allocates a Comparison<Row> delegate.
         // Reuse it across htop refreshes; the callback reads SortByCpu live.
         private readonly Comparison<Row> rowComparison;
+        private struct CachedThreadRow
+        {
+            internal uint Tid;
+            internal uint CpuId;
+            internal int Pid;
+            internal int Percent;
+            internal string State;
+            internal string Name;
+            internal string Line;
+        }
+
+        // The scheduler slot is stable independently of display sort order.
+        // Reuse complete rows only when every visible field still matches.
+        private CachedThreadRow[] cachedThreadRows = Array.Empty<CachedThreadRow>();
         private readonly List<string> lines = new List<string>();
         private PreviousThread[] previousThreads = Array.Empty<PreviousThread>();
         private long[] previousCpu = Array.Empty<long>();
@@ -232,6 +247,34 @@ namespace ZonderqOS.SystemCore
         internal IReadOnlyList<int> CpuUsagePercent => cpuUsage;
         internal IReadOnlyList<string> Lines => lines;
 
+        internal string GetThreadRowLine(int slot, KernelThreadInfo thread, int pid, int percent, string name)
+        {
+            if (slot < 0)
+                throw new ArgumentOutOfRangeException(nameof(slot));
+            if (slot >= cachedThreadRows.Length)
+                Array.Resize(ref cachedThreadRows, slot + 1);
+
+            CachedThreadRow cached = cachedThreadRows[slot];
+            if (cached.Line != null && cached.Tid == thread.Id &&
+                cached.CpuId == thread.CpuId && cached.Pid == pid &&
+                cached.Percent == percent &&
+                string.Equals(cached.State, thread.State, StringComparison.Ordinal) &&
+                string.Equals(cached.Name, name, StringComparison.Ordinal))
+                return cached.Line;
+
+            string line = (pid == 0 ? "-" : pid.ToString()).PadLeft(5) + " " +
+                thread.Id.ToString().PadLeft(6) + " " +
+                thread.CpuId.ToString().PadLeft(4) + "  " +
+                thread.State.ToString().PadRight(10) + " " +
+                PaddedCpuPercentText(percent) + "  " + name;
+            cachedThreadRows[slot] = new CachedThreadRow
+            {
+                Tid = thread.Id, CpuId = thread.CpuId, Pid = pid,
+                Percent = percent, State = thread.State, Name = name, Line = line
+            };
+            return line;
+        }
+
         internal void Refresh()
         {
             int count = checked((int)SchedulerInfo.CpuCount);
@@ -298,6 +341,8 @@ namespace ZonderqOS.SystemCore
             {
                 Array.Resize(ref previousThreads, slots);
             }
+            if (cachedThreadRows.Length < slots)
+                Array.Resize(ref cachedThreadRows, slots);
             rows.Clear();
             ulong elapsedNs = elapsed > 0 && Stopwatch.Frequency > 0
                 ? (ulong)((double)elapsed * 1000000000d / Stopwatch.Frequency) : 0;
@@ -306,6 +351,7 @@ namespace ZonderqOS.SystemCore
                 if (!SchedulerInfo.TryGetThreadInSlot(slot, out KernelThreadInfo info))
                 {
                     previousThreads[slot].Valid = false;
+                    cachedThreadRows[slot] = default;
                     continue;
                 }
                 PreviousThread previous = previousThreads[slot];
@@ -314,6 +360,7 @@ namespace ZonderqOS.SystemCore
                 previousThreads[slot] = new PreviousThread { Id = info.Id, Runtime = info.TotalRuntimeNs, Valid = true };
                 if (info.IsIdle)
                 {
+                    cachedThreadRows[slot] = default;
                     continue;
                 }
                 int pid = 0;
@@ -339,15 +386,11 @@ namespace ZonderqOS.SystemCore
                         break;
                     }
                 }
-                rows.Add(new Row { Thread = info, Percent = Percent(delta, elapsedNs), Pid = pid, Name = name });
+                rows.Add(new Row { Thread = info, Slot = slot, Percent = Percent(delta, elapsedNs), Pid = pid, Name = name });
             }
             SortRows();
             foreach (Row row in rows)
-            {
-                lines.Add((row.Pid == 0 ? "-" : row.Pid.ToString()).PadLeft(5) + " " + row.Thread.Id.ToString().PadLeft(6) + " " +
-                    row.Thread.CpuId.ToString().PadLeft(4) + "  " + row.Thread.State.ToString().PadRight(10) + " " +
-                    PaddedCpuPercentText(row.Percent) + "  " + row.Name);
-            }
+                lines.Add(GetThreadRowLine(row.Slot, row.Thread, row.Pid, row.Percent, row.Name));
             foreach (KernelProcess process in processes)
             {
                 bool found = indexedJoin && processIndex.WasSeen(process.PID);
