@@ -138,5 +138,34 @@ class EvidenceSafety(unittest.TestCase):
             self.assertFalse(started.exists(), "fake guest launched despite missing trace event")
 
 
+    def test_qmp_link_cycle_rejects_wrong_mode_or_invalid_flag(self):
+        for flag, mode in (("1", "n1"), ("2", "n6"), ("yes", "n6")):
+            with self.subTest(flag=flag, mode=mode), tempfile.TemporaryDirectory() as root:
+                directory = Path(root)
+                fake_bin = directory / "bin"
+                fake_bin.mkdir()
+                called = directory / "qemu-called"
+                fake_qemu = fake_bin / "qemu-system-x86_64"
+                fake_qemu.write_text("#!/bin/sh\\ntouch '" + str(called) + "'\\nexit 99\\n")
+                fake_qemu.chmod(0o755)
+                iso = directory / "test.iso"
+                iso.write_bytes(b"dummy ISO")
+                env = dict(os.environ)
+                env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
+                env["NET3095_LINK_CYCLE"] = flag
+                run = subprocess.run(
+                    ["bash", str(SMOKE), str(iso), str(directory / "probe.log"), mode],
+                    cwd=directory, env=env, capture_output=True, text=True,
+                    timeout=10, check=False,
+                )
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn(
+                    "Link-cycle QMP requires isolated n6 mode"
+                    if flag == "1" else "NET3095_LINK_CYCLE must be 0 or 1",
+                    run.stderr,
+                )
+                self.assertFalse(called.exists(), "fake QEMU was invoked")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
