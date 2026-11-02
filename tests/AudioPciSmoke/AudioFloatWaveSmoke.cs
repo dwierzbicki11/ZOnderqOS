@@ -56,27 +56,28 @@ static class AudioFloatWaveSmoke
             expect(fixtureSource[i] == fixtureOriginal[i],
                 "float fixture never modifies source PCM");
         }
-        // GenerateSquareStereo16 produces tone only. The HDA player's
-        // silent 16 KiB drain is appended at playback, not by the generator.
-        // Build that boundary explicitly here: the previous test incorrectly
-        // assumed the final 16 KiB of a 250 ms tone were silence.
+        // Regression: the real wavfloat/wavextfloat commands must append
+        // silence to their WAV payload, not rely on AudioPlayer's EOF drain.
+        // The previous runtime sent a 250ms tone only; QEMU captured a
+        // non-silent final 20ms despite the decoder passing host tests.
         byte[] tone = AudioTonePcm.GenerateSquareStereo16(
             48000, 2860, 250, 4096);
-        byte[] toneWithDrain = new byte[tone.Length + 16 * 1024];
-        Array.Copy(tone, toneWithDrain, tone.Length);
-        byte[] floatWithDrain = AudioFloatToneFixture.FromStereo16Left(toneWithDrain);
-        expect(floatWithDrain.Length == toneWithDrain.Length &&
+        byte[] toneOriginal = (byte[])tone.Clone();
+        byte[] floatWithDrain =
+            AudioFloatToneFixture.FromStereo16LeftWithSilentTail(tone, 4096);
+        expect(floatWithDrain.Length == tone.Length + 16 * 1024 &&
             floatWithDrain[3] == 0x3E &&
             floatWithDrain[tone.Length - 1] == 0xBE,
             "float HDA fixture retains tone before silent drain");
+        for (int i = 0; i < tone.Length; i++)
+            expect(tone[i] == toneOriginal[i],
+                "float HDA fixture leaves original PCM unchanged");
         for (int i = tone.Length; i < floatWithDrain.Length; i++)
             expect(floatWithDrain[i] == 0, "float HDA 16KiB drain stays silent");
-        // Exercise the actual WAV encoder/decoder, not only the fixture
-        // converter: the last HDA ring must remain exact zero PCM16.
         byte[] drainedWave = AudioWavePcm.EncodeFloat32AtRate(
             floatWithDrain, 48000, 1);
         byte[] drainedPcm = AudioWavePcm.DecodeStereo16(drainedWave);
-        expect(drainedPcm.Length == toneWithDrain.Length &&
+        expect(drainedPcm.Length == floatWithDrain.Length &&
             Sample(drainedPcm, 0) == 4095 &&
             Sample(drainedPcm, tone.Length / 2 - 2) < 0,
             "canonical float WAV keeps tone before silent drain");
@@ -84,17 +85,15 @@ static class AudioFloatWaveSmoke
             expect(drainedPcm[i] == 0,
                 "canonical float WAV decodes silent HDA drain to exact PCM zero");
 
-        // Also test the 44.1 -> 48 kHz extensible-float route used by
-        // wavextfloat. Its resampler must not introduce a DC tail.
         byte[] source44100 = AudioTonePcm.GenerateSquareStereo16(
             44100, 3960, 250, 4096);
-        byte[] source44100WithDrain = new byte[source44100.Length + 16 * 1024];
-        Array.Copy(source44100, source44100WithDrain, source44100.Length);
+        byte[] extensibleFloat =
+            AudioFloatToneFixture.FromStereo16LeftWithSilentTail(source44100, 4096);
         byte[] extensibleDrain = AudioWavePcm.EncodeExtensibleFloat32AtRate(
-            AudioFloatToneFixture.FromStereo16Left(source44100WithDrain),
-            44100, 1);
+            extensibleFloat, 44100, 1);
         byte[] resampledDrain = AudioWavePcm.DecodeStereo16(extensibleDrain);
-        expect(resampledDrain.Length > source44100WithDrain.Length &&
+        expect(extensibleFloat.Length == source44100.Length + 16 * 1024 &&
+            resampledDrain.Length > extensibleFloat.Length &&
             Sample(resampledDrain, 0) == 4095,
             "extensible float WAV resamples tone and drain to 48 kHz");
         for (int i = resampledDrain.Length - 48000 / 50 * 4;
@@ -109,6 +108,22 @@ static class AudioFloatWaveSmoke
         try { AudioFloatToneFixture.FromStereo16Left(new byte[384004]); }
         catch (ArgumentException) { fixtureRejected = true; }
         expect(fixtureRejected, "reject over-two-second float fixture PCM");
+        fixtureRejected = false;
+        try { AudioFloatToneFixture.FromStereo16LeftWithSilentTail(tone, -1); }
+        catch (ArgumentOutOfRangeException) { fixtureRejected = true; }
+        expect(fixtureRejected, "reject negative float fixture drain");
+        fixtureRejected = false;
+        try { AudioFloatToneFixture.FromStereo16LeftWithSilentTail(tone, 4097); }
+        catch (ArgumentOutOfRangeException) { fixtureRejected = true; }
+        expect(fixtureRejected, "reject oversized float fixture drain");
+        fixtureRejected = false;
+        try
+        {
+            AudioFloatToneFixture.FromStereo16LeftWithSilentTail(
+                new byte[48000 * 2 * 4], 4096);
+        }
+        catch (ArgumentException) { fixtureRejected = true; }
+        expect(fixtureRejected, "reject float fixture exceeding two-second PCM budget");
 
         // Canonical IEEE_FLOAT, 48kHz stereo: independent channels,
         // sign, asymmetrical PCM16 endpoints and finite clipping.

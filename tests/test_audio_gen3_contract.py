@@ -529,7 +529,10 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("float.IsNaN(sample) || float.IsInfinity(sample)", parser)
         self.assertIn("PlayWaveExtensibleFloat32TestTone()", runtime)
         fixture = read("source/Core/AudioFloatToneFixture.cs")
-        self.assertIn("AudioFloatToneFixture.FromStereo16Left(source)", runtime)
+        self.assertEqual(
+            runtime.count("AudioFloatToneFixture.FromStereo16LeftWithSilentTail(source, 4096)"), 2)
+        self.assertIn("FromStereo16LeftWithSilentTail(", fixture)
+        self.assertIn("silentFrames > maxTailFrames", fixture)
         self.assertIn("if (sample != 0)", fixture)
         self.assertIn("AudioFloatToneFixture.cs", read("tests/AudioPciSmoke/AudioPciSmoke.csproj"))
         self.assertIn("float HDA 16KiB drain stays silent", host)

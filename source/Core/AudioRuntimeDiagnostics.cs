@@ -610,7 +610,7 @@ namespace ZonderqOS.SystemCore
         /// <summary>
         /// Canonical IEEE_FLOAT mono WAV (2860 Hz, +/-0.125) -> bounded
         /// finite PCM16 -> stock HDA. The raw little-endian float fixture is
-        /// generated in RAM, not loaded from a guest or host disk. QEMU must
+        /// generated in RAM with 4096 silent frames, not loaded from a disk. QEMU must
         /// validate the backend WAV capture, not merely a decoder log.
         /// </summary>
         public static bool PlayWaveFloat32TestTone()
@@ -618,7 +618,7 @@ namespace ZonderqOS.SystemCore
             try
             {
                 byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 2860, 250, 4096);
-                byte[] monoFloat = AudioFloatToneFixture.FromStereo16Left(source);
+                byte[] monoFloat = AudioFloatToneFixture.FromStereo16LeftWithSilentTail(source, 4096);
                 byte[] wave = AudioWavePcm.EncodeFloat32AtRate(monoFloat, 48000, 1);
                 Console.WriteLine("[AUDIO] WAV IEEE_FLOAT32 mono 2860Hz -> bounded PCM16 stereo HDA");
                 using (var input = new MemoryStream(wave, false))
@@ -635,14 +635,14 @@ namespace ZonderqOS.SystemCore
         /// WAVE_FORMAT_EXTENSIBLE IEEE_FLOAT32 mono at 44.1 kHz -> bounded
         /// integer resampler -> 48 kHz stereo16 -> stock HDA. A distinct
         /// 3960 Hz test tone lets QEMU verify actual backend PCM. This is
-        /// generated in RAM and never opens a disk or production GUI.
+        /// generated in RAM with 4096 silent frames; never opens a disk or GUI.
         /// </summary>
         public static bool PlayWaveExtensibleFloat32TestTone()
         {
             try
             {
                 byte[] source = AudioTonePcm.GenerateSquareStereo16(44100, 3960, 250, 4096);
-                byte[] monoFloat = AudioFloatToneFixture.FromStereo16Left(source);
+                byte[] monoFloat = AudioFloatToneFixture.FromStereo16LeftWithSilentTail(source, 4096);
                 byte[] wave = AudioWavePcm.EncodeExtensibleFloat32AtRate(
                     monoFloat, 44100, 1);
                 Console.WriteLine("[AUDIO] WAV extensible IEEE_FLOAT32 mono 44100Hz 3960Hz -> 48000Hz HDA");
