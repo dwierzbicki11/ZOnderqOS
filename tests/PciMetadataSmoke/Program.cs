@@ -31,11 +31,11 @@ Check(legacy.RevisionId == 0xFF && legacy.SubsystemVendorId == 0xFFFF,
 // All accesses here are synthetic reads; this is NOT a real DMA/IRQ test.
 var e1000 = new FakeE1000EPciConfig();
 Check(E1000EPciIdentity.TryReadReady(e1000, out ushort e1000Command, out ulong e1000Bar0) &&
-      e1000Command == 0x0006 && e1000Bar0 == 0xFEBF0000UL && e1000.ReadCount == 9,
+      e1000Command == 0x0006 && e1000Bar0 == 0xFEBF0000UL && e1000.ReadCount == 18,
     "Expected read-only E1000E PCI identity and bus-master/MMIO gate");
 var e1000_64 = new FakeE1000EPciConfig { Bar0Low = 0xFEBF0004u, Bar0High = 0x00000001u };
 Check(E1000EPciIdentity.TryReadReady(e1000_64, out e1000Command, out e1000Bar0) &&
-      e1000Bar0 == 0x00000001FEBF0000UL && e1000_64.ReadCount == 11,
+      e1000Bar0 == 0x00000001FEBF0000UL && e1000_64.ReadCount == 22,
     "E1000E must decode a valid 64-bit memory BAR without writing config space");
 e1000.HeaderType = 0x80;
 Check(E1000EPciIdentity.TryReadReady(e1000, out e1000Command),
@@ -67,6 +67,25 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
 }
 Check(!E1000EPciIdentity.TryReadReady(null, out e1000Command) &&
       e1000Command == 0, "Missing PCI accessor must fail closed");
+// A PCI snapshot must not mix identity, COMMAND or MMIO BAR values from
+// two different configurations. All tests execute production C# reads.
+foreach (Action<FakeE1000EPciConfig> change in new Action<FakeE1000EPciConfig>[] {
+    x => x.ChangeDeviceOnSecondRead = true,
+    x => x.ChangeClassOnSecondRead = true,
+    x => x.ChangeCommandOnSecondRead = true,
+    x => x.ChangeBarLowOnSecondRead = true,
+    x => x.ChangeHeaderOnSecondRead = true,
+    x => { x.Bar0Low = 0xFEBF0004u; x.Bar0High = 1;
+           x.ChangeBarHighOnSecondRead = true; }
+})
+{
+    var unstable = new FakeE1000EPciConfig();
+    change(unstable);
+    Check(!E1000EPciIdentity.TryReadReady(unstable, out e1000Command, out e1000Bar0) &&
+          e1000Command == 0 && e1000Bar0 == 0,
+        "Changed PCI identity/COMMAND/BAR must fail closed without stale outputs");
+}
+Console.WriteLine("[NET3095-E1000E-PCI] PASS C# stable two-pass PCI snapshot (synthetic; no hardware)");
 // The legacy IRQ route is PCI metadata, not an interrupt delivery/ISR
 // counter. Reject invalid INTx pins/lines and disabled legacy interrupts.
 var irqConfig = new FakeE1000EPciConfig();
@@ -584,6 +603,18 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     public bool ChangeIrqOnSecondRead { get; set; }
     public bool ChangeIrqPinOnSecondRead { get; set; }
     public bool DisableIntxAfterIrqRead { get; set; }
+    public bool ChangeDeviceOnSecondRead { get; set; }
+    public bool ChangeClassOnSecondRead { get; set; }
+    public bool ChangeCommandOnSecondRead { get; set; }
+    public bool ChangeBarLowOnSecondRead { get; set; }
+    public bool ChangeBarHighOnSecondRead { get; set; }
+    public bool ChangeHeaderOnSecondRead { get; set; }
+    private int deviceReads;
+    private int classReads;
+    private int commandReads;
+    private int barLowReads;
+    private int barHighReads;
+    private int headerReads;
     private int irqLineReads;
     private int irqPinReads;
     public int ReadCount { get; private set; }
@@ -595,18 +626,29 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
         ReadCount++;
     }
 
+    private ushort ReadCommand()
+    {
+        commandReads++;
+        if (DisableIntxAfterIrqRead && irqLineReads > 0)
+            return (ushort)(Command | 0x0400);
+        return ChangeCommandOnSecondRead && commandReads > 1
+            ? (ushort)(Command ^ 0x0004) : Command;
+    }
+
     public ushort Read16(byte bus, byte slot, byte function, byte offset)
     {
         CheckTarget(bus, slot, function);
         return offset switch
         {
             0x00 => VendorId,
-            0x02 => DeviceId,
-            0x04 => DisableIntxAfterIrqRead && irqLineReads > 0
-                ? (ushort)(Command | 0x0400) : Command,
-            0x10 => (ushort)Bar0Low,
+            0x02 => ++deviceReads > 1 && ChangeDeviceOnSecondRead
+                ? (ushort)(DeviceId ^ 1) : DeviceId,
+            0x04 => ReadCommand(),
+            0x10 => ++barLowReads > 1 && ChangeBarLowOnSecondRead
+                ? (ushort)(Bar0Low ^ 0x1000u) : (ushort)Bar0Low,
             0x12 => (ushort)(Bar0Low >> 16),
-            0x14 => (ushort)Bar0High,
+            0x14 => ++barHighReads > 1 && ChangeBarHighOnSecondRead
+                ? (ushort)(Bar0High ^ 1u) : (ushort)Bar0High,
             0x16 => (ushort)(Bar0High >> 16),
             _ => throw new InvalidOperationException("Unexpected E1000E PCI word offset")
         };
@@ -617,10 +659,12 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
         CheckTarget(bus, slot, function);
         return offset switch
         {
-            0x0B => ClassCode,
+            0x0B => ++classReads > 1 && ChangeClassOnSecondRead
+                ? (byte)(ClassCode ^ 1) : ClassCode,
             0x0A => Subclass,
             0x09 => ProgrammingInterface,
-            0x0E => HeaderType,
+            0x0E => ++headerReads > 1 && ChangeHeaderOnSecondRead
+                ? (byte)(HeaderType ^ 1) : HeaderType,
             0x3C => ++irqLineReads > 1 && ChangeIrqOnSecondRead
                 ? (byte)(IrqLine ^ 1) : IrqLine,
             0x3D => ++irqPinReads > 1 && ChangeIrqPinOnSecondRead

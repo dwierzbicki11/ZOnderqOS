@@ -98,9 +98,10 @@ namespace ZonderqOS.Hardware
                     return false;
 
                 ulong address = (ulong)(low & 0xFFFFFFF0u);
+                uint high = 0;
                 if (type == 0x04u)
                 {
-                    uint high = (uint)config.Read16(bus, slot, function, 0x14) |
+                    high = (uint)config.Read16(bus, slot, function, 0x14) |
                         ((uint)config.Read16(bus, slot, function, 0x16) << 16);
                     address |= (ulong)high << 32;
                 }
@@ -110,6 +111,24 @@ namespace ZonderqOS.Hardware
                 if (address == 0 ||
                     (type == 0 && address == 0xFFFFFFF0UL) ||
                     address == 0xFFFFFFFFFFFFFFF0UL)
+                    return false;
+
+                // PCI configuration may change during hot-unplug, rebind or
+                // reprogramming. Never return a mixed identity/COMMAND/BAR
+                // snapshot to a DMA-capable caller. Read-only second pass:
+                // no BAR sizing probes and no PCI config writes.
+                if (config.Read16(bus, slot, function, 0x00) != 0x8086 ||
+                    config.Read16(bus, slot, function, 0x02) != 0x10D3 ||
+                    config.Read8(bus, slot, function, 0x0B) != 0x02 ||
+                    config.Read8(bus, slot, function, 0x0A) != 0x00 ||
+                    config.Read8(bus, slot, function, 0x09) != 0x00 ||
+                    (config.Read8(bus, slot, function, 0x0E) & 0x7F) != 0x00 ||
+                    config.Read16(bus, slot, function, 0x04) != observed ||
+                    ((uint)config.Read16(bus, slot, function, 0x10) |
+                     ((uint)config.Read16(bus, slot, function, 0x12) << 16)) != low ||
+                    (type == 0x04u &&
+                     ((uint)config.Read16(bus, slot, function, 0x14) |
+                      ((uint)config.Read16(bus, slot, function, 0x16) << 16)) != high))
                     return false;
 
                 bar0 = address;
