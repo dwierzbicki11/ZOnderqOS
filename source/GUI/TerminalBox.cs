@@ -242,22 +242,18 @@ namespace ZonderqOS.GUI
                 if (take <= 0)
                     take = Math.Min(maxChars, remaining);
 
-                // For a streamed command, even a manually scrolled terminal
-                // can defer SetRange/Value until the command's final row.
-                // AppendOutputLine still adjusts scrollOffset on history trim,
-                // preserving the user's anchored view. Interactive PrintLine
-                // keeps its original immediate scrollbar updates.
+                // A single PrintLine can wrap into dozens of display rows.
+                // Append without publishing intermediate scrollbar ranges,
+                // even when the user is scrolled up. History trimming still
+                // adjusts scrollOffset on each removed batch.
                 string wrapped = SliceTrimmedForOutput(line, position, take);
-                if (userScrolled && !deferAutoFollow)
-                    AddOutputLine(wrapped);
-                else
-                    AppendOutputLine(wrapped);
+                AppendOutputLine(wrapped);
                 position += take;
                 while (position < end && line[position] == ' ')
                     position++;
             }
 
-            if (!userScrolled && !deferAutoFollow)
+            if (!deferAutoFollow)
                 FinishOutputUpdate();
         }
 
