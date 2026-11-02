@@ -202,8 +202,8 @@ class AudioGen3Contract(unittest.TestCase):
         # write and after the final settle. This is NOT an atomic claim.
         self.assertIn("private static bool IsCompatibleUnclaimedHda(", direct)
         self.assertIn("output.Player != null", direct)
-        self.assertIn('output.DriverName == "HdAudioDriver"', direct)
-        self.assertIn("output.SampleRate == sampleRate", direct)
+        self.assertIn('output.DriverName != "HdAudioDriver"', direct)
+        self.assertIn("output.SampleRate != sampleRate", direct)
         self.assertIn("var outputFormat = output.Format;", runtime)
         self.assertIn("outputFormat is null", runtime)
         self.assertIn("outputFormat.Channels != 2", runtime)
