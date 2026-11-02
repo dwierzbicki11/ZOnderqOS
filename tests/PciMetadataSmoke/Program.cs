@@ -327,6 +327,23 @@ Check(!Realtek810xERegisterDecoder.IsStablePciCommand(0x0006, 0x0002),
     "Unexpected bus-master disable must invalidate the sample");
 Check(!Realtek810xERegisterDecoder.IsStablePciCommand(0x0002, 0x0000),
     "MMIO decoder disabled during sampling must invalidate the sample");
+// Full PMCSR must remain unchanged across mapping AND both MMIO read passes.
+// A D0-only check would miss unexpected PME/status changes during probing.
+for (int raw = 0; raw <= ushort.MaxValue; raw++)
+{
+    ushort pmcsr = (ushort)raw;
+    bool validD0 = (pmcsr & 0x0003) == 0;
+    Check(Realtek810xERegisterDecoder.IsStablePowerManagementControl(pmcsr, pmcsr) == validD0,
+        "PMCSR stable/D0 exhaustive check failed");
+    Check(!Realtek810xERegisterDecoder.IsStablePowerManagementControl(pmcsr, (ushort)(pmcsr ^ 0x0100)),
+        "PMCSR PME/status transition must fail closed");
+}
+Check(!Realtek810xERegisterDecoder.IsStablePowerManagementControl(0x0000, 0x0001),
+    "PMCSR D0 to D1 transition must fail closed");
+Check(!Realtek810xERegisterDecoder.IsStablePowerManagementControl(0x0000, 0x8000),
+    "PMCSR PME status transition must fail closed");
+Console.WriteLine("[NET3095-RTL810XE-PMCSR-STABILITY] PASS C# exhaustive PMCSR transition guard; no physical PCI access");
+
 Console.WriteLine("[NET3095-RTL810XE-COMMAND-STABILITY] PASS C# PCI command snapshot guard; no hardware access");
 
 // Exact PCI header guard executes as pure C#; it never accesses a real NIC.
