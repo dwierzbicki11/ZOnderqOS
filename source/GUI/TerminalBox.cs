@@ -39,6 +39,13 @@ namespace ZonderqOS.GUI
 
         private RenderClip[] renderClips;
         private int lastRenderedClipRows;
+        // htop supplies immutable, often reused lines. Cache the clipped
+        // snapshot by visible row, source identity and terminal width instead
+        // of allocating Substring again on every one-second monitor update.
+        // This is separate from the per-frame render cache because ShowMonitor
+        // deliberately resets that cache whenever the snapshot is replaced.
+        private RenderClip[] monitorClips;
+        private int lastMonitorClipRows;
         private RenderClip promptRenderClip;
         private RenderClip inputRenderClip;
 
@@ -65,6 +72,38 @@ namespace ZonderqOS.GUI
 
         internal string ClipInputForRender(string text, int maxChars) =>
             ClipText(ref inputRenderClip, text, maxChars);
+
+        private void ClearMonitorClips()
+        {
+            if (monitorClips != null && lastMonitorClipRows > 0)
+                Array.Clear(monitorClips, 0, lastMonitorClipRows);
+            lastMonitorClipRows = 0;
+        }
+
+        private string ClipMonitorLine(string line, int visibleRow, int maxChars)
+        {
+            if (line.Length <= maxChars)
+            {
+                if (monitorClips != null && visibleRow < monitorClips.Length)
+                    monitorClips[visibleRow] = default;
+                return line;
+            }
+            // The terminal history is capped at 400 rows. An unusually tall
+            // monitor viewport can exceed that cap, but must not retain an
+            // unbounded array of old source strings.
+            if (visibleRow >= MaxOutputLines)
+                return line.Substring(0, maxChars);
+            if (monitorClips == null || visibleRow >= monitorClips.Length)
+                Array.Resize(ref monitorClips, visibleRow + 1);
+            ref RenderClip cached = ref monitorClips[visibleRow];
+            if (!ReferenceEquals(cached.Source, line) || cached.MaxChars != maxChars)
+            {
+                cached.Source = line;
+                cached.MaxChars = maxChars;
+                cached.Visible = line.Substring(0, maxChars);
+            }
+            return cached.Visible;
+        }
 
         private void ClearRenderClips()
         {
@@ -154,6 +193,10 @@ namespace ZonderqOS.GUI
         // each wrapped line. The final range is published once per PrintLine.
         private void AppendOutputLine(string line)
         {
+            // Switching from htop to command output must release references
+            // to its previous immutable snapshot.
+            if (lastMonitorClipRows > 0)
+                ClearMonitorClips();
             if (OutputLines.Count >= MaxOutputLines)
             {
                 int remove = Math.Min(TrimBatch, OutputLines.Count);
@@ -328,10 +371,15 @@ namespace ZonderqOS.GUI
         {
             OutputLines.Clear();
             ClearRenderClips();
+            ClearMonitorClips();
             userScrolled = false;
             scrollOffset = 0;
             UpdateScrollBar();
         }
+
+        #if ZONDERQ_PERF_HOST_TEST
+        internal bool DisableMonitorClipCacheForBenchmark;
+        #endif
 
         internal void ShowMonitor(IReadOnlyList<string> lines, int firstLine)
         {
@@ -343,11 +391,23 @@ namespace ZonderqOS.GUI
             scrollOffset = 0;
             int width = GetMaxChars();
             int count = Math.Max(1, GetVisibleLines() - 1);
-            for (int index = Math.Max(0, firstLine); index < lines.Count && count > 0; index++, count--)
+            int visibleRow = 0;
+            for (int index = Math.Max(0, firstLine); index < lines.Count && count > 0; index++, count--, visibleRow++)
             {
                 string line = lines[index];
-                OutputLines.Add(line.Length > width ? line.Substring(0, width) : line);
+#if ZONDERQ_PERF_HOST_TEST
+                // Exact previous production path, compiled only in host A/B.
+                OutputLines.Add(DisableMonitorClipCacheForBenchmark
+                    ? (line.Length > width ? line.Substring(0, width) : line)
+                    : ClipMonitorLine(line, visibleRow, width));
+#else
+                OutputLines.Add(ClipMonitorLine(line, visibleRow, width));
+#endif
             }
+            // A shorter snapshot must not pin the old rows or their strings.
+            if (monitorClips != null && visibleRow < lastMonitorClipRows)
+                Array.Clear(monitorClips, visibleRow, lastMonitorClipRows - visibleRow);
+            lastMonitorClipRows = Math.Min(visibleRow, MaxOutputLines);
             UpdateScrollBar();
         }
 

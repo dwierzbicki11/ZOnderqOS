@@ -563,6 +563,7 @@ internal static class Program
         TrimmedSliceSmoke.Run();
         ScrollBarRefreshSmoke.Run();
         RenderClipSmoke.Run();
+        MonitorClipSmoke.Run();
         var monitor = new string[128];
         for (int i = 0; i < monitor.Length; i++)
             monitor[i] = "CPU " + i + " " + new string('x', 64);
