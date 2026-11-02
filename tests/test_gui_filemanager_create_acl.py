@@ -124,6 +124,22 @@ checks["clipboard selection rechecks parent ACL"] = (
     and copy_body.index("ClearDeniedListing();") < copy_body.index("FileClipboard.Set(")
 )
 
+checks["clipboard does not stage deleted or replaced entry"] = (
+    "entry.IsDirectory ? Directory.Exists(entry.FullPath) : File.Exists(entry.FullPath)" in copy_body
+    and copy_body.index("Directory.Exists(entry.FullPath)") < copy_body.index("FileClipboard.Set(")
+    and "Item unavailable; press F5 to refresh" in copy_body
+)
+checks["editor does not create a file from a stale tile"] = (
+    "if (!File.Exists(entry.FullPath))" in open_body
+    and open_body.index("if (!File.Exists(entry.FullPath))") < open_body.index("nanoLauncher(entry.FullPath)")
+    and "File unavailable; press F5 to refresh" in open_body
+)
+checks["editor exceptions stay inside file manager"] = (
+    "try\n                {\n                    nanoLauncher(entry.FullPath);" in open_body
+    and "catch (Exception ex)" in open_body
+    and "Open error: " in open_body
+)
+
 for name, ok in checks.items():
     if not ok:
         raise AssertionError(name)
