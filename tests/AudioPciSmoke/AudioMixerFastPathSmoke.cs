@@ -144,6 +144,13 @@ internal static class AudioMixerFastPathSmoke
         return times[times.Length / 2];
     }
 
+    private static int[] FillFade(int count, int fade)
+    {
+        int[] result = new int[count];
+        for (int i = 0; i < count; i++) result[i] = fade;
+        return result;
+    }
+
     public static void Run()
     {
         var random = new Random(3095);
@@ -308,6 +315,52 @@ internal static class AudioMixerFastPathSmoke
                 "single faded effect output cannot alias its source");
         }
 
+        // Multiple audible clips with partial gain and independent fades
+        // must match the full-timeline oracle exactly. Reverse the schedule
+        // and let muted clips overlap audible ranges without contributing.
+        for (int scenario = 0; scenario < 160; scenario++)
+        {
+            int count = 2 + scenario % 7;
+            byte[][] clips = new byte[count][];
+            byte[][] originals = new byte[count][];
+            int[] starts = new int[count];
+            int[] gains = new int[count];
+            int[] fades = new int[count];
+            for (int i = 0; i < count; i++)
+            {
+                int frames = 1 + random.Next(1, 129);
+                clips[i] = new byte[frames * 4];
+                random.NextBytes(clips[i]);
+                originals[i] = (byte[])clips[i].Clone();
+                // All audible clips are disjoint, including reversed order
+                // and exact adjacency; muted clips can overlap their neighbors.
+                starts[i] = (scenario % 2 == 0 ? count - 1 - i : i) * 160;
+                gains[i] = (i == 1 && count > 2) ? 0 :
+                    new[] { 1, 25, 35, 75, 99, 100 }[(scenario + i) % 6];
+                if (gains[i] == 0)
+                    starts[i] = starts[0];
+                fades[i] = new[] { 0, 1, 20, 50 }[(scenario + i) % 4];
+            }
+            int tail = scenario % 2 == 0 ? 128 : 0;
+            byte[] actual = AudioPcmMixer.MixScheduledStereo16(
+                clips, starts, gains);
+            Same(actual, LegacyScheduled(clips, starts, gains, 0),
+                "disjoint partial-gain clips match full-timeline reference");
+            Same(AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+                    clips, starts, gains, fades, tail),
+                LegacyScheduledFaded(clips, starts, gains, fades, tail),
+                "disjoint partial-gain fades match full-timeline reference");
+            Same(AudioPcmMixer.MixScheduledStereo16WithFade(
+                    clips, starts, gains, 20, tail),
+                LegacyScheduledFaded(clips, starts, gains,
+                    FillFade(count, 20), tail),
+                "disjoint uniform fades match full-timeline reference");
+            actual[starts[0] * 4] ^= 0xff;
+            for (int i = 0; i < count; i++)
+                Same(clips[i], originals[i],
+                    "disjoint partial-gain output cannot alias input");
+        }
+
         // Host-only A/B measurement: a 35%-gain effect after a long silent
         // pre-roll, with seven muted clips that still extend the timeline.
         // Correctness is checked first; timings are not CI pass criteria.
@@ -442,6 +495,40 @@ internal static class AudioMixerFastPathSmoke
             (disjointBefore[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
             "ms optimized=" + (disjointAfter[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
             "ms checksum=" + checksum + " (host only; no QEMU timing proof)");
+        // A/B baseline for multiple disjoint, partially attenuated clips.
+        // The optimized path should touch only their occupied PCM ranges.
+        int[] partialDisjointGains = { 10, 25, 50, 75, 100, 35, 60, 90 };
+        Same(AudioPcmMixer.MixScheduledStereo16(
+                benchClips, benchStarts, partialDisjointGains),
+            LegacyScheduled(benchClips, benchStarts, partialDisjointGains, 0),
+            "partial-gain disjoint benchmark matches independent reference");
+        BatchDisjoint(benchClips, benchStarts, partialDisjointGains, false);
+        BatchDisjoint(benchClips, benchStarts, partialDisjointGains, true);
+        long[] partialDisjointBefore = new long[7], partialDisjointAfter = new long[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if (i % 2 == 0)
+            {
+                partialDisjointBefore[i] = BatchDisjoint(
+                    benchClips, benchStarts, partialDisjointGains, false);
+                partialDisjointAfter[i] = BatchDisjoint(
+                    benchClips, benchStarts, partialDisjointGains, true);
+            }
+            else
+            {
+                partialDisjointAfter[i] = BatchDisjoint(
+                    benchClips, benchStarts, partialDisjointGains, true);
+                partialDisjointBefore[i] = BatchDisjoint(
+                    benchClips, benchStarts, partialDisjointGains, false);
+            }
+        }
+        Array.Sort(partialDisjointBefore); Array.Sort(partialDisjointAfter);
+        Console.WriteLine("[AUDIO-MIX-PARTIAL-DISJOINT] HOST A/B 7x64 median legacy=" +
+            (partialDisjointBefore[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
+            "ms optimized=" +
+            (partialDisjointAfter[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
+            "ms checksum=" + checksum + " (host only; no QEMU timing proof)");
+
         // Host A/B for overlapping muted effects: only the four audible
         // unity-gain clips are disjoint. Muted clips deliberately overlap
         // them and must not force the per-sample summation path.
