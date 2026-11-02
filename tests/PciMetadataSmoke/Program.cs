@@ -615,7 +615,7 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x0A => Subclass,
             0x09 => ProgrammingInterface,
             0x0E => HeaderType,
-            0x3C => ChangeIrqOnSecondRead && ++irqLineReads > 1
+            0x3C => ++irqLineReads > 1 && ChangeIrqOnSecondRead
                 ? (byte)(IrqLine ^ 1) : IrqLine,
             0x3D => IrqPin,
             _ => throw new InvalidOperationException("Unexpected E1000E PCI byte offset")
