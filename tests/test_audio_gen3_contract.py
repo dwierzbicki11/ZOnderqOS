@@ -447,7 +447,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("EncodeExtensiblePcm24AtRate", parser)
         self.assertIn("EncodeExtensiblePcm32AtRate", parser)
         self.assertIn("Nonzero WAV extensible padding bits", parser)
-        self.assertIn("WAV extensible subtype is not PCM", parser)
+        self.assertIn("Unsupported WAV extensible subtype GUID", parser)
         self.assertIn("--command wavext", workflow)
         self.assertIn("audio-qemu-extensible-out/*.wav", workflow)
         self.assertIn("audio-qemu-extensible20-out/*.wav", workflow)
