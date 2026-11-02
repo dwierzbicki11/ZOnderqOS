@@ -82,20 +82,30 @@ namespace ZonderqOS.GUI
             if (line == null)
                 line = "";
 
+            PrintLineRange(line, 0, line.Length);
+        }
+
+        // Decode a command-output slice directly from the original buffer.
+        // Previously each command row was copied into a temporary string and
+        // PrintLine copied it again while wrapping. Keep only the final visible
+        // row allocation; the original command output stays immutable.
+        private void PrintLineRange(string line, int start, int length)
+        {
             int maxChars = GetMaxChars();
             if (maxChars <= 0)
                 return;
 
-            if (line.Length == 0)
+            if (length == 0)
             {
                 AddOutputLine("");
                 return;
             }
 
-            int position = 0;
-            while (position < line.Length)
+            int position = start;
+            int end = start + length;
+            while (position < end)
             {
-                int remaining = line.Length - position;
+                int remaining = end - position;
                 int take = Math.Min(maxChars, remaining);
 
                 if (take < remaining)
@@ -108,16 +118,17 @@ namespace ZonderqOS.GUI
                 if (take <= 0)
                     take = Math.Min(maxChars, remaining);
 
-                // When the user has scrolled up, preserve the legacy per-line
-                // range/value callbacks: trimming can clamp the scrollbar
-                // between wrapped rows. Auto-follow can safely batch them.
-                string wrapped = line.Substring(position, take).TrimEnd();
+                // Substring(0, Length) already returns the same string on .NET.
+                // Reuse it explicitly for the common single-line PrintLine path.
+                string wrapped = position == 0 && take == line.Length
+                    ? line : line.Substring(position, take);
+                wrapped = wrapped.TrimEnd();
                 if (userScrolled)
                     AddOutputLine(wrapped);
                 else
                     AppendOutputLine(wrapped);
                 position += take;
-                while (position < line.Length && line[position] == ' ')
+                while (position < end && line[position] == ' ')
                     position++;
             }
 
@@ -144,11 +155,12 @@ namespace ZonderqOS.GUI
                 int length = i - start;
                 if (length > 0)
                 {
-                    string line = output.Substring(start, length);
-                    if (line == "\u0001GUI_CLEAR\u0001")
+                    const string clearMarker = "\u0001GUI_CLEAR\u0001";
+                    if (length == clearMarker.Length &&
+                        string.CompareOrdinal(output, start, clearMarker, 0, length) == 0)
                         ClearOutput();
                     else
-                        PrintLine(line);
+                        PrintLineRange(output, start, length);
                 }
 
                 // The legacy Replace("\r\n", "\n").Replace("\r", "\n")
