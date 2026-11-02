@@ -915,7 +915,10 @@ namespace ZonderqOS.SystemCore
                     return false;
                 }
                 if (useOneMillisecondDiagnostic)
-                    return AudioProbeDirectPlayback.TryPlay(output, scaled, sampleRate);
+                    // Primary may be replaced after preflight. Revalidate the exact
+                    // published output throughout direct feeding and cleanup.
+                    return AudioProbeDirectPlayback.TryPlay(output, scaled, sampleRate,
+                        () => object.ReferenceEquals(AudioManager.Primary, output));
                 if (useAsyncDiagnostic)
                 {
                     // Stock Cosmos claims the output atomically before starting
