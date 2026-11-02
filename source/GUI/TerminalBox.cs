@@ -17,6 +17,14 @@ namespace ZonderqOS.GUI
         private readonly ScrollBar scrollBar;
         private int scrollOffset;
         private bool userScrolled;
+        // Render and input polling call UpdateScrollBar every frame. Most
+        // frames have unchanged geometry, history and scroll position; avoid
+        // re-publishing an identical range to the software scrollbar.
+        // Compare live Widget coordinates because window resize/move can
+        // mutate X/Y/Width/Height without a dedicated layout event.
+        private bool scrollBarLayoutCached;
+        private int cachedScrollBarX, cachedScrollBarY, cachedScrollBarHeight;
+        private int cachedScrollBarContent, cachedScrollBarVisible;
 
         private static readonly Color Surface = Color.FromArgb(14, 18, 23);
         private static readonly Color Header = Color.FromArgb(25, 31, 38);
@@ -243,12 +251,33 @@ namespace ZonderqOS.GUI
         private void UpdateScrollBar()
         {
             int visible = Math.Max(1, GetVisibleLines() - 1);
-            scrollBar.X = X + Math.Max(1, Width - 12);
-            scrollBar.Y = Y + HeaderHeight + 4;
+            int nextX = X + Math.Max(1, Width - 12);
+            int nextY = Y + HeaderHeight + 4;
+            int nextHeight = Math.Max(20, Height - HeaderHeight - 8);
+            int content = OutputLines.Count + 1;
+
+            // ValueChanged updates scrollOffset during dragging and range
+            // clamping. Do not cache scrollOffset itself: compare the actual
+            // scrollbar value, including externally initiated mouse drags.
+            if (scrollBarLayoutCached &&
+                cachedScrollBarX == nextX && cachedScrollBarY == nextY &&
+                cachedScrollBarHeight == nextHeight &&
+                cachedScrollBarContent == content && cachedScrollBarVisible == visible &&
+                scrollBar.Value == Math.Max(0, Math.Min(scrollOffset, GetMaxScroll())))
+                return;
+
+            scrollBar.X = nextX;
+            scrollBar.Y = nextY;
             scrollBar.Width = 8;
-            scrollBar.Height = Math.Max(20, Height - HeaderHeight - 8);
-            scrollBar.SetRange(OutputLines.Count + 1, visible);
+            scrollBar.Height = nextHeight;
+            scrollBar.SetRange(content, visible);
             scrollBar.Value = Math.Max(0, Math.Min(scrollOffset, GetMaxScroll()));
+            cachedScrollBarX = nextX;
+            cachedScrollBarY = nextY;
+            cachedScrollBarHeight = nextHeight;
+            cachedScrollBarContent = content;
+            cachedScrollBarVisible = visible;
+            scrollBarLayoutCached = true;
         }
 
         private void ScrollToBottom()
