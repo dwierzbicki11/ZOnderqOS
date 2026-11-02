@@ -868,7 +868,11 @@ namespace ZonderqOS
             byte[] tag = System.Text.Encoding.ASCII.GetBytes("ZONDERQ3095-BURST-");
             // Stock 3.0.95 E1000E.Transmit copies the caller's span into
             // its DMA slot before returning, so this one buffer is reusable.
-            byte[] burst = new byte[60];
+            // Test minimum, intermediate and full-size Ethernet frames.
+            // Stock 3.0.95 copies the requested prefix to the TX DMA slot
+            // before Send returns, so the caller buffer can be reused.
+            int[] frameLengths = { 60, 128, 512, 1024, 1514 };
+            byte[] burst = new byte[1514];
             for (int i = 0; i < 14; i++)
                 burst[i] = template[i];
             for (int i = 0; i < tag.Length; i++)
@@ -909,7 +913,12 @@ namespace ZonderqOS
                 burst[14 + tag.Length] = (byte)('0' + sequence / 100);
                 burst[15 + tag.Length] = (byte)('0' + (sequence / 10) % 10);
                 burst[16 + tag.Length] = (byte)('0' + sequence % 10);
-                if (!NetworkManager.Send(burst, burst.Length))
+                int frameLength = frameLengths[sequence % frameLengths.Length];
+                // The verifier checks every byte, not just the sequence tag:
+                // stale DMA content, truncation and wrong lengths must fail.
+                for (int offset = 17 + tag.Length; offset < frameLength; offset++)
+                    burst[offset] = (byte)((sequence * 17 + offset) & 0xFF);
+                if (!NetworkManager.Send(burst, frameLength))
                     return false;
                 Thread.Sleep(5);
             }
