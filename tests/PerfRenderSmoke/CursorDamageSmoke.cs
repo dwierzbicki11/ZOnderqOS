@@ -173,6 +173,56 @@ internal static class CursorDamageSmoke
         }
     }
 
+    private static double TimeUniformCurrent(bool disableUniform, int repeats)
+    {
+        var canvas = new Canvas(128, 96);
+        canvas.DrawFilledRectangle(Color.Navy, 0, 0, 128, 96);
+        CursorDamageRenderer.DisableUniformRestoreForBenchmark = disableUniform;
+        var mover = new CursorDamageRenderer(canvas);
+        mover.DrawAfterScene(20, 20);
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repeats; i++)
+        {
+            int x = 10 + (i * 13) % 100;
+            int y = 10 + (i * 17) % 70;
+            mover.TryMove(x, y);
+        }
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
+    private static void BenchmarkUniformCurrent()
+    {
+        try
+        {
+            TimeUniformCurrent(true, 200);
+            TimeUniformCurrent(false, 200);
+            double[] before = new double[7], after = new double[7];
+            for (int i = 0; i < 7; i++)
+            {
+                if ((i & 1) == 0)
+                {
+                    before[i] = TimeUniformCurrent(true, 4000);
+                    after[i] = TimeUniformCurrent(false, 4000);
+                }
+                else
+                {
+                    after[i] = TimeUniformCurrent(false, 4000);
+                    before[i] = TimeUniformCurrent(true, 4000);
+                }
+            }
+            Array.Sort(before);
+            Array.Sort(after);
+            Console.WriteLine("Host .NET cursor flat underlay, 4000 moves, median 7 A/B " +
+                "identical capture, old point restore=" + before[3].ToString("F3") +
+                " ms, new uniform fill=" + after[3].ToString("F3") +
+                " ms (fake Canvas; not QEMU FPS).");
+        }
+        finally
+        {
+            CursorDamageRenderer.DisableUniformRestoreForBenchmark = false;
+        }
+    }
+
     private static double TimePatterned(bool optimized, int repeats)
     {
         var canvas = new Canvas(128, 96);
@@ -243,6 +293,7 @@ internal static class CursorDamageSmoke
         VerifyPositions(24, 28);
         VerifyPositions(5, 7);
         VerifyUniformAndPatterned();
+        BenchmarkUniformCurrent();
         BenchmarkPatterned();
         // Very large coordinates must be clipped without arithmetic overflow.
         var extremeCanvas = new Canvas(16, 16);

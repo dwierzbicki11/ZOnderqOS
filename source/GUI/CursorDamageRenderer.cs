@@ -31,6 +31,10 @@ namespace ZonderqOS.GUI
         // Patterned underlays retain exact per-pixel restoration.
         private bool uniformCapture;
         private Color uniformColor;
+#if ZONDERQ_PERF_HOST_TEST
+        // A/B only: the identical production capture path with per-pixel restore.
+        internal static bool DisableUniformRestoreForBenchmark;
+#endif
 
         internal CursorDamageRenderer(Canvas canvas)
         {
@@ -148,7 +152,11 @@ namespace ZonderqOS.GUI
         {
             VisibleRegion(x, y, out long baseX, out long baseY,
                 out int firstCol, out int lastCol, out int firstRow, out int lastRow);
-            if (uniformCapture && firstCol < lastCol && firstRow < lastRow)
+            if (uniformCapture && firstCol < lastCol && firstRow < lastRow
+#if ZONDERQ_PERF_HOST_TEST
+                && !DisableUniformRestoreForBenchmark
+#endif
+                )
             {
                 canvas.DrawFilledRectangle(uniformColor,
                     (int)(baseX + firstCol), (int)(baseY + firstRow),
