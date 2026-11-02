@@ -60,7 +60,12 @@ namespace ZonderqOS.Hardware
                         ((uint)config.Read16(bus, slot, function, 0x16) << 16);
                     address |= (ulong)high << 32;
                 }
-                if (address == 0 || address == 0xFFFFFFFFFFFFFFF0UL)
+                // An unprogrammed 32-bit BAR may read back as 0xFFFFFFF0.
+                // Reject it as well as an all-ones 64-bit BAR; neither is
+                // evidence of an assigned, usable MMIO aperture.
+                if (address == 0 ||
+                    (type == 0 && address == 0xFFFFFFF0UL) ||
+                    address == 0xFFFFFFFFFFFFFFF0UL)
                     return false;
 
                 bar0 = address;
