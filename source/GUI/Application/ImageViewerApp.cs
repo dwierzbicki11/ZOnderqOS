@@ -293,12 +293,16 @@ namespace ZonderqOS.GUI.Apps
             // rebuilt once after button release instead of allocating at every size.
             if (!leftButtonDown &&
                 (previewDirty || previewBitmap == null ||
-                 (fitToWindow && (preparedAreaWidth != areaWidth || preparedAreaHeight != areaHeight))))
+                 preparedAreaWidth != areaWidth || preparedAreaHeight != areaHeight))
             {
                 PreparePreview(areaWidth, areaHeight);
             }
 
-            if (previewBitmap == null || previewWidth <= 0 || previewHeight <= 0)
+            // A previously prepared bitmap may be larger than the viewport
+            // while a window is being dragged smaller. Never paint it over
+            // the footer, taskbar or another window before mouse release.
+            if (previewBitmap == null || previewWidth <= 0 || previewHeight <= 0 ||
+                previewWidth > areaWidth || previewHeight > areaHeight)
                 return;
 
             int drawX = x + (width - previewWidth) / 2;
