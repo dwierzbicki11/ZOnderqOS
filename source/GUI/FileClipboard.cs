@@ -80,6 +80,15 @@ namespace ZonderqOS.GUI
             string destinationRoot = Normalize(destinationDirectory);
             string user = SecurityContext.CurrentUser;
 
+            // Never rely on a textual home-prefix check for paths containing
+            // dot segments. /home/alice/../etc is outside alice's home even
+            // though it begins with "/home/alice/".
+            if (!IsSafeAbsolutePath(source) || !IsSafeAbsolutePath(destinationRoot))
+            {
+                error = "Invalid clipboard path";
+                return false;
+            }
+
             if (VirtualFs.IsReadOnlyPath(source) || VirtualFs.IsReadOnlyPath(destinationRoot))
             {
                 error = "Read-only virtual filesystem";
@@ -95,7 +104,7 @@ namespace ZonderqOS.GUI
             if (user != "root")
             {
                 string home = Normalize(UserManager.GetHomeDirectory(user));
-                if (string.IsNullOrEmpty(home) || !IsInside(destinationRoot, home))
+                if (!IsSafeAbsolutePath(home) || !IsInside(destinationRoot, home))
                 {
                     error = "Permission denied: paste outside user home";
                     SecurityLogger.LogEvent("WARN", $"Unauthorized clipboard destination by {user}: {destinationRoot}");
@@ -225,6 +234,15 @@ namespace ZonderqOS.GUI
 
             try
             {
+                // Directory metadata itself is protected by the custom ACL;
+                // checking only its descendants could expose a denied folder.
+                if (!PermissionManager.CanRead(source, user) ||
+                    (requireWrite && !PermissionManager.CanWrite(source, user)))
+                {
+                    deniedPath = source;
+                    return false;
+                }
+
                 string[] files = Directory.GetFiles(source);
                 for (int i = 0; i < files.Length; i++)
                 {
@@ -349,6 +367,31 @@ namespace ZonderqOS.GUI
         private static bool Exists(string path)
         {
             return File.Exists(path) || Directory.Exists(path);
+        }
+
+        // A small lexical check is used instead of Path.GetFullPath because
+        // the Cosmos guest filesystem has different mount semantics from the
+        // host OS. All GUI clipboard paths must be absolute and must not
+        // contain "." or ".." components.
+        internal static bool IsSafeAbsolutePath(string path)
+        {
+            if (string.IsNullOrEmpty(path) || path[0] != '/')
+                return false;
+
+            int start = 1;
+            for (int i = 1; i <= path.Length; i++)
+            {
+                if (i < path.Length && path[i] != '/')
+                    continue;
+
+                int length = i - start;
+                if ((length == 1 && path[start] == '.') ||
+                    (length == 2 && path[start] == '.' && path[start + 1] == '.'))
+                    return false;
+                start = i + 1;
+            }
+
+            return true;
         }
 
         private static bool IsInside(string path, string root)

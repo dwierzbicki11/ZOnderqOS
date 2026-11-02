@@ -240,6 +240,61 @@ internal static class Program
         });
     }
 
+    private static void TraversalPathsCannotEscapeHome()
+    {
+        Case(root =>
+        {
+            string home = Path.Combine(root, "home");
+            string outside = Path.Combine(root, "outside");
+            Directory.CreateDirectory(home);
+            Directory.CreateDirectory(outside);
+            string source = Path.Combine(home, "private.txt");
+            File.WriteAllText(source, "protected");
+            SecurityContext.CurrentUser = "alice";
+            UserManager.HomeDirectory = home;
+            FileClipboard.Set(source, false, false);
+            string escapedDestination = home + "/../outside";
+            Check(!FileClipboard.TryPaste(escapedDestination, out string path, out string error),
+                "dot-dot destination denied before copying");
+            Check(path == null && error != null && error.Contains("Invalid clipboard path"),
+                "unsafe destination reports explicit error");
+            Check(Directory.GetFiles(outside).Length == 0 && File.Exists(source),
+                "unsafe destination leaves source and outside directory unchanged");
+
+            string externalSource = Path.Combine(outside, "secret.txt");
+            File.WriteAllText(externalSource, "external");
+            FileClipboard.Set(home + "/../outside/secret.txt", false, false);
+            Check(!FileClipboard.TryPaste(home, out path, out error),
+                "dot-dot clipboard source denied");
+            Check(Directory.GetFiles(home).Length == 1 && File.Exists(externalSource),
+                "unsafe source does not leak into user home");
+            FileClipboard.Set("relative.txt", false, false);
+            Check(!FileClipboard.TryPaste(home, out path, out error),
+                "relative clipboard source denied");
+        });
+    }
+
+    private static void DirectoryAclProtectsItsOwnRoot()
+    {
+        Case(root =>
+        {
+            string source = Path.Combine(root, "protected");
+            Directory.CreateDirectory(source);
+            File.WriteAllText(Path.Combine(source, "child.txt"), "protected");
+            string destination = Path.Combine(root, "target");
+            Directory.CreateDirectory(destination);
+            SecurityContext.CurrentUser = "alice";
+            PermissionManager.DenyWritePath = source;
+            FileClipboard.Set(source, true, true);
+            Check(!FileClipboard.TryPaste(destination, out string path, out string error),
+                "directory root ACL denies cut");
+            Check(path == null && error != null && error.Contains("Permission denied"),
+                "directory root ACL reports denial");
+            Check(Directory.Exists(source) && Directory.GetDirectories(destination).Length == 0,
+                "denied directory cut leaves both trees intact");
+        });
+    }
+
     private static void MissingSourceIsRejected()
     {
         Case(root =>
@@ -264,6 +319,8 @@ internal static class Program
         MissingSourceIsRejected();
         ReadOnlyAclDestinationIsRejected();
         ExpiredSessionCannotPasteAsRoot();
+        TraversalPathsCannotEscapeHome();
+        DirectoryAclProtectsItsOwnRoot();
         Console.WriteLine("GUI clipboard host C#: " + assertions + " PASS");
         return 0;
     }

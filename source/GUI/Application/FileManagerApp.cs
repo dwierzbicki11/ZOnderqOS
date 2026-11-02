@@ -688,7 +688,8 @@ namespace ZonderqOS.GUI.Apps
 
         private static bool IsInsidePath(string path, string root)
         {
-            if (string.IsNullOrEmpty(path) || string.IsNullOrEmpty(root))
+            if (!FileClipboard.IsSafeAbsolutePath(path) ||
+                !FileClipboard.IsSafeAbsolutePath(root))
                 return false;
             if (path == root)
                 return true;
@@ -1174,7 +1175,19 @@ namespace ZonderqOS.GUI.Apps
             // The FAT driver does not enforce ZonderqOS's user ACL by itself.
             // A non-root session must not create files in /etc or in a
             // read-only subfolder merely by using the graphical file manager.
-            string user = SecurityContext.CurrentUser ?? "root";
+            // Never turn a missing identity into a privileged root write.
+            // The desktop event dispatcher checks sessions too, but a modal
+            // dialog can outlive the frame that originally opened it.
+            if (!SecurityContext.IsAuthenticated ||
+                string.IsNullOrEmpty(SecurityContext.CurrentUser))
+            {
+                status = "Authentication required to create files";
+                dialogMode = 0;
+                dialogName = "";
+                return;
+            }
+
+            string user = SecurityContext.CurrentUser;
             if (user != "root" &&
                 (!IsInsidePath(currentPath, UserManager.GetHomeDirectory(user)) ||
                  !PermissionManager.CanWrite(currentPath, user)))
