@@ -3585,5 +3585,39 @@ class FileClipboardSessionBoundary3095(unittest.TestCase):
         self.assertNotIn("FileClipboard.Clear();", lock)
 
 
+
+class ImageHeaderPreflight3095(unittest.TestCase):
+    def test_decoder_is_guarded_after_acl_before_any_image_allocation(self):
+        loader = IMAGE_VIEWER.split("private void LoadImage(", 1)[1].split(
+            "private static bool CanReadImageInSession(", 1)[0]
+        self.assertIn("if (!CanReadImageInSession(path))", loader)
+        self.assertIn("if (!File.Exists(path))", loader)
+        self.assertIn("!ImageHeaderGuard.IsSafeToDecode(path,", loader)
+        self.assertIn('status = "Nieprawidlowy lub zbyt duzy obraz";', loader)
+        self.assertLess(loader.index("if (!CanReadImageInSession(path))"),
+                        loader.index("!ImageHeaderGuard.IsSafeToDecode(path,"))
+        self.assertLess(loader.index("if (!File.Exists(path))"),
+                        loader.index("!ImageHeaderGuard.IsSafeToDecode(path,"))
+        self.assertLess(loader.index("!ImageHeaderGuard.IsSafeToDecode(path,"),
+                        loader.index("new Png(path)"))
+        self.assertLess(loader.index("!ImageHeaderGuard.IsSafeToDecode(path,"),
+                        loader.index("new CosmosBitmap(path)"))
+        self.assertLess(loader.index("!ImageHeaderGuard.IsSafeToDecode(path,"),
+                        loader.index("sourcePixels = pixels;"))
+
+    def test_header_guard_is_bounded_and_in_host_csharp_ci(self):
+        guard = code("source/GUI/ImageHeaderGuard.cs")
+        workflow = code(".github/workflows/gui-responsive-3095.yml")
+        self.assertIn("public const int MaxDimension = 16384;", guard)
+        self.assertIn("public const long MaxPixels = 16L * 1024 * 1024;", guard)
+        self.assertIn("width * height <= MaxPixels", guard)
+        self.assertIn("File.OpenRead(path)", guard)
+        self.assertIn("catch (Exception)", guard)
+        self.assertIn("ReadBigEndian32(header, 16)", guard)
+        self.assertIn("ReadLittleEndian32(header, 18)", guard)
+        self.assertIn("tests/GuiImageHeaderSmoke/GuiImageHeaderSmoke.csproj", workflow)
+        self.assertIn("tests/GuiImageHeaderSmoke/**", workflow)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
