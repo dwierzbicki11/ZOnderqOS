@@ -34,6 +34,20 @@ class NetworkN1Isolation(unittest.TestCase):
         stress_health = SOURCE.index('CheckE1000EDriverKitHealth(baselineResources', stress_bar)
         self.assertLess(stress_start, stress_bar)
         self.assertLess(stress_bar, stress_health)
+        # QMP link down/up and fresh TCP reconnections must not silently
+        # accept a remapped PCI BAR0 with unchanged MAC/lease metadata.
+        self.assertIn("s_linkCyclePciCommand = pciCommand;", SOURCE)
+        self.assertIn("s_linkCyclePciBar0 = pciBar0;", SOURCE)
+        helper = SOURCE.split("private static bool IsE1000EPciMappingStable()", 1)[1].split(
+            "private static bool TryTcpReconnect(", 1)[0]
+        self.assertIn("TryReadReady(", helper)
+        self.assertIn("command == s_linkCyclePciCommand", helper)
+        self.assertIn("bar0 == s_linkCyclePciBar0", helper)
+        link = SOURCE.split("private static void PollLinkCycle()", 1)[1]
+        self.assertGreaterEqual(link.count("IsE1000EPciMappingStable()"), 2)
+        reconnect = SOURCE.split("private static bool TryTcpReconnect(", 1)[1].split(
+            "private static void PollLinkCycle()", 1)[0]
+        self.assertGreaterEqual(reconnect.count("IsE1000EPciMappingStable()"), 2)
         self.assertNotIn("Write16(", pci)
         self.assertNotIn("Write8(", pci)
         before = SOURCE.index("E1000E PCI identity/MMIO/busmaster invalid before TX")

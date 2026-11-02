@@ -651,6 +651,8 @@ namespace ZonderqOS
                 s_linkCycleGateway = initialGateway;
                 s_linkCycleResources = baselineResources;
                 s_linkCycleIrqSources = baselineIrqSources;
+                s_linkCyclePciCommand = pciCommand;
+                s_linkCyclePciBar0 = pciBar0;
                 s_linkCycleNumber = 1;
                 s_linkDownObserved = false;
                 s_linkRecoveryAttempted = false;
@@ -1093,6 +1095,19 @@ namespace ZonderqOS
         private static string s_linkCycleGateway = "";
         private static int s_linkCycleResources;
         private static int s_linkCycleIrqSources;
+        private static ushort s_linkCyclePciCommand;
+        private static ulong s_linkCyclePciBar0;
+
+        // Revalidate the original physical MMIO assignment after each QMP
+        // link transition. Stable MAC/lease/DriverKit source counts alone
+        // cannot detect a PCI BAR remap. This does not prove DMA/ISR execution.
+        private static bool IsE1000EPciMappingStable()
+        {
+            return ZonderqOS.Hardware.E1000EPciIdentity.TryReadReady(
+                new ZonderqOS.Platform.X64.PciConfigIoAccessor(),
+                out ushort command, out ulong bar0) &&
+                command == s_linkCyclePciCommand && bar0 == s_linkCyclePciBar0;
+        }
 
         // This is a diagnostic of the *published* E1000E link state, not
         // direct access to PCI registers or a claim that its ISR executed.
@@ -1106,7 +1121,8 @@ namespace ZonderqOS
             {
                 if (cycle != 1 && cycle != 2)
                     return false;
-                if (!IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
+                if (!IsE1000EPciMappingStable() ||
+                    !IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
                     !IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,
                         s_linkCycleMask, s_linkCycleGateway))
                 {
@@ -1183,7 +1199,8 @@ namespace ZonderqOS
                             return false;
                         }
                     }
-                    if (!IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
+                    if (!IsE1000EPciMappingStable() ||
+                        !IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
                         !IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,
                             s_linkCycleMask, s_linkCycleGateway))
                     {
@@ -1252,7 +1269,8 @@ namespace ZonderqOS
             Log(s_linkCycleNumber == 1
                 ? "[NET3095-N6] LINK_UP_OBSERVED=YES"
                 : "[NET3095-N6] LINK2_UP_OBSERVED=YES");
-            if (!IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
+            if (!IsE1000EPciMappingStable() ||
+                !IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
                 !IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,
                     s_linkCycleMask, s_linkCycleGateway))
             {
@@ -1278,6 +1296,7 @@ namespace ZonderqOS
                     EndPoint remote = new EndPoint(Address4.Zero, 0);
                     int elapsedMs = ping.Receive(ref remote, 5000);
                     if (elapsedMs < 0 || remote.Address.ToString() != "10.0.2.2" ||
+                        !IsE1000EPciMappingStable() ||
                         !IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
                         !IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,
                             s_linkCycleMask, s_linkCycleGateway))
