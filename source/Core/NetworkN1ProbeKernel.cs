@@ -994,10 +994,15 @@ namespace ZonderqOS
         {
             if (!s_linkCycleArmed || s_linkRecoveryAttempted)
                 return;
-            NetworkAdapter adapter = NetworkManager.Primary;
             if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized ||
-                NetworkManager.DeviceCount != 1 || !adapter.IsValid ||
-                adapter.Name != "e1000e" ||
+                NetworkManager.DeviceCount != 1)
+            {
+                s_linkRecoveryAttempted = true;
+                Log("[NET3095-N6][FAIL] Link-cycle network manager disappeared");
+                return;
+            }
+            NetworkAdapter adapter = NetworkManager.Primary;
+            if (!adapter.IsValid || adapter.Name != "e1000e" ||
                 (adapter.MacAddress?.ToString() ?? "") != s_linkCycleMac)
             {
                 s_linkRecoveryAttempted = true;
