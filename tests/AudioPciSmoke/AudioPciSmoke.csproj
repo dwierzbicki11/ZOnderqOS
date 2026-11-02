@@ -4,6 +4,8 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>disable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <!-- Host-only stubbed Cosmos API; production remains opt-in/diskless. -->
+    <DefineConstants>$(DefineConstants);ZONDERQ_AUDIO_PROBE</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../source/Core/AudioPciDiagnostics.cs" Link="AudioPciDiagnostics.cs" />
@@ -14,5 +16,6 @@
     <Compile Include="../../source/Core/AudioPcmVolume.cs" Link="AudioPcmVolume.cs" />
     <Compile Include="../../source/Core/AudioPcmMixer.cs" Link="AudioPcmMixer.cs" />
     <Compile Include="../../source/Core/AudioProbeRingFeeder.cs" Link="AudioProbeRingFeeder.cs" />
+    <Compile Include="../../source/Core/AudioProbeDirectPlayback.cs" Link="AudioProbeDirectPlayback.cs" />
   </ItemGroup>
 </Project>
