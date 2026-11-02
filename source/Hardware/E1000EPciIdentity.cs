@@ -67,8 +67,8 @@ namespace ZonderqOS.Hardware
         }
 
         // PCI STATUS.CAP_LIST and conventional capabilities are read-only.
-        // Reject malformed lists, loops, duplicate MSI/MSI-X capabilities,
-        // enabled message-signaled interrupts, or changes between the two
+        // Reject malformed lists, loops, duplicate PM/MSI/MSI-X capabilities,
+        // non-D0 power states, enabled message-signaled interrupts or changes between the
         // routing snapshots. This is NOT evidence of ISR execution.
         private static bool TryReadLegacyInterruptMode(IPciConfigAccessor config,
             out ulong signature)

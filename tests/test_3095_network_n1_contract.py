@@ -30,6 +30,10 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("(status & 0x0010) == 0", pci)
         self.assertIn("(control & 0x0001) != 0", pci)  # MSI enabled
         self.assertIn("(control & 0x8000) != 0", pci)  # MSI-X enabled
+        self.assertIn("if (id == 0x01)", pci)  # PCI PM capability
+        self.assertIn("if (seenPm || pointer > 0xF8)", pci)  # no duplicate/wrap
+        self.assertIn("(pmcsr & 0x0003) != 0", pci)  # reject D1/D2/D3hot
+        self.assertIn("control = (ushort)(pmcsr & 0x0003)", pci)
         self.assertIn("finalMode != initialMode", pci)
         self.assertIn("address == 0xFFFFFFFFFFFFFFF0UL", pci)
         # Read-only legacy INTx metadata is a prerequisite for QEMU's
