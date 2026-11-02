@@ -102,6 +102,40 @@ namespace ZonderqOS.SystemCore
                 int settleRequests = 0;
                 int pcmQueued = 0;
                 int silenceQueued = 0;
+                // Snapshot the stock driver's reported free ring capacity.
+                // A changing value is useful for QEMU stall correlation, but
+                // is NOT an independent DMA position or IRQ counter.
+                int ringSamples = 0;
+                int ringChanges = 0;
+                int ringIncreases = 0;
+                int ringDecreases = 0;
+                long ringMin = long.MaxValue;
+                long ringMax = long.MinValue;
+                long previousWritable = 0;
+                void SampleDriverWritable()
+                {
+                    // Do not query a withdrawn, claimed or replaced device.
+                    // Avoid calling Format here: a diagnostic sample must not
+                    // reconfigure the codec or alter the feeder's readiness.
+                    if (output.IsWithdrawn || output.Player != null || !output.IsRunning ||
+                        output.Name != "hda" || output.DriverName != "HdAudioDriver" ||
+                        (stillSelected != null && !stillSelected()))
+                        return;
+                    long writable = (long)output.WritableBytes;
+                    if (writable < 0)
+                        return;
+                    if (ringSamples > 0 && writable != previousWritable)
+                    {
+                        ringChanges++;
+                        if (writable > previousWritable) ringIncreases++;
+                        else ringDecreases++;
+                    }
+                    previousWritable = writable;
+                    ringSamples++;
+                    if (writable < ringMin) ringMin = writable;
+                    if (writable > ringMax) ringMax = writable;
+                }
+                SampleDriverWritable();
                 bool fed = AudioProbeRingFeeder.FeedAndSettle(pcm,
                     (data, offset, count) =>
                     {
@@ -135,6 +169,7 @@ namespace ZonderqOS.SystemCore
                         if (milliseconds == 86)
                             settleRequests++;
                         Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds);
+                        SampleDriverWritable();
                     },
                     out int waits);
                 // Keep each line short enough for the diagnostic text console
@@ -150,6 +185,14 @@ namespace ZonderqOS.SystemCore
                     " minPositiveWrite=" + (smallestPositiveWrite == int.MaxValue ? 0 : smallestPositiveWrite));
                 Console.WriteLine("[AUDIO] 1MS waits=" + waits +
                     " settleRequests=" + settleRequests + " settle=86ms (requested only)");
+                Console.WriteLine("[AUDIO] 1MS ringSamples=" + ringSamples +
+                    " ringChanges=" + ringChanges);
+                Console.WriteLine("[AUDIO] 1MS ringMin=" +
+                    (ringSamples == 0 ? 0 : ringMin) + " ringMax=" +
+                    (ringSamples == 0 ? 0 : ringMax));
+                Console.WriteLine("[AUDIO] 1MS ringIncreases=" + ringIncreases +
+                    " ringDecreases=" + ringDecreases);
+                Console.WriteLine("[AUDIO] 1MS writable=driver snapshot; DMA/IRQ not proven");
                 Console.WriteLine("[AUDIO] 1MS DMA/IRQ and audible PCM not proven");
                 return fed;
             }

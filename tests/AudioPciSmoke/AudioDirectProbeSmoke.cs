@@ -47,6 +47,7 @@ namespace Cosmos.Kernel.System.Audio
         public int StartCalls;
         public int StopCalls;
         public int WrittenBytes;
+        public int WritableBytes = 16384;
         public bool ThrowOnStart;
         public bool ThrowOnWrite;
         public bool ThrowOnStop;
@@ -183,8 +184,42 @@ internal static class AudioDirectProbeSmoke
                 normalProgress.Contains("minPositiveWrite=16") &&
                 normalProgress.Contains("waits=0") &&
                 normalProgress.Contains("settleRequests=1") &&
+                normalProgress.Contains("ringSamples=2 ringChanges=0") &&
+                normalProgress.Contains("ringMin=16384 ringMax=16384") &&
+                normalProgress.Contains("ringIncreases=0 ringDecreases=0") &&
                 normalProgress.Contains("DMA/IRQ and audible PCM not proven"),
                 "direct probe reports accepted bytes without claiming hardware DMA drain");
+
+            // Only driver-reported WritableBytes is sampled: this verifies
+            // changes across the settle wait, not actual DMA or IRQ delivery.
+            var movingCapacity = new Device { WritableBytes = 0 };
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "capacity movement occurs during settle");
+                movingCapacity.WritableBytes = 4096;
+            };
+            using var capacityTrace = new StringWriter();
+            bool capacityResult;
+            try
+            {
+                Console.SetOut(capacityTrace);
+                capacityResult = AudioProbeDirectPlayback.TryPlay(movingCapacity, Pcm, 48000);
+            }
+            finally
+            {
+                Console.SetOut(priorOutput);
+                Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+                {
+                    check(ms == 86, "successful direct probe waits one HDA ring period");
+                    waits++;
+                };
+            }
+            check(capacityResult && movingCapacity.StopCalls == 1 &&
+                capacityTrace.ToString().Contains("ringSamples=2 ringChanges=1") &&
+                capacityTrace.ToString().Contains("ringMin=0 ringMax=4096") &&
+                capacityTrace.ToString().Contains("ringIncreases=1 ringDecreases=0") &&
+                capacityTrace.ToString().Contains("writable=driver snapshot; DMA/IRQ not proven"),
+                "direct probe reports stock driver capacity movement without claiming DMA proof");
 
             // A host-only device returning partial frame-aligned writes must
             // be counted by accepted bytes, not by requested block sizes.
