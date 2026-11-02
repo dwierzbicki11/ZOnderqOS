@@ -125,11 +125,19 @@ namespace ZonderqOS.GUI
                     take = Math.Min(maxChars, remaining);
 
                 // Preserve per-row scrollbar callbacks for manual scrolling.
-                // Inline the overwhelmingly common untrimmed path: a helper
-                // call here regressed no-whitespace rows in host A/B.
-                string wrapped = !char.IsWhiteSpace(line[position + take - 1])
-                    ? line.Substring(position, take)
-                    : SliceTrimmed(line, position, take);
+                // Trim the source slice before allocating its retained row.
+                // The common non-whitespace case takes one check and one
+                // Substring; trailing spaces no longer require two strings.
+                int trimmedEnd = position + take;
+                if (char.IsWhiteSpace(line[trimmedEnd - 1]))
+                {
+                    do
+                    {
+                        trimmedEnd--;
+                    }
+                    while (trimmedEnd > position && char.IsWhiteSpace(line[trimmedEnd - 1]));
+                }
+                string wrapped = line.Substring(position, trimmedEnd - position);
                 if (userScrolled)
                     AddOutputLine(wrapped);
                 else
@@ -141,25 +149,6 @@ namespace ZonderqOS.GUI
 
             if (!userScrolled && !deferAutoFollow)
                 FinishOutputUpdate();
-        }
-
-        // Match String.TrimEnd's Unicode whitespace semantics before
-        // allocating the retained row. The old Substring(...).TrimEnd()
-        // allocated twice whenever the wrapped row ended in whitespace.
-        private static string SliceTrimmed(string source, int start, int length)
-        {
-            int end = start + length;
-            // Most rows have no trailing whitespace. Avoid entering the
-            // trimming loop at all on this hot path.
-            if (length == 0 || !char.IsWhiteSpace(source[end - 1]))
-                return source.Substring(start, length);
-
-            do
-            {
-                end--;
-            }
-            while (end > start && char.IsWhiteSpace(source[end - 1]));
-            return source.Substring(start, end - start);
         }
 
         /// <summary>
