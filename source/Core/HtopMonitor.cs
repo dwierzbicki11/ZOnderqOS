@@ -96,6 +96,13 @@ namespace ZonderqOS.SystemCore
         private ulong memoryPageSize = ulong.MaxValue;
         private string memoryLine;
 
+        // Process/thread counts are frequently stable even when runtime
+        // counters change. Keep the last immutable label, but rebuild on
+        // either count changing (including process exits).
+        private int processLabelCount = -1;
+        private int threadLabelCount = -1;
+        private string processLabelLine;
+
         internal string GetHeaderLine(int count, string schedulerName)
         {
             if (headerLine != null && count == headerCpuCount &&
@@ -123,6 +130,18 @@ namespace ZonderqOS.SystemCore
             memoryLine = "Mem: " + ((totalPages - free) * pageSize / 1048576UL) +
                 " / " + (totalPages * pageSize / 1048576UL) + " MiB";
             return memoryLine;
+        }
+
+        internal string GetProcessCountLine(int processCount, int threadCount)
+        {
+            if (processLabelLine != null && processCount == processLabelCount &&
+                threadCount == threadLabelCount)
+                return processLabelLine;
+
+            processLabelCount = processCount;
+            threadLabelCount = threadCount;
+            processLabelLine = "Processes: " + processCount + "  Threads: " + threadCount;
+            return processLabelLine;
         }
 
         // CPU bars are redrawn on every htop refresh. Construct the 21 possible
@@ -255,7 +274,10 @@ namespace ZonderqOS.SystemCore
             }
             ulong totalCapacity = warm && count > 0 ? (ulong)elapsed * (ulong)count : 0;
             TotalCpuPercent = warm && hasAccounting ? Percent(totalBusyDelta, totalCapacity) : 0;
-            lines.Add("CPU total: " + (!hasAccounting ? "N/A" : !warm ? "..." : CpuPercentText(TotalCpuPercent)));
+            // Stock Cosmos exposes no per-core busy accounting. Avoid
+            // allocating the same immutable N/A total on every refresh.
+            lines.Add(!hasAccounting ? "CPU total: N/A" :
+                "CPU total: " + (!warm ? "..." : CpuPercentText(TotalCpuPercent)));
 
             // These are Cosmos' real physical page-allocator figures, not GC heap estimates.
             ulong total = MemoryInfo.TotalPages;
@@ -269,7 +291,7 @@ namespace ZonderqOS.SystemCore
                 processIndex.Rebuild(processes);
             else
                 processIndex.Clear();
-            lines.Add("Processes: " + processes.Count + "  Threads: " + SchedulerInfo.ThreadCount);
+            lines.Add(GetProcessCountLine(processes.Count, SchedulerInfo.ThreadCount));
             lines.Add("  PID    TID  CPU  STATE       CPU%  NAME");
 
             if (previousThreads.Length < slots)
