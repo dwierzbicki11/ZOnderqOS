@@ -310,6 +310,14 @@ namespace ZonderqOS.GUI
                 return;
             }
 
+            // Keep the common in-bounds/offscreen cases compact. The cold
+            // clipping code is a separate method so the JIT can inline Fill.
+            FillClipped(canvas, color, x, y, width, height);
+        }
+
+        private static void FillClipped(Canvas canvas, Color color, int x, int y,
+            int width, int height)
+        {
             // A rectangle clipped only on its horizontal axis is common
             // while dragging windows across the left/right screen edge.
             // Keep the fully-visible path above untouched; avoid the general
