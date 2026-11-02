@@ -89,6 +89,41 @@ checks["cut outside home rejected before staging"] = (
     "!IsInsidePath(sourceParent, UserManager.GetHomeDirectory(user))" in copy_body
 )
 
+# Directory permissions can change while a File Manager window is open.
+# Rejected F5/filter/open/copy must not reuse names from a stale snapshot.
+invalidate_begin = source.index("        private void ClearDeniedListing()")
+invalidate_end = source.index("        private bool RefreshInternal(", invalidate_begin)
+invalidate_body = source[invalidate_begin:invalidate_end]
+checks["revoked directory clears cached entries and selection"] = all(
+    marker in invalidate_body for marker in (
+        "entries.Clear();", "cachedEntries.Clear();",
+        "hasLoadedDirectory = false;", "loadedDirectoryPath = null;",
+        "selectedIndex = -1;", "scrollIndex = 0;",
+        "contextMenuVisible = false;", "ResetClickSequence();"
+    )
+)
+checks["denied refresh invalidates only its own cached path"] = (
+    "string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal)" in refresh_body
+    and "ClearDeniedListing();" in refresh_body
+    and refresh_body.index("ClearDeniedListing();") < refresh_body.index("Directory.GetDirectories(targetPath)")
+)
+filter_begin = source.index("        private void ApplySearchFilter()")
+filter_end = source.index("        private void RebuildSidebar()", filter_begin)
+filter_body = source[filter_begin:filter_end]
+checks["filter cannot revive revoked directory listing"] = (
+    "if (!CanReadInSession(currentPath))" in filter_body
+    and "ClearDeniedListing();" in filter_body
+    and filter_body.index("ClearDeniedListing();") < filter_body.index("entries.AddRange(cachedEntries);")
+)
+checks["opening cached file rechecks parent ACL"] = (
+    "if (!CanReadInSession(currentPath))" in open_body
+    and open_body.index("ClearDeniedListing();") < open_body.index("FileEntry entry = entries[index];")
+)
+checks["clipboard selection rechecks parent ACL"] = (
+    "if (!CanReadInSession(currentPath))" in copy_body
+    and copy_body.index("ClearDeniedListing();") < copy_body.index("FileClipboard.Set(")
+)
+
 for name, ok in checks.items():
     if not ok:
         raise AssertionError(name)
