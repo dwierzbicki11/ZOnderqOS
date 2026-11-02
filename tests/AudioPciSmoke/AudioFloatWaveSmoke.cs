@@ -56,10 +56,20 @@ static class AudioFloatWaveSmoke
             expect(fixtureSource[i] == fixtureOriginal[i],
                 "float fixture never modifies source PCM");
         }
-        byte[] toneWithDrain = AudioTonePcm.GenerateSquareStereo16(
+        // GenerateSquareStereo16 produces tone only. The HDA player's
+        // silent 16 KiB drain is appended at playback, not by the generator.
+        // Build that boundary explicitly here: the previous test incorrectly
+        // assumed the final 16 KiB of a 250 ms tone were silence.
+        byte[] tone = AudioTonePcm.GenerateSquareStereo16(
             48000, 2860, 250, 4096);
+        byte[] toneWithDrain = new byte[tone.Length + 16 * 1024];
+        Array.Copy(tone, toneWithDrain, tone.Length);
         byte[] floatWithDrain = AudioFloatToneFixture.FromStereo16Left(toneWithDrain);
-        for (int i = floatWithDrain.Length - 4096 * 4; i < floatWithDrain.Length; i++)
+        expect(floatWithDrain.Length == toneWithDrain.Length &&
+            floatWithDrain[3] == 0x3E &&
+            floatWithDrain[tone.Length - 1] == 0xBE,
+            "float HDA fixture retains tone before silent drain");
+        for (int i = tone.Length; i < floatWithDrain.Length; i++)
             expect(floatWithDrain[i] == 0, "float HDA 16KiB drain stays silent");
         bool fixtureRejected = false;
         try { AudioFloatToneFixture.FromStereo16Left(new byte[3]); }
