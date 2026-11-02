@@ -96,6 +96,32 @@ class ResponsiveGui3094(unittest.TestCase):
             self.assertLessEqual(len(selected), 128)
             self.assertIn(current, selected)
 
+    def test_image_viewer_failed_load_keeps_previous_image_and_title(self):
+        load = IMAGE_VIEWER.split("private void LoadImage(string path, bool rebuildSiblings)", 1)[1].split(
+            "private bool IsCurrentDirectoryInSiblingList()", 1
+        )[0]
+        # FAT32 can disappear while a sibling is being opened. Do not clear
+        # the previous image, path, preview or title on any failure.
+        self.assertLess(load.index("try\\n"), load.index("if (!File.Exists(path))"))
+        self.assertLess(load.index("string name = Path.GetFileName(path);"),
+                        load.index("sourcePixels = pixels;"))
+        self.assertLess(load.index("sourcePixels = pixels;"),
+                        load.index("previewBitmap = null;"))
+        error_handler = load.split("catch (Exception ex)", 1)[1]
+        for destructive_reset in (
+            "sourcePixels = null;", "sourceWidth = 0;", "sourceHeight = 0;",
+            "previewBitmap = null;", "currentPath = string.Empty;",
+        ):
+            self.assertNotIn(destructive_reset, error_handler)
+        self.assertIn('status = "Blad obrazu: " + ex.Message;', error_handler)
+        # A successful navigation must invalidate the old preview and
+        # render the new pixels even while the toolbar button is pressed.
+        render = IMAGE_VIEWER.split("private void RenderViewport(Canvas canvas)", 1)[1].split(
+            "private void RenderFooter(Canvas canvas)", 1
+        )[0]
+        self.assertIn("(!leftButtonDown || previewBitmap == null)", render)
+        self.assertIn("previewWidth > areaWidth || previewHeight > areaHeight", render)
+
     def test_image_viewer_zoom_crop_and_resize_never_overpaint_client(self):
         self.assertIn("int visibleWidth = System.Math.Min(targetWidth, areaWidth);", IMAGE_VIEWER)
         self.assertIn("int visibleHeight = System.Math.Min(targetHeight, areaHeight);", IMAGE_VIEWER)
