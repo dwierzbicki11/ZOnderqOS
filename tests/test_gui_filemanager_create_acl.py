@@ -140,6 +140,23 @@ checks["editor exceptions stay inside file manager"] = (
     and "Open error: " in open_body
 )
 
+# New file/folder names must be safe on FAT32 before any filesystem write.
+name_body = source.split("private static bool IsSafeNewEntryName(", 1)[1].split(
+    "private void FinishCreate()", 1
+)[0]
+checks["FAT32 name policy runs before combining or writing paths"] = (
+    "if (!IsSafeNewEntryName(name))" in body
+    and body.index("if (!IsSafeNewEntryName(name))") < body.index("Path.Combine(currentPath, name)")
+)
+checks["FAT32 name policy rejects reserved and control characters"] = (
+    "c < 32" in name_body
+    and all(("c == '" + char + "'") in name_body for char in "/:*?<>|")
+    and ("c == '\\\\'") in name_body
+    and ("c == '\"'") in name_body
+    and "name[name.Length - 1] == '.'" in name_body
+    and 'name == ".."' in name_body
+)
+
 for name, ok in checks.items():
     if not ok:
         raise AssertionError(name)
