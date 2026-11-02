@@ -12,7 +12,17 @@ namespace Cosmos.Kernel.System.Graphics
     public class Canvas
     {
         public int ScreenWidth { get; set; } = int.MaxValue;
-        public virtual void DrawFilledRectangle(Color color, int x, int y, int width, int height) { }
+        public int ScreenHeight { get; set; } = int.MaxValue;
+        public void ValidateRect(int x, int y, int width, int height)
+        {
+            if (width <= 0 || height <= 0 || x < 0 || y < 0 ||
+                (long)x + width > ScreenWidth || (long)y + height > ScreenHeight)
+                throw new InvalidOperationException("Notification rectangle outside work area: " +
+                    x + "," + y + " " + width + "x" + height +
+                    " screen=" + ScreenWidth + "x" + ScreenHeight);
+        }
+        public virtual void DrawFilledRectangle(Color color, int x, int y, int width, int height)
+            => ValidateRect(x, y, width, height);
         public virtual void DrawLine(Color color, int x1, int y1, int x2, int y2) { }
     }
 }
@@ -70,13 +80,17 @@ namespace ZonderqOS.GUI
     internal static class UiPainter
     {
         public static void Shadow(Cosmos.Kernel.System.Graphics.Canvas canvas,
-            int x, int y, int width, int height, int radius) { }
+            int x, int y, int width, int height, int radius)
+            => canvas.ValidateRect(x, y, width, height);
         public static void RoundedPanel(Cosmos.Kernel.System.Graphics.Canvas canvas,
-            int x, int y, int width, int height, int radius, Color fill, Color border) { }
+            int x, int y, int width, int height, int radius, Color fill, Color border)
+            => canvas.ValidateRect(x, y, width, height);
         public static void RoundedTop(Cosmos.Kernel.System.Graphics.Canvas canvas,
-            int x, int y, int width, int height, int radius, Color fill) { }
+            int x, int y, int width, int height, int radius, Color fill)
+            => canvas.ValidateRect(x, y, width, height);
         public static void RoundedFill(Cosmos.Kernel.System.Graphics.Canvas canvas,
-            int x, int y, int width, int height, int radius, Color fill) { }
+            int x, int y, int width, int height, int radius, Color fill)
+            => canvas.ValidateRect(x, y, width, height);
     }
 
     internal static class SmallTextRenderer
@@ -294,14 +308,20 @@ internal static class Program
     {
         // Exercise the production renderer with a host Canvas: any
         // nonpositive clipped-text width throws in the stub above.
-        foreach (int width in new[] { 100, 120, 140, 160, 180, 200, 240, 320, 800 })
+        foreach (int width in new[] { 24, 40, 60, 80, 100, 120, 140, 160, 180, 200, 240, 320, 800 })
         {
-            foreach (int height in new[] { 200, 240, 480, 600 })
+            foreach (int height in new[] { 90, 120, 160, 200, 240, 480, 600 })
             {
                 NotificationService.ResetForSession();
                 Post("Compact");
                 var center = new NotificationCenter(width, height, 44);
-                var canvas = new Cosmos.Kernel.System.Graphics.Canvas { ScreenWidth = width };
+                // All notification rectangles must fit above the 44px taskbar,
+                // including the toast and header in very short firmware modes.
+                var canvas = new Cosmos.Kernel.System.Graphics.Canvas
+                {
+                    ScreenWidth = width,
+                    ScreenHeight = height - 44
+                };
                 center.Render(canvas); // active toast
                 center.Toggle();
                 center.Render(canvas); // notification cards
@@ -312,9 +332,45 @@ internal static class Program
         }
     }
 
+    private static void NarrowCardCannotDismissFromOutside()
+    {
+        // The old 24px close button began outside a 32px-wide card and
+        // could dismiss an alert by clicking the blank panel margin.
+        NotificationService.ResetForSession();
+        ulong id = Post("keep");
+        var center = new NotificationCenter(80, 600, 44);
+        center.Toggle();
+        int cardX = center.X + 14;
+        int cardY = center.Y + 130;
+        Check(center.UpdateInteractions(cardX - 3, cardY + 12, true, false),
+            "narrow panel owns the margin click");
+        Check(!Entry(id).IsDismissed, "off-card click never dismisses alert");
+        center.UpdateInteractions(cardX - 3, cardY + 12, false, true);
+        Check(center.UpdateInteractions(cardX + 6, cardY + 20, true, false),
+            "narrow card remains selectable");
+        Check(Entry(id).IsRead && !Entry(id).IsDismissed,
+            "compact card selects without accidental dismissal");
+    }
+
+    private static void TinyToastUsesActualPaintedHitbox()
+    {
+        NotificationService.ResetForSession();
+        Post("short");
+        var center = new NotificationCenter(160, 120, 44);
+        // Only 76px remain above the taskbar. The old 98px hitbox would
+        // consume clicks in the taskbar area despite not fitting on screen.
+        Check(!center.UpdateInteractions(50, 90, true, false),
+            "toast cannot capture pointer below its visible 76px work area");
+        Check(center.UpdateInteractions(50, 50, true, false),
+            "visible toast opens notifications");
+        Check(center.Visible, "short toast opens the center");
+    }
+
     public static int Main()
     {
         CompactRenderingNeverUsesInvalidTextClips();
+        NarrowCardCannotDismissFromOutside();
+        TinyToastUsesActualPaintedHitbox();
         ModalPanelOwnsOutsidePointerUntilDismissed();
         TinyPanelFooterDoesNotTriggerHiddenFilters();
         PageNavigationTracksVisibleRows();
