@@ -245,6 +245,7 @@ namespace ZonderqOS.GUI
         // A/B switch restores the previous Unicode path without changing
         // the production build or the old ASCII fast path.
         internal static bool DisableUnicodeTrimFastPathForBenchmark;
+        internal static bool DisableSpaceTrimForBenchmark;
 #endif
         internal static string SliceTrimmedForOutput(string source, int start, int length)
         {
@@ -269,9 +270,19 @@ namespace ZonderqOS.GUI
                     return source.Substring(start, length);
             }
 
-            // Span.TrimEnd uses the runtime's whitespace scanner without
-            // first allocating the untrimmed intermediate substring.
-            ReadOnlySpan<char> visible = source.AsSpan(start, length).TrimEnd();
+            // A trailing ASCII space is common in padded terminal columns.
+            // Trim that contiguous run with the single-character span
+            // overload, then trim any Unicode whitespace preceding it.
+            // The second trim is required for exact String.TrimEnd semantics
+            // on inputs such as "text\\t   " or "text\\u00a0   ".
+            ReadOnlySpan<char> visible = source.AsSpan(start, length);
+            if (length > 0 && source[start + length - 1] == ' '
+#if ZONDERQ_PERF_HOST_TEST
+                && !DisableSpaceTrimForBenchmark
+#endif
+                )
+                visible = visible.TrimEnd(' ');
+            visible = visible.TrimEnd();
             return visible.IsEmpty ? string.Empty : visible.ToString();
         }
 
