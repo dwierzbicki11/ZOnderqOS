@@ -64,6 +64,18 @@ class TinyTaskManagerViewTests(unittest.TestCase):
         self.assertLess(mouse.index("UpdateLayout();"), mouse.index("view.HandleScrollMouse("))
         self.assertLess(mouse.index("UpdateLayout();"), mouse.index("view.NavAt("))
 
+    def test_keyboard_reflows_before_navigation_and_destructive_actions(self):
+        keyboard = section("public override void HandleKeyboard(KeyEvent key)",
+                           "private void SetPage(int page)")
+        self.assertIn("Window.EnsureDesktopBounds();", keyboard)
+        self.assertIn("UpdateLayout();", keyboard)
+        self.assertLess(keyboard.index("Window.EnsureDesktopBounds();"),
+                        keyboard.index("UpdateLayout();"))
+        for action in ("Select(-view.VisibleRows);", "Select(view.VisibleRows);",
+                       "EndSelectedTask();"):
+            self.assertLess(keyboard.index("UpdateLayout();"),
+                            keyboard.index(action))
+
     def test_resize_keeps_previously_visible_selection_without_hijacking_scroll(self):
         layout = section("private void UpdateLayout()", "private void UpdateClock()")
         self.assertIn("int rows = view.VisibleRows;", layout)
