@@ -29,6 +29,14 @@ static class AudioFloatWaveSmoke
         return false;
     }
 
+    private static void Write32(byte[] bytes, int offset, int value)
+    {
+        bytes[offset] = (byte)value;
+        bytes[offset + 1] = (byte)(value >> 8);
+        bytes[offset + 2] = (byte)(value >> 16);
+        bytes[offset + 3] = (byte)(value >> 24);
+    }
+
     public static void Run(Action<bool, string> expect)
     {
         // Canonical IEEE_FLOAT, 48kHz stereo: independent channels,
@@ -44,6 +52,46 @@ static class AudioFloatWaveSmoke
             wave[46] == 4 && wave[47] == 0, "IEEE float fact records four frames");
         expect(wave[50] == 'd' && wave[51] == 'a' && wave[52] == 't' && wave[53] == 'a',
             "IEEE float data follows fact metadata");
+        // Validate RIFF fact metadata rather than trusting a self-inconsistent
+        // IEEE_FLOAT frame count. A missing fact remains accepted for legacy
+        // files; when present, it must be unique, complete and correct.
+        byte[] wrongFact = (byte[])wave.Clone();
+        Write32(wrongFact, 46, 3);
+        expect(Rejects(wrongFact), "reject IEEE float fact with wrong frame count");
+        Write32(wrongFact, 46, 5);
+        expect(Rejects(wrongFact), "reject IEEE float fact with excess frame count");
+
+        byte[] duplicateFact = new byte[wave.Length + 12];
+        Array.Copy(wave, duplicateFact, wave.Length);
+        duplicateFact[wave.Length] = (byte)'f';
+        duplicateFact[wave.Length + 1] = (byte)'a';
+        duplicateFact[wave.Length + 2] = (byte)'c';
+        duplicateFact[wave.Length + 3] = (byte)'t';
+        Write32(duplicateFact, wave.Length + 4, 4);
+        Write32(duplicateFact, wave.Length + 8, 4);
+        Write32(duplicateFact, 4, duplicateFact.Length - 8);
+        expect(Rejects(duplicateFact), "reject duplicate IEEE float fact chunk");
+
+        byte[] shortFact = new byte[wave.Length - 2];
+        Array.Copy(wave, 0, shortFact, 0, 48);
+        Array.Copy(wave, 50, shortFact, 48, wave.Length - 50);
+        Write32(shortFact, 42, 2);
+        Write32(shortFact, 4, shortFact.Length - 8);
+        expect(Rejects(shortFact), "reject truncated IEEE float fact payload");
+
+        byte[] noFact = new byte[wave.Length - 12];
+        Array.Copy(wave, 0, noFact, 0, 38);
+        Array.Copy(wave, 50, noFact, 38, wave.Length - 50);
+        Write32(noFact, 4, noFact.Length - 8);
+        expect(!Rejects(noFact), "accept legacy IEEE float WAV without fact");
+
+        byte[] shortFmt = (byte[])wave.Clone();
+        Write32(shortFmt, 16, 17);
+        expect(Rejects(shortFmt), "reject 17-byte WAVEFORMATEX fmt chunk");
+        byte[] oversizedFmtExtension = (byte[])wave.Clone();
+        oversizedFmtExtension[36] = 1;
+        expect(Rejects(oversizedFmtExtension), "reject WAVEFORMATEX cbSize exceeding fmt chunk");
+
         byte[] decoded = AudioWavePcm.DecodeStereo16(wave);
         short[] expected = { 0, 16383, -16384, 32767, -32768, 32767, -32768, -8192 };
         expect(decoded.Length == expected.Length * 2, "float stereo output frame length");

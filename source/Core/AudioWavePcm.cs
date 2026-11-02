@@ -80,6 +80,8 @@ namespace ZonderqOS.SystemCore
 
             bool hasFormat = false;
             bool hasData = false;
+            bool hasFact = false;
+            uint factFrames = 0;
             int dataOffset = 0;
             int dataSize = 0;
             int channels = 0;
@@ -109,6 +111,13 @@ namespace ZonderqOS.SystemCore
                     int blockAlign = Read16(wave, pos + 20);
                     int bits = Read16(wave, pos + 22);
                     int validBits = bits;
+                    // A noncanonical fmt extension must include the complete
+                    // WAVEFORMATEX cbSize and fit inside the declared chunk.
+                    // This also rejects a 17-byte fmt that would otherwise
+                    // misinterpret its padding byte as an extension.
+                    if (size != 16 && (size < 18 ||
+                        (long)Read16(wave, pos + 24) + 18 > size))
+                        throw new ArgumentException("Invalid WAV fmt extension length.", nameof(wave));
                     if (format == 0xFFFE)
                     {
                         // Extensible PCM may store 16/20/24 valid bits in a
@@ -157,6 +166,16 @@ namespace ZonderqOS.SystemCore
                     sourceIsFloat = isFloat;
                     hasFormat = true;
                 }
+                else if (Tag(wave, pos, "fact"))
+                {
+                    // Non-PCM WAVE files may advertise their decoded frame
+                    // count here. Never trust a contradictory count or silently
+                    // accept duplicate metadata. The chunk can precede fmt/data.
+                    if (hasFact || size < 4)
+                        throw new ArgumentException("Duplicate or short WAV fact chunk.", nameof(wave));
+                    factFrames = Read32(wave, pos + 8);
+                    hasFact = true;
+                }
                 else if (Tag(wave, pos, "data"))
                 {
                     if (hasData || size == 0 || size > MaxDataBytes)
@@ -171,6 +190,8 @@ namespace ZonderqOS.SystemCore
                 throw new ArgumentException("WAV fmt or data chunk missing.", nameof(wave));
 
             int sourceFrameBytes = channels * (sourceBits / 8);
+            if (sourceIsFloat && hasFact && factFrames != (uint)(dataSize / sourceFrameBytes))
+                throw new ArgumentException("IEEE float WAV fact frame count does not match data.", nameof(wave));
             if (dataSize % sourceFrameBytes != 0 ||
                 dataSize > sourceRate * MaxDurationSeconds * sourceFrameBytes)
                 throw new ArgumentException("WAV data exceeds two seconds or has an incomplete frame.", nameof(wave));
