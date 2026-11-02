@@ -269,12 +269,20 @@ namespace ZonderqOS.GUI.Apps
 
             if (sourcePixels == null || sourceWidth <= 0 || sourceHeight <= 0)
             {
-                IconManager.DrawScaled(canvas, IconType.ImageViewer,
-                    x + (width - 56) / 2, y + System.Math.Max(22, height / 2 - 64), 56, 56);
-                SmallTextRenderer.DrawCentered(canvas, "BRAK OTWARTEGO OBRAZU", x + 20,
-                    y + height / 2 + 4, System.Math.Max(40, width - 40), Text);
-                SmallTextRenderer.DrawCentered(canvas, "Otworz PNG/BMP dwuklikiem w File Managerze", x + 20,
-                    y + height / 2 + 24, System.Math.Max(40, width - 40), Muted);
+                if (width >= 100 && height >= 180)
+                {
+                    IconManager.DrawScaled(canvas, IconType.ImageViewer,
+                        x + (width - 56) / 2, y + height / 2 - 72, 56, 56);
+                    SmallTextRenderer.DrawCentered(canvas, "BRAK OTWARTEGO OBRAZU", x + 8,
+                        y + height / 2 + 4, width - 16, Text);
+                    SmallTextRenderer.DrawCentered(canvas, "Otworz PNG/BMP dwuklikiem w File Managerze", x + 8,
+                        y + height / 2 + 24, width - 16, Muted);
+                }
+                else if (width >= 40 && height >= 20)
+                {
+                    SmallTextRenderer.DrawClipped(canvas, "BRAK OTWARTEGO OBRAZU",
+                        x + 6, y + (height - 12) / 2, width - 12, Text);
+                }
                 return;
             }
 
@@ -311,12 +319,13 @@ namespace ZonderqOS.GUI.Apps
 
         private int GetViewportWidth()
         {
-            return System.Math.Max(160, Window.Width - 20);
+            return System.Math.Max(1, Window.Width - 20);
         }
 
         private int GetViewportHeight()
         {
-            return System.Math.Max(120, Window.Height - 132);
+            // Never let the preview overlap the footer on short desktops.
+            return System.Math.Max(1, Window.Height - 132);
         }
 
         private void ChangeZoom(int delta)
@@ -402,7 +411,8 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
-                if (width <= 0 || height <= 0 || pixels == null || pixels.Length < width * height)
+                if (width <= 0 || height <= 0 || pixels == null ||
+                    (long)width * height > pixels.Length)
                 {
                     status = "Nieprawidlowy obraz";
                     return;
@@ -548,21 +558,29 @@ namespace ZonderqOS.GUI.Apps
                 }
             }
 
-            CosmosBitmap preview = new CosmosBitmap(targetWidth,targetHeight, ColorDepth.ColorDepth32);
+            // A zoomed image can exceed the viewport. Draw a centered crop
+            // instead of letting Canvas.DrawImage overwrite other windows or
+            // the footer. Only allocate the visible pixel rectangle.
+            int visibleWidth = System.Math.Min(targetWidth, areaWidth);
+            int visibleHeight = System.Math.Min(targetHeight, areaHeight);
+            int cropX = (targetWidth - visibleWidth) / 2;
+            int cropY = (targetHeight - visibleHeight) / 2;
+
+            CosmosBitmap preview = new CosmosBitmap(visibleWidth, visibleHeight, ColorDepth.ColorDepth32);
             int[] destination = preview.RawData;
-            if (destination == null || destination.Length < targetWidth * targetHeight)
+            if (destination == null || (long)destination.Length < (long)visibleWidth * visibleHeight)
                 return;
 
             int background = ViewBackground.ToArgb();
-            for (int dy = 0; dy < targetHeight; dy++)
+            for (int dy = 0; dy < visibleHeight; dy++)
             {
-                int ry = (int)((long)dy * rotatedHeight / targetHeight);
+                int ry = (int)((long)(dy + cropY) * rotatedHeight / targetHeight);
                 if (ry >= rotatedHeight) ry = rotatedHeight - 1;
-                int row = dy * targetWidth;
+                int row = dy * visibleWidth;
 
-                for (int dx = 0; dx < targetWidth; dx++)
+                for (int dx = 0; dx < visibleWidth; dx++)
                 {
-                    int rx = (int)((long)dx * rotatedWidth / targetWidth);
+                    int rx = (int)((long)(dx + cropX) * rotatedWidth / targetWidth);
                     if (rx >= rotatedWidth) rx = rotatedWidth - 1;
 
                     int sx;
@@ -594,8 +612,8 @@ namespace ZonderqOS.GUI.Apps
             }
 
             previewBitmap = preview;
-            previewWidth = targetWidth;
-            previewHeight = targetHeight;
+            previewWidth = visibleWidth;
+            previewHeight = visibleHeight;
             preparedAreaWidth = areaWidth;
             preparedAreaHeight = areaHeight;
             previewDirty = false;
