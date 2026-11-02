@@ -717,7 +717,7 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x04 => ReadCommand(),
             0x06 => ++statusReads > 1 && ChangeStatusOnSecondRead
                 ? (ushort)(Status ^ 0x0010) : Status,
-            0x42 => ++msiControlReads > 2 && EnableMsiAfterFirstModeScan
+            0x42 => ++msiControlReads > 1 && EnableMsiAfterFirstModeScan
                 ? (ushort)(MsiControl | 1) : MsiControl,
             0x4A => MsiXControl,
             0x10 => ReadBarLow(),
