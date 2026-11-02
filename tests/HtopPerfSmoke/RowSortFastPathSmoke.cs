@@ -183,6 +183,49 @@ internal static class RowSortFastPathSmoke
         }
     }
 
+    private static void VerifyRandomizedFallback()
+    {
+        KernelProcess[] oldProcesses = ProcessManager.TestProcesses;
+        KernelThreadInfo[] oldThreads = SchedulerInfo.Threads;
+        try
+        {
+            const int count = 256;
+            var threads = new KernelThreadInfo[count];
+            for (int i = 0; i < count; i++)
+                threads[i] = new KernelThreadInfo
+                {
+                    Id = (uint)(5000 + i), CpuId = 0,
+                    State = KernelThreadState.READY, IsManaged = true
+                };
+            SchedulerInfo.Threads = threads;
+            ProcessManager.TestProcesses = Array.Empty<KernelProcess>();
+            var monitor = new HtopMonitor();
+            var random = new Random(3095);
+            for (int trial = 0; trial < 32; trial++)
+            {
+                for (int i = count - 1; i > 0; i--)
+                {
+                    int j = random.Next(i + 1);
+                    KernelThreadInfo item = threads[i];
+                    threads[i] = threads[j];
+                    threads[j] = item;
+                }
+                monitor.Refresh();
+                for (int i = 0; i < count; i++)
+                {
+                    uint tid = uint.Parse(monitor.Lines[8 + i].Substring(6, 6).Trim());
+                    Check(tid == (uint)(5000 + i),
+                        "random fallback trial " + trial + " row " + i);
+                }
+            }
+        }
+        finally
+        {
+            ProcessManager.TestProcesses = oldProcesses;
+            SchedulerInfo.Threads = oldThreads;
+        }
+    }
+
     private static void BenchmarkReversed(int count)
     {
         KernelProcess[] oldProcesses = ProcessManager.TestProcesses;
@@ -263,6 +306,7 @@ internal static class RowSortFastPathSmoke
         VerifyOrderedAndReversed(128);
         VerifyOrderedAndReversed(512);
         VerifyPidModeSwitch();
+        VerifyRandomizedFallback();
         BenchmarkOrdered(128);
         BenchmarkOrdered(512);
         BenchmarkReversed(128);
