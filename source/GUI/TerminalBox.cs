@@ -501,7 +501,13 @@ namespace ZonderqOS.GUI
             for (int i = startLine; i < endLine; i++)
             {
                 string line = OutputLines[i] ?? "";
-                DrawTerminalString(canvas, ClipLineForRender(line, i - startLine, maxChars),
+                // The usual unresized history already fits: retain its old
+                // direct draw path with no cache lookup or helper call.
+                // Once a clip cache exists, short rows still clear stale refs.
+                string visibleLine = line;
+                if (line.Length > maxChars || renderClips != null)
+                    visibleLine = ClipLineForRender(line, i - startLine, maxChars);
+                DrawTerminalString(canvas, visibleLine,
                     X + ContentPadding, currentY, TextColor);
                 currentY += lineHeight;
             }

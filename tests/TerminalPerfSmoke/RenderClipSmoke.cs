@@ -72,6 +72,15 @@ internal static class RenderClipSmoke
         box.ClearInput();
         Check(!ReferenceEquals(inputClip, box.ClipInputForRender(input, 9)),
             "clear input must discard cached text"); checks++;
+        string beforeTrim = box.ClipLineForRender(source, 0, 12);
+        for (int i = 0; i < 450; i++)
+            box.PrintLine("history " + i);
+        string afterTrim = box.ClipLineForRender(source, 0, 12);
+        Check(!ReferenceEquals(beforeTrim, afterTrim),
+            "bounded history trim must release clipped cache"); checks++;
+        box.ShowMonitor(new[] { "monitor snapshot" }, 0);
+        Check(!ReferenceEquals(afterTrim, box.ClipLineForRender(source, 0, 12)),
+            "monitor snapshot must release clipped cache"); checks++;
 
         // Render a real, resized production widget through a recording Canvas.
         var draws = new List<string>();
@@ -123,6 +132,18 @@ internal static class RenderClipSmoke
         rendered.Render(canvas);
         Check(draws.Exists(text => ReferenceEquals(text, firstPrompt)),
             "resized prompt render should reuse prefix"); checks++;
+
+        // Normal unresized history must stay allocation-free across frames.
+        var normal = new TerminalBox(0, 0, 820, 160);
+        normal.OutputLines.Add("normal short line");
+        var noCapture = new Canvas();
+        normal.Render(noCapture);
+        long normalBefore = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1000; i++)
+            normal.Render(noCapture);
+        long normalBytes = GC.GetAllocatedBytesForCurrentThread() - normalBefore;
+        Check(normalBytes == 0, "normal repeated Render() allocated " + normalBytes + " bytes");
+        checks++;
 
         // Compare the same 32 visible lines and fixed-width prefix selection.
         // The destination arrays prevent the JIT from eliding substrings.
