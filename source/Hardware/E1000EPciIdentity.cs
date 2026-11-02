@@ -127,6 +127,23 @@ namespace ZonderqOS.Hardware
                     if (id == 0x05) seenMsi = true;
                     else seenMsiX = true;
                     control = config.Read16(bus, slot, function, (byte)(pointer + 2));
+                    // A capability header/control word can fit at 0xFC
+                    // while its required address/data/table registers run
+                    // beyond the 256-byte conventional config space.
+                    // Reject such truncated MSI/MSI-X structures even when
+                    // their enable bits are clear: they cannot establish a
+                    // trustworthy legacy-INTx configuration.
+                    if (id == 0x05)
+                    {
+                        // MSI: 10 bytes (32-bit address), +4 for a 64-bit
+                        // address and +8 for per-vector mask/pending bits.
+                        int size = 10 + ((control & 0x0080) != 0 ? 4 : 0) +
+                            ((control & 0x0100) != 0 ? 8 : 0);
+                        if (pointer + size > 0x100)
+                            return false;
+                    }
+                    else if (pointer > 0xF4) // MSI-X requires 12 bytes
+                        return false;
                     if ((id == 0x05 && (control & 0x0001) != 0) ||
                         (id == 0x11 && (control & 0x8000) != 0))
                         return false;
