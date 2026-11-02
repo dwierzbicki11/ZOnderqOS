@@ -469,6 +469,20 @@ internal static class Program
             () => currentPrint.PrintLine(wrapped), 1500);
         Same(currentPrint, legacyPrint, "benchmark print");
 
+        var legacyScrolledLine = new LegacyOutput(820, 520);
+        var currentScrolledLine = new TerminalBox(0, 0, 820, 520) { IsFocused = true };
+        for (int i = 0; i < 430; i++)
+        {
+            legacyScrolledLine.PrintLine("history " + i);
+            currentScrolledLine.PrintLine("history " + i);
+        }
+        legacyScrolledLine.PageUp();
+        currentScrolledLine.HandleKey(new KeyEvent { Key = ConsoleKeyEx.PageUp });
+        Benchmark("scrolled wrapped long line x1000",
+            () => legacyScrolledLine.PrintLine(wrapped),
+            () => currentScrolledLine.PrintLine(wrapped), 1000);
+        Same(currentScrolledLine, legacyScrolledLine, "benchmark scrolled wrapped line");
+
         var legacyCommand = new LegacyOutput(820, 520);
         var currentCommand = new TerminalBox(0, 0, 820, 520);
         var commandRows = new string[400];
