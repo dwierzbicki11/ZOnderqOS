@@ -263,8 +263,8 @@ def self_test() -> None:
     real_n2 = real_n2.replace(
         "[NET3095-N1] PCI_TX_STABLE=PASS",
         "[NET3095-N1] PCI_TX_STABLE"
-        "[LAPIC] Timer tick 5 RSP=FFFF80007F64EB80\\n"
-        "[SCHED] Tick 5 enabled=1\\n=PASS",
+        "[LAPIC] Timer tick 5 RSP=FFFF80007F64EB80\n"
+        "[SCHED] Tick 5 enabled=1\n=PASS",
     )
     assert "PASS" in validate(real_n2, good)
     # Real N6 QEMU run 41400794536 had a scheduler tick inserted into
