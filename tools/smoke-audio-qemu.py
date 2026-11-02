@@ -242,6 +242,8 @@ def main():
                 print(mute_capture.inspect(wav))
             elif args.command == "stereosplit" and abs(args.balance) == 100:
                 print(balance_capture.inspect(wav, active_channel="left" if args.balance < 0 else "right"))
+            elif args.command == "stereosplit" and args.balance:
+                print(balance_capture.inspect_partial(wav, args.balance))
             elif args.command == "stereosplit":
                 print(stereo_capture.inspect(wav))
             elif args.command == "mixqueue":
