@@ -104,13 +104,13 @@ namespace ZonderqOS.SystemCore
         private string headerSchedulerName;
         private string headerLine;
 
-        // Physical-page telemetry is often unchanged between adjacent htop
-        // refreshes. Avoid rebuilding numeric strings and a combined line
-        // when the actual allocator snapshot has not changed. All three
-        // inputs participate in invalidation; this is not a stale RAM gauge.
-        private ulong memoryTotalPages = ulong.MaxValue;
-        private ulong memoryFreePages = ulong.MaxValue;
-        private ulong memoryPageSize = ulong.MaxValue;
+        // Displayed MiB is quantized. A physical allocator can gain or lose
+        // pages every sample without changing either number on the screen.
+        // Cache the *rendered* values, not the raw page counters: this avoids
+        // needless string allocations while preserving the exact visible
+        // memory gauge (including its original truncation and overflow).
+        private ulong memoryUsedMiB = ulong.MaxValue;
+        private ulong memoryTotalMiB = ulong.MaxValue;
         private string memoryLine;
 
         // Process/thread counts are frequently stable even when runtime
@@ -134,18 +134,19 @@ namespace ZonderqOS.SystemCore
 
         internal string GetMemoryLine(ulong totalPages, ulong freePages, ulong pageSize)
         {
-            // Preserve the original FreePages clamp even for inconsistent
-            // firmware telemetry. Cache the clamped value actually displayed.
+            // Preserve the original FreePages clamp and arithmetic order.
+            // Changes smaller than 1 MiB must not invalidate an identical
+            // rendered line, even when page size or raw counts change.
             ulong free = Math.Min(totalPages, freePages);
-            if (memoryLine != null && totalPages == memoryTotalPages &&
-                free == memoryFreePages && pageSize == memoryPageSize)
+            ulong usedMiB = (totalPages - free) * pageSize / 1048576UL;
+            ulong totalMiB = totalPages * pageSize / 1048576UL;
+            if (memoryLine != null && usedMiB == memoryUsedMiB &&
+                totalMiB == memoryTotalMiB)
                 return memoryLine;
 
-            memoryTotalPages = totalPages;
-            memoryFreePages = free;
-            memoryPageSize = pageSize;
-            memoryLine = "Mem: " + ((totalPages - free) * pageSize / 1048576UL) +
-                " / " + (totalPages * pageSize / 1048576UL) + " MiB";
+            memoryUsedMiB = usedMiB;
+            memoryTotalMiB = totalMiB;
+            memoryLine = "Mem: " + usedMiB + " / " + totalMiB + " MiB";
             return memoryLine;
         }
 
