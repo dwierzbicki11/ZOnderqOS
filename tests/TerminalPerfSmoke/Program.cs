@@ -346,6 +346,69 @@ internal static class Program
         return rows;
     }
 
+    private static int ScalarNextOutputBreak(string output, int start)
+    {
+        for (int i = start; i < output.Length; i++)
+            if (output[i] == '\r' || output[i] == '\n')
+                return i;
+        return output.Length;
+    }
+
+    private static int delimiterSink;
+
+    private static void VerifyDelimiterScanner()
+    {
+        var random = new Random(3095);
+        char[] alphabet = { 'x', 'Y', ' ', '\r', '\n', '\0', '\u0105',
+            '\uD83D', '\uDE00' };
+        int checks = 0;
+        for (int sample = 0; sample < 2048; sample++)
+        {
+            int length = random.Next(0, 512);
+            char[] chars = new char[length];
+            for (int i = 0; i < chars.Length; i++)
+                chars[i] = alphabet[random.Next(alphabet.Length)];
+            string output = new string(chars);
+            for (int trial = 0; trial < 8; trial++)
+            {
+                int start = random.Next(0, output.Length + 1);
+                int expected = ScalarNextOutputBreak(output, start);
+                int actual = TerminalBox.FindNextOutputBreak(output, start);
+                if (expected != actual)
+                    throw new Exception("delimiter scanner mismatch at " + sample +
+                        " start=" + start + " expected=" + expected + " actual=" + actual);
+                checks++;
+            }
+        }
+        foreach (string output in new[] {
+            "", "\r", "\n", "\r\n", "\n\r", "abc", "abc\r\ndef",
+            new string('z', 8192) + "\r\nend",
+            "\u0001GUI_CLEAR\u0001\r\n\u0105" })
+        {
+            for (int start = 0; start <= output.Length; start++)
+            {
+                if (TerminalBox.FindNextOutputBreak(output, start) !=
+                    ScalarNextOutputBreak(output, start))
+                    throw new Exception("delimiter scanner edge mismatch");
+                checks++;
+            }
+        }
+        Console.WriteLine("PASS: " + checks +
+            " production span delimiter scans equal frozen scalar scanner");
+    }
+
+    private static void BenchmarkDelimiterScanner()
+    {
+        string longRow = new string('x', 4096);
+        string shortRow = "directory/file-0000000000000000000000000000000000000";
+        Benchmark("delimiter scan 4096-char row x2000",
+            () => delimiterSink ^= ScalarNextOutputBreak(longRow, 0),
+            () => delimiterSink ^= TerminalBox.FindNextOutputBreak(longRow, 0), 2000);
+        Benchmark("delimiter scan 48-char row x10000",
+            () => delimiterSink ^= ScalarNextOutputBreak(shortRow, 0),
+            () => delimiterSink ^= TerminalBox.FindNextOutputBreak(shortRow, 0), 10000);
+    }
+
     private static void Verify()
     {
         if (ScrollOffset == null || UserScrolled == null || ScrollBarField == null)
@@ -474,6 +537,8 @@ internal static class Program
 
     private static int Main()
     {
+        VerifyDelimiterScanner();
+        BenchmarkDelimiterScanner();
         Verify();
         VerifyCommandBatch();
         VerifyScrollTrimClamping();
