@@ -77,3 +77,12 @@ Executed on 2026-11-02 with a locally compiled dosfstools revision
 `289a48b9cb5b3c589391d28aa2515c325c932c7a`: all five checks passed, including
 both corruption cases without modifying bytes. This is independent filesystem
 validation, not a kernel boot or Cosmos write-driver test.
+
+The historical `tests/test_3094_storage_policy.py` now checks stock **3.0.95**:
+exact project SDK plus one unconditional reference each to Cosmos.Kernel and
+Cosmos.Kernel.System at 3.0.95. Missing, duplicated, downgraded, conditional and
+version-overridden references are rejected. Negative mutation tests exercise
+both package pins; checks also run with Python optimization enabled. Existing
+host/EFI, unique-label, mount and disabled-format source contracts remain intact.
+This source-level gate does not resolve the invalid global.json or replace a
+kernel build and hardware/QEMU tests. No SDK/package version was changed.
