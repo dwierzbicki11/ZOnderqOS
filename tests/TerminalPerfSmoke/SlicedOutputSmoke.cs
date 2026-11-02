@@ -210,5 +210,9 @@ internal static class SlicedOutputSmoke
             rows[i] = "file " + i + " -- " + new string('x', 40);
         Benchmark("400 CRLF rows x200", string.Join("\r\n", rows) + "\r\n", 200);
         Benchmark("one long line x80", new string('x', 100000) + "\r\n", 80);
+        var longRows = new string[120];
+        for (int i = 0; i < longRows.Length; i++)
+            longRows[i] = "entry-" + i + " " + new string('x', 2048);
+        Benchmark("120 wrapped CRLF rows x30", string.Join("\r\n", longRows) + "\r\n", 30);
     }
 }
