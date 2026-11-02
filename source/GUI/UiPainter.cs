@@ -296,22 +296,15 @@ namespace ZonderqOS.GUI
         // Internal for exact host A/B tests of the production clipping path.
         internal static void Fill(Canvas canvas, Color color, int x, int y, int width, int height)
         {
-            if (width <= 0 || height <= 0)
-                return;
-            // Canvas dimensions are stable for the duration of a paint call.
-            // Read them once for both the common path and the clipped fallback.
-            int canvasWidth = canvas.Width;
-            int canvasHeight = canvas.Height;
-            if (x >= canvasWidth || y >= canvasHeight)
+            if (width <= 0 || height <= 0 || x >= canvas.Width || y >= canvas.Height)
                 return;
 
-            // Most GUI scanlines are wholly inside the framebuffer. Bypass
-            // long-coordinate clipping and four Math.Min/Max operations while
-            // retaining the wide, overflow-safe path for dragged windows.
-            // Subtractions cannot overflow: x/y are nonnegative and already
-            // smaller than the corresponding Canvas dimension.
-            if (x >= 0 && y >= 0 &&
-                width <= canvasWidth - x && height <= canvasHeight - y)
+            // The common fully visible rectangle needs no wide-coordinate
+            // clipping. Unsigned comparisons reject negative coordinates in
+            // one check each; partially clipped panels retain the old path.
+            // The subtraction is safe because x/y are inside the framebuffer.
+            if ((uint)x < (uint)canvas.Width && (uint)y < (uint)canvas.Height &&
+                width <= canvas.Width - x && height <= canvas.Height - y)
             {
                 canvas.DrawFilledRectangle(color, x, y, width, height);
                 return;
@@ -323,8 +316,8 @@ namespace ZonderqOS.GUI
                 return;
             int left = Math.Max(0, x);
             int top = Math.Max(0, y);
-            int endX = (int)Math.Min(canvasWidth, right);
-            int endY = (int)Math.Min(canvasHeight, bottom);
+            int endX = (int)Math.Min(canvas.Width, right);
+            int endY = (int)Math.Min(canvas.Height, bottom);
             if (endX > left && endY > top)
                 canvas.DrawFilledRectangle(color, left, top, endX - left, endY - top);
         }
