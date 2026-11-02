@@ -267,6 +267,30 @@ def self_test() -> None:
                 marker, marker[:pos] + "[SCHED] Tick 7 enabled=1\n" + marker[pos:]
             )
             assert "PASS" in validate(torn, good)
+            # Real N2 QEMU run 41478097771: the LAPIC callback and its
+            # matching scheduler tick interrupted PCI_TX_STABLE mid-word.
+            paired = (
+                "[LAPIC] Timer tick 5 RSP=FFFF80007F64EB80\n"
+                "[SCHED] Tick 5 enabled=1\n"
+            ).replace("\\\n", "\n")
+            paired_torn = serial.replace(
+                marker, marker[:pos] + paired + marker[pos:]
+            )
+            assert "PASS" in validate(paired_torn, good)
+        for bad_pair in (
+            "[LAPIC] Timer tick 5 RSP=FFFF80007F64EB80\n[SCHED] Tick 6 enabled=1\n",
+            "[LAPIC] Timer tick 5 RSP=INVALID\n[SCHED] Tick 5 enabled=1\n",
+            "[LAPIC] Timer tick 5 RSP=FFFF80007F64EB80\n",
+            "[LAPIC] Timer tick 5 RSP=FFFF80007F64EB80\n[SCHED] Tick 5 enabled=0\n",
+            "[LAPIC] Timer tick 5 RSP=FFFF80007F64EB80\n[OTHER] Tick 5 enabled=1\n",
+        ):
+            torn = serial.replace(marker, marker[:5] + bad_pair + marker[5:])
+            try:
+                validate(torn, good)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError("accepted incomplete/mismatched LAPIC scheduler splice")
         for bad_tick in (
             "[SCHED] Tick 7 enabled=0\n",
             "[SCHED] Tick seven enabled=1\n",
