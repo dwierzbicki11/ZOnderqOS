@@ -152,6 +152,28 @@ checks["editor exceptions stay inside file manager"] = (
     and "Open error: " in open_body
 )
 
+# FAT32 adapters can throw when media disappears between selection and
+# copy/cut/paste. These are source-level exception-boundary checks, not an
+# unplugged-device QEMU integration test.
+checks["copy/cut preflight catches unexpected storage failures"] = (
+    "try\\n            {" in copy_body
+    and copy_body.index("try\\n            {") < copy_body.index("CanReadInSession(currentPath)")
+    and copy_body.index("catch (Exception ex)") > copy_body.index("FileClipboard.Set(")
+    and 'status = (cut ? "Cut error: " : "Copy error: ") + ex.Message;' in copy_body
+)
+paste_body = source[source.index("        private void PasteClipboard("):source.index("        private int Columns()")]
+checks["paste catches failures before clipboard mutation guard"] = (
+    "string destinationPath = null;" in paste_body
+    and paste_body.index("try\\n            {") < paste_body.index("FileClipboard.TryPaste(")
+    and paste_body.index("catch (Exception ex)") > paste_body.index("FileClipboard.TryPaste(")
+    and 'status = "Paste error: " + ex.Message;' in paste_body
+)
+checks["paste refreshes retained destination after unexpected exception"] = (
+    "if (!string.IsNullOrEmpty(destinationPath))\\n                    RefreshKeepStatus();" in paste_body
+    and paste_body.index("catch (Exception ex)") <
+        paste_body.rindex("if (!string.IsNullOrEmpty(destinationPath))")
+)
+
 # New file/folder names must be safe on FAT32 before any filesystem write.
 name_body = Path("source/GUI/FileManagerNamePolicy.cs").read_text(encoding="utf-8")
 assert "public static bool IsSafeNewEntryName(string name)" in name_body
