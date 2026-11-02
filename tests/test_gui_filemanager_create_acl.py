@@ -130,9 +130,17 @@ filter_begin = source.index("        private void ApplySearchFilter()")
 filter_end = source.index("        private void RebuildSidebar()", filter_begin)
 filter_body = source[filter_begin:filter_end]
 checks["filter cannot revive revoked directory listing"] = (
-    "if (!CanReadInSession(currentPath))" in filter_body
+    "canRead = CanReadInSession(currentPath);" in filter_body
+    and "if (!canRead)" in filter_body
     and "ClearDeniedListing();" in filter_body
-    and filter_body.index("ClearDeniedListing();") < filter_body.index("entries.AddRange(cachedEntries);")
+    and filter_body.index("if (!canRead)") < filter_body.index("entries.AddRange(cachedEntries);")
+)
+checks["filter catches ACL and detached FAT32 failures before restoring cached names"] = (
+    "try\n            {\n                canRead = CanReadInSession(currentPath);" in filter_body
+    and "catch (Exception)" in filter_body
+    and filter_body.index("catch (Exception)") < filter_body.index("entries.AddRange(cachedEntries);")
+    and filter_body.count("ClearDeniedListing();") >= 2
+    and 'status = "Cannot verify folder permissions";' in filter_body
 )
 checks["opening cached file rechecks parent ACL"] = (
     "if (!CanReadInSession(currentPath))" in open_body
