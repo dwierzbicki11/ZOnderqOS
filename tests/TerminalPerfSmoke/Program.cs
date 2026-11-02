@@ -393,8 +393,8 @@ internal static class Program
                 checks++;
             }
         }
-        // Exercise every side of the 64-character scalar/span boundary,
-        // including CRLF crossing the boundary and a delimiter at the end.
+        // Exercise delimiter positions around 64 characters, including
+        // CRLF crossing the position and a delimiter at the end.
         foreach (int position in new[] { 0, 1, 62, 63, 64, 65, 66, 127, 128 })
         foreach (string separator in new[] { "\r", "\n", "\r\n" })
         {
