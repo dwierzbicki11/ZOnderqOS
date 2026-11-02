@@ -46,6 +46,9 @@ namespace ZonderqOS.GUI.Apps
         private int preparedAreaWidth = -1;
         private int preparedAreaHeight = -1;
         private bool previewDirty = true;
+        // A failed allocation/decode of the scaled preview must not be retried
+        // every GUI frame. Retry on a new viewport size or an explicit action.
+        private bool previewFailed;
         private bool leftButtonDown;
 
         private string currentPath = string.Empty;
@@ -300,11 +303,25 @@ namespace ZonderqOS.GUI.Apps
 
             // During live window resize keep the existing preview. The bitmap is
             // rebuilt once after button release instead of allocating at every size.
+            bool areaChanged = preparedAreaWidth != areaWidth || preparedAreaHeight != areaHeight;
             if ((!leftButtonDown || previewBitmap == null) &&
-                (previewDirty || previewBitmap == null ||
-                 preparedAreaWidth != areaWidth || preparedAreaHeight != areaHeight))
+                (previewDirty || areaChanged || (previewBitmap == null && !previewFailed)))
             {
-                PreparePreview(areaWidth, areaHeight);
+                try
+                {
+                    PreparePreview(areaWidth, areaHeight);
+                }
+                catch (Exception)
+                {
+                    // A malformed image or failed bitmap allocation must not
+                    // escape Render() and terminate the desktop. Record this
+                    // viewport so the next frame does not retry indefinitely.
+                    previewFailed = true;
+                    previewDirty = false;
+                    preparedAreaWidth = areaWidth;
+                    preparedAreaHeight = areaHeight;
+                    status = "Nie mozna przygotowac podgladu";
+                }
             }
 
             // A previously prepared bitmap may be larger than the viewport
@@ -458,6 +475,7 @@ namespace ZonderqOS.GUI.Apps
                 previewBitmap = null;
                 previewWidth = 0;
                 previewHeight = 0;
+                previewFailed = false;
                 rotation = 0;
                 zoomPercent = 100;
                 fitToWindow = true;
@@ -611,7 +629,14 @@ namespace ZonderqOS.GUI.Apps
             CosmosBitmap preview = new CosmosBitmap(visibleWidth, visibleHeight, ColorDepth.ColorDepth32);
             int[] destination = preview.RawData;
             if (destination == null || (long)destination.Length < (long)visibleWidth * visibleHeight)
+            {
+                previewFailed = true;
+                previewDirty = false;
+                preparedAreaWidth = areaWidth;
+                preparedAreaHeight = areaHeight;
+                status = "Nie mozna przygotowac podgladu";
                 return;
+            }
 
             int background = ViewBackground.ToArgb();
             for (int dy = 0; dy < visibleHeight; dy++)
@@ -659,6 +684,7 @@ namespace ZonderqOS.GUI.Apps
             preparedAreaWidth = areaWidth;
             preparedAreaHeight = areaHeight;
             previewDirty = false;
+            previewFailed = false;
         }
 
         private static int CompositeOnBackground(int foreground, int background)
