@@ -34,6 +34,14 @@ namespace ZonderqOS.SystemCore
             if (riffLength < 44 || riffLength > MaxFileBytes)
                 throw new ArgumentException("WAV stream exceeds the bounded file limit.", nameof(input));
 
+            // Seekable read-only files expose their remaining length. Reject a
+            // truncated or trailing RIFF before allocating up to 800 KiB or
+            // reading the payload. Non-seekable streams keep the bounded
+            // ReadExact + EOF path below. This never seeks or writes.
+            if (input.CanSeek && input.Length - input.Position != riffLength - header.Length)
+                throw new ArgumentException(
+                    "RIFF length differs from read-only stream length.", nameof(input));
+
             byte[] wave = new byte[(int)riffLength];
             Array.Copy(header, 0, wave, 0, header.Length);
             ReadExact(input, wave, header.Length, wave.Length - header.Length);
