@@ -113,6 +113,8 @@ class CompactNotepadTests(unittest.TestCase):
         self.assertIn("Math.Max(1, Width - 12), Math.Max(1, Height - 12)", NOTEPAD)
         self.assertIn("if (app.DialogMode == 2 && Width >= 100 && Height >= 110)", NOTEPAD)
         self.assertIn('SmallTextRenderer.DrawClipped(canvas, app.DialogText ?? ""', NOTEPAD)
+        self.assertIn("if (view.Width < 100 || view.Height < 110)", NOTEPAD)
+        self.assertIn('status = "Enlarge window to confirm save path";', NOTEPAD)
 
 class CompactAboutTests(unittest.TestCase):
     def test_about_panel_rows_do_not_exceed_client_height(self):
