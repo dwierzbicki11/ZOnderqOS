@@ -253,6 +253,27 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertLess(runtime.index("if (useOneMillisecondDiagnostic)"),
                         runtime.index("if (useAsyncDiagnostic)"))
 
+    def test_partial_balance_is_validated_by_real_capture(self):
+        volume = read("source/Core/AudioPcmVolume.cs")
+        runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
+        harness = read("tools/smoke-audio-qemu.py")
+        validator = read("tools/verify-audio-balance-capture.py")
+        workflow = read(".github/workflows/audio-qemu.yml")
+        host = read("tests/AudioPciSmoke/Program.cs")
+        self.assertIn("public static void ResolveStereoGains(", volume)
+        self.assertIn("volumePercent < 0 || volumePercent > 100", volume)
+        self.assertIn("balancePercent < -100 || balancePercent > 100", volume)
+        self.assertIn("AudioPcmVolume.ResolveStereoGains(", runtime)
+        self.assertIn("for (int balance = -100; balance <= 100; balance++)", host)
+        self.assertIn("def inspect_partial(path: Path, balance_percent: int):", validator)
+        self.assertIn("partial balance ratio", validator)
+        self.assertIn("crossings = sum(", validator)
+        self.assertIn("balance_capture.inspect_partial(wav, args.balance)", harness)
+        self.assertIn("--command stereosplit --balance 50", workflow)
+        self.assertIn("--command stereosplit --balance -50", workflow)
+        self.assertIn("audio-qemu-balance-half-right-out/*.wav", workflow)
+        self.assertIn("audio-qemu-balance-half-left-out/*.wav", workflow)
+
     def test_real_pcm_path_is_opt_in_only(self):
         runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
         kernel = read("Kernel.cs")
