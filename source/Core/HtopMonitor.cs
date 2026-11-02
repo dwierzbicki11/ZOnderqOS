@@ -430,24 +430,46 @@ namespace ZonderqOS.SystemCore
             // so retain its original path to avoid an extra scan.
             if (rows.Count >= 32)
             {
-                bool ordered = true;
-                for (int i = 1; i < rows.Count; i++)
-                {
-                    if (CompareRows(rows[i - 1], rows[i]) <= 0)
-                        continue;
-                    ordered = false;
-                    break;
-                }
-                if (ordered)
+                int firstInversion = 1;
+                while (firstInversion < rows.Count &&
+                    CompareRows(rows[firstInversion - 1], rows[firstInversion]) <= 0)
+                    firstInversion++;
+                if (firstInversion == rows.Count)
                     return;
+
+                // A scheduler snapshot may arrive in the exact reverse order
+                // (for example after a slot table rebuild). Reversing a
+                // strictly descending list is linear and preserves the same
+                // total ordering as List.Sort. Strict comparisons deliberately
+                // exclude duplicate keys so equal-key rows are not reordered.
+                // Cheap tail/middle probes avoid a second scan for random rows.
+                if (firstInversion == 1 &&
+                    CompareRows(rows[rows.Count - 2], rows[rows.Count - 1]) > 0 &&
+                    CompareRows(rows[rows.Count / 2 - 1], rows[rows.Count / 2]) > 0)
+                {
+                    bool descending = true;
+                    for (int i = 1; i < rows.Count; i++)
+                    {
+                        if (CompareRows(rows[i - 1], rows[i]) > 0)
+                            continue;
+                        descending = false;
+                        break;
+                    }
+                    if (descending)
+                    {
+                        rows.Reverse();
+                        return;
+                    }
+                }
             }
             rows.Sort(rowComparison);
         }
 
 #if ZONDERQ_PERF_HOST_TEST
         // Compiled only into the host smoke project: identical List.Sort and
-        // comparator, but without the production sorted-row fast path.
+        // comparator, but without the production sorted-row fast paths.
         internal void SortRowsUnconditionallyForBenchmark() => rows.Sort(rowComparison);
+        internal void ReverseRowsForBenchmark() => rows.Reverse();
 #endif
 
         private int CompareRows(Row a, Row b)
