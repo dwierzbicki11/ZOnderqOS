@@ -509,5 +509,27 @@ class AudioGen3Contract(unittest.TestCase):
             self.assertNotIn(forbidden, runtime)
 
 
+    def test_ieee_float32_is_bounded_and_isolated_from_production(self):
+        parser = read("source/Core/AudioWavePcm.cs")
+        runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
+        kernel = read("Kernel.cs")
+        workflow = read(".github/workflows/audio-qemu.yml")
+        harness = read("tools/smoke-audio-qemu.py")
+        validator = read("tools/verify-audio-wav-capture.py")
+        self.assertIn("bool isFloat = format == 3;", parser)
+        self.assertIn("float.IsNaN(sample) || float.IsInfinity(sample)", parser)
+        self.assertIn("EncodeFloat32AtRate(byte[] samples, int sampleRate, int channels)", parser)
+        self.assertIn("samples.Length > sampleRate * MaxDurationSeconds * frameBytes", parser)
+        self.assertIn("PlayWaveFloat32TestTone()", runtime)
+        self.assertIn('if (command == "wavfloat")', kernel)
+        self.assertIn("--command wavfloat", workflow)
+        self.assertIn("audio-qemu-float32-out/*.wav", workflow)
+        self.assertIn('"wavfloat": 2860', harness)
+        self.assertIn("2860", validator)
+        for forbidden in ("Disk.", "File.", "TryMount(", "WriteBlock("):
+            self.assertNotIn(forbidden, parser)
+            self.assertNotIn(forbidden, runtime)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
