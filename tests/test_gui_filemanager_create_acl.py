@@ -80,6 +80,14 @@ checks["copy checks read ACL before clipboard mutation"] = (
 checks["cut checks source write ACL"] = (
     "cut && !PermissionManager.CanWrite(entry.FullPath, SecurityContext.CurrentUser)" in copy_body
 )
+checks["cut checks parent write ACL before staging"] = (
+    "Path.GetDirectoryName(entry.FullPath)" in copy_body
+    and "!PermissionManager.CanWrite(sourceParent, user)" in copy_body
+    and copy_body.index("!PermissionManager.CanWrite(sourceParent, user)") < copy_body.index("FileClipboard.Set(")
+)
+checks["cut outside home rejected before staging"] = (
+    "!IsInsidePath(sourceParent, UserManager.GetHomeDirectory(user))" in copy_body
+)
 
 for name, ok in checks.items():
     if not ok:
