@@ -1043,6 +1043,16 @@ namespace ZonderqOS.GUI.Apps
                 }
             }
 
+            // A FAT32 directory snapshot can outlive an external rename or
+            // deletion. Never stage a stale item in the clipboard; Exists can
+            // also return false on transient I/O failure, so preserve the
+            // last good listing and let the user explicitly refresh with F5.
+            if (!(entry.IsDirectory ? Directory.Exists(entry.FullPath) : File.Exists(entry.FullPath)))
+            {
+                status = "Item unavailable; press F5 to refresh";
+                return;
+            }
+
             FileClipboard.Set(entry.FullPath, entry.IsDirectory, cut);
             status = (cut ? "Cut: " : "Copied: ") + entry.Name + " - choose destination and paste";
         }
@@ -1214,8 +1224,26 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
-                nanoLauncher(entry.FullPath);
-                status = "Opened " + entry.Name;
+                // A file may have been removed or replaced by a directory
+                // after the last scan. Do not open a stale path in an editor:
+                // some editors interpret a missing file as a new document.
+                if (!File.Exists(entry.FullPath))
+                {
+                    status = "File unavailable; press F5 to refresh";
+                    return;
+                }
+
+                try
+                {
+                    nanoLauncher(entry.FullPath);
+                    status = "Opened " + entry.Name;
+                }
+                catch (Exception ex)
+                {
+                    // An I/O failure while opening a file must not tear down
+                    // the entire desktop or invalidate the last good listing.
+                    status = "Open error: " + ex.Message;
+                }
             }
         }
 
