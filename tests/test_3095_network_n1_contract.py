@@ -679,5 +679,34 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("verify_arp_for_dns(frames, guest)", dns)
 
 
+    def test_n6_opt_in_link_recovery_requires_live_guest_and_wire_proof(self):
+        # Host QMP acceptance alone is insufficient. The isolated kernel
+        # must see both link transitions and successfully RX an ICMP reply.
+        cycle = SOURCE.split("private static void PollLinkCycle()", 1)[1]
+        cycle = cycle.split("protected override void Run()", 1)[0]
+        for term in (
+            "if (!adapter.LinkUp)", "LINK_DOWN_OBSERVED=YES",
+            "if (!s_linkDownObserved)", "LINK_UP_OBSERVED=YES",
+            "IsE1000EDriverKitStable(", "IsE1000ELeaseStable(",
+            "ping.SendEcho(id: 0x3098, sequence: 1)",
+            "ping.Receive(ref remote, 5000)",
+            "LINK_RECOVERY_ICMP=PASS",
+        ):
+            self.assertIn(term, cycle)
+        self.assertLess(cycle.index("LINK_DOWN_OBSERVED=YES"),
+                        cycle.index("LINK_UP_OBSERVED=YES"))
+        self.assertLess(cycle.index("LINK_UP_OBSERVED=YES"),
+                        cycle.index("ping.SendEcho(id: 0x3098"))
+        self.assertIn("s_linkCycleArmed = true;", SOURCE)
+        self.assertIn("PollLinkCycle();", SOURCE)
+        self.assertIn('NET3095_LINK_CYCLE', SMOKE)
+        self.assertIn('network_3095_qmp_link.py', SMOKE)
+        self.assertIn('verify_3095_network_n6_link_recovery.py', SMOKE)
+        validator = (ROOT / "tests/verify_3095_network_n6_link_recovery.py").read_text()
+        self.assertIn("validate_final(serial, pcap)", validator)
+        self.assertIn("check_link_pair(list(pcap_frames(pcap)), guest)", validator)
+        self.assertIn("len(recovery) != 2", validator)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
