@@ -20,6 +20,8 @@ namespace ZonderqOS.GUI.Apps
         private readonly List<FileEntry> allEntries = new List<FileEntry>();
         private FileEntry[] sortScratch = new FileEntry[0];
         private bool directorySnapshotValid;
+        // Query represented by entries; null after a directory refresh.
+        private string appliedSearchText;
         private readonly List<SidebarEntry> sidebarEntries = new List<SidebarEntry>();
 
         private string currentPath = "/root";
@@ -685,6 +687,7 @@ namespace ZonderqOS.GUI.Apps
             // Refresh is the only path that reads a directory. Search keystrokes
             // reuse this sorted snapshot; F5, navigation and file mutations refresh it.
             directorySnapshotValid = false;
+            appliedSearchText = null;
             allEntries.Clear();
             entries.Clear();
             selectedIndex = -1;
@@ -726,7 +729,16 @@ namespace ZonderqOS.GUI.Apps
 
         private void ApplyFilterFromSnapshot()
         {
-            FileEntrySorter.Filter(allEntries, entries, searchText);
+            // Typing extends the old query: scan only previous matches.
+            // Backspace, a replaced query or a new directory needs the full
+            // sorted snapshot. Never reuse results across disk refreshes.
+            if (appliedSearchText != null &&
+                searchText.Length > appliedSearchText.Length &&
+                searchText.StartsWith(appliedSearchText, StringComparison.OrdinalIgnoreCase))
+                FileEntrySorter.FilterNarrowed(entries, searchText);
+            else
+                FileEntrySorter.Filter(allEntries, entries, searchText);
+            appliedSearchText = searchText;
             selectedIndex = -1;
             scrollIndex = 0;
             contextMenuVisible = false;
