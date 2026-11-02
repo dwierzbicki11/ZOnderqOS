@@ -1176,6 +1176,46 @@ static class Test
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "reject incomplete stereo frame");
 
+        // Exercise the production master-volume/balance resolver across
+        // every valid integer combination. The expected gains are computed
+        // independently from the definition of left/right attenuation.
+        for (int master = 0; master <= 100; master++)
+        {
+            for (int balance = -100; balance <= 100; balance++)
+            {
+                AudioPcmVolume.ResolveStereoGains(
+                    master, balance, out int leftGain, out int rightGain);
+                int expectedLeft = master * (100 - Math.Max(0, balance)) / 100;
+                int expectedRight = master * (100 - Math.Max(0, -balance)) / 100;
+                Expect(leftGain == expectedLeft && rightGain == expectedRight,
+                    "volume/balance gains match independent integer reference");
+                Expect(leftGain >= 0 && leftGain <= master &&
+                    rightGain >= 0 && rightGain <= master,
+                    "volume/balance never amplifies above master");
+            }
+        }
+        AudioPcmVolume.ResolveStereoGains(25, 50, out int quarterLeft, out int quarterRight);
+        Expect(quarterLeft == 12 && quarterRight == 25,
+            "non-unity master with partial balance uses bounded integer gain");
+        AudioPcmVolume.ResolveStereoGains(100, -100, out int fullLeft, out int silentRight);
+        Expect(fullLeft == 100 && silentRight == 0, "left-only balance extreme");
+        AudioPcmVolume.ResolveStereoGains(100, 100, out int silentLeft, out int fullRight);
+        Expect(silentLeft == 0 && fullRight == 100, "right-only balance extreme");
+        foreach (int badMaster in new[] { -1, 101, int.MinValue, int.MaxValue })
+        {
+            rejected = false;
+            try { AudioPcmVolume.ResolveStereoGains(badMaster, 0, out _, out _); }
+            catch (ArgumentOutOfRangeException) { rejected = true; }
+            Expect(rejected, "invalid master gain rejected");
+        }
+        foreach (int badBalance in new[] { -101, 101, int.MinValue, int.MaxValue })
+        {
+            rejected = false;
+            try { AudioPcmVolume.ResolveStereoGains(100, badBalance, out _, out _); }
+            catch (ArgumentOutOfRangeException) { rejected = true; }
+            Expect(rejected, "invalid stereo balance rejected");
+        }
+
         // Real production C# channel balance: independent gains, signed
         // extremes and source immutability, without any hardware access.
         byte[] extremes = { 0, 128, 255, 127, 255, 127, 0, 128 };
