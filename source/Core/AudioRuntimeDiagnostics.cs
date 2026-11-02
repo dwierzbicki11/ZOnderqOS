@@ -935,7 +935,7 @@ namespace ZonderqOS.SystemCore
                 }
                 bool accepted = AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled));
                 Console.WriteLine(accepted
-                    ? "[AUDIO] PCM ACCEPTED_AND_DRAINED (not proof of audible output)"
+                    ? "[AUDIO] PCM API_RETURNED_SUCCESS (not proof of DMA/IRQ progress or audible output)"
                     : "[AUDIO] PCM REFUSED (format, driver or playback failure)");
                 return accepted;
             }
