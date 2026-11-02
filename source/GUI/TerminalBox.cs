@@ -125,7 +125,7 @@ namespace ZonderqOS.GUI
                     take = Math.Min(maxChars, remaining);
 
                 // Preserve per-row scrollbar callbacks for manual scrolling.
-                string wrapped = line.Substring(position, take).TrimEnd();
+                string wrapped = SliceTrimmed(line, position, take);
                 if (userScrolled)
                     AddOutputLine(wrapped);
                 else
@@ -137,6 +137,17 @@ namespace ZonderqOS.GUI
 
             if (!userScrolled && !deferAutoFollow)
                 FinishOutputUpdate();
+        }
+
+        // Match String.TrimEnd's Unicode whitespace semantics before
+        // allocating the retained row. The old Substring(...).TrimEnd()
+        // allocated twice whenever the wrapped row ended in whitespace.
+        private static string SliceTrimmed(string source, int start, int length)
+        {
+            int end = start + length;
+            while (end > start && char.IsWhiteSpace(source[end - 1]))
+                end--;
+            return source.Substring(start, end - start);
         }
 
         /// <summary>
