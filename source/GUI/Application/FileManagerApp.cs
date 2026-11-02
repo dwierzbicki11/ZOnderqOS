@@ -737,6 +737,8 @@ namespace ZonderqOS.GUI.Apps
             {
                 if (!CanReadInSession(path))
                 {
+                    if (string.Equals(path, currentPath, StringComparison.Ordinal))
+                        ClearDeniedListing();
                     status = "Permission denied: cannot open folder";
                     return;
                 }
@@ -1005,6 +1007,15 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            // If ACLs changed while this window was open, do not use a
+            // cached filename to bypass the now-denied parent listing.
+            if (!CanReadInSession(currentPath))
+            {
+                ClearDeniedListing();
+                status = "Permission denied: cannot list folder";
+                return;
+            }
+
             FileEntry entry = entries[selectedIndex];
             // A denied file must not appear successfully copied in the GUI.
             // Clipboard.TryPaste repeats full recursive checks at mutation
@@ -1179,6 +1190,15 @@ namespace ZonderqOS.GUI.Apps
             if (GridRowsForView == 0 || index < 0 || index >= entries.Count)
                 return;
 
+            // A previously loaded directory can become unreadable without
+            // closing the window. Do not launch an editor from stale entries.
+            if (!CanReadInSession(currentPath))
+            {
+                ClearDeniedListing();
+                status = "Permission denied: cannot list folder";
+                return;
+            }
+
             FileEntry entry = entries[index];
             if (entry.IsDirectory)
             {
@@ -1333,6 +1353,22 @@ namespace ZonderqOS.GUI.Apps
             RefreshInternal(status);
         }
 
+        // A denied refresh is different from a transient FAT32 read error:
+        // keeping cached filenames after access was revoked leaks the old
+        // directory listing. Preserve snapshots on I/O failure, not ACL denial.
+        private void ClearDeniedListing()
+        {
+            entries.Clear();
+            cachedEntries.Clear();
+            hasLoadedDirectory = false;
+            loadedDirectoryPath = null;
+            selectedIndex = -1;
+            scrollIndex = 0;
+            contextMenuVisible = false;
+            contextMenuSelection = -1;
+            ResetClickSequence();
+        }
+
         private bool RefreshInternal(string keep)
         {
             try
@@ -1350,6 +1386,11 @@ namespace ZonderqOS.GUI.Apps
                 // scanning a path which the current session cannot enter.
                 if (!CanReadInSession(targetPath))
                 {
+                    // A denied attempt to navigate elsewhere must not erase
+                    // the old readable directory. Only clear a snapshot when
+                    // its own permissions have been revoked.
+                    if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))
+                        ClearDeniedListing();
                     status = "Permission denied: cannot list folder";
                     return false;
                 }
@@ -1430,6 +1471,14 @@ namespace ZonderqOS.GUI.Apps
 
         private void ApplySearchFilter()
         {
+            // Filtering must not resurrect names cached before an ACL change.
+            if (!CanReadInSession(currentPath))
+            {
+                ClearDeniedListing();
+                status = "Permission denied: cannot list folder";
+                return;
+            }
+
             // Rebuild only the visible list. Explicit F5, navigation and
             // successful filesystem changes still refresh the disk snapshot.
             // Keep the selected FileEntry object when it survives filtering;
