@@ -1323,7 +1323,7 @@ class ResponsiveGui3094(unittest.TestCase):
             "private static bool IsInsidePath(", 1)[0]
         self.assertIn("bool viewingVolume =", unmount)
         self.assertLess(unmount.index("StorageMountManager.TryUnmount("),
-                        unmount.index('currentPath = Directory.Exists("/root") ? "/root" : "/";'))
+                        unmount.index('currentPath = Directory.Exists(home) ? home : "/";'))
         self.assertIn("if (viewingVolume)", unmount)
 
     def test_calculator_seventh_row_visible_on_800x600(self):
@@ -1726,7 +1726,8 @@ class ResponsiveGui3094(unittest.TestCase):
         unmount = FILE_MANAGER.split("private void UnmountVolume(SidebarEntry entry)", 1)[1].split(
             "private static bool IsInsidePath(", 1)[0]
         self.assertIn("if (!StorageMountManager.TryUnmount(entry.PartitionIndex, out error))", unmount)
-        self.assertIn('currentPath = Directory.Exists("/root") ? "/root" : "/";', unmount)
+        self.assertIn('currentPath = Directory.Exists(home) ? home : "/";', unmount)
+        self.assertIn("string home = ResolveSessionHome();", unmount)
         self.assertIn('string unmountStatus = "Unmounted Partition " + entry.PartitionIndex;', unmount)
         self.assertIn('if (!RefreshInternal(unmountStatus) && viewingVolume && currentPath != "/")', unmount)
         self.assertIn('currentPath = "/";', unmount)
@@ -1735,7 +1736,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertNotIn("TryMount(", unmount)
         self.assertNotIn("File.Write", unmount)
         self.assertLess(unmount.index("if (!StorageMountManager.TryUnmount("),
-                        unmount.index('currentPath = Directory.Exists("/root")'))
+                        unmount.index('currentPath = Directory.Exists(home)'))
 
 
     def test_file_manager_successful_detach_invalidates_stale_snapshot(self):
@@ -1755,12 +1756,12 @@ class ResponsiveGui3094(unittest.TestCase):
                           "ResetClickSequence();"):
             self.assertIn(statement, success)
         self.assertLess(success.index("entries.Clear();"),
-                        success.index('currentPath = Directory.Exists("/root")'))
+                        success.index('currentPath = Directory.Exists(home)'))
         self.assertLess(unmount.index("entries.Clear();"),
                         unmount.index("RefreshInternal(unmountStatus)"))
         self.assertIn('if (!RefreshInternal(unmountStatus) && viewingVolume && currentPath != "/")',
                       unmount)
-        # Model a detached volume whose /root and / fallback scans both
+        # Model a detached volume whose session home and / fallback scans both
         # fail: the old FAT32 entries are not left selectable or executable.
         old_entries = ["/mnt/usb/secret.txt", "/mnt/usb/docs"]
         old_cache = list(old_entries)
