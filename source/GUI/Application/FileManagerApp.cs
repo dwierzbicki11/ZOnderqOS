@@ -693,6 +693,10 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleKeyboard(KeyEvent key)
         {
+            // A display-mode change or resize may precede the next Update().
+            // Refit the client before keyboard selection, Enter and clipboard
+            // shortcuts so hidden tiles cannot be acted on through stale bounds.
+            SyncViewGeometry();
             // A modified Enter must not create files; modifier shortcuts must
             // never leak into the filename editor or a modal context menu.
             bool modified = (key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) != 0;
