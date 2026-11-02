@@ -35,7 +35,7 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("(pmcsr & 0x0003) != 0", pci)  # reject D1/D2/D3hot
         self.assertIn("control = (ushort)(pmcsr & 0x0003)", pci)
         self.assertIn("finalMode != initialMode", pci)
-        self.assertIn("address == 0xFFFFFFFFFFFFFFF0UL", pci)
+        self.assertIn("(type == 0x04u && (address >> 52) != 0)", pci)  # x64 physical-address limit
         # Read-only legacy INTx metadata is a prerequisite for QEMU's
         # legacy IRQ trace, never a guest ISR invocation counter.
         self.assertIn("TryReadLegacyIrqRoute(", pci)
