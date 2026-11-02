@@ -349,6 +349,16 @@ def self_test() -> None:
         simultaneous_close[:3] +
         [fake_http(True, 0x11, server_end, client_end, client_port=49154)] +
         simultaneous_close[4:],
+        # A forged guest FIN from a different L2 source is not evidence
+        # that the actual guest advanced its TCP sequence number.
+        simultaneous_close[:2] +
+        [simultaneous_close[2][:6] + bytes.fromhex("020000000001") +
+         simultaneous_close[2][12:]] + simultaneous_close[3:],
+        # Final ACK must acknowledge the server FIN's consumed sequence.
+        simultaneous_close[:-1] +
+        [fake_http(False, 0x10, client_end + 1, server_end, client_port=49154)],
+        # A client-first FIN still requires the final ACK.
+        client_first_close[:-1],
     )
     for bad_close in bad_closes:
         try:
