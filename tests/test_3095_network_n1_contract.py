@@ -55,6 +55,25 @@ class NetworkN1Isolation(unittest.TestCase):
                                 section.index("IsE1000EDriverKitSnapshotStable(n1DriverNode)", section.index(after)))
                 self.assertLess(section.index(fail), section.index(success))
 
+        # Each protocol checks the N1 DriverKit snapshot before opening
+        # its first receive path, and again after receiving data.
+        for stage, section, start, operation in (
+            ("DHCP", n2, "DHCP_ATTEMPT=START", "SendDiscoverPacket()"),
+            ("ICMP", n3, "ICMP_ATTEMPT=START", "ping.SendEcho("),
+            ("TCP", n4, "TCP_ATTEMPT=START", "client.Connect("),
+            ("DNS", n5, "DNS_ATTEMPT=START", "dns.SendQuery("),
+        ):
+            with self.subTest(preflight=stage):
+                marker = section.index(start)
+                check = section.index(
+                    "IsE1000EDriverKitSnapshotStable(n1DriverNode)", marker)
+                failure = section.index(
+                    "DriverKit ownership invalid before " + stage, check)
+                action = section.index(operation, marker)
+                self.assertLess(marker, check)
+                self.assertLess(check, failure)
+                self.assertLess(failure, action)
+
         # TCP is multi-read: verify ownership immediately after TX and
         # every successful Read, not only after the final response.
         sent = n4.index("stream.Write(request, 0, request.Length);")
@@ -69,7 +88,7 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertLess(received, rx_check)
         self.assertLess(rx_check, deadline)
         self.assertLess(completed, passed)
-        self.assertEqual(n4.count("IsE1000EDriverKitSnapshotStable(n1DriverNode)"), 3)
+        self.assertEqual(n4.count("IsE1000EDriverKitSnapshotStable(n1DriverNode)"), 4)
 
     def test_n1_requires_real_driverkit_pci_binding_before_raw_tx(self):
         source = SOURCE
