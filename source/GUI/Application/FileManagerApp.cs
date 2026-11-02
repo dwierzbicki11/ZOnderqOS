@@ -916,6 +916,11 @@ namespace ZonderqOS.GUI.Apps
 
         private void CopySelected(bool cut)
         {
+            if (GridRowsForView == 0)
+            {
+                status = "Enlarge window to select files";
+                return;
+            }
             if (selectedIndex < 0 || selectedIndex >= entries.Count)
             {
                 status = cut ? "Select an item to cut" : "Select an item to copy";
@@ -955,7 +960,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void SelectBoundary(bool last)
         {
-            if (entries.Count == 0)
+            if (entries.Count == 0 || GridRowsForView == 0)
                 return;
 
             ResetClickSequence();
@@ -976,7 +981,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void Select(int delta)
         {
-            if (entries.Count == 0)
+            if (entries.Count == 0 || GridRowsForView == 0)
                 return;
 
             // Keyboard selection must not complete a pending mouse double-click.
@@ -996,7 +1001,14 @@ namespace ZonderqOS.GUI.Apps
             int rows = GridRowsForView;
             if (rows == 0)
             {
+                // A tiny framebuffer can leave no painted file tiles at all.
+                // Never retain an invisible selection: Enter or Ctrl+X/C
+                // must not act on a file that the user cannot see.
+                selectedIndex = -1;
                 scrollIndex = 0;
+                contextMenuVisible = false;
+                contextMenuSelection = -1;
+                ResetClickSequence();
                 return;
             }
             int visible = cols * rows;
@@ -1044,7 +1056,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void OpenEntry(int index)
         {
-            if (index < 0 || index >= entries.Count)
+            if (GridRowsForView == 0 || index < 0 || index >= entries.Count)
                 return;
 
             FileEntry entry = entries[index];
