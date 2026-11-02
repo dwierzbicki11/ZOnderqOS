@@ -34,6 +34,14 @@ namespace ZonderqOS.Hardware
                 // the PCI pin must be one of INTA# through INTD#.
                 if (line == 0 || line == 0xFF || pin < 1 || pin > 4)
                     return false;
+                // A read-only snapshot can become stale if PCI command or
+                // routing changes while the diagnostic is sampling it.
+                // Fail closed on a changed INTx enable bit, line or pin.
+                // This is only a stable PCI snapshot, NOT ISR proof.
+                if (config.Read16(bus, slot, function, 0x04) != command ||
+                    config.Read8(bus, slot, function, 0x3C) != line ||
+                    config.Read8(bus, slot, function, 0x3D) != pin)
+                    return false;
                 irqLine = line;
                 irqPin = pin;
                 return true;
