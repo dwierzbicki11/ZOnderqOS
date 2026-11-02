@@ -60,6 +60,16 @@ namespace ZonderqOS.GUI
             destinationPath = null;
             error = null;
 
+            // Clipboard operations are GUI user actions, never boot-time
+            // root services. A missing/expired session must fail closed
+            // instead of silently borrowing root permissions.
+            if (!SecurityContext.IsAuthenticated ||
+                string.IsNullOrEmpty(SecurityContext.CurrentUser))
+            {
+                error = "Authentication required for clipboard paste";
+                return false;
+            }
+
             if (!HasItem)
             {
                 error = "Clipboard is empty";
@@ -68,7 +78,7 @@ namespace ZonderqOS.GUI
 
             string source = Normalize(sourcePath);
             string destinationRoot = Normalize(destinationDirectory);
-            string user = SecurityContext.CurrentUser ?? "root";
+            string user = SecurityContext.CurrentUser;
 
             if (VirtualFs.IsReadOnlyPath(source) || VirtualFs.IsReadOnlyPath(destinationRoot))
             {

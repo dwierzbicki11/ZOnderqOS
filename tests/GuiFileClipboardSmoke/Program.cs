@@ -10,6 +10,7 @@ namespace ZonderqOS
     internal static class SecurityContext
     {
         public static string CurrentUser = "root";
+        public static bool IsAuthenticated = true;
     }
 
     internal static class UserManager
@@ -79,6 +80,7 @@ internal static class Program
         PermissionManager.FailCleanup = false;
         PermissionManager.DenyWritePath = "";
         SecurityContext.CurrentUser = "root";
+        SecurityContext.IsAuthenticated = true;
         UserManager.HomeDirectory = root;
         try
         {
@@ -92,6 +94,7 @@ internal static class Program
             PermissionManager.FailCleanup = false;
             PermissionManager.DenyWritePath = "";
             SecurityContext.CurrentUser = "root";
+            SecurityContext.IsAuthenticated = true;
             Directory.Delete(root, true);
         }
     }
@@ -211,6 +214,31 @@ internal static class Program
         });
     }
 
+    private static void ExpiredSessionCannotPasteAsRoot()
+    {
+        Case(root =>
+        {
+            string source = Path.Combine(root, "original.txt");
+            string destination = Path.Combine(root, "target");
+            Directory.CreateDirectory(destination);
+            File.WriteAllText(source, "protected");
+            FileClipboard.Set(source, false, true);
+            SecurityContext.IsAuthenticated = false;
+            Check(!FileClipboard.TryPaste(destination, out string path, out string error),
+                "expired session cannot move clipboard data");
+            Check(path == null && error != null && error.Contains("Authentication required"),
+                "expired session reports auth failure");
+            Check(File.Exists(source) && Directory.GetFiles(destination).Length == 0,
+                "expired session leaves filesystem unchanged");
+            SecurityContext.IsAuthenticated = true;
+            SecurityContext.CurrentUser = null!;
+            Check(!FileClipboard.TryPaste(destination, out path, out error),
+                "missing user identity cannot silently use root");
+            Check(File.Exists(source) && Directory.GetFiles(destination).Length == 0,
+                "missing identity leaves filesystem unchanged");
+        });
+    }
+
     private static void MissingSourceIsRejected()
     {
         Case(root =>
@@ -234,6 +262,7 @@ internal static class Program
         SuccessfulCopyAndCut();
         MissingSourceIsRejected();
         ReadOnlyAclDestinationIsRejected();
+        ExpiredSessionCannotPasteAsRoot();
         Console.WriteLine("GUI clipboard host C#: " + assertions + " PASS");
         return 0;
     }
