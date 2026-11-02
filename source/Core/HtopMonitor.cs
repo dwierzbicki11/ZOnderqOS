@@ -423,8 +423,32 @@ namespace ZonderqOS.SystemCore
         // production sort without scheduler sampling or output allocations.
         internal void SortRows()
         {
+            // The stock BSP commonly reports the same thread slots and CPU
+            // percentages across consecutive samples. A linear adjacency
+            // check avoids an O(n log n) sort when those rows are already in
+            // the requested order. For small snapshots List.Sort is cheap,
+            // so retain its original path to avoid an extra scan.
+            if (rows.Count >= 32)
+            {
+                bool ordered = true;
+                for (int i = 1; i < rows.Count; i++)
+                {
+                    if (CompareRows(rows[i - 1], rows[i]) <= 0)
+                        continue;
+                    ordered = false;
+                    break;
+                }
+                if (ordered)
+                    return;
+            }
             rows.Sort(rowComparison);
         }
+
+#if ZONDERQ_PERF_HOST_TEST
+        // Compiled only into the host smoke project: identical List.Sort and
+        // comparator, but without the production sorted-row fast path.
+        internal void SortRowsUnconditionallyForBenchmark() => rows.Sort(rowComparison);
+#endif
 
         private int CompareRows(Row a, Row b)
         {
