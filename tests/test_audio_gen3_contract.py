@@ -399,7 +399,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("!IsSupportedSourceRate((int)rate)", parser)
         self.assertIn("rate == 8000 || rate == 11025 || rate == 16000 || rate == 22050 || rate == 24000 ||", parser)
         self.assertIn("rate == 32000 || rate == 44100 || rate == SampleRate", parser)
-        self.assertIn("ResampleToStereo16(wave, dataOffset, dataSize, channels, sourceRate, sourceBits)", parser)
+        self.assertIn("ResampleToStereo16(wave, dataOffset, dataSize, channels, sourceRate, sourceBits, sourceIsFloat)", parser)
         self.assertIn("targetFrames > SampleRate * MaxDurationSeconds", parser)
         self.assertIn("EncodeStereo16AtRate(byte[] pcm, int sampleRate)", parser)
         self.assertIn("EncodePcm8AtRate(byte[] pcm, int sampleRate, int channels)", parser)
