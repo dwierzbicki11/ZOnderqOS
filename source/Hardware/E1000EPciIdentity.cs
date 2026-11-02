@@ -136,9 +136,11 @@ namespace ZonderqOS.Hardware
                     if (id == 0x05)
                     {
                         // MSI: 10 bytes (32-bit address), +4 for a 64-bit
-                        // address and +8 for per-vector mask/pending bits.
+                        // address. Mask-capable MSI has two padding bytes
+                        // before its 4-byte mask and 4-byte pending registers:
+                        // total length 20 (32-bit) or 24 (64-bit), not 18/22.
                         int size = 10 + ((control & 0x0080) != 0 ? 4 : 0) +
-                            ((control & 0x0100) != 0 ? 8 : 0);
+                            ((control & 0x0100) != 0 ? 10 : 0);
                         if (pointer + size > 0x100)
                             return false;
                     }
