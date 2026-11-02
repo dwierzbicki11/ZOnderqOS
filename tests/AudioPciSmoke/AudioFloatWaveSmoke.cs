@@ -39,6 +39,37 @@ static class AudioFloatWaveSmoke
 
     public static void Run(Action<bool, string> expect)
     {
+        // The actual QEMU tone fixture must not turn its silent HDA
+        // drain into +0.125f DC. Exercise the production conversion helper
+        // independently of the device, including sign and ownership.
+        byte[] fixtureSource = { 0, 0, 0, 0, 0, 0x10, 0, 0, 0, 0xF0, 0, 0 };
+        byte[] fixtureOriginal = (byte[])fixtureSource.Clone();
+        byte[] fixtureFloat = AudioFloatToneFixture.FromStereo16Left(fixtureSource);
+        expect(fixtureFloat.Length == 12 &&
+            fixtureFloat[3] == 0 && fixtureFloat[7] == 0x3E &&
+            fixtureFloat[11] == 0xBE,
+            "float fixture preserves zero, positive and negative samples");
+        for (int i = 0; i < fixtureFloat.Length; i++)
+        {
+            if (i != 7 && i != 11)
+                expect(fixtureFloat[i] == 0, "float fixture little-endian zero bytes");
+            expect(fixtureSource[i] == fixtureOriginal[i],
+                "float fixture never modifies source PCM");
+        }
+        byte[] toneWithDrain = AudioTonePcm.GenerateSquareStereo16(
+            48000, 2860, 250, 4096);
+        byte[] floatWithDrain = AudioFloatToneFixture.FromStereo16Left(toneWithDrain);
+        for (int i = floatWithDrain.Length - 4096 * 4; i < floatWithDrain.Length; i++)
+            expect(floatWithDrain[i] == 0, "float HDA 16KiB drain stays silent");
+        bool fixtureRejected = false;
+        try { AudioFloatToneFixture.FromStereo16Left(new byte[3]); }
+        catch (ArgumentException) { fixtureRejected = true; }
+        expect(fixtureRejected, "reject unaligned float fixture PCM");
+        fixtureRejected = false;
+        try { AudioFloatToneFixture.FromStereo16Left(new byte[384004]); }
+        catch (ArgumentException) { fixtureRejected = true; }
+        expect(fixtureRejected, "reject over-two-second float fixture PCM");
+
         // Canonical IEEE_FLOAT, 48kHz stereo: independent channels,
         // sign, asymmetrical PCM16 endpoints and finite clipping.
         byte[] samples = Floats(0f, 0.5f, -0.5f, 1f, -1f, 2f, -2f, -0.25f);
