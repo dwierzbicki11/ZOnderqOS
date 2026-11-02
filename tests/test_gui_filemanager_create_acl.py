@@ -141,12 +141,11 @@ checks["editor exceptions stay inside file manager"] = (
 )
 
 # New file/folder names must be safe on FAT32 before any filesystem write.
-name_body = source.split("private static bool IsSafeNewEntryName(", 1)[1].split(
-    "private void FinishCreate()", 1
-)[0]
+name_body = Path("source/GUI/FileManagerNamePolicy.cs").read_text(encoding="utf-8")
+assert "public static bool IsSafeNewEntryName(string name)" in name_body
 checks["FAT32 name policy runs before combining or writing paths"] = (
-    "if (!IsSafeNewEntryName(name))" in body
-    and body.index("if (!IsSafeNewEntryName(name))") < body.index("Path.Combine(currentPath, name)")
+    "if (!FileManagerNamePolicy.IsSafeNewEntryName(name))" in body
+    and body.index("if (!FileManagerNamePolicy.IsSafeNewEntryName(name))") < body.index("Path.Combine(currentPath, name)")
 )
 checks["FAT32 name policy rejects reserved and control characters"] = (
     "c < 32" in name_body
