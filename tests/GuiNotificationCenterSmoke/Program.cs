@@ -247,8 +247,28 @@ internal static class Program
         }
     }
 
+    private static void TinyPanelFooterDoesNotTriggerHiddenFilters()
+    {
+        // At 200x200 the 136px panel places its footer at y=88, while
+        // the former filter row covered y=82..118 and stole DND clicks.
+        NotificationService.ResetForSession();
+        NotificationService.DoNotDisturb = false;
+        var center = new NotificationCenter(200, 200, 44);
+        center.Toggle();
+        Check(center.Width == 180 && center.Height == 136, "tiny panel geometry");
+        int x = center.X + 132; // third footer button, shared bounds
+        int y = center.Y + center.Height - 48 + 20;
+        Check(center.UpdateInteractions(x, y, true, false),
+            "tiny footer captures DND click");
+        Check(NotificationService.DoNotDisturb,
+            "tiny footer DND works instead of switching filter");
+        center.UpdateInteractions(x, y, false, true);
+        NotificationService.DoNotDisturb = false;
+    }
+
     public static int Main()
     {
+        TinyPanelFooterDoesNotTriggerHiddenFilters();
         PageNavigationTracksVisibleRows();
         NewPostDoesNotRetargetDelete();
         NewPostDoesNotRetargetEnter();

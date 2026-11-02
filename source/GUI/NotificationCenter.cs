@@ -374,13 +374,20 @@ namespace ZonderqOS.GUI
                 Math.Max(1, (Width - 26) * (8 - openingFrames) / 8), 2);
             if (openingFrames > 0)
                 openingFrames--;
-            IconManager.DrawScaled(canvas, IconType.About, X + 18, Y + 19, 28, 28);
-            SmallTextRenderer.Draw(canvas, Width < 380 ? "POWIADOMIENIA" : "CENTRUM POWIADOMIEN",
-                X + 58, Y + 20, Text);
-            if (Width >= 380)
+            // On a 200px-wide framebuffer the badge used to overlap the
+            // notification title. Hide nonessential chrome before it collides.
+            if (Width >= 130 && Height >= 54)
+                IconManager.DrawScaled(canvas, IconType.About, X + 18, Y + 19, 28, 28);
+            if (Width >= 170 && Height >= 54)
+                SmallTextRenderer.Draw(canvas, Width < 260 ? "INFO" :
+                    Width < 380 ? "POWIADOMIENIA" : "CENTRUM POWIADOMIEN",
+                    X + 58, Y + 20, Text);
+            if (Width >= 380 && Height >= 54)
                 SmallTextRenderer.Draw(canvas, "CTRL+ALT+N  |  D DND  |  R PRZECZYTANE",
                     X + 58, Y + 41, Muted);
 
+            if (Width < 100 || Height < 54)
+                return;
             int unread = NotificationService.UnreadCount;
             int badgeX = X + Width - 82;
             UiPainter.RoundedPanel(canvas, badgeX, Y + 17, 60, 36, UiMetrics.ButtonRadius,
@@ -398,6 +405,10 @@ namespace ZonderqOS.GUI
 
         private void RenderFilters(Canvas canvas)
         {
+            // On short screens the filter row overlaps the footer. Keep
+            // the footer actionable and never draw invisible filter buttons.
+            if (Height < 166 || Width < 100)
+                return;
             int y = Y + 82;
             int gap = 7;
             int totalWidth = Width - 28;
@@ -492,6 +503,8 @@ namespace ZonderqOS.GUI
 
         private void RenderFooter(Canvas canvas)
         {
+            if (Height < 57 || Width < 90)
+                return;
             int y = Y + Height - 57;
             UiPainter.RoundedFill(canvas, X + 2, y, Width - 4, 54,
                 UiMetrics.ButtonRadius, Header);
@@ -530,9 +543,16 @@ namespace ZonderqOS.GUI
             UiPainter.RoundedPanel(canvas, x, y, width, 38, UiMetrics.ButtonRadius,
                 dndActive ? Color.FromArgb(58, 47, 32) : hovered ? PanelHover : Panel,
                 dndActive ? Warning : hovered ? SystemTheme.AccentBorder : Border);
+            if (width < 76)
+            {
+                // Three footer buttons still fit on a 200px display.
+                // Center icons rather than drawing text into the next button.
+                IconManager.DrawScaled(canvas, icon, x + (width - 18) / 2, y + 10, 18, 18);
+                return;
+            }
             IconManager.DrawScaled(canvas, icon, x + 9, y + 10, 18, 18);
             SmallTextRenderer.DrawClipped(canvas, label, x + 35, y + 16,
-                System.Math.Max(20, width - 43), dndActive ? Warning : Text);
+                width - 43, dndActive ? Warning : Text);
         }
 
         private void RenderToast(Canvas canvas)
@@ -566,18 +586,23 @@ namespace ZonderqOS.GUI
             hoveredDismissRow = -1;
             hoveredAction = -1;
 
-            int filterY = Y + 82;
-            int gap = 7;
-            int totalWidth = Width - 28;
-            int tabWidth = (totalWidth - gap * 2) / 3;
-            int filterX = X + 14;
-            for (int i = 0; i < 3; i++)
+            // Match RenderFilters: a hidden filter must not steal a click
+            // from the footer when the two rows would overlap.
+            if (Height >= 166 && Width >= 100)
             {
-                int tx = filterX + i * (tabWidth + gap);
-                if (Hit(mouseX, mouseY, tx, filterY, tabWidth, 36))
+                int filterY = Y + 82;
+                int gap = 7;
+                int totalWidth = Width - 28;
+                int tabWidth = (totalWidth - gap * 2) / 3;
+                int filterX = X + 14;
+                for (int i = 0; i < 3; i++)
                 {
-                    hoveredFilter = i;
-                    return;
+                    int tx = filterX + i * (tabWidth + gap);
+                    if (Hit(mouseX, mouseY, tx, filterY, tabWidth, 36))
+                    {
+                        hoveredFilter = i;
+                        return;
+                    }
                 }
             }
 
@@ -606,6 +631,8 @@ namespace ZonderqOS.GUI
                 }
             }
 
+            if (Height < 57 || Width < 90)
+                return;
             int footerY = Y + Height - 48;
             for (int i = 0; i < 3; i++)
             {
