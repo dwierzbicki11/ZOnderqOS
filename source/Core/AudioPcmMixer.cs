@@ -74,6 +74,8 @@ namespace ZonderqOS.SystemCore
                 return output;
             if (TryScaleSingleAudibleClip(clips, startFrames, gainsPercent, null, 0, output))
                 return output;
+            if (TryMixDisjointClips(clips, startFrames, gainsPercent, null, 0, output))
+                return output;
             for (int at = 0; at < length; at += 2)
             {
                 int total = 0;
@@ -185,6 +187,9 @@ namespace ZonderqOS.SystemCore
             if (TryScaleSingleAudibleClip(clips, startFrames, gainsPercent,
                 individualFades, uniformFade, output))
                 return output;
+            if (TryMixDisjointClips(clips, startFrames, gainsPercent,
+                individualFades, uniformFade, output))
+                return output;
             for (int at = 0; at < length; at += 2)
             {
                 int total = 0;
@@ -267,6 +272,69 @@ namespace ZonderqOS.SystemCore
                 }
                 output[start + at] = (byte)scaled;
                 output[start + at + 1] = (byte)(scaled >> 8);
+            }
+            return true;
+        }
+
+        // When several audible notifications occupy disjoint time ranges,
+        // scale only their actual samples. The generic timeline loop would
+        // otherwise visit every silent gap and all eight clips per sample.
+        // Muted clips may overlap freely, but still determine output length.
+        // Overlapping audible clips MUST use the full signed accumulator:
+        // mixing independently would lose cancellation and saturation rules.
+        // This path allocates nothing beyond the caller-owned output array.
+        private static bool TryMixDisjointClips(
+            byte[][] clips, int[] startFrames, int[] gainsPercent,
+            int[] individualFades, int uniformFade, byte[] output)
+        {
+            for (int i = 0; i < clips.Length; i++)
+            {
+                if (gainsPercent[i] == 0)
+                    continue;
+                int start = startFrames[i] * 4;
+                int end = start + clips[i].Length;
+                for (int j = 0; j < i; j++)
+                {
+                    if (gainsPercent[j] == 0)
+                        continue;
+                    int otherStart = startFrames[j] * 4;
+                    int otherEnd = otherStart + clips[j].Length;
+                    if (start < otherEnd && otherStart < end)
+                        return false;
+                }
+            }
+
+            for (int i = 0; i < clips.Length; i++)
+            {
+                int gain = gainsPercent[i];
+                if (gain == 0)
+                    continue;
+                byte[] clip = clips[i];
+                int start = startFrames[i] * 4;
+                int fadeMilliseconds = individualFades == null
+                    ? uniformFade : individualFades[i];
+                if (gain == 100 && fadeMilliseconds == 0)
+                {
+                    Array.Copy(clip, 0, output, start, clip.Length);
+                    continue;
+                }
+
+                int frames = clip.Length / 4;
+                int fadeFrames = Math.Min(fadeMilliseconds * 48, frames / 2);
+                for (int at = 0; at < clip.Length; at += 2)
+                {
+                    int sample = (short)(clip[at] | (clip[at + 1] << 8));
+                    int scaled = sample * gain / 100;
+                    if (fadeMilliseconds != 0)
+                    {
+                        int frame = at / 4;
+                        int envelope = Math.Min(fadeFrames,
+                            Math.Min(frame, frames - 1 - frame));
+                        scaled = fadeFrames == 0 ? 0 : scaled * envelope / fadeFrames;
+                    }
+                    output[start + at] = (byte)scaled;
+                    output[start + at + 1] = (byte)(scaled >> 8);
+                }
             }
             return true;
         }
