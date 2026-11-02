@@ -1171,6 +1171,7 @@ internal static class Program
         VerifyDenseSwapsFallback();
         VerifyTwoRunMerge();
         RotatedRunSmoke.Run();
+        DescendingReverseSmoke.Run();
         VerifyDescendingFastPath();
         BenchmarkAdaptiveRepair();
         BenchmarkSparseSwaps();

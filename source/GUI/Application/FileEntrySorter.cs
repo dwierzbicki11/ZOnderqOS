@@ -19,6 +19,7 @@ namespace ZonderqOS.GUI.Apps
         // Host-only A/B switch: compare the same production sort pipeline
         // with its original two-run merge against the in-place rotation.
         internal static bool DisableRotationForBenchmark;
+        internal static bool DisableArrayReverseForBenchmark;
 #endif
 
         internal static void Sort(List<FileEntry> entries, ref FileEntry[] scratch)
@@ -304,12 +305,14 @@ namespace ZonderqOS.GUI.Apps
 
         private static void ReverseStableDescending(List<FileEntry> entries, int count)
         {
-            for (int left = 0, right = count - 1; left < right; left++, right--)
-            {
-                FileEntry value = entries[left];
-                entries[left] = entries[right];
-                entries[right] = value;
-            }
+            // Array-backed List.Reverse avoids repeated bounds/indexer work
+            // when FAT32 returns an entirely descending enumeration.
+#if ZONDERQ_PERF_HOST_TEST
+            if (DisableArrayReverseForBenchmark)
+                ReverseRangeLegacy(entries, 0, count);
+            else
+#endif
+                entries.Reverse();
 
             // Reversing the whole list also reverses ties. Restore each
             // contiguous tie group to match a stable ascending sort.
@@ -318,15 +321,32 @@ namespace ZonderqOS.GUI.Apps
                 int end = start + 1;
                 while (end < count && Compare(entries[start], entries[end]) == 0)
                     end++;
-                for (int left = start, right = end - 1; left < right; left++, right--)
+                if (end - start > 1)
                 {
-                    FileEntry value = entries[left];
-                    entries[left] = entries[right];
-                    entries[right] = value;
+#if ZONDERQ_PERF_HOST_TEST
+                    if (DisableArrayReverseForBenchmark)
+                        ReverseRangeLegacy(entries, start, end);
+                    else
+#endif
+                        entries.Reverse(start, end - start);
                 }
                 start = end;
             }
         }
+
+#if ZONDERQ_PERF_HOST_TEST
+        // Original indexer-based reverse, retained ONLY for an exact host
+        // A/B baseline. Never compiled into the production kernel.
+        private static void ReverseRangeLegacy(List<FileEntry> entries, int start, int end)
+        {
+            for (int left = start, right = end - 1; left < right; left++, right--)
+            {
+                FileEntry item = entries[left];
+                entries[left] = entries[right];
+                entries[right] = item;
+            }
+        }
+#endif
 
         // A full suffix scan is only worthwhile when its final few pairs
         // already look ordered. Prefix [0, split) is known sorted because
