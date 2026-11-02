@@ -444,6 +444,15 @@ namespace ZonderqOS.GUI.Apps
 
             if (key.Key == ConsoleKeyEx.Enter)
             {
+                // Never confirm a destination hidden by an extremely small
+                // framebuffer. The compact Save-As dialog shows the path only
+                // when at least 100x110 client pixels are available.
+                UpdateLayout();
+                if (view.Width < 100 || view.Height < 110)
+                {
+                    status = "Enlarge window to confirm save path";
+                    return;
+                }
                 string path = NormalizePath(dialogText);
                 if (SaveTo(path))
                 {
