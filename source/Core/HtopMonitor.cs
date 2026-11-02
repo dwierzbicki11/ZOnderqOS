@@ -109,6 +109,9 @@ namespace ZonderqOS.SystemCore
         // Cache the *rendered* values, not the raw page counters: this avoids
         // needless string allocations while preserving the exact visible
         // memory gauge (including its original truncation and overflow).
+        private ulong memoryTotalPages = ulong.MaxValue;
+        private ulong memoryFreePages = ulong.MaxValue;
+        private ulong memoryPageSize = ulong.MaxValue;
         private ulong memoryUsedMiB = ulong.MaxValue;
         private ulong memoryTotalMiB = ulong.MaxValue;
         private string memoryLine;
@@ -138,6 +141,15 @@ namespace ZonderqOS.SystemCore
             // Changes smaller than 1 MiB must not invalidate an identical
             // rendered line, even when page size or raw counts change.
             ulong free = Math.Min(totalPages, freePages);
+            // Keep the original fast path for identical allocator snapshots:
+            // avoid both MiB divisions on the overwhelmingly common idle case.
+            if (memoryLine != null && totalPages == memoryTotalPages &&
+                free == memoryFreePages && pageSize == memoryPageSize)
+                return memoryLine;
+
+            memoryTotalPages = totalPages;
+            memoryFreePages = free;
+            memoryPageSize = pageSize;
             ulong usedMiB = (totalPages - free) * pageSize / 1048576UL;
             ulong totalMiB = totalPages * pageSize / 1048576UL;
             if (memoryLine != null && usedMiB == memoryUsedMiB &&
