@@ -372,7 +372,8 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("(long)i * frequency * 2", tone)
         self.assertNotIn("Disk.", tone)
         self.assertIn("AudioManager.Play(new MemoryAudioStream(AudioFormat.Stereo16, sampleRate, scaled))", runtime)
-        self.assertIn("PCM ACCEPTED_AND_DRAINED (not proof of audible output)", runtime)
+        self.assertIn("PCM API_RETURNED_SUCCESS (not proof of DMA/IRQ progress or audible output)", runtime)
+        self.assertNotIn("ACCEPTED_AND_DRAINED", runtime)
         self.assertIn('if (command == "tone")', kernel)
         self.assertIn('if (command == "audioinfo")', kernel)
         for forbidden in ("Disk.", "File.", "WriteBlock(", "TryMount(", "Format(", "NetworkManager."):
