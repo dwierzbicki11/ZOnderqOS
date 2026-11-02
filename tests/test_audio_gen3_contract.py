@@ -99,7 +99,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("PlayMixedTestTone()", runtime)
         self.assertIn('if (command == "mix")', kernel)
         self.assertIn('"mix": 440', harness)
-        self.assertIn('args.command in ("wavstereo32", "mix")', harness)
+        self.assertIn('args.command in ("wavstereo32", "mix", "wavextstereo44")', harness)
         self.assertIn("--command mix", workflow)
         self.assertIn("audio-qemu-mix-out/*.wav", workflow)
         for forbidden in ("Disk.", "File.", "WriteBlock(", "TryMount(",
@@ -358,7 +358,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn('if (command == "wavstereo32")', kernel)
         self.assertIn("PlayWave32000StereoSplitTestTone()", runtime)
         self.assertIn("GenerateDualSquareStereo16(32000, 440, 880, 250, 4096)", runtime)
-        self.assertIn('elif args.command in ("wavstereo32", "mix"):', harness)
+        self.assertIn('elif args.command in ("wavstereo32", "mix", "wavextstereo44"):', harness)
         self.assertIn("PlayWave32000TestTone()", runtime)
         self.assertIn('if (command == "wav32k")', kernel)
         self.assertIn("audio-qemu-32000-out/*.wav", workflow)
