@@ -27,7 +27,7 @@ namespace ZonderqOS.SystemCore
             return output != null && !output.IsWithdrawn &&
                 output.Name == "hda" && output.DriverName == "HdAudioDriver" &&
                 output.Player == null && output.SampleRate == sampleRate &&
-                output.Format.Channels == 2 && output.Format.ChannelSize == 2;
+                output.Format != null && output.Format.Channels == 2 && output.Format.ChannelSize == 2;
         }
 
         internal static bool TryPlay(AudioDevice output, byte[] pcm, uint sampleRate)

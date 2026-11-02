@@ -204,6 +204,7 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("output.Player == null", direct)
         self.assertIn('output.DriverName == "HdAudioDriver"', direct)
         self.assertIn("output.SampleRate == sampleRate", direct)
+        self.assertIn("output.Format != null", direct)
         self.assertIn("output.Format.Channels == 2", direct)
         self.assertIn("output.Format.ChannelSize == 2", direct)
         self.assertIn("!IsCompatibleUnclaimedHda(output, sampleRate) || output.IsRunning", direct)

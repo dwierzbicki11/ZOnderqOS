@@ -100,6 +100,8 @@ internal static class AudioDirectProbeSmoke
             "direct probe refuses a running stream");
         ExpectRefused(new Device { IsWithdrawn = true }, check,
             "direct probe refuses a withdrawn output");
+        ExpectRefused(new Device { Format = null }, check,
+            "direct probe refuses unpublished null PCM format without starting");
 
         int waits = 0;
         Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
@@ -132,6 +134,20 @@ internal static class AudioDirectProbeSmoke
                 startFormatDrift.WrittenBytes == 0 && !startFormatDrift.IsRunning,
                 "direct probe refuses sample-width drift during Start");
 
+            var startNullFormat = new Device();
+            startNullFormat.OnStart = () => startNullFormat.Format = null;
+            check(!AudioProbeDirectPlayback.TryPlay(startNullFormat, Pcm, 48000) &&
+                startNullFormat.StartCalls == 1 && startNullFormat.StopCalls == 1 &&
+                startNullFormat.WrittenBytes == 0 && !startNullFormat.IsRunning,
+                "direct probe refuses missing PCM format during Start");
+
+            var startClaimed = new Device();
+            startClaimed.OnStart = () => startClaimed.Player = new object();
+            check(!AudioProbeDirectPlayback.TryPlay(startClaimed, Pcm, 48000) &&
+                startClaimed.StartCalls == 1 && startClaimed.StopCalls == 1 &&
+                startClaimed.WrittenBytes == 0,
+                "direct probe refuses output claimed during Start");
+
             // If the codec changes format after accepting the first PCM
             // fragment, do not write the subsequent silent ring at the wrong
             // sample rate. The device must still be stopped in finally.
@@ -141,6 +157,20 @@ internal static class AudioDirectProbeSmoke
                 writeRateDrift.StartCalls == 1 && writeRateDrift.StopCalls == 1 &&
                 writeRateDrift.WrittenBytes == Pcm.Length && !writeRateDrift.IsRunning,
                 "direct probe aborts on format drift after first accepted write");
+
+            var writeNullFormat = new Device();
+            writeNullFormat.OnWrite = () => writeNullFormat.Format = null;
+            check(!AudioProbeDirectPlayback.TryPlay(writeNullFormat, Pcm, 48000) &&
+                writeNullFormat.StartCalls == 1 && writeNullFormat.StopCalls == 1 &&
+                writeNullFormat.WrittenBytes == Pcm.Length,
+                "direct probe stops feeding when PCM format disappears after write");
+
+            var writeClaimed = new Device();
+            writeClaimed.OnWrite = () => writeClaimed.Player = new object();
+            check(!AudioProbeDirectPlayback.TryPlay(writeClaimed, Pcm, 48000) &&
+                writeClaimed.StartCalls == 1 && writeClaimed.StopCalls == 1 &&
+                writeClaimed.WrittenBytes == Pcm.Length,
+                "direct probe stops feeding if another player claims output");
 
             // Format drift during the 86ms settle is also a failure, even
             // though all bytes were already accepted by the fake ring.
@@ -154,6 +184,16 @@ internal static class AudioDirectProbeSmoke
                 settleRateDrift.StartCalls == 1 && settleRateDrift.StopCalls == 1 &&
                 settleRateDrift.WrittenBytes == Pcm.Length + 16384,
                 "direct probe rejects changed format after final settle");
+            var settleNullFormat = new Device();
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "missing format during settle uses bounded wait");
+                settleNullFormat.Format = null;
+            };
+            check(!AudioProbeDirectPlayback.TryPlay(settleNullFormat, Pcm, 48000) &&
+                settleNullFormat.StartCalls == 1 && settleNullFormat.StopCalls == 1 &&
+                settleNullFormat.WrittenBytes == Pcm.Length + 16384,
+                "direct probe refuses disappearing PCM format during settle");
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
                 check(ms == 86, "normal settle remains one HDA ring period");
