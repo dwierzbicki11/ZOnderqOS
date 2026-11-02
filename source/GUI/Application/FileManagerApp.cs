@@ -1316,6 +1316,19 @@ namespace ZonderqOS.GUI.Apps
             }
 
             string user = SecurityContext.CurrentUser;
+            // The dialog may have been opened before the directory's read
+            // permission was revoked. Do not create an invisible file from a
+            // stale destination, even when write permission remains.
+            if (!CanReadInSession(currentPath))
+            {
+                if (string.Equals(loadedDirectoryPath, currentPath, StringComparison.Ordinal))
+                    ClearDeniedListing();
+                status = "Permission denied: cannot create in unreadable folder";
+                dialogMode = 0;
+                dialogName = "";
+                return;
+            }
+
             if (user != "root" &&
                 (!IsInsidePath(currentPath, UserManager.GetHomeDirectory(user)) ||
                  !PermissionManager.CanWrite(currentPath, user)))

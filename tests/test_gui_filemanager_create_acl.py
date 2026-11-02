@@ -21,6 +21,18 @@ checks = {
     "metadata update occurs after successful create": body.index('Directory.CreateDirectory(path)') < body.index('PermissionManager.SetPermission(path, user, dialogMode == 1 ? 644 : 700)'),
     "create dialog reset after mutation": body.index('PermissionManager.SetPermission(path, user, dialogMode == 1 ? 644 : 700)') < body.index('dialogMode = 0;\n                dialogName = "";\n                RefreshKeepStatus();'),
 }
+checks["create rechecks directory read access after dialog opens"] = (
+    "if (!CanReadInSession(currentPath))" in body
+    and body.index("if (!CanReadInSession(currentPath))") < body.index("File.Exists(path)")
+    and "Permission denied: cannot create in unreadable folder" in body
+)
+checks["revoked create directory invalidates its own stale listing"] = (
+    "string.Equals(loadedDirectoryPath, currentPath, StringComparison.Ordinal)" in body
+    and body.index("ClearDeniedListing();") < body.index("File.Exists(path)")
+    and "dialogMode = 0;" in body
+    and 'dialogName = "";' in body
+)
+
 # The non-root home guard must reject lexical traversal before trusting a
 # prefix. This is a source contract; host C# clipboard tests exercise the
 # actual traversal rejection with real temporary directories.
