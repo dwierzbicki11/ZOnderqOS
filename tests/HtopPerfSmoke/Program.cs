@@ -34,14 +34,20 @@ internal static class Program
         Assert(!object.ReferenceEquals(two, three), "scheduler name change must rebuild header");
         Assert(monitor.GetHeaderLine(1, "stock") == one,
             "returning to previous topology must preserve output");
+        // Exercise the production Refresh path, not only the helper.
+        monitor.Refresh();
+        string firstHeader = monitor.Lines[0];
+        monitor.Refresh();
+        Assert(object.ReferenceEquals(firstHeader, monitor.Lines[0]),
+            "production Refresh allocated an unchanged header");
         Console.WriteLine("PASS: htop header cache, topology/name invalidation and exact text");
     }
 
     private static void BenchmarkHeaderCache()
     {
         var monitor = new HtopMonitor();
-        const int count = 8;
-        const string schedulerName = "stock";
+        int count = 8;
+        string schedulerName = new string("stock".ToCharArray());
         Func<long> before = () =>
         {
             long checksum = 0;
