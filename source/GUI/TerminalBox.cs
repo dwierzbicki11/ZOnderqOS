@@ -262,11 +262,16 @@ namespace ZonderqOS.GUI
                 // copies even when nothing is trimmed; Substring can reuse
                 // the original string for a full-line slice.
 #if ZONDERQ_PERF_HOST_TEST
-                if (!DisableUnicodeTrimFastPathForBenchmark &&
+                if (DisableUnicodeTrimFastPathForBenchmark &&
                     !char.IsWhiteSpace(last))
-#else
-                if (!char.IsWhiteSpace(last))
+                {
+                    // The host baseline must restore the ORIGINAL span
+                    // conversion even when the ASCII-tail fast path exists.
+                    ReadOnlySpan<char> oldUnicode = source.AsSpan(start, length).TrimEnd();
+                    return oldUnicode.IsEmpty ? string.Empty : oldUnicode.ToString();
+                }
 #endif
+                if (!char.IsWhiteSpace(last))
                     return source.Substring(start, length);
             }
 
