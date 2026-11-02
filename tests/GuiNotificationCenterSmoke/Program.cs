@@ -83,7 +83,11 @@ namespace ZonderqOS.GUI
         public static void Draw(Cosmos.Kernel.System.Graphics.Canvas canvas,
             string text, int x, int y, Color color) { }
         public static void DrawClipped(Cosmos.Kernel.System.Graphics.Canvas canvas,
-            string text, int x, int y, int width, Color color) { }
+            string text, int x, int y, int width, Color color)
+        {
+            if (width <= 0)
+                throw new InvalidOperationException("Invalid notification text clip width: " + width);
+        }
         public static void DrawCentered(Cosmos.Kernel.System.Graphics.Canvas canvas,
             string text, int x, int y, int width, Color color) { }
         public static int WidthUInt(ulong value) => value.ToString().Length * 6;
@@ -266,8 +270,31 @@ internal static class Program
         NotificationService.DoNotDisturb = false;
     }
 
+    private static void CompactRenderingNeverUsesInvalidTextClips()
+    {
+        // Exercise the production renderer with a host Canvas: any
+        // nonpositive clipped-text width throws in the stub above.
+        foreach (int width in new[] { 100, 120, 140, 160, 180, 200, 240, 320, 800 })
+        {
+            foreach (int height in new[] { 200, 240, 480, 600 })
+            {
+                NotificationService.ResetForSession();
+                Post("Compact");
+                var center = new NotificationCenter(width, height, 44);
+                var canvas = new Cosmos.Kernel.System.Graphics.Canvas();
+                center.Render(canvas); // active toast
+                center.Toggle();
+                center.Render(canvas); // notification cards
+                NotificationService.ClearAll();
+                center.Render(canvas); // empty state
+                Check(true, "rendered notification at " + width + "x" + height);
+            }
+        }
+    }
+
     public static int Main()
     {
+        CompactRenderingNeverUsesInvalidTextClips();
         TinyPanelFooterDoesNotTriggerHiddenFilters();
         PageNavigationTracksVisibleRows();
         NewPostDoesNotRetargetDelete();

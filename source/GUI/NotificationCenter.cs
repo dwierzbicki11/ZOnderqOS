@@ -453,10 +453,16 @@ namespace ZonderqOS.GUI
                         // footer when only one row fitted after a resize.
                         UiPainter.RoundedPanel(canvas, cardX, cy, cardWidth, CardHeight,
                             UiMetrics.TileRadius, Panel, Border);
-                        IconManager.DrawScaled(canvas, IconType.About, cardX + 18, cy + 27, 28, 28);
-                        SmallTextRenderer.Draw(canvas, "BRAK POWIADOMIEN", cardX + 60, cy + 29, Text);
-                        SmallTextRenderer.DrawClipped(canvas, "System nie ma nic nowego do pokazania.",
-                            cardX + 60, cy + 50, System.Math.Max(1, cardWidth - 74), Muted);
+                        // Never paint empty-state text beyond a compact card.
+                        if (cardWidth >= 96)
+                            IconManager.DrawScaled(canvas, IconType.About, cardX + 18, cy + 27, 28, 28);
+                        if (cardWidth > 74)
+                        {
+                            SmallTextRenderer.DrawClipped(canvas, "BRAK POWIADOMIEN",
+                                cardX + 60, cy + 29, cardWidth - 68, Text);
+                            SmallTextRenderer.DrawClipped(canvas, "System nie ma nic nowego do pokazania.",
+                                cardX + 60, cy + 50, cardWidth - 74, Muted);
+                        }
                     }
                     continue;
                 }
@@ -477,15 +483,26 @@ namespace ZonderqOS.GUI
                     selected || hovered ? SystemTheme.AccentBorder : Border);
                 Color kindColor = KindColor(entry.Kind);
                 canvas.DrawFilledRectangle(kindColor, cardX, cy + 6, 3, CardHeight - 12);
-                IconManager.DrawScaled(canvas, KindIcon(entry.Kind), cardX + 14, cy + 15, 24, 24);
+                if (cardWidth >= 94)
+                    IconManager.DrawScaled(canvas, KindIcon(entry.Kind), cardX + 14, cy + 15, 24, 24);
 
-                SmallTextRenderer.DrawClipped(canvas, entry.Title, cardX + 50, cy + 13,
-                    cardWidth - 118, unread ? Text : Color.FromArgb(194, 204, 213));
-                SmallTextRenderer.DrawClipped(canvas, entry.Message, cardX + 50, cy + 34,
-                    cardWidth - 68, Muted);
-                SmallTextRenderer.DrawClipped(canvas, entry.Source, cardX + 50, cy + 56,
-                    cardWidth - 155, kindColor);
-                SmallTextRenderer.Draw(canvas, entry.TimeText, cardX + cardWidth - 86, cy + 56, Muted);
+                // Narrow cards cannot fit the standard title/source columns.
+                // Guard text clips before calling the Cosmos font renderer.
+                Color titleColor = unread ? Text : Color.FromArgb(194, 204, 213);
+                if (cardWidth > 118)
+                    SmallTextRenderer.DrawClipped(canvas, entry.Title, cardX + 50, cy + 13,
+                        cardWidth - 118, titleColor);
+                else if (cardWidth >= 94)
+                    SmallTextRenderer.DrawClipped(canvas, entry.Title, cardX + 8, cy + 45,
+                        cardWidth - 16, titleColor);
+                if (cardWidth > 118)
+                    SmallTextRenderer.DrawClipped(canvas, entry.Message, cardX + 50, cy + 34,
+                        cardWidth - 68, Muted);
+                if (cardWidth > 155)
+                    SmallTextRenderer.DrawClipped(canvas, entry.Source, cardX + 50, cy + 56,
+                        cardWidth - 155, kindColor);
+                if (cardWidth >= 110)
+                    SmallTextRenderer.Draw(canvas, entry.TimeText, cardX + cardWidth - 86, cy + 56, Muted);
 
                 int dismissX = cardX + cardWidth - 35;
                 int dismissY = cy + 9;
@@ -572,11 +589,22 @@ namespace ZonderqOS.GUI
                 toastHovered ? PanelHover : Header,
                 toastHovered ? SystemTheme.AccentBorder : Border);
             canvas.DrawFilledRectangle(kindColor, x, y + 7, 4, height - 14);
-            IconManager.DrawScaled(canvas, KindIcon(entry.Kind), x + 16, y + 17, 28, 28);
-            SmallTextRenderer.DrawClipped(canvas, entry.Title, x + 57, y + 17, width - 92, Text);
-            SmallTextRenderer.DrawClipped(canvas, entry.Message, x + 57, y + 40, width - 75, Muted);
-            SmallTextRenderer.DrawClipped(canvas, entry.Source, x + 57, y + 66, width - 150, kindColor);
-            SmallTextRenderer.Draw(canvas, entry.TimeText, x + width - 71, y + 66, Muted);
+            // Compact toasts omit metadata rather than passing a negative
+            // clip width into the Cosmos text renderer.
+            bool showIcon = width >= 108;
+            if (showIcon)
+                IconManager.DrawScaled(canvas, KindIcon(entry.Kind), x + 16, y + 17, 28, 28);
+            int textX = showIcon ? x + 57 : x + 10;
+            int titleWidth = showIcon ? width - 92 : width - 20;
+            int messageWidth = showIcon ? width - 75 : width - 20;
+            if (titleWidth > 0)
+                SmallTextRenderer.DrawClipped(canvas, entry.Title, textX, y + 17, titleWidth, Text);
+            if (messageWidth > 0)
+                SmallTextRenderer.DrawClipped(canvas, entry.Message, textX, y + 40, messageWidth, Muted);
+            if (width > 150)
+                SmallTextRenderer.DrawClipped(canvas, entry.Source, x + 57, y + 66, width - 150, kindColor);
+            if (width >= 110)
+                SmallTextRenderer.Draw(canvas, entry.TimeText, x + width - 71, y + 66, Muted);
         }
 
         private void UpdateHover(int mouseX, int mouseY)
