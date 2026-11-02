@@ -267,7 +267,7 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
         "Invalid, non-D0 or unstable PMCSR must fail closed without stale IRQ outputs");
 }
 var irqPmPme = new FakeE1000EPciConfig {
-    Status = 0x0010, MsiXNext = 0x50,
+    Status = 0x0010, MsiXNext = 0x60,
     PmControlStatus = 0x8100, ChangePmPmeOnSecondRead = true
 };
 Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqPmPme, out irqLine, out irqPin) &&
