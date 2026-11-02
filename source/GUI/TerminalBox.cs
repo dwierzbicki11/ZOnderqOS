@@ -17,14 +17,12 @@ namespace ZonderqOS.GUI
         private readonly ScrollBar scrollBar;
         private int scrollOffset;
         private bool userScrolled;
-        // Render and input polling call UpdateScrollBar every frame. Most
-        // frames have unchanged geometry, history and scroll position; avoid
-        // re-publishing an identical range to the software scrollbar.
-        // Compare live Widget coordinates because window resize/move can
-        // mutate X/Y/Width/Height without a dedicated layout event.
+        // Detect unchanged idle frames before computing scrollbar geometry.
+        // Widget layout is mutable, so track its raw coordinates and size;
+        // the scrollbar's ValueChanged callback always updates scrollOffset.
         private bool scrollBarLayoutCached;
-        private int cachedScrollBarX, cachedScrollBarY, cachedScrollBarHeight;
-        private int cachedScrollBarContent, cachedScrollBarVisible;
+        private int cachedBoxX, cachedBoxY, cachedBoxWidth, cachedBoxHeight;
+        private int cachedOutputCount, cachedScrollOffset;
 
         private static readonly Color Surface = Color.FromArgb(14, 18, 23);
         private static readonly Color Header = Color.FromArgb(25, 31, 38);
@@ -250,33 +248,29 @@ namespace ZonderqOS.GUI
 
         private void UpdateScrollBar()
         {
-            int visible = Math.Max(1, GetVisibleLines() - 1);
-            int nextX = X + Math.Max(1, Width - 12);
-            int nextY = Y + HeaderHeight + 4;
-            int nextHeight = Math.Max(20, Height - HeaderHeight - 8);
-            int content = OutputLines.Count + 1;
-
-            // ValueChanged updates scrollOffset during dragging and range
-            // clamping. Do not cache scrollOffset itself: compare the actual
-            // scrollbar value, including externally initiated mouse drags.
-            if (scrollBarLayoutCached &&
-                cachedScrollBarX == nextX && cachedScrollBarY == nextY &&
-                cachedScrollBarHeight == nextHeight &&
-                cachedScrollBarContent == content && cachedScrollBarVisible == visible &&
-                scrollBar.Value == Math.Max(0, Math.Min(scrollOffset, GetMaxScroll())))
+            // This is called on every terminal render and mouse poll. The
+            // common unchanged-frame path must do less work than SetRange,
+            // including avoiding GetVisibleLines/GetMaxScroll calculations.
+            int count = OutputLines.Count;
+            if (scrollBarLayoutCached && cachedBoxX == X && cachedBoxY == Y &&
+                cachedBoxWidth == Width && cachedBoxHeight == Height &&
+                cachedOutputCount == count && cachedScrollOffset == scrollOffset)
                 return;
 
-            scrollBar.X = nextX;
-            scrollBar.Y = nextY;
+            int visible = Math.Max(1, GetVisibleLines() - 1);
+            scrollBar.X = X + Math.Max(1, Width - 12);
+            scrollBar.Y = Y + HeaderHeight + 4;
             scrollBar.Width = 8;
-            scrollBar.Height = nextHeight;
-            scrollBar.SetRange(content, visible);
+            scrollBar.Height = Math.Max(20, Height - HeaderHeight - 8);
+            scrollBar.SetRange(count + 1, visible);
             scrollBar.Value = Math.Max(0, Math.Min(scrollOffset, GetMaxScroll()));
-            cachedScrollBarX = nextX;
-            cachedScrollBarY = nextY;
-            cachedScrollBarHeight = nextHeight;
-            cachedScrollBarContent = content;
-            cachedScrollBarVisible = visible;
+            cachedBoxX = X;
+            cachedBoxY = Y;
+            cachedBoxWidth = Width;
+            cachedBoxHeight = Height;
+            cachedOutputCount = count;
+            // SetRange/Value may clamp the offset through ValueChanged.
+            cachedScrollOffset = scrollOffset;
             scrollBarLayoutCached = true;
         }
 
