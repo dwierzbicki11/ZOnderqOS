@@ -1273,6 +1273,22 @@ namespace ZonderqOS.GUI.Apps
                     c == '>' || c == '|')
                     return false;
             }
+            // FAT volumes are frequently shared with Windows. Names such
+            // as CON.txt and LPT1 are reserved there even with extensions;
+            // reject them rather than creating files that cannot be managed
+            // consistently after moving the volume between systems.
+            int dot = name.IndexOf('.');
+            string stem = dot >= 0 ? name.Substring(0, dot) : name;
+            if (string.Equals(stem, "CON", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(stem, "PRN", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(stem, "AUX", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(stem, "NUL", StringComparison.OrdinalIgnoreCase))
+                return false;
+            if (stem.Length == 4 && stem[3] >= '1' && stem[3] <= '9' &&
+                (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
+                 stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)))
+                return false;
+
             return true;
         }
 
