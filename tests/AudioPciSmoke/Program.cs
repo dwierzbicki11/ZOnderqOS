@@ -100,6 +100,19 @@ static class Test
         Expect(AudioPciDiagnostics.DescribeController(0x04, 0x03, 0x01).Contains("unsupported"), "unknown prog-if");
         Expect(AudioPciDiagnostics.DescribeController(0x04, 0x01, 0x00).Contains("AC97"), "legacy controller");
 
+        Expect(AudioPciDiagnostics.DescribePciIdentity(0x8086, 0x2668, 0x04, 0x03)
+            .Contains("QEMU intel-hda"), "QEMU Intel HDA PCI identity");
+        Expect(AudioPciDiagnostics.DescribePciIdentity(0x8086, 0x2415, 0x04, 0x01)
+            .Contains("no stock AC97 driver"), "QEMU Intel AC97 PCI identity");
+        Expect(AudioPciDiagnostics.DescribePciIdentity(0x8086, 0x2668, 0x04, 0x01)
+            .Contains("UNKNOWN_AUDIO_IDENTITY"), "wrong subclass cannot inherit HDA identity");
+        Expect(AudioPciDiagnostics.DescribePciIdentity(0x8086, 0x2415, 0x04, 0x03)
+            .Contains("UNKNOWN_AUDIO_IDENTITY"), "wrong subclass cannot inherit AC97 identity");
+        Expect(AudioPciDiagnostics.DescribePciIdentity(0x10EC, 0x0887, 0x04, 0x03)
+            .Contains("UNKNOWN_AUDIO_IDENTITY"), "physical vendor must not be guessed");
+        Expect(AudioPciDiagnostics.DescribePciIdentity(0x8086, 0x2668, 0x02, 0x00)
+            == "NOT_AUDIO", "network device must never be classified as HDA");
+
         PciSysfsProvider.Available = true;
         PciSysfsProvider.Devices = new List<DeviceDescriptor>
         {
@@ -113,6 +126,8 @@ static class Test
         Expect(report.Contains("Discovered PCI audio functions: 2"), "count only audio");
         Expect(report.Contains("00:01.0") && report.Contains("00:02.0"), "both audio functions");
         Expect(!report.Contains("00:03.0") && !report.Contains("00:04.0"), "exclude video and NIC");
+        Expect(report.Contains("pci-identity=Intel ICH6 HDA"), "report identifies QEMU HDA candidate");
+        Expect(report.Contains("pci-identity=Intel ICH AC97"), "report identifies QEMU AC97 candidate");
         Expect(report.Contains("driver=UNVERIFIED codec=UNKNOWN pcm=NOT_TESTED"), "no fabricated binding");
 
         PciSysfsProvider.Devices.Clear();
