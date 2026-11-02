@@ -103,6 +103,22 @@ checks["refresh checks ACL before listing"] = (
     and refresh_body.index("CanReadInSession(targetPath)") < refresh_body.index("Directory.GetDirectories(targetPath)")
 )
 
+checks["refresh rechecks ACL after scan before publishing entries"] = (
+    refresh_body.count("if (!CanReadInSession(targetPath))") >= 2
+    and refresh_body.index("Directory.GetFiles(targetPath)") <
+        refresh_body.rindex("if (!CanReadInSession(targetPath))")
+    and refresh_body.index("Sort(scanned);") <
+        refresh_body.rindex("if (!CanReadInSession(targetPath))")
+    and refresh_body.rindex("if (!CanReadInSession(targetPath))") <
+        refresh_body.index("entries.AddRange(scanned);")
+)
+checks["revoked in-flight refresh clears only matching cached listing"] = (
+    "if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))" in
+        refresh_body[refresh_body.index("Sort(scanned);"):refresh_body.index("entries.AddRange(scanned);")]
+    and "ClearDeniedListing();" in
+        refresh_body[refresh_body.index("Sort(scanned);"):refresh_body.index("entries.AddRange(scanned);")]
+)
+
 copy_body = source[source.index("        private void CopySelected("):source.index("        private void PasteClipboard(")]
 checks["copy checks read ACL before clipboard mutation"] = (
     "CanReadInSession(entry.FullPath)" in copy_body
