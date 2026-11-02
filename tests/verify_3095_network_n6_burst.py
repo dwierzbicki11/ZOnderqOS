@@ -22,6 +22,16 @@ from verify_3095_network_n6 import (
 )
 
 COUNT = 128
+FRAME_LENGTHS = (60, 128, 512, 1024, 1514)
+
+
+def expected_burst_frame(sequence: int) -> bytes:
+    length = FRAME_LENGTHS[sequence % len(FRAME_LENGTHS)]
+    prefix = BROADCAST + MAC + ETHER_TYPE + TAG + f"{sequence:03d}".encode("ascii")
+    return prefix + bytes((sequence * 17 + offset) & 0xFF
+                          for offset in range(len(prefix), length))
+
+
 START = "[NET3095-N6] TX_BURST_ATTEMPT=START count=128"
 QUEUED = "[NET3095-N6] TX_BURST=QUEUED count=128"
 TAG = b"ZONDERQ3095-BURST-"
@@ -106,10 +116,8 @@ def check_frames(pcap: bytes, after_index: int = -1) -> int:
             raise ValueError("E1000E TX burst preceded the completed HTTP exchange")
         if seen >= COUNT:
             raise ValueError("unexpected extra E1000E TX burst frame")
-        expected = (BROADCAST + MAC + ETHER_TYPE + TAG +
-                    f"{seen:03d}".encode("ascii"))
-        if (len(frame) != 60 or not frame.startswith(expected) or
-                any(frame[len(expected):])):
+        expected = expected_burst_frame(seen)
+        if frame != expected:
             raise ValueError(
                 f"missing, reordered, malformed or forged E1000E TX burst frame {seen:03d}")
         seen += 1
@@ -200,8 +208,9 @@ def self_test() -> None:
                         *rtt_markers, POST_PASS])
     frames = []
     for sequence in range(COUNT):
-        raw = BROADCAST + MAC + ETHER_TYPE + TAG + f"{sequence:03d}".encode("ascii")
-        frames.append(raw + bytes(60 - len(raw)))
+        frames.append(expected_burst_frame(sequence))
+    assert {len(frame) for frame in frames} == set(FRAME_LENGTHS)
+    assert frames[4][-1] == (4 * 17 + 1513) & 0xFF
     check_markers(serial)
     assert check_frames(synthetic_capture(frames)) == COUNT - 1
     # The same capture also contains the earlier N1 broadcast frame and
@@ -330,6 +339,11 @@ def self_test() -> None:
     wrong_mac = bytes.fromhex("020000000099")
     negative_frames = [
         frames[:-1],
+        # Length and payload corruption at the maximum frame size must
+        # fail even if the 3-digit sequence tag remains correct.
+        frames[:4] + [frames[4][:-1]] + frames[5:],
+        frames[:4] + [frames[4] + b"\x00"] + frames[5:],
+        frames[:4] + [frames[4][:-1] + bytes([frames[4][-1] ^ 1])] + frames[5:],
         frames[:12] + frames[13:],
         frames + [frames[-1]],
         frames[:8] + [frames[8], frames[8]] + frames[9:],
