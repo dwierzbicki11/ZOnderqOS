@@ -235,9 +235,9 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertNotIn("format is not null", direct)
         self.assertIn("format.Channels == 2", direct)
         self.assertIn("format.ChannelSize == 2", direct)
-        self.assertIn("!IsCompatibleUnclaimedHda(output, sampleRate) || output.IsRunning", direct)
-        self.assertIn("!IsCompatibleUnclaimedHda(output, sampleRate) || !output.IsRunning", direct)
-        self.assertIn("() => IsCompatibleUnclaimedHda(output, sampleRate) && output.IsRunning", direct)
+        self.assertIn("!IsCompatibleUnclaimedHda(output, sampleRate, stillSelected) || output.IsRunning", direct)
+        self.assertIn("!IsCompatibleUnclaimedHda(output, sampleRate, stillSelected) || !output.IsRunning", direct)
+        self.assertIn("() => IsCompatibleUnclaimedHda(output, sampleRate, stillSelected) && output.IsRunning", direct)
         self.assertIn("sample-rate drift during Start", read("tests/AudioPciSmoke/AudioDirectProbeSmoke.cs"))
         self.assertNotIn("TrySetFormat(", direct)
         # Reject mutually exclusive output ownership modes before even
