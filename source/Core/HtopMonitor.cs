@@ -466,7 +466,9 @@ namespace ZonderqOS.SystemCore
             // A single displaced scheduler row creates exactly one adjacent
             // inversion. Repair it in O(n) without a full comparison sort.
             // Random snapshots with multiple inversions still use List.Sort.
-            if (rows.Count >= 32 && TryRepairSingleInversion(firstInversion))
+            // Host A/B showed a regression at 128 rows; only use this
+            // linear repair where the measured 512-row case wins.
+            if (rows.Count >= 256 && TryRepairSingleInversion(firstInversion))
                 return;
             rows.Sort(rowComparison);
         }
