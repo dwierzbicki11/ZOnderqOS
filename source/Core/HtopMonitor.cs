@@ -428,9 +428,10 @@ namespace ZonderqOS.SystemCore
             // check avoids an O(n log n) sort when those rows are already in
             // the requested order. For small snapshots List.Sort is cheap,
             // so retain its original path to avoid an extra scan.
+            int firstInversion = 0;
             if (rows.Count >= 32)
             {
-                int firstInversion = 1;
+                firstInversion = 1;
                 while (firstInversion < rows.Count &&
                     CompareRows(rows[firstInversion - 1], rows[firstInversion]) <= 0)
                     firstInversion++;
