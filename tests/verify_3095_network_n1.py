@@ -41,12 +41,12 @@ PCI_TX = re.compile(
 # internally consistent claim whenever the new QEMU guest emits it.
 # PCI routing metadata does NOT establish execution of the guest ISR.
 PCI_IRQ_ROUTE = re.compile(
-    r"^\\[NET3095-N1\\] PCI_IRQ_ROUTE=PASS line=([0-9]+) pin=([0-9]+) "
-    r"\\(read-only; guest ISR unproven\\)$"
+    r"^\[NET3095-N1\] PCI_IRQ_ROUTE=PASS line=([0-9]+) pin=([0-9]+) "
+    r"\(read-only; guest ISR unproven\)$"
 )
 PCI_IRQ_STABLE = re.compile(
-    r"^\\[NET3095-N1\\] PCI_IRQ_ROUTE_STABLE=PASS line=([0-9]+) pin=([0-9]+) "
-    r"\\(read-only; guest ISR unproven\\)$"
+    r"^\[NET3095-N1\] PCI_IRQ_ROUTE_STABLE=PASS line=([0-9]+) pin=([0-9]+) "
+    r"\(read-only; guest ISR unproven\)$"
 )
 
 # Stock Cosmos serial output is not an atomic write: a scheduler tick may
@@ -320,8 +320,8 @@ def self_test() -> None:
         serial.replace("PCI_IRQ_ROUTE_STABLE=PASS line=11", "PCI_IRQ_ROUTE_STABLE=PASS line=12"),
         serial.replace("PCI_IRQ_ROUTE=PASS line=11 pin=1", "PCI_IRQ_ROUTE=PASS line=11 pin=0"),
         serial.replace("PCI_IRQ_ROUTE_STABLE=PASS line=11 pin=1", "PCI_IRQ_ROUTE_STABLE=PASS line=11 pin=5"),
-        serial + "\\n[NET3095-N1] PCI_IRQ_ROUTE=PASS line=11 pin=1 (read-only; guest ISR unproven)",
-        serial + "\\n[NET3095-N1] PCI_IRQ_ROUTE_STABLE=PASS line=11 pin=1 (read-only; guest ISR unproven)",
+        serial + "\n[NET3095-N1] PCI_IRQ_ROUTE=PASS line=11 pin=1 (read-only; guest ISR unproven)",
+        serial + "\n[NET3095-N1] PCI_IRQ_ROUTE_STABLE=PASS line=11 pin=1 (read-only; guest ISR unproven)",
         serial.replace("[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x0006 (read-only; DMA/ISR unproven)", "[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x0002 (read-only; DMA/ISR unproven)"),
         serial.replace("[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)", ""),
         serial + "\n[NET3095-N1] PCI_TX_STABLE=PASS command=0x0006 (read-only; PCAP required for TX proof)",
