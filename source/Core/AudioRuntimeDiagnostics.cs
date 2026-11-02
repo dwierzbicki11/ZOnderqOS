@@ -608,6 +608,39 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
+        /// Canonical IEEE_FLOAT mono WAV (2860 Hz, +/-0.125) -> bounded
+        /// finite PCM16 -> stock HDA. The raw little-endian float fixture is
+        /// generated in RAM, not loaded from a guest or host disk. QEMU must
+        /// validate the backend WAV capture, not merely a decoder log.
+        /// </summary>
+        public static bool PlayWaveFloat32TestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 2860, 250, 4096);
+                byte[] monoFloat = new byte[source.Length];
+                for (int frame = 0; frame < source.Length / 4; frame++)
+                {
+                    int src = frame * 4;
+                    int dst = frame * 4;
+                    short sample = (short)(source[src] | (source[src + 1] << 8));
+                    // +/-0.125f is exactly representable in IEEE754 float32.
+                    // 0x3E000000 / 0xBE000000 in little-endian byte order.
+                    monoFloat[dst + 3] = sample < 0 ? (byte)0xBE : (byte)0x3E;
+                }
+                byte[] wave = AudioWavePcm.EncodeFloat32AtRate(monoFloat, 48000, 1);
+                Console.WriteLine("[AUDIO] WAV IEEE_FLOAT32 mono 2860Hz -> bounded PCM16 stereo HDA");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV FLOAT32 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
         /// WAVE_FORMAT_EXTENSIBLE PCM16 stereo through the same bounded
         /// read-only stream and stock HDA path. Unique 2640 Hz tone allows
         /// an independent QEMU backend capture; no guest disk is attached.
