@@ -156,20 +156,20 @@ checks["editor exceptions stay inside file manager"] = (
 # copy/cut/paste. These are source-level exception-boundary checks, not an
 # unplugged-device QEMU integration test.
 checks["copy/cut preflight catches unexpected storage failures"] = (
-    "try\\n            {" in copy_body
-    and copy_body.index("try\\n            {") < copy_body.index("CanReadInSession(currentPath)")
+    "try\n            {" in copy_body
+    and copy_body.index("try\n            {") < copy_body.index("CanReadInSession(currentPath)")
     and copy_body.index("catch (Exception ex)") > copy_body.index("FileClipboard.Set(")
     and 'status = (cut ? "Cut error: " : "Copy error: ") + ex.Message;' in copy_body
 )
 paste_body = source[source.index("        private void PasteClipboard("):source.index("        private int Columns()")]
 checks["paste catches failures before clipboard mutation guard"] = (
     "string destinationPath = null;" in paste_body
-    and paste_body.index("try\\n            {") < paste_body.index("FileClipboard.TryPaste(")
+    and paste_body.index("try\n            {") < paste_body.index("FileClipboard.TryPaste(")
     and paste_body.index("catch (Exception ex)") > paste_body.index("FileClipboard.TryPaste(")
     and 'status = "Paste error: " + ex.Message;' in paste_body
 )
 checks["paste refreshes retained destination after unexpected exception"] = (
-    "if (!string.IsNullOrEmpty(destinationPath))\\n                    RefreshKeepStatus();" in paste_body
+    "if (!string.IsNullOrEmpty(destinationPath))\n                    RefreshKeepStatus();" in paste_body
     and paste_body.index("catch (Exception ex)") <
         paste_body.rindex("if (!string.IsNullOrEmpty(destinationPath))")
 )
