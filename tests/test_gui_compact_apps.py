@@ -105,7 +105,7 @@ class CompactNotepadTests(unittest.TestCase):
 
     def test_modal_dialog_blocks_background_toolbar_and_stays_in_bounds(self):
         handler = NOTEPAD.split(
-            "public override void HandleMouse(int mouseX, int mouseY, bool leftClicked", 1
+            "public override void HandleMouse(int mouseX, int mouseY, bool left, bool oldLeft)", 1
         )[1].split("public override void Render(Canvas canvas)", 1)[0]
         self.assertLess(handler.index("if (dialogMode != 0)\n                return;"),
                         handler.index("int action = view.ToolbarActionAt(x, y);"))
