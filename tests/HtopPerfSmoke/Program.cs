@@ -16,6 +16,83 @@ internal static class Program
     private static string LegacyCpuBar(int percent) =>
         new string('|', percent / 5).PadRight(20);
 
+    private static void VerifyHeaderCache()
+    {
+        var monitor = new HtopMonitor();
+        string one = monitor.GetHeaderLine(1, "stock");
+        Assert(one == "ZOnderqOS htop | CPU: 1 | stock", "header output changed");
+        Assert(object.ReferenceEquals(one, monitor.GetHeaderLine(1, "stock")),
+            "unchanged header must be reused");
+        Assert(object.ReferenceEquals(one, monitor.GetHeaderLine(1, new string("stock".ToCharArray()))),
+            "equivalent scheduler names must not reallocate");
+        string two = monitor.GetHeaderLine(8, "stock");
+        Assert(two == "ZOnderqOS htop | CPU: 8 | stock", "CPU count invalidation failed");
+        Assert(!object.ReferenceEquals(one, two), "CPU count change must rebuild header");
+        string three = monitor.GetHeaderLine(8, "new-scheduler");
+        Assert(three == "ZOnderqOS htop | CPU: 8 | new-scheduler",
+            "scheduler name invalidation failed");
+        Assert(!object.ReferenceEquals(two, three), "scheduler name change must rebuild header");
+        Assert(monitor.GetHeaderLine(1, "stock") == one,
+            "returning to previous topology must preserve output");
+        Console.WriteLine("PASS: htop header cache, topology/name invalidation and exact text");
+    }
+
+    private static void BenchmarkHeaderCache()
+    {
+        var monitor = new HtopMonitor();
+        const int count = 8;
+        const string schedulerName = "stock";
+        Func<long> before = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < 1024; i++)
+            {
+                string value = "ZOnderqOS htop | CPU: " + count + " | " + schedulerName;
+                checksum += value.Length + value[0] + value[value.Length - 1];
+            }
+            return checksum;
+        };
+        Func<long> after = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < 1024; i++)
+            {
+                string value = monitor.GetHeaderLine(count, schedulerName);
+                checksum += value.Length + value[0] + value[value.Length - 1];
+            }
+            return checksum;
+        };
+        Assert(before() == after(), "cached header checksum mismatch");
+        for (int i = 0; i < 15; i++) { sink ^= before(); sink ^= after(); }
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= before();
+        long oldBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        start = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= after();
+        long newBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        Assert(oldBytes > 0 && newBytes == 0,
+            "header cache allocations old=" + oldBytes + " new=" + newBytes);
+        double[] oldMs = new double[7], newMs = new double[7];
+        for (int i = 0; i < oldMs.Length; i++)
+        {
+            if ((i & 1) == 0)
+            {
+                oldMs[i] = Time(before, 200);
+                newMs[i] = Time(after, 200);
+            }
+            else
+            {
+                newMs[i] = Time(after, 200);
+                oldMs[i] = Time(before, 200);
+            }
+        }
+        double a = Median(oldMs), b = Median(newMs);
+        Console.WriteLine("HOST A/B htop 1024 stable header formats: before=" +
+            a.ToString("F5") + " ms after=" + b.ToString("F5") +
+            " ms ratio=" + (a / b).ToString("F2") + "x allocations=" +
+            oldBytes + " B -> " + newBytes + " B per 1024 headers");
+    }
+
     private static void VerifyCpuBars()
     {
         for (int percent = 0; percent <= 100; percent++)
@@ -778,6 +855,8 @@ internal static class Program
         VerifyCpuPercentText();
         BenchmarkCpuPercentText(false);
         BenchmarkCpuPercentText(true);
+        VerifyHeaderCache();
+        BenchmarkHeaderCache();
         VerifyCpuBars();
         BenchmarkCpuBars();
         VerifyCpuPrefixes();

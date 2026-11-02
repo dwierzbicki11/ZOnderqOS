@@ -80,6 +80,25 @@ namespace ZonderqOS.SystemCore
         private int[] cpuUsage = Array.Empty<int>();
         private long previousTimestamp;
 
+        // CPU topology and scheduler name are normally stable for the life of
+        // a monitor. Reuse the immutable header instead of formatting it on
+        // every refresh; invalidate on either value changing.
+        private int headerCpuCount = -1;
+        private string headerSchedulerName;
+        private string headerLine;
+
+        internal string GetHeaderLine(int count, string schedulerName)
+        {
+            if (headerLine != null && count == headerCpuCount &&
+                string.Equals(schedulerName, headerSchedulerName, StringComparison.Ordinal))
+                return headerLine;
+
+            headerCpuCount = count;
+            headerSchedulerName = schedulerName;
+            headerLine = "ZOnderqOS htop | CPU: " + count + " | " + schedulerName;
+            return headerLine;
+        }
+
         // CPU bars are redrawn on every htop refresh. Construct the 21 possible
         // 20-column strings once, rather than allocating one or two strings per
         // CPU on every sample (including the stock BSP's N/A accounting path).
@@ -182,7 +201,7 @@ namespace ZonderqOS.SystemCore
             }
             CpuCount = count;
             lines.Clear();
-            lines.Add("ZOnderqOS htop | CPU: " + count + " | " + SchedulerInfo.SchedulerName);
+            lines.Add(GetHeaderLine(count, SchedulerInfo.SchedulerName));
             lines.Add("Q/Esc: exit  C: sort CPU  P: sort PID  Up/Down: scroll");
             lines.Add("CPU usage: scheduled work per logical CPU (1 second samples)");
             ActiveCpuMask = 0;
