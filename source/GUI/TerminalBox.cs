@@ -193,6 +193,16 @@ namespace ZonderqOS.GUI
         // a fully blank slice can reuse String.Empty.
         internal static string SliceTrimmedForOutput(string source, int start, int length)
         {
+            // Most command output rows end in a printable ASCII character.
+            // Skip span construction and Unicode whitespace scanning when
+            // the last character cannot possibly be trimmed.
+            if (length > 0)
+            {
+                char last = source[start + length - 1];
+                if (last > ' ' && last <= '~')
+                    return source.Substring(start, length);
+            }
+
             // Span.TrimEnd uses the runtime's whitespace scanner without
             // first allocating the untrimmed intermediate substring.
             ReadOnlySpan<char> visible = source.AsSpan(start, length).TrimEnd();
