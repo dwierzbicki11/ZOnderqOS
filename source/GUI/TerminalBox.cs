@@ -242,9 +242,13 @@ namespace ZonderqOS.GUI
                 if (take <= 0)
                     take = Math.Min(maxChars, remaining);
 
-                // Preserve per-row scrollbar callbacks for manual scrolling.
+                // For a streamed command, even a manually scrolled terminal
+                // can defer SetRange/Value until the command's final row.
+                // AppendOutputLine still adjusts scrollOffset on history trim,
+                // preserving the user's anchored view. Interactive PrintLine
+                // keeps its original immediate scrollbar updates.
                 string wrapped = SliceTrimmedForOutput(line, position, take);
-                if (userScrolled)
+                if (userScrolled && !deferAutoFollow)
                     AddOutputLine(wrapped);
                 else
                     AppendOutputLine(wrapped);
@@ -268,7 +272,7 @@ namespace ZonderqOS.GUI
                 return;
 
             int start = 0;
-            bool deferredAutoFollow = false;
+            bool deferredScrollUpdate = false;
             for (int i = 0; i <= output.Length; i++)
             {
                 if (i < output.Length && output[i] != '\r' && output[i] != '\n')
@@ -284,8 +288,7 @@ namespace ZonderqOS.GUI
                     else
                     {
                         PrintLineSlice(output, start, length, true);
-                        if (!userScrolled)
-                            deferredAutoFollow = true;
+                        deferredScrollUpdate = true;
                     }
                 }
 
@@ -297,9 +300,11 @@ namespace ZonderqOS.GUI
                 start = i + 1;
             }
 
-            // Avoid hundreds of redundant SetRange/Value operations for a
-            // command listing. The final state matches per-line auto-follow.
-            if (deferredAutoFollow && !userScrolled)
+            // Publish the final scrollbar range once per command, including
+            // when the user is reading earlier output. A clear marker may
+            // switch back to auto-follow mid-command; FinishOutputUpdate
+            // observes the final userScrolled state.
+            if (deferredScrollUpdate)
                 FinishOutputUpdate();
         }
 
