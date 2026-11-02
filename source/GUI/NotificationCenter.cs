@@ -143,7 +143,9 @@ namespace ZonderqOS.GUI
             // Escape remains available to close the panel.
             bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
             bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
-            if (control || alt)
+            // Shift is not a filter/navigation command either. Keep all
+            // modified shortcuts with the desktop; no hidden selection change.
+            if (key.Modifiers != 0)
                 return true;
 
             if (key.Key == ConsoleKeyEx.LeftArrow)
@@ -448,10 +450,36 @@ namespace ZonderqOS.GUI
                     selected || hovered ? SystemTheme.AccentBorder : Border);
                 if (selected)
                     canvas.DrawFilledRectangle(SystemTheme.Accent, tx, y + 33, tabWidth, 3);
-                string label = Width < 380 && i == 1 ? "NOWE" : FilterLabels[i];
-                SmallTextRenderer.DrawCentered(canvas, label, tx + 4, y + 15,
-                    tabWidth - 8, selected ? Text : Muted);
+                // Full labels do not fit the three tabs on narrow displays.
+                // A centered unbounded string used to paint over neighboring
+                // tabs and could obscure which filter was selected.
+                string label = FilterLabelForWidth(i, tabWidth);
+                int labelWidth = tabWidth - 8;
+                if (labelWidth > 0)
+                {
+                    int labelPixels = SmallTextRenderer.Width(label);
+                    int labelX = tx + System.Math.Max(4, (tabWidth - labelPixels) / 2);
+                    int clipWidth = System.Math.Min(labelPixels, tx + tabWidth - 4 - labelX);
+                    if (clipWidth > 0)
+                        SmallTextRenderer.DrawClipped(canvas, label, labelX, y + 15,
+                            clipWidth, selected ? Text : Muted);
+                }
             }
+        }
+
+        // Keep filter labels readable without painting into the next tab.
+        // The width is the actual tab width shared by painting and hit tests.
+        internal static string FilterLabelForWidth(int index, int tabWidth)
+        {
+            if (index < 0 || index >= FilterLabels.Length)
+                return "";
+            if (tabWidth < 30)
+                return index == 0 ? "A" : index == 1 ? "N" : "!";
+            if (tabWidth < 65)
+                return index == 0 ? "ALL" : index == 1 ? "NEW" : "!";
+            if (tabWidth < 100)
+                return index == 0 ? "WSZ." : index == 1 ? "NOWE" : "WAZNE";
+            return FilterLabels[index];
         }
 
         private void RenderList(Canvas canvas)
