@@ -241,6 +241,11 @@ namespace ZonderqOS.GUI
         // Substring(...).TrimEnd() created two strings when a wrapped row ended
         // in whitespace. Char.IsWhiteSpace matches TrimEnd()'s Unicode rules;
         // a fully blank slice can reuse String.Empty.
+#if ZONDERQ_PERF_HOST_TEST
+        // A/B switch restores the previous Unicode path without changing
+        // the production build or the old ASCII fast path.
+        internal static bool DisableUnicodeTrimFastPathForBenchmark;
+#endif
         internal static string SliceTrimmedForOutput(string source, int start, int length)
         {
             // Most command output rows end in a printable ASCII character.
@@ -250,6 +255,17 @@ namespace ZonderqOS.GUI
             {
                 char last = source[start + length - 1];
                 if (last > ' ' && last <= '~')
+                    return source.Substring(start, length);
+                // Non-ASCII filenames and UTF-8-decoded command output often
+                // end in printable Unicode. TrimEnd().ToString() always
+                // copies even when nothing is trimmed; Substring can reuse
+                // the original string for a full-line slice.
+#if ZONDERQ_PERF_HOST_TEST
+                if (!DisableUnicodeTrimFastPathForBenchmark &&
+                    !char.IsWhiteSpace(last))
+#else
+                if (!char.IsWhiteSpace(last))
+#endif
                     return source.Substring(start, length);
             }
 

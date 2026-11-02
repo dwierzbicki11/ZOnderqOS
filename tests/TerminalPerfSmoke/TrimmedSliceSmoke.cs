@@ -16,7 +16,8 @@ internal static class TrimmedSliceSmoke
         var random = new Random(3095);
         char[] alphabet = {
             'a', 'Z', ' ', '\t', '\r', '\n', '\u00a0',
-            '\u2003', '\u2028', '\u3000', '\0'
+            '\u2003', '\u2028', '\u3000', '\0',
+            '\u0105', '\u6F22', '\uD83D', '\uDE00'
         };
         int checks = 0;
         for (int sample = 0; sample < 5000; sample++)
@@ -198,10 +199,90 @@ internal static class TrimmedSliceSmoke
             " B (7 alternating .NET Release samples; not kernel CPU)");
     }
 
+    // Compare the previous span TrimEnd().ToString() path with the
+    // production fast path on complete Unicode command lines. Both call
+    // the exact production method; the host-only switch is the only change.
+    private static void BenchmarkUnicodeUnpadded()
+    {
+        var inputs = new string[128];
+        for (int i = 0; i < inputs.Length; i++)
+            inputs[i] = "plik-" + i.ToString("D3") +
+                new string('\u0105', 48 + i % 20) + "\u6F22\uD83D\uDE00";
+
+        Func<long> previous = () =>
+        {
+            TerminalBox.DisableUnicodeTrimFastPathForBenchmark = true;
+            long checksum = 0;
+            for (int i = 0; i < 1024; i++)
+            {
+                string source = inputs[i % inputs.Length];
+                string value = TerminalBox.SliceTrimmedForOutput(source, 0, source.Length);
+                checksum += value.Length + value[0] + value[value.Length - 1];
+            }
+            return checksum;
+        };
+        Func<long> optimized = () =>
+        {
+            TerminalBox.DisableUnicodeTrimFastPathForBenchmark = false;
+            long checksum = 0;
+            for (int i = 0; i < 1024; i++)
+            {
+                string source = inputs[i % inputs.Length];
+                string value = TerminalBox.SliceTrimmedForOutput(source, 0, source.Length);
+                if (!object.ReferenceEquals(source, value))
+                    throw new Exception("Unicode full-line slice allocated a copy");
+                checksum += value.Length + value[0] + value[value.Length - 1];
+            }
+            return checksum;
+        };
+
+        try
+        {
+            if (previous() != optimized())
+                throw new Exception("Unicode terminal A/B checksum mismatch");
+            for (int i = 0; i < 30; i++) { sink ^= previous(); sink ^= optimized(); }
+            var before = new double[7];
+            var after = new double[7];
+            long oldBytes = 0, newBytes = 0;
+            for (int sample = 0; sample < 7; sample++)
+            {
+                (double ms, long bytes) a, b;
+                if ((sample & 1) == 0)
+                {
+                    a = Measure(previous, 100);
+                    b = Measure(optimized, 100);
+                }
+                else
+                {
+                    b = Measure(optimized, 100);
+                    a = Measure(previous, 100);
+                }
+                before[sample] = a.ms;
+                after[sample] = b.ms;
+                oldBytes += a.bytes;
+                newBytes += b.bytes;
+            }
+            if (oldBytes <= 0 || newBytes != 0)
+                throw new Exception("Unicode full-line allocation regression: " +
+                    oldBytes + " -> " + newBytes);
+            double aMs = Median(before), bMs = Median(after);
+            Console.WriteLine("HOST A/B Unicode full-line slices 1024 x 100: old=" +
+                aMs.ToString("F3") + "ms new=" + bMs.ToString("F3") +
+                "ms ratio=" + (aMs / bMs).ToString("F2") +
+                "x allocations/sample=" + (oldBytes / 7) + " -> " +
+                (newBytes / 7) + " B (7 alternating .NET Release samples; not guest CPU)");
+        }
+        finally
+        {
+            TerminalBox.DisableUnicodeTrimFastPathForBenchmark = false;
+        }
+    }
+
     internal static void Run()
     {
         Verify();
         Benchmark();
         BenchmarkUnpadded();
+        BenchmarkUnicodeUnpadded();
     }
 }
