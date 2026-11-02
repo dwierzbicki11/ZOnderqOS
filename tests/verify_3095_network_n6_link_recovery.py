@@ -110,7 +110,7 @@ def self_test() -> None:
     check_markers(serial)
     for invalid in (
         serial.replace(DOWN, ""), serial.replace(UP, ""),
-        serial.replace(DOWN, UP).replace(UP + "\n" + UP, DOWN + "\n" + UP),
+        serial.replace(DOWN + "\n" + UP, UP + "\n" + DOWN),
         serial + "\n" + PASS,
         serial.replace(rtt, ""), serial + "\n" + rtt,
         serial.replace("elapsed_ms=19", "elapsed_ms=5001"),
