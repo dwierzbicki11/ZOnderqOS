@@ -516,6 +516,31 @@ class AudioGen3Contract(unittest.TestCase):
             self.assertNotIn(forbidden, runtime)
 
 
+    def test_extensible_ieee_float32_requires_exact_guid_and_real_capture(self):
+        parser = read("source/Core/AudioWavePcm.cs")
+        runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
+        kernel = read("Kernel.cs")
+        harness = read("tools/smoke-audio-qemu.py")
+        workflow = read(".github/workflows/audio-qemu.yml")
+        host = read("tests/AudioPciSmoke/AudioFloatWaveSmoke.cs")
+        self.assertIn("subtype != 1U && subtype != 3U", parser)
+        self.assertIn("subtype == 3U && (bits != 32 || validBits != 32)", parser)
+        self.assertIn("EncodeExtensibleFloat32AtRate(byte[] samples, int sampleRate, int channels)", parser)
+        self.assertIn("float.IsNaN(sample) || float.IsInfinity(sample)", parser)
+        self.assertIn("PlayWaveExtensibleFloat32TestTone()", runtime)
+        self.assertIn("if (sample != 0)", runtime)
+        self.assertIn('if (command == "wavextfloat")', kernel)
+        self.assertIn('"wavextfloat": 3960', harness)
+        self.assertIn("--command wavextfloat", workflow)
+        self.assertIn("audio-qemu-extensible-float32-out/*.wav", workflow)
+        self.assertIn("reject non-finite extensible float32", host)
+        self.assertIn("reject damaged extensible float GUID tail", host)
+        self.assertIn("reject inconsistent extensible float fact count", host)
+        for forbidden in ("Disk.", "File.", "TryMount(", "WriteBlock("):
+            self.assertNotIn(forbidden,
+                runtime.split("public static bool PlayWaveExtensibleFloat32TestTone()", 1)[1].split(
+                    "public static bool PlayWaveExtensibleTestTone()", 1)[0])
+
     def test_ieee_float32_is_bounded_and_isolated_from_production(self):
         parser = read("source/Core/AudioWavePcm.cs")
         runtime = read("source/Core/AudioRuntimeDiagnostics.cs")
