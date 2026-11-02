@@ -57,6 +57,22 @@ internal static class RenderClipSmoke
         Check(!ReferenceEquals(first, box.ClipLineForRender(source, 0, 12)),
             "clear must release old clipped cache"); checks++;
 
+        string prompt = new string('P', 60);
+        string promptClip = box.ClipPromptForRender(prompt, 12);
+        Check(promptClip == prompt.Substring(0, 12) &&
+            ReferenceEquals(promptClip, box.ClipPromptForRender(prompt, 12)),
+            "prompt clipping should reuse instance"); checks++;
+        Check(box.ClipPromptForRender(prompt, 16) == prompt.Substring(0, 16),
+            "prompt resize"); checks++;
+        string input = new string('T', 70);
+        string inputClip = box.ClipInputForRender(input, 9);
+        Check(inputClip == input.Substring(0, 9) &&
+            ReferenceEquals(inputClip, box.ClipInputForRender(input, 9)),
+            "input clipping should reuse instance"); checks++;
+        box.ClearInput();
+        Check(!ReferenceEquals(inputClip, box.ClipInputForRender(input, 9)),
+            "clear input must discard cached text"); checks++;
+
         // Render a real, resized production widget through a recording Canvas.
         var draws = new List<string>();
         var canvas = new Canvas { OnDrawString = text => draws.Add(text) };
@@ -83,6 +99,30 @@ internal static class RenderClipSmoke
         rendered.Render(canvas);
         Check(!draws.Exists(text => text.Length > 0 && text[0] == 'Y'),
             "external list clear"); checks++;
+
+        // Set a command while wide, then shrink: both prompt and input are
+        // clipped at render time, and repeated frames reuse their prefixes.
+        rendered.Width = 600;
+        rendered.Prompt = "> ";
+        rendered.SetInput(new string('T', 70));
+        rendered.Width = 120;
+        draws.Clear();
+        rendered.Render(canvas);
+        string firstInput = draws.Find(text => text == new string('T', 8));
+        Check(firstInput != null, "resized input must be clipped"); checks++;
+        draws.Clear();
+        rendered.Render(canvas);
+        Check(draws.Exists(text => ReferenceEquals(text, firstInput)),
+            "resized input render should reuse prefix"); checks++;
+        rendered.Prompt = new string('P', 50);
+        draws.Clear();
+        rendered.Render(canvas);
+        string firstPrompt = draws.Find(text => text == new string('P', 10));
+        Check(firstPrompt != null, "resized prompt must be clipped"); checks++;
+        draws.Clear();
+        rendered.Render(canvas);
+        Check(draws.Exists(text => ReferenceEquals(text, firstPrompt)),
+            "resized prompt render should reuse prefix"); checks++;
 
         // Compare the same 32 visible lines and fixed-width prefix selection.
         // The destination arrays prevent the JIT from eliding substrings.
@@ -133,11 +173,60 @@ internal static class RenderClipSmoke
             newBytes += newSample.bytes;
         }
         Check(newBytes < oldBytes / 100, "repeated-frame allocation regression");
+
+        // The former prompt/input Render() paths used the same Substring on
+        // each heartbeat. Measure both against the production shared cache.
+        string longPrompt = new string('P', 80);
+        string longInput = new string('T', 90);
+        string[] previousInputs = new string[2];
+        string[] cachedInputs = new string[2];
+        Action previousPromptInput = () =>
+        {
+            previousInputs[0] = longPrompt.Substring(0, 12);
+            previousInputs[1] = longInput.Substring(0, 18);
+        };
+        Action currentPromptInput = () =>
+        {
+            cachedInputs[0] = measured.ClipPromptForRender(longPrompt, 12);
+            cachedInputs[1] = measured.ClipInputForRender(longInput, 18);
+        };
+        previousPromptInput();
+        currentPromptInput();
+        Check(previousInputs[0] == cachedInputs[0] &&
+            previousInputs[1] == cachedInputs[1], "prompt/input baseline equivalence"); checks++;
+        var promptOldTimes = new double[7];
+        var promptNewTimes = new double[7];
+        long promptOldBytes = 0, promptNewBytes = 0;
+        for (int i = 0; i < 7; i++)
+        {
+            (double ms, long bytes) a, b;
+            if ((i & 1) == 0)
+            {
+                a = Measure(previousPromptInput, 100000);
+                b = Measure(currentPromptInput, 100000);
+            }
+            else
+            {
+                b = Measure(currentPromptInput, 100000);
+                a = Measure(previousPromptInput, 100000);
+            }
+            promptOldTimes[i] = a.ms;
+            promptNewTimes[i] = b.ms;
+            promptOldBytes += a.bytes;
+            promptNewBytes += b.bytes;
+        }
+        Check(promptNewBytes < promptOldBytes / 100,
+            "prompt/input repeated-frame allocation regression");
         Console.WriteLine("PASS: " + checks + " terminal render clip comparisons");
         Console.WriteLine("terminal clipped 32 rows x4000: old Substring " +
             Median(oldTimes).ToString("F3") + " ms, cached " +
             Median(newTimes).ToString("F3") + " ms; bytes/sample " +
             (oldBytes / 7) + " -> " + (newBytes / 7) +
+            " (.NET 10 host only; no guest FPS claim)");
+        Console.WriteLine("terminal clipped prompt+input x100000: old Substring " +
+            Median(promptOldTimes).ToString("F3") + " ms, cached " +
+            Median(promptNewTimes).ToString("F3") + " ms; bytes/sample " +
+            (promptOldBytes / 7) + " -> " + (promptNewBytes / 7) +
             " (.NET 10 host only; no guest FPS claim)");
     }
 }

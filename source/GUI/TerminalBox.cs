@@ -38,6 +38,32 @@ namespace ZonderqOS.GUI
 
         private RenderClip[] renderClips;
         private int lastRenderedClipRows;
+        private RenderClip promptRenderClip;
+        private RenderClip inputRenderClip;
+
+        // Resizing a window can also clip a long prompt or a command entered
+        // at the old width. These otherwise allocate on every rendered frame.
+        private static string ClipText(ref RenderClip cache, string text, int maxChars)
+        {
+            if (text.Length <= maxChars)
+            {
+                cache = default;
+                return text;
+            }
+            if (!ReferenceEquals(cache.Source, text) || cache.MaxChars != maxChars)
+            {
+                cache.Source = text;
+                cache.MaxChars = maxChars;
+                cache.Visible = text.Substring(0, maxChars);
+            }
+            return cache.Visible;
+        }
+
+        internal string ClipPromptForRender(string prompt, int maxChars) =>
+            ClipText(ref promptRenderClip, prompt, maxChars);
+
+        internal string ClipInputForRender(string text, int maxChars) =>
+            ClipText(ref inputRenderClip, text, maxChars);
 
         private void ClearRenderClips()
         {
@@ -397,20 +423,27 @@ namespace ZonderqOS.GUI
             if (key.Key == ConsoleKeyEx.Backspace)
             {
                 if (Text.Length > 0)
+                {
                     Text = Text.Substring(0, Text.Length - 1);
+                    inputRenderClip = default;
+                }
             }
             else if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar))
             {
                 int maxChars = GetMaxChars();
                 int promptChars = Prompt == null ? 0 : Prompt.Length;
                 if (promptChars + Text.Length < maxChars)
+                {
                     Text += key.KeyChar;
+                    inputRenderClip = default;
+                }
             }
         }
 
         public void ClearInput()
         {
             Text = "";
+            inputRenderClip = default;
         }
 
         public void SetInput(string text)
@@ -420,6 +453,7 @@ namespace ZonderqOS.GUI
             int promptChars = Prompt == null ? 0 : Prompt.Length;
             int capacity = Math.Max(0, maxChars - promptChars);
             Text = value.Length <= capacity ? value : value.Substring(0, capacity);
+            inputRenderClip = default;
             ScrollToBottom();
         }
 
@@ -480,18 +514,14 @@ namespace ZonderqOS.GUI
                 int promptChars = Math.Min(prompt.Length, maxChars);
                 int textChars = Math.Min(Text.Length, Math.Max(0, maxChars - promptChars));
 
-                if (promptChars == prompt.Length)
-                    DrawTerminalString(canvas, prompt, X + ContentPadding, currentY, PromptColor);
-                else
-                    DrawTerminalString(canvas, prompt.Substring(0, promptChars), X + ContentPadding, currentY, PromptColor);
+                DrawTerminalString(canvas, ClipPromptForRender(prompt, promptChars),
+                    X + ContentPadding, currentY, PromptColor);
 
                 if (textChars > 0)
-                {
-                    if (textChars == Text.Length)
-                        DrawTerminalString(canvas, Text, X + ContentPadding + promptChars * charWidth, currentY, TextColor);
-                    else
-                        DrawTerminalString(canvas, Text.Substring(0, textChars), X + ContentPadding + promptChars * charWidth, currentY, TextColor);
-                }
+                    DrawTerminalString(canvas, ClipInputForRender(Text, textChars),
+                        X + ContentPadding + promptChars * charWidth, currentY, TextColor);
+                else
+                    inputRenderClip = default;
 
                 if (IsFocused && promptChars + textChars < maxChars)
                 {
