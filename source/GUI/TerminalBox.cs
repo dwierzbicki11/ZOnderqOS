@@ -24,6 +24,68 @@ namespace ZonderqOS.GUI
         private int cachedBoxX, cachedBoxY, cachedBoxWidth, cachedBoxHeight;
         private int cachedOutputCount, cachedScrollOffset;
 
+        // A terminal line can become wider than the viewport after a resize.
+        // Cache only the prefixes actually drawn; otherwise Substring would
+        // allocate again on every frame of a narrow window. Entries are keyed
+        // by source string identity AND width, so external OutputLines edits
+        // and dynamic window resizing cannot display stale text.
+        private struct RenderClip
+        {
+            internal string Source;
+            internal string Visible;
+            internal int MaxChars;
+        }
+
+        private RenderClip[] renderClips;
+        private int lastRenderedClipRows;
+
+        private void ClearRenderClips()
+        {
+            if (renderClips != null)
+                Array.Clear(renderClips, 0, renderClips.Length);
+            lastRenderedClipRows = 0;
+        }
+
+        // Kept internal for host A/B tests of the actual production path.
+        internal string ClipLineForRender(string line, int visibleRow, int maxChars)
+        {
+            if (line.Length <= maxChars)
+            {
+                if (renderClips != null && (uint)visibleRow < (uint)renderClips.Length)
+                    renderClips[visibleRow] = default;
+                return line;
+            }
+
+            if (visibleRow < 0 || visibleRow >= MaxOutputLines)
+                return line.Substring(0, maxChars);
+
+            if (renderClips == null || visibleRow >= renderClips.Length)
+            {
+                // Allocate for the viewport, not for every history entry.
+                int size = Math.Min(MaxOutputLines, Math.Max(visibleRow + 1, GetVisibleLines()));
+                Array.Resize(ref renderClips, size);
+            }
+
+            ref RenderClip cached = ref renderClips[visibleRow];
+            if (!ReferenceEquals(cached.Source, line) || cached.MaxChars != maxChars)
+            {
+                cached.Source = line;
+                cached.MaxChars = maxChars;
+                cached.Visible = line.Substring(0, maxChars);
+            }
+            return cached.Visible;
+        }
+
+        private void FinishRenderClips(int visibleRows)
+        {
+            if (renderClips == null)
+                return;
+            int count = Math.Min(visibleRows, renderClips.Length);
+            if (count < lastRenderedClipRows)
+                Array.Clear(renderClips, count, lastRenderedClipRows - count);
+            lastRenderedClipRows = count;
+        }
+
         private static readonly Color Surface = Color.FromArgb(14, 18, 23);
         private static readonly Color Header = Color.FromArgb(25, 31, 38);
         private static readonly Color Border = Color.FromArgb(58, 69, 80);
@@ -69,6 +131,7 @@ namespace ZonderqOS.GUI
             {
                 int remove = Math.Min(TrimBatch, OutputLines.Count);
                 OutputLines.RemoveRange(0, remove);
+                ClearRenderClips();
                 scrollOffset = Math.Max(0, scrollOffset - remove);
             }
 
@@ -194,6 +257,7 @@ namespace ZonderqOS.GUI
         public void ClearOutput()
         {
             OutputLines.Clear();
+            ClearRenderClips();
             userScrolled = false;
             scrollOffset = 0;
             UpdateScrollBar();
@@ -204,6 +268,7 @@ namespace ZonderqOS.GUI
             // Htop replaces the entire visible snapshot on each refresh.
             // Avoid ClearOutput plus a redundant scrollbar update per row.
             OutputLines.Clear();
+            ClearRenderClips();
             userScrolled = false;
             scrollOffset = 0;
             int width = GetMaxChars();
@@ -402,12 +467,11 @@ namespace ZonderqOS.GUI
             for (int i = startLine; i < endLine; i++)
             {
                 string line = OutputLines[i] ?? "";
-                if (line.Length <= maxChars)
-                    DrawTerminalString(canvas, line, X + ContentPadding, currentY, TextColor);
-                else
-                    DrawTerminalString(canvas, line.Substring(0, maxChars), X + ContentPadding, currentY, TextColor);
+                DrawTerminalString(canvas, ClipLineForRender(line, i - startLine, maxChars),
+                    X + ContentPadding, currentY, TextColor);
                 currentY += lineHeight;
             }
+            FinishRenderClips(endLine - startLine);
 
             if (startLine >= maxScroll)
             {

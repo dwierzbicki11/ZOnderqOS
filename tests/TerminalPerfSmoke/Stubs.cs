@@ -9,7 +9,11 @@ namespace Cosmos.Kernel.System.Graphics
         public void DrawFilledRectangle(Color color, int x, int y, int width, int height) { }
         public void DrawRectangle(Color color, int x, int y, int width, int height) { }
         public void DrawLine(Color color, int x1, int y1, int x2, int y2) { }
-        public void DrawString(string text, Font font, Color color, int x, int y) { }
+        public Action<string> OnDrawString;
+        public void DrawString(string text, Font font, Color color, int x, int y)
+        {
+            OnDrawString?.Invoke(text);
+        }
     }
 }
 namespace Cosmos.Kernel.System.Graphics.Fonts
