@@ -31,7 +31,7 @@ DRIVER = re.compile(
 # interrupt an otherwise complete diagnostic marker. Repair only a COMPLETE
 # enabled tick inside one of these exact fixed N1 markers. Never globally
 # remove scheduler lines or synthesize a missing/altered marker.
-SCHED_TICK = re.compile(r"\[SCHED\\] Tick [0-9]+ enabled=1\n")
+SCHED_TICK = re.compile(r"\[SCHED\] Tick [0-9]+ enabled=1\n")
 
 
 def normalize_n1_serial(data: str) -> str:
