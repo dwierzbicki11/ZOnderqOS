@@ -39,7 +39,8 @@ namespace ZonderqOS.GUI
                     // tiny, truncated file from requesting a large decoded bitmap.
                     // Fail closed when the stream cannot report its length.
                     return stream.CanSeek &&
-                           HasSafeFileLength(header, read, png, stream.Length);
+                           HasSafeFileLength(header, read, png, stream.Length) &&
+                           (!png || HasSafePngChunkEnvelope(stream, stream.Length));
                 }
             }
             catch (Exception)
@@ -147,6 +148,65 @@ namespace ZonderqOS.GUI
             return fileLength >= requiredLength &&
                    (declaredSize == 0 ||
                     (declaredSize >= requiredLength && declaredSize <= fileLength));
+        }
+
+        // Walk only PNG chunk headers, skipping compressed payloads without
+        // allocating or inflating them. A valid IHDR plus 24 zero bytes is not
+        // a complete PNG. Cap the number of chunks to avoid unbounded polling
+        // on deliberately fragmented/corrupt files on slow FAT32 media.
+        private static bool HasSafePngChunkEnvelope(Stream stream, long fileLength)
+        {
+            if (fileLength < 57)
+                return false;
+
+            stream.Position = 33;
+            byte[] chunk = new byte[8];
+            bool hasIdat = false;
+            for (int count = 0; count < 4096; count++)
+            {
+                if (fileLength - stream.Position < 12 ||
+                    !ReadExactly(stream, chunk, 8))
+                    return false;
+
+                uint dataLength = ReadBigEndian32(chunk, 0);
+                long remaining = fileLength - stream.Position;
+                if (remaining < 4 || (long)dataLength > remaining - 4)
+                    return false;
+
+                bool isIdat = chunk[4] == 73 && chunk[5] == 68 &&
+                              chunk[6] == 65 && chunk[7] == 84;
+                bool isIend = chunk[4] == 73 && chunk[5] == 69 &&
+                              chunk[6] == 78 && chunk[7] == 68;
+                long next = stream.Position + dataLength + 4;
+                if (isIend)
+                {
+                    if (dataLength != 0 || !hasIdat || next != fileLength ||
+                        !ReadExactly(stream, chunk, 4))
+                        return false;
+                    // CRC32 of the empty IEND chunk (fixed by the PNG spec).
+                    return chunk[0] == 0xAE && chunk[1] == 0x42 &&
+                           chunk[2] == 0x60 && chunk[3] == 0x82;
+                }
+
+                if (isIdat && dataLength > 0)
+                    hasIdat = true;
+                stream.Position = next;
+            }
+
+            return false;
+        }
+
+        private static bool ReadExactly(Stream stream, byte[] bytes, int count)
+        {
+            int read = 0;
+            while (read < count)
+            {
+                int n = stream.Read(bytes, read, count - read);
+                if (n <= 0)
+                    return false;
+                read += n;
+            }
+            return true;
         }
 
         // CRC-32 of IHDR type + 13 data bytes. The decoder must not be
