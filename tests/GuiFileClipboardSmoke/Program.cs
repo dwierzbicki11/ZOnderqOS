@@ -31,7 +31,8 @@ namespace ZonderqOS
         public static bool FailCopy;
         public static bool FailCleanup;
         public static string DenyWritePath = "";
-        public static bool CanRead(string path, string user) => true;
+        public static string DenyReadPath = "";
+        public static bool CanRead(string path, string user) => path != DenyReadPath;
         public static bool CanWrite(string path, string user) => path != DenyWritePath;
         public static void MovePermissionsUnder(string source, string destination)
         {
@@ -80,6 +81,7 @@ internal static class Program
         PermissionManager.FailCopy = false;
         PermissionManager.FailCleanup = false;
         PermissionManager.DenyWritePath = "";
+        PermissionManager.DenyReadPath = "";
         SecurityContext.CurrentUser = "root";
         SecurityContext.IsAuthenticated = true;
         UserManager.HomeDirectory = root;
@@ -94,6 +96,7 @@ internal static class Program
             PermissionManager.FailCopy = false;
             PermissionManager.FailCleanup = false;
             PermissionManager.DenyWritePath = "";
+            PermissionManager.DenyReadPath = "";
             SecurityContext.CurrentUser = "root";
             SecurityContext.IsAuthenticated = true;
             Directory.Delete(root, true);
@@ -271,6 +274,11 @@ internal static class Program
             FileClipboard.Set("relative.txt", false, false);
             Check(!FileClipboard.TryPaste(home, out path, out error),
                 "relative clipboard source denied");
+            FileClipboard.Set(home + "/./private.txt", false, false);
+            Check(!FileClipboard.TryPaste(home, out path, out error),
+                "dot clipboard source denied");
+            Check(File.Exists(source) && Directory.GetFiles(home).Length == 1,
+                "invalid clipboard paths leave user home unchanged");
         });
     }
 
@@ -292,6 +300,14 @@ internal static class Program
                 "directory root ACL reports denial");
             Check(Directory.Exists(source) && Directory.GetDirectories(destination).Length == 0,
                 "denied directory cut leaves both trees intact");
+
+            PermissionManager.DenyWritePath = "";
+            PermissionManager.DenyReadPath = source;
+            FileClipboard.Set(source, true, false);
+            Check(!FileClipboard.TryPaste(destination, out path, out error),
+                "directory root read ACL denies copy");
+            Check(Directory.Exists(source) && Directory.GetDirectories(destination).Length == 0,
+                "denied directory copy leaves both trees intact");
         });
     }
 
