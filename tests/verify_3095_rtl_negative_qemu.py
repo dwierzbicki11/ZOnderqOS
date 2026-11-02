@@ -2,9 +2,9 @@
 """Fail-closed serial gate for isolated RTL810xE negative QEMU boots.
 
 A scheduler tick can interrupt a serial diagnostic write at any character.
-Only a single *complete*, valid scheduler tick inserted strictly inside the
-exact expected decline marker is removed. Arbitrary fragments and extra
-failure markers are not normalized.
+Only a single *complete*, valid scheduler tick inserted strictly inside each
+exact expected boot or decline marker is removed. Arbitrary fragments and
+extra failure markers are not normalized.
 """
 from __future__ import annotations
 
@@ -25,12 +25,12 @@ FATAL = re.compile(r"kernel panic|fatal: exception|page fault|unhandled exceptio
 
 
 
-def normalize_decline_tick(raw: str) -> str:
-    """Reassemble exactly one scheduler-preempted decline, never other text.
+def normalize_marker_tick(raw: str, marker: str) -> str:
+    """Reassemble at most one scheduler-preempted exact diagnostic marker.
 
-    Real QEMU may splice a tick within 'valid' or 'samples' (among other
-    byte boundaries). The complete reconstructed line must equal DECLINE.
-    Ticks elsewhere, including their complete lines, remain untouched.
+    Real QEMU can splice a complete scheduler tick inside the BOOT marker as
+    well as the decline marker. Reassemble only when the entire reconstructed
+    line matches the exact expected marker; other log content is untouched.
     """
     found = []
     for tick in TICK_LINE.finditer(raw):
@@ -41,21 +41,24 @@ def normalize_decline_tick(raw: str) -> str:
         # Tick must interrupt *inside* the marker, not precede/follow it.
         if start == tick.start() or end == tick.end():
             continue
-        if raw[start:tick.start()] + raw[tick.end():end] == DECLINE:
+        if raw[start:tick.start()] + raw[tick.end():end] == marker:
             found.append((start, end))
     if len(found) > 1:
-        raise ValueError("duplicate scheduler-preempted RTL810xE decline")
+        raise ValueError("duplicate scheduler-preempted RTL810xE marker")
     if not found:
         return raw
     start, end = found[0]
-    return raw[:start] + DECLINE + raw[end:]
+    return raw[:start] + marker + raw[end:]
 
+
+def normalize_diagnostic_ticks(raw: str) -> str:
+    return normalize_marker_tick(normalize_marker_tick(raw, BOOT), DECLINE)
 
 def verify(serial: str, mode: str) -> str:
     if mode not in ("none", "rtl8139", "e1000e"):
         raise ValueError("unsupported NIC mode")
     raw = serial.replace("\r", "")
-    cleaned = normalize_decline_tick(raw)
+    cleaned = normalize_diagnostic_ticks(raw)
     lines = cleaned.splitlines()
     if lines.count(BOOT) != 1 or lines.count(DECLINE) != 1:
         raise ValueError("missing/duplicate RTL810xE boot or exact decline marker")
@@ -112,7 +115,23 @@ def self_test() -> None:
         assert "PASS mode=none" in verify(base.replace(DECLINE, split), "none")
         assert "PASS mode=rtl8139" in verify(rtl.replace(DECLINE, split), "rtl8139")
         assert "PASS mode=e1000e" in verify(rtl.replace(DECLINE, split), "e1000e")
+    # Actual QEMU can splice the scheduler tick into BOOT, not just DECLINE.
+    # Every internal byte boundary must reconstruct exactly, including when
+    # both markers are independently interrupted.
+    for pos in range(1, len(BOOT)):
+        split = BOOT[:pos] + "[SCHED] Tick 6 enabled=1\n" + BOOT[pos:]
+        assert "PASS mode=none" in verify(base.replace(BOOT, split), "none")
+        assert "PASS mode=rtl8139" in verify(rtl.replace(BOOT, split), "rtl8139")
+        assert "PASS mode=e1000e" in verify(rtl.replace(BOOT, split), "e1000e")
+    both = rtl.replace(BOOT, BOOT[:12] + "[SCHED] Tick 6 enabled=1\n" + BOOT[12:])
+    both = both.replace(DECLINE, DECLINE[:35] + "[SCHED] Tick 7 enabled=1\n" + DECLINE[35:])
+    assert "PASS mode=e1000e" in verify(both, "e1000e")
     bad = [
+        rtl.replace(BOOT, BOOT[:12] + "[SCHED] Tick 6 enabled=0\n" + BOOT[12:]),
+        rtl.replace(BOOT, BOOT[:12] + "[SCHED] Tick 6 enabled=1\n" +
+                    BOOT[12:].replace("read-only", "read-write")),
+        rtl.replace(BOOT, BOOT[:12] + "[SCHED] Tick 6 enabled=1\n" + BOOT[12:] +
+                    "\n" + BOOT),
         rtl.replace("offers=0", "offers=1"),
         rtl.replace("samples=0", "samples=1"),
         rtl.replace("HEARTBEAT=2", "HEARTBEAT=1"),
