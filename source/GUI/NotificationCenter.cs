@@ -463,6 +463,11 @@ namespace ZonderqOS.GUI
                             SmallTextRenderer.DrawClipped(canvas, "System nie ma nic nowego do pokazania.",
                                 cardX + 60, cy + 50, cardWidth - 74, Muted);
                         }
+                        else if (cardWidth > 20)
+                        {
+                            SmallTextRenderer.DrawClipped(canvas, "BRAK", cardX + 8, cy + 34,
+                                cardWidth - 16, Text);
+                        }
                     }
                     continue;
                 }
@@ -492,7 +497,7 @@ namespace ZonderqOS.GUI
                 if (cardWidth > 118)
                     SmallTextRenderer.DrawClipped(canvas, entry.Title, cardX + 50, cy + 13,
                         cardWidth - 118, titleColor);
-                else if (cardWidth >= 94)
+                else if (cardWidth > 20)
                     SmallTextRenderer.DrawClipped(canvas, entry.Title, cardX + 8, cy + 45,
                         cardWidth - 16, titleColor);
                 if (cardWidth > 118)

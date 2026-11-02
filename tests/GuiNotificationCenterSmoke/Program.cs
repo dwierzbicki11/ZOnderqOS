@@ -11,6 +11,7 @@ namespace Cosmos.Kernel.System.Graphics
 {
     public class Canvas
     {
+        public int ScreenWidth { get; set; } = int.MaxValue;
         public virtual void DrawFilledRectangle(Color color, int x, int y, int width, int height) { }
         public virtual void DrawLine(Color color, int x1, int y1, int x2, int y2) { }
     }
@@ -85,8 +86,9 @@ namespace ZonderqOS.GUI
         public static void DrawClipped(Cosmos.Kernel.System.Graphics.Canvas canvas,
             string text, int x, int y, int width, Color color)
         {
-            if (width <= 0)
-                throw new InvalidOperationException("Invalid notification text clip width: " + width);
+            if (width <= 0 || x < 0 || (long)x + width > canvas.ScreenWidth)
+                throw new InvalidOperationException("Notification text clip outside screen: x=" +
+                    x + " width=" + width + " screen=" + canvas.ScreenWidth);
         }
         public static void DrawCentered(Cosmos.Kernel.System.Graphics.Canvas canvas,
             string text, int x, int y, int width, Color color) { }
@@ -281,7 +283,7 @@ internal static class Program
                 NotificationService.ResetForSession();
                 Post("Compact");
                 var center = new NotificationCenter(width, height, 44);
-                var canvas = new Cosmos.Kernel.System.Graphics.Canvas();
+                var canvas = new Cosmos.Kernel.System.Graphics.Canvas { ScreenWidth = width };
                 center.Render(canvas); // active toast
                 center.Toggle();
                 center.Render(canvas); // notification cards
