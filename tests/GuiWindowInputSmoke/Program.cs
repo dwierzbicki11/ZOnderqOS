@@ -184,8 +184,37 @@ internal static class Program
             "window respects Full HD inset after mode change");
     }
 
+    private static void KeyboardFirstResolutionReflow()
+    {
+        Window.ConfigureDesktop(1366, 724);
+        var window = new Window(1000, 600, 500, 300, "keyboard-first");
+        var child = new TestWidget(10, 40);
+        window.AddChild(child);
+
+        // No Render(), ContainsPoint() or mouse event has occurred since
+        // the mode change. File Manager's keyboard path explicitly calls
+        // EnsureDesktopBounds before computing visible rows/columns.
+        Window.ConfigureDesktop(800, 556);
+        window.EnsureDesktopBounds();
+        Check(window.X >= 0 && window.Y >= 0 &&
+            window.X + window.Width <= 800 && window.Y + window.Height <= 556,
+            "keyboard-first reflow clamps the window to the new work area");
+        Check(child.X == window.X + 10 && child.Y == window.Y + 40,
+            "keyboard-first reflow keeps child coordinates aligned");
+
+        window.ToggleMaximize();
+        Window.ConfigureDesktop(1920, 1036);
+        window.EnsureDesktopBounds();
+        Check(window.IsMaximized && window.X == 0 && window.Y == 0 &&
+            window.Width == 1920 && window.Height == 1036,
+            "keyboard-first reflow expands maximized window to Full HD");
+        Check(child.X == window.X + 10 && child.Y == window.Y + 40,
+            "maximized reflow preserves child offsets");
+    }
+
     public static int Main()
     {
+        KeyboardFirstResolutionReflow();
         InterruptedDrag();
         InterruptedResize();
         ResolutionAndCaption();
