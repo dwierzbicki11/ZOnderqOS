@@ -539,6 +539,7 @@ internal static class Program
     {
         VerifyDelimiterScanner();
         BenchmarkDelimiterScanner();
+        DelimiterParserSmoke.Run();
         Verify();
         VerifyCommandBatch();
         VerifyScrollTrimClamping();
