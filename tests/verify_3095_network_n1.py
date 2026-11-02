@@ -73,6 +73,17 @@ def validate_serial(data: str) -> bytes:
         raise ValueError("kernel fault, probe failure or unrelated SMP marker")
     if lines.count(BOOT) != 1 or lines.count(END) != 1 or lines.count(TX) != 1:
         raise ValueError("missing or repeated BOOT, TX or END marker")
+    # Reject extra malformed/unknown N1 claims instead of ignoring them while
+    # accepting a separate valid copy. Heartbeats have their own liveness gate.
+    for line in lines:
+        if not line.startswith("[NET3095-N1]") or line.startswith(
+            "[NET3095-N1] HEARTBEAT="
+        ):
+            continue
+        if (line not in (BOOT, TX, END) and
+                not any(pattern.fullmatch(line) for pattern in
+                        (DISCOVER, DEVICE, ACCEPT, DRIVER))):
+            raise ValueError("unexpected or malformed N1 diagnostic marker")
     found = [m for line in lines if (m := DISCOVER.fullmatch(line))]
     ready = [m for line in lines if (m := ACCEPT.fullmatch(line))]
     devices = [m for line in lines if (m := DEVICE.fullmatch(line))]
@@ -241,6 +252,11 @@ def self_test() -> None:
         serial.replace("resources=8 irq_sources=1", "resources=8 irq_sources=0"),
         serial.replace("node=pci:0000:00:02.0", "node=pci:0000:00:03.0"),
         serial.replace(TX, "[NET3095-N1] TX_QUEUED=no"),
+        serial + "\n[NET3095-N1] TX_QUEUED=no",
+        serial + "\n[NET3095-N1] discovered=bad",
+        serial + "\n[NET3095-N1] PASS READY_LINK=unknown",
+        serial + "\n[NET3095-N1] BOOTX",
+        serial + "\n[NET3095-N1] DHCP=NOT_ATTEMPTED IP=UNASSIGNEDX",
         serial.replace(TX + "\n", ""),
         serial.replace(END, ""),
         serial + "\nKERNEL PANIC",
