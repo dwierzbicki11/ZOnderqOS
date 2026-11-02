@@ -311,6 +311,101 @@ internal static class Program
         });
     }
 
+    private static void ClipboardIsBoundToSelectingUser()
+    {
+        Case(root =>
+        {
+            string source = Path.Combine(root, "private.txt");
+            string destination = Path.Combine(root, "target");
+            Directory.CreateDirectory(destination);
+            File.WriteAllText(source, "private data");
+            SecurityContext.CurrentUser = "alice";
+            FileClipboard.Set(source, false, true);
+            Check(FileClipboard.HasItem, "owner can see selected item");
+            SecurityContext.CurrentUser = "bob";
+            Check(!FileClipboard.HasItem && FileClipboard.SourcePath == null &&
+                FileClipboard.DisplayName == "" && !FileClipboard.IsCut,
+                "new account cannot inspect previous clipboard");
+            Check(!FileClipboard.TryPaste(destination, out string path, out string error),
+                "cross-user clipboard paste rejected");
+            Check(path == null && error != null && error.Contains("another user"),
+                "cross-user paste has explicit error");
+            Check(!FileClipboard.HasItem && File.Exists(source) &&
+                Directory.GetFiles(destination).Length == 0,
+                "cross-user rejection clears clipboard without touching files");
+        });
+    }
+
+    private static void UnauthenticatedSelectionCannotStageFiles()
+    {
+        Case(root =>
+        {
+            string source = Path.Combine(root, "private.txt");
+            File.WriteAllText(source, "private data");
+            FileClipboard.Set(source, false, true);
+            SecurityContext.IsAuthenticated = false;
+            FileClipboard.Set(source, false, true);
+            Check(!FileClipboard.HasItem && FileClipboard.SourcePath == null,
+                "expired session cannot stage or retain a cut");
+            SecurityContext.IsAuthenticated = true;
+            Check(!FileClipboard.HasItem, "old cut does not reappear after login");
+            SecurityContext.CurrentUser = null!;
+            FileClipboard.Set(source, false, false);
+            Check(!FileClipboard.HasItem, "missing identity cannot stage a copy");
+        });
+    }
+
+    private static void CutRequiresWritableSourceParent()
+    {
+        Case(root =>
+        {
+            string source = Path.Combine(root, "private.txt");
+            string destination = Path.Combine(root, "target");
+            Directory.CreateDirectory(destination);
+            File.WriteAllText(source, "keep");
+            PermissionManager.DenyWritePath = root;
+            FileClipboard.Set(source, false, true);
+            Check(!FileClipboard.TryPaste(destination, out string path, out string error),
+                "cut from read-only parent rejected");
+            Check(path == null && error != null && error.Contains("source folder"),
+                "read-only parent error is explicit");
+            Check(File.Exists(source) && Directory.GetFiles(destination).Length == 0,
+                "denied parent cut does not move or copy data");
+            PermissionManager.DenyWritePath = "";
+            Check(FileClipboard.TryPaste(destination, out path, out error),
+                "cut succeeds when parent is writable");
+            Check(!File.Exists(source) && File.Exists(path),
+                "authorized cut moves original data");
+        });
+    }
+
+    private static void NonRootCannotCutFilesOutsideHome()
+    {
+        Case(root =>
+        {
+            string home = Path.Combine(root, "home");
+            string outside = Path.Combine(root, "outside");
+            Directory.CreateDirectory(home);
+            Directory.CreateDirectory(outside);
+            string source = Path.Combine(outside, "shared.txt");
+            File.WriteAllText(source, "shared");
+            SecurityContext.CurrentUser = "alice";
+            UserManager.HomeDirectory = home;
+            FileClipboard.Set(source, false, true);
+            Check(!FileClipboard.TryPaste(home, out string path, out string error),
+                "non-root cannot cut a file from outside home");
+            Check(path == null && error != null && error.Contains("source folder"),
+                "external cut has explicit error");
+            Check(File.Exists(source) && Directory.GetFiles(home).Length == 0,
+                "external cut does not mutate either directory");
+            FileClipboard.Set(source, false, false);
+            Check(FileClipboard.TryPaste(home, out path, out error),
+                "readable external file may still be copied into home");
+            Check(File.Exists(source) && File.Exists(path),
+                "copy preserves the external source");
+        });
+    }
+
     private static void MissingSourceIsRejected()
     {
         Case(root =>
@@ -337,6 +432,10 @@ internal static class Program
         ExpiredSessionCannotPasteAsRoot();
         TraversalPathsCannotEscapeHome();
         DirectoryAclProtectsItsOwnRoot();
+        ClipboardIsBoundToSelectingUser();
+        UnauthenticatedSelectionCannotStageFiles();
+        CutRequiresWritableSourceParent();
+        NonRootCannotCutFilesOutsideHome();
         Console.WriteLine("GUI clipboard host C#: " + assertions + " PASS");
         return 0;
     }

@@ -7,29 +7,35 @@ namespace ZonderqOS.GUI
     public static class FileClipboard
     {
         private static string sourcePath;
+        // A copied path belongs to the authenticated identity that selected it.
+        // GUI logout clears the clipboard, but this also protects callers that
+        // change identity without going through the graphical logout path.
+        private static string sourceUser;
         private static bool sourceIsDirectory;
         private static bool cutMode;
 
         public static bool HasItem
         {
-            get { return !string.IsNullOrEmpty(sourcePath); }
+            get { return !string.IsNullOrEmpty(sourcePath) &&
+                SecurityContext.IsAuthenticated &&
+                string.Equals(sourceUser, SecurityContext.CurrentUser, StringComparison.Ordinal); }
         }
 
         public static bool IsCut
         {
-            get { return cutMode; }
+            get { return HasItem && cutMode; }
         }
 
         public static string SourcePath
         {
-            get { return sourcePath; }
+            get { return HasItem ? sourcePath : null; }
         }
 
         public static string DisplayName
         {
             get
             {
-                if (string.IsNullOrEmpty(sourcePath))
+                if (!HasItem)
                     return "";
 
                 string trimmed = sourcePath.TrimEnd('/', '\\');
@@ -40,10 +46,17 @@ namespace ZonderqOS.GUI
 
         public static void Set(string path, bool isDirectory, bool cut)
         {
-            if (string.IsNullOrEmpty(path))
+            // Never retain a previous user's path when selection happens in
+            // an expired or unidentified session.
+            if (string.IsNullOrEmpty(path) || !SecurityContext.IsAuthenticated ||
+                string.IsNullOrEmpty(SecurityContext.CurrentUser))
+            {
+                Clear();
                 return;
+            }
 
             sourcePath = Normalize(path);
+            sourceUser = SecurityContext.CurrentUser;
             sourceIsDirectory = isDirectory;
             cutMode = cut;
         }
@@ -51,6 +64,7 @@ namespace ZonderqOS.GUI
         public static void Clear()
         {
             sourcePath = null;
+            sourceUser = null;
             sourceIsDirectory = false;
             cutMode = false;
         }
@@ -67,6 +81,16 @@ namespace ZonderqOS.GUI
                 string.IsNullOrEmpty(SecurityContext.CurrentUser))
             {
                 error = "Authentication required for clipboard paste";
+                return false;
+            }
+
+            // A stale cut from another account must never be interpreted as
+            // an action authorized by the newly authenticated account.
+            if (!string.IsNullOrEmpty(sourcePath) &&
+                !string.Equals(sourceUser, SecurityContext.CurrentUser, StringComparison.Ordinal))
+            {
+                Clear();
+                error = "Clipboard belongs to another user";
                 return false;
             }
 
@@ -135,6 +159,23 @@ namespace ZonderqOS.GUI
                 Clear();
                 error = "Clipboard source no longer exists";
                 return false;
+            }
+
+            // Deleting or renaming a source entry changes its parent folder.
+            // Checking only the file ACL lets a cut bypass a read-only parent
+            // on FAT32, where the host-style directory permissions are virtual.
+            if (cutMode)
+            {
+                string sourceParent = Normalize(Path.GetDirectoryName(source));
+                if (string.IsNullOrEmpty(sourceParent) ||
+                    !PermissionManager.CanWrite(sourceParent, user) ||
+                    (user != "root" && !IsInside(sourceParent,
+                        Normalize(UserManager.GetHomeDirectory(user)))))
+                {
+                    error = "Permission denied: cannot remove from source folder";
+                    SecurityLogger.LogEvent("WARN", $"Unauthorized clipboard source parent by {user}: {sourceParent}");
+                    return false;
+                }
             }
 
             if (!HasSourceAccess(source, sourceIsDirectory, cutMode, user, out string deniedPath))
