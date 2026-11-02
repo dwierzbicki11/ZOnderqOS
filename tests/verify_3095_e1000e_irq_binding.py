@@ -26,6 +26,10 @@ BASELINE = re.compile(r"^\[NET3095-N6\] DRIVER_BASELINE=PASS node=" + NODE +
 HEALTH = re.compile(r"^\[NET3095-N6\] DRIVER_HEALTH=PASS node=" + NODE +
                     r" driver=E1000EDriver resources=(\d+) published=(\d+)" +
                     r" irq_sources=(\d+) handler_faults=(\d+) isr_executions=unknown$")
+PCI_STREAM = re.compile(r"^\[NET3095-N6\] HTTP_PCI_STABLE=PASS attempt=([1-6]) "
+                        r"command=0x([0-9A-Fa-f]{4}) bar0=0x([0-9A-Fa-f]+) "
+                        r"irq_line=([0-9]+) irq_pin=([0-9]+) "
+                        r"\(read-only; ISR unproven\)$")
 STREAM = re.compile(r"^\[NET3095-N6\] HTTP_DRIVER_STABLE=PASS attempt=([1-6]) "
                     r"resources=(\d+) irq_sources=(\d+)$")
 BURST = re.compile(r"^\[NET3095-N6\] TX_DRIVER_STABLE=PASS count=128 checks=5 "
@@ -207,21 +211,40 @@ def check_driver_health(serial: str) -> str:
     # recovered between TCP sessions. These remain source counts, not ISRs.
     stream_lines = [line for line in lines
                     if line.startswith("[NET3095-N6] HTTP_DRIVER_STABLE")]
-    if len(stream_lines) != 6:
-        raise ValueError("missing/duplicate per-stream DriverKit snapshots")
+    pci_lines = [line for line in lines
+                 if line.startswith("[NET3095-N6] HTTP_PCI_STABLE")]
+    if len(stream_lines) != 6 or len(pci_lines) != 6:
+        raise ValueError("missing/duplicate per-stream PCI or DriverKit snapshots")
     previous_nic_index = lines.index(baseline_lines[0])
+    pci_baseline = None
     for attempt, stream_line in enumerate(stream_lines, 1):
         stream = STREAM.fullmatch(stream_line)
+        pci = PCI_STREAM.fullmatch(pci_lines[attempt - 1])
         nic_line = f"[NET3095-N6] HTTP_NIC_STABLE=PASS attempt={attempt}"
         if (stream is None or int(stream.group(1)) != attempt or
                 stream.group(2) != resources or stream.group(3) != sources or
                 lines.count(nic_line) != 1):
             raise ValueError("mismatched per-stream DriverKit ownership")
+        if pci is None or int(pci.group(1)) != attempt:
+            raise ValueError("invalid per-stream PCI mapping claim")
+        command, bar0, irq_line, irq_pin = (int(pci.group(2), 16),
+                                            int(pci.group(3), 16),
+                                            int(pci.group(4)), int(pci.group(5)))
+        if ((command & 0x0006) != 0x0006 or (command & 0x0400) or
+                bar0 == 0 or (bar0 & 0xF) or
+                irq_line < 1 or irq_line > 254 or irq_pin < 1 or irq_pin > 4):
+            raise ValueError("invalid per-stream PCI MMIO/INTx assignment")
+        current_pci = (command, bar0, irq_line, irq_pin)
+        if pci_baseline is None:
+            pci_baseline = current_pci
+        elif current_pci != pci_baseline:
+            raise ValueError("PCI BAR/COMMAND/INTx changed between HTTP streams")
+        pci_index = lines.index(pci_lines[attempt - 1])
         stream_index = lines.index(stream_line)
         nic_index = lines.index(nic_line)
-        if not (previous_nic_index < stream_index < nic_index <
+        if not (previous_nic_index < pci_index < stream_index < nic_index <
                 lines.index(claims[0])):
-            raise ValueError("per-stream DriverKit snapshots out of order")
+            raise ValueError("per-stream PCI/DriverKit snapshots out of order")
         if (attempt <= 2 and nic_index >= lines.index(burst_start)) or (
                 attempt >= 3 and stream_index <= http_start):
             raise ValueError("HTTP DriverKit snapshot on wrong side of TX burst")
@@ -257,6 +280,7 @@ def self_test() -> None:
         "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up\n"
         "[NET3095-N6] DRIVER_BASELINE=PASS node=pci:0000:00:02.0 resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown\n"
         + "".join(
+            f"[NET3095-N6] HTTP_PCI_STABLE=PASS attempt={attempt} command=0x0006 bar0=0xFEBF0000 irq_line=11 irq_pin=1 (read-only; ISR unproven)\n"
             f"[NET3095-N6] HTTP_DRIVER_STABLE=PASS attempt={attempt} resources=8 irq_sources=1\n"
             f"[NET3095-N6] HTTP_NIC_STABLE=PASS attempt={attempt}\n"
             for attempt in range(1, 3)
@@ -277,6 +301,7 @@ def self_test() -> None:
         + "[NET3095-N6] POST_BURST_ICMP=PASS from=10.0.2.2 count=4\n"
         + "[NET3095-N6] POST_BURST_HTTP_ATTEMPT=START\n"
         + "".join(
+            f"[NET3095-N6] HTTP_PCI_STABLE=PASS attempt={attempt} command=0x0006 bar0=0xFEBF0000 irq_line=11 irq_pin=1 (read-only; ISR unproven)\n"
             f"[NET3095-N6] HTTP_DRIVER_STABLE=PASS attempt={attempt} resources=8 irq_sources=1\n"
             f"[NET3095-N6] HTTP_NIC_STABLE=PASS attempt={attempt}\n"
             for attempt in range(3, 7)
@@ -370,6 +395,21 @@ def self_test() -> None:
         serial.replace(nic_line, ""),
         serial + nic_line,
         serial.replace(stream_line + nic_line, nic_line + stream_line),
+    )
+    pci_line = ("[NET3095-N6] HTTP_PCI_STABLE=PASS attempt=3 command=0x0006 "
+                "bar0=0xFEBF0000 irq_line=11 irq_pin=1 (read-only; ISR unproven)\n")
+    bad_health += (
+        serial.replace(pci_line, ""),
+        serial + pci_line,
+        serial.replace(pci_line, pci_line.replace("attempt=3", "attempt=4")),
+        serial.replace(pci_line, pci_line.replace("command=0x0006", "command=0x0002")),
+        serial.replace(pci_line, pci_line.replace("command=0x0006", "command=0x0406")),
+        serial.replace(pci_line, pci_line.replace("bar0=0xFEBF0000", "bar0=0xFEBE0000")),
+        serial.replace(pci_line, pci_line.replace("bar0=0xFEBF0000", "bar0=0x0")),
+        serial.replace(pci_line, pci_line.replace("irq_line=11", "irq_line=12")),
+        serial.replace(pci_line, pci_line.replace("irq_pin=1", "irq_pin=0")),
+        serial.replace(pci_line, pci_line.replace("HTTP_PCI_STABLE=PASS", "HTTP_PCI_STABLE=FAIL")),
+        serial.replace(pci_line + stream_line, stream_line + pci_line),
     )
     burst_marker = ("[NET3095-N6] TX_DRIVER_STABLE=PASS count=128 checks=5 "
                     "resources=8 irq_sources=1\n")
