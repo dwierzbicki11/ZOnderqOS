@@ -25,6 +25,13 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color ViewBackground = Color.FromArgb(14, 18, 23);
 
         private const int ToolbarHeight = 48;
+        // The seven actions share geometry for painting and hit testing.
+        private static readonly IconType[] ToolbarIcons =
+        {
+            IconType.ArrowUp, IconType.ArrowUp, IconType.ZoomOut,
+            IconType.ZoomIn, IconType.Rotate, IconType.ImageViewer,
+            IconType.Refresh
+        };
         private const int FooterHeight = 30;
         private const int MaxSiblingImages = 128;
         private const int MaxPreviewWidth = 1600;
@@ -136,32 +143,38 @@ namespace ZonderqOS.GUI.Apps
                 return;
 
             int toolbarY = Window.Y + 38;
-            if (mouseY < toolbarY || mouseY >= toolbarY + ToolbarHeight)
+            int localX = mouseX - (Window.X + 10);
+            int localY = mouseY - toolbarY;
+            if (localX < 0 || localX >= Window.Width - 20 ||
+                localY < 5 || localY >= 43)
                 return;
 
-            int x = mouseX - (Window.X + 14);
-            if (x < 0)
-                return;
-
-            if (x < 38)
-                NavigateSibling(-1);
-            else if (x < 78)
-                NavigateSibling(1);
-            else if (x < 126)
-                ChangeZoom(-25);
-            else if (x < 174)
-                ChangeZoom(25);
-            else if (x < 222)
-                RotateClockwise();
-            else if (x < 270)
+            for (int i = 0; i < ToolbarIcons.Length; i++)
             {
-                fitToWindow = true;
-                zoomPercent = 100;
-                previewDirty = true;
-                status = "Dopasowanie do okna";
+                int buttonX;
+                int buttonWidth;
+                if (!TryToolbarButtonBounds(i, out buttonX, out buttonWidth))
+                    break;
+                if (localX < buttonX || localX >= buttonX + buttonWidth)
+                    continue;
+
+                switch (i)
+                {
+                    case 0: NavigateSibling(-1); break;
+                    case 1: NavigateSibling(1); break;
+                    case 2: ChangeZoom(-25); break;
+                    case 3: ChangeZoom(25); break;
+                    case 4: RotateClockwise(); break;
+                    case 5:
+                        fitToWindow = true;
+                        zoomPercent = 100;
+                        previewDirty = true;
+                        status = "Dopasowanie do okna";
+                        break;
+                    case 6: ReloadImage(); break;
+                }
+                return;
             }
-            else if (x < 318)
-                ReloadImage();
         }
 
         public override void Render(Canvas canvas)
@@ -187,24 +200,47 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Toolbar, x, y, width, ToolbarHeight);
             canvas.DrawRectangle(Border, x, y, width, ToolbarHeight);
 
-            DrawToolbarButton(canvas, x + 4, y + 5, 36, IconType.ArrowUp, "<");
-            DrawToolbarButton(canvas, x + 44, y + 5, 36, IconType.ArrowUp, ">");
-            DrawToolbarButton(canvas, x + 84, y + 5, 44, IconType.ZoomOut, null);
-            DrawToolbarButton(canvas, x + 132, y + 5, 44, IconType.ZoomIn, null);
-            DrawToolbarButton(canvas, x + 180, y + 5, 44, IconType.Rotate, null);
-            DrawToolbarButton(canvas, x + 228, y + 5, 44, IconType.ImageViewer, null);
-            DrawToolbarButton(canvas, x + 276, y + 5, 44, IconType.Refresh, null);
-
-            int infoX = x + 334;
-            if (infoX < x + width - 120)
+            for (int i = 0; i < ToolbarIcons.Length; i++)
             {
-                SmallTextRenderer.DrawClipped(canvas, displayName, infoX, y + 10,
-                    System.Math.Max(20, x + width - infoX - 92), Text);
-                SmallTextRenderer.DrawUIntWithSuffix(canvas, (ulong)zoomPercent, "%", infoX, y + 28, Muted);
-                if (fitToWindow)
-                    SmallTextRenderer.Draw(canvas, " FIT", infoX + SmallTextRenderer.WidthUInt((ulong)zoomPercent) + 10,
-                        y + 28, SystemTheme.Accent);
+                int buttonX;
+                int buttonWidth;
+                if (!TryToolbarButtonBounds(i, out buttonX, out buttonWidth))
+                    break;
+                string label = i == 0 ? "<" : (i == 1 ? ">" : null);
+                DrawToolbarButton(canvas, x + buttonX, y + 5, buttonWidth, ToolbarIcons[i], label);
             }
+
+            int lastX;
+            int lastWidth;
+            if (TryToolbarButtonBounds(6, out lastX, out lastWidth))
+            {
+                int infoX = x + lastX + lastWidth + 14;
+                if (infoX < x + width - 120)
+                {
+                    SmallTextRenderer.DrawClipped(canvas, displayName, infoX, y + 10,
+                        System.Math.Max(20, x + width - infoX - 92), Text);
+                    SmallTextRenderer.DrawUIntWithSuffix(canvas, (ulong)zoomPercent, "%", infoX, y + 28, Muted);
+                    if (fitToWindow)
+                        SmallTextRenderer.Draw(canvas, " FIT", infoX + SmallTextRenderer.WidthUInt((ulong)zoomPercent) + 10,
+                            y + 28, SystemTheme.Accent);
+                }
+            }
+        }
+
+        private bool TryToolbarButtonBounds(int index, out int left, out int width)
+        {
+            left = 4;
+            width = 0;
+            if (index < 0 || index >= ToolbarIcons.Length)
+                return false;
+
+            int toolbarWidth = Window.Width - 20;
+            bool compact = toolbarWidth < 324;
+            for (int i = 0; i < index; i++)
+                left += (compact ? 32 : (i < 2 ? 36 : 44)) + 4;
+
+            width = compact ? 32 : (index < 2 ? 36 : 44);
+            return left + width <= toolbarWidth - 4;
         }
 
         private static void DrawToolbarButton(Canvas canvas, int x, int y, int width, IconType icon, string text)
