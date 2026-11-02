@@ -69,6 +69,16 @@ internal static class Program
         return header;
     }
 
+    private static byte[] BmpFile(int width, int height)
+    {
+        // A real uncompressed RGB24 payload, including 4-byte row padding.
+        long stride = (((long)width * 24 + 31) / 32) * 4;
+        byte[] data = new byte[checked((int)(54 + stride * height))];
+        Array.Copy(Bmp(width, height), data, 54);
+        LittleEndian(data, 2, (uint)data.Length);
+        return data;
+    }
+
     public static int Main()
     {
         Check(ImageHeaderGuard.HasSafeDimensions(Png(1920, 1080), 33, true),
@@ -174,6 +184,50 @@ internal static class Program
         LittleEndian(badBmp, 10, 138);
         Check(ImageHeaderGuard.HasSafeDimensions(badBmp, 54, false), "valid V5 BMP offset");
 
+        // A valid header alone must not allow the decoder to allocate pixels
+        // from a truncated file. This exercises the production file-size gate.
+        Check(!ImageHeaderGuard.HasSafeFileLength(validPng, 33, true, 33),
+            "header-only PNG file rejected");
+        Check(!ImageHeaderGuard.HasSafeFileLength(validPng, 33, true, 56),
+            "PNG shorter than IHDR/IDAT/IEND minimum rejected");
+        Check(ImageHeaderGuard.HasSafeFileLength(validPng, 33, true, 57),
+            "PNG minimum file length accepted for decoder validation");
+        Check(!ImageHeaderGuard.HasSafeFileLength(validPng, 33, true, -1),
+            "negative file length rejected");
+        Check(!ImageHeaderGuard.HasSafeFileLength(validBmp, 54, false, 54),
+            "header-only BMP file rejected");
+        Check(!ImageHeaderGuard.HasSafeFileLength(validBmp, 54, false, 1440053),
+            "BMP one byte short of 800x600 RGB24 rejected");
+        Check(ImageHeaderGuard.HasSafeFileLength(validBmp, 54, false, 1440054),
+            "complete BMP RGB24 payload accepted");
+        byte[] tinyBmp = Bmp(1, 1);
+        Check(!ImageHeaderGuard.HasSafeFileLength(tinyBmp, 54, false, 57),
+            "BMP row padding counted");
+        Check(ImageHeaderGuard.HasSafeFileLength(tinyBmp, 54, false, 58),
+            "BMP padded row accepted");
+        LittleEndian(tinyBmp, 2, 59);
+        Check(!ImageHeaderGuard.HasSafeFileLength(tinyBmp, 54, false, 58),
+            "BMP declared file size beyond actual file rejected");
+        LittleEndian(tinyBmp, 2, 57);
+        Check(!ImageHeaderGuard.HasSafeFileLength(tinyBmp, 54, false, 58),
+            "BMP declared file size smaller than pixel payload rejected");
+        LittleEndian(tinyBmp, 2, 58);
+        Check(ImageHeaderGuard.HasSafeFileLength(tinyBmp, 54, false, 58),
+            "BMP matching declared and actual size accepted");
+        byte[] highOffset = Bmp(1, 1);
+        LittleEndian(highOffset, 14, 124);
+        LittleEndian(highOffset, 10, 138);
+        Check(!ImageHeaderGuard.HasSafeFileLength(highOffset, 54, false, 141),
+            "BMP V5 payload one byte short rejected");
+        Check(ImageHeaderGuard.HasSafeFileLength(highOffset, 54, false, 142),
+            "BMP V5 payload offset accounted for");
+        byte[] unsupportedBpp = Bmp(1, 1);
+        unsupportedBpp[28] = 3;
+        Check(!ImageHeaderGuard.HasSafeFileLength(unsupportedBpp, 54, false, 100),
+            "unsupported uncompressed BMP depth rejected");
+        Check(!ImageHeaderGuard.HasSafeFileLength(Bmp(16384, 1024), 54, false, 100),
+            "large BMP cannot bypass payload length check");
+
         // Exhaustive boundary sweep across the normal desktop resolutions.
         foreach (int width in new[] { 1, 800, 1366, 1920, 4096, 16384, 16385 })
         foreach (int height in new[] { 1, 600, 768, 1080, 4096, 16384, 16385 })
@@ -193,8 +247,13 @@ internal static class Program
         try
         {
             File.WriteAllBytes(temp, validPng);
+            Check(!ImageHeaderGuard.IsSafeToDecode(temp, true),
+                "reject PNG containing only IHDR");
+            byte[] pngWithChunkSpace = new byte[57];
+            Array.Copy(validPng, pngWithChunkSpace, validPng.Length);
+            File.WriteAllBytes(temp, pngWithChunkSpace);
             Check(ImageHeaderGuard.IsSafeToDecode(temp, true),
-                "valid PNG file preflight");
+                "PNG header and minimum payload length preflight");
             Check(!ImageHeaderGuard.IsSafeToDecode(temp, false),
                 "reject PNG interpreted as BMP");
             byte[] corruptCrc = (byte[])validPng.Clone();
@@ -206,8 +265,16 @@ internal static class Program
             Check(!ImageHeaderGuard.IsSafeToDecode(temp, true),
                 "reject huge PNG file preflight");
             File.WriteAllBytes(temp, validBmp);
+            Check(!ImageHeaderGuard.IsSafeToDecode(temp, false),
+                "reject BMP containing only DIB header");
+            File.WriteAllBytes(temp, BmpFile(800, 600));
             Check(ImageHeaderGuard.IsSafeToDecode(temp, false),
-                "valid BMP file preflight");
+                "complete BMP RGB24 file preflight");
+            byte[] truncatedBmp = BmpFile(1, 1);
+            Array.Resize(ref truncatedBmp, 57);
+            File.WriteAllBytes(temp, truncatedBmp);
+            Check(!ImageHeaderGuard.IsSafeToDecode(temp, false),
+                "reject BMP missing final row-padding byte");
             File.WriteAllBytes(temp, new byte[] { 66, 77, 0 });
             Check(!ImageHeaderGuard.IsSafeToDecode(temp, false),
                 "truncated BMP file preflight");
