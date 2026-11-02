@@ -323,7 +323,7 @@ jobs:
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-pcm32-out --boot-seconds 45 --command wav32
       - name: Boot and capture IEEE float32 mono WAV converted to PCM16 (2860 Hz)
         run: |
-          python3 tools/smoke-audio-qemu.py \\
+          python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-float32-out --boot-seconds 45 --command wavfloat
       - name: Boot and capture WAVE_FORMAT_EXTENSIBLE PCM16 stereo (2640 Hz)
         run: |
