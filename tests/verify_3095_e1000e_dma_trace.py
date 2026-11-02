@@ -22,7 +22,9 @@ RX_BUFFER = re.compile(
 )
 RX_COMMIT = re.compile(
     r"^" + PREFIX + r"e1000e_rx_written_to_guest "
-    r"Received packet written to guest \(ICR causes (\d+)\)$"
+    # QEMU's trace format changed from an ICR-cause summary to a queue
+    # index. Both represent the same RX guest-memory completion event.
+    r"Received packet written to guest \((?:ICR causes \d+|queue [01])\)$"
 )
 TERMINATED = re.compile(r"^qemu-system-[^:]+: terminating on signal ")
 
@@ -88,6 +90,10 @@ def self_test() -> None:
     assert "PASS tx_desc=128" in report(trace)
     assert "PASS tx_desc=128" in report(trace, min_tx=128)
     assert count_dma(tx * 128 + write + commit.replace("causes 128", "causes 0")) == (128, 1, 64, 1)
+    assert count_dma(tx * 128 + write + commit.replace(
+        "(ICR causes 128)", "(queue 0)")) == (128, 1, 64, 1)
+    assert count_dma(tx * 128 + write + commit.replace(
+        "(ICR causes 128)", "(queue 1)")) == (128, 1, 64, 1)
     assert count_dma(tx * 128 + commit + write) == (128, 1, 64, 0)
     for invalid in (
         "", tx * 127 + write + commit, tx * 128 + commit,
@@ -97,6 +103,7 @@ def self_test() -> None:
         tx.replace("0x7f001000", "0x0") * 128 + write + commit,
         "spoof " + tx * 128 + write + commit,
         tx * 128 + commit + write,
+        tx * 128 + write + commit.replace("(ICR causes 128)", "(queue 2)"),
         "qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n" + trace,
     ):
         try:
