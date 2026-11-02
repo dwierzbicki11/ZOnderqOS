@@ -1224,51 +1224,61 @@ namespace ZonderqOS.GUI.Apps
             if (GridRowsForView == 0 || index < 0 || index >= entries.Count)
                 return;
 
-            // A previously loaded directory can become unreadable without
-            // closing the window. Do not launch an editor from stale entries.
-            if (!CanReadInSession(currentPath))
+            try
             {
-                ClearDeniedListing();
-                status = "Permission denied: cannot list folder";
-                return;
-            }
-
-            FileEntry entry = entries[index];
-            if (entry.IsDirectory)
-            {
-                NavigateTo(entry.FullPath);
-            }
-            else if (nanoLauncher != null)
-            {
-                // Opening a file launches a separate editor. Enforce the
-                // same ACL here instead of assuming listing grants read.
-                if (!CanReadInSession(entry.FullPath))
+                // A previously loaded directory can become unreadable without
+                // closing the window. Do not launch an editor from stale entries.
+                if (!CanReadInSession(currentPath))
                 {
-                    status = "Permission denied: cannot open file";
+                    ClearDeniedListing();
+                    status = "Permission denied: cannot list folder";
                     return;
                 }
-
-                // A file may have been removed or replaced by a directory
-                // after the last scan. Do not open a stale path in an editor:
-                // some editors interpret a missing file as a new document.
-                if (!File.Exists(entry.FullPath))
+    
+                FileEntry entry = entries[index];
+                if (entry.IsDirectory)
                 {
-                    status = "File unavailable; press F5 to refresh";
-                    return;
+                    NavigateTo(entry.FullPath);
                 }
-
-                try
+                else if (nanoLauncher != null)
                 {
-                    nanoLauncher(entry.FullPath);
-                    status = "Opened " + entry.Name;
-                }
-                catch (Exception ex)
-                {
-                    // An I/O failure while opening a file must not tear down
-                    // the entire desktop or invalidate the last good listing.
-                    status = "Open error: " + ex.Message;
+                    // Opening a file launches a separate editor. Enforce the
+                    // same ACL here instead of assuming listing grants read.
+                    if (!CanReadInSession(entry.FullPath))
+                    {
+                        status = "Permission denied: cannot open file";
+                        return;
+                    }
+    
+                    // A file may have been removed or replaced by a directory
+                    // after the last scan. Do not open a stale path in an editor:
+                    // some editors interpret a missing file as a new document.
+                    if (!File.Exists(entry.FullPath))
+                    {
+                        status = "File unavailable; press F5 to refresh";
+                        return;
+                    }
+    
+                    try
+                    {
+                        nanoLauncher(entry.FullPath);
+                        status = "Opened " + entry.Name;
+                    }
+                    catch (Exception ex)
+                    {
+                        // An I/O failure while opening a file must not tear down
+                        // the entire desktop or invalidate the last good listing.
+                        status = "Open error: " + ex.Message;
+                    }
                 }
             }
+            catch (Exception ex)
+            {
+                // Permission metadata and a detached FAT32 device can fail
+                // while opening a cached tile. Do not crash the desktop.
+                status = "Open error: " + ex.Message;
+            }
+
         }
 
         private void BeginCreate(int mode)
