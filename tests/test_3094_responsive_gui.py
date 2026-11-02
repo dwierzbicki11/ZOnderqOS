@@ -1329,9 +1329,11 @@ class ResponsiveGui3094(unittest.TestCase):
     def test_calculator_seventh_row_visible_on_800x600(self):
         self.assertIn("UiPainter.RoundedPanel(", CALC)
         self.assertIn("availableHeight / Rows", CALC)
-        self.assertIn("System.Math.Max(28", CALC)
+        self.assertIn("System.Math.Max(18", CALC)
+        self.assertIn("HasButtonGrid", CALC)
         fitted_height = fit_window(185, 96, 500, 690, 800, 600)[3]
-        key_height = max(28, min(58, (fitted_height - 236 - 16 - 7 * (7 - 1)) // 7))
+        self.assertGreaterEqual(fitted_height, 416)
+        key_height = max(18, min(58, (fitted_height - 236 - 16 - 7 * (7 - 1)) // 7))
         self.assertLessEqual(236 + 6 * (key_height + 7) + key_height, fitted_height - 12)
 
     def test_settings_show_all_six_rows_above_status(self):
