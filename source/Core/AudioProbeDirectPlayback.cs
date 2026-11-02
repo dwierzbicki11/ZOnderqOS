@@ -89,14 +89,41 @@ namespace ZonderqOS.SystemCore
                     Console.WriteLine("[AUDIO] 1MS REFUSED: HDA changed during Start.");
                     return false;
                 }
+                // Count the actual Write() results, not requested bytes.
+                // These counters distinguish PCM acceptance, silent tail
+                // acceptance and backpressure. They do NOT measure DMA
+                // position, IRQ delivery or physical sound.
+                int writeCalls = 0;
+                int zeroWrites = 0;
+                int pcmQueued = 0;
+                int silenceQueued = 0;
                 bool fed = AudioProbeRingFeeder.FeedAndSettle(pcm,
-                    (data, offset, count) => output.Write(data.AsSpan(offset, count)),
+                    (data, offset, count) =>
+                    {
+                        int accepted = output.Write(data.AsSpan(offset, count));
+                        writeCalls++;
+                        if (accepted == 0)
+                            zeroWrites++;
+                        else if (accepted > 0 && accepted <= count && accepted % 4 == 0)
+                        {
+                            if (object.ReferenceEquals(data, pcm))
+                                pcmQueued += accepted;
+                            else
+                                silenceQueued += accepted;
+                        }
+                        // The feeder independently rejects invalid counts.
+                        return accepted;
+                    },
                     () => IsCompatibleUnclaimedHda(output, sampleRate, stillSelected) && output.IsRunning,
                     milliseconds => Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds),
                     out int waits);
                 Console.WriteLine("[AUDIO] 1MS diagnostic ring writer " +
-                    (fed ? "ACCEPTED_AND_DRAINED" : "FAILED") +
-                    " waits=" + waits + " settle=86ms (not proof of audible PCM)");
+                    (fed ? "ACCEPTED_TO_RING" : "FAILED") +
+                    " pcmQueued=" + pcmQueued +
+                    " silenceQueued=" + silenceQueued +
+                    " writeCalls=" + writeCalls +
+                    " zeroWrites=" + zeroWrites +
+                    " waits=" + waits + " settle=86ms (DMA/IRQ and audible PCM not proven)");
                 return fed;
             }
             finally
