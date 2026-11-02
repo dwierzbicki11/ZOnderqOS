@@ -23,7 +23,18 @@ namespace Cosmos.Kernel.System.Audio
         public object Player;
         public bool IsRunning;
         public uint SampleRate = 48000;
-        public HostAudioFormat Format = new HostAudioFormat();
+        private HostAudioFormat _format = new HostAudioFormat();
+        public Action OnFormatRead;
+        public HostAudioFormat Format
+        {
+            get
+            {
+                HostAudioFormat snapshot = _format;
+                OnFormatRead?.Invoke();
+                return snapshot;
+            }
+            set => _format = value;
+        }
         public int StartCalls;
         public int StopCalls;
         public int WrittenBytes;
@@ -102,6 +113,10 @@ internal static class AudioDirectProbeSmoke
             "direct probe refuses a withdrawn output");
         ExpectRefused(new Device { Format = null }, check,
             "direct probe refuses unpublished null PCM format without starting");
+        var formatWithdrawnOnRead = new Device();
+        formatWithdrawnOnRead.OnFormatRead = () => formatWithdrawnOnRead.Format = null;
+        ExpectRefused(formatWithdrawnOnRead, check,
+            "direct probe uses one format snapshot and refuses withdrawn format before Start");
 
         int waits = 0;
         Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>

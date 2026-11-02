@@ -24,10 +24,17 @@ namespace ZonderqOS.SystemCore
         // This is a snapshot check, not a replacement for an atomic claim.
         private static bool IsCompatibleUnclaimedHda(AudioDevice output, uint sampleRate)
         {
-            return output != null && !output.IsWithdrawn &&
-                output.Name == "hda" && output.DriverName == "HdAudioDriver" &&
-                output.Player == null && output.SampleRate == sampleRate &&
-                output.Format != null && output.Format.Channels == 2 && output.Format.ChannelSize == 2;
+            if (output == null || output.IsWithdrawn ||
+                output.Name != "hda" || output.DriverName != "HdAudioDriver" ||
+                output.Player != null || output.SampleRate != sampleRate)
+                return false;
+
+            // Read the published format exactly once. A device may withdraw
+            // or replace it between property reads; mixing Channels from one
+            // snapshot with ChannelSize from another is not a valid PCM gate.
+            // This still is NOT an atomic output ownership claim.
+            var format = output.Format;
+            return format is not null && format.Channels == 2 && format.ChannelSize == 2;
         }
 
         internal static bool TryPlay(AudioDevice output, byte[] pcm, uint sampleRate)
