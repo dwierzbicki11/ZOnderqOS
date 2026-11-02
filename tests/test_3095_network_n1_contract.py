@@ -14,6 +14,63 @@ HTTP_VALIDATOR = (ROOT / "tests/verify_3095_network_n6.py").read_text()
 MAIN = (ROOT / "Kernel.cs").read_text()
 
 class NetworkN1Isolation(unittest.TestCase):
+    def test_n2_to_n5_preserve_original_driverkit_binding(self):
+        # These checks are source contracts, not proof of ISR execution.
+        # A rebind to the same MAC with a new resource/IRQ registration must
+        # invalidate a DHCP/ICMP/TCP/DNS success claim.
+        helper = SOURCE.split(
+            "private static bool IsE1000EDriverKitSnapshotStable(", 1)[1].split(
+            "#if ZONDERQ_NETWORK_N6_HTTP", 1)[0]
+        for token in (
+            "DeviceNodeInfo expected", "TryGetE1000EDriverKitHealth(out var current)",
+            "current.Path == expected.Path",
+            "current.HeldResourceCount == expected.HeldResourceCount",
+            "current.InterruptCount == expected.InterruptCount",
+        ):
+            self.assertIn(token, helper)
+        self.assertNotIn("TryRequestInterrupt", helper)
+        self.assertNotIn("NetworkManager.Send", helper)
+
+        n2 = SOURCE.split("#if ZONDERQ_NETWORK_N2_DHCP", 1)[1].split(
+            "#if ZONDERQ_NETWORK_N3_ICMP", 1)[0]
+        n3 = SOURCE.split("#if ZONDERQ_NETWORK_N3_ICMP", 1)[1].split(
+            "#if ZONDERQ_NETWORK_N4_TCP", 1)[0]
+        n4 = SOURCE.split("#if ZONDERQ_NETWORK_N4_TCP", 1)[1].split(
+            "#if ZONDERQ_NETWORK_N5_DNS", 1)[0]
+        n5 = SOURCE.split("#if ZONDERQ_NETWORK_N5_DNS", 1)[1].split(
+            "#if ZONDERQ_NETWORK_N6_HTTP", 1)[0]
+
+        for stage, section, after, fail, success in (
+            ("DHCP", n2, 'config.DefaultGateway.ToString() != "10.0.2.2"',
+             "DriverKit ownership changed during DHCP", "DHCP=PASS ip="),
+            ("ICMP", n3, "ping.Receive(ref remote, 5000)",
+             "DriverKit ownership changed during ICMP", "ICMP=PASS from="),
+            ("TCP", n4, "if (response[i] != expected[i])",
+             "DriverKit ownership changed at TCP completion", "TCP=PASS from="),
+            ("DNS", n5, "dns.Receive(5000)",
+             "DriverKit ownership changed during DNS", "DNS=PASS host="),
+        ):
+            with self.subTest(stage=stage):
+                self.assertLess(section.index(after),
+                                section.index("IsE1000EDriverKitSnapshotStable(n1DriverNode)", section.index(after)))
+                self.assertLess(section.index(fail), section.index(success))
+
+        # TCP is multi-read: verify ownership immediately after TX and
+        # every successful Read, not only after the final response.
+        sent = n4.index("stream.Write(request, 0, request.Length);")
+        tx_check = n4.index("DriverKit ownership changed after TCP TX", sent)
+        read = n4.index("int read = stream.Read(", tx_check)
+        received = n4.index("received += read;", read)
+        rx_check = n4.index("DriverKit ownership changed during TCP RX", received)
+        deadline = n4.index("echoElapsed = Stopwatch.GetTimestamp() - echoStart;", received)
+        completed = n4.index("DriverKit ownership changed at TCP completion", rx_check)
+        passed = n4.index("TCP=PASS from=", completed)
+        self.assertLess(tx_check, read)
+        self.assertLess(received, rx_check)
+        self.assertLess(rx_check, deadline)
+        self.assertLess(completed, passed)
+        self.assertEqual(n4.count("IsE1000EDriverKitSnapshotStable(n1DriverNode)"), 3)
+
     def test_n1_requires_real_driverkit_pci_binding_before_raw_tx(self):
         source = SOURCE
         helper = source.index("private static bool TryGetE1000EDriverKitHealth(")
