@@ -453,6 +453,17 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
+                // Cosmos decoders allocate their full pixel arrays internally.
+                // Reject oversized or malformed dimensions before decoding so
+                // a crafted FAT32 image cannot exhaust the desktop heap.
+                if (IsImagePath(path) &&
+                    !ImageHeaderGuard.IsSafeToDecode(path,
+                        path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)))
+                {
+                    status = "Nieprawidlowy lub zbyt duzy obraz";
+                    return;
+                }
+
                 int[] pixels;
                 int width;
                 int height;
