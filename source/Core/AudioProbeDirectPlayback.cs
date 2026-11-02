@@ -18,15 +18,19 @@ namespace ZonderqOS.SystemCore
         // This does not replace the stock AudioPlayback ownership protocol.
         private static int _directProbeBusy;
 
-        // A published output may be withdrawn or have its format changed
+        // A published output may be withdrawn, replaced as the primary, or have its format changed
         // between the initial probe and the next DMA-ring write. Never feed
         // stereo16 into a stream that no longer advertises stereo16/48 kHz.
-        // This is a snapshot check, not a replacement for an atomic claim.
-        private static bool IsCompatibleUnclaimedHda(AudioDevice output, uint sampleRate)
+        // The optional callback rechecks the caller's selected AudioManager.Primary
+        // reference before/after Format and before every write/settle. It is
+        // still a snapshot check, not an atomic claim.
+        private static bool IsCompatibleUnclaimedHda(AudioDevice output, uint sampleRate,
+            Func<bool> stillSelected)
         {
             if (output == null || output.IsWithdrawn ||
                 output.Name != "hda" || output.DriverName != "HdAudioDriver" ||
-                output.Player != null || output.SampleRate != sampleRate)
+                output.Player != null || output.SampleRate != sampleRate ||
+                (stillSelected != null && !stillSelected()))
                 return false;
 
             // Stock Cosmos 3.0.95 AudioFormat is a value type, not nullable.
@@ -43,14 +47,16 @@ namespace ZonderqOS.SystemCore
             return format.Channels == 2 && format.ChannelSize == 2 &&
                 !output.IsWithdrawn && output.Name == "hda" &&
                 output.DriverName == "HdAudioDriver" &&
-                output.Player == null && output.SampleRate == sampleRate;
+                output.Player == null && output.SampleRate == sampleRate &&
+                (stillSelected == null || stillSelected());
         }
 
-        internal static bool TryPlay(AudioDevice output, byte[] pcm, uint sampleRate)
+        internal static bool TryPlay(AudioDevice output, byte[] pcm, uint sampleRate,
+            Func<bool> stillSelected = null)
         {
             if (sampleRate != 48000 || pcm == null || pcm.Length == 0 ||
                 pcm.Length > AudioProbeRingFeeder.MaxPcmBytes || pcm.Length % 4 != 0 ||
-                !IsCompatibleUnclaimedHda(output, sampleRate) || output.IsRunning)
+                !IsCompatibleUnclaimedHda(output, sampleRate, stillSelected) || output.IsRunning)
             {
                 Console.WriteLine("[AUDIO] 1MS REFUSED: requires idle stock HDA and bounded stereo16.");
                 return false;
@@ -68,7 +74,7 @@ namespace ZonderqOS.SystemCore
             {
                 // Recheck after acquiring our local diagnostic guard. A
                 // withdrawn, running or newly claimed device is not ours.
-                if (!IsCompatibleUnclaimedHda(output, sampleRate) || output.IsRunning)
+                if (!IsCompatibleUnclaimedHda(output, sampleRate, stillSelected) || output.IsRunning)
                     return false;
                 // Start can fail after partially enabling the stream engine.
                 // Mark cleanup as required before invoking the driver.
@@ -78,14 +84,14 @@ namespace ZonderqOS.SystemCore
                 // again before the FIRST write, then before every subsequent
                 // write and after the final settle wait. A format drift must
                 // abort without queuing any further incompatible PCM.
-                if (!IsCompatibleUnclaimedHda(output, sampleRate) || !output.IsRunning)
+                if (!IsCompatibleUnclaimedHda(output, sampleRate, stillSelected) || !output.IsRunning)
                 {
                     Console.WriteLine("[AUDIO] 1MS REFUSED: HDA changed during Start.");
                     return false;
                 }
                 bool fed = AudioProbeRingFeeder.FeedAndSettle(pcm,
                     (data, offset, count) => output.Write(data.AsSpan(offset, count)),
-                    () => IsCompatibleUnclaimedHda(output, sampleRate) && output.IsRunning,
+                    () => IsCompatibleUnclaimedHda(output, sampleRate, stillSelected) && output.IsRunning,
                     milliseconds => Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds),
                     out int waits);
                 Console.WriteLine("[AUDIO] 1MS diagnostic ring writer " +
@@ -114,6 +120,8 @@ namespace ZonderqOS.SystemCore
                             Console.WriteLine("[AUDIO] 1MS cleanup: output withdrawn; Stop skipped.");
                         else if (output.Player != null)
                             Console.WriteLine("[AUDIO] 1MS cleanup: player claimed output; Stop skipped.");
+                        else if (stillSelected != null && !stillSelected())
+                            Console.WriteLine("[AUDIO] 1MS cleanup: output is no longer primary; Stop skipped.");
                         else if (output.Name != "hda" || output.DriverName != "HdAudioDriver")
                             Console.WriteLine("[AUDIO] 1MS cleanup: HDA identity changed; Stop skipped.");
                         else
