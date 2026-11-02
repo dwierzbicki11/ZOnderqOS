@@ -338,6 +338,22 @@ namespace ZonderqOS.GUI
                 }
             }
 
+            // Window shadows can cross the top-left corner during a drag.
+            // Both clipped origins are zero, so skip the general clamp path.
+            if (x < 0 && y < 0)
+            {
+                long visibleRight = (long)x + width;
+                long visibleBottom = (long)y + height;
+                if (visibleRight > 0 && visibleBottom > 0)
+                {
+                    int visibleWidth = (int)Math.Min((long)canvas.Width, visibleRight);
+                    int visibleHeight = (int)Math.Min((long)canvas.Height, visibleBottom);
+                    if (visibleWidth > 0 && visibleHeight > 0)
+                        canvas.DrawFilledRectangle(color, 0, 0, visibleWidth, visibleHeight);
+                }
+                return;
+            }
+
             long right = (long)x + width;
             long bottom = (long)y + height;
             if (right <= 0 || bottom <= 0)
