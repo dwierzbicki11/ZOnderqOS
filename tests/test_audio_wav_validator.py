@@ -140,6 +140,14 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected about 2200Hz"):
             audio.inspect(self.path, expected_hz=2200)
 
+    def test_distinct_extensible_ieee_float_probe_pitch(self):
+        # Synthetic capture only. Real QEMU must independently confirm
+        # the new 44.1kHz extensible float decoder drove the HDA backend.
+        self.make_wave(frequency=3960)
+        self.assertIn("PASS captured PCM", audio.inspect(self.path, expected_hz=3960))
+        with self.assertRaisesRegex(ValueError, "expected about 2860Hz"):
+            audio.inspect(self.path, expected_hz=2860)
+
     def test_distinct_extensible_probe_pitch(self):
         self.make_wave(frequency=2640)
         self.assertIn("PASS captured PCM", audio.inspect(self.path, expected_hz=2640))
