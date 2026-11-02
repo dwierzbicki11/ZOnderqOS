@@ -120,27 +120,6 @@ namespace ZonderqOS.GUI
                 return;
             }
 
-            // Rounded window surfaces are usually fully visible. Clip once
-            // for the whole panel rather than for every one-pixel corner band.
-            // This preserves the same Canvas calls and opaque framebuffer.
-            if (x >= 0 && y >= 0 &&
-                width <= canvas.Width - x && height <= canvas.Height - y)
-            {
-                if (height > 2 * r)
-                    canvas.DrawFilledRectangle(fill, x, y + r, width, height - 2 * r);
-                for (int row = 0; row < r; row++)
-                {
-                    int inset = CornerInset(r, row);
-                    int rowWidth = width - 2 * inset;
-                    if (rowWidth <= 0)
-                        continue;
-                    canvas.DrawFilledRectangle(fill, x + inset, y + row, rowWidth, 1);
-                    canvas.DrawFilledRectangle(fill, x + inset, y + height - row - 1,
-                        rowWidth, 1);
-                }
-                return;
-            }
-
             Fill(canvas, fill, x, y + r, width, height - 2 * r);
             // Keep the common on-screen draw loop compact. The much larger
             // vertical clipping path is cold and lives in a separate method.
