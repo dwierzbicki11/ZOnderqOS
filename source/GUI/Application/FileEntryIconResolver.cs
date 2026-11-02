@@ -25,11 +25,77 @@ namespace ZonderqOS.GUI.Apps
             int suffixLength = length >= 3 && name[length - 3] == '.' ? 3
                 : length >= 4 && name[length - 4] == '.' ? 4
                 : length >= 5 && name[length - 5] == '.' ? 5 : 0;
+            // The final ASCII character partitions the known extensions.
+            // Avoid probing every suffix (up to nine EndsWith calls for a
+            // common .txt file). Keep OrdinalIgnoreCase for the full suffix:
+            // Unicode folding and path-like names retain their old semantics.
+            char last = name[length - 1];
+            if (last >= 'A' && last <= 'Z')
+                last = (char)(last + ('a' - 'A'));
+            if (last >= 128)
+                return ResolveNonAsciiEnding(name, suffixLength);
+
             switch (suffixLength)
             {
                 case 3:
-                    if (name.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+                    if (last == 'd' && name.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
                         return IconType.FileTxt;
+                    break;
+                case 4:
+                    switch (last)
+                    {
+                        case 'p':
+                            if (name.EndsWith(".bmp", StringComparison.OrdinalIgnoreCase)) return IconType.FileBmp;
+                            break;
+                        case 'c':
+                            if (name.EndsWith(".doc", StringComparison.OrdinalIgnoreCase)) return IconType.FileDoc;
+                            break;
+                        case 'g':
+                            if (name.EndsWith(".jpg", StringComparison.OrdinalIgnoreCase)) return IconType.FileJpg;
+                            if (name.EndsWith(".png", StringComparison.OrdinalIgnoreCase)) return IconType.FilePng;
+                            if (name.EndsWith(".svg", StringComparison.OrdinalIgnoreCase)) return IconType.FileSvg;
+                            if (name.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ||
+                                name.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase))
+                                return IconType.FileTxt;
+                            break;
+                        case 'f':
+                            if (name.EndsWith(".pdf", StringComparison.OrdinalIgnoreCase)) return IconType.FilePdf;
+                            break;
+                        case 't':
+                            if (name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase)) return IconType.FileTxt;
+                            break;
+                        case 'i':
+                            if (name.EndsWith(".ini", StringComparison.OrdinalIgnoreCase)) return IconType.FileTxt;
+                            break;
+                    }
+                    break;
+                case 5:
+                    switch (last)
+                    {
+                        case 'x':
+                            if (name.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)) return IconType.FileDocx;
+                            break;
+                        case 'g':
+                            if (name.EndsWith(".jpeg", StringComparison.OrdinalIgnoreCase)) return IconType.FileJpg;
+                            break;
+                        case 'f':
+                            if (name.EndsWith(".conf", StringComparison.OrdinalIgnoreCase)) return IconType.FileTxt;
+                            break;
+                    }
+                    break;
+            }
+            return IconType.File;
+        }
+
+        // A non-ASCII final code unit can have an OrdinalIgnoreCase mapping
+        // that is not captured by ASCII dispatch. Preserve the original
+        // suffix checks exactly for that uncommon path.
+        private static IconType ResolveNonAsciiEnding(string name, int suffixLength)
+        {
+            switch (suffixLength)
+            {
+                case 3:
+                    if (name.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) return IconType.FileTxt;
                     break;
                 case 4:
                     if (name.EndsWith(".bmp", StringComparison.OrdinalIgnoreCase)) return IconType.FileBmp;
@@ -41,8 +107,7 @@ namespace ZonderqOS.GUI.Apps
                     if (name.EndsWith(".txt", StringComparison.OrdinalIgnoreCase) ||
                         name.EndsWith(".log", StringComparison.OrdinalIgnoreCase) ||
                         name.EndsWith(".cfg", StringComparison.OrdinalIgnoreCase) ||
-                        name.EndsWith(".ini", StringComparison.OrdinalIgnoreCase))
-                        return IconType.FileTxt;
+                        name.EndsWith(".ini", StringComparison.OrdinalIgnoreCase)) return IconType.FileTxt;
                     break;
                 case 5:
                     if (name.EndsWith(".docx", StringComparison.OrdinalIgnoreCase)) return IconType.FileDocx;
