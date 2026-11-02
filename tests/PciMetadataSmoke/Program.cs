@@ -176,9 +176,17 @@ var irqOverlap = new FakeE1000EPciConfig { Status = 0x0010, MsiNext = 0x48 };
 Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqOverlap, out irqLine, out irqPin) &&
       irqLine == 0 && irqPin == 0,
     "Overlapping MSI address/data and MSI-X header must fail closed");
+var irqMsiXOverlap = new FakeE1000EPciConfig { Status = 0x0010, MsiXNext = 0x58 };
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqMsiXOverlap, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "MSI-X table/PBA bytes must not be interpreted as a PM capability header");
 var irqMaskedOverlap = new FakeE1000EPciConfig { Status = 0x0010, MsiControl = 0x0100 };
 Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqMaskedOverlap, out irqLine, out irqPin),
     "Masked MSI payload must not overlap the following MSI-X header");
+var irqMsi64Adjacent = new FakeE1000EPciConfig { Status = 0x0010, MsiControl = 0x0080 };
+Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqMsi64Adjacent, out irqLine, out irqPin) &&
+      irqLine == 11 && irqPin == 1,
+    "14-byte MSI64 at 0x40 and MSI-X at 0x50 must remain non-overlapping");
 var irqMaskedStandalone = new FakeE1000EPciConfig {
     Status = 0x0010, MsiControl = 0x0100, MsiNext = 0
 };
@@ -841,6 +849,7 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x4A => MsiXControl, // malformed overlapping MSI-X test
             0x52 => MsiXControl,
             0xEA or 0xEE or 0xF2 or 0xF6 or 0xFA => TailControl,
+            0x5C => PmControlStatus, // malformed PM inside MSI-X table/PBA
             0x64 => ++pmControlReads > 1
                 ? (ushort)(PmControlStatus ^
                     (ChangePmStateOnSecondRead ? 0x0003 : 0) ^
