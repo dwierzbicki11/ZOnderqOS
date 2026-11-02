@@ -72,6 +72,8 @@ namespace ZonderqOS.SystemCore
             if (allMuted) return output;
             if (TryCopyDisjointUnityClips(clips, startFrames, gainsPercent, null, 0, output))
                 return output;
+            if (TryScaleSingleAudibleClip(clips, startFrames, gainsPercent, null, 0, output))
+                return output;
             for (int at = 0; at < length; at += 2)
             {
                 int total = 0;
@@ -180,6 +182,9 @@ namespace ZonderqOS.SystemCore
             if (TryCopyDisjointUnityClips(clips, startFrames, gainsPercent,
                 individualFades, uniformFade, output))
                 return output;
+            if (TryScaleSingleAudibleClip(clips, startFrames, gainsPercent,
+                individualFades, uniformFade, output))
+                return output;
             for (int at = 0; at < length; at += 2)
             {
                 int total = 0;
@@ -218,6 +223,42 @@ namespace ZonderqOS.SystemCore
             return output;
         }
 
+
+        // A single partially audible notification may start after a long
+        // silent pre-roll and coexist with muted effects extending the timeline.
+        // Scale only its actual PCM samples instead of scanning every zero
+        // frame and every muted clip. A faded or second audible clip must use
+        // the general accumulator; never change its saturation semantics.
+        // Called only after full bounds, gain and fade validation.
+        private static bool TryScaleSingleAudibleClip(
+            byte[][] clips, int[] startFrames, int[] gainsPercent,
+            int[] individualFades, int uniformFade, byte[] output)
+        {
+            int audible = -1;
+            for (int i = 0; i < clips.Length; i++)
+            {
+                if (gainsPercent[i] == 0)
+                    continue;
+                if (audible >= 0 || gainsPercent[i] == 100 ||
+                    (individualFades == null ? uniformFade : individualFades[i]) != 0)
+                    return false;
+                audible = i;
+            }
+            if (audible < 0)
+                return false;
+
+            byte[] clip = clips[audible];
+            int start = startFrames[audible] * 4;
+            int gain = gainsPercent[audible];
+            for (int at = 0; at < clip.Length; at += 2)
+            {
+                int sample = (short)(clip[at] | (clip[at + 1] << 8));
+                int scaled = sample * gain / 100;
+                output[start + at] = (byte)scaled;
+                output[start + at + 1] = (byte)(scaled >> 8);
+            }
+            return true;
+        }
 
         // Called only after complete schedule, gain, fade and duration validation.
         // A strict half-open overlap check prevents Array.Copy from replacing

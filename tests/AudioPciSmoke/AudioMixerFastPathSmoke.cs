@@ -84,6 +84,29 @@ internal static class AudioMixerFastPathSmoke
         return Stopwatch.GetTimestamp() - start;
     }
 
+    private static double MedianSinglePartial(
+        byte[][] clips, int[] starts, int[] gains, bool optimized)
+    {
+        const int iterations = 24;
+        double[] times = new double[5];
+        for (int trial = 0; trial < times.Length; trial++)
+        {
+            long start = Stopwatch.GetTimestamp();
+            for (int i = 0; i < iterations; i++)
+            {
+                byte[] output = optimized
+                    ? AudioPcmMixer.MixScheduledStereo16(clips, starts, gains)
+                    : LegacyScheduled(clips, starts, gains, 0);
+                checksum = unchecked(checksum * 16777619 ^ output[starts[3] * 4 + 1]);
+                GC.KeepAlive(output);
+            }
+            times[trial] = (Stopwatch.GetTimestamp() - start) * 1000.0 /
+                Stopwatch.Frequency;
+        }
+        Array.Sort(times);
+        return times[times.Length / 2];
+    }
+
     public static void Run()
     {
         var random = new Random(3095);
@@ -176,6 +199,72 @@ internal static class AudioMixerFastPathSmoke
             for (int i = 0; i < count; i++)
                 Same(clips[i], originals[i], "schedule output must not alias input");
         }
+        // Exactly one partially audible effect with muted, possibly
+        // overlapping neighbors. Compare to an independent full-timeline
+        // sample oracle, including out-of-order starts and a silent tail.
+        for (int scenario = 0; scenario < 96; scenario++)
+        {
+            int count = 1 + scenario % 8;
+            byte[][] clips = new byte[count][];
+            byte[][] originals = new byte[count][];
+            int[] starts = new int[count];
+            int[] gains = new int[count];
+            int[] fades = new int[count];
+            int audible = scenario % count;
+            for (int i = 0; i < count; i++)
+            {
+                clips[i] = new byte[(1 + random.Next(1, 65)) * 4];
+                random.NextBytes(clips[i]);
+                originals[i] = (byte[])clips[i].Clone();
+                starts[i] = random.Next(0, 181);
+                gains[i] = i == audible ? new[] { 1, 35, 99 }[scenario % 3] : 0;
+                fades[i] = i == audible ? 0 : 50;
+            }
+            int tail = scenario % 2 == 0 ? 128 : 0;
+            byte[] expected = LegacyScheduled(clips, starts, gains, tail);
+            byte[] actual = AudioPcmMixer.MixScheduledStereo16(clips, starts, gains);
+            Same(actual, LegacyScheduled(clips, starts, gains, 0),
+                "single partial-gain schedule matches independent oracle");
+            Same(AudioPcmMixer.MixScheduledStereo16WithFade(
+                    clips, starts, gains, 0, tail),
+                expected, "single partial-gain zero-fade schedule retains silent tail");
+            Same(AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+                    clips, starts, gains, fades, tail),
+                expected, "muted fades do not alter the only audible clip");
+            actual[starts[audible] * 4] ^= 0xFF;
+            for (int i = 0; i < count; i++)
+                Same(clips[i], originals[i],
+                    "single partial-gain output never aliases or mutates a clip");
+        }
+
+        // Host-only A/B measurement: a 35%-gain effect after a long silent
+        // pre-roll, with seven muted clips that still extend the timeline.
+        // Correctness is checked first; timings are not CI pass criteria.
+        byte[][] partialClips = new byte[8][];
+        int[] partialStarts = new int[8];
+        int[] partialGains = new int[8];
+        for (int i = 0; i < 8; i++)
+        {
+            partialClips[i] = new byte[(i == 3 ? 2400 : 1) * 4];
+            random.NextBytes(partialClips[i]);
+            partialStarts[i] = i == 3 ? 50000 : 90000 - i * 100;
+            partialGains[i] = i == 3 ? 35 : 0;
+        }
+        Same(AudioPcmMixer.MixScheduledStereo16(
+                partialClips, partialStarts, partialGains),
+            LegacyScheduled(partialClips, partialStarts, partialGains, 0),
+            "long silent pre-roll and muted tail preserve exact PCM");
+        MedianSinglePartial(partialClips, partialStarts, partialGains, false);
+        MedianSinglePartial(partialClips, partialStarts, partialGains, true);
+        double partialBefore = MedianSinglePartial(
+            partialClips, partialStarts, partialGains, false);
+        double partialAfter = MedianSinglePartial(
+            partialClips, partialStarts, partialGains, true);
+        Console.WriteLine("[AUDIO-MIX-SINGLE-PARTIAL] HOST A/B 5x24 median legacy=" +
+            partialBefore.ToString("F3") + "ms optimized=" +
+            partialAfter.ToString("F3") +
+            "ms (host only; no QEMU/HDA timing proof)");
+
         // A boundary shared by two clips is disjoint, while a one-frame
         // overlap must still take the saturating arithmetic path.
         byte[][] edgeClips = {
