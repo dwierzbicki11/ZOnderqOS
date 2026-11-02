@@ -96,9 +96,31 @@ namespace ZonderqOS.GUI.Apps
             Math.Max(1, (GridHeightForView + TileHeight + TileGap - MinPartialTileHeight) /
                 (TileHeight + TileGap));
 
+        // Use the authenticated user's real home, not /root for every login.
+        // UserManager returns /root for unknown accounts; do not treat that
+        // fallback as a non-root user's home or expose a misleading shortcut.
+        private static string ResolveSessionHome()
+        {
+            if (!SecurityContext.IsAuthenticated ||
+                string.IsNullOrEmpty(SecurityContext.CurrentUser))
+                return "/";
+
+            if (SecurityContext.CurrentUser == "root")
+                return "/root";
+
+            string home = UserManager.GetHomeDirectory(SecurityContext.CurrentUser);
+            if (!FileClipboard.IsSafeAbsolutePath(home) || home == "/root" ||
+                !Directory.Exists(home))
+                return "/";
+
+            return home.TrimEnd('/', '\\').Length == 0
+                ? "/" : home.TrimEnd('/', '\\');
+        }
+
         public FileManagerApp(int x, int y, Action<string> openFile) : base("File Manager")
         {
             nanoLauncher = openFile;
+            currentPath = ResolveSessionHome();
             Window = new Window(x, y, 820, 520, "ZonderqOS File Manager");
             Window.CloseAction = Close;
             // The first frame may be rendered before Update() runs.
@@ -489,7 +511,7 @@ namespace ZonderqOS.GUI.Apps
             if (button == 0)
                 GoUp();
             else if (button == 1)
-                NavigateTo("/root");
+                NavigateTo(ResolveSessionHome());
             else if (button == 2)
                 RefreshAll();
             else if (button == 3)
@@ -669,7 +691,8 @@ namespace ZonderqOS.GUI.Apps
                 contextMenuSelection = -1;
                 ResetClickSequence();
                 // /root is not guaranteed to exist on every disk-backed boot.
-                currentPath = Directory.Exists("/root") ? "/root" : "/";
+                string home = ResolveSessionHome();
+                currentPath = Directory.Exists(home) ? home : "/";
                 searchText = "";
             }
 
@@ -1374,7 +1397,7 @@ namespace ZonderqOS.GUI.Apps
         {
             sidebarEntries.Clear();
             sidebarEntries.Add(SidebarEntry.Section("PLACES"));
-            sidebarEntries.Add(SidebarEntry.Location("Home", "/root", IconType.Start, "USER FILES"));
+            sidebarEntries.Add(SidebarEntry.Location("Home", ResolveSessionHome(), IconType.Start, "USER FILES"));
             sidebarEntries.Add(SidebarEntry.Location("Root", "/", IconType.Folder, "FILESYSTEM"));
 
             if (Directory.Exists("/home"))
