@@ -53,6 +53,28 @@ namespace ZonderqOS.SystemCore
             return ready();
         }
 
+        /// <summary>
+        /// Diagnostic-only extension: after one full silent ring has been
+        /// accepted, leave the 48 kHz stereo16 HDA stream running for at
+        /// least one complete 16 KiB ring period (85.34 ms, rounded up).
+        /// The caller must still stop the output in finally. This is a
+        /// bounded timing experiment, NOT proof that DMA/IRQ advanced or
+        /// that speakers played every frame. waitCalls counts only the 1 ms
+        /// ring-full waits; the single settle wait is reported separately.
+        /// </summary>
+        public static bool FeedAndSettle(
+            byte[] pcm, Func<byte[], int, int, int> write,
+            Func<bool> ready, Action<uint> wait, out int waitCalls)
+        {
+            if (!Feed(pcm, write, ready, wait, out waitCalls))
+                return false;
+            if (!ready())
+                return false;
+            // ceil(16384 bytes * 1000 / (48000 frames/s * 4 bytes/frame))
+            wait(86);
+            return ready();
+        }
+
         private static bool WriteAll(
             byte[] source, int length, Func<byte[], int, int, int> write,
             Func<bool> ready, Action<uint> wait,

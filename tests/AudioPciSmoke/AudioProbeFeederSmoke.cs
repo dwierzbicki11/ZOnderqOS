@@ -86,6 +86,39 @@ internal static class AudioProbeFeederSmoke
         Check(twoSeconds[0] == 0x5A && twoSeconds[twoSeconds.Length - 1] == 0xA5,
             "two-second source remains unmodified");
 
+        // The opt-in direct path must not stop the cyclic DMA stream
+        // immediately after queuing its last silent frame. A single bounded
+        // 86 ms settle wait covers the nominal 16 KiB/48 kHz stereo16 ring.
+        int settleCalls = 0;
+        int settledBytes = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) => { settledBytes += count; return count; },
+            () => true,
+            milliseconds =>
+            {
+                Check(milliseconds == 86, "one complete HDA ring settle interval");
+                settleCalls++;
+            }, out waits);
+        Check(ok && waits == 0 && settleCalls == 1 && settledBytes == 4 + 16384,
+            "direct probe queues silence and waits once before stop");
+
+        bool withdrawnDuringSettle = false;
+        settleCalls = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) => count,
+            () => !withdrawnDuringSettle,
+            milliseconds => { withdrawnDuringSettle = true; settleCalls++; }, out waits);
+        Check(!ok && settleCalls == 1 && waits == 0,
+            "withdrawn output during final settle fails closed");
+
+        settleCalls = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) => count,
+            () => false,
+            milliseconds => settleCalls++, out waits);
+        Check(!ok && settleCalls == 0 && waits == 0,
+            "withdrawn output before feeding never enters settle wait");
+
         bool overBoundRejected = false;
         try
         {

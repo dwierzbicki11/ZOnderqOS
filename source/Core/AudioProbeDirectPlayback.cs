@@ -38,14 +38,14 @@ namespace ZonderqOS.SystemCore
                 // Mark cleanup as required before invoking the driver.
                 started = true;
                 output.Start();
-                bool fed = AudioProbeRingFeeder.Feed(pcm,
+                bool fed = AudioProbeRingFeeder.FeedAndSettle(pcm,
                     (data, offset, count) => output.Write(data.AsSpan(offset, count)),
                     () => !output.IsWithdrawn && output.IsRunning,
                     milliseconds => Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds),
                     out int waits);
                 Console.WriteLine("[AUDIO] 1MS diagnostic ring writer " +
                     (fed ? "ACCEPTED_AND_DRAINED" : "FAILED") +
-                    " waits=" + waits + " (not proof of audible PCM)");
+                    " waits=" + waits + " settle=86ms (not proof of audible PCM)");
                 return fed;
             }
             finally
