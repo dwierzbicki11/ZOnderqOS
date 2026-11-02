@@ -137,18 +137,20 @@ namespace ZonderqOS.SystemCore
                         Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds);
                     },
                     out int waits);
+                // Keep each line short enough for the diagnostic text console
+                // and QEMU after.ppm capture. Console output is not a serial
+                // telemetry channel and these are software ring counters only.
                 Console.WriteLine("[AUDIO] 1MS diagnostic ring writer " +
-                    (fed ? "ACCEPTED_TO_RING" : "FAILED") +
-                    " pcmQueued=" + pcmQueued +
-                    " silenceQueued=" + silenceQueued +
-                    " writeCalls=" + writeCalls +
-                    " zeroWrites=" + zeroWrites +
-                    " partialWrites=" + partialWrites +
-                    " longestZeroStreak=" + longestZeroStreak +
-                    " minPositiveWrite=" + (smallestPositiveWrite == int.MaxValue ? 0 : smallestPositiveWrite) +
-                    " waits=" + waits +
-                    " settleRequests=" + settleRequests +
-                    " settle=86ms (requested only; DMA/IRQ and audible PCM not proven)");
+                    (fed ? "ACCEPTED_TO_RING" : "FAILED"));
+                Console.WriteLine("[AUDIO] 1MS pcmQueued=" + pcmQueued +
+                    " silenceQueued=" + silenceQueued);
+                Console.WriteLine("[AUDIO] 1MS writeCalls=" + writeCalls +
+                    " zeroWrites=" + zeroWrites + " partialWrites=" + partialWrites);
+                Console.WriteLine("[AUDIO] 1MS longestZeroStreak=" + longestZeroStreak +
+                    " minPositiveWrite=" + (smallestPositiveWrite == int.MaxValue ? 0 : smallestPositiveWrite));
+                Console.WriteLine("[AUDIO] 1MS waits=" + waits +
+                    " settleRequests=" + settleRequests + " settle=86ms (requested only)");
+                Console.WriteLine("[AUDIO] 1MS DMA/IRQ and audible PCM not proven");
                 return fed;
             }
             finally
