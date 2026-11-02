@@ -478,6 +478,11 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('TX_NIC_CHECK = re.compile',
                       (ROOT / 'tests/verify_3095_e1000e_irq_binding.py').read_text())
         self.assertIn('for (int sequence = 0; sequence < 128; sequence++)', SOURCE)
+        self.assertIn('int[] frameLengths = { 60, 128, 512, 1024, 1514 };', SOURCE)
+        self.assertIn('int frameLength = frameLengths[sequence % frameLengths.Length];', SOURCE)
+        self.assertIn('burst[offset] = (byte)((sequence * 17 + offset) & 0xFF);', SOURCE)
+        self.assertIn('expected_burst_frame(seen)',
+                      (ROOT / 'tests/verify_3095_network_n6_burst.py').read_text())
         self.assertIn("burst[14 + tag.Length] = (byte)('0' + sequence / 100);", SOURCE)
         self.assertIn("burst[15 + tag.Length] = (byte)('0' + (sequence / 10) % 10);", SOURCE)
         self.assertIn("burst[16 + tag.Length] = (byte)('0' + sequence % 10);", SOURCE)
@@ -641,21 +646,21 @@ class NetworkN1Isolation(unittest.TestCase):
             "!current.Ready || !current.LinkUp",
             'TryFillSourceMac(current.MacAddress?.ToString() ?? "", liveMacFrame)',
             "liveMacFrame[6 + macByte] != template[6 + macByte]",
-            "if (!NetworkManager.Send(burst, burst.Length))",
+            "if (!NetworkManager.Send(burst, frameLength))",
             "Thread.Sleep(5);",
         ):
             self.assertIn(term, burst)
         self.assertLess(burst.index("if ((sequence & 31) == 0)"),
-                        burst.index("if (!NetworkManager.Send(burst, burst.Length))"))
+                        burst.index("if (!NetworkManager.Send(burst, frameLength))"))
         self.assertIn("IsE1000EDriverKitStable(expectedResources, expectedIrqSources)", burst)
         self.assertLess(burst.index("IsE1000EDriverKitStable(expectedResources, expectedIrqSources)"),
-                        burst.index("if (!NetworkManager.Send(burst, burst.Length))"))
+                        burst.index("if (!NetworkManager.Send(burst, frameLength))"))
         self.assertIn('TX_NIC_CHECK=PASS sent=128', burst)
         self.assertIn('IsE1000ELeaseStable(expectedMac, expectedIp,', burst)
         self.assertLess(burst.index('IsE1000ELeaseStable(expectedMac, expectedIp,'),
                         burst.index('TX_NIC_CHECK=PASS sent='))
         self.assertLess(burst.index('TX_NIC_CHECK=PASS sent='),
-                        burst.index('if (!NetworkManager.Send(burst, burst.Length))'))
+                        burst.index('if (!NetworkManager.Send(burst, frameLength))'))
         self.assertIn("verify_3095_network_n6_burst.py", SMOKE)
 
 
