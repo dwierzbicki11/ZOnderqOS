@@ -30,9 +30,13 @@ Check(legacy.RevisionId == 0xFF && legacy.SubsystemVendorId == 0xFFFF,
 // MMIO/bus-master prerequisites, not merely a published DriverKit name.
 // All accesses here are synthetic reads; this is NOT a real DMA/IRQ test.
 var e1000 = new FakeE1000EPciConfig();
-Check(E1000EPciIdentity.TryReadReady(e1000, out ushort e1000Command) &&
-      e1000Command == 0x0006 && e1000.ReadCount == 7,
+Check(E1000EPciIdentity.TryReadReady(e1000, out ushort e1000Command, out ulong e1000Bar0) &&
+      e1000Command == 0x0006 && e1000Bar0 == 0xFEBF0000UL && e1000.ReadCount == 9,
     "Expected read-only E1000E PCI identity and bus-master/MMIO gate");
+var e1000_64 = new FakeE1000EPciConfig { Bar0Low = 0xFEBF0004u, Bar0High = 0x00000001u };
+Check(E1000EPciIdentity.TryReadReady(e1000_64, out e1000Command, out e1000Bar0) &&
+      e1000Bar0 == 0x00000001FEBF0000UL && e1000_64.ReadCount == 11,
+    "E1000E must decode a valid 64-bit memory BAR without writing config space");
 e1000.HeaderType = 0x80;
 Check(E1000EPciIdentity.TryReadReady(e1000, out e1000Command),
     "Multifunction bit must not invalidate a type-0 E1000E function");
@@ -46,6 +50,12 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
     x => x.Command = 0x0002, // MMIO but no DMA bus master
     x => x.Command = 0x0004, // DMA but no MMIO decode
     x => x.Command = 0x0000,
+    x => x.Bar0Low = 0x00000000u, // unassigned BAR0
+    x => x.Bar0Low = 0x0000C001u, // I/O BAR
+    x => x.Bar0Low = 0xFEBF0002u, // reserved memory BAR type
+    x => x.Bar0Low = 0xFEBF0006u, // reserved memory BAR type
+    x => x.Bar0Low = 0xFFFFFFFFu, // absent function/all ones
+    x => { x.Bar0Low = 0xFFFFFFF4u; x.Bar0High = 0xFFFFFFFFu; },
     x => x.ThrowOnRead = true
 })
 {
@@ -520,6 +530,8 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     public ushort VendorId { get; set; } = 0x8086;
     public ushort DeviceId { get; set; } = 0x10D3;
     public ushort Command { get; set; } = 0x0006;
+    public uint Bar0Low { get; set; } = 0xFEBF0000u;
+    public uint Bar0High { get; set; } = 0;
     public byte ClassCode { get; set; } = 0x02;
     public byte Subclass { get; set; } = 0x00;
     public byte ProgrammingInterface { get; set; } = 0x00;
@@ -542,6 +554,10 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x00 => VendorId,
             0x02 => DeviceId,
             0x04 => Command,
+            0x10 => (ushort)Bar0Low,
+            0x12 => (ushort)(Bar0Low >> 16),
+            0x14 => (ushort)Bar0High,
+            0x16 => (ushort)(Bar0High >> 16),
             _ => throw new InvalidOperationException("Unexpected E1000E PCI word offset")
         };
     }

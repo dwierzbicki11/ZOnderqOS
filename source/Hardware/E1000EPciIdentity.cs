@@ -10,9 +10,18 @@ namespace ZonderqOS.Hardware
     /// </summary>
     public static class E1000EPciIdentity
     {
+        // Preserve the original API for callers that only need the command
+        // register. The isolated probe also records BAR0 across TX.
         public static bool TryReadReady(IPciConfigAccessor config, out ushort command)
         {
+            return TryReadReady(config, out command, out _);
+        }
+
+        public static bool TryReadReady(IPciConfigAccessor config,
+            out ushort command, out ulong bar0)
+        {
             command = 0;
+            bar0 = 0;
             if (config == null)
                 return false;
 
@@ -34,6 +43,27 @@ namespace ZonderqOS.Hardware
                 if ((observed & 0x0006) != 0x0006)
                     return false;
 
+                // BAR0 is the E1000E MMIO aperture. Read the assigned
+                // address without writing all-ones sizing probes to PCI.
+                // Type 0 (32-bit) and type 2 (64-bit) memory BARs are valid.
+                // I/O, reserved types and unassigned/all-ones addresses fail.
+                uint low = (uint)config.Read16(bus, slot, function, 0x10) |
+                    ((uint)config.Read16(bus, slot, function, 0x12) << 16);
+                uint type = low & 0x06u;
+                if ((low & 0x01u) != 0 || (type != 0 && type != 0x04u))
+                    return false;
+
+                ulong address = (ulong)(low & 0xFFFFFFF0u);
+                if (type == 0x04u)
+                {
+                    uint high = (uint)config.Read16(bus, slot, function, 0x14) |
+                        ((uint)config.Read16(bus, slot, function, 0x16) << 16);
+                    address |= (ulong)high << 32;
+                }
+                if (address == 0 || address == 0xFFFFFFFFFFFFFFF0UL)
+                    return false;
+
+                bar0 = address;
                 command = observed;
                 return true;
             }
@@ -41,6 +71,7 @@ namespace ZonderqOS.Hardware
             {
                 // Missing PCI config I/O or malformed responses fail closed.
                 command = 0;
+                bar0 = 0;
                 return false;
             }
         }

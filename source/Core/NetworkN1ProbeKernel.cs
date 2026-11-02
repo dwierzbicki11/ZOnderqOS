@@ -98,7 +98,7 @@ namespace ZonderqOS
             // Intel 82574L with MMIO and bus-master DMA enabled.
             var pciConfig = new ZonderqOS.Platform.X64.PciConfigIoAccessor();
             if (!ZonderqOS.Hardware.E1000EPciIdentity.TryReadReady(
-                    pciConfig, out ushort pciCommand))
+                    pciConfig, out ushort pciCommand, out ulong pciBar0))
             {
                 Log("[NET3095-N1][FAIL] E1000E PCI identity/MMIO/busmaster invalid before TX");
                 return;
@@ -147,10 +147,12 @@ namespace ZonderqOS
                 Log("[NET3095-N1][FAIL] E1000E DriverKit binding changed during TX");
                 return;
             }
-            // A queued frame is not enough: verify that the same PCI command
-            // register still enables MMIO and DMA after the TX path ran.
+            // A queued frame is not enough: verify that the PCI command
+            // and the assigned MMIO BAR0 are unchanged after the TX path.
+            // This is read-only PCI configuration, not DMA completion proof.
             if (!ZonderqOS.Hardware.E1000EPciIdentity.TryReadReady(
-                    pciConfig, out ushort txPciCommand) || txPciCommand != pciCommand)
+                    pciConfig, out ushort txPciCommand, out ulong txPciBar0) ||
+                txPciCommand != pciCommand || txPciBar0 != pciBar0)
             {
                 Log("[NET3095-N1][FAIL] E1000E PCI identity/command changed during TX");
                 return;
