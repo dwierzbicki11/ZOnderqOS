@@ -9,10 +9,18 @@ namespace Cosmos.Kernel.HAL.Devices.Audio { }
 
 namespace Cosmos.Kernel.System.Audio
 {
-    public sealed class HostAudioFormat
+    // Match stock Cosmos 3.0.95: AudioFormat is a struct, not a class.
+    // default(HostAudioFormat) represents an invalid/uninitialized format.
+    public struct HostAudioFormat
     {
-        public int Channels = 2;
-        public int ChannelSize = 2;
+        public int Channels;
+        public int ChannelSize;
+
+        public HostAudioFormat(int channels, int channelSize)
+        {
+            Channels = channels;
+            ChannelSize = channelSize;
+        }
     }
 
     public sealed class AudioDevice
@@ -23,7 +31,7 @@ namespace Cosmos.Kernel.System.Audio
         public object Player;
         public bool IsRunning;
         public uint SampleRate = 48000;
-        private HostAudioFormat _format = new HostAudioFormat();
+        private HostAudioFormat _format = new HostAudioFormat(2, 2);
         public Action OnFormatRead;
         public HostAudioFormat Format
         {
@@ -111,12 +119,15 @@ internal static class AudioDirectProbeSmoke
             "direct probe refuses a running stream");
         ExpectRefused(new Device { IsWithdrawn = true }, check,
             "direct probe refuses a withdrawn output");
-        ExpectRefused(new Device { Format = null }, check,
-            "direct probe refuses unpublished null PCM format without starting");
+        ExpectRefused(new Device { Format = default }, check,
+            "direct probe refuses default/uninitialized PCM format without starting");
         var formatWithdrawnOnRead = new Device();
-        formatWithdrawnOnRead.OnFormatRead = () => formatWithdrawnOnRead.Format = null;
-        ExpectRefused(formatWithdrawnOnRead, check,
-            "direct probe uses one format snapshot and refuses withdrawn format before Start");
+        formatWithdrawnOnRead.OnFormatRead = () => formatWithdrawnOnRead.Format = default;
+        check(!AudioProbeDirectPlayback.TryPlay(formatWithdrawnOnRead, Pcm, 48000) &&
+            formatWithdrawnOnRead.StartCalls == 1 &&
+            formatWithdrawnOnRead.StopCalls == 1 &&
+            formatWithdrawnOnRead.WrittenBytes == 0,
+            "direct probe snapshots value format once, then refuses drift after Start");
 
         int waits = 0;
         Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
@@ -143,14 +154,15 @@ internal static class AudioDirectProbeSmoke
                 "direct probe refuses sample-rate drift during Start before PCM write");
 
             var startFormatDrift = new Device();
-            startFormatDrift.OnStart = () => startFormatDrift.Format.ChannelSize = 1;
+            startFormatDrift.OnStart = () => startFormatDrift.Format =
+                new Cosmos.Kernel.System.Audio.HostAudioFormat(2, 1);
             check(!AudioProbeDirectPlayback.TryPlay(startFormatDrift, Pcm, 48000) &&
                 startFormatDrift.StartCalls == 1 && startFormatDrift.StopCalls == 1 &&
                 startFormatDrift.WrittenBytes == 0 && !startFormatDrift.IsRunning,
                 "direct probe refuses sample-width drift during Start");
 
             var startNullFormat = new Device();
-            startNullFormat.OnStart = () => startNullFormat.Format = null;
+            startNullFormat.OnStart = () => startNullFormat.Format = default;
             check(!AudioProbeDirectPlayback.TryPlay(startNullFormat, Pcm, 48000) &&
                 startNullFormat.StartCalls == 1 && startNullFormat.StopCalls == 1 &&
                 startNullFormat.WrittenBytes == 0 && !startNullFormat.IsRunning,
@@ -174,7 +186,7 @@ internal static class AudioDirectProbeSmoke
                 "direct probe aborts on format drift after first accepted write");
 
             var writeNullFormat = new Device();
-            writeNullFormat.OnWrite = () => writeNullFormat.Format = null;
+            writeNullFormat.OnWrite = () => writeNullFormat.Format = default;
             check(!AudioProbeDirectPlayback.TryPlay(writeNullFormat, Pcm, 48000) &&
                 writeNullFormat.StartCalls == 1 && writeNullFormat.StopCalls == 1 &&
                 writeNullFormat.WrittenBytes == Pcm.Length,
@@ -203,7 +215,7 @@ internal static class AudioDirectProbeSmoke
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
                 check(ms == 86, "missing format during settle uses bounded wait");
-                settleNullFormat.Format = null;
+                settleNullFormat.Format = default;
             };
             check(!AudioProbeDirectPlayback.TryPlay(settleNullFormat, Pcm, 48000) &&
                 settleNullFormat.StartCalls == 1 && settleNullFormat.StopCalls == 1 &&

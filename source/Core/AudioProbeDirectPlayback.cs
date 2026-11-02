@@ -29,12 +29,13 @@ namespace ZonderqOS.SystemCore
                 output.Player != null || output.SampleRate != sampleRate)
                 return false;
 
-            // Read the published format exactly once. A device may withdraw
-            // or replace it between property reads; mixing Channels from one
-            // snapshot with ChannelSize from another is not a valid PCM gate.
+            // Stock Cosmos 3.0.95 AudioFormat is a value type, not nullable.
+            // A default/uninitialized format has zero channels/width and is
+            // rejected by the explicit stereo16 check. Snapshot once to
+            // avoid mixing fields from different published formats.
             // This still is NOT an atomic output ownership claim.
             var format = output.Format;
-            return format is not null && format.Channels == 2 && format.ChannelSize == 2;
+            return format.Channels == 2 && format.ChannelSize == 2;
         }
 
         internal static bool TryPlay(AudioDevice output, byte[] pcm, uint sampleRate)
