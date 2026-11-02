@@ -82,7 +82,28 @@ internal static class MemoryLineSmoke
         monitor.Refresh();
         Assert(object.ReferenceEquals(refreshLine, monitor.Lines[5]),
             "production Refresh reallocated unchanged physical-memory telemetry");
-        Console.WriteLine("PASS: 40000+ htop memory snapshot/output/cache checks and Refresh integration");
+        try
+        {
+            MemoryInfo.FreePages = 1023;
+            monitor.Refresh();
+            Assert(object.ReferenceEquals(refreshLine, monitor.Lines[5]),
+                "production Refresh reallocated unchanged visible MiB after page fluctuation");
+            MemoryInfo.FreePages = 768;
+            monitor.Refresh();
+            Assert(monitor.Lines[5] == Legacy(2048, 768, 4096),
+                "production Refresh missed visible MiB boundary");
+            Assert(!object.ReferenceEquals(refreshLine, monitor.Lines[5]),
+                "production Refresh reused stale visible MiB across boundary");
+            MemoryInfo.FreePages = 1024;
+            monitor.Refresh();
+            Assert(monitor.Lines[5] == refreshLine,
+                "production Refresh did not recover original visible MiB");
+        }
+        finally
+        {
+            MemoryInfo.FreePages = 1024;
+        }
+        Console.WriteLine("PASS: 40000+ htop memory snapshot/output/cache checks and fluctuating Refresh integration");
     }
 
     private static double Median(double[] values)
