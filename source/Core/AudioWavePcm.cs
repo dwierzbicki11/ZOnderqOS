@@ -137,21 +137,28 @@ namespace ZonderqOS.SystemCore
                             speakerMask != (sourceChannels == 1 ? 0x4U : 0x3U))
                             throw new ArgumentException("Unsupported WAV speaker layout.", nameof(wave));
 
-                        // KSDATAFORMAT_SUBTYPE_PCM:
-                        // 00000001-0000-0010-8000-00AA00389B71 (LE bytes).
-                        if (Read32(wave, pos + 32) != 1U ||
+                        // KSDATAFORMAT_SUBTYPE_PCM / IEEE_FLOAT share the
+                        // 0000000X-0000-0010-8000-00AA00389B71 GUID tail.
+                        // Only subtype 1 (integer PCM) or 3 (IEEE float32)
+                        // is accepted. Do not reinterpret an arbitrary GUID.
+                        uint subtype = Read32(wave, pos + 32);
+                        if ((subtype != 1U && subtype != 3U) ||
                             Read16(wave, pos + 36) != 0 ||
                             Read16(wave, pos + 38) != 0x0010 ||
                             wave[pos + 40] != 0x80 || wave[pos + 41] != 0 ||
                             wave[pos + 42] != 0 || wave[pos + 43] != 0xAA ||
                             wave[pos + 44] != 0 || wave[pos + 45] != 0x38 ||
                             wave[pos + 46] != 0x9B || wave[pos + 47] != 0x71)
-                            throw new ArgumentException("WAV extensible subtype is not PCM.", nameof(wave));
-                        format = 1;
+                            throw new ArgumentException("Unsupported WAV extensible subtype GUID.", nameof(wave));
+                        // Float32 cannot have 16/24 valid bits in a 32-bit
+                        // container: it has no integer padding semantics.
+                        if (subtype == 3U && (bits != 32 || validBits != 32))
+                            throw new ArgumentException("Extensible IEEE float requires 32 valid bits.", nameof(wave));
+                        format = (int)subtype;
                     }
-                    // Canonical WAVE_FORMAT_IEEE_FLOAT (3) is supported only
-                    // for 32-bit finite samples. Extensible subtype remains
-                    // strictly PCM; unknown GUIDs are never interpreted as float.
+                    // Canonical and extensible IEEE_FLOAT (3) are supported
+                    // only for 32-bit finite samples. All other GUIDs fail
+                    // before any sample conversion or device access.
                     bool isFloat = format == 3;
                     if ((format != 1 && !isFloat) || (isFloat && bits != 32) ||
                         (sourceChannels != 1 && sourceChannels != 2) ||
@@ -561,6 +568,37 @@ namespace ZonderqOS.SystemCore
             PutTag(wave, 50, "data");
             Write32(wave, 54, samples.Length);
             Array.Copy(samples, 0, wave, 58, samples.Length);
+            return wave;
+        }
+
+        /// <summary>
+        /// Construct WAVE_FORMAT_EXTENSIBLE IEEE float32 mono/stereo with a
+        /// canonical subtype GUID and fact chunk. RAM-only test fixture;
+        /// samples are still checked for finiteness by DecodeStereo16.
+        /// </summary>
+        public static byte[] EncodeExtensibleFloat32AtRate(byte[] samples, int sampleRate, int channels)
+        {
+            byte[] basic = EncodeFloat32AtRate(samples, sampleRate, channels);
+            // Canonical float has an 18-byte fmt chunk followed by fact/data.
+            // Extensible fmt is 40 bytes, so move the existing fact/data
+            // payload by 22 bytes while retaining the exact sample bytes.
+            byte[] wave = new byte[basic.Length + 22];
+            Array.Copy(basic, 0, wave, 0, 38);
+            Array.Copy(basic, 38, wave, 60, basic.Length - 38);
+            Write32(wave, 4, wave.Length - 8);
+            Write32(wave, 16, 40);
+            Write16(wave, 20, 0xFFFE);
+            Write16(wave, 36, 22); // cbSize
+            Write16(wave, 38, 32); // validBitsPerSample
+            Write32(wave, 40, channels == 1 ? 0x4 : 0x3);
+            Write32(wave, 44, 3); // KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
+            Write16(wave, 48, 0);
+            Write16(wave, 50, 0x0010);
+            wave[52] = 0x80;
+            wave[55] = 0xAA;
+            wave[57] = 0x38;
+            wave[58] = 0x9B;
+            wave[59] = 0x71;
             return wave;
         }
 
