@@ -173,6 +173,35 @@ internal static class AudioDirectProbeSmoke
                 startNullFormat.WrittenBytes == 0 && !startNullFormat.IsRunning,
                 "direct probe refuses missing PCM format during Start");
 
+            // A format getter can itself trigger a claim or rate change.
+            // This deterministic hook exercises the final readiness check
+            // immediately before the first PCM write (fourth format read).
+            var claimedDuringReady = new Device();
+            int claimFormatReads = 0;
+            claimedDuringReady.OnFormatRead = () =>
+            {
+                if (++claimFormatReads == 4)
+                    claimedDuringReady.Player = new object();
+            };
+            check(!AudioProbeDirectPlayback.TryPlay(claimedDuringReady, Pcm, 48000) &&
+                claimFormatReads == 4 && claimedDuringReady.StartCalls == 1 &&
+                claimedDuringReady.StopCalls == 0 &&
+                claimedDuringReady.WrittenBytes == 0,
+                "claim during final format getter aborts before first PCM write");
+
+            var rateChangedDuringReady = new Device();
+            int rateFormatReads = 0;
+            rateChangedDuringReady.OnFormatRead = () =>
+            {
+                if (++rateFormatReads == 4)
+                    rateChangedDuringReady.SampleRate = 44100;
+            };
+            check(!AudioProbeDirectPlayback.TryPlay(rateChangedDuringReady, Pcm, 48000) &&
+                rateFormatReads == 4 && rateChangedDuringReady.StartCalls == 1 &&
+                rateChangedDuringReady.StopCalls == 1 &&
+                rateChangedDuringReady.WrittenBytes == 0,
+                "rate drift during final format getter aborts before first PCM write");
+
             var startClaimed = new Device();
             startClaimed.OnStart = () => startClaimed.Player = new object();
             check(!AudioProbeDirectPlayback.TryPlay(startClaimed, Pcm, 48000) &&

@@ -35,7 +35,13 @@ namespace ZonderqOS.SystemCore
             // avoid mixing fields from different published formats.
             // This still is NOT an atomic output ownership claim.
             var format = output.Format;
-            return format.Channels == 2 && format.ChannelSize == 2;
+            // Format is a public getter, not an atomic ownership snapshot.
+            // A stock player may claim/withdraw/reconfigure the output while
+            // that getter executes. Recheck after reading it so this probe
+            // does not queue even one stale-format block in that case.
+            return format.Channels == 2 && format.ChannelSize == 2 &&
+                !output.IsWithdrawn && output.Player == null &&
+                output.SampleRate == sampleRate;
         }
 
         internal static bool TryPlay(AudioDevice output, byte[] pcm, uint sampleRate)
