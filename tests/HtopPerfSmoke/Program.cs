@@ -863,6 +863,7 @@ internal static class Program
         BenchmarkCpuPercentText(true);
         VerifyHeaderCache();
         BenchmarkHeaderCache();
+        MemoryLineSmoke.Run();
         VerifyCpuBars();
         BenchmarkCpuBars();
         VerifyCpuPrefixes();
