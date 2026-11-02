@@ -29,7 +29,7 @@ IDENT = 0x3097
 SEQ = 1
 
 
-def final_echo(frame: bytes):
+def final_echo(frame: bytes, ident_expected: int = IDENT, seq_expected: int = SEQ):
     """Parse complete unfragmented IPv4 echo with a valid wire checksum."""
     if len(frame) < 42 or frame[12:14] != b"\x08\x00":
         return None
@@ -44,9 +44,9 @@ def final_echo(frame: bytes):
         return None
     offset = 14 + ihl
     typ, code, _checksum, ident, seq = struct.unpack_from(">BBHHH", frame, offset)
-    if ident != IDENT:
+    if ident != ident_expected:
         return None
-    if typ not in (0, 8) or code != 0 or seq != SEQ:
+    if typ not in (0, 8) or code != 0 or seq != seq_expected:
         raise ValueError("unexpected final ICMP type/code/sequence")
     if (frame[22] == 0 or
             internet_checksum(frame[14:14 + ihl]) != 0 or
