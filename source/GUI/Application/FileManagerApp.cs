@@ -964,7 +964,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void SelectBoundary(bool last)
         {
-            if (entries.Count == 0 || GridRowsForView == 0)
+            if (entries.Count == 0)
+                return;
+            if (GridRowsForView == 0)
                 return;
 
             ResetClickSequence();
@@ -985,7 +987,9 @@ namespace ZonderqOS.GUI.Apps
 
         private void Select(int delta)
         {
-            if (entries.Count == 0 || GridRowsForView == 0)
+            if (entries.Count == 0)
+                return;
+            if (GridRowsForView == 0)
                 return;
 
             // Keyboard selection must not complete a pending mouse double-click.
