@@ -353,7 +353,14 @@ namespace ZonderqOS.GUI.Apps
             {
                 FileEntry item = visible[read];
                 if (item.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
-                    visible[write++] = item;
+                {
+                    // Most incremental keystrokes leave a long matching
+                    // prefix unchanged. Avoid writing those same references
+                    // back into the list until the first discarded entry.
+                    if (write != read)
+                        visible[write] = item;
+                    write++;
+                }
             }
             if (write < count)
                 visible.RemoveRange(write, count - write);
