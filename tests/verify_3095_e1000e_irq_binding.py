@@ -11,6 +11,7 @@ from pathlib import Path
 import re
 
 from verify_3095_e1000e_irq_trace import count_notifications, count_legacy_cycles
+from verify_3095_network_n1 import normalize_n1_serial, PCI_IRQ_ROUTE, PCI_IRQ_STABLE
 
 MAC = r"([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5})"
 NODE = r"(pci:[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7])"
@@ -39,7 +40,7 @@ TX_NIC_CHECK = re.compile(r"^\[NET3095-N6\] TX_NIC_CHECK=PASS sent=(\d+)$")
 
 def check_guest_line(serial: str) -> str:
     """Reject missing/ambiguous driver binding, line or MAC correlation."""
-    lines = serial.replace("\r", "").splitlines()
+    lines = normalize_n1_serial(serial).replace("\r", "").splitlines()
 
     def matches(pattern: re.Pattern[str]) -> list[re.Match[str]]:
         return [m for line in lines if (m := pattern.fullmatch(line))]
@@ -61,6 +62,20 @@ def check_guest_line(serial: str) -> str:
     irq_line = int(driver[0].group(3))
     if not 1 <= irq_line <= 254:
         raise ValueError("invalid PCI legacy IRQ line")
+    # Cross-check PCI INTx metadata against the stock driver's own line.
+    # This remains a routing observation, NOT a guest ISR execution count.
+    routes, stable_routes = matches(PCI_IRQ_ROUTE), matches(PCI_IRQ_STABLE)
+    if routes or stable_routes:
+        if len(routes) != 1 or len(stable_routes) != 1:
+            raise ValueError("missing or duplicated PCI legacy IRQ route marker")
+        route_line, route_pin = map(int, routes[0].groups())
+        stable_line, stable_pin = map(int, stable_routes[0].groups())
+        if (route_line != irq_line or not 1 <= route_pin <= 4 or
+                (route_line, route_pin) != (stable_line, stable_pin) or
+                not (lines.index(guest[0].group(0)) <
+                     lines.index(routes[0].group(0)) <
+                     lines.index(stable_routes[0].group(0)))):
+            raise ValueError("PCI legacy IRQ route differs from bound E1000E driver")
     return f"guest-bound=yes line={irq_line} mac={driver[0].group(2).upper()}"
 
 
@@ -273,6 +288,27 @@ def self_test() -> None:
         + "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\n"
         "[NET3095-N6] DRIVER_HEALTH=PASS node=pci:0000:00:02.0 driver=E1000EDriver resources=8 published=1 irq_sources=1 handler_faults=0 isr_executions=unknown\n"
     )
+    route_marker = "[NET3095-N1] PCI_IRQ_ROUTE=PASS line=11 pin=1 (read-only; guest ISR unproven)"
+    stable_marker = "[NET3095-N1] PCI_IRQ_ROUTE_STABLE=PASS line=11 pin=1 (read-only; guest ISR unproven)"
+    route_serial = serial.replace(
+        "[NET3095-N6] DRIVER_BASELINE=PASS",
+        route_marker + "\n" + stable_marker + "\n[NET3095-N6] DRIVER_BASELINE=PASS",
+        1)
+    assert "line=11" in check_guest_line(route_serial)
+    for bad_route in (
+        route_serial.replace(route_marker, ""),
+        route_serial.replace(stable_marker, ""),
+        route_serial.replace("PCI_IRQ_ROUTE=PASS line=11", "PCI_IRQ_ROUTE=PASS line=12"),
+        route_serial.replace("PCI_IRQ_ROUTE_STABLE=PASS line=11", "PCI_IRQ_ROUTE_STABLE=PASS line=12"),
+        route_serial.replace("PCI_IRQ_ROUTE=PASS line=11 pin=1", "PCI_IRQ_ROUTE=PASS line=11 pin=5"),
+        route_serial + "\n" + route_marker,
+    ):
+        try:
+            check_guest_line(bad_route)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted inconsistent PCI IRQ route/driver line")
     assert "line=11" in check_guest_line(serial)
     assert "ISR-UNPROVEN" in check_driver_health(serial)
     assert "streams=6" in check_driver_health(serial)
