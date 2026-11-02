@@ -30,6 +30,14 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("(status & 0x0010) == 0", pci)
         self.assertIn("(control & 0x0001) != 0", pci)  # MSI enabled
         self.assertIn("(control & 0x8000) != 0", pci)  # MSI-X enabled
+        # A disabled MSI/MSI-X control bit does not validate a capability
+        # whose required registers extend beyond 0xFF. The C# fixture also
+        # executes boundary cases through the production capability walker.
+        self.assertIn("int size = 10 +", pci)
+        self.assertIn("(control & 0x0080) != 0 ? 4 : 0", pci)
+        self.assertIn("(control & 0x0100) != 0 ? 8 : 0", pci)
+        self.assertIn("pointer + size > 0x100", pci)
+        self.assertIn("pointer > 0xF4", pci)  # MSI-X 12-byte minimum
         self.assertIn("if (id == 0x01)", pci)  # PCI PM capability
         self.assertIn("if (seenPm || pointer > 0xF8)", pci)  # no duplicate/wrap
         self.assertIn("(pmcsr & 0x0003) != 0", pci)  # reject D1/D2/D3hot
