@@ -119,6 +119,15 @@ namespace ZonderqOS.SystemCore
         public static bool IsRunPath(string p) => p.StartsWith("/run/");
         public static bool FileExists(string p) => VirtualFs.Files.ContainsKey(p);
         public static bool DirectoryExists(string p) => false;
+        public static bool TryMoveFile(string source, string destination, out string error)
+        {
+            error = "invalid move";
+            if (!VirtualFs.Files.TryGetValue(source, out string value) || VirtualFs.Files.ContainsKey(destination)) return false;
+            VirtualFs.Files.Add(destination, value);
+            VirtualFs.Files.Remove(source);
+            error = null;
+            return true;
+        }
     }
     static class TmpFs
     {
@@ -127,6 +136,15 @@ namespace ZonderqOS.SystemCore
         public static bool IsTmpPath(string p) => p == "/tmp/source" || p == "/tmp/dest";
         public static bool FileExists(string p) => VirtualFs.Files.ContainsKey(p);
         public static bool DirectoryExists(string p) => false;
+        public static bool TryMoveFile(string source, string destination, out string error)
+        {
+            error = "invalid move";
+            if (!VirtualFs.Files.TryGetValue(source, out string value) || VirtualFs.Files.ContainsKey(destination)) return false;
+            VirtualFs.Files.Add(destination, value);
+            VirtualFs.Files.Remove(source);
+            error = null;
+            return true;
+        }
     }
     static class DeviceFs { public static bool IsDevicePath(string p) => false; }
 }

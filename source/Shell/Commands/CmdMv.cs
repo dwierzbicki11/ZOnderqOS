@@ -35,6 +35,22 @@ namespace ZonderqOS.Commands
             string source = PathResolver.GetAbsolutePath(currentPath, args[1]);
             string destination = PathResolver.GetAbsolutePath(currentPath, args[2]);
 
+            // Rename within one RAM filesystem under its own lock. Copy/delete
+            // would need a second quota allocation and can fail on a full volume.
+            bool sameTmp = TmpFs.IsTmpPath(source) && TmpFs.IsTmpPath(destination);
+            bool sameRun = RunFs.IsRunPath(source) && RunFs.IsRunPath(destination);
+            if (sameTmp || sameRun)
+            {
+                string error;
+                bool moved = sameTmp
+                    ? TmpFs.TryMoveFile(source, destination, out error)
+                    : RunFs.TryMoveFile(source, destination, out error);
+                CommandIO.LastCommandSuccess = moved;
+                if (!moved)
+                    WriteMessage.WriteError($"Move failed: {error}", "FS");
+                return;
+            }
+
             if (IsRamFsPath(source))
             {
                 if (!VirtualFs.TryRead(source, out string content))

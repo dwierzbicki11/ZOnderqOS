@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <Nullable>disable</Nullable>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../source/Core/TmpFs.cs" Link="TmpFs.cs" />
+    <Compile Include="../../source/Core/RunFs.cs" Link="RunFs.cs" />
+    <Compile Include="../../source/Shell/Commands/CmdMv.cs" Link="CmdMv.cs" />
+    <Compile Include="../../source/Shell/Commands/RamTextTransfer.cs" Link="RamTextTransfer.cs" />
+  </ItemGroup>
+</Project>
