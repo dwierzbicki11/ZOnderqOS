@@ -173,6 +173,112 @@ internal static class CursorDamageSmoke
         }
     }
 
+    // Compare the identical production capture path with and without overlap
+    // reuse. The old underlay is restored before each capture in both cases.
+    private static void VerifyOverlapReadbacks(bool patterned)
+    {
+        var beforeCanvas = new Canvas(128, 96);
+        var afterCanvas = new Canvas(128, 96);
+        for (int y = 0; y < 96; y++)
+            for (int x = 0; x < 128; x++)
+            {
+                Color color = patterned && ((x + y) & 1) != 0 ? Color.Maroon : Color.Navy;
+                beforeCanvas.DrawPoint(color, x, y);
+                afterCanvas.DrawPoint(color, x, y);
+            }
+        var before = new CursorDamageRenderer(beforeCanvas);
+        var after = new CursorDamageRenderer(afterCanvas);
+        try
+        {
+            before.DrawAfterScene(40, 40);
+            after.DrawAfterScene(40, 40);
+            int oldReads = beforeCanvas.ReadbackCalls;
+            int newReads = afterCanvas.ReadbackCalls;
+            CursorDamageRenderer.DisableOverlapReuseForBenchmark = true;
+            if (!before.TryMove(41, 40)) throw new Exception("baseline cursor move failed");
+            CursorDamageRenderer.DisableOverlapReuseForBenchmark = false;
+            if (!after.TryMove(41, 40)) throw new Exception("overlap cursor move failed");
+            SamePixels(beforeCanvas, afterCanvas, "overlap first move");
+            if (beforeCanvas.ReadbackCalls - oldReads != 24 * 28 ||
+                afterCanvas.ReadbackCalls - newReads != 28)
+                throw new Exception("1px cursor move must read 672 -> 28 pixels, got " +
+                    (beforeCanvas.ReadbackCalls - oldReads) + " -> " +
+                    (afterCanvas.ReadbackCalls - newReads));
+
+            // Include diagonal moves, clipped rectangles and non-overlapping
+            // jumps. The optimized path must never return stale old pixels.
+            for (int i = 0; i < 150; i++)
+            {
+                int x = i % 17 == 0 ? -2 : i % 23 == 0 ? 125 : 35 + (i % 11);
+                int y = i % 19 == 0 ? 95 : i % 29 == 0 ? -3 : 32 + (i % 9);
+                CursorDamageRenderer.DisableOverlapReuseForBenchmark = true;
+                if (!before.TryMove(x, y)) throw new Exception("baseline move failed " + i);
+                CursorDamageRenderer.DisableOverlapReuseForBenchmark = false;
+                if (!after.TryMove(x, y)) throw new Exception("overlap move failed " + i);
+                SamePixels(beforeCanvas, afterCanvas, "overlap " + (patterned ? "pattern" : "flat") + " #" + i);
+            }
+            if (afterCanvas.ReadbackCalls >= beforeCanvas.ReadbackCalls)
+                throw new Exception("overlap path did not reduce readback calls");
+            Console.WriteLine("Cursor overlap " + (patterned ? "patterned" : "uniform") +
+                " 151 moves: Canvas readbacks " + beforeCanvas.ReadbackCalls +
+                " -> " + afterCanvas.ReadbackCalls + ", exact framebuffer.");
+        }
+        finally
+        {
+            CursorDamageRenderer.DisableOverlapReuseForBenchmark = false;
+        }
+    }
+
+    private static double TimeOverlap(bool disabled, int repeats)
+    {
+        var canvas = new Canvas(128, 96);
+        canvas.DrawFilledRectangle(Color.Navy, 0, 0, 128, 96);
+        CursorDamageRenderer.DisableOverlapReuseForBenchmark = disabled;
+        var mover = new CursorDamageRenderer(canvas);
+        mover.DrawAfterScene(40, 40);
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repeats; i++)
+        {
+            int x = 40 + i % 8;
+            int y = 40 + (i / 8) % 6;
+            mover.TryMove(x, y);
+        }
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
+    private static void BenchmarkOverlap()
+    {
+        try
+        {
+            TimeOverlap(true, 200);
+            TimeOverlap(false, 200);
+            double[] before = new double[7], after = new double[7];
+            for (int i = 0; i < 7; i++)
+            {
+                if ((i & 1) == 0)
+                {
+                    before[i] = TimeOverlap(true, 4000);
+                    after[i] = TimeOverlap(false, 4000);
+                }
+                else
+                {
+                    after[i] = TimeOverlap(false, 4000);
+                    before[i] = TimeOverlap(true, 4000);
+                }
+            }
+            Array.Sort(before);
+            Array.Sort(after);
+            Console.WriteLine("Host .NET cursor overlap, 4000 small moves, median 7 A/B: " +
+                before[3].ToString("F3") + " -> " + after[3].ToString("F3") +
+                " ms, ratio=" + (before[3] / after[3]).ToString("F2") +
+                "x (fake Canvas, not QEMU FPS).");
+        }
+        finally
+        {
+            CursorDamageRenderer.DisableOverlapReuseForBenchmark = false;
+        }
+    }
+
     private static double TimeUniformCurrent(bool disableUniform, int repeats)
     {
         var canvas = new Canvas(128, 96);
@@ -293,6 +399,9 @@ internal static class CursorDamageSmoke
         VerifyPositions(24, 28);
         VerifyPositions(5, 7);
         VerifyUniformAndPatterned();
+        VerifyOverlapReadbacks(false);
+        VerifyOverlapReadbacks(true);
+        BenchmarkOverlap();
         BenchmarkUniformCurrent();
         BenchmarkPatterned();
         // Very large coordinates must be clipped without arithmetic overflow.
