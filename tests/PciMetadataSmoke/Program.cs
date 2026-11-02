@@ -168,6 +168,49 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
           irqLine == 0 && irqPin == 0,
         "Enabled or unstable message-signaled IRQ configuration must fail closed");
 }
+// The MSI/MSI-X control word alone is not a valid capability: required
+// address/data/table registers must also fit inside conventional PCI config.
+// Test the production length checks, including 64-bit and mask-capable MSI.
+var irqTail = new FakeE1000EPciConfig {
+    Status = 0x0010, CapabilityPointer = 0xF8, TailCapabilityId = 0x05
+};
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "MSI header at F8 with truncated data registers must fail closed");
+irqTail.TailCapabilityId = 0x11;
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "MSI-X header at F8 with truncated table/PBA must fail closed");
+irqTail.CapabilityPointer = 0xF4;
+irqTail.TailCapabilityId = 0x05;
+Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
+      irqLine == 11 && irqPin == 1,
+    "Minimum 10-byte 32-bit MSI at F4 must remain valid when disabled");
+irqTail.TailControl = 0x0080;
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "64-bit MSI at F4 must reject truncated upper address/data");
+irqTail.TailControl = 0x0100;
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "Masked 32-bit MSI at F4 must reject truncated mask/pending words");
+irqTail.TailControl = 0;
+irqTail.TailCapabilityId = 0x11;
+Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
+      irqLine == 11 && irqPin == 1,
+    "Complete 12-byte disabled MSI-X at F4 must remain valid");
+irqTail.TailCapabilityId = 0x05;
+irqTail.CapabilityPointer = 0xE8;
+irqTail.TailControl = 0x0180;
+Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
+      irqLine == 11 && irqPin == 1,
+    "Complete 22-byte 64-bit masked MSI at E8 must remain valid");
+irqTail.CapabilityPointer = 0xEC;
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqTail, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "22-byte 64-bit masked MSI at EC must reject overflow");
+Console.WriteLine("[NET3095-E1000E-IRQ-CAP-LENGTH] PASS C# bounded MSI/MSI-X layouts (synthetic)");
+
 // An E1000E in D3hot cannot receive legacy interrupts or perform DMA,
 // even if COMMAND, BAR0 and the INTx line appear unchanged. Check PMCSR
 // through the same read-only PCI capability walker used by the guest.
@@ -685,6 +728,9 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     public byte PmId { get; set; } = 0x01;
     public byte PmNext { get; set; }
     public ushort PmControlStatus { get; set; }
+    public byte TailCapabilityId { get; set; } = 0x05;
+    public byte TailCapabilityNext { get; set; }
+    public ushort TailControl { get; set; }
     public bool ChangePmStateOnSecondRead { get; set; }
     public bool ChangePmPmeOnSecondRead { get; set; }
     public bool ChangeStatusOnSecondRead { get; set; }
@@ -762,6 +808,7 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x42 => ++msiControlReads > 1 && EnableMsiAfterFirstModeScan
                 ? (ushort)(MsiControl | 1) : MsiControl,
             0x4A => MsiXControl,
+            0xEA or 0xEE or 0xF6 or 0xFA => TailControl,
             0x54 => ++pmControlReads > 1
                 ? (ushort)(PmControlStatus ^
                     (ChangePmStateOnSecondRead ? 0x0003 : 0) ^
@@ -796,6 +843,8 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x51 => PmNext,
             0x58 => PmId, // second PM cap used to reject duplicates
             0x59 => (byte)0,
+            0xE8 or 0xEC or 0xF4 or 0xF8 => TailCapabilityId,
+            0xE9 or 0xED or 0xF5 or 0xF9 => TailCapabilityNext,
             0xFC => PmId,
             0xFD => PmNext,
             0x3C => ++irqLineReads > 1 && ChangeIrqOnSecondRead
