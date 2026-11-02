@@ -867,6 +867,7 @@ internal static class Program
         StatusLineSmoke.Run();
         ThreadRowSmoke.Run();
         ThreadStateLabelSmoke.Run();
+        ThreadRowPrefixSmoke.Run();
         VerifyCpuBars();
         BenchmarkCpuBars();
         VerifyCpuPrefixes();
