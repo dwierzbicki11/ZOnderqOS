@@ -50,3 +50,30 @@ root entries and chains. It checks no cycles, cross-links or lost allocated
 clusters in these fixtures, payload bytes, backup sectors and non-overwrite
 behavior. This is **not** a Cosmos driver, QEMU boot or power-loss test. Generated
 images and local manifests are disposable and must not be committed.
+
+## Independent dosfstools check
+
+With `fsck.fat` from dosfstools installed, run:
+
+```sh
+python3 -m unittest discover -s tests -p test_storage_image_fsck.py -v
+# Or select a specific locally built executable:
+FSCK_FAT=/path/to/fsck.fat python3 -m unittest discover -s tests -p test_storage_image_fsck.py -v
+```
+
+These five tests create fresh images and extract their partition into a temporary
+regular file. They run `fsck.fat -n` (never repair), require status 0 for all three
+valid FAT volumes, and require status 1 for a free root cluster and an orphan
+cluster deliberately introduced into both FAT copies. SHA-256 before/after checks
+verify that neither fsck nor extraction changes the source image or inspected
+volume. Invocation failures/timeouts do not count as detected corruption.
+
+Without dosfstools the five tests explicitly SKIP; the seven Python-only tests
+still run separately. An invalid explicit FSCK_FAT fails instead of skipping.
+The EFI case validates the filesystem only: rejecting its MBR type is Cosmos's
+responsibility and remains an unexecuted kernel integration check.
+
+Executed on 2026-11-02 with a locally compiled dosfstools revision
+`289a48b9cb5b3c589391d28aa2515c325c932c7a`: all five checks passed, including
+both corruption cases without modifying bytes. This is independent filesystem
+validation, not a kernel boot or Cosmos write-driver test.
