@@ -52,6 +52,7 @@ namespace Cosmos.Kernel.System.Audio
         public bool StallWrites;
         public Action OnStart;
         public Action OnWrite;
+        public Action OnStalledWrite;
 
         public void Start()
         {
@@ -64,7 +65,11 @@ namespace Cosmos.Kernel.System.Audio
         public int Write(ReadOnlySpan<byte> bytes)
         {
             if (ThrowOnWrite) throw new InvalidOperationException("simulated write failure");
-            if (StallWrites) return 0;
+            if (StallWrites)
+            {
+                OnStalledWrite?.Invoke();
+                return 0;
+            }
             WrittenBytes += bytes.Length;
             OnWrite?.Invoke();
             return bytes.Length;
@@ -284,6 +289,19 @@ internal static class AudioDirectProbeSmoke
                 stalled.StartCalls == 1 && stalled.StopCalls == 1 &&
                 !stalled.IsRunning && waits == 1000,
                 "permanently full HDA ring fails closed and stops device");
+
+            // The actual direct playback path must observe withdrawal
+            // during a zero-byte driver write before sleeping or retrying.
+            waits = 0;
+            var withdrawnOnZeroWrite = new Device { StallWrites = true };
+            withdrawnOnZeroWrite.OnStalledWrite =
+                () => withdrawnOnZeroWrite.IsWithdrawn = true;
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = _ => waits++;
+            check(!AudioProbeDirectPlayback.TryPlay(withdrawnOnZeroWrite, Pcm, 48000) &&
+                withdrawnOnZeroWrite.StartCalls == 1 &&
+                withdrawnOnZeroWrite.StopCalls == 1 &&
+                !withdrawnOnZeroWrite.IsRunning && waits == 0,
+                "direct HDA probe stops without waiting after zero-write withdrawal");
 
             waits = 0;
             var withdrawn = new Device { StallWrites = true };
