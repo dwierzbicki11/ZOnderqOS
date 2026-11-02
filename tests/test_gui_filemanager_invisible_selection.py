@@ -159,6 +159,26 @@ class InvisibleSelectionContract(unittest.TestCase):
         self.assertIn('dialogName = "";', cancel)
         self.assertIn("ResetClickSequence();", cancel)
 
+    def test_right_left_chord_cannot_activate_volume_or_file_actions(self):
+        mouse = section(
+            "public override void HandleMouse(int mouseX, int mouseY, bool left, bool oldLeft, bool right, bool oldRight)",
+            "private void ResetClickSequence()")
+        guard = mouse.split("if (right && left)", 1)[1].split(
+            "Window.HandleMouse(mouseX, mouseY, left, oldLeft);", 1)[0]
+        self.assertIn("ResetClickSequence();", guard)
+        self.assertIn("return;", guard)
+        self.assertLess(mouse.index("if (right && left)"),
+                        mouse.index("Window.HandleMouse(mouseX, mouseY, left, oldLeft);"))
+        self.assertLess(mouse.index("if (right && left)"),
+                        mouse.index("SidebarClick(x, y);"))
+        self.assertLess(mouse.index("if (right && left)"),
+                        mouse.index("Toolbar(x);"))
+        # This is a source-level ordering check, not a QEMU HID test.
+        for old_left in (False, True):
+            for old_right in (False, True):
+                left = right = True
+                self.assertTrue(left and right, (old_left, old_right))
+
     def test_context_menu_paint_matches_disabled_action_policy(self):
         menu = section("private void Menu(Canvas canvas)",
                        "private void DrawMenuItem(Canvas canvas")
