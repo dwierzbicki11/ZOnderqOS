@@ -202,6 +202,13 @@ internal static class AudioDirectProbeSmoke
                 rateChangedDuringReady.WrittenBytes == 0,
                 "rate drift during final format getter aborts before first PCM write");
 
+            var startWithdrawn = new Device();
+            startWithdrawn.OnStart = () => startWithdrawn.IsWithdrawn = true;
+            check(!AudioProbeDirectPlayback.TryPlay(startWithdrawn, Pcm, 48000) &&
+                startWithdrawn.StartCalls == 1 && startWithdrawn.StopCalls == 0 &&
+                startWithdrawn.WrittenBytes == 0 && startWithdrawn.IsRunning,
+                "withdrawal during Start skips unsafe Stop and all PCM writes");
+
             var startClaimed = new Device();
             startClaimed.OnStart = () => startClaimed.Player = new object();
             check(!AudioProbeDirectPlayback.TryPlay(startClaimed, Pcm, 48000) &&
@@ -232,6 +239,13 @@ internal static class AudioDirectProbeSmoke
                 writeClaimed.StartCalls == 1 && writeClaimed.StopCalls == 0 &&
                 writeClaimed.WrittenBytes == Pcm.Length && writeClaimed.IsRunning,
                 "direct probe stops feeding without stopping a newly claimed output");
+
+            var writeWithdrawn = new Device();
+            writeWithdrawn.OnWrite = () => writeWithdrawn.IsWithdrawn = true;
+            check(!AudioProbeDirectPlayback.TryPlay(writeWithdrawn, Pcm, 48000) &&
+                writeWithdrawn.StartCalls == 1 && writeWithdrawn.StopCalls == 0 &&
+                writeWithdrawn.WrittenBytes == Pcm.Length && writeWithdrawn.IsRunning,
+                "withdrawal after accepted PCM write skips further writes and Stop");
 
             // Format drift during the 86ms settle is also a failure, even
             // though all bytes were already accepted by the fake ring.
@@ -268,6 +282,17 @@ internal static class AudioDirectProbeSmoke
                 settleClaimed.WrittenBytes == Pcm.Length + 16384 &&
                 settleClaimed.IsRunning,
                 "direct probe does not stop a player claiming output during settle");
+            var settleWithdrawn = new Device();
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "withdrawn output during settle uses bounded wait");
+                settleWithdrawn.IsWithdrawn = true;
+            };
+            check(!AudioProbeDirectPlayback.TryPlay(settleWithdrawn, Pcm, 48000) &&
+                settleWithdrawn.StartCalls == 1 && settleWithdrawn.StopCalls == 0 &&
+                settleWithdrawn.WrittenBytes == Pcm.Length + 16384 &&
+                settleWithdrawn.IsRunning,
+                "withdrawal during settle skips unsafe Stop after silent drain");
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
                 check(ms == 86, "normal settle remains one HDA ring period");
@@ -341,8 +366,8 @@ internal static class AudioDirectProbeSmoke
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = _ => waits++;
             check(!AudioProbeDirectPlayback.TryPlay(withdrawnOnZeroWrite, Pcm, 48000) &&
                 withdrawnOnZeroWrite.StartCalls == 1 &&
-                withdrawnOnZeroWrite.StopCalls == 1 &&
-                !withdrawnOnZeroWrite.IsRunning && waits == 0,
+                withdrawnOnZeroWrite.StopCalls == 0 &&
+                withdrawnOnZeroWrite.IsRunning && waits == 0,
                 "direct HDA probe stops without waiting after zero-write withdrawal");
 
             waits = 0;
@@ -354,7 +379,7 @@ internal static class AudioDirectProbeSmoke
                 withdrawn.IsWithdrawn = true;
             };
             check(!AudioProbeDirectPlayback.TryPlay(withdrawn, Pcm, 48000) &&
-                withdrawn.StopCalls == 1 && waits == 1,
+                withdrawn.StopCalls == 0 && withdrawn.IsRunning && waits == 1,
                 "device withdrawal during ring-full wait fails closed");
         }
         finally
