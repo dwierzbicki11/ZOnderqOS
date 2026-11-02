@@ -72,6 +72,15 @@ checks["refresh checks ACL before listing"] = (
     and refresh_body.index("CanReadInSession(targetPath)") < refresh_body.index("Directory.GetDirectories(targetPath)")
 )
 
+copy_body = source[source.index("        private void CopySelected("):source.index("        private void PasteClipboard(")]
+checks["copy checks read ACL before clipboard mutation"] = (
+    "CanReadInSession(entry.FullPath)" in copy_body
+    and copy_body.index("CanReadInSession(entry.FullPath)") < copy_body.index("FileClipboard.Set(")
+)
+checks["cut checks source write ACL"] = (
+    "cut && !PermissionManager.CanWrite(entry.FullPath, SecurityContext.CurrentUser)" in copy_body
+)
+
 for name, ok in checks.items():
     if not ok:
         raise AssertionError(name)

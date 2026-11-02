@@ -1006,6 +1006,16 @@ namespace ZonderqOS.GUI.Apps
             }
 
             FileEntry entry = entries[selectedIndex];
+            // A denied file must not appear successfully copied in the GUI.
+            // Clipboard.TryPaste repeats full recursive checks at mutation
+            // time; this early gate protects the selection action itself.
+            if (!CanReadInSession(entry.FullPath) ||
+                (cut && !PermissionManager.CanWrite(entry.FullPath, SecurityContext.CurrentUser)))
+            {
+                status = "Permission denied: cannot " + (cut ? "cut" : "copy") + " item";
+                return;
+            }
+
             FileClipboard.Set(entry.FullPath, entry.IsDirectory, cut);
             status = (cut ? "Cut: " : "Copied: ") + entry.Name + " - choose destination and paste";
         }
