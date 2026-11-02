@@ -199,9 +199,11 @@ internal static class CursorDamageSmoke
             CursorDamageRenderer.DisableOverlapReuseForBenchmark = false;
             if (!after.TryMove(41, 40)) throw new Exception("overlap cursor move failed");
             SamePixels(beforeCanvas, afterCanvas, "overlap first move");
+            int expectedOptimizedReads = patterned ? 24 * 28 : 28;
             if (beforeCanvas.ReadbackCalls - oldReads != 24 * 28 ||
-                afterCanvas.ReadbackCalls - newReads != 28)
-                throw new Exception("1px cursor move must read 672 -> 28 pixels, got " +
+                afterCanvas.ReadbackCalls - newReads != expectedOptimizedReads)
+                throw new Exception("1px cursor readback policy mismatch: expected 672 -> " +
+                    expectedOptimizedReads + ", got " +
                     (beforeCanvas.ReadbackCalls - oldReads) + " -> " +
                     (afterCanvas.ReadbackCalls - newReads));
 
@@ -217,8 +219,10 @@ internal static class CursorDamageSmoke
                 if (!after.TryMove(x, y)) throw new Exception("overlap move failed " + i);
                 SamePixels(beforeCanvas, afterCanvas, "overlap " + (patterned ? "pattern" : "flat") + " #" + i);
             }
-            if (afterCanvas.ReadbackCalls >= beforeCanvas.ReadbackCalls)
-                throw new Exception("overlap path did not reduce readback calls");
+            if (patterned && afterCanvas.ReadbackCalls != beforeCanvas.ReadbackCalls)
+                throw new Exception("patterned cursor must retain the one-pass readback path");
+            if (!patterned && afterCanvas.ReadbackCalls >= beforeCanvas.ReadbackCalls)
+                throw new Exception("uniform cursor overlap did not reduce readback calls");
             Console.WriteLine("Cursor overlap " + (patterned ? "patterned" : "uniform") +
                 " 151 moves: Canvas readbacks " + beforeCanvas.ReadbackCalls +
                 " -> " + afterCanvas.ReadbackCalls + ", exact framebuffer.");
