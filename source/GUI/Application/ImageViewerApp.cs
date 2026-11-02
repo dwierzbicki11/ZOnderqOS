@@ -463,7 +463,8 @@ namespace ZonderqOS.GUI.Apps
 
             string currentDirectory = Path.GetDirectoryName(currentPath) ?? string.Empty;
             string siblingDirectory = Path.GetDirectoryName(siblingImages[0]) ?? string.Empty;
-            return string.Equals(currentDirectory, siblingDirectory, StringComparison.Ordinal);
+            // FAT32 paths are case-insensitive, including their directory names.
+            return string.Equals(currentDirectory, siblingDirectory, StringComparison.OrdinalIgnoreCase);
         }
 
         private void RebuildSiblingList(string path)
@@ -480,12 +481,26 @@ namespace ZonderqOS.GUI.Apps
                     return;
 
                 string[] files = Directory.GetFiles(directory);
+                bool currentFound = false;
                 for (int i = 0; i < files.Length && siblingCount < MaxSiblingImages; i++)
                 {
                     string file = files[i];
                     if (!IsImagePath(file))
                         continue;
+                    if (string.Equals(file, path, StringComparison.OrdinalIgnoreCase))
+                        currentFound = true;
                     siblingImages[siblingCount++] = file;
+                }
+
+                // The directory may contain thousands of images. The capped
+                // sibling list must still include the image actually opened,
+                // otherwise Left/Right navigation is silently disabled.
+                if (!currentFound && IsImagePath(path))
+                {
+                    if (siblingCount == MaxSiblingImages)
+                        siblingImages[siblingCount - 1] = path;
+                    else
+                        siblingImages[siblingCount++] = path;
                 }
 
                 FindSiblingIndex(path);
@@ -502,7 +517,7 @@ namespace ZonderqOS.GUI.Apps
             siblingIndex = -1;
             for (int i = 0; i < siblingCount; i++)
             {
-                if (string.Equals(siblingImages[i], path, StringComparison.Ordinal))
+                if (string.Equals(siblingImages[i], path, StringComparison.OrdinalIgnoreCase))
                 {
                     siblingIndex = i;
                     return;
