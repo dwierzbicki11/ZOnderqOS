@@ -994,6 +994,89 @@ namespace ZonderqOS
         // This is a diagnostic of the *published* E1000E link state, not
         // direct access to PCI registers or a claim that its ISR executed.
         // The host independently checks QMP replies and the post-up PCAP.
+        // New TCP handshake and RX/TX after each QMP link recovery.
+        // This is only an isolated N6 diagnostic; production GUI stays offline.
+        private static bool TryTcpReconnect(int cycle)
+        {
+            Log("[NET3095-N6] LINK_TCP_ATTEMPT=START cycle=" + cycle);
+            try
+            {
+                if (cycle != 1 && cycle != 2)
+                    return false;
+                if (!IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
+                    !IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,
+                        s_linkCycleMask, s_linkCycleGateway))
+                {
+                    Log("[NET3095-N6][FAIL] Link TCP preflight PCI/lease changed");
+                    return false;
+                }
+                using (var client = new System.Net.Sockets.TcpClient())
+                {
+                    client.Connect(System.Net.IPAddress.Parse("10.0.2.2"), 18095);
+                    client.Client.SendTimeout = 5000;
+                    client.Client.ReceiveTimeout = 5000;
+                    System.Net.Sockets.NetworkStream stream = client.GetStream();
+                    byte[] request = System.Text.Encoding.ASCII.GetBytes(
+                        "ZONDERQ3095-TCP-RECONNECT-" + cycle + "\n");
+                    byte[] expected = System.Text.Encoding.ASCII.GetBytes(
+                        "ZONDERQ3095-TCP-RESTORED-" + cycle + "\n");
+                    stream.Write(request, 0, request.Length);
+                    byte[] response = new byte[expected.Length];
+                    int received = 0;
+                    long start = Stopwatch.GetTimestamp();
+                    long frequency = Stopwatch.Frequency;
+                    if (frequency <= 0 || start <= 0)
+                    {
+                        Log("[NET3095-N6][FAIL] Link TCP monotonic clock unavailable");
+                        return false;
+                    }
+                    while (received < response.Length)
+                    {
+                        long elapsed = Stopwatch.GetTimestamp() - start;
+                        if (elapsed < 0 || elapsed / frequency >= 10)
+                        {
+                            Log("[NET3095-N6][FAIL] Link TCP total RX deadline exceeded");
+                            return false;
+                        }
+                        client.Client.ReceiveTimeout = RemainingSocketReadTimeoutMs(
+                            elapsed, frequency, 10);
+                        int read = stream.Read(response, received, response.Length - received);
+                        if (read <= 0)
+                            break;
+                        received += read;
+                    }
+                    if (received != expected.Length)
+                    {
+                        Log("[NET3095-N6][FAIL] Link TCP reply truncated");
+                        return false;
+                    }
+                    for (int i = 0; i < expected.Length; i++)
+                    {
+                        if (response[i] != expected[i])
+                        {
+                            Log("[NET3095-N6][FAIL] Link TCP reply bytes differ");
+                            return false;
+                        }
+                    }
+                    if (!IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
+                        !IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,
+                            s_linkCycleMask, s_linkCycleGateway))
+                    {
+                        Log("[NET3095-N6][FAIL] Link TCP completion PCI/lease changed");
+                        return false;
+                    }
+                    Log("[NET3095-N6] LINK_TCP=PASS cycle=" + cycle +
+                        " bytes=" + received);
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("[NET3095-N6][FAIL] Link TCP exception " + ex.GetType().Name);
+                return false;
+            }
+        }
+
         private static void PollLinkCycle()
         {
             if (!s_linkCycleArmed || s_linkRecoveryAttempted)
@@ -1067,6 +1150,8 @@ namespace ZonderqOS
                     {
                         Log("[NET3095-N6] LINK_RECOVERY_ICMP_RTT seq=1 elapsed_ms=" + elapsedMs);
                         Log("[NET3095-N6] LINK_RECOVERY_ICMP=PASS from=10.0.2.2 seq=1");
+                        if (!TryTcpReconnect(1))
+                            return;
                         // Re-arm only after a complete first recovery proof.
                         s_linkCycleNumber = 2;
                         s_linkDownObserved = false;
@@ -1077,6 +1162,8 @@ namespace ZonderqOS
                     {
                         Log("[NET3095-N6] LINK2_RECOVERY_ICMP_RTT seq=2 elapsed_ms=" + elapsedMs);
                         Log("[NET3095-N6] LINK2_RECOVERY_ICMP=PASS from=10.0.2.2 seq=2");
+                        if (!TryTcpReconnect(2))
+                            return;
                     }
                 }
                 finally

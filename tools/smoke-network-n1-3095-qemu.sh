@@ -97,7 +97,11 @@ if [[ "$MODE" == n4 || "$MODE" == n5 || "$MODE" == n6 ]]; then
   [[ ! -e "$LOG.tcp-host" ]] || {
     echo "[NET3095-N4][FAIL] Refusing to overwrite host server evidence" >&2; exit 1;
   }
-  python3 -u "$ROOT/tests/network_3095_tcp_host.py" --port 18095 > "$LOG.tcp-host" 2>&1 &
+  reconnect_args=()
+  if [[ "$LINK_CYCLE" == 1 ]]; then
+    reconnect_args=(--reconnects "$LINK_CYCLES")
+  fi
+  python3 -u "$ROOT/tests/network_3095_tcp_host.py" --port 18095 "${reconnect_args[@]}" > "$LOG.tcp-host" 2>&1 &
   server_pid=$!
   ready=0
   for _ in {1..50}; do
@@ -400,18 +404,18 @@ while (( SECONDS - started < TIMEOUT )); do
         done
         python3 "$ROOT/tools/network_3095_qmp_link.py" --socket "$LOG.qmp" --state up
         recovery_start=$SECONDS
-        until python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
+        until python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" >/dev/null 2>&1; do
           qemu_alive || { echo "[NET3095-N6-LINK][FAIL] Guest exited during recovery" >&2; exit 1; }
           if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
             tail -n 90 "$LOG" >&2; exit 1
           fi
           if (( SECONDS - recovery_start >= 20 )); then
-            python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP"
+            python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host"
             echo "[NET3095-N6-LINK][FAIL] No verified post-up ICMP RX/TX" >&2; exit 1
           fi
           sleep 1
         done
-        python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP"
+        python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host"
         if [[ "$LINK_CYCLES" == 2 ]]; then
           # Second QMP flap must be followed by a NEW ICMP pair on the wire.
           arm2_start=$SECONDS
@@ -439,18 +443,18 @@ while (( SECONDS - started < TIMEOUT )); do
           done
           python3 "$ROOT/tools/network_3095_qmp_link.py" --socket "$LOG.qmp" --state up
           recovery2_start=$SECONDS
-          until python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP" --cycles 2 >/dev/null 2>&1; do
+          until python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" --cycles 2 >/dev/null 2>&1; do
             qemu_alive || { echo "[NET3095-N6-LINK][FAIL] Guest exited during second recovery" >&2; exit 1; }
             if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
               tail -n 90 "$LOG" >&2; exit 1
             fi
             if (( SECONDS - recovery2_start >= 20 )); then
-              python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP" --cycles 2
+              python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" --cycles 2
               echo "[NET3095-N6-LINK][FAIL] No second verified post-up ICMP RX/TX" >&2; exit 1
             fi
             sleep 1
           done
-          python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP" --cycles 2
+          python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" --cycles 2
         fi
       fi
     fi
@@ -493,8 +497,9 @@ while (( SECONDS - started < TIMEOUT )); do
           "$LOG.stderr" --require-notify
       fi
       if [[ "$LINK_CYCLE" == 1 ]]; then
+        python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" --cycles "$LINK_CYCLES"
         python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP" --cycles "$LINK_CYCLES"
-        echo "[NET3095-N6-LINK-QEMU] PASS QMP link down/up cycles=$LINK_CYCLES, guest observation and distinct PCAP ICMP after each recovery; no ISR proof"
+        echo "[NET3095-N6-LINK-QEMU] PASS QMP link cycles=$LINK_CYCLES, guest ICMP and new TCP handshakes/RX/TX in PCAP; no ISR proof"
       fi
       echo "[NET3095-N6-QEMU] PASS six E1000E HTTP sessions (four after 128 TX + 4 ICMP) + final ICMP after FIN/ACK + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
     elif [[ "$MODE" == n5 ]]; then
