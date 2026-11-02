@@ -167,6 +167,16 @@ internal static class AudioDirectProbeSmoke
                 staleBeforeStart.StopCalls == 0 && staleBeforeStart.WrittenBytes == 0,
                 "replaced primary refuses direct HDA before Start");
 
+            bool selectedDuringFormat = true;
+            var replacedDuringFormatRead = new Device();
+            replacedDuringFormatRead.OnFormatRead = () => selectedDuringFormat = false;
+            check(!AudioProbeDirectPlayback.TryPlay(replacedDuringFormatRead, Pcm, 48000,
+                () => selectedDuringFormat) &&
+                replacedDuringFormatRead.StartCalls == 0 &&
+                replacedDuringFormatRead.StopCalls == 0 &&
+                replacedDuringFormatRead.WrittenBytes == 0,
+                "primary replacement during format snapshot aborts before Start");
+
             bool selectedPrimary = true;
             var replacedDuringStart = new Device();
             replacedDuringStart.OnStart = () => selectedPrimary = false;
