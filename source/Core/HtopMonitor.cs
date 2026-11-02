@@ -462,7 +462,52 @@ namespace ZonderqOS.SystemCore
                     }
                 }
             }
+            // A single displaced scheduler row creates exactly one adjacent
+            // inversion. Repair it in O(n) without a full comparison sort.
+            // Random snapshots with multiple inversions still use List.Sort.
+            if (rows.Count >= 32 && TryRepairSingleInversion(firstInversion))
+                return;
             rows.Sort(rowComparison);
+        }
+
+        private bool TryRepairSingleInversion(int inversion)
+        {
+            // If a second inversion exists, no single insertion can restore
+            // the order. On random input this check usually exits quickly.
+            for (int i = inversion + 1; i < rows.Count; i++)
+                if (CompareRows(rows[i - 1], rows[i]) > 0)
+                    return false;
+
+            // Case A: the right row was displaced to the right. Move it
+            // backward only if removing it leaves a sorted boundary.
+            Row moved = rows[inversion];
+            int target = inversion;
+            while (target > 0 && CompareRows(rows[target - 1], moved) > 0)
+                target--;
+            if (inversion + 1 == rows.Count ||
+                CompareRows(rows[inversion - 1], rows[inversion + 1]) <= 0)
+            {
+                for (int i = inversion; i > target; i--)
+                    rows[i] = rows[i - 1];
+                rows[target] = moved;
+                return true;
+            }
+
+            // Case B: the left row was displaced to the left. Move it
+            // forward; check the boundary exposed by removing it first.
+            moved = rows[inversion - 1];
+            target = inversion;
+            while (target < rows.Count && CompareRows(moved, rows[target]) > 0)
+                target++;
+            if (inversion == 1 ||
+                CompareRows(rows[inversion - 2], rows[inversion]) <= 0)
+            {
+                for (int i = inversion - 1; i < target - 1; i++)
+                    rows[i] = rows[i + 1];
+                rows[target - 1] = moved;
+                return true;
+            }
+            return false;
         }
 
 #if ZONDERQ_PERF_HOST_TEST
@@ -470,6 +515,12 @@ namespace ZonderqOS.SystemCore
         // comparator, but without the production sorted-row fast paths.
         internal void SortRowsUnconditionallyForBenchmark() => rows.Sort(rowComparison);
         internal void ReverseRowsForBenchmark() => rows.Reverse();
+        internal void MoveRowForBenchmark(int from, int to)
+        {
+            Row moved = rows[from];
+            rows.RemoveAt(from);
+            rows.Insert(to, moved);
+        }
 #endif
 
         private int CompareRows(Row a, Row b)
