@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using Cosmos.Kernel.System.Diagnostics;
 using ZonderqOS.SystemCore;
 
 internal static class MemoryLineSmoke
