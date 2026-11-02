@@ -210,6 +210,11 @@ namespace ZonderqOS.SystemCore
             string destination = Normalize(destinationPath);
             error = null;
 
+            // Transfers must not bypass the path rules enforced by TryWrite.
+            // Validate before mutating entries or their memory accounting.
+            if (!IsValidFilePath(source, out error) || !IsValidFilePath(destination, out error))
+                return false;
+
             lock (Sync)
             {
                 EnsureInitialized();
@@ -256,6 +261,11 @@ namespace ZonderqOS.SystemCore
             string source = Normalize(sourcePath);
             string destination = Normalize(destinationPath);
             error = null;
+
+            // Transfers must not bypass the path rules enforced by TryWrite.
+            // Validate before mutating entries or their memory accounting.
+            if (!IsValidFilePath(source, out error) || !IsValidFilePath(destination, out error))
+                return false;
 
             lock (Sync)
             {
