@@ -80,6 +80,13 @@ class CompactNotepadTests(unittest.TestCase):
         self.assertIn('status = "Enlarge window to open a file";', NOTEPAD)
         self.assertIn('if (app.DialogMode != 1 || Width < 360 || Height < 310)', NOTEPAD)
         self.assertIn('if (Width < 360 || Height < 310)', NOTEPAD)
+        picker_keys = NOTEPAD.split("private void HandleOpenDialogKeyboard(KeyEvent key)", 1)[1].split(
+            "private void HandleOpenDialogMouse(", 1
+        )[0]
+        self.assertLess(picker_keys.index("UpdateLayout();"),
+                        picker_keys.index("if (view.Width < 360 || view.Height < 310)"))
+        self.assertLess(picker_keys.index("if (view.Width < 360 || view.Height < 310)"),
+                        picker_keys.index("if (key.Key == ConsoleKeyEx.Backspace"))
         for width in (180, 300, 360, 400, 620, 960):
             for height in (106, 146, 170, 310, 386, 595):
                 can_show = width >= 360 and height >= 310
