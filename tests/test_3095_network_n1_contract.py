@@ -24,7 +24,8 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("config.Read16(bus, slot, function, 0x12)", pci)
         self.assertIn("config.Read16(bus, slot, function, 0x14)", pci)
         self.assertIn("config.Read16(bus, slot, function, 0x16)", pci)
-        self.assertIn("address == 0 || address == 0xFFFFFFFFFFFFFFF0UL", pci)
+        self.assertIn("type == 0 && address == 0xFFFFFFF0UL", pci)
+        self.assertIn("address == 0xFFFFFFFFFFFFFFF0UL", pci)
         self.assertIn("out ulong pciBar0", SOURCE)
         self.assertIn("txPciBar0 != pciBar0", SOURCE)
         # N6 must also check the original MMIO BAR after all HTTP, burst TX
