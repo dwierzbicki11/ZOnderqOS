@@ -64,6 +64,7 @@ internal static class Program
         TextWhitespaceSmoke.Verify();
         TextNormalizeSmoke.Verify();
         TextUnicodeGlyphSmoke.Verify();
+        PackedGlyphSmoke.Verify();
         IconBlitSmoke.Verify();
         IconCacheSmoke.Verify();
         IconTwoSizeCacheSmoke.Verify();

@@ -6,21 +6,19 @@ namespace ZonderqOS.GUI
 {
     public static class SmallTextRenderer
     {
-        // Fixed 128 x 7 byte lookup: avoid parsing string glyph patterns and
-        // repeating the 64-way switch for every rendered character in each frame.
-        // Built once; non-ASCII characters still use the original fallback.
-        private static readonly byte[] CachedAsciiGlyphRows = BuildAsciiGlyphRows();
-
-        // Unsupported Unicode characters use Glyph's default 5x7 pattern.
-        // Cache those seven rows once rather than running the glyph switch,
-        // pattern lookup and bit decoding seven times per character/frame.
-        // Unicode characters uppercasing to ASCII retain their original glyph.
-        private static readonly byte[] CachedFallbackGlyphRows = BuildFallbackGlyphRows();
-        // A 5-pixel row has only 32 possible patterns. Precompute its one to
-        // three horizontal spans once, rather than scanning all five columns
-        // on every glyph draw. Packed as: 2-bit run count, then up to three
-        // (3-bit start, 3-bit length) pairs. Only 128 bytes of lookup storage.
+        // Decode 5-pixel rows to packed horizontal runs once at startup.
+        // Rendering uses one lookup per row rather than a glyph-byte lookup
+        // followed by a second, data-dependent span-table lookup.
         private static readonly int[] CachedSpanRuns = BuildSpanRuns();
+        private static readonly int[] CachedAsciiPackedRows = BuildAsciiPackedRows();
+        private static readonly int[] CachedFallbackPackedRows = BuildFallbackPackedRows();
+
+#if ZONDERQ_PERF_HOST_TEST
+        // Exact previous two-lookup path, compiled only into host A/B tests.
+        private static readonly byte[] CachedAsciiGlyphRows = BuildAsciiGlyphRows();
+        private static readonly byte[] CachedFallbackGlyphRows = BuildFallbackGlyphRows();
+        internal static bool UsePreviousGlyphRowLookupForBenchmark;
+#endif
 
         private static int[] BuildSpanRuns()
         {
@@ -48,6 +46,27 @@ namespace ZonderqOS.GUI
         }
 
 
+        private static int[] BuildAsciiPackedRows()
+        {
+            var rows = new int[128 * 7];
+            for (int ch = 0; ch < 128; ch++)
+            {
+                int offset = ch * 7;
+                for (int row = 0; row < 7; row++)
+                    rows[offset + row] = CachedSpanRuns[Glyph((char)ch, row)];
+            }
+            return rows;
+        }
+
+        private static int[] BuildFallbackPackedRows()
+        {
+            var rows = new int[7];
+            for (int row = 0; row < rows.Length; row++)
+                rows[row] = CachedSpanRuns[Glyph('\uFFFF', row)];
+            return rows;
+        }
+
+#if ZONDERQ_PERF_HOST_TEST
         private static byte[] BuildAsciiGlyphRows()
         {
             byte[] rows = new byte[128 * 7];
@@ -67,6 +86,8 @@ namespace ZonderqOS.GUI
                 rows[row] = (byte)Glyph('\uFFFF', row);
             return rows;
         }
+
+#endif
 
         public static int Width(string text)
         {
@@ -386,15 +407,22 @@ namespace ZonderqOS.GUI
                 ? (int)Math.Max(0L, Math.Min(7L, (long)canvas.Height - y)) : 7;
             for (int row = firstRow; row < lastRow; row++)
             {
-                int bits = glyphOffset >= 0
-                    ? CachedAsciiGlyphRows[glyphOffset + row]
-                    : CachedFallbackGlyphRows[row];
-                // Punctuation and sparse glyphs often have empty rows.
-                if (bits == 0)
+                int packed = glyphOffset >= 0
+                    ? CachedAsciiPackedRows[glyphOffset + row]
+                    : CachedFallbackPackedRows[row];
+#if ZONDERQ_PERF_HOST_TEST
+                if (UsePreviousGlyphRowLookupForBenchmark)
+                {
+                    int bits = glyphOffset >= 0
+                        ? CachedAsciiGlyphRows[glyphOffset + row]
+                        : CachedFallbackGlyphRows[row];
+                    packed = CachedSpanRuns[bits];
+                }
+#endif
+                // Zero means an empty row; other values encode the exact
+                // previous one-to-three horizontal runs and Canvas calls.
+                if (packed == 0)
                     continue;
-                // The lookup encodes exactly the same contiguous spans as
-                // the original column scan. Preserve one Canvas call per run.
-                int packed = CachedSpanRuns[bits];
                 int runCount = packed & 3;
                 packed >>= 2;
                 for (int run = 0; run < runCount; run++)
