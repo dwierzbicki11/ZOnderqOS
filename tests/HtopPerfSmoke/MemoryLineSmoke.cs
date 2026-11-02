@@ -223,11 +223,61 @@ internal static class MemoryLineSmoke
             " B (7 alternating samples; host only, not guest RAM/CPU)");
     }
 
+    private static void BenchmarkStableRawSnapshot()
+    {
+        const ulong total = 32768, free = 16000, size = 4096;
+        var previous = new RawSnapshotCache();
+        var current = new HtopMonitor();
+        Func<long> before = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < 1024; i++)
+            {
+                string value = previous.Get(total, free, size);
+                checksum += value.Length + value[0] + value[value.Length - 1];
+            }
+            return checksum;
+        };
+        Func<long> after = () =>
+        {
+            long checksum = 0;
+            for (int i = 0; i < 1024; i++)
+            {
+                string value = current.GetMemoryLine(total, free, size);
+                checksum += value.Length + value[0] + value[value.Length - 1];
+            }
+            return checksum;
+        };
+        Assert(before() == after(), "stable raw-snapshot checksum mismatch");
+        for (int i = 0; i < 16; i++) { sink ^= before(); sink ^= after(); }
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= before();
+        long oldBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        start = GC.GetAllocatedBytesForCurrentThread();
+        sink ^= after();
+        long newBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        Assert(oldBytes == 0 && newBytes == 0,
+            "stable raw-snapshot path allocated " + oldBytes + " -> " + newBytes);
+        double[] oldMs = new double[7], newMs = new double[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if ((i & 1) == 0) { oldMs[i] = Time(before); newMs[i] = Time(after); }
+            else { newMs[i] = Time(after); oldMs[i] = Time(before); }
+        }
+        double a = Median(oldMs), b = Median(newMs);
+        Console.WriteLine("HOST A/B htop 1024 stable raw page snapshots: previous=" +
+            a.ToString("F5") + " ms dual-cache=" + b.ToString("F5") +
+            " ms ratio=" + (a / b).ToString("F2") + "x allocations=" +
+            oldBytes + " B -> " + newBytes +
+            " B (7 alternating samples; host only)");
+    }
+
     internal static void Run()
     {
         Verify();
         Benchmark();
         BenchmarkSubMiBFluctuations();
+        BenchmarkStableRawSnapshot();
         GC.KeepAlive(sink);
     }
 }
