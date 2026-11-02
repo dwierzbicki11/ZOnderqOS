@@ -10,6 +10,7 @@ namespace Cosmos.Kernel.System.Graphics
         public int Width { get; }
         public int Height { get; }
         public int DrawCalls { get; private set; }
+        public int ReadbackCalls { get; private set; }
         public int[] Pixels => pixels;
 
         public Canvas(int width, int height)
@@ -25,6 +26,7 @@ namespace Cosmos.Kernel.System.Graphics
         {
             if (x < 0 || y < 0 || x >= Width || y >= Height)
                 throw new ArgumentOutOfRangeException();
+            ReadbackCalls++;
             return Color.FromArgb(pixels[y * Width + x]);
         }
 
