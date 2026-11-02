@@ -8,6 +8,7 @@
   <ItemGroup>
     <Compile Include="../../source/Core/AudioPciDiagnostics.cs" Link="AudioPciDiagnostics.cs" />
     <Compile Include="../../source/Core/AudioTonePcm.cs" Link="AudioTonePcm.cs" />
+    <Compile Include="../../source/Core/AudioFloatToneFixture.cs" Link="AudioFloatToneFixture.cs" />
     <Compile Include="../../source/Core/AudioWavePcm.cs" Link="AudioWavePcm.cs" />
     <Compile Include="../../source/Core/AudioWaveInput.cs" Link="AudioWaveInput.cs" />
     <Compile Include="../../source/Core/AudioPcmVolume.cs" Link="AudioPcmVolume.cs" />
