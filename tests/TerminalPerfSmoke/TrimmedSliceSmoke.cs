@@ -73,8 +73,10 @@ internal static class TrimmedSliceSmoke
     private static void Benchmark(string label, string line, int iterations,
         bool expectReduction)
     {
-        var old = new LegacyOutput(820, 520);
-        var current = new TerminalBox(0, 0, 820, 520);
+        // Force wrapping so the final whitespace-terminated segment is
+        // a genuine substring, not the original full input reference.
+        var old = new LegacyOutput(320, 520);
+        var current = new TerminalBox(0, 0, 320, 520);
         Action before = () => old.PrintLine(line);
         Action after = () => current.PrintLine(line);
         for (int i = 0; i < 100; i++) { before(); after(); }
