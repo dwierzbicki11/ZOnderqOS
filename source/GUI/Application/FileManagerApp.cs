@@ -193,6 +193,16 @@ namespace ZonderqOS.GUI.Apps
 
             // The menu may have been opened before a window resize. Refit
             // its origin to the current client area so it remains clickable.
+            // The compact context menu can remain visible for Refresh/Go up
+            // even if no file tile fits. A pending creation dialog, however,
+            // must not accept Enter after the destination grid disappears.
+            if (dialogMode != 0 && GridRowsForView == 0)
+            {
+                dialogMode = 0;
+                dialogName = "";
+                status = "Create cancelled: destination not visible";
+                ResetClickSequence();
+            }
             if (contextMenuVisible && !CanShowContextMenu)
             {
                 contextMenuVisible = false;
@@ -419,6 +429,11 @@ namespace ZonderqOS.GUI.Apps
 
         private bool ContextActionEnabled(int item)
         {
+            // At 99-121px of client height the compact menu still fits,
+            // but the file grid has no paintable rows. Only read-only
+            // navigation/refresh may be offered until the view grows.
+            if (GridRowsForView == 0 && item >= 0 && item <= 4)
+                return false;
             if (item == 0 || item == 1)
                 return selectedIndex >= 0 && selectedIndex < entries.Count;
             if (item == 2)
@@ -1100,6 +1115,11 @@ namespace ZonderqOS.GUI.Apps
 
         private void BeginCreate(int mode)
         {
+            if (GridRowsForView == 0)
+            {
+                status = "Enlarge window before creating files";
+                return;
+            }
             dialogMode = mode;
             dialogName = "";
             status = mode == 1 ? "New file: type a name" : "New folder: type a name";
@@ -1107,6 +1127,16 @@ namespace ZonderqOS.GUI.Apps
 
         private void FinishCreate()
         {
+            // Defend the actual write path as well as the menu/keyboard
+            // entry points. A mode change can hide the destination between
+            // opening the dialog and pressing Enter.
+            if (GridRowsForView == 0)
+            {
+                dialogMode = 0;
+                dialogName = "";
+                status = "Create cancelled: destination not visible";
+                return;
+            }
             string name = (dialogName ?? "").Trim();
             if (string.IsNullOrEmpty(name))
             {
@@ -1903,14 +1933,15 @@ namespace ZonderqOS.GUI.Apps
             UiPainter.RoundedPanel(canvas, x, y, menuWidth, menuHeight, UiMetrics.MenuRadius,
                 UiPalette.SurfaceRaised, UiPalette.Border);
 
-            bool selected = app.SelectedIndex >= 0 && app.SelectedIndex < app.Entries.Count;
+            bool canEdit = app.GridRowsForView > 0;
+            bool selected = canEdit && app.SelectedIndex >= 0 && app.SelectedIndex < app.Entries.Count;
             DrawMenuItem(canvas, "Copy", "Ctrl+C", x, y + 0 * rowHeight, selected, 0);
             DrawMenuItem(canvas, "Cut", "Ctrl+X", x, y + 1 * rowHeight, selected, 1);
-            DrawMenuItem(canvas, "Paste", "Ctrl+V", x, y + 2 * rowHeight, FileClipboard.HasItem, 2);
+            DrawMenuItem(canvas, "Paste", "Ctrl+V", x, y + 2 * rowHeight, canEdit && FileClipboard.HasItem, 2);
             canvas.DrawLine(Color.FromArgb(63, 73, 84), x + 8, y + 3 * rowHeight,
                 x + menuWidth - 8, y + 3 * rowHeight);
-            DrawMenuItem(canvas, "New file", "", x, y + 3 * rowHeight, true, 3);
-            DrawMenuItem(canvas, "New folder", "", x, y + 4 * rowHeight, true, 4);
+            DrawMenuItem(canvas, "New file", "", x, y + 3 * rowHeight, canEdit, 3);
+            DrawMenuItem(canvas, "New folder", "", x, y + 4 * rowHeight, canEdit, 4);
             DrawMenuItem(canvas, "Refresh", "F5", x, y + 5 * rowHeight, true, 5);
             DrawMenuItem(canvas, "Go up", "Backspace", x, y + 6 * rowHeight, true, 6);
         }
