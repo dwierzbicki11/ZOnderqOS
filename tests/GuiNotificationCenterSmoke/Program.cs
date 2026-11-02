@@ -100,12 +100,15 @@ namespace ZonderqOS.GUI
     {
         public static void Draw(Cosmos.Kernel.System.Graphics.Canvas canvas,
             string text, int x, int y, Color color) { }
+        public static readonly List<(string Text, int X, int Y, int Width)> Clips = new();
+        public static int Width(string text) => (text ?? "").Length * 6;
         public static void DrawClipped(Cosmos.Kernel.System.Graphics.Canvas canvas,
             string text, int x, int y, int width, Color color)
         {
             if (width <= 0 || x < 0 || (long)x + width > canvas.ScreenWidth)
                 throw new InvalidOperationException("Notification text clip outside screen: x=" +
                     x + " width=" + width + " screen=" + canvas.ScreenWidth);
+            Clips.Add((text, x, y, width));
         }
         public static void DrawCentered(Cosmos.Kernel.System.Graphics.Canvas canvas,
             string text, int x, int y, int width, Color color) { }
@@ -433,8 +436,64 @@ internal static class Program
         Check(center.Visible, "short toast opens the center");
     }
 
+    private static void CompactFiltersStayInsideTheirTabs()
+    {
+        // Exercise the production RenderFilters with actual host Canvas bounds,
+        // not a duplicated formula for text placement.
+        foreach (int screenWidth in new[] { 120, 160, 220, 320, 800 })
+        {
+            NotificationService.ResetForSession();
+            var center = new NotificationCenter(screenWidth, 600, 44);
+            center.Toggle();
+            var canvas = new Cosmos.Kernel.System.Graphics.Canvas
+            {
+                ScreenWidth = screenWidth,
+                ScreenHeight = 556
+            };
+            SmallTextRenderer.Clips.Clear();
+            center.Render(canvas);
+            int tabWidth = (center.Width - 42) / 3;
+            int y = center.Y + 97;
+            int labels = 0;
+            for (int i = 0; i < SmallTextRenderer.Clips.Count; i++)
+            {
+                var clip = SmallTextRenderer.Clips[i];
+                if (clip.Y != y)
+                    continue;
+                int tabX = center.X + 14 + labels * (tabWidth + 7);
+                Check(clip.X >= tabX + 4 && clip.X + clip.Width <= tabX + tabWidth - 4,
+                    "filter label stays within tab at " + screenWidth);
+                Check(clip.Text == NotificationCenter.FilterLabelForWidth(labels, tabWidth),
+                    "filter label uses compact variant at " + screenWidth);
+                labels++;
+            }
+            Check(labels == 3, "three visible clipped filter labels at " + screenWidth);
+        }
+    }
+
+    private static void ModifiedArrowsDoNotChangeNotificationFilter()
+    {
+        NotificationService.ResetForSession();
+        var center = Open();
+        var field = typeof(NotificationCenter).GetField("filter",
+            BindingFlags.NonPublic | BindingFlags.Instance);
+        Check(field != null, "filter state is inspectable");
+        foreach (ConsoleModifiers modifier in new[] {
+            ConsoleModifiers.Shift, ConsoleModifiers.Control, ConsoleModifiers.Alt })
+        {
+            Check(center.HandleKeyboard(new KeyEvent { Key = Key.RightArrow, Modifiers = modifier }),
+                "modified arrow consumed");
+            Check((int)field.GetValue(center) == 0,
+                "modified arrow does not switch filter");
+        }
+        KeyPress(center, Key.RightArrow);
+        Check((int)field.GetValue(center) == 1, "plain arrow still switches filter");
+    }
+
     public static int Main()
     {
+        CompactFiltersStayInsideTheirTabs();
+        ModifiedArrowsDoNotChangeNotificationFilter();
         CompactRenderingNeverUsesInvalidTextClips();
         FilterRowNeverOverlapsFooter();
         ShortPanelCannotActivateOverlappingFooter();
