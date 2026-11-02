@@ -106,6 +106,18 @@ namespace ZonderqOS
             Log("[NET3095-N1] PCI_IDENTITY=PASS bdf=00:02.0 vendor=8086 device=10D3 command=0x" +
                 pciCommand.ToString("X4") + " (read-only; DMA/ISR unproven)");
 
+            // QEMU's isolated profile expects legacy INTx delivery. A PCI
+            // line/pin and enabled INTx are only routing prerequisites, not
+            // proof that Cosmos executed the guest ISR.
+            if (!ZonderqOS.Hardware.E1000EPciIdentity.TryReadLegacyIrqRoute(
+                    pciConfig, out byte pciIrqLine, out byte pciIrqPin))
+            {
+                Log("[NET3095-N1][FAIL] E1000E legacy PCI IRQ route invalid before TX");
+                return;
+            }
+            Log("[NET3095-N1] PCI_IRQ_ROUTE=PASS line=" + pciIrqLine +
+                " pin=" + pciIrqPin + " (read-only; guest ISR unproven)");
+
             // Prove the live PCI DriverKit binding, not just an adapter name.
             // IRQ source registration is not proof of ISR execution.
             if (!TryGetE1000EDriverKitHealth(out var n1DriverNode))
@@ -157,6 +169,15 @@ namespace ZonderqOS
                 Log("[NET3095-N1][FAIL] E1000E PCI identity/command changed during TX");
                 return;
             }
+            if (!ZonderqOS.Hardware.E1000EPciIdentity.TryReadLegacyIrqRoute(
+                    pciConfig, out byte txIrqLine, out byte txIrqPin) ||
+                txIrqLine != pciIrqLine || txIrqPin != pciIrqPin)
+            {
+                Log("[NET3095-N1][FAIL] E1000E legacy PCI IRQ route changed during TX");
+                return;
+            }
+            Log("[NET3095-N1] PCI_IRQ_ROUTE_STABLE=PASS line=" + txIrqLine +
+                " pin=" + txIrqPin + " (read-only; guest ISR unproven)");
             Log("[NET3095-N1] PCI_TX_STABLE=PASS command=0x" +
                 txPciCommand.ToString("X4") + " (read-only; PCAP required for TX proof)");
             Log("[NET3095-N1] DHCP=NOT_ATTEMPTED IP=UNASSIGNED");
@@ -637,6 +658,13 @@ namespace ZonderqOS
                     Log("[NET3095-N6][FAIL] E1000E PCI command/BAR0 changed after TX/RX stress");
                     return;
                 }
+                if (!ZonderqOS.Hardware.E1000EPciIdentity.TryReadLegacyIrqRoute(
+                        pciConfig, out byte stressIrqLine, out byte stressIrqPin) ||
+                    stressIrqLine != pciIrqLine || stressIrqPin != pciIrqPin)
+                {
+                    Log("[NET3095-N6][FAIL] E1000E legacy PCI IRQ route changed after TX/RX stress");
+                    return;
+                }
                 if (!CheckE1000EDriverKitHealth(baselineResources, baselineIrqSources))
                 {
                     Log("[NET3095-N6][FAIL] E1000E DriverKit health invalid after TX/RX stress");
@@ -653,6 +681,8 @@ namespace ZonderqOS
                 s_linkCycleIrqSources = baselineIrqSources;
                 s_linkCyclePciCommand = pciCommand;
                 s_linkCyclePciBar0 = pciBar0;
+                s_linkCycleIrqLine = pciIrqLine;
+                s_linkCycleIrqPin = pciIrqPin;
                 s_linkCycleNumber = 1;
                 s_linkDownObserved = false;
                 s_linkRecoveryAttempted = false;
@@ -1097,16 +1127,21 @@ namespace ZonderqOS
         private static int s_linkCycleIrqSources;
         private static ushort s_linkCyclePciCommand;
         private static ulong s_linkCyclePciBar0;
+        private static byte s_linkCycleIrqLine;
+        private static byte s_linkCycleIrqPin;
 
         // Revalidate the original physical MMIO assignment after each QMP
         // link transition. Stable MAC/lease/DriverKit source counts alone
         // cannot detect a PCI BAR remap. This does not prove DMA/ISR execution.
         private static bool IsE1000EPciMappingStable()
         {
+            var config = new ZonderqOS.Platform.X64.PciConfigIoAccessor();
             return ZonderqOS.Hardware.E1000EPciIdentity.TryReadReady(
-                new ZonderqOS.Platform.X64.PciConfigIoAccessor(),
-                out ushort command, out ulong bar0) &&
-                command == s_linkCyclePciCommand && bar0 == s_linkCyclePciBar0;
+                config, out ushort command, out ulong bar0) &&
+                command == s_linkCyclePciCommand && bar0 == s_linkCyclePciBar0 &&
+                ZonderqOS.Hardware.E1000EPciIdentity.TryReadLegacyIrqRoute(
+                    config, out byte irqLine, out byte irqPin) &&
+                irqLine == s_linkCycleIrqLine && irqPin == s_linkCycleIrqPin;
         }
 
         // This is a diagnostic of the *published* E1000E link state, not
