@@ -415,3 +415,30 @@ downloaded failure artifact was checked locally against the new
 reconstruction, including all six RTL negative serial logs. This is
 a validator fix, **not** new physical RTL810xE evidence; the full CI
 rerun on that commit must still pass before the regression is closed.
+
+## E1000E BAR and legacy INTx route validation (2026-11-02)
+
+The last **completed** pre-change baseline was GitHub Actions
+[#41446116539](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41446116539)
+at commit `fe5e36d`: the real isolated QEMU workflow passed its N1–N6
+Ethernet/PCAP and two-cycle link recovery jobs on stock Cosmos 3.0.95.
+It also passed the negative Realtek probe boots. This baseline is not
+evidence that the subsequent code changes already passed QEMU.
+
+The read-only `E1000EPciIdentity` decoder now rejects the unassigned
+32-bit memory BAR pattern `0xFFFFFFF0`, in addition to zero and the
+all-ones 64-bit BAR. A new `TryReadLegacyIrqRoute` check validates the
+isolated E1000E's PCI INTx command bit, legacy interrupt line (1–254)
+and pin (INTA#–INTD#). The N1 guest samples the route before and after
+raw TX; N6 rechecks it after the HTTP/TX/ICMP workload and during both
+QMP link recoveries. Synthetic C# tests exercise missing/invalid route
+metadata, disabled INTx and malformed BARs; the N1 serial parser checks
+the new route markers for consistency, duplication and ordering.
+
+**Important:** A valid PCI line/pin and QEMU device-side IRQ emission
+are only routing/notification evidence. They do **not** demonstrate
+that the Cosmos guest executed an E1000E ISR or that RX is IRQ-driven;
+the stock driver also polls. The new checks require a **fresh successful
+real QEMU workflow at the new branch head** before reporting an end-to-end
+PASS. Production networking remains disabled, the GUI uses its original
+disk-backed root, and the probe never writes to ZONDERQDATA or host disks.
