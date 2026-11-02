@@ -1007,54 +1007,64 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            // If ACLs changed while this window was open, do not use a
-            // cached filename to bypass the now-denied parent listing.
-            if (!CanReadInSession(currentPath))
+            try
             {
-                ClearDeniedListing();
-                status = "Permission denied: cannot list folder";
-                return;
-            }
-
-            FileEntry entry = entries[selectedIndex];
-            // A denied file must not appear successfully copied in the GUI.
-            // Clipboard.TryPaste repeats full recursive checks at mutation
-            // time; this early gate protects the selection action itself.
-            if (!CanReadInSession(entry.FullPath) ||
-                (cut && !PermissionManager.CanWrite(entry.FullPath, SecurityContext.CurrentUser)))
-            {
-                status = "Permission denied: cannot " + (cut ? "cut" : "copy") + " item";
-                return;
-            }
-
-            // A cut changes the source parent directory as well as the entry.
-            // Reject it before staging the clipboard or showing success.
-            if (cut)
-            {
-                string sourceParent = Path.GetDirectoryName(entry.FullPath)?.Replace('\\', '/');
-                string user = SecurityContext.CurrentUser;
-                if (!FileClipboard.IsSafeAbsolutePath(sourceParent) ||
-                    !PermissionManager.CanWrite(sourceParent, user) ||
-                    (user != "root" &&
-                     !IsInsidePath(sourceParent, UserManager.GetHomeDirectory(user))))
+                // If ACLs changed while this window was open, do not use a
+                // cached filename to bypass the now-denied parent listing.
+                if (!CanReadInSession(currentPath))
                 {
-                    status = "Permission denied: cannot cut from source folder";
+                    ClearDeniedListing();
+                    status = "Permission denied: cannot list folder";
                     return;
                 }
+    
+                FileEntry entry = entries[selectedIndex];
+                // A denied file must not appear successfully copied in the GUI.
+                // Clipboard.TryPaste repeats full recursive checks at mutation
+                // time; this early gate protects the selection action itself.
+                if (!CanReadInSession(entry.FullPath) ||
+                    (cut && !PermissionManager.CanWrite(entry.FullPath, SecurityContext.CurrentUser)))
+                {
+                    status = "Permission denied: cannot " + (cut ? "cut" : "copy") + " item";
+                    return;
+                }
+    
+                // A cut changes the source parent directory as well as the entry.
+                // Reject it before staging the clipboard or showing success.
+                if (cut)
+                {
+                    string sourceParent = Path.GetDirectoryName(entry.FullPath)?.Replace('\\', '/');
+                    string user = SecurityContext.CurrentUser;
+                    if (!FileClipboard.IsSafeAbsolutePath(sourceParent) ||
+                        !PermissionManager.CanWrite(sourceParent, user) ||
+                        (user != "root" &&
+                         !IsInsidePath(sourceParent, UserManager.GetHomeDirectory(user))))
+                    {
+                        status = "Permission denied: cannot cut from source folder";
+                        return;
+                    }
+                }
+    
+                // A FAT32 directory snapshot can outlive an external rename or
+                // deletion. Never stage a stale item in the clipboard; Exists can
+                // also return false on transient I/O failure, so preserve the
+                // last good listing and let the user explicitly refresh with F5.
+                if (!(entry.IsDirectory ? Directory.Exists(entry.FullPath) : File.Exists(entry.FullPath)))
+                {
+                    status = "Item unavailable; press F5 to refresh";
+                    return;
+                }
+    
+                FileClipboard.Set(entry.FullPath, entry.IsDirectory, cut);
+                status = (cut ? "Cut: " : "Copied: ") + entry.Name + " - choose destination and paste";
             }
-
-            // A FAT32 directory snapshot can outlive an external rename or
-            // deletion. Never stage a stale item in the clipboard; Exists can
-            // also return false on transient I/O failure, so preserve the
-            // last good listing and let the user explicitly refresh with F5.
-            if (!(entry.IsDirectory ? Directory.Exists(entry.FullPath) : File.Exists(entry.FullPath)))
+            catch (Exception ex)
             {
-                status = "Item unavailable; press F5 to refresh";
-                return;
+                // A removed FAT32 volume or an ACL/storage exception must
+                // never escape into the desktop event loop.
+                status = (cut ? "Cut error: " : "Copy error: ") + ex.Message;
             }
 
-            FileClipboard.Set(entry.FullPath, entry.IsDirectory, cut);
-            status = (cut ? "Cut: " : "Copied: ") + entry.Name + " - choose destination and paste";
         }
 
         private void PasteClipboard()
@@ -1066,28 +1076,42 @@ namespace ZonderqOS.GUI.Apps
                 status = "Enlarge window before pasting files";
                 return;
             }
-            string destinationPath;
-            string error;
-            bool wasCut = FileClipboard.IsCut;
-            string sourceName = FileClipboard.DisplayName;
-
-            if (!FileClipboard.TryPaste(currentPath, out destinationPath, out error))
+            string destinationPath = null;
+            try
             {
-                status = "Paste error: " + (string.IsNullOrEmpty(error) ? "unknown error" : error);
-                // A cross-volume cut can leave a complete recovery copy after
-                // source deletion or permission metadata fails. Refresh the
-                // directory so the retained file is visible immediately.
+                string error;
+                bool wasCut = FileClipboard.IsCut;
+                string sourceName = FileClipboard.DisplayName;
+    
+                if (!FileClipboard.TryPaste(currentPath, out destinationPath, out error))
+                {
+                    status = "Paste error: " + (string.IsNullOrEmpty(error) ? "unknown error" : error);
+                    // A cross-volume cut can leave a complete recovery copy after
+                    // source deletion or permission metadata fails. Refresh the
+                    // directory so the retained file is visible immediately.
+                    if (!string.IsNullOrEmpty(destinationPath))
+                        RefreshKeepStatus();
+                    return;
+                }
+    
+                string targetName = Path.GetFileName((destinationPath ?? "").TrimEnd('/', '\\'));
+                if (string.IsNullOrEmpty(targetName))
+                    targetName = sourceName;
+    
+                status = (wasCut ? "Moved: " : "Pasted: ") + targetName;
+                RefreshKeepStatus();
+            }
+            catch (Exception ex)
+            {
+                // Preflight and filesystem adapters can throw before
+                // FileClipboard.TryPaste reaches its internal mutation guard.
+                // Keep the GUI responsive and reveal a retained destination
+                // when the clipboard operation already produced one.
+                status = "Paste error: " + ex.Message;
                 if (!string.IsNullOrEmpty(destinationPath))
                     RefreshKeepStatus();
-                return;
             }
 
-            string targetName = Path.GetFileName((destinationPath ?? "").TrimEnd('/', '\\'));
-            if (string.IsNullOrEmpty(targetName))
-                targetName = sourceName;
-
-            status = (wasCut ? "Moved: " : "Pasted: ") + targetName;
-            RefreshKeepStatus();
         }
 
         private int Columns()
