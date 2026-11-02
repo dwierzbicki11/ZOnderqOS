@@ -120,16 +120,6 @@ namespace ZonderqOS.GUI
                 return;
             }
 
-            // Avoid per-scanline clipping for a panel completely within
-            // the framebuffer. Keep the common renderer method small by
-            // moving the direct Canvas loop into one specialized helper.
-            if (x >= 0 && y >= 0 &&
-                width <= canvas.Width - x && height <= canvas.Height - y)
-            {
-                FillVisibleRounded(canvas, x, y, width, height, r, fill);
-                return;
-            }
-
             Fill(canvas, fill, x, y + r, width, height - 2 * r);
             // Keep the common on-screen draw loop compact. The much larger
             // vertical clipping path is cold and lives in a separate method.
@@ -144,22 +134,6 @@ namespace ZonderqOS.GUI
                 int inset = CornerInset(r, row);
                 Fill(canvas, fill, x + inset, y + row, width - 2 * inset, 1);
                 Fill(canvas, fill, x + inset, y + height - row - 1, width - 2 * inset, 1);
-            }
-        }
-
-        private static void FillVisibleRounded(Canvas canvas, int x, int y,
-            int width, int height, int radius, Color fill)
-        {
-            if (height > 2 * radius)
-                canvas.DrawFilledRectangle(fill, x, y + radius, width, height - 2 * radius);
-            for (int row = 0; row < radius; row++)
-            {
-                int inset = CornerInset(radius, row);
-                int rowWidth = width - 2 * inset;
-                // radius <= width/2 and inset < radius: rowWidth is positive.
-                canvas.DrawFilledRectangle(fill, x + inset, y + row, rowWidth, 1);
-                canvas.DrawFilledRectangle(fill, x + inset, y + height - row - 1,
-                    rowWidth, 1);
             }
         }
 
