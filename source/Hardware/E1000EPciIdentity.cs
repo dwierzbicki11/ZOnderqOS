@@ -87,6 +87,10 @@ namespace ZonderqOS.Hardware
                 return false;
             byte pointer = first;
             ulong visited = 0;
+            // Track the DWORDs occupied by each known capability. A next
+            // pointer inside MSI address/data or MSI-X table/PBA registers
+            // is not a second valid capability header.
+            ulong occupied = 0;
             ulong hash = 14695981039346656037UL;
             bool seenPm = false, seenMsi = false, seenMsiX = false;
             int count = 0;
@@ -104,6 +108,7 @@ namespace ZonderqOS.Hardware
                 if (id == 0 || id == 0xFF)
                     return false;
                 ushort control = 0;
+                int capabilityBytes = 4; // Unknown IDs: only the header is known.
                 if (id == 0x01) // PCI Power Management capability
                 {
                     // PMCSR is at capability+4. Do not wrap a malformed
@@ -112,6 +117,7 @@ namespace ZonderqOS.Hardware
                     if (seenPm || pointer > 0xF8)
                         return false;
                     seenPm = true;
+                    capabilityBytes = 8;
                     ushort pmcsr = config.Read16(bus, slot, function,
                         (byte)(pointer + 4));
                     if ((pmcsr & 0x0003) != 0) // Require D0
@@ -143,13 +149,29 @@ namespace ZonderqOS.Hardware
                             ((control & 0x0100) != 0 ? 10 : 0);
                         if (pointer + size > 0x100)
                             return false;
+                        capabilityBytes = size;
                     }
-                    else if (pointer > 0xF4) // MSI-X requires 12 bytes
-                        return false;
+                    else
+                    {
+                        if (pointer > 0xF4) // MSI-X requires 12 bytes
+                            return false;
+                        capabilityBytes = 12;
+                    }
                     if ((id == 0x05 && (control & 0x0001) != 0) ||
                         (id == 0x11 && (control & 0x8000) != 0))
                         return false;
                 }
+                // All conventional capability headers are DWORD aligned.
+                // Reserve every DWORD touched by a known capability, even
+                // when its byte size is not a multiple of four (MSI 10/14).
+                // Otherwise malformed next pointers can reinterpret payload
+                // registers as another disabled MSI/MSI-X/PM capability.
+                int firstSlot = (pointer - 0x40) / 4;
+                int slotCount = (capabilityBytes + 3) / 4;
+                ulong span = ((1UL << slotCount) - 1) << firstSlot;
+                if ((occupied & span) != 0)
+                    return false;
+                occupied |= span;
                 unchecked
                 {
                     hash = (hash ^ pointer) * 1099511628211UL;

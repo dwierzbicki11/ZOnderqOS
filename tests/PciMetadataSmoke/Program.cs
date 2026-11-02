@@ -155,6 +155,7 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
     x => x.CapabilityPointer = 0x3C, // pointer into PCI header
     x => x.MsiNext = 0x40, // capability cycle
     x => x.MsiNext = 0x44, // unsupported intermediate offset
+    x => x.MsiNext = 0x48, // MSI-X header inside MSI address/data payload
     x => x.MsiXNext = 0x40, // cycle after MSI-X
     x => x.MsiId = 0xFF, // malformed capability
     x => x.ChangeStatusOnSecondRead = true,
@@ -168,6 +169,23 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
           irqLine == 0 && irqPin == 0,
         "Enabled or unstable message-signaled IRQ configuration must fail closed");
 }
+// Reject a capability chain that reinterprets another capability's payload
+// as a header. In particular, the old synthetic 0x40 -> 0x48 MSI/MSI-X
+// layout overlapped a 10-byte MSI and was not a valid PCI configuration.
+var irqOverlap = new FakeE1000EPciConfig { Status = 0x0010, MsiNext = 0x48 };
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqOverlap, out irqLine, out irqPin) &&
+      irqLine == 0 && irqPin == 0,
+    "Overlapping MSI address/data and MSI-X header must fail closed");
+var irqMaskedOverlap = new FakeE1000EPciConfig { Status = 0x0010, MsiControl = 0x0100 };
+Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(irqMaskedOverlap, out irqLine, out irqPin),
+    "Masked MSI payload must not overlap the following MSI-X header");
+var irqMaskedStandalone = new FakeE1000EPciConfig {
+    Status = 0x0010, MsiControl = 0x0100, MsiNext = 0
+};
+Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqMaskedStandalone, out irqLine, out irqPin) &&
+      irqLine == 11 && irqPin == 1,
+    "Complete masked MSI without overlapping next capability must remain valid");
+Console.WriteLine("[NET3095-E1000E-IRQ-CAP-OVERLAP] PASS C# overlapping capability ranges rejected (synthetic)");
 // The MSI/MSI-X control word alone is not a valid capability: required
 // address/data/table registers must also fit inside conventional PCI config.
 // Test the production length checks, including 64-bit and mask-capable MSI.
@@ -227,7 +245,7 @@ Console.WriteLine("[NET3095-E1000E-IRQ-CAP-LENGTH] PASS C# bounded MSI/MSI-X lay
 // An E1000E in D3hot cannot receive legacy interrupts or perform DMA,
 // even if COMMAND, BAR0 and the INTx line appear unchanged. Check PMCSR
 // through the same read-only PCI capability walker used by the guest.
-var irqPm = new FakeE1000EPciConfig { Status = 0x0010, MsiXNext = 0x50 };
+var irqPm = new FakeE1000EPciConfig { Status = 0x0010, MsiXNext = 0x60 };
 Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqPm, out irqLine, out irqPin) &&
       irqLine == 11 && irqPin == 1,
     "D0 PMCSR must preserve the valid legacy IRQ route");
@@ -236,13 +254,13 @@ foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[
     x => x.PmControlStatus = 0x0002, // D2
     x => x.PmControlStatus = 0x0003, // D3hot
     x => x.PmId = 0xFF, // malformed PM capability
-    x => x.PmNext = 0x50, // self-loop
-    x => x.PmNext = 0x58, // duplicate PM capability
+    x => x.PmNext = 0x60, // self-loop
+    x => x.PmNext = 0x68, // duplicate PM capability
     x => x.ChangePmStateOnSecondRead = true, // D0 -> D3hot
     x => x.MsiXNext = 0xFC // PMCSR would wrap past PCI config space
 })
 {
-    var invalid = new FakeE1000EPciConfig { Status = 0x0010, MsiXNext = 0x50 };
+    var invalid = new FakeE1000EPciConfig { Status = 0x0010, MsiXNext = 0x60 };
     corrupt(invalid);
     Check(!E1000EPciIdentity.TryReadLegacyIrqRoute(invalid, out irqLine, out irqPin) &&
           irqLine == 0 && irqPin == 0,
@@ -734,7 +752,7 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     public ushort Status { get; set; }
     public byte CapabilityPointer { get; set; } = 0x40;
     public byte MsiId { get; set; } = 0x05;
-    public byte MsiNext { get; set; } = 0x48;
+    public byte MsiNext { get; set; } = 0x50;
     public byte MsiXNext { get; set; }
     public ushort MsiControl { get; set; }
     public ushort MsiXControl { get; set; }
@@ -820,9 +838,10 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
                 ? (ushort)(Status ^ 0x0010) : Status,
             0x42 => ++msiControlReads > 1 && EnableMsiAfterFirstModeScan
                 ? (ushort)(MsiControl | 1) : MsiControl,
-            0x4A => MsiXControl,
+            0x4A => MsiXControl, // malformed overlapping MSI-X test
+            0x52 => MsiXControl,
             0xEA or 0xEE or 0xF2 or 0xF6 or 0xFA => TailControl,
-            0x54 => ++pmControlReads > 1
+            0x64 => ++pmControlReads > 1
                 ? (ushort)(PmControlStatus ^
                     (ChangePmStateOnSecondRead ? 0x0003 : 0) ^
                     (ChangePmPmeOnSecondRead ? 0x8100 : 0))
@@ -852,10 +871,14 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x41 => MsiNext,
             0x48 => (byte)0x11,
             0x49 => MsiXNext,
-            0x50 => PmId,
-            0x51 => PmNext,
-            0x58 => PmId, // second PM cap used to reject duplicates
+            0x50 => (byte)0x11, // valid non-overlapping MSI-X header
+            0x51 => MsiXNext,
+            0x58 => PmId, // malformed overlapping PM header
             0x59 => (byte)0,
+            0x60 => PmId,
+            0x61 => PmNext,
+            0x68 => PmId, // second PM cap used to reject duplicates
+            0x69 => (byte)0,
             0xE8 or 0xEC or 0xF0 or 0xF4 or 0xF8 => TailCapabilityId,
             0xE9 or 0xED or 0xF1 or 0xF5 or 0xF9 => TailCapabilityNext,
             0xFC => PmId,

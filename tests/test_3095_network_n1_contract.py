@@ -38,6 +38,16 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("(control & 0x0100) != 0 ? 10 : 0", pci)
         self.assertIn("pointer + size > 0x100", pci)
         self.assertIn("pointer > 0xF4", pci)  # MSI-X 12-byte minimum
+        # Capability headers may not point inside another capability's
+        # MSI data/mask or MSI-X table/PBA payload. Static source contract;
+        # the C# synthetic fixture executes both negative and positive cases.
+        self.assertIn("ulong occupied = 0;", pci)
+        self.assertIn("int slotCount = (capabilityBytes + 3) / 4;", pci)
+        self.assertIn("if ((occupied & span) != 0)", pci)
+        smoke = (ROOT / "tests/PciMetadataSmoke/Program.cs").read_text()
+        self.assertIn("MsiNext = 0x48", smoke)
+        self.assertIn("MsiControl = 0x0100, MsiNext = 0", smoke)
+        self.assertIn("[NET3095-E1000E-IRQ-CAP-OVERLAP]", smoke)
         self.assertIn("if (id == 0x01)", pci)  # PCI PM capability
         self.assertIn("if (seenPm || pointer > 0xF8)", pci)  # no duplicate/wrap
         self.assertIn("(pmcsr & 0x0003) != 0", pci)  # reject D1/D2/D3hot
