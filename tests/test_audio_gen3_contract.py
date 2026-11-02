@@ -205,6 +205,13 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn('output.DriverName != "HdAudioDriver"', direct)
         self.assertIn("output.SampleRate != sampleRate", direct)
         self.assertIn("var outputFormat = output.Format;", runtime)
+        self.assertIn("var statusFormat = output.Format;", runtime)
+        self.assertIn("var liveFormat = output.Format;", runtime)
+        self.assertIn("object.ReferenceEquals(AudioManager.Primary, output)", runtime)
+        self.assertLess(runtime.index("object.ReferenceEquals(AudioManager.Primary, output)"),
+                        runtime.index("AudioPlayback.TryStart(output,"))
+        self.assertLess(runtime.index("object.ReferenceEquals(AudioManager.Primary, output)"),
+                        runtime.index("AudioManager.Play(new MemoryAudioStream("))
         self.assertNotIn("outputFormat is null", runtime)
         self.assertIn("outputFormat.Channels != 2", runtime)
         self.assertIn("outputFormat.ChannelSize != 2", runtime)

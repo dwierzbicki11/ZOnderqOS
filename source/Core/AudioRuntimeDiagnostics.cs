@@ -78,8 +78,12 @@ namespace ZonderqOS.SystemCore
 
             Console.WriteLine("[AUDIO] output=" + output.Name + " driver=" + output.DriverName);
             Console.WriteLine("[AUDIO] node=" + (output.NodePath ?? "UNKNOWN"));
+            // Report a single published format snapshot. Separate getter
+            // calls could describe two different configurations if the
+            // output is reconfigured while status is being printed.
+            var statusFormat = output.Format;
             Console.WriteLine("[AUDIO] format=" + output.SampleRate + "Hz " +
-                output.Format.Channels + "ch " + (output.Format.ChannelSize * 8) + "bit");
+                statusFormat.Channels + "ch " + (statusFormat.ChannelSize * 8) + "bit");
             Console.WriteLine("[AUDIO] running=" + output.IsRunning + " writable=" + output.WritableBytes);
             Console.WriteLine("[AUDIO] A published output does not prove audible PCM.");
             return true;
@@ -894,6 +898,22 @@ namespace ZonderqOS.SystemCore
                     ? AudioPcmVolume.ScaleStereo16ChannelsOrReuse(pcm, leftGain, rightGain)
                     : AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
                         pcm, leftGain, rightGain, fadeMilliseconds, drainBytes);
+                // Primary may change while a gain buffer is prepared. Never
+                // hand the opt-in diagnostic PCM to a newly selected device,
+                // even when the earlier Primary was stock HDA. This is a
+                // best-effort pre-dispatch snapshot, NOT an atomic claim:
+                // AudioManager.Play still selects its own Primary internally.
+                var liveFormat = output.Format;
+                if (!object.ReferenceEquals(AudioManager.Primary, output) ||
+                    output.IsWithdrawn || output.Name != "hda" ||
+                    output.DriverName != "HdAudioDriver" ||
+                    output.SampleRate != sampleRate ||
+                    liveFormat.Channels != 2 || liveFormat.ChannelSize != 2 ||
+                    output.Player != null || output.IsRunning)
+                {
+                    Console.WriteLine("[AUDIO] PCM REFUSED: HDA output changed before dispatch.");
+                    return false;
+                }
                 if (useOneMillisecondDiagnostic)
                     return AudioProbeDirectPlayback.TryPlay(output, scaled, sampleRate);
                 if (useAsyncDiagnostic)
