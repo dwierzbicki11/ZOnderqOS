@@ -158,6 +158,23 @@ internal static class AudioProbeFeederSmoke
         Check(!ok && withdrawnDuringDrain && acceptedBeforeMidDrainWithdrawal == 4 + 4096,
             "withdrawn output during silent drain fails closed");
 
+        // A driver can withdraw the output while returning zero bytes.
+        // Do not issue even one 1 ms wait after that failed write.
+        bool withdrawnDuringZeroWrite = false;
+        int zeroWriteCalls = 0;
+        int waitsAfterZeroWithdrawal = 0;
+        ok = AudioProbeRingFeeder.Feed(new byte[4],
+            (a, b, c) =>
+            {
+                zeroWriteCalls++;
+                withdrawnDuringZeroWrite = true;
+                return 0;
+            },
+            () => !withdrawnDuringZeroWrite,
+            _ => waitsAfterZeroWithdrawal++, out waits);
+        Check(!ok && zeroWriteCalls == 1 && waitsAfterZeroWithdrawal == 0 &&
+            waits == 0, "withdrawal during zero-byte write skips stale ring wait");
+
         int stalledWaits = 0;
         ok = AudioProbeRingFeeder.Feed(pcm, (a, b, c) => 0,
             () => true, _ => stalledWaits++, out waits);
