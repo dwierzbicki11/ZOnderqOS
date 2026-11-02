@@ -344,7 +344,16 @@ class ModifiedKeySafetyTests(unittest.TestCase):
                      "UpdateDesktopInteractions("):
             start = dispatch.index(call)
             arguments = dispatch[start:dispatch.index(");", start) + 2]
-            self.assertIn("leftForUi, oldLeftForUi", arguments, call)
+            # Underlying windows and desktop shortcuts additionally honor
+            # the modal gesture latch; overlays receive the original
+            # right-button-normalized state so their own click still works.
+            expected = ("appLeftForUi, appOldLeftForUi"
+                        if call in ("applicationManager.HandleMouse(",
+                                    "UpdateDesktopInteractions(")
+                        else "leftForUi, oldLeftForUi")
+            self.assertIn(expected, arguments, call)
+        self.assertIn("bool appLeftForUi = leftForUi && !modalLeftGestureOwned;", dispatch)
+        self.assertIn("bool appOldLeftForUi = oldLeftForUi && !modalLeftGestureOwned;", dispatch)
         self.assertIn("activeFileManager.HandleMouse(mouseX, mouseY, leftForUi,", dispatch)
         self.assertIn("oldLeftForUi, currentRightButtonState, previousRightButtonState);", dispatch)
 
