@@ -125,7 +125,11 @@ namespace ZonderqOS.GUI
                     take = Math.Min(maxChars, remaining);
 
                 // Preserve per-row scrollbar callbacks for manual scrolling.
-                string wrapped = SliceTrimmed(line, position, take);
+                // Inline the overwhelmingly common untrimmed path: a helper
+                // call here regressed no-whitespace rows in host A/B.
+                string wrapped = !char.IsWhiteSpace(line[position + take - 1])
+                    ? line.Substring(position, take)
+                    : SliceTrimmed(line, position, take);
                 if (userScrolled)
                     AddOutputLine(wrapped);
                 else
