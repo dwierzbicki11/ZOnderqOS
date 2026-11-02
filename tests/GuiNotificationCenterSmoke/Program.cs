@@ -3,6 +3,7 @@ global using ConsoleKeyEx = Cosmos.Kernel.System.Input.Key;
 
 using System;
 using System.Drawing;
+using System.Collections.Generic;
 using System.Reflection;
 using ZonderqOS;
 using ZonderqOS.GUI;
@@ -13,6 +14,7 @@ namespace Cosmos.Kernel.System.Graphics
     {
         public int ScreenWidth { get; set; } = int.MaxValue;
         public int ScreenHeight { get; set; } = int.MaxValue;
+        public readonly List<(int X, int Y, int Width, int Height)> Rectangles = new();
         public void ValidateRect(int x, int y, int width, int height)
         {
             if (width <= 0 || height <= 0 || x < 0 || y < 0 ||
@@ -20,6 +22,7 @@ namespace Cosmos.Kernel.System.Graphics
                 throw new InvalidOperationException("Notification rectangle outside work area: " +
                     x + "," + y + " " + width + "x" + height +
                     " screen=" + ScreenWidth + "x" + ScreenHeight);
+            Rectangles.Add((x, y, width, height));
         }
         public virtual void DrawFilledRectangle(Color color, int x, int y, int width, int height)
             => ValidateRect(x, y, width, height);
@@ -267,6 +270,43 @@ internal static class Program
         }
     }
 
+    private static void FilterRowNeverOverlapsFooter()
+    {
+        // The footer background starts at Height-57, not Height-48 (the
+        // clickable buttons). The 36px filters end at Y+118.
+        foreach (int panelHeight in new[] { 165, 166, 170, 174, 175, 176 })
+        {
+            NotificationService.ResetForSession();
+            var center = new NotificationCenter(320, panelHeight + 64, 44);
+            center.Toggle();
+            Check(center.Height == panelHeight, "test panel height is exact");
+
+            var canvas = new Cosmos.Kernel.System.Graphics.Canvas
+            {
+                ScreenWidth = 320,
+                ScreenHeight = panelHeight + 20
+            };
+            center.Render(canvas);
+            int filterRectangles = 0;
+            foreach (var rect in canvas.Rectangles)
+                if (rect.Y == center.Y + 82 && rect.Height == 36)
+                    filterRectangles++;
+            bool filtersFit = panelHeight >= 175;
+            Check(filterRectangles == (filtersFit ? 3 : 0),
+                "filter row is only painted when clear of footer at " + panelHeight);
+
+            int tabWidth = (center.Width - 28 - 14) / 3;
+            int secondTabX = center.X + 14 + tabWidth + 7 + tabWidth / 2;
+            Check(center.UpdateInteractions(secondTabX, center.Y + 99, true, false),
+                "panel consumes filter area press");
+            var filterField = typeof(NotificationCenter).GetField("filter",
+                BindingFlags.NonPublic | BindingFlags.Instance);
+            Check(filterField != null && (int)filterField.GetValue(center)! ==
+                (filtersFit ? 1 : 0),
+                "hidden filter cannot intercept a click at " + panelHeight);
+        }
+    }
+
     private static void TinyPanelFooterDoesNotTriggerHiddenFilters()
     {
         // At 200x200 the 136px panel places its footer at y=88, while
@@ -396,6 +436,7 @@ internal static class Program
     public static int Main()
     {
         CompactRenderingNeverUsesInvalidTextClips();
+        FilterRowNeverOverlapsFooter();
         ShortPanelCannotActivateOverlappingFooter();
         NarrowCardCannotDismissFromOutside();
         TinyToastUsesActualPaintedHitbox();

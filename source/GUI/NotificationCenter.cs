@@ -427,9 +427,10 @@ namespace ZonderqOS.GUI
 
         private void RenderFilters(Canvas canvas)
         {
-            // On short screens the filter row overlaps the footer. Keep
-            // the footer actionable and never draw invisible filter buttons.
-            if (Height < 166 || Width < 100)
+            // The filter row occupies Y+82..Y+118. The footer background
+            // begins at Y+Height-57, so 175px is the first nonoverlapping
+            // panel height. Use the same threshold in UpdateHover.
+            if (Height < 175 || Width < 100)
                 return;
             int y = Y + 82;
             int gap = 7;
@@ -663,7 +664,7 @@ namespace ZonderqOS.GUI
 
             // Match RenderFilters: a hidden filter must not steal a click
             // from the footer when the two rows would overlap.
-            if (Height >= 166 && Width >= 100)
+            if (Height >= 175 && Width >= 100)
             {
                 int filterY = Y + 82;
                 int gap = 7;

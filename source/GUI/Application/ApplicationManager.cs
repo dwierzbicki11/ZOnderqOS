@@ -340,6 +340,14 @@ namespace ZonderqOS.GUI.Apps
             if (desktopGesture)
                 return;
 
+            // A second physical button is part of the captured gesture, not
+            // a fresh click. Delivering it as right && !oldRight could open
+            // a File Manager context menu while the left button is dragging
+            // a window (or activate a control underneath a held right press).
+            // Keep mouseCapture for motion/release, but swallow this edge.
+            if (newPress && wasHeld)
+                return;
+
             // Closing/minimizing the captured window must not leak a held
             // button or release into the window now exposed beneath it.
             if (wasHeld && (target == null || !applications.Contains(target) ||

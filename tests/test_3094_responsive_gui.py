@@ -3258,21 +3258,22 @@ class NotificationTinyPanelGeometry3095(unittest.TestCase):
             "private void FooterButtonBounds(", 1)[0]
         draw_button = NOTIFICATIONS.split("private void DrawFooterButton(", 1)[1].split(
             "private void RenderToast(", 1)[0]
-        self.assertIn("if (Height < 166 || Width < 100)", render)
-        self.assertIn("if (Height >= 166 && Width >= 100)", hover)
+        self.assertIn("if (Height < 175 || Width < 100)", render)
+        self.assertIn("if (Height >= 175 && Width >= 100)", hover)
         self.assertIn("if (Height < 130 || Width < 90)", footer)
         self.assertIn("if (Height < 130 || Width < 90)", hover)
         self.assertIn("if (width < 76)", draw_button)
         self.assertIn("x + (width - 18) / 2", draw_button)
         for screen_w, screen_h in ((200, 200), (320, 240),
+                                   (320, 230), (320, 238), (320, 239),
                                    (640, 480), (800, 600),
                                    (1366, 768), (1920, 1080)):
             panel_w = min(462, max(1, screen_w - 20))
             panel_h = max(1, screen_h - 44 - 20)
-            filters_visible = panel_h >= 166 and panel_w >= 100
-            footer_visible = panel_h >= 57 and panel_w >= 90
+            filters_visible = panel_h >= 175 and panel_w >= 100
+            footer_visible = panel_h >= 130 and panel_w >= 90
             if filters_visible and footer_visible:
-                self.assertLessEqual(82 + 36, panel_h - 48)
+                self.assertLessEqual(82 + 36, panel_h - 57)
             if screen_w == 200:
                 self.assertFalse(filters_visible)
                 self.assertTrue(footer_visible)

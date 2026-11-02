@@ -314,12 +314,12 @@ internal static class Program
         // A keyboard shortcut may change focus while the left button is held.
         manager.Activate(second);
         manager.HandleMouse(220, 20, true, true, true, false);
-        Check(first.MouseCount == 2 && first.LastRightPress,
-            "second button must stay with original gesture owner");
+        Check(first.MouseCount == 1 && !first.LastRightPress,
+            "second button cannot start a context action during captured drag");
         Check(second.MouseCount == 0 && manager.ActiveApplication == second,
             "second button cannot steal focus or click another window");
         manager.HandleMouse(220, 20, false, true, false, true);
-        Check(first.MouseCount == 3 && first.LastLeftRelease,
+        Check(first.MouseCount == 2 && first.LastLeftRelease,
             "release goes to captured window after focus changes");
         Check(second.MouseCount == 0, "release never reaches newly focused window");
         manager.HandleMouse(220, 20, false, false, false, false);
@@ -341,16 +341,41 @@ internal static class Program
         // GuiManager suppresses leftClicked/leftWasClicked while right is
         // down. The seventh argument preserves the physical held-left state.
         manager.HandleMouse(220, 20, false, false, true, false, true);
-        Check(first.MouseCount == 2 && first.LastRightPress,
-            "filtered right chord stays with original window");
+        Check(first.MouseCount == 1 && !first.LastRightPress,
+            "filtered right chord cannot open a context menu");
         Check(second.MouseCount == 0 && manager.ActiveApplication == second,
             "filtered chord cannot click newly focused window");
         manager.HandleMouse(220, 20, false, false, false, true, true);
-        Check(first.MouseCount == 3 && second.MouseCount == 0,
+        Check(first.MouseCount == 2 && second.MouseCount == 0,
             "filtered chord release stays with original window");
         manager.HandleMouse(220, 20, false, false, false, false);
         Check(second.MouseCount == 1,
             "hover resumes on active window after filtered chord");
+        manager.CloseAll();
+    }
+
+    private static void SecondButtonCannotOpenContextMenu()
+    {
+        var manager = new ApplicationManager();
+        var app = new ClosingApp();
+        manager.Launch(app);
+
+        manager.HandleMouse(10, 20, true, false, false, false);
+        manager.HandleMouse(10, 20, false, false, true, false, true);
+        Check(app.MouseCount == 1 && !app.LastRightPress,
+            "right chord while dragging cannot open a context menu");
+
+        manager.HandleMouse(10, 20, false, false, true, true, true);
+        Check(app.MouseCount == 2 && !app.LastRightPress,
+            "held right motion remains captured without a new press");
+        manager.HandleMouse(10, 20, false, false, false, true, true);
+        Check(app.MouseCount == 3 && !app.LastRightPress,
+            "chord release reaches owner without a context action");
+
+        manager.HandleMouse(10, 20, false, false, false, false);
+        manager.HandleMouse(10, 20, false, false, true, false);
+        Check(app.MouseCount == 5 && app.LastRightPress,
+            "genuine right press works after chord release");
         manager.CloseAll();
     }
 
@@ -647,6 +672,7 @@ internal static class Program
         MouseFocusAndCapture();
         WindowGestureSurvivesFocusAndSecondButton();
         FilteredChordKeepsPhysicalGestureOwner();
+        SecondButtonCannotOpenContextMenu();
         ClosingCapturedWindowDoesNotLeakRelease();
         MouseCallbackClosingOwnerDoesNotLeakRelease();
         MinimizingCapturedWindowDoesNotLeakRelease();
