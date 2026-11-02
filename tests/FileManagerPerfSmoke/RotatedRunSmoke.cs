@@ -126,13 +126,13 @@ internal static class RotatedRunSmoke
         return values[values.Length / 2];
     }
 
-    private static void Benchmark()
+    private static void Benchmark(int count)
     {
-        const int count = 2048;
         FileEntry[] input = MakeRotation(count, count / 2, 1);
         var work = new List<FileEntry>(count);
         FileEntry[] oldScratch = new FileEntry[count];
         FileEntry[] newScratch = null;
+        int repeats = count <= 128 ? 256 : count <= 512 ? 96 : 32;
         try
         {
             for (int i = 0; i < 12; i++)
@@ -155,13 +155,13 @@ internal static class RotatedRunSmoke
             {
                 if ((i & 1) == 0)
                 {
-                    oldMs[i] = Time(false, input, work, ref oldScratch, 32);
-                    newMs[i] = Time(true, input, work, ref newScratch, 32);
+                    oldMs[i] = Time(false, input, work, ref oldScratch, repeats);
+                    newMs[i] = Time(true, input, work, ref newScratch, repeats);
                 }
                 else
                 {
-                    newMs[i] = Time(true, input, work, ref newScratch, 32);
-                    oldMs[i] = Time(false, input, work, ref oldScratch, 32);
+                    newMs[i] = Time(true, input, work, ref newScratch, repeats);
+                    oldMs[i] = Time(false, input, work, ref oldScratch, repeats);
                 }
             }
             double oldValue = Median(oldMs), newValue = Median(newMs);
@@ -221,7 +221,12 @@ internal static class RotatedRunSmoke
     internal static void Run()
     {
         VerifyRotations();
-        Benchmark();
+        Benchmark(33);
+        Benchmark(64);
+        Benchmark(128);
+        Benchmark(256);
+        Benchmark(512);
+        Benchmark(2048);
         BenchmarkColdScratchAllocation();
     }
 }
