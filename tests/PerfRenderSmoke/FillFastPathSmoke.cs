@@ -112,11 +112,30 @@ internal static class FillFastPathSmoke
                         Check(x, y, width, height);
                         checks++;
                     }
+        // Cover both horizontal boundaries and combinations with vertical
+        // clipping, including widths that span the entire framebuffer.
+        Random random = new Random(0x3095);
+        for (int i = 0; i < 3000; i++)
+        {
+            int x = random.Next(-64, 96);
+            int y = random.Next(-48, 80);
+            int width = random.Next(0, 160);
+            int height = random.Next(0, 96);
+            Check(x, y, width, height);
+            checks++;
+        }
+        Check(-2, 4, 80, 1);
+        Check(-2, -2, 80, 40);
+        Check(-2, 31, 80, 4);
+        checks += 3;
         Console.WriteLine("PASS: " + checks +
-            " exact Fill pixel/Canvas-call comparisons including int extremes");
+            " exact Fill pixel/Canvas-call comparisons including int extremes and edge drags");
         Benchmark("visible 1x1", 5, 4, 1, 1);
         Benchmark("visible 8x1", 5, 4, 8, 1);
         Benchmark("clipped left", -2, 4, 8, 1);
+        Benchmark("clipped right", 60, 4, 8, 1);
+        Benchmark("clipped both horizontal edges", -2, 4, 80, 1);
+        Benchmark("clipped top and left", -2, -2, 80, 8);
         Benchmark("fully offscreen", 90, 4, 8, 1);
     }
 }
