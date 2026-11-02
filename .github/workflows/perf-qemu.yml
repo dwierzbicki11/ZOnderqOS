@@ -55,6 +55,7 @@ jobs:
           python3 tools/perf_boot_baseline.py \
             services-qemu-output/system-first.log \
             services-qemu-output/system-after.log \
+            --memory-log services-qemu-output/heartbeat-after.log \
             --output services-qemu-output/perf-boot-baseline.json
       - name: Diagnostics
         if: always()
