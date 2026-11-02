@@ -131,7 +131,11 @@ namespace ZonderqOS.GUI
             // Wide subtraction avoids overflow for extreme pointer positions.
             long dx = (long)x - previousX;
             long dy = (long)y - previousY;
-            bool overlap = reusePrevious && dx > -DamageWidth && dx < DamageWidth &&
+            // Patterned underlays cost more to scan than the saved readbacks
+            // save on the host Canvas. Reuse only a previously uniform
+            // underlay; patterned scenes retain the original one-pass path.
+            bool overlap = reusePrevious && uniformCapture &&
+                dx > -DamageWidth && dx < DamageWidth &&
                 dy > -DamageHeight && dy < DamageHeight;
 #if ZONDERQ_PERF_HOST_TEST
             overlap = overlap && !DisableOverlapReuseForBenchmark;
