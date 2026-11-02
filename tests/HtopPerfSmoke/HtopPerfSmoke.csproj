@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>disable</ImplicitUsings>
     <Nullable>disable</Nullable>
-    <DefineConstants>$(DefineConstants);ZONDERQ_COSMOS_INPUT_API</DefineConstants>
+    <DefineConstants>$(DefineConstants);ZONDERQ_COSMOS_INPUT_API;ZONDERQ_PERF_HOST_TEST</DefineConstants>
   </PropertyGroup>
   <ItemGroup>
     <!-- Compile the real production htop implementation with read-only fake scheduler data. -->
