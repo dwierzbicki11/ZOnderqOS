@@ -291,6 +291,87 @@ internal static class CursorDamageSmoke
         Console.WriteLine("Cursor overlap mixed patterned/flat underlay transitions: exact framebuffer.");
     }
 
+    // Compare the production per-row overlap path against a single contiguous
+    // Array.Copy. Both use the same captured pixels and identical Canvas API.
+    private static void VerifyVerticalBulkCopy()
+    {
+        var baselineCanvas = new Canvas(128, 96);
+        var optimizedCanvas = new Canvas(128, 96);
+        baselineCanvas.DrawFilledRectangle(Color.Navy, 0, 0, 128, 96);
+        optimizedCanvas.DrawFilledRectangle(Color.Navy, 0, 0, 128, 96);
+        var baseline = new CursorDamageRenderer(baselineCanvas);
+        var optimized = new CursorDamageRenderer(optimizedCanvas);
+        try
+        {
+            baseline.DrawAfterScene(40, 40);
+            optimized.DrawAfterScene(40, 40);
+            for (int i = 0; i < 250; i++)
+            {
+                int y = 40 + (i % 13);
+                CursorDamageRenderer.DisableVerticalBulkCopyForBenchmark = true;
+                if (!baseline.TryMove(40, y))
+                    throw new Exception("vertical baseline move failed " + i);
+                CursorDamageRenderer.DisableVerticalBulkCopyForBenchmark = false;
+                if (!optimized.TryMove(40, y))
+                    throw new Exception("vertical optimized move failed " + i);
+                SamePixels(baselineCanvas, optimizedCanvas, "vertical bulk #" + i);
+            }
+            if (baselineCanvas.ReadbackCalls != optimizedCanvas.ReadbackCalls)
+                throw new Exception("vertical bulk changed Canvas readback count");
+        }
+        finally
+        {
+            CursorDamageRenderer.DisableVerticalBulkCopyForBenchmark = false;
+        }
+        Console.WriteLine("PASS: 250 vertical cursor moves, exact framebuffer and readback count");
+    }
+
+    private static double TimeVerticalBulk(bool disable, int repeats)
+    {
+        var canvas = new Canvas(128, 96);
+        canvas.DrawFilledRectangle(Color.Navy, 0, 0, 128, 96);
+        CursorDamageRenderer.DisableVerticalBulkCopyForBenchmark = disable;
+        var mover = new CursorDamageRenderer(canvas);
+        mover.DrawAfterScene(40, 40);
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repeats; i++)
+            mover.TryMove(40, 40 + i % 8);
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
+    private static void BenchmarkVerticalBulk()
+    {
+        try
+        {
+            TimeVerticalBulk(true, 200);
+            TimeVerticalBulk(false, 200);
+            double[] before = new double[7], after = new double[7];
+            for (int i = 0; i < 7; i++)
+            {
+                if ((i & 1) == 0)
+                {
+                    before[i] = TimeVerticalBulk(true, 4000);
+                    after[i] = TimeVerticalBulk(false, 4000);
+                }
+                else
+                {
+                    after[i] = TimeVerticalBulk(false, 4000);
+                    before[i] = TimeVerticalBulk(true, 4000);
+                }
+            }
+            Array.Sort(before);
+            Array.Sort(after);
+            Console.WriteLine("HOST A/B vertical-only cursor 4000 moves median 7: per-row=" +
+                before[3].ToString("F3") + " ms bulk=" + after[3].ToString("F3") +
+                " ms ratio=" + (before[3] / after[3]).ToString("F2") +
+                "x (fake Canvas, not QEMU FPS)");
+        }
+        finally
+        {
+            CursorDamageRenderer.DisableVerticalBulkCopyForBenchmark = false;
+        }
+    }
+
     private static void BenchmarkOverlap()
     {
         try
@@ -451,6 +532,8 @@ internal static class CursorDamageSmoke
         VerifyOverlapReadbacks(false);
         VerifyOverlapReadbacks(true);
         VerifyMixedUnderlay();
+        VerifyVerticalBulkCopy();
+        BenchmarkVerticalBulk();
         BenchmarkOverlap();
         BenchmarkUniformCurrent();
         BenchmarkPatterned();
