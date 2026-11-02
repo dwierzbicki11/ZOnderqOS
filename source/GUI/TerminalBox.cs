@@ -125,19 +125,7 @@ namespace ZonderqOS.GUI
                     take = Math.Min(maxChars, remaining);
 
                 // Preserve per-row scrollbar callbacks for manual scrolling.
-                // Trim the source slice before allocating its retained row.
-                // The common non-whitespace case takes one check and one
-                // Substring; trailing spaces no longer require two strings.
-                int trimmedEnd = position + take;
-                if (char.IsWhiteSpace(line[trimmedEnd - 1]))
-                {
-                    do
-                    {
-                        trimmedEnd--;
-                    }
-                    while (trimmedEnd > position && char.IsWhiteSpace(line[trimmedEnd - 1]));
-                }
-                string wrapped = line.Substring(position, trimmedEnd - position);
+                string wrapped = line.Substring(position, take).TrimEnd();
                 if (userScrolled)
                     AddOutputLine(wrapped);
                 else
