@@ -285,14 +285,28 @@ namespace ZonderqOS.SystemCore
             // gaps and a muted clip's tail. Validate bounds before this path.
             if (firstPercent == 0 && secondPercent == 0)
                 return output;
-            if (firstPercent == 100 && secondPercent == 0)
+            if (firstPercent == 0 || secondPercent == 0)
             {
-                Array.Copy(first, 0, output, 0, first.Length);
-                return output;
-            }
-            if (firstPercent == 0 && secondPercent == 100)
-            {
-                Array.Copy(second, 0, output, delayBytes, second.Length);
+                // Scale only the audible clip. A long silent pre-roll or a
+                // muted second notification must not cause a scan over every
+                // frame in the complete two-clip timeline.
+                byte[] audible = firstPercent == 0 ? second : first;
+                int gain = firstPercent == 0 ? secondPercent : firstPercent;
+                int baseOffset = firstPercent == 0 ? delayBytes : 0;
+                if (gain == 100)
+                {
+                    Array.Copy(audible, 0, output, baseOffset, audible.Length);
+                }
+                else
+                {
+                    for (int i = 0; i < audible.Length; i += 2)
+                    {
+                        int sample = (short)(audible[i] | (audible[i + 1] << 8));
+                        int scaled = sample * gain / 100;
+                        output[baseOffset + i] = (byte)scaled;
+                        output[baseOffset + i + 1] = (byte)(scaled >> 8);
+                    }
+                }
                 return output;
             }
             if (firstPercent == 100 && secondPercent == 100 &&
