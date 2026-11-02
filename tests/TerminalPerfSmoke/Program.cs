@@ -268,6 +268,54 @@ internal static class Program
             " batched command output vs previous production C# implementation");
     }
 
+    // Compare the production batched path against the previous per-row
+    // scrollbar updates while a user reads older lines. Cross the 400-line
+    // history cap repeatedly; a clear marker must restore auto-follow.
+    private static void VerifyScrolledCommandBatch()
+    {
+        int checks = 0;
+        foreach (int width in new[] { 40, 80, 240, 820, 1920 })
+        {
+            var previous = new TerminalBox(0, 0, width, 160) { IsFocused = true };
+            var current = new TerminalBox(0, 0, width, 160) { IsFocused = true };
+            for (int i = 0; i < 430; i++)
+            {
+                string row = "history " + i;
+                previous.PrintLine(row);
+                current.PrintLine(row);
+            }
+            for (int i = 0; i < 3; i++)
+            {
+                previous.HandleKey(new KeyEvent { Key = ConsoleKeyEx.PageUp });
+                current.HandleKey(new KeyEvent { Key = ConsoleKeyEx.PageUp });
+            }
+            SameTerminals(current, previous, "scrolled setup");
+            string[] batches = {
+                string.Join("\r\n", MakeRows(700, "trim ")) + "\r\n",
+                "short\n" + new string('x', 2000) + "\r\nend",
+                "\u0001GUI_CLEAR\u0001\r\nnew state\n" + new string('z', 800),
+                string.Join("\n", MakeRows(500, "after clear ")) + "\n"
+            };
+            foreach (string batch in batches)
+            {
+                PreviousCommandOutput(previous, batch);
+                current.PrintCommandOutput(batch);
+                SameTerminals(current, previous, "scrolled history/clear batch");
+                checks++;
+            }
+        }
+        Console.WriteLine("PASS: " + checks +
+            " scrolled/trimmed/clear command batches vs per-row C# state");
+    }
+
+    private static string[] MakeRows(int count, string prefix)
+    {
+        var rows = new string[count];
+        for (int i = 0; i < count; i++)
+            rows[i] = prefix + i + "  " + new string('x', 35);
+        return rows;
+    }
+
     private static void Verify()
     {
         if (ScrollOffset == null || UserScrolled == null || ScrollBarField == null)
@@ -398,6 +446,7 @@ internal static class Program
     {
         Verify();
         VerifyCommandBatch();
+        VerifyScrolledCommandBatch();
         SlicedOutputSmoke.Run();
         TrimmedSliceSmoke.Run();
         ScrollBarRefreshSmoke.Run();
@@ -437,6 +486,21 @@ internal static class Program
             () => PreviousCommandOutput(previousSlice, commandOutput),
             () => currentSlice.PrintCommandOutput(commandOutput), 200);
         SameTerminals(currentSlice, previousSlice, "benchmark command batch");
+
+        var previousScrolled = new TerminalBox(0, 0, 820, 520) { IsFocused = true };
+        var currentScrolled = new TerminalBox(0, 0, 820, 520) { IsFocused = true };
+        for (int i = 0; i < 430; i++)
+        {
+            previousScrolled.PrintLine("history " + i);
+            currentScrolled.PrintLine("history " + i);
+        }
+        previousScrolled.HandleKey(new KeyEvent { Key = ConsoleKeyEx.PageUp });
+        currentScrolled.HandleKey(new KeyEvent { Key = ConsoleKeyEx.PageUp });
+        string scrolledRows = string.Join("\r\n", MakeRows(400, "scroll ")) + "\r\n";
+        Benchmark("scrolled command scrollbar batch vs per-row 400 lines x200",
+            () => PreviousCommandOutput(previousScrolled, scrolledRows),
+            () => currentScrolled.PrintCommandOutput(scrolledRows), 200);
+        SameTerminals(currentScrolled, previousScrolled, "benchmark scrolled command");
         Console.WriteLine("PASS: production C# terminal equivalence; timing is informational.");
         return 0;
     }
