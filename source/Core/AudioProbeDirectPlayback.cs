@@ -95,6 +95,10 @@ namespace ZonderqOS.SystemCore
                 // position, IRQ delivery or physical sound.
                 int writeCalls = 0;
                 int zeroWrites = 0;
+                int partialWrites = 0;
+                int zeroStreak = 0;
+                int longestZeroStreak = 0;
+                int smallestPositiveWrite = int.MaxValue;
                 int settleRequests = 0;
                 int pcmQueued = 0;
                 int silenceQueued = 0;
@@ -104,9 +108,19 @@ namespace ZonderqOS.SystemCore
                         int accepted = output.Write(data.AsSpan(offset, count));
                         writeCalls++;
                         if (accepted == 0)
+                        {
                             zeroWrites++;
+                            zeroStreak++;
+                            if (zeroStreak > longestZeroStreak)
+                                longestZeroStreak = zeroStreak;
+                        }
                         else if (accepted > 0 && accepted <= count && accepted % 4 == 0)
                         {
+                            zeroStreak = 0;
+                            if (accepted < count)
+                                partialWrites++;
+                            if (accepted < smallestPositiveWrite)
+                                smallestPositiveWrite = accepted;
                             if (object.ReferenceEquals(data, pcm))
                                 pcmQueued += accepted;
                             else
@@ -129,6 +143,9 @@ namespace ZonderqOS.SystemCore
                     " silenceQueued=" + silenceQueued +
                     " writeCalls=" + writeCalls +
                     " zeroWrites=" + zeroWrites +
+                    " partialWrites=" + partialWrites +
+                    " longestZeroStreak=" + longestZeroStreak +
+                    " minPositiveWrite=" + (smallestPositiveWrite == int.MaxValue ? 0 : smallestPositiveWrite) +
                     " waits=" + waits +
                     " settleRequests=" + settleRequests +
                     " settle=86ms (requested only; DMA/IRQ and audible PCM not proven)");
