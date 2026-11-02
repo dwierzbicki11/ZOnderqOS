@@ -268,7 +268,15 @@ namespace ZonderqOS.GUI.Apps
         {
             if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
                 return;
-            ActiveApplication?.HandleKeyboard(key);
+
+            Application active = ActiveApplication;
+            if (active == null)
+                return;
+            // A keyboard event can precede the next paint after a display
+            // change. All applications must see current work-area bounds
+            // before interpreting Enter, navigation or destructive shortcuts.
+            active.Window.EnsureDesktopBounds();
+            active.HandleKeyboard(key);
         }
 
         public void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
