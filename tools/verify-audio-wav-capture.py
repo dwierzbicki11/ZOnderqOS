@@ -14,7 +14,7 @@ import wave
 
 # Shared by the Python API and CLI; adding a diagnostic pitch must update
 # one allowlist rather than silently failing the real QEMU capture gate.
-SUPPORTED_TEST_HZ = (400, 440, 550, 660, 740, 880, 1100, 1320, 1500, 1760, 2200, 2640, 3080, 3520, 3700)
+SUPPORTED_TEST_HZ = (400, 440, 550, 660, 740, 880, 1100, 1320, 1500, 1760, 2200, 2640, 2860, 3080, 3520, 3700)
 
 
 def inspect(path: Path, expected_hz: int = 440):
