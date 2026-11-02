@@ -183,6 +183,78 @@ internal static class RowSortFastPathSmoke
         }
     }
 
+    private static void BenchmarkReversed(int count)
+    {
+        KernelProcess[] oldProcesses = ProcessManager.TestProcesses;
+        KernelThreadInfo[] oldThreads = SchedulerInfo.Threads;
+        try
+        {
+            var threads = new KernelThreadInfo[count];
+            for (int i = 0; i < count; i++)
+                threads[i] = new KernelThreadInfo
+                {
+                    Id = (uint)(30000 + i), CpuId = 0,
+                    State = KernelThreadState.READY, IsManaged = true
+                };
+            SchedulerInfo.Threads = threads;
+            ProcessManager.TestProcesses = Array.Empty<KernelProcess>();
+            var monitor = new HtopMonitor();
+            monitor.Refresh();
+
+            // Each invocation starts from the same strictly descending rows,
+            // then restores ascending order. Both paths include List.Reverse
+            // setup, so the comparison isolates the sort implementation.
+            Action before = () =>
+            {
+                monitor.ReverseRowsForBenchmark();
+                monitor.SortRowsUnconditionallyForBenchmark();
+                sink++;
+            };
+            Action after = () =>
+            {
+                monitor.ReverseRowsForBenchmark();
+                monitor.SortRows();
+                sink++;
+            };
+            for (int i = 0; i < 16; i++) { before(); after(); }
+            long start = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1024; i++) before();
+            long oldBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+            start = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 1024; i++) after();
+            long newBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+            Check(oldBytes == 0 && newBytes == 0,
+                "reversed row sorts must remain allocation-free");
+
+            double[] oldSamples = new double[7], newSamples = new double[7];
+            for (int i = 0; i < 7; i++)
+            {
+                if ((i & 1) == 0)
+                {
+                    oldSamples[i] = Time(before, 1024);
+                    newSamples[i] = Time(after, 1024);
+                }
+                else
+                {
+                    newSamples[i] = Time(after, 1024);
+                    oldSamples[i] = Time(before, 1024);
+                }
+            }
+            double oldMs = Median(oldSamples), newMs = Median(newSamples);
+            Console.WriteLine("HOST A/B reversed htop " + count +
+                " thread rows: List.Sort=" + oldMs.ToString("F5") +
+                "ms guarded=" + newMs.ToString("F5") +
+                "ms ratio=" + (oldMs / newMs).ToString("F2") +
+                "x allocations=" + oldBytes + "B -> " + newBytes +
+                "B (7 alternating samples; not kernel CPU/idle)");
+        }
+        finally
+        {
+            ProcessManager.TestProcesses = oldProcesses;
+            SchedulerInfo.Threads = oldThreads;
+        }
+    }
+
     internal static void Run()
     {
         VerifyOrderedAndReversed(1);
@@ -193,6 +265,8 @@ internal static class RowSortFastPathSmoke
         VerifyPidModeSwitch();
         BenchmarkOrdered(128);
         BenchmarkOrdered(512);
+        BenchmarkReversed(128);
+        BenchmarkReversed(512);
         GC.KeepAlive(sink);
         Console.WriteLine("PASS: production htop ordered/reversed/PID sort fast-path regression");
     }
