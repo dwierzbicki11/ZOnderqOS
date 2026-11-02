@@ -35,7 +35,11 @@ namespace ZonderqOS.GUI
                             break;
                         read += count;
                     }
-                    return HasSafeDimensions(header, read, png);
+                    // Seekable file length is cheap on FAT32 and prevents a
+                    // tiny, truncated file from requesting a large decoded bitmap.
+                    // Fail closed when the stream cannot report its length.
+                    return stream.CanSeek &&
+                           HasSafeFileLength(header, read, png, stream.Length);
                 }
             }
             catch (Exception)
@@ -98,6 +102,51 @@ namespace ZonderqOS.GUI
             return width > 0 && height > 0 &&
                    width <= MaxDimension && height <= MaxDimension &&
                    width * height <= MaxPixels;
+        }
+
+        // File-level preflight complements the fixed-size header parser.
+        // HasSafeDimensions intentionally remains usable with header-only fixtures.
+        // This does not verify compressed PNG/BMP payload integrity; the decoder
+        // still owns that work. Arithmetic uses long to avoid 32-bit overflow.
+        public static bool HasSafeFileLength(byte[] header, int length, bool png, long fileLength)
+        {
+            if (!HasSafeDimensions(header, length, png) || fileLength < 0)
+                return false;
+
+            if (png)
+            {
+                // PNG needs IHDR (33 B), at least one IDAT chunk (12 B),
+                // and IEND (12 B). Do not allocate from a header-only file.
+                return fileLength >= 57;
+            }
+
+            uint pixelOffset = ReadLittleEndian32(header, 10);
+            if (fileLength <= pixelOffset)
+                return false;
+
+            uint compression = ReadLittleEndian32(header, 30);
+            if (compression != 0)
+            {
+                // Compressed/bitfield payload lengths cannot be inferred from
+                // row stride. Leave their validation to the decoder.
+                return true;
+            }
+
+            int width = unchecked((int)ReadLittleEndian32(header, 18));
+            int signedHeight = unchecked((int)ReadLittleEndian32(header, 22));
+            long height = signedHeight < 0 ? -(long)signedHeight : signedHeight;
+            ushort bitsPerPixel = ReadLittleEndian16(header, 28);
+            if (bitsPerPixel != 1 && bitsPerPixel != 4 &&
+                bitsPerPixel != 8 && bitsPerPixel != 16 &&
+                bitsPerPixel != 24 && bitsPerPixel != 32)
+                return false;
+
+            long rowBytes = (((long)width * bitsPerPixel + 31) / 32) * 4;
+            long requiredLength = (long)pixelOffset + rowBytes * height;
+            uint declaredSize = ReadLittleEndian32(header, 2);
+            return fileLength >= requiredLength &&
+                   (declaredSize == 0 ||
+                    (declaredSize >= requiredLength && declaredSize <= fileLength));
         }
 
         // CRC-32 of IHDR type + 13 data bytes. The decoder must not be
