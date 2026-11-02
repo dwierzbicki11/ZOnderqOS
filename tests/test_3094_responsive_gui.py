@@ -2317,23 +2317,28 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         self.assertIn("private int ToastWidth", NOTIFICATIONS)
         self.assertIn("private int ToastX", NOTIFICATIONS)
         self.assertIn("private int ToastY", NOTIFICATIONS)
-        self.assertIn("ToastX, ToastY, ToastWidth, 98", NOTIFICATIONS)
+        self.assertIn("private int ToastHeight", NOTIFICATIONS)
+        self.assertIn("ToastX, ToastY, ToastWidth, ToastHeight", NOTIFICATIONS)
         self.assertIn("int width = ToastWidth;", NOTIFICATIONS)
+        self.assertIn("int height = ToastHeight;", NOTIFICATIONS)
+        self.assertIn("if (cardWidth >= 46 &&", NOTIFICATIONS)
 
-        for width, height in ((320, 240), (360, 480), (400, 600),
+        for width, height in ((24, 90), (80, 120), (160, 160),
+                              (320, 240), (360, 480), (400, 600),
                               (640, 480), (800, 600), (1024, 768),
                               (1366, 768), (1920, 1080)):
             panel_width = min(462, max(1, width - 20))
             panel_x = max(0, width - panel_width - 10)
             toast_width = min(414, max(1, width - 24))
             toast_x = max(0, width - toast_width - 18)
-            toast_y = max(0, height - 44 - 116)
+            toast_height = min(98, max(0, height - 44))
+            toast_y = max(0, height - 44 - toast_height - 18)
             self.assertGreaterEqual(panel_x, 0)
             self.assertLessEqual(panel_x + panel_width, width)
             self.assertGreaterEqual(toast_x, 0)
             self.assertLessEqual(toast_x + toast_width, width)
             self.assertGreaterEqual(toast_y, 0)
-            self.assertLessEqual(toast_y + 98, height - 44)
+            self.assertLessEqual(toast_y + toast_height, height - 44)
 
     def test_notification_footer_render_and_hit_test_share_narrow_bounds(self):
         self.assertIn("private void FooterButtonBounds(int index, out int x, out int width)", NOTIFICATIONS)
