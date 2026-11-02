@@ -17,6 +17,7 @@ CALENDAR = code("source/GUI/Application/CalendarApp.cs")
 TYPOGRAPHY = code("source/GUI/UiTypography.cs")
 FILE_MANAGER = code("source/GUI/Application/FileManagerApp.cs")
 NOTEPAD = code("source/GUI/Application/NotepadApp.cs")
+IMAGE_VIEWER = code("source/GUI/Application/ImageViewerApp.cs")
 APP_CENTER = code("source/GUI/Application/AppCenterApp.cs")
 DISK_MANAGER = code("source/GUI/Application/DiskManagerApp.cs")
 TASK_MANAGER = code("source/GUI/Application/TaskManagerModernApp.cs")
@@ -47,6 +48,78 @@ def visible_rows(window_height, list_top, bottom_offset, row_height, row_gap):
 
 
 class ResponsiveGui3094(unittest.TestCase):
+    def test_image_viewer_toolbar_paint_and_click_share_compact_geometry(self):
+        self.assertIn("private bool TryToolbarButtonBounds(", IMAGE_VIEWER)
+        self.assertIn("TryToolbarButtonBounds(i, out buttonX, out buttonWidth)", IMAGE_VIEWER)
+        self.assertIn("localX < buttonX || localX >= buttonX + buttonWidth", IMAGE_VIEWER)
+        self.assertIn("localY < 5 || localY >= 43", IMAGE_VIEWER)
+        self.assertIn("return left + width <= toolbarWidth - 4;", IMAGE_VIEWER)
+        self.assertNotIn("else if (x < 318)", IMAGE_VIEWER)
+
+        # Independent layout model for narrow firmware modes through Full HD.
+        # Check every painted button stays inside the toolbar and hitboxes
+        # cannot overlap; all seven actions fit a 320px-wide window.
+        for window_width in range(160, 1921):
+            toolbar_width = window_width - 20
+            compact = toolbar_width < 324
+            buttons = []
+            for index in range(7):
+                left = 4 + sum((32 if compact else (36 if i < 2 else 44)) + 4
+                               for i in range(index))
+                width = 32 if compact else (36 if index < 2 else 44)
+                if left + width > toolbar_width - 4:
+                    break
+                self.assertGreaterEqual(left, 4)
+                self.assertLessEqual(left + width, toolbar_width - 4)
+                if buttons:
+                    self.assertGreaterEqual(left, buttons[-1][1] + 4)
+                buttons.append((left, left + width))
+            if window_width >= 320:
+                self.assertEqual(len(buttons), 7)
+
+    def test_image_viewer_zoom_crop_and_resize_never_overpaint_client(self):
+        self.assertIn("int visibleWidth = System.Math.Min(targetWidth, areaWidth);", IMAGE_VIEWER)
+        self.assertIn("int visibleHeight = System.Math.Min(targetHeight, areaHeight);", IMAGE_VIEWER)
+        self.assertIn("int cropX = (targetWidth - visibleWidth) / 2;", IMAGE_VIEWER)
+        self.assertIn("int cropY = (targetHeight - visibleHeight) / 2;", IMAGE_VIEWER)
+        self.assertIn("(dx + cropX) * rotatedWidth / targetWidth", IMAGE_VIEWER)
+        self.assertIn("(dy + cropY) * rotatedHeight / targetHeight", IMAGE_VIEWER)
+        self.assertIn("previewWidth > areaWidth || previewHeight > areaHeight", IMAGE_VIEWER)
+        self.assertIn("preparedAreaWidth != areaWidth || preparedAreaHeight != areaHeight", IMAGE_VIEWER)
+        self.assertNotIn("fitToWindow && (preparedAreaWidth", IMAGE_VIEWER)
+        self.assertIn("System.Math.Max(1, Window.Height - 132)", IMAGE_VIEWER)
+        self.assertIn("(long)width * height > pixels.Length", IMAGE_VIEWER)
+
+        # Independent center-crop model: even at 300% zoom the preview
+        # is no larger than the current viewport.
+        for area_width, area_height in ((1, 1), (100, 50), (280, 100),
+                                        (780, 424), (1346, 616), (1900, 928)):
+            for zoom in (25, 100, 175, 300):
+                for image_width, image_height in ((1, 1), (1920, 1080), (1080, 1920)):
+                    if image_width * area_height > image_height * area_width:
+                        fit_width = area_width
+                        fit_height = max(1, image_height * area_width // image_width)
+                    else:
+                        fit_height = area_height
+                        fit_width = max(1, image_width * area_height // image_height)
+                    target_width = max(1, fit_width * zoom // 100)
+                    target_height = max(1, fit_height * zoom // 100)
+                    if target_width > 1600 or target_height > 900:
+                        if target_width * 900 > target_height * 1600:
+                            target_height = max(1, target_height * 1600 // target_width)
+                            target_width = 1600
+                        else:
+                            target_width = max(1, target_width * 900 // target_height)
+                            target_height = 900
+                    visible_width = min(target_width, area_width)
+                    visible_height = min(target_height, area_height)
+                    crop_x = (target_width - visible_width) // 2
+                    crop_y = (target_height - visible_height) // 2
+                    self.assertTrue(1 <= visible_width <= area_width)
+                    self.assertTrue(1 <= visible_height <= area_height)
+                    self.assertTrue(0 <= crop_x <= target_width - visible_width)
+                    self.assertTrue(0 <= crop_y <= target_height - visible_height)
+
     def test_file_manager_initial_client_matches_constrained_window_before_first_frame(self):
         constructor = FILE_MANAGER.split(
             "public FileManagerApp(int x, int y, Action<string> openFile)", 1
