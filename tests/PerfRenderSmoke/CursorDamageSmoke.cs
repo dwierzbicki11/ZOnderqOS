@@ -229,10 +229,17 @@ internal static class CursorDamageSmoke
         }
     }
 
-    private static double TimeOverlap(bool disabled, int repeats)
+    private static double TimeOverlap(bool disabled, int repeats, bool patterned)
     {
         var canvas = new Canvas(128, 96);
-        canvas.DrawFilledRectangle(Color.Navy, 0, 0, 128, 96);
+        if (patterned)
+        {
+            for (int row = 0; row < 96; row++)
+                for (int col = 0; col < 128; col++)
+                    canvas.DrawPoint(((row + col) & 1) == 0 ? Color.Navy : Color.Maroon, col, row);
+        }
+        else
+            canvas.DrawFilledRectangle(Color.Navy, 0, 0, 128, 96);
         CursorDamageRenderer.DisableOverlapReuseForBenchmark = disabled;
         var mover = new CursorDamageRenderer(canvas);
         mover.DrawAfterScene(40, 40);
@@ -246,32 +253,70 @@ internal static class CursorDamageSmoke
         return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
     }
 
+    private static void VerifyMixedUnderlay()
+    {
+        var baselineCanvas = new Canvas(160, 100);
+        var optimizedCanvas = new Canvas(160, 100);
+        for (int y = 0; y < 100; y++)
+            for (int x = 0; x < 160; x++)
+            {
+                Color pixel = x < 80 && ((x + y) & 1) != 0 ? Color.Maroon : Color.Navy;
+                baselineCanvas.DrawPoint(pixel, x, y);
+                optimizedCanvas.DrawPoint(pixel, x, y);
+            }
+        var baseline = new CursorDamageRenderer(baselineCanvas);
+        var optimized = new CursorDamageRenderer(optimizedCanvas);
+        int[] xs = { 40, 41, 55, 69, 78, 82, 96, 105, 108, 106, 95, 79, 68, 50, 45, 88, 109, 40 };
+        try
+        {
+            baseline.DrawAfterScene(xs[0], 40);
+            optimized.DrawAfterScene(xs[0], 40);
+            for (int i = 1; i < xs.Length; i++)
+            {
+                CursorDamageRenderer.DisableOverlapReuseForBenchmark = true;
+                if (!baseline.TryMove(xs[i], 40)) throw new Exception("mixed baseline move " + i);
+                CursorDamageRenderer.DisableOverlapReuseForBenchmark = false;
+                if (!optimized.TryMove(xs[i], 40)) throw new Exception("mixed optimized move " + i);
+                SamePixels(baselineCanvas, optimizedCanvas, "mixed underlay transition #" + i);
+            }
+        }
+        finally
+        {
+            CursorDamageRenderer.DisableOverlapReuseForBenchmark = false;
+        }
+        Console.WriteLine("Cursor overlap mixed patterned/flat underlay transitions: exact framebuffer.");
+    }
+
     private static void BenchmarkOverlap()
     {
         try
         {
-            TimeOverlap(true, 200);
-            TimeOverlap(false, 200);
-            double[] before = new double[7], after = new double[7];
-            for (int i = 0; i < 7; i++)
+            foreach (bool patterned in new[] { false, true })
             {
-                if ((i & 1) == 0)
+                TimeOverlap(true, 200, patterned);
+                TimeOverlap(false, 200, patterned);
+                double[] before = new double[7], after = new double[7];
+                for (int i = 0; i < 7; i++)
                 {
-                    before[i] = TimeOverlap(true, 4000);
-                    after[i] = TimeOverlap(false, 4000);
+                    if ((i & 1) == 0)
+                    {
+                        before[i] = TimeOverlap(true, 4000, patterned);
+                        after[i] = TimeOverlap(false, 4000, patterned);
+                    }
+                    else
+                    {
+                        after[i] = TimeOverlap(false, 4000, patterned);
+                        before[i] = TimeOverlap(true, 4000, patterned);
+                    }
                 }
-                else
-                {
-                    after[i] = TimeOverlap(false, 4000);
-                    before[i] = TimeOverlap(true, 4000);
-                }
+                Array.Sort(before);
+                Array.Sort(after);
+                Console.WriteLine("Host .NET cursor overlap " + (patterned ? "patterned" : "flat") +
+                    ", 4000 small moves, median 7 A/B: " +
+                    before[3].ToString("F3") + " -> " + after[3].ToString("F3") +
+                    " ms, ratio=" + (before[3] / after[3]).ToString("F2") +
+                    "x (fake Canvas, not QEMU FPS).");
             }
-            Array.Sort(before);
-            Array.Sort(after);
-            Console.WriteLine("Host .NET cursor overlap, 4000 small moves, median 7 A/B: " +
-                before[3].ToString("F3") + " -> " + after[3].ToString("F3") +
-                " ms, ratio=" + (before[3] / after[3]).ToString("F2") +
-                "x (fake Canvas, not QEMU FPS).");
         }
         finally
         {
@@ -401,6 +446,7 @@ internal static class CursorDamageSmoke
         VerifyUniformAndPatterned();
         VerifyOverlapReadbacks(false);
         VerifyOverlapReadbacks(true);
+        VerifyMixedUnderlay();
         BenchmarkOverlap();
         BenchmarkUniformCurrent();
         BenchmarkPatterned();
