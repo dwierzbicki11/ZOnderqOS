@@ -32,6 +32,7 @@ namespace Cosmos.Kernel.System.Audio
         public bool ThrowOnStop;
         public bool StallWrites;
         public Action OnStart;
+        public Action OnWrite;
 
         public void Start()
         {
@@ -46,6 +47,7 @@ namespace Cosmos.Kernel.System.Audio
             if (ThrowOnWrite) throw new InvalidOperationException("simulated write failure");
             if (StallWrites) return 0;
             WrittenBytes += bytes.Length;
+            OnWrite?.Invoke();
             return bytes.Length;
         }
 
@@ -113,6 +115,50 @@ internal static class AudioDirectProbeSmoke
             check(good.StartCalls == 1 && good.StopCalls == 1 &&
                 !good.IsRunning && good.WrittenBytes == Pcm.Length + 16384 &&
                 waits == 1, "direct probe stops after one silent ring and settle");
+
+            // Start may change the published sample rate or PCM format.
+            // No bytes may reach a codec whose format changed during Start.
+            var startRateDrift = new Device();
+            startRateDrift.OnStart = () => startRateDrift.SampleRate = 44100;
+            check(!AudioProbeDirectPlayback.TryPlay(startRateDrift, Pcm, 48000) &&
+                startRateDrift.StartCalls == 1 && startRateDrift.StopCalls == 1 &&
+                startRateDrift.WrittenBytes == 0 && !startRateDrift.IsRunning,
+                "direct probe refuses sample-rate drift during Start before PCM write");
+
+            var startFormatDrift = new Device();
+            startFormatDrift.OnStart = () => startFormatDrift.Format.ChannelSize = 1;
+            check(!AudioProbeDirectPlayback.TryPlay(startFormatDrift, Pcm, 48000) &&
+                startFormatDrift.StartCalls == 1 && startFormatDrift.StopCalls == 1 &&
+                startFormatDrift.WrittenBytes == 0 && !startFormatDrift.IsRunning,
+                "direct probe refuses sample-width drift during Start");
+
+            // If the codec changes format after accepting the first PCM
+            // fragment, do not write the subsequent silent ring at the wrong
+            // sample rate. The device must still be stopped in finally.
+            var writeRateDrift = new Device();
+            writeRateDrift.OnWrite = () => writeRateDrift.SampleRate = 44100;
+            check(!AudioProbeDirectPlayback.TryPlay(writeRateDrift, Pcm, 48000) &&
+                writeRateDrift.StartCalls == 1 && writeRateDrift.StopCalls == 1 &&
+                writeRateDrift.WrittenBytes == Pcm.Length && !writeRateDrift.IsRunning,
+                "direct probe aborts on format drift after first accepted write");
+
+            // Format drift during the 86ms settle is also a failure, even
+            // though all bytes were already accepted by the fake ring.
+            var settleRateDrift = new Device();
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "drift during final settle uses bounded wait");
+                settleRateDrift.SampleRate = 44100;
+            };
+            check(!AudioProbeDirectPlayback.TryPlay(settleRateDrift, Pcm, 48000) &&
+                settleRateDrift.StartCalls == 1 && settleRateDrift.StopCalls == 1 &&
+                settleRateDrift.WrittenBytes == Pcm.Length + 16384,
+                "direct probe rejects changed format after final settle");
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "normal settle remains one HDA ring period");
+                waits++;
+            };
 
             // A nested diagnostic can arrive before Start marks the output
             // running. Player == null is not an atomic ownership claim; the
