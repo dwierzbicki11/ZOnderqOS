@@ -104,5 +104,55 @@ class InvisibleSelectionContract(unittest.TestCase):
                     self.assertEqual(visible_rows(width, height), 0)
 
 
+    def test_compact_menu_disables_mutations_without_visible_destination(self):
+        actions = section("private bool ContextActionEnabled(int item)",
+                          "private void ExecuteContextAction(int item)")
+        self.assertIn("if (GridRowsForView == 0 && item >= 0 && item <= 4)", actions)
+        self.assertLess(actions.index("GridRowsForView == 0"),
+                        actions.index("return FileClipboard.HasItem;"))
+        self.assertIn("return item >= 3 && item < ContextMenuItemCount;", actions)
+
+        # At 99-121px of client height the compact context menu fits,
+        # but the first file tile (40px minimum) does not.
+        for height in range(99, 122):
+            self.assertEqual(visible_rows(300, height), 0)
+        self.assertGreater(visible_rows(300, 122), 0)
+
+    def test_creation_entrypoints_reject_hidden_grid(self):
+        begin = section("private void BeginCreate(int mode)",
+                        "private void FinishCreate()")
+        finish = section("private void FinishCreate()",
+                         "private void RefreshAll()")
+        for body in (begin, finish):
+            self.assertIn("if (GridRowsForView == 0)", body)
+        self.assertLess(begin.index("if (GridRowsForView == 0)"),
+                        begin.index("dialogMode = mode;"))
+        self.assertLess(finish.index("if (GridRowsForView == 0)"),
+                        finish.index("File.WriteAllText(path,"))
+        self.assertIn("dialogMode = 0;", finish)
+        self.assertIn('dialogName = "";', finish)
+
+        geometry = section("private void SyncViewGeometry()",
+                           "public override void HandleMouse(int x, int y")
+        self.assertIn("if (dialogMode != 0 && GridRowsForView == 0)", geometry)
+        cancel = geometry.split(
+            "if (dialogMode != 0 && GridRowsForView == 0)", 1
+        )[1].split("if (contextMenuVisible && !CanShowContextMenu)", 1)[0]
+        self.assertIn("dialogMode = 0;", cancel)
+        self.assertIn('dialogName = "";', cancel)
+        self.assertIn("ResetClickSequence();", cancel)
+
+    def test_context_menu_paint_matches_disabled_action_policy(self):
+        menu = section("private void Menu(Canvas canvas)",
+                       "private void DrawMenuItem(Canvas canvas")
+        self.assertIn("bool canEdit = app.GridRowsForView > 0;", menu)
+        self.assertIn("canEdit && FileClipboard.HasItem", menu)
+        self.assertIn('"New file", "", x, y + 3 * rowHeight, canEdit, 3', menu)
+        self.assertIn('"New folder", "", x, y + 4 * rowHeight, canEdit, 4', menu)
+        # Refresh and Go up remain usable at tiny resolutions.
+        self.assertIn('"Refresh", "F5", x, y + 5 * rowHeight, true, 5', menu)
+        self.assertIn('"Go up", "Backspace", x, y + 6 * rowHeight, true, 6', menu)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
