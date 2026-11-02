@@ -268,6 +268,36 @@ internal static class Program
             " batched command output vs previous production C# implementation");
     }
 
+    private static void VerifyScrollTrimClamping()
+    {
+        int checks = 0;
+        foreach (int width in new[] { 80, 240, 820 })
+        foreach (int height in new[] { 160, 520 })
+        {
+            var old = new LegacyOutput(width, height);
+            var current = new TerminalBox(0, 0, width, height) { IsFocused = true };
+            for (int i = 0; i < 400; i++)
+            {
+                string line = "history " + i;
+                old.PrintLine(line);
+                current.PrintLine(line);
+            }
+            old.PageUp();
+            current.HandleKey(new KeyEvent { Key = ConsoleKeyEx.PageUp });
+            Same(current, old, "before history trim");
+            for (int i = 0; i < 3; i++)
+            {
+                string longLine = new string((char)('A' + i), 2500);
+                old.PrintLine(longLine);
+                current.PrintLine(longLine);
+                Same(current, old, "history trim viewport clamp");
+                checks++;
+            }
+        }
+        Console.WriteLine("PASS: " + checks +
+            " scrolled history trim clamp cases vs legacy C# scrollbar state");
+    }
+
     // Compare the production batched path against the previous per-row
     // scrollbar updates while a user reads older lines. Cross the 400-line
     // history cap repeatedly; a clear marker must restore auto-follow.
@@ -446,6 +476,7 @@ internal static class Program
     {
         Verify();
         VerifyCommandBatch();
+        VerifyScrollTrimClamping();
         VerifyScrolledCommandBatch();
         SlicedOutputSmoke.Run();
         TrimmedSliceSmoke.Run();
