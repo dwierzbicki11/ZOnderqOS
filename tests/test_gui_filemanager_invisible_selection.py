@@ -51,8 +51,12 @@ class InvisibleSelectionContract(unittest.TestCase):
         geometry = section("private void SyncViewGeometry()",
                            "public override void HandleMouse(int x, int y")
         self.assertIn("Window.EnsureDesktopBounds();", geometry)
+        self.assertLess(geometry.index("int previousViewX = view.X;"),
+                        geometry.index("Window.EnsureDesktopBounds();"))
         self.assertLess(geometry.index("Window.EnsureDesktopBounds();"),
                         geometry.index("view.Width = Math.Max(1, Window.Width - 20);"))
+        self.assertLess(geometry.index("Window.EnsureDesktopBounds();"),
+                        geometry.index("if (view.X != previousViewX || view.Y != previousViewY)"))
         window = (Path(__file__).resolve().parents[1] /
                   "source/GUI/Window.cs").read_text(encoding="utf-8")
         public_sync = window.split("public void EnsureDesktopBounds()", 1)[1].split(
