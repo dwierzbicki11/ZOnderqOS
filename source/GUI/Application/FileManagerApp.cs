@@ -153,14 +153,17 @@ namespace ZonderqOS.GUI.Apps
 
         private void SyncViewGeometry()
         {
-            // Keyboard input may be the first event after a resolution change.
-            // Reflow the owning window BEFORE measuring its client; otherwise
-            // Enter/Ctrl+V can use stale tile geometry from the old display.
-            Window.EnsureDesktopBounds();
+            // Snapshot before reflow: Window.MoveTo also moves child widgets.
+            // Capturing after it would miss a display-induced window move and
+            // preserve an obsolete file double-click anchor.
             int previousViewX = view.X;
             int previousViewY = view.Y;
             int previousViewWidth = view.Width;
             int previousViewHeight = view.Height;
+            // Keyboard input may be the first event after a resolution change.
+            // Reflow the owning window BEFORE measuring its client; otherwise
+            // Enter/Ctrl+V can use stale tile geometry from the old display.
+            Window.EnsureDesktopBounds();
             view.X = Window.X + 10;
             view.Y = Window.Y + 40;
             view.Width = Math.Max(1, Window.Width - 20);
