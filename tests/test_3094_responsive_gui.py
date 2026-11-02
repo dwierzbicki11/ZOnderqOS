@@ -127,6 +127,53 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("(!leftButtonDown || previewBitmap == null)", render)
         self.assertIn("previewWidth > areaWidth || previewHeight > areaHeight", render)
 
+    def test_image_viewer_preview_failure_is_contained_and_rate_limited(self):
+        # Source-level contract, not an emulated Cosmos OOM injection.
+        render = IMAGE_VIEWER.split("private void RenderViewport(Canvas canvas)", 1)[1].split(
+            "private void RenderFooter(Canvas canvas)", 1
+        )[0]
+        prepare = IMAGE_VIEWER.split("private void PreparePreview(int areaWidth, int areaHeight)", 1)[1].split(
+            "private static int CompositeOnBackground", 1
+        )[0]
+        load = IMAGE_VIEWER.split("private void LoadImage(string path, bool rebuildSiblings)", 1)[1].split(
+            "private bool IsCurrentDirectoryInSiblingList()", 1
+        )[0]
+        self.assertIn("private bool previewFailed;", IMAGE_VIEWER)
+        self.assertIn("bool areaChanged = preparedAreaWidth != areaWidth || preparedAreaHeight != areaHeight;", render)
+        self.assertIn("(previewBitmap == null && !previewFailed)", render)
+        self.assertIn("try\n                {\n                    PreparePreview(areaWidth, areaHeight);", render)
+        self.assertIn("catch (Exception)", render)
+        self.assertIn("previewFailed = true;", render)
+        self.assertIn("previewDirty = false;", render)
+        self.assertIn("preparedAreaWidth = areaWidth;", render)
+        self.assertIn("preparedAreaHeight = areaHeight;", render)
+        self.assertIn("previewFailed = false;", prepare)
+        self.assertIn("previewFailed = false;", load)
+        self.assertIn("destination == null", prepare)
+        self.assertIn("previewFailed = true;", prepare)
+
+        # Independent boolean model: a failed preview without a bitmap
+        # must not cause repeated attempts on 120 identical GUI frames.
+        attempts = 0
+        failed = False
+        dirty = True
+        prepared = (-1, -1)
+        bitmap = False
+        for frame in range(120):
+            area = (780, 420)
+            changed = prepared != area
+            if (not False or not bitmap) and (dirty or changed or (not bitmap and not failed)):
+                attempts += 1
+                failed, dirty, prepared = True, False, area
+        self.assertEqual(attempts, 1)
+        # A new viewport size or explicit zoom/rotation action retries.
+        for area, dirty in (((800, 440), False), ((800, 440), True)):
+            changed = prepared != area
+            if dirty or changed or (not bitmap and not failed):
+                attempts += 1
+                failed, dirty, prepared = True, False, area
+        self.assertEqual(attempts, 3)
+
     def test_image_viewer_zoom_crop_and_resize_never_overpaint_client(self):
         self.assertIn("int visibleWidth = System.Math.Min(targetWidth, areaWidth);", IMAGE_VIEWER)
         self.assertIn("int visibleHeight = System.Math.Min(targetHeight, areaHeight);", IMAGE_VIEWER)
