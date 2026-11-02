@@ -550,6 +550,17 @@ namespace ZonderqOS
                     Log("[NET3095-N6][FAIL] E1000E DriverKit health invalid after TX/RX stress");
                     return;
                 }
+                // Only the isolated N6 kernel arms this read-only link-flap
+                // diagnostic. The ordinary N6 test never changes QEMU's link;
+                // an opt-in host QMP test may drive a down/up transition.
+                s_linkCycleMac = sourceMac;
+                s_linkCycleIp = initialIp;
+                s_linkCycleMask = initialMask;
+                s_linkCycleGateway = initialGateway;
+                s_linkCycleResources = baselineResources;
+                s_linkCycleIrqSources = baselineIrqSources;
+                s_linkCycleArmed = true;
+                Log("[NET3095-N6] LINK_CYCLE_ARMED=YES");
 #endif
             }
             catch (Exception ex)
@@ -965,12 +976,94 @@ namespace ZonderqOS
 
         private static int s_heartbeat;
 
+#if ZONDERQ_NETWORK_N6_HTTP
+        private static bool s_linkCycleArmed;
+        private static bool s_linkDownObserved;
+        private static bool s_linkRecoveryAttempted;
+        private static string s_linkCycleMac = "";
+        private static string s_linkCycleIp = "";
+        private static string s_linkCycleMask = "";
+        private static string s_linkCycleGateway = "";
+        private static int s_linkCycleResources;
+        private static int s_linkCycleIrqSources;
+
+        // This is a diagnostic of the *published* E1000E link state, not
+        // direct access to PCI registers or a claim that its ISR executed.
+        // The host independently checks QMP replies and the post-up PCAP.
+        private static void PollLinkCycle()
+        {
+            if (!s_linkCycleArmed || s_linkRecoveryAttempted)
+                return;
+            NetworkAdapter adapter = NetworkManager.Primary;
+            if (!NetworkManager.IsEnabled || !NetworkManager.IsInitialized ||
+                NetworkManager.DeviceCount != 1 || !adapter.IsValid ||
+                adapter.Name != "e1000e" ||
+                (adapter.MacAddress?.ToString() ?? "") != s_linkCycleMac)
+            {
+                s_linkRecoveryAttempted = true;
+                Log("[NET3095-N6][FAIL] Link-cycle PCI binding/MAC disappeared");
+                return;
+            }
+            if (!adapter.LinkUp)
+            {
+                if (!s_linkDownObserved)
+                {
+                    s_linkDownObserved = true;
+                    Log("[NET3095-N6] LINK_DOWN_OBSERVED=YES");
+                }
+                return;
+            }
+            if (!s_linkDownObserved)
+                return;
+            s_linkRecoveryAttempted = true;
+            Log("[NET3095-N6] LINK_UP_OBSERVED=YES");
+            if (!IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
+                !IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,
+                    s_linkCycleMask, s_linkCycleGateway))
+            {
+                Log("[NET3095-N6][FAIL] Link restored without stable PCI/IPv4 state");
+                return;
+            }
+            try
+            {
+                IcmpClient ping = new IcmpClient();
+                try
+                {
+                    ping.Connect(new Address4(10, 0, 2, 2));
+                    Log("[NET3095-N6] LINK_RECOVERY_ICMP_ATTEMPT=START");
+                    ping.SendEcho(id: 0x3098, sequence: 1);
+                    EndPoint remote = new EndPoint(Address4.Zero, 0);
+                    int elapsedMs = ping.Receive(ref remote, 5000);
+                    if (elapsedMs < 0 || remote.Address.ToString() != "10.0.2.2" ||
+                        !IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
+                        !IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,
+                            s_linkCycleMask, s_linkCycleGateway))
+                    {
+                        Log("[NET3095-N6][FAIL] Link recovery ICMP or PCI/lease check failed");
+                        return;
+                    }
+                    Log("[NET3095-N6] LINK_RECOVERY_ICMP_RTT seq=1 elapsed_ms=" + elapsedMs);
+                    Log("[NET3095-N6] LINK_RECOVERY_ICMP=PASS from=10.0.2.2 seq=1");
+                }
+                finally
+                {
+                    ping.Close();
+                }
+            }
+            catch (Exception ex)
+            {
+                Log("[NET3095-N6][FAIL] Link recovery exception " + ex.GetType().Name);
+            }
+        }
+#endif
+
         protected override void Run()
         {
-            // Prove the managed guest is still scheduling after a successful
-            // network exchange. A live QEMU process alone is not enough:
-            // -no-shutdown can leave a frozen or halted guest behind.
+            // A live QEMU process is not proof of managed guest progress.
             Thread.Sleep(1000);
+#if ZONDERQ_NETWORK_N6_HTTP
+            PollLinkCycle();
+#endif
             s_heartbeat++;
             Log("[NET3095-N1] HEARTBEAT=" + s_heartbeat);
         }
