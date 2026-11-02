@@ -1047,6 +1047,17 @@ namespace ZonderqOS
                         received += read;
                         if (firstByteTicks < 0)
                             firstByteTicks = Stopwatch.GetTimestamp() - start;
+                        // A partial TCP response may span multiple DMA/RX
+                        // completions. Detect a transient NIC withdrawal,
+                        // link loss or lease change at each successful Read,
+                        // not only after the final byte is received.
+                        if (!IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
+                            !IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,
+                                s_linkCycleMask, s_linkCycleGateway))
+                        {
+                            Log("[NET3095-N6][FAIL] Link TCP PCI/lease changed during RX");
+                            return false;
+                        }
                     }
                     // A final successful Read() can cross the ten-second
                     // budget; checking only before Read() accepted slow peers.

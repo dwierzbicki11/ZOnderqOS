@@ -181,6 +181,13 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertLess(timing, success)
         self.assertIn("RemainingSocketReadTimeoutMs(\n                            elapsed, frequency, 10)", reconnect)
         self.assertIn("firstByteTicks = Stopwatch.GetTimestamp() - start;", reconnect)
+        per_read = reconnect.index("Link TCP PCI/lease changed during RX", read)
+        self.assertLess(read, per_read)
+        self.assertLess(per_read, completed)
+        self.assertIn("IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources)",
+                      reconnect[read:completed])
+        self.assertIn("IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,",
+                      reconnect[read:completed])
         self.assertEqual(reconnect.count("Link TCP total RX deadline exceeded"), 2)
 
     def test_n6_http_rx_latency_is_measured_not_claimed_as_irq(self):
