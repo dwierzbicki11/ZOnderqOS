@@ -692,6 +692,45 @@ namespace ZonderqOS.SystemCore
         }
 
         /// <summary>
+        /// Independent 440 Hz left / 880 Hz right WAVE_FORMAT_EXTENSIBLE
+        /// stereo PCM24-in-32 at 44.1 kHz. The low container byte is
+        /// padding, the next byte is valid precision and the high 16 bits
+        /// retain each channel's signed PCM. The bounded read-only loader
+        /// resamples to 48 kHz before the stock HDA output is used.
+        /// This is diskless, opt-in and does not configure DMA or IRQ.
+        /// </summary>
+        public static bool PlayWaveExtensible24In32Stereo44100TestTone()
+        {
+            try
+            {
+                byte[] source = AudioTonePcm.GenerateDualSquareStereo16(44100, 440, 880, 250, 4096);
+                byte[] stereo32 = new byte[source.Length * 2];
+                for (int frame = 0; frame < source.Length / 4; frame++)
+                {
+                    int src = frame * 4;
+                    int dst = frame * 8;
+                    stereo32[dst] = 0;       // unused low eight bits, left
+                    stereo32[dst + 1] = 0x5A; // valid low precision, left
+                    stereo32[dst + 2] = source[src];
+                    stereo32[dst + 3] = source[src + 1];
+                    stereo32[dst + 4] = 0;       // unused low eight bits, right
+                    stereo32[dst + 5] = 0xA5;    // distinct valid precision, right
+                    stereo32[dst + 6] = source[src + 2];
+                    stereo32[dst + 7] = source[src + 3];
+                }
+                byte[] wave = AudioWavePcm.EncodeExtensiblePcm32AtRate(stereo32, 44100, 2, 24);
+                Console.WriteLine("[AUDIO] WAV extensible stereo 24-in-32 44100Hz 440/880Hz -> 48000Hz HDA");
+                using (var input = new MemoryStream(wave, false))
+                    return PlayWaveFromReadOnlyStream(input);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine("[AUDIO] WAV EXTENSIBLE STEREO 44100 ERROR: " + ex.Message);
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Caller owns the stream and is responsible for obtaining it from an
         /// explicitly authorized read-only source. No filesystem is opened here.
         /// The bounded loader rejects oversized, truncated and malformed WAVs.

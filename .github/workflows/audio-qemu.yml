@@ -331,6 +331,10 @@ jobs:
         run: |
           python3 tools/smoke-audio-qemu.py \
             output-3095/ZonderqOS-3095-audio.iso audio-qemu-extensible24in32-out --boot-seconds 45 --command wavext24in32
+      - name: Boot and capture resampled 44.1kHz extensible stereo 24-in-32 (440/880 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-extensible-stereo44-out --boot-seconds 45 --command wavextstereo44
       - name: Boot and capture right-only 880 Hz balance (left must be silent)
         run: |
           python3 tools/smoke-audio-qemu.py \
@@ -406,6 +410,7 @@ jobs:
           tail -n 200 audio-qemu-extensible-out/serial.log audio-qemu-extensible-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-extensible20-out/serial.log audio-qemu-extensible20-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-extensible24in32-out/serial.log audio-qemu-extensible24in32-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-extensible-stereo44-out/serial.log audio-qemu-extensible-stereo44-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-quiet-out/serial.log audio-qemu-quiet-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-muted-out/serial.log audio-qemu-muted-out/qemu.stderr.log 2>/dev/null || true
           tail -n 200 audio-qemu-balance-out/serial.log audio-qemu-balance-out/qemu.stderr.log 2>/dev/null || true
@@ -511,6 +516,9 @@ jobs:
             audio-qemu-extensible24in32-out/*.log
             audio-qemu-extensible24in32-out/*.wav
             audio-qemu-extensible24in32-out/*.ppm
+            audio-qemu-extensible-stereo44-out/*.log
+            audio-qemu-extensible-stereo44-out/*.wav
+            audio-qemu-extensible-stereo44-out/*.ppm
             audio-qemu-quiet-out/*.log
             audio-qemu-quiet-out/*.wav
             audio-qemu-quiet-out/*.ppm

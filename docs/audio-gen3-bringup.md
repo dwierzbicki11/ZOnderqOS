@@ -565,3 +565,16 @@ container bits. No external file, host disk, ZONDERQDATA mount, DMA/IRQ
 patch, production GUI audio, custom SMP/SMT or Cosmos version change is
 introduced. **Do not claim the new captured PCM path passed until the
 new commit's QEMU workflow completes successfully.**
+
+### Extensible stereo 24-in-32 at 44.1 kHz (opt-in, diskless)
+
+The `wavextstereo44` probe generates independent 440 Hz left and 880 Hz right
+square waves in RAM as 44.1 kHz WAVE_FORMAT_EXTENSIBLE PCM (24 valid bits in
+32-bit containers). The low padding byte is zero, and each channel has a
+different nonzero low valid-precision byte. The bounded read-only WAV decoder
+converts and resamples the samples to 48 kHz stereo PCM16 before stock Cosmos
+HDA playback. Host C# tests compare every decoded output byte against an
+independent PCM16 resampling reference and reject malformed padding and speaker
+masks. QEMU must capture both distinct channel pitches to pass; boot, static
+contracts and C# tests alone are insufficient. This does not enable audio in
+the production GUI or change stock Cosmos 3.0.95, DMA/IRQ, disk policy or SMP.

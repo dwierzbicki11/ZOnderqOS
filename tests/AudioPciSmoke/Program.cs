@@ -877,6 +877,51 @@ static class Test
             Expect(decoded24in32at44100[i] == expected24in32at44100[i],
                 "24-in-32 mono 44.1k resampler signed samples");
 
+        // Real QEMU stereo extensible 24-in-32 fixture: two independent
+        // signed 44.1kHz channels must survive 24->16 conversion and
+        // 44.1->48kHz interpolation byte-for-byte. Low valid precision
+        // differs between channels and unused container bits remain zero.
+        byte[] sourceExtStereo44 = AudioTonePcm.GenerateDualSquareStereo16(
+            44100, 440, 880, 250, 4096);
+        byte[] packedExtStereo44 = new byte[sourceExtStereo44.Length * 2];
+        for (int frame = 0; frame < sourceExtStereo44.Length / 4; frame++)
+        {
+            int src = frame * 4;
+            int dst = frame * 8;
+            packedExtStereo44[dst] = 0;
+            packedExtStereo44[dst + 1] = 0x5A;
+            packedExtStereo44[dst + 2] = sourceExtStereo44[src];
+            packedExtStereo44[dst + 3] = sourceExtStereo44[src + 1];
+            packedExtStereo44[dst + 4] = 0;
+            packedExtStereo44[dst + 5] = 0xA5;
+            packedExtStereo44[dst + 6] = sourceExtStereo44[src + 2];
+            packedExtStereo44[dst + 7] = sourceExtStereo44[src + 3];
+        }
+        byte[] waveExtStereo44 = AudioWavePcm.EncodeExtensiblePcm32AtRate(
+            packedExtStereo44, 44100, 2, 24);
+        byte[] decodedExtStereo44;
+        using (var inputExtStereo44 = new MemoryStream(waveExtStereo44, false))
+            decodedExtStereo44 = AudioWaveInput.DecodeBounded(inputExtStereo44);
+        byte[] expectedExtStereo44 = AudioWavePcm.DecodeStereo16(
+            AudioWavePcm.EncodeStereo16AtRate(sourceExtStereo44, 44100));
+        Expect(decodedExtStereo44.Length == expectedExtStereo44.Length,
+            "extensible 24-in-32 44.1k stereo duration");
+        for (int i = 0; i < expectedExtStereo44.Length; i++)
+            Expect(decodedExtStereo44[i] == expectedExtStereo44[i],
+                "extensible 24-in-32 44.1k stereo sample/channel match");
+        byte[] badExtStereoPadding = (byte[])waveExtStereo44.Clone();
+        badExtStereoPadding[68 + 4] = 1; // right channel's unused low byte
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(badExtStereoPadding); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "extensible 24-in-32 stereo rejects right-channel padding");
+        byte[] badExtStereoMask = (byte[])waveExtStereo44.Clone();
+        badExtStereoMask[40] = 4; // mono front-center mask on a stereo container
+        rejected = false;
+        try { AudioWavePcm.DecodeStereo16(badExtStereoMask); }
+        catch (ArgumentException) { rejected = true; }
+        Expect(rejected, "extensible 24-in-32 stereo rejects mismatched speaker mask");
+
         byte[] stereo32 = AudioWavePcm.EncodePcm32AtRate(pcm32, 48000, 2);
         byte[] decoded32 = AudioWavePcm.DecodeStereo16(stereo32);
         Expect(decoded32.Length == pcm.Length, "PCM32 stereo output frame count");

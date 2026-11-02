@@ -35,7 +35,7 @@ namespace ZonderqOS
                 Console.WriteLine();
 #if ZONDERQ_AUDIO_PROBE
                 Console.WriteLine("AUDIO HDA/PCM probe enabled: no disk mounts or account writes.");
-                Console.WriteLine("Commands: audiodiag | audioinfo | mixqueue1ms | mixsequence1ms | mixqueueasync | mixsequenceasync | mixqueueboot | mixsequenceboot | tone | wavtone | wavmono | stereosplit | mix | wav44 | wav8k | wav11k | wav16k | wav22k | wav24k | wav32k | wavstereo32 | wav8 | wav24 | wav32 | wavext | wavext20 | wavext24in32 | volume N | balance N | fade N | inputscan | volumes | help");
+                Console.WriteLine("Commands: audiodiag | audioinfo | mixqueue1ms | mixsequence1ms | mixqueueasync | mixsequenceasync | mixqueueboot | mixsequenceboot | tone | wavtone | wavmono | stereosplit | mix | wav44 | wav8k | wav11k | wav16k | wav22k | wav24k | wav32k | wavstereo32 | wav8 | wav24 | wav32 | wavext | wavext20 | wavext24in32 | wavextstereo44 | volume N | balance N | fade N | inputscan | volumes | help");
                 AudioRuntimeDiagnostics.PrintStatus();
 #else
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
@@ -411,6 +411,12 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "wavextstereo44")
+            {
+                AudioRuntimeDiagnostics.PlayWaveExtensible24In32Stereo44100TestTone();
+                return;
+            }
+
             if (command == "balance")
             {
                 Console.WriteLine("[AUDIO] software balance=" + AudioRuntimeDiagnostics.BalancePercent);
@@ -552,6 +558,7 @@ namespace ZonderqOS
                 Console.WriteLine("wav8      - decode RAM-only unsigned PCM8 mono WAV to stereo PCM16");
                 Console.WriteLine("wavext20  - decode RAM-only extensible PCM20-in-24 mono WAV");
                 Console.WriteLine("wavext24in32 - decode RAM-only extensible PCM24-in-32 mono WAV");
+                Console.WriteLine("wavextstereo44 - resample extensible stereo PCM24-in-32 44.1kHz 440/880Hz");
                 Console.WriteLine("volume N  - software PCM gain 0..100%, opt-in AUDIO probe only");
                 Console.WriteLine("balance N - software stereo balance -100..100, opt-in only");
                 Console.WriteLine("fade N    - symmetric 0..50 ms PCM fade, opt-in only");
