@@ -102,7 +102,7 @@ class ResponsiveGui3094(unittest.TestCase):
         )[0]
         # FAT32 can disappear while a sibling is being opened. Do not clear
         # the previous image, path, preview or title on any failure.
-        self.assertLess(load.index("try\\n"), load.index("if (!File.Exists(path))"))
+        self.assertLess(load.index("try"), load.index("if (!File.Exists(path))"))
         self.assertLess(load.index("string name = Path.GetFileName(path);"),
                         load.index("sourcePixels = pixels;"))
         self.assertLess(load.index("sourcePixels = pixels;"),
