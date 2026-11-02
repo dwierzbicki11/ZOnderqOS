@@ -146,7 +146,7 @@ class EvidenceSafety(unittest.TestCase):
                 fake_bin.mkdir()
                 called = directory / "qemu-called"
                 fake_qemu = fake_bin / "qemu-system-x86_64"
-                fake_qemu.write_text("#!/bin/sh\\ntouch '" + str(called) + "'\\nexit 99\\n")
+                fake_qemu.write_text("#!/bin/sh\ntouch '" + str(called) + "'\nexit 99\n")
                 fake_qemu.chmod(0o755)
                 iso = directory / "test.iso"
                 iso.write_bytes(b"dummy ISO")
