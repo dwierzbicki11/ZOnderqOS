@@ -83,6 +83,7 @@ namespace ZonderqOS.SystemCore
             internal int Percent;
             internal KernelThreadState State;
             internal string Name;
+            internal string Prefix;
             internal string Line;
         }
 
@@ -285,15 +286,23 @@ namespace ZonderqOS.SystemCore
                 string.Equals(cached.Name, name, StringComparison.Ordinal))
                 return cached.Line;
 
-            string line = (pid == 0 ? "-" : pid.ToString()).PadLeft(5) + " " +
-                thread.Id.ToString().PadLeft(6) + " " +
-                thread.CpuId.ToString().PadLeft(4) + "  " +
-                ThreadStateText(thread.State) + " " +
+            // TID, CPU and PID remain stable even while the runtime counter
+            // changes on every refresh. Keep their padded prefix per scheduler
+            // slot; do not rebuild three numeric strings for each CPU% update.
+            // Slot invalidation in Refresh clears this prefix on thread exit.
+            string prefix = cached.Prefix != null && cached.Tid == thread.Id &&
+                cached.CpuId == thread.CpuId && cached.Pid == pid
+                ? cached.Prefix
+                : (pid == 0 ? "-" : pid.ToString()).PadLeft(5) + " " +
+                    thread.Id.ToString().PadLeft(6) + " " +
+                    thread.CpuId.ToString().PadLeft(4) + "  ";
+            string line = prefix + ThreadStateText(thread.State) + " " +
                 PaddedCpuPercentText(percent) + "  " + name;
             cachedThreadRows[slot] = new CachedThreadRow
             {
                 Tid = thread.Id, CpuId = thread.CpuId, Pid = pid,
-                Percent = percent, State = thread.State, Name = name, Line = line
+                Percent = percent, State = thread.State, Name = name,
+                Prefix = prefix, Line = line
             };
             return line;
         }
