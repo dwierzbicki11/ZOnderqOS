@@ -301,6 +301,16 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            // A right-button hold must never turn a fresh left press into a
+            // volume mount/unmount, toolbar action or file double-click.
+            // This includes a chord begun before any context menu is open.
+            // Consume it before Window.HandleMouse can drag/close the window.
+            if (right && left)
+            {
+                ResetClickSequence();
+                return;
+            }
+
             Window.HandleMouse(mouseX, mouseY, left, oldLeft);
             if (!Window.Visible || Window.IsMinimized || !IsRunning)
                 return;
