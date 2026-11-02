@@ -333,6 +333,32 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
+        /// <summary>
+        /// Narrow an existing filtered view when the new query extends the
+        /// previous query (OrdinalIgnoreCase). Each new match must already
+        /// exist in the old view, so only the visible subset needs scanning.
+        /// Compact in place: preserve reference order, reuse capacity and
+        /// release discarded entries via List.RemoveRange.
+        /// The caller must fall back to Filter on deletion, replacement or
+        /// directory refresh; this method never enumerates the filesystem.
+        /// </summary>
+        internal static void FilterNarrowed(List<FileEntry> visible, string search)
+        {
+            if (string.IsNullOrEmpty(search))
+                return;
+
+            int write = 0;
+            int count = visible.Count;
+            for (int read = 0; read < count; read++)
+            {
+                FileEntry item = visible[read];
+                if (item.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
+                    visible[write++] = item;
+            }
+            if (write < count)
+                visible.RemoveRange(write, count - write);
+        }
+
         private static int Compare(FileEntry a, FileEntry b)
         {
             if (a.IsDirectory != b.IsDirectory)
