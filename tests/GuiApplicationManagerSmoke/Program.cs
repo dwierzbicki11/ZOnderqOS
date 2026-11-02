@@ -29,6 +29,8 @@ namespace ZonderqOS.GUI
         public int Width = 100;
         public int Height = 100;
         public Action? CloseAction;
+        public int BoundsSyncCount;
+        public void EnsureDesktopBounds() { BoundsSyncCount++; }
         public void RestoreFromMinimized() { IsMinimized = false; Visible = true; }
         public void Minimize() { IsMinimized = true; Visible = false; }
         public bool ContainsPoint(int x, int y) => Visible && !IsMinimized &&
@@ -60,6 +62,8 @@ internal sealed class ClosingApp : Application
     public int UpdateCount;
     public int RenderCount;
     public int MouseCount;
+    public int KeyCount;
+    public int BoundsSyncAtKey;
     public bool LastRightPress;
     public bool LastLeftRelease;
     public Action? OnClose;
@@ -84,6 +88,12 @@ internal sealed class ClosingApp : Application
     {
         RenderCount++;
         OnRender?.Invoke();
+    }
+
+    public override void HandleKeyboard(KeyEvent key)
+    {
+        KeyCount++;
+        BoundsSyncAtKey = Window.BoundsSyncCount;
     }
 
     public override void HandleMouse(int x, int y, bool left, bool oldLeft, bool right, bool oldRight)
@@ -693,8 +703,27 @@ internal static class Program
         Check(manager.Applications.Count == 0, "stale activation cannot resurrect closed app");
     }
 
+    private static void KeyboardBoundsSyncPrecedesAppInput()
+    {
+        var manager = new ApplicationManager();
+        var app = new ClosingApp();
+        manager.Launch(app);
+        manager.HandleKeyboard(new KeyEvent());
+        Check(app.KeyCount == 1 && app.Window.BoundsSyncCount == 1 &&
+            app.BoundsSyncAtKey == 1,
+            "active window reflows before keyboard handler runs");
+
+        ZonderqOS.SecurityContext.IsAuthenticated = false;
+        manager.HandleKeyboard(new KeyEvent());
+        Check(app.KeyCount == 1 && app.Window.BoundsSyncCount == 1,
+            "unauthenticated keyboard cannot reflow or dispatch to old session");
+        ZonderqOS.SecurityContext.IsAuthenticated = true;
+        manager.CloseAll();
+    }
+
     public static int Main()
     {
+        KeyboardBoundsSyncPrecedesAppInput();
         OrdinaryLogout();
         CallbackRemovesAnotherWindow();
         ReentrantLogout();
