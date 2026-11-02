@@ -139,6 +139,11 @@ namespace ZonderqOS
             // Opt-in second-stage RX proof. DHCP only runs in the isolated
             // serial QEMU probe, never in the production desktop.
             Log("[NET3095-N2] DHCP_ATTEMPT=START");
+            if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
+            {
+                Log("[NET3095-N2][FAIL] E1000E DriverKit ownership invalid before DHCP");
+                return;
+            }
             try
             {
                 int elapsed = new DhcpClient().SendDiscoverPacket();
@@ -205,6 +210,11 @@ namespace ZonderqOS
                     " gateway=" + config.DefaultGateway);
 #if ZONDERQ_NETWORK_N3_ICMP
                 Log("[NET3095-N3] ICMP_ATTEMPT=START");
+                if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
+                {
+                    Log("[NET3095-N3][FAIL] E1000E DriverKit ownership invalid before ICMP");
+                    return;
+                }
                 IcmpClient ping = new IcmpClient();
                 try
                 {
@@ -253,6 +263,11 @@ namespace ZonderqOS
                 // listener reachable through QEMU user networking at 10.0.2.2.
                 // This does not enable networking in the production desktop.
                 Log("[NET3095-N4] TCP_ATTEMPT=START");
+                if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
+                {
+                    Log("[NET3095-N4][FAIL] E1000E DriverKit ownership invalid before TCP");
+                    return;
+                }
                 try
                 {
                     using (var client = new System.Net.Sockets.TcpClient())
@@ -364,6 +379,11 @@ namespace ZonderqOS
                 // answer is deterministic on the CI host, so this proof
                 // needs no external DNS connectivity or privileged listener.
                 Log("[NET3095-N5] DNS_ATTEMPT=START");
+                if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
+                {
+                    Log("[NET3095-N5][FAIL] E1000E DriverKit ownership invalid before DNS");
+                    return;
+                }
                 try
                 {
                     using (var dns = new DnsClient())
