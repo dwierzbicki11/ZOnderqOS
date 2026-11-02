@@ -1564,7 +1564,21 @@ namespace ZonderqOS.GUI.Apps
         private void ApplySearchFilter()
         {
             // Filtering must not resurrect names cached before an ACL change.
-            if (!CanReadInSession(currentPath))
+            // A detached FAT32 volume or failed ACL metadata read can throw
+            // here even though no explicit directory scan is performed.
+            // Fail closed without letting a keystroke tear down the desktop.
+            bool canRead;
+            try
+            {
+                canRead = CanReadInSession(currentPath);
+            }
+            catch (Exception)
+            {
+                ClearDeniedListing();
+                status = "Cannot verify folder permissions";
+                return;
+            }
+            if (!canRead)
             {
                 ClearDeniedListing();
                 status = "Permission denied: cannot list folder";
