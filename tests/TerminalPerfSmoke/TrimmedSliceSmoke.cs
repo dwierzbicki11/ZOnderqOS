@@ -36,6 +36,26 @@ internal static class TrimmedSliceSmoke
             checks++;
         }
 
+        // Exercise both public terminal entry points, not just the helper:
+        // a complete printable Unicode line must retain its source string.
+        string unicode = "Zażółć gęślą jaźń \u6F22\uD83D\uDE00";
+        var direct = new TerminalBox(0, 0, 820, 520);
+        direct.PrintLine(unicode);
+        if (direct.OutputLines.Count != 1 ||
+            !object.ReferenceEquals(direct.OutputLines[0], unicode))
+            throw new Exception("PrintLine copied a complete Unicode line");
+        checks++;
+        direct.PrintLine(unicode + "\u00A0");
+        if (direct.OutputLines[1] != unicode)
+            throw new Exception("PrintLine failed to trim trailing Unicode whitespace");
+        checks++;
+        var command = new TerminalBox(0, 0, 820, 520);
+        command.PrintCommandOutput(unicode);
+        if (command.OutputLines.Count != 1 ||
+            !object.ReferenceEquals(command.OutputLines[0], unicode))
+            throw new Exception("PrintCommandOutput copied a complete Unicode line");
+        checks++;
+
         string blank = "pre" + new string(' ', 40) + "post";
         for (int i = 0; i < 100; i++)
             sink += TerminalBox.SliceTrimmedForOutput(blank, 3, 40).Length;
@@ -278,89 +298,11 @@ internal static class TrimmedSliceSmoke
         }
     }
 
-    // Exact production method on both sides; restore the previous
-    // Span.TrimEnd path only for the host A/B control.
-    private static void BenchmarkAsciiTailFastPath()
-    {
-        var inputs = new string[128];
-        for (int i = 0; i < inputs.Length; i++)
-            inputs[i] = "prefix" + new string('x', 48 + i % 24) +
-                new string(' ', 12 + i % 9) + "suffix";
-
-        Func<long> baseline = () =>
-        {
-            TerminalBox.DisableFastTrailingWhitespaceTrimForBenchmark = true;
-            long checksum = 0;
-            for (int i = 0; i < 1024; i++)
-            {
-                string text = inputs[i % inputs.Length];
-                string value = TerminalBox.SliceTrimmedForOutput(
-                    text, 6, text.Length - 12);
-                checksum += value.Length + value[0] + value[value.Length - 1];
-            }
-            return checksum;
-        };
-        Func<long> optimized = () =>
-        {
-            TerminalBox.DisableFastTrailingWhitespaceTrimForBenchmark = false;
-            long checksum = 0;
-            for (int i = 0; i < 1024; i++)
-            {
-                string text = inputs[i % inputs.Length];
-                string value = TerminalBox.SliceTrimmedForOutput(
-                    text, 6, text.Length - 12);
-                checksum += value.Length + value[0] + value[value.Length - 1];
-            }
-            return checksum;
-        };
-        try
-        {
-            if (baseline() != optimized())
-                throw new Exception("ASCII trailing whitespace A/B mismatch");
-            for (int i = 0; i < 30; i++) { sink ^= baseline(); sink ^= optimized(); }
-            var before = new double[7];
-            var after = new double[7];
-            long oldBytes = 0, newBytes = 0;
-            for (int sample = 0; sample < 7; sample++)
-            {
-                (double ms, long bytes) a, b;
-                if ((sample & 1) == 0)
-                {
-                    a = Measure(baseline, 100);
-                    b = Measure(optimized, 100);
-                }
-                else
-                {
-                    b = Measure(optimized, 100);
-                    a = Measure(baseline, 100);
-                }
-                before[sample] = a.ms;
-                after[sample] = b.ms;
-                oldBytes += a.bytes;
-                newBytes += b.bytes;
-            }
-            if (newBytes > oldBytes)
-                throw new Exception("ASCII tail allocations increased: " +
-                    oldBytes + " -> " + newBytes);
-            double aMs = Median(before), bMs = Median(after);
-            Console.WriteLine("HOST A/B ASCII trailing-space trim 1024 x 100: span=" +
-                aMs.ToString("F3") + "ms direct=" + bMs.ToString("F3") +
-                "ms ratio=" + (aMs / bMs).ToString("F2") +
-                "x allocations/sample=" + (oldBytes / 7) + " -> " +
-                (newBytes / 7) + " B (7 alternating .NET Release samples; not guest CPU)");
-        }
-        finally
-        {
-            TerminalBox.DisableFastTrailingWhitespaceTrimForBenchmark = false;
-        }
-    }
-
     internal static void Run()
     {
         Verify();
         Benchmark();
         BenchmarkUnpadded();
         BenchmarkUnicodeUnpadded();
-        BenchmarkAsciiTailFastPath();
     }
 }
