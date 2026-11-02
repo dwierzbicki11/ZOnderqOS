@@ -426,6 +426,10 @@ namespace ZonderqOS.GUI.Apps
                         application.Window == null || !applications.Contains(application))
                         continue;
 
+                    // A display change can occur between input and Update.
+                    // Reflow each live window before its application computes
+                    // client geometry, even when no keyboard/mouse event occurs.
+                    application.Window.EnsureDesktopBounds();
                     application.Update();
                     if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
                     {
@@ -487,6 +491,10 @@ namespace ZonderqOS.GUI.Apps
                         !application.Window.Visible || application.Window.IsMinimized)
                         continue;
 
+                    // A paint may be requested before the next Update.
+                    // Keep the window bounds current before the app lays out
+                    // its child widgets and paints the first frame.
+                    application.Window.EnsureDesktopBounds();
                     application.Render(canvas);
                     if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
                     {
