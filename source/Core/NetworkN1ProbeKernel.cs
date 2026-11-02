@@ -1023,6 +1023,7 @@ namespace ZonderqOS
                     stream.Write(request, 0, request.Length);
                     byte[] response = new byte[expected.Length];
                     int received = 0;
+                    long firstByteTicks = -1;
                     long start = Stopwatch.GetTimestamp();
                     long frequency = Stopwatch.Frequency;
                     if (frequency <= 0 || start <= 0)
@@ -1044,6 +1045,16 @@ namespace ZonderqOS
                         if (read <= 0)
                             break;
                         received += read;
+                        if (firstByteTicks < 0)
+                            firstByteTicks = Stopwatch.GetTimestamp() - start;
+                    }
+                    // A final successful Read() can cross the ten-second
+                    // budget; checking only before Read() accepted slow peers.
+                    long completedTicks = Stopwatch.GetTimestamp() - start;
+                    if (completedTicks < 0 || completedTicks / frequency >= 10)
+                    {
+                        Log("[NET3095-N6][FAIL] Link TCP total RX deadline exceeded");
+                        return false;
                     }
                     if (received != expected.Length)
                     {
@@ -1065,6 +1076,20 @@ namespace ZonderqOS
                         Log("[NET3095-N6][FAIL] Link TCP completion PCI/lease changed");
                         return false;
                     }
+                    // Guest-side socket latency, not a DMA or ISR counter.
+                    // Emit before PASS so the independent serial gate can
+                    // reject a missing, duplicated or over-budget response.
+                    if (firstByteTicks < 0 || firstByteTicks > completedTicks)
+                    {
+                        Log("[NET3095-N6][FAIL] Link TCP RX timing invalid");
+                        return false;
+                    }
+                    long firstByteMs = (firstByteTicks / frequency) * 1000 +
+                        ((firstByteTicks % frequency) * 1000) / frequency;
+                    long totalMs = (completedTicks / frequency) * 1000 +
+                        ((completedTicks % frequency) * 1000) / frequency;
+                    Log("[NET3095-N6] LINK_TCP_RX_TIMING cycle=" + cycle +
+                        " first_byte_ms=" + firstByteMs + " total_ms=" + totalMs);
                     Log("[NET3095-N6] LINK_TCP=PASS cycle=" + cycle +
                         " bytes=" + received);
                     return true;

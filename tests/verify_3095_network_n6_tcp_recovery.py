@@ -8,6 +8,7 @@ numbers after each independent post-link ICMP reply. QEMU only; no ISR claim.
 from __future__ import annotations
 
 import argparse
+import re
 from pathlib import Path
 
 from verify_3095_network_n1 import pcap_frames
@@ -17,6 +18,12 @@ from verify_3095_network_n6_final_icmp import final_echo
 from verify_3095_network_n6_link_recovery import (
     IDENT, SECOND_IDENT, PASS, SECOND_PASS, fake_recovery,
     validate as validate_link,
+)
+
+
+TIMING = re.compile(
+    r"\[NET3095-N6\] LINK_TCP_RX_TIMING cycle=([12]) "
+    r"first_byte_ms=(\d+) total_ms=(\d+)"
 )
 
 
@@ -39,17 +46,30 @@ def check_serial_and_host(serial: str, host: str, cycles: int) -> None:
         raise ValueError("guest or host reported TCP recovery failure")
     if host_lines.count("[NET3095-N4-HOST] PASS request/reply") != 1:
         raise ValueError("initial TCP host exchange missing or duplicated")
+    timing_lines = [line for line in lines if "LINK_TCP_RX_TIMING" in line]
+    if len(timing_lines) != cycles or any(TIMING.fullmatch(line) is None
+                                          for line in timing_lines):
+        raise ValueError("missing/duplicate/malformed TCP RX timing evidence")
     previous = -1
     for cycle in range(1, cycles + 1):
         icmp = PASS if cycle == 1 else SECOND_PASS
         start = f"[NET3095-N6] LINK_TCP_ATTEMPT=START cycle={cycle}"
         done = f"[NET3095-N6] LINK_TCP=PASS cycle={cycle} bytes={len(reconnect_response(cycle))}"
         host_done = f"[NET3095-N4-HOST] RECONNECT_PASS cycle={cycle}"
+        timing = next((line for line in timing_lines
+                       if TIMING.fullmatch(line).group(1) == str(cycle)), None)
+        if timing is None:
+            raise ValueError(f"missing TCP RX timing cycle={cycle}")
+        measured = TIMING.fullmatch(timing)
+        first_ms, total_ms = int(measured.group(2)), int(measured.group(3))
+        if first_ms > total_ms or total_ms >= 10000:
+            raise ValueError(f"TCP RX deadline/ordering invalid cycle={cycle}")
         if lines.count(icmp) != 1 or lines.count(start) != 1 or lines.count(done) != 1:
             raise ValueError(f"missing/duplicate guest TCP recovery cycle={cycle}")
         if host_lines.count(host_done) != 1:
             raise ValueError(f"missing/duplicate host TCP recovery cycle={cycle}")
-        if not previous < lines.index(icmp) < lines.index(start) < lines.index(done):
+        if not (previous < lines.index(icmp) < lines.index(start) <
+                lines.index(timing) < lines.index(done)):
             raise ValueError(f"TCP recovery serial ordering invalid cycle={cycle}")
         previous = lines.index(done)
     if cycles == 1 and any("LINK_TCP_ATTEMPT=START cycle=2" in line for line in lines):
@@ -163,13 +183,14 @@ def self_test() -> None:
         serial_lines.extend((
             PASS if cycle == 1 else SECOND_PASS,
             f"[NET3095-N6] LINK_TCP_ATTEMPT=START cycle={cycle}",
+            f"[NET3095-N6] LINK_TCP_RX_TIMING cycle={cycle} first_byte_ms=4 total_ms=12",
             f"[NET3095-N6] LINK_TCP=PASS cycle={cycle} bytes={len(res)}",
         ))
         host_lines.append(f"[NET3095-N4-HOST] RECONNECT_PASS cycle={cycle}")
     serial, host = "\n".join(serial_lines), "\n".join(host_lines)
     check_serial_and_host(serial, host, 2)
     check_tcp_wire(frames, guest, 2)
-    check_serial_and_host("\n".join(serial_lines[:3]), "\n".join(host_lines[:2]), 1)
+    check_serial_and_host("\n".join(serial_lines[:4]), "\n".join(host_lines[:2]), 1)
     check_tcp_wire(frames[:7], guest, 1)
     assert len(list(pcap_frames(synthetic_capture(frames)))) == len(frames)
     bad_frames = (
@@ -196,6 +217,13 @@ def self_test() -> None:
         (serial, host + "\n" + host_lines[-1]),
         (serial.replace(serial_lines[1] + "\n" + serial_lines[2],
                         serial_lines[2] + "\n" + serial_lines[1]), host),
+        (serial.replace("first_byte_ms=4", "first_byte_ms=13", 1), host),
+        (serial.replace("total_ms=12", "total_ms=10000", 1), host),
+        (serial.replace("total_ms=12", "total_ms=-1", 1), host),
+        (serial.replace("LINK_TCP_RX_TIMING cycle=1", "LINK_TCP_RX_TIMING cycle=3", 1), host),
+        (serial.replace("LINK_TCP_RX_TIMING cycle=1", "LINK_TCP_RX_TIMING cycle=1 junk", 1), host),
+        (serial.replace(serial_lines[2] + "\n", "", 1), host),
+        (serial + "\n" + serial_lines[2], host),
     ):
         try:
             check_serial_and_host(invalid_serial, invalid_host, 2)

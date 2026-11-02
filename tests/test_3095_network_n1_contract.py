@@ -163,6 +163,26 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertLess(second, completed)
         self.assertIn("client.Client.ReceiveTimeout = 5000;", n4)
 
+    def test_n6_tcp_reconnect_deadline_checked_after_final_read(self):
+        # A peer may return the last byte after the total deadline even if
+        # the timeout was clamped before the final blocking Read().
+        reconnect = SOURCE.split("private static bool TryTcpReconnect(int cycle)", 1)[1].split(
+            "private static void PollLinkCycle()", 1)[0]
+        start = reconnect.index("long start = Stopwatch.GetTimestamp();")
+        read = reconnect.index("int read = stream.Read(", start)
+        completed = reconnect.index("long completedTicks = Stopwatch.GetTimestamp() - start;", read)
+        deadline = reconnect.index("completedTicks / frequency >= 10", completed)
+        timing = reconnect.index("LINK_TCP_RX_TIMING cycle=", deadline)
+        success = reconnect.index("LINK_TCP=PASS cycle=", timing)
+        self.assertLess(start, read)
+        self.assertLess(read, completed)
+        self.assertLess(completed, deadline)
+        self.assertLess(deadline, timing)
+        self.assertLess(timing, success)
+        self.assertIn("RemainingSocketReadTimeoutMs(\n                            elapsed, frequency, 10)", reconnect)
+        self.assertIn("firstByteTicks = Stopwatch.GetTimestamp() - start;", reconnect)
+        self.assertEqual(reconnect.count("Link TCP total RX deadline exceeded"), 2)
+
     def test_n6_http_rx_latency_is_measured_not_claimed_as_irq(self):
         # Runtime telemetry must be measured on the guest using the same
         # monotonic clock as the bounded HTTP receive loop. It is NOT a
