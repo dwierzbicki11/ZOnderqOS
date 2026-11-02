@@ -235,6 +235,28 @@ namespace ZonderqOS.SystemCore
         internal static string CpuPercentText(int percent) => CachedCpuPercents[percent];
         internal static string PaddedCpuPercentText(int percent) => CachedPaddedCpuPercents[percent];
 
+        // Thread state is a tiny enum, but Enum.ToString() plus PadRight()
+        // allocates whenever a row's CPU percentage or PID changes. Keep the
+        // common values preformatted; unknown/future Cosmos states still use
+        // the original formatting rather than being silently mislabeled.
+        private static readonly string[] CachedThreadStateTexts = BuildThreadStateTexts();
+
+        private static string[] BuildThreadStateTexts()
+        {
+            var values = new string[16];
+            for (int state = 0; state < values.Length; state++)
+                values[state] = ((KernelThreadState)state).ToString().PadRight(10);
+            return values;
+        }
+
+        internal static string ThreadStateText(KernelThreadState state)
+        {
+            int index = (int)state;
+            return (uint)index < (uint)CachedThreadStateTexts.Length
+                ? CachedThreadStateTexts[index]
+                : state.ToString().PadRight(10);
+        }
+
         internal HtopMonitor()
         {
             rowComparison = CompareRows;
@@ -266,7 +288,7 @@ namespace ZonderqOS.SystemCore
             string line = (pid == 0 ? "-" : pid.ToString()).PadLeft(5) + " " +
                 thread.Id.ToString().PadLeft(6) + " " +
                 thread.CpuId.ToString().PadLeft(4) + "  " +
-                thread.State.ToString().PadRight(10) + " " +
+                ThreadStateText(thread.State) + " " +
                 PaddedCpuPercentText(percent) + "  " + name;
             cachedThreadRows[slot] = new CachedThreadRow
             {
