@@ -30,6 +30,7 @@ TERMINATED = re.compile(r"^qemu-system-[^:]+: terminating on signal ")
 def count_dma(stderr: str) -> tuple[int, int, int, int]:
     """Return TX descriptor reads, RX buffer writes, RX bytes, RX commits."""
     tx = writes = rx_bytes = commits = 0
+    pending_rx_writes = 0
     for line in stderr.replace("\r", "").splitlines():
         line = line.strip()
         if TERMINATED.match(line):
@@ -48,14 +49,18 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
             # writes and null guest physical addresses.
             if index <= 3 and address != 0 and length > 0:
                 writes += 1
+                pending_rx_writes += 1
                 rx_bytes += length
             continue
         match = RX_COMMIT.fullmatch(line)
         if match:
             # The ICR cause can be zero when interrupts are masked or
             # coalesced; the event itself reports a completed guest write.
-            # IRQ notification is validated independently.
-            commits += 1
+            # IRQ notification is validated independently. A commit
+            # without an earlier guest-buffer write is not RX DMA proof.
+            if pending_rx_writes:
+                commits += 1
+                pending_rx_writes = 0
     return tx, writes, rx_bytes, commits
 
 
@@ -83,6 +88,7 @@ def self_test() -> None:
     assert "PASS tx_desc=128" in report(trace)
     assert "PASS tx_desc=128" in report(trace, min_tx=128)
     assert count_dma(tx * 128 + write + commit.replace("causes 128", "causes 0")) == (128, 1, 64, 1)
+    assert count_dma(tx * 128 + commit + write) == (128, 1, 64, 0)
     for invalid in (
         "", tx * 127 + write + commit, tx * 128 + commit,
         tx * 128 + write, tx * 128 + write.replace("length: 64", "length: 0") + commit,
@@ -90,7 +96,7 @@ def self_test() -> None:
         tx * 128 + write + commit.replace("written_to_guest", "not_written_to_guest"),
         tx.replace("0x7f001000", "0x0") * 128 + write + commit,
         "spoof " + tx * 128 + write + commit,
-        tx * 128 + write + commit.replace("written_to_guest", "not_written_to_guest"),
+        tx * 128 + commit + write,
         "qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n" + trace,
     ):
         try:
