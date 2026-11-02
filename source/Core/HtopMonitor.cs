@@ -87,6 +87,15 @@ namespace ZonderqOS.SystemCore
         private string headerSchedulerName;
         private string headerLine;
 
+        // Physical-page telemetry is often unchanged between adjacent htop
+        // refreshes. Avoid rebuilding numeric strings and a combined line
+        // when the actual allocator snapshot has not changed. All three
+        // inputs participate in invalidation; this is not a stale RAM gauge.
+        private ulong memoryTotalPages = ulong.MaxValue;
+        private ulong memoryFreePages = ulong.MaxValue;
+        private ulong memoryPageSize = ulong.MaxValue;
+        private string memoryLine;
+
         internal string GetHeaderLine(int count, string schedulerName)
         {
             if (headerLine != null && count == headerCpuCount &&
@@ -97,6 +106,23 @@ namespace ZonderqOS.SystemCore
             headerSchedulerName = schedulerName;
             headerLine = "ZOnderqOS htop | CPU: " + count + " | " + schedulerName;
             return headerLine;
+        }
+
+        internal string GetMemoryLine(ulong totalPages, ulong freePages, ulong pageSize)
+        {
+            // Preserve the original FreePages clamp even for inconsistent
+            // firmware telemetry. Cache the clamped value actually displayed.
+            ulong free = Math.Min(totalPages, freePages);
+            if (memoryLine != null && totalPages == memoryTotalPages &&
+                free == memoryFreePages && pageSize == memoryPageSize)
+                return memoryLine;
+
+            memoryTotalPages = totalPages;
+            memoryFreePages = free;
+            memoryPageSize = pageSize;
+            memoryLine = "Mem: " + ((totalPages - free) * pageSize / 1048576UL) +
+                " / " + (totalPages * pageSize / 1048576UL) + " MiB";
+            return memoryLine;
         }
 
         // CPU bars are redrawn on every htop refresh. Construct the 21 possible
@@ -233,9 +259,9 @@ namespace ZonderqOS.SystemCore
 
             // These are Cosmos' real physical page-allocator figures, not GC heap estimates.
             ulong total = MemoryInfo.TotalPages;
-            ulong free = Math.Min(total, MemoryInfo.FreePages);
+            ulong free = MemoryInfo.FreePages;
             ulong pageSize = MemoryInfo.PageSizeBytes;
-            lines.Add("Mem: " + ((total - free) * pageSize / 1048576UL) + " / " + (total * pageSize / 1048576UL) + " MiB");
+            lines.Add(GetMemoryLine(total, free, pageSize));
             ProcessManager.FillActiveProcesses(processes);
             int slots = SchedulerInfo.ThreadSlotCount;
             bool indexedJoin = HtopProcessIndex.ShouldIndex(processes.Count, slots);
