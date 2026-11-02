@@ -323,6 +323,9 @@ class NetworkN1Isolation(unittest.TestCase):
         per_read = reconnect.index("Link TCP PCI/lease changed during RX", read)
         self.assertLess(read, per_read)
         self.assertLess(per_read, completed)
+        # A transient PCI BAR remap or INTx route change between fragments
+        # must not be hidden by a restored final snapshot.
+        self.assertIn("IsE1000EPciMappingStable()", reconnect[read:per_read])
         self.assertIn("IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources)",
                       reconnect[read:completed])
         self.assertIn("IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,",
