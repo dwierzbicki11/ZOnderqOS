@@ -54,6 +54,43 @@ internal static class AudioMixerFastPathSmoke
         return output;
     }
 
+    // Independent full-timeline reference for one or more scheduled faded
+    // clips. In particular, a muted effect with a long tail still controls
+    // output duration without contributing to the audible sample sum.
+    private static byte[] LegacyScheduledFaded(
+        byte[][] clips, int[] starts, int[] gains, int[] fades, int tailFrames)
+    {
+        int length = 0;
+        for (int i = 0; i < clips.Length; i++)
+            length = Math.Max(length, starts[i] * 4 + clips[i].Length);
+        byte[] output = new byte[length + tailFrames * 4];
+        for (int at = 0; at < length; at += 2)
+        {
+            int sum = 0;
+            for (int i = 0; i < clips.Length; i++)
+            {
+                int sourceAt = at - starts[i] * 4;
+                if (sourceAt < 0 || sourceAt >= clips[i].Length) continue;
+                int sample = (short)(clips[i][sourceAt] | (clips[i][sourceAt + 1] << 8));
+                int scaled = sample * gains[i] / 100;
+                if (fades[i] > 0)
+                {
+                    int frames = clips[i].Length / 4;
+                    int fadeFrames = Math.Min(fades[i] * 48, frames / 2);
+                    int frame = sourceAt / 4;
+                    int envelope = Math.Min(fadeFrames,
+                        Math.Min(frame, frames - 1 - frame));
+                    scaled = fadeFrames == 0 ? 0 : scaled * envelope / fadeFrames;
+                }
+                sum += scaled;
+            }
+            sum = Math.Min(short.MaxValue, Math.Max(short.MinValue, sum));
+            output[at] = (byte)sum;
+            output[at + 1] = (byte)(sum >> 8);
+        }
+        return output;
+    }
+
     private static void Same(byte[] a, byte[] b, string message)
         => Check(a.AsSpan().SequenceEqual(b), message);
 
@@ -235,6 +272,40 @@ internal static class AudioMixerFastPathSmoke
             for (int i = 0; i < count; i++)
                 Same(clips[i], originals[i],
                     "single partial-gain output never aliases or mutates a clip");
+        }
+
+        // The same single-audible fast path must preserve a nonzero fade.
+        // Include one-frame clips (fully silent), 1/35/100% gain, short
+        // attacks, 50 ms fades, and muted neighbors with their own fades.
+        for (int scenario = 0; scenario < 96; scenario++)
+        {
+            int count = 1 + scenario % 8;
+            byte[][] clips = new byte[count][];
+            int[] starts = new int[count];
+            int[] gains = new int[count];
+            int[] fades = new int[count];
+            int audible = scenario % count;
+            for (int i = 0; i < count; i++)
+            {
+                int frames = i == audible
+                    ? new[] { 1, 2, 3, 64, 1200, 4800 }[scenario % 6]
+                    : 1 + random.Next(1, 65);
+                clips[i] = new byte[frames * 4];
+                random.NextBytes(clips[i]);
+                starts[i] = random.Next(0, 181);
+                gains[i] = i == audible ? new[] { 1, 35, 100 }[scenario % 3] : 0;
+                fades[i] = i == audible ? new[] { 1, 20, 50 }[scenario % 3] : 50;
+            }
+            int tail = scenario % 2 == 0 ? 128 : 0;
+            byte[] expected = LegacyScheduledFaded(clips, starts, gains, fades, tail);
+            byte[] actual = AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+                clips, starts, gains, fades, tail);
+            Same(actual, expected,
+                "single audible faded effect matches full-timeline oracle");
+            byte[] original = (byte[])clips[audible].Clone();
+            actual[starts[audible] * 4] ^= 0xFF;
+            Same(clips[audible], original,
+                "single faded effect output cannot alias its source");
         }
 
         // Host-only A/B measurement: a 35%-gain effect after a long silent

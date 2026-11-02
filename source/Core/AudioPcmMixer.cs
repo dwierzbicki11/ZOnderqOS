@@ -227,8 +227,9 @@ namespace ZonderqOS.SystemCore
         // A single partially audible notification may start after a long
         // silent pre-roll and coexist with muted effects extending the timeline.
         // Scale only its actual PCM samples instead of scanning every zero
-        // frame and every muted clip. A faded or second audible clip must use
-        // the general accumulator; never change its saturation semantics.
+        // frame and every muted clip. Apply the same per-sample fade math
+        // when this is the only audible clip. Multiple audible clips still
+        // use the general accumulator to preserve saturation semantics.
         // Called only after full bounds, gain and fade validation.
         private static bool TryScaleSingleAudibleClip(
             byte[][] clips, int[] startFrames, int[] gainsPercent,
@@ -239,8 +240,7 @@ namespace ZonderqOS.SystemCore
             {
                 if (gainsPercent[i] == 0)
                     continue;
-                if (audible >= 0 || gainsPercent[i] == 100 ||
-                    (individualFades == null ? uniformFade : individualFades[i]) != 0)
+                if (audible >= 0)
                     return false;
                 audible = i;
             }
@@ -250,10 +250,21 @@ namespace ZonderqOS.SystemCore
             byte[] clip = clips[audible];
             int start = startFrames[audible] * 4;
             int gain = gainsPercent[audible];
+            int fadeMilliseconds = individualFades == null
+                ? uniformFade : individualFades[audible];
+            int frames = clip.Length / 4;
+            int fadeFrames = Math.Min(fadeMilliseconds * 48, frames / 2);
             for (int at = 0; at < clip.Length; at += 2)
             {
                 int sample = (short)(clip[at] | (clip[at + 1] << 8));
                 int scaled = sample * gain / 100;
+                if (fadeMilliseconds != 0)
+                {
+                    int frame = at / 4;
+                    int envelope = Math.Min(fadeFrames,
+                        Math.Min(frame, frames - 1 - frame));
+                    scaled = fadeFrames == 0 ? 0 : scaled * envelope / fadeFrames;
+                }
                 output[start + at] = (byte)scaled;
                 output[start + at + 1] = (byte)(scaled >> 8);
             }
