@@ -39,6 +39,7 @@ on:
       - 'tests/verify_3095_rtl_negative_qemu.py'
       - 'tests/verify_3095_network_heartbeat.py'
       - 'tests/verify_3095_e1000e_irq_trace.py'
+      - 'tests/verify_3095_e1000e_dma_trace.py'
       - 'tests/verify_3095_e1000e_irq_binding.py'
       - 'tests/measure_3095_e1000e_pcap.py'
       - 'tests/network_3095_http_host.py'
@@ -88,6 +89,7 @@ jobs:
           python3 zonderq/tools/network_3095_qmp_link.py --self-test
           python3 zonderq/tests/verify_3095_network_heartbeat.py --self-test
           python3 zonderq/tests/verify_3095_e1000e_irq_trace.py --self-test
+          python3 zonderq/tests/verify_3095_e1000e_dma_trace.py --self-test
           python3 zonderq/tests/verify_3095_e1000e_irq_binding.py --self-test
           python3 zonderq/tests/measure_3095_e1000e_pcap.py --self-test
           python3 -m py_compile zonderq/tests/network_3095_http_host.py
