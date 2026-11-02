@@ -172,6 +172,14 @@ namespace ZonderqOS
                     Log("[NET3095-N2][FAIL] Unexpected QEMU DHCP lease");
                     return;
                 }
+                // DHCP can succeed while a NIC is rebound with the same MAC.
+                // Require the original PCI DriverKit resource/IRQ ownership,
+                // not just the published adapter and mutable IPConfig.
+                if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
+                {
+                    Log("[NET3095-N2][FAIL] E1000E DriverKit ownership changed during DHCP");
+                    return;
+                }
 #if ZONDERQ_NETWORK_N6_HTTP
                 // Snapshot values before stress: IPConfig may be mutable and
                 // re-reading the same object later would miss in-place changes.
@@ -228,6 +236,11 @@ namespace ZonderqOS
                         Log("[NET3095-N3][FAIL] E1000E link/MAC/DHCP lease changed during ICMP echo");
                         return;
                     }
+                    if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
+                    {
+                        Log("[NET3095-N3][FAIL] E1000E DriverKit ownership changed during ICMP");
+                        return;
+                    }
                     Log("[NET3095-N3] ICMP=PASS from=" + remote.Address);
                 }
                 finally
@@ -251,6 +264,11 @@ namespace ZonderqOS
                         byte[] request = System.Text.Encoding.ASCII.GetBytes("ZONDERQ3095-TCP-PING\n");
                         byte[] expected = System.Text.Encoding.ASCII.GetBytes("ZONDERQ3095-TCP-PONG\n");
                         stream.Write(request, 0, request.Length);
+                        if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
+                        {
+                            Log("[NET3095-N4][FAIL] E1000E DriverKit ownership changed after TCP TX");
+                            return;
+                        }
                         byte[] response = new byte[expected.Length];
                         int received = 0;
                         // A five-second per-read socket timeout does not
@@ -280,6 +298,14 @@ namespace ZonderqOS
                             if (read <= 0)
                                 break;
                             received += read;
+                            // Each successful Read may follow another RX DMA
+                            // completion. Detect resource/IRQ rebinding before
+                            // accepting the next fragment.
+                            if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
+                            {
+                                Log("[NET3095-N4][FAIL] E1000E DriverKit ownership changed during TCP RX");
+                                return;
+                            }
                             echoElapsed = Stopwatch.GetTimestamp() - echoStart;
                             if (echoElapsed < 0 || echoElapsed / echoFrequency >= 20)
                             {
@@ -317,6 +343,11 @@ namespace ZonderqOS
                             echoLease.DefaultGateway.ToString() != "10.0.2.2")
                         {
                             Log("[NET3095-N4][FAIL] E1000E link/MAC/DHCP lease changed during TCP echo");
+                            return;
+                        }
+                        if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
+                        {
+                            Log("[NET3095-N4][FAIL] E1000E DriverKit ownership changed at TCP completion");
                             return;
                         }
                         Log("[NET3095-N4] TCP=PASS from=10.0.2.2 port=18095 bytes=" + received);
@@ -363,6 +394,11 @@ namespace ZonderqOS
                             dnsLease.DefaultGateway.ToString() != "10.0.2.2")
                         {
                             Log("[NET3095-N5][FAIL] E1000E link/MAC/DHCP lease changed during DNS");
+                            return;
+                        }
+                        if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
+                        {
+                            Log("[NET3095-N5][FAIL] E1000E DriverKit ownership changed during DNS");
                             return;
                         }
                         Log("[NET3095-N5] DNS=PASS host=localhost ip=127.0.0.1 server=10.0.2.3");
@@ -616,6 +652,17 @@ namespace ZonderqOS
                 candidate.Path == "pci:0000:00:02.0" &&
                 candidate.FaultCount == 0 && candidate.HeldResourceCount >= 1 &&
                 candidate.PublishedDeviceCount == 1 && candidate.InterruptCount >= 1;
+        }
+
+        // Snapshot comparison is read-only. DriverDiagnostics.InterruptCount
+        // counts registered IRQ sources, NOT actual guest ISR invocations.
+        // Use the N1 binding as the immutable baseline for N2-N5.
+        private static bool IsE1000EDriverKitSnapshotStable(DeviceNodeInfo expected)
+        {
+            return TryGetE1000EDriverKitHealth(out var current) &&
+                current.Path == expected.Path &&
+                current.HeldResourceCount == expected.HeldResourceCount &&
+                current.InterruptCount == expected.InterruptCount;
         }
 
 #if ZONDERQ_NETWORK_N6_HTTP
