@@ -81,6 +81,7 @@ def check_serial_and_host(serial: str, host: str, cycles: int) -> None:
                                           for line in timing_lines):
         raise ValueError("missing/duplicate/malformed TCP RX timing evidence")
     previous = -1
+    expected_claims = set()
     for cycle in range(1, cycles + 1):
         icmp = PASS if cycle == 1 else SECOND_PASS
         start = f"[NET3095-N6] LINK_TCP_ATTEMPT=START cycle={cycle}"
@@ -90,6 +91,7 @@ def check_serial_and_host(serial: str, host: str, cycles: int) -> None:
                        if TIMING.fullmatch(line).group(1) == str(cycle)), None)
         if timing is None:
             raise ValueError(f"missing TCP RX timing cycle={cycle}")
+        expected_claims.update((start, timing, done))
         measured = TIMING.fullmatch(timing)
         first_ms, total_ms = int(measured.group(2)), int(measured.group(3))
         if first_ms > total_ms or total_ms >= 10000:
@@ -102,8 +104,11 @@ def check_serial_and_host(serial: str, host: str, cycles: int) -> None:
                 lines.index(timing) < lines.index(done)):
             raise ValueError(f"TCP recovery serial ordering invalid cycle={cycle}")
         previous = lines.index(done)
-    if cycles == 1 and any("LINK_TCP_ATTEMPT=START cycle=2" in line for line in lines):
-        raise ValueError("unexpected second TCP recovery cycle")
+    # A separate valid cycle must not hide extra malformed, duplicate or
+    # out-of-range reconnect claims in the same real guest serial log.
+    claims = [line for line in lines if "[NET3095-N6] LINK_TCP" in line]
+    if len(claims) != 3 * cycles or set(claims) != expected_claims:
+        raise ValueError("unexpected/duplicate TCP reconnect serial claim")
 
 
 def check_tcp_wire(frames: list[bytes], guest: bytes, cycles: int) -> None:
@@ -274,6 +279,10 @@ def self_test() -> None:
         (serial.replace("LINK_TCP_RX_TIMING cycle=1", "LINK_TCP_RX_TIMING cycle=1 junk", 1), host),
         (serial.replace(serial_lines[2] + "\n", "", 1), host),
         (serial + "\n" + serial_lines[2], host),
+        (serial + "\n[NET3095-N6] LINK_TCP=PASS cycle=3 bytes=27", host),
+        (serial + "\n[NET3095-N6] LINK_TCP_ATTEMPT=START cycle=3", host),
+        (serial + "\n[NET3095-N6] LINK_TCP=PASS cycle=1 bytes=0", host),
+        (serial + "\n[NET3095-N6] LINK_TCP_RX_TIMING cycle=3 first_byte_ms=1 total_ms=2", host),
     ):
         try:
             check_serial_and_host(invalid_serial, invalid_host, 2)
