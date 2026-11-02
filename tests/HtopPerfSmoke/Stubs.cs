@@ -3,6 +3,8 @@ using System.Collections.Generic;
 
 namespace Cosmos.Kernel.System.Diagnostics
 {
+    internal enum KernelThreadState { READY, WAITING, RUNNING, IDLE, SLEEP }
+
     internal struct KernelThreadInfo
     {
         internal uint Id;
@@ -10,7 +12,7 @@ namespace Cosmos.Kernel.System.Diagnostics
         internal ulong TotalRuntimeNs;
         internal bool IsIdle;
         internal bool IsManaged;
-        internal string State;
+        internal KernelThreadState State;
     }
 
     internal static class SchedulerInfo

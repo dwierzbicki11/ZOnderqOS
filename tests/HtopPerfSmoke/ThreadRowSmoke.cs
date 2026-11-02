@@ -22,7 +22,7 @@ internal static class ThreadRowSmoke
     private static void Verify()
     {
         var m = new HtopMonitor();
-        var t = new KernelThreadInfo { Id = 17, CpuId = 0, State = "READY", IsManaged = true };
+        var t = new KernelThreadInfo { Id = 17, CpuId = 0, State = KernelThreadState.READY, IsManaged = true };
         string initial = m.GetThreadRowLine(0, t, 7, 0, "shell");
         Check(initial == Legacy(t, 7, 0, "shell"), "first row output");
         Check(object.ReferenceEquals(initial, m.GetThreadRowLine(0, t, 7, 0, "shell")),
@@ -31,7 +31,7 @@ internal static class ThreadRowSmoke
         string moved = m.GetThreadRowLine(0, t, 7, 0, "shell");
         Check(moved == Legacy(t, 7, 0, "shell") && !object.ReferenceEquals(initial, moved),
             "CPU migration invalidation");
-        t.State = "WAITING";
+        t.State = KernelThreadState.WAITING;
         Check(m.GetThreadRowLine(0, t, 7, 0, "shell") == Legacy(t, 7, 0, "shell"),
             "state invalidation");
         Check(m.GetThreadRowLine(0, t, 7, 33, "shell") == Legacy(t, 7, 33, "shell"),
@@ -51,7 +51,7 @@ internal static class ThreadRowSmoke
             int slot = rng.Next(128);
             t.Id = (uint)rng.Next(10000);
             t.CpuId = (uint)rng.Next(16);
-            t.State = i % 2 == 0 ? "READY" : "WAITING";
+            t.State = i % 2 == 0 ? KernelThreadState.READY : KernelThreadState.WAITING;
             int pid = rng.Next(5000), pct = rng.Next(101);
             string name = i % 3 == 0 ? "shell" : "worker";
             string actual = m.GetThreadRowLine(slot, t, pid, pct, name);
@@ -67,7 +67,7 @@ internal static class ThreadRowSmoke
             ProcessManager.TestProcesses = new[] { new KernelProcess(42, "demo", 900) };
             SchedulerInfo.Threads = new[] { new KernelThreadInfo
             {
-                Id = 900, CpuId = 0, State = "READY", IsManaged = true
+                Id = 900, CpuId = 0, State = KernelThreadState.READY, IsManaged = true
             }};
             m.Refresh();
             string row = m.Lines[8];
@@ -82,14 +82,14 @@ internal static class ThreadRowSmoke
                 "production process rename");
             SchedulerInfo.Threads = new[] { new KernelThreadInfo
             {
-                Id = 901, CpuId = 0, State = "WAITING", IsManaged = true
+                Id = 901, CpuId = 0, State = KernelThreadState.WAITING, IsManaged = true
             }};
             m.Refresh();
             Check(m.Lines[8] == Legacy(SchedulerInfo.Threads[0], 0, 0, "managed thread"),
                 "production reused stale slot owner");
             SchedulerInfo.Threads = new[] { new KernelThreadInfo
             {
-                Id = 901, CpuId = 0, State = "WAITING", IsIdle = true
+                Id = 901, CpuId = 0, State = KernelThreadState.WAITING, IsIdle = true
             }};
             m.Refresh();
             Check(m.Lines.Count == 9 && m.Lines[8].Contains("START/EXIT"),
@@ -120,7 +120,7 @@ internal static class ThreadRowSmoke
     private static void Benchmark()
     {
         var m = new HtopMonitor();
-        var t = new KernelThreadInfo { Id = 900, CpuId = 0, State = "READY" };
+        var t = new KernelThreadInfo { Id = 900, CpuId = 0, State = KernelThreadState.READY };
         int pid = 42, pct = 0;
         string name = "shell";
         Func<long> before = () =>
@@ -177,7 +177,7 @@ internal static class ThreadRowSmoke
                 threads[i] = new KernelThreadInfo
                 {
                     Id = (uint)(1000 + i), CpuId = 0,
-                    State = i % 2 == 0 ? "READY" : "WAITING",
+                    State = i % 2 == 0 ? KernelThreadState.READY : KernelThreadState.WAITING,
                     IsManaged = true
                 };
             ProcessManager.TestProcesses = Array.Empty<KernelProcess>();
@@ -202,7 +202,7 @@ internal static class ThreadRowSmoke
     private static void BenchmarkChangingRows()
     {
         var m = new HtopMonitor();
-        var t = new KernelThreadInfo { Id = 900, CpuId = 0, State = "READY" };
+        var t = new KernelThreadInfo { Id = 900, CpuId = 0, State = KernelThreadState.READY };
         int pid = 42;
         string name = "shell";
         Func<long> before = () =>

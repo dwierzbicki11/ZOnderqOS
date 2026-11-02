@@ -81,7 +81,7 @@ namespace ZonderqOS.SystemCore
             internal uint CpuId;
             internal int Pid;
             internal int Percent;
-            internal string State;
+            internal KernelThreadState State;
             internal string Name;
             internal string Line;
         }
@@ -258,7 +258,7 @@ namespace ZonderqOS.SystemCore
             if (cached.Line != null && cached.Tid == thread.Id &&
                 cached.CpuId == thread.CpuId && cached.Pid == pid &&
                 cached.Percent == percent &&
-                string.Equals(cached.State, thread.State, StringComparison.Ordinal) &&
+                cached.State == thread.State &&
                 string.Equals(cached.Name, name, StringComparison.Ordinal))
                 return cached.Line;
 

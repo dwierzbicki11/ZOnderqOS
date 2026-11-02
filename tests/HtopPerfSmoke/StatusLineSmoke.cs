@@ -66,7 +66,7 @@ internal static class StatusLineSmoke
             };
             SchedulerInfo.Threads = new[]
             {
-                new KernelThreadInfo { Id = 123, State = "READY", CpuId = 0 }
+                new KernelThreadInfo { Id = 123, State = KernelThreadState.READY, CpuId = 0 }
             };
             monitor.Refresh();
             Assert(monitor.Lines[6] == Legacy(1, 1),

@@ -332,7 +332,7 @@ internal static class Program
             threads[i] = new KernelThreadInfo
             {
                 Id = (uint)(2000 + i), CpuId = 0, TotalRuntimeNs = (ulong)(i * 37),
-                State = "READY", IsManaged = true
+                State = KernelThreadState.READY, IsManaged = true
             };
         ProcessManager.TestProcesses = Array.Empty<KernelProcess>();
         SchedulerInfo.Threads = threads;
@@ -660,10 +660,10 @@ internal static class Program
         };
         SchedulerInfo.Threads = new[]
         {
-            new KernelThreadInfo { Id = 101, CpuId = 0, TotalRuntimeNs = 100, State = "RUNNING", IsManaged = true },
-            new KernelThreadInfo { Id = 102, CpuId = 0, TotalRuntimeNs = 100, State = "READY" },
-            new KernelThreadInfo { Id = 103, CpuId = 0, TotalRuntimeNs = 100, State = "READY" },
-            new KernelThreadInfo { Id = 104, CpuId = 0, TotalRuntimeNs = 100, State = "IDLE", IsIdle = true }
+            new KernelThreadInfo { Id = 101, CpuId = 0, TotalRuntimeNs = 100, State = KernelThreadState.RUNNING, IsManaged = true },
+            new KernelThreadInfo { Id = 102, CpuId = 0, TotalRuntimeNs = 100, State = KernelThreadState.READY },
+            new KernelThreadInfo { Id = 103, CpuId = 0, TotalRuntimeNs = 100, State = KernelThreadState.READY },
+            new KernelThreadInfo { Id = 104, CpuId = 0, TotalRuntimeNs = 100, State = KernelThreadState.IDLE, IsIdle = true }
         };
         var monitor = new HtopMonitor();
         monitor.SortByCpu = false;
@@ -685,7 +685,7 @@ internal static class Program
             threads[i] = new KernelThreadInfo
             {
                 Id = (uint)(1000 + i), CpuId = 0, TotalRuntimeNs = 100,
-                State = "READY", IsManaged = true
+                State = KernelThreadState.READY, IsManaged = true
             };
         }
         ProcessManager.TestProcesses = large;
