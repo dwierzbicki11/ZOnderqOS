@@ -92,7 +92,8 @@ internal static class ThreadRowSmoke
                 Id = 901, CpuId = 0, State = "WAITING", IsIdle = true
             }};
             m.Refresh();
-            Check(m.Lines.Count == 8, "idle thread must not render");
+            Check(m.Lines.Count == 9 && m.Lines[8].Contains("START/EXIT"),
+                "idle thread must not render as a thread row");
         }
         finally
         {
