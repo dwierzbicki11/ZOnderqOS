@@ -278,6 +278,30 @@ namespace ZonderqOS.SystemCore
 
             int length = Math.Max(first.Length, delayBytes + second.Length);
             byte[] output = new byte[length];
+            // The output is already zero-initialized. Avoid decoding and
+            // multiplying every sample for common notification timelines:
+            // two muted clips, one audible unity-gain clip, or two disjoint
+            // unity-gain clips. Keep the full scheduled duration, including
+            // gaps and a muted clip's tail. Validate bounds before this path.
+            if (firstPercent == 0 && secondPercent == 0)
+                return output;
+            if (firstPercent == 100 && secondPercent == 0)
+            {
+                Array.Copy(first, 0, output, 0, first.Length);
+                return output;
+            }
+            if (firstPercent == 0 && secondPercent == 100)
+            {
+                Array.Copy(second, 0, output, delayBytes, second.Length);
+                return output;
+            }
+            if (firstPercent == 100 && secondPercent == 100 &&
+                delayBytes >= first.Length)
+            {
+                Array.Copy(first, 0, output, 0, first.Length);
+                Array.Copy(second, 0, output, delayBytes, second.Length);
+                return output;
+            }
             for (int at = 0; at < length; at += 2)
             {
                 int a = at < first.Length
