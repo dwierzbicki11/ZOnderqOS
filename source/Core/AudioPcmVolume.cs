@@ -9,6 +9,26 @@ namespace ZonderqOS.SystemCore
     public static class AudioPcmVolume
     {
         /// <summary>
+        /// Convert master volume and signed left/right balance into two
+        /// independent 0..100 PCM gains. The calculation is shared by the
+        /// diagnostic playback path and host tests; it never writes codec
+        /// registers. Integer truncation preserves the existing gain curve.
+        /// </summary>
+        public static void ResolveStereoGains(
+            int volumePercent, int balancePercent, out int leftPercent, out int rightPercent)
+        {
+            if (volumePercent < 0 || volumePercent > 100)
+                throw new ArgumentOutOfRangeException(nameof(volumePercent));
+            if (balancePercent < -100 || balancePercent > 100)
+                throw new ArgumentOutOfRangeException(nameof(balancePercent));
+
+            leftPercent = volumePercent *
+                (balancePercent > 0 ? 100 - balancePercent : 100) / 100;
+            rightPercent = volumePercent *
+                (balancePercent < 0 ? 100 + balancePercent : 100) / 100;
+        }
+
+        /// <summary>
         /// Apply a bounded, symmetric linear fade to interleaved 48 kHz
         /// signed PCM16 stereo. This removes sharp start/end transitions in
         /// short diagnostic sounds without touching codec registers or DMA.
