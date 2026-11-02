@@ -209,8 +209,9 @@ internal static class AudioDirectProbeSmoke
             };
             check(!AudioProbeDirectPlayback.TryPlay(nameChangedDuringReady, Pcm, 48000) &&
                 nameFormatReads == 4 && nameChangedDuringReady.StartCalls == 1 &&
-                nameChangedDuringReady.StopCalls == 1 &&
-                nameChangedDuringReady.WrittenBytes == 0,
+                nameChangedDuringReady.StopCalls == 0 &&
+                nameChangedDuringReady.WrittenBytes == 0 &&
+                nameChangedDuringReady.IsRunning,
                 "identity drift in final format getter aborts before PCM write");
 
             var driverChangedDuringReady = new Device();
@@ -222,8 +223,9 @@ internal static class AudioDirectProbeSmoke
             };
             check(!AudioProbeDirectPlayback.TryPlay(driverChangedDuringReady, Pcm, 48000) &&
                 driverFormatReads == 4 && driverChangedDuringReady.StartCalls == 1 &&
-                driverChangedDuringReady.StopCalls == 1 &&
-                driverChangedDuringReady.WrittenBytes == 0,
+                driverChangedDuringReady.StopCalls == 0 &&
+                driverChangedDuringReady.WrittenBytes == 0 &&
+                driverChangedDuringReady.IsRunning,
                 "driver drift in final format getter aborts before PCM write");
 
             var rateChangedDuringReady = new Device();
@@ -267,6 +269,15 @@ internal static class AudioDirectProbeSmoke
                 writeRateDrift.WrittenBytes == Pcm.Length && !writeRateDrift.IsRunning,
                 "direct probe aborts on format drift after first accepted write");
 
+            var writeIdentityDrift = new Device();
+            writeIdentityDrift.OnWrite = () => writeIdentityDrift.Name = "replacement";
+            check(!AudioProbeDirectPlayback.TryPlay(writeIdentityDrift, Pcm, 48000) &&
+                writeIdentityDrift.StartCalls == 1 &&
+                writeIdentityDrift.StopCalls == 0 &&
+                writeIdentityDrift.WrittenBytes == Pcm.Length &&
+                writeIdentityDrift.IsRunning,
+                "identity drift after PCM write aborts without stopping replacement");
+
             var writeNullFormat = new Device();
             writeNullFormat.OnWrite = () => writeNullFormat.Format = default;
             check(!AudioProbeDirectPlayback.TryPlay(writeNullFormat, Pcm, 48000) &&
@@ -300,6 +311,19 @@ internal static class AudioDirectProbeSmoke
                 settleRateDrift.StartCalls == 1 && settleRateDrift.StopCalls == 1 &&
                 settleRateDrift.WrittenBytes == Pcm.Length + 16384,
                 "direct probe rejects changed format after final settle");
+            var settleDriverDrift = new Device();
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "driver drift during settle uses bounded wait");
+                settleDriverDrift.DriverName = "ReplacementDriver";
+            };
+            check(!AudioProbeDirectPlayback.TryPlay(settleDriverDrift, Pcm, 48000) &&
+                settleDriverDrift.StartCalls == 1 &&
+                settleDriverDrift.StopCalls == 0 &&
+                settleDriverDrift.WrittenBytes == Pcm.Length + 16384 &&
+                settleDriverDrift.IsRunning,
+                "driver drift during settle skips Stop on replaced controller");
+
             var settleNullFormat = new Device();
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
@@ -364,6 +388,11 @@ internal static class AudioDirectProbeSmoke
             catch (InvalidOperationException) { stopThrew = true; }
             check(stopThrew && brokenStop.StopCalls == 1,
                 "simulated Stop exception propagates");
+            var afterIdentityDrift = new Device();
+            check(AudioProbeDirectPlayback.TryPlay(afterIdentityDrift, Pcm, 48000) &&
+                afterIdentityDrift.StartCalls == 1 && afterIdentityDrift.StopCalls == 1,
+                "direct guard remains reusable after replaced-output cleanup");
+
             var afterStopFailure = new Device();
             check(AudioProbeDirectPlayback.TryPlay(afterStopFailure, Pcm, 48000) &&
                 afterStopFailure.StartCalls == 1 &&

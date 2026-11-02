@@ -106,12 +106,16 @@ namespace ZonderqOS.SystemCore
                         // cannot make this path atomic: remain opt-in only.
                         // A withdrawn AudioDevice is no longer a safe target
                         // for driver Stop(): its backing HDA stream may have
-                        // been removed. Never call into a withdrawn device or
-                        // tear down a stream claimed by another player.
+                        // been removed. Likewise, a replaced controller
+                        // identity must not receive our Stop. Never call into
+                        // a withdrawn/replaced device or tear down a stream
+                        // claimed by another player.
                         if (output.IsWithdrawn)
                             Console.WriteLine("[AUDIO] 1MS cleanup: output withdrawn; Stop skipped.");
                         else if (output.Player != null)
                             Console.WriteLine("[AUDIO] 1MS cleanup: player claimed output; Stop skipped.");
+                        else if (output.Name != "hda" || output.DriverName != "HdAudioDriver")
+                            Console.WriteLine("[AUDIO] 1MS cleanup: HDA identity changed; Stop skipped.");
                         else
                             output.Stop();
                     }
