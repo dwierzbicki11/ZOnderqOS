@@ -143,9 +143,11 @@ namespace ZonderqOS.GUI
             // Escape remains available to close the panel.
             bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
             bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+            if (control || alt)
+                return true;
             // Shift is not a filter/navigation command either. Keep all
             // modified shortcuts with the desktop; no hidden selection change.
-            if (key.Modifiers != 0)
+            if ((key.Modifiers & ConsoleModifiers.Shift) != 0)
                 return true;
 
             if (key.Key == ConsoleKeyEx.LeftArrow)
