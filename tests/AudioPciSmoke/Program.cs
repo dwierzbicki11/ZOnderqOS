@@ -2029,6 +2029,7 @@ static class Test
 
         AudioMixerFastPathSmoke.Run();
         AudioProbeFeederSmoke.Run();
+        AudioDirectProbeSmoke.Run(Expect);
 
         Console.WriteLine("[AUDIO-PCI-HOST] PCM16 mixer saturation, gains, bounds and source immutability PASS");
 
