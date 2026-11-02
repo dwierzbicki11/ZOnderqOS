@@ -70,6 +70,75 @@ def inspect(path: Path, expected_right: int = 880, active_channel: str = "right"
     return f"[AUDIO-BALANCE] PASS captured {active_channel}-only {mean:.1f}Hz, silent {'right' if active_channel == 'left' else 'left'}, frames={frames}"
 
 
+
+def inspect_partial(path: Path, balance_percent: int):
+    """Verify a *measured* partial balance, including independent channel pitch.
+
+    The diagnostic uses equal-amplitude 440/880 Hz square waves. A partial
+    balance attenuates one channel without changing its pitch; require two
+    separate sustained windows so startup noise or one brief burst cannot pass.
+    This validates captured PCM, not codec registers or physical speakers.
+    """
+    if balance_percent == 0 or not -99 <= balance_percent <= 99:
+        raise ValueError("partial balance must be -99..-1 or 1..99")
+    expected_left = 100 - max(0, balance_percent)
+    expected_right = 100 - max(0, -balance_percent)
+    if min(expected_left, expected_right) < 20:
+        raise ValueError("partial balance test requires both gains >=20%")
+
+    with wave.open(str(path), "rb") as stream:
+        rate = stream.getframerate()
+        frames = stream.getnframes()
+        if stream.getnchannels() != 2 or stream.getsampwidth() != 2 or rate not in (44100, 48000):
+            raise ValueError("partial balance capture requires stereo PCM16")
+        if frames < rate // 5 or frames > rate * 90:
+            raise ValueError("invalid partial balance capture duration")
+        raw = stream.readframes(frames)
+    samples = array.array("h")
+    samples.frombytes(raw)
+    if sys.byteorder != "little":
+        samples.byteswap()
+    if len(samples) != frames * 2:
+        raise ValueError("truncated partial balance capture")
+    left = samples[::2]
+    right = samples[1::2]
+
+    window = rate * 8 // 100
+    starts = []
+    for start in range(0, frames - window + 1, max(1, rate // 200)):
+        l = left[start:start + window]
+        r = right[start:start + window]
+        if (sum(abs(v) >= 256 for v in l) * 100 >= window * 95 and
+                sum(abs(v) >= 256 for v in r) * 100 >= window * 95):
+            if not starts or start >= starts[0] + window:
+                starts.append(start)
+            if len(starts) == 2:
+                break
+    if len(starts) != 2:
+        raise ValueError("partial balance lacks two sustained stereo windows")
+
+    ratios = []
+    for start in starts:
+        l = left[start:start + window]
+        r = right[start:start + window]
+        for signal, hz_expected, name in ((l, 440, "left"), (r, 880, "right")):
+            crossings = sum((a < 0) != (b < 0) for a, b in zip(signal, signal[1:]))
+            hz = crossings * rate / (2 * (window - 1))
+            if not hz_expected * 0.90 <= hz <= hz_expected * 1.10:
+                raise ValueError(f"partial balance {name} pitch {hz:.1f}Hz")
+        mean_left = sum(abs(v) for v in l) / len(l)
+        mean_right = sum(abs(v) for v in r) / len(r)
+        ratio = mean_left / mean_right
+        expected_ratio = expected_left / expected_right
+        if not 0.85 * expected_ratio <= ratio <= 1.15 * expected_ratio:
+            raise ValueError(
+                f"partial balance ratio {ratio:.3f}, expected {expected_ratio:.3f}")
+        ratios.append(ratio)
+    return (f"[AUDIO-BALANCE] PASS captured balance={balance_percent:+d} "
+            f"left/right ratio={sum(ratios)/len(ratios):.3f}, "
+            f"independent 440/880Hz, frames={frames}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("wav", type=Path)
