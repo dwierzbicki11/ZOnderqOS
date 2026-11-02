@@ -178,6 +178,13 @@ checks["create uses the exact dialog name without silently trimming"] = (
     and 'string name = (dialogName ?? "").Trim();' not in body
     and 'string.IsNullOrWhiteSpace(name)' in body
 )
+checks["FAT32 creation checks case-insensitive file and directory collisions"] = (
+    "FileManagerNamePolicy.HasCaseInsensitiveCollision(name," in body
+    and "Directory.GetFiles(currentPath), Directory.GetDirectories(currentPath)" in body
+    and body.index("FileManagerNamePolicy.HasCaseInsensitiveCollision(name,") < body.index('File.WriteAllText(path, "")')
+    and "StringComparison.OrdinalIgnoreCase" in name_body
+)
+
 checks["FAT32 device aliases are rejected even with extensions"] = (
     "int dot = name.IndexOf('.');" in name_body
     and "name.Substring(0, dot)" in name_body

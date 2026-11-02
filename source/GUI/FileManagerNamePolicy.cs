@@ -58,5 +58,32 @@ namespace ZonderqOS.GUI
 
             return true;
         }
+
+        // FAT32 names are case-insensitive. Some host/runtime adapters may
+        // implement File.Exists with different casing semantics; check the
+        // freshly enumerated directory before issuing a create mutation.
+        public static bool HasCaseInsensitiveCollision(string name,
+            string[] files, string[] directories)
+        {
+            return ContainsName(files, name) || ContainsName(directories, name);
+        }
+
+        private static bool ContainsName(string[] paths, string name)
+        {
+            if (string.IsNullOrEmpty(name) || paths == null)
+                return false;
+
+            for (int i = 0; i < paths.Length; i++)
+            {
+                string path = paths[i];
+                if (string.IsNullOrEmpty(path))
+                    continue;
+                int slash = System.Math.Max(path.LastIndexOf('/'), path.LastIndexOf('\\'));
+                string existing = slash >= 0 ? path.Substring(slash + 1) : path;
+                if (string.Equals(existing, name, StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+            return false;
+        }
     }
 }

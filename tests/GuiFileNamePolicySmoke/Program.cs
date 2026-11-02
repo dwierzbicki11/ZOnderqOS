@@ -17,6 +17,15 @@ internal static class Program
                 ": expected " + accepted + ", got " + actual);
     }
 
+    private static void CheckCollision(string name, string[]? files,
+        string[]? directories, bool expected)
+    {
+        assertions++;
+        bool actual = FileManagerNamePolicy.HasCaseInsensitiveCollision(name, files!, directories!);
+        if (actual != expected)
+            throw new InvalidOperationException("Unexpected FAT32 name collision decision for " + name);
+    }
+
     private static void Main()
     {
         foreach (string? value in new string?[]
@@ -57,6 +66,13 @@ internal static class Program
         // The LFN limit counts UTF-16 code units, not Unicode code points.
         Expect(new string('a', 254) + "\uD83D\uDE00", false);
         Expect(new string('a', 253) + "\uD83D\uDE00", true);
+
+        CheckCollision("report.txt", new[] { "/data/REPORT.TXT" }, Array.Empty<string>(), true);
+        CheckCollision("report.txt", Array.Empty<string>(), new[] { "/data/REPORT.TXT" }, true);
+        CheckCollision("report.txt", new[] { @"C:\\DATA\\report.txt" }, Array.Empty<string>(), true);
+        CheckCollision("report.txt", new[] { "/data/report2.txt" }, new[] { "/data/archive" }, false);
+        CheckCollision("notes", new[] { "/data/notes.txt" }, Array.Empty<string>(), false);
+        CheckCollision("notes", null, null, false);
 
         Console.WriteLine("GUI FAT32 filename policy: " + assertions + " C# assertions PASS");
     }

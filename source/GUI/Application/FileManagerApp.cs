@@ -1345,6 +1345,16 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
+                // A case-sensitive adapter must not create a second FAT32
+                // entry differing only by case (file vs folder included).
+                // Read the directory afresh instead of trusting cached tiles.
+                if (FileManagerNamePolicy.HasCaseInsensitiveCollision(name,
+                    Directory.GetFiles(currentPath), Directory.GetDirectories(currentPath)))
+                {
+                    status = "Already exists (FAT32 name)";
+                    return;
+                }
+
                 if (dialogMode == 1)
                 {
                     File.WriteAllText(path, "");
