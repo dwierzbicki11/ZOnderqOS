@@ -62,6 +62,33 @@ class InvisibleSelectionContract(unittest.TestCase):
         self.assertLess(clipboard.index("if (GridRowsForView == 0)"),
                         clipboard.index("FileClipboard.Set("))
 
+    def test_resize_cancels_filename_editor_when_input_cannot_be_drawn(self):
+        body = section("private void SyncViewGeometry()",
+                       "public override void HandleMouse(int x, int y")
+        guard = body.split("if (dialogMode != 0 && (view.Width < 64 || view.Height < 66))",
+                           1)[1].split("// The menu may have been opened", 1)[0]
+        self.assertIn("dialogMode = 0;", guard)
+        self.assertIn('dialogName = "";', guard)
+        self.assertIn("ResetClickSequence();", guard)
+        # Production Dialog() only paints the input for a 48px-wide
+        # dialog with an 18px-high field; it reserves 16px of client inset.
+        for width in range(1, 100):
+            for height in range(1, 120):
+                dialog_width = min(430, max(0, width - 16))
+                dialog_height = min(126, max(0, height - 16))
+                offset = min(42, max(24, dialog_height - 40))
+                field_height = min(30, max(0, dialog_height - offset - 8))
+                painted = dialog_width >= 48 and field_height >= 18
+                if width >= 64 and height >= 66:
+                    self.assertTrue(painted)
+
+    def test_paste_is_blocked_before_any_filesystem_mutation(self):
+        body = section("private void PasteClipboard()",
+                       "private int Columns()")
+        self.assertIn("if (GridRowsForView == 0)", body)
+        self.assertLess(body.index("if (GridRowsForView == 0)"),
+                        body.index("FileClipboard.TryPaste("))
+
     def test_geometry_model_has_zero_rows_for_tiny_clients(self):
         for width, height in ((180, 80), (200, 90), (300, 110)):
             self.assertEqual(visible_rows(width, height), 0)
