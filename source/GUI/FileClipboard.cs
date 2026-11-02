@@ -142,11 +142,17 @@ namespace ZonderqOS.GUI
                 return false;
             }
 
+            // A cross-volume cut may copy successfully and then fail while
+            // removing its source. Once removal begins, deleting the complete
+            // destination in the catch block would lose the user's files.
+            // A successful rename also commits the destination before
+            // permission metadata is updated.
+            bool preserveDestination = false;
             try
             {
                 if (cutMode)
                 {
-                    MoveItem(source, destinationPath, sourceIsDirectory);
+                    MoveItem(source, destinationPath, sourceIsDirectory, ref preserveDestination);
                     PermissionManager.MovePermissionsUnder(source, destinationPath);
                     Clear();
                 }
@@ -160,9 +166,23 @@ namespace ZonderqOS.GUI
             }
             catch (Exception ex)
             {
-                TryRemoveDestination(destinationPath, sourceIsDirectory);
-                destinationPath = null;
-                error = ex.Message;
+                if (preserveDestination)
+                {
+                    // The source may be intact, partially removed, or already
+                    // renamed. Retain the complete destination in every case.
+                    // Keep the cut clipboard only if the source still exists.
+                    if (!Exists(source))
+                        Clear();
+                    error = "Move incomplete; destination retained: " + ex.Message;
+                }
+                else
+                {
+                    // A failed copy (or copy phase of a cross-volume move)
+                    // has not touched the source; discard its partial target.
+                    TryRemoveDestination(destinationPath, sourceIsDirectory);
+                    destinationPath = null;
+                    error = ex.Message;
+                }
                 return false;
             }
         }
@@ -224,7 +244,8 @@ namespace ZonderqOS.GUI
             CopyDirectory(source, destination);
         }
 
-        private static void MoveItem(string source, string destination, bool directory)
+        private static void MoveItem(string source, string destination, bool directory,
+            ref bool preserveDestination)
         {
             try
             {
@@ -232,6 +253,9 @@ namespace ZonderqOS.GUI
                     Directory.Move(source, destination);
                 else
                     File.Move(source, destination);
+                // A successful rename cannot be rolled back by deleting the
+                // target if the later permission metadata update fails.
+                preserveDestination = true;
                 return;
             }
             catch
@@ -241,19 +265,13 @@ namespace ZonderqOS.GUI
             }
 
             CopyItem(source, destination, directory);
-
-            try
-            {
-                if (directory)
-                    Directory.Delete(source, true);
-                else
-                    File.Delete(source);
-            }
-            catch
-            {
-                TryRemoveDestination(destination, directory);
-                throw;
-            }
+            // The destination is now a complete recovery copy. Source deletion
+            // can fail partway through a directory; NEVER delete both copies.
+            preserveDestination = true;
+            if (directory)
+                Directory.Delete(source, true);
+            else
+                File.Delete(source);
         }
 
         private static void CopyDirectory(string source, string destination)
@@ -351,7 +369,15 @@ namespace ZonderqOS.GUI
             {
             }
 
-            PermissionManager.RemovePermissionsUnder(destination);
+            // Cleanup of a failed copy must not throw a second exception
+            // that escapes the GUI paste handler and hides the original error.
+            try
+            {
+                PermissionManager.RemovePermissionsUnder(destination);
+            }
+            catch
+            {
+            }
         }
     }
 }

@@ -987,6 +987,11 @@ namespace ZonderqOS.GUI.Apps
             if (!FileClipboard.TryPaste(currentPath, out destinationPath, out error))
             {
                 status = "Paste error: " + (string.IsNullOrEmpty(error) ? "unknown error" : error);
+                // A cross-volume cut can leave a complete recovery copy after
+                // source deletion or permission metadata fails. Refresh the
+                // directory so the retained file is visible immediately.
+                if (!string.IsNullOrEmpty(destinationPath))
+                    RefreshKeepStatus();
                 return;
             }
 

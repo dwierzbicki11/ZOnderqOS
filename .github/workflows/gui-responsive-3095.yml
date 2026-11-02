@@ -7,6 +7,7 @@ on:
       - 'ZonderqOS.csproj'
       - 'tests/test_3094_responsive_gui.py'
       - 'tests/GuiScrollBarSmoke/**'
+      - 'tests/GuiFileClipboardSmoke/**'
       - 'tests/GuiWindowInputSmoke/**'
       - 'tests/GuiApplicationManagerSmoke/**'
       - 'tests/GuiStartMenuSmoke/**'
@@ -57,6 +58,8 @@ jobs:
           python3 tests/test_gui_resolution_build.py
       - name: Preserve protected FAT32 storage policy
         run: python3 tests/test_3094_storage_policy.py
+      - name: Exercise production clipboard copy/cut failure recovery in host C#
+        run: dotnet run --project tests/GuiFileClipboardSmoke/GuiFileClipboardSmoke.csproj --configuration Release
       - name: Exercise production scrollbar in host C#
         run: dotnet run --project tests/GuiScrollBarSmoke/GuiScrollBarSmoke.csproj --configuration Release
       - name: Exercise production Window mouse gestures in host C#
