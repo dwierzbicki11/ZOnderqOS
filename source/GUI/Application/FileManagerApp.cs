@@ -179,6 +179,18 @@ namespace ZonderqOS.GUI.Apps
                 EnsureSelectionVisible();
             }
 
+            // A filename editor needs at least a visible 48x18 input
+            // field (64x66 client including dialog insets). After a display
+            // shrink, do not keep an invisible modal that still accepts Enter
+            // and can create a file without showing its name.
+            if (dialogMode != 0 && (view.Width < 64 || view.Height < 66))
+            {
+                dialogMode = 0;
+                dialogName = "";
+                status = "Create cancelled: window too small";
+                ResetClickSequence();
+            }
+
             // The menu may have been opened before a window resize. Refit
             // its origin to the current client area so it remains clickable.
             if (contextMenuVisible && !CanShowContextMenu)
@@ -938,6 +950,13 @@ namespace ZonderqOS.GUI.Apps
 
         private void PasteClipboard()
         {
+            // Never mutate FAT32 through a paste shortcut when the current
+            // window is too short to paint any file tile or destination list.
+            if (GridRowsForView == 0)
+            {
+                status = "Enlarge window before pasting files";
+                return;
+            }
             string destinationPath;
             string error;
             bool wasCut = FileClipboard.IsCut;
