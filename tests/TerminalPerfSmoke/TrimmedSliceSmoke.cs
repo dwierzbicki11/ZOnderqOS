@@ -109,7 +109,7 @@ internal static class TrimmedSliceSmoke
         const int iterations = 20000;
         string withSpaces = "prefix" + new string('x', 80) + "\t  " + "suffix";
         Benchmark("wrapped row with trailing spaces x20000",
-            withSpaces, 6, 84, iterations, true);
+            withSpaces, 6, 83, iterations, true);
         string noSpaces = "prefix" + new string('x', 84) + "suffix";
         Benchmark("wrapped row without trailing spaces x20000",
             noSpaces, 6, 84, iterations, false);
