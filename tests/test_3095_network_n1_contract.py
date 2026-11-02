@@ -943,6 +943,11 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertLess(complete, passed)
         self.assertEqual(http.count("IsE1000EProbePciMappingStable("), 4)
         self.assertEqual(SOURCE.count("pciCommand, pciBar0, pciIrqLine, pciIrqPin,\n                             baselineResources, baselineIrqSources)"), 2)
+        validator = (ROOT / "tests/verify_3095_e1000e_irq_binding.py").read_text()
+        self.assertIn("PCI_STREAM = re.compile(", validator)
+        self.assertIn("len(stream_lines) != 6 or len(pci_lines) != 6", validator)
+        self.assertIn("PCI BAR/COMMAND/INTx changed between HTTP streams", validator)
+        self.assertIn('serial.replace(pci_line, "")', validator)
 
 
 if __name__ == "__main__":
