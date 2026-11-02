@@ -197,11 +197,16 @@ namespace ZonderqOS.SystemCore
                 throw new ArgumentException("WAV fmt or data chunk missing.", nameof(wave));
 
             int sourceFrameBytes = channels * (sourceBits / 8);
-            if (sourceIsFloat && hasFact && factFrames != (uint)(dataSize / sourceFrameBytes))
-                throw new ArgumentException("IEEE float WAV fact frame count does not match data.", nameof(wave));
             if (dataSize % sourceFrameBytes != 0 ||
                 dataSize > sourceRate * MaxDurationSeconds * sourceFrameBytes)
                 throw new ArgumentException("WAV data exceeds two seconds or has an incomplete frame.", nameof(wave));
+            // A fact chunk is optional for integer PCM, but when present its
+            // sample length must agree with the decoded frame count, just as
+            // for IEEE float. Do not silently accept contradictory metadata.
+            // Check frame alignment first so integer division cannot mask a
+            // truncated final sample.
+            if (hasFact && factFrames != (uint)(dataSize / sourceFrameBytes))
+                throw new ArgumentException("WAV fact frame count does not match data.", nameof(wave));
 
             // Extensible PCM's unused least-significant container bits must
             // be zero. Validate before any conversion, including resampling,
