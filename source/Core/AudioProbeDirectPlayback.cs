@@ -90,7 +90,17 @@ namespace ZonderqOS.SystemCore
                 try
                 {
                     if (started)
-                        output.Stop();
+                    {
+                        // AudioDevice.Player is owned by stock AudioPlayback.
+                        // If another player claimed this unowned diagnostic
+                        // output during Start/Write/settle, stopping it here
+                        // would tear down someone else's stream. A snapshot
+                        // cannot make this path atomic: remain opt-in only.
+                        if (output.Player == null)
+                            output.Stop();
+                        else
+                            Console.WriteLine("[AUDIO] 1MS cleanup: player claimed output; Stop skipped.");
+                    }
                 }
                 finally
                 {

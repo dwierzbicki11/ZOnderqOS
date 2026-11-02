@@ -176,9 +176,9 @@ internal static class AudioDirectProbeSmoke
             var startClaimed = new Device();
             startClaimed.OnStart = () => startClaimed.Player = new object();
             check(!AudioProbeDirectPlayback.TryPlay(startClaimed, Pcm, 48000) &&
-                startClaimed.StartCalls == 1 && startClaimed.StopCalls == 1 &&
-                startClaimed.WrittenBytes == 0,
-                "direct probe refuses output claimed during Start");
+                startClaimed.StartCalls == 1 && startClaimed.StopCalls == 0 &&
+                startClaimed.WrittenBytes == 0 && startClaimed.IsRunning,
+                "direct probe refuses output claimed during Start without stopping new owner");
 
             // If the codec changes format after accepting the first PCM
             // fragment, do not write the subsequent silent ring at the wrong
@@ -200,9 +200,9 @@ internal static class AudioDirectProbeSmoke
             var writeClaimed = new Device();
             writeClaimed.OnWrite = () => writeClaimed.Player = new object();
             check(!AudioProbeDirectPlayback.TryPlay(writeClaimed, Pcm, 48000) &&
-                writeClaimed.StartCalls == 1 && writeClaimed.StopCalls == 1 &&
-                writeClaimed.WrittenBytes == Pcm.Length,
-                "direct probe stops feeding if another player claims output");
+                writeClaimed.StartCalls == 1 && writeClaimed.StopCalls == 0 &&
+                writeClaimed.WrittenBytes == Pcm.Length && writeClaimed.IsRunning,
+                "direct probe stops feeding without stopping a newly claimed output");
 
             // Format drift during the 86ms settle is also a failure, even
             // though all bytes were already accepted by the fake ring.
@@ -226,6 +226,19 @@ internal static class AudioDirectProbeSmoke
                 settleNullFormat.StartCalls == 1 && settleNullFormat.StopCalls == 1 &&
                 settleNullFormat.WrittenBytes == Pcm.Length + 16384,
                 "direct probe refuses disappearing PCM format during settle");
+            // Ownership can also change after the final ring write but
+            // before the 86ms settle completes. Never Stop the new owner.
+            var settleClaimed = new Device();
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "claimed output during settle uses bounded wait");
+                settleClaimed.Player = new object();
+            };
+            check(!AudioProbeDirectPlayback.TryPlay(settleClaimed, Pcm, 48000) &&
+                settleClaimed.StartCalls == 1 && settleClaimed.StopCalls == 0 &&
+                settleClaimed.WrittenBytes == Pcm.Length + 16384 &&
+                settleClaimed.IsRunning,
+                "direct probe does not stop a player claiming output during settle");
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
                 check(ms == 86, "normal settle remains one HDA ring period");
