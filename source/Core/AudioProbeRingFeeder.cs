@@ -10,10 +10,9 @@ namespace ZonderqOS.SystemCore
     /// </summary>
     public static class AudioProbeRingFeeder
     {
-        // Match the two-second 48 kHz stereo16 limit used by the WAV decoder,
-        // PCM mixer and volume stage. The previous one-second limit rejected
-        // otherwise valid opt-in diagnostic PCM after it was decoded.
-        public const int MaxPcmBytes = 48000 * 2 * 4 * 2;
+        // Exactly two seconds of 48 kHz stereo16 (4 bytes per frame).
+        // Keep the direct HDA path and feeder on one shared byte limit.
+        public const int MaxPcmBytes = 48000 * 2 * 4;
         private const int RingBytes = 16 * 1024;
         private const int BlockBytes = 4096;
         private const int MaxConsecutiveWaits = 1000;

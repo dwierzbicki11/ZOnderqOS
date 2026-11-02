@@ -51,7 +51,7 @@ internal static class AudioProbeFeederSmoke
         // A two-second WAV is valid elsewhere in the pipeline. The opt-in
         // direct HDA feeder must accept the same exact PCM bound, including
         // partial-ring-sized tails, without truncation or source mutation.
-        Check(AudioProbeRingFeeder.MaxPcmBytes == 48000 * 2 * 4 * 2,
+        Check(AudioProbeRingFeeder.MaxPcmBytes == 48000 * 2 * 4,
             "two-second stereo16 diagnostic bound");
         byte[] twoSeconds = new byte[AudioProbeRingFeeder.MaxPcmBytes];
         twoSeconds[0] = 0x5A;
