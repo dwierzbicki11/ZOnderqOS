@@ -120,22 +120,23 @@ def validate(serial: str, pcap: bytes) -> str:
         raise ValueError("missing unique guest DHCP lease")
     guest_ip = bytes(int(x) for x in leases[0].group(1).split("."))
     frames = [p for f in pcap_frames(pcap) if (p := icmp_frame(f))]
-    for i, req in enumerate(frames):
-        if (req["type"] != 8 or req["src"] != guest_ip or req["dst"] != SERVER
-            or req["src_mac"] != MAC or req["dst_mac"] == MAC or
-            req["dst_mac"] == b"\x00" * 6 or
-            (req["dst_mac"][0] & 1)):
-            continue
-        for reply in frames[i + 1:]:
-            if (reply["type"] == 0 and reply["src"] == SERVER and
-                reply["dst"] == guest_ip and reply["dst_mac"] == MAC and
-                reply["src_mac"] == req["dst_mac"] and
-                reply["src_mac"] != MAC and
-                reply["src_mac"] != b"\x00" * 6 and
-                not (reply["src_mac"][0] & 1) and
-                len(req["payload"]) == 32 and
-                req["payload"] == reply["payload"]):
-                return "[NET3095-N3-GATE] PASS real QEMU ICMP echo request/reply with matching 32-byte payload guest=10.0.2.15 gateway=10.0.2.2"
+    # This isolated N3 image sends one echo. A subsequence search could
+    # accept a replayed reply or a duplicate request while still reporting
+    # a successful round-trip. Require the complete ordered pair.
+    if len(frames) != 2:
+        raise ValueError("expected exactly one N3 ICMP request/reply pair")
+    req, reply = frames
+    if (req["type"] == 8 and req["src"] == guest_ip and
+        req["dst"] == SERVER and req["src_mac"] == MAC and
+        req["dst_mac"] != MAC and req["dst_mac"] != b"\x00" * 6 and
+        not (req["dst_mac"][0] & 1) and
+        reply["type"] == 0 and reply["src"] == SERVER and
+        reply["dst"] == guest_ip and reply["dst_mac"] == MAC and
+        reply["src_mac"] == req["dst_mac"] and
+        reply["src_mac"] != MAC and reply["src_mac"] != b"\x00" * 6 and
+        not (reply["src_mac"][0] & 1) and
+        len(req["payload"]) == 32 and req["payload"] == reply["payload"]):
+        return "[NET3095-N3-GATE] PASS real QEMU ICMP echo request/reply with matching 32-byte payload guest=10.0.2.15 gateway=10.0.2.2"
     raise ValueError("no correlated QEMU ICMP echo RX/TX proof")
 
 
@@ -236,6 +237,9 @@ def self_test() -> None:
         (serial, frames[:6] + [frames[6][:6] + bytes.fromhex("525400000001") + frames[6][12:]]),
         (serial, frames[:5] + [bytes.fromhex("525400000001") + frames[5][6:]] + frames[6:]),
         (serial, frames[:6] + [frames[6][:6] + b"\x00" * 6 + frames[6][12:]]),
+        (serial, frames + [frames[6]]),  # replayed valid reply
+        (serial, frames[:6] + [frames[5]] + frames[5:]),  # duplicate valid request
+        (serial, frames + [frames[5], frames[6]]),  # duplicate complete pair
         (serial, frames[:5] + [b"\xff" * 6 + frames[5][6:]] + frames[6:]),
     ]
     for text, packets in bad:
