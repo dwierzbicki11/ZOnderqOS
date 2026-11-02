@@ -199,6 +199,19 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("AudioProbeDirectPlayback.TryPlay(output, scaled, sampleRate)", runtime)
         self.assertIn("output.Player != null || output.IsRunning", direct)
         self.assertIn('output.DriverName != "HdAudioDriver"', direct)
+        # The isolated direct path must use the already published format:
+        # reprogramming HDA just before Start can disturb the cyclic stream.
+        self.assertIn("output.SampleRate != sampleRate", direct)
+        self.assertIn("output.Format.Channels != 2", direct)
+        self.assertIn("output.Format.ChannelSize != 2", direct)
+        self.assertNotIn("TrySetFormat(", direct)
+        # Reject mutually exclusive output ownership modes before even
+        # querying AudioManager or allocating a scaled PCM copy.
+        preflight = runtime.split("private static bool PlayPcm(byte[] pcm, bool useOneMillisecondDiagnostic", 1)[1]
+        self.assertLess(preflight.index("if (useOneMillisecondDiagnostic && useAsyncDiagnostic)"),
+                        preflight.index("if (!AudioManager.IsEnabled)"))
+        self.assertLess(preflight.index("if (useOneMillisecondDiagnostic && useAsyncDiagnostic)"),
+                        preflight.index("ScaleStereo16ChannelsOrReuse(pcm"))
         self.assertIn("finally", direct)
         self.assertIn("output.Stop();", direct)
         self.assertIn("MaxConsecutiveWaits = 1000", feeder)
