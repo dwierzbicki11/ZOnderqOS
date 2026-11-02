@@ -203,6 +203,7 @@ internal static class AudioDirectProbeSmoke
                 normalProgress.Contains("ringWriteSamples=5 ringWaitSamples=1") &&
                 normalProgress.Contains("ringMin=16384 ringMax=16384") &&
                 normalProgress.Contains("ringIncreases=0 ringDecreases=0") &&
+                normalProgress.Contains("ringWaitIncreases=0 ringWaitDecreases=0") &&
                 normalProgress.Contains("DMA/IRQ and audible PCM not proven"),
                 "direct probe reports accepted bytes without claiming hardware DMA drain");
 
@@ -235,6 +236,7 @@ internal static class AudioDirectProbeSmoke
                 capacityTrace.ToString().Contains("ringWriteSamples=5 ringWaitSamples=1") &&
                 capacityTrace.ToString().Contains("ringMin=0 ringMax=4096") &&
                 capacityTrace.ToString().Contains("ringIncreases=1 ringDecreases=0") &&
+                capacityTrace.ToString().Contains("ringWaitIncreases=1 ringWaitDecreases=0") &&
                 capacityTrace.ToString().Contains("writable=writer+wait snapshots; DMA/IRQ not proven") &&
                 movingCapacity.WritableReadCalls == 7,
                 "direct probe reports stock driver capacity movement without claiming DMA proof");
@@ -270,7 +272,8 @@ internal static class AudioDirectProbeSmoke
                 changingTrace.ToString().Contains("ringSamples=8 ringChanges=2") &&
                 changingTrace.ToString().Contains("ringWriteSamples=5 ringWaitSamples=2") &&
                 changingTrace.ToString().Contains("ringMin=0 ringMax=4096") &&
-                changingTrace.ToString().Contains("ringIncreases=1 ringDecreases=1"),
+                changingTrace.ToString().Contains("ringIncreases=1 ringDecreases=1") &&
+                changingTrace.ToString().Contains("ringWaitIncreases=1 ringWaitDecreases=1"),
                 "direct probe distinguishes driver-reported free-space increase and decrease");
 
             // The getter itself may withdraw/rebind a controller. A stale

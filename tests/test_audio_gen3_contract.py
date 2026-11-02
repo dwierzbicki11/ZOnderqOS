@@ -264,6 +264,8 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("if (!CanSampleDriverWritable() || writable < 0)", direct)
         self.assertIn("ringWriteSamples=", direct)
         self.assertIn("ringWaitSamples=", direct)
+        self.assertIn("ringWaitIncreases=", direct)
+        self.assertIn("ringWaitDecreases=", direct)
         host_project = read("tests/AudioPciSmoke/AudioPciSmoke.csproj")
         host_program = read("tests/AudioPciSmoke/Program.cs")
         host_direct = read("tests/AudioPciSmoke/AudioDirectProbeSmoke.cs")

@@ -109,6 +109,8 @@ namespace ZonderqOS.SystemCore
                 int ringWriteSamples = 0;
                 int ringWaitSamples = 0;
                 int ringChanges = 0;
+                int ringWaitIncreases = 0;
+                int ringWaitDecreases = 0;
                 int ringIncreases = 0;
                 int ringDecreases = 0;
                 long ringMin = long.MaxValue;
@@ -137,8 +139,16 @@ namespace ZonderqOS.SystemCore
                     if (ringSamples > 0 && writable != previousWritable)
                     {
                         ringChanges++;
-                        if (writable > previousWritable) ringIncreases++;
-                        else ringDecreases++;
+                        if (writable > previousWritable)
+                        {
+                            ringIncreases++;
+                            if (!afterWrite) ringWaitIncreases++;
+                        }
+                        else
+                        {
+                            ringDecreases++;
+                            if (!afterWrite) ringWaitDecreases++;
+                        }
                     }
                     if (afterWrite) ringWriteSamples++;
                     else if (ringSamples > 0) ringWaitSamples++;
@@ -211,6 +221,11 @@ namespace ZonderqOS.SystemCore
                     (ringSamples == 0 ? 0 : ringMax));
                 Console.WriteLine("[AUDIO] 1MS ringIncreases=" + ringIncreases +
                     " ringDecreases=" + ringDecreases);
+                Console.WriteLine("[AUDIO] 1MS ringWaitIncreases=" + ringWaitIncreases +
+                    " ringWaitDecreases=" + ringWaitDecreases);
+                // Wait-phase free-space recovery is suggestive of ring
+                // consumption, but an 86ms observation can alias a full
+                // wrap. These counts do not prove DMA/IRQ or audible PCM.
                 Console.WriteLine("[AUDIO] 1MS writable=writer+wait snapshots; DMA/IRQ not proven");
                 Console.WriteLine("[AUDIO] 1MS DMA/IRQ and audible PCM not proven");
                 return fed;
