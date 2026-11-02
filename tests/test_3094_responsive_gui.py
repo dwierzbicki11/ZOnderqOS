@@ -119,6 +119,11 @@ class ResponsiveGui3094(unittest.TestCase):
         render = IMAGE_VIEWER.split("private void RenderViewport(Canvas canvas)", 1)[1].split(
             "private void RenderFooter(Canvas canvas)", 1
         )[0]
+        update = IMAGE_VIEWER.split("public override void Update()", 1)[1].split(
+            "public override void HandleKeyboard(KeyEvent key)", 1
+        )[0]
+        self.assertIn("if (!Window.IsActive || Window.IsMinimized)", update)
+        self.assertIn("leftButtonDown = false;", update)
         self.assertIn("(!leftButtonDown || previewBitmap == null)", render)
         self.assertIn("previewWidth > areaWidth || previewHeight > areaHeight", render)
 
