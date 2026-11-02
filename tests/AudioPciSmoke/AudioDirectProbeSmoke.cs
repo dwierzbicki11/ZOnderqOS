@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Device = Cosmos.Kernel.System.Audio.AudioDevice;
 using ZonderqOS.SystemCore;
 
@@ -50,6 +51,8 @@ namespace Cosmos.Kernel.System.Audio
         public bool ThrowOnWrite;
         public bool ThrowOnStop;
         public bool StallWrites;
+        // Host-only partial-write simulation; stock device behavior is unchanged.
+        public int MaxWriteBytes;
         public Action OnStart;
         public Action OnWrite;
         public Action OnStalledWrite;
@@ -70,9 +73,11 @@ namespace Cosmos.Kernel.System.Audio
                 OnStalledWrite?.Invoke();
                 return 0;
             }
-            WrittenBytes += bytes.Length;
+            int accepted = MaxWriteBytes > 0 ? Math.Min(MaxWriteBytes, bytes.Length) : bytes.Length;
+            accepted -= accepted % 4;
+            WrittenBytes += accepted;
             OnWrite?.Invoke();
-            return bytes.Length;
+            return accepted;
         }
 
         public void Stop()
@@ -151,11 +156,89 @@ internal static class AudioDirectProbeSmoke
         try
         {
             var good = new Device();
-            check(AudioProbeDirectPlayback.TryPlay(good, Pcm, 48000),
-                "direct probe feeds frame-aligned PCM through the real feeder");
+            TextWriter priorOutput = Console.Out;
+            using var normalTrace = new StringWriter();
+            bool goodResult;
+            try
+            {
+                Console.SetOut(normalTrace);
+                goodResult = AudioProbeDirectPlayback.TryPlay(good, Pcm, 48000);
+            }
+            finally
+            {
+                Console.SetOut(priorOutput);
+            }
+            check(goodResult, "direct probe feeds frame-aligned PCM through the real feeder");
             check(good.StartCalls == 1 && good.StopCalls == 1 &&
                 !good.IsRunning && good.WrittenBytes == Pcm.Length + 16384 &&
                 waits == 1, "direct probe stops after one silent ring and settle");
+            string normalProgress = normalTrace.ToString();
+            check(normalProgress.Contains("ACCEPTED_TO_RING") &&
+                normalProgress.Contains("pcmQueued=16") &&
+                normalProgress.Contains("silenceQueued=16384") &&
+                normalProgress.Contains("writeCalls=5") &&
+                normalProgress.Contains("zeroWrites=0") &&
+                normalProgress.Contains("waits=0") &&
+                normalProgress.Contains("DMA/IRQ and audible PCM not proven"),
+                "direct probe reports accepted bytes without claiming hardware DMA drain");
+
+            // A host-only device returning partial frame-aligned writes must
+            // be counted by accepted bytes, not by requested block sizes.
+            var partial = new Device { MaxWriteBytes = 1024 };
+            using var partialTrace = new StringWriter();
+            bool partialResult;
+            try
+            {
+                Console.SetOut(partialTrace);
+                partialResult = AudioProbeDirectPlayback.TryPlay(partial, Pcm, 48000);
+            }
+            finally
+            {
+                Console.SetOut(priorOutput);
+            }
+            check(partialResult && partial.WrittenBytes == Pcm.Length + 16384 &&
+                partialTrace.ToString().Contains("pcmQueued=16") &&
+                partialTrace.ToString().Contains("silenceQueued=16384") &&
+                partialTrace.ToString().Contains("writeCalls=17") &&
+                partialTrace.ToString().Contains("zeroWrites=0"),
+                "partial HDA writes count accepted bytes and actual calls");
+
+            // A single zero-byte return is backpressure, not an accepted
+            // PCM fragment. The 1 ms wait must appear in telemetry.
+            var stallOnce = new Device { StallWrites = true };
+            stallOnce.OnStalledWrite = () => stallOnce.StallWrites = false;
+            int oneMsWaits = 0;
+            int settleWaitsAfterStall = 0;
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                if (ms == 1) oneMsWaits++;
+                else if (ms == 86) settleWaitsAfterStall++;
+                else throw new Exception("Unexpected audio wait duration");
+            };
+            using var stalledTrace = new StringWriter();
+            bool stalledResult;
+            try
+            {
+                Console.SetOut(stalledTrace);
+                stalledResult = AudioProbeDirectPlayback.TryPlay(stallOnce, Pcm, 48000);
+            }
+            finally
+            {
+                Console.SetOut(priorOutput);
+                Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+                {
+                    check(ms == 86, "successful direct probe waits one HDA ring period");
+                    waits++;
+                };
+            }
+            check(stalledResult && oneMsWaits == 1 && settleWaitsAfterStall == 1 &&
+                stallOnce.WrittenBytes == Pcm.Length + 16384 &&
+                stalledTrace.ToString().Contains("pcmQueued=16") &&
+                stalledTrace.ToString().Contains("silenceQueued=16384") &&
+                stalledTrace.ToString().Contains("writeCalls=6") &&
+                stalledTrace.ToString().Contains("zeroWrites=1") &&
+                stalledTrace.ToString().Contains("waits=1"),
+                "one stalled HDA write reports backpressure without inflating queued PCM");
 
             // The public HDA name/driver can stay identical even after
             // AudioManager.Primary changes to another device instance.
