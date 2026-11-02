@@ -128,9 +128,7 @@ namespace ZonderqOS.GUI
         {
             VisibleRegion(x, y, out long baseX, out long baseY,
                 out int firstCol, out int lastCol, out int firstRow, out int lastRow);
-            // The old and new rectangles overlap only when the pointer moved
-            // less than their width/height. Calculate deltas in wide arithmetic
-            // to handle int.MinValue/int.MaxValue cursor coordinates safely.
+            // Wide subtraction avoids overflow for extreme pointer positions.
             long dx = (long)x - previousX;
             long dy = (long)y - previousY;
             bool overlap = reusePrevious && dx > -DamageWidth && dx < DamageWidth &&
@@ -138,41 +136,124 @@ namespace ZonderqOS.GUI
 #if ZONDERQ_PERF_HOST_TEST
             overlap = overlap && !DisableOverlapReuseForBenchmark;
 #endif
-            int shiftX = overlap ? (int)dx : 0;
-            int shiftY = overlap ? (int)dy : 0;
             Color[] target = nextPixels;
-            bool firstPixel = true;
-            bool uniform = true;
-            int firstArgb = 0;
-            for (int row = firstRow; row < lastRow; row++)
+            if (overlap)
             {
-                int py = (int)(baseY + row);
-                int offset = row * DamageWidth;
-                int oldRow = row + shiftY;
-                bool copyRow = overlap && (uint)oldRow < DamageHeight;
-                int oldOffset = oldRow * DamageWidth;
-                for (int col = firstCol; col < lastCol; col++)
+                int shiftX = (int)dx;
+                int shiftY = (int)dy;
+                int copyFirst = Math.Max(firstCol, -shiftX);
+                int copyLast = Math.Min(lastCol, DamageWidth - shiftX);
+                bool copied = false;
+                bool previousUniform = uniformCapture;
+                int previousArgb = previousUniform ? uniformColor.ToArgb() : 0;
+                bool freshMatch = true;
+
+                for (int row = firstRow; row < lastRow; row++)
                 {
-                    int oldCol = col + shiftX;
-                    Color pixel = copyRow && (uint)oldCol < DamageWidth
-                        ? savedPixels[oldOffset + oldCol]
-                        : canvas.GetPointColor((int)(baseX + col), py);
-                    target[offset + col] = pixel;
-                    if (firstPixel)
+                    int py = (int)(baseY + row);
+                    int offset = row * DamageWidth;
+                    int oldRow = row + shiftY;
+                    if ((uint)oldRow < DamageHeight && copyFirst < copyLast)
                     {
-                        uniformColor = pixel;
-                        firstArgb = pixel.ToArgb();
-                        firstPixel = false;
+                        // Bulk-copy the unchanged overlap; only newly exposed
+                        // left/right strips require actual Canvas readback.
+                        for (int col = firstCol; col < copyFirst; col++)
+                        {
+                            Color pixel = canvas.GetPointColor((int)(baseX + col), py);
+                            target[offset + col] = pixel;
+                            if (previousUniform && pixel.ToArgb() != previousArgb)
+                                freshMatch = false;
+                        }
+                        Array.Copy(savedPixels, oldRow * DamageWidth + copyFirst + shiftX,
+                            target, offset + copyFirst, copyLast - copyFirst);
+                        copied = true;
+                        for (int col = copyLast; col < lastCol; col++)
+                        {
+                            Color pixel = canvas.GetPointColor((int)(baseX + col), py);
+                            target[offset + col] = pixel;
+                            if (previousUniform && pixel.ToArgb() != previousArgb)
+                                freshMatch = false;
+                        }
                     }
-                    else if (uniform && pixel.ToArgb() != firstArgb)
-                        uniform = false;
+                    else
+                    {
+                        for (int col = firstCol; col < lastCol; col++)
+                        {
+                            Color pixel = canvas.GetPointColor((int)(baseX + col), py);
+                            target[offset + col] = pixel;
+                            if (previousUniform && pixel.ToArgb() != previousArgb)
+                                freshMatch = false;
+                        }
+                    }
+                }
+
+                if (previousUniform && copied)
+                {
+                    // All reused pixels share the previous color. Only the
+                    // newly exposed strips can break uniformity, so no second
+                    // 672-pixel scan is needed on a flat desktop.
+                    uniformCapture = freshMatch;
+                }
+                else
+                {
+                    UpdateUniformCapture(target, firstCol, lastCol, firstRow, lastRow);
                 }
             }
-            // Empty offscreen captures must not reuse an older flat color.
-            uniformCapture = !firstPixel && uniform;
+            else
+            {
+                // Non-overlapping jumps retain the original one-pass capture
+                // and uniformity check; do not pay for a second scan.
+                bool firstPixel = true;
+                bool uniform = true;
+                int firstArgb = 0;
+                for (int row = firstRow; row < lastRow; row++)
+                {
+                    int py = (int)(baseY + row);
+                    int offset = row * DamageWidth;
+                    for (int col = firstCol; col < lastCol; col++)
+                    {
+                        Color pixel = canvas.GetPointColor((int)(baseX + col), py);
+                        target[offset + col] = pixel;
+                        if (firstPixel)
+                        {
+                            uniformColor = pixel;
+                            firstArgb = pixel.ToArgb();
+                            firstPixel = false;
+                        }
+                        else if (uniform && pixel.ToArgb() != firstArgb)
+                            uniform = false;
+                    }
+                }
+                uniformCapture = !firstPixel && uniform;
+            }
             Color[] old = savedPixels;
             savedPixels = target;
             nextPixels = old;
+        }
+
+        private void UpdateUniformCapture(Color[] pixels, int firstCol, int lastCol,
+            int firstRow, int lastRow)
+        {
+            bool first = true;
+            bool uniform = true;
+            int argb = 0;
+            for (int row = firstRow; row < lastRow; row++)
+            {
+                int offset = row * DamageWidth;
+                for (int col = firstCol; col < lastCol; col++)
+                {
+                    Color pixel = pixels[offset + col];
+                    if (first)
+                    {
+                        uniformColor = pixel;
+                        argb = pixel.ToArgb();
+                        first = false;
+                    }
+                    else if (uniform && pixel.ToArgb() != argb)
+                        uniform = false;
+                }
+            }
+            uniformCapture = !first && uniform;
         }
 
         private void Restore(int x, int y)
