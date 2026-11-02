@@ -13,6 +13,11 @@ namespace ZonderqOS.SystemCore
     /// </summary>
     internal static class AudioProbeDirectPlayback
     {
+        // The stock AudioDevice.Player snapshot is not an atomic claim.
+        // Prevent two opt-in direct diagnostics from feeding the same ring.
+        // This does not replace the stock AudioPlayback ownership protocol.
+        private static int _directProbeBusy;
+
         internal static bool TryPlay(AudioDevice output, byte[] pcm, uint sampleRate)
         {
             if (output == null || output.IsWithdrawn || output.Name != "hda" ||
@@ -36,9 +41,20 @@ namespace ZonderqOS.SystemCore
                 return false;
             }
 
+            if (System.Threading.Interlocked.CompareExchange(
+                ref _directProbeBusy, 1, 0) != 0)
+            {
+                Console.WriteLine("[AUDIO] 1MS REFUSED: another direct diagnostic is active.");
+                return false;
+            }
+
             bool started = false;
             try
             {
+                // Recheck after acquiring our local diagnostic guard. A
+                // withdrawn, running or newly claimed device is not ours.
+                if (output.IsWithdrawn || output.Player != null || output.IsRunning)
+                    return false;
                 // Start can fail after partially enabling the stream engine.
                 // Mark cleanup as required before invoking the driver.
                 started = true;
@@ -55,8 +71,16 @@ namespace ZonderqOS.SystemCore
             }
             finally
             {
-                if (started)
-                    output.Stop();
+                try
+                {
+                    if (started)
+                        output.Stop();
+                }
+                finally
+                {
+                    // Release even when Start/Write/Stop throws.
+                    System.Threading.Volatile.Write(ref _directProbeBusy, 0);
+                }
             }
         }
     }
