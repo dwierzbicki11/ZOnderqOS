@@ -30,7 +30,14 @@ namespace ZonderqOS.GUI
         public int Height = 100;
         public Action? CloseAction;
         public int BoundsSyncCount;
-        public void EnsureDesktopBounds() { BoundsSyncCount++; }
+        public int NextWidth;
+        public int NextHeight;
+        public void EnsureDesktopBounds()
+        {
+            BoundsSyncCount++;
+            if (NextWidth > 0) Width = NextWidth;
+            if (NextHeight > 0) Height = NextHeight;
+        }
         public void RestoreFromMinimized() { IsMinimized = false; Visible = true; }
         public void Minimize() { IsMinimized = true; Visible = false; }
         public bool ContainsPoint(int x, int y) => Visible && !IsMinimized &&
@@ -64,6 +71,10 @@ internal sealed class ClosingApp : Application
     public int MouseCount;
     public int KeyCount;
     public int BoundsSyncAtKey;
+    public int BoundsSyncAtUpdate;
+    public int BoundsSyncAtRender;
+    public int WidthAtUpdate;
+    public int WidthAtRender;
     public bool LastRightPress;
     public bool LastLeftRelease;
     public Action? OnClose;
@@ -81,12 +92,16 @@ internal sealed class ClosingApp : Application
     public override void Update()
     {
         UpdateCount++;
+        BoundsSyncAtUpdate = Window.BoundsSyncCount;
+        WidthAtUpdate = Window.Width;
         OnUpdate?.Invoke();
     }
 
     public override void Render(Cosmos.Kernel.System.Graphics.Canvas canvas)
     {
         RenderCount++;
+        BoundsSyncAtRender = Window.BoundsSyncCount;
+        WidthAtRender = Window.Width;
         OnRender?.Invoke();
     }
 
@@ -721,8 +736,48 @@ internal static class Program
         manager.CloseAll();
     }
 
+    private static void ReflowPrecedesUpdateAndPaint()
+    {
+        var manager = new ApplicationManager();
+        var first = new ClosingApp();
+        var hidden = new ClosingApp();
+        var last = new ClosingApp();
+        manager.Launch(first);
+        manager.Launch(hidden);
+        manager.Launch(last);
+
+        // Simulate a mode change after the previous frame: the app must
+        // never read old window dimensions in its next Update callback.
+        first.Window.NextWidth = 320;
+        hidden.Window.NextWidth = 240;
+        last.Window.NextWidth = 800;
+        hidden.Window.Minimize();
+
+        manager.Update();
+        Check(first.UpdateCount == 1 && first.BoundsSyncAtUpdate == 1 &&
+            first.WidthAtUpdate == 320, "first app reflows before Update");
+        Check(hidden.UpdateCount == 1 && hidden.BoundsSyncAtUpdate == 1 &&
+            hidden.WidthAtUpdate == 240, "minimized app reflows before Update");
+        Check(last.UpdateCount == 1 && last.BoundsSyncAtUpdate == 1 &&
+            last.WidthAtUpdate == 800, "foreground app reflows before Update");
+
+        // A display change between Update and Render must not paint using
+        // stale bounds; minimized windows are still not painted.
+        first.Window.NextWidth = 200;
+        last.Window.NextWidth = 640;
+        manager.Render(new StubCanvas());
+        Check(first.RenderCount == 1 && first.BoundsSyncAtRender == 2 &&
+            first.WidthAtRender == 200, "first app reflows before paint");
+        Check(last.RenderCount == 1 && last.BoundsSyncAtRender == 2 &&
+            last.WidthAtRender == 640, "foreground app reflows before paint");
+        Check(hidden.RenderCount == 0 && hidden.Window.BoundsSyncCount == 1,
+            "minimized app cannot be painted");
+        manager.CloseAll();
+    }
+
     public static int Main()
     {
+        ReflowPrecedesUpdateAndPaint();
         KeyboardBoundsSyncPrecedesAppInput();
         OrdinaryLogout();
         CallbackRemovesAnotherWindow();
