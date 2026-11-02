@@ -618,18 +618,7 @@ namespace ZonderqOS.SystemCore
             try
             {
                 byte[] source = AudioTonePcm.GenerateSquareStereo16(48000, 2860, 250, 4096);
-                byte[] monoFloat = new byte[source.Length];
-                for (int frame = 0; frame < source.Length / 4; frame++)
-                {
-                    int src = frame * 4;
-                    int dst = frame * 4;
-                    short sample = (short)(source[src] | (source[src + 1] << 8));
-                    // +/-0.125f is exactly representable in IEEE754 float32.
-                    // 0x3E000000 / 0xBE000000 in little-endian byte order.
-                    // Preserve the silent tail: zero PCM must remain 0.0f.
-                    if (sample != 0)
-                        monoFloat[dst + 3] = sample < 0 ? (byte)0xBE : (byte)0x3E;
-                }
+                byte[] monoFloat = AudioFloatToneFixture.FromStereo16Left(source);
                 byte[] wave = AudioWavePcm.EncodeFloat32AtRate(monoFloat, 48000, 1);
                 Console.WriteLine("[AUDIO] WAV IEEE_FLOAT32 mono 2860Hz -> bounded PCM16 stereo HDA");
                 using (var input = new MemoryStream(wave, false))
@@ -653,16 +642,7 @@ namespace ZonderqOS.SystemCore
             try
             {
                 byte[] source = AudioTonePcm.GenerateSquareStereo16(44100, 3960, 250, 4096);
-                byte[] monoFloat = new byte[source.Length];
-                for (int frame = 0; frame < source.Length / 4; frame++)
-                {
-                    int at = frame * 4;
-                    short sample = (short)(source[at] | (source[at + 1] << 8));
-                    // Exactly representable +/-0.125f; all other bytes
-                    // remain zero in the little-endian IEEE754 sample.
-                    if (sample != 0)
-                        monoFloat[at + 3] = sample < 0 ? (byte)0xBE : (byte)0x3E;
-                }
+                byte[] monoFloat = AudioFloatToneFixture.FromStereo16Left(source);
                 byte[] wave = AudioWavePcm.EncodeExtensibleFloat32AtRate(
                     monoFloat, 44100, 1);
                 Console.WriteLine("[AUDIO] WAV extensible IEEE_FLOAT32 mono 44100Hz 3960Hz -> 48000Hz HDA");
