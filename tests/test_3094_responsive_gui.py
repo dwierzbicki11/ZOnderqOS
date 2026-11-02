@@ -127,6 +127,36 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("(!leftButtonDown || previewBitmap == null)", render)
         self.assertIn("previewWidth > areaWidth || previewHeight > areaHeight", render)
 
+    def test_image_viewer_navigation_skips_corrupt_and_missing_siblings(self):
+        navigation = IMAGE_VIEWER.split("private void NavigateSibling(int delta)", 1)[1].split(
+            "private void LoadImage(string path, bool rebuildSiblings)", 1
+        )[0]
+        self.assertIn("int attempts = siblingCount - 1;", navigation)
+        self.assertIn("for (int i = 0; i < attempts; i++)", navigation)
+        self.assertIn("LoadImage(candidate, false);", navigation)
+        self.assertIn("string.Equals(currentPath, candidate, StringComparison.OrdinalIgnoreCase)", navigation)
+        self.assertIn('status = "Brak dostepnego sasiedniego obrazu";', navigation)
+        self.assertIn("if (string.IsNullOrEmpty(candidate))", navigation)
+
+        # Independent bounded circular search: a bad B between A and C
+        # must not prevent forward or backward navigation from A.
+        paths = ["A.png", "B.png", "C.png", "D.png"]
+        available = {"A.png", "C.png"}
+        def next_available(start, direction):
+            index = start
+            for _ in range(len(paths) - 1):
+                index = (index + direction) % len(paths)
+                if paths[index] in available:
+                    return index
+            return start
+        self.assertEqual(next_available(0, 1), 2)
+        self.assertEqual(next_available(0, -1), 2)
+        self.assertEqual(next_available(2, 1), 0)
+        self.assertEqual(next_available(2, -1), 0)
+        available.clear()
+        self.assertEqual(next_available(0, 1), 0)
+        self.assertEqual(next_available(0, -1), 0)
+
     def test_image_viewer_preview_failure_is_contained_and_rate_limited(self):
         # Source-level contract, not an emulated Cosmos OOM injection.
         render = IMAGE_VIEWER.split("private void RenderViewport(Canvas canvas)", 1)[1].split(
