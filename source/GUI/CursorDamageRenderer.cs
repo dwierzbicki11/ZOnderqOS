@@ -8,7 +8,7 @@ namespace ZonderqOS.GUI
     /// Small software damage rectangles for cursor-only movement.
     /// No per-move allocations and no second full-screen framebuffer.
     ///
-    /// Cosmos 3.0.94 Canvas.Display() still presents the full back buffer.
+    /// Cosmos 3.0.95 Canvas.Display() still presents the full back buffer.
     /// This only avoids rebuilding all desktop/widgets on pointer motion;
     /// it does NOT claim a partial GPU transfer or screen-page flip.
     /// </summary>
@@ -20,7 +20,11 @@ namespace ZonderqOS.GUI
         private const int TopHalo = 4;
         private const int DamageWidth = 24;
         private const int DamageHeight = 28;
-        private readonly Color[] savedPixels = new Color[DamageWidth * DamageHeight];
+        // Double-buffered underlay: small cursor moves reuse the previous
+        // captured pixels in the overlapping rectangle. Both buffers are
+        // allocated once; no per-move heap allocation or framebuffer writes.
+        private Color[] savedPixels = new Color[DamageWidth * DamageHeight];
+        private Color[] nextPixels = new Color[DamageWidth * DamageHeight];
         private readonly Canvas canvas;
         private int previousX;
         private int previousY;
@@ -34,6 +38,7 @@ namespace ZonderqOS.GUI
 #if ZONDERQ_PERF_HOST_TEST
         // A/B only: the identical production capture path with per-pixel restore.
         internal static bool DisableUniformRestoreForBenchmark;
+        internal static bool DisableOverlapReuseForBenchmark;
 #endif
 
         internal CursorDamageRenderer(Canvas canvas)
@@ -57,7 +62,7 @@ namespace ZonderqOS.GUI
             {
                 try
                 {
-                    Capture(x, y);
+                    Capture(x, y, false);
                     previousX = x;
                     previousY = y;
                     valid = true;
@@ -87,7 +92,7 @@ namespace ZonderqOS.GUI
             try
             {
                 Restore(previousX, previousY);
-                Capture(x, y);
+                Capture(x, y, true);
                 previousX = x;
                 previousY = y;
                 Cursor.Draw(canvas, x, y);
@@ -119,10 +124,23 @@ namespace ZonderqOS.GUI
             lastRow = (int)Math.Max(0L, Math.Min(DamageHeight, (long)canvas.Height - baseY));
         }
 
-        private void Capture(int x, int y)
+        private void Capture(int x, int y, bool reusePrevious)
         {
             VisibleRegion(x, y, out long baseX, out long baseY,
                 out int firstCol, out int lastCol, out int firstRow, out int lastRow);
+            // The old and new rectangles overlap only when the pointer moved
+            // less than their width/height. Calculate deltas in wide arithmetic
+            // to handle int.MinValue/int.MaxValue cursor coordinates safely.
+            long dx = (long)x - previousX;
+            long dy = (long)y - previousY;
+            bool overlap = reusePrevious && dx > -DamageWidth && dx < DamageWidth &&
+                dy > -DamageHeight && dy < DamageHeight;
+#if ZONDERQ_PERF_HOST_TEST
+            overlap = overlap && !DisableOverlapReuseForBenchmark;
+#endif
+            int shiftX = overlap ? (int)dx : 0;
+            int shiftY = overlap ? (int)dy : 0;
+            Color[] target = nextPixels;
             bool firstPixel = true;
             bool uniform = true;
             int firstArgb = 0;
@@ -130,10 +148,16 @@ namespace ZonderqOS.GUI
             {
                 int py = (int)(baseY + row);
                 int offset = row * DamageWidth;
+                int oldRow = row + shiftY;
+                bool copyRow = overlap && (uint)oldRow < DamageHeight;
+                int oldOffset = oldRow * DamageWidth;
                 for (int col = firstCol; col < lastCol; col++)
                 {
-                    Color pixel = canvas.GetPointColor((int)(baseX + col), py);
-                    savedPixels[offset + col] = pixel;
+                    int oldCol = col + shiftX;
+                    Color pixel = copyRow && (uint)oldCol < DamageWidth
+                        ? savedPixels[oldOffset + oldCol]
+                        : canvas.GetPointColor((int)(baseX + col), py);
+                    target[offset + col] = pixel;
                     if (firstPixel)
                     {
                         uniformColor = pixel;
@@ -146,6 +170,9 @@ namespace ZonderqOS.GUI
             }
             // Empty offscreen captures must not reuse an older flat color.
             uniformCapture = !firstPixel && uniform;
+            Color[] old = savedPixels;
+            savedPixels = target;
+            nextPixels = old;
         }
 
         private void Restore(int x, int y)
