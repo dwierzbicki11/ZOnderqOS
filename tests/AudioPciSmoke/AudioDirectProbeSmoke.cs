@@ -1,11 +1,13 @@
 using System;
-using Device = Cosmos.Kernel.HAL.Devices.Audio.AudioDevice;
+using Device = Cosmos.Kernel.System.Audio.AudioDevice;
 using ZonderqOS.SystemCore;
 
 // Host-only substitutes for the public stock Cosmos AudioDevice surface.
 // Never compiled into the kernel. The production direct probe is linked
 // unchanged with ZONDERQ_AUDIO_PROBE in AudioPciSmoke.csproj.
-namespace Cosmos.Kernel.HAL.Devices.Audio
+namespace Cosmos.Kernel.HAL.Devices.Audio { }
+
+namespace Cosmos.Kernel.System.Audio
 {
     public sealed class HostAudioFormat
     {
@@ -78,9 +80,9 @@ internal static class AudioDirectProbeSmoke
         // stream we never owned.
         ExpectRefused(new Device { SampleRate = 44100 }, check,
             "direct probe rejects mismatched sample rate without touching device");
-        ExpectRefused(new Device { Format = new Cosmos.Kernel.HAL.Devices.Audio.HostAudioFormat
+        ExpectRefused(new Device { Format = new Cosmos.Kernel.System.Audio.HostAudioFormat
             { Channels = 1 } }, check, "direct probe rejects mono output");
-        ExpectRefused(new Device { Format = new Cosmos.Kernel.HAL.Devices.Audio.HostAudioFormat
+        ExpectRefused(new Device { Format = new Cosmos.Kernel.System.Audio.HostAudioFormat
             { ChannelSize = 1 } }, check, "direct probe rejects 8-bit output");
         ExpectRefused(new Device { Name = "ac97" }, check,
             "direct probe rejects non-HDA controller");
