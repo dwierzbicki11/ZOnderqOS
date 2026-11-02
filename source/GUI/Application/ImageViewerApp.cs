@@ -392,19 +392,37 @@ namespace ZonderqOS.GUI.Apps
 
         private void NavigateSibling(int delta)
         {
-            if (siblingCount <= 0 || siblingIndex < 0)
+            if (siblingCount <= 1 || siblingIndex < 0 || (delta != -1 && delta != 1))
             {
                 status = "Brak sasiedniego obrazu";
                 return;
             }
 
-            int next = siblingIndex + delta;
-            if (next < 0)
-                next = siblingCount - 1;
-            else if (next >= siblingCount)
-                next = 0;
+            // A FAT32 entry may disappear or become unreadable after the
+            // directory was scanned. Do not trap Left/Right on that one bad
+            // entry forever: try each *other* sibling at most once.
+            int next = siblingIndex;
+            int attempts = siblingCount - 1;
+            for (int i = 0; i < attempts; i++)
+            {
+                next += delta;
+                if (next < 0)
+                    next = siblingCount - 1;
+                else if (next >= siblingCount)
+                    next = 0;
 
-            LoadImage(siblingImages[next], false);
+                string candidate = siblingImages[next];
+                if (string.IsNullOrEmpty(candidate))
+                    continue;
+
+                LoadImage(candidate, false);
+                // LoadImage commits currentPath only after a successful decode.
+                // On failure the previous image and sibling index stay intact.
+                if (string.Equals(currentPath, candidate, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+
+            status = "Brak dostepnego sasiedniego obrazu";
         }
 
         private void LoadImage(string path, bool rebuildSiblings)
