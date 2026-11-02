@@ -393,6 +393,21 @@ internal static class Program
                 checks++;
             }
         }
+        // Exercise every side of the 64-character scalar/span boundary,
+        // including CRLF crossing the boundary and a delimiter at the end.
+        foreach (int position in new[] { 0, 1, 62, 63, 64, 65, 66, 127, 128 })
+        foreach (string separator in new[] { "\r", "\n", "\r\n" })
+        {
+            string output = new string('x', position) + separator + new string('z', 96);
+            for (int start = 0; start <= position + separator.Length + 1; start++)
+            {
+                if (TerminalBox.FindNextOutputBreak(output, start) !=
+                    ScalarNextOutputBreak(output, start))
+                    throw new Exception("64-char delimiter boundary mismatch at " +
+                        position + " start=" + start);
+                checks++;
+            }
+        }
         Console.WriteLine("PASS: " + checks +
             " production span delimiter scans equal frozen scalar scanner");
     }
