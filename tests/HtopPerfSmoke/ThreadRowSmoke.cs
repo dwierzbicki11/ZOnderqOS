@@ -166,10 +166,86 @@ internal static class ThreadRowSmoke
             "B (7 alternating samples; not kernel CPU/idle)");
     }
 
+    private static void VerifyStableRefreshAllocations()
+    {
+        KernelProcess[] oldP = ProcessManager.TestProcesses;
+        KernelThreadInfo[] oldT = SchedulerInfo.Threads;
+        try
+        {
+            var threads = new KernelThreadInfo[128];
+            for (int i = 0; i < threads.Length; i++)
+                threads[i] = new KernelThreadInfo
+                {
+                    Id = (uint)(1000 + i), CpuId = 0,
+                    State = i % 2 == 0 ? "READY" : "WAITING",
+                    IsManaged = true
+                };
+            ProcessManager.TestProcesses = Array.Empty<KernelProcess>();
+            SchedulerInfo.Threads = threads;
+            var m = new HtopMonitor();
+            for (int i = 0; i < 12; i++) m.Refresh();
+            long start = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < 100; i++) m.Refresh();
+            long bytes = GC.GetAllocatedBytesForCurrentThread() - start;
+            Check(bytes == 0, "100 stable production Refresh calls allocated " + bytes + " B");
+            Check(m.Lines.Count == 136, "128 thread rows and 8 fixed lines");
+            Console.WriteLine("HOST htop 100 stable 128-thread production Refresh calls: " +
+                bytes + " B allocations (not kernel GC/CPU)");
+        }
+        finally
+        {
+            ProcessManager.TestProcesses = oldP;
+            SchedulerInfo.Threads = oldT;
+        }
+    }
+
+    private static void BenchmarkChangingRows()
+    {
+        var m = new HtopMonitor();
+        var t = new KernelThreadInfo { Id = 900, CpuId = 0, State = "READY" };
+        int pid = 42;
+        string name = "shell";
+        Func<long> before = () =>
+        {
+            long sum = 0;
+            for (int i = 0; i < 1024; i++)
+            {
+                string line = Legacy(t, pid, i % 101, name);
+                sum += line.Length + line[0] + line[line.Length - 1];
+            }
+            return sum;
+        };
+        Func<long> after = () =>
+        {
+            long sum = 0;
+            for (int i = 0; i < 1024; i++)
+            {
+                string line = m.GetThreadRowLine(0, t, pid, i % 101, name);
+                sum += line.Length + line[0] + line[line.Length - 1];
+            }
+            return sum;
+        };
+        Check(before() == after(), "changing row A/B checksum");
+        for (int i = 0; i < 12; i++) { sink ^= before(); sink ^= after(); }
+        double[] a = new double[7], b = new double[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if ((i & 1) == 0) { a[i] = Time(before); b[i] = Time(after); }
+            else { b[i] = Time(after); a[i] = Time(before); }
+        }
+        double oldMs = Median(a), newMs = Median(b);
+        Console.WriteLine("HOST A/B 1024 changing htop thread rows: old=" +
+            oldMs.ToString("F5") + "ms cached=" + newMs.ToString("F5") +
+            "ms ratio=" + (oldMs / newMs).ToString("F2") +
+            "x (7 alternating samples; cache-miss cost, not kernel CPU)");
+    }
+
     internal static void Run()
     {
         Verify();
+        VerifyStableRefreshAllocations();
         Benchmark();
+        BenchmarkChangingRows();
         GC.KeepAlive(sink);
     }
 }
