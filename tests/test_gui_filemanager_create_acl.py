@@ -157,6 +157,17 @@ checks["FAT32 name policy rejects reserved and control characters"] = (
     and 'name == ".."' in name_body
 )
 
+checks["FAT32 device aliases are rejected even with extensions"] = (
+    "int dot = name.IndexOf('.');" in name_body
+    and "name.Substring(0, dot)" in name_body
+    and all(('"' + device + '"') in name_body for device in ("CON", "PRN", "AUX", "NUL"))
+    and "stem.Length == 4" in name_body
+    and "stem[3] >= '1'" in name_body
+    and "stem[3] <= '9'" in name_body
+    and 'stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase)' in name_body
+    and 'stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)' in name_body
+)
+
 for name, ok in checks.items():
     if not ok:
         raise AssertionError(name)
