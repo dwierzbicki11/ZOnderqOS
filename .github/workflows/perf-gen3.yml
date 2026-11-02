@@ -12,6 +12,9 @@ on:
       - "tests/HtopPerfSmoke/**"
       - "source/GUI/SmallTextRenderer.cs"
       - "source/GUI/TerminalBox.cs"
+      - "Kernel.cs"
+      - "tools/perf_boot_baseline.py"
+      - "tests/test_perf_boot_baseline.py"
       - "tests/TerminalPerfSmoke/**"
       - "source/GUI/UiPainter.cs"
       - "tests/PerfRenderSmoke/PanelVisibilitySmoke.cs"
@@ -43,6 +46,8 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Compile and execute production C# glyph renderer with a fake Canvas
         run: dotnet run --project tests/PerfRenderSmoke/PerfRenderSmoke.csproj --configuration Release
+      - name: Validate guest-clock QEMU boot baseline parser
+        run: python3 tests/test_perf_boot_baseline.py
       - name: Production terminal batching equivalence and measured host A/B
         run: dotnet run --project tests/TerminalPerfSmoke/TerminalPerfSmoke.csproj --configuration Release
       - name: Production htop process join equivalence and measured host A/B
