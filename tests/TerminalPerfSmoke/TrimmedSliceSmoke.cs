@@ -156,6 +156,93 @@ internal static class TrimmedSliceSmoke
             " B (7 alternating .NET Release samples; not kernel CPU)");
     }
 
+    // Compare the original Unicode span trim with the specialized ASCII
+    // trailing-space trim, both through the production C# method.
+    private static void BenchmarkSpaceTrim()
+    {
+        string[] cases = {
+            "text    ", "text\\t   ", "text\\u00a0   ",
+            "text\\u2003   ", "    ", "\\t   ", "\\u3000   "
+        };
+        foreach (string text in cases)
+        {
+            string expected = Previous(text, 0, text.Length);
+            TerminalBox.DisableSpaceTrimForBenchmark = true;
+            string before = TerminalBox.SliceTrimmedForOutput(text, 0, text.Length);
+            TerminalBox.DisableSpaceTrimForBenchmark = false;
+            string after = TerminalBox.SliceTrimmedForOutput(text, 0, text.Length);
+            if (expected != before || expected != after)
+                throw new Exception("mixed Unicode/ASCII whitespace regression");
+        }
+
+        var inputs = new string[128];
+        for (int i = 0; i < inputs.Length; i++)
+            inputs[i] = "pre" + new string('x', 64 + i % 20) +
+                (i % 2 == 0 ? "\\t" : "\\u00a0") + new string(' ', 12 + i % 8) + "post";
+        Func<long> baseline = () =>
+        {
+            TerminalBox.DisableSpaceTrimForBenchmark = true;
+            long checksum = 0;
+            for (int i = 0; i < 1024; i++)
+            {
+                string source = inputs[i % inputs.Length];
+                string value = TerminalBox.SliceTrimmedForOutput(source, 3, source.Length - 7);
+                checksum += value.Length + value[0] + value[value.Length - 1];
+            }
+            return checksum;
+        };
+        Func<long> optimized = () =>
+        {
+            TerminalBox.DisableSpaceTrimForBenchmark = false;
+            long checksum = 0;
+            for (int i = 0; i < 1024; i++)
+            {
+                string source = inputs[i % inputs.Length];
+                string value = TerminalBox.SliceTrimmedForOutput(source, 3, source.Length - 7);
+                checksum += value.Length + value[0] + value[value.Length - 1];
+            }
+            return checksum;
+        };
+        try
+        {
+            if (baseline() != optimized())
+                throw new Exception("terminal space trim A/B checksum mismatch");
+            for (int i = 0; i < 30; i++) { sink ^= baseline(); sink ^= optimized(); }
+            double[] before = new double[7], after = new double[7];
+            long oldBytes = 0, newBytes = 0;
+            for (int sample = 0; sample < 7; sample++)
+            {
+                (double ms, long bytes) a, b;
+                if ((sample & 1) == 0)
+                {
+                    a = Measure(baseline, 100);
+                    b = Measure(optimized, 100);
+                }
+                else
+                {
+                    b = Measure(optimized, 100);
+                    a = Measure(baseline, 100);
+                }
+                before[sample] = a.ms;
+                after[sample] = b.ms;
+                oldBytes += a.bytes;
+                newBytes += b.bytes;
+            }
+            if (oldBytes != newBytes)
+                throw new Exception("space trim allocation changed: " + oldBytes + "/" + newBytes);
+            double oldMs = Median(before), newMs = Median(after);
+            Console.WriteLine("HOST A/B terminal padded-space trim, 1024 x 100: generic=" +
+                oldMs.ToString("F3") + "ms specialized=" + newMs.ToString("F3") +
+                "ms ratio=" + (oldMs / newMs).ToString("F2") +
+                "x allocations/sample=" + (oldBytes / 7) + " -> " + (newBytes / 7) +
+                " B (7 alternating .NET Release samples; not QEMU CPU)");
+        }
+        finally
+        {
+            TerminalBox.DisableSpaceTrimForBenchmark = false;
+        }
+    }
+
     // Guard the common no-whitespace case against hidden extra allocations.
     // Timing is diagnostic only: a shared CI runner cannot enforce speed ratios.
     private static void BenchmarkUnpadded()
@@ -302,6 +389,7 @@ internal static class TrimmedSliceSmoke
     {
         Verify();
         Benchmark();
+        BenchmarkSpaceTrim();
         BenchmarkUnpadded();
         BenchmarkUnicodeUnpadded();
     }
