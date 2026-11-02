@@ -45,9 +45,11 @@ namespace Cosmos.Kernel.System.Diagnostics
 
     internal static class MemoryInfo
     {
-        internal static ulong TotalPages => 2048;
-        internal static ulong FreePages => 1024;
-        internal static ulong PageSizeBytes => 4096;
+        // Mutable host telemetry permits testing actual Refresh() invalidation
+        // when the allocator changes pages without changing displayed MiB.
+        internal static ulong TotalPages = 2048;
+        internal static ulong FreePages = 1024;
+        internal static ulong PageSizeBytes = 4096;
     }
 }
 
