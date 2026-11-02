@@ -7,6 +7,12 @@ workflow = (root / ".github/workflows/perf-gen3.yml").read_text()
 
 assert "FileEntrySorter.Sort(allEntries, ref sortScratch);" in manager
 assert "FileEntrySorter.Filter(allEntries, entries, searchText);" in manager
+assert "FileEntrySorter.FilterNarrowed(entries, searchText);" in manager
+assert "searchText.StartsWith(appliedSearchText, StringComparison.OrdinalIgnoreCase)" in manager
+assert "appliedSearchText = null;" in manager
+assert "appliedSearchText = searchText;" in manager
+assert "visible.RemoveRange(write, count - write);" in sorter
+assert "internal static void FilterNarrowed(" in sorter
 assert "RefreshFromSnapshot();" in manager
 assert "directorySnapshotValid = true;" in manager
 assert "allEntries.Add(new FileEntry" in manager
@@ -25,4 +31,4 @@ assert "FileManagerPathMatcher.IsActive(app.CurrentPath, entry.Path)" in manager
 assert "entry.Path + \"/\"" not in manager
 assert "source/GUI/Application/FileEntryIconResolver.cs" in workflow
 assert "source/GUI/Application/FileManagerPathMatcher.cs" in workflow
-print("PASS: FileManager snapshot, stable sort/filter, cached icons and allocation-free sidebar paths")
+print("PASS: FileManager snapshot, stable sort/filter, incremental search, cached icons and allocation-free sidebar paths")
