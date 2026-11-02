@@ -92,6 +92,11 @@ namespace ZonderqOS.SystemCore
                     throw new InvalidOperationException("Audio device returned an invalid PCM frame count.");
                 if (written == 0)
                 {
+                    // A zero-byte write may itself withdraw/reconfigure the
+                    // output. Do not wait on a device that became unavailable
+                    // during Write; the caller will Stop in its finally block.
+                    if (!ready())
+                        return false;
                     // Count only waits that are actually requested. The
                     // previous pre-increment could report 6001 waits even
                     // though the global 6000-wait limit refused the last one.
