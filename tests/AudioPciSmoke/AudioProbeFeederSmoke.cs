@@ -164,6 +164,31 @@ internal static class AudioProbeFeederSmoke
         Check(!ok && stalledWaits == 1000 && waits == 1000,
             "permanently full ring fails closed after bounded waits");
 
+        // A ring that occasionally accepts a frame can evade the 1000
+        // consecutive-wait limit. The global 6000-wait budget must still
+        // terminate, and telemetry must equal the actual wait callbacks.
+        int waitsSinceProgress = 0;
+        int totalWaitCallbacks = 0;
+        int intermittentBytes = 0;
+        ok = AudioProbeRingFeeder.Feed(new byte[8 * 4],
+            (a, b, c) =>
+            {
+                if (waitsSinceProgress < 900) return 0;
+                waitsSinceProgress = 0;
+                intermittentBytes += 4;
+                return 4;
+            },
+            () => true,
+            milliseconds =>
+            {
+                Check(milliseconds == 1, "intermittent stall waits one millisecond");
+                waitsSinceProgress++;
+                totalWaitCallbacks++;
+            }, out waits);
+        Check(!ok && waits == 6000 && totalWaitCallbacks == 6000 &&
+            intermittentBytes == 24,
+            "intermittent ring progress obeys exact 6000-wait global budget");
+
         int readyCalls = 0;
         ok = AudioProbeRingFeeder.Feed(pcm, (a, b, c) => 4,
             () => ++readyCalls == 1, _ => { }, out waits);
