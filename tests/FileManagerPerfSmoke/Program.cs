@@ -939,6 +939,78 @@ internal static class Program
         Console.WriteLine("PASS: production incremental search, reference-equivalent and 0 B warm allocations");
     }
 
+    // Frozen previous production compaction loop. A/B against the real
+    // FileEntrySorter.FilterNarrowed without timing List<T> preparation.
+    private static void PreviousNarrowedFilter(
+        List<ZonderqOS.GUI.Apps.FileEntry> visible, string search)
+    {
+        if (string.IsNullOrEmpty(search))
+            return;
+        int write = 0;
+        int count = visible.Count;
+        for (int read = 0; read < count; read++)
+        {
+            var item = visible[read];
+            if (item.Name.IndexOf(search, StringComparison.OrdinalIgnoreCase) >= 0)
+                visible[write++] = item;
+        }
+        if (write < count)
+            visible.RemoveRange(write, count - write);
+    }
+
+    private static void BenchmarkNarrowedCompaction()
+    {
+        var source = new List<ZonderqOS.GUI.Apps.FileEntry>(8192);
+        for (int i = 0; i < 8192; i++)
+            source.Add(new ZonderqOS.GUI.Apps.FileEntry("file" + i.ToString("D5"), false));
+        var oldWork = new List<ZonderqOS.GUI.Apps.FileEntry>(source.Count);
+        var newWork = new List<ZonderqOS.GUI.Apps.FileEntry>(source.Count);
+        foreach (string query in new[] { "file", "file1", "notfound" })
+        {
+            oldWork.Clear(); oldWork.AddRange(source);
+            newWork.Clear(); newWork.AddRange(source);
+            PreviousNarrowedFilter(oldWork, query);
+            ZonderqOS.GUI.Apps.FileEntrySorter.FilterNarrowed(newWork, query);
+            Assert(oldWork.Count == newWork.Count, "narrowed compaction count " + query);
+            for (int i = 0; i < oldWork.Count; i++)
+                Assert(object.ReferenceEquals(oldWork[i], newWork[i]),
+                    "narrowed compaction stable order " + query);
+
+            double[] oldTimes = new double[7];
+            double[] newTimes = new double[7];
+            for (int round = 0; round < 7; round++)
+            {
+                bool optimizedFirst = (round & 1) != 0;
+                for (int side = 0; side < 2; side++)
+                {
+                    bool optimized = side == 0 ? optimizedFirst : !optimizedFirst;
+                    long elapsed = 0;
+                    for (int rep = 0; rep < 100; rep++)
+                    {
+                        var work = optimized ? newWork : oldWork;
+                        work.Clear(); work.AddRange(source);
+                        long start = Stopwatch.GetTimestamp();
+                        if (optimized)
+                            ZonderqOS.GUI.Apps.FileEntrySorter.FilterNarrowed(work, query);
+                        else
+                            PreviousNarrowedFilter(work, query);
+                        elapsed += Stopwatch.GetTimestamp() - start;
+                        sink += work.Count;
+                    }
+                    double ms = elapsed * 1000.0 / Stopwatch.Frequency / 100.0;
+                    if (optimized) newTimes[round] = ms;
+                    else oldTimes[round] = ms;
+                }
+            }
+            double before = Median(oldTimes);
+            double after = Median(newTimes);
+            Console.WriteLine("HOST A/B narrowed compaction n=8192 query=" + query +
+                " old=" + before.ToString("F4") + " ms new=" +
+                after.ToString("F4") + " ms ratio=" +
+                (before / after).ToString("F2") + "x (.NET Release host)");
+        }
+    }
+
     private static void BenchmarkIncrementalFilter()
     {
         var source = new List<ZonderqOS.GUI.Apps.FileEntry>(Make(8192, 229, false));
@@ -1099,6 +1171,7 @@ internal static class Program
         BenchmarkUnsortedControl();
         BenchmarkFilter();
         BenchmarkIncrementalFilter();
+        BenchmarkNarrowedCompaction();
         Benchmark(32, true);
         Benchmark(128, false);
         Benchmark(512, false);
