@@ -178,9 +178,50 @@ internal static class RotatedRunSmoke
         }
     }
 
+    private static void BenchmarkColdScratchAllocation()
+    {
+        // Lists and input names are prepared before accounting. The only
+        // expected cold allocation is the old merge's FileEntry[] scratch.
+        const int count = 2048;
+        FileEntry[] input = MakeRotation(count, count / 2, 1);
+        var oldWork = new List<FileEntry>(input);
+        var newWork = new List<FileEntry>(input);
+        FileEntry[] oldScratch = null, newScratch = null;
+        try
+        {
+            FileEntrySorter.DisableRotationForBenchmark = true;
+            long start = GC.GetAllocatedBytesForCurrentThread();
+            FileEntrySorter.Sort(oldWork, ref oldScratch);
+            long oldBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+
+            FileEntrySorter.DisableRotationForBenchmark = false;
+            start = GC.GetAllocatedBytesForCurrentThread();
+            FileEntrySorter.Sort(newWork, ref newScratch);
+            long newBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+
+            Require(oldBytes > 0 && newBytes == 0,
+                "cold strict rotation allocation regression: " +
+                oldBytes + " / " + newBytes);
+            Require(oldScratch != null && newScratch == null,
+                "cold strict rotation unexpectedly required scratch");
+            for (int i = 0; i < count; i++)
+                Require(ReferenceEquals(oldWork[i], newWork[i]),
+                    "cold rotation output differs from merge at " + i);
+            Console.WriteLine("HOST cold scratch allocation n=" + count +
+                " before-two-run-merge=" + oldBytes +
+                "B after-in-place-rotation=" + newBytes +
+                "B (production C# sorter, prepared input and lists)");
+        }
+        finally
+        {
+            FileEntrySorter.DisableRotationForBenchmark = false;
+        }
+    }
+
     internal static void Run()
     {
         VerifyRotations();
         Benchmark();
+        BenchmarkColdScratchAllocation();
     }
 }
