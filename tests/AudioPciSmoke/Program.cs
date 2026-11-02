@@ -611,6 +611,26 @@ static class Test
         try { using var stream = new MemoryStream(trailingStream, false); AudioWaveInput.DecodeBounded(stream); }
         catch (ArgumentException) { rejected = true; }
         Expect(rejected, "trailing stream data must not be accepted");
+        // A seekable FAT32-style read-only handle can reject inconsistent
+        // RIFF lengths from the 12-byte header alone. This must happen
+        // before allocating/reading the declared payload, unlike the
+        // non-seekable fragmented stream path tested below.
+        using (var shortFile = new MemoryStream(truncatedStream, false))
+        {
+            rejected = false;
+            try { AudioWaveInput.DecodeBounded(shortFile); }
+            catch (ArgumentException) { rejected = true; }
+            Expect(rejected && shortFile.Position == 12,
+                "seekable truncated RIFF rejected before payload read");
+        }
+        using (var longFile = new MemoryStream(trailingStream, false))
+        {
+            rejected = false;
+            try { AudioWaveInput.DecodeBounded(longFile); }
+            catch (ArgumentException) { rejected = true; }
+            Expect(rejected && longFile.Position == 12,
+                "seekable trailing RIFF rejected before payload read");
+        }
         byte[] oversizedHeader = new byte[12];
         Array.Copy(encoded, oversizedHeader, 12);
         WriteLittle32(oversizedHeader, 4, AudioWaveInput.MaxFileBytes);
