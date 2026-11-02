@@ -92,9 +92,14 @@ namespace ZonderqOS.SystemCore
                     throw new InvalidOperationException("Audio device returned an invalid PCM frame count.");
                 if (written == 0)
                 {
-                    if (++consecutiveWaits > MaxConsecutiveWaits ||
-                        ++waitCalls > MaxTotalWaits)
+                    // Count only waits that are actually requested. The
+                    // previous pre-increment could report 6001 waits even
+                    // though the global 6000-wait limit refused the last one.
+                    if (consecutiveWaits >= MaxConsecutiveWaits ||
+                        waitCalls >= MaxTotalWaits)
                         return false;
+                    consecutiveWaits++;
+                    waitCalls++;
                     wait(1);
                     continue;
                 }
