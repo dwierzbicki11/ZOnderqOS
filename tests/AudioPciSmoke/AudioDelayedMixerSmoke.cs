@@ -101,5 +101,19 @@ static class AudioDelayedMixerSmoke
             "reference=" + baseline.ToString("F3") + "ms optimized=" +
             optimized.ToString("F3") + "ms for " + iterations +
             " iterations (median of 5; NOT QEMU/HDA throughput)");
+
+        // A short notification after a long silent pre-roll exercises the
+        // partial-gain single-audible-source path (not just the copy path).
+        byte[] muted = new byte[4];
+        byte[] notification = RandomPcm(random, 2400);
+        double baselinePreRoll = MedianMilliseconds(
+            () => Reference(muted, notification, 0, 35, 50000), iterations);
+        double optimizedPreRoll = MedianMilliseconds(
+            () => AudioPcmMixer.MixStereo16WithDelay(
+                muted, notification, 0, 35, 50000), iterations);
+        Console.WriteLine("[AUDIO-DELAY] host .NET muted pre-roll + 35% notification: " +
+            "reference=" + baselinePreRoll.ToString("F3") + "ms optimized=" +
+            optimizedPreRoll.ToString("F3") + "ms for " + iterations +
+            " iterations (median of 5; NOT QEMU/HDA throughput)");
     }
 }
