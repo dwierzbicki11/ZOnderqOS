@@ -10,6 +10,42 @@ namespace ZonderqOS.Hardware
     /// </summary>
     public static class E1000EPciIdentity
     {
+        /// <summary>
+        /// Inspect the legacy PCI INTx routing metadata for the isolated QEMU
+        /// E1000E. This is a prerequisite check, NOT evidence of guest ISR
+        /// execution, interrupt delivery or DMA completion. MSI/MSI-X devices
+        /// must use a different diagnostic instead of this legacy-only gate.
+        /// </summary>
+        public static bool TryReadLegacyIrqRoute(IPciConfigAccessor config,
+            out byte irqLine, out byte irqPin)
+        {
+            irqLine = 0;
+            irqPin = 0;
+            if (!TryReadReady(config, out ushort command) ||
+                (command & 0x0400) != 0) // PCI COMMAND.INTx Disable
+                return false;
+
+            try
+            {
+                const byte bus = 0, slot = 2, function = 0;
+                byte line = config.Read8(bus, slot, function, 0x3C);
+                byte pin = config.Read8(bus, slot, function, 0x3D);
+                // Line 0/FF is not a usable legacy route in this QEMU profile;
+                // the PCI pin must be one of INTA# through INTD#.
+                if (line == 0 || line == 0xFF || pin < 1 || pin > 4)
+                    return false;
+                irqLine = line;
+                irqPin = pin;
+                return true;
+            }
+            catch (Exception)
+            {
+                irqLine = 0;
+                irqPin = 0;
+                return false;
+            }
+        }
+
         // Preserve the original API for callers that only need the command
         // register. The isolated probe also records BAR0 across TX.
         public static bool TryReadReady(IPciConfigAccessor config, out ushort command)
