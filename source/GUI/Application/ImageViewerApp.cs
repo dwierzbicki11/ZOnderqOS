@@ -69,6 +69,15 @@ namespace ZonderqOS.GUI.Apps
                 LoadImage(path, true);
         }
 
+        public override void Update()
+        {
+            // A taskbar switch or minimize can consume the mouse release.
+            // Do not leave preview regeneration blocked by a stale press
+            // when this viewer is restored or the display mode changes.
+            if (!Window.IsActive || Window.IsMinimized)
+                leftButtonDown = false;
+        }
+
         public override void HandleKeyboard(KeyEvent key)
         {
             if (key == null)
