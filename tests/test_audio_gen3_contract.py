@@ -225,6 +225,8 @@ class AudioGen3Contract(unittest.TestCase):
         host_direct = read("tests/AudioPciSmoke/AudioDirectProbeSmoke.cs")
         self.assertIn("ZONDERQ_AUDIO_PROBE", host_project)
         self.assertIn("AudioProbeDirectPlayback.cs", host_project)
+        self.assertIn("using Cosmos.Kernel.System.Audio;", direct)
+        self.assertIn("namespace Cosmos.Kernel.System.Audio", host_direct)
         self.assertIn("AudioDirectProbeSmoke.Run(Expect)", host_program)
         self.assertIn("failed HDA Start still invokes Stop", host_direct)
         self.assertIn("device withdrawal during ring-full wait", host_direct)
