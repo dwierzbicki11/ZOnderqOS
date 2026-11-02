@@ -332,6 +332,33 @@ internal static class Program
         }
     }
 
+    private static void ShortPanelCannotActivateOverlappingFooter()
+    {
+        // Below 130px the header and footer would occupy the same pixels.
+        // The old 57px guard let a hidden DND/Clear action fire there.
+        foreach (int screenHeight in new[] { 120, 160, 170, 190, 193, 194, 200 })
+        {
+            NotificationService.ResetForSession();
+            NotificationService.DoNotDisturb = false;
+            var center = new NotificationCenter(200, screenHeight, 44);
+            center.Toggle();
+            var canvas = new Cosmos.Kernel.System.Graphics.Canvas
+            {
+                ScreenWidth = 200,
+                ScreenHeight = screenHeight - 44
+            };
+            center.Render(canvas);
+            int x = center.X + 142; // center of the third compact footer slot
+            int y = center.Y + center.Height - 28;
+            Check(center.UpdateInteractions(x, y, true, false),
+                "modal panel owns footer-area click at " + screenHeight);
+            Check(NotificationService.DoNotDisturb == (center.Height >= 130),
+                "footer is actionable only below the separate header at " + screenHeight);
+            center.UpdateInteractions(x, y, false, true);
+        }
+        NotificationService.DoNotDisturb = false;
+    }
+
     private static void NarrowCardCannotDismissFromOutside()
     {
         // The old 24px close button began outside a 32px-wide card and
@@ -369,6 +396,7 @@ internal static class Program
     public static int Main()
     {
         CompactRenderingNeverUsesInvalidTextClips();
+        ShortPanelCannotActivateOverlappingFooter();
         NarrowCardCannotDismissFromOutside();
         TinyToastUsesActualPaintedHitbox();
         ModalPanelOwnsOutsidePointerUntilDismissed();
