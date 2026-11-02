@@ -174,9 +174,8 @@ internal static class Program
                 "/" + old.ScrollOffset + ", " + bar.Value + "/" + old.ScrollValue + ")");
     }
 
-    // Frozen implementation from immediately before the source-slice change.
-    // Unlike LegacyOutput, it still uses the current production PrintLine, so
-    // this benchmark isolates only the command-output parser's extra copy.
+    // Previous per-row scrollbar policy. Uses the current production PrintLine,
+    // isolating the cost of repeated SetRange/Value updates in command output.
     private static void PreviousCommandOutput(TerminalBox box, string output)
     {
         if (string.IsNullOrEmpty(output))
@@ -217,7 +216,7 @@ internal static class Program
             throw new Exception(label + ": scroll state mismatch");
     }
 
-    private static void VerifyCommandSlices()
+    private static void VerifyCommandBatch()
     {
         const string marker = "\u0001GUI_CLEAR\u0001";
         string[] fixedCases = {
@@ -237,7 +236,7 @@ internal static class Program
             {
                 PreviousCommandOutput(previous, output);
                 current.PrintCommandOutput(output);
-                SameTerminals(current, previous, "fixed command slice");
+                SameTerminals(current, previous, "fixed command batch");
                 checks++;
             }
             // Exercise the trim + scroll path and deterministic mixed separators.
@@ -261,12 +260,12 @@ internal static class Program
                     output += "\r\n" + marker + "\nnext";
                 PreviousCommandOutput(previous, output);
                 current.PrintCommandOutput(output);
-                SameTerminals(current, previous, "random command slice");
+                SameTerminals(current, previous, "random command batch");
                 checks++;
             }
         }
         Console.WriteLine("PASS: " + checks +
-            " source-slice command parser vs previous production C# implementation");
+            " batched command output vs previous production C# implementation");
     }
 
     private static void Verify()
@@ -398,7 +397,7 @@ internal static class Program
     private static int Main()
     {
         Verify();
-        VerifyCommandSlices();
+        VerifyCommandBatch();
         var monitor = new string[128];
         for (int i = 0; i < monitor.Length; i++)
             monitor[i] = "CPU " + i + " " + new string('x', 64);
@@ -430,10 +429,10 @@ internal static class Program
 
         var previousSlice = new TerminalBox(0, 0, 820, 520);
         var currentSlice = new TerminalBox(0, 0, 820, 520);
-        Benchmark("command source-slice vs previous parser CRLF 400 lines x200",
+        Benchmark("command scrollbar batch vs per-row CRLF 400 lines x200",
             () => PreviousCommandOutput(previousSlice, commandOutput),
-            () => currentSlice.PrintCommandOutput(commandOutput), 200, true);
-        SameTerminals(currentSlice, previousSlice, "benchmark source slice");
+            () => currentSlice.PrintCommandOutput(commandOutput), 200);
+        SameTerminals(currentSlice, previousSlice, "benchmark command batch");
         Console.WriteLine("PASS: production C# terminal equivalence; timing is informational.");
         return 0;
     }
