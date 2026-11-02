@@ -88,21 +88,30 @@ namespace ZonderqOS.GUI
         {
             if (line == null)
                 line = "";
+            PrintLineSlice(line, 0, line.Length, deferAutoFollow);
+        }
 
+        // Decode directly from the command output's original string. A
+        // Substring for each CR/LF-delimited line used to allocate a second
+        // string before the wrapped line was stored in OutputLines. Keep only
+        // the actual retained, trimmed display rows.
+        private void PrintLineSlice(string line, int start, int length, bool deferAutoFollow)
+        {
             int maxChars = GetMaxChars();
             if (maxChars <= 0)
                 return;
 
-            if (line.Length == 0)
+            if (length == 0)
             {
                 AddOutputLine("");
                 return;
             }
 
-            int position = 0;
-            while (position < line.Length)
+            int position = start;
+            int end = start + length;
+            while (position < end)
             {
-                int remaining = line.Length - position;
+                int remaining = end - position;
                 int take = Math.Min(maxChars, remaining);
 
                 if (take < remaining)
@@ -115,16 +124,14 @@ namespace ZonderqOS.GUI
                 if (take <= 0)
                     take = Math.Min(maxChars, remaining);
 
-                // When the user has scrolled up, preserve the legacy per-line
-                // range/value callbacks: trimming can clamp the scrollbar
-                // between wrapped rows. Auto-follow can safely batch them.
+                // Preserve per-row scrollbar callbacks for manual scrolling.
                 string wrapped = line.Substring(position, take).TrimEnd();
                 if (userScrolled)
                     AddOutputLine(wrapped);
                 else
                     AppendOutputLine(wrapped);
                 position += take;
-                while (position < line.Length && line[position] == ' ')
+                while (position < end && line[position] == ' ')
                     position++;
             }
 
@@ -152,12 +159,13 @@ namespace ZonderqOS.GUI
                 int length = i - start;
                 if (length > 0)
                 {
-                    string line = output.Substring(start, length);
-                    if (line == "\u0001GUI_CLEAR\u0001")
+                    // Compare the clear marker without allocating a line.
+                    if (length == 11 &&
+                        string.CompareOrdinal(output, start, "\u0001GUI_CLEAR\u0001", 0, length) == 0)
                         ClearOutput();
                     else
                     {
-                        PrintLineInternal(line, true);
+                        PrintLineSlice(output, start, length, true);
                         if (!userScrolled)
                             deferredAutoFollow = true;
                     }
