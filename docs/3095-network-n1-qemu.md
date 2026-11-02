@@ -362,3 +362,24 @@ snapshot could miss. The independent QEMU PCAP proof is still mandatory:
 neither guest checkpoints nor successful queueing prove wire transmission,
 ISR execution or DMA completion. The opt-in probe never touches storage or
 activates production GUI networking.
+
+## Two successive QMP link-down/up cycles (2026-11-02)
+
+The opt-in N6 QEMU probe now re-arms after its first verified link recovery.
+With `NET3095_LINK_CYCLE=1 NET3095_LINK_CYCLES=2`, the host drives a
+**second** independent QMP down/up transition without rebooting the kernel.
+The guest must observe both transitions, preserve its original MAC, DHCP
+address/mask/gateway and DriverKit resource/IRQ-source ownership, and send
+an ICMP echo with a new identifier and sequence (`0x3099/2`). The first
+recovery uses `0x3098/1`. A fail-closed PCAP validator requires exactly
+one valid request/reply pair for each identifier, in the correct order,
+with matching IP/MAC, payload and checksums. A serial-only PASS or a QMP
+acknowledgment does not satisfy the gate.
+
+The single-cycle mode remains supported for local diagnostics. The
+production GUI remains offline, the stock Cosmos SDK/Kernel stays at
+3.0.95, and the probe performs no storage I/O. This test exercises
+repeated E1000E link recovery in **emulated QEMU**, not physical RTL810xE
+or a confirmed guest ISR. A successful previous single-cycle run
+(#41383999788) does not validate this new two-cycle code; only the
+current workflow's real QEMU result can do that.

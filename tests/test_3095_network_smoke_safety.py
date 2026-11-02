@@ -167,5 +167,39 @@ class EvidenceSafety(unittest.TestCase):
                 self.assertFalse(called.exists(), "fake QEMU was invoked")
 
 
+
+    def test_qmp_second_cycle_requires_explicit_isolated_opt_in(self):
+        cases = (
+            ("0", "2", "n6", "Two link cycles require NET3095_LINK_CYCLE=1"),
+            ("1", "0", "n6", "NET3095_LINK_CYCLES must be 1 or 2"),
+            ("1", "3", "n6", "NET3095_LINK_CYCLES must be 1 or 2"),
+            ("1", "yes", "n6", "NET3095_LINK_CYCLES must be 1 or 2"),
+            ("1", "2", "n1", "Link-cycle QMP requires isolated n6 mode"),
+        )
+        for enabled, cycles, mode, expected in cases:
+            with self.subTest(enabled=enabled, cycles=cycles, mode=mode), tempfile.TemporaryDirectory() as root:
+                directory = Path(root)
+                fake_bin = directory / "bin"
+                fake_bin.mkdir()
+                called = directory / "qemu-called"
+                fake_qemu = fake_bin / "qemu-system-x86_64"
+                fake_qemu.write_text("#!/bin/sh\\ntouch '" + str(called) + "'\\nexit 99\\n")
+                fake_qemu.chmod(0o755)
+                iso = directory / "test.iso"
+                iso.write_bytes(b"isolated dummy ISO")
+                env = dict(os.environ)
+                env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
+                env["NET3095_LINK_CYCLE"] = enabled
+                env["NET3095_LINK_CYCLES"] = cycles
+                run = subprocess.run(
+                    ["bash", str(SMOKE), str(iso), str(directory / "probe.log"), mode],
+                    cwd=directory, env=env, capture_output=True, text=True,
+                    timeout=10, check=False,
+                )
+                self.assertNotEqual(run.returncode, 0)
+                self.assertIn(expected, run.stderr)
+                self.assertFalse(called.exists(), "fake QEMU was invoked")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
