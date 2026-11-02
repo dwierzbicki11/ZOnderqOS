@@ -3,7 +3,7 @@ using System;
 namespace ZonderqOS.SystemCore
 {
     /// <summary>
-    /// Strict, allocation-bounded RIFF/WAVE PCM8/PCM16/PCM24/PCM32 mono/stereo decoder for the
+    /// Strict, allocation-bounded RIFF/WAVE integer PCM8/16/24/32 and IEEE float32 mono/stereo decoder for the
     /// opt-in diskless HDA probe. No filesystem, DMA or device access.
     /// 8/11.025/16/22.05/24/32/44.1 kHz sources are explicitly resampled to 48 kHz stereo PCM16.
     /// </summary>
@@ -86,6 +86,7 @@ namespace ZonderqOS.SystemCore
             int sourceRate = 0;
             int sourceBits = 0;
             int sourceValidBits = 0;
+            bool sourceIsFloat = false;
             int pos = 12;
             while (pos < wave.Length)
             {
@@ -139,7 +140,12 @@ namespace ZonderqOS.SystemCore
                             throw new ArgumentException("WAV extensible subtype is not PCM.", nameof(wave));
                         format = 1;
                     }
-                    if (format != 1 || (sourceChannels != 1 && sourceChannels != 2) ||
+                    // Canonical WAVE_FORMAT_IEEE_FLOAT (3) is supported only
+                    // for 32-bit finite samples. Extensible subtype remains
+                    // strictly PCM; unknown GUIDs are never interpreted as float.
+                    bool isFloat = format == 3;
+                    if ((format != 1 && !isFloat) || (isFloat && bits != 32) ||
+                        (sourceChannels != 1 && sourceChannels != 2) ||
                         !IsSupportedSourceRate((int)rate) || (bits != 8 && bits != 16 && bits != 24 && bits != 32) ||
                         blockAlign != sourceChannels * (bits / 8) ||
                         byteRate != rate * sourceChannels * (uint)(bits / 8))
@@ -148,6 +154,7 @@ namespace ZonderqOS.SystemCore
                     sourceRate = (int)rate;
                     sourceBits = bits;
                     sourceValidBits = validBits;
+                    sourceIsFloat = isFloat;
                     hasFormat = true;
                 }
                 else if (Tag(wave, pos, "data"))
@@ -184,8 +191,38 @@ namespace ZonderqOS.SystemCore
                 }
             }
 
+            // Validate every float, even samples that a future downsampler
+            // might skip. NaN/Infinity must never reach PCM or a codec.
+            if (sourceIsFloat)
+            {
+                for (int at = dataOffset; at < dataOffset + dataSize; at += 4)
+                {
+                    float sample = BitConverter.ToSingle(wave, at);
+                    if (float.IsNaN(sample) || float.IsInfinity(sample))
+                        throw new ArgumentException("Non-finite IEEE float WAV sample.", nameof(wave));
+                }
+            }
+
             if (sourceRate != SampleRate)
-                return ResampleToStereo16(wave, dataOffset, dataSize, channels, sourceRate, sourceBits);
+                return ResampleToStereo16(wave, dataOffset, dataSize, channels, sourceRate, sourceBits, sourceIsFloat);
+
+            if (sourceIsFloat)
+            {
+                int frames = dataSize / sourceFrameBytes;
+                byte[] converted = new byte[frames * FrameBytes];
+                for (int frame = 0; frame < frames; frame++)
+                {
+                    for (int channel = 0; channel < 2; channel++)
+                    {
+                        int srcChannel = channels == 1 ? 0 : channel;
+                        int sample = ReadFloatSample16(wave, dataOffset + frame * sourceFrameBytes + srcChannel * 4);
+                        int dst = frame * FrameBytes + channel * 2;
+                        converted[dst] = (byte)sample;
+                        converted[dst + 1] = (byte)(sample >> 8);
+                    }
+                }
+                return converted;
+            }
 
             if (channels == 2 && sourceBits == 16)
             {
@@ -256,8 +293,19 @@ namespace ZonderqOS.SystemCore
         /// interpolation. The input is a validated RIFF data chunk; no IO or HAL.
         /// Integer arithmetic keeps the two channels phase-aligned.
         /// </summary>
-        private static int ReadSourceSample16(byte[] wave, int offset, int bits)
+        private static int ReadFloatSample16(byte[] wave, int offset)
         {
+            float value = BitConverter.ToSingle(wave, offset);
+            // All input samples are prevalidated as finite. Clamp oversized
+            // but finite float WAV amplitudes instead of wrapping PCM16.
+            if (value >= 1f) return short.MaxValue;
+            if (value <= -1f) return short.MinValue;
+            return (int)(value < 0f ? value * 32768f : value * 32767f);
+        }
+
+        private static int ReadSourceSample16(byte[] wave, int offset, int bits, bool isFloat)
+        {
+            if (isFloat) return ReadFloatSample16(wave, offset);
             if (bits == 8) return (wave[offset] - 128) << 8;
             if (bits == 24) return (short)(wave[offset + 1] | (wave[offset + 2] << 8));
             if (bits == 32) return (short)(wave[offset + 2] | (wave[offset + 3] << 8));
@@ -265,7 +313,7 @@ namespace ZonderqOS.SystemCore
         }
 
         private static byte[] ResampleToStereo16(byte[] wave, int offset, int dataSize,
-            int channels, int sourceRate, int sourceBits)
+            int channels, int sourceRate, int sourceBits, bool sourceIsFloat)
         {
             int sourceFrameBytes = channels * (sourceBits / 8);
             int sourceFrames = dataSize / sourceFrameBytes;
@@ -286,8 +334,8 @@ namespace ZonderqOS.SystemCore
                     int sourceChannel = channels == 1 ? 0 : channel;
                     int a = offset + firstFrame * sourceFrameBytes + sourceChannel * (sourceBits / 8);
                     int b = offset + nextFrame * sourceFrameBytes + sourceChannel * (sourceBits / 8);
-                    int first = ReadSourceSample16(wave, a, sourceBits);
-                    int next = ReadSourceSample16(wave, b, sourceBits);
+                    int first = ReadSourceSample16(wave, a, sourceBits, sourceIsFloat);
+                    int next = ReadSourceSample16(wave, b, sourceBits, sourceIsFloat);
                     int sample = (int)(((long)first * (SampleRate - remainder) +
                         (long)next * remainder) / SampleRate);
                     int dst = frame * FrameBytes + channel * 2;
@@ -450,6 +498,41 @@ namespace ZonderqOS.SystemCore
             PutTag(wave, 36, "data");
             Write32(wave, 40, pcm.Length);
             Array.Copy(pcm, 0, wave, 44, pcm.Length);
+            return wave;
+        }
+
+        /// <summary>
+        /// Build a bounded canonical IEEE_FLOAT 32-bit mono/stereo RIFF fixture.
+        /// The input contains raw little-endian float bytes; the decoder
+        /// rejects NaN/Infinity. This helper is diskless and read-only.
+        /// </summary>
+        public static byte[] EncodeFloat32AtRate(byte[] samples, int sampleRate, int channels)
+        {
+            if (!IsSupportedSourceRate(sampleRate))
+                throw new ArgumentOutOfRangeException(nameof(sampleRate));
+            if (channels != 1 && channels != 2)
+                throw new ArgumentOutOfRangeException(nameof(channels));
+            int frameBytes = channels * 4;
+            if (samples == null || samples.Length == 0 ||
+                samples.Length > sampleRate * MaxDurationSeconds * frameBytes ||
+                samples.Length % frameBytes != 0)
+                throw new ArgumentException("Invalid float32 duration or frame alignment.", nameof(samples));
+
+            byte[] wave = new byte[44 + samples.Length];
+            PutTag(wave, 0, "RIFF");
+            Write32(wave, 4, wave.Length - 8);
+            PutTag(wave, 8, "WAVE");
+            PutTag(wave, 12, "fmt ");
+            Write32(wave, 16, 16);
+            Write16(wave, 20, 3); // WAVE_FORMAT_IEEE_FLOAT
+            Write16(wave, 22, channels);
+            Write32(wave, 24, sampleRate);
+            Write32(wave, 28, sampleRate * frameBytes);
+            Write16(wave, 32, frameBytes);
+            Write16(wave, 34, 32);
+            PutTag(wave, 36, "data");
+            Write32(wave, 40, samples.Length);
+            Array.Copy(samples, 0, wave, 44, samples.Length);
             return wave;
         }
 
