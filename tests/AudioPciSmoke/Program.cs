@@ -603,7 +603,7 @@ static class Test
         Array.Copy(encoded, truncatedStream, truncatedStream.Length);
         rejected = false;
         try { using var stream = new MemoryStream(truncatedStream, false); AudioWaveInput.DecodeBounded(stream); }
-        catch (EndOfStreamException) { rejected = true; }
+        catch (ArgumentException) { rejected = true; }
         Expect(rejected, "truncated stream must not be accepted");
         byte[] trailingStream = new byte[encoded.Length + 1];
         Array.Copy(encoded, trailingStream, encoded.Length);
