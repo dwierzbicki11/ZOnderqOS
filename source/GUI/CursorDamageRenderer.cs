@@ -26,6 +26,11 @@ namespace ZonderqOS.GUI
         private int previousY;
         private bool valid;
         private bool readbackSupported = true;
+        // A flat desktop underlay is common. One filled rectangle restores
+        // its 24x28 damage region instead of up to 672 DrawPoint calls.
+        // Patterned underlays retain exact per-pixel restoration.
+        private bool uniformCapture;
+        private Color uniformColor;
 
         internal CursorDamageRenderer(Canvas canvas)
         {
@@ -114,19 +119,42 @@ namespace ZonderqOS.GUI
         {
             VisibleRegion(x, y, out long baseX, out long baseY,
                 out int firstCol, out int lastCol, out int firstRow, out int lastRow);
+            bool firstPixel = true;
+            bool uniform = true;
+            int firstArgb = 0;
             for (int row = firstRow; row < lastRow; row++)
             {
                 int py = (int)(baseY + row);
                 int offset = row * DamageWidth;
                 for (int col = firstCol; col < lastCol; col++)
-                    savedPixels[offset + col] = canvas.GetPointColor((int)(baseX + col), py);
+                {
+                    Color pixel = canvas.GetPointColor((int)(baseX + col), py);
+                    savedPixels[offset + col] = pixel;
+                    if (firstPixel)
+                    {
+                        uniformColor = pixel;
+                        firstArgb = pixel.ToArgb();
+                        firstPixel = false;
+                    }
+                    else if (uniform && pixel.ToArgb() != firstArgb)
+                        uniform = false;
+                }
             }
+            // Empty offscreen captures must not reuse an older flat color.
+            uniformCapture = !firstPixel && uniform;
         }
 
         private void Restore(int x, int y)
         {
             VisibleRegion(x, y, out long baseX, out long baseY,
                 out int firstCol, out int lastCol, out int firstRow, out int lastRow);
+            if (uniformCapture && firstCol < lastCol && firstRow < lastRow)
+            {
+                canvas.DrawFilledRectangle(uniformColor,
+                    (int)(baseX + firstCol), (int)(baseY + firstRow),
+                    lastCol - firstCol, lastRow - firstRow);
+                return;
+            }
             for (int row = firstRow; row < lastRow; row++)
             {
                 int py = (int)(baseY + row);

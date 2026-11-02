@@ -129,6 +129,96 @@ internal static class CursorDamageSmoke
             throw new Exception("Reset must require full redraw");
     }
 
+    private static void VerifyUniformAndPatterned()
+    {
+        foreach (bool patterned in new[] { false, true })
+        {
+            Canvas oldCanvas = new Canvas(128, 96);
+            Canvas newCanvas = new Canvas(128, 96);
+            if (patterned)
+            {
+                for (int y = 0; y < 96; y++)
+                    for (int x = 0; x < 128; x++)
+                    {
+                        Color pixel = ((x + y) & 1) == 0 ? Color.Navy : Color.Maroon;
+                        oldCanvas.DrawPoint(pixel, x, y);
+                        newCanvas.DrawPoint(pixel, x, y);
+                    }
+            }
+            else
+            {
+                oldCanvas.DrawFilledRectangle(Color.Navy, 0, 0, 128, 96);
+                newCanvas.DrawFilledRectangle(Color.Navy, 0, 0, 128, 96);
+            }
+
+            var oldMover = new LegacyMover(oldCanvas);
+            var newMover = new CursorDamageRenderer(newCanvas);
+            oldMover.DrawAfterScene(30, 30);
+            newMover.DrawAfterScene(30, 30);
+            int oldCalls = oldCanvas.DrawCalls;
+            int newCalls = newCanvas.DrawCalls;
+            if (!oldMover.TryMove(60, 50) || !newMover.TryMove(60, 50))
+                throw new Exception("cursor background move failed");
+            SamePixels(oldCanvas, newCanvas, patterned ? "patterned restore" : "flat restore");
+            int oldDelta = oldCanvas.DrawCalls - oldCalls;
+            int newDelta = newCanvas.DrawCalls - newCalls;
+            if (patterned && oldDelta != newDelta)
+                throw new Exception("Patterned restore changed per-pixel Canvas calls");
+            if (!patterned && oldDelta - newDelta != 24 * 28 - 1)
+                throw new Exception("Flat restore should replace 672 points with one rectangle: " +
+                    oldDelta + " -> " + newDelta);
+            Console.WriteLine("Cursor restore " + (patterned ? "patterned" : "uniform") +
+                ": Canvas calls " + oldDelta + " -> " + newDelta +
+                " (includes cursor), exact framebuffer.");
+        }
+    }
+
+    private static double TimePatterned(bool optimized, int repeats)
+    {
+        var canvas = new Canvas(128, 96);
+        for (int y = 0; y < 96; y++)
+            for (int x = 0; x < 128; x++)
+                canvas.DrawPoint(((x + y) & 1) == 0 ? Color.Navy : Color.Maroon, x, y);
+        var oldMover = optimized ? null : new LegacyMover(canvas);
+        var newMover = optimized ? new CursorDamageRenderer(canvas) : null;
+        if (optimized) newMover.DrawAfterScene(20, 20);
+        else oldMover.DrawAfterScene(20, 20);
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < repeats; i++)
+        {
+            int x = 10 + (i * 13) % 100;
+            int y = 10 + (i * 17) % 70;
+            if (optimized) newMover.TryMove(x, y);
+            else oldMover.TryMove(x, y);
+        }
+        return (Stopwatch.GetTimestamp() - start) * 1000.0 / Stopwatch.Frequency;
+    }
+
+    private static void BenchmarkPatterned()
+    {
+        TimePatterned(false, 200);
+        TimePatterned(true, 200);
+        double[] before = new double[7], after = new double[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if ((i & 1) == 0)
+            {
+                before[i] = TimePatterned(false, 3000);
+                after[i] = TimePatterned(true, 3000);
+            }
+            else
+            {
+                after[i] = TimePatterned(true, 3000);
+                before[i] = TimePatterned(false, 3000);
+            }
+        }
+        Array.Sort(before);
+        Array.Sort(after);
+        Console.WriteLine("Host .NET patterned cursor 3000 moves, median 7 A/B: " +
+            before[3].ToString("F2") + " -> " + after[3].ToString("F2") +
+            " ms (fake Canvas, not QEMU FPS).");
+    }
+
     private static double Time(bool optimized, int repeats, bool edge)
     {
         var canvas = new Canvas(128, 96);
@@ -152,6 +242,8 @@ internal static class CursorDamageSmoke
         VerifyPositions(128, 96);
         VerifyPositions(24, 28);
         VerifyPositions(5, 7);
+        VerifyUniformAndPatterned();
+        BenchmarkPatterned();
         // Very large coordinates must be clipped without arithmetic overflow.
         var extremeCanvas = new Canvas(16, 16);
         var extreme = new CursorDamageRenderer(extremeCanvas);
