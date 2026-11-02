@@ -21,6 +21,13 @@ checks = {
     "metadata update occurs after successful create": body.index('Directory.CreateDirectory(path)') < body.index('PermissionManager.SetPermission(path, user, dialogMode == 1 ? 644 : 700)'),
     "create dialog reset after mutation": body.index('PermissionManager.SetPermission(path, user, dialogMode == 1 ? 644 : 700)') < body.index('dialogMode = 0;\n                dialogName = "";\n                RefreshKeepStatus();'),
 }
+checks["create ACL preflight stays inside filesystem exception guard"] = (
+    body.index("try\n            {") < body.index("CanReadInSession(currentPath)")
+    and body.index("try\n            {") < body.index("PermissionManager.CanWrite(currentPath, user)")
+    and body.rindex("catch (Exception ex)") > body.index('File.WriteAllText(path, "")')
+    and 'status = "Create error: " + ex.Message;' in body
+)
+
 checks["create rechecks directory read access after dialog opens"] = (
     "if (!CanReadInSession(currentPath))" in body
     and body.index("if (!CanReadInSession(currentPath))") < body.index("File.Exists(path)")
