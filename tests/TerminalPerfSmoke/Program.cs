@@ -399,6 +399,7 @@ internal static class Program
         Verify();
         VerifyCommandBatch();
         SlicedOutputSmoke.Run();
+        TrimmedSliceSmoke.Run();
         ScrollBarRefreshSmoke.Run();
         RenderClipSmoke.Run();
         var monitor = new string[128];
