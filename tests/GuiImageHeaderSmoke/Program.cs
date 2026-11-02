@@ -69,6 +69,30 @@ internal static class Program
         return header;
     }
 
+    private static byte[] PngWithChunkEnvelope(uint width, uint height)
+    {
+        // Valid PNG chunk framing (IHDR, nonempty IDAT, IEND). The IDAT
+        // payload is intentionally not a zlib stream: preflight is not decode.
+        byte[] data = new byte[58];
+        Array.Copy(Png(width, height), data, 33);
+        BigEndian(data, 33, 1);
+        data[37] = (byte)'I';
+        data[38] = (byte)'D';
+        data[39] = (byte)'A';
+        data[40] = (byte)'T';
+        data[41] = 1;
+        // IDAT CRC is checked by the decoder, not the header guard.
+        data[50] = (byte)'I';
+        data[51] = (byte)'E';
+        data[52] = (byte)'N';
+        data[53] = (byte)'D';
+        data[54] = 0xAE;
+        data[55] = 0x42;
+        data[56] = 0x60;
+        data[57] = 0x82;
+        return data;
+    }
+
     private static byte[] BmpFile(int width, int height)
     {
         // A real uncompressed RGB24 payload, including 4-byte row padding.
@@ -252,8 +276,37 @@ internal static class Program
             byte[] pngWithChunkSpace = new byte[57];
             Array.Copy(validPng, pngWithChunkSpace, validPng.Length);
             File.WriteAllBytes(temp, pngWithChunkSpace);
+            Check(!ImageHeaderGuard.IsSafeToDecode(temp, true),
+                "reject PNG with no IDAT/IEND chunk envelope");
+            byte[] framedPng = PngWithChunkEnvelope(800, 600);
+            File.WriteAllBytes(temp, framedPng);
             Check(ImageHeaderGuard.IsSafeToDecode(temp, true),
-                "PNG header and minimum payload length preflight");
+                "accept PNG with bounded IDAT and IEND chunk framing");
+            byte[] brokenPng = (byte[])framedPng.Clone();
+            brokenPng[57] ^= 1;
+            File.WriteAllBytes(temp, brokenPng);
+            Check(!ImageHeaderGuard.IsSafeToDecode(temp, true),
+                "reject PNG with broken IEND CRC");
+            brokenPng = (byte[])framedPng.Clone();
+            BigEndian(brokenPng, 33, uint.MaxValue);
+            File.WriteAllBytes(temp, brokenPng);
+            Check(!ImageHeaderGuard.IsSafeToDecode(temp, true),
+                "reject PNG with oversized IDAT chunk length");
+            brokenPng = (byte[])framedPng.Clone();
+            brokenPng[38] = (byte)'X';
+            File.WriteAllBytes(temp, brokenPng);
+            Check(!ImageHeaderGuard.IsSafeToDecode(temp, true),
+                "reject PNG without an IDAT chunk");
+            brokenPng = (byte[])framedPng.Clone();
+            brokenPng[53] = (byte)'X';
+            File.WriteAllBytes(temp, brokenPng);
+            Check(!ImageHeaderGuard.IsSafeToDecode(temp, true),
+                "reject PNG without IEND");
+            File.WriteAllBytes(temp, framedPng);
+            using (FileStream stream = new FileStream(temp, FileMode.Append))
+                stream.WriteByte(0);
+            Check(!ImageHeaderGuard.IsSafeToDecode(temp, true),
+                "reject trailing data after PNG IEND");
             Check(!ImageHeaderGuard.IsSafeToDecode(temp, false),
                 "reject PNG interpreted as BMP");
             byte[] corruptCrc = (byte[])validPng.Clone();
