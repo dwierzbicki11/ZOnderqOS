@@ -84,19 +84,28 @@ internal static class FillFastPathSmoke
         Array.Sort(newMs);
         if (before.DrawCalls != after.DrawCalls)
             throw new Exception(label + " benchmark changed Canvas call count");
-        UiPainter.Fill(after, Ink, x, y, width, height);
+        // Compare allocations on both production and pre-change code paths.
+        // Timing alone cannot distinguish reduced allocations from faster math.
+        PreviousFill(before, Ink, x, y, width, height);
         long start = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < repetitions; i++)
+            PreviousFill(before, Ink, x, y, width, height);
+        long previousBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        UiPainter.Fill(after, Ink, x, y, width, height);
+        start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < repetitions; i++)
             UiPainter.Fill(after, Ink, x, y, width, height);
-        long bytes = GC.GetAllocatedBytesForCurrentThread() - start;
-        if (bytes != 0)
-            throw new Exception(label + " allocated " + bytes + " bytes");
+        long currentBytes = GC.GetAllocatedBytesForCurrentThread() - start;
+        if (previousBytes != 0 || currentBytes != 0)
+            throw new Exception(label + " unexpectedly allocated: before=" +
+                previousBytes + " B, after=" + currentBytes + " B");
         Console.WriteLine("HOST A/B Fill " + label + ": " + repetitions +
             " calls, median 7 alternating samples, previous " +
             oldMs[3].ToString("F3") + " ms, current " +
             newMs[3].ToString("F3") + " ms, ratio " +
             (oldMs[3] / newMs[3]).ToString("F2") +
-            "x, allocations=" + bytes + " B; fake Canvas, NOT QEMU FPS, sink=" + sink);
+            "x, allocations=" + previousBytes + " -> " + currentBytes +
+            " B; fake Canvas, NOT QEMU FPS, sink=" + sink);
     }
 
     internal static void Verify()
