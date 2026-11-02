@@ -37,11 +37,13 @@ namespace ZonderqOS.SystemCore
             var format = output.Format;
             // Format is a public getter, not an atomic ownership snapshot.
             // A stock player may claim/withdraw/reconfigure the output while
-            // that getter executes. Recheck after reading it so this probe
-            // does not queue even one stale-format block in that case.
+            // that getter executes. Recheck identity and ownership after reading
+            // it so this probe does not queue a block to a replaced output.
+            // This is still a best-effort snapshot, not an atomic claim.
             return format.Channels == 2 && format.ChannelSize == 2 &&
-                !output.IsWithdrawn && output.Player == null &&
-                output.SampleRate == sampleRate;
+                !output.IsWithdrawn && output.Name == "hda" &&
+                output.DriverName == "HdAudioDriver" &&
+                output.Player == null && output.SampleRate == sampleRate;
         }
 
         internal static bool TryPlay(AudioDevice output, byte[] pcm, uint sampleRate)

@@ -197,6 +197,35 @@ internal static class AudioDirectProbeSmoke
                 claimedDuringReady.WrittenBytes == 0,
                 "claim during final format getter aborts before first PCM write");
 
+            // A controller identity can change while the public format
+            // getter executes. The last readiness check must not accept
+            // the previous HDA identity and write to a replaced device.
+            var nameChangedDuringReady = new Device();
+            int nameFormatReads = 0;
+            nameChangedDuringReady.OnFormatRead = () =>
+            {
+                if (++nameFormatReads == 4)
+                    nameChangedDuringReady.Name = "replacement";
+            };
+            check(!AudioProbeDirectPlayback.TryPlay(nameChangedDuringReady, Pcm, 48000) &&
+                nameFormatReads == 4 && nameChangedDuringReady.StartCalls == 1 &&
+                nameChangedDuringReady.StopCalls == 1 &&
+                nameChangedDuringReady.WrittenBytes == 0,
+                "identity drift in final format getter aborts before PCM write");
+
+            var driverChangedDuringReady = new Device();
+            int driverFormatReads = 0;
+            driverChangedDuringReady.OnFormatRead = () =>
+            {
+                if (++driverFormatReads == 4)
+                    driverChangedDuringReady.DriverName = "ReplacementDriver";
+            };
+            check(!AudioProbeDirectPlayback.TryPlay(driverChangedDuringReady, Pcm, 48000) &&
+                driverFormatReads == 4 && driverChangedDuringReady.StartCalls == 1 &&
+                driverChangedDuringReady.StopCalls == 1 &&
+                driverChangedDuringReady.WrittenBytes == 0,
+                "driver drift in final format getter aborts before PCM write");
+
             var rateChangedDuringReady = new Device();
             int rateFormatReads = 0;
             rateChangedDuringReady.OnFormatRead = () =>

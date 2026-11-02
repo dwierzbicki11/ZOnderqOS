@@ -853,7 +853,9 @@ namespace ZonderqOS.SystemCore
             // checks; a value type cannot be compared with null.
             // This is not an atomic device ownership claim.
             var outputFormat = output.Format;
-            if (output.SampleRate != sampleRate ||
+            if (output.IsWithdrawn || output.Name != "hda" ||
+                output.DriverName != "HdAudioDriver" ||
+                output.SampleRate != sampleRate ||
                 outputFormat.Channels != 2 || outputFormat.ChannelSize != 2)
             {
                 Console.WriteLine("[AUDIO] PCM REFUSED: output is not 48000Hz stereo16.");
