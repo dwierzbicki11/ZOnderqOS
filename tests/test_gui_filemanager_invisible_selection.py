@@ -47,6 +47,19 @@ class InvisibleSelectionContract(unittest.TestCase):
         self.assertLess(body.index("SyncViewGeometry();"),
                         body.index("OpenEntry(selectedIndex);"))
 
+    def test_window_bounds_sync_precedes_file_manager_keyboard_geometry(self):
+        geometry = section("private void SyncViewGeometry()",
+                           "public override void HandleMouse(int x, int y")
+        self.assertIn("Window.EnsureDesktopBounds();", geometry)
+        self.assertLess(geometry.index("Window.EnsureDesktopBounds();"),
+                        geometry.index("view.Width = Math.Max(1, Window.Width - 20);"))
+        window = (Path(__file__).resolve().parents[1] /
+                  "source/GUI/Window.cs").read_text(encoding="utf-8")
+        public_sync = window.split("public void EnsureDesktopBounds()", 1)[1].split(
+            "public Window(", 1
+        )[0]
+        self.assertIn("SyncDesktopBounds();", public_sync)
+
     def test_invisible_files_cannot_be_selected_or_opened(self):
         for start, end in (
             ("private void SelectBoundary(bool last)", "private void SelectPage("),
