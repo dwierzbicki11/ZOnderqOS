@@ -72,6 +72,12 @@ namespace ZonderqOS
 
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
+                // Guest-clock baseline: from BeforeRun/BootTelemetry.Initialize
+                // through disk, services and login preparation. This is NOT
+                // QEMU power-on-to-desktop time or a host wall-clock benchmark.
+                // Emit only once per boot to the existing approved system log.
+                WriteMessage.WriteOK("PERF_BOOT_INIT_MS=" +
+                    (long)(BootTelemetry.UptimeSeconds * 1000d), "PERF");
                 if (DiagnosticConsoleBoot)
                 {
                     Console.WriteLine();
