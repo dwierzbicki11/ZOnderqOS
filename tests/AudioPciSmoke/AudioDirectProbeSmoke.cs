@@ -124,10 +124,10 @@ internal static class AudioDirectProbeSmoke
         var formatWithdrawnOnRead = new Device();
         formatWithdrawnOnRead.OnFormatRead = () => formatWithdrawnOnRead.Format = default;
         check(!AudioProbeDirectPlayback.TryPlay(formatWithdrawnOnRead, Pcm, 48000) &&
-            formatWithdrawnOnRead.StartCalls == 1 &&
-            formatWithdrawnOnRead.StopCalls == 1 &&
+            formatWithdrawnOnRead.StartCalls == 0 &&
+            formatWithdrawnOnRead.StopCalls == 0 &&
             formatWithdrawnOnRead.WrittenBytes == 0,
-            "direct probe snapshots value format once, then refuses drift after Start");
+            "direct probe snapshots format once and catches drift on pre-Start recheck");
 
         int waits = 0;
         Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
