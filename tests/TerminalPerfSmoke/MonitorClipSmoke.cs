@@ -99,6 +99,23 @@ internal static class MonitorClipSmoke
         Check(single.OutputLines[0] == source.Substring(0, 10),
             "snapshot after empty"); checks++;
 
+        // The cache can contain fewer clipped entries than displayed rows.
+        // Switching to command output must never clear beyond its array.
+        var mixed = new TerminalBox(0, 0, 120, 800);
+        var mixedRows = new string[32];
+        mixedRows[0] = new string('M', 200);
+        for (int i = 1; i < mixedRows.Length; i++)
+            mixedRows[i] = "short";
+        mixed.ShowMonitor(mixedRows, 0);
+        CheckOutput(mixed, mixedRows, 0);
+        mixed.PrintLine("back to shell");
+        mixed.ShowMonitor(mixedRows, 0);
+        CheckOutput(mixed, mixedRows, 0);
+        mixed.ShowMonitor(new[] { "short" }, 0);
+        mixed.ClearOutput();
+        Check(mixed.OutputLines.Count == 0,
+            "mixed clipped/short rows must clear safely"); checks++;
+
         Console.WriteLine("PASS: " + checks +
             " production htop monitor clip equivalence/cache/invalidation cases");
     }
