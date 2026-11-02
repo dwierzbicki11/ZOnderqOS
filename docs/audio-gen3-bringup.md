@@ -42,7 +42,7 @@ tone
 volume 100
 ```
 
-`audiodiag` reports PCI configuration-space discovery only. `audioinfo` should list the output `hda` from `HdAudioDriver` if it bound successfully. `tone` submits a 250 ms, 440 Hz, 48 kHz, signed 16-bit stereo square wave through `AudioManager.Play` and reports `ACCEPTED_AND_DRAINED` only if the stock audio player returned true. This is **not** proof that any human heard sound.
+`audiodiag` reports PCI configuration-space discovery only. `audioinfo` should list the output `hda` from `HdAudioDriver` if it bound successfully. `tone` submits a 250 ms, 440 Hz, 48 kHz, signed 16-bit stereo square wave through `AudioManager.Play` and reports `API_RETURNED_SUCCESS` only if the stock audio player returned true. This does **not** establish DMA/IRQ progress, a drained hardware ring or audible output; use the independent QEMU WAV capture for PCM evidence.
 
 The additional `wavtone` command constructs a canonical RIFF/WAVE container in
 **guest RAM**, validates and decodes it with `AudioWavePcm.DecodeStereo16`,
@@ -580,3 +580,16 @@ independent PCM16 resampling reference and reject malformed padding and speaker
 masks. QEMU must capture both distinct channel pitches to pass; boot, static
 contracts and C# tests alone are insufficient. This does not enable audio in
 the production GUI or change stock Cosmos 3.0.95, DMA/IRQ, disk policy or SMP.
+
+### Direct HDA 1 ms diagnostic counters (experimental)
+
+The opt-in direct ring writer logs `pcmQueued` and `silenceQueued` as bytes
+accepted by `AudioDevice.Write`, plus `writeCalls`, `zeroWrites`,
+`partialWrites`, `longestZeroStreak`, `minPositiveWrite`, `waits`, and
+`settleRequests`. A partial write is a positive, frame-aligned return smaller
+than the requested count; a zero streak counts consecutive zero-byte returns.
+`minPositiveWrite=0` means no positive write occurred. These counters can
+help distinguish ring backpressure from scheduling gaps, but **none measures
+DMA advancement, an ISR invocation, a physical speaker or WAV capture quality**.
+The direct writer remains isolated from the production GUI and is not an
+atomic substitute for stock Cosmos audio ownership.
