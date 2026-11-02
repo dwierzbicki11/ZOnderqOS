@@ -626,6 +626,17 @@ namespace ZonderqOS
                 Log("[NET3095-N6] POST_STRESS_IPV4=PASS ip=" + postStressConfig.Address +
                     " mask=" + postStressConfig.SubnetMask +
                     " gateway=" + postStressConfig.DefaultGateway);
+                // A driver can retain its published MAC, lease and IRQ
+                // registrations while its PCI MMIO mapping changes. Compare
+                // the actual BAR0 and command register against N1's original
+                // pre-TX snapshot after the full N6 TX/RX workload.
+                if (!ZonderqOS.Hardware.E1000EPciIdentity.TryReadReady(
+                        pciConfig, out ushort stressPciCommand, out ulong stressPciBar0) ||
+                    stressPciCommand != pciCommand || stressPciBar0 != pciBar0)
+                {
+                    Log("[NET3095-N6][FAIL] E1000E PCI command/BAR0 changed after TX/RX stress");
+                    return;
+                }
                 if (!CheckE1000EDriverKitHealth(baselineResources, baselineIrqSources))
                 {
                     Log("[NET3095-N6][FAIL] E1000E DriverKit health invalid after TX/RX stress");

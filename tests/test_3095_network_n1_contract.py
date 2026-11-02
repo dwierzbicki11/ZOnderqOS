@@ -27,6 +27,13 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("address == 0 || address == 0xFFFFFFFFFFFFFFF0UL", pci)
         self.assertIn("out ulong pciBar0", SOURCE)
         self.assertIn("txPciBar0 != pciBar0", SOURCE)
+        # N6 must also check the original MMIO BAR after all HTTP, burst TX
+        # and post-burst ICMP activity, not merely at initial N1 raw TX.
+        stress_start = SOURCE.index('POST_STRESS_IPV4=PASS ip=')
+        stress_bar = SOURCE.index('stressPciBar0 != pciBar0', stress_start)
+        stress_health = SOURCE.index('CheckE1000EDriverKitHealth(baselineResources', stress_bar)
+        self.assertLess(stress_start, stress_bar)
+        self.assertLess(stress_bar, stress_health)
         self.assertNotIn("Write16(", pci)
         self.assertNotIn("Write8(", pci)
         before = SOURCE.index("E1000E PCI identity/MMIO/busmaster invalid before TX")
