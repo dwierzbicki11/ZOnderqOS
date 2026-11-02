@@ -407,7 +407,10 @@ namespace ZonderqOS.GUI
             // A shorter snapshot must not pin the old rows or their strings.
             if (monitorClips != null && visibleRow < lastMonitorClipRows)
                 Array.Clear(monitorClips, visibleRow, lastMonitorClipRows - visibleRow);
-            lastMonitorClipRows = Math.Min(visibleRow, MaxOutputLines);
+            // Short (unclipped) rows need no cache slot; never clear beyond
+            // the portion of the array that was actually allocated.
+            lastMonitorClipRows = monitorClips == null ? 0 :
+                Math.Min(visibleRow, monitorClips.Length);
             UpdateScrollBar();
         }
 
