@@ -8,6 +8,7 @@ TIMEOUT="${NET3095_N1_TIMEOUT:-150}"
 PCAP="${NET3095_N1_PCAP:-$LOG.pcap}"
 MODE="${3:-n1}"
 IRQ_TRACE="${NET3095_IRQ_TRACE:-0}"
+LINK_CYCLE="${NET3095_LINK_CYCLE:-0}"
 [[ "$MODE" == n1 || "$MODE" == n2 || "$MODE" == n3 || "$MODE" == n4 || "$MODE" == n5 || "$MODE" == n6 ]] || {
   echo "[NET3095-N1][FAIL] Expected n1, n2, n3, n4, n5 or n6 mode" >&2; exit 2;
 }
@@ -20,13 +21,25 @@ IRQ_TRACE="${NET3095_IRQ_TRACE:-0}"
 [[ "$IRQ_TRACE" == 0 || "$MODE" == n6 ]] || {
   echo "[NET3095-N1][FAIL] IRQ trace diagnostics require isolated n6 mode" >&2; exit 2;
 }
+[[ "$LINK_CYCLE" == 0 || "$LINK_CYCLE" == 1 ]] || {
+  echo "[NET3095-N6][FAIL] NET3095_LINK_CYCLE must be 0 or 1" >&2; exit 2;
+}
+[[ "$LINK_CYCLE" == 0 || "$MODE" == n6 ]] || {
+  echo "[NET3095-N6][FAIL] Link-cycle QMP requires isolated n6 mode" >&2; exit 2;
+}
 [[ -s "$ISO" ]] || { echo "[NET3095-N1][FAIL] Missing ISO" >&2; exit 1; }
 command -v qemu-system-x86_64 >/dev/null || exit 1
 # Fail closed: evidence files are unique per boot and must never
 # truncate an existing host file, including a dangling symlink.
 # Refuse aliasing between serial, stderr, host evidence and the PCAP.
 declare -A evidence_paths=()
-for evidence in "$LOG" "$LOG.stderr" "$LOG.tcp-host" "$LOG.http-host" "$PCAP"; do
+qmp_args=()
+qmp_evidence=()
+if [[ "$LINK_CYCLE" == 1 ]]; then
+  qmp_args=(-qmp "unix:$LOG.qmp,server=on,wait=off")
+  qmp_evidence=("$LOG.qmp")
+fi
+for evidence in "$LOG" "$LOG.stderr" "$LOG.tcp-host" "$LOG.http-host" "$PCAP" "${qmp_evidence[@]}"; do
   [[ ! -e "$evidence" && ! -L "$evidence" ]] || {
     echo "[NET3095-N1][FAIL] Refusing to overwrite existing evidence: $evidence" >&2; exit 1;
   }
@@ -124,7 +137,7 @@ if [[ "$MODE" == n6 ]]; then
   }
 fi
 qemu-system-x86_64 \
-  "${trace_args[@]}" \
+  "${trace_args[@]}" "${qmp_args[@]}" \
   -machine q35 -cpu Nehalem -smp 1 -m 2048M \
   -boot d -cdrom "$ISO" \
   -nic none -netdev user,id=net0 -device e1000e,netdev=net0 \
@@ -355,6 +368,44 @@ while (( SECONDS - started < TIMEOUT )); do
           exit 1
         fi
       done
+      if [[ "$LINK_CYCLE" == 1 ]]; then
+        # QMP command acceptance is checked separately from the guest's
+        # published link state and the new post-up ICMP packets on the wire.
+        armed_start=$SECONDS
+        until grep -Fq '[NET3095-N6] LINK_CYCLE_ARMED=YES' "$LOG"; do
+          qemu_alive || { echo "[NET3095-N6-LINK][FAIL] Guest exited before arm" >&2; exit 1; }
+          if (( SECONDS - armed_start >= 12 )); then
+            echo "[NET3095-N6-LINK][FAIL] Guest never armed link-cycle probe" >&2; exit 1
+          fi
+          sleep 1
+        done
+        python3 "$ROOT/tools/network_3095_qmp_link.py" --socket "$LOG.qmp" --state down
+        down_start=$SECONDS
+        until grep -Fq '[NET3095-N6] LINK_DOWN_OBSERVED=YES' "$LOG"; do
+          qemu_alive || { echo "[NET3095-N6-LINK][FAIL] Guest exited during link-down" >&2; exit 1; }
+          if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
+            tail -n 90 "$LOG" >&2; exit 1
+          fi
+          if (( SECONDS - down_start >= 15 )); then
+            echo "[NET3095-N6-LINK][FAIL] Guest did not observe QMP link-down" >&2; exit 1
+          fi
+          sleep 1
+        done
+        python3 "$ROOT/tools/network_3095_qmp_link.py" --socket "$LOG.qmp" --state up
+        recovery_start=$SECONDS
+        until python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP" >/dev/null 2>&1; do
+          qemu_alive || { echo "[NET3095-N6-LINK][FAIL] Guest exited during recovery" >&2; exit 1; }
+          if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
+            tail -n 90 "$LOG" >&2; exit 1
+          fi
+          if (( SECONDS - recovery_start >= 20 )); then
+            python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP"
+            echo "[NET3095-N6-LINK][FAIL] No verified post-up ICMP RX/TX" >&2; exit 1
+          fi
+          sleep 1
+        done
+        python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP"
+      fi
     fi
     # A running QEMU PID is not proof of a live guest (-no-shutdown).
     # Require ongoing managed kernel execution for the stability window.
@@ -393,6 +444,10 @@ while (( SECONDS - started < TIMEOUT )); do
         # polling-based packet delivery. Guest ISR execution is STILL unproven.
         python3 "$ROOT/tests/verify_3095_e1000e_irq_trace.py" \
           "$LOG.stderr" --require-notify
+      fi
+      if [[ "$LINK_CYCLE" == 1 ]]; then
+        python3 "$ROOT/tests/verify_3095_network_n6_link_recovery.py" "$LOG" "$PCAP"
+        echo "[NET3095-N6-LINK-QEMU] PASS QMP link down/up, guest observation and new PCAP ICMP after recovery; no ISR proof"
       fi
       echo "[NET3095-N6-QEMU] PASS six E1000E HTTP sessions (four after 128 TX + 4 ICMP) + final ICMP after FIN/ACK + DNS/DHCP/ICMP + 8s stability; no HTTPS or production network"
     elif [[ "$MODE" == n5 ]]; then
