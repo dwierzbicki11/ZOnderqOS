@@ -89,6 +89,7 @@ namespace ZonderqOS.SystemCore
         // The scheduler slot is stable independently of display sort order.
         // Reuse complete rows only when every visible field still matches.
         private CachedThreadRow[] cachedThreadRows = Array.Empty<CachedThreadRow>();
+        private int lastRowSlotCount;
         private readonly List<string> lines = new List<string>();
         private PreviousThread[] previousThreads = Array.Empty<PreviousThread>();
         private long[] previousCpu = Array.Empty<long>();
@@ -343,6 +344,11 @@ namespace ZonderqOS.SystemCore
             }
             if (cachedThreadRows.Length < slots)
                 Array.Resize(ref cachedThreadRows, slots);
+            // Release names/lines from slots that disappeared. Do this only
+            // when the scheduler shrinks, never on each steady refresh.
+            if (slots < lastRowSlotCount)
+                Array.Clear(cachedThreadRows, slots, lastRowSlotCount - slots);
+            lastRowSlotCount = slots;
             rows.Clear();
             ulong elapsedNs = elapsed > 0 && Stopwatch.Frequency > 0
                 ? (ulong)((double)elapsed * 1000000000d / Stopwatch.Frequency) : 0;

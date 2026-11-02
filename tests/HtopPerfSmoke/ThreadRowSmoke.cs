@@ -189,6 +189,15 @@ internal static class ThreadRowSmoke
             long bytes = GC.GetAllocatedBytesForCurrentThread() - start;
             Check(bytes == 0, "100 stable production Refresh calls allocated " + bytes + " B");
             Check(m.Lines.Count == 136, "128 thread rows and 8 fixed lines");
+            string oldFirstRow = m.Lines[8];
+            SchedulerInfo.Threads = Array.Empty<KernelThreadInfo>();
+            m.Refresh();
+            Check(m.Lines.Count == 8, "scheduler shrink must remove all thread rows");
+            SchedulerInfo.Threads = threads;
+            m.Refresh();
+            Check(m.Lines[8] == oldFirstRow &&
+                !object.ReferenceEquals(m.Lines[8], oldFirstRow),
+                "scheduler shrink must release cached thread rows");
             Console.WriteLine("HOST htop 100 stable 128-thread production Refresh calls: " +
                 bytes + " B allocations (not kernel GC/CPU)");
         }
