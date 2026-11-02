@@ -442,3 +442,33 @@ the stock driver also polls. The new checks require a **fresh successful
 real QEMU workflow at the new branch head** before reporting an end-to-end
 PASS. Production networking remains disabled, the GUI uses its original
 disk-backed root, and the probe never writes to ZONDERQDATA or host disks.
+
+## N6 QEMU TX/RX descriptor DMA trace (2026-11-02)
+
+The isolated `NET3095_IRQ_TRACE=1` N6 run now additionally enables three
+upstream QEMU E1000E trace events: `e1000e_tx_descr` (TX descriptor fetched
+by the emulated NIC), `e1000e_rx_desc_buff_write` (nonzero guest RX buffer
+write) and `e1000e_rx_written_to_guest` (RX packet committed to guest
+memory). The smoke script fails closed when any required trace event is
+unavailable in the installed QEMU. A separate parser requires at least
+128 non-null TX descriptor fetch events and at least one nonzero RX buffer
+write and packet commit in the **same real emulator stderr capture**.
+It discards records after the QEMU termination marker and rejects malformed
+or spoofed trace lines. A zero RX interrupt-cause value does not invalidate
+a completed RX DMA write; IRQ notifications have a separate gate.
+
+This adds **emulator-side descriptor and RX memory-write evidence** beyond
+the existing real PCAP, serial and host exchange checks. It is not a
+hardware DMA analyzer, does not prove that the guest serviced an IRQ,
+and is not a substitute for the independent network protocol validators.
+The stock Cosmos 3.0.95 E1000E driver still polls. The C# N6 probe also
+rechecks the original PCI BAR0/command/legacy IRQ route after each TCP
+reconnect RX fragment and at all five TX ring boundaries (0/32/64/96/128),
+not just at the final post-stress snapshot. These are read-only PCI
+configuration checks, never device reinitialization or production NIC
+activation.
+
+**Verification status:** synthetic Python parser tests and C# source
+contracts are not evidence of QEMU DMA; the new gate requires its own
+successful workflow on the exact branch head before a runtime PASS is
+reported. The production GUI, ZONDERQDATA and host disks are unchanged.
