@@ -330,8 +330,8 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertLess(playback.index('output.DriverName != "HdAudioDriver"'),
                         playback.index("AudioManager.Play(new MemoryAudioStream"))
         self.assertIn("output.SampleRate != sampleRate", playback)
-        self.assertIn("output.Format.Channels != 2", playback)
-        self.assertIn("output.Format.ChannelSize != 2", playback)
+        self.assertIn("outputFormat.Channels != 2", playback)
+        self.assertIn("outputFormat.ChannelSize != 2", playback)
         self.assertLess(playback.index("if (!AudioManager.IsEnabled)"),
                         playback.index("AudioDevice output = AudioManager.Primary"))
         self.assertLess(playback.index("output.SampleRate != sampleRate"),
