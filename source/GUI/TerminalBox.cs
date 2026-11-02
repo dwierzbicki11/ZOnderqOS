@@ -79,33 +79,30 @@ namespace ZonderqOS.GUI
 
         public void PrintLine(string line)
         {
+            PrintLineInternal(line, false);
+        }
+
+        // During command output, the final scrollbar range is sufficient for
+        // auto-follow. Keep per-row updates when the user has scrolled up.
+        private void PrintLineInternal(string line, bool deferAutoFollow)
+        {
             if (line == null)
                 line = "";
 
-            PrintLineRange(line, 0, line.Length);
-        }
-
-        // Decode a command-output slice directly from the original buffer.
-        // Previously each command row was copied into a temporary string and
-        // PrintLine copied it again while wrapping. Keep only the final visible
-        // row allocation; the original command output stays immutable.
-        private void PrintLineRange(string line, int start, int length)
-        {
             int maxChars = GetMaxChars();
             if (maxChars <= 0)
                 return;
 
-            if (length == 0)
+            if (line.Length == 0)
             {
                 AddOutputLine("");
                 return;
             }
 
-            int position = start;
-            int end = start + length;
-            while (position < end)
+            int position = 0;
+            while (position < line.Length)
             {
-                int remaining = end - position;
+                int remaining = line.Length - position;
                 int take = Math.Min(maxChars, remaining);
 
                 if (take < remaining)
@@ -118,21 +115,20 @@ namespace ZonderqOS.GUI
                 if (take <= 0)
                     take = Math.Min(maxChars, remaining);
 
-                // Substring(0, Length) already returns the same string on .NET.
-                // Reuse it explicitly for the common single-line PrintLine path.
-                string wrapped = position == 0 && take == line.Length
-                    ? line : line.Substring(position, take);
-                wrapped = wrapped.TrimEnd();
+                // When the user has scrolled up, preserve the legacy per-line
+                // range/value callbacks: trimming can clamp the scrollbar
+                // between wrapped rows. Auto-follow can safely batch them.
+                string wrapped = line.Substring(position, take).TrimEnd();
                 if (userScrolled)
                     AddOutputLine(wrapped);
                 else
                     AppendOutputLine(wrapped);
                 position += take;
-                while (position < end && line[position] == ' ')
+                while (position < line.Length && line[position] == ' ')
                     position++;
             }
 
-            if (!userScrolled)
+            if (!userScrolled && !deferAutoFollow)
                 FinishOutputUpdate();
         }
 
@@ -147,6 +143,7 @@ namespace ZonderqOS.GUI
                 return;
 
             int start = 0;
+            bool deferredAutoFollow = false;
             for (int i = 0; i <= output.Length; i++)
             {
                 if (i < output.Length && output[i] != '\r' && output[i] != '\n')
@@ -155,12 +152,15 @@ namespace ZonderqOS.GUI
                 int length = i - start;
                 if (length > 0)
                 {
-                    const string clearMarker = "\u0001GUI_CLEAR\u0001";
-                    if (length == clearMarker.Length &&
-                        string.CompareOrdinal(output, start, clearMarker, 0, length) == 0)
+                    string line = output.Substring(start, length);
+                    if (line == "\u0001GUI_CLEAR\u0001")
                         ClearOutput();
                     else
-                        PrintLineRange(output, start, length);
+                    {
+                        PrintLineInternal(line, true);
+                        if (!userScrolled)
+                            deferredAutoFollow = true;
+                    }
                 }
 
                 // The legacy Replace("\r\n", "\n").Replace("\r", "\n")
@@ -170,6 +170,11 @@ namespace ZonderqOS.GUI
                     i++;
                 start = i + 1;
             }
+
+            // Avoid hundreds of redundant SetRange/Value operations for a
+            // command listing. The final state matches per-line auto-follow.
+            if (deferredAutoFollow && !userScrolled)
+                FinishOutputUpdate();
         }
 
         public void ClearOutput()
