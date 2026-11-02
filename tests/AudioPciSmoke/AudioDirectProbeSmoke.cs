@@ -49,6 +49,7 @@ namespace Cosmos.Kernel.System.Audio
         public int WrittenBytes;
         private int _writableBytes = 16384;
         public int WritableReadCalls;
+        public Action OnWritableRead;
         public int WritableBytes
         {
             get
@@ -57,6 +58,7 @@ namespace Cosmos.Kernel.System.Audio
                 if (IsWithdrawn)
                     throw new InvalidOperationException("read of withdrawn HDA ring");
                 WritableReadCalls++;
+                OnWritableRead?.Invoke();
                 return _writableBytes;
             }
             set => _writableBytes = value;
@@ -197,7 +199,8 @@ internal static class AudioDirectProbeSmoke
                 normalProgress.Contains("minPositiveWrite=16") &&
                 normalProgress.Contains("waits=0") &&
                 normalProgress.Contains("settleRequests=1") &&
-                normalProgress.Contains("ringSamples=2 ringChanges=0") &&
+                normalProgress.Contains("ringSamples=7 ringChanges=0") &&
+                normalProgress.Contains("ringWriteSamples=5 ringWaitSamples=1") &&
                 normalProgress.Contains("ringMin=16384 ringMax=16384") &&
                 normalProgress.Contains("ringIncreases=0 ringDecreases=0") &&
                 normalProgress.Contains("DMA/IRQ and audible PCM not proven"),
@@ -228,11 +231,12 @@ internal static class AudioDirectProbeSmoke
                 };
             }
             check(capacityResult && movingCapacity.StopCalls == 1 &&
-                capacityTrace.ToString().Contains("ringSamples=2 ringChanges=1") &&
+                capacityTrace.ToString().Contains("ringSamples=7 ringChanges=1") &&
+                capacityTrace.ToString().Contains("ringWriteSamples=5 ringWaitSamples=1") &&
                 capacityTrace.ToString().Contains("ringMin=0 ringMax=4096") &&
                 capacityTrace.ToString().Contains("ringIncreases=1 ringDecreases=0") &&
-                capacityTrace.ToString().Contains("writable=driver snapshot; DMA/IRQ not proven") &&
-                movingCapacity.WritableReadCalls == 2,
+                capacityTrace.ToString().Contains("writable=writer+wait snapshots; DMA/IRQ not proven") &&
+                movingCapacity.WritableReadCalls == 7,
                 "direct probe reports stock driver capacity movement without claiming DMA proof");
 
             // A full-ring wait can reveal both newly freed capacity and
@@ -262,11 +266,34 @@ internal static class AudioDirectProbeSmoke
                     waits++;
                 };
             }
-            check(changingResult && changingCapacity.WritableReadCalls == 3 &&
-                changingTrace.ToString().Contains("ringSamples=3 ringChanges=2") &&
+            check(changingResult && changingCapacity.WritableReadCalls == 8 &&
+                changingTrace.ToString().Contains("ringSamples=8 ringChanges=2") &&
+                changingTrace.ToString().Contains("ringWriteSamples=5 ringWaitSamples=2") &&
                 changingTrace.ToString().Contains("ringMin=0 ringMax=4096") &&
                 changingTrace.ToString().Contains("ringIncreases=1 ringDecreases=1"),
                 "direct probe distinguishes driver-reported free-space increase and decrease");
+
+            // The getter itself may withdraw/rebind a controller. A stale
+            // snapshot must be discarded before ring statistics are updated,
+            // and the feeder must not write or Stop somebody else's output.
+            var withdrawnInWritableGetter = new Device();
+            withdrawnInWritableGetter.OnWritableRead =
+                () => withdrawnInWritableGetter.IsWithdrawn = true;
+            check(!AudioProbeDirectPlayback.TryPlay(withdrawnInWritableGetter, Pcm, 48000) &&
+                withdrawnInWritableGetter.WritableReadCalls == 1 &&
+                withdrawnInWritableGetter.WrittenBytes == 0 &&
+                withdrawnInWritableGetter.StopCalls == 0,
+                "withdrawal inside WritableBytes getter aborts without stale ring reads");
+
+            bool selectedDuringWritableGetter = true;
+            var replacedInWritableGetter = new Device();
+            replacedInWritableGetter.OnWritableRead = () => selectedDuringWritableGetter = false;
+            check(!AudioProbeDirectPlayback.TryPlay(replacedInWritableGetter, Pcm, 48000,
+                () => selectedDuringWritableGetter) &&
+                replacedInWritableGetter.WritableReadCalls == 1 &&
+                replacedInWritableGetter.WrittenBytes == 0 &&
+                replacedInWritableGetter.StopCalls == 0,
+                "primary replacement inside WritableBytes getter skips unsafe Stop");
 
             // A host-only device returning partial frame-aligned writes must
             // be counted by accepted bytes, not by requested block sizes.
@@ -427,7 +454,7 @@ internal static class AudioDirectProbeSmoke
                 () => selectedPrimary) && replacedDuringSettle.StartCalls == 1 &&
                 replacedDuringSettle.StopCalls == 0 &&
                 replacedDuringSettle.WrittenBytes == Pcm.Length + 16384 &&
-                replacedDuringSettle.WritableReadCalls == 1 && settleWaits == 1,
+                replacedDuringSettle.WritableReadCalls == 6 && settleWaits == 1,
                 "primary replacement during settle skips Stop on stale device");
             // Restore the normal successful 86ms wait callback for the
             // remaining ownership and format regression cases.
@@ -612,7 +639,7 @@ internal static class AudioDirectProbeSmoke
             check(!AudioProbeDirectPlayback.TryPlay(settleRateDrift, Pcm, 48000) &&
                 settleRateDrift.StartCalls == 1 && settleRateDrift.StopCalls == 1 &&
                 settleRateDrift.WrittenBytes == Pcm.Length + 16384 &&
-                settleRateDrift.WritableReadCalls == 1,
+                settleRateDrift.WritableReadCalls == 6,
                 "direct probe rejects changed format after final settle");
             var settleDriverDrift = new Device();
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
@@ -648,7 +675,7 @@ internal static class AudioDirectProbeSmoke
             check(!AudioProbeDirectPlayback.TryPlay(settleClaimed, Pcm, 48000) &&
                 settleClaimed.StartCalls == 1 && settleClaimed.StopCalls == 0 &&
                 settleClaimed.WrittenBytes == Pcm.Length + 16384 &&
-                settleClaimed.WritableReadCalls == 1 && settleClaimed.IsRunning,
+                settleClaimed.WritableReadCalls == 6 && settleClaimed.IsRunning,
                 "direct probe does not stop a player claiming output during settle");
             var settleWithdrawn = new Device();
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
@@ -659,7 +686,7 @@ internal static class AudioDirectProbeSmoke
             check(!AudioProbeDirectPlayback.TryPlay(settleWithdrawn, Pcm, 48000) &&
                 settleWithdrawn.StartCalls == 1 && settleWithdrawn.StopCalls == 0 &&
                 settleWithdrawn.WrittenBytes == Pcm.Length + 16384 &&
-                settleWithdrawn.WritableReadCalls == 1 && settleWithdrawn.IsRunning,
+                settleWithdrawn.WritableReadCalls == 6 && settleWithdrawn.IsRunning,
                 "withdrawal during settle skips unsafe Stop after silent drain");
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
