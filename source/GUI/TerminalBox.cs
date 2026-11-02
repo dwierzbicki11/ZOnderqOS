@@ -193,25 +193,10 @@ namespace ZonderqOS.GUI
         // a fully blank slice can reuse String.Empty.
         internal static string SliceTrimmedForOutput(string source, int start, int length)
         {
-            int end = start + length;
-            while (end > start)
-            {
-                char ch = source[end - 1];
-                // Most padded terminal rows end in ordinary ASCII spaces.
-                // Avoid Unicode category lookup for every padding character.
-                if (ch == ' ')
-                {
-                    end--;
-                    continue;
-                }
-                // Printable ASCII other than space is never TrimEnd whitespace.
-                if (ch > ' ' && ch <= '~')
-                    break;
-                if (!char.IsWhiteSpace(ch))
-                    break;
-                end--;
-            }
-            return end == start ? string.Empty : source.Substring(start, end - start);
+            // Span.TrimEnd uses the runtime's whitespace scanner without
+            // first allocating the untrimmed intermediate substring.
+            ReadOnlySpan<char> visible = source.AsSpan(start, length).TrimEnd();
+            return visible.IsEmpty ? string.Empty : visible.ToString();
         }
 
         // Decode directly from the command output's original string. A
