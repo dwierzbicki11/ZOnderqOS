@@ -78,8 +78,24 @@ namespace ZonderqOS.GUI
                 string path = paths[i];
                 if (string.IsNullOrEmpty(path))
                     continue;
-                int slash = System.Math.Max(path.LastIndexOf('/'), path.LastIndexOf('\\'));
-                string existing = slash >= 0 ? path.Substring(slash + 1) : path;
+                // Cosmos directory enumeration may include a trailing
+                // separator. Match FileManagerApp.Add's normalization so
+                // "Report/" still collides with a requested "report".
+                int end = path.Length;
+                while (end > 0 && (path[end - 1] == '/' || path[end - 1] == '\\'))
+                    end--;
+                if (end == 0)
+                    continue;
+                int slash = -1;
+                for (int j = end - 1; j >= 0; j--)
+                {
+                    if (path[j] == '/' || path[j] == '\\')
+                    {
+                        slash = j;
+                        break;
+                    }
+                }
+                string existing = path.Substring(slash + 1, end - slash - 1);
                 if (string.Equals(existing, name, StringComparison.OrdinalIgnoreCase))
                     return true;
             }

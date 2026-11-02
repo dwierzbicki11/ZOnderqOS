@@ -72,6 +72,9 @@ internal static class Program
         CheckCollision("report.txt", new[] { @"C:\\DATA\\report.txt" }, Array.Empty<string>(), true);
         CheckCollision("report.txt", new[] { "/data/report2.txt" }, new[] { "/data/archive" }, false);
         CheckCollision("notes", new[] { "/data/notes.txt" }, Array.Empty<string>(), false);
+        CheckCollision("report.txt", Array.Empty<string>(), new[] { "/data/REPORT.TXT/" }, true);
+        CheckCollision("report.txt", Array.Empty<string>(), new[] { "C:\\DATA\\REPORT.TXT\\" }, true);
+        CheckCollision("report.txt", Array.Empty<string>(), new[] { "/" }, false);
         CheckCollision("notes", null, null, false);
 
         Console.WriteLine("GUI FAT32 filename policy: " + assertions + " C# assertions PASS");
