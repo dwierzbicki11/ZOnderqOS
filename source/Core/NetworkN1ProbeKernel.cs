@@ -1205,7 +1205,8 @@ namespace ZonderqOS
                         // completions. Detect a transient NIC withdrawal,
                         // link loss or lease change at each successful Read,
                         // not only after the final byte is received.
-                        if (!IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
+                        if (!IsE1000EPciMappingStable() ||
+                            !IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
                             !IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,
                                 s_linkCycleMask, s_linkCycleGateway))
                         {
