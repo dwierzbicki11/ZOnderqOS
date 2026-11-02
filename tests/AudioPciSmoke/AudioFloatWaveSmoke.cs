@@ -37,6 +37,13 @@ static class AudioFloatWaveSmoke
         byte[] unchanged = (byte[])samples.Clone();
         byte[] wave = AudioWavePcm.EncodeFloat32AtRate(samples, 48000, 2);
         expect(wave[20] == 3 && wave[21] == 0, "float WAV uses IEEE format tag 3");
+        expect(wave.Length == samples.Length + 58, "IEEE float WAV contains WAVEFORMATEX and fact");
+        expect(wave[16] == 18 && wave[36] == 0 && wave[37] == 0,
+            "IEEE float fmt has 18 bytes and zero extension");
+        expect(wave[38] == 'f' && wave[39] == 'a' && wave[40] == 'c' && wave[41] == 't' &&
+            wave[46] == 4 && wave[47] == 0, "IEEE float fact records four frames");
+        expect(wave[50] == 'd' && wave[51] == 'a' && wave[52] == 't' && wave[53] == 'a',
+            "IEEE float data follows fact metadata");
         byte[] decoded = AudioWavePcm.DecodeStereo16(wave);
         short[] expected = { 0, 16383, -16384, 32767, -32768, 32767, -32768, -8192 };
         expect(decoded.Length == expected.Length * 2, "float stereo output frame length");
