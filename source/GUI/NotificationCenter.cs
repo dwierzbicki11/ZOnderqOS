@@ -108,14 +108,25 @@ namespace ZonderqOS.GUI
 
         public void Toggle()
         {
-            Visible = !Visible;
             if (Visible)
             {
-                openingFrames = 8;
-                UiAnimator.RequestFrames(8);
-                EnsureFresh();
-                KeepSelectionVisible();
+                // Taskbar toggles must release the same hover state as Escape
+                // and outside clicks. Otherwise a reopened panel can show a
+                // stale highlighted Clear/DND button before pointer motion.
+                Close();
+                return;
             }
+
+            Visible = true;
+            hoveredFilter = -1;
+            hoveredRow = -1;
+            hoveredDismissRow = -1;
+            hoveredAction = -1;
+            toastHovered = false;
+            openingFrames = 8;
+            UiAnimator.RequestFrames(8);
+            EnsureFresh();
+            KeepSelectionVisible();
         }
 
         public void Close()
@@ -125,6 +136,7 @@ namespace ZonderqOS.GUI
             hoveredRow = -1;
             hoveredDismissRow = -1;
             hoveredAction = -1;
+            toastHovered = false;
         }
 
         public bool HandleKeyboard(KeyEvent key)
