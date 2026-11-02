@@ -3320,5 +3320,45 @@ class ApplicationManagerDesktopReflow3095(unittest.TestCase):
         self.assertIn("hidden.RenderCount == 0", smoke)
 
 
+class FileClipboardSessionBoundary3095(unittest.TestCase):
+    def test_login_and_all_logout_paths_clear_pending_cut(self):
+        run = DESKTOP.split("public void Run()", 1)[1].split(
+            "private void RenderFrame(", 1
+        )[0]
+        logout = DESKTOP.split("private void LogoutSession()", 1)[1].split(
+            "private void LaunchTerminal(", 1
+        )[0]
+        clipboard = code("source/GUI/FileClipboard.cs")
+        self.assertIn("public static void Clear()", clipboard)
+        self.assertIn("sourcePath = null;", clipboard)
+        self.assertIn("sourceIsDirectory = false;", clipboard)
+        self.assertIn("cutMode = false;", clipboard)
+
+        # First frame must not inherit a prior session's source path.
+        self.assertLess(run.index("FileClipboard.Clear();"),
+                        run.index("IconManager.Preload();"))
+        # A shell-triggered logout bypasses the explicit LogoutSession
+        # callback but must still clear the clipboard.
+        expired = run.split("if (!SecurityContext.IsAuthenticated)", 1)[1].split(
+            "break;", 1
+        )[0]
+        self.assertIn("applicationManager.CloseAll();", expired)
+        self.assertIn("FileClipboard.Clear();", expired)
+        self.assertLess(expired.index("FileClipboard.Clear();"),
+                        expired.index("NotificationService.ResetForSession();"))
+
+        # Both explicit and already-expired logout enter this method.
+        self.assertLess(logout.index("FileClipboard.Clear();"),
+                        logout.index("if (!SecurityContext.IsAuthenticated)"))
+        self.assertLess(logout.index("FileClipboard.Clear();"),
+                        logout.index("UserManager.EndSession();"))
+
+    def test_screen_lock_preserves_clipboard_for_same_user(self):
+        lock = DESKTOP.split("private void RequestLockSession()", 1)[1].split(
+            "private static bool IsSecureSessionShortcut(", 1
+        )[0]
+        self.assertNotIn("FileClipboard.Clear();", lock)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
