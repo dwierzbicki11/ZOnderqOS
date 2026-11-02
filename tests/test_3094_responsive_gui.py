@@ -77,6 +77,25 @@ class ResponsiveGui3094(unittest.TestCase):
             if window_width >= 320:
                 self.assertEqual(len(buttons), 7)
 
+    def test_image_viewer_sibling_cap_keeps_current_image_navigable(self):
+        self.assertIn("bool currentFound = false;", IMAGE_VIEWER)
+        self.assertIn("if (!currentFound && IsImagePath(path))", IMAGE_VIEWER)
+        self.assertIn("siblingImages[siblingCount - 1] = path;", IMAGE_VIEWER)
+        self.assertIn("siblingImages[siblingCount++] = path;", IMAGE_VIEWER)
+        self.assertIn("StringComparison.OrdinalIgnoreCase", IMAGE_VIEWER)
+        self.assertIn("FindSiblingIndex(path);", IMAGE_VIEWER)
+        for image_count in (0, 1, 127, 128, 129, 2000):
+            names = [f"image{i}.png" for i in range(image_count)]
+            current = "CURRENT.PNG"
+            selected = names[:128]
+            if not any(name.casefold() == current.casefold() for name in selected):
+                if len(selected) == 128:
+                    selected[-1] = current
+                else:
+                    selected.append(current)
+            self.assertLessEqual(len(selected), 128)
+            self.assertIn(current, selected)
+
     def test_image_viewer_zoom_crop_and_resize_never_overpaint_client(self):
         self.assertIn("int visibleWidth = System.Math.Min(targetWidth, areaWidth);", IMAGE_VIEWER)
         self.assertIn("int visibleHeight = System.Math.Min(targetHeight, areaHeight);", IMAGE_VIEWER)
