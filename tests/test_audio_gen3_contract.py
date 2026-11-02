@@ -287,6 +287,9 @@ class AudioGen3Contract(unittest.TestCase):
         playback = runtime.split("private static bool PlayPcm(byte[] pcm)", 1)[1]
         self.assertIn("pcm.Length > maxPcmBytes", playback)
         self.assertIn("pcm.Length % 4 != 0", playback)
+        self.assertIn('output.Name != "hda" || output.DriverName != "HdAudioDriver"', playback)
+        self.assertLess(playback.index('output.DriverName != "HdAudioDriver"'),
+                        playback.index("AudioManager.Play(new MemoryAudioStream"))
         self.assertIn("output.SampleRate != sampleRate", playback)
         self.assertIn("output.Format.Channels != 2", playback)
         self.assertIn("output.Format.ChannelSize != 2", playback)

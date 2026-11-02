@@ -813,6 +813,16 @@ namespace ZonderqOS.SystemCore
                 Console.WriteLine("[AUDIO] TONE REFUSED: no published output.");
                 return false;
             }
+            // The opt-in diagnostic only exercises the stock Cosmos HDA
+            // backend already verified in isolated QEMU. A different audio
+            // output must not receive probe PCM merely because it advertises
+            // a compatible sample format. This does not identify physical
+            // speakers or authorize production GUI playback.
+            if (output.Name != "hda" || output.DriverName != "HdAudioDriver")
+            {
+                Console.WriteLine("[AUDIO] PCM REFUSED: isolated probe requires stock HDA output.");
+                return false;
+            }
             if (output.SampleRate != sampleRate || output.Format.Channels != 2 ||
                 output.Format.ChannelSize != 2)
             {
