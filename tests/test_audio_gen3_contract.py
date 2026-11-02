@@ -196,7 +196,13 @@ class AudioGen3Contract(unittest.TestCase):
         workflow = read(".github/workflows/audio-qemu.yml")
         project = read("ZonderqOS.csproj")
         self.assertTrue(direct.startswith("#if ZONDERQ_AUDIO_PROBE"))
-        self.assertIn("AudioProbeDirectPlayback.TryPlay(output, scaled, sampleRate)", runtime)
+        self.assertIn("AudioProbeDirectPlayback.TryPlay(output, scaled, sampleRate,", runtime)
+        self.assertIn("() => object.ReferenceEquals(AudioManager.Primary, output)", runtime)
+        self.assertIn("Func<bool> stillSelected = null", direct)
+        self.assertIn("stillSelected == null || stillSelected()", direct)
+        self.assertIn("output is no longer primary; Stop skipped.", direct)
+        self.assertIn("primary replacement during settle skips Stop on stale device",
+                      read("tests/AudioPciSmoke/AudioDirectProbeSmoke.cs"))
         # A single predicate must validate the published unclaimed HDA
         # identity and format before Start, after Start, before each ring
         # write and after the final settle. This is NOT an atomic claim.
