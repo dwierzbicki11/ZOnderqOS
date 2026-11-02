@@ -145,8 +145,16 @@ namespace ZonderqOS.GUI
         private static string SliceTrimmed(string source, int start, int length)
         {
             int end = start + length;
-            while (end > start && char.IsWhiteSpace(source[end - 1]))
+            // Most rows have no trailing whitespace. Avoid entering the
+            // trimming loop at all on this hot path.
+            if (length == 0 || !char.IsWhiteSpace(source[end - 1]))
+                return source.Substring(start, length);
+
+            do
+            {
                 end--;
+            }
+            while (end > start && char.IsWhiteSpace(source[end - 1]));
             return source.Substring(start, end - start);
         }
 
