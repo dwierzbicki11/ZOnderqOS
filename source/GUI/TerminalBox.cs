@@ -23,6 +23,7 @@ namespace ZonderqOS.GUI
         private bool scrollBarLayoutCached;
         private int cachedBoxX, cachedBoxY, cachedBoxWidth, cachedBoxHeight;
         private int cachedOutputCount, cachedScrollOffset;
+        private Font cachedScrollFont;
 
         // A terminal line can become wider than the viewport after a resize.
         // Cache only the prefixes actually drawn; otherwise Substring would
@@ -345,7 +346,8 @@ namespace ZonderqOS.GUI
             int count = OutputLines.Count;
             if (scrollBarLayoutCached && cachedBoxX == X && cachedBoxY == Y &&
                 cachedBoxWidth == Width && cachedBoxHeight == Height &&
-                cachedOutputCount == count && cachedScrollOffset == scrollOffset)
+                cachedOutputCount == count && cachedScrollOffset == scrollOffset &&
+                ReferenceEquals(cachedScrollFont, Font))
                 return;
 
             int visible = Math.Max(1, GetVisibleLines() - 1);
@@ -360,6 +362,9 @@ namespace ZonderqOS.GUI
             cachedBoxWidth = Width;
             cachedBoxHeight = Height;
             cachedOutputCount = count;
+            // Font is replaceable; a new glyph height changes visible rows
+            // even when the window bounds and output count stay unchanged.
+            cachedScrollFont = Font;
             // SetRange/Value may clamp the offset through ValueChanged.
             cachedScrollOffset = scrollOffset;
             scrollBarLayoutCached = true;

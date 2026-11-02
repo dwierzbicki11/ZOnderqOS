@@ -20,8 +20,8 @@ namespace Cosmos.Kernel.System.Graphics.Fonts
 {
     public class Font
     {
-        public int Width => 8;
-        public int Height => 16;
+        public int Width { get; set; } = 8;
+        public int Height { get; set; } = 16;
     }
     public static class PCScreenFont
     {

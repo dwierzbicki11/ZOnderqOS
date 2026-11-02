@@ -23,9 +23,10 @@ internal static class ScrollBarRefreshSmoke
 
     private static void LegacyUpdate(TerminalBox box, ScrollBar bar, int offset)
     {
-        // Frozen pre-cache UpdateScrollBar logic, with Font.Width=8,
-        // Font.Height=16 and the same fixed production padding constants.
-        int visibleLines = Math.Max(1, (box.Height - 26 - 10 - 8) / 16);
+        // Frozen pre-cache UpdateScrollBar logic, including the live font
+        // height. A font replacement must invalidate the cached range.
+        int lineHeight = box.Font == null || box.Font.Height <= 0 ? 1 : box.Font.Height;
+        int visibleLines = Math.Max(1, (box.Height - 26 - 10 - 8) / lineHeight);
         int visible = Math.Max(1, visibleLines - 1);
         bar.X = box.X + Math.Max(1, box.Width - 12);
         bar.Y = box.Y + 26 + 4;
@@ -108,6 +109,12 @@ internal static class ScrollBarRefreshSmoke
             checks++;
             box.ShowMonitor(new[] { "cpu", "memory", "threads" }, 0);
             Check(box, oldBar, "monitor");
+            checks++;
+            box.Font = new Cosmos.Kernel.System.Graphics.Fonts.Font { Width = 10, Height = 24 };
+            Check(box, oldBar, "font replacement");
+            checks++;
+            box.Font = Cosmos.Kernel.System.Graphics.Fonts.PCScreenFont.DefaultFont;
+            Check(box, oldBar, "font restored");
             checks++;
             box.PrintCommandOutput("a\\r\\nb\\n" + new string('x', 120));
             Check(box, oldBar, "command output");
