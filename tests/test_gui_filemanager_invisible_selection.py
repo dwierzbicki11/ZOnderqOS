@@ -145,7 +145,7 @@ class InvisibleSelectionContract(unittest.TestCase):
         self.assertLess(begin.index("if (GridRowsForView == 0)"),
                         begin.index("dialogMode = mode;"))
         self.assertLess(finish.index("if (GridRowsForView == 0)"),
-                        finish.index("File.WriteAllText(path,"))
+                        finish.index("FileManagerFileCreation.CreateEmptyFile(path)"))
         self.assertIn("dialogMode = 0;", finish)
         self.assertIn('dialogName = "";', finish)
 
