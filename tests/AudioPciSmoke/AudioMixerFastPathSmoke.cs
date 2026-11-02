@@ -121,6 +121,22 @@ internal static class AudioMixerFastPathSmoke
         return Stopwatch.GetTimestamp() - start;
     }
 
+    private static long BatchFadedDisjoint(
+        byte[][] clips, int[] starts, int[] gains, int[] fades, bool optimized)
+    {
+        long start = Stopwatch.GetTimestamp();
+        for (int i = 0; i < 64; i++)
+        {
+            byte[] output = optimized
+                ? AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+                    clips, starts, gains, fades, 128)
+                : LegacyScheduledFaded(clips, starts, gains, fades, 128);
+            checksum = unchecked(checksum * 16777619 ^ output[(i % 8) * 300 * 4]);
+            GC.KeepAlive(output);
+        }
+        return Stopwatch.GetTimestamp() - start;
+    }
+
     private static double MedianSinglePartial(
         byte[][] clips, int[] starts, int[] gains, bool optimized)
     {
@@ -527,6 +543,44 @@ internal static class AudioMixerFastPathSmoke
             (partialDisjointBefore[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
             "ms optimized=" +
             (partialDisjointAfter[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
+            "ms checksum=" + checksum + " (host only; no QEMU timing proof)");
+
+        // Faded multi-effect A/B: disjoint audible clips, partial gains,
+        // independent envelopes and a silent drain. Legacy oracle performs
+        // full-timeline accumulation, including all gaps and muted effects.
+        int[] partialDisjointFades = { 0, 1, 20, 50, 0, 1, 20, 50 };
+        Same(AudioPcmMixer.MixScheduledStereo16WithIndividualFades(
+                benchClips, benchStarts, partialDisjointGains, partialDisjointFades, 128),
+            LegacyScheduledFaded(
+                benchClips, benchStarts, partialDisjointGains, partialDisjointFades, 128),
+            "faded partial disjoint benchmark matches full-timeline oracle");
+        BatchFadedDisjoint(benchClips, benchStarts, partialDisjointGains,
+            partialDisjointFades, false);
+        BatchFadedDisjoint(benchClips, benchStarts, partialDisjointGains,
+            partialDisjointFades, true);
+        long[] fadedBefore = new long[7], fadedAfter = new long[7];
+        for (int i = 0; i < 7; i++)
+        {
+            if (i % 2 == 0)
+            {
+                fadedBefore[i] = BatchFadedDisjoint(benchClips, benchStarts,
+                    partialDisjointGains, partialDisjointFades, false);
+                fadedAfter[i] = BatchFadedDisjoint(benchClips, benchStarts,
+                    partialDisjointGains, partialDisjointFades, true);
+            }
+            else
+            {
+                fadedAfter[i] = BatchFadedDisjoint(benchClips, benchStarts,
+                    partialDisjointGains, partialDisjointFades, true);
+                fadedBefore[i] = BatchFadedDisjoint(benchClips, benchStarts,
+                    partialDisjointGains, partialDisjointFades, false);
+            }
+        }
+        Array.Sort(fadedBefore); Array.Sort(fadedAfter);
+        Console.WriteLine("[AUDIO-MIX-FADED-DISJOINT] HOST A/B 7x64 median legacy=" +
+            (fadedBefore[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
+            "ms optimized=" +
+            (fadedAfter[3] * 1000.0 / Stopwatch.Frequency).ToString("F3") +
             "ms checksum=" + checksum + " (host only; no QEMU timing proof)");
 
         // Host A/B for overlapping muted effects: only the four audible
