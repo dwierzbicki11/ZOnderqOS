@@ -71,6 +71,36 @@ static class AudioFloatWaveSmoke
             "float HDA fixture retains tone before silent drain");
         for (int i = tone.Length; i < floatWithDrain.Length; i++)
             expect(floatWithDrain[i] == 0, "float HDA 16KiB drain stays silent");
+        // Exercise the actual WAV encoder/decoder, not only the fixture
+        // converter: the last HDA ring must remain exact zero PCM16.
+        byte[] drainedWave = AudioWavePcm.EncodeFloat32AtRate(
+            floatWithDrain, 48000, 1);
+        byte[] drainedPcm = AudioWavePcm.DecodeStereo16(drainedWave);
+        expect(drainedPcm.Length == toneWithDrain.Length &&
+            Sample(drainedPcm, 0) == 4095 &&
+            Sample(drainedPcm, tone.Length / 2 - 2) < 0,
+            "canonical float WAV keeps tone before silent drain");
+        for (int i = tone.Length; i < drainedPcm.Length; i++)
+            expect(drainedPcm[i] == 0,
+                "canonical float WAV decodes silent HDA drain to exact PCM zero");
+
+        // Also test the 44.1 -> 48 kHz extensible-float route used by
+        // wavextfloat. Its resampler must not introduce a DC tail.
+        byte[] source44100 = AudioTonePcm.GenerateSquareStereo16(
+            44100, 3960, 250, 4096);
+        byte[] source44100WithDrain = new byte[source44100.Length + 16 * 1024];
+        Array.Copy(source44100, source44100WithDrain, source44100.Length);
+        byte[] extensibleDrain = AudioWavePcm.EncodeExtensibleFloat32AtRate(
+            AudioFloatToneFixture.FromStereo16Left(source44100WithDrain),
+            44100, 1);
+        byte[] resampledDrain = AudioWavePcm.DecodeStereo16(extensibleDrain);
+        expect(resampledDrain.Length > source44100WithDrain.Length &&
+            Sample(resampledDrain, 0) == 4095,
+            "extensible float WAV resamples tone and drain to 48 kHz");
+        for (int i = resampledDrain.Length - 48000 / 50 * 4;
+             i < resampledDrain.Length; i++)
+            expect(resampledDrain[i] == 0,
+                "extensible float 44.1kHz drain ends with 20ms exact PCM silence");
         bool fixtureRejected = false;
         try { AudioFloatToneFixture.FromStereo16Left(new byte[3]); }
         catch (ArgumentException) { fixtureRejected = true; }
