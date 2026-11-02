@@ -266,19 +266,12 @@ namespace ZonderqOS.GUI
         // scanner; the production parser still handles CRLF as one separator.
         internal static int FindNextOutputBreak(string output, int start)
         {
-            // Most terminal lines are short. Keep their former tight scalar
-            // loop; entering the span search for every tiny line can lose to
-            // its setup cost once wrapping/scrollbar work is included.
-            // Long log lines switch to the vectorized runtime scanner after
-            // a bounded prefix, without allocating any intermediate string.
-            int limit = (int)Math.Min((long)output.Length, (long)start + 64);
-            for (int i = start; i < limit; i++)
-                if (output[i] == '\r' || output[i] == '\n')
-                    return i;
-            if (limit == output.Length)
-                return output.Length;
-            int relative = output.AsSpan(limit).IndexOfAny('\r', '\n');
-            return relative < 0 ? output.Length : limit + relative;
+            // A scalar prefix looked promising for short rows, but a full
+            // production C# A/B showed a 0.35x regression for 400 CRLF lines.
+            // Keep the compact span scanner: the runtime can vectorize it
+            // without adding a per-line scalar loop and branch.
+            int relative = output.AsSpan(start).IndexOfAny('\r', '\n');
+            return relative < 0 ? output.Length : start + relative;
         }
 
         /// <summary>
@@ -295,9 +288,8 @@ namespace ZonderqOS.GUI
             bool deferredScrollUpdate = false;
             while (start <= output.Length)
             {
-                // Short rows use a bounded scalar prefix; long delimiter-free
-                // runs use the runtime's optimized span implementation.
-                // Do not allocate Split arrays,
+                // IndexOfAny scans long non-delimiter runs in the runtime's
+                // optimized span implementation. Do not allocate Split arrays,
                 // normalized strings, or a per-line delimiter buffer.
                 int end = FindNextOutputBreak(output, start);
                 int length = end - start;
