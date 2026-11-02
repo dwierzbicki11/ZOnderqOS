@@ -291,7 +291,7 @@ namespace ZonderqOS.GUI.Apps
 
             // During live window resize keep the existing preview. The bitmap is
             // rebuilt once after button release instead of allocating at every size.
-            if (!leftButtonDown &&
+            if ((!leftButtonDown || previewBitmap == null) &&
                 (previewDirty || previewBitmap == null ||
                  preparedAreaWidth != areaWidth || preparedAreaHeight != areaHeight))
             {
@@ -383,7 +383,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void LoadImage(string path, bool rebuildSiblings)
         {
-            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            if (string.IsNullOrEmpty(path))
             {
                 status = "Nie znaleziono pliku obrazu";
                 return;
@@ -391,6 +391,14 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
+                // Even the existence check can fail on a removed FAT32 volume.
+                // Keep the previously decoded image when opening a bad sibling.
+                if (!File.Exists(path))
+                {
+                    status = "Nie znaleziono pliku obrazu";
+                    return;
+                }
+
                 int[] pixels;
                 int width;
                 int height;
@@ -422,15 +430,25 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
+                // Finish all potentially throwing path operations before
+                // committing the new image. A failed decode/navigation must
+                // not blank a previously valid image or corrupt its title.
+                string name = Path.GetFileName(path);
+                if (string.IsNullOrEmpty(name))
+                    name = path;
+
                 sourcePixels = pixels;
                 sourceWidth = width;
                 sourceHeight = height;
                 currentPath = path;
-                displayName = Path.GetFileName(path);
-                if (string.IsNullOrEmpty(displayName))
-                    displayName = path;
+                displayName = name;
                 Window.Title = "Zdjecia - " + displayName;
 
+                // A mouse-held toolbar navigation must never display pixels
+                // from the previous file while the new preview is pending.
+                previewBitmap = null;
+                previewWidth = 0;
+                previewHeight = 0;
                 rotation = 0;
                 zoomPercent = 100;
                 fitToWindow = true;
@@ -446,12 +464,8 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                sourcePixels = null;
-                sourceWidth = 0;
-                sourceHeight = 0;
-                previewBitmap = null;
-                previewWidth = 0;
-                previewHeight = 0;
+                // The current image remains usable after a corrupt file,
+                // permission error or transient FAT32 read failure.
                 status = "Blad obrazu: " + ex.Message;
             }
         }
