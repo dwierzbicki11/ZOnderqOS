@@ -821,6 +821,16 @@ class NetworkN1Isolation(unittest.TestCase):
             self.assertIn(term, burst)
         self.assertLess(burst.index("if ((sequence & 31) == 0)"),
                         burst.index("if (!NetworkManager.Send(burst, frameLength))"))
+        # Five read-only PCI BAR/INTx checks at 0/32/64/96/128 TX.
+        self.assertIn("ushort expectedPciCommand, ulong expectedPciBar0", burst)
+        self.assertIn("byte expectedIrqLine, byte expectedIrqPin", burst)
+        self.assertEqual(burst.count("E1000EPciIdentity.TryReadReady("), 2)
+        self.assertEqual(burst.count("E1000EPciIdentity.TryReadLegacyIrqRoute("), 2)
+        self.assertIn("command != expectedPciCommand || bar0 != expectedPciBar0", burst)
+        self.assertIn("irqLine != expectedIrqLine || irqPin != expectedIrqPin", burst)
+        self.assertIn("finalCommand != expectedPciCommand || finalBar0 != expectedPciBar0", burst)
+        self.assertLess(burst.index("E1000EPciIdentity.TryReadReady("),
+                        burst.index("if (!NetworkManager.Send(burst, frameLength))"))
         self.assertIn("IsE1000EDriverKitStable(expectedResources, expectedIrqSources)", burst)
         self.assertLess(burst.index("IsE1000EDriverKitStable(expectedResources, expectedIrqSources)"),
                         burst.index("if (!NetworkManager.Send(burst, frameLength))"))
@@ -831,6 +841,10 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertLess(burst.index('TX_NIC_CHECK=PASS sent='),
                         burst.index('if (!NetworkManager.Send(burst, frameLength))'))
         self.assertIn("verify_3095_network_n6_burst.py", SMOKE)
+        self.assertIn("verify_3095_e1000e_dma_trace.py", SMOKE)
+        self.assertIn("e1000e_tx_descr", SMOKE)
+        self.assertIn("e1000e_rx_desc_buff_write", SMOKE)
+        self.assertIn("e1000e_rx_written_to_guest", SMOKE)
 
 
 
