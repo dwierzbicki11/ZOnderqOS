@@ -66,6 +66,10 @@ namespace ZonderqOS.GUI
                 // Notifications are session-local so messages from one authenticated user
                 // never leak into the next login session.
                 global::ZonderqOS.NotificationService.ResetForSession();
+                // Clipboard paths may point to another user's private home
+                // or a removable volume from the previous desktop session.
+                // Never inherit a pending cut/copy across logins.
+                FileClipboard.Clear();
 
                 // Decode embedded PNG assets exactly once before the first GUI frame.
                 // Later renders only reuse persistent raw pixel buffers.
@@ -150,6 +154,7 @@ namespace ZonderqOS.GUI
                     if (!SecurityContext.IsAuthenticated)
                     {
                         applicationManager.CloseAll();
+                        FileClipboard.Clear();
                         global::ZonderqOS.NotificationService.ResetForSession();
                         isRunning = false;
                         break;
@@ -1020,6 +1025,9 @@ namespace ZonderqOS.GUI
 
         private void LogoutSession()
         {
+            // Also runs for already-expired sessions. Do not retain a stale
+            // cut operation that the next authenticated user could paste.
+            FileClipboard.Clear();
             commandPalette?.Close();
             if (!SecurityContext.IsAuthenticated)
             {
