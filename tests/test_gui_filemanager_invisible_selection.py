@@ -173,11 +173,9 @@ class InvisibleSelectionContract(unittest.TestCase):
                         mouse.index("SidebarClick(x, y);"))
         self.assertLess(mouse.index("if (right && left)"),
                         mouse.index("Toolbar(x);"))
-        # This is a source-level ordering check, not a QEMU HID test.
-        for old_left in (False, True):
-            for old_right in (False, True):
-                left = right = True
-                self.assertTrue(left and right, (old_left, old_right))
+        # Source-level ordering only; a QEMU HID chord test is still needed.
+        self.assertLess(mouse.index("if (right && left)"),
+                        mouse.index("if (right && !oldRight)"))
 
     def test_context_menu_paint_matches_disabled_action_policy(self):
         menu = section("private void Menu(Canvas canvas)",
