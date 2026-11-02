@@ -243,11 +243,15 @@ namespace ZonderqOS.GUI
                     take = Math.Min(maxChars, remaining);
 
                 // A single PrintLine can wrap into dozens of display rows.
-                // Append without publishing intermediate scrollbar ranges,
-                // even when the user is scrolled up. History trimming still
-                // adjusts scrollOffset on each removed batch.
+                // Publish only after the final row, except when a history
+                // trim reduces the scrollbar maximum. The old per-row path
+                // clamps the scroll offset at that exact point; deferring
+                // this clamp would jump the user's scrolled viewport.
                 string wrapped = SliceTrimmedForOutput(line, position, take);
+                bool trimsHistory = OutputLines.Count >= MaxOutputLines;
                 AppendOutputLine(wrapped);
+                if (userScrolled && trimsHistory)
+                    UpdateScrollBar();
                 position += take;
                 while (position < end && line[position] == ' ')
                     position++;
