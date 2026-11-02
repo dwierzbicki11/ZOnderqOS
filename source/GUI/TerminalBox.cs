@@ -187,6 +187,18 @@ namespace ZonderqOS.GUI
             PrintLineSlice(line, 0, line.Length, deferAutoFollow);
         }
 
+        // Trim trailing whitespace directly in the source slice. The previous
+        // Substring(...).TrimEnd() created two strings when a wrapped row ended
+        // in whitespace. Char.IsWhiteSpace matches TrimEnd()'s Unicode rules;
+        // a fully blank slice can reuse String.Empty.
+        internal static string SliceTrimmedForOutput(string source, int start, int length)
+        {
+            int end = start + length;
+            while (end > start && char.IsWhiteSpace(source[end - 1]))
+                end--;
+            return end == start ? string.Empty : source.Substring(start, end - start);
+        }
+
         // Decode directly from the command output's original string. A
         // Substring for each CR/LF-delimited line used to allocate a second
         // string before the wrapped line was stored in OutputLines. Keep only
@@ -221,7 +233,7 @@ namespace ZonderqOS.GUI
                     take = Math.Min(maxChars, remaining);
 
                 // Preserve per-row scrollbar callbacks for manual scrolling.
-                string wrapped = line.Substring(position, take).TrimEnd();
+                string wrapped = SliceTrimmedForOutput(line, position, take);
                 if (userScrolled)
                     AddOutputLine(wrapped);
                 else
