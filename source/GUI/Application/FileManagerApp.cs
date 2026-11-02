@@ -234,6 +234,11 @@ namespace ZonderqOS.GUI.Apps
                 ResetClickSequence();
                 return;
             }
+            // Do not forward a held left button to Window.HandleMouse while
+            // the context menu is open. An interrupted title-bar drag or
+            // resize must not resume behind Copy/Cut/Paste.
+            if (left && dialogMode == 0 && contextMenuVisible)
+                return;
 
             // The create-file/folder dialog is modal. In particular, a
             // click on the caption close/minimize controls must not dismiss

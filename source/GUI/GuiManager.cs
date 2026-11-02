@@ -426,7 +426,9 @@ namespace ZonderqOS.GUI
                         // and do not replay it on the taskbar or desktop underneath.
                         FileManagerApp activeFileManager = applicationManager.ActiveApplication as FileManagerApp;
                         bool fileManagerMenuCaptures = !startMenuCaptures && !desktopMenuCaptures &&
-                            ((currentLeftButtonState && !previousLeftButtonState) || rightPressed) &&
+                            // A held gesture still belongs to the open context
+                            // menu, not to a window or taskbar behind it.
+                            (leftForUi || currentRightButtonState) &&
                             activeFileManager != null && activeFileManager.ContextMenuVisible;
                         if (fileManagerMenuCaptures)
                         {

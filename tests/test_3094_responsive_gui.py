@@ -1458,6 +1458,9 @@ class ResponsiveGui3094(unittest.TestCase):
             "private int HitEntryIndex(", 1)[0]
         self.assertIn("if (left && !oldLeft && dialogMode == 0 && contextMenuVisible)", mouse)
         self.assertIn("if (right && dialogMode == 0 && contextMenuVisible)", mouse)
+        self.assertIn("if (left && dialogMode == 0 && contextMenuVisible)\n                return;", mouse)
+        self.assertLess(mouse.index("if (left && dialogMode == 0 && contextMenuVisible)"),
+                        mouse.index("Window.HandleMouse(mouseX, mouseY, left, oldLeft);"))
         self.assertIn("if (!oldRight || (left && !oldLeft))", mouse)
         self.assertLess(mouse.index("if (right && dialogMode == 0 && contextMenuVisible)"),
                         mouse.index("if (left && !oldLeft && dialogMode == 0 && contextMenuVisible)"))
@@ -1488,6 +1491,7 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("FileManagerApp activeFileManager = applicationManager.ActiveApplication as FileManagerApp;", dispatch)
         self.assertIn("activeFileManager != null && activeFileManager.ContextMenuVisible", dispatch)
         self.assertIn("activeFileManager.ContextMenuVisible", dispatch)
+        self.assertIn("(leftForUi || currentRightButtonState) &&", dispatch)
         self.assertIn("activeFileManager.HandleMouse(mouseX, mouseY, leftForUi,", dispatch)
         self.assertIn("oldLeftForUi, currentRightButtonState, previousRightButtonState);", dispatch)
         self.assertIn("else if (!startMenuCaptures && !desktopMenuCaptures)", dispatch)
@@ -1496,6 +1500,11 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("!fileManagerMenuCaptures &&\n                            !windowCapturedClick && !desktopChordPress", DESKTOP)
         self.assertLess(dispatch.index("bool fileManagerMenuCaptures ="),
                         dispatch.index("applicationManager.HandleMouse("))
+
+        # Held input is also captured; only a fresh press may dismiss.
+        for left_down, right_down in ((True, False), (False, True), (True, True)):
+            self.assertTrue(left_down or right_down)
+            self.assertFalse(not (left_down or right_down))
 
         # A click on another window or the taskbar while a File Manager
         # context menu is open must dismiss the menu without focus/volume
