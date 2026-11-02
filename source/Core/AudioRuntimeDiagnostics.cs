@@ -817,6 +817,15 @@ namespace ZonderqOS.SystemCore
                 Console.WriteLine("[AUDIO] PCM REFUSED: invalid stereo16 length.");
                 return false;
             }
+            // Reject incompatible diagnostic modes before resolving the
+            // device or allocating a potentially 384 KiB gain/fade buffer.
+            // Never start an unclaimed direct writer alongside the stock
+            // scheduler-thread AudioPlayback path.
+            if (useOneMillisecondDiagnostic && useAsyncDiagnostic)
+            {
+                Console.WriteLine("[AUDIO] REFUSED: conflicting diagnostic playback modes.");
+                return false;
+            }
             if (!AudioManager.IsEnabled)
             {
                 Console.WriteLine("[AUDIO] TONE REFUSED: audio subsystem disabled.");
@@ -878,11 +887,6 @@ namespace ZonderqOS.SystemCore
                     ? AudioPcmVolume.ScaleStereo16ChannelsOrReuse(pcm, leftGain, rightGain)
                     : AudioPcmVolume.ScaleStereo16ChannelsWithFadeAndSilence(
                         pcm, leftGain, rightGain, fadeMilliseconds, drainBytes);
-                if (useOneMillisecondDiagnostic && useAsyncDiagnostic)
-                {
-                    Console.WriteLine("[AUDIO] REFUSED: conflicting diagnostic playback modes.");
-                    return false;
-                }
                 if (useOneMillisecondDiagnostic)
                     return AudioProbeDirectPlayback.TryPlay(output, scaled, sampleRate);
                 if (useAsyncDiagnostic)
