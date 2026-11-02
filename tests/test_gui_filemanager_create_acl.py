@@ -147,9 +147,16 @@ checks["editor does not create a file from a stale tile"] = (
     and "File unavailable; press F5 to refresh" in open_body
 )
 checks["editor exceptions stay inside file manager"] = (
-    "try\n                {\n                    nanoLauncher(entry.FullPath);" in open_body
+    "try\n                    {\n                        nanoLauncher(entry.FullPath);" in open_body
     and "catch (Exception ex)" in open_body
     and "Open error: " in open_body
+)
+
+checks["file opening catches ACL and device I/O exceptions"] = (
+    "try\n            {" in open_body
+    and open_body.index("try\n            {") < open_body.index("CanReadInSession(currentPath)")
+    and open_body.rindex("catch (Exception ex)") > open_body.index("nanoLauncher(entry.FullPath)")
+    and 'status = "Open error: " + ex.Message;' in open_body
 )
 
 # FAT32 adapters can throw when media disappears between selection and
