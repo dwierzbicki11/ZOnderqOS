@@ -24,8 +24,9 @@ namespace ZonderqOS.GUI
                 // appear to have a different extension in the GUI.
                 // Refuse invisible direction overrides.
                 if (c == '\u061C' || c == '\u200E' || c == '\u200F' ||
+                    c == '\u00AD' || c == '\u034F' || c == '\u180E' ||
                     c == '\u200B' || c == '\u200C' || c == '\u200D' ||
-                    c == '\u2060' || c == '\uFEFF' ||
+                    (c >= '\u2060' && c <= '\u2064') || c == '\uFEFF' ||
                     c == '\u2028' || c == '\u2029' ||
                     (c >= '\u202A' && c <= '\u202E') ||
                     (c >= '\u2066' && c <= '\u2069'))
