@@ -102,6 +102,31 @@ internal static class Program
         })
             Expect(value, true);
 
+        // The DOS stem check must preserve behavior with spaces before
+        // an extension while avoiding per-keystroke allocations.
+        foreach (string device in new[] { "CON", "PRN", "AUX", "NUL",
+                                           "CONIN$", "CONOUT$", "COM1", "LPT9" })
+        {
+            Expect(device + " .txt", false);
+            Expect(device.ToLowerInvariant() + "  .log", false);
+        }
+        Expect("COM0 .txt", true);
+        Expect("LPT10 .txt", true);
+
+        // Warm up the JIT and verify that validating an ordinary name
+        // no longer allocates a temporary DOS device stem.
+        for (int i = 0; i < 100; i++)
+            FileManagerNamePolicy.IsSafeNewEntryName("ordinary-report.txt");
+        long nameAllocStart = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1024; i++)
+            if (!FileManagerNamePolicy.IsSafeNewEntryName("ordinary-report.txt"))
+                throw new InvalidOperationException("Ordinary filename rejected");
+        long nameAllocated = GC.GetAllocatedBytesForCurrentThread() - nameAllocStart;
+        assertions++;
+        if (nameAllocated != 0)
+            throw new InvalidOperationException("Filename validation allocated " +
+                nameAllocated + " bytes for 1024 calls");
+
         // Exhaust the numbered DOS device namespace in both cases and
         // with extensions; the check must not be case-sensitive.
         for (int number = 1; number <= 9; number++)
