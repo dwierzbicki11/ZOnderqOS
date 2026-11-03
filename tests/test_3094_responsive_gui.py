@@ -3697,5 +3697,23 @@ class FileManagerFilteredSnapshot3095(unittest.TestCase):
 
 
 
+class FileManagerOpenEntryAclFailure3095(unittest.TestCase):
+    def test_acl_metadata_failure_clears_cached_tiles_before_open(self):
+        opening = FILE_MANAGER.split("private void OpenEntry(int index)", 1)[1].split(
+            "private void BeginCreate(int mode)", 1
+        )[0]
+        acl = opening.index("folderReadable = CanReadInSession(currentPath);")
+        catch = opening.index("catch (Exception)", acl)
+        clear = opening.index("ClearDeniedListing();", catch)
+        deny = opening.index("if (!folderReadable)", clear)
+        entry = opening.index("FileEntry entry = entries[index];", deny)
+        self.assertLess(acl, catch)
+        self.assertLess(catch, clear)
+        self.assertLess(clear, deny)
+        self.assertLess(deny, entry)
+        self.assertIn('status = "Cannot verify folder permissions";', opening[catch:deny])
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
