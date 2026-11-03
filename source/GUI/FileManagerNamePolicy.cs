@@ -83,8 +83,8 @@ namespace ZonderqOS.GUI
             if ((stemEnd == 3 &&
                  (PrefixEquals(name, "CON") || PrefixEquals(name, "PRN") ||
                   PrefixEquals(name, "AUX") || PrefixEquals(name, "NUL"))) ||
-                (stemEnd == 6 &&
-                 (PrefixEquals(name, "CONIN$") || PrefixEquals(name, "CONOUT$"))))
+                (stemEnd == 6 && PrefixEquals(name, "CONIN$")) ||
+                (stemEnd == 7 && PrefixEquals(name, "CONOUT$")))
                 return false;
             // Windows also treats superscript ¹²³ as device numbers.
             if (stemEnd == 4 &&
