@@ -163,6 +163,16 @@ internal static class AudioDirectProbeSmoke
             withdrawnOnFormatRead.WrittenBytes == 0,
             "withdrawal during format getter aborts before Start");
 
+        // An external actor may stop the stream during a successful Write.
+        // The diagnostic must not issue a second Stop on a stream it no
+        // longer knows to be running.
+        var stoppedDuringWrite = new Device();
+        stoppedDuringWrite.OnWrite = () => stoppedDuringWrite.IsRunning = false;
+        check(!AudioProbeDirectPlayback.TryPlay(stoppedDuringWrite, Pcm, 48000) &&
+            stoppedDuringWrite.StartCalls == 1 && stoppedDuringWrite.StopCalls == 0 &&
+            stoppedDuringWrite.WrittenBytes == Pcm.Length,
+            "direct probe skips Stop when stream stopped during Write");
+
         int waits = 0;
         Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
         {
