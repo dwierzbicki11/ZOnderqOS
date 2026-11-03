@@ -2090,10 +2090,13 @@ class ResponsiveGui3094(unittest.TestCase):
         filter_only = refresh.split("private void ApplySearchFilter()", 1)[1]
         self.assertIn("cachedEntries.Clear();", refresh)
         self.assertIn("cachedEntries.AddRange(scanned);", refresh)
-        self.assertIn("entries.AddRange(cachedEntries);", filter_only)
+        self.assertIn("filtered.AddRange(cachedEntries);", filter_only)
         self.assertIn("for (int i = 0; i < cachedEntries.Count; i++)", filter_only)
         self.assertIn("candidate.Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase)", filter_only)
-        self.assertIn("entries.Add(candidate);", filter_only)
+        self.assertIn("filtered.Add(candidate);", filter_only)
+        self.assertIn("entries.AddRange(filtered);", filter_only)
+        self.assertLess(filter_only.index("publishAllowed = CanReadInSession(currentPath);"),
+                        filter_only.index("entries.AddRange(filtered);"))
         self.assertNotIn("Filter();", filter_only)
         self.assertNotIn("Directory.GetFiles(", filter_only)
         self.assertNotIn("Directory.GetDirectories(", filter_only)
