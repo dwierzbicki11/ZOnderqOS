@@ -2021,11 +2021,16 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("int previousScroll = sameDirectory ? scrollIndex : 0;", refresh)
         self.assertIn("loadedDirectoryPath = targetPath;", refresh)
         self.assertIn("scrollIndex = previousScroll;", refresh)
-        self.assertIn("string.Equals(entries[i].FullPath, selectedPath, StringComparison.OrdinalIgnoreCase)", refresh)
+        self.assertIn("string.Equals(entryPath, selectedPath, StringComparison.OrdinalIgnoreCase)", refresh)
+        self.assertIn("string.Equals(entryPath, selectedPath, StringComparison.Ordinal)", refresh)
+        self.assertLess(refresh.index("string.Equals(entryPath, selectedPath, StringComparison.Ordinal)"),
+                        refresh.index("string.Equals(entryPath, selectedPath, StringComparison.OrdinalIgnoreCase)"))
         self.assertIn("EnsureSelectionVisible();", refresh)
         self.assertLess(refresh.index("Sort(scanned);"), refresh.index("loadedDirectoryPath = targetPath;"))
         self.assertIn("string firstVisiblePath = sameDirectory && scrollIndex >= 0", refresh)
-        self.assertIn("string.Equals(entries[i].FullPath, firstVisiblePath, StringComparison.OrdinalIgnoreCase)", refresh)
+        self.assertIn("string.Equals(entryPath, firstVisiblePath, StringComparison.OrdinalIgnoreCase)", refresh)
+        self.assertIn("string.Equals(entryPath, firstVisiblePath, StringComparison.Ordinal)", refresh)
+        self.assertIn("if (firstVisibleExact >= 0)", refresh)
         self.assertIn("scrollIndex = i;", refresh)
         self.assertLess(refresh.index("Filter();"), refresh.index("if (!string.IsNullOrEmpty(selectedPath) ||"))
         self.assertLess(refresh.index("if (!string.IsNullOrEmpty(selectedPath) ||"),
@@ -2039,7 +2044,10 @@ class ResponsiveGui3094(unittest.TestCase):
             same = path == old_path
             selected_path = old_selection if same else None
             selected = next((i for i, name in enumerate(new_paths)
-                             if selected_path is not None and name.casefold() == selected_path.casefold()), -1)
+                             if name == selected_path), -1)
+            if selected < 0 and selected_path is not None:
+                selected = next((i for i, name in enumerate(new_paths)
+                                 if name.casefold() == selected_path.casefold()), -1)
             return selected, old_scroll if same else 0
 
         self.assertEqual(refreshed("/root", "/root", "/root/z.txt", 8,
@@ -2050,10 +2058,18 @@ class ResponsiveGui3094(unittest.TestCase):
                                    ["/mnt/data/z.txt"]), (-1, 0))
         self.assertEqual(refreshed("/root", "/root", "/root/Report.TXT", 8,
                                    ["/root/report.txt"]), (0, 8))
+        # A case-sensitive virtual filesystem can contain both names.
+        # Keep the exact selected path instead of the first folded match.
+        self.assertEqual(refreshed("/root", "/root", "/root/Report.TXT", 0,
+                                   ["/root/report.txt", "/root/Report.TXT"]), (1, 0))
 
         # Insertions before the old first visible tile must move the numeric
         # scroll offset, while retaining that same file as the viewport anchor.
         def anchor_after_refresh(old_first_path, new_paths, old_scroll):
+            exact = next((i for i, name in enumerate(new_paths)
+                          if name == old_first_path), -1)
+            if exact >= 0:
+                return exact
             return next((i for i, name in enumerate(new_paths)
                          if name.casefold() == old_first_path.casefold()), old_scroll)
 
@@ -2063,6 +2079,8 @@ class ResponsiveGui3094(unittest.TestCase):
                          ["/root/a.txt", "/root/b.txt", "/root/z.txt"], 1), 1)
         self.assertEqual(anchor_after_refresh("/root/Report.TXT",
                          ["/root/a.txt", "/root/report.txt", "/root/z.txt"], 0), 1)
+        self.assertEqual(anchor_after_refresh("/root/Report.TXT",
+                         ["/root/report.txt", "/root/Report.TXT"], 0), 1)
 
 
     def test_file_manager_live_filter_uses_cached_directory_snapshot(self):
