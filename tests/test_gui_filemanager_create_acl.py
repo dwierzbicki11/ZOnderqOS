@@ -122,19 +122,32 @@ checks["editor launch checks ACL"] = (
 )
 refresh_body = source[source.index("        private bool RefreshInternal("):source.index("        private void ApplySearchFilter(")]
 checks["refresh checks ACL before listing"] = (
-    "if (!CanReadInSession(targetPath))" in refresh_body
-    and refresh_body.index("CanReadInSession(targetPath)") < refresh_body.index("Directory.GetDirectories(targetPath)")
+    "initialReadAllowed = CanReadInSession(targetPath);" in refresh_body
+    and refresh_body.index("initialReadAllowed = CanReadInSession(targetPath);") <
+        refresh_body.index("Directory.GetDirectories(targetPath)")
+    and "if (!initialReadAllowed)" in refresh_body
 )
 
 checks["refresh rechecks ACL after scan before publishing entries"] = (
-    refresh_body.count("if (!CanReadInSession(targetPath))") >= 2
+    "finalReadAllowed = CanReadInSession(targetPath);" in refresh_body
     and refresh_body.index("Directory.GetFiles(targetPath)") <
-        refresh_body.rindex("if (!CanReadInSession(targetPath))")
+        refresh_body.index("finalReadAllowed = CanReadInSession(targetPath);")
     and refresh_body.index("Sort(scanned);") <
-        refresh_body.rindex("if (!CanReadInSession(targetPath))")
-    and refresh_body.rindex("if (!CanReadInSession(targetPath))") <
+        refresh_body.index("finalReadAllowed = CanReadInSession(targetPath);")
+    and refresh_body.index("if (!finalReadAllowed)") <
         refresh_body.index("entries.AddRange(scanned);")
 )
+
+checks["refresh ACL metadata failures invalidate only matching cached listing"] = (
+    refresh_body.count('status = "Cannot verify folder permissions";') >= 2
+    and refresh_body.count("catch (Exception)") >= 2
+    and refresh_body.count("if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))") >= 4
+    and refresh_body.index("initialReadAllowed = CanReadInSession(targetPath);") <
+        refresh_body.index("Directory.GetDirectories(targetPath)")
+    and refresh_body.index("finalReadAllowed = CanReadInSession(targetPath);") <
+        refresh_body.index("entries.AddRange(scanned);")
+)
+
 checks["revoked in-flight refresh clears only matching cached listing"] = (
     "if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))" in
         refresh_body[refresh_body.index("Sort(scanned);"):refresh_body.index("entries.AddRange(scanned);")]
