@@ -50,6 +50,7 @@ namespace Cosmos.Kernel.System.Audio
         private int _writableBytes = 16384;
         public int WritableReadCalls;
         public Action OnWritableRead;
+        public bool ThrowOnWritableRead;
         public int WritableBytes
         {
             get
@@ -59,6 +60,8 @@ namespace Cosmos.Kernel.System.Audio
                     throw new InvalidOperationException("read of withdrawn HDA ring");
                 WritableReadCalls++;
                 OnWritableRead?.Invoke();
+                if (ThrowOnWritableRead)
+                    throw new InvalidOperationException("simulated HDA ring reset during telemetry");
                 return _writableBytes;
             }
             set => _writableBytes = value;
@@ -298,6 +301,15 @@ internal static class AudioDirectProbeSmoke
                 changingTrace.ToString().Contains("ringIncreases=1 ringDecreases=1") &&
                 changingTrace.ToString().Contains("ringWaitIncreases=1 ringWaitDecreases=1"),
                 "direct probe distinguishes driver-reported free-space increase and decrease");
+
+            // Optional telemetry must tolerate a transient invalidated HDA ring
+            // without treating a failed WritableBytes read as DMA progress.
+            var invalidatedTelemetry = new Device { ThrowOnWritableRead = true };
+            check(AudioProbeDirectPlayback.TryPlay(invalidatedTelemetry, Pcm, 48000) &&
+                invalidatedTelemetry.WritableReadCalls > 0 &&
+                invalidatedTelemetry.StopCalls == 1 &&
+                invalidatedTelemetry.WrittenBytes == Pcm.Length + 16384,
+                "invalidated HDA telemetry does not interrupt valid PCM writes");
 
             // The getter itself may withdraw/rebind a controller. A stale
             // snapshot must be discarded before ring statistics are updated,
