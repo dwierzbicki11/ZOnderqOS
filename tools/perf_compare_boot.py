@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Compare paired guest initialization baselines; never infer full boot speed."""
+import argparse
+import json
+from pathlib import Path
+from statistics import median
+
+
+def compare(before, after):
+    for label, records in (("before", before), ("after", after)):
+        if not isinstance(records, list) or len(records) < 3:
+            raise ValueError(f"{label}: need at least three independent runs")
+        for record in records:
+            if not isinstance(record, dict) or type(record.get("first_boot_ms")) is not int or type(record.get("second_boot_ms")) is not int:
+                raise ValueError(f"{label}: invalid guest timing")
+            if min(record["first_boot_ms"], record["second_boot_ms"]) <= 0:
+                raise ValueError(f"{label}: nonpositive guest timing")
+    if len(before) != len(after):
+        raise ValueError("unequal run counts; require paired measurements")
+    result = {"scope": "guest BeforeRun-to-login only; not firmware/GUI/full boot", "pairs": len(before)}
+    for key in ("first_boot_ms", "second_boot_ms"):
+        old = median(item[key] for item in before)
+        new = median(item[key] for item in after)
+        result[key] = {"before_median_ms": old, "after_median_ms": new,
+                       "delta_ms": new - old, "change_percent": (new - old) * 100 / old}
+    return result
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("before", type=Path)
+    parser.add_argument("after", type=Path)
+    args = parser.parse_args()
+    print(json.dumps(compare(json.loads(args.before.read_text()),
+                             json.loads(args.after.read_text())), indent=2))
+
+
+if __name__ == "__main__":
+    main()
