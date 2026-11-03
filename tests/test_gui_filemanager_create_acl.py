@@ -152,7 +152,8 @@ checks["revoked in-flight refresh clears only matching cached listing"] = (
     "if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))" in
         refresh_body[refresh_body.index("if (!finalReadAllowed)"):refresh_body.index("Sort(scanned);")]
     and "ClearDeniedListing();" in
-        refresh_body[refresh_body.index("Sort(scanned);"):refresh_body.index("entries.AddRange(scanned);")]
+        refresh_body[refresh_body.index("if (!finalReadAllowed)"):refresh_body.index("Sort(scanned);")]
+    and refresh_body.index("if (!finalReadAllowed)") < refresh_body.index("Sort(scanned);")
 )
 
 copy_body = source[source.index("        private void CopySelected("):source.index("        private void PasteClipboard(")]
