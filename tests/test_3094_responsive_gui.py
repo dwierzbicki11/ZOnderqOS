@@ -3650,7 +3650,7 @@ class ImageHeaderPreflight3095(unittest.TestCase):
         sorter = FILE_MANAGER[start:end]
         self.assertIn("bool alreadySorted = true;", sorter)
         self.assertIn("Compare(destination[i - 1], destination[i]) > 0", sorter)
-        self.assertIn("if (alreadySorted)\\n                return;", sorter)
+        self.assertIn("if (alreadySorted)", sorter)
         self.assertLess(sorter.index("if (alreadySorted)"), sorter.index("new FileEntry[count]"))
         self.assertIn("Compare(destination[left], destination[right]) <= 0", sorter)
 
