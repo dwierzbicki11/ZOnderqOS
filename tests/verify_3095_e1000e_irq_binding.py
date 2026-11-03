@@ -462,8 +462,8 @@ def self_test() -> None:
         serial.replace("[NET3095-N6] DRIVER_BASELINE=PASS",
                        "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up\n[NET3095-N6] DRIVER_BASELINE=PASS", 1),
         serial.replace("[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up\n", "")
-              .replace("[NET3095-N6] DRIVER_BASELINE=PASS",
-                       "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up\n[NET3095-N6] DRIVER_BASELINE=PASS", 1),
+              .replace("[Drivers] pci:0000:00:02.0 E1000EDriver: mac",
+                       "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up\n[Drivers] pci:0000:00:02.0 E1000EDriver: mac", 1),
         serial.replace("[NET3095-N6] DRIVER_HEALTH=PASS", "[NET3095-N6] DRIVER_HEALTH=FAIL"),
         serial.replace("[NET3095-N6] POST_STRESS_LINK=PASS", "[NET3095-N6] POST_STRESS_LINK=FAIL"),
         serial.replace(link_marker, ""),
