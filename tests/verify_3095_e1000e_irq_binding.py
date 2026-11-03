@@ -155,6 +155,14 @@ def check_driver_health(serial: str) -> str:
             bound[0].group(1) != node or int(resources) < 1 or
             int(published) != 1 or int(sources) < 1 or int(faults) != 0):
         raise ValueError("E1000E DriverKit state invalid or mismatched after stress")
+    # A healthy final snapshot must belong to the original, ordered binding.
+    # Otherwise a later rebind could mask an invalid initial attachment.
+    guest_claims = [line for line in lines
+                    if line.startswith("[NET3095-N1] cpu=bsp adapter=")]
+    if (len(guest_claims) != 1 or GUEST.fullmatch(guest_claims[0]) is None or
+            not (lines.index(driver_claims[0]) < lines.index(bound_claims[0]) <
+                 lines.index(guest_claims[0]) < lines.index(baseline_lines[0]))):
+        raise ValueError("E1000E initial binding/guest readiness invalid or out of order")
     link = "[NET3095-N6] POST_STRESS_LINK=PASS mac="
     link_lines = [line for line in lines if line.startswith(link)]
     guest = [m for line in lines if (m := GUEST.fullmatch(line))]
@@ -448,6 +456,15 @@ def self_test() -> None:
         serial.replace("isr_executions=unknown", "isr_executions=1"),
         serial.replace("node=pci:0000:00:02.0", "node=pci:0000:00:03.0"),
         serial.replace("pci:0000:00:02.0 offer", "pci:0000:00:03.0 offer"),
+        serial.replace("[NET3095-N1] cpu=bsp adapter=0", "[NET3095-N1] cpu=bsp adapter=1"),
+        serial.replace("[NET3095-N1] cpu=bsp adapter=0", "[NET3095-N1] cpu=ap adapter=0"),
+        serial.replace("[NET3095-N1] cpu=bsp adapter=0", "[NET3095-N1] cpu=bsp adapter=0 ready=no"),
+        serial.replace("[NET3095-N1] cpu=bsp adapter=0", "[NET3095-N1] cpu=bsp adapter=0", 1)
+              .replace("[NET3095-N6] DRIVER_BASELINE=PASS",
+                       "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up\\n[NET3095-N6] DRIVER_BASELINE=PASS", 1),
+        serial.replace("[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up\\n", "")
+              .replace("[NET3095-N6] DRIVER_BASELINE=PASS",
+                       "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up\\n[NET3095-N6] DRIVER_BASELINE=PASS", 1),
         serial.replace("[NET3095-N6] DRIVER_HEALTH=PASS", "[NET3095-N6] DRIVER_HEALTH=FAIL"),
         serial.replace("[NET3095-N6] POST_STRESS_LINK=PASS", "[NET3095-N6] POST_STRESS_LINK=FAIL"),
         serial.replace(link_marker, ""),
