@@ -1809,6 +1809,20 @@ namespace ZonderqOS.GUI.Apps
             if (count < 2)
                 return;
 
+            // FAT32 enumeration may already be in display order. Avoid a
+            // scratch allocation and merge passes for such directories.
+            bool alreadySorted = true;
+            for (int i = 1; i < count; i++)
+            {
+                if (Compare(destination[i - 1], destination[i]) > 0)
+                {
+                    alreadySorted = false;
+                    break;
+                }
+            }
+            if (alreadySorted)
+                return;
+
             FileEntry[] scratch = new FileEntry[count];
             for (int run = 1; run < count; run = run > count / 2 ? count : run * 2)
             {
