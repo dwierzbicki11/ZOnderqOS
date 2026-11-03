@@ -130,7 +130,18 @@ namespace ZonderqOS.SystemCore
                 {
                     if (!CanSampleDriverWritable())
                         return;
-                    long writable = (long)output.WritableBytes;
+                    long writable;
+                    try
+                    {
+                        writable = (long)output.WritableBytes;
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        // A withdrawn or reset stock HDA ring may reject a
+                        // telemetry read. This optional observation must not
+                        // crash the diagnostic or mask the feeder's safety gate.
+                        return;
+                    }
                     // WritableBytes is a public getter, not an atomic device
                     // snapshot. It can withdraw/rebind the controller while
                     // reading: discard the sample if its identity drifted.
