@@ -44,14 +44,19 @@ def dhcp_frame(frame: bytes):
     if ihl < 20 or len(frame) < 14 + ihl + 8 or frame[23] != 17:
         return None
     iplen = int.from_bytes(frame[16:18], "big")
-    # An IPv4 fragment cannot establish a complete BOOTP/DHCP exchange.
-    # Reject both MF and nonzero offsets before decoding the UDP header.
-    if (int.from_bytes(frame[20:22], "big") & 0x3FFF) or iplen < ihl + 8 or len(frame) < 14 + iplen:
+    # Inspect ports before deciding whether a first IPv4 fragment is DHCP.
+    # A fragmented DHCP candidate must fail closed even if a later complete
+    # retransmission appears in the same capture. Noninitial fragments do not
+    # carry UDP ports and cannot be attributed to DHCP here.
+    fragment_bits = int.from_bytes(frame[20:22], "big") & 0x3FFF
+    if iplen < ihl + 8 or len(frame) < 14 + iplen or (fragment_bits & 0x1FFF):
         return None
     udp_start = 14 + ihl
     sport, dport, udplen, udp_checksum = struct.unpack_from(">HHHH", frame, udp_start)
     if (sport, dport) not in ((68, 67), (67, 68)):
         return None
+    if fragment_bits:
+        raise ValueError("fragmented DHCP IPv4 candidate")
     if udplen < 8 + 240 or udplen > iplen - ihl:
         # The UDP ports already identify a DHCP exchange. A malformed
         # length is corrupt candidate evidence, not an unrelated packet:
@@ -374,6 +379,20 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted invalid DHCP UDP length: " + str(invalid_length))
+
+    # A first fragment with MF set still carries recognizable UDP DHCP
+    # ports. It must not be hidden by a later complete OFFER retransmission.
+    # Recalculate IPv4 checksum so only fragmentation is invalid.
+    fragmented_offer = bytearray(frames[2])
+    fragmented_offer[20:22] = (0x2000).to_bytes(2, "big")
+    fragmented_offer[24:26] = b"\x00\x00"
+    fragmented_offer[24:26] = checksum16(fragmented_offer[14:34]).to_bytes(2, "big")
+    try:
+        validate(serial, synthetic_capture(frames[:2] + [bytes(fragmented_offer)] + frames[2:]))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted fragmented DHCP OFFER before valid retry")
 
     # A malformed DHCP candidate must fail closed even when a later
     # retransmission is valid. Corrupt only option bytes, not IP/UDP headers.
