@@ -1509,6 +1509,11 @@ namespace ZonderqOS.GUI.Apps
             cachedEntries.Clear();
             hasLoadedDirectory = false;
             loadedDirectoryPath = null;
+            // A create dialog belongs to the directory whose ACL was just
+            // denied. Do not keep its pending filename alive after revocation;
+            // a later Enter must not silently create a file in that folder.
+            dialogMode = 0;
+            dialogName = "";
             selectedIndex = -1;
             scrollIndex = 0;
             contextMenuVisible = false;
