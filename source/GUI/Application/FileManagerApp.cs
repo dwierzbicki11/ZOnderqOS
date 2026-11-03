@@ -1724,9 +1724,22 @@ namespace ZonderqOS.GUI.Apps
             contextMenuVisible = false;
             ResetClickSequence();
             entries.Clear();
-            entries.AddRange(cachedEntries);
-            if (!string.IsNullOrEmpty(searchText))
-                Filter();
+            if (string.IsNullOrEmpty(searchText))
+            {
+                entries.AddRange(cachedEntries);
+            }
+            else
+            {
+                // Copy only matches from the sorted snapshot. AddRange followed
+                // by in-place compaction copied every FAT32 entry even when a
+                // narrow search returned just a handful of files.
+                for (int i = 0; i < cachedEntries.Count; i++)
+                {
+                    FileEntry candidate = cachedEntries[i];
+                    if (candidate.Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0)
+                        entries.Add(candidate);
+                }
+            }
             selectedIndex = previousSelection == null ? -1 : entries.IndexOf(previousSelection);
             if (selectedIndex < 0 && searchText.Length > 0 && entries.Count > 0)
                 selectedIndex = 0;
