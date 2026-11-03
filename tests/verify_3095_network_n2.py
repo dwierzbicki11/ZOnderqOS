@@ -108,13 +108,16 @@ def dhcp_frame(frame: bytes):
     if 6 in opts and (len(opts[6]) == 0 or len(opts[6]) % 4):
         raise ValueError("invalid DHCP DNS option length")
     typ = opts[53][0]
+    # Once the DHCP cookie and message-type option have been decoded, a
+    # mismatched BOOTP opcode/UDP direction or unknown DHCP type is corrupt
+    # candidate evidence. Do not allow a later valid retry to hide it.
     if typ not in (1, 2, 3, 5):
-        return None
+        raise ValueError("unexpected DHCP message type")
     if typ in (1, 3):
         if bootp[0] != 1 or (sport, dport) != (68, 67):
-            return None
+            raise ValueError("invalid DHCP client BOOTP opcode or UDP direction")
     elif bootp[0] != 2 or (sport, dport) != (67, 68):
-        return None
+        raise ValueError("invalid DHCP server BOOTP opcode or UDP direction")
     return {
         "type": typ, "xid": bootp[4:8], "chaddr": bootp[28:34],
         "yiaddr": bootp[16:20], "requested": opts.get(50),
@@ -398,6 +401,21 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted malformed DHCP OFFER before valid retry: " + malformed)
+
+    # A recognized DHCP packet with a corrupted BOOTP opcode or unknown
+    # message type must fail even when a correct OFFER follows it.
+    for corruption in ("opcode", "message_type"):
+        changed = bytearray(frames[2])
+        if corruption == "opcode":
+            changed[14 + 20 + 8] = 1  # OFFER must be BOOTREPLY (2).
+        else:
+            changed[option_start + 2] = 99
+        try:
+            validate(serial, synthetic_capture(frames[:2] + [bytes(changed)] + frames[2:]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted invalid DHCP OFFER " + corruption)
 
     # A malformed fixed-width option must fail even if a valid OFFER follows.
     # Modify only option length fields, leaving a legal zero UDP checksum.
