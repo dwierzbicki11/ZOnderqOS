@@ -77,6 +77,8 @@ internal static class Program
             "hidden\u2063name", "hidden\u2064name", "hidden\uFEFFname",
             "hidden\u00ADname", "hidden\u034Fname", "hidden\u180Ename",
             "line\u2028break", "paragraph\u2029break",
+            "filler\u115F.txt", "filler\u1160.txt",
+            "filler\u3164.txt", "filler\uFFA0.txt",
             "COM1", "com9.txt", "LPT1", "lpt9.log",
             "COM\u00B9", "com\u00B2.txt", "LPT\u00B3", "lpt\u00B9.dat",
             "bad\u007fname", "bad\u0085name", "\uD800", "\uDC00",
