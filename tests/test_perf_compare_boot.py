@@ -31,6 +31,19 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(result["second_boot_ms"]["equal_pairs"], 3)
         self.assertEqual(result["second_boot_ms"]["paired_median_delta_ms"], 0)
 
+    def test_explicit_run_identity(self):
+        before = [dict(row, run_id=f"pair-{i}") for i, row in enumerate(self.before)]
+        after = [dict(row, run_id=f"pair-{i}") for i, row in enumerate(self.after)]
+        self.assertEqual(module.compare(before, after)["pairs"], 3)
+        for changed in (
+            list(reversed(after)),
+            [dict(row, run_id="duplicate") for row in after],
+            [dict(row, run_id="") if i == 0 else row for i, row in enumerate(after)],
+            [dict(row) if i == 0 else row for i, row in enumerate(after)],
+        ):
+            with self.subTest(changed=changed), self.assertRaises(ValueError):
+                module.compare(before, changed)
+
     def test_unpaired(self):
         with self.assertRaises(ValueError): module.compare(self.before, self.after[:2])
 
