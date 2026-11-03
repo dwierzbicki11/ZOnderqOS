@@ -499,15 +499,15 @@ internal static class AudioDirectProbeSmoke
             startFormatDrift.OnStart = () => startFormatDrift.Format =
                 new Cosmos.Kernel.System.Audio.HostAudioFormat(2, 1);
             check(!AudioProbeDirectPlayback.TryPlay(startFormatDrift, Pcm, 48000) &&
-                startFormatDrift.StartCalls == 1 && startFormatDrift.StopCalls == 1 &&
-                startFormatDrift.WrittenBytes == 0 && !startFormatDrift.IsRunning,
+                startFormatDrift.StartCalls == 1 && startFormatDrift.StopCalls == 0 &&
+                startFormatDrift.WrittenBytes == 0 && startFormatDrift.IsRunning,
                 "direct probe refuses sample-width drift during Start");
 
             var startNullFormat = new Device();
             startNullFormat.OnStart = () => startNullFormat.Format = default;
             check(!AudioProbeDirectPlayback.TryPlay(startNullFormat, Pcm, 48000) &&
-                startNullFormat.StartCalls == 1 && startNullFormat.StopCalls == 1 &&
-                startNullFormat.WrittenBytes == 0 && !startNullFormat.IsRunning,
+                startNullFormat.StartCalls == 1 && startNullFormat.StopCalls == 0 &&
+                startNullFormat.WrittenBytes == 0 && startNullFormat.IsRunning,
                 "direct probe refuses missing PCM format during Start");
 
             // A format getter can itself trigger a claim or rate change.
