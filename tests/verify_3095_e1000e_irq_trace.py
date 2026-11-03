@@ -66,14 +66,18 @@ def count_legacy_cycles(stderr: str) -> int:
     return cycles
 
 
-def report(stderr: str, require_notify: bool = False) -> str:
+def report(stderr: str, require_notify: bool = False, require_legacy_cycle: bool = False) -> str:
     legacy, msi, msix = count_notifications(stderr)
     total = legacy + msi + msix
+    legacy_cycles = count_legacy_cycles(stderr)
+    if require_legacy_cycle and not legacy_cycles:
+        raise ValueError("no complete QEMU E1000E legacy INTx low-to-high cycle")
     if require_notify and not total:
         raise ValueError("no QEMU E1000E IRQ notification trace event")
     status = "EMITTED" if total else "NOT_OBSERVED"
     return (f"[NET3095-E1000E-IRQ-TRACE] {status} legacy={legacy} "
-            f"msi={msi} msix={msix}; QEMU-only, guest handler/IRQ delivery UNPROVEN")
+            f"msi={msi} msix={msix} legacy_cycles={legacy_cycles}; "
+            "QEMU-only, guest handler/IRQ delivery UNPROVEN")
 
 
 def self_test() -> None:
@@ -83,6 +87,17 @@ def self_test() -> None:
              "e1000e_irq_msix_notify_vec MSI-X notify vector 0x0\n")
     assert count_notifications(trace) == (1, 1, 1)
     assert count_legacy_cycles(trace) == 1
+    assert "legacy_cycles=1" in report(trace, require_legacy_cycle=True)
+    # A stuck asserted line may generate duplicate notifications, but it
+    # cannot satisfy an opt-in complete legacy INTx transition gate.
+    stuck = "e1000e_irq_legacy_notify IRQ line state: 1\n" * 8
+    assert "legacy_cycles=0" in report(stuck, require_notify=True)
+    try:
+        report(stuck, require_legacy_cycle=True)
+    except ValueError as exc:
+        assert "no complete" in str(exc)
+    else:
+        raise AssertionError("accepted repeated INTx high notifications as cycles")
     assert count_legacy_cycles(
         "e1000e_irq_legacy_notify IRQ line state: 1\n" * 8) == 0
     assert count_legacy_cycles(
@@ -126,6 +141,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("stderr", nargs="?", type=Path)
     parser.add_argument("--require-notify", action="store_true")
+    parser.add_argument("--require-legacy-cycle", action="store_true",
+                        help="require QEMU-observed INTx deassert/assert cycle; not guest ISR proof")
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -134,6 +151,7 @@ if __name__ == "__main__":
         if args.stderr is None:
             parser.error("real QEMU stderr trace required")
         try:
-            print(report(args.stderr.read_text(errors="replace"), args.require_notify))
+            print(report(args.stderr.read_text(errors="replace"),
+                         args.require_notify, args.require_legacy_cycle))
         except (OSError, ValueError) as exc:
             parser.exit(1, f"[NET3095-E1000E-IRQ-TRACE][FAIL] {exc}\n")
