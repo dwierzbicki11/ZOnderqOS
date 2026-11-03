@@ -3655,5 +3655,26 @@ class ImageHeaderPreflight3095(unittest.TestCase):
         self.assertIn("Compare(destination[left], destination[right]) <= 0", sorter)
 
 
+
+class FileManagerAclSortOrdering3095(unittest.TestCase):
+    def test_expensive_sort_runs_only_after_second_acl_check(self):
+        # Source-level gate: a revoked FAT32 directory must not consume CPU
+        # sorting a large snapshot that will never be shown to the user.
+        refresh = FILE_MANAGER.split("private bool RefreshInternal(string keep)", 1)[1].split(
+            "private void ApplySearchFilter()", 1
+        )[0]
+        scan = refresh.index("Add(scanned, Directory.GetFiles(targetPath), false);")
+        second_acl = refresh.index("finalReadAllowed = CanReadInSession(targetPath);")
+        denied = refresh.index("if (!finalReadAllowed)")
+        sort = refresh.index("Sort(scanned);")
+        publish = refresh.index("entries.AddRange(scanned);")
+        self.assertLess(scan, second_acl)
+        self.assertLess(second_acl, denied)
+        self.assertLess(denied, sort)
+        self.assertLess(sort, publish)
+        self.assertEqual(refresh.count("Sort(scanned);"), 1)
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
