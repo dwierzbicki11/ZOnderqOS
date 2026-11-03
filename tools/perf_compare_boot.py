@@ -17,6 +17,16 @@ def compare(before, after):
                 raise ValueError(f"{label}: nonpositive guest timing")
     if len(before) != len(after):
         raise ValueError("unequal run counts; require paired measurements")
+    # Optional explicit run identities prevent accidentally pairing reordered CI runs.
+    ids_before = [record.get("run_id") for record in before]
+    ids_after = [record.get("run_id") for record in after]
+    if any(value is not None for value in ids_before + ids_after):
+        if (any(not isinstance(value, str) or not value.strip() for value in ids_before + ids_after)
+                or len(set(ids_before)) != len(ids_before)
+                or len(set(ids_after)) != len(ids_after)):
+            raise ValueError("run_id must be a nonempty unique string in every run")
+        if ids_before != ids_after:
+            raise ValueError("run_id order differs; align paired runs before comparison")
     result = {"scope": "guest BeforeRun-to-login only; not firmware/GUI/full boot", "pairs": len(before)}
     for key in ("first_boot_ms", "second_boot_ms"):
         old = median(item[key] for item in before)
