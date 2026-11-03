@@ -1738,32 +1738,50 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            // Rebuild only the visible list. Explicit F5, navigation and
-            // successful filesystem changes still refresh the disk snapshot.
-            // Keep the selected FileEntry object when it survives filtering;
-            // otherwise select the first search match so Enter works directly.
+            // Build a private result first: large cached directories can take
+            // time to filter. Do not mutate the visible tiles until a final
+            // ACL check confirms that the snapshot is still readable.
             FileEntry previousSelection = selectedIndex >= 0 && selectedIndex < entries.Count
                 ? entries[selectedIndex] : null;
-            scrollIndex = 0;
-            contextMenuVisible = false;
-            ResetClickSequence();
-            entries.Clear();
+            List<FileEntry> filtered = new List<FileEntry>();
             if (string.IsNullOrEmpty(searchText))
             {
-                entries.AddRange(cachedEntries);
+                filtered.AddRange(cachedEntries);
             }
             else
             {
-                // Copy only matches from the sorted snapshot. AddRange followed
-                // by in-place compaction copied every FAT32 entry even when a
-                // narrow search returned just a handful of files.
                 for (int i = 0; i < cachedEntries.Count; i++)
                 {
                     FileEntry candidate = cachedEntries[i];
                     if (candidate.Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0)
-                        entries.Add(candidate);
+                        filtered.Add(candidate);
                 }
             }
+
+            bool publishAllowed;
+            try
+            {
+                publishAllowed = CanReadInSession(currentPath);
+            }
+            catch (Exception)
+            {
+                ClearDeniedListing();
+                status = "Cannot verify folder permissions";
+                return;
+            }
+            if (!publishAllowed)
+            {
+                ClearDeniedListing();
+                status = "Permission denied: cannot list folder";
+                return;
+            }
+
+            scrollIndex = 0;
+            contextMenuVisible = false;
+            contextMenuSelection = -1;
+            ResetClickSequence();
+            entries.Clear();
+            entries.AddRange(filtered);
             selectedIndex = previousSelection == null ? -1 : entries.IndexOf(previousSelection);
             if (selectedIndex < 0 && searchText.Length > 0 && entries.Count > 0)
                 selectedIndex = 0;
