@@ -1248,13 +1248,26 @@ namespace ZonderqOS.GUI.Apps
             {
                 // A previously loaded directory can become unreadable without
                 // closing the window. Do not launch an editor from stale entries.
-                if (!CanReadInSession(currentPath))
+                bool folderReadable;
+                try
+                {
+                    folderReadable = CanReadInSession(currentPath);
+                }
+                catch (Exception)
+                {
+                    // A detached volume or unreadable ACL metadata must not
+                    // leave cached filenames available to keyboard actions.
+                    ClearDeniedListing();
+                    status = "Cannot verify folder permissions";
+                    return;
+                }
+                if (!folderReadable)
                 {
                     ClearDeniedListing();
                     status = "Permission denied: cannot list folder";
                     return;
                 }
-    
+
                 FileEntry entry = entries[index];
                 if (entry.IsDirectory)
                 {
