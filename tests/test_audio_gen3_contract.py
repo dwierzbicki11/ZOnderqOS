@@ -250,7 +250,11 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("finally", direct)
         self.assertIn("output.Stop();", direct)
         self.assertIn("if (output.IsWithdrawn)", direct)
-        # Cleanup now validates identity after the single Format snapshot, rather than\n        # relying on the removed pre-format else-if branch.\n        self.assertIn("var cleanupFormat = output.Format;", direct)\n        self.assertIn('output.Name != "hda" || output.DriverName != "HdAudioDriver" ||', direct)\n        self.assertIn("output.SampleRate != sampleRate ||", direct)\n        self.assertIn("HDA changed; Stop skipped.", direct)
+        # Cleanup validates identity after the single Format snapshot.
+        self.assertIn("var cleanupFormat = output.Format;", direct)
+        self.assertIn('output.Name != "hda" || output.DriverName != "HdAudioDriver" ||', direct)
+        self.assertIn("output.SampleRate != sampleRate ||", direct)
+        self.assertIn("HDA changed; Stop skipped.", direct)
         self.assertIn("identity drift after PCM write", read("tests/AudioPciSmoke/AudioDirectProbeSmoke.cs"))
         self.assertIn("driver drift during settle", read("tests/AudioPciSmoke/AudioDirectProbeSmoke.cs"))
         self.assertIn("output withdrawn; Stop skipped.", direct)
