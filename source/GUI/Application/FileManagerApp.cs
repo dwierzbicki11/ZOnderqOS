@@ -1581,6 +1581,30 @@ namespace ZonderqOS.GUI.Apps
                 // The second permission check above must precede this work.
                 Sort(scanned);
 
+                // Sorting a large directory also takes time. ACLs can be
+                // revoked after the post-enumeration check while merge sort
+                // runs. Revalidate immediately before publishing the snapshot.
+                // Never expose freshly sorted names if access was withdrawn.
+                bool publishReadAllowed;
+                try
+                {
+                    publishReadAllowed = CanReadInSession(targetPath);
+                }
+                catch (Exception)
+                {
+                    if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))
+                        ClearDeniedListing();
+                    status = "Cannot verify folder permissions";
+                    return false;
+                }
+                if (!publishReadAllowed)
+                {
+                    if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))
+                        ClearDeniedListing();
+                    status = "Permission denied: cannot list folder";
+                    return false;
+                }
+
                 // An explicit F5 or a successful paste should not jump back
                 // to the first tile in a large directory. Compare the actual
                 // cached path, not currentPath: NavigateTo changes currentPath
