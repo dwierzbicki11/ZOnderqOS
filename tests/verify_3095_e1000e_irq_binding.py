@@ -123,6 +123,24 @@ def check_driver_health(serial: str) -> str:
     if len(driver_lines) != 1 or driver_lines[0].group(1) != node:
         raise ValueError("missing or mismatched E1000E driver IRQ line")
     driver_irq_line = int(driver_lines[0].group(3))
+    # Match the N1 PCI INTx pin as well as the line against every N6
+    # PCI snapshot. A stable but wrong pin is not a valid binding proof.
+    route_claims = [line for line in lines
+                    if line.startswith("[NET3095-N1] PCI_IRQ_ROUTE=")]
+    stable_route_claims = [line for line in lines
+                           if line.startswith("[NET3095-N1] PCI_IRQ_ROUTE_STABLE=")]
+    route_pin = None
+    if route_claims or stable_route_claims:
+        if len(route_claims) != 1 or len(stable_route_claims) != 1:
+            raise ValueError("incomplete N1 PCI IRQ route evidence")
+        route = PCI_IRQ_ROUTE.fullmatch(route_claims[0])
+        stable_route = PCI_IRQ_STABLE.fullmatch(stable_route_claims[0])
+        if (route is None or stable_route is None or
+                route.groups() != stable_route.groups() or
+                int(route.group(1)) != driver_irq_line or
+                not 1 <= int(route.group(2)) <= 4):
+            raise ValueError("N1 PCI IRQ route inconsistent with driver")
+        route_pin = int(route.group(2))
     if (driver_irq_line < 1 or driver_irq_line > 254):
         raise ValueError("invalid E1000E driver IRQ line")
     if (node != "pci:0000:00:02.0" or len(bound) != 1 or
@@ -246,7 +264,8 @@ def check_driver_health(serial: str) -> str:
                                             int(pci.group(4)), int(pci.group(5)))
         if ((command & 0x0006) != 0x0006 or (command & 0x0400) or
                 bar0 == 0 or (bar0 & 0xF) or
-                irq_line != driver_irq_line or irq_pin < 1 or irq_pin > 4):
+                irq_line != driver_irq_line or irq_pin < 1 or irq_pin > 4 or
+                (route_pin is not None and irq_pin != route_pin)):
             raise ValueError("invalid per-stream PCI MMIO/INTx assignment")
         current_pci = (command, bar0, irq_line, irq_pin)
         if pci_baseline is None:
@@ -353,6 +372,19 @@ def self_test() -> None:
             raise AssertionError("accepted inconsistent PCI IRQ route/driver line")
     assert "line=11" in check_guest_line(serial)
     assert "ISR-UNPROVEN" in check_driver_health(serial)
+    assert "ISR-UNPROVEN" in check_driver_health(route_serial)
+    for bad_pin in (
+        route_serial.replace("irq_pin=1", "irq_pin=2"),
+        route_serial.replace("PCI_IRQ_ROUTE_STABLE=PASS", "PCI_IRQ_ROUTE_STABLE=FAIL"),
+        route_serial.replace("PCI_IRQ_ROUTE=PASS line=11 pin=1",
+                             "PCI_IRQ_ROUTE=PASS line=11 pin=2"),
+    ):
+        try:
+            check_driver_health(bad_pin)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted mismatched N1/N6 PCI IRQ pin")
     assert "streams=6" in check_driver_health(serial)
     assert "TX_DRIVER_STABLE" in serial
     trace = ("e1000e_irq_legacy_notify IRQ line state: 0\n"
