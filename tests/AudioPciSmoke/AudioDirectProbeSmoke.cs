@@ -803,6 +803,23 @@ internal static class AudioDirectProbeSmoke
                 !stalled.IsRunning && waits == 1000,
                 "permanently full HDA ring fails closed and stops device");
 
+            // The feeder checks ready() before calling the writer, but a
+            // reconfiguration can occur in the gap. The writer must perform
+            // its own format/ownership check before the first PCM byte.
+            var claimedAtWriteBoundary = new Device();
+            int boundaryFormatReads = 0;
+            claimedAtWriteBoundary.OnFormatRead = () =>
+            {
+                if (++boundaryFormatReads == 5)
+                    claimedAtWriteBoundary.Player = new object();
+            };
+            check(!AudioProbeDirectPlayback.TryPlay(claimedAtWriteBoundary, Pcm, 48000) &&
+                claimedAtWriteBoundary.StartCalls == 1 &&
+                claimedAtWriteBoundary.WrittenBytes == 0 &&
+                claimedAtWriteBoundary.StopCalls == 0 &&
+                boundaryFormatReads == 5,
+                "direct HDA writer rechecks ownership after feeder readiness");
+
             // The actual direct playback path must observe withdrawal
             // during a zero-byte driver write before sleeping or retrying.
             waits = 0;
