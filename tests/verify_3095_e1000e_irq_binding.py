@@ -122,6 +122,14 @@ def check_driver_health(serial: str) -> str:
     driver_lines = [m for line in lines if (m := DRIVER.fullmatch(line))]
     if len(driver_lines) != 1 or driver_lines[0].group(1) != node:
         raise ValueError("missing or mismatched E1000E driver IRQ line")
+    # Do not let malformed or conflicting driver diagnostics disappear simply
+    # because they fail the strict regex. A later valid line must not mask one.
+    driver_claims = [line for line in lines if " E1000EDriver: mac " in line]
+    bound_claims = [line for line in lines if " offer E1000EDriver -> " in line]
+    if (len(driver_claims) != 1 or len(bound_claims) != 1 or
+            not DRIVER.fullmatch(driver_claims[0]) or
+            not BOUND.fullmatch(bound_claims[0])):
+        raise ValueError("malformed or duplicate E1000E binding evidence")
     driver_irq_line = int(driver_lines[0].group(3))
     # Match the N1 PCI INTx pin as well as the line against every N6
     # PCI snapshot. A stable but wrong pin is not a valid binding proof.
@@ -373,6 +381,21 @@ def self_test() -> None:
     assert "line=11" in check_guest_line(serial)
     assert "ISR-UNPROVEN" in check_driver_health(serial)
     assert "ISR-UNPROVEN" in check_driver_health(route_serial)
+    # A malformed earlier claim cannot be hidden by the later valid one.
+    for malformed in (
+        "[Drivers] pci:0000:00:02.0 E1000EDriver: mac BAD, link up, line 11, polling every 10 ms",
+        "[Drivers] pci:0000:00:02.0 offer E1000EDriver -> failed",
+        "[Drivers] pci:0000:00:02.0 offer E1000EDriver -> bound",
+    ):
+        bad_serial = route_serial.replace(
+            "[NET3095-N6] DRIVER_BASELINE=PASS",
+            malformed + "\n[NET3095-N6] DRIVER_BASELINE=PASS", 1)
+        try:
+            check_driver_health(bad_serial)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted malformed or duplicate driver binding")
     for bad_pin in (
         route_serial.replace("irq_pin=1", "irq_pin=2"),
         route_serial.replace("PCI_IRQ_ROUTE_STABLE=PASS", "PCI_IRQ_ROUTE_STABLE=FAIL"),
