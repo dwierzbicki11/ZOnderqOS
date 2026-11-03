@@ -67,6 +67,7 @@ namespace Cosmos.Kernel.System.Audio
         public bool ThrowOnWrite;
         public bool ThrowOnStop;
         public bool StallWrites;
+        public int? ForcedWriteResult;
         // Host-only partial-write simulation; stock device behavior is unchanged.
         public int MaxWriteBytes;
         public Action OnStart;
@@ -84,6 +85,7 @@ namespace Cosmos.Kernel.System.Audio
         public int Write(ReadOnlySpan<byte> bytes)
         {
             if (ThrowOnWrite) throw new InvalidOperationException("simulated write failure");
+            if (ForcedWriteResult.HasValue) return ForcedWriteResult.Value;
             if (StallWrites)
             {
                 OnStalledWrite?.Invoke();
@@ -172,6 +174,17 @@ internal static class AudioDirectProbeSmoke
             stoppedDuringWrite.StartCalls == 1 && stoppedDuringWrite.StopCalls == 0 &&
             stoppedDuringWrite.WrittenBytes == Pcm.Length,
             "direct probe skips Stop when stream stopped during Write");
+
+        // A faulty driver must not crash the diagnostic shell or leak a
+        // running output when it reports an invalid frame count.
+        foreach (int invalidCount in new[] { -1, 3, 4097 })
+        {
+            var invalidWriter = new Device { ForcedWriteResult = invalidCount };
+            check(!AudioProbeDirectPlayback.TryPlay(invalidWriter, Pcm, 48000) &&
+                invalidWriter.StartCalls == 1 && invalidWriter.StopCalls == 1 &&
+                !invalidWriter.IsRunning,
+                "direct probe safely rejects invalid driver Write count " + invalidCount);
+        }
 
         int waits = 0;
         Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
