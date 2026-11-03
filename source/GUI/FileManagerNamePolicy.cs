@@ -28,6 +28,9 @@ namespace ZonderqOS.GUI
                     c == '\u200B' || c == '\u200C' || c == '\u200D' ||
                     (c >= '\u2060' && c <= '\u2064') || c == '\uFEFF' ||
                     c == '\u2028' || c == '\u2029' ||
+                    // Variation selectors change glyph presentation without
+                    // changing the visible filename text in many GUI fonts.
+                    (c >= '\uFE00' && c <= '\uFE0F') ||
                     (c >= '\u202A' && c <= '\u202E') ||
                     (c >= '\u2066' && c <= '\u206F'))
                     return false;
@@ -58,7 +61,9 @@ namespace ZonderqOS.GUI
                         return false;
                     // Supplementary-plane noncharacters end in FFFE/FFFF.
                     // Check the low surrogate of the valid pair.
-                    if (name[i + 1] == '\uDFFE' || name[i + 1] == '\uDFFF')
+                    if ((c == '\uDB40' && name[i + 1] >= '\uDD00' &&
+                         name[i + 1] <= '\uDDEF') ||
+                        name[i + 1] == '\uDFFE' || name[i + 1] == '\uDFFF')
                         return false;
                     i++;
                 }
