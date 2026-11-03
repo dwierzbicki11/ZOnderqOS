@@ -730,6 +730,34 @@ internal static class AudioDirectProbeSmoke
                 nested.StartCalls == 1 && nested.StopCalls == 1,
                 "direct probe guard released after successful outer playback");
 
+            // Cleanup reads Format only once and must recheck ownership if
+            // the getter itself rebinds the device after the final settle.
+            var claimedDuringCleanupFormat = new Device();
+            bool cleanupPhase = false;
+            int cleanupFormatReads = 0;
+            claimedDuringCleanupFormat.OnFormatRead = () =>
+            {
+                if (cleanupPhase)
+                {
+                    cleanupFormatReads++;
+                    claimedDuringCleanupFormat.Player = new object();
+                }
+            };
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "cleanup claim test settles once");
+                cleanupPhase = true;
+            };
+            check(AudioProbeDirectPlayback.TryPlay(claimedDuringCleanupFormat, Pcm, 48000) &&
+                cleanupFormatReads == 1 && claimedDuringCleanupFormat.StopCalls == 0 &&
+                claimedDuringCleanupFormat.IsRunning,
+                "cleanup format getter claim skips Stop and reads format once");
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "successful direct probe waits one HDA ring period");
+                waits++;
+            };
+
             var brokenStop = new Device { ThrowOnStop = true };
             bool stopThrew = false;
             try { AudioProbeDirectPlayback.TryPlay(brokenStop, Pcm, 48000); }
