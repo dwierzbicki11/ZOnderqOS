@@ -284,12 +284,39 @@ namespace ZonderqOS.SystemCore
         internal IReadOnlyList<int> CpuUsagePercent => cpuUsage;
         internal IReadOnlyList<string> Lines => lines;
 
+        // Thread slots may appear one at a time as the stock scheduler starts
+        // workers. Resizing to exactly (slot + 1) on every arrival copies the
+        // entire cache repeatedly (quadratic work and transient GC pressure).
+        // Double capacity only when needed; never shrink the buffers on refresh.
+        private static int GrowSlotCapacity(int current, int required)
+        {
+#if ZONDERQ_PERF_HOST_TEST
+            // The exact former allocation policy, compiled only in host A/B.
+            if (DisableGeometricSlotGrowthForBenchmark)
+                return required;
+#endif
+            int capacity = current < 8 ? 8 : current;
+            while (capacity < required)
+            {
+                if (capacity > int.MaxValue / 2)
+                    return required;
+                capacity *= 2;
+            }
+            return capacity;
+        }
+
+#if ZONDERQ_PERF_HOST_TEST
+        internal static bool DisableGeometricSlotGrowthForBenchmark;
+        internal int CachedSlotCapacityForTests => cachedThreadRows.Length;
+        internal int PreviousSlotCapacityForTests => previousThreads.Length;
+#endif
+
         internal string GetThreadRowLine(int slot, KernelThreadInfo thread, int pid, int percent, string name)
         {
             if (slot < 0)
                 throw new ArgumentOutOfRangeException(nameof(slot));
             if (slot >= cachedThreadRows.Length)
-                Array.Resize(ref cachedThreadRows, slot + 1);
+                Array.Resize(ref cachedThreadRows, GrowSlotCapacity(cachedThreadRows.Length, slot + 1));
 
             CachedThreadRow cached = cachedThreadRows[slot];
             if (cached.Line != null && cached.Tid == thread.Id &&
@@ -384,10 +411,10 @@ namespace ZonderqOS.SystemCore
 
             if (previousThreads.Length < slots)
             {
-                Array.Resize(ref previousThreads, slots);
+                Array.Resize(ref previousThreads, GrowSlotCapacity(previousThreads.Length, slots));
             }
             if (cachedThreadRows.Length < slots)
-                Array.Resize(ref cachedThreadRows, slots);
+                Array.Resize(ref cachedThreadRows, GrowSlotCapacity(cachedThreadRows.Length, slots));
             // Release names/lines from slots that disappeared. Do this only
             // when the scheduler shrinks, never on each steady refresh.
             if (slots < lastRowSlotCount)
