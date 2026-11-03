@@ -2031,7 +2031,8 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("string.Equals(entryPath, firstVisiblePath, StringComparison.OrdinalIgnoreCase)", refresh)
         self.assertIn("string.Equals(entryPath, firstVisiblePath, StringComparison.Ordinal)", refresh)
         self.assertIn("if (firstVisibleExact >= 0)", refresh)
-        self.assertIn("scrollIndex = i;", refresh)
+        self.assertIn("scrollIndex = firstVisibleExact;", refresh)
+        self.assertIn("scrollIndex = firstVisibleFolded;", refresh)
         self.assertLess(refresh.index("Filter();"), refresh.index("if (!string.IsNullOrEmpty(selectedPath) ||"))
         self.assertLess(refresh.index("if (!string.IsNullOrEmpty(selectedPath) ||"),
                         refresh.index("EnsureSelectionVisible();"))
