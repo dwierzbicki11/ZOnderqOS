@@ -68,7 +68,15 @@ def check_guest_line(serial: str) -> str:
         raise ValueError("invalid PCI legacy IRQ line")
     # Cross-check PCI INTx metadata against the stock driver's own line.
     # This remains a routing observation, NOT a guest ISR execution count.
+    # A malformed route claim must not disappear from the evidence merely
+    # because its text no longer matches the strict PASS expression.
+    route_claims = [line for line in lines
+                    if line.startswith("[NET3095-N1] PCI_IRQ_ROUTE=")]
+    stable_claims = [line for line in lines
+                     if line.startswith("[NET3095-N1] PCI_IRQ_ROUTE_STABLE=")]
     routes, stable_routes = matches(PCI_IRQ_ROUTE), matches(PCI_IRQ_STABLE)
+    if len(route_claims) != len(routes) or len(stable_claims) != len(stable_routes):
+        raise ValueError("malformed PCI legacy IRQ route claim")
     if routes or stable_routes:
         if len(routes) != 1 or len(stable_routes) != 1:
             raise ValueError("missing or duplicated PCI legacy IRQ route marker")
@@ -327,6 +335,9 @@ def self_test() -> None:
         route_serial.replace("PCI_IRQ_ROUTE_STABLE=PASS line=11", "PCI_IRQ_ROUTE_STABLE=PASS line=12"),
         route_serial.replace("PCI_IRQ_ROUTE=PASS line=11 pin=1", "PCI_IRQ_ROUTE=PASS line=11 pin=5"),
         route_serial + "\n" + route_marker,
+        route_serial.replace("PCI_IRQ_ROUTE=PASS", "PCI_IRQ_ROUTE=FAIL"),
+        route_serial.replace("PCI_IRQ_ROUTE_STABLE=PASS", "PCI_IRQ_ROUTE_STABLE=FAIL"),
+        route_serial.replace("guest ISR unproven", "guest ISR proven"),
     ):
         try:
             check_guest_line(bad_route)
