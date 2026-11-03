@@ -132,8 +132,8 @@ checks["refresh rechecks ACL after scan before publishing entries"] = (
     "finalReadAllowed = CanReadInSession(targetPath);" in refresh_body
     and refresh_body.index("Directory.GetFiles(targetPath)") <
         refresh_body.index("finalReadAllowed = CanReadInSession(targetPath);")
-    and refresh_body.index("Sort(scanned);") <
-        refresh_body.index("finalReadAllowed = CanReadInSession(targetPath);")
+    and refresh_body.index("if (!finalReadAllowed)") <
+        refresh_body.index("Sort(scanned);")
     and refresh_body.index("if (!finalReadAllowed)") <
         refresh_body.index("entries.AddRange(scanned);")
 )
@@ -150,7 +150,7 @@ checks["refresh ACL metadata failures invalidate only matching cached listing"] 
 
 checks["revoked in-flight refresh clears only matching cached listing"] = (
     "if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))" in
-        refresh_body[refresh_body.index("Sort(scanned);"):refresh_body.index("entries.AddRange(scanned);")]
+        refresh_body[refresh_body.index("if (!finalReadAllowed)"):refresh_body.index("Sort(scanned);")]
     and "ClearDeniedListing();" in
         refresh_body[refresh_body.index("Sort(scanned);"):refresh_body.index("entries.AddRange(scanned);")]
 )
