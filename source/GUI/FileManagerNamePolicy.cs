@@ -29,7 +29,7 @@ namespace ZonderqOS.GUI
                     (c >= '\u2060' && c <= '\u2064') || c == '\uFEFF' ||
                     c == '\u2028' || c == '\u2029' ||
                     (c >= '\u202A' && c <= '\u202E') ||
-                    (c >= '\u2066' && c <= '\u2069'))
+                    (c >= '\u2066' && c <= '\u206F'))
                     return false;
 
                 if (char.IsControl(c) || c == '/' || c == '\\' || c == ':' ||
