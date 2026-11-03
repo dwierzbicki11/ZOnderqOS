@@ -3676,5 +3676,23 @@ class FileManagerAclSortOrdering3095(unittest.TestCase):
 
 
 
+class FileManagerFilteredSnapshot3095(unittest.TestCase):
+    def test_search_copies_only_matches_and_preserves_selection(self):
+        filtering = FILE_MANAGER.split("private void ApplySearchFilter()", 1)[1].split(
+            "private void RebuildSidebar()", 1
+        )[0]
+        self.assertIn("if (string.IsNullOrEmpty(searchText))", filtering)
+        self.assertIn("entries.AddRange(cachedEntries);", filtering)
+        self.assertIn("for (int i = 0; i < cachedEntries.Count; i++)", filtering)
+        self.assertIn("candidate.Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase)", filtering)
+        self.assertIn("entries.Add(candidate);", filtering)
+        self.assertNotIn("Filter();", filtering)
+        self.assertLess(filtering.index("CanReadInSession(currentPath)"),
+                        filtering.index("entries.Clear();"))
+        self.assertLess(filtering.index("entries.Add(candidate);"),
+                        filtering.index("entries.IndexOf(previousSelection)"))
+
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
