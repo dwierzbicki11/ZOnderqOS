@@ -34,6 +34,13 @@ class MetricComparisonTests(unittest.TestCase):
             with self.subTest(value=value), self.assertRaises(ValueError):
                 module.compare(self.before, changed)
 
+    def test_environment_types_and_nonfinite_values(self):
+        for value in (True, 1.0, float('nan'), float('inf'), object()):
+            changed = [dict(row) for row in self.after]
+            changed[0] = dict(changed[0], environment={'qemu': '8.2', 'vcpus': value, 'workload': 'idle-60s'})
+            with self.subTest(value=repr(value)), self.assertRaises(ValueError):
+                module.compare(self.before, changed)
+
     def test_reject_unpaired(self):
         with self.assertRaises(ValueError): module.compare(self.before, self.after[:2])
         with self.assertRaises(ValueError): module.compare(self.before[:2], self.after[:2])
