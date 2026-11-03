@@ -3685,16 +3685,30 @@ class FileManagerFilteredSnapshot3095(unittest.TestCase):
             "private void RebuildSidebar()", 1
         )[0]
         self.assertIn("if (string.IsNullOrEmpty(searchText))", filtering)
-        self.assertIn("entries.AddRange(cachedEntries);", filtering)
+        self.assertIn("filtered.AddRange(cachedEntries);", filtering)
         self.assertIn("for (int i = 0; i < cachedEntries.Count; i++)", filtering)
         self.assertIn("candidate.Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase)", filtering)
-        self.assertIn("entries.Add(candidate);", filtering)
+        self.assertIn("filtered.Add(candidate);", filtering)
         self.assertNotIn("Filter();", filtering)
         self.assertLess(filtering.index("CanReadInSession(currentPath)"),
-                        filtering.index("entries.Clear();"))
-        self.assertLess(filtering.index("entries.Add(candidate);"),
+                        filtering.index("filtered.Add(candidate);"))
+        self.assertLess(filtering.index("filtered.Add(candidate);"),
                         filtering.index("entries.IndexOf(previousSelection)"))
 
+    def test_filtered_snapshot_is_published_only_after_second_acl_check(self):
+        filtering = FILE_MANAGER.split("private void ApplySearchFilter()", 1)[1].split(
+            "private void RebuildSidebar()", 1
+        )[0]
+        self.assertEqual(filtering.count("CanReadInSession(currentPath)"), 2)
+        build = filtering.index("filtered.Add(candidate);")
+        recheck = filtering.index("publishAllowed = CanReadInSession(currentPath);")
+        denied = filtering.index("if (!publishAllowed)")
+        publish = filtering.index("entries.AddRange(filtered);")
+        self.assertLess(build, recheck)
+        self.assertLess(recheck, denied)
+        self.assertLess(denied, publish)
+        self.assertIn("ClearDeniedListing();", filtering[recheck:publish])
+        self.assertLess(publish, filtering.index("entries.IndexOf(previousSelection)"))
 
 
 class FileManagerOpenEntryAclFailure3095(unittest.TestCase):
