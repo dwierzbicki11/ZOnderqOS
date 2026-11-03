@@ -310,8 +310,23 @@ namespace ZonderqOS.SystemCore
                             // calls could observe different codec configurations.
                             // Revalidate ownership after the getter, which can
                             // itself trigger a withdrawal or reconfiguration.
-                            var cleanupFormat = output.Format;
-                            if (cleanupFormat.Channels != 2 || cleanupFormat.ChannelSize != 2 ||
+                            // A codec reset can make Format unavailable even
+                            // after a successful final settle. Do not let an
+                            // optional diagnostic cleanup getter crash the shell
+                            // or attempt Stop against an uncertain stream.
+                            bool cleanupFormatValid;
+                            try
+                            {
+                                var cleanupFormat = output.Format;
+                                cleanupFormatValid = cleanupFormat.Channels == 2 &&
+                                    cleanupFormat.ChannelSize == 2;
+                            }
+                            catch (InvalidOperationException)
+                            {
+                                Console.WriteLine("[AUDIO] 1MS cleanup: format unavailable; Stop skipped.");
+                                cleanupFormatValid = false;
+                            }
+                            if (!cleanupFormatValid ||
                                 output.IsWithdrawn || (startCompleted && !output.IsRunning) || output.Player != null ||
                                 output.Name != "hda" || output.DriverName != "HdAudioDriver" ||
                                 output.SampleRate != sampleRate ||
