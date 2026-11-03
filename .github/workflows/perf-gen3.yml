@@ -17,6 +17,8 @@ on:
       - "tests/test_perf_boot_baseline.py"
       - "tools/perf_compare_boot.py"
       - "tests/test_perf_compare_boot.py"
+      - "tools/perf_compare_metrics.py"
+      - "tests/test_perf_compare_metrics.py"
       - "tests/TerminalPerfSmoke/**"
       - "source/GUI/UiPainter.cs"
       - "tests/PerfRenderSmoke/PanelVisibilitySmoke.cs"
@@ -52,6 +54,8 @@ jobs:
         run: python3 tests/test_perf_boot_baseline.py
       - name: Validate paired QEMU baseline comparison and run identity checks
         run: python3 -m unittest discover -s tests -p test_perf_compare_boot.py -v
+      - name: Validate multi-metric paired comparison and strict environment types
+        run: python3 -m unittest discover -s tests -p test_perf_compare_metrics.py -v
       - name: Production terminal batching equivalence and measured host A/B
         run: dotnet run --project tests/TerminalPerfSmoke/TerminalPerfSmoke.csproj --configuration Release
       - name: Production htop process join equivalence and measured host A/B
