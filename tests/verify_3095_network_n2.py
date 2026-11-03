@@ -183,7 +183,8 @@ def validate(serial: str, pcap: bytes) -> str:
                     request["ciaddr"] != zero_ip or request["giaddr"] != zero_ip or
                     request["yiaddr"] != zero_ip or
                     request["destination_mac"] not in (broadcast, server_mac) or
-                    request["requested"] != offer["yiaddr"]):
+                    request["requested"] != offer["yiaddr"] or
+                    request["server_id"] not in (None, SERVER)):
                     continue
                 for ack in records[k + 1:]:
                     if (ack["type"] == 5 and ack["chaddr"] == mac and
@@ -361,6 +362,9 @@ def self_test() -> None:
         (serial, [frames[0], frames[1], frames[3], frames[4]]),
         (serial, [frames[0], frames[2], frames[1], frames[3], frames[4]]),
         (serial, [frames[0], frames[1], frames[2], fake_dhcp(3, 2, mac, ip, bytes([10, 0, 2, 88])), frames[4]]),
+        # A DHCP REQUEST directed to a different server cannot complete
+        # this SLIRP DORA, even when the requested lease matches.
+        (serial, frames[:3] + [fake_dhcp(3, 2, mac, ip, ip, server_id=bytes([10, 0, 2, 99]))] + frames[4:]),
         (serial, [frames[0], frames[1], frames[2], frames[3], fake_dhcp(5, 7, mac, ip)]),
         (serial, [frames[0], frames[1], fake_dhcp(2, 9, mac, ip), frames[3], frames[4]]),
         (serial, [frames[0], frames[1], fake_dhcp(2, 1, bytes([2, 0, 0, 0, 0, 1]), ip), frames[3], frames[4]]),
