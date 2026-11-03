@@ -26,6 +26,7 @@ RX_COMMIT = re.compile(
     # index. Both represent the same RX guest-memory completion event.
     r"Received packet written to guest \((?:ICR causes \d+|queue [01])\)$"
 )
+MAX_X86_PHYS_ADDR = (1 << 52) - 1  # Architectural x86-64 physical-address ceiling.
 TERMINATED = re.compile(r"^qemu-system-[^:]+: terminating on signal ")
 
 
@@ -40,7 +41,7 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
         match = TX.fullmatch(line)
         if match:
             # A null descriptor buffer address is not packet DMA evidence.
-            if 0 < int(match.group(1), 16) <= 0xFFFFFFFFFFFFFFFF:
+            if 0 < int(match.group(1), 16) <= MAX_X86_PHYS_ADDR:
                 tx += 1
             continue
         match = RX_BUFFER.fullmatch(line)
@@ -50,7 +51,7 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
             # QEMU packet-split descriptor slots are 0..3; ignore zero-length
             # writes and null guest physical addresses.
             if (index <= 3 and address != 0 and length > 0
-                    and address + offset + length - 1 <= 0xFFFFFFFFFFFFFFFF):
+                    and address + offset + length - 1 <= MAX_X86_PHYS_ADDR):
                 writes += 1
                 pending_rx_writes += 1
                 rx_bytes += length
@@ -139,9 +140,13 @@ def self_test() -> None:
         assert "TX descriptor reads 0 < 128" in str(exc)
     else:
         raise AssertionError("accepted out-of-range TX descriptor DMA address")
-    # A malformed trace must not claim DMA beyond the 64-bit guest
-    # physical address space. Offset and length are decimal trace fields.
+    # A malformed trace must not claim DMA beyond the 52-bit x86-64 guest
+    # architectural physical-address ceiling. Offset and length are decimal.
+    oversized_physical_tx = tx.replace("0x7f001000", "0x10000000000000")
+    assert count_dma(oversized_physical_tx * 128 + write + commit) == (0, 1, 64, 1)
     for malformed in (
+        write.replace("addr: 0x7f002000", "addr: 0x10000000000000"),
+        write.replace("addr: 0x7f002000", "addr: 0xffffffffffff0"),
         write.replace("addr: 0x7f002000", "addr: 0xfffffffffffffff0"),
         write.replace("offset: 0", "offset: 18446744073709551616"),
         write.replace("length: 64", "length: 18446744073709551616"),
