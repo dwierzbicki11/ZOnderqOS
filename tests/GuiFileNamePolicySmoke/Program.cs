@@ -37,14 +37,14 @@ internal static class Program
             if (string.IsNullOrEmpty(path))
                 continue;
             int end = path.Length;
-            while (end > 0 && (path[end - 1] == '/' || path[end - 1] == '\\\\'))
+            while (end > 0 && (path[end - 1] == '/' || path[end - 1] == '\\'))
                 end--;
             if (end == 0)
                 continue;
             int slash = -1;
             for (int j = end - 1; j >= 0; j--)
             {
-                if (path[j] == '/' || path[j] == '\\\\')
+                if (path[j] == '/' || path[j] == '\\')
                 {
                     slash = j;
                     break;
