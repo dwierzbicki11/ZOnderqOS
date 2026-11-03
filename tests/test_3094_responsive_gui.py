@@ -3642,5 +3642,18 @@ class ImageHeaderPreflight3095(unittest.TestCase):
         self.assertIn("tests/GuiImageHeaderSmoke/**", workflow)
 
 
+    def test_file_manager_sort_skips_allocation_for_ordered_listing(self):
+        # Static ordering contract only: executable sorting behavior is
+        # exercised separately by host C# tests and guest QEMU runs.
+        start = FILE_MANAGER.index("private void Sort(List<FileEntry> destination)")
+        end = FILE_MANAGER.index("private int Compare(FileEntry a, FileEntry b)", start)
+        sorter = FILE_MANAGER[start:end]
+        self.assertIn("bool alreadySorted = true;", sorter)
+        self.assertIn("Compare(destination[i - 1], destination[i]) > 0", sorter)
+        self.assertIn("if (alreadySorted)\\n                return;", sorter)
+        self.assertLess(sorter.index("if (alreadySorted)"), sorter.index("new FileEntry[count]"))
+        self.assertIn("Compare(destination[left], destination[right]) <= 0", sorter)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
