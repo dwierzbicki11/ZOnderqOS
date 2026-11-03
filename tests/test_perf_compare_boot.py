@@ -39,6 +39,8 @@ class CompareTests(unittest.TestCase):
             list(reversed(after)),
             [dict(row, run_id="duplicate") for row in after],
             [dict(row, run_id="") if i == 0 else row for i, row in enumerate(after)],
+            [dict(row, run_id=" pair-0") if i == 0 else row for i, row in enumerate(after)],
+            [dict(row, run_id="pair-0 ") if i == 0 else row for i, row in enumerate(after)],
             [{key: value for key, value in row.items() if key != "run_id"} if i == 0 else row for i, row in enumerate(after)],
         ):
             with self.subTest(changed=changed), self.assertRaises(ValueError):
