@@ -44,7 +44,9 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
         match = TX.fullmatch(line)
         if match:
             # A null descriptor buffer address is not packet DMA evidence.
-            if 0 < int(match.group(1), 16) <= MAX_X86_PHYS_ADDR:
+            # E1000E legacy TX descriptors are 16-byte entries. A fetch
+            # from a misaligned address cannot represent a valid ring entry.
+            if 0 < int(match.group(1), 16) <= MAX_X86_PHYS_ADDR and int(match.group(1), 16) % 16 == 0:
                 tx += 1
             continue
         match = RX_BUFFER.fullmatch(line)
@@ -145,6 +147,16 @@ def self_test() -> None:
         raise AssertionError("accepted out-of-range TX descriptor DMA address")
     # A malformed trace must not claim DMA beyond the 52-bit x86-64 guest
     # architectural physical-address ceiling. Offset and length are decimal.
+    # A valid TX descriptor ring has 16-byte entries; reject a fabricated
+    # descriptor fetch from an unaligned guest physical address.
+    misaligned_tx = tx.replace("0x7f001000", "0x7f001001")
+    assert count_dma(misaligned_tx * 128 + write + commit) == (0, 1, 64, 1)
+    try:
+        report(misaligned_tx * 128 + write + commit)
+    except ValueError as exc:
+        assert "TX descriptor reads 0 < 128" in str(exc)
+    else:
+        raise AssertionError("accepted misaligned TX descriptor DMA address")
     oversized_physical_tx = tx.replace("0x7f001000", "0x10000000000000")
     assert count_dma(oversized_physical_tx * 128 + write + commit) == (0, 1, 64, 1)
     for malformed in (
