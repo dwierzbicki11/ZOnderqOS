@@ -103,6 +103,24 @@ def self_test() -> None:
         assert "RX guest commits 7 < 8" in str(exc)
     else:
         raise AssertionError("accepted insufficient N6 RX DMA completions")
+    # Eight RX buffer writes can belong to a single packet/commit. Do not
+    # mistake descriptor writes for eight independent completed RX packets.
+    grouped = tx * 128 + write * 8 + commit
+    assert count_dma(grouped) == (128, 8, 512, 1)
+    try:
+        report(grouped, min_rx_commits=8)
+    except ValueError as exc:
+        assert "RX guest commits 1 < 8" in str(exc)
+    else:
+        raise AssertionError("counted RX buffer writes as independent RX commits")
+    # An orphan completion cannot be used to inflate the RX packet count.
+    assert count_dma(tx * 128 + write + commit * 8) == (128, 1, 64, 1)
+    try:
+        report(tx * 128 + write + commit * 8, min_rx_commits=8)
+    except ValueError as exc:
+        assert "RX guest commits 1 < 8" in str(exc)
+    else:
+        raise AssertionError("counted orphan RX completions as completed packets")
     assert count_dma(tx * 128 + write + commit.replace("causes 128", "causes 0")) == (128, 1, 64, 1)
     assert count_dma(tx * 128 + write + commit.replace(
         "(ICR causes 128)", "(queue 0)")) == (128, 1, 64, 1)
