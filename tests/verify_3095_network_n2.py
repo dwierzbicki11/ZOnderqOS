@@ -97,6 +97,13 @@ def dhcp_frame(frame: bytes):
     # Do not silently skip it and accept a later valid retransmission.
     if not end or len(opts.get(53, b"")) != 1:
         raise ValueError("missing DHCP END or invalid message-type option")
+    # Fixed-width options used by this QEMU DORA proof must be well formed.
+    # Fail closed even when a later retransmission contains valid options.
+    for code in (1, 3, 50, 54):
+        if code in opts and len(opts[code]) != 4:
+            raise ValueError("invalid DHCP IPv4 option length: " + str(code))
+    if 6 in opts and (len(opts[6]) == 0 or len(opts[6]) % 4):
+        raise ValueError("invalid DHCP DNS option length")
     typ = opts[53][0]
     if typ not in (1, 2, 3, 5):
         return None
@@ -376,6 +383,19 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted malformed DHCP OFFER before valid retry: " + malformed)
+
+    # A malformed fixed-width option must fail even if a valid OFFER follows.
+    # Modify only option length fields, leaving a legal zero UDP checksum.
+    for code, offset in ((54, 3), (1, 9), (3, 15), (6, 21)):
+        changed = bytearray(frames[2])
+        assert changed[option_start + offset] == code
+        changed[option_start + offset + 1] = 3
+        try:
+            validate(serial, synthetic_capture(frames[:2] + [bytes(changed)] + frames[2:]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted malformed DHCP option length: " + str(code))
 
     # Keep the Ethernet payload intact while marking the IPv4 datagram as
     # fragmented: a fail-open DHCP parser must not accept these captures.
