@@ -27,6 +27,36 @@ internal static class Program
             throw new InvalidOperationException("Unexpected FAT32 name collision decision for " + name);
     }
 
+    // Previous production collision scan, retained only as an allocation
+    // baseline. Both paths examine the same preconstructed directory entries.
+    private static bool LegacyContainsName(string[] paths, string name)
+    {
+        for (int i = 0; i < paths.Length; i++)
+        {
+            string path = paths[i];
+            if (string.IsNullOrEmpty(path))
+                continue;
+            int end = path.Length;
+            while (end > 0 && (path[end - 1] == '/' || path[end - 1] == '\\\\'))
+                end--;
+            if (end == 0)
+                continue;
+            int slash = -1;
+            for (int j = end - 1; j >= 0; j--)
+            {
+                if (path[j] == '/' || path[j] == '\\\\')
+                {
+                    slash = j;
+                    break;
+                }
+            }
+            string existing = path.Substring(slash + 1, end - slash - 1);
+            if (string.Equals(existing, name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+        return false;
+    }
+
     private static void Main()
     {
         foreach (string? value in new string?[]
@@ -81,6 +111,43 @@ internal static class Program
         CheckCollision("report.txt", Array.Empty<string>(), new[] { "C:\\DATA\\REPORT.TXT\\" }, true);
         CheckCollision("report.txt", Array.Empty<string>(), new[] { "/" }, false);
         CheckCollision("notes", null, null, false);
+        CheckCollision("report", new[] { "/data/REPORTS" }, Array.Empty<string>(), false);
+        CheckCollision("report", new[] { "/data/report" }, Array.Empty<string>(), true);
+        CheckCollision("report", new[] { "/data/report/" }, Array.Empty<string>(), true);
+        CheckCollision("report", new[] { "/data/report//" }, Array.Empty<string>(), true);
+        CheckCollision("report", new[] { "/data/repor" }, Array.Empty<string>(), false);
+        CheckCollision("report", new[] { "/data/REPORT.log" }, Array.Empty<string>(), false);
+
+        // Compare production against the exact old substring-based scan.
+        // This is a host allocation A/B test, not a FAT32 I/O benchmark.
+        string[] largeDirectory = new string[2048];
+        for (int i = 0; i < largeDirectory.Length - 1; i++)
+            largeDirectory[i] = "/mnt/ZONDERQDATA/entry-" + i + ".txt";
+        largeDirectory[largeDirectory.Length - 1] = "/mnt/ZONDERQDATA/TARGET.TXT/";
+        const string target = "target.txt";
+        CheckCollision(target, largeDirectory, Array.Empty<string>(), true);
+        CheckCollision("target", largeDirectory, Array.Empty<string>(), false);
+        for (int warmup = 0; warmup < 10; warmup++)
+        {
+            LegacyContainsName(largeDirectory, target);
+            FileManagerNamePolicy.HasCaseInsensitiveCollision(target, largeDirectory, Array.Empty<string>());
+        }
+        long legacyStart = GC.GetAllocatedBytesForCurrentThread();
+        for (int iteration = 0; iteration < 16; iteration++)
+            if (!LegacyContainsName(largeDirectory, target))
+                throw new InvalidOperationException("Legacy baseline missed the collision");
+        long legacyAllocated = GC.GetAllocatedBytesForCurrentThread() - legacyStart;
+        long optimizedStart = GC.GetAllocatedBytesForCurrentThread();
+        for (int iteration = 0; iteration < 16; iteration++)
+            if (!FileManagerNamePolicy.HasCaseInsensitiveCollision(target, largeDirectory, Array.Empty<string>()))
+                throw new InvalidOperationException("Optimized scan missed the collision");
+        long optimizedAllocated = GC.GetAllocatedBytesForCurrentThread() - optimizedStart;
+        assertions++;
+        if (optimizedAllocated >= legacyAllocated)
+            throw new InvalidOperationException("Collision scan allocation regression: " +
+                legacyAllocated + " -> " + optimizedAllocated + " bytes");
+        Console.WriteLine("FAT32 collision scan host allocations (16 x 2048 entries): " +
+            legacyAllocated + " B before, " + optimizedAllocated + " B after");
 
         // Exercise the exact production CreateNew path on the host. This
         // verifies non-truncation under a duplicate-name race, not FAT32 QEMU.
