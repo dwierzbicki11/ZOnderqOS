@@ -161,6 +161,13 @@ namespace ZonderqOS.SystemCore
                 bool fed = AudioProbeRingFeeder.FeedAndSettle(pcm,
                     (data, offset, count) =>
                     {
+                        // The feeder's ready() check and this callback are
+                        // separate calls. Recheck immediately before Write,
+                        // including the published format, to narrow the
+                        // reconfiguration window without touching DMA/IRQ.
+                        if (!IsCompatibleUnclaimedHda(output, sampleRate, stillSelected) ||
+                            !output.IsRunning)
+                            return 0;
                         int accepted = output.Write(data.AsSpan(offset, count));
                         writeCalls++;
                         if (accepted == 0)
