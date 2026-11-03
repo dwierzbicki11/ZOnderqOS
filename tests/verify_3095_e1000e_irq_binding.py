@@ -119,6 +119,12 @@ def check_driver_health(serial: str) -> str:
             baseline_sources != sources):
         raise ValueError("E1000E DriverKit resources/IRQ sources changed during N6 stress")
     bound = [m for line in lines if (m := BOUND.fullmatch(line))]
+    driver_lines = [m for line in lines if (m := DRIVER.fullmatch(line))]
+    if len(driver_lines) != 1 or driver_lines[0].group(1) != node:
+        raise ValueError("missing or mismatched E1000E driver IRQ line")
+    driver_irq_line = int(driver_lines[0].group(3))
+    if (driver_irq_line < 1 or driver_irq_line > 254):
+        raise ValueError("invalid E1000E driver IRQ line")
     if (node != "pci:0000:00:02.0" or len(bound) != 1 or
             bound[0].group(1) != node or int(resources) < 1 or
             int(published) != 1 or int(sources) < 1 or int(faults) != 0):
@@ -240,7 +246,7 @@ def check_driver_health(serial: str) -> str:
                                             int(pci.group(4)), int(pci.group(5)))
         if ((command & 0x0006) != 0x0006 or (command & 0x0400) or
                 bar0 == 0 or (bar0 & 0xF) or
-                irq_line < 1 or irq_line > 254 or irq_pin < 1 or irq_pin > 4):
+                irq_line != driver_irq_line or irq_pin < 1 or irq_pin > 4):
             raise ValueError("invalid per-stream PCI MMIO/INTx assignment")
         current_pci = (command, bar0, irq_line, irq_pin)
         if pci_baseline is None:
@@ -418,6 +424,7 @@ def self_test() -> None:
         serial.replace(pci_line, pci_line.replace("bar0=0xFEBF0000", "bar0=0xFEBE0000")),
         serial.replace(pci_line, pci_line.replace("bar0=0xFEBF0000", "bar0=0x0")),
         serial.replace(pci_line, pci_line.replace("irq_line=11", "irq_line=12")),
+        serial.replace("line 11, polling every 10 ms", "line 12, polling every 10 ms"),
         serial.replace(pci_line, pci_line.replace("irq_pin=1", "irq_pin=0")),
         serial.replace(pci_line, pci_line.replace("HTTP_PCI_STABLE=PASS", "HTTP_PCI_STABLE=FAIL")),
         serial.replace(pci_line + stream_line, stream_line + pci_line),
