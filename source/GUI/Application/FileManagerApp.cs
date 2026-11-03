@@ -753,6 +753,12 @@ namespace ZonderqOS.GUI.Apps
 
         private void NavigateTo(string path)
         {
+            // Keep the old location if a filesystem or ACL operation throws
+            // after the destination has been assigned. A failed navigation
+            // must not leave the path bar pointing at a different directory
+            // from the last successfully loaded snapshot.
+            string previousPath = currentPath;
+            string previousSearch = searchText;
             try
             {
                 if (!CanReadInSession(path))
@@ -771,8 +777,6 @@ namespace ZonderqOS.GUI.Apps
 
                 // Do not strand the user in an unreadable directory. A failed
                 // scan must leave both the old path and its cached listing intact.
-                string previousPath = currentPath;
-                string previousSearch = searchText;
                 currentPath = path.Replace('\\', '/');
                 searchText = "";
                 if (!RefreshInternal(""))
@@ -783,6 +787,8 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
+                currentPath = previousPath;
+                searchText = previousSearch;
                 status = "Navigation error: " + ex.Message;
             }
         }
