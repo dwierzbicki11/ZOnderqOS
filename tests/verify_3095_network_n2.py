@@ -53,7 +53,10 @@ def dhcp_frame(frame: bytes):
     if (sport, dport) not in ((68, 67), (67, 68)):
         return None
     if udplen < 8 + 240 or udplen > iplen - ihl:
-        return None
+        # The UDP ports already identify a DHCP exchange. A malformed
+        # length is corrupt candidate evidence, not an unrelated packet:
+        # ignoring it could allow a later valid retry to mask the error.
+        raise ValueError("invalid DHCP UDP payload length")
     bootp = frame[udp_start + 8:udp_start + udplen]
     if len(bootp) < 240 or bootp[1:3] != b"\x01\x06":
         return None
@@ -357,6 +360,18 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("accepted corrupted DHCP OFFER preceding valid duplicate")
+    # DHCP-port packets with impossible UDP lengths must not be silently
+    # skipped in favour of a later valid OFFER. The IPv4 header stays valid.
+    for invalid_length in (7, 247, len(frames[2]) + 64):
+        changed = bytearray(frames[2])
+        changed[14 + 20 + 4:14 + 20 + 6] = invalid_length.to_bytes(2, "big")
+        try:
+            validate(serial, synthetic_capture(frames[:2] + [bytes(changed)] + frames[2:]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted invalid DHCP UDP length: " + str(invalid_length))
+
     # A malformed DHCP candidate must fail closed even when a later
     # retransmission is valid. Corrupt only option bytes, not IP/UDP headers.
     # These fixtures use legal zero UDP checksums and unchanged IP lengths.
