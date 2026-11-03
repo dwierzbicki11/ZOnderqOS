@@ -158,7 +158,10 @@ namespace ZonderqOS.SystemCore
                     if (writable > ringMax) ringMax = writable;
                 }
                 SampleDriverWritable(false);
-                bool fed = AudioProbeRingFeeder.FeedAndSettle(pcm,
+                bool fed;
+                try
+                {
+                    fed = AudioProbeRingFeeder.FeedAndSettle(pcm,
                     (data, offset, count) =>
                     {
                         // The feeder's ready() check and this callback are
@@ -206,6 +209,15 @@ namespace ZonderqOS.SystemCore
                         SampleDriverWritable(false);
                     },
                     out int waits);
+                }
+                catch (InvalidOperationException)
+                {
+                    // A malformed Write() result is a device contract failure,
+                    // not a reason to crash the opt-in diagnostic console.
+                    // The finally block still performs guarded cleanup.
+                    Console.WriteLine("[AUDIO] 1MS FAILED: invalid PCM write count.");
+                    return false;
+                }
                 // Keep each line short enough for the diagnostic text console
                 // and QEMU after.ppm capture. Console output is not a serial
                 // telemetry channel and these are software ring counters only.
