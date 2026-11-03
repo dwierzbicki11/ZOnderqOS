@@ -1409,6 +1409,26 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
+                // FAT32 enumeration can take long enough for an administrator
+                // to revoke the destination ACL after the first preflight.
+                // Recheck immediately before mutation; the FAT driver itself
+                // does not enforce ZonderqOS permissions. This narrows the
+                // race, but does not make ACL checks atomic with FAT writes.
+                bool stillReadable = CanReadInSession(currentPath);
+                if (!stillReadable ||
+                    (user != "root" &&
+                     (!IsInsidePath(currentPath, UserManager.GetHomeDirectory(user)) ||
+                      !PermissionManager.CanWrite(currentPath, user))))
+                {
+                    if (!stillReadable &&
+                        string.Equals(loadedDirectoryPath, currentPath, StringComparison.Ordinal))
+                        ClearDeniedListing();
+                    status = "Permission denied: destination changed during create";
+                    dialogMode = 0;
+                    dialogName = "";
+                    return;
+                }
+
                 if (dialogMode == 1)
                 {
                     // Atomic exclusive create: a file appearing after the
