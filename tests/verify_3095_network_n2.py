@@ -63,10 +63,15 @@ def dhcp_frame(frame: bytes):
         # ignoring it could allow a later valid retry to mask the error.
         raise ValueError("invalid DHCP UDP payload length")
     bootp = frame[udp_start + 8:udp_start + udplen]
-    if len(bootp) < 240 or bootp[1:3] != b"\x01\x06":
-        return None
+    if len(bootp) < 240:
+        raise ValueError("truncated DHCP BOOTP payload")
     if bootp[236:240] != b"\x63\x82\x53\x63":
         return None
+    # A valid DHCP magic cookie on the DHCP UDP ports identifies a
+    # candidate even when BOOTP hardware fields are corrupt. Never allow
+    # a later valid retransmission to hide an invalid Ethernet htype/hlen.
+    if bootp[1:3] != b"\x01\x06":
+        raise ValueError("invalid DHCP BOOTP Ethernet hardware type/length")
     # The candidate is a DHCP packet, not arbitrary UDP. Reject corrupted
     # IPv4/UDP wire evidence rather than skipping it and accepting a later
     # valid retransmission. IPv4 UDP checksum 0 is legal (Cosmos emits it);
@@ -393,6 +398,18 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("accepted fragmented DHCP OFFER before valid retry")
+
+    # Recognized DHCP cookie with corrupted BOOTP hardware type or
+    # hardware-address length must fail even before a valid OFFER retry.
+    for offset, invalid in ((1, 2), (2, 5)):
+        changed = bytearray(frames[2])
+        changed[14 + 20 + 8 + offset] = invalid
+        try:
+            validate(serial, synthetic_capture(frames[:2] + [bytes(changed)] + frames[2:]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted malformed DHCP BOOTP hardware field: " + str(offset))
 
     # A malformed DHCP candidate must fail closed even when a later
     # retransmission is valid. Corrupt only option bytes, not IP/UDP headers.
