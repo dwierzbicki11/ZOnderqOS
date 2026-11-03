@@ -83,11 +83,13 @@ def dhcp_frame(frame: bytes):
         if kind == 0:
             continue
         if at >= len(bootp):
-            return None
+            raise ValueError("truncated DHCP option length")
         length = bootp[at]
         at += 1
-        if at + length > len(bootp) or kind in opts:
-            return None
+        if at + length > len(bootp):
+            raise ValueError("truncated DHCP option value")
+        if kind in opts:
+            raise ValueError("duplicate DHCP option")
         opts[kind] = bootp[at:at + length]
         at += length
     if not end or len(opts.get(53, b"")) != 1:
@@ -345,6 +347,30 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("accepted corrupted DHCP OFFER preceding valid duplicate")
+    # A malformed DHCP candidate must fail closed even when a later
+    # retransmission is valid. Corrupt only option bytes, not IP/UDP headers.
+    # These fixtures use legal zero UDP checksums and unchanged IP lengths.
+    option_start = 14 + 20 + 8 + 240
+    for malformed in ("duplicate", "truncated_length", "truncated_value"):
+        changed = bytearray(frames[2])
+        if malformed == "duplicate":
+            # Replace the OFFER's option 1 (subnet) with a second option 53.
+            changed[option_start + 3] = 53
+        elif malformed == "truncated_length":
+            # Replace the final END marker with an option without a length.
+            changed[-1] = 54
+        else:
+            # The final option claims a value beyond the BOOTP payload.
+            changed[-1] = 0
+            changed[-2] = 54
+            changed[-1] = 8
+        try:
+            validate(serial, synthetic_capture(frames[:2] + [bytes(changed)] + frames[2:]))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted malformed DHCP OFFER before valid retry: " + malformed)
+
     # Keep the Ethernet payload intact while marking the IPv4 datagram as
     # fragmented: a fail-open DHCP parser must not accept these captures.
     def fragment(frame: bytes, flags_offset: int) -> bytes:
