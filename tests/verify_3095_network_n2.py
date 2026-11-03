@@ -263,7 +263,7 @@ def self_test() -> None:
     # inside "gateway". The PCAP still must prove the complete DORA.
     interleaved = serial.replace(
         "gateway=10.0.2.2",
-        "gatewa[SCHED] Tick 6 enabled=1\\ny=10.0.2.2")
+        "gatewa[SCHED] Tick 6 enabled=1\ny=10.0.2.2")
     assert "PASS" in validate(interleaved, synthetic_capture(frames))
     for corrupted in (
         interleaved.replace("enabled=1", "enabled=0"),
