@@ -27,6 +27,9 @@ RX_COMMIT = re.compile(
     r"Received packet written to guest \((?:ICR causes \d+|queue [01])\)$"
 )
 MAX_X86_PHYS_ADDR = (1 << 52) - 1  # Architectural x86-64 physical-address ceiling.
+# Conservative upper bound for a single E1000E RX buffer DMA trace event.
+# Reject fabricated multi-gigabyte writes without constraining normal jumbo frames.
+MAX_RX_BUFFER_WRITE = 65536
 TERMINATED = re.compile(r"^qemu-system-[^:]+: terminating on signal ")
 
 
@@ -50,7 +53,7 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
                                                for n, part in enumerate(match.groups()))
             # QEMU packet-split descriptor slots are 0..3; ignore zero-length
             # writes and null guest physical addresses.
-            if (index <= 3 and address != 0 and length > 0
+            if (index <= 3 and address != 0 and 0 < length <= MAX_RX_BUFFER_WRITE
                     and address + offset + length - 1 <= MAX_X86_PHYS_ADDR):
                 writes += 1
                 pending_rx_writes += 1
@@ -150,6 +153,7 @@ def self_test() -> None:
         write.replace("addr: 0x7f002000", "addr: 0xfffffffffffffff0"),
         write.replace("offset: 0", "offset: 18446744073709551616"),
         write.replace("length: 64", "length: 18446744073709551616"),
+        write.replace("length: 64", "length: 65537"),
     ):
         assert count_dma(tx * 128 + malformed + commit) == (128, 0, 0, 0)
         try:
