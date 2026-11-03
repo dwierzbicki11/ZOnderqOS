@@ -282,13 +282,16 @@ checks["FAT32 creation checks case-insensitive file and directory collisions"] =
 
 checks["FAT32 device aliases are rejected even with extensions"] = (
     "int dot = name.IndexOf('.');" in name_body
-    and "name.Substring(0, dot)" in name_body
-    and all(('"' + device + '"') in name_body for device in ("CON", "PRN", "AUX", "NUL"))
-    and "stem.Length == 4" in name_body
-    and "stem[3] >= '1'" in name_body
-    and "stem[3] <= '9'" in name_body
-    and 'stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase)' in name_body
-    and 'stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)' in name_body
+    and "int stemEnd = dot >= 0 ? dot : name.Length;" in name_body
+    and "while (stemEnd > 0 && name[stemEnd - 1] == ' ')" in name_body
+    and "PrefixEquals(name, \"CON\")" in name_body
+    and all(('PrefixEquals(name, "' + device + '")') in name_body
+            for device in ("PRN", "AUX", "NUL", "COM", "LPT"))
+    and "stemEnd == 4" in name_body
+    and "name[3] >= '1'" in name_body
+    and "name[3] <= '9'" in name_body
+    and "StringComparison.OrdinalIgnoreCase" in name_body
+    and "name.Substring(0, dot)" not in name_body
 )
 
 for name, ok in checks.items():
