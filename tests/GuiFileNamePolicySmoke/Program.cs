@@ -84,6 +84,8 @@ internal static class Program
             "nonchar\uFDD0", "nonchar\uFDEF", "nonchar\uFFFE",
             "nonchar\uFFFF", "supplementary\uDB7F\uDFFE",
             "supplementary\uDB7F\uDFFF",
+            "tag\uDB40\uDC00name", "tag\uDB40\uDC01name",
+            "tag\uDB40\uDC7Fname",
             new string('a', 256)
         })
             Expect(value, false);
