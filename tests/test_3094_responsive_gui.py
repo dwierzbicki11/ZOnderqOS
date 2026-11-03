@@ -3715,5 +3715,25 @@ class FileManagerOpenEntryAclFailure3095(unittest.TestCase):
 
 
 
+class FileManagerRevokedDialog3095(unittest.TestCase):
+    def test_denied_directory_cancels_pending_creation(self):
+        clearing = FILE_MANAGER.split("private void ClearDeniedListing()", 1)[1].split(
+            "private bool RefreshInternal(", 1
+        )[0]
+        self.assertLess(clearing.index("entries.Clear();"),
+                        clearing.index("dialogMode = 0;"))
+        self.assertIn('dialogName = "";', clearing)
+        self.assertLess(clearing.index("dialogMode = 0;"),
+                        clearing.index("ResetClickSequence();"))
+        opening = FILE_MANAGER.split("private void OpenEntry(int index)", 1)[1].split(
+            "private void BeginCreate(int mode)", 1
+        )[0]
+        self.assertIn("ClearDeniedListing();", opening)
+        filtering = FILE_MANAGER.split("private void ApplySearchFilter()", 1)[1].split(
+            "private void RebuildSidebar()", 1
+        )[0]
+        self.assertIn("ClearDeniedListing();", filtering)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
