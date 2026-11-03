@@ -126,7 +126,32 @@ internal static class SlotGrowthSmoke
         Assert(refresh.Lines.Count == 264, "regrown scheduler lost rows");
         Assert(!object.ReferenceEquals(last, refresh.Lines[refresh.Lines.Count - 1]),
             "slot removed by shrink retained a stale cached line");
-        Console.WriteLine("PASS: geometric direct/Refresh growth, unchanged slot references and shrink invalidation");
+        // Reused slot with the same TID must not compare runtime against a
+        // sample taken before the slot disappeared. The old stale sample
+        // would produce a bogus 100% CPU row after a large runtime jump.
+        var t0 = new KernelThreadInfo
+        {
+            Id = 10, CpuId = 0, State = KernelThreadState.READY,
+            IsManaged = true, TotalRuntimeNs = 1000
+        };
+        var t1 = new KernelThreadInfo
+        {
+            Id = 20, CpuId = 0, State = KernelThreadState.READY,
+            IsManaged = true, TotalRuntimeNs = 1000
+        };
+        var reuse = new HtopMonitor();
+        SchedulerInfo.Threads = new[] { t0, t1 };
+        reuse.Refresh();
+        SchedulerInfo.Threads = new[] { t0 };
+        reuse.Refresh();
+        t1.TotalRuntimeNs = 1000000000000UL;
+        SchedulerInfo.Threads = new[] { t0, t1 };
+        reuse.Refresh();
+        Assert(reuse.Lines.Count == 10 &&
+            reuse.Lines[8].Contains("   0%  ") &&
+            reuse.Lines[9].Contains("   0%  "),
+            "reused scheduler slot inherited a stale runtime delta");
+        Console.WriteLine("PASS: geometric direct/Refresh growth, cache shrink and runtime-sample invalidation");
     }
 
     private static (double timeMs, long bytes, long checksum) Measure(
