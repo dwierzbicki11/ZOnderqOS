@@ -229,6 +229,18 @@ checks["opening cached file rechecks parent ACL"] = (
     and open_body.index("if (!folderReadable)") < open_body.index("FileEntry entry = entries[index];")
     and "ClearDeniedListing();" in open_body[open_body.index("if (!folderReadable)"):open_body.index("FileEntry entry = entries[index];")]
 )
+checks["opening cached file clears stale tiles when ACL metadata fails"] = (
+    "folderReadable = CanReadInSession(currentPath);" in open_body
+    and "catch (Exception)" in open_body
+    and "ClearDeniedListing();" in open_body[
+        open_body.index("catch (Exception)"):open_body.index("if (!folderReadable)")
+    ]
+    and 'status = "Cannot verify folder permissions";' in open_body[
+        open_body.index("catch (Exception)"):open_body.index("if (!folderReadable)")
+    ]
+    and open_body.index("if (!folderReadable)") < open_body.index("FileEntry entry = entries[index];")
+)
+
 checks["clipboard selection rechecks parent ACL"] = (
     "if (!CanReadInSession(currentPath))" in copy_body
     and copy_body.index("ClearDeniedListing();") < copy_body.index("FileClipboard.Set(")
