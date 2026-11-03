@@ -615,12 +615,13 @@ internal static class AudioDirectProbeSmoke
 
             // If the codec changes format after accepting the first PCM
             // fragment, do not write the subsequent silent ring at the wrong
-            // sample rate. The device must still be stopped in finally.
+            // sample rate. Cleanup must NOT stop a reconfigured stream.
             var writeRateDrift = new Device();
             writeRateDrift.OnWrite = () => writeRateDrift.SampleRate = 44100;
             check(!AudioProbeDirectPlayback.TryPlay(writeRateDrift, Pcm, 48000) &&
-                writeRateDrift.StartCalls == 1 && writeRateDrift.StopCalls == 1 &&
-                writeRateDrift.WrittenBytes == Pcm.Length && !writeRateDrift.IsRunning,
+                writeRateDrift.StartCalls == 1 && writeRateDrift.StopCalls == 0 &&
+                writeRateDrift.WrittenBytes == Pcm.Length && writeRateDrift.IsRunning &&
+                writeRateDrift.SampleRate == 44100,
                 "direct probe aborts on format drift after first accepted write");
 
             var writeIdentityDrift = new Device();
@@ -635,8 +636,8 @@ internal static class AudioDirectProbeSmoke
             var writeNullFormat = new Device();
             writeNullFormat.OnWrite = () => writeNullFormat.Format = default;
             check(!AudioProbeDirectPlayback.TryPlay(writeNullFormat, Pcm, 48000) &&
-                writeNullFormat.StartCalls == 1 && writeNullFormat.StopCalls == 1 &&
-                writeNullFormat.WrittenBytes == Pcm.Length,
+                writeNullFormat.StartCalls == 1 && writeNullFormat.StopCalls == 0 &&
+                writeNullFormat.WrittenBytes == Pcm.Length && writeNullFormat.IsRunning,
                 "direct probe stops feeding when PCM format disappears after write");
 
             var writeClaimed = new Device();
@@ -680,7 +681,8 @@ internal static class AudioDirectProbeSmoke
                 settleRateDrift.SampleRate = 44100;
             };
             check(!AudioProbeDirectPlayback.TryPlay(settleRateDrift, Pcm, 48000) &&
-                settleRateDrift.StartCalls == 1 && settleRateDrift.StopCalls == 1 &&
+                settleRateDrift.StartCalls == 1 && settleRateDrift.StopCalls == 0 &&
+                settleRateDrift.IsRunning && settleRateDrift.SampleRate == 44100 &&
                 settleRateDrift.WrittenBytes == Pcm.Length + 16384 &&
                 settleRateDrift.WritableReadCalls == 6,
                 "direct probe rejects changed format after final settle");
@@ -704,7 +706,8 @@ internal static class AudioDirectProbeSmoke
                 settleNullFormat.Format = default;
             };
             check(!AudioProbeDirectPlayback.TryPlay(settleNullFormat, Pcm, 48000) &&
-                settleNullFormat.StartCalls == 1 && settleNullFormat.StopCalls == 1 &&
+                settleNullFormat.StartCalls == 1 && settleNullFormat.StopCalls == 0 &&
+                settleNullFormat.IsRunning &&
                 settleNullFormat.WrittenBytes == Pcm.Length + 16384,
                 "direct probe refuses disappearing PCM format during settle");
             // Ownership can also change after the final ring write but
