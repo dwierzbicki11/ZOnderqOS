@@ -799,6 +799,32 @@ internal static class AudioDirectProbeSmoke
                 waits++;
             };
 
+            // The final feeder readiness check reads Format once after settle.
+            // A reset on the following cleanup-only getter must not throw
+            // or Stop an output whose configuration can no longer be verified.
+            var resetDuringCleanupFormat = new Device();
+            int resetCleanupReads = 0;
+            bool resetCleanupPhase = false;
+            resetDuringCleanupFormat.OnFormatRead = () =>
+            {
+                if (resetCleanupPhase && ++resetCleanupReads == 2)
+                    resetDuringCleanupFormat.ThrowOnFormatRead = true;
+            };
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "cleanup format reset test settles once");
+                resetCleanupPhase = true;
+            };
+            check(AudioProbeDirectPlayback.TryPlay(resetDuringCleanupFormat, Pcm, 48000) &&
+                resetCleanupReads == 2 && resetDuringCleanupFormat.StopCalls == 0 &&
+                resetDuringCleanupFormat.IsRunning,
+                "cleanup Format exception skips unsafe Stop without crashing");
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "normal settle restored after cleanup reset");
+                waits++;
+            };
+
             var brokenStop = new Device { ThrowOnStop = true };
             bool stopThrew = false;
             try { AudioProbeDirectPlayback.TryPlay(brokenStop, Pcm, 48000); }
