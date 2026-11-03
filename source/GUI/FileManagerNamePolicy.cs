@@ -28,6 +28,9 @@ namespace ZonderqOS.GUI
                     c == '\u200B' || c == '\u200C' || c == '\u200D' ||
                     (c >= '\u2060' && c <= '\u2064') || c == '\uFEFF' ||
                     c == '\u2028' || c == '\u2029' ||
+                    // Hangul fillers render as blank glyphs in many fonts.
+                    c == '\u115F' || c == '\u1160' ||
+                    c == '\u3164' || c == '\uFFA0' ||
                     // Variation selectors change glyph presentation without
                     // changing the visible filename text in many GUI fonts.
                     (c >= '\uFE00' && c <= '\uFE0F') ||
