@@ -115,6 +115,23 @@ def validate(serial: str, pcap: bytes) -> str:
     # Reuse the already verified N1 raw TX proof, including its strict PCAP reader.
     n1 = validate_n1(serial, pcap)
     lines = [line.strip() for line in serial.replace("\r", "").splitlines()]
+    # The stock Cosmos scheduler can preempt DiagnosticLog.WriteString
+    # mid-character. Preserve fail-closed DHCP/PCAP validation while
+    # recovering only the observed, exact scheduler insertion pattern:
+    #   "... gatewa[SCHED] Tick 6 enabled=1\\n"
+    #   "y=10.0.2.2"
+    # Never join arbitrary lines or remove unknown diagnostic output.
+    for index in range(len(lines) - 1):
+        line = lines[index]
+        if not line.startswith("[NET3095-N2] DHCP=PASS ip="):
+            continue
+        match = re.fullmatch(
+            r"(\\[NET3095-N2\\] DHCP=PASS ip=10\\.0\\.2\\.[0-9]{1,3} "
+            r"mask=255\\.255\\.255\\.0 gatewa)"
+            r"\\[SCHED\\] Tick [0-9]+ enabled=1", line)
+        if match is not None and lines[index + 1] == "y=10.0.2.2":
+            lines[index] = match.group(1) + "y=10.0.2.2"
+            lines[index + 1] = ""
     if any("[NET3095-N2][FAIL]" in line for line in lines):
         raise ValueError("DHCP probe explicitly failed")
     lease_lines = [m for line in lines if (m := LEASE.fullmatch(line))]
@@ -242,6 +259,29 @@ def self_test() -> None:
         START, "[NET3095-N2] DHCP=PASS ip=10.0.2.15 mask=255.255.255.0 gateway=10.0.2.2"
     ])
     assert "PASS" in validate(serial, synthetic_capture(frames))
+    # Real QEMU run 41603954506: scheduler output split the lease
+    # inside "gateway". The PCAP still must prove the complete DORA.
+    interleaved = serial.replace(
+        "gateway=10.0.2.2",
+        "gatewa[SCHED] Tick 6 enabled=1\\ny=10.0.2.2")
+    assert "PASS" in validate(interleaved, synthetic_capture(frames))
+    for corrupted in (
+        interleaved.replace("enabled=1", "enabled=0"),
+        interleaved.replace("y=10.0.2.2", "y=10.0.2.99"),
+        interleaved.replace("Tick 6", "Tick bad"),
+    ):
+        try:
+            validate(corrupted, synthetic_capture(frames))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted unrecognized scheduler/lease interleave")
+    try:
+        validate(interleaved, synthetic_capture(frames[:-1]))
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted interleaved lease without DHCP ACK")
     # A fully self-consistent DORA for another address in the same subnet
     # must fail: the guest's fixed SLIRP profile only permits 10.0.2.15.
     alternate_ip = bytes([10, 0, 2, 16])
