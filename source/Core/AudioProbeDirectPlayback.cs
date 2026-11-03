@@ -170,6 +170,8 @@ namespace ZonderqOS.SystemCore
                 }
                 SampleDriverWritable(false);
                 bool fed;
+                // Keep the wait count in scope after the guarded feeder call.
+                int waits = 0;
                 try
                 {
                     fed = AudioProbeRingFeeder.FeedAndSettle(pcm,
@@ -219,7 +221,7 @@ namespace ZonderqOS.SystemCore
                         Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds);
                         SampleDriverWritable(false);
                     },
-                    out int waits);
+                    out waits);
                 }
                 catch (InvalidOperationException)
                 {
