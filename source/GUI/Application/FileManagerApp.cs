@@ -1518,7 +1518,21 @@ namespace ZonderqOS.GUI.Apps
 
                 // A refresh (F5) is also a read. Never bypass the ACL by
                 // scanning a path which the current session cannot enter.
-                if (!CanReadInSession(targetPath))
+                bool initialReadAllowed;
+                try
+                {
+                    initialReadAllowed = CanReadInSession(targetPath);
+                }
+                catch (Exception)
+                {
+                    // ACL metadata may fail on a detached FAT32 volume.
+                    // Never keep a cached listing for the same unreadable path.
+                    if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))
+                        ClearDeniedListing();
+                    status = "Cannot verify folder permissions";
+                    return false;
+                }
+                if (!initialReadAllowed)
                 {
                     // A denied attempt to navigate elsewhere must not erase
                     // the old readable directory. Only clear a snapshot when
@@ -1543,7 +1557,19 @@ namespace ZonderqOS.GUI.Apps
                 // verify permission again before publishing names into the
                 // visible and cached lists. A revoked current folder must
                 // never gain a fresh snapshot from an in-flight F5.
-                if (!CanReadInSession(targetPath))
+                bool finalReadAllowed;
+                try
+                {
+                    finalReadAllowed = CanReadInSession(targetPath);
+                }
+                catch (Exception)
+                {
+                    if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))
+                        ClearDeniedListing();
+                    status = "Cannot verify folder permissions";
+                    return false;
+                }
+                if (!finalReadAllowed)
                 {
                     if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))
                         ClearDeniedListing();
