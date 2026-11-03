@@ -16,7 +16,7 @@ class CompareTests(unittest.TestCase):
         self.assertEqual(result['first_boot_ms']['delta_ms'], -100)
         self.assertEqual(result['second_boot_ms']['change_percent'], -100/9)
 
-    def test_unpaired(self):
+    def test_paired_deltas_and_reversals(self):\n        before = [{"first_boot_ms": n, "second_boot_ms": n} for n in (100, 200, 300)]\n        after = [{"first_boot_ms": n, "second_boot_ms": n} for n in (90, 210, 280)]\n        result = module.compare(before, after)\n        self.assertEqual(result["first_boot_ms"]["paired_median_delta_ms"], -10)\n        self.assertEqual(result["first_boot_ms"]["paired_delta_range_ms"], [-20, 10])\n        self.assertEqual(result["first_boot_ms"]["faster_pairs"], 2)\n        self.assertEqual(result["first_boot_ms"]["slower_pairs"], 1)\n        self.assertEqual(result["first_boot_ms"]["equal_pairs"], 0)\n\n    def test_equal_pairs(self):\n        result = module.compare(self.before, self.before)\n        self.assertEqual(result["second_boot_ms"]["equal_pairs"], 3)\n        self.assertEqual(result["second_boot_ms"]["paired_median_delta_ms"], 0)\n\n    def test_unpaired(self):
         with self.assertRaises(ValueError): module.compare(self.before, self.after[:2])
 
     def test_too_few(self):
