@@ -34,8 +34,8 @@ namespace ZonderqOS.GUI
 
                 // Unicode noncharacters have no interoperable text meaning and
                 // should never become ambiguous VFAT directory entries.
-                if ((c >= '\\uFDD0' && c <= '\\uFDEF') ||
-                    c == '\\uFFFE' || c == '\\uFFFF')
+                if ((c >= '\uFDD0' && c <= '\uFDEF') ||
+                    c == '\uFFFE' || c == '\uFFFF')
                     return false;
 
                 if (char.IsControl(c) || c == '/' || c == '\\' || c == ':' ||
@@ -52,7 +52,7 @@ namespace ZonderqOS.GUI
                         return false;
                     // Supplementary-plane noncharacters end in FFFE/FFFF.
                     // Check the low surrogate of the valid pair.
-                    if (name[i + 1] == '\\uDFFE' || name[i + 1] == '\\uDFFF')
+                    if (name[i + 1] == '\uDFFE' || name[i + 1] == '\uDFFF')
                         return false;
                     i++;
                 }
