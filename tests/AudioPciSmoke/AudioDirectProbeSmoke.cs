@@ -814,13 +814,14 @@ internal static class AudioDirectProbeSmoke
                 brokenStart.StopCalls == 1 && !brokenStart.IsRunning,
                 "failed HDA Start still invokes Stop in finally");
 
+            // The diagnostic catches InvalidOperationException from Write as
+            // a failed PCM operation, rather than crashing the shell. Cleanup
+            // must still Stop the unclaimed, unchanged HDA stream.
             var brokenWrite = new Device { ThrowOnWrite = true };
-            threw = false;
-            try { AudioProbeDirectPlayback.TryPlay(brokenWrite, Pcm, 48000); }
-            catch (InvalidOperationException) { threw = true; }
-            check(threw && brokenWrite.StartCalls == 1 &&
+            bool writeResult = AudioProbeDirectPlayback.TryPlay(brokenWrite, Pcm, 48000);
+            check(!writeResult && brokenWrite.StartCalls == 1 &&
                 brokenWrite.StopCalls == 1 && !brokenWrite.IsRunning,
-                "failed HDA Write still invokes Stop in finally");
+                "failed HDA Write returns failure and invokes Stop in finally");
 
             waits = 0;
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
