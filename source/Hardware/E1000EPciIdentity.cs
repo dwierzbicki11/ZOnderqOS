@@ -78,8 +78,12 @@ namespace ZonderqOS.Hardware
             ushort status = config.Read16(bus, slot, function, 0x06);
             if ((status & 0x0010) == 0)
             {
-                signature = status;
-                return true;
+                // PCI STATUS error flags (master/target abort, parity) are
+                // asynchronous W1C diagnostics, not an IRQ routing mode.
+                // A transient error must not invalidate an unchanged INTx
+                // route. Only CAP_LIST controls whether capabilities exist.
+                signature = 0;
+                return (config.Read16(bus, slot, function, 0x06) & 0x0010) == 0;
             }
 
             byte first = config.Read8(bus, slot, function, 0x34);
@@ -181,10 +185,15 @@ namespace ZonderqOS.Hardware
                 }
                 pointer = next;
             }
-            if (config.Read16(bus, slot, function, 0x06) != status ||
+            // Compare only STATUS.CAP_LIST. Other STATUS bits may change
+            // independently as the device reports recoverable PCI errors.
+            // They must not create false IRQ-route instability; a changed
+            // CAP_LIST bit or capability pointer still fails closed.
+            if ((config.Read16(bus, slot, function, 0x06) & 0x0010) !=
+                    (status & 0x0010) ||
                 config.Read8(bus, slot, function, 0x34) != first)
                 return false;
-            signature = hash ^ ((ulong)status << 48);
+            signature = hash ^ ((ulong)(status & 0x0010) << 48);
             return true;
         }
 

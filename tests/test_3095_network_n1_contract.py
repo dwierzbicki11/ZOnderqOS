@@ -53,6 +53,12 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("(pmcsr & 0x0003) != 0", pci)  # reject D1/D2/D3hot
         self.assertIn("control = (ushort)(pmcsr & 0x0003)", pci)
         self.assertIn("finalMode != initialMode", pci)
+        # STATUS error bits are volatile W1C diagnostics, not IRQ mode.
+        # The real C# fixture exercises stable CAP_LIST with changing
+        # error flags, while CAP_LIST flips must still fail closed.
+        self.assertIn("(status & 0x0010) << 48", pci)
+        self.assertIn("(status & 0x0010) << 48", pci)
+        self.assertIn("ChangeErrorStatusOnSecondRead", (ROOT / "tests/PciMetadataSmoke/Program.cs").read_text())
         self.assertIn("(type == 0x04u && (address >> 52) != 0)", pci)  # x64 physical-address limit
         # Read-only legacy INTx metadata is a prerequisite for QEMU's
         # legacy IRQ trace, never a guest ISR invocation counter.

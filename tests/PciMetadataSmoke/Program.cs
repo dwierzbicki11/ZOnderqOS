@@ -147,6 +147,20 @@ var irqCaps = new FakeE1000EPciConfig { Status = 0x0010 };
 Check(E1000EPciIdentity.TryReadLegacyIrqRoute(irqCaps, out irqLine, out irqPin) &&
       irqLine == 11 && irqPin == 1,
     "Disabled MSI and MSI-X must preserve a valid legacy INTx route");
+// PCI STATUS W1C error bits can change asynchronously. The routing
+// capability-list bit and the MSI/MSI-X enable bits are what matter.
+// Exercise both the no-capability and capability-list paths in real C#.
+foreach (ushort status in new ushort[] { 0x0000, 0x0010, 0x2010 })
+{
+    var volatileStatus = new FakeE1000EPciConfig {
+        Status = status, ChangeErrorStatusOnSecondRead = true
+    };
+    Check(E1000EPciIdentity.TryReadLegacyIrqRoute(
+              volatileStatus, out irqLine, out irqPin) &&
+          irqLine == 11 && irqPin == 1,
+        "Changing PCI STATUS error bits must not invalidate a stable INTx route");
+}
+Console.WriteLine("[NET3095-E1000E-IRQ-STATUS] PASS C# volatile PCI STATUS error bits ignored (synthetic)");
 foreach (Action<FakeE1000EPciConfig> corrupt in new Action<FakeE1000EPciConfig>[] {
     x => x.MsiControl = 0x0001, // MSI enable
     x => x.MsiXControl = 0x8000, // MSI-X enable
@@ -773,6 +787,7 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
     public bool ChangePmStateOnSecondRead { get; set; }
     public bool ChangePmPmeOnSecondRead { get; set; }
     public bool ChangeStatusOnSecondRead { get; set; }
+    public bool ChangeErrorStatusOnSecondRead { get; set; }
     public bool ChangeCapabilityPointerOnSecondRead { get; set; }
     public bool EnableMsiAfterFirstModeScan { get; set; }
     public bool ThrowOnRead { get; set; }
@@ -833,6 +848,17 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             ? (ushort)(Bar0High ^ 1u) : (ushort)Bar0High;
     }
 
+    private ushort ReadStatus()
+    {
+        statusReads++;
+        ushort observed = Status;
+        if (statusReads > 1 && ChangeStatusOnSecondRead)
+            observed ^= 0x0010; // CAP_LIST changed: must fail closed
+        if (statusReads > 1 && ChangeErrorStatusOnSecondRead)
+            observed ^= 0x2000; // Received Master Abort: W1C status only
+        return observed;
+    }
+
     public ushort Read16(byte bus, byte slot, byte function, byte offset)
     {
         CheckTarget(bus, slot, function);
@@ -842,8 +868,7 @@ sealed class FakeE1000EPciConfig : IPciConfigAccessor
             0x02 => ++deviceReads > 1 && ChangeDeviceOnSecondRead
                 ? (ushort)(DeviceId ^ 1) : DeviceId,
             0x04 => ReadCommand(),
-            0x06 => ++statusReads > 1 && ChangeStatusOnSecondRead
-                ? (ushort)(Status ^ 0x0010) : Status,
+            0x06 => ReadStatus(),
             0x42 => ++msiControlReads > 1 && EnableMsiAfterFirstModeScan
                 ? (ushort)(MsiControl | 1) : MsiControl,
             0x4A => MsiXControl, // malformed overlapping MSI-X test
