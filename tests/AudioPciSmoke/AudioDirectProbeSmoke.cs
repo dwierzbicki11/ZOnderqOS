@@ -34,12 +34,14 @@ namespace Cosmos.Kernel.System.Audio
         public uint SampleRate = 48000;
         private HostAudioFormat _format = new HostAudioFormat(2, 2);
         public Action OnFormatRead;
+        public bool ThrowOnFormatRead;
         public HostAudioFormat Format
         {
             get
             {
                 HostAudioFormat snapshot = _format;
                 OnFormatRead?.Invoke();
+                if (ThrowOnFormatRead) throw new InvalidOperationException("simulated codec reset during Format");
                 return snapshot;
             }
             set => _format = value;
@@ -159,6 +161,14 @@ internal static class AudioDirectProbeSmoke
             formatWithdrawnOnRead.StopCalls == 0 &&
             formatWithdrawnOnRead.WrittenBytes == 0,
             "direct probe snapshots format once and catches drift on pre-Start recheck");
+
+        // Format can fail when a codec resets during a public getter.
+        // This must fail closed without starting or stopping the device.
+        var failedFormatRead = new Device { ThrowOnFormatRead = true };
+        check(!AudioProbeDirectPlayback.TryPlay(failedFormatRead, Pcm, 48000) &&
+            failedFormatRead.StartCalls == 0 && failedFormatRead.StopCalls == 0 &&
+            failedFormatRead.WrittenBytes == 0,
+            "HDA format getter failure refuses playback without touching controller");
 
         var withdrawnOnFormatRead = new Device();
         withdrawnOnFormatRead.OnFormatRead = () => withdrawnOnFormatRead.IsWithdrawn = true;
