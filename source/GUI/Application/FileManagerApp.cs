@@ -1550,7 +1550,6 @@ namespace ZonderqOS.GUI.Apps
                 List<FileEntry> scanned = new List<FileEntry>();
                 Add(scanned, Directory.GetDirectories(targetPath), true);
                 Add(scanned, Directory.GetFiles(targetPath), false);
-                Sort(scanned);
 
                 // ACLs may change while FAT32 enumerates a large directory.
                 // The initial check only protects the start of the scan:
@@ -1576,6 +1575,11 @@ namespace ZonderqOS.GUI.Apps
                     status = "Permission denied: cannot list folder";
                     return false;
                 }
+
+                // Sorting can be expensive for large FAT32 directories. Do not
+                // spend CPU sorting names that a revoked ACL forbids publishing.
+                // The second permission check above must precede this work.
+                Sort(scanned);
 
                 // An explicit F5 or a successful paste should not jump back
                 // to the first tile in a large directory. Compare the actual
