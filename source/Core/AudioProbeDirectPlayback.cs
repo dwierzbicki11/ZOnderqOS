@@ -287,6 +287,12 @@ namespace ZonderqOS.SystemCore
                             Console.WriteLine("[AUDIO] 1MS cleanup: player claimed output; Stop skipped.");
                         else if (stillSelected != null && !stillSelected())
                             Console.WriteLine("[AUDIO] 1MS cleanup: output is no longer primary; Stop skipped.");
+                        else if (output.Name != "hda" || output.DriverName != "HdAudioDriver" ||
+                            output.SampleRate != sampleRate)
+                            // A replaced controller must not have its Format getter
+                            // called merely for cleanup: it may belong to another
+                            // driver or trigger side effects during inspection.
+                            Console.WriteLine("[AUDIO] 1MS cleanup: HDA identity changed; Stop skipped.");
                         else
                         {
                             // Read Format exactly once: two independent getter
