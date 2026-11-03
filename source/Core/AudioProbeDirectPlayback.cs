@@ -70,6 +70,7 @@ namespace ZonderqOS.SystemCore
             }
 
             bool started = false;
+            bool startCompleted = false;
             try
             {
                 // Recheck after acquiring our local diagnostic guard. A
@@ -80,6 +81,7 @@ namespace ZonderqOS.SystemCore
                 // Mark cleanup as required before invoking the driver.
                 started = true;
                 output.Start();
+                startCompleted = true;
                 // Start() can reconfigure a codec or lose the output. Check
                 // again before the FIRST write, then before every subsequent
                 // write and after the final settle wait. A format drift must
@@ -281,7 +283,7 @@ namespace ZonderqOS.SystemCore
                         // claimed by another player.
                         if (output.IsWithdrawn)
                             Console.WriteLine("[AUDIO] 1MS cleanup: output withdrawn; Stop skipped.");
-                        else if (!output.IsRunning)
+                        else if (startCompleted && !output.IsRunning)
                             Console.WriteLine("[AUDIO] 1MS cleanup: output already stopped; Stop skipped.");
                         else if (output.Player != null)
                             Console.WriteLine("[AUDIO] 1MS cleanup: player claimed output; Stop skipped.");
@@ -301,7 +303,7 @@ namespace ZonderqOS.SystemCore
                             // itself trigger a withdrawal or reconfiguration.
                             var cleanupFormat = output.Format;
                             if (cleanupFormat.Channels != 2 || cleanupFormat.ChannelSize != 2 ||
-                                output.IsWithdrawn || !output.IsRunning || output.Player != null ||
+                                output.IsWithdrawn || (startCompleted && !output.IsRunning) || output.Player != null ||
                                 output.Name != "hda" || output.DriverName != "HdAudioDriver" ||
                                 output.SampleRate != sampleRate ||
                                 (stillSelected != null && !stillSelected()))
