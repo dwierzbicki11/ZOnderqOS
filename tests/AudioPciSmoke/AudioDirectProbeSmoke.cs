@@ -825,6 +825,31 @@ internal static class AudioDirectProbeSmoke
                 waits++;
             };
 
+            // A Format getter can also reconfigure the sample rate during
+            // cleanup. Never Stop the stream after this identity drift.
+            var rateChangedDuringCleanup = new Device();
+            int cleanupRateReads = 0;
+            bool cleanupRatePhase = false;
+            rateChangedDuringCleanup.OnFormatRead = () =>
+            {
+                if (cleanupRatePhase && ++cleanupRateReads == 2)
+                    rateChangedDuringCleanup.SampleRate = 44100;
+            };
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "cleanup rate drift test settles once");
+                cleanupRatePhase = true;
+            };
+            check(AudioProbeDirectPlayback.TryPlay(rateChangedDuringCleanup, Pcm, 48000) &&
+                cleanupRateReads == 2 && rateChangedDuringCleanup.StopCalls == 0 &&
+                rateChangedDuringCleanup.IsRunning,
+                "cleanup Format getter sample-rate drift skips unsafe Stop");
+            Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
+            {
+                check(ms == 86, "normal settle restored after cleanup rate drift");
+                waits++;
+            };
+
             var brokenStop = new Device { ThrowOnStop = true };
             bool stopThrew = false;
             try { AudioProbeDirectPlayback.TryPlay(brokenStop, Pcm, 48000); }
