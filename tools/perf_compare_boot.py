@@ -23,7 +23,15 @@ def compare(before, after):
         new = median(item[key] for item in after)
         result[key] = {"before_median_ms": old, "after_median_ms": new,
                        "delta_ms": new - old, "change_percent": (new - old) * 100 / old}
-    # Pairwise deltas expose run-to-run reversals hidden by a median-of-medians.\n    for key in ("first_boot_ms", "second_boot_ms"):\n        deltas = [new[key] - old[key] for old, new in zip(before, after)]\n        result[key]["paired_median_delta_ms"] = median(deltas)\n        result[key]["faster_pairs"] = sum(delta < 0 for delta in deltas)\n        result[key]["slower_pairs"] = sum(delta > 0 for delta in deltas)\n        result[key]["equal_pairs"] = sum(delta == 0 for delta in deltas)\n        result[key]["paired_delta_range_ms"] = [min(deltas), max(deltas)]\n    return result
+    # Pairwise deltas expose run-to-run reversals hidden by a median-of-medians.
+    for key in ("first_boot_ms", "second_boot_ms"):
+        deltas = [new[key] - old[key] for old, new in zip(before, after)]
+        result[key]["paired_median_delta_ms"] = median(deltas)
+        result[key]["faster_pairs"] = sum(delta < 0 for delta in deltas)
+        result[key]["slower_pairs"] = sum(delta > 0 for delta in deltas)
+        result[key]["equal_pairs"] = sum(delta == 0 for delta in deltas)
+        result[key]["paired_delta_range_ms"] = [min(deltas), max(deltas)]
+    return result
 
 
 def main():
