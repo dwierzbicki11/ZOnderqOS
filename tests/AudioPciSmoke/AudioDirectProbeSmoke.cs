@@ -476,9 +476,14 @@ internal static class AudioDirectProbeSmoke
             var startRateDrift = new Device();
             startRateDrift.OnStart = () => startRateDrift.SampleRate = 44100;
             check(!AudioProbeDirectPlayback.TryPlay(startRateDrift, Pcm, 48000) &&
-                startRateDrift.StartCalls == 1 && startRateDrift.StopCalls == 1 &&
-                startRateDrift.WrittenBytes == 0 && !startRateDrift.IsRunning,
+                startRateDrift.StartCalls == 1 && startRateDrift.StopCalls == 0 &&
+                startRateDrift.WrittenBytes == 0 && startRateDrift.IsRunning,
                 "direct probe refuses sample-rate drift during Start before PCM write");
+
+            // A reconfigured output may now belong to a different playback
+            // configuration. Cleanup must not Stop its new sample rate.
+            check(startRateDrift.SampleRate == 44100,
+                "reconfigured sample rate is preserved after probe abort");
 
             var startFormatDrift = new Device();
             startFormatDrift.OnStart = () => startFormatDrift.Format =
@@ -551,7 +556,7 @@ internal static class AudioDirectProbeSmoke
             };
             check(!AudioProbeDirectPlayback.TryPlay(rateChangedDuringReady, Pcm, 48000) &&
                 rateFormatReads == 4 && rateChangedDuringReady.StartCalls == 1 &&
-                rateChangedDuringReady.StopCalls == 1 &&
+                rateChangedDuringReady.StopCalls == 0 &&
                 rateChangedDuringReady.WrittenBytes == 0,
                 "rate drift during final format getter aborts before first PCM write");
 
