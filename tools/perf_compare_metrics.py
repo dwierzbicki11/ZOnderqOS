@@ -12,12 +12,21 @@ from pathlib import Path
 from statistics import median
 
 
+def environment_fingerprint(value):
+    """Reject non-JSON/nonfinite settings and preserve JSON scalar types."""
+    try:
+        return json.dumps(value, sort_keys=True, allow_nan=False, separators=(',', ':'))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise ValueError('invalid environment/workload') from exc
+
+
 def compare(before, after):
     if not isinstance(before, list) or not isinstance(after, list) or len(before) < 3 or len(before) != len(after):
         raise ValueError('at least three paired runs required')
     seen = set()
     metrics = None
     environment = None
+    environment_key = None
     for index, (old, new) in enumerate(zip(before, after)):
         for record in (old, new):
             if not isinstance(record, dict) or not isinstance(record.get('run_id'), str) or not record['run_id'].strip():
@@ -28,9 +37,11 @@ def compare(before, after):
                 raise ValueError('nonempty metrics required')
             if any(not isinstance(k, str) or not k or type(v) not in (int, float) or not math.isfinite(v) or v < 0 for k, v in record['metrics'].items()):
                 raise ValueError('invalid metric')
+            record_environment_key = environment_fingerprint(record['environment'])
             if environment is None:
                 environment = record['environment']
-            if record['environment'] != environment:
+                environment_key = record_environment_key
+            if record_environment_key != environment_key:
                 raise ValueError('environment/workload mismatch')
             if metrics is None:
                 metrics = set(record['metrics'])
