@@ -40,7 +40,7 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
         match = TX.fullmatch(line)
         if match:
             # A null descriptor buffer address is not packet DMA evidence.
-            if int(match.group(1), 16) != 0:
+            if 0 < int(match.group(1), 16) <= 0xFFFFFFFFFFFFFFFF:
                 tx += 1
             continue
         match = RX_BUFFER.fullmatch(line)
@@ -128,6 +128,17 @@ def self_test() -> None:
     assert count_dma(tx * 128 + write + commit.replace(
         "(ICR causes 128)", "(queue 1)")) == (128, 1, 64, 1)
     assert count_dma(tx * 128 + commit + write) == (128, 1, 64, 0)
+    # QEMU prints descriptor buffer addresses in hexadecimal. Reject values
+    # outside the unsigned 64-bit DMA address space rather than counting
+    # an impossible device fetch as real TX evidence.
+    oversized_tx = tx.replace("0x7f001000", "0x10000000000000000")
+    assert count_dma(oversized_tx * 128 + write + commit) == (0, 1, 64, 1)
+    try:
+        report(oversized_tx * 128 + write + commit)
+    except ValueError as exc:
+        assert "TX descriptor reads 0 < 128" in str(exc)
+    else:
+        raise AssertionError("accepted out-of-range TX descriptor DMA address")
     # A malformed trace must not claim DMA beyond the 64-bit guest
     # physical address space. Offset and length are decimal trace fields.
     for malformed in (
