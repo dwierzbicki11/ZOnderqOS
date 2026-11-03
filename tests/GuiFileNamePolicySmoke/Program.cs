@@ -81,9 +81,9 @@ internal static class Program
             "COM\u00B9", "com\u00B2.txt", "LPT\u00B3", "lpt\u00B9.dat",
             "bad\u007fname", "bad\u0085name", "\uD800", "\uDC00",
             "broken\uD800name", "broken\uDC00name",
-            "nonchar\\uFDD0", "nonchar\\uFDEF", "nonchar\\uFFFE",
-            "nonchar\\uFFFF", "supplementary\\uDB7F\\uDFFE",
-            "supplementary\\uDB7F\\uDFFF",
+            "nonchar\uFDD0", "nonchar\uFDEF", "nonchar\uFFFE",
+            "nonchar\uFFFF", "supplementary\uDB7F\uDFFE",
+            "supplementary\uDB7F\uDFFF",
             new string('a', 256)
         })
             Expect(value, false);
