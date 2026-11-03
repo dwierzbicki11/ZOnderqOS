@@ -3735,5 +3735,20 @@ class FileManagerRevokedDialog3095(unittest.TestCase):
         self.assertIn("ClearDeniedListing();", filtering)
 
 
+
+class FileManagerNavigationRollback3095(unittest.TestCase):
+    def test_navigation_exception_restores_previous_location_and_filter(self):
+        navigation = FILE_MANAGER.split("private void NavigateTo(string path)", 1)[1].split(
+            "public override void HandleKeyboard", 1
+        )[0]
+        self.assertIn("string previousPath = currentPath;", navigation)
+        self.assertIn("string previousSearch = searchText;", navigation)
+        catch = navigation.split("catch (Exception ex)", 1)[1]
+        self.assertIn("currentPath = previousPath;", catch)
+        self.assertIn("searchText = previousSearch;", catch)
+        self.assertLess(catch.index("currentPath = previousPath;"),
+                        catch.index('status = "Navigation error: " + ex.Message;'))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
