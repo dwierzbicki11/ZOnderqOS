@@ -138,6 +138,21 @@ checks["refresh rechecks ACL after scan before publishing entries"] = (
         refresh_body.index("entries.AddRange(scanned);")
 )
 
+# The ACL can change during a long merge sort, not only during FAT32
+# enumeration. A final permission check must guard the actual publication.
+checks["refresh rechecks ACL after sorting before publishing"] = (
+    "publishReadAllowed = CanReadInSession(targetPath);" in refresh_body
+    and refresh_body.index("Sort(scanned);") <
+        refresh_body.index("publishReadAllowed = CanReadInSession(targetPath);") <
+        refresh_body.index("entries.AddRange(scanned);")
+    and "if (!publishReadAllowed)" in refresh_body
+    and "ClearDeniedListing();" in refresh_body[
+        refresh_body.index("if (!publishReadAllowed)"):
+        refresh_body.index("// An explicit F5")
+    ]
+    and refresh_body.count('status = "Cannot verify folder permissions";') >= 3
+)
+
 checks["refresh ACL metadata failures invalidate only matching cached listing"] = (
     refresh_body.count('status = "Cannot verify folder permissions";') >= 2
     and refresh_body.count("catch (Exception)") >= 2
