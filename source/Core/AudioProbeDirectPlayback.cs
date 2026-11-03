@@ -256,7 +256,8 @@ namespace ZonderqOS.SystemCore
                         else if (stillSelected != null && !stillSelected())
                             Console.WriteLine("[AUDIO] 1MS cleanup: output is no longer primary; Stop skipped.");
                         else if (output.Name != "hda" || output.DriverName != "HdAudioDriver" ||
-                            output.SampleRate != sampleRate)
+                            output.SampleRate != sampleRate ||
+                            output.Format.Channels != 2 || output.Format.ChannelSize != 2)
                             Console.WriteLine("[AUDIO] 1MS cleanup: HDA identity or rate changed; Stop skipped.");
                         else
                             output.Stop();
