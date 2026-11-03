@@ -126,9 +126,9 @@ def validate(serial: str, pcap: bytes) -> str:
         if not line.startswith("[NET3095-N2] DHCP=PASS ip="):
             continue
         match = re.fullmatch(
-            r"(\\[NET3095-N2\\] DHCP=PASS ip=10\\.0\\.2\\.[0-9]{1,3} "
-            r"mask=255\\.255\\.255\\.0 gatewa)"
-            r"\\[SCHED\\] Tick [0-9]+ enabled=1", line)
+            r"(\[NET3095-N2\] DHCP=PASS ip=10\.0\.2\.[0-9]{1,3} "
+            r"mask=255\.255\.255\.0 gatewa)"
+            r"\[SCHED\] Tick [0-9]+ enabled=1", line)
         if match is not None and lines[index + 1] == "y=10.0.2.2":
             lines[index] = match.group(1) + "y=10.0.2.2"
             lines[index + 1] = ""
