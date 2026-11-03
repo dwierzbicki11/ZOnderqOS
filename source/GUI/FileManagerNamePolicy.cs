@@ -74,24 +74,32 @@ namespace ZonderqOS.GUI
             // as CON.txt and LPT1 are reserved there even with extensions;
             // reject them rather than creating files that cannot be managed
             // consistently after moving the volume between systems.
+            // Inspect the reserved DOS device stem in place. Avoid allocating
+            // Substring/TrimEnd for every name typed in the file manager.
             int dot = name.IndexOf('.');
-            string stem = (dot >= 0 ? name.Substring(0, dot) : name).TrimEnd(' ');
-            if (string.Equals(stem, "CON", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(stem, "PRN", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(stem, "AUX", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(stem, "NUL", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(stem, "CONIN$", StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(stem, "CONOUT$", StringComparison.OrdinalIgnoreCase))
+            int stemEnd = dot >= 0 ? dot : name.Length;
+            while (stemEnd > 0 && name[stemEnd - 1] == ' ')
+                stemEnd--;
+            if ((stemEnd == 3 &&
+                 (PrefixEquals(name, "CON") || PrefixEquals(name, "PRN") ||
+                  PrefixEquals(name, "AUX") || PrefixEquals(name, "NUL"))) ||
+                (stemEnd == 6 &&
+                 (PrefixEquals(name, "CONIN$") || PrefixEquals(name, "CONOUT$"))))
                 return false;
             // Windows also treats superscript ¹²³ as device numbers.
-            if (stem.Length == 4 &&
-                ((stem[3] >= '1' && stem[3] <= '9') ||
-                 stem[3] == '\u00B9' || stem[3] == '\u00B2' || stem[3] == '\u00B3') &&
-                (stem.StartsWith("COM", StringComparison.OrdinalIgnoreCase) ||
-                 stem.StartsWith("LPT", StringComparison.OrdinalIgnoreCase)))
+            if (stemEnd == 4 &&
+                ((name[3] >= '1' && name[3] <= '9') ||
+                 name[3] == '\u00B9' || name[3] == '\u00B2' || name[3] == '\u00B3') &&
+                (PrefixEquals(name, "COM") || PrefixEquals(name, "LPT")))
                 return false;
 
             return true;
+        }
+
+        private static bool PrefixEquals(string name, string prefix)
+        {
+            return string.Compare(name, 0, prefix, 0, prefix.Length,
+                StringComparison.OrdinalIgnoreCase) == 0;
         }
 
         // FAT32 names are case-insensitive. Some host/runtime adapters may
