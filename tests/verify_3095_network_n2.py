@@ -214,8 +214,11 @@ def fake_dhcp(typ: int, xid: int, mac: bytes, ip: bytes, requested: bytes | None
     bootp[28:34] = mac
     bootp[236:240] = bytes.fromhex("63825363")
     options = bytearray([53, 1, typ])
-    if not client:
+    if not client or (typ == 3 and server_id != SERVER):
+        # REQUEST normally omits option 54 in this fixture; explicitly
+        # include it when testing rejection of a foreign DHCP server.
         options += bytes([54, 4]) + server_id
+    if not client:
         options += bytes([1, 4]) + subnet
         options += bytes([3, 4]) + gateway
         options += bytes([6, 4]) + dns_proxy
