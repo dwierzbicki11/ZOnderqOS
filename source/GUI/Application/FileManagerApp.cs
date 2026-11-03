@@ -1585,13 +1585,15 @@ namespace ZonderqOS.GUI.Apps
                 // equality cannot restore the old selection. A removed file
                 // remains unselected; never select a different tile merely
                 // because it now occupies the same index.
+                // FAT32 is case-insensitive. A case-only rename during F5
+                // must not drop the selected tile or the viewport anchor.
                 if (!string.IsNullOrEmpty(selectedPath) || !string.IsNullOrEmpty(firstVisiblePath))
                 {
                     for (int i = 0; i < entries.Count; i++)
                     {
-                        if (string.Equals(entries[i].FullPath, selectedPath, StringComparison.Ordinal))
+                        if (string.Equals(entries[i].FullPath, selectedPath, StringComparison.OrdinalIgnoreCase))
                             selectedIndex = i;
-                        if (string.Equals(entries[i].FullPath, firstVisiblePath, StringComparison.Ordinal))
+                        if (string.Equals(entries[i].FullPath, firstVisiblePath, StringComparison.OrdinalIgnoreCase))
                             scrollIndex = i;
                     }
                 }
