@@ -360,10 +360,8 @@ def self_test() -> None:
             # Replace the final END marker with an option without a length.
             changed[-1] = 54
         else:
-            # The final option claims a value beyond the BOOTP payload.
-            changed[-1] = 0
-            changed[-2] = 54
-            changed[-1] = 8
+            # The subnet option claims a value beyond the BOOTP payload.
+            changed[option_start + 4] = 250
         try:
             validate(serial, synthetic_capture(frames[:2] + [bytes(changed)] + frames[2:]))
         except ValueError:
