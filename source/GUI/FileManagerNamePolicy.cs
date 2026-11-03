@@ -105,8 +105,14 @@ namespace ZonderqOS.GUI
                         break;
                     }
                 }
-                string existing = path.Substring(slash + 1, end - slash - 1);
-                if (string.Equals(existing, name, StringComparison.OrdinalIgnoreCase))
+                // Compare the final path segment in place. Creating a file
+                // in a large FAT32 directory used to allocate one substring
+                // for every existing entry, even when no name matched.
+                // Length equality prevents a prefix ("note" vs "notes")
+                // from being mistaken for a collision.
+                if (end - slash - 1 == name.Length &&
+                    string.Compare(path, slash + 1, name, 0, name.Length,
+                        StringComparison.OrdinalIgnoreCase) == 0)
                     return true;
             }
             return false;
