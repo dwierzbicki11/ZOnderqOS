@@ -50,6 +50,12 @@ namespace ZonderqOS.GUI
                     if (i + 1 >= name.Length || name[i + 1] < '\uDC00' ||
                         name[i + 1] > '\uDFFF')
                         return false;
+                    // Plane-14 tag characters (U+E0000..U+E007F) are
+                    // invisible in the desktop font and can spoof filenames.
+                    // They encode as DB40 DC00..DC7F in UTF-16.
+                    if (c == '\uDB40' && name[i + 1] >= '\uDC00' &&
+                        name[i + 1] <= '\uDC7F')
+                        return false;
                     // Supplementary-plane noncharacters end in FFFE/FFFF.
                     // Check the low surrogate of the valid pair.
                     if (name[i + 1] == '\uDFFE' || name[i + 1] == '\uDFFF')
