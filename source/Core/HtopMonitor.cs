@@ -418,7 +418,14 @@ namespace ZonderqOS.SystemCore
             // Release names/lines from slots that disappeared. Do this only
             // when the scheduler shrinks, never on each steady refresh.
             if (slots < lastRowSlotCount)
-                Array.Clear(cachedThreadRows, slots, lastRowSlotCount - slots);
+            {
+                // A removed scheduler slot must lose both its displayed row
+                // and its previous runtime sample. Otherwise reusing the
+                // same TID after a shrink can report a fictitious CPU spike.
+                int removed = lastRowSlotCount - slots;
+                Array.Clear(cachedThreadRows, slots, removed);
+                Array.Clear(previousThreads, slots, removed);
+            }
             lastRowSlotCount = slots;
             rows.Clear();
             ulong elapsedNs = elapsed > 0 && Stopwatch.Frequency > 0
