@@ -42,8 +42,8 @@ class MetricComparisonTests(unittest.TestCase):
                 module.compare(self.before, changed)
 
     def test_reject_nonfinite_derived_values(self):
-        # Every input is finite, but subtraction or percentage scaling can overflow.
-        for before, after in ((1e308, 0.0), (1e-308, 1e308)):
+        # Every input is finite, but percentage scaling can overflow.
+        for before, after in ((1e-308, 1e308), (1e-300, 1e100)):
             old = [dict(row, metrics={'frame_ms': before}) for row in self.before]
             new = [dict(row, metrics={'frame_ms': after}) for row in self.after]
             with self.subTest(before=before, after=after), self.assertRaises(ValueError):
