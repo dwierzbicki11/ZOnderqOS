@@ -92,8 +92,11 @@ def dhcp_frame(frame: bytes):
             raise ValueError("duplicate DHCP option")
         opts[kind] = bootp[at:at + length]
         at += length
+    # Once the DHCP magic cookie and option stream were recognized, a
+    # missing END or malformed message-type option is corrupt wire evidence.
+    # Do not silently skip it and accept a later valid retransmission.
     if not end or len(opts.get(53, b"")) != 1:
-        return None
+        raise ValueError("missing DHCP END or invalid message-type option")
     typ = opts[53][0]
     if typ not in (1, 2, 3, 5):
         return None
@@ -351,7 +354,8 @@ def self_test() -> None:
     # retransmission is valid. Corrupt only option bytes, not IP/UDP headers.
     # These fixtures use legal zero UDP checksums and unchanged IP lengths.
     option_start = 14 + 20 + 8 + 240
-    for malformed in ("duplicate", "truncated_length", "truncated_value"):
+    for malformed in ("duplicate", "truncated_length", "truncated_value",
+                      "missing_end", "invalid_message_type_length"):
         changed = bytearray(frames[2])
         if malformed == "duplicate":
             # Replace the OFFER's option 1 (subnet) with a second option 53.
@@ -359,9 +363,13 @@ def self_test() -> None:
         elif malformed == "truncated_length":
             # Replace the final END marker with an option without a length.
             changed[-1] = 54
-        else:
+        elif malformed == "truncated_value":
             # The subnet option claims a value beyond the BOOTP payload.
             changed[option_start + 4] = 250
+        elif malformed == "missing_end":
+            changed[-1] = 0  # PAD is legal, but END is mandatory.
+        else:
+            changed[option_start + 1] = 0  # Message type must be one byte.
         try:
             validate(serial, synthetic_capture(frames[:2] + [bytes(changed)] + frames[2:]))
         except ValueError:
