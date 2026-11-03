@@ -45,6 +45,29 @@ checks["revoked create directory invalidates its own stale listing"] = (
     and 'dialogName = "";' in body
 )
 
+# ACL may change while a slow FAT32 directory scan is in progress. The
+# second guard must run after collision enumeration but before either write.
+# This is source-level ordering, not an atomic ACL/FAT32 integration test.
+checks["create rechecks ACL after slow collision scan"] = (
+    "bool stillReadable = CanReadInSession(currentPath);" in body
+    and body.index("Directory.GetDirectories(currentPath)))") <
+        body.index("bool stillReadable = CanReadInSession(currentPath);")
+    and body.index("bool stillReadable = CanReadInSession(currentPath);") <
+        body.index("FileManagerFileCreation.CreateEmptyFile(path)")
+    and body.index("bool stillReadable = CanReadInSession(currentPath);") <
+        body.index("Directory.CreateDirectory(path)")
+    and body.count("PermissionManager.CanWrite(currentPath, user)") >= 2
+)
+checks["revoked create destination cannot mutate or retain stale listing"] = (
+    "if (!stillReadable &&" in body
+    and "ClearDeniedListing();" in body[body.index("bool stillReadable ="):]
+    and 'status = "Permission denied: destination changed during create";' in body
+    and body.index('status = "Permission denied: destination changed during create";') <
+        body.index("FileManagerFileCreation.CreateEmptyFile(path)")
+    and 'dialogMode = 0;\n                    dialogName = "";\n                    return;' in
+        body[body.index("bool stillReadable ="):body.index("if (dialogMode == 1)")]
+)
+
 # The non-root home guard must reject lexical traversal before trusting a
 # prefix. This is a source contract; host C# clipboard tests exercise the
 # actual traversal rejection with real temporary directories.
