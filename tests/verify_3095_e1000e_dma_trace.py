@@ -49,7 +49,8 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
                                                for n, part in enumerate(match.groups()))
             # QEMU packet-split descriptor slots are 0..3; ignore zero-length
             # writes and null guest physical addresses.
-            if index <= 3 and address != 0 and length > 0:
+            if (index <= 3 and address != 0 and length > 0
+                    and address + offset + length - 1 <= 0xFFFFFFFFFFFFFFFF):
                 writes += 1
                 pending_rx_writes += 1
                 rx_bytes += length
@@ -127,6 +128,20 @@ def self_test() -> None:
     assert count_dma(tx * 128 + write + commit.replace(
         "(ICR causes 128)", "(queue 1)")) == (128, 1, 64, 1)
     assert count_dma(tx * 128 + commit + write) == (128, 1, 64, 0)
+    # A malformed trace must not claim DMA beyond the 64-bit guest
+    # physical address space. Offset and length are decimal trace fields.
+    for malformed in (
+        write.replace("addr: 0x7f002000", "addr: 0xfffffffffffffff0"),
+        write.replace("offset: 0", "offset: 18446744073709551616"),
+        write.replace("length: 64", "length: 18446744073709551616"),
+    ):
+        assert count_dma(tx * 128 + malformed + commit) == (128, 0, 0, 0)
+        try:
+            report(tx * 128 + malformed + commit)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted out-of-range RX guest DMA address")
     for invalid in (
         "", tx * 127 + write + commit, tx * 128 + commit,
         tx * 128 + write, tx * 128 + write.replace("length: 64", "length: 0") + commit,
