@@ -500,7 +500,7 @@ while (( SECONDS - started < TIMEOUT )); do
         # evidence. Independent PCAP/serial/host gates remain mandatory;
         # neither DMA trace nor PCI IRQ notification proves guest ISR execution.
         python3 "$ROOT/tests/verify_3095_e1000e_dma_trace.py" \
-          "$LOG.stderr" --min-tx 128
+          "$LOG.stderr" --min-tx 128 --min-rx-commits 8
       fi
       if [[ "$LINK_CYCLE" == 1 ]]; then
         python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" --cycles "$LINK_CYCLES"

@@ -66,14 +66,18 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
     return tx, writes, rx_bytes, commits
 
 
-def report(stderr: str, min_tx: int = 128) -> str:
+def report(stderr: str, min_tx: int = 128, min_rx_commits: int = 1) -> str:
     if min_tx < 1:
         raise ValueError("minimum TX descriptor count must be positive")
+    if min_rx_commits < 1:
+        raise ValueError("minimum RX commit count must be positive")
     tx, writes, rx_bytes, commits = count_dma(stderr)
     if tx < min_tx:
         raise ValueError(f"QEMU TX descriptor reads {tx} < {min_tx}")
     if not writes or not rx_bytes or not commits:
         raise ValueError("missing QEMU RX guest-buffer DMA write or RX commit")
+    if commits < min_rx_commits:
+        raise ValueError(f"QEMU RX guest commits {commits} < {min_rx_commits}")
     return (f"[NET3095-E1000E-DMA-TRACE] PASS tx_desc={tx} "
             f"rx_buffer_writes={writes} rx_bytes={rx_bytes} rx_commits={commits}; "
             "QEMU descriptor/buffer evidence only, guest ISR UNPROVEN")
@@ -89,6 +93,16 @@ def self_test() -> None:
     assert count_dma(trace) == (128, 1, 64, 1)
     assert "PASS tx_desc=128" in report(trace)
     assert "PASS tx_desc=128" in report(trace, min_tx=128)
+    # N6 performs DHCP, ICMP, DNS and repeated TCP/HTTP receives. One
+    # RX completion could come from DHCP alone; the real N6 QEMU gate
+    # therefore requires multiple independent RX guest-memory commits.
+    assert "rx_commits=8" in report(trace * 8, min_rx_commits=8)
+    try:
+        report(trace * 7, min_rx_commits=8)
+    except ValueError as exc:
+        assert "RX guest commits 7 < 8" in str(exc)
+    else:
+        raise AssertionError("accepted insufficient N6 RX DMA completions")
     assert count_dma(tx * 128 + write + commit.replace("causes 128", "causes 0")) == (128, 1, 64, 1)
     assert count_dma(tx * 128 + write + commit.replace(
         "(ICR causes 128)", "(queue 0)")) == (128, 1, 64, 1)
@@ -115,12 +129,13 @@ def self_test() -> None:
     # Do not count events after the emulator has terminated.
     assert count_dma(trace + "qemu-system-x86_64: terminating on signal 15\n" + trace) == (128, 1, 64, 1)
     assert count_dma("unrelated e1000e_tx_descr 0x1 : 1 1\n") == (0, 0, 0, 0)
-    try:
-        report(trace, 0)
-    except ValueError:
-        pass
-    else:
-        raise AssertionError("accepted zero minimum TX count")
+    for min_tx, min_rx in ((0, 1), (128, 0), (128, -1)):
+        try:
+            report(trace, min_tx=min_tx, min_rx_commits=min_rx)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted invalid minimum DMA count")
     print("[NET3095-E1000E-DMA-CONTRACT] PASS synthetic trace parser tests only")
 
 
@@ -128,6 +143,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("stderr", nargs="?", type=Path)
     parser.add_argument("--min-tx", type=int, default=128)
+    parser.add_argument("--min-rx-commits", type=int, default=1)
     parser.add_argument("--self-test", action="store_true")
     args = parser.parse_args()
     if args.self_test:
@@ -136,6 +152,7 @@ if __name__ == "__main__":
         if args.stderr is None:
             parser.error("real QEMU stderr trace required")
         try:
-            print(report(args.stderr.read_text(errors="replace"), args.min_tx))
+            print(report(args.stderr.read_text(errors="replace"),
+                         args.min_tx, args.min_rx_commits))
         except (OSError, ValueError) as exc:
             parser.exit(1, f"[NET3095-E1000E-DMA-TRACE][FAIL] {exc}\n")
