@@ -110,6 +110,17 @@ internal static class Program
             Expect(device + " .txt", false);
             Expect(device.ToLowerInvariant() + "  .log", false);
         }
+        // CONOUT$ is seven characters (unlike six-character CONIN$).
+        // Guard the exact stem length and reject extensions/space padding.
+        Expect("CONOUT$", false);
+        Expect("conout$.txt", false);
+        Expect("ConOut$  .log", false);
+        Expect("CONIN$", false);
+        Expect("CONIN$.txt", false);
+        Expect("CONOUT", true);
+        Expect("CONOUT$X.txt", true);
+        Expect("CONIN$X.txt", true);
+        Expect("CONOUT$-backup.txt", true);
         Expect("COM0 .txt", true);
         Expect("LPT10 .txt", true);
 
