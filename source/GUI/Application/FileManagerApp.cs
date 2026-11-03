@@ -1585,17 +1585,35 @@ namespace ZonderqOS.GUI.Apps
                 // equality cannot restore the old selection. A removed file
                 // remains unselected; never select a different tile merely
                 // because it now occupies the same index.
-                // FAT32 is case-insensitive. A case-only rename during F5
-                // must not drop the selected tile or the viewport anchor.
+                // Prefer an exact path on case-sensitive virtual filesystems.
+                // If no exact match survives, accept a case-only rename on
+                // FAT32 without losing the selected tile or viewport anchor.
                 if (!string.IsNullOrEmpty(selectedPath) || !string.IsNullOrEmpty(firstVisiblePath))
                 {
+                    int selectedFolded = -1;
+                    int firstVisibleExact = -1;
+                    int firstVisibleFolded = -1;
                     for (int i = 0; i < entries.Count; i++)
                     {
-                        if (string.Equals(entries[i].FullPath, selectedPath, StringComparison.OrdinalIgnoreCase))
+                        string entryPath = entries[i].FullPath;
+                        if (string.Equals(entryPath, selectedPath, StringComparison.Ordinal))
                             selectedIndex = i;
-                        if (string.Equals(entries[i].FullPath, firstVisiblePath, StringComparison.OrdinalIgnoreCase))
-                            scrollIndex = i;
+                        else if (selectedFolded < 0 &&
+                            string.Equals(entryPath, selectedPath, StringComparison.OrdinalIgnoreCase))
+                            selectedFolded = i;
+
+                        if (string.Equals(entryPath, firstVisiblePath, StringComparison.Ordinal))
+                            firstVisibleExact = i;
+                        else if (firstVisibleFolded < 0 &&
+                            string.Equals(entryPath, firstVisiblePath, StringComparison.OrdinalIgnoreCase))
+                            firstVisibleFolded = i;
                     }
+                    if (selectedIndex < 0)
+                        selectedIndex = selectedFolded;
+                    if (firstVisibleExact >= 0)
+                        scrollIndex = firstVisibleExact;
+                    else if (firstVisibleFolded >= 0)
+                        scrollIndex = firstVisibleFolded;
                 }
                 // The viewport is row-aligned and clamped to the actual
                 // number of tiles. A removed anchor falls back to the old
