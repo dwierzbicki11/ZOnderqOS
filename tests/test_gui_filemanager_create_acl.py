@@ -223,8 +223,11 @@ checks["filter catches ACL and detached FAT32 failures before restoring cached n
     and 'status = "Cannot verify folder permissions";' in filter_body
 )
 checks["opening cached file rechecks parent ACL"] = (
-    "if (!CanReadInSession(currentPath))" in open_body
-    and open_body.index("ClearDeniedListing();") < open_body.index("FileEntry entry = entries[index];")
+    "folderReadable = CanReadInSession(currentPath);" in open_body
+    and "if (!folderReadable)" in open_body
+    and open_body.index("folderReadable = CanReadInSession(currentPath);") < open_body.index("if (!folderReadable)")
+    and open_body.index("if (!folderReadable)") < open_body.index("FileEntry entry = entries[index];")
+    and "ClearDeniedListing();" in open_body[open_body.index("if (!folderReadable)"):open_body.index("FileEntry entry = entries[index];")]
 )
 checks["clipboard selection rechecks parent ACL"] = (
     "if (!CanReadInSession(currentPath))" in copy_body
