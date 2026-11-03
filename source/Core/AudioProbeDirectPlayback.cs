@@ -255,12 +255,22 @@ namespace ZonderqOS.SystemCore
                             Console.WriteLine("[AUDIO] 1MS cleanup: player claimed output; Stop skipped.");
                         else if (stillSelected != null && !stillSelected())
                             Console.WriteLine("[AUDIO] 1MS cleanup: output is no longer primary; Stop skipped.");
-                        else if (output.Name != "hda" || output.DriverName != "HdAudioDriver" ||
-                            output.SampleRate != sampleRate ||
-                            output.Format.Channels != 2 || output.Format.ChannelSize != 2)
-                            Console.WriteLine("[AUDIO] 1MS cleanup: HDA identity or rate changed; Stop skipped.");
                         else
-                            output.Stop();
+                        {
+                            // Read Format exactly once: two independent getter
+                            // calls could observe different codec configurations.
+                            // Revalidate ownership after the getter, which can
+                            // itself trigger a withdrawal or reconfiguration.
+                            var cleanupFormat = output.Format;
+                            if (cleanupFormat.Channels != 2 || cleanupFormat.ChannelSize != 2 ||
+                                output.IsWithdrawn || !output.IsRunning || output.Player != null ||
+                                output.Name != "hda" || output.DriverName != "HdAudioDriver" ||
+                                output.SampleRate != sampleRate ||
+                                (stillSelected != null && !stillSelected()))
+                                Console.WriteLine("[AUDIO] 1MS cleanup: HDA changed; Stop skipped.");
+                            else
+                                output.Stop();
+                        }
                     }
                 }
                 finally
