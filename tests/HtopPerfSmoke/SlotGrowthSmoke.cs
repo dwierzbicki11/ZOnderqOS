@@ -154,10 +154,13 @@ internal static class SlotGrowthSmoke
         long oldBytes = 0, newBytes = 0;
         for (int i = 0; i < 7; i++)
         {
-            bool oldFirst = (i & 1) == 0;
-            var a = Measure(() => run(true));
-            var b = Measure(() => run(false));
-            if (!oldFirst)
+            (double timeMs, long bytes, long checksum) a, b;
+            if ((i & 1) == 0)
+            {
+                a = Measure(() => run(true));
+                b = Measure(() => run(false));
+            }
+            else
             {
                 b = Measure(() => run(false));
                 a = Measure(() => run(true));
