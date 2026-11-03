@@ -41,6 +41,14 @@ class MetricComparisonTests(unittest.TestCase):
             with self.subTest(value=repr(value)), self.assertRaises(ValueError):
                 module.compare(self.before, changed)
 
+    def test_reject_nonfinite_derived_values(self):
+        # Every input is finite, but subtraction or percentage scaling can overflow.
+        for before, after in ((1e308, 0.0), (1e-308, 1e308)):
+            old = [dict(row, metrics={'frame_ms': before}) for row in self.before]
+            new = [dict(row, metrics={'frame_ms': after}) for row in self.after]
+            with self.subTest(before=before, after=after), self.assertRaises(ValueError):
+                module.compare(old, new)
+
     def test_reject_unpaired(self):
         with self.assertRaises(ValueError): module.compare(self.before, self.after[:2])
         with self.assertRaises(ValueError): module.compare(self.before[:2], self.after[:2])
