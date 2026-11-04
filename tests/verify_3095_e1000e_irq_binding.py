@@ -268,8 +268,14 @@ def check_driver_health(serial: str) -> str:
                     if line.startswith("[NET3095-N6] HTTP_DRIVER_STABLE")]
     pci_lines = [line for line in lines
                  if line.startswith("[NET3095-N6] HTTP_PCI_STABLE")]
-    if len(stream_lines) != 6 or len(pci_lines) != 6:
-        raise ValueError("missing/duplicate per-stream PCI or DriverKit snapshots")
+    nic_lines = [line for line in lines
+                 if line.startswith("[NET3095-N6] HTTP_NIC_STABLE")]
+    if len(stream_lines) != 6 or len(pci_lines) != 6 or len(nic_lines) != 6:
+        raise ValueError("missing/duplicate per-stream PCI, DriverKit or NIC snapshots")
+    # A malformed NIC checkpoint must not be masked by a valid later one.
+    if nic_lines != [f"[NET3095-N6] HTTP_NIC_STABLE=PASS attempt={i}"
+                     for i in range(1, 7)]:
+        raise ValueError("malformed or out-of-order HTTP NIC snapshots")
     previous_nic_index = lines.index(baseline_lines[0])
     pci_baseline = None
     for attempt, stream_line in enumerate(stream_lines, 1):
@@ -504,6 +510,10 @@ def self_test() -> None:
         serial.replace(nic_line, ""),
         serial + nic_line,
         serial.replace(stream_line + nic_line, nic_line + stream_line),
+        serial.replace(nic_line, nic_line.replace("=PASS", "=FAIL")),
+        serial.replace(nic_line, nic_line.replace("attempt=3", "attempt=9")),
+        serial.replace(nic_line, nic_line + "[NET3095-N6] HTTP_NIC_STABLE=FAIL attempt=3\n"),
+        serial.replace(nic_line, nic_line.replace("attempt=3", "attempt=4")),
     )
     pci_line = ("[NET3095-N6] HTTP_PCI_STABLE=PASS attempt=3 command=0x0006 "
                 "bar0=0xFEBF0000 irq_line=11 irq_pin=1 (read-only; ISR unproven)\n")
