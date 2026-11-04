@@ -40,6 +40,23 @@ class HdaReplayTests(unittest.TestCase):
             self.assertLess(fraction, 0.5)
             self.assertAlmostEqual(period, 85.33, delta=0.05)
 
+    def test_sine_wave_zero_crossings_remain_analyzable(self):
+        # A 440 Hz sine at peak 2908 has legitimate near-zero samples;
+        # rejecting >5% of them incorrectly marks real PCM inconclusive.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'sine.wav'
+            samples = [int(2908 * math.sin(2 * math.pi * 440 * i / RATE))
+                       for i in range(RATE // 2)]
+            with wave.open(str(path), 'wb') as output:
+                output.setnchannels(2)
+                output.setsampwidth(2)
+                output.setframerate(RATE)
+                output.writeframes(b''.join(
+                    struct.pack('<hh', value, value) for value in samples))
+            left, right = replay.analyze_channels(path)
+            self.assertIsNotNone(left)
+            self.assertIsNotNone(right)
+
     def test_replayed_active_ring_is_detected(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'replayed.wav'
