@@ -109,6 +109,11 @@ namespace ZonderqOS.SystemCore
                     continue;
                 }
 
+                // A successful Write can still withdraw the output. Fail
+                // immediately, including when this was the final PCM or
+                // silence frame; never treat accepted bytes as playback proof.
+                if (!ready())
+                    return false;
                 consecutiveWaits = 0;
                 offset += written;
             }
