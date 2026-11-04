@@ -60,6 +60,19 @@ class PerfBootBaselineTests(unittest.TestCase):
         self.assertEqual(result["minimum_free_pages"], 1000)
         self.assertEqual(result["maximum_free_pages"], 1024)
 
+    def test_reject_embedded_or_malformed_marker_values(self):
+        log = ("XPERF_BOOT_INIT_MS=12\\nPERF_BOOT_INIT_MS=12ms\\n"
+               "PERF_BOOT_INIT_MS=12.5\\nPERF_BOOT_INIT_MS=12_3\\n"
+               "PERF_BOOT_INIT_MS=12+3\\nPERF_BOOT_INIT_MS=42\\n")
+        self.assertEqual(perf.samples(log), [42])
+
+    def test_reject_embedded_or_malformed_memory_values(self):
+        log = ("not_free_pages=500\\nfree_pages=1000bytes\\n"
+               "free_pages=12.5\\nfree_pages=10_00\\nfree_pages=700\\n")
+        result = perf.memory_samples(log)
+        self.assertEqual(result["samples"], 1)
+        self.assertEqual(result["last_free_pages"], 700)
+
     def test_missing_memory_samples(self):
         with self.assertRaises(ValueError):
             perf.memory_samples("heartbeat only")
