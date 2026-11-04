@@ -490,6 +490,19 @@ def self_test() -> None:
     baseline_marker = ("[NET3095-N6] DRIVER_BASELINE=PASS node=pci:0000:00:02.0 "
                        "resources=8 irq_sources=1 handler_faults=0 isr_executions=unknown\n")
     link_marker = "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\n"
+    # Regression for intermittent QMP runs: distinguish an absent baseline
+    # from a duplicated one without weakening the fail-closed contract.
+    for count, candidate in (
+        (0, serial.replace(baseline_marker, "")),
+        (2, serial + baseline_marker),
+    ):
+        try:
+            check_driver_health(candidate)
+        except ValueError as exc:
+            if f"baseline: count={count};" not in str(exc):
+                raise AssertionError("baseline diagnostic lost its count") from exc
+        else:
+            raise AssertionError("accepted missing or duplicate DriverKit baseline")
     bad_health = (
         serial.replace("handler_faults=0", "handler_faults=1"),
         serial.replace("resources=8", "resources=0"),
