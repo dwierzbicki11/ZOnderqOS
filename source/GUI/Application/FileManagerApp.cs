@@ -1965,6 +1965,19 @@ namespace ZonderqOS.GUI.Apps
                 // failure isolated to the entry rather than the whole scan.
                 try
                 {
+                    // Reject control characters from corrupted FAT32 metadata.
+                    bool invalidCharacter = false;
+                    for (int character = 0; character < path.Length; character++)
+                    {
+                        if (path[character] < ' ' || path[character] == '\u007f')
+                        {
+                            invalidCharacter = true;
+                            break;
+                        }
+                    }
+                    if (invalidCharacter)
+                        continue;
+
                     string normalized = path.Replace('\\', '/');
                     string name = Path.GetFileName(normalized.TrimEnd('/'));
                     if (string.IsNullOrWhiteSpace(name) || name == "." || name == "..")
