@@ -74,6 +74,16 @@ class MetricComparisonTests(unittest.TestCase):
         self.assertEqual(result['change_percent'], -100)
         self.assertEqual(result['faster_pairs'], 4)
 
+    def test_large_finite_percent_without_intermediate_overflow(self):
+        # 100 * delta overflows even when delta / baseline * 100 is finite.
+        for before, after, expected in ((1e308, 0, -100), (1e308, 1.5e308, 50)):
+            old = [dict(run_id=str(i), environment=self.before[0]['environment'],
+                        metrics={'frame_ms': before}) for i in range(4)]
+            new = [dict(run_id=str(i), environment=self.after[0]['environment'],
+                        metrics={'frame_ms': after}) for i in range(4)]
+            result = module.compare(old, new)['metrics']['frame_ms']
+            self.assertAlmostEqual(result['change_percent'], expected)
+
     def test_reject_unpaired(self):
         with self.assertRaises(ValueError): module.compare(self.before, self.after[:2])
         with self.assertRaises(ValueError): module.compare(self.before[:2], self.after[:2])
