@@ -1156,6 +1156,19 @@ namespace ZonderqOS
                 !IsE1000ELeaseStable(expectedMac, expectedIp,
                     expectedMask, expectedGateway))
                 return false;
+            // Recheck the published NIC after the last DMA submission as well:
+            // the ring-boundary snapshot at sent=96 cannot catch an adapter
+            // disappearing or losing link during the final 32 transmissions.
+            NetworkAdapter finalAdapter = NetworkManager.Primary;
+            if (!finalAdapter.IsValid || finalAdapter.Name != "e1000e" ||
+                !finalAdapter.Ready || !finalAdapter.LinkUp ||
+                !TryFillSourceMac(finalAdapter.MacAddress?.ToString() ?? "", liveMacFrame))
+                return false;
+            for (int macByte = 0; macByte < 6; macByte++)
+            {
+                if (liveMacFrame[6 + macByte] != template[6 + macByte])
+                    return false;
+            }
             Log("[NET3095-N6] TX_DRIVER_CHECK=PASS sent=128 resources=" +
                 expectedResources + " irq_sources=" + expectedIrqSources);
             Log("[NET3095-N6] TX_NIC_CHECK=PASS sent=128");
