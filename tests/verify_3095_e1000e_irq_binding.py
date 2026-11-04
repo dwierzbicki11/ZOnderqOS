@@ -187,9 +187,16 @@ def check_driver_health(serial: str) -> str:
         raise ValueError("N6 guest adapter MAC differs from bound E1000E driver")
     link = "[NET3095-N6] POST_STRESS_LINK=PASS mac="
     link_lines = [line for line in lines if line.startswith(link)]
+    # Compare MAC octets rather than display case; preserve strict syntax and
+    # reject duplicate link claims before trusting the final health snapshot.
+    link_mac = None
+    if len(link_lines) == 1:
+        link_match = re.fullmatch(re.escape(link) + MAC, link_lines[0])
+        if link_match is not None:
+            link_mac = link_match.group(1).upper()
     guest = [m for line in lines if (m := GUEST.fullmatch(line))]
     if (len(link_lines) != 1 or len(guest) != 1 or
-            link_lines[0] != link + guest[0].group(1) or
+            link_mac != guest[0].group(1).upper() or
             not lines.index(baseline_lines[0]) < lines.index(link_lines[0]) <
             lines.index(claims[0])):
         raise ValueError("E1000E health was not sampled after matching post-stress link")
@@ -471,6 +478,25 @@ def self_test() -> None:
         pass
     else:
         raise AssertionError("accepted N6 guest MAC inconsistent with bound E1000E")
+    # MAC address hex is case-insensitive; the underlying bytes must match.
+    mixed_case_mac = serial.replace(
+        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
+        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:ab").replace(
+        "mac=52:54:00:12:34:56", "mac=52:54:00:12:34:AB")
+    assert "streams=6" in check_driver_health(mixed_case_mac)
+    for invalid_link in (
+        serial.replace("POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
+                       "POST_STRESS_LINK=PASS mac=52:54:00:12:34:5G"),
+        serial.replace("POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
+                       "POST_STRESS_LINK=PASS mac=52:54:00:12:34:57"),
+        serial + "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\\n",
+    ):
+        try:
+            check_driver_health(invalid_link)
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted malformed, conflicting or duplicate post-stress MAC")
     assert "streams=6" in check_driver_health(serial)
     assert "TX_DRIVER_STABLE" in serial
     trace = ("e1000e_irq_legacy_notify IRQ line state: 0\n"
