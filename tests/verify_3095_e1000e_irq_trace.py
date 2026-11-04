@@ -73,7 +73,13 @@ def report(stderr: str, require_notify: bool = False, require_legacy_cycle: bool
     legacy, msi, msix = count_notifications(stderr)
     total = legacy + msi + msix
     legacy_cycles = count_legacy_cycles(stderr)
-    if require_legacy_cycle and (msi or msix):
+    # A zero-cause MSI is not an emitted interrupt, but its presence still
+    # violates an explicitly legacy-only trace contract. Check raw events,
+    # not only the nonzero notification counters.
+    if require_legacy_cycle and any(
+        MSI.fullmatch(line) or MSIX.fullmatch(line)
+        for line in checked_irq_lines(stderr)
+    ):
         raise ValueError("MSI/MSI-X notification in legacy INTx-only QEMU trace")
     if require_legacy_cycle and not legacy_cycles:
         raise ValueError("no complete QEMU E1000E legacy INTx low-to-high cycle")
@@ -102,7 +108,8 @@ def self_test() -> None:
     legacy_only = ("e1000e_irq_legacy_notify IRQ line state: 0\n"
                    "e1000e_irq_legacy_notify IRQ line state: 1\n")
     assert "legacy_cycles=1" in report(legacy_only, require_legacy_cycle=True)
-    for mixed in ("e1000e_irq_msi_notify MSI notify 0x80\n",
+    for mixed in ("e1000e_irq_msi_notify MSI notify 0x0\n",
+                  "e1000e_irq_msi_notify MSI notify 0x80\n",
                   "e1000e_irq_msix_notify_vec MSI-X notify vector 0x0\n"):
         try:
             report(legacy_only + mixed, require_legacy_cycle=True)
