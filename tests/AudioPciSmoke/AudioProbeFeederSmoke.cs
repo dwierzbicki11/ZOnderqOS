@@ -288,6 +288,43 @@ internal static class AudioProbeFeederSmoke
             blockedSettleCalls == 0 && waits == 1000,
             "stalled PCM never enters 86ms settle phase");
 
+        // Stress a non-divisor partial-write size across 4096-byte block
+        // boundaries. Inject backpressure between frames and verify that
+        // neither PCM nor the final silent ring is duplicated or skipped.
+        byte[] boundaryPcm = new byte[4096 * 2 + 12];
+        for (int i = 0; i < boundaryPcm.Length; i++)
+            boundaryPcm[i] = (byte)((i * 29 + 7) & 255);
+        var boundaryOutput = new List<byte>();
+        int boundaryWrites = 0;
+        int boundaryWaits = 0;
+        ok = AudioProbeRingFeeder.Feed(boundaryPcm,
+            (source, offset, count) =>
+            {
+                boundaryWrites++;
+                if (boundaryWrites % 5 == 0)
+                    return 0;
+                int accepted = Math.Min(count, 12);
+                for (int i = 0; i < accepted; i++)
+                    boundaryOutput.Add(source[offset + i]);
+                return accepted;
+            },
+            () => true,
+            milliseconds =>
+            {
+                Check(milliseconds == 1, "boundary backpressure remains bounded");
+                boundaryWaits++;
+            }, out waits);
+        Check(ok && boundaryWaits == waits && boundaryWaits > 0,
+            "partial writes with intermittent backpressure finish");
+        Check(boundaryOutput.Count == boundaryPcm.Length + 16384,
+            "partial boundary writes preserve exact PCM and drain length");
+        for (int i = 0; i < boundaryPcm.Length; i++)
+            Check(boundaryOutput[i] == boundaryPcm[i],
+                "partial boundary writes preserve every PCM byte");
+        for (int i = boundaryPcm.Length; i < boundaryOutput.Count; i++)
+            Check(boundaryOutput[i] == 0,
+                "partial boundary writes never replay PCM in silent drain");
+
         int stalledWaits = 0;
         ok = AudioProbeRingFeeder.Feed(pcm, (a, b, c) => 0,
             () => true, _ => stalledWaits++, out waits);
