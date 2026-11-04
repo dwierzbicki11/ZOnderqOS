@@ -170,7 +170,7 @@ def check_driver_health(serial: str) -> str:
             not (lines.index(driver_claims[0]) < lines.index(bound_claims[0]) <
                  lines.index(guest_claims[0]) < lines.index(baseline_lines[0]))):
         raise ValueError("E1000E initial binding/guest readiness invalid or out of order")
-    link = "[NET3095-N6] POST_STRESS_LINK=PASS mac="
+    # The final N6 health path must correlate the NIC MAC with the original\n    # driver, not merely with the guest readiness and post-stress link.\n    # Otherwise two internally consistent but different MAC identities pass.\n    if guest_claims and GUEST.fullmatch(guest_claims[0]).group(1).upper() != driver_lines[0].group(2).upper():\n        raise ValueError("N6 guest adapter MAC differs from bound E1000E driver")\n    link = "[NET3095-N6] POST_STRESS_LINK=PASS mac="
     link_lines = [line for line in lines if line.startswith(link)]
     guest = [m for line in lines if (m := GUEST.fullmatch(line))]
     if (len(link_lines) != 1 or len(guest) != 1 or
@@ -443,7 +443,7 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted mismatched N1/N6 PCI IRQ pin")
-    assert "streams=6" in check_driver_health(serial)
+    # A valid-looking guest and final-link MAC must not mask a different\n    # MAC in the actual bound driver diagnostic.\n    conflicting_mac = serial.replace(\n        "cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56",\n        "cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:57").replace(\n        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",\n        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:57")\n    try:\n        check_driver_health(conflicting_mac)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError("accepted N6 guest MAC inconsistent with bound E1000E")\n    assert "streams=6" in check_driver_health(serial)
     assert "TX_DRIVER_STABLE" in serial
     trace = ("e1000e_irq_legacy_notify IRQ line state: 0\n"
              "e1000e_irq_legacy_notify IRQ line state: 1\n") * 4
