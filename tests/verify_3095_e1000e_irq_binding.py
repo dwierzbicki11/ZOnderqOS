@@ -59,7 +59,7 @@ def check_guest_line(serial: str) -> str:
         raise ValueError("malformed or duplicate N1 guest adapter readiness")
     if len(bound) != 1 or len(driver) != 1 or len(guest) != 1:
         raise ValueError("expected exactly one bound E1000E, line and ready guest adapter")
-    if any((" E1000EDriver: mac " in line and not DRIVER.fullmatch(line)) or
+    if any((line.startswith("[Drivers] ") and " E1000EDriver:" in line and not DRIVER.fullmatch(line)) or
            (" offer E1000EDriver -> " in line and not BOUND.fullmatch(line))
            for line in lines):
         raise ValueError("malformed additional E1000E driver/offer claim")
@@ -141,7 +141,7 @@ def check_driver_health(serial: str) -> str:
         raise ValueError("missing or mismatched E1000E driver IRQ line")
     # Do not let malformed or conflicting driver diagnostics disappear simply
     # because they fail the strict regex. A later valid line must not mask one.
-    driver_claims = [line for line in lines if " E1000EDriver: mac " in line]
+    driver_claims = [line for line in lines if line.startswith("[Drivers] ") and " E1000EDriver:" in line]
     bound_claims = [line for line in lines if " offer E1000EDriver -> " in line]
     if (len(driver_claims) != 1 or len(bound_claims) != 1 or
             not DRIVER.fullmatch(driver_claims[0]) or
@@ -656,7 +656,9 @@ def self_test() -> None:
         serial.replace("mac=52:54:00:12:34:56", "mac=02:54:00:12:34:56"),
         serial.replace("mac 52:54:00:12:34:56", "mac 02:54:00:12:34:56"),
         serial.replace("polling every 10 ms", "no polling"),
+        serial + "[Drivers] pci:0000:00:02.0 E1000EDriver: MAC 52:54:00:12:34:56, link up, line 11, polling every 10 ms\n",
         serial + "[Drivers] pci:0000:00:02.0 E1000EDriver: mac malformed\\n",
+        serial + "[Drivers] pci:0000:00:02.0 E1000EDriver: MAC 52:54:00:12:34:56, link up, line 11, polling every 10 ms\n",
         serial + "[Drivers] pci:0000:00:02.0 offer E1000EDriver -> declined\\n",
         "".join(reversed(serial.splitlines(keepends=True))),
         serial + serial,
