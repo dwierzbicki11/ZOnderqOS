@@ -83,7 +83,7 @@ def compare(before, after):
         new = [r['metrics'][key] for r in after]
         deltas = [b - a for a, b in zip(old, new)]
         old_median, new_median = nonnegative_median(old), nonnegative_median(new)
-        change_percent = None if old_median == 0 else 100 * (new_median - old_median) / old_median
+        change_percent = None if old_median == 0 else ((new_median - old_median) / old_median) * 100
         if (not math.isfinite(old_median)
                 or not math.isfinite(new_median)
                 or not all(math.isfinite(x) for x in deltas)
