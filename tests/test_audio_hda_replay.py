@@ -188,6 +188,26 @@ class HdaReplayTests(unittest.TestCase):
             self.assertGreater(right[0], .99)
             self.assertAlmostEqual(left[2], 1000 * ring / rate, places=5)
 
+    def test_rejects_invalid_dma_geometry_before_reading_capture(self):
+        # Invalid or zero-length ring lags must never be interpreted as
+        # repeated audio. Validate parameters before opening the WAV file.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'missing.wav'
+            for ring_bytes, source_rate in (
+                (0, 48000), (-16384, 48000), (16385, 48000),
+                (16384, 0), (16384, -48000), (4, 10**9)):
+                with self.subTest(ring_bytes=ring_bytes, source_rate=source_rate):
+                    with self.assertRaises(ValueError):
+                        replay.analyze_channels(path, ring_bytes, source_rate)
+
+    def test_valid_dma_geometry_keeps_native_ring_lag(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'valid.wav'
+            fixture(path, repeat=True)
+            left, right = replay.analyze_channels(path, 16384, 48000)
+            self.assertGreater(left[0], .99)
+            self.assertGreater(right[0], .99)
+
     def test_rejects_mono_and_invalid_wav(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'broken.wav'
