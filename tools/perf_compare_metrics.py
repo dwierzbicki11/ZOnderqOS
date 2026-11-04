@@ -67,15 +67,20 @@ def compare(before, after):
         deltas = [b - a for a, b in zip(old, new)]
         old_median, new_median = median(old), median(new)
         change_percent = None if old_median == 0 else 100 * (new_median - old_median) / old_median
-        if (not all(math.isfinite(x) for x in deltas)
+        if (not math.isfinite(old_median)
+                or not math.isfinite(new_median)
+                or not all(math.isfinite(x) for x in deltas)
                 or not math.isfinite(new_median - old_median)
                 or (change_percent is not None and not math.isfinite(change_percent))):
+            raise ValueError(f'nonfinite derived metric: {key}')
+        paired_median_delta = median(deltas)
+        if not math.isfinite(paired_median_delta):
             raise ValueError(f'nonfinite derived metric: {key}')
         output['metrics'][key] = {
             'before_median': old_median, 'after_median': new_median,
             'delta': new_median - old_median,
             'change_percent': change_percent,
-            'paired_median_delta': median(deltas),
+            'paired_median_delta': paired_median_delta,
             'paired_delta_range': [min(deltas), max(deltas)],
             'faster_pairs': sum(x < 0 for x in deltas),
             'slower_pairs': sum(x > 0 for x in deltas),
