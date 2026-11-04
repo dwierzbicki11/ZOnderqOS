@@ -99,11 +99,17 @@ def analyze(path: Path, ring_bytes=16384, source_rate=48000):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('wav', type=Path)
+    parser.add_argument('--ring-bytes', type=int, default=16384,
+                        help='guest DMA ring size in bytes (default: 16384)')
+    parser.add_argument('--source-rate', type=int, default=48000,
+                        help='guest PCM frames per second (default: 48000)')
     parser.add_argument('--strict', action='store_true',
                         help='fail on suspected replay; use only with NONPERIODIC test fixtures')
     args = parser.parse_args()
     try:
-        channels = analyze_channels(args.wav, include_correlation=True)
+        channels = analyze_channels(args.wav, ring_bytes=args.ring_bytes,
+                                    source_rate=args.source_rate,
+                                    include_correlation=True)
         suspected = False
         for name, result in zip(('left', 'right'), channels):
             if result is None:
@@ -120,7 +126,7 @@ def main():
                   f'at {start_ms:.1f}ms and {start_ms + period_ms:.1f}ms; '
                   f'correlation={correlation:.4f} at {corr_start_ms:.1f}ms and '
                   f'{corr_start_ms + period_ms:.1f}ms '
-                  f'(16KiB/48kHz stereo16 period={period_ms:.2f}ms); '
+                  f'(ring={args.ring_bytes} bytes/source={args.source_rate}Hz period={period_ms:.2f}ms); '
                   f'heuristic for nonperiodic fixtures, not proof of guest ISR delivery')
         # A missing active channel is not a clean stereo result. In strict
         # mode, do not silently pass a capture with one inconclusive channel.
