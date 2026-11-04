@@ -175,6 +175,41 @@ internal static class AudioProbeFeederSmoke
         Check(!ok && zeroWriteCalls == 1 && waitsAfterZeroWithdrawal == 0 &&
             waits == 0, "withdrawal during zero-byte write skips stale ring wait");
 
+        // A device may disappear while the 1 ms ring-full wait is running.
+        // The feeder must recheck ownership before attempting another write.
+        bool withdrawnInWait = false;
+        int writesBeforeWaitWithdrawal = 0;
+        int waitsBeforeWithdrawal = 0;
+        ok = AudioProbeRingFeeder.Feed(new byte[4],
+            (a, b, c) => { writesBeforeWaitWithdrawal++; return 0; },
+            () => !withdrawnInWait,
+            milliseconds =>
+            {
+                Check(milliseconds == 1, "withdrawal wait remains bounded");
+                waitsBeforeWithdrawal++;
+                withdrawnInWait = true;
+            }, out waits);
+        Check(!ok && writesBeforeWaitWithdrawal == 1 &&
+            waitsBeforeWithdrawal == 1 && waits == 1,
+            "withdrawal during ring-full wait prevents another write");
+
+        // A positive partial write can also revoke the output. Neither the
+        // remaining PCM nor the silent drain may be sent to that device.
+        bool withdrawnAfterPartialWrite = false;
+        int writesAfterPartialWithdrawal = 0;
+        ok = AudioProbeRingFeeder.Feed(new byte[8],
+            (a, b, c) =>
+            {
+                writesAfterPartialWithdrawal++;
+                withdrawnAfterPartialWrite = true;
+                return 4;
+            },
+            () => !withdrawnAfterPartialWrite,
+            _ => throw new Exception("unexpected wait after partial withdrawal"),
+            out waits);
+        Check(!ok && writesAfterPartialWithdrawal == 1 && waits == 0,
+            "withdrawal after positive partial write prevents subsequent PCM");
+
         int stalledWaits = 0;
         ok = AudioProbeRingFeeder.Feed(pcm, (a, b, c) => 0,
             () => true, _ => stalledWaits++, out waits);
