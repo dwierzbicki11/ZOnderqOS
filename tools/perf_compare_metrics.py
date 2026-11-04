@@ -20,6 +20,16 @@ def environment_fingerprint(value):
         raise ValueError('invalid environment/workload') from exc
 
 
+def valid_metric(value):
+    if type(value) not in (int, float) or value < 0:
+        return False
+    try:
+        return math.isfinite(value)
+    except OverflowError:
+        # JSON accepts arbitrary-size integers, but float statistics do not.
+        return False
+
+
 def compare(before, after):
     if not isinstance(before, list) or not isinstance(after, list) or len(before) < 3 or len(before) != len(after):
         raise ValueError('at least three paired runs required')
@@ -35,7 +45,7 @@ def compare(before, after):
                 raise ValueError('nonempty environment required')
             if not isinstance(record.get('metrics'), dict) or not record['metrics']:
                 raise ValueError('nonempty metrics required')
-            if any(not isinstance(k, str) or not k or type(v) not in (int, float) or not math.isfinite(v) or v < 0 for k, v in record['metrics'].items()):
+            if any(not isinstance(k, str) or not k or not valid_metric(v) for k, v in record['metrics'].items()):
                 raise ValueError('invalid metric')
             record_environment_key = environment_fingerprint(record['environment'])
             if environment is None:
