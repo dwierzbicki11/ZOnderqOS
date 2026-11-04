@@ -421,7 +421,10 @@ while (( SECONDS - started < TIMEOUT )); do
         until python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" >/dev/null 2>&1; do
           qemu_alive || { report_link_recovery_failure "first recovery: QEMU exited"; echo "[NET3095-N6-LINK][FAIL] Guest exited during recovery" >&2; exit 1; }
           if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
-            tail -n 90 "$LOG" >&2; exit 1
+            report_link_recovery_failure "first recovery: guest reported failure"
+            python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" || true
+            echo "[NET3095-N6-LINK][FAIL] first recovery rejected by guest" >&2
+          exit 1
           fi
           if (( SECONDS - recovery_start >= 20 )); then
             report_link_recovery_failure "first recovery timed out"
@@ -461,7 +464,10 @@ while (( SECONDS - started < TIMEOUT )); do
           until python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" --cycles 2 >/dev/null 2>&1; do
             qemu_alive || { report_link_recovery_failure "second recovery: QEMU exited"; echo "[NET3095-N6-LINK][FAIL] Guest exited during second recovery" >&2; exit 1; }
             if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
-              tail -n 90 "$LOG" >&2; exit 1
+              report_link_recovery_failure "second recovery: guest reported failure"
+              python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" --cycles 2 || true
+              echo "[NET3095-N6-LINK][FAIL] second recovery rejected by guest" >&2
+            exit 1
             fi
             if (( SECONDS - recovery2_start >= 20 )); then
               report_link_recovery_failure "second recovery timed out"
