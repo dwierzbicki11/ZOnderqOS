@@ -448,7 +448,20 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted mismatched N1/N6 PCI IRQ pin")
-    # A valid-looking guest and final-link MAC must not mask a different\n    # MAC in the actual bound driver diagnostic.\n    conflicting_mac = serial.replace(\n        "cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56",\n        "cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:57").replace(\n        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",\n        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:57")\n    try:\n        check_driver_health(conflicting_mac)\n    except ValueError:\n        pass\n    else:\n        raise AssertionError("accepted N6 guest MAC inconsistent with bound E1000E")\n    assert "streams=6" in check_driver_health(serial)
+    # A valid-looking guest and final-link MAC must not mask a different
+    # MAC in the actual bound driver diagnostic.
+    conflicting_mac = serial.replace(
+        "cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56",
+        "cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:57").replace(
+        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
+        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:57")
+    try:
+        check_driver_health(conflicting_mac)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("accepted N6 guest MAC inconsistent with bound E1000E")
+    assert "streams=6" in check_driver_health(serial)
     assert "TX_DRIVER_STABLE" in serial
     trace = ("e1000e_irq_legacy_notify IRQ line state: 0\n"
              "e1000e_irq_legacy_notify IRQ line state: 1\n") * 4
