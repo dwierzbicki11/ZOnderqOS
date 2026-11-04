@@ -178,6 +178,9 @@ namespace ZonderqOS.GUI.Apps
                 // A menu from a background File Manager must not linger when
                 // the user switches windows with Alt+Tab or the taskbar.
                 contextMenuVisible = false;
+                // A hidden menu must not retain its keyboard highlight when
+                // focus returns: the next context invocation starts neutral.
+                contextMenuSelection = -1;
             }
 
             SyncViewGeometry();
