@@ -26,7 +26,10 @@ def signed_median(values):
     middle = len(ordered) // 2
     if len(ordered) % 2:
         return ordered[middle]
-    return ordered[middle - 1] / 2 + ordered[middle] / 2
+    lower, upper = ordered[middle - 1], ordered[middle]
+    if lower < 0 <= upper:
+        return lower / 2 + upper / 2
+    return lower + (upper - lower) / 2
 
 
 def environment_fingerprint(value):
