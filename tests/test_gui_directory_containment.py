@@ -17,6 +17,15 @@ class EnumerationContainment(unittest.TestCase):
         self.assertLess(method.index("string entryParent ="),
                         method.index("destination.Add(new FileEntry("))
 
+    def test_parent_normalization_is_outside_entry_loop(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        method = source.split("private void Add(List<FileEntry> destination", 1)[1].split("\n        }", 1)[0]
+        normalization = method.index("string canonicalParent = parentPath.Replace(")
+        loop = method.index("for (int i = 0; i < paths.Length; i++)")
+        self.assertLess(normalization, loop)
+        self.assertEqual(method.count("string canonicalParent ="), 1)
+        self.assertIn("if (paths == null || string.IsNullOrEmpty(parentPath))", method)
+
     def test_scan_supplies_actual_target_directory(self):
         source = SOURCE.read_text(encoding="utf-8")
         self.assertIn("Add(scanned, directories, true, targetPath);", source)
