@@ -3788,5 +3788,19 @@ class FileManagerCachedPathIsolation3095(unittest.TestCase):
         self.assertIn("return;", blocked)
 
 
+
+class FileManagerDetachedVolumeRefresh3095(unittest.TestCase):
+    def test_failed_refresh_drops_stale_tiles_only_for_missing_current_directory(self):
+        refresh = FILE_MANAGER.split("private bool RefreshInternal(string keep)", 1)[1].split(
+            "private void ApplySearchFilter()", 1
+        )[0]
+        failure = refresh.rsplit("catch (Exception ex)", 1)[1]
+        self.assertIn("string.Equals(loadedDirectoryPath, currentPath, StringComparison.Ordinal)", failure)
+        self.assertIn("!Directory.Exists(currentPath)", failure)
+        self.assertLess(failure.index("!Directory.Exists(currentPath)"),
+                        failure.index("ClearDeniedListing();"))
+        self.assertLess(failure.index("ClearDeniedListing();"),
+                        failure.index('status = "Read error: " + ex.Message;'))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
