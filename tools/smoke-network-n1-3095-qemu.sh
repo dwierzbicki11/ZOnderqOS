@@ -411,8 +411,11 @@ while (( SECONDS - started < TIMEOUT )); do
             tail -n 90 "$LOG" >&2; exit 1
           fi
           if (( SECONDS - recovery_start >= 20 )); then
-            python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host"
-            echo "[NET3095-N6-LINK][FAIL] No verified post-up ICMP RX/TX" >&2; exit 1
+            echo "[NET3095-N6-LINK] First recovery timed out; last guest and host observations:" >&2
+            tail -n 90 "$LOG" >&2
+            tail -n 30 "$LOG.tcp-host" >&2
+            python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" || true
+            echo "[NET3095-N6-LINK][FAIL] First recovery did not meet PCAP/serial/host gate" >&2; exit 1
           fi
           sleep 1
         done
@@ -450,8 +453,11 @@ while (( SECONDS - started < TIMEOUT )); do
               tail -n 90 "$LOG" >&2; exit 1
             fi
             if (( SECONDS - recovery2_start >= 20 )); then
-              python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" --cycles 2
-              echo "[NET3095-N6-LINK][FAIL] No second verified post-up ICMP RX/TX" >&2; exit 1
+              echo "[NET3095-N6-LINK] Second recovery timed out; last guest and host observations:" >&2
+              tail -n 90 "$LOG" >&2
+              tail -n 30 "$LOG.tcp-host" >&2
+              python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" --cycles 2 || true
+              echo "[NET3095-N6-LINK][FAIL] Second recovery did not meet PCAP/serial/host gate" >&2; exit 1
             fi
             sleep 1
           done
