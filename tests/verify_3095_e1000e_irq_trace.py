@@ -144,7 +144,7 @@ def self_test() -> None:
            "e1000e_irq_msix_notify_vec MSI-X notify vector garbage\n",
            "e1000e_irq_msi_notify MSI notify 0x80 spoof\n")
     for sample in bad:
-        if sample.startswith("e1000e_irq_") and sample not in (
+        if sample.startswith(("e1000e_irq_legacy_notify", "e1000e_irq_msi_notify", "e1000e_irq_msix_notify_vec")) and sample not in (
             "e1000e_irq_legacy_notify IRQ line state: 0\n",
             "e1000e_irq_msi_notify MSI notify 0x0\n",
         ):
