@@ -210,6 +210,49 @@ internal static class AudioProbeFeederSmoke
         Check(!ok && writesAfterPartialWithdrawal == 1 && waits == 0,
             "withdrawal after positive partial write prevents subsequent PCM");
 
+        // The PCM payload may finish successfully while the silent DMA drain
+        // is blocked. If the output disappears on that zero-byte drain write,
+        // no stale 1 ms wait or further silence write is permitted.
+        int drainWriteCalls = 0;
+        int drainWaitCalls = 0;
+        bool withdrawnOnBlockedDrain = false;
+        ok = AudioProbeRingFeeder.Feed(new byte[4],
+            (source, offset, count) =>
+            {
+                drainWriteCalls++;
+                if (drainWriteCalls == 1)
+                    return count;
+                withdrawnOnBlockedDrain = true;
+                return 0;
+            },
+            () => !withdrawnOnBlockedDrain,
+            _ => drainWaitCalls++, out waits);
+        Check(!ok && withdrawnOnBlockedDrain && drainWriteCalls == 2 &&
+            drainWaitCalls == 0 && waits == 0,
+            "blocked silent drain withdrawal skips stale wait and writes");
+
+        // The same transition can happen during the drain's bounded wait.
+        // In that case exactly one wait is counted and no retry is issued.
+        int drainWaitWrites = 0;
+        int drainWaitCallbacks = 0;
+        bool withdrawnWhileDrainWaits = false;
+        ok = AudioProbeRingFeeder.Feed(new byte[4],
+            (source, offset, count) =>
+            {
+                drainWaitWrites++;
+                return drainWaitWrites == 1 ? count : 0;
+            },
+            () => !withdrawnWhileDrainWaits,
+            milliseconds =>
+            {
+                Check(milliseconds == 1, "silent drain wait is bounded");
+                drainWaitCallbacks++;
+                withdrawnWhileDrainWaits = true;
+            }, out waits);
+        Check(!ok && withdrawnWhileDrainWaits && drainWaitWrites == 2 &&
+            drainWaitCallbacks == 1 && waits == 1,
+            "withdrawal during blocked silent drain prevents retry");
+
         int stalledWaits = 0;
         ok = AudioProbeRingFeeder.Feed(pcm, (a, b, c) => 0,
             () => true, _ => stalledWaits++, out waits);
