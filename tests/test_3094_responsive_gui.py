@@ -3801,6 +3801,14 @@ class FileManagerDetachedVolumeRefresh3095(unittest.TestCase):
                         failure.index("ClearDeniedListing();"))
         self.assertLess(failure.index("ClearDeniedListing();"),
                         failure.index('status = "Read error: " + ex.Message;'))
+        self.assertIn("try", failure)
+        self.assertIn("directoryAvailable = Directory.Exists(currentPath);", failure)
+        self.assertIn("catch (Exception)", failure)
+        self.assertIn("directoryAvailable = false;", failure)
+        self.assertIn("if (!directoryAvailable)", failure)
+        self.assertLess(failure.index("directoryAvailable = false;"),
+                        failure.index("if (!directoryAvailable)"))
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
