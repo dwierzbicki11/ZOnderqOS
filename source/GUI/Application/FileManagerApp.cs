@@ -1985,6 +1985,11 @@ namespace ZonderqOS.GUI.Apps
                         continue;
 
                     string normalized = path.Replace('\\', '/');
+                    // Enumeration results must never become relative or traversal
+                    // paths. A malformed FAT32 entry must not create a tile
+                    // which can escape the directory through OpenEntry().
+                    if (!FileClipboard.IsSafeAbsolutePath(normalized))
+                        continue;
                     string name = Path.GetFileName(normalized.TrimEnd('/'));
                     if (string.IsNullOrWhiteSpace(name) || name == "." || name == "..")
                         continue;
