@@ -146,6 +146,48 @@ class HdaReplayTests(unittest.TestCase):
                                     str(path)]):
                 self.assertEqual(replay.main(), 0)
 
+    def test_strict_inconclusive_right_channel_fails_closed(self):
+        # Symmetric case: a silent right channel cannot be reported as a
+        # successful stereo DMA analysis just because left contains signal.
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'silent_right_clean_left.wav'
+            left = [2908 if math.sin(2 * math.pi * 880 * i / RATE) >= 0
+                    else -2908 for i in range(RATE // 2)]
+            with wave.open(str(path), 'wb') as output:
+                output.setnchannels(2)
+                output.setsampwidth(2)
+                output.setframerate(RATE)
+                output.writeframes(b''.join(
+                    struct.pack('<hh', sample, 0) for sample in left))
+            channels = replay.analyze_channels(path, include_correlation=True)
+            self.assertIsNotNone(channels[0])
+            self.assertIsNone(channels[1])
+            with patch('sys.argv', ['analyze-audio-hda-replay.py',
+                                    str(path), '--strict']):
+                self.assertEqual(replay.main(), 2)
+
+    def test_48khz_ring_lag_and_stereo_replay(self):
+        # Native HDA rate: one 16 KiB stereo16 ring is exactly 4096 frames.
+        rate = 48000
+        ring = 16384 // 4
+        window = rate * 40 // 1000
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'native_rate_replay.wav'
+            samples = [2908 if math.sin(2 * math.pi * 731 * i / rate) >= 0
+                       else -2908 for i in range(rate // 2)]
+            samples[ring:ring + window] = samples[:window]
+            with wave.open(str(path), 'wb') as output:
+                output.setnchannels(2)
+                output.setsampwidth(2)
+                output.setframerate(rate)
+                output.writeframes(b''.join(
+                    struct.pack('<hh', value, value) for value in samples))
+            left, right = replay.analyze_channels(path)
+            self.assertGreater(left[0], .99)
+            self.assertGreater(right[0], .99)
+            self.assertAlmostEqual(left[2], 1000 * ring / rate, places=5)
+
     def test_rejects_mono_and_invalid_wav(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'broken.wav'
