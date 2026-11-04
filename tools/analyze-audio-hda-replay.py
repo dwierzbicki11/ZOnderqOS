@@ -31,8 +31,8 @@ def analyze_channels(path: Path, ring_bytes=16384, source_rate=48000, include_co
     # as a valid replay comparison (which could produce a false alarm).
     if not isinstance(ring_bytes, int) or ring_bytes <= 0 or ring_bytes % 4:
         raise ValueError('ring_bytes must be a positive stereo16 frame multiple')
-    if not isinstance(source_rate, int) or source_rate <= 0:
-        raise ValueError('source_rate must be a positive integer')
+    if not isinstance(source_rate, int) or source_rate < 8000 or source_rate > 192000:
+        raise ValueError('source_rate must be a supported 8-192 kHz PCM rate')
     with wave.open(str(path), 'rb') as stream:
         rate = stream.getframerate()
         channels = stream.getnchannels()
