@@ -78,9 +78,9 @@ def check_guest_line(serial: str) -> str:
     # A malformed route claim must not disappear from the evidence merely
     # because its text no longer matches the strict PASS expression.
     route_claims = [line for line in lines
-                    if line.startswith("[NET3095-N1] PCI_IRQ_ROUTE=")]
+                    if re.match(r"^\[NET3095-N1\] PCI_IRQ_ROUTE(?!_STABLE)", line)]
     stable_claims = [line for line in lines
-                     if line.startswith("[NET3095-N1] PCI_IRQ_ROUTE_STABLE=")]
+                     if line.startswith("[NET3095-N1] PCI_IRQ_ROUTE_STABLE")]
     routes, stable_routes = matches(PCI_IRQ_ROUTE), matches(PCI_IRQ_STABLE)
     if len(route_claims) != len(routes) or len(stable_claims) != len(stable_routes):
         raise ValueError("malformed PCI legacy IRQ route claim")
@@ -151,9 +151,9 @@ def check_driver_health(serial: str) -> str:
     # Match the N1 PCI INTx pin as well as the line against every N6
     # PCI snapshot. A stable but wrong pin is not a valid binding proof.
     route_claims = [line for line in lines
-                    if line.startswith("[NET3095-N1] PCI_IRQ_ROUTE=")]
+                    if re.match(r"^\[NET3095-N1\] PCI_IRQ_ROUTE(?!_STABLE)", line)]
     stable_route_claims = [line for line in lines
-                           if line.startswith("[NET3095-N1] PCI_IRQ_ROUTE_STABLE=")]
+                           if line.startswith("[NET3095-N1] PCI_IRQ_ROUTE_STABLE")]
     route_pin = None
     if route_claims or stable_route_claims:
         if len(route_claims) != 1 or len(stable_route_claims) != 1:
@@ -415,6 +415,8 @@ def self_test() -> None:
         route_serial.replace("PCI_IRQ_ROUTE=PASS line=11 pin=1", "PCI_IRQ_ROUTE=PASS line=11 pin=5"),
         route_serial + "\n" + route_marker,
         route_serial.replace("PCI_IRQ_ROUTE=PASS", "PCI_IRQ_ROUTE=FAIL"),
+        route_serial.replace("PCI_IRQ_ROUTE=PASS", "PCI_IRQ_ROUTE PASS"),
+        route_serial.replace("PCI_IRQ_ROUTE_STABLE=PASS", "PCI_IRQ_ROUTE_STABLE PASS"),
         route_serial.replace("PCI_IRQ_ROUTE_STABLE=PASS", "PCI_IRQ_ROUTE_STABLE=FAIL"),
         route_serial.replace("guest ISR unproven", "guest ISR proven"),
     ):
