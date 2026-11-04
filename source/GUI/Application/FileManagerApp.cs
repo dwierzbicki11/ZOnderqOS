@@ -1960,11 +1960,24 @@ namespace ZonderqOS.GUI.Apps
                 // Ignore it rather than crashing the entire desktop on TrimEnd.
                 if (string.IsNullOrWhiteSpace(path))
                     continue;
-                string name = Path.GetFileName(path.TrimEnd('/', '\\'));
-                if (string.IsNullOrEmpty(name))
-                    name = path;
+                // A single malformed directory entry must not discard an
+                // otherwise readable FAT32 directory snapshot. Keep the
+                // failure isolated to the entry rather than the whole scan.
+                try
+                {
+                    string normalized = path.Replace('\\', '/');
+                    string name = Path.GetFileName(normalized.TrimEnd('/'));
+                    if (string.IsNullOrWhiteSpace(name) || name == "." || name == "..")
+                        continue;
 
-                destination.Add(new FileEntry(name, path.Replace('\\', '/'), directory));
+                    destination.Add(new FileEntry(name, normalized, directory));
+                }
+                catch (Exception)
+                {
+                    // Invalid path syntax can occur on damaged removable media.
+                    // Do not fabricate a clickable entry from invalid metadata.
+                    continue;
+                }
             }
         }
 
