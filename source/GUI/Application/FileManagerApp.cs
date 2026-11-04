@@ -1738,6 +1738,22 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            // A failed navigation can temporarily leave currentPath different
+            // from the last successfully loaded directory. Never display
+            // cached filenames from that other path under the new location.
+            if (!hasLoadedDirectory ||
+                !string.Equals(loadedDirectoryPath, currentPath, StringComparison.Ordinal))
+            {
+                entries.Clear();
+                selectedIndex = -1;
+                scrollIndex = 0;
+                contextMenuVisible = false;
+                contextMenuSelection = -1;
+                ResetClickSequence();
+                status = "Refresh folder before searching";
+                return;
+            }
+
             // Build a private result first: large cached directories can take
             // time to filter. Do not mutate the visible tiles until a final
             // ACL check confirms that the snapshot is still readable.
