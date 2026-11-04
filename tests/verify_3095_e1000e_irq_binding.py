@@ -186,7 +186,10 @@ def check_driver_health(serial: str) -> str:
     if guest_claims and GUEST.fullmatch(guest_claims[0]).group(1).upper() != driver_lines[0].group(2).upper():
         raise ValueError("N6 guest adapter MAC differs from bound E1000E driver")
     link = "[NET3095-N6] POST_STRESS_LINK=PASS mac="
-    link_lines = [line for line in lines if line.startswith(link)]
+    # Detect all post-stress link claims, including malformed field names or
+    # failed statuses. A valid MAC line must not hide a conflicting claim.
+    link_lines = [line for line in lines
+                  if line.startswith("[NET3095-N6] POST_STRESS_LINK")]
     # Compare MAC octets rather than display case; preserve strict syntax and
     # reject duplicate link claims before trusting the final health snapshot.
     link_mac = None
@@ -490,6 +493,11 @@ def self_test() -> None:
         serial.replace("POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
                        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:57"),
         serial + "[NET3095-N6] POST_STRESS_LINK=PASS mac=52:54:00:12:34:56\\n",
+        serial.replace("POST_STRESS_LINK=PASS mac=", "POST_STRESS_LINK=PASS MAC="),
+        serial.replace("POST_STRESS_LINK=PASS mac=", "POST_STRESS_LINK=FAIL mac="),
+        serial.replace("POST_STRESS_LINK=PASS mac=", "POST_STRESS_LINK=PASS address="),
+        serial.replace("POST_STRESS_LINK=PASS mac=", "POST_STRESS_LINK=PASS mac=") +
+            "[NET3095-N6] POST_STRESS_LINK=FAIL mac=52:54:00:12:34:56\n",
     ):
         try:
             check_driver_health(invalid_link)
