@@ -1956,8 +1956,15 @@ namespace ZonderqOS.GUI.Apps
 
         private void Add(List<FileEntry> destination, string[] paths, bool directory, string parentPath)
         {
-            if (paths == null)
+            if (paths == null || string.IsNullOrEmpty(parentPath))
                 return;
+
+            // The containing directory is identical for every enumerated item.
+            // Normalize it once rather than allocating a new string for every
+            // FAT32 entry; large folders are scanned on the GUI thread.
+            string canonicalParent = parentPath.Replace('\\', '/').TrimEnd('/');
+            if (canonicalParent.Length == 0)
+                canonicalParent = "/";
 
             for (int i = 0; i < paths.Length; i++)
             {
@@ -1993,9 +2000,6 @@ namespace ZonderqOS.GUI.Apps
                     // A corrupt FAT32 enumeration must not inject a valid but
                     // unrelated absolute path into this directory's tiles.
                     // Require a direct child, not merely a shared prefix.
-                    string canonicalParent = parentPath.Replace('\\', '/').TrimEnd('/');
-                    if (canonicalParent.Length == 0)
-                        canonicalParent = "/";
                     int lastSlash = normalized.TrimEnd('/').LastIndexOf('/');
                     if (lastSlash < 0)
                         continue;
