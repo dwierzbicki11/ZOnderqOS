@@ -1594,8 +1594,15 @@ namespace ZonderqOS.GUI.Apps
                 // into a temporary snapshot; never erase the last usable view
                 // until the complete read has succeeded.
                 List<FileEntry> scanned = new List<FileEntry>();
-                Add(scanned, Directory.GetDirectories(targetPath), true);
-                Add(scanned, Directory.GetFiles(targetPath), false);
+                string[] directories = Directory.GetDirectories(targetPath);
+                string[] files = Directory.GetFiles(targetPath);
+                // A null enumeration is not an empty directory. Publishing
+                // the other half would silently hide files or folders after
+                // a transient FAT32/driver failure. Keep the cached snapshot.
+                if (directories == null || files == null)
+                    throw new IOException("Incomplete directory enumeration");
+                Add(scanned, directories, true);
+                Add(scanned, files, false);
 
                 // ACLs may change while FAT32 enumerates a large directory.
                 // The initial check only protects the start of the scan:
