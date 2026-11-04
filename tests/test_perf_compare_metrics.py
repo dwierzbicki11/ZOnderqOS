@@ -28,7 +28,7 @@ class MetricComparisonTests(unittest.TestCase):
                 module.compare(self.before, changed)
 
     def test_reject_bad_values(self):
-        for value in (True, float('nan'), float('inf'), -1, '1'):
+        for value in (True, float('nan'), float('inf'), -1, '1', 10**400):
             changed = [dict(row) for row in self.after]
             changed[0] = dict(changed[0], metrics={'frame_ms': value, 'gc_count': 0})
             with self.subTest(value=value), self.assertRaises(ValueError):
