@@ -10,8 +10,8 @@ import json
 from pathlib import Path
 import re
 
-MARKER = re.compile(r"PERF_BOOT_INIT_MS=([0-9]+)")
-FREE_PAGES = re.compile(r"free_pages=([0-9]+)")
+MARKER = re.compile(r"(?<![A-Za-z0-9_])PERF_BOOT_INIT_MS=([0-9]+)(?![A-Za-z0-9_.+-])")
+FREE_PAGES = re.compile(r"(?<![A-Za-z0-9_])free_pages=([0-9]+)(?![A-Za-z0-9_.+-])")
 
 
 def samples(log: str) -> list[int]:
