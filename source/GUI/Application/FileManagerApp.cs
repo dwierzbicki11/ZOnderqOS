@@ -1601,8 +1601,8 @@ namespace ZonderqOS.GUI.Apps
                 // a transient FAT32/driver failure. Keep the cached snapshot.
                 if (directories == null || files == null)
                     throw new IOException("Incomplete directory enumeration");
-                Add(scanned, directories, true);
-                Add(scanned, files, false);
+                Add(scanned, directories, true, targetPath);
+                Add(scanned, files, false, targetPath);
 
                 // ACLs may change while FAT32 enumerates a large directory.
                 // The initial check only protects the start of the scan:
@@ -1954,7 +1954,7 @@ namespace ZonderqOS.GUI.Apps
             return megabytes + " MB";
         }
 
-        private void Add(List<FileEntry> destination, string[] paths, bool directory)
+        private void Add(List<FileEntry> destination, string[] paths, bool directory, string parentPath)
         {
             if (paths == null)
                 return;
@@ -1989,6 +1989,18 @@ namespace ZonderqOS.GUI.Apps
                     // paths. A malformed FAT32 entry must not create a tile
                     // which can escape the directory through OpenEntry().
                     if (!FileClipboard.IsSafeAbsolutePath(normalized))
+                        continue;
+                    // A corrupt FAT32 enumeration must not inject a valid but
+                    // unrelated absolute path into this directory's tiles.
+                    // Require a direct child, not merely a shared prefix.
+                    string canonicalParent = parentPath.Replace('\\', '/').TrimEnd('/');
+                    if (canonicalParent.Length == 0)
+                        canonicalParent = "/";
+                    int lastSlash = normalized.TrimEnd('/').LastIndexOf('/');
+                    if (lastSlash < 0)
+                        continue;
+                    string entryParent = lastSlash == 0 ? "/" : normalized.Substring(0, lastSlash);
+                    if (!string.Equals(entryParent, canonicalParent, StringComparison.OrdinalIgnoreCase))
                         continue;
                     string name = Path.GetFileName(normalized.TrimEnd('/'));
                     if (string.IsNullOrWhiteSpace(name) || name == "." || name == "..")
