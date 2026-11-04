@@ -116,7 +116,14 @@ def check_driver_health(serial: str) -> str:
     baseline_lines = [line for line in lines
                       if line.startswith("[NET3095-N6] DRIVER_BASELINE")]
     if len(baseline_lines) != 1:
-        raise ValueError("missing or duplicate E1000E DriverKit baseline")
+        # Include the observed count and nearby N6 markers in CI diagnostics.
+        # Keep this fail-closed: a missing baseline must never be inferred
+        # from the final health snapshot or a later link-recovery marker.
+        nearby = [line for line in lines if line.startswith("[NET3095-N6] ")
+                  and ("DRIVER_" in line or "LINK_CYCLE_ARMED" in line)]
+        raise ValueError(
+            f"missing or duplicate E1000E DriverKit baseline: "
+            f"count={len(baseline_lines)}; N6 markers={nearby[:12]!r}")
     baseline = BASELINE.fullmatch(baseline_lines[0])
     if baseline is None:
         raise ValueError("malformed E1000E DriverKit baseline")
