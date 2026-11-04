@@ -50,6 +50,13 @@ def check_guest_line(serial: str) -> str:
         return [m for line in lines if (m := pattern.fullmatch(line))]
 
     bound, driver, guest = matches(BOUND), matches(DRIVER), matches(GUEST)
+    # A malformed or conflicting readiness claim must not be hidden by a
+    # later valid line. This is guest evidence, not an ISR execution proof.
+    guest_claims = [line for line in lines
+                    if line.startswith("[NET3095-N1] cpu=") and
+                    " adapter=" in line]
+    if len(guest_claims) != 1 or not GUEST.fullmatch(guest_claims[0]):
+        raise ValueError("malformed or duplicate N1 guest adapter readiness")
     if len(bound) != 1 or len(driver) != 1 or len(guest) != 1:
         raise ValueError("expected exactly one bound E1000E, line and ready guest adapter")
     if any((" E1000EDriver: mac " in line and not DRIVER.fullmatch(line)) or
@@ -386,6 +393,20 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted inconsistent PCI IRQ route/driver line")
+    for malformed_guest in (
+        "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=BAD ready=yes link=up",
+        "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=no link=up",
+        "[NET3095-N1] cpu=ap adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
+        "[NET3095-N1] cpu=bsp adapter=0 name=e1000e mac=52:54:00:12:34:56 ready=yes link=up",
+    ):
+        try:
+            check_guest_line(route_serial.replace(
+                "[NET3095-N6] DRIVER_BASELINE=PASS",
+                malformed_guest + "\\n[NET3095-N6] DRIVER_BASELINE=PASS", 1))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted malformed or duplicate guest readiness")
     assert "line=11" in check_guest_line(serial)
     assert "ISR-UNPROVEN" in check_driver_health(serial)
     assert "ISR-UNPROVEN" in check_driver_health(route_serial)
