@@ -1941,13 +1941,13 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("currentPath = previousPath;", rollback)
         self.assertIn("searchText = previousSearch;", rollback)
         self.assertIn("List<FileEntry> scanned = new List<FileEntry>();", refresh)
-        self.assertIn("Add(scanned, directories, true);", refresh)
-        self.assertIn("Add(scanned, files, false);", refresh)
+        self.assertIn("Add(scanned, directories, true, targetPath);", refresh)
+        self.assertIn("Add(scanned, files, false, targetPath);", refresh)
         self.assertIn("if (directories == null || files == null)", refresh)
         self.assertIn('throw new IOException("Incomplete directory enumeration");', refresh)
-        self.assertLess(refresh.index("Directory.GetDirectories(targetPath)"), refresh.index("Add(scanned, directories, true);"))
-        self.assertLess(refresh.index("Directory.GetFiles(targetPath)"), refresh.index("Add(scanned, files, false);"))
-        self.assertLess(refresh.index("if (directories == null || files == null)"), refresh.index("Add(scanned, directories, true);"))
+        self.assertLess(refresh.index("Directory.GetDirectories(targetPath)"), refresh.index("Add(scanned, directories, true, targetPath);"))
+        self.assertLess(refresh.index("Directory.GetFiles(targetPath)"), refresh.index("Add(scanned, files, false, targetPath);"))
+        self.assertLess(refresh.index("if (directories == null || files == null)"), refresh.index("Add(scanned, directories, true, targetPath);"))
         self.assertIn("Sort(scanned);", refresh)
         self.assertIn("if (!hasLoadedDirectory && targetPath == \"/root\" &&", refresh)
         self.assertIn("!Directory.Exists(targetPath))", refresh)
@@ -3694,7 +3694,7 @@ class FileManagerAclSortOrdering3095(unittest.TestCase):
         refresh = FILE_MANAGER.split("private bool RefreshInternal(string keep)", 1)[1].split(
             "private void ApplySearchFilter()", 1
         )[0]
-        scan = refresh.index("Add(scanned, files, false);")
+        scan = refresh.index("Add(scanned, files, false, targetPath);")
         second_acl = refresh.index("finalReadAllowed = CanReadInSession(targetPath);")
         denied = refresh.index("if (!finalReadAllowed)")
         sort = refresh.index("Sort(scanned);")
