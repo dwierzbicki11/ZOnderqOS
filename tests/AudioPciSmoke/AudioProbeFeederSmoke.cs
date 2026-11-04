@@ -253,6 +253,41 @@ internal static class AudioProbeFeederSmoke
             drainWaitCallbacks == 1 && waits == 1,
             "withdrawal during blocked silent drain prevents retry");
 
+        // The extended settle path must never sleep for 86 ms if the
+        // controller disappears while the final silent ring is being queued.
+        int failedSettleCalls = 0;
+        int failedSettleWrites = 0;
+        bool withdrawnBeforeSettle = false;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) =>
+            {
+                failedSettleWrites++;
+                if (failedSettleWrites == 2)
+                    withdrawnBeforeSettle = true;
+                return count;
+            },
+            () => !withdrawnBeforeSettle,
+            milliseconds => failedSettleCalls++, out waits);
+        Check(!ok && failedSettleWrites == 2 &&
+            failedSettleCalls == 0 && waits == 0,
+            "withdrawal during silent ring prevents settle sleep");
+
+        // A full ring that never becomes writable must also abort before
+        // settling; the 1 ms backpressure budget is independent of settle.
+        int blockedSettleWaits = 0;
+        int blockedSettleCalls = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) => 0,
+            () => true,
+            milliseconds =>
+            {
+                if (milliseconds == 1) blockedSettleWaits++;
+                else blockedSettleCalls++;
+            }, out waits);
+        Check(!ok && blockedSettleWaits == 1000 &&
+            blockedSettleCalls == 0 && waits == 1000,
+            "stalled PCM never enters 86ms settle phase");
+
         int stalledWaits = 0;
         ok = AudioProbeRingFeeder.Feed(pcm, (a, b, c) => 0,
             () => true, _ => stalledWaits++, out waits);
