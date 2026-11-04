@@ -3796,8 +3796,8 @@ class FileManagerDetachedVolumeRefresh3095(unittest.TestCase):
         )[0]
         failure = refresh.rsplit("catch (Exception ex)", 1)[1]
         self.assertIn("string.Equals(loadedDirectoryPath, currentPath, StringComparison.Ordinal)", failure)
-        self.assertIn("!Directory.Exists(currentPath)", failure)
-        self.assertLess(failure.index("!Directory.Exists(currentPath)"),
+        self.assertIn("directoryAvailable = Directory.Exists(currentPath);", failure)
+        self.assertLess(failure.index("directoryAvailable = Directory.Exists(currentPath);"),
                         failure.index("ClearDeniedListing();"))
         self.assertLess(failure.index("ClearDeniedListing();"),
                         failure.index('status = "Read error: " + ex.Message;'))
