@@ -1956,6 +1956,10 @@ namespace ZonderqOS.GUI.Apps
             for (int i = 0; i < paths.Length; i++)
             {
                 string path = paths[i];
+                // A damaged or detached FAT32 volume may yield an empty entry.
+                // Ignore it rather than crashing the entire desktop on TrimEnd.
+                if (string.IsNullOrWhiteSpace(path))
+                    continue;
                 string name = Path.GetFileName(path.TrimEnd('/', '\\'));
                 if (string.IsNullOrEmpty(name))
                     name = path;
