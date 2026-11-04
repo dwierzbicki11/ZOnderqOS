@@ -18,15 +18,21 @@ MSI = re.compile(r"^" + PREFIX + r"e1000e_irq_msi_notify MSI notify 0x([0-9a-fA-
 MSIX = re.compile(r"^" + PREFIX + r"e1000e_irq_msix_notify_vec MSI-X notify vector 0x([0-9a-fA-F]+)$")
 
 
-def count_notifications(stderr: str) -> tuple[int, int, int]:
-    legacy = msi = msix = 0
-    for line in stderr.replace("\r", "").splitlines():
-        line = line.strip()
-        # QEMU can emit another device trace event while its process is
-        # being terminated by the runner's cleanup trap. Those events are
-        # not guest runtime evidence and must not inflate retained artifacts.
+def checked_irq_lines(stderr: str):
+    """Reject malformed IRQ notifications instead of silently ignoring them."""
+    for raw in stderr.replace("\r", "").splitlines():
+        line = raw.strip()
         if re.match(r"^qemu-system-[^:]+: terminating on signal ", line):
             break
+        if re.match(PREFIX + r"e1000e_irq_(?:legacy_notify|msi_notify|msix_notify_vec)\b", line):
+            if not any(pattern.fullmatch(line) for pattern in (LEGACY, MSI, MSIX)):
+                raise ValueError("malformed QEMU E1000E IRQ notification")
+        yield line
+
+
+def count_notifications(stderr: str) -> tuple[int, int, int]:
+    legacy = msi = msix = 0
+    for line in checked_irq_lines(stderr):
         match = LEGACY.fullmatch(line)
         if match is not None:
             legacy += match.group(1) == "1"
@@ -51,10 +57,7 @@ def count_legacy_cycles(stderr: str) -> int:
     """
     armed = False
     cycles = 0
-    for line in stderr.replace("\r", "").splitlines():
-        line = line.strip()
-        if re.match(r"^qemu-system-[^:]+: terminating on signal ", line):
-            break
+    for line in checked_irq_lines(stderr):
         match = LEGACY.fullmatch(line)
         if match is None:
             continue
@@ -107,6 +110,17 @@ def self_test() -> None:
             assert "MSI/MSI-X" in str(exc)
         else:
             raise AssertionError("accepted mixed IRQ modes in INTx-only gate")
+    for malformed in (
+        "e1000e_irq_msi_notify MSI notify garbage\n",
+        "e1000e_irq_msix_notify_vec MSI-X notify vector invalid\n",
+        "e1000e_irq_legacy_notify IRQ line state: 2\n",
+    ):
+        try:
+            report(legacy_only + malformed, require_legacy_cycle=True)
+        except ValueError as exc:
+            assert "malformed" in str(exc)
+        else:
+            raise AssertionError("accepted malformed IRQ event alongside valid INTx")
     # A stuck asserted line may generate duplicate notifications, but it
     # cannot satisfy an opt-in complete legacy INTx transition gate.
     stuck = "e1000e_irq_legacy_notify IRQ line state: 1\n" * 8
@@ -130,6 +144,15 @@ def self_test() -> None:
            "e1000e_irq_msix_notify_vec MSI-X notify vector garbage\n",
            "e1000e_irq_msi_notify MSI notify 0x80 spoof\n")
     for sample in bad:
+        if sample.startswith("e1000e_irq_") and sample not in (
+            "e1000e_irq_legacy_notify IRQ line state: 0\n",
+            "e1000e_irq_msi_notify MSI notify 0x0\n",
+        ):
+            try:
+                count_notifications(sample)
+            except ValueError:
+                continue
+            raise AssertionError("accepted malformed IRQ notification")
         assert count_notifications(sample) == (0, 0, 0), repr(sample)
         assert "NOT_OBSERVED" in report(sample)
         try:
