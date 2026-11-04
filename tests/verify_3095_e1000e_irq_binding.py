@@ -126,7 +126,10 @@ def check_driver_health(serial: str) -> str:
             f"count={len(baseline_lines)}; N6 markers={nearby[:12]!r}")
     baseline = BASELINE.fullmatch(baseline_lines[0])
     if baseline is None:
-        raise ValueError("malformed E1000E DriverKit baseline")
+        # Preserve the exact guest emission for diagnosing intermittent N6
+        # failures; do not relax the baseline format or infer missing fields.
+        raise ValueError(
+            f"malformed E1000E DriverKit baseline: {baseline_lines[0]!r}")
     node, resources, published, sources, faults = match.groups()
     baseline_node, baseline_resources, baseline_sources = baseline.groups()
     if (baseline_node != node or baseline_resources != resources or
@@ -503,6 +506,19 @@ def self_test() -> None:
                 raise AssertionError("baseline diagnostic lost its count") from exc
         else:
             raise AssertionError("accepted missing or duplicate DriverKit baseline")
+    # A malformed baseline must expose the actual guest line, not just a
+    # generic failure. This helps distinguish a producer regression from
+    # serial capture corruption without accepting either as PASS.
+    malformed_baseline = baseline_marker.replace("isr_executions=unknown",
+                                                   "isr_executions=1")
+    try:
+        check_driver_health(serial.replace(baseline_marker, malformed_baseline))
+    except ValueError as exc:
+        if "malformed E1000E DriverKit baseline:" not in str(exc) or \
+                "isr_executions=1" not in str(exc):
+            raise AssertionError("malformed baseline lost guest evidence") from exc
+    else:
+        raise AssertionError("accepted malformed DriverKit baseline")
     bad_health = (
         serial.replace("handler_faults=0", "handler_faults=1"),
         serial.replace("resources=8", "resources=0"),
