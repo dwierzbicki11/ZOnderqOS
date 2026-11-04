@@ -49,7 +49,7 @@ class MetricComparisonTests(unittest.TestCase):
             with self.subTest(before=before, after=after), self.assertRaises(ValueError):
                 module.compare(old, new)
 
-    def test_reject_overflowing_even_median(self):
+    def test_finite_even_median_near_float_limit(self):
         # statistics.median can overflow for two large finite positive floats.
         old = [dict(row, metrics={'frame_ms': 1e308}) for row in self.before[:2]]
         new = [dict(row, metrics={'frame_ms': 1e308}) for row in self.after[:2]]
@@ -57,8 +57,11 @@ class MetricComparisonTests(unittest.TestCase):
                     dict(run_id='3', environment=self.before[0]['environment'], metrics={'frame_ms': 1e308})])
         new.extend([dict(self.after[2], metrics={'frame_ms': 1e308}),
                     dict(run_id='3', environment=self.after[0]['environment'], metrics={'frame_ms': 1e308})])
-        with self.assertRaisesRegex(ValueError, 'nonfinite derived metric'):
-            module.compare(old, new)
+        result = module.compare(old, new)['metrics']['frame_ms']
+        self.assertEqual(result['before_median'], 1e308)
+        self.assertEqual(result['after_median'], 1e308)
+        self.assertEqual(result['delta'], 0)
+        self.assertEqual(result['change_percent'], 0)
 
     def test_reject_unpaired(self):
         with self.assertRaises(ValueError): module.compare(self.before, self.after[:2])
