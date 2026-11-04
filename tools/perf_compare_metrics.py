@@ -12,6 +12,15 @@ from pathlib import Path
 from statistics import median
 
 
+def nonnegative_median(values):
+    """Avoid overflow in statistics.median's even-sized (a + b) / 2."""
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return ordered[middle - 1] / 2 + ordered[middle] / 2
+
+
 def environment_fingerprint(value):
     """Reject non-JSON/nonfinite settings and preserve JSON scalar types."""
     try:
@@ -65,7 +74,7 @@ def compare(before, after):
         old = [r['metrics'][key] for r in before]
         new = [r['metrics'][key] for r in after]
         deltas = [b - a for a, b in zip(old, new)]
-        old_median, new_median = median(old), median(new)
+        old_median, new_median = nonnegative_median(old), nonnegative_median(new)
         change_percent = None if old_median == 0 else 100 * (new_median - old_median) / old_median
         if (not math.isfinite(old_median)
                 or not math.isfinite(new_median)
