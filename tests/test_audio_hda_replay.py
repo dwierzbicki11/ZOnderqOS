@@ -121,6 +121,31 @@ class HdaReplayTests(unittest.TestCase):
                 else:
                     self.assertLess(detailed[3], .995)
 
+    def test_strict_inconclusive_stereo_channel_fails_closed(self):
+        # Left-channel silence must not turn a clean right-channel signal
+        # into a strict PASS. This is an inconclusive capture, not proof
+        # that both DMA output channels were checked.
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'silent_left_clean_right.wav'
+            right = [2908 if math.sin(2 * math.pi * 880 * i / RATE) >= 0
+                     else -2908 for i in range(RATE // 2)]
+            with wave.open(str(path), 'wb') as output:
+                output.setnchannels(2)
+                output.setsampwidth(2)
+                output.setframerate(RATE)
+                output.writeframes(b''.join(
+                    struct.pack('<hh', 0, sample) for sample in right))
+            channels = replay.analyze_channels(path, include_correlation=True)
+            self.assertIsNone(channels[0])
+            self.assertIsNotNone(channels[1])
+            with patch('sys.argv', ['analyze-audio-hda-replay.py',
+                                    str(path), '--strict']):
+                self.assertEqual(replay.main(), 2)
+            with patch('sys.argv', ['analyze-audio-hda-replay.py',
+                                    str(path)]):
+                self.assertEqual(replay.main(), 0)
+
     def test_rejects_mono_and_invalid_wav(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'broken.wav'
