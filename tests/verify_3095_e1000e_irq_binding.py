@@ -496,8 +496,7 @@ def self_test() -> None:
         serial.replace("POST_STRESS_LINK=PASS mac=", "POST_STRESS_LINK=PASS MAC="),
         serial.replace("POST_STRESS_LINK=PASS mac=", "POST_STRESS_LINK=FAIL mac="),
         serial.replace("POST_STRESS_LINK=PASS mac=", "POST_STRESS_LINK=PASS address="),
-        serial.replace("POST_STRESS_LINK=PASS mac=", "POST_STRESS_LINK=PASS mac=") +
-            "[NET3095-N6] POST_STRESS_LINK=FAIL mac=52:54:00:12:34:56\n",
+        serial + "[NET3095-N6] POST_STRESS_LINK=FAIL mac=52:54:00:12:34:56\n",
     ):
         try:
             check_driver_health(invalid_link)
