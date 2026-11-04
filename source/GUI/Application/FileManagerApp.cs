@@ -1859,6 +1859,17 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            // Cached filenames may survive a removable FAT32 volume being
+            // detached after the last successful scan. An ACL grant alone
+            // does not prove the backing directory still exists. Fail closed
+            // before re-publishing cached tiles from a search keystroke.
+            if (!OptionalDirectoryExists(currentPath))
+            {
+                ClearDeniedListing();
+                status = "Location unavailable; press F5 to refresh";
+                return;
+            }
+
             scrollIndex = 0;
             contextMenuVisible = false;
             contextMenuSelection = -1;
