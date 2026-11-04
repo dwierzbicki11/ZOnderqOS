@@ -114,6 +114,12 @@ def main():
                   f'{corr_start_ms + period_ms:.1f}ms '
                   f'(16KiB/48kHz stereo16 period={period_ms:.2f}ms); '
                   f'heuristic for nonperiodic fixtures, not proof of guest ISR delivery')
+        # A missing active channel is not a clean stereo result. In strict
+        # mode, do not silently pass a capture with one inconclusive channel.
+        if args.strict and any(result is None for result in channels):
+            print('[AUDIO-DMA] INCONCLUSIVE: at least one channel lacks active window pairs',
+                  file=sys.stderr)
+            return 2
         return 1 if args.strict and suspected else 0
     except (OSError, EOFError, ValueError, wave.Error) as exc:
         print(f'[AUDIO-DMA] INCONCLUSIVE {exc}', file=sys.stderr)
