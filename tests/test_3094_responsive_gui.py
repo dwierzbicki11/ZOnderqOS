@@ -3851,7 +3851,7 @@ class FileManagerInvalidEnumerationPaths3095(unittest.TestCase):
         self.assertIn("if (string.IsNullOrWhiteSpace(path))", add_method)
         self.assertIn("continue;", add_method)
         self.assertLess(add_method.index("if (string.IsNullOrWhiteSpace(path))"),
-                        add_method.index("path.TrimEnd("))
+                        add_method.index("normalized.TrimEnd("))
 
 
 if __name__ == "__main__":
