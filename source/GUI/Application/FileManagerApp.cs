@@ -335,7 +335,11 @@ namespace ZonderqOS.GUI.Apps
             x = mouseX - view.X;
             y = mouseY - view.Y;
             if (x < 0 || y < 0 || x >= view.Width || y >= view.Height)
+            {
+                if (left && !oldLeft)
+                    ResetClickSequence();
                 return;
+            }
 
             int contentBottom = view.Height - FooterHeight - 8;
 
@@ -385,7 +389,10 @@ namespace ZonderqOS.GUI.Apps
             }
 
             if (y < ContentTop || y >= contentBottom)
+            {
+                ResetClickSequence();
                 return;
+            }
 
             if (SidebarWidthForView > 0 && x < SidebarWidthForView + 4)
             {
