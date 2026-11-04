@@ -195,7 +195,8 @@ class HdaReplayTests(unittest.TestCase):
             path = Path(tmp) / 'missing.wav'
             for ring_bytes, source_rate in (
                 (0, 48000), (-16384, 48000), (16385, 48000),
-                (16384, 0), (16384, -48000), (4, 10**9)):
+                (16384, 0), (16384, -48000), (4, 10**9),
+                (16384, 7999), (16384, 192001)):
                 with self.subTest(ring_bytes=ring_bytes, source_rate=source_rate):
                     with self.assertRaises(ValueError):
                         replay.analyze_channels(path, ring_bytes, source_rate)
