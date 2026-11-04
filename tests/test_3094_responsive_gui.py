@@ -3845,5 +3845,14 @@ class FileManagerOptionalSidebarProbe3095(unittest.TestCase):
         self.assertNotIn('if (Directory.Exists("/mnt"))', sidebar)
 
 
+class FileManagerInvalidEnumerationPaths3095(unittest.TestCase):
+    def test_null_or_blank_paths_are_skipped_before_name_extraction(self):
+        add_method = FILE_MANAGER.split("private void Add(List<FileEntry> destination", 1)[1].split("private void Sort(", 1)[0]
+        self.assertIn("if (string.IsNullOrWhiteSpace(path))", add_method)
+        self.assertIn("continue;", add_method)
+        self.assertLess(add_method.index("if (string.IsNullOrWhiteSpace(path))"),
+                        add_method.index("path.TrimEnd("))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
