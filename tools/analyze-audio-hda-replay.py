@@ -27,6 +27,12 @@ def normalized_correlation(first, second):
 
 
 def analyze_channels(path: Path, ring_bytes=16384, source_rate=48000, include_correlation=False):
+    # Reject invalid DMA geometry instead of interpreting a zero/negative lag
+    # as a valid replay comparison (which could produce a false alarm).
+    if not isinstance(ring_bytes, int) or ring_bytes <= 0 or ring_bytes % 4:
+        raise ValueError('ring_bytes must be a positive stereo16 frame multiple')
+    if not isinstance(source_rate, int) or source_rate <= 0:
+        raise ValueError('source_rate must be a positive integer')
     with wave.open(str(path), 'rb') as stream:
         rate = stream.getframerate()
         channels = stream.getnchannels()
@@ -43,6 +49,8 @@ def analyze_channels(path: Path, ring_bytes=16384, source_rate=48000, include_co
     if len(samples) != frames * 2:
         raise ValueError('truncated stereo PCM capture')
     ring_frames = round(rate * ring_bytes / (source_rate * 4))
+    if ring_frames <= 0:
+        raise ValueError('DMA ring lag rounds to zero capture frames')
     window = rate * 40 // 1000
     if frames < ring_frames + window:
         raise ValueError('capture too short for DMA ring replay analysis')
