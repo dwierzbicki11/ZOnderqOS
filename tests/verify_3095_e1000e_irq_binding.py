@@ -482,9 +482,11 @@ def self_test() -> None:
     else:
         raise AssertionError("accepted N6 guest MAC inconsistent with bound E1000E")
     # MAC address hex is case-insensitive; the underlying bytes must match.
+    # Keep all three MAC identities equal: only their letter case may differ.
+    # The driver diagnostic uses "mac " rather than "mac=".
     mixed_case_mac = serial.replace(
-        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:56",
-        "POST_STRESS_LINK=PASS mac=52:54:00:12:34:ab").replace(
+        "E1000EDriver: mac 52:54:00:12:34:56",
+        "E1000EDriver: mac 52:54:00:12:34:ab").replace(
         "mac=52:54:00:12:34:56", "mac=52:54:00:12:34:AB")
     assert "streams=6" in check_driver_health(mixed_case_mac)
     for invalid_link in (
