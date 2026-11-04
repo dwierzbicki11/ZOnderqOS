@@ -108,24 +108,23 @@ namespace ZonderqOS.GUI.Apps
             if (SecurityContext.CurrentUser == "root")
                 return "/root";
 
-            string home = UserManager.GetHomeDirectory(SecurityContext.CurrentUser);
-            if (!FileClipboard.IsSafeAbsolutePath(home) || home == "/root")
-                return "/";
-
-            // A broken or removed home volume must not prevent the File
-            // Manager window from opening. Root is a safe navigation fallback.
+            // Home-directory lookup itself can fail while account metadata
+            // is on a removed or failing disk. Keep all filesystem-dependent
+            // operations inside the same fail-closed boundary.
             try
             {
-                if (!Directory.Exists(home))
+                string home = UserManager.GetHomeDirectory(SecurityContext.CurrentUser);
+                if (!FileClipboard.IsSafeAbsolutePath(home) || home == "/root" ||
+                    !Directory.Exists(home))
                     return "/";
+
+                string normalizedHome = home.TrimEnd('/', '\\');
+                return normalizedHome.Length == 0 ? "/" : normalizedHome;
             }
             catch (Exception)
             {
                 return "/";
             }
-
-            return home.TrimEnd('/', '\\').Length == 0
-                ? "/" : home.TrimEnd('/', '\\');
         }
 
         public FileManagerApp(int x, int y, Action<string> openFile) : base("File Manager")
