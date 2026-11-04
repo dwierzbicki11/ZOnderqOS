@@ -3767,5 +3767,26 @@ class FileManagerNavigationRollback3095(unittest.TestCase):
                         catch.index('status = "Navigation error: " + ex.Message;'))
 
 
+
+class FileManagerCachedPathIsolation3095(unittest.TestCase):
+    def test_search_never_publishes_snapshot_from_another_directory(self):
+        filtering = FILE_MANAGER.split("private void ApplySearchFilter()", 1)[1].split(
+            "private void RebuildSidebar()", 1
+        )[0]
+        self.assertIn("!hasLoadedDirectory", filtering)
+        self.assertIn(
+            "!string.Equals(loadedDirectoryPath, currentPath, StringComparison.Ordinal)",
+            filtering,
+        )
+        guard = filtering.index("!hasLoadedDirectory")
+        publication = filtering.index("entries.AddRange(filtered);")
+        self.assertLess(guard, publication)
+        blocked = filtering[guard:filtering.index("// Build a private result", guard)]
+        self.assertIn("entries.Clear();", blocked)
+        self.assertIn("selectedIndex = -1;", blocked)
+        self.assertIn("contextMenuVisible = false;", blocked)
+        self.assertIn("return;", blocked)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
