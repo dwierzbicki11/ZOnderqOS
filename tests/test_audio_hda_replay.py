@@ -209,6 +209,24 @@ class HdaReplayTests(unittest.TestCase):
             self.assertGreater(left[0], .99)
             self.assertGreater(right[0], .99)
 
+    def test_cli_geometry_options_are_forwarded_and_validated(self):
+        # CLI must not silently assume the 16 KiB/48 kHz default when a
+        # capture was produced with different DMA ring geometry.
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / 'geometry.wav'
+            fixture(path, repeat=True)
+            with patch('sys.argv', ['analyze-audio-hda-replay.py', str(path),
+                                    '--ring-bytes', '16384', '--source-rate', '48000',
+                                    '--strict']):
+                self.assertEqual(replay.main(), 1)
+            with patch('sys.argv', ['analyze-audio-hda-replay.py', str(path),
+                                    '--ring-bytes', '0', '--strict']):
+                self.assertEqual(replay.main(), 2)
+            with patch('sys.argv', ['analyze-audio-hda-replay.py', str(path),
+                                    '--source-rate', '192001', '--strict']):
+                self.assertEqual(replay.main(), 2)
+
     def test_rejects_mono_and_invalid_wav(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / 'broken.wav'
