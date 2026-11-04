@@ -48,6 +48,22 @@ def visible_rows(window_height, list_top, bottom_offset, row_height, row_gap):
 
 
 class ResponsiveGui3094(unittest.TestCase):
+    def test_file_manager_home_probe_failures_fall_back_without_gui_crash(self):
+        # Both startup and successful unmount can encounter an I/O exception
+        # while checking a missing home directory. Neither may abort the UI.
+        startup = FILE_MANAGER.split("private static string ResolveSessionHome()", 1)[1].split(
+            "public FileManagerApp(", 1)[0]
+        self.assertIn("if (!Directory.Exists(home))", startup)
+        self.assertIn("catch (Exception)", startup)
+        self.assertIn('return "/";', startup)
+
+        unmount = FILE_MANAGER.split("private void UnmountVolume(", 1)[1].split(
+            "private static bool IsInsidePath(", 1
+        )[0]
+        self.assertIn("homeAvailable = Directory.Exists(home);", unmount)
+        self.assertIn("catch (Exception)", unmount)
+        self.assertIn('currentPath = homeAvailable ? home : "/";', unmount)
+
     def test_image_viewer_toolbar_paint_and_click_share_compact_geometry(self):
         self.assertIn("private bool TryToolbarButtonBounds(", IMAGE_VIEWER)
         self.assertIn("TryToolbarButtonBounds(i, out buttonX, out buttonWidth)", IMAGE_VIEWER)
