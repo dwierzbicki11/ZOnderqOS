@@ -158,6 +158,19 @@ qemu-system-x86_64 \
   -serial "file:$LOG" -no-reboot -no-shutdown \
   2> "$LOG.stderr" &
 pid=$!
+# Capture both sides of a failed link recovery, without weakening the gate.
+# A QMP command succeeding is not evidence that the guest resumed RX/TX.
+report_link_recovery_failure() {
+  local phase="$1"
+  echo "[NET3095-N6-LINK] $phase: guest, host and QEMU diagnostics:" >&2
+  tail -n 90 "$LOG" >&2 || true
+  tail -n 30 "$LOG.tcp-host" >&2 || true
+  tail -n 30 "$LOG.stderr" >&2 || true
+  if [[ -f "$PCAP" ]]; then
+    stat -c '[NET3095-N6-LINK] PCAP bytes=%s' -- "$PCAP" >&2 || true
+  fi
+  return 0
+}
 qemu_alive() {
   kill -0 "$pid" 2>/dev/null || return 1
   local state
@@ -406,14 +419,12 @@ while (( SECONDS - started < TIMEOUT )); do
         python3 "$ROOT/tools/network_3095_qmp_link.py" --socket "$LOG.qmp" --state up
         recovery_start=$SECONDS
         until python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" >/dev/null 2>&1; do
-          qemu_alive || { echo "[NET3095-N6-LINK][FAIL] Guest exited during recovery" >&2; exit 1; }
+          qemu_alive || { report_link_recovery_failure "first recovery: QEMU exited"; echo "[NET3095-N6-LINK][FAIL] Guest exited during recovery" >&2; exit 1; }
           if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
             tail -n 90 "$LOG" >&2; exit 1
           fi
           if (( SECONDS - recovery_start >= 20 )); then
-            echo "[NET3095-N6-LINK] First recovery timed out; last guest and host observations:" >&2
-            tail -n 90 "$LOG" >&2
-            tail -n 30 "$LOG.tcp-host" >&2
+            report_link_recovery_failure "first recovery timed out"
             python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" || true
             echo "[NET3095-N6-LINK][FAIL] First recovery did not meet PCAP/serial/host gate" >&2; exit 1
           fi
@@ -448,14 +459,12 @@ while (( SECONDS - started < TIMEOUT )); do
           python3 "$ROOT/tools/network_3095_qmp_link.py" --socket "$LOG.qmp" --state up
           recovery2_start=$SECONDS
           until python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" --cycles 2 >/dev/null 2>&1; do
-            qemu_alive || { echo "[NET3095-N6-LINK][FAIL] Guest exited during second recovery" >&2; exit 1; }
+            qemu_alive || { report_link_recovery_failure "second recovery: QEMU exited"; echo "[NET3095-N6-LINK][FAIL] Guest exited during second recovery" >&2; exit 1; }
             if grep -Fq '[NET3095-N6][FAIL]' "$LOG"; then
               tail -n 90 "$LOG" >&2; exit 1
             fi
             if (( SECONDS - recovery2_start >= 20 )); then
-              echo "[NET3095-N6-LINK] Second recovery timed out; last guest and host observations:" >&2
-              tail -n 90 "$LOG" >&2
-              tail -n 30 "$LOG.tcp-host" >&2
+              report_link_recovery_failure "second recovery timed out"
               python3 "$ROOT/tests/verify_3095_network_n6_tcp_recovery.py" "$LOG" "$PCAP" "$LOG.tcp-host" --cycles 2 || true
               echo "[NET3095-N6-LINK][FAIL] Second recovery did not meet PCAP/serial/host gate" >&2; exit 1
             fi
