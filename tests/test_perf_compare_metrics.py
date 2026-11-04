@@ -63,6 +63,17 @@ class MetricComparisonTests(unittest.TestCase):
         self.assertEqual(result['delta'], 0)
         self.assertEqual(result['change_percent'], 0)
 
+    def test_large_negative_paired_median_stays_finite(self):
+        # statistics.median([-1e308] * 4) produces -Infinity.
+        old = [dict(run_id=str(i), environment=self.before[0]['environment'],
+                    metrics={'frame_ms': 1e308}) for i in range(4)]
+        new = [dict(run_id=str(i), environment=self.after[0]['environment'],
+                    metrics={'frame_ms': 0}) for i in range(4)]
+        result = module.compare(old, new)['metrics']['frame_ms']
+        self.assertEqual(result['paired_median_delta'], -1e308)
+        self.assertEqual(result['change_percent'], -100)
+        self.assertEqual(result['faster_pairs'], 4)
+
     def test_reject_unpaired(self):
         with self.assertRaises(ValueError): module.compare(self.before, self.after[:2])
         with self.assertRaises(ValueError): module.compare(self.before[:2], self.after[:2])
