@@ -70,6 +70,8 @@ def report(stderr: str, require_notify: bool = False, require_legacy_cycle: bool
     legacy, msi, msix = count_notifications(stderr)
     total = legacy + msi + msix
     legacy_cycles = count_legacy_cycles(stderr)
+    if require_legacy_cycle and (msi or msix):
+        raise ValueError("MSI/MSI-X notification in legacy INTx-only QEMU trace")
     if require_legacy_cycle and not legacy_cycles:
         raise ValueError("no complete QEMU E1000E legacy INTx low-to-high cycle")
     if require_notify and not total:
@@ -87,7 +89,24 @@ def self_test() -> None:
              "e1000e_irq_msix_notify_vec MSI-X notify vector 0x0\n")
     assert count_notifications(trace) == (1, 1, 1)
     assert count_legacy_cycles(trace) == 1
-    assert "legacy_cycles=1" in report(trace, require_legacy_cycle=True)
+    # A mixed-mode trace must never satisfy an INTx-only proof gate.
+    try:
+        report(trace, require_legacy_cycle=True)
+    except ValueError as exc:
+        assert "MSI/MSI-X" in str(exc)
+    else:
+        raise AssertionError("accepted MSI/MSI-X events as legacy-only IRQ trace")
+    legacy_only = ("e1000e_irq_legacy_notify IRQ line state: 0\n"
+                   "e1000e_irq_legacy_notify IRQ line state: 1\n")
+    assert "legacy_cycles=1" in report(legacy_only, require_legacy_cycle=True)
+    for mixed in ("e1000e_irq_msi_notify MSI notify 0x80\n",
+                  "e1000e_irq_msix_notify_vec MSI-X notify vector 0x0\n"):
+        try:
+            report(legacy_only + mixed, require_legacy_cycle=True)
+        except ValueError as exc:
+            assert "MSI/MSI-X" in str(exc)
+        else:
+            raise AssertionError("accepted mixed IRQ modes in INTx-only gate")
     # A stuck asserted line may generate duplicate notifications, but it
     # cannot satisfy an opt-in complete legacy INTx transition gate.
     stuck = "e1000e_irq_legacy_notify IRQ line state: 1\n" * 8
