@@ -84,6 +84,21 @@ class MetricComparisonTests(unittest.TestCase):
             result = module.compare(old, new)['metrics']['frame_ms']
             self.assertAlmostEqual(result['change_percent'], expected)
 
+    def test_even_medians_preserve_subnormal_samples(self):
+        # Halving the smallest positive float twice loses both halves.
+        tiny = float.fromhex('0x0.0000000000001p-1022')
+        self.assertEqual(module.nonnegative_median([tiny] * 4), tiny)
+        self.assertEqual(module.signed_median([tiny] * 4), tiny)
+        self.assertEqual(module.signed_median([-tiny] * 4), -tiny)
+        old = [dict(run_id=str(i), environment=self.before[0]['environment'],
+                    metrics={'frame_ms': tiny}) for i in range(4)]
+        new = [dict(run_id=str(i), environment=self.after[0]['environment'],
+                    metrics={'frame_ms': tiny}) for i in range(4)]
+        result = module.compare(old, new)['metrics']['frame_ms']
+        self.assertEqual(result['before_median'], tiny)
+        self.assertEqual(result['after_median'], tiny)
+        self.assertEqual(result['change_percent'], 0)
+
     def test_reject_unpaired(self):
         with self.assertRaises(ValueError): module.compare(self.before, self.after[:2])
         with self.assertRaises(ValueError): module.compare(self.before[:2], self.after[:2])
