@@ -53,7 +53,9 @@ class ResponsiveGui3094(unittest.TestCase):
         # while checking a missing home directory. Neither may abort the UI.
         startup = FILE_MANAGER.split("private static string ResolveSessionHome()", 1)[1].split(
             "public FileManagerApp(", 1)[0]
-        self.assertIn("if (!Directory.Exists(home))", startup)
+        self.assertIn("!Directory.Exists(home)", startup)
+        self.assertIn("UserManager.GetHomeDirectory(SecurityContext.CurrentUser)", startup)
+        self.assertIn("!FileClipboard.IsSafeAbsolutePath(home)", startup)
         self.assertIn("catch (Exception)", startup)
         self.assertIn('return "/";', startup)
 
