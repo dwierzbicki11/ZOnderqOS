@@ -9,11 +9,19 @@ import argparse
 import json
 import math
 from pathlib import Path
-from statistics import median
 
 
 def nonnegative_median(values):
     """Avoid overflow in statistics.median's even-sized (a + b) / 2."""
+    ordered = sorted(values)
+    middle = len(ordered) // 2
+    if len(ordered) % 2:
+        return ordered[middle]
+    return ordered[middle - 1] / 2 + ordered[middle] / 2
+
+
+def signed_median(values):
+    """Compute an even-sized signed median without overflowing a + b."""
     ordered = sorted(values)
     middle = len(ordered) // 2
     if len(ordered) % 2:
@@ -82,7 +90,7 @@ def compare(before, after):
                 or not math.isfinite(new_median - old_median)
                 or (change_percent is not None and not math.isfinite(change_percent))):
             raise ValueError(f'nonfinite derived metric: {key}')
-        paired_median_delta = median(deltas)
+        paired_median_delta = signed_median(deltas)
         if not math.isfinite(paired_median_delta):
             raise ValueError(f'nonfinite derived metric: {key}')
         output['metrics'][key] = {
