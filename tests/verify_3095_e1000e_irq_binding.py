@@ -402,7 +402,7 @@ def self_test() -> None:
         try:
             check_guest_line(route_serial.replace(
                 "[NET3095-N6] DRIVER_BASELINE=PASS",
-                malformed_guest + "\\n[NET3095-N6] DRIVER_BASELINE=PASS", 1))
+                malformed_guest + "\n[NET3095-N6] DRIVER_BASELINE=PASS", 1))
         except ValueError:
             pass
         else:
