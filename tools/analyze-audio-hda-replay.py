@@ -63,8 +63,10 @@ def analyze_channels(path: Path, ring_bytes=16384, source_rate=48000, include_co
         for start in range(0, len(channel) - ring_frames - window + 1, max(1, window // 2)):
             first = channel[start:start + window]
             second = channel[start + ring_frames:start + ring_frames + window]
-            if (sum(abs(value) >= 256 for value in first) < window * 0.95 or
-                    sum(abs(value) >= 256 for value in second) < window * 0.95):
+            # Use RMS activity rather than demanding 95% of individual samples
+            # exceed a threshold: genuine sine waves cross zero regularly.
+            if (sum(value * value for value in first) < window * 256 * 256 or
+                    sum(value * value for value in second) < window * 256 * 256):
                 continue
             fraction = sum(a == b for a, b in zip(first, second)) / window
             if fraction > best_fraction:
