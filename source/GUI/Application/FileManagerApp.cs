@@ -971,6 +971,15 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            // Keyboard selection changes invalidate a pending mouse double-click.
+            // Otherwise a later single click at the same tile index can open
+            // a file unexpectedly after arrow/Home/End/Page navigation.
+            if (key.Key == ConsoleKeyEx.LeftArrow || key.Key == ConsoleKeyEx.RightArrow ||
+                key.Key == ConsoleKeyEx.UpArrow || key.Key == ConsoleKeyEx.DownArrow ||
+                key.Key == ConsoleKeyEx.Home || key.Key == ConsoleKeyEx.End ||
+                key.Key == ConsoleKeyEx.PageUp || key.Key == ConsoleKeyEx.PageDown)
+                ResetClickSequence();
+
             if (key.Key == ConsoleKeyEx.LeftArrow)
             {
                 Select(-1);
