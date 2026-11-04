@@ -18,8 +18,8 @@ class IncompleteEnumerationContract(unittest.TestCase):
         files = method.index("string[] files = Directory.GetFiles(targetPath);")
         guard = method.index("if (directories == null || files == null)")
         failure = method.index('throw new IOException("Incomplete directory enumeration");')
-        add_directories = method.index("Add(scanned, directories, true);")
-        add_files = method.index("Add(scanned, files, false);")
+        add_directories = method.index("Add(scanned, directories, true, targetPath);")
+        add_files = method.index("Add(scanned, files, false, targetPath);")
         publish = method.index("entries.AddRange(scanned);")
         self.assertTrue(directories < files < guard < failure < add_directories < add_files < publish)
 
