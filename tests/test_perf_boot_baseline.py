@@ -73,6 +73,20 @@ class PerfBootBaselineTests(unittest.TestCase):
         self.assertEqual(result["samples"], 1)
         self.assertEqual(result["last_free_pages"], 700)
 
+    def test_reject_punctuation_attached_to_boot_measurements(self):
+        log = ("PERF_BOOT_INIT_MS=12/3\nPERF_BOOT_INIT_MS=14%\n"
+               "PERF_BOOT_INIT_MS=15,garbage\nPERF_BOOT_INIT_MS=16;bad\n"
+               "[PERF] PERF_BOOT_INIT_MS=42 next=ok\n")
+        self.assertEqual(perf.samples(log), [42])
+
+    def test_reject_punctuation_attached_to_memory_measurements(self):
+        log = ("free_pages=123/4\nfree_pages=125%\n"
+               "free_pages=126,bad\nfree_pages=127;bad\n"
+               "[MEM] free_pages=800 free_bytes=3276800\n")
+        result = perf.memory_samples(log)
+        self.assertEqual(result["samples"], 1)
+        self.assertEqual(result["last_free_pages"], 800)
+
     def test_missing_memory_samples(self):
         with self.assertRaises(ValueError):
             perf.memory_samples("heartbeat only")
