@@ -1712,9 +1712,22 @@ namespace ZonderqOS.GUI.Apps
                 // Directory.Exists is read-only and returns false for missing
                 // or inaccessible paths; only invalidate the snapshot when
                 // it belongs to the directory that just failed to refresh.
-                if (string.Equals(loadedDirectoryPath, currentPath, StringComparison.Ordinal) &&
-                    !Directory.Exists(currentPath))
-                    ClearDeniedListing();
+                if (string.Equals(loadedDirectoryPath, currentPath, StringComparison.Ordinal))
+                {
+                    bool directoryAvailable;
+                    try
+                    {
+                        directoryAvailable = Directory.Exists(currentPath);
+                    }
+                    catch (Exception)
+                    {
+                        // A failed existence probe cannot establish that the
+                        // cached FAT32 directory is still safe to display.
+                        directoryAvailable = false;
+                    }
+                    if (!directoryAvailable)
+                        ClearDeniedListing();
+                }
                 status = "Read error: " + ex.Message;
                 return false;
             }
