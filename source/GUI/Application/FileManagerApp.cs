@@ -504,6 +504,10 @@ namespace ZonderqOS.GUI.Apps
         {
             contextMenuVisible = false;
             contextMenuSelection = -1;
+            // Context actions may move, create or refresh tiles. A pending
+            // mouse click must never complete a double-click on their new
+            // positions, including when the chosen action is disabled.
+            ResetClickSequence();
             // A visually disabled menu item must never perform an action.
             if (!ContextActionEnabled(item))
                 return;
@@ -877,6 +881,9 @@ namespace ZonderqOS.GUI.Apps
                 {
                     contextMenuVisible = false;
                     contextMenuSelection = -1;
+                    // Keyboard dismissal must cancel the click anchor just
+                    // like dismissal by mouse or loss of window focus.
+                    ResetClickSequence();
                     return;
                 }
 
