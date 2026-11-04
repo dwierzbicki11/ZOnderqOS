@@ -213,12 +213,12 @@ checks["filter cannot revive revoked directory listing"] = (
     "canRead = CanReadInSession(currentPath);" in filter_body
     and "if (!canRead)" in filter_body
     and "ClearDeniedListing();" in filter_body
-    and filter_body.index("if (!canRead)") < filter_body.index("entries.AddRange(cachedEntries);")
+    and filter_body.index("if (!canRead)") < filter_body.index("entries.AddRange(filtered);")
 )
 checks["filter catches ACL and detached FAT32 failures before restoring cached names"] = (
     "try\n            {\n                canRead = CanReadInSession(currentPath);" in filter_body
     and "catch (Exception)" in filter_body
-    and filter_body.index("catch (Exception)") < filter_body.index("entries.AddRange(cachedEntries);")
+    and filter_body.index("catch (Exception)") < filter_body.index("entries.AddRange(filtered);")
     and filter_body.count("ClearDeniedListing();") >= 2
     and 'status = "Cannot verify folder permissions";' in filter_body
 )
