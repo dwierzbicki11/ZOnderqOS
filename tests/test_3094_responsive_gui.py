@@ -3828,5 +3828,22 @@ class FileManagerDetachedVolumeRefresh3095(unittest.TestCase):
                         failure.index("if (!directoryAvailable)"))
 
 
+class FileManagerOptionalSidebarProbe3095(unittest.TestCase):
+    def test_optional_shortcuts_cannot_crash_sidebar_on_io_failure(self):
+        helper = FILE_MANAGER.split(
+            "private static bool OptionalDirectoryExists(string path)", 1
+        )[1].split("private void RebuildSidebar()", 1)[0]
+        self.assertIn("return Directory.Exists(path);", helper)
+        self.assertIn("catch (Exception)", helper)
+        self.assertIn("return false;", helper)
+        sidebar = FILE_MANAGER.split("private void RebuildSidebar()", 1)[1].split(
+            "private static string", 1
+        )[0]
+        self.assertIn('OptionalDirectoryExists("/home")', sidebar)
+        self.assertIn('OptionalDirectoryExists("/mnt")', sidebar)
+        self.assertNotIn('if (Directory.Exists("/home"))', sidebar)
+        self.assertNotIn('if (Directory.Exists("/mnt"))', sidebar)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
