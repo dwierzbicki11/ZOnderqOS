@@ -1878,6 +1878,9 @@ namespace ZonderqOS.GUI.Apps
 
             sidebarEntries.Add(SidebarEntry.Section("VOLUMES"));
 
+            // Stage storage rows before publishing: an exception halfway through
+            // enumeration must not leave a misleading partial list plus fallback.
+            List<SidebarEntry> volumeRows = new List<SidebarEntry>();
             try
             {
                 int partitionCount = StorageManager.Partitions.Count;
@@ -1892,21 +1895,24 @@ namespace ZonderqOS.GUI.Apps
                         string label = i == 0 ? "System" : "Partition " + i;
                         string detail = FormatCapacity(bytes) + (mounted ? "  MOUNTED" : "  READY");
 
-                        sidebarEntries.Add(SidebarEntry.Volume(label, i, mountPoint, IconType.HardDisk, detail, mounted));
+                        volumeRows.Add(SidebarEntry.Volume(label, i, mountPoint, IconType.HardDisk, detail, mounted));
                     }
                 }
                 else
                 {
-                    sidebarEntries.Add(SidebarEntry.Device("No volumes", IconType.HardDisk, "NONE DETECTED"));
+                    volumeRows.Add(SidebarEntry.Device("No volumes", IconType.HardDisk, "NONE DETECTED"));
                 }
             }
             catch
             {
-                sidebarEntries.Add(SidebarEntry.Device("System", IconType.HardDisk, "STORAGE READY"));
+                volumeRows.Clear();
+                volumeRows.Add(SidebarEntry.Device("Volumes", IconType.HardDisk, "UNAVAILABLE"));
             }
+            sidebarEntries.AddRange(volumeRows);
 
             sidebarEntries.Add(SidebarEntry.Section("DEVICES"));
 
+            List<SidebarEntry> deviceRows = new List<SidebarEntry>();
             try
             {
                 int deviceCount = StorageManager.DeviceCount;
@@ -1914,17 +1920,19 @@ namespace ZonderqOS.GUI.Apps
                 {
                     var device = StorageManager.GetDevice(i);
                     ulong bytes = (ulong)device.BlockCount * (ulong)device.BlockSize;
-                    sidebarEntries.Add(SidebarEntry.Device("Disk " + i, IconType.HardDisk,
+                    deviceRows.Add(SidebarEntry.Device("Disk " + i, IconType.HardDisk,
                         FormatCapacity(bytes) + "  DEVICE"));
                 }
 
                 if (deviceCount == 0)
-                    sidebarEntries.Add(SidebarEntry.Device("No disks", IconType.HardDisk, "NONE DETECTED"));
+                    deviceRows.Add(SidebarEntry.Device("No disks", IconType.HardDisk, "NONE DETECTED"));
             }
             catch
             {
-                sidebarEntries.Add(SidebarEntry.Device("Storage", IconType.HardDisk, "UNAVAILABLE"));
+                deviceRows.Clear();
+                deviceRows.Add(SidebarEntry.Device("Storage", IconType.HardDisk, "UNAVAILABLE"));
             }
+            sidebarEntries.AddRange(deviceRows);
         }
 
         private static string FormatCapacity(ulong bytes)
