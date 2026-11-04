@@ -702,7 +702,19 @@ namespace ZonderqOS.GUI.Apps
                 ResetClickSequence();
                 // /root is not guaranteed to exist on every disk-backed boot.
                 string home = ResolveSessionHome();
-                currentPath = Directory.Exists(home) ? home : "/";
+                // The volume is already detached: probing the home directory
+                // may itself throw on a failing filesystem. Fall back to root
+                // without leaving the GUI in an exception state.
+                bool homeAvailable = false;
+                try
+                {
+                    homeAvailable = Directory.Exists(home);
+                }
+                catch (Exception)
+                {
+                    homeAvailable = false;
+                }
+                currentPath = homeAvailable ? home : "/";
                 searchText = "";
             }
 
