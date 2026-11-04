@@ -869,6 +869,15 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertLess(burst.index("IsE1000EDriverKitStable(expectedResources, expectedIrqSources)"),
                         burst.index("if (!NetworkManager.Send(burst, frameLength))"))
         self.assertIn('TX_NIC_CHECK=PASS sent=128', burst)
+        # The last 32 descriptors must be followed by a fresh adapter
+        # readiness/link/MAC check, not only PCI config and lease checks.
+        final = burst.split("NetworkAdapter finalAdapter = NetworkManager.Primary;", 1)[1]
+        self.assertIn('!finalAdapter.IsValid || finalAdapter.Name != "e1000e"', final)
+        self.assertIn("!finalAdapter.Ready || !finalAdapter.LinkUp", final)
+        self.assertIn('TryFillSourceMac(finalAdapter.MacAddress?.ToString() ?? "", liveMacFrame)', final)
+        self.assertIn("liveMacFrame[6 + macByte] != template[6 + macByte]", final)
+        self.assertLess(final.index("liveMacFrame[6 + macByte] != template[6 + macByte]"),
+                        final.index('TX_NIC_CHECK=PASS sent=128'))
         self.assertIn('IsE1000ELeaseStable(expectedMac, expectedIp,', burst)
         self.assertLess(burst.index('IsE1000ELeaseStable(expectedMac, expectedIp,'),
                         burst.index('TX_NIC_CHECK=PASS sent='))
