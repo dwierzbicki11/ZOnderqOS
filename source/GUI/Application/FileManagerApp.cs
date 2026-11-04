@@ -1707,8 +1707,14 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                // Retain the old path, selection, scroll and cached snapshot
-                // on transient storage failure. Navigation rolls back its path.
+                // A transient I/O error should preserve the last usable view,
+                // but a detached volume must not leave clickable stale tiles.
+                // Directory.Exists is read-only and returns false for missing
+                // or inaccessible paths; only invalidate the snapshot when
+                // it belongs to the directory that just failed to refresh.
+                if (string.Equals(loadedDirectoryPath, currentPath, StringComparison.Ordinal) &&
+                    !Directory.Exists(currentPath))
+                    ClearDeniedListing();
                 status = "Read error: " + ex.Message;
                 return false;
             }
