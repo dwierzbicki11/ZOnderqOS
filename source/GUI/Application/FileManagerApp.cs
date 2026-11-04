@@ -1849,6 +1849,18 @@ namespace ZonderqOS.GUI.Apps
                 : "Search: " + searchText + " (" + entries.Count + " item(s))";
         }
 
+        private static bool OptionalDirectoryExists(string path)
+        {
+            try
+            {
+                return Directory.Exists(path);
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
         private void RebuildSidebar()
         {
             sidebarEntries.Clear();
@@ -1856,9 +1868,12 @@ namespace ZonderqOS.GUI.Apps
             sidebarEntries.Add(SidebarEntry.Location("Home", ResolveSessionHome(), IconType.Start, "USER FILES"));
             sidebarEntries.Add(SidebarEntry.Location("Root", "/", IconType.Folder, "FILESYSTEM"));
 
-            if (Directory.Exists("/home"))
+            // Optional shortcuts are best-effort: a detached FAT32 volume
+            // can make even an existence probe throw. Do not crash the
+            // desktop while rebuilding the sidebar after mount/unmount.
+            if (OptionalDirectoryExists("/home"))
                 sidebarEntries.Add(SidebarEntry.Location("Users", "/home", IconType.Folder, "/HOME"));
-            if (Directory.Exists("/mnt"))
+            if (OptionalDirectoryExists("/mnt"))
                 sidebarEntries.Add(SidebarEntry.Location("Mounts", "/mnt", IconType.Folder, "/MNT"));
 
             sidebarEntries.Add(SidebarEntry.Section("VOLUMES"));
