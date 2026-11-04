@@ -193,6 +193,24 @@ internal static class AudioProbeFeederSmoke
             waitsBeforeWithdrawal == 1 && waits == 1,
             "withdrawal during ring-full wait prevents another write");
 
+        // Withdrawal on a successful complete PCM write must abort before
+        // allocating/queueing the first silent drain block. The driver's
+        // positive count is not proof that the stream remains usable.
+        int completedPcmWrites = 0;
+        bool withdrawnOnCompletedPcm = false;
+        ok = AudioProbeRingFeeder.Feed(new byte[4],
+            (source, offset, count) =>
+            {
+                completedPcmWrites++;
+                withdrawnOnCompletedPcm = true;
+                return count;
+            },
+            () => !withdrawnOnCompletedPcm,
+            _ => throw new Exception("no wait after completed PCM withdrawal"),
+            out waits);
+        Check(!ok && completedPcmWrites == 1 && waits == 0,
+            "complete positive PCM write withdrawal skips silent drain");
+
         // A positive partial write can also revoke the output. Neither the
         // remaining PCM nor the silent drain may be sent to that device.
         bool withdrawnAfterPartialWrite = false;
