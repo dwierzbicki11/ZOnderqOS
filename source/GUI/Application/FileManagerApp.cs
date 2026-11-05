@@ -2106,14 +2106,26 @@ namespace ZonderqOS.GUI.Apps
                     int left = start;
                     int right = middle;
 
-                    for (int write = start; write < end; write++)
+                    // Already ordered adjacent runs need no element comparisons.
+                    // Copying them directly keeps the merge stable and reduces
+                    // CPU time on nearly sorted FAT32 directory listings.
+                    if (middle == end ||
+                        Compare(destination[middle - 1], destination[middle]) <= 0)
                     {
-                        // Equal names retain their original order.
-                        if (left < middle && (right >= end ||
-                            Compare(destination[left], destination[right]) <= 0))
-                            scratch[write] = destination[left++];
-                        else
-                            scratch[write] = destination[right++];
+                        for (int write = start; write < end; write++)
+                            scratch[write] = destination[write];
+                    }
+                    else
+                    {
+                        for (int write = start; write < end; write++)
+                        {
+                            // Equal names retain their original order.
+                            if (left < middle && (right >= end ||
+                                Compare(destination[left], destination[right]) <= 0))
+                                scratch[write] = destination[left++];
+                            else
+                                scratch[write] = destination[right++];
+                        }
                     }
 
                     start = end;
