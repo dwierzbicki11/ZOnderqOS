@@ -269,6 +269,12 @@ namespace ZonderqOS
                     " gateway=" + config.DefaultGateway);
 #if ZONDERQ_NETWORK_N3_ICMP
                 Log("[NET3095-N3] ICMP_ATTEMPT=START");
+                // Validate the original PCI DMA/MMIO and INTx routing before RX.
+                if (!IsE1000ETcpPciStable(pciConfig, pciCommand, pciBar0, pciIrqLine, pciIrqPin))
+                {
+                    Log("[NET3095-N3][FAIL] E1000E PCI mapping invalid before ICMP");
+                    return;
+                }
                 if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
                 {
                     Log("[NET3095-N3][FAIL] E1000E DriverKit ownership invalid before ICMP");
@@ -303,6 +309,13 @@ namespace ZonderqOS
                         icmpLease.DefaultGateway.ToString() != "10.0.2.2")
                     {
                         Log("[NET3095-N3][FAIL] E1000E link/MAC/DHCP lease changed during ICMP echo");
+                        return;
+                    }
+                    // Re-read PCI after the echo reply: link/MAC alone cannot
+                    // detect changed DMA bus-master or legacy interrupt routing.
+                    if (!IsE1000ETcpPciStable(pciConfig, pciCommand, pciBar0, pciIrqLine, pciIrqPin))
+                    {
+                        Log("[NET3095-N3][FAIL] E1000E PCI mapping changed during ICMP");
                         return;
                     }
                     if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
