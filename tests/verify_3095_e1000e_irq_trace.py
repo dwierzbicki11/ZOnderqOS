@@ -21,7 +21,7 @@ MSIX = re.compile(r"^" + PREFIX + r"e1000e_irq_msix_notify_vec MSI-X notify vect
 def checked_irq_lines(stderr: str):
     """Reject malformed IRQ notifications instead of silently ignoring them."""
     for raw in stderr.replace("\r", "").splitlines():
-        line = raw.strip()
+        # Do not normalize whitespace around evidence: indented or padded\n        # lines are not exact QEMU trace events and must not satisfy a gate.\n        line = raw
         if re.match(r"^qemu-system-[^:]+: terminating on signal ", line):
             break
         if re.match(PREFIX + r"e1000e_irq_(?:legacy_notify|msi_notify|msix_notify_vec)", line):
@@ -124,6 +124,8 @@ def self_test() -> None:
         "e1000e_irq_legacy_notifyEXTRA IRQ line state: 1\n",
         "e1000e_irq_msi_notify_extra MSI notify 0x80\n",
         "e1000e_irq_msix_notify_vec_extra MSI-X notify vector 0x0\n",
+        " e1000e_irq_legacy_notify IRQ line state: 1\n",
+        "e1000e_irq_legacy_notify IRQ line state: 1 \n",
     ):
         try:
             report(legacy_only + malformed, require_legacy_cycle=True)
