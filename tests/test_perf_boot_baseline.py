@@ -49,10 +49,10 @@ class PerfBootBaselineTests(unittest.TestCase):
         self.assertEqual(result["second_boot_ms"], 1001)
 
     def test_physical_free_page_samples(self):
-        log = ("2026-11-02 heartbeat\\n"
-               "2026-11-02 free_pages=1024\\n"
-               "2026-11-02 free_pages=1000\\n"
-               "2026-11-02 free_pages=1010\\n")
+        log = ("2026-11-02 heartbeat\n"
+               "2026-11-02 free_pages=1024\n"
+               "2026-11-02 free_pages=1000\n"
+               "2026-11-02 free_pages=1010\n")
         result = perf.memory_samples(log)
         self.assertEqual(result["samples"], 3)
         self.assertEqual(result["first_free_pages"], 1024)
