@@ -77,7 +77,9 @@ namespace ZonderqOS.GUI
             int travel = Height - GetThumbHeight();
             if (travel <= 0 || MaxValue <= 0)
                 return Y;
-            return Y + (int)(((long)Value * travel) / MaxValue);
+            // Saturate at the representable coordinate limit rather than wrap.
+            long thumbY = (long)Y + ((long)Value * travel) / MaxValue;
+            return (int)Math.Max(int.MinValue, Math.Min(int.MaxValue, thumbY));
         }
 
         public bool HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
