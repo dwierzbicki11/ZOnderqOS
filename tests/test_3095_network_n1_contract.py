@@ -323,6 +323,22 @@ class NetworkN1Isolation(unittest.TestCase):
         ):
             self.assertIn(condition, n5[live:passed])
 
+    def test_n4_tcp_checks_pci_mapping_during_rx(self):
+        # Static contract, not a guest ISR proof.
+        n4 = SOURCE.split("#if ZONDERQ_NETWORK_N4_TCP", 1)[1].split(
+            "#if ZONDERQ_NETWORK_N5_DNS", 1)[0]
+        helper = SOURCE.split("private static bool IsE1000ETcpPciStable(", 1)[1].split(
+            "private static bool TryGetE1000EDriverKitHealth(", 1)[0]
+        for token in ("TryReadReady(", "command == expectedCommand",
+                      "bar0 == expectedBar0", "TryReadLegacyIrqRoute(",
+                      "irqLine == expectedIrqLine", "irqPin == expectedIrqPin"):
+            self.assertIn(token, helper)
+        self.assertEqual(n4.count("IsE1000ETcpPciStable("), 4)
+        self.assertLess(n4.index("PCI mapping invalid before TCP"), n4.index("client.Connect("))
+        self.assertLess(n4.index("stream.Write("), n4.index("PCI mapping changed after TCP TX"))
+        self.assertLess(n4.index("received += read;"), n4.index("PCI mapping changed during TCP RX"))
+        self.assertLess(n4.index("PCI mapping changed at TCP completion"), n4.index("TCP=PASS from="))
+
     def test_n4_tcp_echo_total_rx_deadline(self):
         # The 21-byte echo must not take 21 * ReceiveTimeout seconds
         # when a malicious peer trickles one byte per successful read.

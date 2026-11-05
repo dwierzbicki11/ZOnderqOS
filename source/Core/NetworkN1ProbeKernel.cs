@@ -322,6 +322,11 @@ namespace ZonderqOS
                 // listener reachable through QEMU user networking at 10.0.2.2.
                 // This does not enable networking in the production desktop.
                 Log("[NET3095-N4] TCP_ATTEMPT=START");
+                if (!IsE1000ETcpPciStable(pciConfig, pciCommand, pciBar0, pciIrqLine, pciIrqPin))
+                {
+                    Log("[NET3095-N4][FAIL] E1000E PCI mapping invalid before TCP");
+                    return;
+                }
                 if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
                 {
                     Log("[NET3095-N4][FAIL] E1000E DriverKit ownership invalid before TCP");
@@ -338,6 +343,11 @@ namespace ZonderqOS
                         byte[] request = System.Text.Encoding.ASCII.GetBytes("ZONDERQ3095-TCP-PING\n");
                         byte[] expected = System.Text.Encoding.ASCII.GetBytes("ZONDERQ3095-TCP-PONG\n");
                         stream.Write(request, 0, request.Length);
+                        if (!IsE1000ETcpPciStable(pciConfig, pciCommand, pciBar0, pciIrqLine, pciIrqPin))
+                        {
+                            Log("[NET3095-N4][FAIL] E1000E PCI mapping changed after TCP TX");
+                            return;
+                        }
                         if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
                         {
                             Log("[NET3095-N4][FAIL] E1000E DriverKit ownership changed after TCP TX");
@@ -375,6 +385,11 @@ namespace ZonderqOS
                             // Each successful Read may follow another RX DMA
                             // completion. Detect resource/IRQ rebinding before
                             // accepting the next fragment.
+                            if (!IsE1000ETcpPciStable(pciConfig, pciCommand, pciBar0, pciIrqLine, pciIrqPin))
+                            {
+                                Log("[NET3095-N4][FAIL] E1000E PCI mapping changed during TCP RX");
+                                return;
+                            }
                             if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
                             {
                                 Log("[NET3095-N4][FAIL] E1000E DriverKit ownership changed during TCP RX");
@@ -417,6 +432,11 @@ namespace ZonderqOS
                             echoLease.DefaultGateway.ToString() != "10.0.2.2")
                         {
                             Log("[NET3095-N4][FAIL] E1000E link/MAC/DHCP lease changed during TCP echo");
+                            return;
+                        }
+                        if (!IsE1000ETcpPciStable(pciConfig, pciCommand, pciBar0, pciIrqLine, pciIrqPin))
+                        {
+                            Log("[NET3095-N4][FAIL] E1000E PCI mapping changed at TCP completion");
                             return;
                         }
                         if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
@@ -734,6 +754,21 @@ namespace ZonderqOS
             return (int)(remainingMs < 5000 ? remainingMs : 5000);
         }
 #endif
+
+        // Read-only PCI identity, DMA command and INTx route check for TCP.
+        // This is not evidence of a guest ISR invocation.
+        private static bool IsE1000ETcpPciStable(
+            ZonderqOS.Hardware.IPciConfigAccessor config,
+            ushort expectedCommand, ulong expectedBar0,
+            byte expectedIrqLine, byte expectedIrqPin)
+        {
+            return ZonderqOS.Hardware.E1000EPciIdentity.TryReadReady(
+                    config, out ushort command, out ulong bar0) &&
+                command == expectedCommand && bar0 == expectedBar0 &&
+                ZonderqOS.Hardware.E1000EPciIdentity.TryReadLegacyIrqRoute(
+                    config, out byte irqLine, out byte irqPin) &&
+                irqLine == expectedIrqLine && irqPin == expectedIrqPin;
+        }
 
         // Stock Cosmos 3.0.95 exposes DriverKit node snapshots, but NOT the
         // internal E1000EState.InterruptCount. A zero handler-fault count
