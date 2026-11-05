@@ -41,17 +41,26 @@ def compare(first: str, after: str) -> dict:
 
 def memory_samples(log: str) -> dict:
     """Actual guest physical allocator free-page counts; not GC heap/RSS."""
-    matches = FREE_PAGES.finditer(log)
+    return memory_samples_from_lines(log.splitlines(keepends=True))
+
+
+def memory_samples_from_lines(lines) -> dict:
+    """Parse memory log incrementally, without retaining the whole file in RAM."""
+    def values():
+        for line in lines:
+            for match in FREE_PAGES.finditer(line):
+                yield int(match.group(1))
+
+    matches = values()
     first_match = next(matches, None)
     if first_match is None:
         raise ValueError("memory service did not report free_pages")
 
-    first = previous = minimum = maximum = int(first_match.group(1))
+    first = previous = minimum = maximum = first_match
     count = 1
     decreasing = increasing = unchanged = 0
     total_decrease = total_increase = largest_decrease = 0
-    for match in matches:
-        current = int(match.group(1))
+    for current in matches:
         count += 1
         minimum = min(minimum, current)
         maximum = max(maximum, current)
@@ -96,8 +105,8 @@ def main() -> None:
         args.second_log.read_text(encoding="utf-8", errors="replace"),
     )
     if args.memory_log is not None:
-        result["memory"] = memory_samples(
-            args.memory_log.read_text(encoding="utf-8", errors="replace"))
+        with args.memory_log.open("r", encoding="utf-8", errors="replace") as memory_file:
+            result["memory"] = memory_samples_from_lines(memory_file)
     report = json.dumps(result, sort_keys=True, indent=2)
     print("[PERF-QEMU] guest initialization baseline (NOT full boot or FPS):")
     print(report)
