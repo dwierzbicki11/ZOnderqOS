@@ -533,6 +533,45 @@ internal static class AudioProbeFeederSmoke
         Check(rejected && invalidCallbackCalls == 0,
             "unaligned PCM rejected before device access or settle");
 
+        // Invalid callback wiring must fail before invoking any remaining
+        // device callback, including on the extended settle path.
+        int nullWiringCallbacks = 0;
+        bool nullWiringRejected = false;
+        try
+        {
+            AudioProbeRingFeeder.FeedAndSettle(new byte[4], null,
+                () => { nullWiringCallbacks++; return true; },
+                _ => nullWiringCallbacks++, out waits);
+        }
+        catch (ArgumentNullException) { nullWiringRejected = true; }
+        Check(nullWiringRejected && nullWiringCallbacks == 0,
+            "null writer rejected without readiness checks or sleeps");
+
+        nullWiringCallbacks = 0;
+        nullWiringRejected = false;
+        try
+        {
+            AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+                (a, b, c) => { nullWiringCallbacks++; return c; },
+                null, _ => nullWiringCallbacks++, out waits);
+        }
+        catch (ArgumentNullException) { nullWiringRejected = true; }
+        Check(nullWiringRejected && nullWiringCallbacks == 0,
+            "null readiness callback rejected before any PCM write");
+
+        nullWiringCallbacks = 0;
+        nullWiringRejected = false;
+        try
+        {
+            AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+                (a, b, c) => { nullWiringCallbacks++; return c; },
+                () => { nullWiringCallbacks++; return true; },
+                null, out waits);
+        }
+        catch (ArgumentNullException) { nullWiringRejected = true; }
+        Check(nullWiringRejected && nullWiringCallbacks == 0,
+            "null wait callback rejected before any device access");
+
         // A faulty HDA writer may behave correctly for PCM but return an
         // invalid count only when flushing the silent DMA ring. Reject that
         // result immediately: neither a retry nor the 86 ms settle delay is
