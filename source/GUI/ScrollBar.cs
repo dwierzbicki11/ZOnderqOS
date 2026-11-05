@@ -8,7 +8,7 @@ namespace ZonderqOS.GUI
     {
         private bool dragging;
         private bool hovered;
-        private int dragOffset;
+        private long dragOffset;
         private int dragTrackX, dragTrackY, dragTrackWidth, dragTrackHeight;
         private int contentItems;
         private int visibleItems;
@@ -115,7 +115,7 @@ namespace ZonderqOS.GUI
                     mouseY >= thumbY && (long)mouseY - thumbY < thumbHeight)
                 {
                     dragging = true;
-                    dragOffset = mouseY - thumbY;
+                    dragOffset = (long)mouseY - thumbY;
                     dragTrackX = X;
                     dragTrackY = Y;
                     dragTrackWidth = Width;
