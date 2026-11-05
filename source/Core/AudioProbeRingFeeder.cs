@@ -70,6 +70,11 @@ namespace ZonderqOS.SystemCore
                 return false;
             if (!ready())
                 return false;
+            // The selected output may be withdrawn between the first
+            // readiness snapshot and the long settle delay. Recheck before
+            // sleeping, just as the 1 ms backpressure path does.
+            if (!ready())
+                return false;
             // ceil(16384 bytes * 1000 / (48000 frames/s * 4 bytes/frame))
             wait(86);
             return ready();
