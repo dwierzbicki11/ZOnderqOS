@@ -430,6 +430,45 @@ internal static class AudioProbeFeederSmoke
             tailAccepted == 24,
             "silent tail cannot bypass cumulative 6000-wait budget");
 
+        // The consecutive backpressure limit must reset after actual frame
+        // progress. A device that recovers on the 999th wait must be able
+        // to finish, while the cumulative budget still spans all blocks.
+        int nearLimitWaitStreak = 0;
+        int nearLimitWaitCallbacks = 0;
+        int nearLimitWrites = 0;
+        int nearLimitAccepted = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) =>
+            {
+                nearLimitWrites++;
+                if (nearLimitWrites == 1)
+                {
+                    nearLimitAccepted += count;
+                    return count;
+                }
+                if (nearLimitWaitStreak < 999)
+                    return 0;
+                nearLimitWaitStreak = 0;
+                nearLimitAccepted += count;
+                return count;
+            },
+            () => true,
+            milliseconds =>
+            {
+                if (milliseconds == 1)
+                {
+                    nearLimitWaitStreak++;
+                    nearLimitWaitCallbacks++;
+                }
+                else
+                    Check(milliseconds == 86, "recovered ring settles for 86ms");
+            }, out waits);
+        // Four silence blocks each recover after 999 waits: 3996 total,
+        // below the 6000 global budget, despite repeated near-timeouts.
+        Check(ok && waits == 3996 && nearLimitWaitCallbacks == 3996 &&
+            nearLimitAccepted == 4 + 16384,
+            "near-limit recovery resets consecutive budget without losing frames");
+
         int readyCalls = 0;
         ok = AudioProbeRingFeeder.Feed(pcm, (a, b, c) => 4,
             () => ++readyCalls == 1, _ => { }, out waits);
