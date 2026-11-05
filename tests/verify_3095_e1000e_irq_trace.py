@@ -21,7 +21,9 @@ MSIX = re.compile(r"^" + PREFIX + r"e1000e_irq_msix_notify_vec MSI-X notify vect
 def checked_irq_lines(stderr: str):
     """Reject malformed IRQ notifications instead of silently ignoring them."""
     for raw in stderr.replace("\r", "").splitlines():
-        # Do not normalize whitespace around evidence: indented or padded\n        # lines are not exact QEMU trace events and must not satisfy a gate.\n        line = raw
+        # Do not normalize whitespace around evidence: indented or padded
+        # lines are not exact QEMU trace events and must not satisfy a gate.
+        line = raw
         if re.match(r"^qemu-system-[^:]+: terminating on signal ", line):
             break
         if re.match(PREFIX + r"e1000e_irq_(?:legacy_notify|msi_notify|msix_notify_vec)", line.lstrip()):
