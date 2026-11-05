@@ -1025,5 +1025,23 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn('serial.replace(pci_line, "")', validator)
 
 
+    def test_n3_icmp_revalidates_pci_before_and_after_rx(self):
+        # Source contract only; actual ICMP RX requires QEMU PCAP evidence.
+        n3 = SOURCE.split('Log("[NET3095-N3] ICMP_ATTEMPT=START");', 1)[1]
+        n3 = n3.split('#if ZONDERQ_NETWORK_N4_TCP', 1)[0]
+        before = n3.index("E1000E PCI mapping invalid before ICMP")
+        send = n3.index("ping.SendEcho(id: 0x3095, sequence: 1)")
+        receive = n3.index("ping.Receive(ref remote, 5000)")
+        after = n3.index("E1000E PCI mapping changed during ICMP")
+        passed = n3.index('Log("[NET3095-N3] ICMP=PASS')
+        self.assertLess(before, send)
+        self.assertLess(send, receive)
+        self.assertLess(receive, after)
+        self.assertLess(after, passed)
+        self.assertEqual(n3.count("IsE1000ETcpPciStable("), 2)
+        self.assertLess(n3.index("E1000E PCI mapping changed during ICMP"),
+                        n3.index("E1000E DriverKit ownership changed during ICMP"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
