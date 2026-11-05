@@ -99,13 +99,47 @@ def check_guest_line(serial: str) -> str:
 
 
 
+
+def normalize_n6_driver_markers(serial: str) -> str:
+    """Repair only an exact N6 baseline/health line split by one timer tick.
+
+    QEMU serial output can be preempted mid-write. Never discard unrelated
+    text or manufacture a marker from an incomplete/corrupted diagnostic.
+    This is a serial transport repair, not evidence of ISR execution.
+    """
+    raw = serial.replace("\\r", "")
+    tick = re.compile(
+        r"(?:\\[LAPIC\\] Timer tick (?P<tick>[0-9]+) RSP=[0-9A-Fa-f]+\\n"
+        r"\\[SCHED\\] Tick (?P=tick) enabled=1\\n"
+        r"|\\[SCHED\\] Tick [0-9]+ enabled=1\\n)"
+    )
+    for pattern in (BASELINE, HEALTH):
+        candidates = []
+        for match in tick.finditer(raw):
+            start = raw.rfind("\\n", 0, match.start()) + 1
+            end = raw.find("\\n", match.end())
+            if end < 0:
+                end = len(raw)
+            if start == match.start() or end == match.end():
+                continue
+            joined = raw[start:match.start()] + raw[match.end():end]
+            if pattern.fullmatch(joined):
+                candidates.append((start, end, joined))
+        if len(candidates) > 1:
+            raise ValueError("duplicate scheduler-preempted N6 DriverKit marker")
+        if candidates:
+            start, end, joined = candidates[0]
+            raw = raw[:start] + joined + raw[end:]
+    return raw
+
+
 def check_driver_health(serial: str) -> str:
     """Validate the read-only DriverKit node snapshot after all six HTTP sessions.
 
     irq_sources is a count of PCI sources, not E1000E ISR executions.
     A zero handler-fault count only means no exception was observed.
     """
-    lines = serial.replace("\r", "").splitlines()
+    lines = normalize_n6_driver_markers(serial).splitlines()
     claims = [line for line in lines
               if line.startswith("[NET3095-N6] DRIVER_HEALTH")]
     if len(claims) != 1:
@@ -442,6 +476,22 @@ def self_test() -> None:
             raise AssertionError("accepted malformed or duplicate guest readiness")
     assert "line=11" in check_guest_line(serial)
     assert "ISR-UNPROVEN" in check_driver_health(serial)
+    # Serial scheduler preemption may split the immutable baseline or final
+    # health marker. Only exact reconstruction is allowed, at every position.
+    for marker_pattern in (BASELINE, HEALTH):
+        marker = next(line for line in serial.splitlines()
+                      if marker_pattern.fullmatch(line))
+        for pos in range(1, len(marker)):
+            interrupted = marker[:pos] + "[SCHED] Tick 6 enabled=1\\n" + marker[pos:]
+            assert "ISR-UNPROVEN" in check_driver_health(
+                serial.replace(marker, interrupted, 1))
+        corrupted = marker[:15] + "[SCHED] Tick 6 enabled=0\\n" + marker[15:]
+        try:
+            check_driver_health(serial.replace(marker, corrupted, 1))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted invalid scheduler splice in N6 DriverKit marker")
     assert "ISR-UNPROVEN" in check_driver_health(route_serial)
     # A malformed earlier claim cannot be hidden by the later valid one.
     for malformed in (
