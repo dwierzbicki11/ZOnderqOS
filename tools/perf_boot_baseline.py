@@ -41,24 +41,46 @@ def compare(first: str, after: str) -> dict:
 
 def memory_samples(log: str) -> dict:
     """Actual guest physical allocator free-page counts; not GC heap/RSS."""
-    values = [int(value) for value in FREE_PAGES.findall(log)]
-    if not values:
+    matches = FREE_PAGES.finditer(log)
+    first_match = next(matches, None)
+    if first_match is None:
         raise ValueError("memory service did not report free_pages")
-    changes = [after - before for before, after in zip(values, values[1:])]
+
+    first = previous = minimum = maximum = int(first_match.group(1))
+    count = 1
+    decreasing = increasing = unchanged = 0
+    total_decrease = total_increase = largest_decrease = 0
+    for match in matches:
+        current = int(match.group(1))
+        count += 1
+        minimum = min(minimum, current)
+        maximum = max(maximum, current)
+        change = current - previous
+        if change < 0:
+            decreasing += 1
+            total_decrease -= change
+            largest_decrease = max(largest_decrease, -change)
+        elif change > 0:
+            increasing += 1
+            total_increase += change
+        else:
+            unchanged += 1
+        previous = current
+
     return {
         "scope": "second_boot_memory_service_free_physical_pages",
-        "samples": len(values),
-        "first_free_pages": values[0],
-        "last_free_pages": values[-1],
-        "minimum_free_pages": min(values),
-        "maximum_free_pages": max(values),
-        "last_minus_first_free_pages": values[-1] - values[0],
-        "decreasing_intervals": sum(b < a for a, b in zip(values, values[1:])),
-        "increasing_intervals": sum(b > a for a, b in zip(values, values[1:])),
-        "unchanged_intervals": sum(change == 0 for change in changes),
-        "total_decrease_pages": -sum(change for change in changes if change < 0),
-        "total_increase_pages": sum(change for change in changes if change > 0),
-        "largest_interval_decrease_pages": max(( -change for change in changes if change < 0), default=0),
+        "samples": count,
+        "first_free_pages": first,
+        "last_free_pages": previous,
+        "minimum_free_pages": minimum,
+        "maximum_free_pages": maximum,
+        "last_minus_first_free_pages": previous - first,
+        "decreasing_intervals": decreasing,
+        "increasing_intervals": increasing,
+        "unchanged_intervals": unchanged,
+        "total_decrease_pages": total_decrease,
+        "total_increase_pages": total_increase,
+        "largest_interval_decrease_pages": largest_decrease,
     }
 
 
