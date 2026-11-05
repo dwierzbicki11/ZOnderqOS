@@ -107,17 +107,17 @@ def normalize_n6_driver_markers(serial: str) -> str:
     text or manufacture a marker from an incomplete/corrupted diagnostic.
     This is a serial transport repair, not evidence of ISR execution.
     """
-    raw = serial.replace("\\r", "")
+    raw = serial.replace("\r", "")
     tick = re.compile(
-        r"(?:\\[LAPIC\\] Timer tick (?P<tick>[0-9]+) RSP=[0-9A-Fa-f]+\\n"
-        r"\\[SCHED\\] Tick (?P=tick) enabled=1\\n"
-        r"|\\[SCHED\\] Tick [0-9]+ enabled=1\\n)"
+        r"(?:\[LAPIC\] Timer tick (?P<tick>[0-9]+) RSP=[0-9A-Fa-f]+\n"
+        r"\[SCHED\] Tick (?P=tick) enabled=1\n"
+        r"|\[SCHED\] Tick [0-9]+ enabled=1\n)"
     )
     for pattern in (BASELINE, HEALTH):
         candidates = []
         for match in tick.finditer(raw):
-            start = raw.rfind("\\n", 0, match.start()) + 1
-            end = raw.find("\\n", match.end())
+            start = raw.rfind("\n", 0, match.start()) + 1
+            end = raw.find("\n", match.end())
             if end < 0:
                 end = len(raw)
             if start == match.start() or end == match.end():
