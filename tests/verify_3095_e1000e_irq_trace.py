@@ -187,8 +187,8 @@ def self_test() -> None:
         if any(name in sample for name in (
             "e1000e_irq_legacy_notify", "e1000e_irq_msi_notify",
             "e1000e_irq_msix_notify_vec")) and sample not in (
-            "e1000e_irq_legacy_notify IRQ line state: 0\\n",
-            "e1000e_irq_msi_notify MSI notify 0x0\\n",
+            "e1000e_irq_legacy_notify IRQ line state: 0\n",
+            "e1000e_irq_msi_notify MSI notify 0x0\n",
         ):
             try:
                 count_notifications(sample)
