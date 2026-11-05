@@ -9,6 +9,7 @@ namespace ZonderqOS.GUI
         private bool dragging;
         private bool hovered;
         private int dragOffset;
+        private int dragTrackX, dragTrackY, dragTrackWidth, dragTrackHeight;
         private int contentItems;
         private int visibleItems;
         private int value;
@@ -90,6 +91,12 @@ namespace ZonderqOS.GUI
                 return false;
             }
 
+            // A window resize or move invalidates the old thumb offset.
+            // Otherwise a held mouse button can jump the list on the next frame.
+            if (dragging && (X != dragTrackX || Y != dragTrackY ||
+                Width != dragTrackWidth || Height != dragTrackHeight))
+                dragging = false;
+
             // A modal overlay may swallow the release of an earlier drag.
             // A new press is a new gesture, never a continuation of the
             // stale drag with its old thumb offset.
@@ -105,6 +112,10 @@ namespace ZonderqOS.GUI
                 {
                     dragging = true;
                     dragOffset = mouseY - thumbY;
+                    dragTrackX = X;
+                    dragTrackY = Y;
+                    dragTrackWidth = Width;
+                    dragTrackHeight = Height;
                     return true;
                 }
 
