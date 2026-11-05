@@ -625,15 +625,15 @@ internal static class AudioProbeFeederSmoke
         // 1 ms backpressure counter remains zero.
         int settleWrites = 0;
         int settleLongWaits = 0;
-        bool withdrawnDuringSettle = false;
+        bool withdrawnDuringFinalSettle = false;
         ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
             (source, offset, count) => { settleWrites++; return count; },
-            () => !withdrawnDuringSettle,
+            () => !withdrawnDuringFinalSettle,
             milliseconds =>
             {
                 Check(milliseconds == 86, "unblocked ring only uses 86ms settle");
                 settleLongWaits++;
-                withdrawnDuringSettle = true;
+                withdrawnDuringFinalSettle = true;
             }, out waits);
         Check(!ok && settleWrites == 5 && settleLongWaits == 1 &&
             waits == 0, "withdrawal during settle cannot report success");
