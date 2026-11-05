@@ -4,14 +4,16 @@ on:
   push:
     branches: [perf/system-gen3]
     paths:
-      - 'source/GUI/UiPainter.cs'
-      - 'source/GUI/TerminalBox.cs'
-      - 'Kernel.cs'
+      # Any production performance change must exercise the disk-backed boot gate.
+      - 'source/Core/**'
+      - 'source/GUI/**'
+      - 'source/Shell/**'
+      - 'source/Storage/**'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/smoke-services-qemu.sh'
       - 'tools/perf_boot_baseline.py'
       - 'tests/test_perf_boot_baseline.py'
-      - 'source/GUI/Application/FileManagerApp.cs'
-      - 'source/GUI/Application/FileEntrySorter.cs'
-      - 'source/GUI/Application/Terminal.cs'
+      - 'Kernel.cs'
       - '.github/workflows/perf-qemu.yml'
   workflow_dispatch:
 
