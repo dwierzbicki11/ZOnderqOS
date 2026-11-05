@@ -107,6 +107,35 @@ class PerfBootBaselineTests(unittest.TestCase):
         self.assertEqual(result["samples"], 1)
         self.assertEqual(result["last_free_pages"], 800)
 
+    def test_streaming_memory_parser_matches_in_memory_parser(self):
+        from io import StringIO
+        log = ("[MEM] free_pages=1024 free_bytes=4194304\n"
+               "free_pages=1000\r\n"
+               "heartbeat\n"
+               "free_pages=1000 free_pages=1030\n"
+               "free_pages=1020\n")
+        self.assertEqual(perf.memory_samples_from_lines(StringIO(log)),
+                         perf.memory_samples(log))
+
+    def test_streaming_memory_parser_one_pass_and_missing_values(self):
+        class Once:
+            def __init__(self, lines):
+                self.lines = lines
+                self.used = False
+
+            def __iter__(self):
+                if self.used:
+                    raise AssertionError("iterator consumed more than once")
+                self.used = True
+                yield from self.lines
+
+        data = Once(["heartbeat\n", "free_pages=7\n", "free_pages=6\n"])
+        result = perf.memory_samples_from_lines(data)
+        self.assertEqual(result["last_minus_first_free_pages"], -1)
+        self.assertTrue(data.used)
+        with self.assertRaises(ValueError):
+            perf.memory_samples_from_lines(iter(["heartbeat\n"]))
+
     def test_missing_memory_samples(self):
         with self.assertRaises(ValueError):
             perf.memory_samples("heartbeat only")
