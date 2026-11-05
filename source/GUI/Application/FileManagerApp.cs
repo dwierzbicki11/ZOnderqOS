@@ -1682,6 +1682,18 @@ namespace ZonderqOS.GUI.Apps
                     return false;
                 }
 
+                // The FAT32 volume may disappear after enumeration and ACL checks.
+                // A successful permission lookup does not prove the directory is
+                // still backed by a mounted device. Never publish a new snapshot
+                // from a detached location; preserve the old view on I/O failure.
+                if (!OptionalDirectoryExists(targetPath))
+                {
+                    if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))
+                        ClearDeniedListing();
+                    status = "Location unavailable; press F5 to refresh";
+                    return false;
+                }
+
                 // An explicit F5 or a successful paste should not jump back
                 // to the first tile in a large directory. Compare the actual
                 // cached path, not currentPath: NavigateTo changes currentPath
