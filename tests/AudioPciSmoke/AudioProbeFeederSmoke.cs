@@ -490,6 +490,28 @@ internal static class AudioProbeFeederSmoke
                 waits == 0, "invalid silent DMA drain write aborts before settle");
         }
 
+        // The PCM write can succeed while the silent drain remains
+        // permanently full. Enforce the same 1000 ms backpressure bound
+        // during the drain, without entering the long settle interval.
+        int fullDrainWrites = 0;
+        int fullDrainWaits = 0;
+        int fullDrainSettleCalls = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) =>
+            {
+                fullDrainWrites++;
+                return fullDrainWrites == 1 ? count : 0;
+            },
+            () => true,
+            milliseconds =>
+            {
+                if (milliseconds == 1) fullDrainWaits++;
+                else fullDrainSettleCalls++;
+            }, out waits);
+        Check(!ok && fullDrainWrites == 1002 && fullDrainWaits == 1000 &&
+            fullDrainSettleCalls == 0 && waits == 1000,
+            "permanently full silent drain aborts without settle");
+
         Console.WriteLine("[AUDIO-FEEDER-HOST] PASS " + checks +
             " checks (fake ring; not DMA, IRQ or real playback)");
     }
