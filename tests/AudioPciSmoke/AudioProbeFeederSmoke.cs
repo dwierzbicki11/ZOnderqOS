@@ -401,6 +401,35 @@ internal static class AudioProbeFeederSmoke
             intermittentBytes == 24,
             "intermittent ring progress obeys exact 6000-wait global budget");
 
+        // The global wait budget must also cover the silent tail, not just
+        // the PCM payload. A slowly draining output can make one frame of
+        // progress every 900 waits and otherwise avoid the consecutive cap.
+        int tailWaitStreak = 0;
+        int tailWaitCallbacks = 0;
+        int tailAccepted = 0;
+        int tailPcmWrites = 0;
+        ok = AudioProbeRingFeeder.Feed(new byte[4],
+            (source, offset, count) =>
+            {
+                if (tailPcmWrites++ == 0)
+                    return count;
+                if (tailWaitStreak < 900)
+                    return 0;
+                tailWaitStreak = 0;
+                tailAccepted += 4;
+                return 4;
+            },
+            () => true,
+            milliseconds =>
+            {
+                Check(milliseconds == 1, "silent tail backpressure waits 1ms");
+                tailWaitStreak++;
+                tailWaitCallbacks++;
+            }, out waits);
+        Check(!ok && waits == 6000 && tailWaitCallbacks == 6000 &&
+            tailAccepted == 24,
+            "silent tail cannot bypass cumulative 6000-wait budget");
+
         int readyCalls = 0;
         ok = AudioProbeRingFeeder.Feed(pcm, (a, b, c) => 4,
             () => ++readyCalls == 1, _ => { }, out waits);
