@@ -1854,16 +1854,23 @@ class ResponsiveGui3094(unittest.TestCase):
         keyboard = FILE_MANAGER.split("public override void HandleKeyboard(KeyEvent key)", 1)[1].split(
             "private void CopySelected(bool cut)", 1
         )[0]
-        escape = keyboard.split("if (key.Key == ConsoleKeyEx.Escape)", 2)[-1].split(
-            "if (key.Key == ConsoleKeyEx.Backspace)", 1
-        )[0]
-        self.assertIn("if (contextMenuVisible)", escape)
+        # Context-menu Escape is handled by an earlier modal branch.
+        # The later Escape handles the filter and finally window closure.
+        menu_start = keyboard.index("if (contextMenuVisible)")
+        menu_escape = keyboard.index("if (key.Key == ConsoleKeyEx.Escape)", menu_start)
+        menu_end = keyboard.index("// Ctrl+C/X/V", menu_escape)
+        menu_handler = keyboard[menu_escape:menu_end]
+        escape_start = keyboard.index("if (key.Key == ConsoleKeyEx.Escape)", menu_end)
+        escape_end = keyboard.index("if (key.Key == ConsoleKeyEx.Backspace)", escape_start)
+        escape = keyboard[escape_start:escape_end]
+        self.assertIn("contextMenuVisible = false;", menu_handler)
+        self.assertIn("contextMenuSelection = -1;", menu_handler)
+        self.assertIn("ResetClickSequence();", menu_handler)
         self.assertIn("if (searchText.Length > 0)", escape)
         self.assertIn('searchText = "";', escape)
         self.assertIn("ApplySearchFilter();", escape)
         self.assertIn("Close();", escape)
-        self.assertLess(escape.index("if (contextMenuVisible)"),
-                        escape.index("if (searchText.Length > 0)"))
+        self.assertLess(menu_escape, escape_start)
         self.assertLess(escape.index("if (searchText.Length > 0)"),
                         escape.index("Close();"))
 
