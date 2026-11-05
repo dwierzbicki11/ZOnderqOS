@@ -20,9 +20,12 @@ MSIX = re.compile(r"^" + PREFIX + r"e1000e_irq_msix_notify_vec MSI-X notify vect
 
 def checked_irq_lines(stderr: str):
     """Reject malformed IRQ notifications instead of silently ignoring them."""
-    # splitlines handles CRLF without erasing embedded carriage returns.
-    # Erasing CR could forge an otherwise invalid QEMU notification.
-    for raw in stderr.splitlines():
+    # Split only on LF: splitlines() treats embedded CR as a new line and
+    # can turn a malformed IRQ event into a valid one. Strip only terminal
+    # CR for legitimate CRLF records; preserve embedded CR for rejection.
+    for raw in stderr.split("\n"):
+        if raw.endswith("\r"):
+            raw = raw[:-1]
         # Do not normalize whitespace around evidence: indented or padded
         # lines are not exact QEMU trace events and must not satisfy a gate.
         line = raw
@@ -132,6 +135,9 @@ def self_test() -> None:
         "e1000e_irq_legacy_notify IRQ line state: 1 \n",
         "e1000e_irq_legacy_notify IRQ line state: \r1\n",
         "e1000e_irq_legacy_notify IRQ line state: 1\rgarbage\n",
+        "e1000e_irq_legacy_notify IRQ line state: 1\rgarbage\r\n",
+        "e1000e_irq_legacy_notify IRQ line state: 0\r" +
+        "e1000e_irq_legacy_notify IRQ line state: 1\n",
     ):
         try:
             report(legacy_only + malformed, require_legacy_cycle=True)
