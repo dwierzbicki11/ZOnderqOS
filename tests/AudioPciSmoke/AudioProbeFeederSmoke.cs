@@ -619,6 +619,40 @@ internal static class AudioProbeFeederSmoke
             fullDrainSettleCalls == 0 && waits == 1000,
             "permanently full silent drain aborts without settle");
 
+        // Accepted PCM and one full silent ring are not sufficient to report
+        // playback success if the output disappears during the 86 ms settle.
+        // The final readiness check must observe that withdrawal, while the
+        // 1 ms backpressure counter remains zero.
+        int settleWrites = 0;
+        int settleLongWaits = 0;
+        bool withdrawnDuringSettle = false;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) => { settleWrites++; return count; },
+            () => !withdrawnDuringSettle,
+            milliseconds =>
+            {
+                Check(milliseconds == 86, "unblocked ring only uses 86ms settle");
+                settleLongWaits++;
+                withdrawnDuringSettle = true;
+            }, out waits);
+        Check(!ok && settleWrites == 5 && settleLongWaits == 1 &&
+            waits == 0, "withdrawal during settle cannot report success");
+
+        // A healthy controller should accept the PCM and four silence blocks
+        // and settle exactly once, without counting that 86 ms as ring waits.
+        int healthySettleWrites = 0;
+        int healthySettleCalls = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) => { healthySettleWrites++; return count; },
+            () => true,
+            milliseconds =>
+            {
+                Check(milliseconds == 86, "healthy settle duration");
+                healthySettleCalls++;
+            }, out waits);
+        Check(ok && healthySettleWrites == 5 && healthySettleCalls == 1 &&
+            waits == 0, "healthy ring settles once without backpressure");
+
         Console.WriteLine("[AUDIO-FEEDER-HOST] PASS " + checks +
             " checks (fake ring; not DMA, IRQ or real playback)");
     }
