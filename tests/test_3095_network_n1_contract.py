@@ -495,7 +495,7 @@ class NetworkN1Isolation(unittest.TestCase):
                       "        // Socket ReceiveTimeout", SOURCE)
         # The read-only DriverKit health snapshot is shared by N1-N6.
         # Only the N6 stress helpers remain behind the N6 preprocessor gate.
-        self.assertIn("#endif\n\n        // Stock Cosmos", SOURCE)
+        self.assertIn("#endif\n\n        // Read-only PCI identity, DMA command and INTx route check for TCP.", SOURCE)
         self.assertIn("#if ZONDERQ_NETWORK_N6_HTTP\n"
                       "        private static bool CheckE1000EDriverKitHealth", SOURCE)
 
@@ -997,7 +997,9 @@ class NetworkN1Isolation(unittest.TestCase):
                         checkpoint.index("IsE1000EDriverKitStable("))
         for phase in ("post_before", "post_after", "final_before", "final_after"):
             self.assertIn(f'CheckE1000ECheckpoint("{phase}"', SOURCE)
-        self.assertEqual(SOURCE.count("pciCommand, pciBar0, pciIrqLine, pciIrqPin))"), 5)
+        # Avoid a global call count: N4 TCP and N5 DNS also use this
+        # read-only PCI guard. Verify the N6 checkpoints independently.
+        self.assertIn("IsE1000EProbePciMappingStable(", checkpoint)
         http = SOURCE.split("private static bool TryHttpExchange(", 1)[1]
         http = http.split("private static bool TrySendBurst(", 1)[0]
         self.assertIn("HTTP PCI mapping invalid before attempt=", http)
