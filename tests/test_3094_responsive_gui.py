@@ -1699,7 +1699,9 @@ class ResponsiveGui3094(unittest.TestCase):
         self.assertIn("ConsoleKeyEx.PageDown", keyboard)
         self.assertIn("SelectPage(1);", keyboard)
         self.assertIn("GridRowsForView", page)
-        self.assertIn("Select(direction * Columns() * rows);", page)
+        self.assertIn("long jump = (long)direction * Columns() * rows;", page)
+        self.assertIn("jump > int.MaxValue ? int.MaxValue", page)
+        self.assertIn("jump < int.MinValue ? int.MinValue : (int)jump", page)
         self.assertIn("ResetClickSequence();", selection)
         self.assertIn("contextMenuVisible = false;", selection)
         self.assertIn("ResetClickSequence();\n                if (selectedIndex >= 0)", keyboard)
@@ -2899,8 +2901,8 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         ensure = FILE_MANAGER.split("private void EnsureSelectionVisible()", 1)[1].split(
             "private void GoUp()", 1)[0]
         self.assertIn("int lastRow = entries.Count > 0 ? (entries.Count - 1) / cols : 0;", ensure)
-        self.assertIn("int maxScroll = Math.Max(0, (lastRow - rows + 1) * cols);", ensure)
-        self.assertIn("scrollIndex = maxScroll;", ensure)
+        self.assertIn("long maxScroll = Math.Max(0L, ((long)lastRow - rows + 1) * cols);", ensure)
+        self.assertIn("scrollIndex = (int)Math.Min((long)int.MaxValue, maxScroll);", ensure)
         self.assertNotIn("entries.Count - visible", ensure)
 
         # Reproduce the previous failure: 10 entries, 3 columns, 3 rows.
