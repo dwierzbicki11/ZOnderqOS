@@ -1657,6 +1657,17 @@ namespace ZonderqOS.GUI.Apps
                     return false;
                 }
 
+                // A removable volume may detach during enumeration. Reject it
+                // before the potentially expensive sort, not only at publish time.
+                // Keep the final check below: the volume can detach during sort.
+                if (!OptionalDirectoryExists(targetPath))
+                {
+                    if (string.Equals(loadedDirectoryPath, targetPath, StringComparison.Ordinal))
+                        ClearDeniedListing();
+                    status = "Location unavailable; press F5 to refresh";
+                    return false;
+                }
+
                 // Sorting can be expensive for large FAT32 directories. Do not
                 // spend CPU sorting names that a revoked ACL forbids publishing.
                 // The second permission check above must precede this work.
