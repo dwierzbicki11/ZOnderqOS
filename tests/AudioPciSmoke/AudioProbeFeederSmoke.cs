@@ -653,6 +653,42 @@ internal static class AudioProbeFeederSmoke
         Check(ok && healthySettleWrites == 5 && healthySettleCalls == 1 &&
             waits == 0, "healthy ring settles once without backpressure");
 
+        // A device may disappear immediately after accepting a partial PCM
+        // frame. No further bytes (including silent drain) may be submitted.
+        int partialWithdrawalWrites = 0;
+        int partialWithdrawalSleeps = 0;
+        bool partialWithdrawalReady = true;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[16],
+            (source, offset, count) =>
+            {
+                partialWithdrawalWrites++;
+                partialWithdrawalReady = false;
+                return 4;
+            },
+            () => partialWithdrawalReady,
+            _ => partialWithdrawalSleeps++, out waits);
+        Check(!ok && partialWithdrawalWrites == 1 &&
+            partialWithdrawalSleeps == 0 && waits == 0,
+            "withdrawal after partial positive PCM write prevents subsequent DMA submissions");
+
+        // The 1 ms callback may withdraw the device. The next iteration
+        // must recheck readiness before another write or a silent tail.
+        int waitWithdrawalWrites = 0;
+        int waitWithdrawalCalls = 0;
+        bool waitWithdrawalReady = true;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) => { waitWithdrawalWrites++; return 0; },
+            () => waitWithdrawalReady,
+            milliseconds =>
+            {
+                Check(milliseconds == 1, "withdrawal during backpressure only waits 1ms");
+                waitWithdrawalCalls++;
+                waitWithdrawalReady = false;
+            }, out waits);
+        Check(!ok && waitWithdrawalWrites == 1 &&
+            waitWithdrawalCalls == 1 && waits == 1,
+            "withdrawal during backpressure aborts before retry or settle");
+
         Console.WriteLine("[AUDIO-FEEDER-HOST] PASS " + checks +
             " checks (fake ring; not DMA, IRQ or real playback)");
     }
