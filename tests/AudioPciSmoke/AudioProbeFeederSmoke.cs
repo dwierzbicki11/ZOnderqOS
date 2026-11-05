@@ -175,6 +175,19 @@ internal static class AudioProbeFeederSmoke
         Check(!ok && zeroWriteCalls == 1 && waitsAfterZeroWithdrawal == 0 &&
             waits == 0, "withdrawal during zero-byte write skips stale ring wait");
 
+        // Withdrawal can occur after the post-Write check but before
+        // the ring-full sleep. Do not wait on that stale device snapshot.
+        int readinessChecksBeforeWait = 0;
+        int writesBeforeStaleWait = 0;
+        int staleWaitCallbacks = 0;
+        ok = AudioProbeRingFeeder.Feed(new byte[4],
+            (a, b, c) => { writesBeforeStaleWait++; return 0; },
+            () => ++readinessChecksBeforeWait < 3,
+            _ => staleWaitCallbacks++, out waits);
+        Check(!ok && readinessChecksBeforeWait == 3 &&
+            writesBeforeStaleWait == 1 && staleWaitCallbacks == 0 && waits == 0,
+            "withdrawal between zero-write check and wait skips stale sleep");
+
         // A device may disappear while the 1 ms ring-full wait is running.
         // The feeder must recheck ownership before attempting another write.
         bool withdrawnInWait = false;
