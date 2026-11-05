@@ -93,7 +93,7 @@ namespace ZonderqOS.GUI.Apps
         // tiles fit inside that space; smaller fragments stay noninteractive.
         internal const int MinPartialTileHeight = 40;
         internal int GridRowsForView => GridWidthForView <= 0 || GridHeightForView < MinPartialTileHeight ? 0 :
-            Math.Max(1, (GridHeightForView + TileHeight + TileGap - MinPartialTileHeight) /
+            (int)Math.Max(1L, ((long)GridHeightForView + TileHeight + TileGap - MinPartialTileHeight) /
                 (TileHeight + TileGap));
 
         // Use the authenticated user's real home, not /root for every login.
