@@ -111,6 +111,20 @@ internal static class AudioProbeFeederSmoke
         Check(!ok && settleCalls == 1 && waits == 0,
             "withdrawn output during final settle fails closed");
 
+        // Withdrawal can happen after the first post-feed readiness
+        // snapshot but before the long 86 ms settle sleep. Never sleep
+        // against a stale controller even though all bytes were accepted.
+        int settleReadinessChecks = 0;
+        int staleSettleSleeps = 0;
+        int staleSettleWrites = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) => { staleSettleWrites++; return count; },
+            () => ++settleReadinessChecks <= 12,
+            milliseconds => staleSettleSleeps++, out waits);
+        Check(!ok && staleSettleSleeps == 0 && waits == 0 &&
+            staleSettleWrites == 5 && settleReadinessChecks == 13,
+            "withdrawal between settle snapshots skips 86ms delay");
+
         settleCalls = 0;
         ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
             (source, offset, count) => count,
