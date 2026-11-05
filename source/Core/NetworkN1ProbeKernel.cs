@@ -251,6 +251,19 @@ namespace ZonderqOS
                     " resources=" + baselineResources + " irq_sources=" +
                     baselineIrqSources + " handler_faults=0 isr_executions=unknown");
 #endif
+                // A successful DHCP exchange must not mask a PCI reconfiguration.
+                // Read the actual NIC config again after RX/DMA traffic, rather
+                // than trusting only the stable published DriverKit node.
+                if (!ZonderqOS.Hardware.E1000EPciIdentity.TryReadReady(
+                        pciConfig, out ushort dhcpPciCommand, out ulong dhcpPciBar0) ||
+                    dhcpPciCommand != pciCommand || dhcpPciBar0 != pciBar0 ||
+                    !ZonderqOS.Hardware.E1000EPciIdentity.TryReadLegacyIrqRoute(
+                        pciConfig, out byte dhcpIrqLine, out byte dhcpIrqPin) ||
+                    dhcpIrqLine != pciIrqLine || dhcpIrqPin != pciIrqPin)
+                {
+                    Log("[NET3095-N2][FAIL] E1000E PCI BAR/command/IRQ route changed during DHCP");
+                    return;
+                }
                 Log("[NET3095-N2] DHCP=PASS ip=" + config.Address +
                     " mask=" + config.SubnetMask +
                     " gateway=" + config.DefaultGateway);
