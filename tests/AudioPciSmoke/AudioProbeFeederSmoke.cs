@@ -450,6 +450,21 @@ internal static class AudioProbeFeederSmoke
         }
         catch (ArgumentException) { rejected = true; }
         Check(rejected, "oversized PCM rejected");
+        // Reject an invalid payload before any driver callback is invoked.
+        // This prevents malformed PCM from probing hardware or sleeping.
+        int invalidCallbackCalls = 0;
+        rejected = false;
+        try
+        {
+            AudioProbeRingFeeder.FeedAndSettle(new byte[5],
+                (a, b, c) => { invalidCallbackCalls++; return c; },
+                () => { invalidCallbackCalls++; return true; },
+                _ => invalidCallbackCalls++, out waits);
+        }
+        catch (ArgumentException) { rejected = true; }
+        Check(rejected && invalidCallbackCalls == 0,
+            "unaligned PCM rejected before device access or settle");
+
         Console.WriteLine("[AUDIO-FEEDER-HOST] PASS " + checks +
             " checks (fake ring; not DMA, IRQ or real playback)");
     }
