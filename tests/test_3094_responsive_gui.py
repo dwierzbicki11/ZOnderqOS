@@ -3750,7 +3750,7 @@ class FileManagerFilteredSnapshot3095(unittest.TestCase):
         self.assertLess(recheck, denied)
         self.assertLess(denied, publish)
         self.assertIn("ClearDeniedListing();", filtering[recheck:publish])
-        self.assertLess(publish, filtering.index("entries.IndexOf(previousSelection)"))
+        # Selection is captured during filtering, then published only after\n        # the second ACL and directory-availability checks.\n        self.assertLess(filtering.index("restoredSelection = filtered.Count;"), recheck)\n        self.assertLess(recheck, filtering.index("OptionalDirectoryExists(currentPath)"))\n        self.assertLess(publish, filtering.index("selectedIndex = restoredSelection;"))
 
 
 class FileManagerOpenEntryAclFailure3095(unittest.TestCase):
