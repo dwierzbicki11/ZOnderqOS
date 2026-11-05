@@ -79,6 +79,13 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertNotIn("Write8(", pci)
         self.assertIn("out ulong pciBar0", SOURCE)
         self.assertIn("txPciBar0 != pciBar0", SOURCE)
+        # DHCP RX must preserve the physical PCI BAR, DMA command and INTx
+        # route before the guest reports a successful lease. Source-only gate.
+        dhcp_guard = SOURCE.split('dhcpPciCommand != pciCommand', 1)[1]
+        dhcp_guard = dhcp_guard.split('Log("[NET3095-N2] DHCP=PASS ip="', 1)[0]
+        self.assertIn("dhcpPciBar0 != pciBar0", dhcp_guard)
+        self.assertIn("dhcpIrqLine != pciIrqLine || dhcpIrqPin != pciIrqPin", dhcp_guard)
+        self.assertIn("E1000E PCI BAR/command/IRQ route changed during DHCP", dhcp_guard)
         # N6 must also check the original MMIO BAR after all HTTP, burst TX
         # and post-burst ICMP activity, not merely at initial N1 raw TX.
         stress_start = SOURCE.index('POST_STRESS_IPV4=PASS ip=')
