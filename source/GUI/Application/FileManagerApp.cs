@@ -1621,7 +1621,6 @@ namespace ZonderqOS.GUI.Apps
                 // (e.g. FAT32 media removed or an I/O error). Scan and sort
                 // into a temporary snapshot; never erase the last usable view
                 // until the complete read has succeeded.
-                List<FileEntry> scanned = new List<FileEntry>();
                 string[] directories = Directory.GetDirectories(targetPath);
                 string[] files = Directory.GetFiles(targetPath);
                 // A null enumeration is not an empty directory. Publishing
@@ -1629,6 +1628,13 @@ namespace ZonderqOS.GUI.Apps
                 // a transient FAT32/driver failure. Keep the cached snapshot.
                 if (directories == null || files == null)
                     throw new IOException("Incomplete directory enumeration");
+                // Reserve the snapshot once: large FAT32 directories otherwise
+                // repeatedly grow the List on the GUI thread during Add().
+                // Avoid overflowing int when the driver reports extreme counts.
+                long totalEntries = (long)directories.Length + files.Length;
+                if (totalEntries > int.MaxValue)
+                    throw new IOException("Directory listing too large");
+                List<FileEntry> scanned = new List<FileEntry>((int)totalEntries);
                 Add(scanned, directories, true, targetPath);
                 Add(scanned, files, false, targetPath);
 
