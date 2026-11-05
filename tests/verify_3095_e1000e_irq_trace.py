@@ -31,7 +31,7 @@ def checked_irq_lines(stderr: str):
         line = raw
         if re.match(r"^qemu-system-[^:]+: terminating on signal ", line):
             break
-        if re.match(r"^(?:[0-9]+@[^:]*:)?e1000e_irq_(?:legacy_notify|msi_notify|msix_notify_vec)", line.lstrip()):
+        # Reject disguised notifications, even with a corrupted prefix.\n        # Unrelated E1000E tracepoints are not IRQ delivery evidence.\n        if any(name in line for name in (\n            "e1000e_irq_legacy_notify", "e1000e_irq_msi_notify",\n            "e1000e_irq_msix_notify_vec")):
             if not any(pattern.fullmatch(line) for pattern in (LEGACY, MSI, MSIX)):
                 raise ValueError("malformed QEMU E1000E IRQ notification")
         yield line
@@ -131,6 +131,9 @@ def self_test() -> None:
         "e1000e_irq_legacy_notifyEXTRA IRQ line state: 1\n",
         "e1000e_irq_msi_notify_extra MSI notify 0x80\n",
         "123@bad:e1000e_irq_legacy_notify IRQ line state: 1\n",
+        "garbage:e1000e_irq_legacy_notify IRQ line state: 1\\n",
+        "qemu: e1000e_irq_msi_notify MSI notify 0x80\\n",
+        "e1000e_irq_legacy_notify IRQ line state: 1\\x00\\n",
         "123@456.789x:e1000e_irq_msi_notify MSI notify 0x80\n",
         "e1000e_irq_msix_notify_vec_extra MSI-X notify vector 0x0\n",
         " e1000e_irq_legacy_notify IRQ line state: 1\n",
