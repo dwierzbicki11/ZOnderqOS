@@ -24,7 +24,7 @@ def checked_irq_lines(stderr: str):
         # Do not normalize whitespace around evidence: indented or padded\n        # lines are not exact QEMU trace events and must not satisfy a gate.\n        line = raw
         if re.match(r"^qemu-system-[^:]+: terminating on signal ", line):
             break
-        if re.match(PREFIX + r"e1000e_irq_(?:legacy_notify|msi_notify|msix_notify_vec)", line):
+        if re.match(PREFIX + r"e1000e_irq_(?:legacy_notify|msi_notify|msix_notify_vec)", line.lstrip()):
             if not any(pattern.fullmatch(line) for pattern in (LEGACY, MSI, MSIX)):
                 raise ValueError("malformed QEMU E1000E IRQ notification")
         yield line
