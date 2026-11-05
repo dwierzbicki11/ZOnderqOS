@@ -419,8 +419,8 @@ namespace ZonderqOS.GUI.Apps
             if (selectedIndex == index && lastClickIndex == index &&
                 lastClickTimestamp > 0 && elapsed >= 0 &&
                 elapsed <= Stopwatch.Frequency / 2 &&
-                System.Math.Abs(mouseX - lastClickX) <= 12 &&
-                System.Math.Abs(mouseY - lastClickY) <= 12)
+                System.Math.Abs((long)mouseX - lastClickX) <= 12 &&
+                System.Math.Abs((long)mouseY - lastClickY) <= 12)
             {
                 // Clear the old click before opening: navigating to a new
                 // directory must not turn the next single click on the same
