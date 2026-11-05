@@ -61,7 +61,15 @@ def verify(serial: str, mode: str) -> str:
     cleaned = normalize_diagnostic_ticks(raw)
     lines = cleaned.splitlines()
     if lines.count(BOOT) != 1 or lines.count(DECLINE) != 1:
-        raise ValueError("missing/duplicate RTL810xE boot or exact decline marker")
+        # Preserve fail-closed matching, but expose bounded, escaped evidence
+        # from the actual guest serial stream. A scheduler may splice output
+        # in ways the strict one-tick normalizer deliberately rejects.
+        candidates = [line for line in lines if ("NET3095-RTL810XE" in line or
+                      "[SCHED] Tick" in line)]
+        preview = " | ".join(repr(line[:180]) for line in candidates[:8])
+        raise ValueError("missing/duplicate RTL810xE boot or exact decline marker "
+                         f"(boot={lines.count(BOOT)}, decline={lines.count(DECLINE)}, "
+                         f"diagnostic_lines={len(candidates)}, preview={preview})")
     if any((PREFIX + "[FAIL]" in line and line != DECLINE) for line in lines):
         raise ValueError("unexpected RTL810xE failure marker")
     if FATAL.search(raw) or "MMIO_SNAPSHOT=READ" in raw or "SNAPSHOT=PASS" in raw:
@@ -109,6 +117,15 @@ def self_test() -> None:
             pass
         else:
             raise AssertionError("accepted E1000E binding in RTL-only QEMU profile")
+    # A malformed diagnostic must fail with enough escaped serial evidence
+    # to distinguish scheduler interleaving from a changed guest marker.
+    try:
+        verify(base.replace(DECLINE, DECLINE.replace("offers=0", "offers=2")), "none")
+    except ValueError as exc:
+        assert "boot=1" in str(exc) and "decline=0" in str(exc)
+        assert "offers=2" in str(exc) and "preview=" in str(exc)
+    else:
+        raise AssertionError("accepted malformed decline marker")
     # Check every internal split position; no dependence on scheduler timing.
     for pos in range(1, len(DECLINE)):
         split = DECLINE[:pos] + "[SCHED] Tick 6 enabled=1\n" + DECLINE[pos:]
