@@ -482,10 +482,10 @@ def self_test() -> None:
         marker = next(line for line in serial.splitlines()
                       if marker_pattern.fullmatch(line))
         for pos in range(1, len(marker)):
-            interrupted = marker[:pos] + "[SCHED] Tick 6 enabled=1\\n" + marker[pos:]
+            interrupted = marker[:pos] + "[SCHED] Tick 6 enabled=1\n" + marker[pos:]
             assert "ISR-UNPROVEN" in check_driver_health(
                 serial.replace(marker, interrupted, 1))
-        corrupted = marker[:15] + "[SCHED] Tick 6 enabled=0\\n" + marker[15:]
+        corrupted = marker[:15] + "[SCHED] Tick 6 enabled=0\n" + marker[15:]
         try:
             check_driver_health(serial.replace(marker, corrupted, 1))
         except ValueError:
