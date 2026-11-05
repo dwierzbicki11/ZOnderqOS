@@ -387,6 +387,11 @@ def check_legacy_notification(serial: str, qemu_stderr: str) -> str:
     health = check_driver_health(serial)
     legacy, msi, msix = count_notifications(qemu_stderr)
     cycles = count_legacy_cycles(qemu_stderr)
+    # The N6 device is bound to a legacy INTx line. A mixed MSI/MSI-X
+    # notification trace is not valid evidence for that legacy-only path,
+    # including MSI with zero cause (which does not increment msi).
+    from verify_3095_e1000e_irq_trace import report
+    report(qemu_stderr, require_legacy_cycle=True)
     if legacy < 4 or cycles < 4:
         raise ValueError("fewer than four QEMU E1000E legacy INTx low/high cycles")
     return (f"{binding} {health} qemu-legacy-assertions={legacy} "
@@ -564,6 +569,17 @@ def self_test() -> None:
              "e1000e_irq_legacy_notify IRQ line state: 1\n") * 4
     assert "qemu-legacy-assertions=4" in check_legacy_notification(serial, trace)
     assert "qemu-legacy-cycles=4" in check_legacy_notification(serial, trace)
+    # Mixed-mode QEMU notifications must fail even when four valid INTx
+    # cycles exist. Zero-cause MSI is still a mode violation.
+    for mixed in ("e1000e_irq_msi_notify MSI notify 0x0\n",
+                  "e1000e_irq_msi_notify MSI notify 0x80\n",
+                  "e1000e_irq_msix_notify_vec MSI-X notify vector 0x0\n"):
+        try:
+            check_legacy_notification(serial, trace + mixed)
+        except ValueError as exc:
+            assert "MSI/MSI-X" in str(exc)
+        else:
+            raise AssertionError("accepted mixed-mode QEMU IRQ binding evidence")
     for invalid_trace in ("", "e1000e_irq_legacy_notify IRQ line state: 0\n",
                           "e1000e_irq_legacy_notify IRQ line state: 1\n" * 5,
                           ("e1000e_irq_legacy_notify IRQ line state: 0\n"
