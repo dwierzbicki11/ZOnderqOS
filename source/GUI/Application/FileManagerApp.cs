@@ -247,8 +247,11 @@ namespace ZonderqOS.GUI.Apps
             }
             if (contextMenuVisible && !CanShowContextMenu)
             {
+                // A resize can dismiss the menu without a mouse/key event.
+                // Invalidate its click anchor before the next tile press.
                 contextMenuVisible = false;
                 contextMenuSelection = -1;
+                ResetClickSequence();
             }
             if (contextMenuVisible)
             {
@@ -949,13 +952,8 @@ namespace ZonderqOS.GUI.Apps
 
             if (key.Key == ConsoleKeyEx.Escape)
             {
-                if (contextMenuVisible)
-                {
-                    contextMenuVisible = false;
-                    contextMenuSelection = -1;
-                    return;
-                }
-
+                // The context-menu Escape path returned above, so this
+                // branch handles the filename filter or window itself.
                 // Escape clears an active filename filter before closing the
                 // entire file manager. Keep the user in the current folder.
                 if (searchText.Length > 0)
