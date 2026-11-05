@@ -1215,7 +1215,11 @@ namespace ZonderqOS.GUI.Apps
             int rows = GridRowsForView;
             if (rows == 0)
                 return;
-            Select(direction * Columns() * rows);
+            // Multiply in 64 bits: extreme framebuffer sizes must not wrap a
+            // page jump into the opposite direction.
+            long jump = (long)direction * Columns() * rows;
+            Select(jump > int.MaxValue ? int.MaxValue :
+                jump < int.MinValue ? int.MinValue : (int)jump);
         }
 
         private void Select(int delta)
@@ -1255,7 +1259,7 @@ namespace ZonderqOS.GUI.Apps
                 ResetClickSequence();
                 return;
             }
-            int visible = cols * rows;
+            long visible = (long)cols * rows;
 
             if (selectedIndex >= 0)
             {
@@ -1274,7 +1278,7 @@ namespace ZonderqOS.GUI.Apps
             // the old (count - visible) clamp gave 1, rounded down to 0,
             // leaving file #10 unreachable even when selected.
             int lastRow = entries.Count > 0 ? (entries.Count - 1) / cols : 0;
-            int maxScroll = Math.Max(0, (lastRow - rows + 1) * cols);
+            long maxScroll = Math.Max(0L, ((long)lastRow - rows + 1) * cols);
             if (scrollIndex > maxScroll)
                 scrollIndex = maxScroll;
         }
