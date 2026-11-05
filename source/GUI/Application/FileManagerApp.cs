@@ -1266,7 +1266,8 @@ namespace ZonderqOS.GUI.Apps
                 if (selectedIndex < scrollIndex)
                     scrollIndex = selectedIndex;
                 else if (selectedIndex >= scrollIndex + visible)
-                    scrollIndex = selectedIndex - visible + cols;
+                    scrollIndex = (int)Math.Max(0L, Math.Min((long)int.MaxValue,
+                        (long)selectedIndex - visible + cols));
             }
 
             scrollIndex -= scrollIndex % cols;
@@ -1280,7 +1281,7 @@ namespace ZonderqOS.GUI.Apps
             int lastRow = entries.Count > 0 ? (entries.Count - 1) / cols : 0;
             long maxScroll = Math.Max(0L, ((long)lastRow - rows + 1) * cols);
             if (scrollIndex > maxScroll)
-                scrollIndex = maxScroll;
+                scrollIndex = (int)Math.Min((long)int.MaxValue, maxScroll);
         }
 
         private void GoUp()
