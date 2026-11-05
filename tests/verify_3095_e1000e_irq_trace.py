@@ -31,7 +31,7 @@ def checked_irq_lines(stderr: str):
         line = raw
         if re.match(r"^qemu-system-[^:]+: terminating on signal ", line):
             break
-        if re.match(PREFIX + r"e1000e_irq_(?:legacy_notify|msi_notify|msix_notify_vec)", line.lstrip()):
+        if re.match(r"^(?:[0-9]+@[^:]*:)?e1000e_irq_(?:legacy_notify|msi_notify|msix_notify_vec)", line.lstrip()):
             if not any(pattern.fullmatch(line) for pattern in (LEGACY, MSI, MSIX)):
                 raise ValueError("malformed QEMU E1000E IRQ notification")
         yield line
@@ -130,6 +130,8 @@ def self_test() -> None:
         "e1000e_irq_legacy_notify IRQ line state: 2\n",
         "e1000e_irq_legacy_notifyEXTRA IRQ line state: 1\n",
         "e1000e_irq_msi_notify_extra MSI notify 0x80\n",
+        "123@bad:e1000e_irq_legacy_notify IRQ line state: 1\n",
+        "123@456.789x:e1000e_irq_msi_notify MSI notify 0x80\n",
         "e1000e_irq_msix_notify_vec_extra MSI-X notify vector 0x0\n",
         " e1000e_irq_legacy_notify IRQ line state: 1\n",
         "e1000e_irq_legacy_notify IRQ line state: 1 \n",
