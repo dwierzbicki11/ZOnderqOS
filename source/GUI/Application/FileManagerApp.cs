@@ -383,6 +383,9 @@ namespace ZonderqOS.GUI.Apps
 
             if (y >= ToolbarTop && y < ToolbarTop + ToolbarHeight)
             {
+                // Blank toolbar chrome also breaks an earlier tile click.
+                // Otherwise the next file click could open a stale selection.
+                ResetClickSequence();
                 // The toolbar background extends beyond the painted 30px
                 // buttons. Only their actual Y+7..Y+37 rectangles may
                 // navigate or refresh a filesystem; blank chrome is inert.
@@ -848,6 +851,7 @@ namespace ZonderqOS.GUI.Apps
                     dialogMode = 0;
                     dialogName = "";
                     status = "Cancelled";
+                    ResetClickSequence();
                     return;
                 }
 
