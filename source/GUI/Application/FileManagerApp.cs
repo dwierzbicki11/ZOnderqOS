@@ -1875,7 +1875,12 @@ namespace ZonderqOS.GUI.Apps
             // ACL check confirms that the snapshot is still readable.
             FileEntry previousSelection = selectedIndex >= 0 && selectedIndex < entries.Count
                 ? entries[selectedIndex] : null;
-            List<FileEntry> filtered = new List<FileEntry>();
+            // The cached snapshot is already sorted. Reserve only the capacity
+            // needed for the unfiltered case; filtered queries can be much
+            // smaller and should not allocate a full directory-sized array.
+            List<FileEntry> filtered = string.IsNullOrEmpty(searchText)
+                ? new List<FileEntry>(cachedEntries.Count)
+                : new List<FileEntry>();
             if (string.IsNullOrEmpty(searchText))
             {
                 filtered.AddRange(cachedEntries);
