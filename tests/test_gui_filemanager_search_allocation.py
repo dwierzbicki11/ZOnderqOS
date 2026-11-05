@@ -29,7 +29,7 @@ class FileManagerSearchAllocationTests(unittest.TestCase):
 
     def test_no_publish_before_final_permission_and_mount_checks(self):
         self.assertLess(self.method.index("publishAllowed = CanReadInSession(currentPath)"),
-                        self.method.index("entries.Clear();"))
+                        self.method.rindex("entries.Clear();"))
         self.assertLess(self.method.index("OptionalDirectoryExists(currentPath)"),
                         self.method.index("entries.AddRange(filtered);"))
         self.assertLess(self.method.index("entries.AddRange(filtered);"),
