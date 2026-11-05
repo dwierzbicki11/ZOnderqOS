@@ -1195,7 +1195,7 @@ namespace ZonderqOS.GUI.Apps
 
         private int Columns()
         {
-            return Math.Max(1, (GridWidthForView + TileGap) / (TileWidth + TileGap));
+            return (int)Math.Max(1L, ((long)GridWidthForView + TileGap) / (TileWidth + TileGap));
         }
 
         private void SelectBoundary(bool last)
