@@ -477,8 +477,11 @@ namespace ZonderqOS.GUI.Apps
             if (relativeX % strideX >= TileWidth || relativeY % strideY >= TileHeight)
                 return -1;
 
-            int index = scrollIndex + row * columns + col;
-            return index >= 0 && index < entries.Count ? index : -1;
+            // Hit testing must use the same bounded tile index as rendering.
+            // Large scroll offsets or unusual display modes must not wrap an
+            // off-screen tile back onto an unrelated entry.
+            long index = (long)scrollIndex + (long)row * columns + col;
+            return index >= 0 && index < entries.Count ? (int)index : -1;
         }
 
         private bool ContextClick(int x, int y)
