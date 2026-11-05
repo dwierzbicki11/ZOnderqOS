@@ -138,8 +138,11 @@ namespace ZonderqOS.GUI
                 int travel = Height - thumbHeight;
                 if (travel > 0)
                 {
-                    int newY = Math.Max(Y, Math.Min(Y + travel, mouseY - dragOffset));
-                    Value = (int)(((long)(newY - Y) * MaxValue) / travel);
+                    // Keep drag arithmetic in 64 bits: extreme pointer coordinates
+                    // must not wrap around the track or jump to the wrong end.
+                    long pointerY = (long)mouseY - dragOffset;
+                    long offset = Math.Max(0L, Math.Min((long)travel, pointerY - Y));
+                    Value = (int)((offset * MaxValue) / travel);
                 }
                 return true;
             }
