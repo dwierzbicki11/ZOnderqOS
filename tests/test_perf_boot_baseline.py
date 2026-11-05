@@ -59,6 +59,20 @@ class PerfBootBaselineTests(unittest.TestCase):
         self.assertEqual(result["last_free_pages"], 1010)
         self.assertEqual(result["minimum_free_pages"], 1000)
         self.assertEqual(result["maximum_free_pages"], 1024)
+        self.assertEqual(result["last_minus_first_free_pages"], -14)
+        self.assertEqual(result["decreasing_intervals"], 1)
+        self.assertEqual(result["increasing_intervals"], 1)
+        self.assertEqual(result["unchanged_intervals"], 0)
+
+    def test_memory_trend_constant_and_single_sample(self):
+        constant = perf.memory_samples("free_pages=8\nfree_pages=8\nfree_pages=8\n")
+        self.assertEqual(constant["last_minus_first_free_pages"], 0)
+        self.assertEqual(constant["unchanged_intervals"], 2)
+        self.assertEqual(constant["decreasing_intervals"], 0)
+        self.assertEqual(constant["increasing_intervals"], 0)
+        single = perf.memory_samples("free_pages=7\n")
+        self.assertEqual(single["last_minus_first_free_pages"], 0)
+        self.assertEqual(single["unchanged_intervals"], 0)
 
     def test_reject_embedded_or_malformed_marker_values(self):
         log = ("XPERF_BOOT_INIT_MS=12\nPERF_BOOT_INIT_MS=12ms\n"
