@@ -158,13 +158,16 @@ namespace ZonderqOS.GUI
                 return;
 
             int trackWidth = Math.Min(2, Width);
-            int trackX = X + (Width - trackWidth) / 2;
+            // Centering must not wrap when a window reports extreme coordinates.
+            long centeredTrackX = (long)X + (Width - trackWidth) / 2;
+            int trackX = (int)Math.Max(int.MinValue, Math.Min(int.MaxValue, centeredTrackX));
             canvas.DrawFilledRectangle(Color.FromArgb(38, 45, 53), trackX, Y, trackWidth, Height);
 
             int thumbHeight = GetThumbHeight();
             int thumbY = GetThumbY();
             int thumbWidth = Math.Min(Width, Math.Max(4, Width - 2));
-            int thumbX = X + (Width - thumbWidth) / 2;
+            long centeredThumbX = (long)X + (Width - thumbWidth) / 2;
+            int thumbX = (int)Math.Max(int.MinValue, Math.Min(int.MaxValue, centeredThumbX));
 
             Color thumb = dragging
                 ? Color.FromArgb(70, 155, 220)
