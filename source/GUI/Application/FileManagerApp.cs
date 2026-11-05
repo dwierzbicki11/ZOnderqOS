@@ -1231,7 +1231,10 @@ namespace ZonderqOS.GUI.Apps
             if (selectedIndex < 0)
                 selectedIndex = delta >= 0 ? 0 : entries.Count - 1;
             else
-                selectedIndex = Math.Max(0, Math.Min(entries.Count - 1, selectedIndex + delta));
+                // Page and row jumps can be large on unusual display modes.
+                // Clamp in 64 bits so a keyboard move never wraps to another tile.
+                selectedIndex = (int)Math.Max(0L, Math.Min((long)entries.Count - 1,
+                    (long)selectedIndex + delta));
 
             EnsureSelectionVisible();
         }
