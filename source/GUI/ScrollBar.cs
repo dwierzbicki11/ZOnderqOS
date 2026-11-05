@@ -83,7 +83,8 @@ namespace ZonderqOS.GUI
         public bool HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
         {
             hovered = Visible && Width > 0 && Height > 0 &&
-                mouseX >= X && mouseX < X + Width && mouseY >= Y && mouseY < Y + Height;
+                mouseX >= X && (long)mouseX - X < Width &&
+                mouseY >= Y && (long)mouseY - Y < Height;
 
             if (!Visible || Width <= 0 || Height <= 0 || MaxValue <= 0)
             {
@@ -108,7 +109,8 @@ namespace ZonderqOS.GUI
 
             if (isClicked && !wasClicked)
             {
-                if (mouseX >= X && mouseX < X + Width && mouseY >= thumbY && mouseY < thumbY + thumbHeight)
+                if (mouseX >= X && (long)mouseX - X < Width &&
+                    mouseY >= thumbY && (long)mouseY - thumbY < thumbHeight)
                 {
                     dragging = true;
                     dragOffset = mouseY - thumbY;
