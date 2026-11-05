@@ -465,6 +465,31 @@ internal static class AudioProbeFeederSmoke
         Check(rejected && invalidCallbackCalls == 0,
             "unaligned PCM rejected before device access or settle");
 
+        // A faulty HDA writer may behave correctly for PCM but return an
+        // invalid count only when flushing the silent DMA ring. Reject that
+        // result immediately: neither a retry nor the 86 ms settle delay is
+        // safe after a broken device callback.
+        foreach (int badDrainCount in new[] { -4, 3, 4100 })
+        {
+            int drainWrites = 0;
+            int drainSleeps = 0;
+            bool badDrainRejected = false;
+            try
+            {
+                AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+                    (source, offset, count) =>
+                    {
+                        drainWrites++;
+                        return drainWrites == 1 ? count : badDrainCount;
+                    },
+                    () => true,
+                    _ => drainSleeps++, out waits);
+            }
+            catch (InvalidOperationException) { badDrainRejected = true; }
+            Check(badDrainRejected && drainWrites == 2 && drainSleeps == 0 &&
+                waits == 0, "invalid silent DMA drain write aborts before settle");
+        }
+
         Console.WriteLine("[AUDIO-FEEDER-HOST] PASS " + checks +
             " checks (fake ring; not DMA, IRQ or real playback)");
     }
