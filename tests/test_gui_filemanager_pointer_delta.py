@@ -9,8 +9,8 @@ SOURCE = Path(__file__).resolve().parents[1] / "source/GUI/Application/FileManag
 class FileManagerPointerDeltaTests(unittest.TestCase):
     def test_pointer_distance_is_widened_before_subtraction(self):
         source = SOURCE.read_text(encoding="utf-8")
-        self.assertRegex(source, r"Math\\.Abs\\(\\(long\\)mouseX\\s*-\\s*lastClickX\\)\\s*<=\\s*12")
-        self.assertRegex(source, r"Math\\.Abs\\(\\(long\\)mouseY\\s*-\\s*lastClickY\\)\\s*<=\\s*12")
+        self.assertRegex(source, r"Math\.Abs\(\(long\)mouseX\s*-\s*lastClickX\)\s*<=\s*12")
+        self.assertRegex(source, r"Math\.Abs\(\(long\)mouseY\s*-\s*lastClickY\)\s*<=\s*12")
         self.assertNotIn("Math.Abs(mouseX - lastClickX)", source)
         self.assertNotIn("Math.Abs(mouseY - lastClickY)", source)
 
