@@ -20,7 +20,7 @@ MSIX = re.compile(r"^" + PREFIX + r"e1000e_irq_msix_notify_vec MSI-X notify vect
 
 def checked_irq_lines(stderr: str):
     """Reject malformed IRQ notifications instead of silently ignoring them."""
-    for raw in stderr.replace("\r", "").splitlines():
+    # splitlines handles CRLF without erasing embedded carriage returns.\n    # Erasing CR could forge an otherwise invalid QEMU notification.\n    for raw in stderr.splitlines():
         # Do not normalize whitespace around evidence: indented or padded
         # lines are not exact QEMU trace events and must not satisfy a gate.
         line = raw
@@ -128,6 +128,8 @@ def self_test() -> None:
         "e1000e_irq_msix_notify_vec_extra MSI-X notify vector 0x0\n",
         " e1000e_irq_legacy_notify IRQ line state: 1\n",
         "e1000e_irq_legacy_notify IRQ line state: 1 \n",
+        "e1000e_irq_legacy_notify IRQ line state: \r1\n",
+        "e1000e_irq_legacy_notify IRQ line state: 1\rgarbage\n",
     ):
         try:
             report(legacy_only + malformed, require_legacy_cycle=True)
@@ -135,7 +137,7 @@ def self_test() -> None:
             assert "malformed" in str(exc)
         else:
             raise AssertionError("accepted malformed IRQ event alongside valid INTx")
-    # A stuck asserted line may generate duplicate notifications, but it
+    # Windows CRLF traces remain supported; embedded CR cannot manufacture\n    # a valid event from malformed bytes.\n    assert count_notifications(legacy_only.replace("\n", "\r\n")) == (1, 0, 0)\n    assert count_legacy_cycles(legacy_only.replace("\n", "\r\n")) == 1\n    # A stuck asserted line may generate duplicate notifications, but it
     # cannot satisfy an opt-in complete legacy INTx transition gate.
     stuck = "e1000e_irq_legacy_notify IRQ line state: 1\n" * 8
     assert "legacy_cycles=0" in report(stuck, require_notify=True)
