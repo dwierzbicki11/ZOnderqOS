@@ -2059,7 +2059,10 @@ namespace ZonderqOS.GUI.Apps
                     if (invalidCharacter)
                         continue;
 
-                    string normalized = path.Replace('\\', '/');
+                    // FAT32 paths normally already use '/'. Avoid allocating a
+                    // duplicate string for every entry in a large directory.
+                    string normalized = path.IndexOf('\\') >= 0
+                        ? path.Replace('\\', '/') : path;
                     // Enumeration results must never become relative or traversal
                     // paths. A malformed FAT32 entry must not create a tile
                     // which can escape the directory through OpenEntry().
