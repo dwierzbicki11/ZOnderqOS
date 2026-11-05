@@ -2421,7 +2421,8 @@ class CommandPaletteResponsiveTests(unittest.TestCase):
         section = FILE_MANAGER.split("private void ApplySearchFilter()", 1)[1].split(
             "private void RebuildSidebar()", 1)[0]
         self.assertIn("FileEntry previousSelection =", section)
-        self.assertIn("entries.IndexOf(previousSelection)", section)
+        self.assertIn("selectedIndex = restoredSelection;", section)
+        self.assertIn("object.ReferenceEquals(candidate, previousSelection)", section)
         self.assertIn("searchText.Length > 0 && entries.Count > 0", section)
         self.assertIn("selectedIndex = 0;", section)
         self.assertIn("EnsureSelectionVisible();", section)
@@ -3734,7 +3735,7 @@ class FileManagerFilteredSnapshot3095(unittest.TestCase):
         self.assertLess(filtering.index("CanReadInSession(currentPath)"),
                         filtering.index("filtered.Add(candidate);"))
         self.assertLess(filtering.index("filtered.Add(candidate);"),
-                        filtering.index("entries.IndexOf(previousSelection)"))
+                        filtering.index("selectedIndex = restoredSelection;"))
 
     def test_filtered_snapshot_is_published_only_after_second_acl_check(self):
         filtering = FILE_MANAGER.split("private void ApplySearchFilter()", 1)[1].split(
