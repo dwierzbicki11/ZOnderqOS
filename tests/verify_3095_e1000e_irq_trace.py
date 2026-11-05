@@ -31,7 +31,11 @@ def checked_irq_lines(stderr: str):
         line = raw
         if re.match(r"^qemu-system-[^:]+: terminating on signal ", line):
             break
-        # Reject disguised notifications, even with a corrupted prefix.\n        # Unrelated E1000E tracepoints are not IRQ delivery evidence.\n        if any(name in line for name in (\n            "e1000e_irq_legacy_notify", "e1000e_irq_msi_notify",\n            "e1000e_irq_msix_notify_vec")):
+        # Reject disguised notifications, even with a corrupted prefix.
+        # Unrelated E1000E tracepoints are not IRQ delivery evidence.
+        if any(name in line for name in (
+            "e1000e_irq_legacy_notify", "e1000e_irq_msi_notify",
+            "e1000e_irq_msix_notify_vec")):
             if not any(pattern.fullmatch(line) for pattern in (LEGACY, MSI, MSIX)):
                 raise ValueError("malformed QEMU E1000E IRQ notification")
         yield line
@@ -131,9 +135,9 @@ def self_test() -> None:
         "e1000e_irq_legacy_notifyEXTRA IRQ line state: 1\n",
         "e1000e_irq_msi_notify_extra MSI notify 0x80\n",
         "123@bad:e1000e_irq_legacy_notify IRQ line state: 1\n",
-        "garbage:e1000e_irq_legacy_notify IRQ line state: 1\\n",
-        "qemu: e1000e_irq_msi_notify MSI notify 0x80\\n",
-        "e1000e_irq_legacy_notify IRQ line state: 1\\x00\\n",
+        "garbage:e1000e_irq_legacy_notify IRQ line state: 1\n",
+        "qemu: e1000e_irq_msi_notify MSI notify 0x80\n",
+        "e1000e_irq_legacy_notify IRQ line state: 1\x00\n",
         "123@456.789x:e1000e_irq_msi_notify MSI notify 0x80\n",
         "e1000e_irq_msix_notify_vec_extra MSI-X notify vector 0x0\n",
         " e1000e_irq_legacy_notify IRQ line state: 1\n",
@@ -177,15 +181,28 @@ def self_test() -> None:
            "e1000e_irq_msix_notify_vec MSI-X notify vector garbage\n",
            "e1000e_irq_msi_notify MSI notify 0x80 spoof\n")
     for sample in bad:
-        if sample.startswith(("e1000e_irq_legacy_notify", "e1000e_irq_msi_notify", "e1000e_irq_msix_notify_vec")) and sample not in (
-            "e1000e_irq_legacy_notify IRQ line state: 0\n",
-            "e1000e_irq_msi_notify MSI notify 0x0\n",
+        # A disguised or malformed IRQ trace must fail closed, rather than
+        # silently counting as no event. The strict parser rejects it even
+        # when a valid INTx cycle occurs elsewhere in the same trace.
+        if any(name in sample for name in (
+            "e1000e_irq_legacy_notify", "e1000e_irq_msi_notify",
+            "e1000e_irq_msix_notify_vec")) and sample not in (
+            "e1000e_irq_legacy_notify IRQ line state: 0\\n",
+            "e1000e_irq_msi_notify MSI notify 0x0\\n",
         ):
             try:
                 count_notifications(sample)
-            except ValueError:
-                continue
-            raise AssertionError("accepted malformed IRQ notification")
+            except ValueError as exc:
+                assert "malformed" in str(exc)
+            else:
+                raise AssertionError("accepted malformed IRQ notification")
+            try:
+                report(legacy_only + sample, require_legacy_cycle=True)
+            except ValueError as exc:
+                assert "malformed" in str(exc)
+            else:
+                raise AssertionError("accepted malformed IRQ event alongside valid INTx")
+            continue
         assert count_notifications(sample) == (0, 0, 0), repr(sample)
         assert "NOT_OBSERVED" in report(sample)
         try:
@@ -193,7 +210,7 @@ def self_test() -> None:
         except ValueError:
             pass
         else:
-            raise AssertionError("accepted missing/spoofed IRQ notification")
+            raise AssertionError("accepted missing IRQ notification")
     assert count_notifications("e1000e_irq_legacy_notify IRQ line state: 1\n" * 2) == (2, 0, 0)
     termination = "qemu-system-x86_64: terminating on signal 15 from pid 9791 (bash)\n"
     before = "e1000e_irq_legacy_notify IRQ line state: 1\n"
