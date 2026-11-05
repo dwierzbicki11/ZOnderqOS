@@ -458,6 +458,13 @@ namespace ZonderqOS
                 // answer is deterministic on the CI host, so this proof
                 // needs no external DNS connectivity or privileged listener.
                 Log("[NET3095-N5] DNS_ATTEMPT=START");
+                // DNS is a separate RX path: reject a changed DMA/INTx PCI mapping
+                // before sending the query, not just a changed DriverKit node.
+                if (!IsE1000ETcpPciStable(pciConfig, pciCommand, pciBar0, pciIrqLine, pciIrqPin))
+                {
+                    Log("[NET3095-N5][FAIL] E1000E PCI mapping invalid before DNS");
+                    return;
+                }
                 if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
                 {
                     Log("[NET3095-N5][FAIL] E1000E DriverKit ownership invalid before DNS");
@@ -493,6 +500,13 @@ namespace ZonderqOS
                             dnsLease.DefaultGateway.ToString() != "10.0.2.2")
                         {
                             Log("[NET3095-N5][FAIL] E1000E link/MAC/DHCP lease changed during DNS");
+                            return;
+                        }
+                        // A successful DNS reply does not prove PCI ownership
+                        // survived RX DMA. Re-read BAR0, command and INTx route.
+                        if (!IsE1000ETcpPciStable(pciConfig, pciCommand, pciBar0, pciIrqLine, pciIrqPin))
+                        {
+                            Log("[NET3095-N5][FAIL] E1000E PCI mapping changed during DNS");
                             return;
                         }
                         if (!IsE1000EDriverKitSnapshotStable(n1DriverNode))
