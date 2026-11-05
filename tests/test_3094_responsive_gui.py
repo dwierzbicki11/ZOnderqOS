@@ -1947,7 +1947,11 @@ class ResponsiveGui3094(unittest.TestCase):
         rollback = navigation.split('if (!RefreshInternal(""))', 1)[1]
         self.assertIn("currentPath = previousPath;", rollback)
         self.assertIn("searchText = previousSearch;", rollback)
-        self.assertIn("List<FileEntry> scanned = new List<FileEntry>();", refresh)
+        self.assertIn("List<FileEntry> scanned = new List<FileEntry>((int)totalEntries);", refresh)
+        self.assertIn("long totalEntries = (long)directories.Length + files.Length;", refresh)
+        self.assertIn("if (totalEntries > int.MaxValue)", refresh)
+        self.assertLess(refresh.index("if (directories == null || files == null)"), refresh.index("long totalEntries ="))
+        self.assertLess(refresh.index("if (totalEntries > int.MaxValue)"), refresh.index("List<FileEntry> scanned ="))
         self.assertIn("Add(scanned, directories, true, targetPath);", refresh)
         self.assertIn("Add(scanned, files, false, targetPath);", refresh)
         self.assertIn("if (directories == null || files == null)", refresh)
