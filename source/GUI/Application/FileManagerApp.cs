@@ -1881,9 +1881,12 @@ namespace ZonderqOS.GUI.Apps
             List<FileEntry> filtered = string.IsNullOrEmpty(searchText)
                 ? new List<FileEntry>(cachedEntries.Count)
                 : new List<FileEntry>();
+            int restoredSelection = -1;
             if (string.IsNullOrEmpty(searchText))
             {
                 filtered.AddRange(cachedEntries);
+                // Reuse the cached snapshot's ordering when restoring selection.
+                restoredSelection = previousSelection == null ? -1 : cachedEntries.IndexOf(previousSelection);
             }
             else
             {
@@ -1891,7 +1894,13 @@ namespace ZonderqOS.GUI.Apps
                 {
                     FileEntry candidate = cachedEntries[i];
                     if (candidate.Name.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        // Capture the selected tile while filtering rather than
+                        // scanning the large result a second time with IndexOf.
+                        if (object.ReferenceEquals(candidate, previousSelection))
+                            restoredSelection = filtered.Count;
                         filtered.Add(candidate);
+                    }
                 }
             }
 
@@ -1930,7 +1939,7 @@ namespace ZonderqOS.GUI.Apps
             ResetClickSequence();
             entries.Clear();
             entries.AddRange(filtered);
-            selectedIndex = previousSelection == null ? -1 : entries.IndexOf(previousSelection);
+            selectedIndex = restoredSelection;
             if (selectedIndex < 0 && searchText.Length > 0 && entries.Count > 0)
                 selectedIndex = 0;
             EnsureSelectionVisible();
