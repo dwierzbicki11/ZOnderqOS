@@ -44,6 +44,7 @@ def memory_samples(log: str) -> dict:
     values = [int(value) for value in FREE_PAGES.findall(log)]
     if not values:
         raise ValueError("memory service did not report free_pages")
+    changes = [after - before for before, after in zip(values, values[1:])]
     return {
         "scope": "second_boot_memory_service_free_physical_pages",
         "samples": len(values),
@@ -54,7 +55,10 @@ def memory_samples(log: str) -> dict:
         "last_minus_first_free_pages": values[-1] - values[0],
         "decreasing_intervals": sum(b < a for a, b in zip(values, values[1:])),
         "increasing_intervals": sum(b > a for a, b in zip(values, values[1:])),
-        "unchanged_intervals": sum(b == a for a, b in zip(values, values[1:])),
+        "unchanged_intervals": sum(change == 0 for change in changes),
+        "total_decrease_pages": -sum(change for change in changes if change < 0),
+        "total_increase_pages": sum(change for change in changes if change > 0),
+        "largest_interval_decrease_pages": max(( -change for change in changes if change < 0), default=0),
     }
 
 
