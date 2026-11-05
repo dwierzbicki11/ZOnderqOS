@@ -103,6 +103,11 @@ namespace ZonderqOS.SystemCore
                     if (consecutiveWaits >= MaxConsecutiveWaits ||
                         waitCalls >= MaxTotalWaits)
                         return false;
+                    // The device can be withdrawn between the post-Write
+                    // readiness snapshot and the actual sleep. Avoid a stale
+                    // wait when a second snapshot detects that transition.
+                    if (!ready())
+                        return false;
                     consecutiveWaits++;
                     waitCalls++;
                     wait(1);
