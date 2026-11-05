@@ -1207,6 +1207,7 @@ namespace ZonderqOS.GUI.Apps
 
             ResetClickSequence();
             contextMenuVisible = false;
+            contextMenuSelection = -1;
             selectedIndex = last ? entries.Count - 1 : 0;
             EnsureSelectionVisible();
         }
@@ -1235,6 +1236,7 @@ namespace ZonderqOS.GUI.Apps
             // Keyboard selection must not complete a pending mouse double-click.
             ResetClickSequence();
             contextMenuVisible = false;
+            contextMenuSelection = -1;
             if (selectedIndex < 0)
                 selectedIndex = delta >= 0 ? 0 : entries.Count - 1;
             else
