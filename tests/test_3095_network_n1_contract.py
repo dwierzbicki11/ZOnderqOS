@@ -323,6 +323,19 @@ class NetworkN1Isolation(unittest.TestCase):
         ):
             self.assertIn(condition, n5[live:passed])
 
+    def test_n5_dns_checks_pci_dma_and_irq_route_across_rx(self):
+        # Static contract only: not proof that an ISR ran or DMA completed.
+        n5 = SOURCE.split("#if ZONDERQ_NETWORK_N5_DNS", 1)[1].split(
+            "#if ZONDERQ_NETWORK_N6_HTTP", 1)[0]
+        self.assertEqual(n5.count("IsE1000ETcpPciStable("), 2)
+        self.assertLess(n5.index("PCI mapping invalid before DNS"),
+                        n5.index('dns.SendQuery("localhost")'))
+        self.assertLess(n5.index("dns.Receive(5000)"),
+                        n5.index("PCI mapping changed during DNS"))
+        self.assertLess(n5.index("PCI mapping changed during DNS"),
+                        n5.index("DNS=PASS host=localhost"))
+        self.assertIn("E1000E DriverKit ownership changed during DNS", n5)
+
     def test_n4_tcp_checks_pci_mapping_during_rx(self):
         # Static contract, not a guest ISR proof.
         n4 = SOURCE.split("#if ZONDERQ_NETWORK_N4_TCP", 1)[1].split(
