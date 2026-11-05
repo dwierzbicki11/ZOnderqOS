@@ -51,6 +51,10 @@ def memory_samples(log: str) -> dict:
         "last_free_pages": values[-1],
         "minimum_free_pages": min(values),
         "maximum_free_pages": max(values),
+        "last_minus_first_free_pages": values[-1] - values[0],
+        "decreasing_intervals": sum(b < a for a, b in zip(values, values[1:])),
+        "increasing_intervals": sum(b > a for a, b in zip(values, values[1:])),
+        "unchanged_intervals": sum(b == a for a, b in zip(values, values[1:])),
     }
 
 
