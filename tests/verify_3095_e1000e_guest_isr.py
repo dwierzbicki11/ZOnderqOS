@@ -22,6 +22,12 @@ def validate(serial: str) -> str:
     phases = []
     for raw in serial.split("\n"):
         line = raw.removesuffix("\r")
+        # Counters from different guest boots cannot establish an ISR delta.
+        # A second boot after the baseline invalidates the measurement.
+        if "[NET3095-N1] BOOT" in line and "before" in samples:
+            raise ValueError("guest reboot between ISR samples")
+        if "[NET3095-N1][FAIL]" in line and "before" in samples:
+            raise ValueError("guest failure during ISR measurement")
         if "[NET3095-ISR]" not in line:
             continue
         match = MARKER.fullmatch(line)
@@ -65,6 +71,8 @@ def self_test() -> None:
         "\n".join(reversed(good.splitlines())) + "\n",
         good.replace("interrupts=5", "interrupts=-1"),
         good.replace("phase=after", "phase=after\rspoof"),
+        good.splitlines()[0] + "\n[NET3095-N1] BOOT\n" + good.splitlines()[1],
+        good.splitlines()[0] + "\n[NET3095-N1][FAIL] reset\n" + good.splitlines()[1],
     )
     for item in bad:
         try:
