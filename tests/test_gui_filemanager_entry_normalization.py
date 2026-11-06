@@ -40,6 +40,16 @@ class DirectoryEntryNormalizationTests(unittest.TestCase):
         self.assertIn("destination.Add(new FileEntry(name, cleanPath, directory));", source)
         self.assertNotIn("destination.Add(new FileEntry(name, normalized, directory));", source)
 
+    def test_file_entry_publication_is_executable_code(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        statement = "destination.Add(new FileEntry(name, cleanPath, directory));"
+        # A previous edit inserted literal backslash-n characters into a
+        # // comment, swallowing the Add call while still passing assertIn.
+        lines = [line for line in source.splitlines() if statement in line]
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(lines[0].strip(), statement)
+        self.assertNotIn(r"\\n                    destination.Add", source)
+
     def test_directory_children_and_trailing_separator(self):
         for raw, parent, expected in [
             ("/DATA/one.txt", "/DATA", "one.txt"),
