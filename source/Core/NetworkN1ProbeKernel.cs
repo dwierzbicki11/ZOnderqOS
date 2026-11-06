@@ -1345,6 +1345,17 @@ namespace ZonderqOS
                     byte[] expected = System.Text.Encoding.ASCII.GetBytes(
                         "ZONDERQ3095-TCP-RESTORED-" + cycle + "\n");
                     stream.Write(request, 0, request.Length);
+                    // A successful socket Write does not guarantee that the NIC
+                    // retained its PCI DMA mapping, IRQ route or DHCP lease.
+                    // Reject a withdrawal between TX and the first RX Read.
+                    if (!IsE1000EPciMappingStable() ||
+                        !IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
+                        !IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,
+                            s_linkCycleMask, s_linkCycleGateway))
+                    {
+                        Log("[NET3095-N6][FAIL] Link TCP PCI/lease changed after TX");
+                        return false;
+                    }
                     byte[] response = new byte[expected.Length];
                     int received = 0;
                     int readCalls = 0;
