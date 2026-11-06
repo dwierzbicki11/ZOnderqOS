@@ -22,7 +22,7 @@ def accepted_child(raw, parent):
     if entry_parent.casefold() != parent.casefold():
         return None
     name = clean[slash + 1:]
-    return name if name and name not in (".", "..") else None
+    return (name, clean) if name and name not in (".", "..") else None
 
 
 class DirectoryEntryNormalizationTests(unittest.TestCase):
@@ -34,6 +34,11 @@ class DirectoryEntryNormalizationTests(unittest.TestCase):
         self.assertNotIn("Path.GetFileName(cleanPath)", source)
         self.assertNotIn("normalized.TrimEnd('/').LastIndexOf('/')", source)
         self.assertNotIn("Path.GetFileName(normalized.TrimEnd('/'))", source)
+
+    def test_production_publishes_canonical_path(self):
+        source = SOURCE.read_text(encoding="utf-8")
+        self.assertIn("destination.Add(new FileEntry(name, cleanPath, directory));", source)
+        self.assertNotIn("destination.Add(new FileEntry(name, normalized, directory));", source)
 
     def test_directory_children_and_trailing_separator(self):
         for raw, parent, expected in [
@@ -53,7 +58,7 @@ class DirectoryEntryNormalizationTests(unittest.TestCase):
             ("/data/Case.TXT", "/DATA", "Case.TXT"),
         ]:
             with self.subTest(raw=raw):
-                self.assertEqual(accepted_child(raw, parent), expected)
+                self.assertEqual(accepted_child(raw, parent),\n                                 (expected, raw.replace("\\\\", "/").rstrip("/")) if expected else None)
 
 
 if __name__ == "__main__":
