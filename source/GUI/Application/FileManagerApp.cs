@@ -2111,7 +2111,8 @@ namespace ZonderqOS.GUI.Apps
                     // Trim a trailing separator once: directory enumeration can
                     // contain thousands of entries, and repeating TrimEnd
                     // allocates an extra string for every trailing slash.
-                    string cleanPath = normalized.TrimEnd('/');
+                    string cleanPath = normalized.Length > 0 && normalized[normalized.Length - 1] == '/'
+                        ? normalized.TrimEnd('/') : normalized;
                     int lastSlash = cleanPath.LastIndexOf('/');
                     if (lastSlash < 0)
                         continue;
