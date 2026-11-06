@@ -2108,13 +2108,17 @@ namespace ZonderqOS.GUI.Apps
                     // A corrupt FAT32 enumeration must not inject a valid but
                     // unrelated absolute path into this directory's tiles.
                     // Require a direct child, not merely a shared prefix.
-                    int lastSlash = normalized.TrimEnd('/').LastIndexOf('/');
+                    // Trim a trailing separator once: directory enumeration can
+                    // contain thousands of entries, and repeating TrimEnd
+                    // allocates an extra string for every trailing slash.
+                    string cleanPath = normalized.TrimEnd('/');
+                    int lastSlash = cleanPath.LastIndexOf('/');
                     if (lastSlash < 0)
                         continue;
-                    string entryParent = lastSlash == 0 ? "/" : normalized.Substring(0, lastSlash);
+                    string entryParent = lastSlash == 0 ? "/" : cleanPath.Substring(0, lastSlash);
                     if (!string.Equals(entryParent, canonicalParent, StringComparison.OrdinalIgnoreCase))
                         continue;
-                    string name = Path.GetFileName(normalized.TrimEnd('/'));
+                    string name = Path.GetFileName(cleanPath);
                     if (string.IsNullOrWhiteSpace(name) || name == "." || name == "..")
                         continue;
 
