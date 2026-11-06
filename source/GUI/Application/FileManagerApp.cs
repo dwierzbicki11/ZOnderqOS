@@ -2124,7 +2124,10 @@ namespace ZonderqOS.GUI.Apps
                     if (string.IsNullOrWhiteSpace(name) || name == "." || name == "..")
                         continue;
 
-                    // Store the canonical child path: trailing slashes returned by some\n                    // FAT32 adapters must not survive into selection, clipboard or\n                    // file operations. The validated cleanPath is the same path\n                    // used to derive the visible name and parent.\n                    destination.Add(new FileEntry(name, cleanPath, directory));
+                    // Store the validated child path without trailing separators.
+                    // Keep this Add outside the comment: otherwise every folder
+                    // appears empty despite successful FAT32 enumeration.
+                    destination.Add(new FileEntry(name, cleanPath, directory));
                 }
                 catch (Exception)
                 {
