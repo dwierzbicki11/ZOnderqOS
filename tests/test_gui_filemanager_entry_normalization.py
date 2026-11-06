@@ -58,7 +58,8 @@ class DirectoryEntryNormalizationTests(unittest.TestCase):
             ("/data/Case.TXT", "/DATA", "Case.TXT"),
         ]:
             with self.subTest(raw=raw):
-                self.assertEqual(accepted_child(raw, parent),\n                                 (expected, raw.replace("\\\\", "/").rstrip("/")) if expected else None)
+                self.assertEqual(accepted_child(raw, parent),
+                                 (expected, raw.replace("\\", "/").rstrip("/")) if expected else None)
 
 
 if __name__ == "__main__":
