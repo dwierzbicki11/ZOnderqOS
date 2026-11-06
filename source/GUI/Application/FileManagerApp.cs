@@ -2152,47 +2152,48 @@ namespace ZonderqOS.GUI.Apps
             if (alreadySorted)
                 return;
 
-            FileEntry[] scratch = new FileEntry[count];
+            // Enumerate the List only once. Repeated indexed List reads/writes
+            // on every merge pass kept the GUI busy on large FAT32 folders.
+            // Alternate two arrays and publish only the final sorted snapshot.
+            FileEntry[] source = destination.ToArray();
+            FileEntry[] target = new FileEntry[count];
             for (int run = 1; run < count; run = run > count / 2 ? count : run * 2)
             {
                 int start = 0;
                 while (start < count)
                 {
-                    // Clamp before adding: start + run can overflow int for
-                    // extreme directory counts, even when count fits int.
                     int middle = start + Math.Min(run, count - start);
                     int end = middle + Math.Min(run, count - middle);
                     int left = start;
                     int right = middle;
 
-                    // Already ordered adjacent runs need no element comparisons.
-                    // Copying them directly keeps the merge stable and reduces
-                    // CPU time on nearly sorted FAT32 directory listings.
                     if (middle == end ||
-                        Compare(destination[middle - 1], destination[middle]) <= 0)
+                        Compare(source[middle - 1], source[middle]) <= 0)
                     {
                         for (int write = start; write < end; write++)
-                            scratch[write] = destination[write];
+                            target[write] = source[write];
                     }
                     else
                     {
                         for (int write = start; write < end; write++)
                         {
-                            // Equal names retain their original order.
                             if (left < middle && (right >= end ||
-                                Compare(destination[left], destination[right]) <= 0))
-                                scratch[write] = destination[left++];
+                                Compare(source[left], source[right]) <= 0))
+                                target[write] = source[left++];
                             else
-                                scratch[write] = destination[right++];
+                                target[write] = source[right++];
                         }
                     }
-
                     start = end;
                 }
 
-                for (int i = 0; i < count; i++)
-                    destination[i] = scratch[i];
+                FileEntry[] previous = source;
+                source = target;
+                target = previous;
             }
+
+            for (int i = 0; i < count; i++)
+                destination[i] = source[i];
         }
 
         private int Compare(FileEntry a, FileEntry b)
