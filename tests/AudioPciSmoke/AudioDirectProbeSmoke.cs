@@ -178,6 +178,21 @@ internal static class AudioDirectProbeSmoke
             withdrawnOnFormatRead.WrittenBytes == 0,
             "withdrawal during format getter aborts before Start");
 
+        // A rejected Start must not feed PCM or Stop an idle controller.
+        // A rejected Stop during cleanup must not crash the diagnostic shell.
+        var rejectedStart = new Device { ThrowOnStart = true };
+        check(!AudioProbeDirectPlayback.TryPlay(rejectedStart, Pcm, 48000) &&
+            rejectedStart.StartCalls == 1 && rejectedStart.StopCalls == 0 &&
+            rejectedStart.WrittenBytes == 0 && !rejectedStart.IsRunning,
+            "direct probe handles rejected Start without touching idle stream");
+
+        var rejectedStop = new Device { ThrowOnStop = true };
+        check(AudioProbeDirectPlayback.TryPlay(rejectedStop, Pcm, 48000) &&
+            rejectedStop.StartCalls == 1 && rejectedStop.StopCalls == 1 &&
+            rejectedStop.WrittenBytes == Pcm.Length + 16384 &&
+            !rejectedStop.IsRunning,
+            "direct probe handles rejected Stop after feeding without throwing");
+
         // An external actor may stop the stream during a successful Write.
         // The diagnostic must not issue a second Stop on a stream it no
         // longer knows to be running.
