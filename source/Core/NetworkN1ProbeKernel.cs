@@ -1347,6 +1347,7 @@ namespace ZonderqOS
                     stream.Write(request, 0, request.Length);
                     byte[] response = new byte[expected.Length];
                     int received = 0;
+                    int readCalls = 0;
                     long firstByteTicks = -1;
                     long start = Stopwatch.GetTimestamp();
                     long frequency = Stopwatch.Frequency;
@@ -1363,11 +1364,19 @@ namespace ZonderqOS
                             Log("[NET3095-N6][FAIL] Link TCP total RX deadline exceeded");
                             return false;
                         }
+                        // Bound fragmentation independently of the total deadline.
+                        // A peer trickling tiny chunks must not keep this probe busy.
+                        if (readCalls >= 16)
+                        {
+                            Log("[NET3095-N6][FAIL] Link TCP response fragmented into too many reads");
+                            return false;
+                        }
                         client.Client.ReceiveTimeout = RemainingSocketReadTimeoutMs(
                             elapsed, frequency, 10);
                         int read = stream.Read(response, received, response.Length - received);
                         if (read <= 0)
                             break;
+                        readCalls++;
                         received += read;
                         if (firstByteTicks < 0)
                             firstByteTicks = Stopwatch.GetTimestamp() - start;
