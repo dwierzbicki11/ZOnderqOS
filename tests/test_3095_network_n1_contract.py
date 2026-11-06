@@ -402,6 +402,23 @@ class NetworkN1Isolation(unittest.TestCase):
                       reconnect[read:completed])
         self.assertEqual(reconnect.count("Link TCP total RX deadline exceeded"), 2)
 
+    def test_n6_link_tcp_rechecks_pci_driver_and_lease_after_tx(self):
+        # A TX completion cannot certify that DMA/IRQ ownership survives
+        # until the first RX. This is a source contract, not QEMU IRQ proof.
+        reconnect = SOURCE.split("private static bool TryTcpReconnect(", 1)[1].split(
+            "private static void PollLinkCycle()", 1)[0]
+        send = reconnect.index("stream.Write(request, 0, request.Length);")
+        post_tx = reconnect.index("Link TCP PCI/lease changed after TX", send)
+        read = reconnect.index("int read = stream.Read(", post_tx)
+        guard = reconnect[send:post_tx]
+        self.assertIn("IsE1000EPciMappingStable()", guard)
+        self.assertIn(
+            "IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources)",
+            guard)
+        self.assertIn("IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,", guard)
+        self.assertLess(send, post_tx)
+        self.assertLess(post_tx, read)
+
     def test_n6_http_rx_latency_is_measured_not_claimed_as_irq(self):
         # Runtime telemetry must be measured on the guest using the same
         # monotonic clock as the bounded HTTP receive loop. It is NOT a
