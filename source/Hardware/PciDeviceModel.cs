@@ -10,7 +10,8 @@ namespace ZonderqOS.Hardware
     public readonly struct PciFunctionSnapshot
     {
         public PciFunctionSnapshot(byte bus, byte device, byte function, ushort vendorId, ushort deviceId,
-            byte classCode, byte subclass, byte programmingInterface)
+            byte classCode, byte subclass, byte programmingInterface,
+            byte revisionId = 0xFF, ushort subsystemVendorId = 0xFFFF, ushort subsystemDeviceId = 0xFFFF)
         {
             if (device > 31) throw new ArgumentOutOfRangeException(nameof(device));
             if (function > 7) throw new ArgumentOutOfRangeException(nameof(function));
@@ -22,6 +23,9 @@ namespace ZonderqOS.Hardware
             ClassCode = classCode;
             Subclass = subclass;
             ProgrammingInterface = programmingInterface;
+            RevisionId = revisionId;
+            SubsystemVendorId = subsystemVendorId;
+            SubsystemDeviceId = subsystemDeviceId;
         }
 
         public byte Bus { get; }
@@ -32,11 +36,15 @@ namespace ZonderqOS.Hardware
         public byte ClassCode { get; }
         public byte Subclass { get; }
         public byte ProgrammingInterface { get; }
+        public byte RevisionId { get; }
+        public ushort SubsystemVendorId { get; }
+        public ushort SubsystemDeviceId { get; }
 
         public DeviceDescriptor ToDeviceDescriptor()
         {
             string address = Bus.ToString("X2") + ":" + Device.ToString("X2") + "." + Function.ToString("X1");
-            return new DeviceDescriptor(new DeviceId("pci", address), VendorId, DeviceId, ClassCode, Subclass, ProgrammingInterface);
+            return new DeviceDescriptor(new DeviceId("pci", address), VendorId, DeviceId, ClassCode, Subclass,
+                    ProgrammingInterface, RevisionId, SubsystemVendorId, SubsystemDeviceId);
         }
     }
 

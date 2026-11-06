@@ -5,6 +5,48 @@ namespace ZonderqOS.Platform
 {
     public static class PciSysfsProvider
     {
+        public static bool TryResolveRealtekMsiXMemoryBars(DeviceDescriptor device,
+            out PciNicMsiXBarResolution resolution)
+        {
+            resolution = default; // No ARM64 PCI ECAM support.
+            return false;
+        }
+
+        public static bool TryReadRealtekPowerState(DeviceDescriptor device,
+            out PciNicPowerState info)
+        {
+            info = default; // No ARM64 PCI ECAM support.
+            return false;
+        }
+
+        public static bool TryReadRealtekInterruptCapabilities(DeviceDescriptor device,
+            out PciNicInterruptCapabilities info)
+        {
+            info = default; // No ARM64 PCI ECAM support.
+            return false;
+        }
+
+        public static bool TryReadRealtekCapabilities(DeviceDescriptor device,
+            out List<PciCapabilityDescriptor> capabilities)
+        {
+            // No ARM64 ECAM implementation: never invent IRQ capabilities.
+            capabilities = new List<PciCapabilityDescriptor>();
+            return false;
+        }
+
+        public static bool TryReadRealtekPciState(DeviceDescriptor device, out PciNicConfigState state)
+        {
+            state = default;
+            return false;
+        }
+
+        public static bool TryReadRealtekBars(DeviceDescriptor device, out List<PciBarDescriptor> bars)
+        {
+            // ARM64 PCI ECAM is not implemented; never fabricate BARs.
+            bars = new List<PciBarDescriptor>();
+            return false;
+        }
+
         public static bool TryDiscover(out List<DeviceDescriptor> devices)
         {
             // ARM64 PCI ECAM enumeration is not wired into the production HAL yet.

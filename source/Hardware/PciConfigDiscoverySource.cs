@@ -61,7 +61,25 @@ namespace ZonderqOS.Hardware
                         byte programmingInterface = config.Read8(bus, device, function, 0x09);
                         byte subclass = config.Read8(bus, device, function, 0x0A);
                         byte classCode = config.Read8(bus, device, function, 0x0B);
-                        result.Add(new PciFunctionSnapshot(bus, device, function, vendor, deviceId, classCode, subclass, programmingInterface));
+                        // Read-only PCI revision and subsystem identity help select the
+                        // correct Realtek RTL810xE silicon variant on physical hardware.
+                        // Subsystem IDs at 0x2C/0x2E exist only in type-0 headers;
+                        // reading those offsets on bridges would misidentify devices.
+                        byte revisionId = 0xFF;
+                        ushort subsystemVendorId = 0xFFFF;
+                        ushort subsystemDeviceId = 0xFFFF;
+                        if (classCode == 0x02)
+                        {
+                            revisionId = config.Read8(bus, device, function, 0x08);
+                            byte headerType = (byte)(config.Read8(bus, device, function, HeaderTypeOffset) & 0x7F);
+                            if (headerType == 0x00)
+                            {
+                                subsystemVendorId = config.Read16(bus, device, function, 0x2C);
+                                subsystemDeviceId = config.Read16(bus, device, function, 0x2E);
+                            }
+                        }
+                        result.Add(new PciFunctionSnapshot(bus, device, function, vendor, deviceId,
+                            classCode, subclass, programmingInterface, revisionId, subsystemVendorId, subsystemDeviceId));
 
                         if (classCode == BridgeClass && subclass == PciBridgeSubclass)
                         {
