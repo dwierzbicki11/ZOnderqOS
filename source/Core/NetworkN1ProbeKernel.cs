@@ -1337,6 +1337,16 @@ namespace ZonderqOS
                 using (var client = new System.Net.Sockets.TcpClient())
                 {
                     client.Connect(System.Net.IPAddress.Parse("10.0.2.2"), 18095);
+                    // Connect may block while the link or PCI binding changes.
+                    // Revalidate before sending any application payload.
+                    if (!IsE1000EPciMappingStable() ||
+                        !IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources) ||
+                        !IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,
+                            s_linkCycleMask, s_linkCycleGateway))
+                    {
+                        Log("[NET3095-N6][FAIL] Link TCP PCI/lease changed during connect");
+                        return false;
+                    }
                     client.Client.SendTimeout = 5000;
                     client.Client.ReceiveTimeout = 5000;
                     System.Net.Sockets.NetworkStream stream = client.GetStream();
