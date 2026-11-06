@@ -1398,9 +1398,30 @@ namespace ZonderqOS
                         if (read <= 0)
                             break;
                         readCalls++;
+                        int chunkStart = received;
                         received += read;
                         if (firstByteTicks < 0)
                             firstByteTicks = Stopwatch.GetTimestamp() - start;
+                        // A blocking Read can finish after the deadline even
+                        // when it began within the remaining RX budget.
+                        long afterReadTicks = Stopwatch.GetTimestamp() - start;
+                        if (afterReadTicks < 0 || afterReadTicks / frequency >= 10)
+                        {
+                            Log("[NET3095-N6][FAIL] Link TCP total RX deadline exceeded");
+                            return false;
+                        }
+                        // Reject corrupted RX bytes at the first affected chunk,
+                        // rather than accepting further traffic before comparing
+                        // the complete reply. This is a socket-level integrity
+                        // check, not proof that a hardware ISR executed.
+                        for (int offset = chunkStart; offset < received; offset++)
+                        {
+                            if (response[offset] != expected[offset])
+                            {
+                                Log("[NET3095-N6][FAIL] Link TCP reply bytes differ");
+                                return false;
+                            }
+                        }
                         // A partial TCP response may span multiple DMA/RX
                         // completions. Detect a transient NIC withdrawal,
                         // link loss or lease change at each successful Read,
