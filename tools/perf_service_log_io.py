@@ -11,9 +11,17 @@ ROTATED = b"service log rotated\n"
 ENTRY = b"2026-11-06 00:00:00Z heartbeat\n"
 
 def run(path, count, mode):
+    if mode not in ("stat", "tracked"):
+        raise ValueError("mode must be stat or tracked")
+    if count < 1:
+        raise ValueError("count must be positive")
     stats = rotations = 0
-    tracked = os.path.getsize(path) if mode == "tracked" else 0
     started = time.perf_counter_ns()
+    # Include the initial read needed to resume existing logs in timed I/O.
+    tracked = 0
+    if mode == "tracked":
+        tracked = os.path.getsize(path)
+        stats += 1
     for _ in range(count):
         with open(path, "ab") as file:
             file.write(ENTRY)
@@ -54,7 +62,7 @@ def main():
             a, b = results["stat"], results["tracked"]
             if a[2] != b[2] or a[3] != b[3]:
                 raise RuntimeError("rotation/content mismatch")
-            if a[1] != args.iterations or b[1] != 0:
+            if a[1] != args.iterations or b[1] != 1:
                 raise RuntimeError("unexpected stat-call count")
             if len(a[3]) > LIMIT:
                 raise RuntimeError("log exceeds size limit")
@@ -62,7 +70,7 @@ def main():
     print(f"iterations={args.iterations} repeats={args.repeats} entry_bytes={len(ENTRY)}")
     for mode in ("stat", "tracked"):
         values = samples[mode]
-        print(f"{mode}: median_ms={statistics.median(values):.3f} min_ms={min(values):.3f} max_ms={max(values):.3f} stat_calls={args.iterations if mode == 'stat' else 0} rotations={results[mode][2]}")
+        print(f"{mode}: median_ms={statistics.median(values):.3f} min_ms={min(values):.3f} max_ms={max(values):.3f} stat_calls={results[mode][1]} rotations={results[mode][2]}")
     print(f"median_ratio_stat_over_tracked={statistics.median(samples['stat'])/statistics.median(samples['tracked']):.3f}")
 
 if __name__ == "__main__":
