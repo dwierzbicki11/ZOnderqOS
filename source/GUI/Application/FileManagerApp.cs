@@ -1990,7 +1990,7 @@ namespace ZonderqOS.GUI.Apps
                     for (int i = 0; i < partitionCount && i < 5; i++)
                     {
                         var partition = StorageManager.Partitions[i];
-                        ulong bytes = (ulong)partition.BlockCount * (ulong)partition.BlockSize;
+                        ulong bytes = SafeCapacityBytes((ulong)partition.BlockCount, (ulong)partition.BlockSize);
                         string mountPoint = StorageMountManager.GetMountPoint(i);
                         bool mounted = i == 0 || !string.IsNullOrEmpty(mountPoint);
                         string label = i == 0 ? "System" : "Partition " + i;
@@ -2020,7 +2020,7 @@ namespace ZonderqOS.GUI.Apps
                 for (int i = 0; i < deviceCount && i < 5; i++)
                 {
                     var device = StorageManager.GetDevice(i);
-                    ulong bytes = (ulong)device.BlockCount * (ulong)device.BlockSize;
+                    ulong bytes = SafeCapacityBytes((ulong)device.BlockCount, (ulong)device.BlockSize);
                     deviceRows.Add(SidebarEntry.Device("Disk " + i, IconType.HardDisk,
                         FormatCapacity(bytes) + "  DEVICE"));
                 }
@@ -2034,6 +2034,16 @@ namespace ZonderqOS.GUI.Apps
                 deviceRows.Add(SidebarEntry.Device("Storage", IconType.HardDisk, "UNAVAILABLE"));
             }
             sidebarEntries.AddRange(deviceRows);
+        }
+
+        // Corrupt or synthetic device geometry must not wrap a large disk into
+        // a misleading tiny capacity in the sidebar. This is display-only:
+        // it never changes mount selection or filesystem writes.
+        private static ulong SafeCapacityBytes(ulong blocks, ulong blockSize)
+        {
+            if (blockSize != 0 && blocks > ulong.MaxValue / blockSize)
+                return ulong.MaxValue;
+            return blocks * blockSize;
         }
 
         private static string FormatCapacity(ulong bytes)
