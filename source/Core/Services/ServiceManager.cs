@@ -325,9 +325,25 @@ namespace ZonderqOS.SystemCore.Services
                     string value = definition.Type == "memory"
                         ? "free_pages=" + PageAllocator.FreePageCount
                         : "heartbeat";
-                    File.AppendAllText(log, DateTime.UtcNow.ToString("u") + " " + value + "\n");
-                    // Prevent unlimited disk use on unattended boot sessions.
-                    if (new FileInfo(log).Length > 64 * 1024)
+                    // Reuse the append handle for the length check instead of
+                    // reopening FAT metadata through FileInfo after every write.
+                    // The length is read after Flush, so partial/failed writes do
+                    // not advance a separate cached counter.
+                    bool rotate;
+                    using (var stream = new FileStream(log, FileMode.Append, FileAccess.Write))
+                    {
+                        using (var writer = new StreamWriter(stream))
+                        {
+                            writer.Write(DateTime.UtcNow.ToString("u"));
+                            writer.Write(" ");
+                            writer.Write(value);
+                            writer.Write("\n");
+                            writer.Flush();
+                            rotate = stream.Length > 64 * 1024;
+                        }
+                    }
+                    // Close the append handle before truncating the log.
+                    if (rotate)
                         File.WriteAllText(log, "service log rotated\n");
                 }
                 catch (Exception ex)
