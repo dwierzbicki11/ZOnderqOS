@@ -1484,8 +1484,18 @@ namespace ZonderqOS.GUI.Apps
                 // A case-sensitive adapter must not create a second FAT32
                 // entry differing only by case (file vs folder included).
                 // Read the directory afresh instead of trusting cached tiles.
+                // A detached or failing FAT32 driver may return null rather
+                // than throw. An incomplete scan cannot prove a name is free:
+                // fail closed instead of attempting a potentially colliding write.
+                string[] existingFiles = Directory.GetFiles(currentPath);
+                string[] existingDirectories = Directory.GetDirectories(currentPath);
+                if (existingFiles == null || existingDirectories == null)
+                {
+                    status = "Cannot verify FAT32 names; create cancelled";
+                    return;
+                }
                 if (FileManagerNamePolicy.HasCaseInsensitiveCollision(name,
-                    Directory.GetFiles(currentPath), Directory.GetDirectories(currentPath)))
+                    existingFiles, existingDirectories))
                 {
                     status = "Already exists (FAT32 name)";
                     return;
