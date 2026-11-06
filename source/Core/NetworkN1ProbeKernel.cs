@@ -824,7 +824,10 @@ namespace ZonderqOS
                 candidate.PublishedDeviceCount == 1 && candidate.InterruptCount >= 1;
         }
 
-        // Stock DriverKit can register more than one interrupt source for this\n        // bound node; N1 records the actual count and later checkpoints require\n        // it to remain unchanged. Requiring exactly one broke real QEMU N1.\n        // Snapshot comparison is read-only. DriverDiagnostics.InterruptCount
+        // Stock DriverKit can register more than one interrupt source for this
+        // bound node; N1 records the actual count and later checkpoints require
+        // it to remain unchanged. Requiring exactly one broke real QEMU N1.
+        // Snapshot comparison is read-only. DriverDiagnostics.InterruptCount
         // counts registered IRQ sources, NOT actual guest ISR invocations.
         // Use the N1 binding as the immutable baseline for N2-N5.
         private static bool IsE1000EDriverKitSnapshotStable(DeviceNodeInfo expected)
