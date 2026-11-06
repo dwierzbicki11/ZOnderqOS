@@ -728,6 +728,33 @@ internal static class AudioProbeFeederSmoke
             limitSettleCount == 0,
             "1000 consecutive waits fail without silent settle");
 
+        // A faulty driver must not be allowed to advance the PCM cursor with
+        // a negative, oversized or non-frame-aligned byte count. In each case
+        // the feeder must throw before submitting the silent DMA tail.
+        foreach (int invalidCount in new[] { -4, 2, 8 })
+        {
+            int invalidWrites = 0;
+            int invalidWaits = 0;
+            bool invalidRejected = false;
+            try
+            {
+                AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+                    (source, offset, count) =>
+                    {
+                        invalidWrites++;
+                        return invalidCount;
+                    },
+                    () => true, _ => invalidWaits++, out waits);
+            }
+            catch (InvalidOperationException)
+            {
+                invalidRejected = true;
+            }
+            Check(invalidRejected && invalidWrites == 1 && invalidWaits == 0,
+                "invalid device write count rejected before retry, silence or settle: " +
+                invalidCount);
+        }
+
         Console.WriteLine("[AUDIO-FEEDER-HOST] PASS " + checks +
             " checks (fake ring; not DMA, IRQ or real playback)");
     }
