@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Host-only A/B for append+metadata lookup versus same-handle length.
 
-Models the I/O shape of ServiceManager; Python's append/tell semantics and
-host filesystem are NOT proof of Cosmos FileStream or FAT32 performance.\nUses fstat on the open handle (rather than tell) to model Stream.Length,\nwhich queries file size rather than the current write position.
+Models the I/O shape of ServiceManager; Python's append and host filesystem
+are NOT proof of Cosmos FileStream or FAT32 performance.
+Uses fstat on the open handle (rather than tell) to model Stream.Length,
+which queries file size rather than the current write position.
 """
 import argparse
 import os
