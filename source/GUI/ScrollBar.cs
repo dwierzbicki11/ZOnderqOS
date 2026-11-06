@@ -8,7 +8,8 @@ namespace ZonderqOS.GUI
     {
         private bool dragging;
         private bool hovered;
-        private int dragOffset;
+        private long dragOffset;
+        private int dragTrackX, dragTrackY, dragTrackWidth, dragTrackHeight;
         private int contentItems;
         private int visibleItems;
         private int value;
@@ -48,19 +49,27 @@ namespace ZonderqOS.GUI
 
             contentItems = nextContent;
             visibleItems = nextVisible;
+            // Old drag offsets do not apply to a resized list.
+            if (rangeChanged)
+                dragging = false;
             Value = value;
-
-            if (rangeChanged && MaxValue == 0 && this.value != 0)
-                Value = 0;
         }
 
         private int GetThumbHeight()
         {
-            if (contentItems <= visibleItems || Height <= 0)
+            if (Height <= 0)
+                return 0;
+            if (contentItems <= visibleItems)
                 return Height;
 
-            int thumb = (Height * visibleItems) / contentItems;
-            return Math.Max(22, Math.Min(Height, thumb));
+            // Large lists must not overflow the intermediate product.
+            int thumb = (int)(((long)Height * visibleItems) / contentItems);
+            // On short tracks the old 22px minimum filled the entire
+            // track, leaving no travel even with thousands of hidden rows.
+            // Reserve at least one pixel of travel whenever Height > 1.
+            int minimumThumb = Math.Min(22, Math.Max(1, Height / 2));
+            int maximumThumb = Height > 1 ? Height - 1 : Height;
+            return Math.Min(maximumThumb, Math.Max(minimumThumb, thumb));
         }
 
         private int GetThumbY()
@@ -68,34 +77,57 @@ namespace ZonderqOS.GUI
             int travel = Height - GetThumbHeight();
             if (travel <= 0 || MaxValue <= 0)
                 return Y;
-            return Y + (Value * travel) / MaxValue;
+            // Saturate at the representable coordinate limit rather than wrap.
+            long thumbY = (long)Y + ((long)Value * travel) / MaxValue;
+            return (int)Math.Max(int.MinValue, Math.Min(int.MaxValue, thumbY));
         }
 
         public bool HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
         {
-            hovered = mouseX >= X && mouseX < X + Width && mouseY >= Y && mouseY < Y + Height;
+            hovered = Visible && Width > 0 && Height > 0 &&
+                mouseX >= X && (long)mouseX - X < Width &&
+                mouseY >= Y && (long)mouseY - Y < Height;
 
-            if (!Visible || MaxValue <= 0)
+            if (!Visible || Width <= 0 || Height <= 0 || MaxValue <= 0)
             {
                 dragging = false;
                 return false;
             }
+
+            // A window resize or move invalidates the old thumb offset.
+            // Otherwise a held mouse button can jump the list on the next frame.
+            if (dragging && (X != dragTrackX || Y != dragTrackY ||
+                Width != dragTrackWidth || Height != dragTrackHeight))
+                dragging = false;
+
+            // A modal overlay may swallow the release of an earlier drag.
+            // A new press is a new gesture, never a continuation of the
+            // stale drag with its old thumb offset.
+            if (isClicked && !wasClicked)
+                dragging = false;
 
             int thumbHeight = GetThumbHeight();
             int thumbY = GetThumbY();
 
             if (isClicked && !wasClicked)
             {
-                if (mouseX >= X && mouseX < X + Width && mouseY >= thumbY && mouseY < thumbY + thumbHeight)
+                if (mouseX >= X && (long)mouseX - X < Width &&
+                    mouseY >= thumbY && (long)mouseY - thumbY < thumbHeight)
                 {
                     dragging = true;
-                    dragOffset = mouseY - thumbY;
+                    dragOffset = (long)mouseY - thumbY;
+                    dragTrackX = X;
+                    dragTrackY = Y;
+                    dragTrackWidth = Width;
+                    dragTrackHeight = Height;
                     return true;
                 }
 
                 if (hovered)
                 {
-                    Value = mouseY < thumbY ? Value - visibleItems : Value + visibleItems;
+                    Value = mouseY < thumbY
+                        ? Math.Max(0, Value - visibleItems)
+                        : (int)Math.Min((long)MaxValue, (long)Value + visibleItems);
                     return true;
                 }
             }
@@ -108,8 +140,11 @@ namespace ZonderqOS.GUI
                 int travel = Height - thumbHeight;
                 if (travel > 0)
                 {
-                    int newY = Math.Max(Y, Math.Min(Y + travel, mouseY - dragOffset));
-                    Value = ((newY - Y) * MaxValue) / travel;
+                    // Keep drag arithmetic in 64 bits: extreme pointer coordinates
+                    // must not wrap around the track or jump to the wrong end.
+                    long pointerY = (long)mouseY - dragOffset;
+                    long offset = Math.Max(0L, Math.Min((long)travel, pointerY - Y));
+                    Value = (int)((offset * MaxValue) / travel);
                 }
                 return true;
             }
@@ -119,16 +154,20 @@ namespace ZonderqOS.GUI
 
         public override void Render(Canvas canvas)
         {
-            if (!Visible || MaxValue <= 0)
+            if (!Visible || Width <= 0 || Height <= 0 || MaxValue <= 0)
                 return;
 
-            int trackX = X + Math.Max(0, Width / 2 - 1);
-            canvas.DrawFilledRectangle(Color.FromArgb(38, 45, 53), trackX, Y, 2, Height);
+            int trackWidth = Math.Min(2, Width);
+            // Centering must not wrap when a window reports extreme coordinates.
+            long centeredTrackX = (long)X + (Width - trackWidth) / 2;
+            int trackX = (int)Math.Max(int.MinValue, Math.Min(int.MaxValue, centeredTrackX));
+            canvas.DrawFilledRectangle(Color.FromArgb(38, 45, 53), trackX, Y, trackWidth, Height);
 
             int thumbHeight = GetThumbHeight();
             int thumbY = GetThumbY();
-            int thumbWidth = Math.Max(4, Width - 2);
-            int thumbX = X + (Width - thumbWidth) / 2;
+            int thumbWidth = Math.Min(Width, Math.Max(4, Width - 2));
+            long centeredThumbX = (long)X + (Width - thumbWidth) / 2;
+            int thumbX = (int)Math.Max(int.MinValue, Math.Min(int.MaxValue, centeredThumbX));
 
             Color thumb = dragging
                 ? Color.FromArgb(70, 155, 220)

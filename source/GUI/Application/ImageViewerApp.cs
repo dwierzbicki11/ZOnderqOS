@@ -3,6 +3,7 @@ using System.Drawing;
 using System.IO;
 using Cosmos.Kernel.System.Graphics;
 using ZonderqOS.GUI.Icons;
+using ZonderqOS.SystemCore;
 using CosmosBitmap = Cosmos.Kernel.System.Graphics.Bitmap;
 
 namespace ZonderqOS.GUI.Apps
@@ -25,6 +26,13 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color ViewBackground = Color.FromArgb(14, 18, 23);
 
         private const int ToolbarHeight = 48;
+        // The seven actions share geometry for painting and hit testing.
+        private static readonly IconType[] ToolbarIcons =
+        {
+            IconType.ArrowUp, IconType.ArrowUp, IconType.ZoomOut,
+            IconType.ZoomIn, IconType.Rotate, IconType.ImageViewer,
+            IconType.Refresh
+        };
         private const int FooterHeight = 30;
         private const int MaxSiblingImages = 128;
         private const int MaxPreviewWidth = 1600;
@@ -39,6 +47,9 @@ namespace ZonderqOS.GUI.Apps
         private int preparedAreaWidth = -1;
         private int preparedAreaHeight = -1;
         private bool previewDirty = true;
+        // A failed allocation/decode of the scaled preview must not be retried
+        // every GUI frame. Retry on a new viewport size or an explicit action.
+        private bool previewFailed;
         private bool leftButtonDown;
 
         private string currentPath = string.Empty;
@@ -60,6 +71,15 @@ namespace ZonderqOS.GUI.Apps
 
             if (!string.IsNullOrEmpty(path))
                 LoadImage(path, true);
+        }
+
+        public override void Update()
+        {
+            // A taskbar switch or minimize can consume the mouse release.
+            // Do not leave preview regeneration blocked by a stale press
+            // when this viewer is restored or the display mode changes.
+            if (!Window.IsActive || Window.IsMinimized)
+                leftButtonDown = false;
         }
 
         public override void HandleKeyboard(KeyEvent key)
@@ -136,32 +156,38 @@ namespace ZonderqOS.GUI.Apps
                 return;
 
             int toolbarY = Window.Y + 38;
-            if (mouseY < toolbarY || mouseY >= toolbarY + ToolbarHeight)
+            int localX = mouseX - (Window.X + 10);
+            int localY = mouseY - toolbarY;
+            if (localX < 0 || localX >= Window.Width - 20 ||
+                localY < 5 || localY >= 43)
                 return;
 
-            int x = mouseX - (Window.X + 14);
-            if (x < 0)
-                return;
-
-            if (x < 38)
-                NavigateSibling(-1);
-            else if (x < 78)
-                NavigateSibling(1);
-            else if (x < 126)
-                ChangeZoom(-25);
-            else if (x < 174)
-                ChangeZoom(25);
-            else if (x < 222)
-                RotateClockwise();
-            else if (x < 270)
+            for (int i = 0; i < ToolbarIcons.Length; i++)
             {
-                fitToWindow = true;
-                zoomPercent = 100;
-                previewDirty = true;
-                status = "Dopasowanie do okna";
+                int buttonX;
+                int buttonWidth;
+                if (!TryToolbarButtonBounds(i, out buttonX, out buttonWidth))
+                    break;
+                if (localX < buttonX || localX >= buttonX + buttonWidth)
+                    continue;
+
+                switch (i)
+                {
+                    case 0: NavigateSibling(-1); break;
+                    case 1: NavigateSibling(1); break;
+                    case 2: ChangeZoom(-25); break;
+                    case 3: ChangeZoom(25); break;
+                    case 4: RotateClockwise(); break;
+                    case 5:
+                        fitToWindow = true;
+                        zoomPercent = 100;
+                        previewDirty = true;
+                        status = "Dopasowanie do okna";
+                        break;
+                    case 6: ReloadImage(); break;
+                }
+                return;
             }
-            else if (x < 318)
-                ReloadImage();
         }
 
         public override void Render(Canvas canvas)
@@ -187,24 +213,47 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Toolbar, x, y, width, ToolbarHeight);
             canvas.DrawRectangle(Border, x, y, width, ToolbarHeight);
 
-            DrawToolbarButton(canvas, x + 4, y + 5, 36, IconType.ArrowUp, "<");
-            DrawToolbarButton(canvas, x + 44, y + 5, 36, IconType.ArrowUp, ">");
-            DrawToolbarButton(canvas, x + 84, y + 5, 44, IconType.ZoomOut, null);
-            DrawToolbarButton(canvas, x + 132, y + 5, 44, IconType.ZoomIn, null);
-            DrawToolbarButton(canvas, x + 180, y + 5, 44, IconType.Rotate, null);
-            DrawToolbarButton(canvas, x + 228, y + 5, 44, IconType.ImageViewer, null);
-            DrawToolbarButton(canvas, x + 276, y + 5, 44, IconType.Refresh, null);
-
-            int infoX = x + 334;
-            if (infoX < x + width - 120)
+            for (int i = 0; i < ToolbarIcons.Length; i++)
             {
-                SmallTextRenderer.DrawClipped(canvas, displayName, infoX, y + 10,
-                    System.Math.Max(20, x + width - infoX - 92), Text);
-                SmallTextRenderer.DrawUIntWithSuffix(canvas, (ulong)zoomPercent, "%", infoX, y + 28, Muted);
-                if (fitToWindow)
-                    SmallTextRenderer.Draw(canvas, " FIT", infoX + SmallTextRenderer.WidthUInt((ulong)zoomPercent) + 10,
-                        y + 28, SystemTheme.Accent);
+                int buttonX;
+                int buttonWidth;
+                if (!TryToolbarButtonBounds(i, out buttonX, out buttonWidth))
+                    break;
+                string label = i == 0 ? "<" : (i == 1 ? ">" : null);
+                DrawToolbarButton(canvas, x + buttonX, y + 5, buttonWidth, ToolbarIcons[i], label);
             }
+
+            int lastX;
+            int lastWidth;
+            if (TryToolbarButtonBounds(6, out lastX, out lastWidth))
+            {
+                int infoX = x + lastX + lastWidth + 14;
+                if (infoX < x + width - 120)
+                {
+                    SmallTextRenderer.DrawClipped(canvas, displayName, infoX, y + 10,
+                        System.Math.Max(20, x + width - infoX - 92), Text);
+                    SmallTextRenderer.DrawUIntWithSuffix(canvas, (ulong)zoomPercent, "%", infoX, y + 28, Muted);
+                    if (fitToWindow)
+                        SmallTextRenderer.Draw(canvas, " FIT", infoX + SmallTextRenderer.WidthUInt((ulong)zoomPercent) + 10,
+                            y + 28, SystemTheme.Accent);
+                }
+            }
+        }
+
+        private bool TryToolbarButtonBounds(int index, out int left, out int width)
+        {
+            left = 4;
+            width = 0;
+            if (index < 0 || index >= ToolbarIcons.Length)
+                return false;
+
+            int toolbarWidth = Window.Width - 20;
+            bool compact = toolbarWidth < 324;
+            for (int i = 0; i < index; i++)
+                left += (compact ? 32 : (i < 2 ? 36 : 44)) + 4;
+
+            width = compact ? 32 : (index < 2 ? 36 : 44);
+            return left + width <= toolbarWidth - 4;
         }
 
         private static void DrawToolbarButton(Canvas canvas, int x, int y, int width, IconType icon, string text)
@@ -233,12 +282,20 @@ namespace ZonderqOS.GUI.Apps
 
             if (sourcePixels == null || sourceWidth <= 0 || sourceHeight <= 0)
             {
-                IconManager.DrawScaled(canvas, IconType.ImageViewer,
-                    x + (width - 56) / 2, y + System.Math.Max(22, height / 2 - 64), 56, 56);
-                SmallTextRenderer.DrawCentered(canvas, "BRAK OTWARTEGO OBRAZU", x + 20,
-                    y + height / 2 + 4, System.Math.Max(40, width - 40), Text);
-                SmallTextRenderer.DrawCentered(canvas, "Otworz PNG/BMP dwuklikiem w File Managerze", x + 20,
-                    y + height / 2 + 24, System.Math.Max(40, width - 40), Muted);
+                if (width >= 100 && height >= 180)
+                {
+                    IconManager.DrawScaled(canvas, IconType.ImageViewer,
+                        x + (width - 56) / 2, y + height / 2 - 72, 56, 56);
+                    SmallTextRenderer.DrawCentered(canvas, "BRAK OTWARTEGO OBRAZU", x + 8,
+                        y + height / 2 + 4, width - 16, Text);
+                    SmallTextRenderer.DrawCentered(canvas, "Otworz PNG/BMP dwuklikiem w File Managerze", x + 8,
+                        y + height / 2 + 24, width - 16, Muted);
+                }
+                else if (width >= 40 && height >= 20)
+                {
+                    SmallTextRenderer.DrawClipped(canvas, "BRAK OTWARTEGO OBRAZU",
+                        x + 6, y + (height - 12) / 2, width - 12, Text);
+                }
                 return;
             }
 
@@ -247,14 +304,32 @@ namespace ZonderqOS.GUI.Apps
 
             // During live window resize keep the existing preview. The bitmap is
             // rebuilt once after button release instead of allocating at every size.
-            if (!leftButtonDown &&
-                (previewDirty || previewBitmap == null ||
-                 (fitToWindow && (preparedAreaWidth != areaWidth || preparedAreaHeight != areaHeight))))
+            bool areaChanged = preparedAreaWidth != areaWidth || preparedAreaHeight != areaHeight;
+            if ((!leftButtonDown || previewBitmap == null) &&
+                (previewDirty || areaChanged || (previewBitmap == null && !previewFailed)))
             {
-                PreparePreview(areaWidth, areaHeight);
+                try
+                {
+                    PreparePreview(areaWidth, areaHeight);
+                }
+                catch (Exception)
+                {
+                    // A malformed image or failed bitmap allocation must not
+                    // escape Render() and terminate the desktop. Record this
+                    // viewport so the next frame does not retry indefinitely.
+                    previewFailed = true;
+                    previewDirty = false;
+                    preparedAreaWidth = areaWidth;
+                    preparedAreaHeight = areaHeight;
+                    status = "Nie mozna przygotowac podgladu";
+                }
             }
 
-            if (previewBitmap == null || previewWidth <= 0 || previewHeight <= 0)
+            // A previously prepared bitmap may be larger than the viewport
+            // while a window is being dragged smaller. Never paint it over
+            // the footer, taskbar or another window before mouse release.
+            if (previewBitmap == null || previewWidth <= 0 || previewHeight <= 0 ||
+                previewWidth > areaWidth || previewHeight > areaHeight)
                 return;
 
             int drawX = x + (width - previewWidth) / 2;
@@ -275,12 +350,13 @@ namespace ZonderqOS.GUI.Apps
 
         private int GetViewportWidth()
         {
-            return System.Math.Max(160, Window.Width - 20);
+            return System.Math.Max(1, Window.Width - 20);
         }
 
         private int GetViewportHeight()
         {
-            return System.Math.Max(120, Window.Height - 132);
+            // Never let the preview overlap the footer on short desktops.
+            return System.Math.Max(1, Window.Height - 132);
         }
 
         private void ChangeZoom(int delta)
@@ -317,24 +393,42 @@ namespace ZonderqOS.GUI.Apps
 
         private void NavigateSibling(int delta)
         {
-            if (siblingCount <= 0 || siblingIndex < 0)
+            if (siblingCount <= 1 || siblingIndex < 0 || (delta != -1 && delta != 1))
             {
                 status = "Brak sasiedniego obrazu";
                 return;
             }
 
-            int next = siblingIndex + delta;
-            if (next < 0)
-                next = siblingCount - 1;
-            else if (next >= siblingCount)
-                next = 0;
+            // A FAT32 entry may disappear or become unreadable after the
+            // directory was scanned. Do not trap Left/Right on that one bad
+            // entry forever: try each *other* sibling at most once.
+            int next = siblingIndex;
+            int attempts = siblingCount - 1;
+            for (int i = 0; i < attempts; i++)
+            {
+                next += delta;
+                if (next < 0)
+                    next = siblingCount - 1;
+                else if (next >= siblingCount)
+                    next = 0;
 
-            LoadImage(siblingImages[next], false);
+                string candidate = siblingImages[next];
+                if (string.IsNullOrEmpty(candidate))
+                    continue;
+
+                LoadImage(candidate, false);
+                // LoadImage commits currentPath only after a successful decode.
+                // On failure the previous image and sibling index stay intact.
+                if (string.Equals(currentPath, candidate, StringComparison.OrdinalIgnoreCase))
+                    return;
+            }
+
+            status = "Brak dostepnego sasiedniego obrazu";
         }
 
         private void LoadImage(string path, bool rebuildSiblings)
         {
-            if (string.IsNullOrEmpty(path) || !File.Exists(path))
+            if (string.IsNullOrEmpty(path))
             {
                 status = "Nie znaleziono pliku obrazu";
                 return;
@@ -342,6 +436,34 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
+                // Image navigation bypasses File Manager's OpenEntry gate.
+                // Repeat the same session ACL checks for each sibling and
+                // reload; a cached directory listing is not authorization.
+                if (!CanReadImageInSession(path))
+                {
+                    status = "Brak uprawnien do obrazu";
+                    return;
+                }
+
+                // Even the existence check can fail on a removed FAT32 volume.
+                // Keep the previously decoded image when opening a bad sibling.
+                if (!File.Exists(path))
+                {
+                    status = "Nie znaleziono pliku obrazu";
+                    return;
+                }
+
+                // Cosmos decoders allocate their full pixel arrays internally.
+                // Reject oversized or malformed dimensions before decoding so
+                // a crafted FAT32 image cannot exhaust the desktop heap.
+                if (IsImagePath(path) &&
+                    !ImageHeaderGuard.IsSafeToDecode(path,
+                        path.EndsWith(".png", StringComparison.OrdinalIgnoreCase)))
+                {
+                    status = "Nieprawidlowy lub zbyt duzy obraz";
+                    return;
+                }
+
                 int[] pixels;
                 int width;
                 int height;
@@ -366,21 +488,33 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
 
-                if (width <= 0 || height <= 0 || pixels == null || pixels.Length < width * height)
+                if (width <= 0 || height <= 0 || pixels == null ||
+                    (long)width * height > pixels.Length)
                 {
                     status = "Nieprawidlowy obraz";
                     return;
                 }
 
+                // Finish all potentially throwing path operations before
+                // committing the new image. A failed decode/navigation must
+                // not blank a previously valid image or corrupt its title.
+                string name = Path.GetFileName(path);
+                if (string.IsNullOrEmpty(name))
+                    name = path;
+
                 sourcePixels = pixels;
                 sourceWidth = width;
                 sourceHeight = height;
                 currentPath = path;
-                displayName = Path.GetFileName(path);
-                if (string.IsNullOrEmpty(displayName))
-                    displayName = path;
+                displayName = name;
                 Window.Title = "Zdjecia - " + displayName;
 
+                // A mouse-held toolbar navigation must never display pixels
+                // from the previous file while the new preview is pending.
+                previewBitmap = null;
+                previewWidth = 0;
+                previewHeight = 0;
+                previewFailed = false;
                 rotation = 0;
                 zoomPercent = 100;
                 fitToWindow = true;
@@ -396,14 +530,23 @@ namespace ZonderqOS.GUI.Apps
             }
             catch (Exception ex)
             {
-                sourcePixels = null;
-                sourceWidth = 0;
-                sourceHeight = 0;
-                previewBitmap = null;
-                previewWidth = 0;
-                previewHeight = 0;
+                // The current image remains usable after a corrupt file,
+                // permission error or transient FAT32 read failure.
                 status = "Blad obrazu: " + ex.Message;
             }
+        }
+
+        private static bool CanReadImageInSession(string path)
+        {
+            if (!SecurityContext.IsAuthenticated ||
+                string.IsNullOrEmpty(SecurityContext.CurrentUser) ||
+                !FileClipboard.IsSafeAbsolutePath(path))
+                return false;
+
+            string directory = Path.GetDirectoryName(path);
+            return !string.IsNullOrEmpty(directory) &&
+                   PermissionManager.CanRead(directory, SecurityContext.CurrentUser) &&
+                   PermissionManager.CanRead(path, SecurityContext.CurrentUser);
         }
 
         private bool IsCurrentDirectoryInSiblingList()
@@ -413,7 +556,8 @@ namespace ZonderqOS.GUI.Apps
 
             string currentDirectory = Path.GetDirectoryName(currentPath) ?? string.Empty;
             string siblingDirectory = Path.GetDirectoryName(siblingImages[0]) ?? string.Empty;
-            return string.Equals(currentDirectory, siblingDirectory, StringComparison.Ordinal);
+            // FAT32 paths are case-insensitive, including their directory names.
+            return string.Equals(currentDirectory, siblingDirectory, StringComparison.OrdinalIgnoreCase);
         }
 
         private void RebuildSiblingList(string path)
@@ -426,16 +570,31 @@ namespace ZonderqOS.GUI.Apps
             try
             {
                 string directory = Path.GetDirectoryName(path);
-                if (string.IsNullOrEmpty(directory) || !Directory.Exists(directory))
+                if (string.IsNullOrEmpty(directory) || !CanReadImageInSession(path) ||
+                    !Directory.Exists(directory))
                     return;
 
                 string[] files = Directory.GetFiles(directory);
+                bool currentFound = false;
                 for (int i = 0; i < files.Length && siblingCount < MaxSiblingImages; i++)
                 {
                     string file = files[i];
                     if (!IsImagePath(file))
                         continue;
+                    if (string.Equals(file, path, StringComparison.OrdinalIgnoreCase))
+                        currentFound = true;
                     siblingImages[siblingCount++] = file;
+                }
+
+                // The directory may contain thousands of images. The capped
+                // sibling list must still include the image actually opened,
+                // otherwise Left/Right navigation is silently disabled.
+                if (!currentFound && IsImagePath(path))
+                {
+                    if (siblingCount == MaxSiblingImages)
+                        siblingImages[siblingCount - 1] = path;
+                    else
+                        siblingImages[siblingCount++] = path;
                 }
 
                 FindSiblingIndex(path);
@@ -452,7 +611,7 @@ namespace ZonderqOS.GUI.Apps
             siblingIndex = -1;
             for (int i = 0; i < siblingCount; i++)
             {
-                if (string.Equals(siblingImages[i], path, StringComparison.Ordinal))
+                if (string.Equals(siblingImages[i], path, StringComparison.OrdinalIgnoreCase))
                 {
                     siblingIndex = i;
                     return;
@@ -512,21 +671,36 @@ namespace ZonderqOS.GUI.Apps
                 }
             }
 
-            CosmosBitmap preview = new CosmosBitmap(targetWidth,targetHeight, ColorDepth.ColorDepth32);
+            // A zoomed image can exceed the viewport. Draw a centered crop
+            // instead of letting Canvas.DrawImage overwrite other windows or
+            // the footer. Only allocate the visible pixel rectangle.
+            int visibleWidth = System.Math.Min(targetWidth, areaWidth);
+            int visibleHeight = System.Math.Min(targetHeight, areaHeight);
+            int cropX = (targetWidth - visibleWidth) / 2;
+            int cropY = (targetHeight - visibleHeight) / 2;
+
+            CosmosBitmap preview = new CosmosBitmap(visibleWidth, visibleHeight, ColorDepth.ColorDepth32);
             int[] destination = preview.RawData;
-            if (destination == null || destination.Length < targetWidth * targetHeight)
+            if (destination == null || (long)destination.Length < (long)visibleWidth * visibleHeight)
+            {
+                previewFailed = true;
+                previewDirty = false;
+                preparedAreaWidth = areaWidth;
+                preparedAreaHeight = areaHeight;
+                status = "Nie mozna przygotowac podgladu";
                 return;
+            }
 
             int background = ViewBackground.ToArgb();
-            for (int dy = 0; dy < targetHeight; dy++)
+            for (int dy = 0; dy < visibleHeight; dy++)
             {
-                int ry = (int)((long)dy * rotatedHeight / targetHeight);
+                int ry = (int)((long)(dy + cropY) * rotatedHeight / targetHeight);
                 if (ry >= rotatedHeight) ry = rotatedHeight - 1;
-                int row = dy * targetWidth;
+                int row = dy * visibleWidth;
 
-                for (int dx = 0; dx < targetWidth; dx++)
+                for (int dx = 0; dx < visibleWidth; dx++)
                 {
-                    int rx = (int)((long)dx * rotatedWidth / targetWidth);
+                    int rx = (int)((long)(dx + cropX) * rotatedWidth / targetWidth);
                     if (rx >= rotatedWidth) rx = rotatedWidth - 1;
 
                     int sx;
@@ -558,11 +732,12 @@ namespace ZonderqOS.GUI.Apps
             }
 
             previewBitmap = preview;
-            previewWidth = targetWidth;
-            previewHeight = targetHeight;
+            previewWidth = visibleWidth;
+            previewHeight = visibleHeight;
             preparedAreaWidth = areaWidth;
             preparedAreaHeight = areaHeight;
             previewDirty = false;
+            previewFailed = false;
         }
 
         private static int CompositeOnBackground(int foreground, int background)

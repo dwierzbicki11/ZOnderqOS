@@ -1,0 +1,684 @@
+#!/usr/bin/env python3
+"""Pure host-side QMP framebuffer parser/diff tests; no guest is booted."""
+import importlib.util
+from pathlib import Path
+import tempfile
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+SPEC = importlib.util.spec_from_file_location(
+    "qmp_gui_filemanager", ROOT / "tools/qmp-gui-filemanager.py")
+PROBE = importlib.util.module_from_spec(SPEC)
+SPEC.loader.exec_module(PROBE)
+
+
+class FramebufferProbeTests(unittest.TestCase):
+    def test_real_start_taskbar_click_uses_ps2_and_pixel_restoration(self):
+        script = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        workflow = (ROOT / ".github/workflows/gui-800-qemu.yml").read_text()
+        self.assertIn('os.environ.get("SERVICE_QEMU_PROBE_START_TASKBAR") == "1"', script)
+        self.assertIn("SERVICE_QEMU_PROBE_START_TASKBAR: ${{ matrix.resolution == '800x600' && '1' || '0' }}", workflow)
+        self.assertIn('".start-taskbar-before.ppm"', script)
+        self.assertIn('".start-taskbar-open.ppm"', script)
+        self.assertIn('".start-taskbar-dismissed.ppm"', script)
+        self.assertIn("move_mouse_to_from_corner(channel, 22, frame_height - 22,", script)
+        self.assertIn("move_mouse_to_from_corner(channel, notification_x, notification_y,", script)
+        self.assertIn("changed_pixels_in_region(start_before, start_open, *start_region, threshold=8)", script)
+        self.assertIn("remaining_pixels * 3 >= start_pixels", script)
+        self.assertLess(script.index('".start-taskbar-before.ppm"'),
+                        script.index('".start-taskbar-open.ppm"'))
+        self.assertLess(script.index('".start-taskbar-open.ppm"'),
+                        script.index('".start-taskbar-dismissed.ppm"'))
+        # Independent synthetic gate: an opened 320x250 panel changes more
+        # than 1500 pixels; a restored background changes none. Actual
+        # guest interaction is verified separately in QEMU, not here.
+        width, height = 800, 600
+        blank = (width, height, bytes(width * height * 3))
+        panel = bytearray(blank[2])
+        for y in range(100, 350):
+            for x in range(90, 410):
+                pos = (y * width + x) * 3
+                panel[pos:pos + 3] = bytes((128, 128, 128))
+        opened = (width, height, bytes(panel))
+        region = (80, 80, 420, 400)
+        changed = PROBE.changed_pixels_in_region(blank, opened, *region, threshold=8)
+        restored = PROBE.changed_pixels_in_region(blank, blank, *region, threshold=8)
+        self.assertGreater(changed, 1500)
+        self.assertEqual(restored, 0)
+
+    def test_real_palette_shift_enter_does_not_launch_application(self):
+        script = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('send_keys(channel, "shift", "ret")', script)
+        self.assertIn('".filemanager-palette-shift-enter.ppm"', script)
+        self.assertIn("difference(palette, shift_enter, upper_only=True)", script)
+        self.assertIn("if fraction > 0.06:", script)
+        self.assertIn("Shift+Enter unexpectedly launched an app", script)
+        self.assertLess(script.index('send_keys(channel, "shift", "ret")'),
+                        script.index('send_keys(channel, "ret")'))
+        # Synthetic image comparison checks the numeric gate only; the
+        # workflow separately boots a real guest and captures its pixels.
+        width, height = 800, 600
+        baseline = bytes(width * height * 3)
+        changed, samples = PROBE.difference((width, height, baseline),
+                                            (width, height, baseline), upper_only=True)
+        self.assertEqual(changed, 0)
+        self.assertGreater(samples, 0)
+        opened = bytearray(baseline)
+        for y in range(height // 7, height * 3 // 5, 4):
+            for x in range(width // 6, width * 5 // 6, 4):
+                pos = (y * width + x) * 3
+                opened[pos:pos + 3] = bytes((255, 255, 255))
+        changed, samples = PROBE.difference((width, height, baseline),
+                                            (width, height, bytes(opened)), upper_only=True)
+        self.assertGreater(changed / samples, 0.06)
+
+    def test_real_qmp_bottom_edge_resize_has_two_visual_gates(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('".filemanager-resize-before.ppm"', source)
+        self.assertIn('".filemanager-resize-smaller.ppm"', source)
+        self.assertIn('".filemanager-resize-restored.ppm"', source)
+        self.assertIn("drag_mouse_relative(channel, 0, -64)", source)
+        self.assertIn("drag_mouse_relative(channel, 0, 64)", source)
+        self.assertIn("if fraction < 0.015:", source)
+        self.assertIn("if fraction > 0.10:", source)
+        self.assertIn("PS/2 bottom-edge resize did not visibly shrink", source)
+        self.assertIn("reverse PS/2 resize did not restore", source)
+        # A bottom-edge shrink is sampled inside the central framebuffer
+        # region, unlike a right-edge-only change beyond the 5/6 crop.
+        width, height = 1024, 768
+        baseline = bytes(width * height * 3)
+        shrunk = bytearray(baseline)
+        for y in range(534, 598):
+            for x in range(170, 850):
+                offset = (y * width + x) * 3
+                shrunk[offset:offset + 3] = bytes((255, 255, 255))
+        changed, samples = PROBE.difference(
+            (width, height, baseline), (width, height, bytes(shrunk)))
+        self.assertGreater(changed / samples, 0.015)
+        restored, _ = PROBE.difference(
+            (width, height, baseline), (width, height, baseline))
+        self.assertEqual(restored, 0)
+
+    def test_opt_in_real_maximized_caption_drag_requires_two_framebuffer_changes(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('os.environ.get("SERVICE_QEMU_PROBE_MAX_DRAG") == "1" and can_drag', source)
+        self.assertIn('".filemanager-maxdrag-before.ppm"', source)
+        self.assertIn('".filemanager-maxdrag-maximized.ppm"', source)
+        self.assertIn('".filemanager-maxdrag-restored.ppm"', source)
+        self.assertIn("move_mouse_to_from_corner(channel, frame_width // 2, 20,", source)
+        self.assertIn("drag_mouse_relative(channel, 50, 45)", source)
+        self.assertIn("difference(max_before, maximized)", source)
+        self.assertIn("difference(maximized, restored)", source)
+        self.assertIn("maximized caption drag did not visibly restore", source)
+        self.assertLess(source.index("if probe_max_drag:"),
+                        source.rindex('send_keys(channel, "alt", "f4")'))
+        self.assertIn("SERVICE_QEMU_PROBE_MAX_DRAG: ${{ matrix.resolution != '1366x768' && '1' || '0' }}",
+                      (ROOT / ".github/workflows/gui-hd-qemu.yml").read_text())
+
+    def test_opt_in_modal_alt_f4_uses_real_right_click_and_pixel_restore(self):
+        script = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        workflow = (ROOT / ".github/workflows/gui-800-qemu.yml").read_text()
+        self.assertIn('os.environ.get("SERVICE_QEMU_PROBE_MODAL_ALT_F4") == "1"', script)
+        self.assertIn('click_mouse(channel, "right")', script)
+        self.assertIn('".filemanager-modal-before.ppm"', script)
+        self.assertIn('".filemanager-modal-open.ppm"', script)
+        self.assertIn('".filemanager-modal-dismissed.ppm"', script)
+        self.assertIn('changed_pixels_in_region(modal_before, modal_open, *region, threshold=8)', script)
+        self.assertIn('changed_pixels_in_region(modal_before, modal_dismissed, *region, threshold=8)', script)
+        self.assertIn("opened_pixels < 500 or dismissed_pixels * 3 >= opened_pixels", script)
+        self.assertIn("SERVICE_QEMU_PROBE_MODAL_ALT_F4: ${{ matrix.resolution == '800x600' && '1' || '0' }}", workflow)
+        self.assertLess(script.index('click_mouse(channel, "right")'),
+                        script.index('send_keys(channel, "alt", "f4")'))
+        self.assertLess(script.index('".filemanager-modal-dismissed.ppm"'),
+                        script.index('if probe_max_drag:'))
+
+        # The pure host model rejects both no-op captures and a menu left
+        # open. The actual guest test still requires a QEMU PPM capture.
+        width, height = 180, 140
+        blank = (width, height, bytes(width * height * 3))
+        overlay = bytearray(blank[2])
+        for y in range(35, 125):
+            for x in range(35, 155):
+                pos = (y * width + x) * 3
+                overlay[pos:pos + 3] = bytes((255, 255, 255))
+        menu = (width, height, bytes(overlay))
+        region = (40, 40, 150, 120)
+        opened = PROBE.changed_pixels_in_region(blank, menu, *region)
+        restored = PROBE.changed_pixels_in_region(blank, blank, *region)
+        self.assertGreater(opened, 500)
+        self.assertLess(restored * 3, opened)
+
+    def test_low_contrast_modal_diff_keeps_default_cursor_threshold(self):
+        width, height = 12, 12
+        before = (width, height, bytes(width * height * 3))
+        pixels = bytes((12, 12, 12)) * (width * height)
+        after = (width, height, pixels)
+        self.assertEqual(PROBE.changed_pixels_in_region(
+            before, after, 0, 0, width, height), 0)
+        self.assertEqual(PROBE.changed_pixels_in_region(
+            before, after, 0, 0, width, height, threshold=8), width * height)
+
+    def test_identical_frames_do_not_count_as_gui_interaction(self):
+        width, height = 80, 64
+        pixels = bytes(width * height * 3)
+        changed, samples = PROBE.difference(
+            (width, height, pixels), (width, height, pixels))
+        self.assertGreater(samples, 0)
+        self.assertEqual(changed, 0)
+
+    def test_center_region_change_is_detected(self):
+        width, height = 80, 64
+        before = bytes(width * height * 3)
+        after = bytes([255]) * (width * height * 3)
+        changed, samples = PROBE.difference(
+            (width, height, before), (width, height, after))
+        self.assertEqual(changed, samples)
+        self.assertGreater(changed / samples, 0.12)
+
+    def test_only_bottom_taskbar_change_does_not_pass(self):
+        width, height = 80, 64
+        before = bytes(width * height * 3)
+        after = bytearray(before)
+        for y in range(height - 6, height):
+            for x in range(width):
+                offset = (y * width + x) * 3
+                after[offset:offset + 3] = b"\xff\xff\xff"
+        changed, _ = PROBE.difference(
+            (width, height, before), (width, height, bytes(after)))
+        self.assertEqual(changed, 0)
+
+    def test_read_ppm_validates_exact_pixel_count(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "capture.ppm"
+            path.write_bytes(b"P6\n# QMP framebuffer\n4 3\n255\n" + bytes(36))
+            self.assertEqual(PROBE.read_ppm(str(path)), (4, 3, bytes(36)))
+            path.write_bytes(b"P6\n4 3\n255\n" + bytes(33))
+            with self.assertRaises(ValueError):
+                PROBE.read_ppm(str(path))
+
+    def test_read_ppm_decodes_real_1366_width_qemu_row_padding(self):
+        # A real virtio-vga/OVMF capture reports 1366x768 in the P6 header,
+        # but QEMU emits 4098 RGB bytes + two zero bytes per scanline.
+        # Verify strict normalization, including the final row.
+        width, height = 1366, 3
+        packed_row = width * 3
+        self.assertEqual((packed_row + 3) & ~3, 4100)
+        rows = [bytes((row + 1,)) * packed_row for row in range(height)]
+        padded = b"".join(row + b"\x00\x00" for row in rows)
+        header = f"P6\n{width} {height}\n255\n".encode("ascii")
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "virtio.ppm"
+            path.write_bytes(header + padded)
+            self.assertEqual(PROBE.read_ppm(str(path)),
+                             (width, height, b"".join(rows)))
+
+            # A nonzero padding byte is not a valid QEMU zero pad.
+            invalid_pad = bytearray(padded)
+            invalid_pad[packed_row] = 1
+            path.write_bytes(header + invalid_pad)
+            with self.assertRaisesRegex(ValueError, "nonzero QMP framebuffer row padding"):
+                PROBE.read_ppm(str(path))
+
+            # Do not treat arbitrary extra bytes as scanline alignment.
+            path.write_bytes(header + b"".join(rows) + b"\x00")
+            with self.assertRaisesRegex(ValueError, "incomplete framebuffer"):
+                PROBE.read_ppm(str(path))
+
+            # Missing a byte from the last padded row is also rejected.
+            path.write_bytes(header + padded[:-1])
+            with self.assertRaisesRegex(ValueError, "incomplete framebuffer"):
+                PROBE.read_ppm(str(path))
+
+    def test_restored_desktop_diff_is_small(self):
+        width, height = 80, 64
+        desktop = bytes(width * height * 3)
+        # The application fills the center; closing it must restore desktop.
+        app = bytes([255]) * (width * height * 3)
+        changed, samples = PROBE.difference(
+            (width, height, app), (width, height, desktop))
+        self.assertGreater(changed / samples, 0.12)
+        changed, samples = PROBE.difference(
+            (width, height, desktop), (width, height, desktop))
+        self.assertLessEqual(changed / samples, 0.10)
+
+    def test_alt_f4_close_probe_is_wired(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('send_keys(channel, "alt", "f4")', source)
+        self.assertIn('".filemanager-closed.ppm"', source)
+        self.assertIn('("app-closed", after, closed)', source)
+        self.assertIn('if fraction > 0.10:', source)
+
+    def test_changed_framebuffer_dimensions_are_rejected(self):
+        with self.assertRaises(ValueError):
+            PROBE.difference((80, 64, bytes(80 * 64 * 3)),
+                             (81, 64, bytes(81 * 64 * 3)))
+
+
+    def test_real_qmp_filter_escape_probe_has_restore_gate(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('for key in "zzzzzzzz":', source)
+        self.assertIn('send_keys(channel, "esc")', source)
+        self.assertIn('".filemanager-filtered.ppm"', source)
+        self.assertIn('".filemanager-filter-cleared.ppm"', source)
+        self.assertIn('difference(mouse_after, filter_cleared)', source)
+        self.assertIn('if fraction > 0.10:', source)
+        self.assertLess(source.index('send_keys(channel, "esc")'),
+                        source.index('send_keys(channel, "alt", "f4")'))
+
+    def test_filter_escape_restore_diff_accepts_small_status_change(self):
+        width, height = 80, 64
+        original = bytes(width * height * 3)
+        restored = bytearray(original)
+        # A small status/clock repaint must not fail a viewport restore.
+        for y in range(13, 15):
+            for x in range(13, 19):
+                off = (y * width + x) * 3
+                restored[off:off + 3] = bytes((255, 255, 255))
+        changed, samples = PROBE.difference(
+            (width, height, original), (width, height, bytes(restored)))
+        self.assertGreater(changed, 0)
+        self.assertLessEqual(changed / samples, 0.10)
+
+
+    def test_filter_requires_measurable_real_framebuffer_change(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn("if fraction < 0.003:", source)
+        self.assertIn("File Manager search did not visibly update", source)
+        self.assertLess(source.index("if fraction < 0.003:"),
+                        source.index("difference(mouse_after, filter_cleared)"))
+
+        width, height = 80, 64
+        before = bytes(width * height * 3)
+        unchanged, samples = PROBE.difference(
+            (width, height, before), (width, height, before))
+        self.assertLess(unchanged / samples, 0.003)
+
+        # A real content change in the sampled viewport must clear the gate.
+        changed, samples = PROBE.difference(
+            (width, height, before),
+            (width, height, bytes([255]) * len(before)))
+        self.assertGreaterEqual(changed / samples, 0.003)
+
+
+    def test_real_mouse_move_probe_and_event_shape(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('move_mouse_relative(channel, 60, 0)', source)
+        self.assertIn('".filemanager-mouse-before.ppm"', source)
+        self.assertIn('".filemanager-mouse-after.ppm"', source)
+        self.assertIn("if old_cursor_pixels < 32 or new_cursor_pixels < 32:", source)
+        self.assertIn("changed_pixels_in_region(", source)
+        self.assertIn("mouse_start_x + 60 - 4", source)
+        self.assertIn("difference(mouse_after, filtered)", source)
+        self.assertIn("difference(mouse_after, filter_cleared)", source)
+
+        class FakeChannel:
+            def __init__(self):
+                self.payloads = []
+
+            def write(self, payload):
+                import json
+                self.payloads.append(json.loads(payload))
+
+            def readline(self):
+                return b'{"return": {}}\n'
+
+        channel = FakeChannel()
+        original_sleep = PROBE.time.sleep
+        try:
+            PROBE.time.sleep = lambda seconds: None
+            PROBE.move_mouse_relative(channel, 60, 0)
+            PROBE.move_mouse_relative(channel, 0, 0)
+        finally:
+            PROBE.time.sleep = original_sleep
+        self.assertEqual(len(channel.payloads), 1)
+        self.assertEqual(channel.payloads[0], {
+            "execute": "input-send-event",
+            "arguments": {"events": [
+                {"type": "rel", "data": {"axis": "x", "value": 60}}
+            ]}
+        })
+
+
+    def test_qmp_mouse_click_sends_press_then_release(self):
+        import json
+
+        class FakeChannel:
+            def __init__(self):
+                self.payloads = []
+
+            def write(self, payload):
+                self.payloads.append(json.loads(payload))
+
+            def readline(self):
+                return b'{"return": {}}\\n'.replace(b"\\n", b"\n")
+
+        channel = FakeChannel()
+        original_sleep = PROBE.time.sleep
+        try:
+            PROBE.time.sleep = lambda _: None
+            PROBE.click_mouse(channel)
+        finally:
+            PROBE.time.sleep = original_sleep
+
+        self.assertEqual(channel.payloads, [
+            {"execute": "input-send-event", "arguments": {"events": [
+                {"type": "btn", "data": {"button": "left", "down": True}}]}},
+            {"execute": "input-send-event", "arguments": {"events": [
+                {"type": "btn", "data": {"button": "left", "down": False}}]}},
+        ])
+
+    def test_qmp_mouse_click_releases_on_press_error_and_rejects_invalid_button(self):
+        import json
+
+        class FakeChannel:
+            def __init__(self):
+                self.payloads = []
+
+            def write(self, payload):
+                self.payloads.append(json.loads(payload))
+
+            def readline(self):
+                if len(self.payloads) == 1:
+                    return b'{"error": {"desc": "synthetic press failure"}}\\n'.replace(b"\\n", b"\n")
+                return b'{"return": {}}\\n'.replace(b"\\n", b"\n")
+
+        channel = FakeChannel()
+        original_sleep = PROBE.time.sleep
+        try:
+            PROBE.time.sleep = lambda _: None
+            with self.assertRaises(RuntimeError):
+                PROBE.click_mouse(channel)
+            with self.assertRaises(ValueError):
+                PROBE.mouse_button(channel, True, "wheel-up")
+            with self.assertRaises(TypeError):
+                PROBE.mouse_button(channel, 1)
+        finally:
+            PROBE.time.sleep = original_sleep
+
+        self.assertEqual(len(channel.payloads), 2)
+        self.assertTrue(channel.payloads[0]["arguments"]["events"][0]["data"]["down"])
+        self.assertFalse(channel.payloads[1]["arguments"]["events"][0]["data"]["down"])
+
+
+
+    def test_smoke_gate_rejects_wrong_real_qemu_resolution(self):
+        source = (ROOT / "tools/smoke-services-qemu.sh").read_text()
+        self.assertIn('EXPECTED_FRAMEBUFFER="${SERVICE_QEMU_EXPECT_FRAMEBUFFER:-}"', source)
+        self.assertIn('framebuffer expectation requires screenshot capture', source)
+        self.assertIn("Framebuffer mode mismatch: requested", source)
+        self.assertIn("verified actual framebuffer", source)
+        self.assertLess(source.index("if sys.argv[2] and f'{width}x{height}'"),
+                        source.index("verified actual framebuffer"))
+
+    def test_source_derived_filemanager_bounds_across_modes(self):
+        # This is geometry-model testing; the real boot must separately
+        # report its actual framebuffer size.
+        self.assertEqual(PROBE.expected_filemanager_bounds(800, 600),
+                         (0, 36, 800, 520))
+        self.assertEqual(PROBE.expected_filemanager_bounds(1024, 768),
+                         (120, 78, 820, 520))
+        self.assertEqual(PROBE.expected_filemanager_bounds(1366, 768),
+                         (120, 78, 820, 520))
+        self.assertEqual(PROBE.expected_filemanager_bounds(1920, 1080),
+                         (120, 78, 820, 520))
+        with self.assertRaises(ValueError):
+            PROBE.expected_filemanager_bounds(800, 44)
+
+    def test_requested_mode_requires_real_framebuffer_match(self):
+        import os
+        previous = os.environ.get("SERVICE_QEMU_EXPECT_FRAMEBUFFER")
+        try:
+            os.environ["SERVICE_QEMU_EXPECT_FRAMEBUFFER"] = "800x600"
+            PROBE.verify_expected_framebuffer(800, 600)
+            with self.assertRaisesRegex(RuntimeError, "actual 1024x768"):
+                PROBE.verify_expected_framebuffer(1024, 768)
+            os.environ["SERVICE_QEMU_EXPECT_FRAMEBUFFER"] = "invalid"
+            with self.assertRaises(ValueError):
+                PROBE.verify_expected_framebuffer(800, 600)
+            os.environ.pop("SERVICE_QEMU_EXPECT_FRAMEBUFFER")
+            PROBE.verify_expected_framebuffer(1024, 768)
+        finally:
+            if previous is None:
+                os.environ.pop("SERVICE_QEMU_EXPECT_FRAMEBUFFER", None)
+            else:
+                os.environ["SERVICE_QEMU_EXPECT_FRAMEBUFFER"] = previous
+
+    def test_800x600_resize_is_not_skipped_by_old_1024_guard(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn("can_resize = window_height >= 300", source)
+        self.assertIn("if can_resize:", source)
+        self.assertIn("resize_y = window_y + window_height - 3", source)
+        self.assertNotIn("frame_width // 2, 595", source)
+        self.assertNotIn("if frame_width >= 1000 and frame_height >= 700:", source)
+
+    def test_relative_mouse_homing_reaches_notification_tile_without_overflow(self):
+        import json
+
+        class FakeChannel:
+            def __init__(self):
+                self.payloads = []
+
+            def write(self, payload):
+                self.payloads.append(json.loads(payload))
+
+            def readline(self):
+                return b'{"return": {}}\\n'.replace(b"\\n", b"\n")
+
+        channel = FakeChannel()
+        original_sleep = PROBE.time.sleep
+        try:
+            PROBE.time.sleep = lambda _: None
+            PROBE.move_mouse_to_from_corner(channel, 772, 746, 1024, 768)
+            with self.assertRaises(ValueError):
+                PROBE.move_mouse_to_from_corner(channel, -1, 10, 1024, 768)
+            with self.assertRaises(ValueError):
+                PROBE.move_mouse_to_from_corner(channel, 10, 768, 1024, 768)
+        finally:
+            PROBE.time.sleep = original_sleep
+
+        # A relative PS/2 packet must never request a large delta.
+        for start_x, start_y in ((0, 0), (512, 384), (1023, 767)):
+            x, y = start_x, start_y
+            for payload in channel.payloads:
+                for event in payload["arguments"]["events"]:
+                    delta = event["data"]["value"]
+                    self.assertLessEqual(abs(delta), 64)
+                    if event["data"]["axis"] == "x":
+                        x = max(0, min(1023, x + delta))
+                    else:
+                        y = max(0, min(767, y + delta))
+            self.assertEqual((x, y), (772, 746))
+
+    def test_real_qmp_notification_click_has_stationary_framebuffer_gate(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('move_mouse_to_from_corner(channel, notification_x, notification_y,', source)
+        self.assertIn('".notification-click-before.ppm"', source)
+        self.assertIn('".notification-click-open.ppm"', source)
+        self.assertIn('".notification-click-closed.ppm"', source)
+        self.assertIn('difference(notification_before, notification_open)', source)
+        self.assertIn('difference(notification_before, notification_closed)', source)
+        self.assertIn('if fraction < 0.05:', source)
+        self.assertIn('if fraction > 0.10:', source)
+        self.assertLess(source.index('screenshot(channel, prefix + ".notification-click-before.ppm")'),
+                        source.index('click_mouse(channel)'))
+        self.assertLess(source.index('screenshot(channel, prefix + ".notification-click-closed.ppm")'),
+                        source.index('send_keys(channel, "alt", "f4")'))
+
+    def test_qmp_drag_holds_button_during_relative_motion(self):
+        import json
+
+        class FakeChannel:
+            def __init__(self):
+                self.payloads = []
+
+            def write(self, payload):
+                self.payloads.append(json.loads(payload))
+
+            def readline(self):
+                return b'{"return": {}}\\n'.replace(b"\\n", b"\n")
+
+        channel = FakeChannel()
+        old_sleep = PROBE.time.sleep
+        try:
+            PROBE.time.sleep = lambda _: None
+            PROBE.drag_mouse_relative(channel, 48, 28)
+        finally:
+            PROBE.time.sleep = old_sleep
+        events = [p["arguments"]["events"] for p in channel.payloads]
+        self.assertEqual(events[0], [{"type": "btn", "data": {"button": "left", "down": True}}])
+        self.assertEqual(events[1], [
+            {"type": "rel", "data": {"axis": "x", "value": 48}},
+            {"type": "rel", "data": {"axis": "y", "value": 28}},
+        ])
+        self.assertEqual(events[2], [{"type": "btn", "data": {"button": "left", "down": False}}])
+
+    def test_real_qmp_window_drag_has_forward_and_reverse_framebuffer_gates(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn('drag_mouse_relative(channel, 48, 28)', source)
+        self.assertIn('drag_mouse_relative(channel, -48, -28)', source)
+        self.assertIn('".filemanager-drag-before.ppm"', source)
+        self.assertIn('".filemanager-drag-moved.ppm"', source)
+        self.assertIn('".filemanager-drag-restored.ppm"', source)
+        self.assertIn('difference(drag_before, drag_moved)', source)
+        self.assertIn('difference(drag_before, drag_restored)', source)
+        self.assertIn('if fraction < 0.02:', source)
+        self.assertIn('if fraction > 0.10:', source)
+        self.assertLess(source.index('drag_mouse_relative(channel, 48, 28)'),
+                        source.index('drag_mouse_relative(channel, -48, -28)'))
+        self.assertLess(source.index('".filemanager-drag-restored.ppm"'),
+                        source.index('send_keys(channel, "alt", "f4")'))
+
+
+
+    def test_compact_mouse_probe_homes_cursor_before_baseline(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        home = source.index("move_mouse_to_from_corner(channel, mouse_start_x")
+        before = source.index('screenshot(channel, prefix + ".filemanager-mouse-before.ppm")')
+        after = source.index('screenshot(channel, prefix + ".filemanager-mouse-after.ppm")')
+        verify = source.index("verify_expected_framebuffer(frame_width, frame_height)")
+        self.assertLess(verify, home)
+        self.assertLess(home, before)
+        self.assertLess(before, after)
+        self.assertIn("mouse_start_x = frame_width // 2 - 30", source)
+        self.assertIn("mouse_start_y = frame_height // 2", source)
+        self.assertIn("move_mouse_relative(channel, 60, 0)", source)
+
+    def test_compact_mouse_homing_targets_central_diff_region(self):
+        import json
+
+        class FakeChannel:
+            def __init__(self):
+                self.payloads = []
+
+            def write(self, payload):
+                self.payloads.append(json.loads(payload))
+
+            def readline(self):
+                return b'{"return": {}}\\n'.replace(b"\\n", b"\n")
+
+        old_sleep = PROBE.time.sleep
+        try:
+            PROBE.time.sleep = lambda _: None
+            for width, height in ((640, 480), (800, 600), (1360, 768),
+                                  (1920, 1080)):
+                channel = FakeChannel()
+                x0, y0 = width // 2 - 30, height // 2
+                PROBE.move_mouse_to_from_corner(channel, x0, y0, width, height)
+                PROBE.move_mouse_relative(channel, 60, 0)
+                # A test-only PS/2 clamp model, starting from any legal pixel.
+                for start_x, start_y in ((0, 0), (width // 2, height // 2),
+                                         (width - 1, height - 1)):
+                    x, y = start_x, start_y
+                    for payload in channel.payloads:
+                        for event in payload["arguments"]["events"]:
+                            delta = event["data"]["value"]
+                            self.assertLessEqual(abs(delta), 64)
+                            if event["data"]["axis"] == "x":
+                                x = max(0, min(width - 1, x + delta))
+                            else:
+                                y = max(0, min(height - 1, y + delta))
+                    self.assertEqual((x, y), (x0 + 60, y0))
+                self.assertGreaterEqual(x0, width // 6)
+                self.assertLess(x0 + 60, width * 5 // 6)
+                self.assertGreaterEqual(y0, height // 7)
+                self.assertLess(y0, height * 6 // 7)
+        finally:
+            PROBE.time.sleep = old_sleep
+
+
+    def test_cursor_damage_gate_avoids_four_pixel_sample_aliasing(self):
+        # Real 800x600 QEMU images changed 113 full pixels in each cursor
+        # rectangle but only 6 samples in the 4px global comparison grid.
+        # Recreate this sparse-grid failure without storing megabyte PPMs.
+        for width, height in ((640, 480), (800, 600), (1920, 1080)):
+            x0, y0 = width // 2 - 30, height // 2
+            before = bytes(width * height * 3)
+            after = bytearray(before)
+            for left in (x0, x0 + 60):
+                for y in range(y0, y0 + 16):
+                    for x in range(left, left + 12):
+                        offset = (y * width + x) * 3
+                        after[offset:offset + 3] = b"\xff\xff\xff"
+            first = (width, height, before)
+            second = (width, height, bytes(after))
+            old = PROBE.changed_pixels_in_region(
+                first, second, x0 - 4, y0 - 4, x0 + 24, y0 + 28)
+            new = PROBE.changed_pixels_in_region(
+                first, second, x0 + 56, y0 - 4, x0 + 84, y0 + 28)
+            self.assertGreaterEqual(old, 32)
+            self.assertGreaterEqual(new, 32)
+            # The two regions must independently reject unchanged frames.
+            self.assertEqual(PROBE.changed_pixels_in_region(
+                first, first, x0 - 4, y0 - 4, x0 + 24, y0 + 28), 0)
+            self.assertEqual(PROBE.changed_pixels_in_region(
+                first, first, x0 + 56, y0 - 4, x0 + 84, y0 + 28), 0)
+
+    def test_cursor_damage_rejects_mismatched_or_incomplete_frames(self):
+        width, height = 80, 64
+        a = (width, height, bytes(width * height * 3))
+        b = (width + 1, height, bytes((width + 1) * height * 3))
+        with self.assertRaises(ValueError):
+            PROBE.changed_pixels_in_region(a, b, 0, 0, 20, 20)
+        with self.assertRaises(ValueError):
+            PROBE.changed_pixels_in_region(a, (width, height, b""), 0, 0, 20, 20)
+
+
+    def test_desktop_restore_ignores_expiring_bottom_toast_not_stale_window(self):
+        width, height = 80, 64
+        desktop = bytes(width * height * 3)
+        toast_gone = bytearray(desktop)
+        for y in range(45, 62):
+            for x in range(30, 78):
+                offset = (y * width + x) * 3
+                toast_gone[offset:offset + 3] = b"\xff\xff\xff"
+        before = (width, height, desktop)
+        after = (width, height, bytes(toast_gone))
+        # A toast can cover enough of the lower desktop to fail the old
+        # full-frame restoration gate despite a correctly closed window.
+        changed_full, sampled_full = PROBE.difference(before, after)
+        self.assertGreater(changed_full / sampled_full, 0.10)
+        changed_upper, sampled_upper = PROBE.difference(
+            before, after, upper_only=True)
+        self.assertEqual(changed_upper, 0)
+        self.assertGreater(sampled_upper, 0)
+
+        # A window that stays open over the upper desktop must still fail.
+        stale_window = bytearray(desktop)
+        for y in range(12, 35):
+            for x in range(15, 65):
+                offset = (y * width + x) * 3
+                stale_window[offset:offset + 3] = b"\xff\xff\xff"
+        changed, sampled = PROBE.difference(
+            before, (width, height, bytes(stale_window)), upper_only=True)
+        self.assertGreater(changed / sampled, 0.10)
+
+    def test_real_desktop_restore_uses_stable_upper_crop(self):
+        source = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
+        self.assertIn("difference(before, closed, upper_only=True)", source)
+        self.assertIn("bottom = height * 3 // 5 if upper_only", source)
+        self.assertIn("if fraction > 0.10:", source)
+        self.assertIn("Alt+F4 did not restore the desktop", source)
+
+
+if __name__ == "__main__":
+    unittest.main(verbosity=2)

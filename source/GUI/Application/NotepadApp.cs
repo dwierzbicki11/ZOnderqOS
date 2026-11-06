@@ -64,8 +64,11 @@ namespace ZonderqOS.GUI.Apps
         {
             view.X = Window.X + 10;
             view.Y = Window.Y + 40;
-            view.Width = Math.Max(300, Window.Width - 20);
-            view.Height = Math.Max(180, Window.Height - 50);
+            // The client must never exceed its parent after manual resize or
+            // a smaller framebuffer mode. The former 300x180 minimum painted
+            // editor controls beyond a 320x220 window.
+            view.Width = Math.Max(1, Window.Width - 20);
+            view.Height = Math.Max(1, Window.Height - 50);
             EnsureCursorVisible();
             EnsureOpenSelectionVisible();
         }
@@ -96,12 +99,15 @@ namespace ZonderqOS.GUI.Apps
             if (!left || oldLeft)
                 return;
 
+            // Save-As and discard confirmation are modal. Previously the
+            // toolbar was dispatched before this guard, allowing a click
+            // behind a confirmation to start a different document action.
+            if (dialogMode != 0)
+                return;
+
             int x = mouseX - view.X;
             int y = mouseY - view.Y;
             if (x < 0 || y < 0 || x >= view.Width || y >= view.Height)
-                return;
-
-            if (dialogMode != 0)
                 return;
 
             int action = view.ToolbarActionAt(x, y);
@@ -346,6 +352,15 @@ namespace ZonderqOS.GUI.Apps
 
         private void BeginOpen()
         {
+            // The graphical picker has a 360x310 minimum layout. On a smaller
+            // client it would extend outside the window (and into the taskbar).
+            // Keep keyboard editing active; the user can enlarge and retry.
+            UpdateLayout();
+            if (view.Width < 360 || view.Height < 310)
+            {
+                status = "Enlarge window to open a file";
+                return;
+            }
             string start = "/root";
             if (!string.IsNullOrEmpty(filePath))
             {
@@ -429,6 +444,15 @@ namespace ZonderqOS.GUI.Apps
 
             if (key.Key == ConsoleKeyEx.Enter)
             {
+                // Never confirm a destination hidden by an extremely small
+                // framebuffer. The compact Save-As dialog shows the path only
+                // when at least 100x110 client pixels are available.
+                UpdateLayout();
+                if (view.Width < 100 || view.Height < 110)
+                {
+                    status = "Enlarge window to confirm save path";
+                    return;
+                }
                 string path = NormalizePath(dialogText);
                 if (SaveTo(path))
                 {
@@ -450,6 +474,16 @@ namespace ZonderqOS.GUI.Apps
                 dialogMode = 0;
                 openSelectedIndex = -1;
                 status = "Anulowano";
+                return;
+            }
+
+            // If the picker became invisible after a resolution change,
+            // Enter must not open a previously selected but unseen file.
+            // Keyboard events may arrive before the next Update() layout.
+            UpdateLayout();
+            if (view.Width < 360 || view.Height < 310)
+            {
+                status = "Enlarge window to browse files";
                 return;
             }
 
@@ -491,6 +525,10 @@ namespace ZonderqOS.GUI.Apps
 
         private void HandleOpenDialogMouse(int x, int y)
         {
+            // A picker opened at a large resolution may still be visible when
+            // the user shrinks the window. Never activate off-client controls.
+            if (view.Width < 360 || view.Height < 310)
+                return;
             int dialogX;
             int dialogY;
             int dialogWidth;
@@ -937,12 +975,13 @@ namespace ZonderqOS.GUI.Apps
 
         public int ToolbarActionAt(int x, int y)
         {
-            if (y < 7 || y >= 36)
+            if (y < 7 || y >= 36 || x < 0 || x >= Width)
                 return 0;
-            if (x >= 8 && x < 66) return 1;
-            if (x >= 70 && x < 136) return 2;
-            if (x >= 140 && x < 206) return 3;
-            if (x >= 210 && x < 294) return 4;
+            // Hitboxes follow the same visibility thresholds as painting.
+            if (Width >= 70 && x >= 8 && x < 66) return 1;
+            if (Width >= 140 && x >= 70 && x < 136) return 2;
+            if (Width >= 210 && x >= 140 && x < 206) return 3;
+            if (Width >= 298 && x >= 210 && x < 294) return 4;
             return 0;
         }
 
@@ -978,7 +1017,7 @@ namespace ZonderqOS.GUI.Apps
 
         public bool HandleOpenDialogScrollMouse(int mouseX, int mouseY, bool left, bool oldLeft)
         {
-            if (app.DialogMode != 1)
+            if (app.DialogMode != 1 || Width < 360 || Height < 310)
                 return false;
 
             UpdateOpenDialogScrollBar();
@@ -1024,11 +1063,15 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderToolbar(Canvas canvas)
         {
-            canvas.DrawFilledRectangle(ChromeRaised, X + 4, Y + 4, Width - 8, ToolbarHeight - 2);
-            DrawToolbarButton(canvas, 8, 58, IconType.File, "NEW");
-            DrawToolbarButton(canvas, 70, 66, IconType.Folder, "OPEN");
-            DrawToolbarButton(canvas, 140, 66, IconType.File, "SAVE");
-            DrawToolbarButton(canvas, 210, 84, IconType.File, "SAVE AS");
+            canvas.DrawFilledRectangle(ChromeRaised, X + 4, Y + 4, Math.Max(1, Width - 8), ToolbarHeight - 2);
+            if (Width >= 70)
+                DrawToolbarButton(canvas, 8, 58, IconType.File, "NEW");
+            if (Width >= 140)
+                DrawToolbarButton(canvas, 70, 66, IconType.Folder, "OPEN");
+            if (Width >= 210)
+                DrawToolbarButton(canvas, 140, 66, IconType.File, "SAVE");
+            if (Width >= 298)
+                DrawToolbarButton(canvas, 210, 84, IconType.File, "SAVE AS");
 
             if (Width >= 520)
             {
@@ -1164,6 +1207,30 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            int requiredHeight = app.DialogMode == 3 ? 118 : 142;
+            if (Width < 280 || Height < requiredHeight)
+            {
+                // Modal remains keyboard-operable even when the user shrinks
+                // the editor below the dialog's minimum size. Do not draw a
+                // negative-centered dialog into neighboring windows.
+                UiPainter.RoundedPanel(canvas, X + 6, Y + 6,
+                    Math.Max(1, Width - 12), Math.Max(1, Height - 12),
+                    UiMetrics.MenuRadius, UiPalette.SurfaceRaised, Accent);
+                if (Width >= 100 && Height >= 55)
+                    SmallTextRenderer.DrawClipped(canvas,
+                        app.DialogMode == 3 ? "Unsaved changes" : "Save as",
+                        X + 14, Y + 22, Math.Max(1, Width - 28), MainText);
+                if (Width >= 100 && Height >= 85)
+                    SmallTextRenderer.DrawClipped(canvas, "ENTER confirm / ESC cancel",
+                        X + 14, Y + 50, Math.Max(1, Width - 28), SecondaryText);
+                // Save-As must never confirm a path the user cannot inspect.
+                // Even the keyboard-only compact dialog shows its destination.
+                if (app.DialogMode == 2 && Width >= 100 && Height >= 110)
+                    SmallTextRenderer.DrawClipped(canvas, app.DialogText ?? "",
+                        X + 14, Y + 78, Math.Max(1, Width - 28), MainText);
+                return;
+            }
+
             int width = Math.Min(520, Math.Max(280, Width - 70));
             int height = app.DialogMode == 3 ? 118 : 142;
             int x = X + (Width - width) / 2;
@@ -1205,6 +1272,22 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderOpenDialog(Canvas canvas)
         {
+            if (Width < 360 || Height < 310)
+            {
+                // Existing picker survives a live shrink, but no off-screen
+                // file rows or buttons are rendered/clickable. Esc still closes.
+                int panelWidth = Math.Max(1, Width - 12);
+                int panelHeight = Math.Max(1, Height - 12);
+                UiPainter.RoundedPanel(canvas, X + 6, Y + 6, panelWidth, panelHeight,
+                    UiMetrics.MenuRadius, UiPalette.SurfaceRaised, Accent);
+                if (Width >= 120 && Height >= 55)
+                    SmallTextRenderer.DrawClipped(canvas, "Enlarge window to browse files",
+                        X + 14, Y + 22, Math.Max(1, Width - 28), MainText);
+                if (Width >= 120 && Height >= 85)
+                    SmallTextRenderer.DrawClipped(canvas, "ESC - cancel",
+                        X + 14, Y + 50, Math.Max(1, Width - 28), SecondaryText);
+                return;
+            }
             int localX;
             int localY;
             int width;

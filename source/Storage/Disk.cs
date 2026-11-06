@@ -24,7 +24,7 @@ namespace ZonderqOS
                     return false;
                 }
 
-                // Cosmos 3.0.94: the partition order can change when a USB disk
+                // Cosmos 3.0.95: the partition order can change when a USB disk
                 // appears. Never mount numeric source "0" (it was Kali's ESP).
                 // Require a unique explicitly labelled data FAT32 partition.
 #if ZONDERQ_3094_RAM_ROOT
@@ -480,15 +480,15 @@ namespace ZonderqOS
 
         public static void FormatPartition(string targetId = "0")
         {
-            // No implicit or interactive disk formatting in the 3.0.94
+            // No implicit or interactive disk formatting in the 3.0.95
             // bare-metal build. Provision data on the host, not in-kernel.
-            WriteMessage.WriteError("format is disabled for bare-metal data safety (Cosmos 3.0.94).", "FS");
+            WriteMessage.WriteError("format is disabled for bare-metal data safety (Cosmos 3.0.95).", "FS");
             CommandIO.LastCommandSuccess = false;
         }
 
         public static void PartitionDisk(int diskId)
         {
-            WriteMessage.WriteError("mkpart is disabled for bare-metal data safety (Cosmos 3.0.94).", "FS");
+            WriteMessage.WriteError("mkpart is disabled for bare-metal data safety (Cosmos 3.0.95).", "FS");
             CommandIO.LastCommandSuccess = false;
         }
 
@@ -532,7 +532,7 @@ namespace ZonderqOS
             // Additional mounts via index-based FAT are unsafe after USB
             // hotplug and can double-mount the active writable root.
             // Keep the approved persistent root mounted at / only.
-            WriteMessage.WriteError("Manual mounts disabled in Cosmos 3.0.94 pending stable device-bound secondary mounts.", "VFS");
+            WriteMessage.WriteError("Manual mounts disabled in Cosmos 3.0.95 pending stable device-bound secondary mounts.", "VFS");
             CommandIO.LastCommandSuccess = false;
         }
 

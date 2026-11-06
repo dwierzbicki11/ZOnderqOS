@@ -39,7 +39,7 @@ namespace ZonderqOS.GUI
             // through mutable partition indices while USB hotplug is active.
             // The selected data volume is already mounted at / by Disk.
             mountPoint = null;
-            error = "Manual mounts disabled in Cosmos 3.0.94; the approved data root is already mounted.";
+            error = "Manual mounts disabled in Cosmos 3.0.95; the approved data root is already mounted.";
             NotifyFailure("Montowanie zablokowane", error);
             return false;
         }

@@ -7,29 +7,35 @@ namespace ZonderqOS.GUI
     public static class FileClipboard
     {
         private static string sourcePath;
+        // A copied path belongs to the authenticated identity that selected it.
+        // GUI logout clears the clipboard, but this also protects callers that
+        // change identity without going through the graphical logout path.
+        private static string sourceUser;
         private static bool sourceIsDirectory;
         private static bool cutMode;
 
         public static bool HasItem
         {
-            get { return !string.IsNullOrEmpty(sourcePath); }
+            get { return !string.IsNullOrEmpty(sourcePath) &&
+                SecurityContext.IsAuthenticated &&
+                string.Equals(sourceUser, SecurityContext.CurrentUser, StringComparison.Ordinal); }
         }
 
         public static bool IsCut
         {
-            get { return cutMode; }
+            get { return HasItem && cutMode; }
         }
 
         public static string SourcePath
         {
-            get { return sourcePath; }
+            get { return HasItem ? sourcePath : null; }
         }
 
         public static string DisplayName
         {
             get
             {
-                if (string.IsNullOrEmpty(sourcePath))
+                if (!HasItem)
                     return "";
 
                 string trimmed = sourcePath.TrimEnd('/', '\\');
@@ -40,10 +46,17 @@ namespace ZonderqOS.GUI
 
         public static void Set(string path, bool isDirectory, bool cut)
         {
-            if (string.IsNullOrEmpty(path))
+            // Never retain a previous user's path when selection happens in
+            // an expired or unidentified session.
+            if (string.IsNullOrEmpty(path) || !SecurityContext.IsAuthenticated ||
+                string.IsNullOrEmpty(SecurityContext.CurrentUser))
+            {
+                Clear();
                 return;
+            }
 
             sourcePath = Normalize(path);
+            sourceUser = SecurityContext.CurrentUser;
             sourceIsDirectory = isDirectory;
             cutMode = cut;
         }
@@ -51,6 +64,7 @@ namespace ZonderqOS.GUI
         public static void Clear()
         {
             sourcePath = null;
+            sourceUser = null;
             sourceIsDirectory = false;
             cutMode = false;
         }
@@ -60,6 +74,26 @@ namespace ZonderqOS.GUI
             destinationPath = null;
             error = null;
 
+            // Clipboard operations are GUI user actions, never boot-time
+            // root services. A missing/expired session must fail closed
+            // instead of silently borrowing root permissions.
+            if (!SecurityContext.IsAuthenticated ||
+                string.IsNullOrEmpty(SecurityContext.CurrentUser))
+            {
+                error = "Authentication required for clipboard paste";
+                return false;
+            }
+
+            // A stale cut from another account must never be interpreted as
+            // an action authorized by the newly authenticated account.
+            if (!string.IsNullOrEmpty(sourcePath) &&
+                !string.Equals(sourceUser, SecurityContext.CurrentUser, StringComparison.Ordinal))
+            {
+                Clear();
+                error = "Clipboard belongs to another user";
+                return false;
+            }
+
             if (!HasItem)
             {
                 error = "Clipboard is empty";
@@ -68,7 +102,16 @@ namespace ZonderqOS.GUI
 
             string source = Normalize(sourcePath);
             string destinationRoot = Normalize(destinationDirectory);
-            string user = SecurityContext.CurrentUser ?? "root";
+            string user = SecurityContext.CurrentUser;
+
+            // Never rely on a textual home-prefix check for paths containing
+            // dot segments. /home/alice/../etc is outside alice's home even
+            // though it begins with "/home/alice/".
+            if (!IsSafeAbsolutePath(source) || !IsSafeAbsolutePath(destinationRoot))
+            {
+                error = "Invalid clipboard path";
+                return false;
+            }
 
             if (VirtualFs.IsReadOnlyPath(source) || VirtualFs.IsReadOnlyPath(destinationRoot))
             {
@@ -85,10 +128,20 @@ namespace ZonderqOS.GUI
             if (user != "root")
             {
                 string home = Normalize(UserManager.GetHomeDirectory(user));
-                if (string.IsNullOrEmpty(home) || !IsInside(destinationRoot, home))
+                if (!IsSafeAbsolutePath(home) || !IsInside(destinationRoot, home))
                 {
                     error = "Permission denied: paste outside user home";
                     SecurityLogger.LogEvent("WARN", $"Unauthorized clipboard destination by {user}: {destinationRoot}");
+                    return false;
+                }
+
+                // Home containment alone is insufficient: the custom ACL
+                // may mark a nested destination read-only even though the
+                // underlying FAT driver does not enforce Unix permissions.
+                if (!PermissionManager.CanWrite(destinationRoot, user))
+                {
+                    error = "Permission denied: destination is not writable";
+                    SecurityLogger.LogEvent("WARN", $"Unauthorized clipboard destination write by {user}: {destinationRoot}");
                     return false;
                 }
 
@@ -106,6 +159,23 @@ namespace ZonderqOS.GUI
                 Clear();
                 error = "Clipboard source no longer exists";
                 return false;
+            }
+
+            // Deleting or renaming a source entry changes its parent folder.
+            // Checking only the file ACL lets a cut bypass a read-only parent
+            // on FAT32, where the host-style directory permissions are virtual.
+            if (cutMode)
+            {
+                string sourceParent = Normalize(Path.GetDirectoryName(source));
+                if (string.IsNullOrEmpty(sourceParent) ||
+                    !PermissionManager.CanWrite(sourceParent, user) ||
+                    (user != "root" && !IsInside(sourceParent,
+                        Normalize(UserManager.GetHomeDirectory(user)))))
+                {
+                    error = "Permission denied: cannot remove from source folder";
+                    SecurityLogger.LogEvent("WARN", $"Unauthorized clipboard source parent by {user}: {sourceParent}");
+                    return false;
+                }
             }
 
             if (!HasSourceAccess(source, sourceIsDirectory, cutMode, user, out string deniedPath))
@@ -142,11 +212,17 @@ namespace ZonderqOS.GUI
                 return false;
             }
 
+            // A cross-volume cut may copy successfully and then fail while
+            // removing its source. Once removal begins, deleting the complete
+            // destination in the catch block would lose the user's files.
+            // A successful rename also commits the destination before
+            // permission metadata is updated.
+            bool preserveDestination = false;
             try
             {
                 if (cutMode)
                 {
-                    MoveItem(source, destinationPath, sourceIsDirectory);
+                    MoveItem(source, destinationPath, sourceIsDirectory, ref preserveDestination);
                     PermissionManager.MovePermissionsUnder(source, destinationPath);
                     Clear();
                 }
@@ -160,9 +236,23 @@ namespace ZonderqOS.GUI
             }
             catch (Exception ex)
             {
-                TryRemoveDestination(destinationPath, sourceIsDirectory);
-                destinationPath = null;
-                error = ex.Message;
+                if (preserveDestination)
+                {
+                    // The source may be intact, partially removed, or already
+                    // renamed. Retain the complete destination in every case.
+                    // Keep the cut clipboard only if the source still exists.
+                    if (!Exists(source))
+                        Clear();
+                    error = "Move incomplete; destination retained: " + ex.Message;
+                }
+                else
+                {
+                    // A failed copy (or copy phase of a cross-volume move)
+                    // has not touched the source; discard its partial target.
+                    TryRemoveDestination(destinationPath, sourceIsDirectory);
+                    destinationPath = null;
+                    error = ex.Message;
+                }
                 return false;
             }
         }
@@ -185,6 +275,15 @@ namespace ZonderqOS.GUI
 
             try
             {
+                // Directory metadata itself is protected by the custom ACL;
+                // checking only its descendants could expose a denied folder.
+                if (!PermissionManager.CanRead(source, user) ||
+                    (requireWrite && !PermissionManager.CanWrite(source, user)))
+                {
+                    deniedPath = source;
+                    return false;
+                }
+
                 string[] files = Directory.GetFiles(source);
                 for (int i = 0; i < files.Length; i++)
                 {
@@ -224,7 +323,8 @@ namespace ZonderqOS.GUI
             CopyDirectory(source, destination);
         }
 
-        private static void MoveItem(string source, string destination, bool directory)
+        private static void MoveItem(string source, string destination, bool directory,
+            ref bool preserveDestination)
         {
             try
             {
@@ -232,6 +332,9 @@ namespace ZonderqOS.GUI
                     Directory.Move(source, destination);
                 else
                     File.Move(source, destination);
+                // A successful rename cannot be rolled back by deleting the
+                // target if the later permission metadata update fails.
+                preserveDestination = true;
                 return;
             }
             catch
@@ -241,19 +344,13 @@ namespace ZonderqOS.GUI
             }
 
             CopyItem(source, destination, directory);
-
-            try
-            {
-                if (directory)
-                    Directory.Delete(source, true);
-                else
-                    File.Delete(source);
-            }
-            catch
-            {
-                TryRemoveDestination(destination, directory);
-                throw;
-            }
+            // The destination is now a complete recovery copy. Source deletion
+            // can fail partway through a directory; NEVER delete both copies.
+            preserveDestination = true;
+            if (directory)
+                Directory.Delete(source, true);
+            else
+                File.Delete(source);
         }
 
         private static void CopyDirectory(string source, string destination)
@@ -313,6 +410,31 @@ namespace ZonderqOS.GUI
             return File.Exists(path) || Directory.Exists(path);
         }
 
+        // A small lexical check is used instead of Path.GetFullPath because
+        // the Cosmos guest filesystem has different mount semantics from the
+        // host OS. All GUI clipboard paths must be absolute and must not
+        // contain "." or ".." components.
+        internal static bool IsSafeAbsolutePath(string path)
+        {
+            if (string.IsNullOrEmpty(path) || path[0] != '/')
+                return false;
+
+            int start = 1;
+            for (int i = 1; i <= path.Length; i++)
+            {
+                if (i < path.Length && path[i] != '/')
+                    continue;
+
+                int length = i - start;
+                if ((length == 1 && path[start] == '.') ||
+                    (length == 2 && path[start] == '.' && path[start + 1] == '.'))
+                    return false;
+                start = i + 1;
+            }
+
+            return true;
+        }
+
         private static bool IsInside(string path, string root)
         {
             if (string.Equals(path, root, StringComparison.Ordinal))
@@ -351,7 +473,15 @@ namespace ZonderqOS.GUI
             {
             }
 
-            PermissionManager.RemovePermissionsUnder(destination);
+            // Cleanup of a failed copy must not throw a second exception
+            // that escapes the GUI paste handler and hides the original error.
+            try
+            {
+                PermissionManager.RemovePermissionsUnder(destination);
+            }
+            catch
+            {
+            }
         }
     }
 }
