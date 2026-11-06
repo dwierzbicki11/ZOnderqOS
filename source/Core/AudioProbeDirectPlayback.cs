@@ -303,6 +303,8 @@ namespace ZonderqOS.SystemCore
                         // claimed by another player.
                         if (output.IsWithdrawn)
                             Console.WriteLine("[AUDIO] 1MS cleanup: output withdrawn; Stop skipped.");
+                        else if (!startCompleted && !output.IsRunning)
+                            Console.WriteLine("[AUDIO] 1MS cleanup: Start failed without running stream; Stop skipped.");
                         else if (startCompleted && !output.IsRunning)
                             Console.WriteLine("[AUDIO] 1MS cleanup: output already stopped; Stop skipped.");
                         else if (output.Player != null)
