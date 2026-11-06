@@ -800,7 +800,8 @@ namespace ZonderqOS.GUI.Apps
         {
             if (bytes == 0) return "N/A";
             if (bytes >= 1024UL * 1024UL) return (bytes / (1024UL * 1024UL)) + " MB";
-            return (bytes / 1024UL) + " KB";
+            if (bytes >= 1024UL) return (bytes / 1024UL) + " KB";
+            return bytes + " B";
         }
 
         private static string FormatMiBPrecise(ulong bytes)
