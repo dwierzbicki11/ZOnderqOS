@@ -57,6 +57,47 @@ class TaskManagerGeometryTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     task.expected_taskmanager_bounds(width, height)
 
+    def test_compact_region_detects_only_changes_inside_window(self):
+        width, height = 80, 64
+        before = bytearray(width * height * 3)
+        outside = bytearray(before)
+        inside = bytearray(before)
+        bounds = (16, 12, 32, 24)
+        # Sampled pixels outside the compact window must not count.
+        for x, y in ((0, 0), (60, 48), (12, 12)):
+            outside[(y * width + x) * 3] = 255
+        changed, samples = task.difference_in_region(
+            (width, height, bytes(before)),
+            (width, height, bytes(outside)), bounds)
+        self.assertEqual(changed, 0)
+        self.assertEqual(samples, 48)
+        inside[(12 * width + 16) * 3] = 255
+        inside[(16 * width + 20) * 3 + 1] = 255
+        changed, samples = task.difference_in_region(
+            (width, height, bytes(before)),
+            (width, height, bytes(inside)), bounds)
+        self.assertEqual((changed, samples), (2, 48))
+
+    def test_compact_region_rejects_bad_framebuffers_and_bounds(self):
+        frame = (32, 32, bytes(32 * 32 * 3))
+        invalid = [
+            (frame, (33, 32, bytes(33 * 32 * 3)), (0, 0, 8, 8)),
+            (frame, (32, 32, b"short"), (0, 0, 8, 8)),
+            (frame, frame, (0, 0, 0, 8)),
+            (frame, frame, (32, 0, 8, 8)),
+            (frame, frame, (-20, 0, 8, 8)),
+        ]
+        for first, second, bounds in invalid:
+            with self.subTest(bounds=bounds):
+                with self.assertRaises(ValueError):
+                    task.difference_in_region(first, second, bounds)
+
+    def test_compact_region_clips_partially_visible_window(self):
+        frame = (32, 32, bytes(32 * 32 * 3))
+        changed, samples = task.difference_in_region(
+            frame, frame, (28, 28, 20, 20))
+        self.assertEqual((changed, samples), (0, 1))
+
 
 if __name__ == "__main__":
     unittest.main()
