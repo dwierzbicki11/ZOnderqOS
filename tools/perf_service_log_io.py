@@ -52,9 +52,12 @@ def main():
                 results[mode] = run(path, args.iterations, mode)
                 samples[mode].append(results[mode][0] / 1e6)
             a, b = results["stat"], results["tracked"]
-            assert a[2] == b[2] and a[3] == b[3], "rotation/content mismatch"
-            assert a[1] == args.iterations and b[1] == 0
-            assert len(a[3]) <= LIMIT
+            if a[2] != b[2] or a[3] != b[3]:
+                raise RuntimeError("rotation/content mismatch")
+            if a[1] != args.iterations or b[1] != 0:
+                raise RuntimeError("unexpected stat-call count")
+            if len(a[3]) > LIMIT:
+                raise RuntimeError("log exceeds size limit")
     print("HOST filesystem benchmark; NOT Cosmos/FAT32 or production speedup")
     print(f"iterations={args.iterations} repeats={args.repeats} entry_bytes={len(ENTRY)}")
     for mode in ("stat", "tracked"):
