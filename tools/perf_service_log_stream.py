@@ -79,7 +79,14 @@ def main():
     for mode in ("stat", "stream"):
         values = samples[mode]
         print(f"{mode}: median_ms={statistics.median(values):.3f} min_ms={min(values):.3f} max_ms={max(values):.3f}")
-    print(f"median_ratio_stat_over_stream={statistics.median(samples['stat']) / statistics.median(samples['stream']):.3f}")
+    # Compare adjacent A/B pairs and expose spread, not just a ratio of medians.
+    paired_ratios = [stat / stream for stat, stream in
+                     zip(samples["stat"], samples["stream"]) if stream > 0]
+    if len(paired_ratios) != args.repeats:
+        raise RuntimeError("non-positive stream duration: cannot calculate paired ratios")
+    print(f"paired_ratio_stat_over_stream: median={statistics.median(paired_ratios):.3f} "
+          f"min={min(paired_ratios):.3f} max={max(paired_ratios):.3f}")
+    print(f"stream_faster_pairs={sum(stat > stream for stat, stream in zip(samples['stat'], samples['stream']))}/{args.repeats}")
 
 
 if __name__ == "__main__":
