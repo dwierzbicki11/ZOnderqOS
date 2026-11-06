@@ -15,6 +15,7 @@ class TaskManagerPercentageTests(unittest.TestCase):
         self.assertIn('if (total == 0)', body)
         self.assertIn('if (used >= total)', body)
         self.assertIn('(double)used / total * 10000.0', body)
+        self.assertIn('Math.Min(9999UL,', body)
         self.assertNotIn('used * 10000UL', body)
 
     def test_extreme_capacity_reference_values(self):
@@ -23,9 +24,13 @@ class TaskManagerPercentageTests(unittest.TestCase):
                             (max_ulong - 1, max_ulong), (max_ulong, max_ulong),
                             (max_ulong, 1)):
             with self.subTest(used=used, total=total):
-                scaled = 10000 if used >= total else int(float(used) / total * 10000.0)
+                scaled = 10000 if used >= total else min(9999, int(float(used) / total * 10000.0))
                 self.assertGreaterEqual(scaled, 0)
                 self.assertLessEqual(scaled, 10000)
+                if used < total:
+                    self.assertLess(scaled, 10000)
+                else:
+                    self.assertEqual(scaled, 10000)
 
 if __name__ == "__main__":
     unittest.main()
