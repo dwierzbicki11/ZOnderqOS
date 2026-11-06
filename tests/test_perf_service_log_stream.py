@@ -1,5 +1,8 @@
 """Host-only correctness guards for the same-handle service log benchmark."""
 import importlib.util
+import contextlib
+import io
+from unittest import mock
 from pathlib import Path
 import tempfile
 import unittest
@@ -52,6 +55,18 @@ class ServiceLogStreamTests(unittest.TestCase):
             self.assertGreater(results[0][2], 1)
             self.assertEqual(results[0][2:], results[1][2:])
             self.assertLessEqual(len(results[0][3]), module.LIMIT)
+
+    def test_cli_reports_paired_ratios_not_ratio_of_medians(self):
+        samples = {'stat': [20.0, 90.0, 40.0],
+                   'stream': [10.0, 30.0, 80.0]}
+        output = io.StringIO()
+        with mock.patch.object(module, 'benchmark', return_value=samples), \
+             mock.patch('sys.argv', ['perf_service_log_stream.py', '--iterations', '1', '--repeats', '3']), \
+             contextlib.redirect_stdout(output):
+            module.main()
+        report = output.getvalue()
+        self.assertIn('paired_ratio_stat_over_stream: median=2.000 min=0.500 max=3.000', report)
+        self.assertIn('stream_faster_pairs=2/3', report)
 
     def test_benchmark_repeats(self):
         samples = module.benchmark(12, 3)
