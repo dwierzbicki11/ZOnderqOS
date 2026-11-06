@@ -865,12 +865,13 @@ internal static class AudioDirectProbeSmoke
                 waits++;
             };
 
+            // Cleanup rejects a codec Stop exception without crashing the
+            // diagnostic shell. The PCM operation itself already completed.
             var brokenStop = new Device { ThrowOnStop = true };
-            bool stopThrew = false;
-            try { AudioProbeDirectPlayback.TryPlay(brokenStop, Pcm, 48000); }
-            catch (InvalidOperationException) { stopThrew = true; }
-            check(stopThrew && brokenStop.StopCalls == 1,
-                "simulated Stop exception propagates");
+            check(AudioProbeDirectPlayback.TryPlay(brokenStop, Pcm, 48000) &&
+                brokenStop.StartCalls == 1 && brokenStop.StopCalls == 1 &&
+                !brokenStop.IsRunning,
+                "simulated Stop exception is contained after successful PCM feed");
             var afterIdentityDrift = new Device();
             check(AudioProbeDirectPlayback.TryPlay(afterIdentityDrift, Pcm, 48000) &&
                 afterIdentityDrift.StartCalls == 1 && afterIdentityDrift.StopCalls == 1,
@@ -882,13 +883,13 @@ internal static class AudioDirectProbeSmoke
                 afterStopFailure.StopCalls == 1,
                 "direct probe guard released even when Stop throws");
 
+            // A rejected Start that left the stream idle must not invoke
+            // Stop on an output the probe never successfully started.
             var brokenStart = new Device { ThrowOnStart = true };
-            bool threw = false;
-            try { AudioProbeDirectPlayback.TryPlay(brokenStart, Pcm, 48000); }
-            catch (InvalidOperationException) { threw = true; }
-            check(threw && brokenStart.StartCalls == 1 &&
-                brokenStart.StopCalls == 1 && !brokenStart.IsRunning,
-                "failed HDA Start still invokes Stop in finally");
+            check(!AudioProbeDirectPlayback.TryPlay(brokenStart, Pcm, 48000) &&
+                brokenStart.StartCalls == 1 && brokenStart.StopCalls == 0 &&
+                brokenStart.WrittenBytes == 0 && !brokenStart.IsRunning,
+                "failed HDA Start is contained without stopping idle output");
 
             // The diagnostic catches InvalidOperationException from Write as
             // a failed PCM operation, rather than crashing the shell. Cleanup
