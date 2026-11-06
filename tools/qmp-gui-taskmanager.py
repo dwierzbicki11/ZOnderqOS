@@ -135,6 +135,23 @@ def main():
         time.sleep(4)
         qmp.screenshot(channel, prefix + ".taskmanager-processes.ppm")
 
+        # A persistent second boot may still be processing the palette launch.
+        # Never interpret a palette screenshot as a successfully opened app:
+        # verify the actual framebuffer before sending any sidebar clicks.
+        desktop_frame = qmp.read_ppm(prefix + ".taskmanager-desktop.ppm")
+        processes_frame = qmp.read_ppm(prefix + ".taskmanager-processes.ppm")
+        changed, sampled = qmp.difference(desktop_frame, processes_frame)
+        if changed / max(1, sampled) < 0.12:
+            print("[TASK-QMP] launch not visible; retrying Enter once", flush=True)
+            qmp.send_keys(channel, "ret")
+            time.sleep(3)
+            qmp.screenshot(channel, prefix + ".taskmanager-processes.ppm")
+            processes_frame = qmp.read_ppm(prefix + ".taskmanager-processes.ppm")
+            changed, sampled = qmp.difference(desktop_frame, processes_frame)
+            if changed / max(1, sampled) < 0.12:
+                raise RuntimeError("Task Manager launch not visible after retry; "
+                                   "refusing to click unverified navigation coordinates")
+
         frame_width, frame_height, _ = qmp.read_ppm(prefix + ".taskmanager-processes.ppm")
         qmp.verify_expected_framebuffer(frame_width, frame_height)
         bounds = expected_taskmanager_bounds(frame_width, frame_height)
