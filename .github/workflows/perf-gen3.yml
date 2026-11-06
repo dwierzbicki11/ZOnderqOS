@@ -70,9 +70,7 @@ jobs:
         run: python3 tests/test_gen3_perf_filemanager.py
       - name: Production file manager stable ordering and measured host A/B
         run: dotnet run --project tests/FileManagerPerfSmoke/FileManagerPerfSmoke.csproj --configuration Release
-      - name: Service log accounting and metadata baseline regressions
+      - name: Service log accounting, metadata and same-handle rotation regressions
         run: python3 -m unittest discover -s tests -p 'test_perf_service_log_*.py' -v
-      - name: Same-handle service log benchmark correctness and rotation
-        run: python3 -m unittest discover -s tests -p test_perf_service_log_stream.py -v
       - name: Preserve stock Cosmos and disabled custom SMP
         run: python3 tests/test_upstream_smp_disabled.py
