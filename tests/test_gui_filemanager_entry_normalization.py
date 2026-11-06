@@ -28,7 +28,8 @@ def accepted_child(raw, parent):
 class DirectoryEntryNormalizationTests(unittest.TestCase):
     def test_production_uses_single_trimmed_path(self):
         source = SOURCE.read_text(encoding="utf-8")
-        self.assertIn("string cleanPath = normalized.TrimEnd('/');", source)
+        self.assertIn("normalized[normalized.Length - 1] == '/'", source)
+        self.assertIn("? normalized.TrimEnd('/') : normalized;", source)
         self.assertIn("int lastSlash = cleanPath.LastIndexOf('/');", source)
         self.assertIn("string name = cleanPath.Substring(lastSlash + 1);", source)
         self.assertNotIn("Path.GetFileName(cleanPath)", source)
