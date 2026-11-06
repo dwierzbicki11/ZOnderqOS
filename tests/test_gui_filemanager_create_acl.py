@@ -50,7 +50,9 @@ checks["revoked create directory invalidates its own stale listing"] = (
 # This is source-level ordering, not an atomic ACL/FAT32 integration test.
 checks["create rechecks ACL after slow collision scan"] = (
     "bool stillReadable = CanReadInSession(currentPath);" in body
-    and body.index("Directory.GetDirectories(currentPath)))") <
+    and body.index("string[] existingDirectories = Directory.GetDirectories(currentPath);") <
+        body.index("bool stillReadable = CanReadInSession(currentPath);")
+    and body.index("if (existingFiles == null || existingDirectories == null)") <
         body.index("bool stillReadable = CanReadInSession(currentPath);")
     and body.index("bool stillReadable = CanReadInSession(currentPath);") <
         body.index("FileManagerFileCreation.CreateEmptyFile(path)")
