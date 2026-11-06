@@ -2158,8 +2158,10 @@ namespace ZonderqOS.GUI.Apps
                 int start = 0;
                 while (start < count)
                 {
-                    int middle = Math.Min(count, start + run);
-                    int end = Math.Min(count, middle + run);
+                    // Clamp before adding: start + run can overflow int for
+                    // extreme directory counts, even when count fits int.
+                    int middle = start + Math.Min(run, count - start);
+                    int end = middle + Math.Min(run, count - middle);
                     int left = start;
                     int right = middle;
 
