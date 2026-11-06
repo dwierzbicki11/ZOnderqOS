@@ -30,7 +30,8 @@ class DirectoryEntryNormalizationTests(unittest.TestCase):
         source = SOURCE.read_text(encoding="utf-8")
         self.assertIn("string cleanPath = normalized.TrimEnd('/');", source)
         self.assertIn("int lastSlash = cleanPath.LastIndexOf('/');", source)
-        self.assertIn("Path.GetFileName(cleanPath)", source)
+        self.assertIn("string name = cleanPath.Substring(lastSlash + 1);", source)
+        self.assertNotIn("Path.GetFileName(cleanPath)", source)
         self.assertNotIn("normalized.TrimEnd('/').LastIndexOf('/')", source)
         self.assertNotIn("Path.GetFileName(normalized.TrimEnd('/'))", source)
 
@@ -39,6 +40,10 @@ class DirectoryEntryNormalizationTests(unittest.TestCase):
             ("/DATA/one.txt", "/DATA", "one.txt"),
             ("/DATA/sub/", "/DATA", "sub"),
             ("/DATA/sub////", "/DATA", "sub"),
+            ("/DATA/", "/DATA", None),
+            ("/", "/", None),
+            ("/single.txt", "/", "single.txt"),
+            ("/DATA/UPPER.TXT", "/data", "UPPER.TXT"),
             ("/DATA/other/nested", "/DATA", None),
             ("/DATABASE/file", "/DATA", None),
             ("/DATA/..", "/DATA", None),
