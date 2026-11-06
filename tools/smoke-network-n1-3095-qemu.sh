@@ -219,6 +219,13 @@ while (( SECONDS - started < TIMEOUT )); do
           exit 1
         fi
         if (( SECONDS - dhcp_start >= 20 )); then
+          # Preserve the independent PCAP gate failure, but surface guest
+          # diagnostics in the CI log before exiting. In particular, a
+          # missing DHCP lease marker may mean a stalled guest rather than
+          # malformed DHCP packets; the validator alone cannot distinguish.
+          echo "[NET3095-N2] DHCP proof timeout; recent guest serial:" >&2
+          tail -n 100 "$LOG" >&2 || true
+          echo "[NET3095-N2] Capture bytes: $(wc -c < "$PCAP")" >&2
           python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP"
           echo "[NET3095-N2][FAIL] No correlated DHCP RX/TX capture" >&2
           exit 1
