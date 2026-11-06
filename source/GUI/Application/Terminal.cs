@@ -86,22 +86,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void PrintCommandOutput(string output)
         {
-            if (string.IsNullOrEmpty(output))
-                return;
-
-            string normalized = output.Replace("\r\n", "\n").Replace("\r", "\n");
-            string[] lines = normalized.Split('\n');
-            foreach (string line in lines)
-            {
-                if (line == "\u0001GUI_CLEAR\u0001")
-                {
-                    terminalBox.ClearOutput();
-                    continue;
-                }
-
-                if (line.Length > 0)
-                    terminalBox.PrintLine(line);
-            }
+            terminalBox.PrintCommandOutput(output);
         }
 
         public override void HandleKeyboard(KeyEvent key)

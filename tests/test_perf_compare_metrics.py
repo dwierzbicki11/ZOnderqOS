@@ -1,0 +1,111 @@
+import importlib.util
+from pathlib import Path
+import unittest
+
+spec = importlib.util.spec_from_file_location('metrics', Path(__file__).resolve().parents[1] / 'tools' / 'perf_compare_metrics.py')
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+
+class MetricComparisonTests(unittest.TestCase):
+    def setUp(self):
+        self.before = [dict(run_id=str(i), environment={'qemu': '8.2', 'vcpus': 1, 'workload': 'idle-60s'}, metrics={'frame_ms': x, 'gc_count': 0}) for i, x in enumerate((10, 12, 14))]
+        self.after = [dict(run_id=str(i), environment={'qemu': '8.2', 'vcpus': 1, 'workload': 'idle-60s'}, metrics={'frame_ms': x, 'gc_count': 0}) for i, x in enumerate((9, 13, 11))]
+
+    def test_comparison(self):
+        data = module.compare(self.before, self.after)['metrics']['frame_ms']
+        self.assertEqual(data['before_median'], 12)
+        self.assertEqual(data['after_median'], 11)
+        self.assertEqual(data['paired_median_delta'], -1)
+        self.assertEqual((data['faster_pairs'], data['slower_pairs']), (2, 1))
+        self.assertIsNone(module.compare(self.before, self.after)['metrics']['gc_count']['change_percent'])
+
+    def test_reject_mismatch(self):
+        for field, value in [('run_id', 'wrong'), ('environment', {'vcpus': 8}), ('metrics', {'other': 1})]:
+            changed = [dict(row) for row in self.after]
+            changed[0] = dict(changed[0], **{field: value})
+            with self.subTest(field=field), self.assertRaises(ValueError):
+                module.compare(self.before, changed)
+
+    def test_reject_bad_values(self):
+        for value in (True, float('nan'), float('inf'), -1, '1', 10**400):
+            changed = [dict(row) for row in self.after]
+            changed[0] = dict(changed[0], metrics={'frame_ms': value, 'gc_count': 0})
+            with self.subTest(value=value), self.assertRaises(ValueError):
+                module.compare(self.before, changed)
+
+    def test_environment_types_and_nonfinite_values(self):
+        for value in (True, 1.0, float('nan'), float('inf'), object()):
+            changed = [dict(row) for row in self.after]
+            changed[0] = dict(changed[0], environment={'qemu': '8.2', 'vcpus': value, 'workload': 'idle-60s'})
+            with self.subTest(value=repr(value)), self.assertRaises(ValueError):
+                module.compare(self.before, changed)
+
+    def test_reject_nonfinite_derived_values(self):
+        # Every input is finite, but percentage scaling can overflow.
+        for before, after in ((1e-308, 1e308), (1e-300, 1e100)):
+            old = [dict(row, metrics={'frame_ms': before}) for row in self.before]
+            new = [dict(row, metrics={'frame_ms': after}) for row in self.after]
+            with self.subTest(before=before, after=after), self.assertRaises(ValueError):
+                module.compare(old, new)
+
+    def test_finite_even_median_near_float_limit(self):
+        # statistics.median can overflow for two large finite positive floats.
+        old = [dict(row, metrics={'frame_ms': 1e308}) for row in self.before[:2]]
+        new = [dict(row, metrics={'frame_ms': 1e308}) for row in self.after[:2]]
+        old.extend([dict(self.before[2], metrics={'frame_ms': 1e308}),
+                    dict(run_id='3', environment=self.before[0]['environment'], metrics={'frame_ms': 1e308})])
+        new.extend([dict(self.after[2], metrics={'frame_ms': 1e308}),
+                    dict(run_id='3', environment=self.after[0]['environment'], metrics={'frame_ms': 1e308})])
+        result = module.compare(old, new)['metrics']['frame_ms']
+        self.assertEqual(result['before_median'], 1e308)
+        self.assertEqual(result['after_median'], 1e308)
+        self.assertEqual(result['delta'], 0)
+        self.assertEqual(result['change_percent'], 0)
+
+    def test_large_negative_paired_median_stays_finite(self):
+        # statistics.median([-1e308] * 4) produces -Infinity.
+        old = [dict(run_id=str(i), environment=self.before[0]['environment'],
+                    metrics={'frame_ms': 1e308}) for i in range(4)]
+        new = [dict(run_id=str(i), environment=self.after[0]['environment'],
+                    metrics={'frame_ms': 0}) for i in range(4)]
+        result = module.compare(old, new)['metrics']['frame_ms']
+        self.assertEqual(result['paired_median_delta'], -1e308)
+        self.assertEqual(result['change_percent'], -100)
+        self.assertEqual(result['faster_pairs'], 4)
+
+    def test_large_finite_percent_without_intermediate_overflow(self):
+        # 100 * delta overflows even when delta / baseline * 100 is finite.
+        for before, after, expected in ((1e308, 0, -100), (1e308, 1.5e308, 50)):
+            old = [dict(run_id=str(i), environment=self.before[0]['environment'],
+                        metrics={'frame_ms': before}) for i in range(4)]
+            new = [dict(run_id=str(i), environment=self.after[0]['environment'],
+                        metrics={'frame_ms': after}) for i in range(4)]
+            result = module.compare(old, new)['metrics']['frame_ms']
+            self.assertAlmostEqual(result['change_percent'], expected)
+
+    def test_even_medians_preserve_subnormal_samples(self):
+        # Halving the smallest positive float twice loses both halves.
+        tiny = float.fromhex('0x0.0000000000001p-1022')
+        self.assertEqual(module.nonnegative_median([tiny] * 4), tiny)
+        self.assertEqual(module.signed_median([tiny] * 4), tiny)
+        self.assertEqual(module.signed_median([-tiny] * 4), -tiny)
+        old = [dict(run_id=str(i), environment=self.before[0]['environment'],
+                    metrics={'frame_ms': tiny}) for i in range(4)]
+        new = [dict(run_id=str(i), environment=self.after[0]['environment'],
+                    metrics={'frame_ms': tiny}) for i in range(4)]
+        result = module.compare(old, new)['metrics']['frame_ms']
+        self.assertEqual(result['before_median'], tiny)
+        self.assertEqual(result['after_median'], tiny)
+        self.assertEqual(result['change_percent'], 0)
+
+    def test_reject_unpaired(self):
+        with self.assertRaises(ValueError): module.compare(self.before, self.after[:2])
+        with self.assertRaises(ValueError): module.compare(self.before[:2], self.after[:2])
+        changed = [dict(row) for row in self.after]
+        changed[1]['run_id'] = '0'
+        with self.assertRaises(ValueError): module.compare(self.before, changed)
+
+
+if __name__ == '__main__':
+    unittest.main()

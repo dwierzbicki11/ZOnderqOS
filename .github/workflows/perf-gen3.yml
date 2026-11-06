@@ -1,0 +1,76 @@
+name: ZonderqOS Gen3 performance contracts
+on:
+  pull_request:
+    paths:
+      - "source/Core/HtopMonitor.cs"
+      - "source/GUI/Application/FileManagerApp.cs"
+      - "source/GUI/Application/FileEntrySorter.cs"
+      - "source/GUI/Application/FileEntryIconResolver.cs"
+      - "source/GUI/Application/FileManagerPathMatcher.cs"
+      - "tests/FileManagerPerfSmoke/**"
+      - "tests/test_gen3_perf_filemanager.py"
+      - "tests/HtopPerfSmoke/**"
+      - "source/GUI/SmallTextRenderer.cs"
+      - "source/GUI/TerminalBox.cs"
+      - "Kernel.cs"
+      - "tools/perf_boot_baseline.py"
+      - "tests/test_perf_boot_baseline.py"
+      - "tools/perf_compare_boot.py"
+      - "tests/test_perf_compare_boot.py"
+      - "tools/perf_compare_metrics.py"
+      - "tests/test_perf_compare_metrics.py"
+      - "tests/TerminalPerfSmoke/**"
+      - "source/GUI/UiPainter.cs"
+      - "tests/PerfRenderSmoke/PanelVisibilitySmoke.cs"
+      - "tests/PerfRenderSmoke/UiPainterLegacy.cs"
+      - "source/GUI/Icons/IconManager.cs"
+      - "source/GUI/Icons/IconType.cs"
+      - "source/GUI/Icons/IconResources.cs"
+      - "tests/test_gen3_perf_text.py"
+      - "tests/test_gen3_perf_panels.py"
+      - "tests/test_gen3_perf_text_visibility.py"
+      - "tests/PerfRenderSmoke/**"
+      - "source/Core/Services/ServiceManager.cs"
+      - "tests/test_perf_service_log_io.py"
+      - "tests/test_perf_service_log_accounting.py"
+      - "tools/perf_service_log_io.py"
+      - "tests/test_perf_service_log_stream.py"
+      - "tools/perf_service_log_stream.py"
+      - ".github/workflows/perf-gen3.yml"
+  push:
+    branches: [perf/system-gen3]
+  workflow_dispatch:
+jobs:
+  text-renderer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pixel-equivalence and Canvas-call regression
+        run: python3 tests/test_gen3_perf_text.py
+      - name: Rounded panel pixel geometry and sqrt-call regression
+        run: python3 tests/test_gen3_perf_panels.py
+      - name: Text range visibility and numeric bounds regression
+        run: python3 tests/test_gen3_perf_text_visibility.py
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile and execute production C# glyph renderer with a fake Canvas
+        run: dotnet run --project tests/PerfRenderSmoke/PerfRenderSmoke.csproj --configuration Release
+      - name: Validate guest-clock QEMU boot baseline parser
+        run: python3 tests/test_perf_boot_baseline.py
+      - name: Validate paired QEMU baseline comparison and run identity checks
+        run: python3 -m unittest discover -s tests -p test_perf_compare_boot.py -v
+      - name: Validate multi-metric paired comparison and strict environment types
+        run: python3 -m unittest discover -s tests -p test_perf_compare_metrics.py -v
+      - name: Production terminal batching equivalence and measured host A/B
+        run: dotnet run --project tests/TerminalPerfSmoke/TerminalPerfSmoke.csproj --configuration Release
+      - name: Production htop process join equivalence and measured host A/B
+        run: dotnet run --project tests/HtopPerfSmoke/HtopPerfSmoke.csproj --configuration Release
+      - name: File manager sort/filter integration guard
+        run: python3 tests/test_gen3_perf_filemanager.py
+      - name: Production file manager stable ordering and measured host A/B
+        run: dotnet run --project tests/FileManagerPerfSmoke/FileManagerPerfSmoke.csproj --configuration Release
+      - name: Service log accounting, metadata and same-handle rotation regressions
+        run: python3 -m unittest discover -s tests -p 'test_perf_service_log_*.py' -v
+      - name: Preserve stock Cosmos and disabled custom SMP
+        run: python3 tests/test_upstream_smp_disabled.py

@@ -63,18 +63,219 @@ namespace ZonderqOS.SystemCore
         private struct Row
         {
             internal KernelThreadInfo Thread;
+            internal int Slot;
             internal int Percent;
             internal int Pid;
             internal string Name;
         }
 
         private readonly List<KernelProcess> processes = new List<KernelProcess>();
+        private readonly HtopProcessIndex processIndex = new HtopProcessIndex();
         private readonly List<Row> rows = new List<Row>();
+        // An instance method-group conversion allocates a Comparison<Row> delegate.
+        // Reuse it across htop refreshes; the callback reads SortByCpu live.
+        private readonly Comparison<Row> rowComparison;
+        private struct CachedThreadRow
+        {
+            internal uint Tid;
+            internal uint CpuId;
+            internal int Pid;
+            internal int Percent;
+            internal KernelThreadState State;
+            internal string Name;
+            internal string Prefix;
+            internal string Line;
+        }
+
+        // The scheduler slot is stable independently of display sort order.
+        // Reuse complete rows only when every visible field still matches.
+        private CachedThreadRow[] cachedThreadRows = Array.Empty<CachedThreadRow>();
+        private int lastRowSlotCount;
         private readonly List<string> lines = new List<string>();
         private PreviousThread[] previousThreads = Array.Empty<PreviousThread>();
         private long[] previousCpu = Array.Empty<long>();
         private int[] cpuUsage = Array.Empty<int>();
         private long previousTimestamp;
+
+        // CPU topology and scheduler name are normally stable for the life of
+        // a monitor. Reuse the immutable header instead of formatting it on
+        // every refresh; invalidate on either value changing.
+        private int headerCpuCount = -1;
+        private string headerSchedulerName;
+        private string headerLine;
+
+        // Displayed MiB is quantized. A physical allocator can gain or lose
+        // pages every sample without changing either number on the screen.
+        // Cache the *rendered* values, not the raw page counters: this avoids
+        // needless string allocations while preserving the exact visible
+        // memory gauge (including its original truncation and overflow).
+        private ulong memoryTotalPages = ulong.MaxValue;
+        private ulong memoryFreePages = ulong.MaxValue;
+        private ulong memoryPageSize = ulong.MaxValue;
+        private ulong memoryUsedMiB = ulong.MaxValue;
+        private ulong memoryTotalMiB = ulong.MaxValue;
+        private string memoryLine;
+
+        // Process/thread counts are frequently stable even when runtime
+        // counters change. Keep the last immutable label, but rebuild on
+        // either count changing (including process exits).
+        private int processLabelCount = -1;
+        private int threadLabelCount = -1;
+        private string processLabelLine;
+
+        internal string GetHeaderLine(int count, string schedulerName)
+        {
+            if (headerLine != null && count == headerCpuCount &&
+                string.Equals(schedulerName, headerSchedulerName, StringComparison.Ordinal))
+                return headerLine;
+
+            headerCpuCount = count;
+            headerSchedulerName = schedulerName;
+            headerLine = "ZOnderqOS htop | CPU: " + count + " | " + schedulerName;
+            return headerLine;
+        }
+
+        internal string GetMemoryLine(ulong totalPages, ulong freePages, ulong pageSize)
+        {
+            // Preserve the original FreePages clamp and arithmetic order.
+            // Changes smaller than 1 MiB must not invalidate an identical
+            // rendered line, even when page size or raw counts change.
+            ulong free = Math.Min(totalPages, freePages);
+            // Keep the original fast path for identical allocator snapshots:
+            // avoid both MiB divisions on the overwhelmingly common idle case.
+            if (memoryLine != null && totalPages == memoryTotalPages &&
+                free == memoryFreePages && pageSize == memoryPageSize)
+                return memoryLine;
+
+            memoryTotalPages = totalPages;
+            memoryFreePages = free;
+            memoryPageSize = pageSize;
+            ulong usedMiB = (totalPages - free) * pageSize / 1048576UL;
+            ulong totalMiB = totalPages * pageSize / 1048576UL;
+            if (memoryLine != null && usedMiB == memoryUsedMiB &&
+                totalMiB == memoryTotalMiB)
+                return memoryLine;
+
+            memoryUsedMiB = usedMiB;
+            memoryTotalMiB = totalMiB;
+            memoryLine = "Mem: " + usedMiB + " / " + totalMiB + " MiB";
+            return memoryLine;
+        }
+
+        internal string GetProcessCountLine(int processCount, int threadCount)
+        {
+            if (processLabelLine != null && processCount == processLabelCount &&
+                threadCount == threadLabelCount)
+                return processLabelLine;
+
+            processLabelCount = processCount;
+            threadLabelCount = threadCount;
+            processLabelLine = "Processes: " + processCount + "  Threads: " + threadCount;
+            return processLabelLine;
+        }
+
+        // CPU bars are redrawn on every htop refresh. Construct the 21 possible
+        // 20-column strings once, rather than allocating one or two strings per
+        // CPU on every sample (including the stock BSP's N/A accounting path).
+        private static readonly string[] CachedCpuBars = BuildCpuBars();
+
+        private static string[] BuildCpuBars()
+        {
+            var bars = new string[21];
+            for (int filled = 0; filled < bars.Length; filled++)
+                bars[filled] = new string('|', filled).PadRight(20);
+            return bars;
+        }
+
+        // Percent() returns 0..100; every five percent is one column.
+        // Exposed internally so the host smoke test uses the production cache.
+        internal static string CpuBar(int percent) => CachedCpuBars[percent / 5];
+
+        // Prefix formatting used ToString, PadLeft and concatenation for every
+        // CPU on every refresh. Keep the common 0..63 labels immutable and
+        // format unusual larger CPU indices on demand without a hard limit.
+        private static readonly string[] CachedCpuPrefixes = BuildCpuPrefixes();
+
+        private static string[] BuildCpuPrefixes()
+        {
+            var labels = new string[64];
+            for (int cpu = 0; cpu < labels.Length; cpu++)
+                labels[cpu] = "CPU " + cpu.ToString().PadLeft(3) + " [";
+            return labels;
+        }
+
+        internal static string CpuPrefix(int cpu) =>
+            (uint)cpu < (uint)CachedCpuPrefixes.Length
+                ? CachedCpuPrefixes[cpu]
+                : "CPU " + cpu.ToString().PadLeft(3) + " [";
+
+        // Stock Cosmos 3.0.95 does not expose per-CPU busy accounting.
+        // Cache the complete N/A line for the same 0..63 logical CPUs as
+        // CachedCpuPrefixes. Previously CPU 16..63 formatted a fresh line
+        // on every htop refresh even though their values never change.
+        // The small, bounded cache is allocated once, never in Refresh().
+        private static readonly string[] CachedCpuUnavailableLines = BuildCpuUnavailableLines();
+
+        private static string[] BuildCpuUnavailableLines()
+        {
+            var lines = new string[64];
+            for (int cpu = 0; cpu < lines.Length; cpu++)
+                lines[cpu] = CpuPrefix(cpu) + CpuBar(0) + "] N/A";
+            return lines;
+        }
+
+        internal static string CpuUnavailableLine(int cpu) =>
+            (uint)cpu < (uint)CachedCpuUnavailableLines.Length
+                ? CachedCpuUnavailableLines[cpu]
+                : CpuPrefix(cpu) + CpuBar(0) + "] N/A";
+
+        // Cached immutable numeric CPU labels avoid allocating strings for each
+        // core, process row and total on every monitor refresh. Percent() always
+        // returns 0..100, so array indexing is safe for all production callers.
+        private static readonly string[] CachedCpuPercents = BuildCpuPercents(false);
+        private static readonly string[] CachedPaddedCpuPercents = BuildCpuPercents(true);
+
+        private static string[] BuildCpuPercents(bool padded)
+        {
+            var values = new string[101];
+            for (int percent = 0; percent < values.Length; percent++)
+            {
+                string digits = percent.ToString();
+                values[percent] = (padded ? digits.PadLeft(4) : digits) + "%";
+            }
+            return values;
+        }
+
+        internal static string CpuPercentText(int percent) => CachedCpuPercents[percent];
+        internal static string PaddedCpuPercentText(int percent) => CachedPaddedCpuPercents[percent];
+
+        // Thread state is a tiny enum, but Enum.ToString() plus PadRight()
+        // allocates whenever a row's CPU percentage or PID changes. Keep the
+        // common values preformatted; unknown/future Cosmos states still use
+        // the original formatting rather than being silently mislabeled.
+        private static readonly string[] CachedThreadStateTexts = BuildThreadStateTexts();
+
+        private static string[] BuildThreadStateTexts()
+        {
+            var values = new string[16];
+            for (int state = 0; state < values.Length; state++)
+                values[state] = ((KernelThreadState)state).ToString().PadRight(10);
+            return values;
+        }
+
+        internal static string ThreadStateText(KernelThreadState state)
+        {
+            int index = (int)state;
+            return (uint)index < (uint)CachedThreadStateTexts.Length
+                ? CachedThreadStateTexts[index]
+                : state.ToString().PadRight(10);
+        }
+
+        internal HtopMonitor()
+        {
+            rowComparison = CompareRows;
+        }
+
         internal bool SortByCpu = true;
         internal int Scroll;
         internal int CpuCount { get; private set; }
@@ -82,6 +283,69 @@ namespace ZonderqOS.SystemCore
         internal ulong ActiveCpuMask { get; private set; }
         internal IReadOnlyList<int> CpuUsagePercent => cpuUsage;
         internal IReadOnlyList<string> Lines => lines;
+
+        // Thread slots may appear one at a time as the stock scheduler starts
+        // workers. Resizing to exactly (slot + 1) on every arrival copies the
+        // entire cache repeatedly (quadratic work and transient GC pressure).
+        // Double capacity only when needed; never shrink the buffers on refresh.
+        private static int GrowSlotCapacity(int current, int required)
+        {
+#if ZONDERQ_PERF_HOST_TEST
+            // The exact former allocation policy, compiled only in host A/B.
+            if (DisableGeometricSlotGrowthForBenchmark)
+                return required;
+#endif
+            int capacity = current < 8 ? 8 : current;
+            while (capacity < required)
+            {
+                if (capacity > int.MaxValue / 2)
+                    return required;
+                capacity *= 2;
+            }
+            return capacity;
+        }
+
+#if ZONDERQ_PERF_HOST_TEST
+        internal static bool DisableGeometricSlotGrowthForBenchmark;
+        internal int CachedSlotCapacityForTests => cachedThreadRows.Length;
+        internal int PreviousSlotCapacityForTests => previousThreads.Length;
+#endif
+
+        internal string GetThreadRowLine(int slot, KernelThreadInfo thread, int pid, int percent, string name)
+        {
+            if (slot < 0)
+                throw new ArgumentOutOfRangeException(nameof(slot));
+            if (slot >= cachedThreadRows.Length)
+                Array.Resize(ref cachedThreadRows, GrowSlotCapacity(cachedThreadRows.Length, slot + 1));
+
+            CachedThreadRow cached = cachedThreadRows[slot];
+            if (cached.Line != null && cached.Tid == thread.Id &&
+                cached.CpuId == thread.CpuId && cached.Pid == pid &&
+                cached.Percent == percent &&
+                cached.State == thread.State &&
+                string.Equals(cached.Name, name, StringComparison.Ordinal))
+                return cached.Line;
+
+            // TID, CPU and PID remain stable even while the runtime counter
+            // changes on every refresh. Keep their padded prefix per scheduler
+            // slot; do not rebuild three numeric strings for each CPU% update.
+            // Slot invalidation in Refresh clears this prefix on thread exit.
+            string prefix = cached.Prefix != null && cached.Tid == thread.Id &&
+                cached.CpuId == thread.CpuId && cached.Pid == pid
+                ? cached.Prefix
+                : (pid == 0 ? "-" : pid.ToString()).PadLeft(5) + " " +
+                    thread.Id.ToString().PadLeft(6) + " " +
+                    thread.CpuId.ToString().PadLeft(4) + "  ";
+            string line = prefix + ThreadStateText(thread.State) + " " +
+                PaddedCpuPercentText(percent) + "  " + name;
+            cachedThreadRows[slot] = new CachedThreadRow
+            {
+                Tid = thread.Id, CpuId = thread.CpuId, Pid = pid,
+                Percent = percent, State = thread.State, Name = name,
+                Prefix = prefix, Line = line
+            };
+            return line;
+        }
 
         internal void Refresh()
         {
@@ -97,7 +361,7 @@ namespace ZonderqOS.SystemCore
             }
             CpuCount = count;
             lines.Clear();
-            lines.Add("ZOnderqOS htop | CPU: " + count + " | " + SchedulerInfo.SchedulerName);
+            lines.Add(GetHeaderLine(count, SchedulerInfo.SchedulerName));
             lines.Add("Q/Esc: exit  C: sort CPU  P: sort PID  Up/Down: scroll");
             lines.Add("CPU usage: scheduled work per logical CPU (1 second samples)");
             ActiveCpuMask = 0;
@@ -117,28 +381,52 @@ namespace ZonderqOS.SystemCore
                 }
                 int usage = warm && hasAccounting ? Percent(delta, (ulong)elapsed) : 0;
                 cpuUsage[cpu] = usage;
-                string value = !hasAccounting ? "N/A" : !warm ? "..." : usage + "%";
-                lines.Add("CPU " + cpu.ToString().PadLeft(3) + " [" + new string('|', usage / 5).PadRight(20) + "] " + value);
+                lines.Add(!hasAccounting
+                    ? CpuUnavailableLine(cpu)
+                    : CpuPrefix(cpu) + CpuBar(usage) + "] " +
+                        (!warm ? "..." : CpuPercentText(usage)));
                 previousCpu[cpu] = busy;
             }
             ulong totalCapacity = warm && count > 0 ? (ulong)elapsed * (ulong)count : 0;
             TotalCpuPercent = warm && hasAccounting ? Percent(totalBusyDelta, totalCapacity) : 0;
-            lines.Add("CPU total: " + (!hasAccounting ? "N/A" : !warm ? "..." : TotalCpuPercent + "%"));
+            // Stock Cosmos exposes no per-core busy accounting. Avoid
+            // allocating the same immutable N/A total on every refresh.
+            lines.Add(!hasAccounting ? "CPU total: N/A" :
+                "CPU total: " + (!warm ? "..." : CpuPercentText(TotalCpuPercent)));
 
             // These are Cosmos' real physical page-allocator figures, not GC heap estimates.
             ulong total = MemoryInfo.TotalPages;
-            ulong free = Math.Min(total, MemoryInfo.FreePages);
+            ulong free = MemoryInfo.FreePages;
             ulong pageSize = MemoryInfo.PageSizeBytes;
-            lines.Add("Mem: " + ((total - free) * pageSize / 1048576UL) + " / " + (total * pageSize / 1048576UL) + " MiB");
+            lines.Add(GetMemoryLine(total, free, pageSize));
             ProcessManager.FillActiveProcesses(processes);
-            lines.Add("Processes: " + processes.Count + "  Threads: " + SchedulerInfo.ThreadCount);
+            int slots = SchedulerInfo.ThreadSlotCount;
+            bool indexedJoin = HtopProcessIndex.ShouldIndex(processes.Count, slots);
+            if (indexedJoin)
+                processIndex.Rebuild(processes);
+            else
+                processIndex.Clear();
+            lines.Add(GetProcessCountLine(processes.Count, SchedulerInfo.ThreadCount));
             lines.Add("  PID    TID  CPU  STATE       CPU%  NAME");
 
-            int slots = SchedulerInfo.ThreadSlotCount;
             if (previousThreads.Length < slots)
             {
-                Array.Resize(ref previousThreads, slots);
+                Array.Resize(ref previousThreads, GrowSlotCapacity(previousThreads.Length, slots));
             }
+            if (cachedThreadRows.Length < slots)
+                Array.Resize(ref cachedThreadRows, GrowSlotCapacity(cachedThreadRows.Length, slots));
+            // Release names/lines from slots that disappeared. Do this only
+            // when the scheduler shrinks, never on each steady refresh.
+            if (slots < lastRowSlotCount)
+            {
+                // A removed scheduler slot must lose both its displayed row
+                // and its previous runtime sample. Otherwise reusing the
+                // same TID after a shrink can report a fictitious CPU spike.
+                int removed = lastRowSlotCount - slots;
+                Array.Clear(cachedThreadRows, slots, removed);
+                Array.Clear(previousThreads, slots, removed);
+            }
+            lastRowSlotCount = slots;
             rows.Clear();
             ulong elapsedNs = elapsed > 0 && Stopwatch.Frequency > 0
                 ? (ulong)((double)elapsed * 1000000000d / Stopwatch.Frequency) : 0;
@@ -147,6 +435,7 @@ namespace ZonderqOS.SystemCore
                 if (!SchedulerInfo.TryGetThreadInSlot(slot, out KernelThreadInfo info))
                 {
                     previousThreads[slot].Valid = false;
+                    cachedThreadRows[slot] = default;
                     continue;
                 }
                 PreviousThread previous = previousThreads[slot];
@@ -155,36 +444,46 @@ namespace ZonderqOS.SystemCore
                 previousThreads[slot] = new PreviousThread { Id = info.Id, Runtime = info.TotalRuntimeNs, Valid = true };
                 if (info.IsIdle)
                 {
+                    cachedThreadRows[slot] = default;
                     continue;
                 }
                 int pid = 0;
                 string name = info.IsManaged ? "managed thread" : "kernel thread";
-                for (int index = 0; index < processes.Count; index++)
+                if (indexedJoin)
                 {
-                    if (processes[index].KernelThreadId != info.Id)
+                    if (processIndex.TryResolve(info.Id, out KernelProcess process))
                     {
-                        continue;
+                        pid = process.PID;
+                        name = process.Name;
                     }
-                    pid = processes[index].PID;
-                    name = processes[index].Name;
-                    break;
                 }
-                rows.Add(new Row { Thread = info, Percent = Percent(delta, elapsedNs), Pid = pid, Name = name });
+                else
+                {
+                    // Keep the original tight List<T> scan for small snapshots.
+                    // Building and probing a hash table regresses this hot path.
+                    for (int index = 0; index < processes.Count; index++)
+                    {
+                        if (processes[index].KernelThreadId != info.Id)
+                            continue;
+                        pid = processes[index].PID;
+                        name = processes[index].Name;
+                        break;
+                    }
+                }
+                rows.Add(new Row { Thread = info, Slot = slot, Percent = Percent(delta, elapsedNs), Pid = pid, Name = name });
             }
-            rows.Sort(CompareRows);
+            SortRows();
             foreach (Row row in rows)
-            {
-                lines.Add((row.Pid == 0 ? "-" : row.Pid.ToString()).PadLeft(5) + " " + row.Thread.Id.ToString().PadLeft(6) + " " +
-                    row.Thread.CpuId.ToString().PadLeft(4) + "  " + row.Thread.State.ToString().PadRight(10) + " " +
-                    row.Percent.ToString().PadLeft(4) + "%  " + row.Name);
-            }
+                lines.Add(GetThreadRowLine(row.Slot, row.Thread, row.Pid, row.Percent, row.Name));
             foreach (KernelProcess process in processes)
             {
-                bool found = false;
-                foreach (Row row in rows)
+                bool found = indexedJoin && processIndex.WasSeen(process.PID);
+                if (!indexedJoin)
                 {
-                    if (row.Pid == process.PID)
+                    foreach (Row row in rows)
                     {
+                        if (row.Pid != process.PID)
+                            continue;
                         found = true;
                         break;
                     }
@@ -197,6 +496,113 @@ namespace ZonderqOS.SystemCore
             previousTimestamp = now;
             Scroll = Math.Max(0, Math.Min(Scroll, Math.Max(0, lines.Count - 1)));
         }
+
+        // Internal entry point lets the host smoke test exercise the actual
+        // production sort without scheduler sampling or output allocations.
+        internal void SortRows()
+        {
+            // The stock BSP commonly reports the same thread slots and CPU
+            // percentages across consecutive samples. A linear adjacency
+            // check avoids an O(n log n) sort when those rows are already in
+            // the requested order. For small snapshots List.Sort is cheap,
+            // so retain its original path to avoid an extra scan.
+            int firstInversion = 0;
+            if (rows.Count >= 32)
+            {
+                firstInversion = 1;
+                while (firstInversion < rows.Count &&
+                    CompareRows(rows[firstInversion - 1], rows[firstInversion]) <= 0)
+                    firstInversion++;
+                if (firstInversion == rows.Count)
+                    return;
+
+                // A scheduler snapshot may arrive in the exact reverse order
+                // (for example after a slot table rebuild). Reversing a
+                // strictly descending list is linear and preserves the same
+                // total ordering as List.Sort. Strict comparisons deliberately
+                // exclude duplicate keys so equal-key rows are not reordered.
+                // Cheap tail/middle probes avoid a second scan for random rows.
+                if (firstInversion == 1 &&
+                    CompareRows(rows[rows.Count - 2], rows[rows.Count - 1]) > 0 &&
+                    CompareRows(rows[rows.Count / 2 - 1], rows[rows.Count / 2]) > 0)
+                {
+                    bool descending = true;
+                    for (int i = 1; i < rows.Count; i++)
+                    {
+                        if (CompareRows(rows[i - 1], rows[i]) > 0)
+                            continue;
+                        descending = false;
+                        break;
+                    }
+                    if (descending)
+                    {
+                        rows.Reverse();
+                        return;
+                    }
+                }
+            }
+            // A single displaced scheduler row creates exactly one adjacent
+            // inversion. Repair it in O(n) without a full comparison sort.
+            // Random snapshots with multiple inversions still use List.Sort.
+            // Host A/B showed a regression at 128 rows; only use this
+            // linear repair where the measured 512-row case wins.
+            if (rows.Count >= 256 && TryRepairSingleInversion(firstInversion))
+                return;
+            rows.Sort(rowComparison);
+        }
+
+        private bool TryRepairSingleInversion(int inversion)
+        {
+            // If a second inversion exists, no single insertion can restore
+            // the order. On random input this check usually exits quickly.
+            for (int i = inversion + 1; i < rows.Count; i++)
+                if (CompareRows(rows[i - 1], rows[i]) > 0)
+                    return false;
+
+            // Case A: the right row was displaced to the right. Move it
+            // backward only if removing it leaves a sorted boundary.
+            Row moved = rows[inversion];
+            int target = inversion;
+            while (target > 0 && CompareRows(rows[target - 1], moved) > 0)
+                target--;
+            if (inversion + 1 == rows.Count ||
+                CompareRows(rows[inversion - 1], rows[inversion + 1]) <= 0)
+            {
+                for (int i = inversion; i > target; i--)
+                    rows[i] = rows[i - 1];
+                rows[target] = moved;
+                return true;
+            }
+
+            // Case B: the left row was displaced to the left. Move it
+            // forward; check the boundary exposed by removing it first.
+            moved = rows[inversion - 1];
+            target = inversion;
+            while (target < rows.Count && CompareRows(moved, rows[target]) > 0)
+                target++;
+            if (inversion == 1 ||
+                CompareRows(rows[inversion - 2], rows[inversion]) <= 0)
+            {
+                for (int i = inversion - 1; i < target - 1; i++)
+                    rows[i] = rows[i + 1];
+                rows[target - 1] = moved;
+                return true;
+            }
+            return false;
+        }
+
+#if ZONDERQ_PERF_HOST_TEST
+        // Compiled only into the host smoke project: identical List.Sort and
+        // comparator, but without the production sorted-row fast paths.
+        internal void SortRowsUnconditionallyForBenchmark() => rows.Sort(rowComparison);
+        internal void ReverseRowsForBenchmark() => rows.Reverse();
+        internal void MoveRowForBenchmark(int from, int to)
+        {
+            Row moved = rows[from];
+            rows.RemoveAt(from);
+            rows.Insert(to, moved);
+        }
+#endif
 
         private int CompareRows(Row a, Row b)
         {
@@ -216,5 +622,49 @@ namespace ZonderqOS.SystemCore
             }
             return (int)((double)busy * 100d / elapsed);
         }
+    }
+
+    /// <summary>
+    /// Reusable hash index for large htop thread/process joins. Small joins
+    /// retain the original linear scans in HtopMonitor (faster on host .NET).
+    /// The first process for a TID wins; Clear releases stale references.
+    /// </summary>
+    internal sealed class HtopProcessIndex
+    {
+        private readonly Dictionary<uint, KernelProcess> byThread =
+            new Dictionary<uint, KernelProcess>();
+        private readonly HashSet<int> seenPids = new HashSet<int>();
+
+        internal static bool ShouldIndex(int processCount, int threadSlots) =>
+            processCount >= 256 && (long)processCount * Math.Max(0, threadSlots) >= 131072;
+
+        internal void Clear()
+        {
+            byThread.Clear();
+            seenPids.Clear();
+        }
+
+        internal void Rebuild(IReadOnlyList<KernelProcess> snapshot)
+        {
+            Clear();
+            for (int i = 0; i < snapshot.Count; i++)
+            {
+                KernelProcess process = snapshot[i];
+                uint tid = process.KernelThreadId;
+                // Preserve first-owner semantics for duplicate TIDs with one
+                // dictionary probe instead of ContainsKey followed by Add.
+                byThread.TryAdd(tid, process);
+            }
+        }
+
+        internal bool TryResolve(uint threadId, out KernelProcess process)
+        {
+            if (!byThread.TryGetValue(threadId, out process))
+                return false;
+            seenPids.Add(process.PID);
+            return true;
+        }
+
+        internal bool WasSeen(int pid) => seenPids.Contains(pid);
     }
 }

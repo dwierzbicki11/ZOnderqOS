@@ -16,6 +16,12 @@ namespace ZonderqOS.GUI.Apps
         private readonly Action<string> nanoLauncher;
         private readonly FileManagerView view;
         private readonly List<FileEntry> entries = new List<FileEntry>();
+        // Sorted directory snapshot; filtering must never re-enumerate FAT32 on each keypress.
+        private readonly List<FileEntry> allEntries = new List<FileEntry>();
+        private FileEntry[] sortScratch = new FileEntry[0];
+        private bool directorySnapshotValid;
+        // Query represented by entries; null after a directory refresh.
+        private string appliedSearchText;
         private readonly List<SidebarEntry> sidebarEntries = new List<SidebarEntry>();
 
         private string currentPath = "/root";
@@ -481,8 +487,10 @@ namespace ZonderqOS.GUI.Apps
             if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar))
             {
                 if (searchText.Length < 48)
+                {
                     searchText += key.KeyChar;
-                Refresh();
+                    RefreshFromSnapshot();
+                }
             }
         }
 
@@ -676,6 +684,11 @@ namespace ZonderqOS.GUI.Apps
 
         private void RefreshInternal(string keep)
         {
+            // Refresh is the only path that reads a directory. Search keystrokes
+            // reuse this sorted snapshot; F5, navigation and file mutations refresh it.
+            directorySnapshotValid = false;
+            appliedSearchText = null;
+            allEntries.Clear();
             entries.Clear();
             selectedIndex = -1;
             scrollIndex = 0;
@@ -689,16 +702,46 @@ namespace ZonderqOS.GUI.Apps
                 Add(Directory.GetDirectories(currentPath), true);
                 Add(Directory.GetFiles(currentPath), false);
                 Sort();
-
-                if (!string.IsNullOrEmpty(searchText))
-                    Filter();
-
+                directorySnapshotValid = true;
+                ApplyFilterFromSnapshot();
                 status = string.IsNullOrEmpty(keep) ? entries.Count + " item(s)" : keep;
             }
             catch (Exception ex)
             {
+                // Do not present a partial directory listing after an I/O failure.
+                allEntries.Clear();
+                entries.Clear();
                 status = "Read error: " + ex.Message;
             }
+        }
+
+        private void RefreshFromSnapshot()
+        {
+            if (!directorySnapshotValid)
+            {
+                Refresh();
+                return;
+            }
+
+            ApplyFilterFromSnapshot();
+            status = entries.Count + " item(s)";
+        }
+
+        private void ApplyFilterFromSnapshot()
+        {
+            // Typing extends the old query: scan only previous matches.
+            // Backspace, a replaced query or a new directory needs the full
+            // sorted snapshot. Never reuse results across disk refreshes.
+            if (appliedSearchText != null &&
+                searchText.Length > appliedSearchText.Length &&
+                searchText.StartsWith(appliedSearchText, StringComparison.OrdinalIgnoreCase))
+                FileEntrySorter.FilterNarrowed(entries, searchText);
+            else
+                FileEntrySorter.Filter(allEntries, entries, searchText);
+            appliedSearchText = searchText;
+            selectedIndex = -1;
+            scrollIndex = 0;
+            contextMenuVisible = false;
         }
 
         private void RebuildSidebar()
@@ -789,42 +832,13 @@ namespace ZonderqOS.GUI.Apps
                 if (string.IsNullOrEmpty(name))
                     name = path;
 
-                entries.Add(new FileEntry(name, path.Replace('\\', '/'), directory));
+                allEntries.Add(new FileEntry(name, path.Replace('\\', '/'), directory));
             }
         }
 
         private void Sort()
         {
-            for (int i = 1; i < entries.Count; i++)
-            {
-                FileEntry value = entries[i];
-                int j = i - 1;
-                while (j >= 0 && Compare(entries[j], value) > 0)
-                {
-                    entries[j + 1] = entries[j];
-                    j--;
-                }
-
-                entries[j + 1] = value;
-            }
-        }
-
-        private int Compare(FileEntry a, FileEntry b)
-        {
-            if (a.IsDirectory != b.IsDirectory)
-                return a.IsDirectory ? -1 : 1;
-
-            return string.Compare(a.Name, b.Name, StringComparison.OrdinalIgnoreCase);
-        }
-
-        private void Filter()
-        {
-            string filter = searchText.ToLowerInvariant();
-            for (int i = entries.Count - 1; i >= 0; i--)
-            {
-                if (!entries[i].Name.ToLowerInvariant().Contains(filter))
-                    entries.RemoveAt(i);
-            }
+            FileEntrySorter.Sort(allEntries, ref sortScratch);
         }
 
         public string CurrentPath { get { return currentPath; } }
@@ -846,12 +860,14 @@ namespace ZonderqOS.GUI.Apps
         public readonly string Name;
         public readonly string FullPath;
         public readonly bool IsDirectory;
+        public readonly IconType Icon;
 
         public FileEntry(string name, string fullPath, bool isDirectory)
         {
             Name = name;
             FullPath = fullPath;
             IsDirectory = isDirectory;
+            Icon = FileEntryIconResolver.Resolve(name, isDirectory);
         }
     }
 
@@ -1043,13 +1059,7 @@ namespace ZonderqOS.GUI.Apps
 
         private bool IsEntryActive(SidebarEntry entry)
         {
-            if (entry == null || string.IsNullOrEmpty(entry.Path))
-                return false;
-            if (entry.Path == "/")
-                return app.CurrentPath == "/";
-            if (app.CurrentPath == entry.Path)
-                return true;
-            return app.CurrentPath.StartsWith(entry.Path + "/", StringComparison.Ordinal);
+            return entry != null && FileManagerPathMatcher.IsActive(app.CurrentPath, entry.Path);
         }
 
         private void RenderFooter(Canvas canvas, int footerY)
@@ -1107,7 +1117,7 @@ namespace ZonderqOS.GUI.Apps
 
                 int iconX = tileX + (FileManagerApp.TileWidth - iconSize) / 2;
                 canvas.DrawFilledRectangle(Color.FromArgb(34, 40, 47), iconX - 5, tileY + 3, iconSize + 10, iconSize + 8);
-                IconManager.DrawScaled(canvas, ResolveEntryIcon(entry),
+                IconManager.DrawScaled(canvas, entry.Icon,
                     iconX, tileY + 7, iconSize, iconSize);
 
                 DrawWrappedName(canvas, entry.Name ?? "",
@@ -1116,43 +1126,6 @@ namespace ZonderqOS.GUI.Apps
                     labelWidth,
                     labelHeight,
                     index == app.SelectedIndex ? Color.WhiteSmoke : MainText);
-            }
-        }
-
-        private static IconType ResolveEntryIcon(FileEntry entry)
-        {
-            if (entry == null)
-                return IconType.File;
-            if (entry.IsDirectory)
-                return IconType.Folder;
-
-            string extension;
-            try
-            {
-                extension = Path.GetExtension(entry.Name ?? "").ToLowerInvariant();
-            }
-            catch
-            {
-                return IconType.File;
-            }
-
-            switch (extension)
-            {
-                case ".bmp": return IconType.FileBmp;
-                case ".doc": return IconType.FileDoc;
-                case ".docx": return IconType.FileDocx;
-                case ".jpg":
-                case ".jpeg": return IconType.FileJpg;
-                case ".pdf": return IconType.FilePdf;
-                case ".png": return IconType.FilePng;
-                case ".svg": return IconType.FileSvg;
-                case ".txt":
-                case ".log":
-                case ".md":
-                case ".cfg":
-                case ".conf":
-                case ".ini": return IconType.FileTxt;
-                default: return IconType.File;
             }
         }
 

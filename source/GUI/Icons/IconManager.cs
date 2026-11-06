@@ -10,6 +10,8 @@ namespace ZonderqOS.GUI.Icons
         private const int LargeIconSize = 40;
         private const int IconCount = (int)IconType.FileTxt + 1;
         private const int MaxScaledCacheEntries = 256;
+        // Do not replace a small cached icon with a huge, transient zoom size.
+        private const int MaxReplacementArea = 128 * 128;
         private const string CacheDirectory = "/root/.zonderq-icons";
 
         // Source PNGs are decoded once during GUI startup and held strongly for the
@@ -19,14 +21,24 @@ namespace ZonderqOS.GUI.Icons
         private static readonly int[] sourceWidths = new int[IconCount];
         private static readonly int[] sourceHeights = new int[IconCount];
         private static readonly bool[] sourceLoadAttempted = new bool[IconCount];
+        private static readonly bool[] sourceUseRuns = new bool[IconCount];
 
         // Every requested icon/size pair is scaled once. Later frames only reuse the
         // same persistent int[]; Canvas.DrawImage(image, x, y, w, h) is never used.
         private static readonly int[][] scaledPixels = new int[MaxScaledCacheEntries][];
+        private static readonly bool[] scaledUseRuns = new bool[MaxScaledCacheEntries];
         private static readonly IconType[] scaledTypes = new IconType[MaxScaledCacheEntries];
         private static readonly int[] scaledWidths = new int[MaxScaledCacheEntries];
         private static readonly int[] scaledHeights = new int[MaxScaledCacheEntries];
         private static int scaledCacheCount;
+        private static int nextScaledEvictionSlot;
+
+        // Two recent sizes per icon: desktop and file-manager views often
+        // alternate sizes each frame. A single recent slot still scanned up
+        // to 256 cache entries on every second draw. Keep both hints bounded;
+        // eviction may invalidate either, so every hit checks the full key.
+        private static readonly int[] scaledRecentSlots = new int[IconCount];
+        private static readonly int[] scaledPreviousSlots = new int[IconCount];
 
         public static void Preload()
         {
@@ -56,6 +68,13 @@ namespace ZonderqOS.GUI.Icons
             if (canvas == null || width <= 0 || height <= 0)
                 return;
 
+            // A scrolled-out icon must not decode PNGs, scan the scaled cache,
+            // or allocate a new scaled bitmap. Use wide coordinates so extreme
+            // window offsets cannot overflow the visibility calculation.
+            if ((long)x >= canvas.Width || (long)y >= canvas.Height ||
+                (long)x + width <= 0 || (long)y + height <= 0)
+                return;
+
             type = CanonicalizeType(type);
             if (!EnsureSource(type))
                 return;
@@ -70,14 +89,20 @@ namespace ZonderqOS.GUI.Icons
 
             if (sourceWidth == width && sourceHeight == height)
             {
-                Blit(canvas, source, width, height, x, y);
+                if (sourceUseRuns[sourceIndex])
+                    BlitRuns(canvas, source, width, height, x, y);
+                else
+                    BlitPoints(canvas, source, width, height, x, y);
                 return;
             }
 
             int[] pixels = GetScaledPixels(type, source, sourceWidth, sourceHeight, width, height);
             if (pixels != null)
             {
-                Blit(canvas, pixels, width, height, x, y);
+                if (scaledUseRuns[scaledRecentSlots[sourceIndex]])
+                    BlitRuns(canvas, pixels, width, height, x, y);
+                else
+                    BlitPoints(canvas, pixels, width, height, x, y);
                 return;
             }
 
@@ -127,6 +152,7 @@ namespace ZonderqOS.GUI.Icons
                 sourceWidths[index] = width;
                 sourceHeights[index] = height;
                 sourcePixels[index] = pixels;
+                sourceUseRuns[index] = ShouldCoalesce(pixels, width, height);
                 return true;
             }
             catch
@@ -138,23 +164,74 @@ namespace ZonderqOS.GUI.Icons
         private static int[] GetScaledPixels(IconType type, int[] source, int sourceWidth, int sourceHeight,
             int width, int height)
         {
+            int typeIndex = (int)type;
+            bool validType = typeIndex >= 0 && typeIndex < IconCount;
+            if (validType)
+            {
+                int recent = scaledRecentSlots[typeIndex];
+                if (recent < scaledCacheCount &&
+                    scaledTypes[recent] == type &&
+                    scaledWidths[recent] == width &&
+                    scaledHeights[recent] == height)
+                    return scaledPixels[recent];
+
+                int previous = scaledPreviousSlots[typeIndex];
+                if (previous != recent && previous < scaledCacheCount &&
+                    scaledTypes[previous] == type &&
+                    scaledWidths[previous] == width &&
+                    scaledHeights[previous] == height)
+                {
+                    scaledPreviousSlots[typeIndex] = recent;
+                    scaledRecentSlots[typeIndex] = previous;
+                    return scaledPixels[previous];
+                }
+            }
+
             for (int i = 0; i < scaledCacheCount; i++)
             {
                 if (scaledTypes[i] == type && scaledWidths[i] == width && scaledHeights[i] == height)
+                {
+                    if (validType)
+                    {
+                        scaledPreviousSlots[typeIndex] = scaledRecentSlots[typeIndex];
+                        scaledRecentSlots[typeIndex] = i;
+                    }
                     return scaledPixels[i];
+                }
             }
 
-            if (scaledCacheCount >= MaxScaledCacheEntries)
+            // A permanently full cache used to force division-heavy direct
+            // scaling on every subsequent frame. Recycle one bounded slot for
+            // normal icon sizes; very large transient requests stay uncached.
+            if (scaledCacheCount >= MaxScaledCacheEntries &&
+                (long)width * height > MaxReplacementArea)
                 return null;
 
-            int[] destination;
-            try
-            {
-                destination = new int[width * height];
-            }
-            catch
-            {
+            // When a full cache recycles a slot with the same pixel count,
+            // overwrite its private buffer instead of allocating another array.
+            // No caller retains these arrays outside a synchronous DrawScaled.
+            // A differently shaped icon with equal area is safe: the new width
+            // and height are recorded below, after every pixel is rewritten.
+            int slot = scaledCacheCount == MaxScaledCacheEntries
+                ? nextScaledEvictionSlot : scaledCacheCount;
+            int[] destination = null;
+            long pixelCount = (long)width * height;
+            if (pixelCount <= 0 || pixelCount > int.MaxValue)
                 return null;
+            if (scaledCacheCount == MaxScaledCacheEntries &&
+                scaledPixels[slot] != null &&
+                scaledPixels[slot].Length == (int)pixelCount)
+                destination = scaledPixels[slot];
+            if (destination == null)
+            {
+                try
+                {
+                    destination = new int[(int)pixelCount];
+                }
+                catch
+                {
+                    return null;
+                }
             }
 
             int xRatio = ((sourceWidth << 16) / width) + 1;
@@ -175,22 +252,98 @@ namespace ZonderqOS.GUI.Icons
                 }
             }
 
-            int slot = scaledCacheCount;
+            if (scaledCacheCount == MaxScaledCacheEntries)
+                nextScaledEvictionSlot = (nextScaledEvictionSlot + 1) % MaxScaledCacheEntries;
+            else
+                scaledCacheCount = slot + 1;
             scaledTypes[slot] = type;
             scaledWidths[slot] = width;
             scaledHeights[slot] = height;
             scaledPixels[slot] = destination;
-            scaledCacheCount = slot + 1;
+            scaledUseRuns[slot] = ShouldCoalesce(destination, width, height);
+            if (validType)
+            {
+                scaledPreviousSlots[typeIndex] = scaledRecentSlots[typeIndex];
+                scaledRecentSlots[typeIndex] = slot;
+            }
             return destination;
         }
 
-        private static void Blit(Canvas canvas, int[] pixels, int width, int height, int x, int y)
+        // Classification happens only when PNGs are decoded or a new size is
+        // cached, NEVER in the per-frame blitter. A gradient keeps the original
+        // point-only path with no repeated per-pixel color probing.
+        private static bool ShouldCoalesce(int[] pixels, int width, int height)
+        {
+            int opaque = 0;
+            int grouped = 0;
+            int nonOpaque = 0;
+            for (int y = 0; y < height; y++)
+            {
+                int row = y * width;
+                for (int x = 0; x < width;)
+                {
+                    int argb = pixels[row + x];
+                    if (((uint)argb >> 24) != 255)
+                    {
+                        nonOpaque++;
+                        x++;
+                        continue;
+                    }
+
+                    int end = x + 1;
+                    while (end < width && pixels[row + end] == argb)
+                        end++;
+                    int run = end - x;
+                    opaque += run;
+                    if (run >= 3)
+                        grouped += run;
+                    x = end;
+                }
+            }
+
+            // Require substantial opaque runs before paying for the run scanner.
+            // Conservative false negatives are harmless: DrawPoint is identical.
+            // Mixed-alpha PNGs are better served by the original point
+            // renderer: checking runs around transparency can cost more than
+            // the saved calls. Allow at most 5% non-opaque pixels.
+            return grouped >= 6 && nonOpaque * 20 <= width * height &&
+                (long)grouped * 3 >= (long)opaque * 2 &&
+                grouped >= width * height / 4;
+        }
+
+        // Preserve the original point-only path as a separate method. A
+        // gradient/alpha icon must not pay for run detection or a per-row
+        // dispatch; the one-time cache classification selects the renderer.
+        private static void BlitPoints(Canvas canvas, int[] pixels, int width, int height, int x, int y)
         {
             int startX = x < 0 ? -x : 0;
             int startY = y < 0 ? -y : 0;
             int endX = width;
             int endY = height;
+            if (x + endX > canvas.Width) endX = canvas.Width - x;
+            if (y + endY > canvas.Height) endY = canvas.Height - y;
+            if (startX >= endX || startY >= endY)
+                return;
 
+            for (int py = startY; py < endY; py++)
+            {
+                int row = py * width;
+                for (int px = startX; px < endX; px++)
+                {
+                    int argb = pixels[row + px];
+                    if (((uint)argb >> 24) == 0)
+                        continue;
+                    canvas.DrawPoint(Color.FromArgb(argb), x + px, y + py);
+                }
+            }
+        }
+
+        private static void BlitRuns(Canvas canvas, int[] pixels, int width, int height, int x, int y)
+        {
+            int startX = x < 0 ? -x : 0;
+            int startY = y < 0 ? -y : 0;
+            int endX = width;
+            int endY = height;
             if (x + endX > canvas.Width) endX = canvas.Width - x;
             if (y + endY > canvas.Height) endY = canvas.Height - y;
             if (startX >= endX || startY >= endY)
@@ -200,27 +353,53 @@ namespace ZonderqOS.GUI.Icons
             {
                 int row = py * width;
                 int destinationY = y + py;
-                for (int px = startX; px < endX; px++)
+                for (int px = startX; px < endX;)
                 {
                     int argb = pixels[row + px];
-                    if (((uint)argb >> 24) == 0)
+                    uint alpha = (uint)argb >> 24;
+                    if (alpha == 0)
+                    {
+                        px++;
                         continue;
+                    }
+
+                    // Filled rectangles only for fully opaque identical runs.
+                    // Keep DrawPoint for partial alpha to preserve Canvas.
+                    if (alpha == 255)
+                    {
+                        int end = px + 1;
+                        while (end < endX && pixels[row + end] == argb)
+                            end++;
+
+                        Color ink = Color.FromArgb(argb);
+                        if (end - px >= 3)
+                            canvas.DrawFilledRectangle(ink, x + px, destinationY, end - px, 1);
+                        else
+                            for (int col = px; col < end; col++)
+                                canvas.DrawPoint(ink, x + col, destinationY);
+                        px = end;
+                        continue;
+                    }
 
                     canvas.DrawPoint(Color.FromArgb(argb), x + px, destinationY);
+                    px++;
                 }
             }
         }
 
+        // Large transient sizes retain the original allocation-free direct
+        // fallback. Host A/B measurements showed that quotient/remainder
+        // stepping was slower than the original division loop with Canvas.
+        // Only clipping uses wide intermediates to handle extreme offsets.
         private static void BlitScaledDirect(Canvas canvas, int[] source, int sourceWidth, int sourceHeight,
             int x, int y, int width, int height)
         {
-            int startX = x < 0 ? -x : 0;
-            int startY = y < 0 ? -y : 0;
+            int startX = x < 0 ? (int)System.Math.Min((long)width, -(long)x) : 0;
+            int startY = y < 0 ? (int)System.Math.Min((long)height, -(long)y) : 0;
             int endX = width;
             int endY = height;
-
-            if (x + endX > canvas.Width) endX = canvas.Width - x;
-            if (y + endY > canvas.Height) endY = canvas.Height - y;
+            if ((long)x + endX > canvas.Width) endX = (int)((long)canvas.Width - x);
+            if ((long)y + endY > canvas.Height) endY = (int)((long)canvas.Height - y);
             if (startX >= endX || startY >= endY)
                 return;
 
@@ -229,14 +408,12 @@ namespace ZonderqOS.GUI.Icons
                 int sy = (dy * sourceHeight) / height;
                 int sourceRow = sy * sourceWidth;
                 int destinationY = y + dy;
-
                 for (int dx = startX; dx < endX; dx++)
                 {
                     int sx = (dx * sourceWidth) / width;
                     int argb = source[sourceRow + sx];
                     if (((uint)argb >> 24) == 0)
                         continue;
-
                     canvas.DrawPoint(Color.FromArgb(argb), x + dx, destinationY);
                 }
             }
