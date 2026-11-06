@@ -814,7 +814,10 @@ namespace ZonderqOS.GUI.Apps
         private static string FormatPercentPrecise(ulong used, ulong total)
         {
             if (total == 0) return "0.00%";
-            // Saturate before scaling: used * 10000 can overflow ulong on large disks.\n            if (used >= total) return "100.00%";\n            ulong whole = used / total;\n            ulong remainder = used % total;\n            ulong scaled = whole * 10000UL +\n                (remainder <= ulong.MaxValue / 10000UL\n                    ? remainder * 10000UL / total\n                    : (ulong)((decimal)remainder * 10000m / total));
+            // Floating-point ratio avoids overflowing used * 10000 on large capacities.
+            // Saturate first to keep the displayed percentage in [0, 100].
+            if (used >= total) return "100.00%";
+            ulong scaled = (ulong)((double)used / total * 10000.0);
             return (scaled / 100UL) + "." + D2((int)(scaled % 100UL)) + "%";
         }
 
