@@ -28,6 +28,7 @@ def run(path, count, mode):
             handle.flush()
             if mode == "stream":
                 length = os.fstat(handle.fileno()).st_size
+                metadata_reads += 1
         if mode == "stat":
             length = os.path.getsize(path)
             metadata_reads += 1
@@ -58,8 +59,8 @@ def benchmark(iterations, repeats):
                 samples[mode].append(results[mode][0])
             if results["stat"][2:] != results["stream"][2:]:
                 raise RuntimeError("rotation/content mismatch")
-            if results["stat"][1] != iterations or results["stream"][1] != 0:
-                raise RuntimeError("unexpected metadata lookup count")
+            if results["stat"][1] != iterations or results["stream"][1] != iterations:
+                raise RuntimeError("unexpected total metadata lookup count")
             if len(results["stat"][3]) > LIMIT:
                 raise RuntimeError("log exceeds rotation limit")
     return samples
