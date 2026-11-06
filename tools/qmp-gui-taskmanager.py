@@ -139,16 +139,28 @@ def main():
         # Never interpret a palette screenshot as a successfully opened app:
         # verify the actual framebuffer before sending any sidebar clicks.
         desktop_frame = qmp.read_ppm(prefix + ".taskmanager-desktop.ppm")
+        palette_frame = qmp.read_ppm(prefix + ".taskmanager-palette.ppm")
         processes_frame = qmp.read_ppm(prefix + ".taskmanager-processes.ppm")
-        changed, sampled = qmp.difference(desktop_frame, processes_frame)
-        if changed / max(1, sampled) < 0.12:
+
+        def launch_visible(frame):
+            # A palette alone changes the desktop substantially. Require a
+            # second independent transition from the captured open palette,
+            # otherwise a delayed Enter can be mistaken for a launched app.
+            desktop_changed, desktop_samples = qmp.difference(desktop_frame, frame)
+            palette_changed, palette_samples = qmp.difference(palette_frame, frame)
+            desktop_fraction = desktop_changed / max(1, desktop_samples)
+            palette_fraction = palette_changed / max(1, palette_samples)
+            print(f"[TASK-QMP] launch: desktop={desktop_fraction:.1%}, "
+                  f"palette={palette_fraction:.1%}", flush=True)
+            return desktop_fraction >= 0.12 and palette_fraction >= 0.08
+
+        if not launch_visible(processes_frame):
             print("[TASK-QMP] launch not visible; retrying Enter once", flush=True)
             qmp.send_keys(channel, "ret")
             time.sleep(3)
             qmp.screenshot(channel, prefix + ".taskmanager-processes.ppm")
             processes_frame = qmp.read_ppm(prefix + ".taskmanager-processes.ppm")
-            changed, sampled = qmp.difference(desktop_frame, processes_frame)
-            if changed / max(1, sampled) < 0.12:
+            if not launch_visible(processes_frame):
                 raise RuntimeError("Task Manager launch not visible after retry; "
                                    "refusing to click unverified navigation coordinates")
 
