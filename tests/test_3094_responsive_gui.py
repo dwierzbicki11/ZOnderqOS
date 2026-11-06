@@ -2186,11 +2186,16 @@ class ResponsiveGui3094(unittest.TestCase):
             "private int Compare(", 1)[0]
         compare = FILE_MANAGER.split("private int Compare(", 1)[1].split(
             "private void Filter()", 1)[0]
-        self.assertIn("FileEntry[] scratch = new FileEntry[count];", sort)
+        self.assertIn("FileEntry[] source = destination.ToArray();", sort)
+        self.assertIn("FileEntry[] target = new FileEntry[count];", sort)
+        self.assertIn("FileEntry[] previous = source;", sort)
+        self.assertIn("source = target;", sort)
+        self.assertIn("target = previous;", sort)
+        self.assertIn("destination[i] = source[i];", sort)
         self.assertIn("for (int run = 1; run < count;", sort)
-        self.assertIn("Compare(destination[left], destination[right]) <= 0", sort)
-        self.assertIn("scratch[write] = destination[left++];", sort)
-        self.assertIn("scratch[write] = destination[right++];", sort)
+        self.assertIn("Compare(source[left], source[right]) <= 0", sort)
+        self.assertIn("target[write] = source[left++];", sort)
+        self.assertIn("target[write] = source[right++];", sort)
         self.assertNotIn("while (j >= 0 && Compare(entries[j], value) > 0)", sort)
         self.assertIn("if (a.IsDirectory != b.IsDirectory)", compare)
         self.assertIn("StringComparison.OrdinalIgnoreCase", compare)
@@ -3697,7 +3702,9 @@ class ImageHeaderPreflight3095(unittest.TestCase):
         self.assertIn("Compare(destination[i - 1], destination[i]) > 0", sorter)
         self.assertIn("if (alreadySorted)", sorter)
         self.assertLess(sorter.index("if (alreadySorted)"), sorter.index("new FileEntry[count]"))
-        self.assertIn("Compare(destination[left], destination[right]) <= 0", sorter)
+        self.assertIn("Compare(source[left], source[right]) <= 0", sorter)
+        self.assertIn("Compare(source[middle - 1], source[middle]) <= 0", sorter)
+        self.assertIn("target[write] = source[write];", sorter)
 
 
 
