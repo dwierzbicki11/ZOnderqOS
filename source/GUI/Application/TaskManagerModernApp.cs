@@ -817,7 +817,9 @@ namespace ZonderqOS.GUI.Apps
             // Floating-point ratio avoids overflowing used * 10000 on large capacities.
             // Saturate first to keep the displayed percentage in [0, 100].
             if (used >= total) return "100.00%";
-            ulong scaled = (ulong)((double)used / total * 10000.0);
+            // Double rounds adjacent ulong values together near ulong.MaxValue.
+            // Keep a strictly partial usage below 100% even after rounding.
+            ulong scaled = Math.Min(9999UL, (ulong)((double)used / total * 10000.0));
             return (scaled / 100UL) + "." + D2((int)(scaled % 100UL)) + "%";
         }
 
