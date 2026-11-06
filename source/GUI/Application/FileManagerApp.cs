@@ -2118,7 +2118,9 @@ namespace ZonderqOS.GUI.Apps
                     string entryParent = lastSlash == 0 ? "/" : cleanPath.Substring(0, lastSlash);
                     if (!string.Equals(entryParent, canonicalParent, StringComparison.OrdinalIgnoreCase))
                         continue;
-                    string name = Path.GetFileName(cleanPath);
+                    // The separator index is already known. Avoid Path.GetFileName's
+                    // extra parsing on every FAT32 entry (including trailing slashes).
+                    string name = cleanPath.Substring(lastSlash + 1);
                     if (string.IsNullOrWhiteSpace(name) || name == "." || name == "..")
                         continue;
 
