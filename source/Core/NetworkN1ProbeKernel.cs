@@ -821,7 +821,7 @@ namespace ZonderqOS
                 candidate.State == DeviceNodeState.Bound &&
                 candidate.Path == "pci:0000:00:02.0" &&
                 candidate.FaultCount == 0 && candidate.HeldResourceCount >= 1 &&
-                candidate.PublishedDeviceCount == 1 && candidate.InterruptCount >= 1;
+                candidate.PublishedDeviceCount == 1 && candidate.InterruptCount == 1;
         }
 
         // Snapshot comparison is read-only. DriverDiagnostics.InterruptCount
