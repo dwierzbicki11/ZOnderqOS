@@ -2,7 +2,7 @@
 """Host-only A/B for append+metadata lookup versus same-handle length.
 
 Models the I/O shape of ServiceManager; Python's append/tell semantics and
-host filesystem are NOT proof of Cosmos FileStream or FAT32 performance.
+host filesystem are NOT proof of Cosmos FileStream or FAT32 performance.\nUses fstat on the open handle (rather than tell) to model Stream.Length,\nwhich queries file size rather than the current write position.
 """
 import argparse
 import os
@@ -25,7 +25,7 @@ def run(path, count, mode):
             handle.write(ENTRY)
             handle.flush()
             if mode == "stream":
-                length = handle.tell()
+                length = os.fstat(handle.fileno()).st_size
         if mode == "stat":
             length = os.path.getsize(path)
             metadata_reads += 1
