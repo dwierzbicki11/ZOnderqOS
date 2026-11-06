@@ -19,6 +19,7 @@ MARKER = re.compile(
 
 def validate(serial: str) -> str:
     samples = {}
+    phases = []
     for raw in serial.split("\n"):
         line = raw.removesuffix("\r")
         if "[NET3095-ISR]" not in line:
@@ -30,8 +31,11 @@ def validate(serial: str) -> str:
         if phase in samples:
             raise ValueError("duplicate guest ISR sample")
         samples[phase] = (int(irq), int(rx), polling)
+        phases.append(phase)
     if set(samples) != {"before", "after"}:
         raise ValueError("missing guest ISR before/after samples")
+    if phases != ["before", "after"]:
+        raise ValueError("guest ISR samples out of order")
     before, after = samples["before"], samples["after"]
     if before[2] != "no" or after[2] != "no":
         raise ValueError("polling enabled: IRQ RX not proven")
@@ -58,6 +62,7 @@ def self_test() -> None:
         good.replace("polling=no", "polling=yes", 1),
         good.replace("phase=after", "phase=after extra=1"),
         good.replace("phase=before", "phase=after"),
+        "\n".join(reversed(good.splitlines())) + "\n",
         good.replace("interrupts=5", "interrupts=-1"),
         good.replace("phase=after", "phase=after\rspoof"),
     )
