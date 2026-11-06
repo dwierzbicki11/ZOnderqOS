@@ -30,6 +30,10 @@ on:
       - "tests/test_gen3_perf_panels.py"
       - "tests/test_gen3_perf_text_visibility.py"
       - "tests/PerfRenderSmoke/**"
+      - "source/Core/Services/ServiceManager.cs"
+      - "tests/test_perf_service_log_io.py"
+      - "tests/test_perf_service_log_accounting.py"
+      - "tools/perf_service_log_io.py"
       - "tests/test_perf_service_log_stream.py"
       - "tools/perf_service_log_stream.py"
       - ".github/workflows/perf-gen3.yml"
@@ -66,6 +70,8 @@ jobs:
         run: python3 tests/test_gen3_perf_filemanager.py
       - name: Production file manager stable ordering and measured host A/B
         run: dotnet run --project tests/FileManagerPerfSmoke/FileManagerPerfSmoke.csproj --configuration Release
+      - name: Service log accounting and metadata baseline regressions
+        run: python3 -m unittest discover -s tests -p 'test_perf_service_log_*.py' -v
       - name: Same-handle service log benchmark correctness and rotation
         run: python3 -m unittest discover -s tests -p test_perf_service_log_stream.py -v
       - name: Preserve stock Cosmos and disabled custom SMP
