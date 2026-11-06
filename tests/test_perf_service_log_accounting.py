@@ -20,7 +20,7 @@ class ServiceLogAccountingAssumptions(unittest.TestCase):
             path.write_bytes(b"x" * (benchmark.LIMIT - len(benchmark.ENTRY) + 1))
             elapsed, stats, rotations, data = benchmark.run(str(path), 1, "tracked")
             self.assertGreaterEqual(elapsed, 0)
-            self.assertEqual(stats, 0)
+            self.assertEqual(stats, 1)  # Initial size read is counted and timed.
             self.assertEqual(rotations, 1)
             self.assertEqual(data, benchmark.ROTATED)
 
