@@ -25,7 +25,7 @@ class ServiceLogBenchmarkTests(unittest.TestCase):
             a, b = results["stat"], results["tracked"]
             self.assertEqual(a[2:], b[2:], "rotations and bytes must match")
             self.assertEqual(a[1], iterations)
-            self.assertEqual(b[1], 0)
+            self.assertEqual(b[1], 1, "initial metadata read must be counted")
             self.assertLessEqual(len(a[3]), benchmark.LIMIT)
             return a, b
 
@@ -52,6 +52,15 @@ class ServiceLogBenchmarkTests(unittest.TestCase):
         a, _ = self.compare(1, b"x" * (benchmark.LIMIT - len(benchmark.ENTRY) + 1))
         self.assertEqual(a[2], 1)
         self.assertEqual(a[3], benchmark.ROTATED)
+
+    def test_reject_invalid_modes_and_counts(self):
+        with tempfile.TemporaryDirectory() as root:
+            path = Path(root) / "log"
+            path.write_bytes(b"")
+            with self.assertRaises(ValueError):
+                benchmark.run(str(path), 1, "typo")
+            with self.assertRaises(ValueError):
+                benchmark.run(str(path), 0, "tracked")
 
 
 if __name__ == "__main__":
