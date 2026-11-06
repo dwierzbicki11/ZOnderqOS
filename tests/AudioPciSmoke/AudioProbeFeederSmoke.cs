@@ -689,6 +689,45 @@ internal static class AudioProbeFeederSmoke
             waitWithdrawalCalls == 1 && waits == 1,
             "withdrawal during backpressure aborts before retry or settle");
 
+        // Boundary contract: 999 blocked waits followed by a positive frame
+        // must recover; a permanently blocked writer must stop at 1000.
+        // Neither path may enter the final 86 ms settle unless drained.
+        int boundaryWaitCount = 0;
+        int boundarySettleCount = 0;
+        int boundaryAcceptedBytes = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) =>
+            {
+                if (boundaryAcceptedBytes == 0 && boundaryWaitCount < 999)
+                    return 0;
+                boundaryAcceptedBytes += count;
+                return count;
+            },
+            () => true,
+            milliseconds =>
+            {
+                if (milliseconds == 1) boundaryWaitCount++;
+                else if (milliseconds == 86) boundarySettleCount++;
+                else throw new Exception("unexpected ring wait duration");
+            }, out waits);
+        Check(ok && waits == 999 && boundaryWaitCount == 999 &&
+            boundaryAcceptedBytes == 4 + 16384 && boundarySettleCount == 1,
+            "999 blocked waits recover and settle exactly once");
+
+        int limitWaitCount = 0;
+        int limitSettleCount = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+            (source, offset, count) => 0,
+            () => true,
+            milliseconds =>
+            {
+                if (milliseconds == 1) limitWaitCount++;
+                else limitSettleCount++;
+            }, out waits);
+        Check(!ok && waits == 1000 && limitWaitCount == 1000 &&
+            limitSettleCount == 0,
+            "1000 consecutive waits fail without silent settle");
+
         Console.WriteLine("[AUDIO-FEEDER-HOST] PASS " + checks +
             " checks (fake ring; not DMA, IRQ or real playback)");
     }
