@@ -400,7 +400,18 @@ class NetworkN1Isolation(unittest.TestCase):
                       reconnect[read:completed])
         self.assertIn("IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,",
                       reconnect[read:completed])
-        self.assertEqual(reconnect.count("Link TCP total RX deadline exceeded"), 2)
+        # Three independent checks: before Read, immediately after Read,
+        # and after the loop. The post-Read guard catches a final chunk
+        # that arrives after the monotonic deadline.
+        self.assertEqual(reconnect.count("Link TCP total RX deadline exceeded"), 3)
+        after_read = reconnect.index("long afterReadTicks = Stopwatch.GetTimestamp() - start;", read)
+        after_read_deadline = reconnect.index("afterReadTicks / frequency >= 10", after_read)
+        chunk_check = reconnect.index("for (int offset = chunkStart; offset < received; offset++)", after_read_deadline)
+        self.assertLess(read, after_read)
+        self.assertLess(after_read, after_read_deadline)
+        self.assertLess(after_read_deadline, chunk_check)
+        self.assertLess(chunk_check, per_read)
+        self.assertLess(per_read, completed)
 
     def test_n6_link_tcp_rechecks_pci_driver_and_lease_after_tx(self):
         # A TX completion cannot certify that DMA/IRQ ownership survives
