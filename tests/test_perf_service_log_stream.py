@@ -32,7 +32,7 @@ class ServiceLogStreamTests(unittest.TestCase):
                 path.write_bytes(b'preexisting\n')
                 elapsed, reads, rotations, data = module.run(str(path), 1, mode)
                 self.assertGreaterEqual(elapsed, 0)
-                self.assertEqual(reads, 1 if mode == 'stat' else 0)
+                self.assertEqual(reads, 1)
                 self.assertEqual(rotations, 0)
                 self.assertEqual(data, b'preexisting\n' + module.ENTRY)
 
