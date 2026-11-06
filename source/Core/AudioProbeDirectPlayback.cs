@@ -89,7 +89,18 @@ namespace ZonderqOS.SystemCore
                 // Start can fail after partially enabling the stream engine.
                 // Mark cleanup as required before invoking the driver.
                 started = true;
-                output.Start();
+                try
+                {
+                    output.Start();
+                }
+                catch (InvalidOperationException)
+                {
+                    // A codec reset can reject Start after partially touching
+                    // the stream. Keep started=true for guarded cleanup, but
+                    // never attempt to feed PCM after a failed start.
+                    Console.WriteLine("[AUDIO] 1MS FAILED: HDA Start rejected.");
+                    return false;
+                }
                 startCompleted = true;
                 // Start() can reconfigure a codec or lose the output. Check
                 // again before the FIRST write, then before every subsequent
@@ -333,7 +344,19 @@ namespace ZonderqOS.SystemCore
                                 (stillSelected != null && !stillSelected()))
                                 Console.WriteLine("[AUDIO] 1MS cleanup: HDA changed; Stop skipped.");
                             else
-                                output.Stop();
+                            {
+                                try
+                                {
+                                    output.Stop();
+                                }
+                                catch (InvalidOperationException)
+                                {
+                                    // A codec can withdraw between the final
+                                    // ownership snapshot and Stop. Do not turn
+                                    // diagnostic cleanup into a shell crash.
+                                    Console.WriteLine("[AUDIO] 1MS cleanup: Stop rejected by HDA.");
+                                }
+                            }
                         }
                     }
                 }
