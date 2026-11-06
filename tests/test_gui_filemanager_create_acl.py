@@ -321,7 +321,11 @@ checks["create uses the exact dialog name without silently trimming"] = (
 )
 checks["FAT32 creation checks case-insensitive file and directory collisions"] = (
     "FileManagerNamePolicy.HasCaseInsensitiveCollision(name," in body
-    and "Directory.GetFiles(currentPath), Directory.GetDirectories(currentPath)" in body
+    and "string[] existingFiles = Directory.GetFiles(currentPath);" in body
+    and "string[] existingDirectories = Directory.GetDirectories(currentPath);" in body
+    and "existingFiles, existingDirectories" in body
+    and body.index("if (existingFiles == null || existingDirectories == null)") <
+        body.index("FileManagerNamePolicy.HasCaseInsensitiveCollision(name,")
     and body.index("FileManagerNamePolicy.HasCaseInsensitiveCollision(name,") < body.index('FileManagerFileCreation.CreateEmptyFile(path)')
     and "StringComparison.OrdinalIgnoreCase" in name_body
 )
