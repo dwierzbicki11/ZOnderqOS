@@ -755,6 +755,33 @@ internal static class AudioProbeFeederSmoke
                 invalidCount);
         }
 
+        // A malformed write during the silent DMA tail is just as unsafe
+        // as a malformed PCM write. It must fail before another tail block
+        // or the 86 ms settle, even though the original PCM was accepted.
+        foreach (int invalidTailCount in new[] { -4, 2, 4097 })
+        {
+            int tailWriteCalls = 0;
+            int tailWaitCalls = 0;
+            bool tailRejected = false;
+            try
+            {
+                AudioProbeRingFeeder.FeedAndSettle(new byte[4],
+                    (source, offset, count) =>
+                    {
+                        tailWriteCalls++;
+                        return tailWriteCalls == 1 ? count : invalidTailCount;
+                    },
+                    () => true, _ => tailWaitCalls++, out waits);
+            }
+            catch (InvalidOperationException)
+            {
+                tailRejected = true;
+            }
+            Check(tailRejected && tailWriteCalls == 2 && tailWaitCalls == 0,
+                "invalid silent tail count rejected without retry or settle: " +
+                invalidTailCount);
+        }
+
         Console.WriteLine("[AUDIO-FEEDER-HOST] PASS " + checks +
             " checks (fake ring; not DMA, IRQ or real playback)");
     }
