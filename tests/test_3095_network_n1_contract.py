@@ -997,6 +997,28 @@ class NetworkN1Isolation(unittest.TestCase):
         self.assertIn("len(recovery) != 2", validator)
 
 
+    def test_n6_tcp_reconnect_checks_binding_after_connect_before_tx(self):
+        # Static source-order regression only; QEMU must independently
+        # establish whether DMA and RX survive a link transition.
+        reconnect = SOURCE.split("private static bool TryTcpReconnect(int cycle)", 1)[1]
+        reconnect = reconnect.split("private static void PollLinkCycle()", 1)[0]
+        connected = reconnect.index('client.Connect(System.Net.IPAddress.Parse("10.0.2.2"), 18095)')
+        guard = reconnect.index("Link TCP PCI/lease changed during connect", connected)
+        sent = reconnect.index("stream.Write(request, 0, request.Length)", guard)
+        post_tx = reconnect.index("Link TCP PCI/lease changed after TX", sent)
+        received = reconnect.index("stream.Read(response, received, response.Length - received)", post_tx)
+        self.assertLess(connected, guard)
+        self.assertLess(guard, sent)
+        self.assertLess(sent, post_tx)
+        self.assertLess(post_tx, received)
+        section = reconnect[connected:guard]
+        for condition in (
+            "IsE1000EPciMappingStable()",
+            "IsE1000EDriverKitStable(s_linkCycleResources, s_linkCycleIrqSources)",
+            "IsE1000ELeaseStable(s_linkCycleMac, s_linkCycleIp,",
+        ):
+            self.assertIn(condition, section)
+
     def test_n6_http_and_icmp_revalidate_pci_mapping(self):
         # Static gate only: actual RX/TX still requires independent QEMU PCAP.
         # PCI COMMAND/BAR0/INTx must remain unchanged at each HTTP read
