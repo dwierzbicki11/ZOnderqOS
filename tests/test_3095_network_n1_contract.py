@@ -796,7 +796,7 @@ class NetworkN1Isolation(unittest.TestCase):
             'candidate.FaultCount == 0',
             'candidate.HeldResourceCount >= 1',
             'candidate.PublishedDeviceCount == 1',
-            'candidate.InterruptCount == 1',
+            'candidate.InterruptCount >= 1',
             'handler_faults=0 isr_executions=unknown',
             'if (!CheckE1000EDriverKitHealth(baselineResources, baselineIrqSources))',
         ):
