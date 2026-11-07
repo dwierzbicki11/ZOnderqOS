@@ -49,6 +49,10 @@ def serve(port: int, reconnects: int = 0) -> None:
                     if not chunk:
                         break
                     received.extend(chunk)
+                    # Reject an invalid prefix immediately: do not wait for a
+                    # timeout or peer shutdown when the request is impossible.
+                    if not request.startswith(received):
+                        raise ValueError(f"invalid TCP request prefix cycle={cycle}")
                 if bytes(received) != request:
                     raise ValueError(f"unexpected TCP request cycle={cycle} length={len(received)}")
                 connection.sendall(response)
@@ -131,6 +135,33 @@ def self_test() -> None:
         worker.join(timeout=5)
         if worker.is_alive() or len(errors) != 1 or not isinstance(errors[0], ValueError):
             raise AssertionError(f"malformed request was not rejected: {errors}")
+    # A wrong prefix must be rejected even if the client keeps its write
+    # side open. This exercises the incremental receive path, not EOF.
+    errors = []
+    def reject_prefix_server():
+        try:
+            serve(port)
+        except Exception as exc:
+            errors.append(exc)
+    worker = threading.Thread(target=reject_prefix_server, daemon=True)
+    worker.start()
+    connection = None
+    for _ in range(100):
+        try:
+            connection = socket.create_connection(("127.0.0.1", port), timeout=1)
+            break
+        except ConnectionRefusedError:
+            time.sleep(0.02)
+    if connection is None:
+        raise AssertionError("prefix rejection server did not start")
+    with connection:
+        connection.settimeout(3)
+        connection.sendall(b"INVALID-PREFIX")
+        if connection.recv(1):
+            raise AssertionError("server replied to invalid TCP prefix")
+    worker.join(timeout=3)
+    if worker.is_alive() or len(errors) != 1 or not isinstance(errors[0], ValueError):
+        raise AssertionError(f"invalid prefix was not rejected promptly: {errors}")
     assert reconnect_request(1) != reconnect_request(2)
     assert reconnect_response(1) != reconnect_response(2)
     for bad in (0, 3):
