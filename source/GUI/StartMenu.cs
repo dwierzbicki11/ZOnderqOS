@@ -42,6 +42,13 @@ namespace ZonderqOS.GUI
         // remembers the visible tiny page size across mode changes.
         private int lastTinyCapacity = -1;
 
+        // Tools Scrollbar state
+        private int toolScrollRow;
+        private int toolTotalRows;
+        private int toolVisibleRows = 2;
+        private bool scrollThumbHovered;
+        private bool scrollTrackHovered;
+
         private const int Padding = 14;
         private const int HeaderHeight = 66;
         private const int SearchTop = 76;
@@ -145,6 +152,7 @@ namespace ZonderqOS.GUI
             searchText = string.Empty;
             selectedResult = -1;
             tinyFirstResult = 0;
+            toolScrollRow = 0;
             lastPointerX = int.MinValue;
             lastPointerY = int.MinValue;
             UpdateLayout();
@@ -221,27 +229,55 @@ namespace ZonderqOS.GUI
                 visiblePinned++;
             }
 
-            // Tools use a stable three-column, two-row grid. This keeps six system tools
-            // inside the menu instead of shrinking them until labels/icons overlap.
+            // Tools use a scrollable three-column grid with scrollbar when rows exceed visible capacity.
             const int toolColumns = 3;
             const int toolGap = 8;
+            int maxAvailableToolsHeight = Height - FooterHeight - ToolsCardsY - 6;
+            toolVisibleRows = Math.Max(1, (maxAvailableToolsHeight + ToolsCardsGap) / (ToolsCardsHeight + ToolsCardsGap));
+
+            int matchingToolCount = 0;
+            for (int i = 0; i < toolButtons.Count; i++)
+            {
+                if (Matches(toolLabels[i]))
+                    matchingToolCount++;
+            }
+            toolTotalRows = (matchingToolCount + toolColumns - 1) / toolColumns;
+            bool hasToolScroll = toolTotalRows > toolVisibleRows;
+
+            if (!hasToolScroll || toolScrollRow > toolTotalRows - toolVisibleRows)
+                toolScrollRow = Math.Max(0, Math.Min(toolScrollRow, Math.Max(0, toolTotalRows - toolVisibleRows)));
+
+            int scrollReserved = hasToolScroll ? 14 : 0;
             int toolWidth = Math.Max(60,
-                (Width - Padding * 2 - toolGap * (toolColumns - 1)) / toolColumns);
+                (Width - Padding * 2 - scrollReserved - toolGap * (toolColumns - 1)) / toolColumns);
+
             int toolIndex = 0;
             for (int i = 0; i < toolButtons.Count; i++)
             {
                 Button button = toolButtons[i];
                 bool matches = Matches(toolLabels[i]);
-                button.Visible = matches;
                 if (!matches)
+                {
+                    button.Visible = false;
                     continue;
+                }
 
-                int row = toolIndex / toolColumns;
+                int absRow = toolIndex / toolColumns;
                 int column = toolIndex % toolColumns;
-                button.X = X + Padding + column * (toolWidth + toolGap);
-                button.Y = Y + ToolsCardsY + row * (ToolsCardsHeight + ToolsCardsGap);
-                button.Width = toolWidth;
-                button.Height = ToolsCardsHeight;
+                int row = absRow - toolScrollRow;
+
+                if (row >= 0 && row < toolVisibleRows)
+                {
+                    button.Visible = true;
+                    button.X = X + Padding + column * (toolWidth + toolGap);
+                    button.Y = Y + ToolsCardsY + row * (ToolsCardsHeight + ToolsCardsGap);
+                    button.Width = toolWidth;
+                    button.Height = ToolsCardsHeight;
+                }
+                else
+                {
+                    button.Visible = false;
+                }
                 toolIndex++;
             }
 
@@ -590,6 +626,30 @@ namespace ZonderqOS.GUI
                 if (pinnedButtons[i].Visible)
                     visibleIndex++;
             SmallTextRenderer.Draw(canvas, "NARZEDZIA", X + Padding, Y + ToolsLabelY, Muted);
+
+            // Tools Scrollbar and Page Controls if needed
+            if (!TinyLayout && toolTotalRows > toolVisibleRows)
+            {
+                int controlsX = X + Width - Padding - 58;
+                SmallTextRenderer.Draw(canvas, "▲", controlsX, Y + ToolsLabelY, toolScrollRow > 0 ? SystemTheme.Accent : Muted);
+                string pageInfo = (toolScrollRow + 1) + "/" + toolTotalRows;
+                SmallTextRenderer.DrawCentered(canvas, pageInfo, controlsX + 12, Y + ToolsLabelY, 32, Muted);
+                SmallTextRenderer.Draw(canvas, "▼", controlsX + 46, Y + ToolsLabelY, toolScrollRow < toolTotalRows - toolVisibleRows ? SystemTheme.Accent : Muted);
+
+                // Vertical scrollbar track and thumb on right edge
+                int scrollX = X + Width - Padding - 8;
+                int scrollY = Y + ToolsCardsY;
+                int scrollH = toolVisibleRows * ToolsCardsHeight + (toolVisibleRows - 1) * ToolsCardsGap;
+
+                Color trackBg = scrollTrackHovered ? Color.FromArgb(28, 36, 46) : Color.FromArgb(20, 26, 33);
+                UiPainter.RoundedPanel(canvas, scrollX, scrollY, 6, scrollH, 3, trackBg, Color.FromArgb(40, 50, 62));
+
+                int thumbH = Math.Max(16, (scrollH * toolVisibleRows) / toolTotalRows);
+                int maxTravel = scrollH - thumbH;
+                int thumbY = scrollY + (toolTotalRows > toolVisibleRows ? (maxTravel * toolScrollRow) / (toolTotalRows - toolVisibleRows) : 0);
+                Color thumbColor = scrollThumbHovered ? SystemTheme.Accent : SystemTheme.AccentSoft;
+                canvas.DrawFilledRectangle(thumbColor, scrollX + 1, thumbY, 4, thumbH);
+            }
             for (int i = 0; i < toolButtons.Count; i++)
             {
                 Button button = toolButtons[i];
@@ -709,6 +769,23 @@ namespace ZonderqOS.GUI
             {
                 ChangeTinyPage(key.Key == ConsoleKeyEx.PageDown ? 1 : -1);
                 return true;
+            }
+
+            if (!TinyLayout && key.Modifiers == 0 &&
+                (key.Key == ConsoleKeyEx.PageUp || key.Key == ConsoleKeyEx.PageDown))
+            {
+                if (key.Key == ConsoleKeyEx.PageDown && toolTotalRows > toolVisibleRows)
+                {
+                    toolScrollRow = Math.Min(toolTotalRows - toolVisibleRows, toolScrollRow + toolVisibleRows);
+                    UpdateLayout();
+                    return true;
+                }
+                else if (key.Key == ConsoleKeyEx.PageUp && toolTotalRows > toolVisibleRows)
+                {
+                    toolScrollRow = Math.Max(0, toolScrollRow - toolVisibleRows);
+                    UpdateLayout();
+                    return true;
+                }
             }
 
             // Navigate filtered results without opening a different app on Enter.
@@ -849,6 +926,65 @@ namespace ZonderqOS.GUI
                 {
                     ChangeTinyPage(1);
                     return;
+                }
+            }
+
+            scrollThumbHovered = false;
+            scrollTrackHovered = false;
+            if (!TinyLayout && toolTotalRows > toolVisibleRows)
+            {
+                int controlsX = X + Width - Padding - 58;
+                if (mouseY >= Y + ToolsLabelY - 4 && mouseY < Y + ToolsLabelY + 16)
+                {
+                    if (mouseX >= controlsX - 4 && mouseX < controlsX + 16)
+                    {
+                        if (isClicked && !wasClicked && toolScrollRow > 0)
+                        {
+                            toolScrollRow--;
+                            UpdateLayout();
+                            return;
+                        }
+                    }
+                    else if (mouseX >= controlsX + 42 && mouseX < controlsX + 62)
+                    {
+                        if (isClicked && !wasClicked && toolScrollRow < toolTotalRows - toolVisibleRows)
+                        {
+                            toolScrollRow++;
+                            UpdateLayout();
+                            return;
+                        }
+                    }
+                }
+
+                int scrollX = X + Width - Padding - 10;
+                int scrollY = Y + ToolsCardsY;
+                int scrollH = toolVisibleRows * ToolsCardsHeight + (toolVisibleRows - 1) * ToolsCardsGap;
+                if (mouseX >= scrollX - 4 && mouseX < scrollX + 14 && mouseY >= scrollY && mouseY < scrollY + scrollH)
+                {
+                    scrollTrackHovered = true;
+                    int thumbH = Math.Max(16, (scrollH * toolVisibleRows) / toolTotalRows);
+                    int maxTravel = scrollH - thumbH;
+                    int thumbY = scrollY + (toolTotalRows > toolVisibleRows ? (maxTravel * toolScrollRow) / (toolTotalRows - toolVisibleRows) : 0);
+                    if (mouseY >= thumbY && mouseY < thumbY + thumbH)
+                    {
+                        scrollThumbHovered = true;
+                    }
+
+                    if (isClicked && !wasClicked)
+                    {
+                        if (mouseY < thumbY && toolScrollRow > 0)
+                        {
+                            toolScrollRow--;
+                            UpdateLayout();
+                            return;
+                        }
+                        else if (mouseY > thumbY + thumbH && toolScrollRow < toolTotalRows - toolVisibleRows)
+                        {
+                            toolScrollRow++;
+                            UpdateLayout();
+                            return;
+                        }
+                    }
                 }
             }
             // A button callback may launch an app, lock the session or power
