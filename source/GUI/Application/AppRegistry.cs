@@ -49,6 +49,8 @@ namespace ZonderqOS.GUI.Apps
         public const string Demo3D = "demo-3d";
         public const string Timer = "timer";
         public const string BasicIde = "basic-ide";
+        public const string SpaceInvaders = "space-invaders";
+        public const string PassVault = "pass-vault";
     }
 
     public sealed class AppDescriptor

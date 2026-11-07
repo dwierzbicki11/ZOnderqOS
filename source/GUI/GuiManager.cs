@@ -829,6 +829,18 @@ namespace ZonderqOS.GUI
                 "Zintegrowane srodowisko programistyczne i interpreter BASIC",
                 AppCategory.Tools, IconType.Terminal, () => LaunchBasicIde(130, 60),
                 StartMenuPlacement.Tool, 19, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.SpaceInvaders, "Space Invaders", "Space Invaders", "Space Invaders",
+                "Retro zrecznosciowa gra kosmiczna z bunkrami i dzwiekami",
+                AppCategory.Games, IconType.Play, () => LaunchSpaceInvaders(150, 60),
+                StartMenuPlacement.Tool, 20, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.PassVault, "Sejf Hasel", "Sejf Hasel", "Sejf Hasel",
+                "Menedzer hasel, generator i bezpieczny sejf notatek z kodem PIN",
+                AppCategory.Tools, IconType.Settings, () => LaunchPassVault(160, 65),
+                StartMenuPlacement.Tool, 21, -1, true));
         }
 
         private void PopulateStartMenu()
@@ -1352,6 +1364,16 @@ namespace ZonderqOS.GUI
         private void LaunchBasicIde(int x, int y)
         {
             applicationManager.Launch(new BasicIdeApp(x, y, null));
+        }
+
+        private void LaunchSpaceInvaders(int x, int y)
+        {
+            applicationManager.Launch(new SpaceInvadersApp(x, y, null));
+        }
+
+        private void LaunchPassVault(int x, int y)
+        {
+            applicationManager.Launch(new PassVaultApp(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
