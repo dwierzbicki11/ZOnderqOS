@@ -20,6 +20,9 @@ obj/
 *.log
 *.dmp
 *.core
+__pycache__/
+*.pyc
+*.pyo
 
 # OS junk
 .DS_Store

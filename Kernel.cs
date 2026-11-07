@@ -47,6 +47,7 @@ namespace ZonderqOS
                     throw new InvalidOperationException(
                         "No approved ZONDERQDATA volume: refusing normal boot before any filesystem/user writes.");
                 BootSplash.Advance(27, "DYSK GOTOWY");
+                ZonderqOS.Platform.SpeakerInitializer.Initialize();
                 UserManager.Initialize();
                 Command.Initialize();
                 BootSplash.Advance(43, "URUCHAMIANIE POWLOKI");

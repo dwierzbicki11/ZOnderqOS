@@ -775,6 +775,12 @@ namespace ZonderqOS.GUI
                 "Podglad plikow w formacie szesnastkowym i ASCII",
                 AppCategory.Tools, IconType.HexViewer, () => LaunchHexViewer(185, 85),
                 StartMenuPlacement.Tool, 11, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.MusicPlayer, "Muzyka", "Muzyka", "Muzyka",
+                "Odtwarzacz muzyki chiptune z wizualizatorem",
+                AppCategory.Tools, IconType.Play, () => LaunchMusicPlayer(160, 75),
+                StartMenuPlacement.Tool, 12, -1, true));
         }
 
         private void PopulateStartMenu()
@@ -1240,6 +1246,11 @@ namespace ZonderqOS.GUI
         private void LaunchHexViewer(int x, int y)
         {
             applicationManager.Launch(new HexViewerApp(x, y, null));
+        }
+
+        private void LaunchMusicPlayer(int x, int y)
+        {
+            applicationManager.Launch(new MusicPlayerApp(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,

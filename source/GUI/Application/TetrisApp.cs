@@ -114,6 +114,7 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            ZonderqOS.Hardware.Speaker.Stop();
             base.Close();
             closeCallback?.Invoke();
         }
@@ -290,6 +291,12 @@ namespace ZonderqOS.GUI.Apps
                 else if (cleared == 2) score += 300 * level;
                 else if (cleared == 3) score += 500 * level;
                 else if (cleared >= 4) score += 800 * level;
+
+                ZonderqOS.Hardware.Speaker.Tone(1200);
+            }
+            else
+            {
+                ZonderqOS.Hardware.Speaker.Stop();
             }
         }
 

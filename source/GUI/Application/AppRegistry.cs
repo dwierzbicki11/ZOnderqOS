@@ -41,6 +41,7 @@ namespace ZonderqOS.GUI.Apps
         public const string Paint = "paint";
         public const string Screenshot = "screenshot";
         public const string HexViewer = "hex-viewer";
+        public const string MusicPlayer = "music-player";
     }
 
     public sealed class AppDescriptor

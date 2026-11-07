@@ -61,6 +61,7 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            ZonderqOS.Hardware.Speaker.Stop();
             base.Close();
             closeCallback?.Invoke();
         }
@@ -218,12 +219,18 @@ namespace ZonderqOS.GUI.Apps
                 score += 10;
                 if (score > highScore)
                     highScore = score;
+                ZonderqOS.Hardware.Speaker.Tone(1050);
                 SpawnFood();
+            }
+            else
+            {
+                ZonderqOS.Hardware.Speaker.Stop();
             }
         }
 
         private void OnGameOver()
         {
+            ZonderqOS.Hardware.Speaker.Stop();
             status = GameStatus.GameOver;
         }
 
