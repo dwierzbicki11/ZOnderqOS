@@ -102,6 +102,52 @@ internal static class AudioProbeFeederSmoke
         Check(ok && waits == 0 && settleCalls == 1 && settledBytes == 4 + 16384,
             "direct probe queues silence and waits once before stop");
 
+        // The responsive variant must preserve the same 86 ms total while
+        // allowing a withdrawn device to abort before the next 10 ms slice.
+        int responsiveElapsed = 0;
+        int responsiveCalls = 0;
+        int responsiveWrites = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettleResponsive(new byte[4],
+            (source, offset, count) => { responsiveWrites++; return count; },
+            () => true,
+            milliseconds =>
+            {
+                Check(milliseconds == (responsiveCalls == 8 ? 6u : 10u),
+                    "responsive settle slice duration");
+                responsiveElapsed += (int)milliseconds;
+                responsiveCalls++;
+            }, out waits);
+        Check(ok && waits == 0 && responsiveElapsed == 86 &&
+            responsiveCalls == 9 && responsiveWrites == 5,
+            "responsive settle preserves ring duration and exact write count");
+
+        bool responsiveWithdrawn = false;
+        int responsiveWithdrawWaits = 0;
+        int responsiveWithdrawWrites = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettleResponsive(new byte[4],
+            (source, offset, count) => { responsiveWithdrawWrites++; return count; },
+            () => !responsiveWithdrawn,
+            milliseconds =>
+            {
+                Check(milliseconds == 10, "first responsive settle slice");
+                responsiveWithdrawWaits++;
+                responsiveWithdrawn = true;
+            }, out waits);
+        Check(!ok && responsiveWithdrawWaits == 1 &&
+            responsiveWithdrawWrites == 5 && waits == 0,
+            "withdrawal during responsive settle aborts after first slice");
+
+        // A controller can be withdrawn by the readiness callback itself,
+        // between the two checks immediately preceding a settle slice.
+        int responsiveReadyChecks = 0;
+        int responsiveStaleWaits = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettleResponsive(new byte[4],
+            (source, offset, count) => count,
+            () => ++responsiveReadyChecks <= 11,
+            milliseconds => responsiveStaleWaits++, out waits);
+        Check(!ok && responsiveStaleWaits == 0 && waits == 0,
+            "responsive settle refuses withdrawal before sleeping");
+
         bool withdrawnDuringSettle = false;
         settleCalls = 0;
         ok = AudioProbeRingFeeder.FeedAndSettle(new byte[4],
