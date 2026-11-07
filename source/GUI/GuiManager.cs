@@ -1275,9 +1275,28 @@ namespace ZonderqOS.GUI
             return false;
         }
 
+        private bool IsDesktopOccluded()
+        {
+            if (applicationManager == null)
+                return false;
+
+            var apps = applicationManager.Applications;
+            for (int i = apps.Count - 1; i >= 0; i--)
+            {
+                Application app = apps[i];
+                if (app != null && app.IsRunning && app.Window != null &&
+                    app.Window.Visible && !app.Window.IsMinimized && app.Window.IsMaximized)
+                    return true;
+            }
+            return false;
+        }
+
         private void RenderDesktopShortcuts()
         {
             if (desktopShortcuts == null || !global::ZonderqOS.SystemSettings.ShowDesktopIcons)
+                return;
+
+            if (IsDesktopOccluded())
                 return;
 
             for (int i = 0; i < desktopShortcuts.Length; i++)
@@ -1323,6 +1342,9 @@ namespace ZonderqOS.GUI
 
         private void RenderDesktop()
         {
+            if (IsDesktopOccluded())
+                return;
+
             int mode = global::ZonderqOS.SystemSettings.DesktopBackgroundMode;
             if (mode == 0 && wallpaperCanvas != null)
             {
@@ -1333,7 +1355,6 @@ namespace ZonderqOS.GUI
             Color background = mode == 1
                 ? Color.FromArgb(25, 30, 36)
                 : Color.FromArgb(17, 31, 47);
-            canvas.Clear(background);
             canvas.DrawFilledRectangle(background, 0, 0, (int)canvas.Width,
                 (int)canvas.Height - TaskbarHeight);
         }
