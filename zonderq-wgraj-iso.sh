@@ -3,7 +3,16 @@
 set -Eeuo pipefail
 
 DEVICE="/dev/sdb"
-ISO="${1:-$HOME/Pulpit/ZOnderqOS/output-3095/ZonderqOS-3095-disk.iso}"
+ISO="$HOME/Pulpit/ZOnderqOS/output-3095/ZonderqOS-3095-disk.iso"
+
+for arg in "$@"; do
+    if [[ "$arg" == /dev/* ]]; then
+        DEVICE="$arg"
+    elif [[ -f "$arg" || "$arg" == *.iso ]]; then
+        ISO="$arg"
+    fi
+done
+
 DATA_START=65536  # Existing ZONDERQDATA starts at LBA 65536 (32 MiB)
 
 fail() { printf '\n[STOP] %s\n' "$*" >&2; exit 1; }
