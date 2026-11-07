@@ -17,7 +17,9 @@ namespace ZonderqOS.Commands
             ulong secs = seconds % 60UL;
 
             string uptimeStr = (hours > 0 ? hours + "h " : "") + mins + "m " + secs + "s";
-            string username = UserManager.CurrentUser != null ? UserManager.CurrentUser.Username : "zonderq";
+            string username = SecurityContext.IsAuthenticated && !string.IsNullOrEmpty(SecurityContext.CurrentUser)
+                ? SecurityContext.CurrentUser
+                : "zonderq";
             string userStr = username + "@zonderqos";
             string separator = "----------------------------------";
 
