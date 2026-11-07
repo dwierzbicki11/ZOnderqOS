@@ -217,7 +217,7 @@ internal static class AudioDirectProbeSmoke
         int waits = 0;
         Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
         {
-            check(ms == 86, "successful direct probe waits one HDA ring period");
+            check(ms == 10 || ms == 6, "successful direct probe waits in bounded HDA settle slices");
             waits++;
         };
         try
@@ -238,7 +238,7 @@ internal static class AudioDirectProbeSmoke
             check(goodResult, "direct probe feeds frame-aligned PCM through the real feeder");
             check(good.StartCalls == 1 && good.StopCalls == 1 &&
                 !good.IsRunning && good.WrittenBytes == Pcm.Length + 16384 &&
-                waits == 1, "direct probe stops after one silent ring and settle");
+                waits == 9, "direct probe stops after one silent ring and nine settle slices");
             string normalProgress = normalTrace.ToString();
             check(normalProgress.Contains("ACCEPTED_TO_RING") &&
                 normalProgress.Contains("pcmQueued=16") &&
