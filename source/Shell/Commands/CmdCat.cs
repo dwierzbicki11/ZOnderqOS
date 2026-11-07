@@ -15,6 +15,20 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
+            CommandIO.LastCommandSuccess = false;
+            try
+            {
+                ExecuteCore(args, ref currentPath);
+            }
+            catch (Exception ex)
+            {
+                CommandIO.LastCommandSuccess = false;
+                WriteMessage.WriteError($"Could not read file: {ex.Message}", "CMD");
+            }
+        }
+
+        private static void ExecuteCore(string[] args, ref string currentPath)
+        {
             if (args.Length <= 1)
             {
                 WriteMessage.WriteError("Usage: cat <file>", "CMD");
