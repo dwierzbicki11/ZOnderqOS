@@ -793,6 +793,12 @@ namespace ZonderqOS.GUI
                 "Kultowa gra logiczna polegajaca na laczeniu liczb",
                 AppCategory.Games, IconType.Play, () => LaunchGame2048(180, 60),
                 StartMenuPlacement.Tool, 14, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.ThemeStudio, "Studio Motywow", "Studio Motywow", "Motywy",
+                "Personalizacja motywow kolorystycznych i tla pulpitu",
+                AppCategory.Tools, IconType.Settings, () => LaunchThemeStudio(150, 70),
+                StartMenuPlacement.Tool, 15, -1, true));
         }
 
         private void PopulateStartMenu()
@@ -1275,6 +1281,11 @@ namespace ZonderqOS.GUI
             applicationManager.Launch(new Game2048App(x, y, null));
         }
 
+        private void LaunchThemeStudio(int x, int y)
+        {
+            applicationManager.Launch(new ThemeStudioApp(x, y, null));
+        }
+
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
             bool rightClicked, bool wasRightClicked)
         {
@@ -1476,9 +1487,16 @@ namespace ZonderqOS.GUI
                 return;
             }
 
-            Color background = mode == 1
-                ? Color.FromArgb(25, 30, 36)
-                : Color.FromArgb(17, 31, 47);
+            Color background = mode switch
+            {
+                1 => Color.FromArgb(25, 30, 36),     // Grafit
+                2 => Color.FromArgb(17, 31, 47),     // Cosmos Navy
+                3 => Color.FromArgb(8, 10, 14),      // OLED Midnight
+                4 => Color.FromArgb(0, 128, 128),    // Retro 95 Teal
+                5 => Color.FromArgb(10, 26, 18),     // Cyber Matrix
+                6 => Color.FromArgb(22, 36, 48),     // Nordic Glacier
+                _ => Color.FromArgb(17, 31, 47)
+            };
             canvas.DrawFilledRectangle(background, 0, 0, (int)canvas.Width,
                 (int)canvas.Height - TaskbarHeight);
         }

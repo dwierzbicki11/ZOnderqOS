@@ -95,6 +95,10 @@ namespace ZonderqOS
                 {
                     case 1: return "GRAFIT";
                     case 2: return "COSMOS NAVY";
+                    case 3: return "OLED MIDNIGHT";
+                    case 4: return "RETRO 95 TEAL";
+                    case 5: return "CYBER MATRIX";
+                    case 6: return "NORDIC GLACIER";
                     default: return "TAPETA PNG";
                 }
             }
@@ -106,8 +110,13 @@ namespace ZonderqOS
             {
                 switch (AccentTheme)
                 {
-                    case 1: return "STEEL";
-                    case 2: return "EMERALD";
+                    case 1: return "STEEL GRAPHITE";
+                    case 2: return "EMERALD FOREST";
+                    case 3: return "DARK CYBERPUNK";
+                    case 4: return "NORDIC FROST";
+                    case 5: return "RETRO 95";
+                    case 6: return "OLED GOLD";
+                    case 7: return "CRIMSON FLAME";
                     default: return "COSMOS BLUE";
                 }
             }
@@ -304,10 +313,24 @@ namespace ZonderqOS
             return Save();
         }
 
+        public static void SetDesktopBackground(int id)
+        {
+            if (id < 0 || id > 6) id = 0;
+            DesktopBackgroundMode = id;
+            Save();
+        }
+
+        public static void SetAccentTheme(int id)
+        {
+            if (id < 0 || id > 7) id = 0;
+            AccentTheme = id;
+            Save();
+        }
+
         public static void CycleDesktopBackground()
         {
             DesktopBackgroundMode++;
-            if (DesktopBackgroundMode > 2)
+            if (DesktopBackgroundMode > 6)
                 DesktopBackgroundMode = 0;
             Save();
         }
@@ -315,7 +338,7 @@ namespace ZonderqOS
         public static void CycleAccentTheme()
         {
             AccentTheme++;
-            if (AccentTheme > 2)
+            if (AccentTheme > 7)
                 AccentTheme = 0;
             Save();
         }
@@ -719,11 +742,11 @@ namespace ZonderqOS
                         TimeZoneOffsetHours = number;
                     break;
                 case "desktop_background":
-                    if (int.TryParse(value, out number) && number >= 0 && number <= 2)
+                    if (int.TryParse(value, out number) && number >= 0 && number <= 6)
                         DesktopBackgroundMode = number;
                     break;
                 case "accent_theme":
-                    if (int.TryParse(value, out number) && number >= 0 && number <= 2)
+                    if (int.TryParse(value, out number) && number >= 0 && number <= 7)
                         AccentTheme = number;
                     break;
                 case "auto_lock_minutes":
