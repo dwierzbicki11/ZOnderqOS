@@ -63,7 +63,9 @@ namespace ZonderqOS.SystemCore
                 return "HD Audio controller (stock Cosmos HdAudioDriver candidate)";
             if (subclass == 0x03)
                 return "HD Audio subclass, unsupported programming interface";
-            return "Legacy multimedia audio controller (no stock AC97 driver)";
+            if (subclass == 0x01 && programmingInterface != 0x00)
+                return "Legacy multimedia audio subclass, unsupported programming interface";
+            return "Legacy multimedia audio controller (AC97 not verified; no stock AC97 driver)";
         }
 
         /// <summary>
