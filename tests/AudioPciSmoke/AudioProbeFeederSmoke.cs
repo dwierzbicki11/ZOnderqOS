@@ -121,6 +121,27 @@ internal static class AudioProbeFeederSmoke
             responsiveCalls == 9 && responsiveWrites == 5,
             "responsive settle preserves ring duration and exact write count");
 
+        // Withdrawal during the final 6 ms slice must still fail closed,
+        // even though all nominal settle time has been requested.
+        int finalSliceCalls = 0;
+        int finalSliceElapsed = 0;
+        bool finalSliceWithdrawn = false;
+        ok = AudioProbeRingFeeder.FeedAndSettleResponsive(new byte[4],
+            (source, offset, count) => count,
+            () => !finalSliceWithdrawn,
+            milliseconds =>
+            {
+                finalSliceCalls++;
+                finalSliceElapsed += (int)milliseconds;
+                if (finalSliceCalls == 9)
+                {
+                    Check(milliseconds == 6, "last responsive settle slice is 6ms");
+                    finalSliceWithdrawn = true;
+                }
+            }, out waits);
+        Check(!ok && finalSliceCalls == 9 && finalSliceElapsed == 86 && waits == 0,
+            "withdrawal during last settle slice is not reported as success");
+
         bool responsiveWithdrawn = false;
         int responsiveWithdrawWaits = 0;
         int responsiveWithdrawWrites = 0;
