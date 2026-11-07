@@ -694,7 +694,8 @@ internal static class AudioDirectProbeSmoke
                 abortedTrace.ToString().Contains("pcmQueued=16") &&
                 abortedTrace.ToString().Contains("silenceQueued=0") &&
                 abortedTrace.ToString().Contains("writeCalls=1") &&
-                abortedTrace.ToString().Contains("settleRequests=0"),
+                abortedTrace.ToString().Contains("settleSlices=0 settleRequestedMs=0") &&
+                abortedTrace.ToString().Contains("settleCompletedMs=0"),
                 "withdrawal telemetry never reports an unrequested settle or silent tail");
 
             // Format drift during the 86ms settle is also a failure, even
