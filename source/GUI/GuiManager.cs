@@ -799,6 +799,18 @@ namespace ZonderqOS.GUI
                 "Personalizacja motywow kolorystycznych i tla pulpitu",
                 AppCategory.Tools, IconType.Settings, () => LaunchThemeStudio(150, 70),
                 StartMenuPlacement.Tool, 15, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Solitaire, "Pasjans", "Pasjans", "Pasjans",
+                "Klasyczna gra karciana Pasjans Klondike",
+                AppCategory.Games, IconType.Play, () => LaunchSolitaire(140, 50),
+                StartMenuPlacement.Tool, 16, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Demo3D, "Demoscena 3D", "Demoscena 3D", "Demoscena 3D",
+                "Programowy silnik i demonstracja grafiki trojwymiarowej",
+                AppCategory.Tools, IconType.Rotate, () => LaunchDemo3D(160, 55),
+                StartMenuPlacement.Tool, 17, -1, true));
         }
 
         private void PopulateStartMenu()
@@ -1284,6 +1296,16 @@ namespace ZonderqOS.GUI
         private void LaunchThemeStudio(int x, int y)
         {
             applicationManager.Launch(new ThemeStudioApp(x, y, null));
+        }
+
+        private void LaunchSolitaire(int x, int y)
+        {
+            applicationManager.Launch(new SolitaireApp(x, y, null));
+        }
+
+        private void LaunchDemo3D(int x, int y)
+        {
+            applicationManager.Launch(new Demo3DApp(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
