@@ -121,6 +121,41 @@ internal static class AudioProbeFeederSmoke
             responsiveCalls == 9 && responsiveWrites == 5,
             "responsive settle preserves ring duration and exact write count");
 
+        // Backpressure and final settle are independent phases: a blocked
+        // PCM write must account for 1 ms waits without changing the nine
+        // settle slices or silently losing a frame.
+        int responsiveBlockedWrites = 0;
+        int responsiveBackpressureWaits = 0;
+        int responsiveSettleSlices = 0;
+        int responsiveSettleMs = 0;
+        int responsiveAcceptedBytes = 0;
+        ok = AudioProbeRingFeeder.FeedAndSettleResponsive(new byte[8],
+            (source, offset, count) =>
+            {
+                responsiveBlockedWrites++;
+                if (responsiveBlockedWrites == 1)
+                    return 0;
+                responsiveAcceptedBytes += count;
+                return count;
+            },
+            () => true,
+            milliseconds =>
+            {
+                if (milliseconds == 1)
+                    responsiveBackpressureWaits++;
+                else
+                {
+                    Check(milliseconds == (responsiveSettleSlices == 8 ? 6u : 10u),
+                        "responsive backpressure settle slice");
+                    responsiveSettleSlices++;
+                    responsiveSettleMs += (int)milliseconds;
+                }
+            }, out waits);
+        Check(ok && waits == 1 && responsiveBackpressureWaits == 1 &&
+            responsiveSettleSlices == 9 && responsiveSettleMs == 86 &&
+            responsiveAcceptedBytes == 8 + 16384,
+            "responsive backpressure preserves PCM, silence and settle accounting");
+
         // Withdrawal during the final 6 ms slice must still fail closed,
         // even though all nominal settle time has been requested.
         int finalSliceCalls = 0;
