@@ -19,7 +19,7 @@ namespace ZonderqOS.GUI.Apps
 
         private static readonly string[] ThemeNames =
         {
-            "Cosmos Blue",
+            "Zorin & Win Blue",
             "Steel Graphite",
             "Emerald Forest",
             "Cyberpunk Neon",
@@ -31,7 +31,7 @@ namespace ZonderqOS.GUI.Apps
 
         private static readonly Color[] ThemeAccentColors =
         {
-            Color.FromArgb(64, 143, 204),
+            Color.FromArgb(27, 117, 208),
             Color.FromArgb(130, 151, 170),
             Color.FromArgb(62, 168, 118),
             Color.FromArgb(245, 55, 150),

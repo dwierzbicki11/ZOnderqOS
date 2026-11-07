@@ -16,9 +16,12 @@ namespace ZonderqOS.GUI
 
         private readonly ApplicationManager applicationManager;
         private readonly Action notificationClick;
+        private readonly Action clockClick;
         private readonly Button startButton;
         private int hoveredAppIndex = -1;
         private bool overflowHovered;
+        private bool clockHovered;
+        private bool peekHovered;
         private int firstVisibleAppIndex;
         private Application lastActiveApplication;
         private int lastActiveRunningIndex = -1;
@@ -64,16 +67,23 @@ namespace ZonderqOS.GUI
         }
 
         public Taskbar(int screenWidth, int screenHeight, int height, Action onStartClick, ApplicationManager manager)
-            : this(screenWidth, screenHeight, height, onStartClick, manager, null)
+            : this(screenWidth, screenHeight, height, onStartClick, manager, null, null)
         {
         }
 
         public Taskbar(int screenWidth, int screenHeight, int height, Action onStartClick,
             ApplicationManager manager, Action onNotificationClick)
+            : this(screenWidth, screenHeight, height, onStartClick, manager, onNotificationClick, null)
+        {
+        }
+
+        public Taskbar(int screenWidth, int screenHeight, int height, Action onStartClick,
+            ApplicationManager manager, Action onNotificationClick, Action onClockClick)
             : base(0, screenHeight - height, screenWidth, height)
         {
             applicationManager = manager;
             notificationClick = onNotificationClick;
+            clockClick = onClockClick;
 
             startButton = new Button(4, Y + 4, StartButtonWidth - 8, height - 8, "", onStartClick);
             startButton.BackgroundColor = Color.FromArgb(27, 34, 42);
@@ -233,7 +243,21 @@ namespace ZonderqOS.GUI
             for (int i = 0; i < Children.Count; i++)
                 Children[i].Render(canvas);
 
-            IconManager.DrawScaled(canvas, IconType.Start, SidePadding + 9, Y + 11, 22, 22);
+            // Modern Windows & Zorin OS Start Button styling
+            UiPainter.RoundedPanel(canvas, startButton.X, startButton.Y, startButton.Width, startButton.Height,
+                UiMetrics.ButtonRadius, startButton.IsHovered ? SystemTheme.AccentSoft : Color.FromArgb(25, 32, 40),
+                startButton.IsHovered ? SystemTheme.AccentBorder : Color.FromArgb(44, 55, 66));
+
+            // Windows & Zorin OS 4-Tile Modern Emblem
+            int startEmblemX = startButton.X + (startButton.Width - 18) / 2;
+            int startEmblemY = startButton.Y + (startButton.Height - 18) / 2;
+            Color tile1 = startButton.IsHovered ? Color.White : SystemTheme.Accent;
+            Color tile2 = startButton.IsHovered ? Color.FromArgb(220, 240, 255) : SystemTheme.AccentBorder;
+            canvas.DrawFilledRectangle(tile1, startEmblemX, startEmblemY, 8, 8);
+            canvas.DrawFilledRectangle(tile2, startEmblemX + 10, startEmblemY, 8, 8);
+            canvas.DrawFilledRectangle(tile2, startEmblemX, startEmblemY + 10, 8, 8);
+            canvas.DrawFilledRectangle(tile1, startEmblemX + 10, startEmblemY + 10, 8, 8);
+
             canvas.DrawLine(Color.FromArgb(48, 59, 70), StartButtonWidth + 2, Y + 8,
                 StartButtonWidth + 2, Y + Height - 8);
 
@@ -407,8 +431,14 @@ namespace ZonderqOS.GUI
 
             int clockX = Width - 78;
             if (Width >= 240)
+            {
                 canvas.DrawLine(Color.FromArgb(48, 59, 70), clockX - 10, Y + 7,
                     clockX - 10, Y + Height - 7);
+                UiPainter.RoundedPanel(canvas, clockX - 4, Y + 5, 68, Height - 10,
+                    UiMetrics.TileRadius,
+                    clockHovered ? Color.FromArgb(36, 47, 58) : Color.FromArgb(22, 28, 35),
+                    clockHovered ? SystemTheme.AccentBorder : Color.FromArgb(40, 50, 62));
+            }
 
             if (global::ZonderqOS.SystemSettings.ShowTaskbarDate)
             {
@@ -421,6 +451,17 @@ namespace ZonderqOS.GUI
             {
                 SmallTextRenderer.DrawCentered(canvas, cachedTime, clockX, Y + 19, 68,
                     Color.FromArgb(232, 237, 242));
+            }
+
+            // Windows / Zorin OS "Show Desktop" (Aero Peek) button at the right screen edge
+            int peekX = Width - 8;
+            if (Width >= 240)
+            {
+                canvas.DrawLine(Color.FromArgb(48, 59, 70), peekX - 1, Y + 6, peekX - 1, Y + Height - 6);
+                Color peekBg = peekHovered ? SystemTheme.AccentSoft : Color.FromArgb(16, 21, 28);
+                canvas.DrawFilledRectangle(peekBg, peekX, Y + 2, 8, Height - 4);
+                if (peekHovered)
+                    canvas.DrawFilledRectangle(SystemTheme.Accent, peekX + 5, Y + 6, 2, Height - 12);
             }
         }
 
@@ -508,8 +549,35 @@ namespace ZonderqOS.GUI
             hoveredAppIndex = -1;
             overflowHovered = false;
             notificationHovered = false;
+            clockHovered = false;
+            peekHovered = false;
             if (mouseY < Y || mouseY >= Y + Height)
                 return;
+
+            if (Width >= 240)
+            {
+                int peekX = Width - 8;
+                if (mouseX >= peekX && mouseX < Width && mouseY >= Y && mouseY < Y + Height)
+                {
+                    peekHovered = true;
+                    if (isClicked && !wasClicked)
+                    {
+                        applicationManager?.ToggleShowDesktop();
+                        return;
+                    }
+                }
+
+                int clockX = Width - 78;
+                if (mouseX >= clockX - 4 && mouseX < clockX + 66 && mouseY >= Y + 5 && mouseY < Y + Height - 5)
+                {
+                    clockHovered = true;
+                    if (isClicked && !wasClicked)
+                    {
+                        clockClick?.Invoke();
+                        return;
+                    }
+                }
+            }
 
             // The notification tile is deliberately hidden on ultra-narrow
             // desktops. Its invisible old rectangle must not steal clicks

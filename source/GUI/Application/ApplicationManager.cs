@@ -538,5 +538,50 @@ namespace ZonderqOS.GUI.Apps
                     application.Window.Visible && !application.Window.IsMinimized;
             }
         }
+
+        public void ToggleShowDesktop()
+        {
+            if (closingAll || !global::ZonderqOS.SecurityContext.IsAuthenticated)
+                return;
+
+            bool anyVisible = false;
+            for (int i = 0; i < applications.Count; i++)
+            {
+                Application app = applications[i];
+                if (app != null && app.IsRunning && app.Window != null && app.Window.Visible && !app.Window.IsMinimized)
+                {
+                    anyVisible = true;
+                    break;
+                }
+            }
+
+            if (anyVisible)
+            {
+                for (int i = 0; i < applications.Count; i++)
+                {
+                    Application app = applications[i];
+                    if (app != null && app.IsRunning && app.Window != null && app.Window.Visible && !app.Window.IsMinimized)
+                    {
+                        app.Window.Minimize();
+                    }
+                }
+                SetActiveStates(null);
+            }
+            else
+            {
+                for (int i = 0; i < applications.Count; i++)
+                {
+                    Application app = applications[i];
+                    if (app != null && app.IsRunning && app.Window != null && app.Window.IsMinimized)
+                    {
+                        app.Window.RestoreFromMinimized();
+                    }
+                }
+                if (applications.Count > 0)
+                {
+                    Activate(applications[applications.Count - 1]);
+                }
+            }
+        }
     }
 }

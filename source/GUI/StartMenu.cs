@@ -511,9 +511,17 @@ namespace ZonderqOS.GUI
                 Math.Max(1, (Width - 24) * (8 - openingFrames) / 8), 2);
             if (openingFrames > 0)
                 openingFrames--;
-            IconManager.DrawScaled(canvas, IconType.Start, X + 17, Y + 13, 30, 30);
-            canvas.DrawString("ZOnderqOS", PCScreenFont.DefaultFont, Text, X + 58, Y + 7);
-            SmallTextRenderer.Draw(canvas, "COSMOS GEN3 DESKTOP", X + 60, Y + 43, Muted);
+
+            // Modern Windows & Zorin 4-tile emblem
+            int emblemX = X + 18;
+            int emblemY = Y + 16;
+            canvas.DrawFilledRectangle(Accent, emblemX, emblemY, 11, 11);
+            canvas.DrawFilledRectangle(SystemTheme.AccentBorder, emblemX + 14, emblemY, 11, 11);
+            canvas.DrawFilledRectangle(SystemTheme.AccentBorder, emblemX, emblemY + 14, 11, 11);
+            canvas.DrawFilledRectangle(Accent, emblemX + 14, emblemY + 14, 11, 11);
+
+            canvas.DrawString("ZOnderqOS", PCScreenFont.DefaultFont, Text, X + 60, Y + 7);
+            SmallTextRenderer.Draw(canvas, "ZORIN & WINDOWS FLUENT DESKTOP", X + 62, Y + 43, Muted);
             canvas.DrawLine(Color.FromArgb(49, 61, 72), X + 1, Y + HeaderHeight, X + Width - 2, Y + HeaderHeight);
         }
 
@@ -611,23 +619,17 @@ namespace ZonderqOS.GUI
                 UiMetrics.ButtonRadius, Color.FromArgb(20, 27, 36));
             canvas.DrawLine(Color.FromArgb(49, 61, 72), X + 1, footerY, X + Width - 2, footerY);
 
-            IconManager.DrawScaled(canvas, IconType.Start, X + Padding, footerY + 21, 24, 24);
+            // Modern Zorin OS & Windows user avatar
+            int avatarX = X + Padding;
+            int avatarY = footerY + 20;
+            UiPainter.RoundedPanel(canvas, avatarX, avatarY, 26, 26, 6, SystemTheme.AccentSoft, SystemTheme.AccentBorder);
+            SmallTextRenderer.DrawCentered(canvas, "Z", avatarX, avatarY + 9, 26, Color.White);
+
             string currentUser = SecurityContext.CurrentUser;
             if (string.IsNullOrEmpty(currentUser))
                 currentUser = "USER";
-            SmallTextRenderer.DrawClipped(canvas, currentUser, X + Padding + 34, footerY + 23, 58, Text);
-            SmallTextRenderer.Draw(canvas, "LOCK", X + Padding + 34, footerY + 38, Muted);
-            int autoLock = global::ZonderqOS.SystemSettings.AutoLockMinutes;
-            if (autoLock <= 0)
-            {
-                SmallTextRenderer.Draw(canvas, "OFF", X + Padding + 62, footerY + 38, Muted);
-            }
-            else
-            {
-                SmallTextRenderer.DrawUInt(canvas, (ulong)autoLock, X + Padding + 62, footerY + 38, Muted);
-                SmallTextRenderer.Draw(canvas, "M", X + Padding + 62 + SmallTextRenderer.WidthUInt((ulong)autoLock) + 3,
-                    footerY + 38, Muted);
-            }
+            SmallTextRenderer.DrawClipped(canvas, currentUser, X + Padding + 34, footerY + 22, 58, Text);
+            SmallTextRenderer.Draw(canvas, "Admin", X + Padding + 34, footerY + 38, SystemTheme.Accent);
 
             if (lockButton != null)
                 RenderPowerButton(canvas, lockButton, IconType.Settings, "BLOKUJ", false);

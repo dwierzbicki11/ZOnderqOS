@@ -21,7 +21,7 @@ namespace ZonderqOS.GUI
                     case 5: return Color.FromArgb(24, 75, 160);   // Retro 95 Classic Navy
                     case 6: return Color.FromArgb(240, 195, 45);  // OLED Midnight Gold
                     case 7: return Color.FromArgb(235, 65, 65);   // Crimson Flame
-                    default: return Color.FromArgb(64, 143, 204); // Cosmos Blue
+                    default: return Color.FromArgb(27, 117, 208); // Zorin OS / Windows 11 Fluent Blue
                 }
             }
         }
@@ -39,7 +39,7 @@ namespace ZonderqOS.GUI
                     case 5: return Color.FromArgb(50, 65, 85);
                     case 6: return Color.FromArgb(65, 55, 20);
                     case 7: return Color.FromArgb(75, 28, 28);
-                    default: return Color.FromArgb(43, 66, 88);
+                    default: return Color.FromArgb(32, 58, 86);
                 }
             }
         }
@@ -57,7 +57,7 @@ namespace ZonderqOS.GUI
                     case 5: return Color.FromArgb(70, 105, 150);
                     case 6: return Color.FromArgb(250, 215, 80);
                     case 7: return Color.FromArgb(250, 95, 95);
-                    default: return Color.FromArgb(67, 135, 191);
+                    default: return Color.FromArgb(48, 138, 224);
                 }
             }
         }

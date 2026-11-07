@@ -124,7 +124,7 @@ namespace ZonderqOS.GUI
                         desktopContextMenu.Visible = false;
                     selectedShortcut = -1;
                     lastShortcutClickTimestamp = 0;
-                }, applicationManager, ToggleNotificationCenter);
+                }, applicationManager, ToggleNotificationCenter, () => LaunchTimer(170, 75));
 
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Security,
@@ -223,6 +223,12 @@ namespace ZonderqOS.GUI
                         if (IsScreenshotShortcut(key))
                         {
                             ScreenshotService.CaptureAndSave(canvas);
+                            continue;
+                        }
+
+                        if (IsShowDesktopShortcut(key))
+                        {
+                            applicationManager?.ToggleShowDesktop();
                             continue;
                         }
 
@@ -1067,6 +1073,24 @@ namespace ZonderqOS.GUI
                 bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
                 bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
                 return control && alt;
+            }
+
+            return false;
+        }
+
+        private static bool IsShowDesktopShortcut(KeyEvent key)
+        {
+            if (key == null)
+                return false;
+
+            if (key.Key == ConsoleKeyEx.F12)
+                return true;
+
+            if (key.Key == ConsoleKeyEx.D)
+            {
+                bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+                bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+                return (control && alt) || (alt && !control);
             }
 
             return false;
