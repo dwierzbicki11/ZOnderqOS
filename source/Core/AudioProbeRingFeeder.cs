@@ -80,6 +80,36 @@ namespace ZonderqOS.SystemCore
             return ready();
         }
 
+        /// <summary>
+        /// Responsive opt-in settle variant. Splits the nominal 86 ms ring
+        /// period into bounded 10 ms (last: 6 ms) waits, checking readiness
+        /// before and after each slice. The wait callback must actually wait
+        /// the requested duration. This is NOT a DMA/IRQ completion signal.
+        /// Backpressure waitCalls still counts only the 1 ms feeder waits.
+        /// </summary>
+        public static bool FeedAndSettleResponsive(
+            byte[] pcm, Func<byte[], int, int, int> write,
+            Func<bool> ready, Action<uint> wait, out int waitCalls)
+        {
+            if (!Feed(pcm, write, ready, wait, out waitCalls))
+                return false;
+
+            uint remaining = 86;
+            while (remaining > 0)
+            {
+                // Recheck twice before every wait, as in the ring-full path.
+                // The device can be withdrawn by either callback.
+                if (!ready() || !ready())
+                    return false;
+                uint slice = remaining > 10 ? 10u : remaining;
+                wait(slice);
+                remaining -= slice;
+                if (!ready())
+                    return false;
+            }
+            return ready();
+        }
+
         private static bool WriteAll(
             byte[] source, int length, Func<byte[], int, int, int> write,
             Func<bool> ready, Action<uint> wait,
