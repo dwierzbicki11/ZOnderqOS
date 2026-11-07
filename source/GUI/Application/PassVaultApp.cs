@@ -315,7 +315,7 @@ namespace ZonderqOS.GUI.Apps
             for (int i = 0; i < length; i++)
             {
                 seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-                result[i] = chars[(int)(seed % (ulong)chars.Length)];
+                result[i] = chars[(int)(seed % chars.Length)];
             }
             return new string(result);
         }

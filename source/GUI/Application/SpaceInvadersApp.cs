@@ -89,8 +89,6 @@ namespace ZonderqOS.GUI.Apps
         private long toneEndTicks;
         private int waveClearTimer = 0;
 
-        // Input keys
-        private bool keyLeft, keyRight, keyShoot;
         private readonly Action closeCallback;
 
         // Pixel-art sprite definitions (11x8)
