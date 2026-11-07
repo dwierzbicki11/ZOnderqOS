@@ -179,13 +179,13 @@ namespace ZonderqOS.GUI.Apps
             if (ballX <= 0)
             {
                 ballX = 0;
-                ballVx = Math.Abs(ballVx);
+                ballVx = Abs(ballVx);
                 PlaySound(420, 25);
             }
             else if (ballX + BallSize >= fieldW)
             {
                 ballX = fieldW - BallSize;
-                ballVx = -Math.Abs(ballVx);
+                ballVx = -Abs(ballVx);
                 PlaySound(420, 25);
             }
 
@@ -193,7 +193,7 @@ namespace ZonderqOS.GUI.Apps
             if (ballY <= 0)
             {
                 ballY = 0;
-                ballVy = Math.Abs(ballVy);
+                ballVy = Abs(ballVy);
                 PlaySound(420, 25);
             }
 
@@ -236,11 +236,9 @@ namespace ZonderqOS.GUI.Apps
                 ballSpeed = 4.2f + (BrickCols * BrickRows - bricksRemaining) * 0.05f;
                 if (ballSpeed > 6.8f) ballSpeed = 6.8f;
 
-                float maxVx = ballSpeed * 0.85f;
+                float maxVx = ballSpeed * 0.88f;
                 ballVx = normalized * maxVx;
-
-                float vySquared = (ballSpeed * ballSpeed) - (ballVx * ballVx);
-                ballVy = -(float)Math.Sqrt(Math.Max(1.0f, vySquared));
+                ballVy = -ballSpeed;
 
                 PlaySound(550, 30);
             }
@@ -546,5 +544,7 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawRectangle(Border, bx, by, bw, bh);
             SmallTextRenderer.DrawCentered(canvas, text, bx, by + 13, bw, color);
         }
+
+        private static float Abs(float v) => v < 0 ? -v : v;
     }
 }
