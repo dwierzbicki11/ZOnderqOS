@@ -26,8 +26,8 @@ def validate(serial: str) -> str:
         # A second boot after the baseline invalidates the measurement.
         if "[NET3095-N1] BOOT" in line and "before" in samples:
             raise ValueError("guest reboot between ISR samples")
-        if "[NET3095-N1][FAIL]" in line and "before" in samples:
-            raise ValueError("guest failure during ISR measurement")
+        if re.search(r"\[NET3095-[A-Z0-9-]+\]\[FAIL\]", line) and "before" in samples:
+            raise ValueError("guest network failure during ISR measurement")
         if "[NET3095-ISR]" not in line:
             continue
         match = MARKER.fullmatch(line)
@@ -73,6 +73,8 @@ def self_test() -> None:
         good.replace("phase=after", "phase=after\rspoof"),
         good.splitlines()[0] + "\n[NET3095-N1] BOOT\n" + good.splitlines()[1],
         good.splitlines()[0] + "\n[NET3095-N1][FAIL] reset\n" + good.splitlines()[1],
+        good.splitlines()[0] + "\n[NET3095-N2][FAIL] DHCP timeout\n" + good.splitlines()[1],
+        good.splitlines()[0] + "\n[NET3095-N6][FAIL] TCP reset\n" + good.splitlines()[1],
     )
     for item in bad:
         try:
