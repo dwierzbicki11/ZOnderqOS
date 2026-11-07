@@ -1123,9 +1123,9 @@ namespace ZonderqOS.GUI.Apps
                     canvas.DrawFilledRectangle(Accent, editorX + GutterWidth + 1, rowY - 3, 2, LineHeight);
                 }
 
-                string number = (lineIndex + 1).ToString();
-                int numberWidth = SmallTextRenderer.Width(number);
-                SmallTextRenderer.Draw(canvas, number, editorX + GutterWidth - 8 - numberWidth, rowY + 10,
+                ulong lineNum = (ulong)(lineIndex + 1);
+                int numberWidth = SmallTextRenderer.WidthUInt(lineNum);
+                SmallTextRenderer.DrawUInt(canvas, lineNum, editorX + GutterWidth - 8 - numberWidth, rowY + 10,
                     lineIndex == app.CursorY ? Color.FromArgb(137, 190, 229) : Color.FromArgb(103, 117, 130));
 
                 string text = visibleText[i];
