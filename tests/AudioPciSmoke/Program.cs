@@ -123,6 +123,19 @@ static class Test
         Expect(AudioPciDiagnostics.DescribePciIdentity(0x8086, 0x2668, 0x02, 0x00)
             == "NOT_AUDIO", "network device must never be classified as HDA");
 
+        Expect(AudioPciDiagnostics.IsKnownQemuIdentity(0x8086, 0x2668, 0x04, 0x03, 0x00),
+            "standard QEMU HDA identity");
+        Expect(AudioPciDiagnostics.IsKnownQemuIdentity(0x8086, 0x2415, 0x04, 0x01, 0x00),
+            "standard QEMU AC97 identity");
+        Expect(!AudioPciDiagnostics.IsKnownQemuIdentity(0x8086, 0x2668, 0x04, 0x03, 0x01),
+            "unsupported HDA programming interface cannot count as known QEMU");
+        Expect(!AudioPciDiagnostics.IsKnownQemuIdentity(0x8086, 0x2415, 0x04, 0x01, 0x01),
+            "unsupported AC97 programming interface cannot count as known QEMU");
+        Expect(!AudioPciDiagnostics.IsKnownQemuIdentity(0x8086, 0x2668, 0x04, 0x01, 0x00),
+            "incorrect HDA subclass cannot count as known QEMU");
+        Expect(!AudioPciDiagnostics.IsKnownQemuIdentity(0x10EC, 0x0887, 0x04, 0x03, 0x00),
+            "unrecognized physical identity remains unverified");
+
         PciSysfsProvider.Available = true;
         PciSysfsProvider.Devices = new List<DeviceDescriptor>
         {
@@ -134,6 +147,7 @@ static class Test
         string report = Capture(() => AudioPciDiagnostics.PrintReport(false), out bool ok);
         Expect(ok, "PCI enumeration success");
         Expect(report.Contains("Discovered PCI audio functions: 2"), "count only audio");
+        Expect(report.Contains("Known QEMU PCI identities: 2"), "both QEMU PCI IDs recognized");
         Expect(report.Contains("Standard-interface candidates: 2; unsupported programming interfaces: 0"),
             "standard PCI interface inventory counts are independent of driver binding");
         Expect(report.Contains("00:01.0") && report.Contains("00:02.0"), "both audio functions");
@@ -147,6 +161,8 @@ static class Test
         report = Capture(() => AudioPciDiagnostics.PrintReport(false), out ok);
         Expect(ok && report.Contains("Discovered PCI audio functions: 4"),
             "unsupported programming interfaces remain visible in read-only inventory");
+        Expect(report.Contains("Known QEMU PCI identities: 2"),
+            "unsupported programming interfaces cannot increase known-QEMU count");
         Expect(report.Contains("Standard-interface candidates: 2; unsupported programming interfaces: 2"),
             "unsupported PCI interfaces are counted separately from standard candidates");
         Expect(report.Contains("00:05.0") && report.Contains("00:06.0"),
