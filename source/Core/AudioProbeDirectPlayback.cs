@@ -196,7 +196,7 @@ namespace ZonderqOS.SystemCore
                 int waits = 0;
                 try
                 {
-                    fed = AudioProbeRingFeeder.FeedAndSettle(pcm,
+                    fed = AudioProbeRingFeeder.FeedAndSettleResponsive(pcm,
                     (data, offset, count) =>
                     {
                         // The feeder's ready() check and this callback are
@@ -238,7 +238,7 @@ namespace ZonderqOS.SystemCore
                     () => IsCompatibleUnclaimedHda(output, sampleRate, stillSelected) && output.IsRunning,
                     milliseconds =>
                     {
-                        if (milliseconds == 86)
+                        if (milliseconds > 1)
                             settleRequests++;
                         Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds);
                         SampleDriverWritable(false);
@@ -265,7 +265,7 @@ namespace ZonderqOS.SystemCore
                 Console.WriteLine("[AUDIO] 1MS longestZeroStreak=" + longestZeroStreak +
                     " minPositiveWrite=" + (smallestPositiveWrite == int.MaxValue ? 0 : smallestPositiveWrite));
                 Console.WriteLine("[AUDIO] 1MS waits=" + waits +
-                    " settleRequests=" + settleRequests + " settle=86ms (requested only)");
+                    " settleSlices=" + settleRequests + " settle=86ms total (requested only)");
                 Console.WriteLine("[AUDIO] 1MS ringSamples=" + ringSamples +
                     " ringChanges=" + ringChanges);
                 Console.WriteLine("[AUDIO] 1MS ringWriteSamples=" + ringWriteSamples +
