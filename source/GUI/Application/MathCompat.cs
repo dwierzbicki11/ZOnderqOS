@@ -7,6 +7,7 @@ namespace ZonderqOS.GUI.Apps
     /// </summary>
     internal static class Math
     {
+        public static int Abs(int a) => a < 0 ? -a : a;
         public static int Max(int a, int b) => a > b ? a : b;
         public static int Min(int a, int b) => a < b ? a : b;
         public static int Max(int a, byte b) => a > b ? a : b;

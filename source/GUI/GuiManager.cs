@@ -732,6 +732,24 @@ namespace ZonderqOS.GUI
                 "Katalog wbudowanych aplikacji ZOnderqOS",
                 AppCategory.System, IconType.AppCenter, () => LaunchAppCenter(145, 76),
                 StartMenuPlacement.Tool, 3, 10, false));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Minesweeper, "Saper", "Saper", "Saper",
+                "Klasyczna gra logiczna Saper",
+                AppCategory.Games, IconType.Play, () => LaunchMinesweeper(160, 90),
+                StartMenuPlacement.Tool, 6, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Snake, "Waz", "Waz", "Waz",
+                "Klasyczna gra zrecznosciowa Snake",
+                AppCategory.Games, IconType.Play, () => LaunchSnake(170, 95),
+                StartMenuPlacement.Tool, 7, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Tetris, "Tetris", "Tetris", "Tetris",
+                "Klasyczna ukladanka klockow Tetris",
+                AppCategory.Games, IconType.Play, () => LaunchTetris(180, 85),
+                StartMenuPlacement.Tool, 8, -1, true));
         }
 
         private void PopulateStartMenu()
@@ -1149,6 +1167,21 @@ namespace ZonderqOS.GUI
         private void LaunchAbout(int x, int y)
         {
             applicationManager.Launch(new AboutApp(x, y, null));
+        }
+
+        private void LaunchMinesweeper(int x, int y)
+        {
+            applicationManager.Launch(new MinesweeperApp(x, y, null));
+        }
+
+        private void LaunchSnake(int x, int y)
+        {
+            applicationManager.Launch(new SnakeApp(x, y, null));
+        }
+
+        private void LaunchTetris(int x, int y)
+        {
+            applicationManager.Launch(new TetrisApp(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,

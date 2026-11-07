@@ -8,7 +8,8 @@ namespace ZonderqOS.GUI.Apps
     {
         System = 1,
         Tools = 2,
-        Files = 3
+        Files = 3,
+        Games = 4
     }
 
     public enum StartMenuPlacement
@@ -34,6 +35,9 @@ namespace ZonderqOS.GUI.Apps
         public const string Diagnostics = "diagnostics";
         public const string About = "about";
         public const string AppCenter = "app-center";
+        public const string Minesweeper = "minesweeper";
+        public const string Snake = "snake";
+        public const string Tetris = "tetris";
     }
 
     public sealed class AppDescriptor
