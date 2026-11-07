@@ -21,6 +21,7 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color GoldColor = Color.FromArgb(245, 200, 50);
         private static readonly Color OrangeColor = Color.FromArgb(245, 140, 45);
 
+        private const int HeaderHeight = 38;
         private int activeTab = 0; // 0 = Tests, 1 = Specs, 2 = Comparison
         private readonly Action closeCallback;
 
@@ -237,7 +238,7 @@ namespace ZonderqOS.GUI.Apps
             if (leftClicked && !leftWasClicked)
             {
                 int wx = Window.X;
-                int wy = Window.Y + Window.HeaderHeight;
+                int wy = Window.Y + HeaderHeight;
 
                 // Tab selection
                 int tabY = wy + 8;
@@ -311,9 +312,9 @@ namespace ZonderqOS.GUI.Apps
             base.Render(canvas);
 
             int wx = Window.X;
-            int wy = Window.Y + Window.HeaderHeight;
+            int wy = Window.Y + HeaderHeight;
             int ww = Window.Width;
-            int wh = Window.Height - Window.HeaderHeight;
+            int wh = Window.Height - HeaderHeight;
 
             // Main Background
             canvas.DrawFilledRectangle(Surface, wx, wy, ww, wh);
@@ -407,7 +408,7 @@ namespace ZonderqOS.GUI.Apps
             // Progress bar
             int progY = bannerY + bannerH + 12;
             int progW = ww - 32;
-            UiPainter.RoundedPanel(canvas, wx + 16, progY, progW, 14, Panel, Border);
+            UiPainter.RoundedPanel(canvas, wx + 16, progY, progW, 14, 3, Panel, Border);
             if (progressPercent > 0)
             {
                 int fillW = Math.Max(4, (progW * progressPercent) / 100);
@@ -477,7 +478,7 @@ namespace ZonderqOS.GUI.Apps
             sy += lineH - 4;
             int barW = panelW - 40;
             UiPainter.RoundedPanel(canvas, sx, sy, barW, 10, 3, Surface, Border);
-            int usedBarW = (int)((barW * usedMb) / Math.Max(1, totalMb));
+            int usedBarW = (int)((long)barW * (long)usedMb / Math.Max(1L, (long)totalMb));
             if (usedBarW > 0) canvas.DrawFilledRectangle(GreenColor, sx, sy, usedBarW, 10);
 
             sy += lineH + 6;

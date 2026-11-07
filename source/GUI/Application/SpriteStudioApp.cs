@@ -20,6 +20,7 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color GreenColor = Color.FromArgb(60, 215, 110);
         private static readonly Color GoldColor = Color.FromArgb(245, 205, 50);
 
+        private const int HeaderHeight = 38;
         private const int GridSize = 16;
         private const int CellSize = 14;
         private readonly byte[,] pixels = new byte[GridSize, GridSize];
@@ -107,7 +108,7 @@ namespace ZonderqOS.GUI.Apps
                 return;
 
             int wx = Window.X;
-            int wy = Window.Y + Window.HeaderHeight;
+            int wy = Window.Y + HeaderHeight;
 
             int gridX = wx + 16;
             int gridY = wy + 16;
@@ -412,9 +413,9 @@ namespace ZonderqOS.GUI.Apps
             base.Render(canvas);
 
             int wx = Window.X;
-            int wy = Window.Y + Window.HeaderHeight;
+            int wy = Window.Y + HeaderHeight;
             int ww = Window.Width;
-            int wh = Window.Height - Window.HeaderHeight;
+            int wh = Window.Height - HeaderHeight;
 
             canvas.DrawFilledRectangle(Surface, wx, wy, ww, wh);
 

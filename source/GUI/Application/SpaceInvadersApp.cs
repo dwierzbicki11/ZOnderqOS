@@ -30,7 +30,6 @@ namespace ZonderqOS.GUI.Apps
         private int playerY = 325;
         private const int PlayerWidth = 26;
         private const int PlayerHeight = 14;
-        private int playerSpeed = 5;
         private int lives = 3;
         private int score = 0;
         private int highScore = 1000;
