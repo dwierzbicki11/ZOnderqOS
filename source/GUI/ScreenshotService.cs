@@ -65,7 +65,7 @@ namespace ZonderqOS.GUI
             catch (Exception ex)
             {
                 global::ZonderqOS.NotificationService.Post(
-                    global::ZonderqOS.NotificationKind.System,
+                    global::ZonderqOS.NotificationKind.Error,
                     "ZRZUT EKRANU",
                     "Blad zapisu zrzutu",
                     ex.Message);
