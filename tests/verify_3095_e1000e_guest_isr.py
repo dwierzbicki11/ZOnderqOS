@@ -20,24 +20,31 @@ MARKER = re.compile(
 def validate(serial: str) -> str:
     samples = {}
     phases = []
+    boot_count = 0
     for raw in serial.split("\n"):
         line = raw.removesuffix("\r")
-        # Counters from different guest boots cannot establish an ISR delta.
-        # A second boot after the baseline invalidates the measurement.
-        if "[NET3095-N1] BOOT" in line and "before" in samples:
-            raise ValueError("guest reboot between ISR samples")
-        if re.search(r"\[NET3095-[A-Z0-9-]+\]\[FAIL\]", line) and "before" in samples:
-            raise ValueError("guest network failure during ISR measurement")
+        # Require a single boot in the complete evidence stream. Reject faults
+        # even before the baseline or after the final sample.
+        if line == "[NET3095-N1] BOOT":
+            boot_count += 1
+            if boot_count != 1 or samples:
+                raise ValueError("multiple or late guest boot markers")
+        if re.search(r"\[NET3095-[A-Z0-9-]+\]\[FAIL\]", line):
+            raise ValueError("guest network failure in ISR evidence log")
         if "[NET3095-ISR]" not in line:
             continue
         match = MARKER.fullmatch(line)
         if match is None:
             raise ValueError("malformed guest ISR sample")
+        if boot_count != 1:
+            raise ValueError("ISR sample before guest boot")
         phase, irq, rx, polling = match.groups()
         if phase in samples:
             raise ValueError("duplicate guest ISR sample")
         samples[phase] = (int(irq), int(rx), polling)
         phases.append(phase)
+    if boot_count != 1:
+        raise ValueError("missing unique guest boot marker")
     if set(samples) != {"before", "after"}:
         raise ValueError("missing guest ISR before/after samples")
     if phases != ["before", "after"]:
@@ -56,13 +63,14 @@ def validate(serial: str) -> str:
 
 
 def self_test() -> None:
-    good = ("[NET3095-ISR] phase=before interrupts=3 rx_frames=7 polling=no\n"
+    good = ("[NET3095-N1] BOOT\n"
+            "[NET3095-ISR] phase=before interrupts=3 rx_frames=7 polling=no\n"
             "[NET3095-ISR] phase=after interrupts=5 rx_frames=9 polling=no\n")
     assert "VERIFIED_GUEST_COUNTER_DELTA" in validate(good)
     bad = (
         "",
-        good.splitlines()[0],
-        good + good.splitlines()[1] + "\n",
+        good.splitlines()[1],
+        good + good.splitlines()[2] + "\n",
         good.replace("interrupts=5", "interrupts=3"),
         good.replace("rx_frames=9", "rx_frames=7"),
         good.replace("polling=no", "polling=yes", 1),
@@ -71,10 +79,12 @@ def self_test() -> None:
         "\n".join(reversed(good.splitlines())) + "\n",
         good.replace("interrupts=5", "interrupts=-1"),
         good.replace("phase=after", "phase=after\rspoof"),
-        good.splitlines()[0] + "\n[NET3095-N1] BOOT\n" + good.splitlines()[1],
-        good.splitlines()[0] + "\n[NET3095-N1][FAIL] reset\n" + good.splitlines()[1],
-        good.splitlines()[0] + "\n[NET3095-N2][FAIL] DHCP timeout\n" + good.splitlines()[1],
-        good.splitlines()[0] + "\n[NET3095-N6][FAIL] TCP reset\n" + good.splitlines()[1],
+        good.replace("[NET3095-N1] BOOT\n", ""),
+        good + "[NET3095-N1] BOOT\n",
+        good.splitlines()[0] + "\n[NET3095-N1] BOOT\n" + "\n".join(good.splitlines()[1:]) + "\n",
+        good.replace("[NET3095-ISR] phase=before", "[NET3095-N1][FAIL] reset\n[NET3095-ISR] phase=before"),
+        good + "[NET3095-N2][FAIL] DHCP timeout\n",
+        good.replace("[NET3095-N1] BOOT\n", "[NET3095-N6][FAIL] TCP reset\n[NET3095-N1] BOOT\n"),
     )
     for item in bad:
         try:
