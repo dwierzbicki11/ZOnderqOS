@@ -33,7 +33,13 @@ namespace ZonderqOS
                 Console.WriteLine();
                 InputBusDiagnostics.PrintReport();
                 Console.WriteLine();
+#if ZONDERQ_AUDIO_PROBE
+                Console.WriteLine("AUDIO HDA/PCM probe enabled: no disk mounts or account writes.");
+                Console.WriteLine("Commands: audiodiag | audioinfo | mixqueue1ms | mixsequence1ms | mixqueueasync | mixsequenceasync | mixqueueboot | mixsequenceboot | tone | wavtone | wavmono | stereosplit | mix | wav44 | wav8k | wav11k | wav16k | wav22k | wav24k | wav32k | wavstereo32 | wav8 | wav24 | wav32 | wavext | wavext20 | wavext24in32 | wavextstereo44 | wavfloat | wavextfloat | volume N | balance N | fade N | inputscan | volumes | help");
+                AudioRuntimeDiagnostics.PrintStatus();
+#else
                 Console.WriteLine("Commands: desktop | inputscan | nicdiag | mouse | mousegui | volumes | help");
+#endif
                 Console.WriteLine("The USB mouse should be reported as a bound pointer.");
                 return;
 #endif
@@ -224,6 +230,253 @@ namespace ZonderqOS
                 return;
             }
 
+            if (command == "audiodiag")
+            {
+                AudioPciDiagnostics.PrintReport(false);
+                return;
+            }
+
+#if ZONDERQ_AUDIO_PROBE
+            if (command == "audioinfo")
+            {
+                AudioRuntimeDiagnostics.PrintStatus();
+                return;
+            }
+
+            if (command == "tone")
+            {
+                AudioRuntimeDiagnostics.PlayTestTone();
+                return;
+            }
+
+            if (command == "stereosplit")
+            {
+                AudioRuntimeDiagnostics.PlayStereoSplitTestTone();
+                return;
+            }
+
+            if (command == "mix")
+            {
+                AudioRuntimeDiagnostics.PlayMixedTestTone();
+                return;
+            }
+
+            if (command == "mixdelay")
+            {
+                AudioRuntimeDiagnostics.PlayDelayedMixedTestTone();
+                return;
+            }
+
+            if (command == "mixqueue")
+            {
+                AudioRuntimeDiagnostics.PlayScheduledMixedTestTones();
+                return;
+            }
+
+            if (command == "mixqueueboot")
+            {
+                AudioRuntimeDiagnostics.PlayScheduledMixedTestTonesBootThread();
+                return;
+            }
+
+            if (command == "mixqueue1ms")
+            {
+                AudioRuntimeDiagnostics.PlayScheduledMixedTestTones(true);
+                return;
+            }
+
+            if (command == "mixqueueasync")
+            {
+                AudioRuntimeDiagnostics.PlayScheduledMixedTestTonesAsync();
+                return;
+            }
+
+            if (command == "mixsequenceasync")
+            {
+                AudioRuntimeDiagnostics.PlayFrequencySequenceTestTonesAsync();
+                return;
+            }
+
+            if (command == "mixsequenceboot")
+            {
+                AudioRuntimeDiagnostics.PlayFrequencySequenceTestTonesBootThread();
+                return;
+            }
+
+            if (command == "mixsequence1ms")
+            {
+                AudioRuntimeDiagnostics.PlayFrequencySequenceTestTones(true);
+                return;
+            }
+
+            if (command == "mixsequence")
+            {
+                AudioRuntimeDiagnostics.PlayFrequencySequenceTestTones();
+                return;
+            }
+
+            if (command == "wavtone")
+            {
+                AudioRuntimeDiagnostics.PlayWaveTestTone();
+                return;
+            }
+
+            if (command == "wavmono")
+            {
+                AudioRuntimeDiagnostics.PlayWaveMonoTestTone();
+                return;
+            }
+
+            if (command == "wav44")
+            {
+                AudioRuntimeDiagnostics.PlayWave44100TestTone();
+                return;
+            }
+
+            if (command == "wav8k")
+            {
+                AudioRuntimeDiagnostics.PlayWave8000MonoTestTone();
+                return;
+            }
+
+            if (command == "wav11k")
+            {
+                AudioRuntimeDiagnostics.PlayWave11025MonoTestTone();
+                return;
+            }
+
+            if (command == "wav16k")
+            {
+                AudioRuntimeDiagnostics.PlayWave16000MonoTestTone();
+                return;
+            }
+
+            if (command == "wav24k")
+            {
+                AudioRuntimeDiagnostics.PlayWave24000TestTone();
+                return;
+            }
+
+            if (command == "wav22k")
+            {
+                AudioRuntimeDiagnostics.PlayWave22050TestTone();
+                return;
+            }
+
+            if (command == "wav32k")
+            {
+                AudioRuntimeDiagnostics.PlayWave32000TestTone();
+                return;
+            }
+
+            if (command == "wavstereo32")
+            {
+                AudioRuntimeDiagnostics.PlayWave32000StereoSplitTestTone();
+                return;
+            }
+
+            if (command == "wav8")
+            {
+                AudioRuntimeDiagnostics.PlayWave8TestTone();
+                return;
+            }
+
+            if (command == "wav24")
+            {
+                AudioRuntimeDiagnostics.PlayWave24TestTone();
+                return;
+            }
+
+            if (command == "wav32")
+            {
+                AudioRuntimeDiagnostics.PlayWave32TestTone();
+                return;
+            }
+
+            if (command == "wavfloat")
+            {
+                AudioRuntimeDiagnostics.PlayWaveFloat32TestTone();
+                return;
+            }
+            if (command == "wavextfloat")
+            {
+                AudioRuntimeDiagnostics.PlayWaveExtensibleFloat32TestTone();
+                return;
+            }
+
+            if (command == "wavext")
+            {
+                AudioRuntimeDiagnostics.PlayWaveExtensibleTestTone();
+                return;
+            }
+
+            if (command == "wavext20")
+            {
+                AudioRuntimeDiagnostics.PlayWaveExtensible20TestTone();
+                return;
+            }
+
+            if (command == "wavext24in32")
+            {
+                AudioRuntimeDiagnostics.PlayWaveExtensible24In32TestTone();
+                return;
+            }
+
+            if (command == "wavextstereo44")
+            {
+                AudioRuntimeDiagnostics.PlayWaveExtensible24In32Stereo44100TestTone();
+                return;
+            }
+
+            if (command == "balance")
+            {
+                Console.WriteLine("[AUDIO] software balance=" + AudioRuntimeDiagnostics.BalancePercent);
+                return;
+            }
+
+            if (command.StartsWith("balance ", StringComparison.Ordinal))
+            {
+                int percent;
+                if (!int.TryParse(command.Substring(8).Trim(), out percent))
+                    Console.WriteLine("[AUDIO] usage: balance -100..100");
+                else
+                    AudioRuntimeDiagnostics.SetBalancePercent(percent);
+                return;
+            }
+
+            if (command == "fade")
+            {
+                Console.WriteLine("[AUDIO] software fade=" + AudioRuntimeDiagnostics.FadeMilliseconds + "ms");
+                return;
+            }
+
+            if (command.StartsWith("fade ", StringComparison.Ordinal))
+            {
+                int milliseconds;
+                if (!int.TryParse(command.Substring(5).Trim(), out milliseconds))
+                    Console.WriteLine("[AUDIO] usage: fade 0..50");
+                else
+                    AudioRuntimeDiagnostics.SetFadeMilliseconds(milliseconds);
+                return;
+            }
+
+            if (command == "volume")
+            {
+                Console.WriteLine("[AUDIO] software volume=" + AudioRuntimeDiagnostics.VolumePercent + "%");
+                return;
+            }
+
+            if (command.StartsWith("volume ", StringComparison.Ordinal))
+            {
+                int percent;
+                if (!int.TryParse(command.Substring(7).Trim(), out percent))
+                    Console.WriteLine("[AUDIO] usage: volume 0..100");
+                else
+                    AudioRuntimeDiagnostics.SetVolumePercent(percent);
+                return;
+            }
+#endif
+
             if (command == "volumes" || command == "lsblk")
             {
                 // Read-only: never create a VFS mount or mutate an on-disk BPB.
@@ -299,6 +552,30 @@ namespace ZonderqOS
             {
                 Console.WriteLine("inputscan - read-only PCI, USB node and pointer-driver report");
                 Console.WriteLine("nicdiag   - read-only PCI Ethernet/Wi-Fi inventory; no driver or DHCP");
+                Console.WriteLine("audiodiag - read-only PCI audio controller inventory; no playback"); 
+#if ZONDERQ_AUDIO_PROBE
+                Console.WriteLine("audioinfo - show outputs published by the stock Cosmos audio driver");
+                Console.WriteLine("tone      - play 250 ms 440 Hz PCM through primary HDA output");
+                Console.WriteLine("mix       - mix two PCM clips (440Hz left, 880Hz right) via HDA");
+                Console.WriteLine("mixqueue / mixsequence - verified stock scheduler-thread HDA PCM probes");
+                Console.WriteLine("mixqueueboot / mixsequenceboot - experimental boot-thread A/B (may underrun)");
+                Console.WriteLine("wavtone   - decode RAM-only RIFF/WAV then play through HDA");
+                Console.WriteLine("wavmono   - upmix RAM-only 48kHz mono WAV to stereo");
+                Console.WriteLine("wav44     - resample RAM-only 44.1kHz stereo WAV to 48kHz");
+                Console.WriteLine("wav8k     - decode RAM-only 8kHz PCM8 mono WAV to 48kHz");
+                Console.WriteLine("wav11k    - decode RAM-only 11.025kHz PCM8 mono WAV to 48kHz");
+                Console.WriteLine("wav16k    - decode RAM-only 16kHz PCM8 mono WAV to 48kHz");
+                Console.WriteLine("wav24k    - resample RAM-only 24kHz stereo16 WAV to 48kHz");
+                Console.WriteLine("wav8      - decode RAM-only unsigned PCM8 mono WAV to stereo PCM16");
+                Console.WriteLine("wavfloat - decode RAM-only IEEE float32 mono WAV to PCM16 stereo");
+                Console.WriteLine("wavextfloat - decode RAM-only extensible float32 mono 44.1kHz WAV");
+                Console.WriteLine("wavext20  - decode RAM-only extensible PCM20-in-24 mono WAV");
+                Console.WriteLine("wavext24in32 - decode RAM-only extensible PCM24-in-32 mono WAV");
+                Console.WriteLine("wavextstereo44 - resample extensible stereo PCM24-in-32 44.1kHz 440/880Hz");
+                Console.WriteLine("volume N  - software PCM gain 0..100%, opt-in AUDIO probe only");
+                Console.WriteLine("balance N - software stereo balance -100..100, opt-in only");
+                Console.WriteLine("fade N    - symmetric 0..50 ms PCM fade, opt-in only");
+#endif
                 Console.WriteLine("mouse     - sample actual pointer movement and clicks for 6 seconds");
                 Console.WriteLine("mousegui  - read-only fullscreen cursor and button test (ESC to exit)");
                 Console.WriteLine("desktop   - read-only Gen3 desktop with draggable windows, buttons and USB pointer");

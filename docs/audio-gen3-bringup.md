@@ -1,0 +1,595 @@
+# ZonderqOS Gen3 — AUDIO (stock Cosmos 3.0.95)
+
+## What is implemented
+
+This branch uses the **existing upstream** `Cosmos.Kernel.Drivers.Pci.Audio.HdAudio.HdAudioDriver` and `Cosmos.Kernel.System.Audio.AudioManager`. No AC97 driver or custom DMA/IRQ implementation is added. The driver matches PCI `04:03:00`, not a hardcoded vendor ID. The kernel's `audiodiag` command separately reports PCI `04:01` (legacy audio) and `04:03` (HD Audio), with binding explicitly **unverified**.
+
+The diagnostic playback path now rechecks the selected HDA identity, format, withdrawal state and primary-output reference immediately before dispatch. The experimental 1 ms direct-ring path also receives a caller-supplied primary-reference predicate and rechecks it before/after reading the format, before every ring write, after the settle wait and before optional Stop() cleanup. A replacement primary with the same HDA name/driver is rejected; cleanup skips Stop() on a no-longer-selected device. These checks are **not an atomic ownership claim** and cannot exclude all races with hotplug or a stock player; they do not enable the driver in the GUI.
+
+The normal disk-backed GUI image has `CosmosEnableAudio=false`. To avoid changing the normal boot path, actual HDA initialization and playback are available **only** in an explicitly selected diskless diagnostic image. This image never mounts ZONDERQDATA, runs account setup, or writes to host partitions.
+
+## Build the isolated audio image
+
+From a clean checkout of `feat/audio-gen3` with .NET SDK 10 and the pinned Cosmos build prerequisites installed:
+
+```bash
+./run.sh --check
+./run.sh --build-audio
+```
+
+This reuses the isolated exact-tag v3.0.95 Cosmos packages and builds `output-3095/ZonderqOS-3095-audio.iso`. The underlying builder selects `ZonderqAudioProbe=true`, `ZonderqReadOnlyHardwareProbe=true`, `ZonderqInputDiagnosticBoot=false`, `ZonderqRamRoot=false`. The project rejects `ZonderqAudioProbe=true` without the diskless profile. Normal `./run.sh --build` and `./run.sh --build-probe` keep audio disabled.
+
+## QEMU with real emulated HD Audio and WAV capture
+
+```bash
+./run.sh --qemu-audio
+```
+
+This boots **one BSP CPU**, no virtual NIC and no host data disk. QEMU adds `intel-hda` plus `hda-duplex` and routes the output into a WAV backend. No guest FAT32 volume is attached. In the QEMU console enter:
+
+```text
+audiodiag
+audioinfo
+tone
+wavtone
+wavmono
+wav44
+wav8
+wav24
+wav32
+volume 25
+tone
+volume 100
+```
+
+`audiodiag` reports PCI configuration-space discovery only. `audioinfo` should list the output `hda` from `HdAudioDriver` if it bound successfully. `tone` submits a 250 ms, 440 Hz, 48 kHz, signed 16-bit stereo square wave through `AudioManager.Play` and reports `API_RETURNED_SUCCESS` only if the stock audio player returned true. This does **not** establish DMA/IRQ progress, a drained hardware ring or audible output; use the independent QEMU WAV capture for PCM evidence.
+
+The additional `wavtone` command constructs a canonical RIFF/WAVE container in
+**guest RAM**, validates and decodes it with `AudioWavePcm.DecodeStereo16`,
+then submits the decoded 48 kHz PCM16 stereo frames to the same stock HDA
+path as `tone`. This tests the actual WAV parser-to-playback path without
+opening any disk. It is **not** a file-browser WAV player yet.
+
+The parser accepts uncompressed PCM8, PCM16, PCM24 and signed PCM32 at 44.1 or 48 kHz in mono or stereo, with
+a maximum of two seconds (at most 384,000 decoded stereo PCM bytes). Mono
+input is upmixed by duplicating each signed sample to both channels; no
+resampling occurs for 48 kHz input. 44.1 kHz input is converted to 48 kHz stereo using bounded integer linear interpolation, without touching the filesystem. It checks RIFF and chunk bounds, fmt consistency, data
+alignment, duplicate chunks, odd-sized metadata padding and source-duration
+bounds before allocating the decoded buffer. Unsupported rates and formats
+fail explicitly; no DMA, filesystem access or production GUI activation occurs.
+The diskless `wavtone` fixture is stereo (440 Hz). The `wavmono` command
+uses a distinct 660 Hz, 48 kHz mono PCM16 RIFF fixture in guest RAM, decodes/upmixes
+to stereo and sends it
+to the same stock HDA output. The independent QEMU capture validates 660 Hz
+on both stereo channels so a mistakenly executed 440 Hz `tone` cannot pass.
+The new capture must pass before claiming mono playback verified end-to-end.
+
+A separate `AudioWaveInput.DecodeBounded(Stream)` component now accepts caller-owned, read-only WAV streams. It reads exactly the declared RIFF size (at most 800 KiB), rejects truncation and trailing bytes, and never opens, mounts or writes a disk. The `wav44` QEMU probe exercises this bounded stream loader using a RAM-backed `MemoryStream`. This **does not** yet play a file from FAT32 or prove removable-media behavior; connecting an external read-only source is a separate safety milestone.
+
+The `wav44` command generates a distinct 880 Hz stereo PCM16 fixture at 44.1 kHz,
+encodes RIFF/WAV entirely in RAM, resamples it to 48 kHz and plays it through
+the same HDA path. The sixth QEMU capture checks the distinct 880 Hz signal,
+rather than trusting a decoder log line. 44.1 kHz mono is covered by real C#
+host tests, not independently by QEMU.
+
+The CI audio-QEMU workflow boots the ISO **nine times**: direct `tone`,
+`wavtone`, mono `wavmono`, 44.1 kHz `wav44`, unsigned mono PCM8 `wav8`, signed mono PCM24 `wav24`, signed mono PCM32 `wav32`, `tone` at 25% software volume, and `tone` at 0% (mute).
+Each uses a fresh QEMU process and a separate WAV capture. The first seven
+must pass the non-silent pitch validator, including a stereo channel-balance
+check; the ninth must contain at least 100 ms of genuinely muted PCM frames. The WAV fixture is generated
+in memory; this does not prove arbitrary external WAV files work.
+
+The diagnostic console also accepts `volume N` for integer `N` from
+0 to 100 (default 100). This applies **software gain** to a fresh PCM copy
+before submitting frames to `AudioManager`. It does not modify physical
+HDA codec volume registers or change a production system setting. `volume`
+without arguments prints the current percentage. The C# host smoke verifies
+25% scaling, mute, 100% bit-exactness, invalid inputs and source immutability.
+
+The eighth QEMU boot uses `volume 25` and `tone`, then compares the actual
+backend WAV peak against the normal 100% capture. A PASS requires a ratio
+near 0.25, not just a serial message. The ninth boot uses `volume 0` and
+requires a nonempty, sustained WAV capture with a PCM peak no higher than 32;
+a missing/header-only file is a failure, not a mute PASS. This verifies
+software PCM gain/mute in the emulator, not perceived loudness.
+
+After stopping QEMU and allowing it to close the WAV header, check the actual samples:
+
+```bash
+python3 tools/verify-audio-wav-capture.py output-3095/audio-capture.wav
+```
+
+The verifier rejects silent output, a short click, unsupported PCM formats,
+a tone with the wrong pitch, and a stereo capture with one silent or severely
+imbalanced channel. A PASS is evidence of actual PCM captured by QEMU, **not** physical laptop sound, IRQ delivery or general WAV playback. To choose a different host capture location set `ZONDERQ_AUDIO_WAV=/path/to/capture.wav` before `./run.sh --qemu-audio`.
+
+The QEMU WAV backend and `hda-duplex,audiodev=audio0` device syntax are documented in the QEMU invocation manual. If the local QEMU build lacks the WAV backend, the launch must fail rather than silently claim success.
+
+## Test tiers and next milestones
+
+1. **Static:** `python3 tests/test_audio_gen3_contract.py` checks the diskless feature gates, PCI class matching, command registration and no disk writes in the probe.
+2. **Host C#:** `dotnet run --project tests/AudioPciSmoke/AudioPciSmoke.csproj -c Release` compiles the *real* inventory class with a fake PCI provider and exercises classification and failure handling. This does not touch hardware.
+3. **Synthetic WAV:** `python3 tests/test_audio_wav_validator.py` tests the WAV validator with generated 440 Hz, silence, wrong pitch, short and unsupported-format fixtures.
+4. **Real ISO/QEMU:** compile and boot the audio ISO, inspect serial and screen output, run `tone`, and verify QEMU's actual captured WAV. Do not claim this tier passed from host tests alone.
+5. **Verified baseline:** the 2026-10-31 real QEMU run #41221871415 passed three independent captures (direct PCM, decoded in-RAM WAV, 25% gain), with measured 0.250 amplitude ratio. The newer stereo-balance and mute gates require their own CI runs; do not infer they passed from the baseline.
+6. **Next:** confirm the new 44.1 kHz resampler in real QEMU; then design a bounded read-only external WAV source without mounting a host disk or enabling production audio. Physical codec/output and GUI sounds remain later milestones; production audio stays off.
+
+Do not enable AC97, SMP/SMT or network in this audio branch. Never use a real host disk as a test target.
+
+
+### Unsigned PCM8 WAV (isolated experimental extension)
+
+The opt-in decoder also accepts unsigned PCM8 mono/stereo at 44.1/48 kHz and converts to signed 48 kHz stereo PCM16. The `wav8` RAM-only diagnostic generates a distinct 1320 Hz mono PCM8 tone and sends it through the existing bounded read-only stream loader and stock HDA output. The dedicated QEMU gate requires a real captured WAV at approximately 1320 Hz; host C# tests additionally cover odd-sized RIFF data padding and malformed headers. This is **not** playback from FAT32, physical speaker confirmation or ISR evidence. Production audio remains disabled.
+
+### Signed PCM24 WAV (isolated diagnostic, QEMU capture verified)
+
+The bounded decoder now also accepts signed **24-bit little-endian PCM** at
+44.1/48 kHz, mono or stereo. It converts to 48 kHz stereo PCM16 using the
+upper 16 bits of each signed 24-bit sample (discarding the lowest eight bits),
+with the same bounded 44.1→48 kHz linear interpolation. The current input RIFF limit
+is **800 KiB**, sufficient for two seconds of 48 kHz stereo PCM32 plus
+metadata; decoded output remains at most **384,000 bytes**. Invalid frame
+alignment, byte rate, unsupported sample rates, truncation and excessive
+duration are rejected before decoded-buffer allocation.
+
+The diskless `wav24` command generates a distinct **1760 Hz** mono PCM24
+RIFF fixture in RAM, reads it through the bounded caller-owned stream API
+and submits decoded PCM16 stereo to the existing stock HDA playback path.
+The eighth independent QEMU boot captures actual output to WAV and checks
+for 1760 Hz on both channels. Host C# tests additionally cover PCM24 signed
+extremes, 48 kHz mono/stereo, 44.1 kHz resampling, odd RIFF padding and
+the exact two-second input bound. [Real QEMU HDA capture #41242893468](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41242893468)
+**passed all eight independent boots**, including signed PCM24 `wav24` with
+measured 1705.8 Hz (1760 Hz requested), 44.1 kHz stereo16 WAV backend,
+peak 2908. Host-side [C# and Python #41242893436](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41242893436)
+passed 768,125 C# assertions and 33 Python tests. This does not enable
+external FAT32 playback, physical audio, or production GUI sound.
+
+
+### Signed PCM32 WAV (isolated diagnostic; verification pending)
+
+The opt-in RIFF decoder now also accepts signed **32-bit little-endian integer
+PCM** mono/stereo at 44.1/48 kHz. It retains the high 16 bits of each signed
+32-bit sample, then uses the existing 44.1→48 kHz resampler if necessary.
+IEEE float (format 3), WAVE_FORMAT_EXTENSIBLE and other codecs remain
+unsupported and are explicitly rejected. The input cap is now **800 KiB**,
+allowing two seconds of 48 kHz stereo PCM32 (768,000 source bytes), while the
+decoded 48 kHz stereo PCM16 cap remains **384,000 bytes**.
+
+The diskless `wav32` command generates a distinct **2200 Hz** signed PCM32
+mono WAV in guest RAM, decodes it via the caller-owned bounded stream API and
+submits PCM16 to stock HDA. Host C# tests cover signed extremes, discarded
+low bits, 44.1 kHz resampling, mono/stereo, fragmented streams, exact
+two-second bounds and invalid format/frame/rate. The ninth independent QEMU
+boot/capture validates actual 2200 Hz PCM on both channels. **Do not claim
+this new path passed QEMU until the new workflow completes successfully.**
+No external FAT32 file is opened, no host disk is attached, no physical
+speaker or IRQ execution is proven, and production GUI audio remains off.
+
+### WAVE_FORMAT_EXTENSIBLE PCM16 (opt-in, diskless)
+
+The bounded decoder now recognizes WAVE_FORMAT_EXTENSIBLE (0xFFFE) for
+uncompressed PCM8/16/24/32 mono/stereo at 44.1 or 48 kHz. The fmt chunk must
+contain at least 40 bytes, a complete 22-byte extension, a PCM subtype GUID,
+matching valid/container bits and either a canonical mono/stereo speaker mask
+or an unspecified (zero) mask. Float GUIDs, mismatched valid bits, unsupported
+channel layouts and malformed extensions are rejected. The two-second decoded
+PCM16 cap and 800 KiB RIFF source cap are unchanged.
+
+The opt-in `wavext` command generates a 2640 Hz extensible stereo PCM16 WAV
+in RAM, decodes it through `AudioWaveInput.DecodeBounded`, and plays it via
+stock Cosmos HDA. The independent QEMU capture checks actual PCM samples.
+This does **not** mount FAT32, play a file from disk, enable production GUI
+audio, or prove physical speakers or ISR delivery.
+
+
+### Read-only stream boundary (2026-10-31)
+
+`AudioWaveInput.DecodeBounded` now rejects streams advertising `CanWrite=true`
+**before reading the RIFF header**. The caller retains ownership of the
+stream, and the 800 KiB source / 384,000-byte decoded output limits remain.
+The host C# smoke exercises both a rejected writable stream and accepted
+fragmented non-seekable read-only streams. This does not open a FAT32 file,
+attach a guest disk, or prove real hardware playback.
+
+
+### Reduced valid bits in WAVE_FORMAT_EXTENSIBLE (host verification pending)
+
+The opt-in PCM decoder now accepts **16/20/24 valid bits in 24-bit
+containers** and **16/24/32 valid bits in 32-bit containers**, provided the
+samples are left-aligned and every unused least-significant bit is zero.
+The high 16 bits are delivered as signed stereo PCM16; 44.1 kHz sources use
+the same bounded resampler. Malformed valid-bit widths and nonzero padding
+bits are rejected before playback. New host C# checks cover 20-in-24 and
+24-in-32 signed samples, malformed padding and 44.1 kHz conversion.
+This change does not itself demonstrate captured PCM, physical speakers,
+DMA/IRQ completion or external FAT32 playback; await CI results.
+
+
+### 20-bit-in-24-bit PCM: independent QEMU capture (new CI pending)
+
+The opt-in diskless command `wavext20` constructs a **3080 Hz** mono
+WAVE_FORMAT_EXTENSIBLE fixture with 20 valid bits in a 24-bit signed
+container, decodes it via the read-only bounded stream loader and sends
+PCM16 stereo to the stock Cosmos HDA player. The eleventh independent QEMU
+boot captures WAV backend samples and validates pitch, stereo balance and
+phase. This is not evidence until the new CI run finishes. Production GUI
+audio remains disabled; no guest disk, FAT32 volume or physical sound card
+is touched.
+
+
+### QEMU WAV capture dropout investigation (2026-10-31)
+
+A new real QEMU run #41250243235 built the stock 3.0.95 ISO and passed the
+direct 440 Hz PCM capture, but failed the next `wavtone` capture on the old
+180 ms contiguous-signal gate. The uploaded **actual** WAV contains peak
+2908, about 0.35 s of active PCM and two approximately **21.3 ms** silent
+gaps. It is therefore not an empty/silent decode, but QEMU/backend timing
+or HDA buffering remains a possible cause; the exact source of the gaps is
+not established.
+
+The capture validator now requires **at least 200 ms total active PCM** and
+**two disjoint 80 ms high-activity windows**, each independently checked for
+pitch, stereo balance and phase. This tolerates short HDA backend dropouts
+without accepting clicks or two short bursts; synthetic positive and negative
+fixtures cover both cases. A fresh end-to-end QEMU run is required before
+claiming that the revised gate passes. The PCM driver and Cosmos remain
+unchanged; this is verification hardening, **not** a claimed hardware fix.
+
+### Additional WAV source rates (22.05/32 kHz; isolated decoder)
+
+The opt-in bounded RIFF/WAV decoder now also accepts 22,050 Hz and 32,000 Hz
+uncompressed PCM8/16/24/32 mono or stereo, resampling to 48,000 Hz stereo
+PCM16 with the existing integer interpolation. The two-second output and
+800 KiB input caps are unchanged. Host C# tests check exact 250 ms output
+length, channel phase, pitch, PCM8/24/32 conversion and rejection of 16 kHz.
+This is **not** yet proof of captured QEMU audio for either new source rate;
+production audio remains disabled and no guest disk is attached.
+
+### 32 kHz PCM16 WAV: isolated QEMU capture gate
+
+The new opt-in `wav32k` diagnostic creates a 3520 Hz stereo PCM16 WAV at
+32,000 Hz in guest RAM, passes it through the same bounded read-only stream
+loader and 48 kHz integer resampler, and submits the result to stock HDA.
+A separate diskless QEMU boot captures the backend WAV and checks both
+channels and pitch. Run 41254680984 completed successfully on 2026-11-01:
+the 32 kHz input produced a 3507.2 Hz measured tone in the QEMU 44.1 kHz
+WAV backend (target 3520 Hz). No physical speakers, external WAV files or
+production GUI were involved.
+
+
+### 22.05 kHz end-to-end probe (2026-11-01)
+
+The `wav22k` diagnostic generates a 250 ms, 1100 Hz PCM16 stereo WAV at
+22,050 Hz entirely in guest RAM. It exercises `AudioWaveInput.DecodeBounded`,
+integer 22,050→48,000 Hz resampling and the stock HDA playback path. The
+independent QEMU WAV backend gate must detect sustained 1100 Hz PCM on both
+channels; a successful compile or console message is not playback evidence.
+This test uses a diskless 1-vCPU image and does not enable production audio,
+mount FAT32, or validate physical speakers/IRQ handling.
+
+
+### Independent stereo HDA capture (2026-11-01)
+
+The diskless opt-in `stereosplit` command produces signed PCM16 with **440 Hz
+on the left channel** and **880 Hz on the right channel**, through the same
+stock Cosmos HDA player. The separate QEMU WAV capture is validated by
+`tools/verify-audio-stereo-capture.py`: it requires sustained non-silent
+samples in both channels, two independent 80 ms windows, correct channel
+order and different measured pitches. Host C# checks verify the production
+PCM generator, and synthetic Python negative fixtures reject swapped,
+identical, silent and short channels. Only a completed QEMU capture test
+proves the emulated stereo PCM path; neither that nor the host tests prove
+physical speaker output, codec interrupts or production GUI audio.
+
+
+### 32 kHz independent stereo through resampling (2026-11-01)
+
+The opt-in `wavstereo32` diagnostic builds a 250 ms 32 kHz PCM16 WAV with
+440 Hz on the left and 880 Hz on the right, decodes it via the bounded
+read-only stream, resamples both channels to 48 kHz, then plays it through
+stock HDA. The dedicated QEMU boot must capture independent left/right
+frequencies in two disjoint 80 ms windows; the C# host test checks decoded
+pitch, duration and channel separation. A successful host test alone does
+not establish that the QEMU output worked. No host disk, production audio,
+SMP/SMT or FAT32 write access is enabled by this diagnostic.
+
+### Optional 0..50 ms PCM fade (2026-11-01; verification pending)
+
+The isolated `fade N` console control applies a symmetric, integer linear
+attack/release envelope to 48 kHz stereo PCM16 **after** software volume and
+balance, before the stock HDA playback API. `fade 0` retains the previous
+bit-exact PCM path; `fade 20` suppresses abrupt start/end transitions for
+short notifications. The production helper rejects incomplete frames, clips
+over two seconds, and fades outside 0..50 ms. Short clips clamp the ramp to
+half their duration; input buffers are never mutated. Host C# tests check
+every output sample against the integer envelope and include malformed and
+signed edge cases. This feature remains opt-in, diskless, and isolated from
+the production GUI, FAT32, SMP/SMT, PCI configuration and codec registers.
+The new fade has **not yet been verified in a QEMU WAV capture**.
+
+### Independent QEMU PCM envelope gate (pending)
+
+A separate diskless QEMU boot now runs `tone` after `fade 20`. The
+`verify-audio-fade-capture.py` validator reads the **captured HDA backend
+WAV**, requires sustained stereo PCM, a full-level middle, and reduced
+amplitude in both the first and last 5 ms. Synthetic positive/negative
+fixtures reject abrupt edges, missing fade in either channel, and short
+bursts. This is distinct from the host C# exact-sample checks. A successful
+serial message, compile or synthetic fixture alone does not establish
+actual captured fade; await the real QEMU workflow result.
+
+### True-stereo generator allocation reduction (2026-11-01; CI pending)
+
+`AudioTonePcm.GenerateDualSquareStereo16` now synthesizes both channels
+directly into **one** stereo PCM16 array instead of allocating two full
+stereo arrays and copying the right channel. At 48 kHz/250 ms this avoids
+one 48,000-byte temporary array by construction. Host C# tests compare
+every generated left/right frame against independent reference generators
+at 32 and 48 kHz and measure thread-local .NET allocation bytes. This is
+an allocation optimization only: no claim is made about guest CPU, GC,
+hardware DMA or audible playback until the respective CI/QEMU checks pass.
+
+### One-pass software gain/balance + fade (2026-11-01; CI pending)
+
+The opt-in playback path now combines independent channel gain and the
+bounded fade envelope into one PCM16 output allocation when fade is enabled.
+Integer rounding is deliberately identical to the former two-stage path
+(gain truncation first, then envelope truncation). `fade 0` continues to
+use the original gain-only path, and no source buffer is modified. Host C#
+tests compare all bytes across 36 gain/fade combinations and check
+thread-local allocation bytes. This removes one 48,000-byte temporary PCM
+array for a 250 ms 48 kHz stereo diagnostic tone by construction; it is
+**not** a measured guest CPU/GC speedup. QEMU sample-level fade validation
+is still required before claiming an audible output improvement.
+
+### 16 kHz and 24 kHz WAV resampling (2026-11-01, QEMU confirmation pending)
+
+The isolated decoder now accepts **16,000 Hz** and **24,000 Hz** uncompressed
+PCM8/16/24/32 mono or stereo in addition to 22,050/32,000/44,100/48,000 Hz.
+Both new rates use the existing bounded integer linear resampler to produce
+48 kHz signed PCM16 stereo. The same 2-second output limit and 800 KiB RIFF
+limit apply; no disk, network, DMA or production GUI changes were made.
+
+The diskless diagnostic commands `wav16k` and `wav24k` respectively exercise
+16 kHz unsigned PCM8 mono at 1500 Hz and 24 kHz PCM16 stereo at 740 Hz.
+The 740 Hz fixture avoids the frequent exact-zero midpoint samples that a
+high-frequency square wave creates when linearly interpolated from 24 kHz
+to 48 kHz; otherwise the existing strict sustained-audio QEMU validator
+could reject correctly resampled audio. Independent host-side arithmetic
+confirmed 96.9% active samples and approximately 738 Hz in an 80 ms window
+for the 24 kHz fixture. This calculation is **not** a QEMU playback result.
+
+The real-QEMU CI includes separate boots and backend WAV captures for both
+commands, with unique pitch expectations. Until those runs complete, these
+new paths are **implemented but not QEMU-verified**. Production audio remains
+disabled and external FAT32 WAV playback remains out of scope.
+
+### Two-source saturating PCM mixer (2026-11-01; new QEMU capture pending)
+
+`AudioPcmMixer.MixStereo16` combines **two independent 48 kHz signed
+stereo16 clips** with separate software gains (0..100%). It rejects null,
+empty, misaligned and over-two-second inputs before allocation. The output
+lasts as long as the longer input; a shorter input contributes silence
+after EOF. Each interleaved sample is scaled independently, added using
+32-bit arithmetic, and **saturated to signed 16-bit range** rather than
+wrapping or clipping unpredictably. Neither source buffer is modified.
+
+The opt-in diskless `mix` diagnostic synthesizes a 440 Hz left-only
+clip and an 880 Hz right-only clip, mixes them, then sends the resulting
+PCM through the existing stock Cosmos 3.0.95 HDA `AudioManager`. Host C#
+tests cover positive/negative saturation, cancellation, independent gain,
+different clip lengths, input immutability and duration/alignment limits.
+They also compare every sample of the `mix` fixture against the existing
+true-stereo generator.
+
+An **additional independent QEMU boot** captures `mix` through the
+emulated HDA WAV backend; the existing stereo validator must detect
+both 440 Hz left and 880 Hz right. This checks a real PCM output path,
+but does not prove physical speakers, kernel IRQ delivery, general-purpose
+concurrent playback scheduling or GUI audio integration. The new capture
+must complete before a QEMU PASS claim. Production disk GUI audio remains
+disabled; there are no guest disks, FAT32 mounts, new DMA operations,
+custom SMP/SMT or Cosmos SDK modifications in this change.
+
+### Frame-accurate two-source PCM scheduling (2026-11-01)
+
+`AudioPcmMixer.MixStereo16WithDelay(first, second, firstGain, secondGain,
+secondDelayFrames)` schedules the second 48 kHz stereo16 source at a whole-frame
+offset. The original `MixStereo16` delegates to zero delay. The mixer
+rejects negative delays, misaligned/empty/oversized inputs, invalid gains,
+and offsets that would extend either clip past the two-second output budget;
+it never silently truncates the delayed source or mutates the inputs.
+
+The diskless `mixdelay` diagnostic plays a 440 Hz left-only tone followed
+by an 880 Hz right-only tone beginning **2,400 frames (50 ms)** later.
+It still uses stock Cosmos 3.0.95 HDA and the same `AudioManager.Play`;
+there is no new DMA/IRQ implementation, guest disk, filesystem access or
+production GUI activation.
+
+The real-QEMU workflow now includes a fresh ISO boot and backend WAV capture
+for `mixdelay`. It requires **both** the existing independent-channel
+440/880 Hz validator and a new onset validator measuring a right-channel
+delay of 50 ± 18 ms from PCM samples. Host-side C# tests cover exact
+frame placement, overlap, non-overlap, immutability and output bounds.
+Synthetic Python fixtures exercise accepted and rejected capture timing.
+
+**Evidence boundary:** the previous head `1121e172` passed the actual
+QEMU HDA capture workflow [#41286519260](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41286519260),
+including `mix`, WAV decoding, volume, balance and fade. That run does
+**not** cover the new `mixdelay` path; wait for the new commit's QEMU
+run before claiming sample-accurate delayed playback on the emulator.
+Physical codec output, IRQ execution and GUI sound effects remain unverified.
+
+### Multi-effect frame-scheduled PCM mixer (2026-11-01)
+
+The opt-in audio probe now exposes
+`AudioPcmMixer.MixScheduledStereo16(byte[][] clips, int[] startFrames,
+int[] gainsPercent)`: up to eight independent, nonempty 48 kHz stereo PCM16
+effects with per-clip 0..100% gain and whole-frame start offsets. All inputs
+and the **two-second total output limit** are validated before the single
+output allocation. All contributions are summed in 32-bit integers before
+the final PCM16 saturation, preventing order-dependent intermediate
+clipping when three or more sounds overlap. Source buffers are never
+modified. This is offline mixing, **not** a real-time interrupt/DMA queue.
+
+The new diskless `mixqueue` diagnostic uses three different sound effects:
+440 Hz left at 0..250 ms, 880 Hz right at 50..300 ms, and 660 Hz left at
+300..400 ms. A separate real-QEMU HDA backend capture gate checks both
+channel onsets, the 50 ms left-channel silence between clips, the 440/660/880
+Hz pitches and the end-of-clip silence. Host C# tests check three-source
+cancellation before saturation, input immutability, frame offsets,
+boundary rejection and allocation count. Python fixtures deliberately
+reject incorrect onset, missing gap, missing/wrong final tone and trailing
+right-channel audio.
+
+**Previously verified QEMU baseline:** the prior head `1e39f797` completed
+[real QEMU HDA capture run #41290921214](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41290921214)
+successfully on 2026-11-01, including a measured **49.0 ms** right-channel
+delay for `mixdelay` at the 44.1 kHz WAV backend. That result is real
+emulated PCM evidence, **not** proof of physical speakers or ISR execution.
+The new `mixqueue` path requires its own successful captured-WAV run;
+do not infer a PASS from the previous head or host tests. Stock Cosmos
+3.0.95, one vCPU, no guest disk, production GUI audio disabled, no
+SMP/SMT modifications and no ZONDERQDATA access remain unchanged.
+
+## 2026-11-01: real QEMU HDA scheduled-queue underrun investigation
+
+The [QEMU capture #41303330837](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41303330837)
+**FAILED** its strict `mixqueue` gate. The job built the stock 3.0.95
+ISO and independently passed the other HDA PCM/WAV capture commands.
+The failure was **not** a Python-only or synthetic fixture failure.
+
+Downloaded the job's actual `audio-qemu-mixqueue-out/captured.wav` artifact
+(44,100 Hz, stereo16, 42,115 frames = 955.0 ms) and measured:
+- right-channel onset: +50.0 ms relative to first sustained left PCM;
+- first left clip (60..140 ms window): 99.86% active;
+- right clip (100..180 ms window): 99.72% active;
+- final left clip (325..375 ms window): **20.82% active**, with a
+  **39.6 ms** contiguous silent gap;
+- right channel (325..345 ms) and left channel (425..445 ms) both remained
+  **99.77% active after their scheduled ends**.
+
+These are actual captured backend samples: the last effect was delayed /
+interrupted and prior channel audio persisted unexpectedly. The ~85.3 ms
+16 KiB HDA ring period makes a DMA refill/TCG timing problem plausible,
+**but neither the WAV nor QEMU's INTx line activity proves an ISR bug**.
+
+New `tools/analyze-audio-queue-dropouts.py` quantifies these windows on
+every QEMU run, and its synthetic positive/negative tests are wired into
+host CI. It is **diagnostic only**: the original
+`verify-audio-queue-capture.py` remains the strict PASS/FAIL gate.
+A second, explicitly experimental QEMU `mixqueue --icount-auto` boot
+compares TCG virtual clock pacing; it cannot override a failing default
+capture. No change to the stock driver, production GUI, SMP/SMT,
+root selection, FAT32 or host disk access.
+
+The opt-in C# playback entry also validates nonempty, frame-aligned,
+<=2-second PCM16 and the published 48 kHz stereo16 device format before
+attempting playback. It does not claim that accepted PCM reached a
+physical speaker.
+
+**Next:** compare the two real QEMU captures, then investigate stock
+HDA DMA ring refill and guest ISR delivery with independent counters
+or controlled emulation; do not remove the quality gate to obtain green CI.
+
+
+## 2026-11-01: controlled QEMU clock A/B — default PCM passes, icount fails
+
+The actual stock-Cosmos-3.0.95 [QEMU run #41308709107](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41308709107)
+completed successfully. In the **default TCG clock** capture, the strict
+`mixqueue` WAV validator found all three independently scheduled effects:
+left 437.6 Hz then 660.3 Hz, right 875.2 Hz, right onset +50.0 ms.
+The separately measured 44.1 kHz capture had 36,725 frames; all three
+active diagnostic windows exceeded 99.7% active samples, the left-channel
+gap was silent, and both post-effect windows were silent. This confirms
+emulated PCM output for this particular boot, not physical audio or IRQ
+handler execution.
+
+The **experimental** `-icount shift=auto,sleep=on` run in the same
+workflow **failed** the strict WAV quality gate: its first left effect
+contained only **71.17%** sustained samples. The workflow explicitly marks
+this experiment non-blocking; the overall workflow SUCCESS must not be
+reported as a PASS for the icount variant. This A/B result does **not**
+establish that the Cosmos driver is defective: altered TCG virtual-clock
+pacing is an independent variable, and there is no guest ISR execution
+counter or DMA-refill timing trace yet.
+
+The dropout analyzer now warns separately for incomplete **first left,
+right and final left** clips, abnormal +50 ms onset, leaked audio during
+the left-channel gap and unexpected post-effect signal. Synthetic tests
+cover each added diagnostic case. The QEMU workflow also runs the same
+analyzer on the experimental icount WAV when present, without weakening
+the mandatory default-clock `mixqueue` gate.
+
+**Next investigation:** compare per-buffer HDA playback timing with
+stock-Cosmos instrumentation if available, preserving the unchanged
+SDK 3.0.95, diskless QEMU image, production audio isolation and strict
+sample-level verification. Do not infer hardware speaker or ISR success.
+
+## Nonperiodic HDA ring-replay probe (experimental)
+
+The diskless diagnostic command `mixsequence` submits four consecutive
+90 ms stereo PCM16 tones at 400, 700, 1000 and 1300 Hz. A 250 ms
+silent lead-in primes the stock HDA stream; a 5 ms per-clip fade and
+4096-frame silent tail preserve a bounded two-second output. The QEMU
+WAV validator checks **both channels**, the four ordered frequency windows
+and post-sequence silence. Replaying a stale 16 KiB HDA ring period cannot
+pass simply because a single periodic tone happens to repeat. This is
+evidence of PCM output continuity only, not a direct DMA/IRQ trace.
+
+Run `python3 tests/test_audio_sequence_validator.py` for synthetic
+positive/negative fixtures. The separate `mixsequence` QEMU boot in
+`.github/workflows/audio-qemu.yml` is mandatory and fails if its actual
+captured WAV does not match. The production disk GUI remains audio-disabled.
+
+
+## 2026-11-01 — measured scheduler-thread HDA A/B (PR #194)
+
+The real QEMU run [41349515121](https://github.com/dwierzbicki11/ZOnderqOS/actions/runs/41349515121) used the same stock Cosmos 3.0.95 HDA driver and strict backend WAV validators. The boot-thread `mixqueue` failed (last left effect active only **20.91%**) and `mixsequence` failed its second PCM segment. The 1ms boot-thread experiments also failed (queue right effect **73.13%** active; sequence second segment incomplete). In contrast, `mixqueueasync` **PASS** (440/660 Hz left, 875 Hz right, +50.0 ms onset) and `mixsequenceasync` **PASS** (400.3/700.5/1000.8/1301.0 Hz, trailing silence). These are actual QEMU WAV measurements, **not** speaker, ISR, or physical hardware verification.
+
+Consequently the default diskless `mixqueue` and `mixsequence` probes now use stock `AudioPlayback.TryStart` and its scheduler thread. The old synchronous paths remain available as `mixqueueboot` and `mixsequenceboot` for A/B diagnosis; 1ms remains experimental. The CI quality gate still requires the **default** strict captures plus independent repeated boots, while legacy/1ms failures are recorded as warnings and captured artifacts, not misreported as PASS. This change does **not** enable AUDIO in production GUI or modify stock Cosmos.
+
+## 2026-11-02 — PCM24-in-32 extensible HDA capture gate
+
+The opt-in diskless `wavext24in32` command now creates a distinct **3700 Hz**
+mono WAVE_FORMAT_EXTENSIBLE RIFF fixture in guest RAM. Its 32-bit signed
+container advertises **24 valid bits**, has zero low eight padding bits,
+and carries nonzero extra valid precision in the next byte. The existing
+bounded read-only stream decoder converts it to 48 kHz stereo PCM16, then
+submits the result to stock Cosmos 3.0.95 HDA. A dedicated QEMU WAV-backend
+capture must independently detect sustained 3700 Hz on both channels;
+static checks and C# sample comparisons are separate evidence tiers.
+
+The C# host smoke checks every decoded byte against the original signed
+PCM16 fixture, the read-only stream path, and rejection of nonzero unused
+container bits. No external file, host disk, ZONDERQDATA mount, DMA/IRQ
+patch, production GUI audio, custom SMP/SMT or Cosmos version change is
+introduced. **Do not claim the new captured PCM path passed until the
+new commit's QEMU workflow completes successfully.**
+
+### Extensible stereo 24-in-32 at 44.1 kHz (opt-in, diskless)
+
+The `wavextstereo44` probe generates independent 440 Hz left and 880 Hz right
+square waves in RAM as 44.1 kHz WAVE_FORMAT_EXTENSIBLE PCM (24 valid bits in
+32-bit containers). The low padding byte is zero, and each channel has a
+different nonzero low valid-precision byte. The bounded read-only WAV decoder
+converts and resamples the samples to 48 kHz stereo PCM16 before stock Cosmos
+HDA playback. Host C# tests compare every decoded output byte against an
+independent PCM16 resampling reference and reject malformed padding and speaker
+masks. QEMU must capture both distinct channel pitches to pass; boot, static
+contracts and C# tests alone are insufficient. This does not enable audio in
+the production GUI or change stock Cosmos 3.0.95, DMA/IRQ, disk policy or SMP.
+
+### Direct HDA 1 ms diagnostic counters (experimental)
+
+The opt-in direct ring writer logs `pcmQueued` and `silenceQueued` as bytes
+accepted by `AudioDevice.Write`, plus `writeCalls`, `zeroWrites`,
+`partialWrites`, `longestZeroStreak`, `minPositiveWrite`, `waits`, and
+`settleRequests`. A partial write is a positive, frame-aligned return smaller
+than the requested count; a zero streak counts consecutive zero-byte returns.
+`minPositiveWrite=0` means no positive write occurred. These counters can
+help distinguish ring backpressure from scheduling gaps, but **none measures
+DMA advancement, an ISR invocation, a physical speaker or WAV capture quality**.
+The direct writer remains isolated from the production GUI and is not an
+atomic substitute for stock Cosmos audio ownership.

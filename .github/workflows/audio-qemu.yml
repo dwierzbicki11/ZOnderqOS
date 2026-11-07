@@ -1,0 +1,563 @@
+name: Audio Gen3 — real QEMU HDA PCM capture
+
+on:
+  pull_request:
+    paths:
+      - 'ZonderqOS.csproj'
+      - 'Kernel.cs'
+      - 'source/Core/Audio*.cs'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/smoke-audio-qemu.py'
+      - 'tools/verify-audio-wav-capture.py'
+      - 'tools/verify-audio-stereo-capture.py'
+      - 'tests/test_audio_stereo_validator.py'
+      - 'tools/verify-audio-delay-capture.py'
+      - 'tools/verify-audio-queue-capture.py'
+      - 'tests/test_audio_queue_validator.py'
+      - 'tests/test_audio_sequence_validator.py'
+      - 'tools/verify-audio-sequence-capture.py'
+      - 'tests/test_audio_queue_dropout_diagnostics.py'
+      - 'tools/analyze-audio-queue-dropouts.py'
+      - 'tests/test_audio_hda_replay.py'
+      - 'tools/analyze-audio-hda-replay.py'
+      - 'tests/test_audio_delay_validator.py'
+      - 'tools/verify-audio-volume-capture.py'
+      - 'tools/verify-audio-mute-capture.py'
+      - 'tools/verify-audio-balance-capture.py'
+      - 'tests/test_audio_balance_validator.py'
+      - 'tests/test_audio_fade_validator.py'
+      - 'tools/verify-audio-fade-capture.py'
+      - 'tests/test_audio_mute_validator.py'
+      - 'tests/test_audio_wav_validator.py'
+      - 'tests/test_audio_volume_validator.py'
+      - 'tests/test_audio_qmp_keys.py'
+      - '.github/workflows/audio-qemu.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: audio-qemu-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  hda-capture:
+    name: Real ISO + 1 vCPU QEMU + non-silent WAV (no host disk)
+    runs-on: ubuntu-latest
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install pinned Cosmos and QEMU prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 tar clang lld nasm xorriso binutils qemu-system-x86
+      - name: Check source and shell syntax
+        run: |
+          bash tools/verify-cosmos-3095-migration.sh
+          bash -n run.sh tools/build-cosmos-3095-local.sh
+          python3 tests/test_audio_queue_dropout_diagnostics.py
+          python3 -m py_compile tools/analyze-audio-queue-dropouts.py tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py tools/verify-audio-stereo-capture.py tools/verify-audio-delay-capture.py tools/verify-audio-queue-capture.py tools/verify-audio-sequence-capture.py tools/analyze-audio-hda-replay.py tools/verify-audio-volume-capture.py tools/verify-audio-mute-capture.py tools/verify-audio-balance-capture.py tools/verify-audio-fade-capture.py
+          python3 tests/test_audio_gen3_contract.py
+          python3 tests/test_audio_wav_validator.py
+          python3 tests/test_audio_stereo_validator.py
+          python3 tests/test_audio_delay_validator.py
+          python3 tests/test_audio_queue_validator.py
+          python3 tests/test_audio_sequence_validator.py
+          python3 tests/test_audio_hda_replay.py
+          python3 tests/test_audio_volume_validator.py
+          python3 tests/test_audio_mute_validator.py
+          python3 tests/test_audio_qmp_keys.py
+          python3 tests/test_audio_balance_validator.py
+          python3 tests/test_audio_fade_validator.py
+      - name: Build isolated stock Cosmos 3.0.95 AUDIO ISO
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
+        run: |
+          bash tools/build-cosmos-3095-local.sh audio
+          test -s output-3095/ZonderqOS-3095-audio.iso
+      - name: Boot and capture direct PCM tone
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-out --boot-seconds 45 --command tone
+      - name: Boot and capture 20ms stereo PCM fade from actual HDA backend
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-fade-out --boot-seconds 45 --command tone --fade-ms 20
+      - name: Boot and capture independent 440Hz left / 880Hz right stereo PCM
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-stereo-out --boot-seconds 45 --command stereosplit
+      - name: Boot and capture two independently mixed PCM clips through stock HDA
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mix-out --boot-seconds 45 --command mix
+      - name: Boot and capture 50ms delayed independent PCM mixing
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixdelay-out --boot-seconds 45 --command mixdelay
+      - name: Boot and verify three frame-scheduled PCM effects through HDA
+        id: mixqueue
+        # A failing timing-quality probe must not hide later independent
+        # WAV format captures. Preserve the failure at the final gate.
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-out --boot-seconds 45 --command mixqueue
+      - name: Experimental 1ms ring-full wait mixqueue A/B (diagnostic only)
+        id: mixqueue1ms
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-1ms-out \
+            --boot-seconds 45 --command mixqueue1ms
+      - name: Quantify 1ms ring writer capture without overriding stock quality gate
+        if: always()
+        run: |
+          if [ -s audio-qemu-mixqueue-1ms-out/captured.wav ]; then
+            python3 tools/analyze-audio-queue-dropouts.py audio-qemu-mixqueue-1ms-out/captured.wav
+            python3 tools/analyze-audio-hda-replay.py audio-qemu-mixqueue-1ms-out/captured.wav
+          else
+            echo '[AUDIO-1MS] no WAV artifact; experiment inconclusive'
+          fi
+          echo '[AUDIO-1MS] experimental only; stock mixqueue remains mandatory'
+
+      - name: Boot and verify four nonperiodic PCM frequency steps through HDA
+        id: mixsequence
+        # Keep the failed capture as a real failure at the final gate, but
+        # continue independent WAV/volume boots instead of silently skipping them.
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixsequence-out --boot-seconds 45 --command mixsequence
+      - name: Experimental 1ms ring-full wait four-tone sequence (diagnostic only)
+        id: mixsequence1ms
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixsequence-1ms-out \
+            --boot-seconds 45 --command mixsequence1ms
+      - name: Diagnose 1ms sequence ring replay separately from stock quality
+        if: always()
+        run: |
+          if [ -s audio-qemu-mixsequence-1ms-out/captured.wav ]; then
+            python3 tools/analyze-audio-hda-replay.py audio-qemu-mixsequence-1ms-out/captured.wav
+          else
+            echo '[AUDIO-1MS-SEQUENCE] no captured WAV; not a playback PASS'
+          fi
+          echo '[AUDIO-1MS-SEQUENCE] experimental only; stock mixsequence remains mandatory'
+
+      - name: Experimental stock AudioPlayback scheduler-thread mixqueue A/B
+        id: mixqueueasync
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-async-out \
+            --boot-seconds 45 --command mixqueueasync
+      - name: Experimental stock AudioPlayback scheduler-thread four-tone A/B
+        id: mixsequenceasync
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixsequence-async-out \
+            --boot-seconds 45 --command mixsequenceasync
+      # Two independent boots are required in addition to the first strict
+      # queue/sequence captures: one successful WAV can be a lucky TCG run.
+      - name: Repeat default scheduler-thread mixqueue (strict WAV quality)
+        id: mixqueuerepeat
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-repeat-out \
+            --boot-seconds 45 --command mixqueue
+      - name: Repeat default scheduler-thread mixsequence (strict WAV quality)
+        id: mixsequencerepeat
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixsequence-repeat-out \
+            --boot-seconds 45 --command mixsequence
+      # Legacy boot-thread and 1ms paths are deliberately *not* mandatory:
+      # the previous real QEMU run failed their strict PCM validators while
+      # both stock scheduler-thread variants passed. Keep WAV evidence.
+      - name: Experimental boot-thread mixqueue baseline (diagnostic only)
+        id: mixqueueboot
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-boot-out \
+            --boot-seconds 45 --command mixqueueboot
+      - name: Experimental boot-thread mixsequence baseline (diagnostic only)
+        id: mixsequenceboot
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixsequence-boot-out \
+            --boot-seconds 45 --command mixsequenceboot
+      - name: Diagnose scheduler-thread playback without treating startup as audio proof
+        if: always()
+        run: |
+          for wav in audio-qemu-mixqueue-async-out/captured.wav audio-qemu-mixsequence-async-out/captured.wav; do
+            if [ -s "$wav" ]; then
+              python3 tools/analyze-audio-hda-replay.py "$wav"
+            else
+              echo "[AUDIO-ASYNC] no WAV at $wav; playback not verified"
+            fi
+          done
+          echo '[AUDIO-ASYNC] stock 5ms wait, scheduler-thread A/B; baseline stock quality gate remains mandatory'
+
+      - name: Quantify actual mixqueue dropouts without relaxing the strict quality gate
+        if: always()
+        run: |
+          if [ -s audio-qemu-mixqueue-out/captured.wav ]; then
+            python3 tools/analyze-audio-queue-dropouts.py audio-qemu-mixqueue-out/captured.wav
+          else
+            echo '[AUDIO-QUEUE-DIAG] no WAV artifact available; not a playback PASS'
+          fi
+      - name: Experimental HDA output-only codec mixqueue A/B (not a replacement gate)
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-output-only-out \
+            --boot-seconds 45 --command mixqueue --output-only
+      - name: Diagnose output-only codec PCM separately from mandatory duplex baseline
+        if: always()
+        run: |
+          if [ -s audio-qemu-mixqueue-output-only-out/captured.wav ]; then
+            python3 tools/analyze-audio-queue-dropouts.py audio-qemu-mixqueue-output-only-out/captured.wav
+            python3 tools/analyze-audio-hda-replay.py audio-qemu-mixqueue-output-only-out/captured.wav
+          else
+            echo '[AUDIO-QUEUE-OUTPUT-ONLY] no WAV artifact; diagnostic inconclusive'
+          fi
+          echo '[AUDIO-QUEUE-OUTPUT-ONLY] diagnostic only; duplex mixqueue quality gate remains mandatory'
+      - name: Experimental mixqueue TCG icount A/B (diagnostic, not a replacement gate)
+        if: always()
+        continue-on-error: true
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mixqueue-icount-out \
+            --boot-seconds 45 --command mixqueue --icount-auto
+      - name: Diagnose experimental icount HDA PCM separately from mandatory baseline
+        if: always()
+        run: |
+          if [ -s audio-qemu-mixqueue-icount-out/captured.wav ]; then
+            python3 tools/analyze-audio-queue-dropouts.py audio-qemu-mixqueue-icount-out/captured.wav
+          else
+            echo '[AUDIO-QUEUE-ICOUNT] no WAV artifact; experimental capture unverified'
+          fi
+          echo '[AUDIO-QUEUE-ICOUNT] diagnostic only; baseline mixqueue quality gate remains mandatory'
+      - name: Diagnose mandatory stock HDA queue and sequence replay (not a PASS gate)
+        if: always()
+        run: |
+          for wav in audio-qemu-mixqueue-out/captured.wav audio-qemu-mixsequence-out/captured.wav; do
+            if [ -s "$wav" ]; then
+              python3 tools/analyze-audio-hda-replay.py "$wav"
+            else
+              echo "[AUDIO-DMA] no capture at $wav; diagnosis inconclusive"
+            fi
+          done
+
+      - name: Boot again and capture decoded in-memory RIFF/WAV playback
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-wav-out --boot-seconds 45 --command wavtone
+      - name: Boot again and capture mono WAV decoded and upmixed to stereo
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-mono-out --boot-seconds 45 --command wavmono
+      - name: Boot and capture resampled 44.1 kHz stereo WAV (880 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-44100-out --boot-seconds 45 --command wav44
+      - name: Boot and capture 8 kHz PCM8 mono voice-rate WAV (400 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-8000-out --boot-seconds 45 --command wav8k
+      - name: Boot and capture 11.025 kHz PCM8 mono voice-rate WAV (550 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-11025-out --boot-seconds 45 --command wav11k
+      - name: Boot and capture 16 kHz PCM8 mono voice-rate WAV (1500 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-16000-out --boot-seconds 45 --command wav16k
+      - name: Boot and capture 24 kHz PCM16 stereo WAV (740 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-24000-out --boot-seconds 45 --command wav24k
+      - name: Boot and capture resampled 22.05 kHz stereo WAV (1100 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-22050-out --boot-seconds 45 --command wav22k
+      - name: Boot and capture resampled 32 kHz stereo WAV (3520 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-32000-out --boot-seconds 45 --command wav32k
+      - name: Boot and capture resampled 32 kHz WAV with independent 440/880 Hz stereo
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-stereo32-out --boot-seconds 45 --command wavstereo32
+      - name: Boot and capture unsigned PCM8 mono WAV converted to stereo PCM16 (1320 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-pcm8-out --boot-seconds 45 --command wav8
+      - name: Boot and capture signed PCM24 mono WAV converted to stereo PCM16 (1760 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-pcm24-out --boot-seconds 45 --command wav24
+      - name: Boot and capture signed PCM32 mono WAV converted to stereo PCM16 (2200 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-pcm32-out --boot-seconds 45 --command wav32
+      - name: Boot and capture IEEE float32 mono WAV converted to PCM16 (2860 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-float32-out --boot-seconds 45 --command wavfloat
+      - name: Boot and capture extensible IEEE float32 mono 44.1kHz WAV (3960 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-extensible-float32-out --boot-seconds 45 --command wavextfloat
+      - name: Boot and capture WAVE_FORMAT_EXTENSIBLE PCM16 stereo (2640 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-extensible-out --boot-seconds 45 --command wavext
+      - name: Boot and capture WAVE_FORMAT_EXTENSIBLE 20 valid bits in PCM24 (3080 Hz)
+        run: python3 tools/smoke-audio-qemu.py output-3095/ZonderqOS-3095-audio.iso audio-qemu-extensible20-out --boot-seconds 45 --command wavext20
+      - name: Boot and capture WAVE_FORMAT_EXTENSIBLE 24 valid bits in PCM32 mono (3700 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-extensible24in32-out --boot-seconds 45 --command wavext24in32
+      - name: Boot and capture resampled 44.1kHz extensible stereo 24-in-32 (440/880 Hz)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-extensible-stereo44-out --boot-seconds 45 --command wavextstereo44
+      - name: Boot and capture right-only 880 Hz balance (left must be silent)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-balance-out --boot-seconds 45 --command stereosplit --balance 100
+      - name: Boot and capture left-only 440 Hz balance (right must be silent)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-balance-left-out --boot-seconds 45 --command stereosplit --balance -100
+      - name: Boot and verify measured +50% stereo balance (left/right amplitude 1:2)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-balance-half-right-out --boot-seconds 45 --command stereosplit --balance 50
+      - name: Boot and verify measured -50% stereo balance (left/right amplitude 2:1)
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-balance-half-left-out --boot-seconds 45 --command stereosplit --balance -50
+      - name: Boot again at 25% software volume and compare actual output amplitude
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-quiet-out --boot-seconds 45 --command tone --volume 25
+          python3 tools/verify-audio-volume-capture.py \
+            audio-qemu-out/captured.wav audio-qemu-quiet-out/captured.wav
+      - name: Boot once more at 0% software volume and require captured silence
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-qemu-muted-out --boot-seconds 45 --command tone --volume 0
+      - name: Enforce scheduled HDA queue and sequence quality gates
+        if: always() && (steps.mixqueue.outcome == 'failure' || steps.mixsequence.outcome == 'failure')
+        run: |
+          echo "::error::Scheduled mixqueue/mixsequence real QEMU PCM quality verification failed; see captured WAV artifacts"
+          exit 1
+      - name: Report experimental 1ms HDA quality failures (non-gating)
+        if: always() && (steps.mixqueue1ms.outcome == 'failure' || steps.mixsequence1ms.outcome == 'failure')
+        run: |
+          echo "::warning::Experimental 1ms HDA PCM FAILED strict WAV verification; not a playback PASS"
+      - name: Enforce repeated default stock scheduler-thread HDA quality gates
+        if: always() && (steps.mixqueuerepeat.outcome == 'failure' || steps.mixsequencerepeat.outcome == 'failure')
+        run: |
+          echo "::error::Repeated default scheduler-thread HDA PCM failed strict WAV verification"
+          exit 1
+      - name: Report legacy boot-thread HDA quality failures (non-gating)
+        if: always() && (steps.mixqueueboot.outcome == 'failure' || steps.mixsequenceboot.outcome == 'failure')
+        run: |
+          echo "::warning::Legacy boot-thread HDA PCM FAILED strict WAV verification; diagnostic only, not a playback PASS"
+      - name: Enforce separate stock scheduler-thread HDA quality gates
+        if: always() && (steps.mixqueueasync.outcome == 'failure' || steps.mixsequenceasync.outcome == 'failure')
+        run: |
+          echo "::error::Stock scheduler-thread HDA PCM failed real QEMU quality verification"
+          exit 1
+      - name: Inspect potential 16KiB HDA ring replay (diagnostic, not IRQ proof)
+        if: always()
+        run: |
+          for wav in audio-qemu-out/captured.wav audio-qemu-mixqueue-out/captured.wav; do
+            if [ -s "$wav" ]; then
+              python3 tools/analyze-audio-hda-replay.py "$wav"
+            fi
+          done
+      - name: Diagnostic logs
+        if: always()
+        run: |
+          tail -n 200 audio-qemu-out/serial.log audio-qemu-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-fade-out/serial.log audio-qemu-fade-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-stereo-out/serial.log audio-qemu-stereo-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-mix-out/serial.log audio-qemu-mix-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-mixdelay-out/serial.log audio-qemu-mixdelay-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-mixqueue-out/serial.log audio-qemu-mixqueue-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-mixqueue-output-only-out/serial.log audio-qemu-mixqueue-output-only-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-wav-out/serial.log audio-qemu-wav-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-mono-out/serial.log audio-qemu-mono-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-44100-out/serial.log audio-qemu-44100-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-8000-out/serial.log audio-qemu-8000-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-11025-out/serial.log audio-qemu-11025-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-16000-out/serial.log audio-qemu-16000-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-24000-out/serial.log audio-qemu-24000-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-22050-out/serial.log audio-qemu-22050-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-32000-out/serial.log audio-qemu-32000-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-stereo32-out/serial.log audio-qemu-stereo32-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-pcm8-out/serial.log audio-qemu-pcm8-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-pcm24-out/serial.log audio-qemu-pcm24-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-pcm32-out/serial.log audio-qemu-pcm32-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-extensible-out/serial.log audio-qemu-extensible-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-extensible20-out/serial.log audio-qemu-extensible20-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-extensible24in32-out/serial.log audio-qemu-extensible24in32-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-extensible-stereo44-out/serial.log audio-qemu-extensible-stereo44-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-quiet-out/serial.log audio-qemu-quiet-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-muted-out/serial.log audio-qemu-muted-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-balance-out/serial.log audio-qemu-balance-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-balance-left-out/serial.log audio-qemu-balance-left-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-balance-half-right-out/serial.log audio-qemu-balance-half-right-out/qemu.stderr.log 2>/dev/null || true
+          tail -n 200 audio-qemu-balance-half-left-out/serial.log audio-qemu-balance-half-left-out/qemu.stderr.log 2>/dev/null || true
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: audio-gen3-hda-qemu-diagnostics
+          if-no-files-found: ignore
+          path: |
+            audio-qemu-out/*.log
+            audio-qemu-out/*.wav
+            audio-qemu-out/*.ppm
+            audio-qemu-fade-out/*.log
+            audio-qemu-fade-out/*.wav
+            audio-qemu-fade-out/*.ppm
+            audio-qemu-stereo-out/*.log
+            audio-qemu-stereo-out/*.wav
+            audio-qemu-stereo-out/*.ppm
+            audio-qemu-mix-out/*.log
+            audio-qemu-mix-out/*.wav
+            audio-qemu-mix-out/*.ppm
+            audio-qemu-mixdelay-out/*.log
+            audio-qemu-mixdelay-out/*.wav
+            audio-qemu-mixdelay-out/*.ppm
+            audio-qemu-mixqueue-out/*.log
+            audio-qemu-mixqueue-1ms-out/*.log
+            audio-qemu-mixqueue-1ms-out/*.wav
+            audio-qemu-mixqueue-1ms-out/*.ppm
+            audio-qemu-mixqueue-out/*.wav
+            audio-qemu-mixqueue-repeat-out/*.log
+            audio-qemu-mixqueue-repeat-out/*.wav
+            audio-qemu-mixqueue-boot-out/*.log
+            audio-qemu-mixqueue-boot-out/*.wav
+            audio-qemu-mixsequence-repeat-out/*.log
+            audio-qemu-mixsequence-repeat-out/*.wav
+            audio-qemu-mixsequence-boot-out/*.log
+            audio-qemu-mixsequence-boot-out/*.wav
+            audio-qemu-mixqueue-out/*.ppm
+            audio-qemu-mixsequence-out/*.log
+            audio-qemu-mixsequence-out/*.wav
+            audio-qemu-mixsequence-out/*.ppm
+            audio-qemu-mixsequence-1ms-out/*.log
+            audio-qemu-mixsequence-1ms-out/*.wav
+            audio-qemu-mixsequence-1ms-out/*.ppm
+            audio-qemu-mixqueue-async-out/*.log
+            audio-qemu-mixqueue-async-out/*.wav
+            audio-qemu-mixqueue-async-out/*.ppm
+            audio-qemu-mixsequence-async-out/*.log
+            audio-qemu-mixsequence-async-out/*.wav
+            audio-qemu-mixsequence-async-out/*.ppm
+            audio-qemu-mixqueue-output-only-out/*.log
+            audio-qemu-mixqueue-output-only-out/*.wav
+            audio-qemu-mixqueue-output-only-out/*.ppm
+            audio-qemu-mixqueue-icount-out/*.log
+            audio-qemu-mixqueue-icount-out/*.wav
+            audio-qemu-mixqueue-icount-out/*.ppm
+            audio-qemu-wav-out/*.log
+            audio-qemu-wav-out/*.wav
+            audio-qemu-wav-out/*.ppm
+            audio-qemu-mono-out/*.log
+            audio-qemu-mono-out/*.wav
+            audio-qemu-mono-out/*.ppm
+            audio-qemu-44100-out/*.log
+            audio-qemu-44100-out/*.wav
+            audio-qemu-44100-out/*.ppm
+            audio-qemu-8000-out/*.log
+            audio-qemu-8000-out/*.wav
+            audio-qemu-8000-out/*.ppm
+            audio-qemu-11025-out/*.log
+            audio-qemu-11025-out/*.wav
+            audio-qemu-11025-out/*.ppm
+            audio-qemu-16000-out/*.log
+            audio-qemu-16000-out/*.wav
+            audio-qemu-16000-out/*.ppm
+            audio-qemu-24000-out/*.log
+            audio-qemu-24000-out/*.wav
+            audio-qemu-24000-out/*.ppm
+            audio-qemu-22050-out/*.log
+            audio-qemu-22050-out/*.wav
+            audio-qemu-22050-out/*.ppm
+            audio-qemu-32000-out/*.log
+            audio-qemu-32000-out/*.wav
+            audio-qemu-32000-out/*.ppm
+            audio-qemu-stereo32-out/*.log
+            audio-qemu-stereo32-out/*.wav
+            audio-qemu-stereo32-out/*.ppm
+            audio-qemu-pcm8-out/*.log
+            audio-qemu-pcm8-out/*.wav
+            audio-qemu-pcm8-out/*.ppm
+            audio-qemu-pcm24-out/*.log
+            audio-qemu-pcm24-out/*.wav
+            audio-qemu-pcm24-out/*.ppm
+            audio-qemu-pcm32-out/*.log
+            audio-qemu-pcm32-out/*.wav
+            audio-qemu-pcm32-out/*.ppm
+            audio-qemu-float32-out/*.log
+            audio-qemu-float32-out/*.wav
+            audio-qemu-float32-out/*.ppm
+            audio-qemu-extensible-float32-out/*.log
+            audio-qemu-extensible-float32-out/*.wav
+            audio-qemu-extensible-float32-out/*.ppm
+            audio-qemu-extensible-out/*.log
+            audio-qemu-extensible-out/*.wav
+            audio-qemu-extensible-out/*.ppm
+            audio-qemu-extensible20-out/*.log
+            audio-qemu-extensible20-out/*.wav
+            audio-qemu-extensible20-out/*.ppm
+            audio-qemu-extensible24in32-out/*.log
+            audio-qemu-extensible24in32-out/*.wav
+            audio-qemu-extensible24in32-out/*.ppm
+            audio-qemu-extensible-stereo44-out/*.log
+            audio-qemu-extensible-stereo44-out/*.wav
+            audio-qemu-extensible-stereo44-out/*.ppm
+            audio-qemu-quiet-out/*.log
+            audio-qemu-quiet-out/*.wav
+            audio-qemu-quiet-out/*.ppm
+            audio-qemu-muted-out/*.log
+            audio-qemu-muted-out/*.wav
+            audio-qemu-muted-out/*.ppm
+            audio-qemu-balance-out/*.log
+            audio-qemu-balance-out/*.wav
+            audio-qemu-balance-out/*.ppm
+            audio-qemu-balance-left-out/*.log
+            audio-qemu-balance-left-out/*.wav
+            audio-qemu-balance-left-out/*.ppm
+            audio-qemu-balance-half-right-out/*.log
+            audio-qemu-balance-half-right-out/*.wav
+            audio-qemu-balance-half-right-out/*.ppm
+            audio-qemu-balance-half-left-out/*.log
+            audio-qemu-balance-half-left-out/*.wav
+            audio-qemu-balance-half-left-out/*.ppm

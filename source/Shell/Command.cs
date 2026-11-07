@@ -17,7 +17,7 @@ namespace ZonderqOS
         {
             _commands.Clear();
             _commands.Add(new CmdPwd()); _commands.Add(new CmdCd()); _commands.Add(new CmdLs());
-            _commands.Add(new CmdLspci()); _commands.Add(new CmdNicDiag()); _commands.Add(new CmdDisplayInfo()); _commands.Add(new CmdInputScan()); _commands.Add(new CmdMkdir()); _commands.Add(new CmdRmdir());
+            _commands.Add(new CmdLspci()); _commands.Add(new CmdNicDiag()); _commands.Add(new CmdAudioDiag()); _commands.Add(new CmdDisplayInfo()); _commands.Add(new CmdInputScan()); _commands.Add(new CmdMkdir()); _commands.Add(new CmdRmdir());
             _commands.Add(new CmdCat()); _commands.Add(new CmdWrite()); _commands.Add(new CmdTouch());
             _commands.Add(new CmdAppend()); _commands.Add(new CmdCp()); _commands.Add(new CmdMv());
             _commands.Add(new CmdRm()); _commands.Add(new CmdSpace()); _commands.Add(new CmdFormat());
