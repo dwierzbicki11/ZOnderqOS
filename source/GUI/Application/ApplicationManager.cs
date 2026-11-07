@@ -56,6 +56,22 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
+        public bool NeedsContinuousRedraw
+        {
+            get
+            {
+                for (int i = 0; i < applications.Count; i++)
+                {
+                    Application application = applications[i];
+                    if (application != null && application.IsRunning &&
+                        application.Window != null && application.Window.Visible &&
+                        !application.Window.IsMinimized && application.NeedsContinuousRedraw)
+                        return true;
+                }
+                return false;
+            }
+        }
+
         public void Launch(Application application)
         {
             if (closingAll || application == null || !application.IsRunning)

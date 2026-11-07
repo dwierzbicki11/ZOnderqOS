@@ -167,28 +167,43 @@ namespace ZonderqOS.GUI.Apps
             return true;
         }
 
+        private int updateFrames;
+
+        private long GetFallIntervalMs()
+        {
+            long ms = 600 - (long)((level - 1) * 45);
+            if (ms < 100)
+                ms = 100;
+            return ms;
+        }
+
         private long GetFallIntervalTicks()
         {
             if (Stopwatch.Frequency <= 0)
                 return 1000000;
 
-            // Interval speeds up with level: 600ms down to 100ms
-            long ms = 600 - (long)((level - 1) * 45);
-            if (ms < 100)
-                ms = 100;
-
-            return (Stopwatch.Frequency * ms) / 1000;
+            return (Stopwatch.Frequency * GetFallIntervalMs()) / 1000;
         }
+
+        public override bool NeedsContinuousRedraw => status == GameStatus.Playing;
 
         public override void Update()
         {
             if (status != GameStatus.Playing)
                 return;
 
+            updateFrames++;
             long now = Stopwatch.GetTimestamp();
-            if (now - lastFallTicks >= GetFallIntervalTicks())
+            long interval = GetFallIntervalTicks();
+            long targetFrames = Math.Max(2, (long)(GetFallIntervalMs() / 16));
+
+            bool stepByTime = (Stopwatch.Frequency > 0 && lastFallTicks > 0 && now - lastFallTicks >= interval);
+            bool stepByFrames = (updateFrames >= targetFrames);
+
+            if (stepByTime || stepByFrames)
             {
                 lastFallTicks = now;
+                updateFrames = 0;
                 DropPieceOne();
             }
         }

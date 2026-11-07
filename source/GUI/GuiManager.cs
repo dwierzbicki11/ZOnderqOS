@@ -524,9 +524,10 @@ namespace ZonderqOS.GUI
                     // A few extra frames after actual UI interaction (roughly
                     // 30 FPS). Idle desktops keep their configurable heartbeat.
                     bool animationFrame = UiAnimator.NeedsRedraw && (frameCounter % 2 == 0);
+                    bool appContinuousRedraw = applicationManager.NeedsContinuousRedraw;
                     bool cursorOnly = pointerMoved && !keyboardActivity && !buttonChanged &&
                         !currentLeftButtonState && !currentRightButtonState &&
-                        !heartbeat && !UiAnimator.NeedsRedraw &&
+                        !heartbeat && !UiAnimator.NeedsRedraw && !appContinuousRedraw &&
                         CanMoveCursorWithoutSceneRedraw(priorMouseX, priorMouseY, mouseX, mouseY);
 
                     // A full frame remains mandatory for UI changes, interactions,
@@ -537,7 +538,7 @@ namespace ZonderqOS.GUI
                         // Only two 24x28 underlay rectangles were repainted
                         // in software; Canvas.Display still flushes full screen.
                     }
-                    else if (keyboardActivity || pointerMoved || buttonChanged || heartbeat || animationFrame)
+                    else if (keyboardActivity || pointerMoved || buttonChanged || heartbeat || animationFrame || appContinuousRedraw)
                         RenderFrame(mouseX, mouseY);
 
                     Thread.Sleep(15);

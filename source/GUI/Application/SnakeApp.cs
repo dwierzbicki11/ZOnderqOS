@@ -2,7 +2,6 @@ using System;
 using System.Diagnostics;
 using System.Drawing;
 using Cosmos.Kernel.System.Graphics;
-using ZonderqOS.GUI.Icons;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -15,8 +14,10 @@ namespace ZonderqOS.GUI.Apps
 
         private static readonly Color Surface = Color.FromArgb(20, 25, 31);
         private static readonly Color HeaderPanel = Color.FromArgb(27, 34, 41);
+        private static readonly Color ControlPanel = Color.FromArgb(24, 30, 37);
+        private static readonly Color ButtonNormal = Color.FromArgb(33, 42, 52);
+        private static readonly Color ButtonHover = Color.FromArgb(48, 62, 78);
         private static readonly Color GridBg = Color.FromArgb(16, 21, 27);
-        private static readonly Color GridLine = Color.FromArgb(24, 32, 42);
         private static readonly Color Border = Color.FromArgb(57, 70, 82);
         private static readonly Color HeadColor = Color.FromArgb(73, 163, 224);
         private static readonly Color BodyColor = Color.FromArgb(46, 117, 182);
@@ -25,6 +26,8 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color TextColor = Color.FromArgb(234, 239, 244);
         private static readonly Color MutedColor = Color.FromArgb(132, 149, 164);
         private static readonly Color AccentColor = Color.FromArgb(78, 185, 126);
+        private static readonly Color WarningColor = Color.FromArgb(240, 200, 50);
+        private static readonly Color DangerColor = Color.FromArgb(240, 70, 70);
 
         private enum GameStatus { Ready, Playing, Paused, GameOver }
 
@@ -42,14 +45,16 @@ namespace ZonderqOS.GUI.Apps
         private uint score;
         private uint highScore;
         private long lastMoveTicks;
+        private int updateFrames;
+        private int hoveredButton = -1; // 0: Left, 1: Up, 2: Down, 3: Right, 4: Restart, 5: ActionBtn
         private readonly Action closeCallback;
         private readonly Random rng = new Random();
 
         public SnakeApp(int x, int y, Action onClose) : base("Waz")
         {
             closeCallback = onClose;
-            // 20 * 18 = 360 px grid. Window 416 x 480.
-            Window = new Window(x, y, 416, 480, "Waz");
+            // 20 * 18 = 360 px grid. Window 416 x 512.
+            Window = new Window(x, y, 416, 512, "Waz");
             Window.CloseAction = Close;
             ResetGame();
         }
@@ -59,6 +64,8 @@ namespace ZonderqOS.GUI.Apps
             base.Close();
             closeCallback?.Invoke();
         }
+
+        public override bool NeedsContinuousRedraw => status == GameStatus.Playing;
 
         private void ResetGame()
         {
@@ -81,6 +88,26 @@ namespace ZonderqOS.GUI.Apps
             status = GameStatus.Ready;
             SpawnFood();
             lastMoveTicks = Stopwatch.GetTimestamp();
+            updateFrames = 0;
+        }
+
+        private void StartGame()
+        {
+            status = GameStatus.Playing;
+            lastMoveTicks = Stopwatch.GetTimestamp();
+            updateFrames = 0;
+        }
+
+        private void TogglePause()
+        {
+            if (status == GameStatus.Playing)
+            {
+                status = GameStatus.Paused;
+            }
+            else if (status == GameStatus.Paused)
+            {
+                StartGame();
+            }
         }
 
         private void SpawnFood()
@@ -104,17 +131,21 @@ namespace ZonderqOS.GUI.Apps
             } while (onSnake && attempts < 200);
         }
 
+        private long GetMoveIntervalMs()
+        {
+            // Speed scales with score: 140ms down to 50ms
+            long ms = 140 - (long)(score * 3);
+            if (ms < 50)
+                ms = 50;
+            return ms;
+        }
+
         private long GetMoveIntervalTicks()
         {
             if (Stopwatch.Frequency <= 0)
                 return 1000000;
 
-            // Speed scales with score: 150ms down to 60ms
-            long ms = 150 - (long)(score * 3);
-            if (ms < 60)
-                ms = 60;
-
-            return (Stopwatch.Frequency * ms) / 1000;
+            return (Stopwatch.Frequency * GetMoveIntervalMs()) / 1000;
         }
 
         public override void Update()
@@ -122,12 +153,18 @@ namespace ZonderqOS.GUI.Apps
             if (status != GameStatus.Playing)
                 return;
 
+            updateFrames++;
             long now = Stopwatch.GetTimestamp();
             long interval = GetMoveIntervalTicks();
+            long targetFrames = Math.Max(2, (long)(GetMoveIntervalMs() / 16));
 
-            if (now - lastMoveTicks >= interval)
+            bool timeTriggered = (Stopwatch.Frequency > 0 && lastMoveTicks > 0 && now - lastMoveTicks >= interval);
+            bool frameTriggered = (updateFrames >= targetFrames);
+
+            if (timeTriggered || frameTriggered)
             {
                 lastMoveTicks = now;
+                updateFrames = 0;
                 Step();
             }
         }
@@ -147,8 +184,12 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
+            bool ateFood = (newHeadX == foodX && newHeadY == foodY);
+
             // Check self-collision
-            for (int i = 0; i < snakeLength; i++)
+            // If snake didn't eat food, the tail segment will vacate on this step.
+            int checkSegments = ateFood ? snakeLength : snakeLength - 1;
+            for (int i = 0; i < checkSegments; i++)
             {
                 if (snakeX[i] == newHeadX && snakeY[i] == newHeadY)
                 {
@@ -156,9 +197,6 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 }
             }
-
-            // Check food collision
-            bool ateFood = (newHeadX == foodX && newHeadY == foodY);
 
             // Move body segments
             int targetLength = ateFood ? snakeLength + 1 : snakeLength;
@@ -189,6 +227,46 @@ namespace ZonderqOS.GUI.Apps
             status = GameStatus.GameOver;
         }
 
+        public void TryTurnUp()
+        {
+            if (dirY != 1 && nextDirY != 1)
+            {
+                nextDirX = 0;
+                nextDirY = -1;
+                if (status == GameStatus.Ready) StartGame();
+            }
+        }
+
+        public void TryTurnDown()
+        {
+            if (dirY != -1 && nextDirY != -1)
+            {
+                nextDirX = 0;
+                nextDirY = 1;
+                if (status == GameStatus.Ready) StartGame();
+            }
+        }
+
+        public void TryTurnLeft()
+        {
+            if (dirX != 1 && nextDirX != 1)
+            {
+                nextDirX = -1;
+                nextDirY = 0;
+                if (status == GameStatus.Ready) StartGame();
+            }
+        }
+
+        public void TryTurnRight()
+        {
+            if (dirX != -1 && nextDirX != -1)
+            {
+                nextDirX = 1;
+                nextDirY = 0;
+                if (status == GameStatus.Ready) StartGame();
+            }
+        }
+
         public override void HandleKeyboard(KeyEvent key)
         {
             if (key == null)
@@ -203,29 +281,22 @@ namespace ZonderqOS.GUI.Apps
             if (key.Key == ConsoleKeyEx.R)
             {
                 ResetGame();
+                StartGame();
                 return;
             }
 
             if (key.Key == ConsoleKeyEx.Spacebar)
             {
                 if (status == GameStatus.Ready)
-                {
-                    status = GameStatus.Playing;
-                    lastMoveTicks = Stopwatch.GetTimestamp();
-                }
+                    StartGame();
                 else if (status == GameStatus.Playing)
-                {
-                    status = GameStatus.Paused;
-                }
+                    TogglePause();
                 else if (status == GameStatus.Paused)
-                {
-                    status = GameStatus.Playing;
-                    lastMoveTicks = Stopwatch.GetTimestamp();
-                }
+                    StartGame();
                 else if (status == GameStatus.GameOver)
                 {
                     ResetGame();
-                    status = GameStatus.Playing;
+                    StartGame();
                 }
                 return;
             }
@@ -233,60 +304,147 @@ namespace ZonderqOS.GUI.Apps
             // Direction controls (Arrow keys or WASD)
             if (key.Key == ConsoleKeyEx.UpArrow || key.KeyChar == 'w' || key.KeyChar == 'W')
             {
-                if (dirY != 1)
-                {
-                    nextDirX = 0;
-                    nextDirY = -1;
-                    if (status == GameStatus.Ready) status = GameStatus.Playing;
-                }
+                TryTurnUp();
             }
             else if (key.Key == ConsoleKeyEx.DownArrow || key.KeyChar == 's' || key.KeyChar == 'S')
             {
-                if (dirY != -1)
-                {
-                    nextDirX = 0;
-                    nextDirY = 1;
-                    if (status == GameStatus.Ready) status = GameStatus.Playing;
-                }
+                TryTurnDown();
             }
             else if (key.Key == ConsoleKeyEx.LeftArrow || key.KeyChar == 'a' || key.KeyChar == 'A')
             {
-                if (dirX != 1)
-                {
-                    nextDirX = -1;
-                    nextDirY = 0;
-                    if (status == GameStatus.Ready) status = GameStatus.Playing;
-                }
+                TryTurnLeft();
             }
             else if (key.Key == ConsoleKeyEx.RightArrow || key.KeyChar == 'd' || key.KeyChar == 'D')
             {
-                if (dirX != -1)
-                {
-                    nextDirX = 1;
-                    nextDirY = 0;
-                    if (status == GameStatus.Ready) status = GameStatus.Playing;
-                }
+                TryTurnRight();
             }
         }
 
         public override void HandleMouse(int mouseX, int mouseY, bool leftClicked, bool leftWasClicked,
             bool rightClicked, bool rightWasClicked)
         {
-            if (leftClicked && !leftWasClicked)
+            base.HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked, rightClicked, rightWasClicked);
+
+            if (!Window.Visible || Window.IsMinimized)
+                return;
+
+            int contentX = Window.X + 8;
+            int contentY = Window.Y + 38;
+            int contentWidth = Math.Max(1, Window.Width - 16);
+
+            // Header action button hit-test
+            int headerX = contentX + 8;
+            int headerY = contentY + 6;
+            int headerWidth = contentWidth - 16;
+            int actBtnW = 86;
+            int actBtnH = 24;
+            int actBtnX = headerX + headerWidth - actBtnW - 6;
+            int actBtnY = headerY + 6;
+
+            // Bottom control bar hit-test
+            int barY = contentY + 412;
+            int startX = contentX + (contentWidth - 274) / 2;
+            int btnY = barY + 3;
+
+            // Hover detection
+            hoveredButton = -1;
+            if (mouseX >= actBtnX && mouseX < actBtnX + actBtnW &&
+                mouseY >= actBtnY && mouseY < actBtnY + actBtnH)
             {
-                if (status == GameStatus.Ready)
-                {
-                    status = GameStatus.Playing;
-                    lastMoveTicks = Stopwatch.GetTimestamp();
-                }
-                else if (status == GameStatus.GameOver)
-                {
-                    ResetGame();
-                    status = GameStatus.Playing;
-                }
+                hoveredButton = 5;
+            }
+            else if (mouseY >= btnY && mouseY < btnY + 28)
+            {
+                if (mouseX >= startX && mouseX < startX + 38) hoveredButton = 0; // Left
+                else if (mouseX >= startX + 44 && mouseX < startX + 82) hoveredButton = 1; // Up
+                else if (mouseX >= startX + 88 && mouseX < startX + 126) hoveredButton = 2; // Down
+                else if (mouseX >= startX + 132 && mouseX < startX + 170) hoveredButton = 3; // Right
+                else if (mouseX >= startX + 180 && mouseX < startX + 274) hoveredButton = 4; // Restart
             }
 
-            base.HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked, rightClicked, rightWasClicked);
+            if (leftClicked && !leftWasClicked)
+            {
+                // 1. Header action button click
+                if (hoveredButton == 5)
+                {
+                    if (status == GameStatus.Ready)
+                        StartGame();
+                    else if (status == GameStatus.Playing)
+                        TogglePause();
+                    else if (status == GameStatus.Paused)
+                        StartGame();
+                    else if (status == GameStatus.GameOver)
+                    {
+                        ResetGame();
+                        StartGame();
+                    }
+                    return;
+                }
+
+                // 2. Bottom control buttons click
+                if (hoveredButton >= 0)
+                {
+                    switch (hoveredButton)
+                    {
+                        case 0: TryTurnLeft(); break;
+                        case 1: TryTurnUp(); break;
+                        case 2: TryTurnDown(); break;
+                        case 3: TryTurnRight(); break;
+                        case 4:
+                            ResetGame();
+                            StartGame();
+                            break;
+                    }
+                    return;
+                }
+
+                // 3. Grid click (Steering or starting)
+                int gridOriginX = Window.X + (Window.Width - (GridCols * CellSize)) / 2;
+                int gridOriginY = contentY + 46;
+                int relX = mouseX - gridOriginX;
+                int relY = mouseY - gridOriginY;
+
+                if (relX >= 0 && relX < GridCols * CellSize && relY >= 0 && relY < GridRows * CellSize)
+                {
+                    if (status == GameStatus.Ready)
+                    {
+                        StartGame();
+                    }
+                    else if (status == GameStatus.GameOver)
+                    {
+                        ResetGame();
+                        StartGame();
+                    }
+                    else if (status == GameStatus.Paused)
+                    {
+                        StartGame();
+                    }
+                    else if (status == GameStatus.Playing)
+                    {
+                        int clickedCol = relX / CellSize;
+                        int clickedRow = relY / CellSize;
+                        int headCol = snakeX[0];
+                        int headRow = snakeY[0];
+                        int dx = clickedCol - headCol;
+                        int dy = clickedRow - headRow;
+
+                        if (Math.Abs(dx) >= Math.Abs(dy))
+                        {
+                            if (dx > 0 && dirX != -1 && nextDirX != -1) TryTurnRight();
+                            else if (dx < 0 && dirX != 1 && nextDirX != 1) TryTurnLeft();
+                            else if (dy > 0 && dirY != -1 && nextDirY != -1) TryTurnDown();
+                            else if (dy < 0 && dirY != 1 && nextDirY != 1) TryTurnUp();
+                        }
+                        else
+                        {
+                            if (dy > 0 && dirY != -1 && nextDirY != -1) TryTurnDown();
+                            else if (dy < 0 && dirY != 1 && nextDirY != 1) TryTurnUp();
+                            else if (dx > 0 && dirX != -1 && nextDirX != -1) TryTurnRight();
+                            else if (dx < 0 && dirX != 1 && nextDirX != 1) TryTurnLeft();
+                        }
+                    }
+                }
+            }
         }
 
         public override void Render(Canvas canvas)
@@ -304,7 +462,7 @@ namespace ZonderqOS.GUI.Apps
             // Fill background
             canvas.DrawFilledRectangle(Surface, contentX, contentY, contentWidth, contentHeight);
 
-            // Header panel (Score, Record, Status)
+            // Header panel (Score, Record, Status Button)
             int headerX = contentX + 8;
             int headerY = contentY + 6;
             int headerWidth = contentWidth - 16;
@@ -317,33 +475,48 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawUInt(canvas, score, headerX + 10, headerY + 19, AccentColor);
 
             // High Score
-            SmallTextRenderer.Draw(canvas, "REKORD", headerX + 90, headerY + 5, MutedColor);
-            SmallTextRenderer.DrawUInt(canvas, highScore, headerX + 90, headerY + 19, TextColor);
+            SmallTextRenderer.Draw(canvas, "REKORD", headerX + 80, headerY + 5, MutedColor);
+            SmallTextRenderer.DrawUInt(canvas, highScore, headerX + 80, headerY + 19, TextColor);
 
-            // Status message (right side)
-            string statusStr = "SPACJA: START";
-            Color statusColor = MutedColor;
-            if (status == GameStatus.Playing)
+            // Header Action Button
+            int actBtnW = 86;
+            int actBtnH = 24;
+            int actBtnX = headerX + headerWidth - actBtnW - 6;
+            int actBtnY = headerY + 6;
+            Color actBg = (hoveredButton == 5) ? ButtonHover : ButtonNormal;
+            canvas.DrawFilledRectangle(actBg, actBtnX, actBtnY, actBtnW, actBtnH);
+            canvas.DrawFilledRectangle(Border, actBtnX, actBtnY, actBtnW, 1);
+            canvas.DrawFilledRectangle(Border, actBtnX, actBtnY + actBtnH - 1, actBtnW, 1);
+            canvas.DrawFilledRectangle(Border, actBtnX, actBtnY, 1, actBtnH);
+            canvas.DrawFilledRectangle(Border, actBtnX + actBtnW - 1, actBtnY, 1, actBtnH);
+
+            string actText;
+            Color actColor;
+            if (status == GameStatus.Ready)
             {
-                statusStr = "GRAJ";
-                statusColor = AccentColor;
+                actText = "START";
+                actColor = AccentColor;
+            }
+            else if (status == GameStatus.Playing)
+            {
+                actText = "PAUZA";
+                actColor = WarningColor;
             }
             else if (status == GameStatus.Paused)
             {
-                statusStr = "PAUZA";
-                statusColor = Color.FromArgb(240, 200, 50);
+                actText = "WZNOW";
+                actColor = AccentColor;
             }
-            else if (status == GameStatus.GameOver)
+            else
             {
-                statusStr = "KONIEC GRY";
-                statusColor = Color.FromArgb(240, 70, 70);
+                actText = "OD NOWA";
+                actColor = DangerColor;
             }
-            int sw = SmallTextRenderer.Width(statusStr);
-            SmallTextRenderer.Draw(canvas, statusStr, headerX + headerWidth - sw - 10, headerY + 12, statusColor);
+            SmallTextRenderer.DrawCentered(canvas, actText, actBtnX, actBtnY + 8, actBtnW, actColor);
 
             // Board grid
             int gridOriginX = Window.X + (Window.Width - (GridCols * CellSize)) / 2;
-            int gridOriginY = contentY + 48;
+            int gridOriginY = contentY + 46;
 
             canvas.DrawFilledRectangle(GridBg, gridOriginX, gridOriginY, GridCols * CellSize, GridRows * CellSize);
             canvas.DrawFilledRectangle(Border, gridOriginX - 1, gridOriginY - 1, GridCols * CellSize + 2, 1);
@@ -396,33 +569,100 @@ namespace ZonderqOS.GUI.Apps
                 }
             }
 
+            // Bottom control bar (On-screen buttons)
+            int barY = contentY + 412;
+            int barH = 36;
+            canvas.DrawFilledRectangle(ControlPanel, headerX, barY, headerWidth, barH);
+            canvas.DrawFilledRectangle(Border, headerX, barY, headerWidth, 1);
+
+            int startX = contentX + (contentWidth - 274) / 2;
+            int btnY = barY + 4;
+
+            DrawDirButton(canvas, startX, btnY, 38, 28, 0, hoveredButton == 0); // Left
+            DrawDirButton(canvas, startX + 44, btnY, 38, 28, 1, hoveredButton == 1); // Up
+            DrawDirButton(canvas, startX + 88, btnY, 38, 28, 2, hoveredButton == 2); // Down
+            DrawDirButton(canvas, startX + 132, btnY, 38, 28, 3, hoveredButton == 3); // Right
+
+            // Reset button
+            int rstX = startX + 180;
+            int rstW = 94;
+            Color rstBg = (hoveredButton == 4) ? ButtonHover : ButtonNormal;
+            canvas.DrawFilledRectangle(rstBg, rstX, btnY, rstW, 28);
+            canvas.DrawFilledRectangle(Border, rstX, btnY, rstW, 1);
+            canvas.DrawFilledRectangle(Border, rstX, btnY + 27, rstW, 1);
+            canvas.DrawFilledRectangle(Border, rstX, btnY, 1, 28);
+            canvas.DrawFilledRectangle(Border, rstX + rstW - 1, btnY, 1, 28);
+            SmallTextRenderer.DrawCentered(canvas, "NOWA GRA", rstX, btnY + 10, rstW, TextColor);
+
             // Overlay message for Ready / GameOver / Paused
             if (status == GameStatus.Ready)
             {
-                RenderCenterPrompt(canvas, gridOriginX, gridOriginY, "WCISNIJ SPACJE ABY ZACZAC", AccentColor);
+                RenderPrompt(canvas, gridOriginX, gridOriginY, "KLIKNIJ LUB WCISNIJ SPACJE", "ABY ROZPOCZAC GRE", AccentColor);
             }
             else if (status == GameStatus.GameOver)
             {
-                RenderCenterPrompt(canvas, gridOriginX, gridOriginY, "KONIEC GRY! WCISNIJ [R]", Color.FromArgb(240, 70, 70));
+                RenderPrompt(canvas, gridOriginX, gridOriginY, "KONIEC GRY!", "KLIKNIJ ABY ZAGRAC PONOWNIE", DangerColor);
             }
             else if (status == GameStatus.Paused)
             {
-                RenderCenterPrompt(canvas, gridOriginX, gridOriginY, "PAUZA", Color.FromArgb(240, 200, 50));
+                RenderPrompt(canvas, gridOriginX, gridOriginY, "PAUZA", "KLIKNIJ ABY WZNOWIC", WarningColor);
             }
         }
 
-        private static void RenderCenterPrompt(Canvas canvas, int gx, int gy, string text, Color color)
+        private static void DrawDirButton(Canvas canvas, int x, int y, int w, int h, int dir, bool hovered)
+        {
+            Color bg = hovered ? ButtonHover : ButtonNormal;
+            canvas.DrawFilledRectangle(bg, x, y, w, h);
+            canvas.DrawFilledRectangle(Border, x, y, w, 1);
+            canvas.DrawFilledRectangle(Border, x, y + h - 1, w, 1);
+            canvas.DrawFilledRectangle(Border, x, y, 1, h);
+            canvas.DrawFilledRectangle(Border, x + w - 1, y, 1, h);
+
+            int cx = x + w / 2;
+            int cy = y + h / 2;
+            Color arrowColor = hovered ? TextColor : MutedColor;
+
+            // Draw crisp arrow triangles
+            if (dir == 0) // Left ◄
+            {
+                for (int i = 0; i <= 4; i++)
+                    canvas.DrawFilledRectangle(arrowColor, cx - 3 + i, cy - i, 1, i * 2 + 1);
+            }
+            else if (dir == 1) // Up ▲
+            {
+                for (int i = 0; i <= 4; i++)
+                    canvas.DrawFilledRectangle(arrowColor, cx - i, cy - 3 + i, i * 2 + 1, 1);
+            }
+            else if (dir == 2) // Down ▼
+            {
+                for (int i = 0; i <= 4; i++)
+                    canvas.DrawFilledRectangle(arrowColor, cx - i, cy + 3 - i, i * 2 + 1, 1);
+            }
+            else if (dir == 3) // Right ►
+            {
+                for (int i = 0; i <= 4; i++)
+                    canvas.DrawFilledRectangle(arrowColor, cx + 3 - i, cy - i, 1, i * 2 + 1);
+            }
+        }
+
+        private static void RenderPrompt(Canvas canvas, int gx, int gy, string line1, string line2, Color color)
         {
             int bw = GridCols * CellSize;
             int bh = GridRows * CellSize;
-            int px = gx + 20;
-            int py = gy + bh / 2 - 20;
-            int pw = bw - 40;
-            int ph = 40;
+            int pw = 240;
+            int ph = 54;
+            int px = gx + (bw - pw) / 2;
+            int py = gy + (bh - ph) / 2;
 
-            canvas.DrawFilledRectangle(Color.FromArgb(10, 14, 18), px, py, pw, ph);
+            canvas.DrawFilledRectangle(Color.FromArgb(12, 16, 21), px, py, pw, ph);
             canvas.DrawFilledRectangle(Border, px, py, pw, ph);
-            SmallTextRenderer.DrawCentered(canvas, text, px, py + 14, pw, color);
+            canvas.DrawFilledRectangle(Border, px, py, pw, 1);
+            canvas.DrawFilledRectangle(Border, px, py + ph - 1, pw, 1);
+            canvas.DrawFilledRectangle(Border, px, py, 1, ph);
+            canvas.DrawFilledRectangle(Border, px + pw - 1, py, 1, ph);
+
+            SmallTextRenderer.DrawCentered(canvas, line1, px, py + 12, pw, color);
+            SmallTextRenderer.DrawCentered(canvas, line2, px, py + 30, pw, MutedColor);
         }
     }
 }
