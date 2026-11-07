@@ -1,0 +1,97 @@
+name: Audio Gen3 — focused real QEMU float WAV regression
+
+on:
+  push:
+    branches:
+      - feat/audio-gen3
+    paths:
+      - '.github/workflows/audio-float-qemu.yml'
+      - 'source/Core/Audio*.cs'
+      - 'Kernel.cs'
+      - 'ZonderqOS.csproj'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/smoke-audio-qemu.py'
+      - 'tools/verify-audio-wav-capture.py'
+      - 'tests/AudioPciSmoke/**'
+      - 'tests/test_audio_gen3_contract.py'
+      - 'tests/test_audio_wav_validator.py'
+  pull_request:
+    paths:
+      - '.github/workflows/audio-float-qemu.yml'
+      - 'source/Core/Audio*.cs'
+      - 'Kernel.cs'
+      - 'ZonderqOS.csproj'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/smoke-audio-qemu.py'
+      - 'tools/verify-audio-wav-capture.py'
+      - 'tests/AudioPciSmoke/**'
+      - 'tests/test_audio_gen3_contract.py'
+      - 'tests/test_audio_wav_validator.py'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Independent of the long full HDA matrix. A fast regression run must not
+# cancel or replace the mandatory full QEMU playback quality gates.
+concurrency:
+  group: audio-float-qemu-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  float-hda-capture:
+    name: Stock 3.0.95 HDA + 2860/3960Hz captured PCM tails
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Install stock Cosmos build and QEMU prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 tar clang lld nasm xorriso binutils qemu-system-x86
+      - name: Validate isolated audio source and capture assertions
+        run: |
+          bash tools/verify-cosmos-3095-migration.sh
+          bash -n run.sh tools/build-cosmos-3095-local.sh
+          python3 tests/test_audio_gen3_contract.py
+          python3 tests/test_audio_wav_validator.py
+          python3 -m py_compile tools/smoke-audio-qemu.py tools/verify-audio-wav-capture.py
+          dotnet run --project tests/AudioPciSmoke/AudioPciSmoke.csproj --configuration Release
+      - name: Build isolated diskless AUDIO ISO with stock Cosmos 3.0.95
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
+        run: |
+          bash tools/build-cosmos-3095-local.sh audio
+          test -s output-3095/ZonderqOS-3095-audio.iso
+      - name: Real QEMU HDA baseline — 440Hz tone
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-float-baseline-out \
+            --boot-seconds 45 --command tone
+      - name: Real QEMU HDA — canonical float32 2860Hz and 20ms silent tail
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-float-canonical-out \
+            --boot-seconds 45 --command wavfloat
+      - name: Real QEMU HDA — extensible float32 3960Hz and 20ms silent tail
+        run: |
+          python3 tools/smoke-audio-qemu.py \
+            output-3095/ZonderqOS-3095-audio.iso audio-float-extensible-out \
+            --boot-seconds 45 --command wavextfloat
+      - name: Preserve captured WAV and serial diagnostics on failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: audio-float-qemu-captures
+          if-no-files-found: warn
+          path: |
+            audio-float-baseline-out/*.log
+            audio-float-baseline-out/*.wav
+            audio-float-canonical-out/*.log
+            audio-float-canonical-out/*.wav
+            audio-float-extensible-out/*.log
+            audio-float-extensible-out/*.wav
+          retention-days: 7
