@@ -71,7 +71,7 @@ namespace ZonderqOS.GUI.Apps
         private void RenderMemory(Canvas canvas)
         {
             DrawNumericRow(canvas, 1, IconType.Settings,
-                "RAM CALKOWITY", "PageAllocator", totalRamMb, " MB");
+                "RAM CALKOWITY", "Fizyczny RAM (Limine / BIOS)", totalRamMb, " MB");
             DrawNumericRow(canvas, 2, IconType.Settings,
                 "RAM WOLNY", "Wolne strony fizyczne", freeRamMb, " MB");
             DrawNumericRow(canvas, 3, IconType.Settings,
@@ -140,7 +140,10 @@ namespace ZonderqOS.GUI.Apps
 
             try
             {
-                totalRamMb = PageAllocator.TotalPageCount * PageAllocator.PageSize / 1024UL / 1024UL;
+                ulong physBytes = ZonderqOS.Hardware.PhysicalMemoryDetector.TotalPhysicalBytes;
+                totalRamMb = physBytes > 0
+                    ? physBytes / 1024UL / 1024UL
+                    : PageAllocator.TotalPageCount * PageAllocator.PageSize / 1024UL / 1024UL;
                 freeRamMb = PageAllocator.FreePageCount * PageAllocator.PageSize / 1024UL / 1024UL;
             }
             catch
