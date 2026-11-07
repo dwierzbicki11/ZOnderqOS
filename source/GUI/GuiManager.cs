@@ -811,6 +811,18 @@ namespace ZonderqOS.GUI
                 "Programowy silnik i demonstracja grafiki trojwymiarowej",
                 AppCategory.Tools, IconType.Rotate, () => LaunchDemo3D(160, 55),
                 StartMenuPlacement.Tool, 17, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Timer, "Zegar i Czas", "Zegar i Czas", "Zegar",
+                "Zegar analogowy, stoper z okrazeniami i minutnik z alarmem",
+                AppCategory.Tools, IconType.Calendar, () => LaunchTimer(170, 75),
+                StartMenuPlacement.Tool, 18, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.BasicIde, "Zonderq BASIC", "Zonderq BASIC", "BASIC",
+                "Zintegrowane srodowisko programistyczne i interpreter BASIC",
+                AppCategory.Tools, IconType.Terminal, () => LaunchBasicIde(130, 60),
+                StartMenuPlacement.Tool, 19, -1, true));
         }
 
         private void PopulateStartMenu()
@@ -1306,6 +1318,16 @@ namespace ZonderqOS.GUI
         private void LaunchDemo3D(int x, int y)
         {
             applicationManager.Launch(new Demo3DApp(x, y, null));
+        }
+
+        private void LaunchTimer(int x, int y)
+        {
+            applicationManager.Launch(new TimerApp(x, y, null));
+        }
+
+        private void LaunchBasicIde(int x, int y)
+        {
+            applicationManager.Launch(new BasicIdeApp(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
