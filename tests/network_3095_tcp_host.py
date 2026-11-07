@@ -44,7 +44,16 @@ def serve(port: int, reconnects: int = 0) -> None:
                 request = REQUEST if cycle == 0 else reconnect_request(cycle)
                 response = RESPONSE if cycle == 0 else reconnect_response(cycle)
                 received = bytearray()
+                # A peer must not keep this CI service alive indefinitely by
+                # drip-feeding one valid byte before each socket timeout.
+                # Enforce one monotonic deadline for the entire request.
+                import time
+                deadline = time.monotonic() + 8.0
                 while len(received) < len(request):
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError(f"TCP request deadline exceeded cycle={cycle}")
+                    connection.settimeout(remaining)
                     chunk = connection.recv(len(request) - len(received))
                     if not chunk:
                         break
