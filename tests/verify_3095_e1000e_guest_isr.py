@@ -34,7 +34,12 @@ def validate(serial: str) -> str:
         # A rising counter is not a success if the guest subsequently faults.
         # Inspect the entire serial stream, including lines after the final
         # sample, rather than trusting the two counter markers in isolation.
-        if re.search(r"(?i)(?:kernel panic|unhandled exception|cpu exception|triple fault)", line):
+        if re.search(
+            r"(?i)(?:kernel panic|unhandled exception|cpu exception|triple fault"
+            r"|page fault|general protection fault|stack overflow"
+            r"|exception\s+(?:0x)?0*[0-9a-f]+\b|system\.[a-z0-9_.]*exception\b)",
+            line,
+        ):
             raise ValueError("guest fault in ISR evidence log")
         if "[NET3095-ISR]" not in line:
             continue
@@ -106,6 +111,12 @@ def self_test() -> None:
         good.replace("phase=after", "Unhandled Exception\n[NET3095-ISR] phase=after"),
         good + "CPU EXCEPTION 14\n",
         good + "Triple fault\n",
+        good + "Page fault at CR2=0xC\n",
+        good + "General protection fault\n",
+        good + "Stack overflow\n",
+        good + "Exception 14 CR2=0xC\n",
+        good + "Exception 0x0E\n",
+        good + "System.NullReferenceException\n",
         good.replace("[NET3095-N1] BOOT\n", "[NET3095-N6][FAIL] TCP reset\n[NET3095-N1] BOOT\n"),
     )
     for item in bad:
