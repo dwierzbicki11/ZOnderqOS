@@ -106,6 +106,10 @@ static class Test
             .Contains("QEMU intel-hda"), "QEMU Intel HDA PCI identity");
         Expect(AudioPciDiagnostics.DescribePciIdentity(0x8086, 0x2415, 0x04, 0x01)
             .Contains("no stock AC97 driver"), "QEMU Intel AC97 PCI identity");
+        Expect(AudioPciDiagnostics.DescribePciIdentity(0x8086, 0x2668, 0x04, 0x03, 0x01)
+            .Contains("UNKNOWN_AUDIO_IDENTITY"), "unsupported HDA prog-if must not inherit QEMU identity");
+        Expect(AudioPciDiagnostics.DescribePciIdentity(0x8086, 0x2415, 0x04, 0x01, 0x01)
+            .Contains("UNKNOWN_AUDIO_IDENTITY"), "unsupported AC97 prog-if must not inherit QEMU identity");
         Expect(AudioPciDiagnostics.DescribePciIdentity(0x8086, 0x2668, 0x04, 0x01)
             .Contains("UNKNOWN_AUDIO_IDENTITY"), "wrong subclass cannot inherit HDA identity");
         Expect(AudioPciDiagnostics.DescribePciIdentity(0x8086, 0x2415, 0x04, 0x03)
