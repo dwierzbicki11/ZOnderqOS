@@ -212,21 +212,6 @@ namespace ZonderqOS.GUI.Apps
             if (gameState != 0) // GameOver or Paused
                 return;
 
-            // Player movement
-            if (keyLeft && playerX > 10)
-                playerX -= playerSpeed;
-            if (keyRight && playerX < BoardWidth - PlayerWidth - 10)
-                playerX += playerSpeed;
-
-            // Player shoot
-            if (keyShoot && !playerBulletActive)
-            {
-                playerBulletActive = true;
-                playerBulletX = playerX + PlayerWidth / 2 - 1;
-                playerBulletY = playerY - 4;
-                PlayTone(880, 25);
-            }
-
             // Update player bullet
             if (playerBulletActive)
             {
