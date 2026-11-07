@@ -27,8 +27,10 @@ def reconnect_response(cycle: int) -> bytes:
     return f"ZONDERQ3095-TCP-RESTORED-{cycle}\n".encode("ascii")
 
 
-def serve(port: int, reconnects: int = 0) -> None:
+def serve(port: int, reconnects: int = 0, request_deadline_seconds: float = 8.0) -> None:
     """Extra sessions are opt-in and occur only after QMP link flaps."""
+    if request_deadline_seconds <= 0 or request_deadline_seconds > 8.0:
+        raise ValueError("invalid request deadline")
     if reconnects not in (0, 1, 2):
         raise ValueError("invalid reconnect count")
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as listener:
@@ -48,7 +50,7 @@ def serve(port: int, reconnects: int = 0) -> None:
                 # drip-feeding one valid byte before each socket timeout.
                 # Enforce one monotonic deadline for the entire request.
                 import time
-                deadline = time.monotonic() + 8.0
+                deadline = time.monotonic() + request_deadline_seconds
                 while len(received) < len(request):
                     remaining = deadline - time.monotonic()
                     if remaining <= 0:
@@ -171,6 +173,32 @@ def self_test() -> None:
     worker.join(timeout=3)
     if worker.is_alive() or len(errors) != 1 or not isinstance(errors[0], ValueError):
         raise AssertionError(f"invalid prefix was not rejected promptly: {errors}")
+    # A valid but incomplete prefix must time out even without EOF.
+    errors = []
+    def deadline_server():
+        try:
+            serve(port, request_deadline_seconds=0.15)
+        except Exception as exc:
+            errors.append(exc)
+    worker = threading.Thread(target=deadline_server, daemon=True)
+    worker.start()
+    connection = None
+    for _ in range(100):
+        try:
+            connection = socket.create_connection(("127.0.0.1", port), timeout=1)
+            break
+        except ConnectionRefusedError:
+            time.sleep(0.02)
+    if connection is None:
+        raise AssertionError("deadline test server did not start")
+    with connection:
+        connection.settimeout(3)
+        connection.sendall(REQUEST[:4])
+        if connection.recv(1):
+            raise AssertionError("server replied to stalled TCP prefix")
+    worker.join(timeout=3)
+    if worker.is_alive() or len(errors) != 1 or not isinstance(errors[0], TimeoutError):
+        raise AssertionError(f"stalled TCP prefix was not timed out: {errors}")
     assert reconnect_request(1) != reconnect_request(2)
     assert reconnect_response(1) != reconnect_response(2)
     for bad in (0, 3):
