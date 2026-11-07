@@ -39,6 +39,15 @@ def validate(serial: str) -> str:
         if boot_count != 1:
             raise ValueError("ISR sample before guest boot")
         phase, irq, rx, polling = match.groups()
+        # Reject noncanonical/overflowing counters rather than treating
+        # arbitrary decimal strings as trustworthy guest driver samples.
+        # Driver counters are nonnegative machine-sized values; this gate
+        # must not accept leading zeros or values outside unsigned 64-bit.
+        for value in (irq, rx):
+            if (len(value) > 1 and value[0] == "0") or len(value) > 20:
+                raise ValueError("noncanonical guest ISR counter")
+            if int(value) > 0xFFFFFFFFFFFFFFFF:
+                raise ValueError("guest ISR counter exceeds uint64")
         if phase in samples:
             raise ValueError("duplicate guest ISR sample")
         samples[phase] = (int(irq), int(rx), polling)
@@ -78,6 +87,10 @@ def self_test() -> None:
         good.replace("phase=before", "phase=after"),
         "\n".join(reversed(good.splitlines())) + "\n",
         good.replace("interrupts=5", "interrupts=-1"),
+        good.replace("interrupts=5", "interrupts=05"),
+        good.replace("rx_frames=9", "rx_frames=09"),
+        good.replace("interrupts=5", "interrupts=18446744073709551616"),
+        good.replace("rx_frames=9", "rx_frames=999999999999999999999999"),
         good.replace("phase=after", "phase=after\rspoof"),
         good.replace("[NET3095-N1] BOOT\n", ""),
         good + "[NET3095-N1] BOOT\n",
