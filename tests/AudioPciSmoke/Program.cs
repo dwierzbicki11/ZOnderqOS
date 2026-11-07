@@ -101,6 +101,10 @@ static class Test
         Expect(AudioPciDiagnostics.DescribeController(0x04, 0x03, 0x00).Contains("HdAudioDriver"), "HDA candidate");
         Expect(AudioPciDiagnostics.DescribeController(0x04, 0x03, 0x01).Contains("unsupported"), "unknown prog-if");
         Expect(AudioPciDiagnostics.DescribeController(0x04, 0x01, 0x00).Contains("AC97"), "legacy controller");
+        Expect(AudioPciDiagnostics.DescribeController(0x04, 0x01, 0x01).Contains("unsupported"),
+            "nonzero legacy audio prog-if is not an AC97 candidate");
+        Expect(!AudioPciDiagnostics.DescribeController(0x04, 0x01, 0x01).Contains("AC97"),
+            "unsupported legacy interface must not advertise AC97");
 
         Expect(AudioPciDiagnostics.DescribePciIdentity(0x8086, 0x2668, 0x04, 0x03)
             .Contains("QEMU intel-hda"), "QEMU Intel HDA PCI identity");
