@@ -37,7 +37,7 @@ namespace ZonderqOS.SystemCore
                     d.Subclass.ToString("X2") + ":" + d.ProgrammingInterface.ToString("X2") +
                     " " + DescribeController(d.ClassCode, d.Subclass, d.ProgrammingInterface), shellOutput);
                 Write("[AUDIO] pci-identity=" +
-                    DescribePciIdentity(d.VendorId, d.DeviceId, d.ClassCode, d.Subclass), shellOutput);
+                    DescribePciIdentity(d.VendorId, d.DeviceId, d.ClassCode, d.Subclass, d.ProgrammingInterface), shellOutput);
                 Write("[AUDIO] driver=UNVERIFIED codec=UNKNOWN pcm=NOT_TESTED", shellOutput);
             }
 
@@ -73,13 +73,13 @@ namespace ZonderqOS.SystemCore
         /// Other devices remain explicitly unidentified.
         /// </summary>
         public static string DescribePciIdentity(
-            ushort vendorId, ushort deviceId, byte classCode, byte subclass)
+            ushort vendorId, ushort deviceId, byte classCode, byte subclass, byte programmingInterface = 0)
         {
             if (!IsAudioClass(classCode, subclass))
                 return "NOT_AUDIO";
-            if (vendorId == 0x8086 && deviceId == 0x2668 && subclass == 0x03)
+            if (vendorId == 0x8086 && deviceId == 0x2668 && subclass == 0x03 && programmingInterface == 0x00)
                 return "Intel ICH6 HDA (QEMU intel-hda candidate; driver unverified)";
-            if (vendorId == 0x8086 && deviceId == 0x2415 && subclass == 0x01)
+            if (vendorId == 0x8086 && deviceId == 0x2415 && subclass == 0x01 && programmingInterface == 0x00)
                 return "Intel ICH AC97 (QEMU AC97 candidate; no stock AC97 driver)";
             return "UNKNOWN_AUDIO_IDENTITY (class-only identification)";
         }
