@@ -24,6 +24,8 @@ namespace ZonderqOS.SystemCore
             }
 
             int found = 0;
+            int supportedInterfaceCandidates = 0;
+            int unsupportedInterfaces = 0;
             for (int i = 0; i < devices.Count; i++)
             {
                 DeviceDescriptor d = devices[i];
@@ -31,6 +33,10 @@ namespace ZonderqOS.SystemCore
                     continue;
 
                 found++;
+                if (d.ProgrammingInterface == 0x00)
+                    supportedInterfaceCandidates++;
+                else
+                    unsupportedInterfaces++;
                 Write("[AUDIO] " + d.Id.Address + " [" +
                     d.VendorId.ToString("X4") + ":" + d.DeviceId.ToString("X4") +
                     "] class=" + d.ClassCode.ToString("X2") + ":" +
@@ -42,6 +48,8 @@ namespace ZonderqOS.SystemCore
             }
 
             Write("[AUDIO] Discovered PCI audio functions: " + found, shellOutput);
+            Write("[AUDIO] Standard-interface candidates: " + supportedInterfaceCandidates +
+                "; unsupported programming interfaces: " + unsupportedInterfaces, shellOutput);
             if (found == 0)
                 Write("[AUDIO] No PCI audio function discovered; USB/other audio is not excluded.", shellOutput);
             Write("[AUDIO] Inventory is not proof of a bound output or audible sound.", shellOutput);
