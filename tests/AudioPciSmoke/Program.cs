@@ -134,11 +134,25 @@ static class Test
         string report = Capture(() => AudioPciDiagnostics.PrintReport(false), out bool ok);
         Expect(ok, "PCI enumeration success");
         Expect(report.Contains("Discovered PCI audio functions: 2"), "count only audio");
+        Expect(report.Contains("Standard-interface candidates: 2; unsupported programming interfaces: 0"),
+            "standard PCI interface inventory counts are independent of driver binding");
         Expect(report.Contains("00:01.0") && report.Contains("00:02.0"), "both audio functions");
         Expect(!report.Contains("00:03.0") && !report.Contains("00:04.0"), "exclude video and NIC");
         Expect(report.Contains("pci-identity=Intel ICH6 HDA"), "report identifies QEMU HDA candidate");
         Expect(report.Contains("pci-identity=Intel ICH AC97"), "report identifies QEMU AC97 candidate");
         Expect(report.Contains("driver=UNVERIFIED codec=UNKNOWN pcm=NOT_TESTED"), "no fabricated binding");
+
+        PciSysfsProvider.Devices.Add(new DeviceDescriptor("00:05.0", 0x8086, 0x2668, 0x04, 0x03, 0x01));
+        PciSysfsProvider.Devices.Add(new DeviceDescriptor("00:06.0", 0x8086, 0x2415, 0x04, 0x01, 0x01));
+        report = Capture(() => AudioPciDiagnostics.PrintReport(false), out ok);
+        Expect(ok && report.Contains("Discovered PCI audio functions: 4"),
+            "unsupported programming interfaces remain visible in read-only inventory");
+        Expect(report.Contains("Standard-interface candidates: 2; unsupported programming interfaces: 2"),
+            "unsupported PCI interfaces are counted separately from standard candidates");
+        Expect(report.Contains("00:05.0") && report.Contains("00:06.0"),
+            "unsupported interfaces retain PCI addresses for safe diagnosis");
+        Expect(report.Contains("UNKNOWN_AUDIO_IDENTITY"),
+            "unsupported programming interfaces must not inherit QEMU controller identity");
 
         PciSysfsProvider.Devices.Clear();
         report = Capture(() => AudioPciDiagnostics.PrintReport(false), out ok);
