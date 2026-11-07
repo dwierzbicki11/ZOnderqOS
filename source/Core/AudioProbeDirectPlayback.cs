@@ -122,6 +122,8 @@ namespace ZonderqOS.SystemCore
                 int longestZeroStreak = 0;
                 int smallestPositiveWrite = int.MaxValue;
                 int settleRequests = 0;
+                uint settleRequestedMs = 0;
+                uint settleCompletedMs = 0;
                 int pcmQueued = 0;
                 int silenceQueued = 0;
                 // Snapshot the stock driver's reported free ring capacity.
@@ -239,8 +241,13 @@ namespace ZonderqOS.SystemCore
                     milliseconds =>
                     {
                         if (milliseconds > 1)
+                        {
                             settleRequests++;
+                            settleRequestedMs += milliseconds;
+                        }
                         Cosmos.Kernel.System.Timers.TimerManager.Wait(milliseconds);
+                        if (milliseconds > 1)
+                            settleCompletedMs += milliseconds;
                         SampleDriverWritable(false);
                     },
                     out waits);
@@ -265,7 +272,9 @@ namespace ZonderqOS.SystemCore
                 Console.WriteLine("[AUDIO] 1MS longestZeroStreak=" + longestZeroStreak +
                     " minPositiveWrite=" + (smallestPositiveWrite == int.MaxValue ? 0 : smallestPositiveWrite));
                 Console.WriteLine("[AUDIO] 1MS waits=" + waits +
-                    " settleSlices=" + settleRequests + " settle=86ms total (requested only)");
+                    " settleSlices=" + settleRequests + " settleRequestedMs=" + settleRequestedMs);
+                Console.WriteLine("[AUDIO] 1MS settleCompletedMs=" + settleCompletedMs +
+                    " (wait callbacks returned; DMA/IRQ not proven)");
                 Console.WriteLine("[AUDIO] 1MS ringSamples=" + ringSamples +
                     " ringChanges=" + ringChanges);
                 Console.WriteLine("[AUDIO] 1MS ringWriteSamples=" + ringWriteSamples +
