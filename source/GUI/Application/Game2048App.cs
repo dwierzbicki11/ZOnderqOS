@@ -370,7 +370,7 @@ namespace ZonderqOS.GUI.Apps
             }
             else if (maxMerged > 0)
             {
-                ushort tone = (ushort)Math.Min(1200, 480 + (int)(Math.Log2(maxMerged) * 60));
+                ushort tone = (ushort)Math.Min(1200, 480 + GetPower(maxMerged) * 60);
                 PlaySound(tone, 30);
             }
             else
@@ -383,6 +383,17 @@ namespace ZonderqOS.GUI.Apps
                 isGameOver = true;
                 PlaySound(160, 150);
             }
+        }
+
+        private static int GetPower(int val)
+        {
+            int p = 0;
+            while (val > 1)
+            {
+                val >>= 1;
+                p++;
+            }
+            return p;
         }
 
         public override void HandleKeyboard(KeyEvent key)

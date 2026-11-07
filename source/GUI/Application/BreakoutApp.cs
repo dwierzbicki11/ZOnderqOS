@@ -240,7 +240,7 @@ namespace ZonderqOS.GUI.Apps
                 ballVx = normalized * maxVx;
 
                 float vySquared = (ballSpeed * ballSpeed) - (ballVx * ballVx);
-                ballVy = -MathF.Sqrt(Math.Max(1.0f, vySquared));
+                ballVy = -(float)Math.Sqrt(Math.Max(1.0f, vySquared));
 
                 PlaySound(550, 30);
             }
