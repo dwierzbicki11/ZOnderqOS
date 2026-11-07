@@ -10,6 +10,7 @@ on:
       - "tests/FileManagerPerfSmoke/**"
       - "tests/test_gen3_perf_filemanager.py"
       - "tests/HtopPerfSmoke/**"
+      - "source/GUI/CursorDamageRenderer.cs"
       - "source/GUI/SmallTextRenderer.cs"
       - "source/GUI/TerminalBox.cs"
       - "Kernel.cs"
