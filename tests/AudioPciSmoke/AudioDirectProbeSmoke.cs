@@ -249,9 +249,9 @@ internal static class AudioDirectProbeSmoke
                 normalProgress.Contains("longestZeroStreak=0") &&
                 normalProgress.Contains("minPositiveWrite=16") &&
                 normalProgress.Contains("waits=0") &&
-                normalProgress.Contains("settleRequests=1") &&
-                normalProgress.Contains("ringSamples=7 ringChanges=0") &&
-                normalProgress.Contains("ringWriteSamples=5 ringWaitSamples=1") &&
+                normalProgress.Contains("settleSlices=9 settleRequestedMs=86") &&
+                normalProgress.Contains("ringSamples=15 ringChanges=0") &&
+                normalProgress.Contains("ringWriteSamples=5 ringWaitSamples=9") &&
                 normalProgress.Contains("ringMin=16384 ringMax=16384") &&
                 normalProgress.Contains("ringIncreases=0 ringDecreases=0") &&
                 normalProgress.Contains("ringWaitIncreases=0 ringWaitDecreases=0") &&
@@ -283,13 +283,13 @@ internal static class AudioDirectProbeSmoke
                 };
             }
             check(capacityResult && movingCapacity.StopCalls == 1 &&
-                capacityTrace.ToString().Contains("ringSamples=7 ringChanges=1") &&
-                capacityTrace.ToString().Contains("ringWriteSamples=5 ringWaitSamples=1") &&
+                capacityTrace.ToString().Contains("ringSamples=15 ringChanges=1") &&
+                capacityTrace.ToString().Contains("ringWriteSamples=5 ringWaitSamples=9") &&
                 capacityTrace.ToString().Contains("ringMin=0 ringMax=4096") &&
                 capacityTrace.ToString().Contains("ringIncreases=1 ringDecreases=0") &&
                 capacityTrace.ToString().Contains("ringWaitIncreases=1 ringWaitDecreases=0") &&
                 capacityTrace.ToString().Contains("writable=writer+wait snapshots; DMA/IRQ not proven") &&
-                movingCapacity.WritableReadCalls == 7,
+                movingCapacity.WritableReadCalls == 15,
                 "direct probe reports stock driver capacity movement without claiming DMA proof");
 
             // A full-ring wait can reveal both newly freed capacity and
@@ -319,9 +319,9 @@ internal static class AudioDirectProbeSmoke
                     waits++;
                 };
             }
-            check(changingResult && changingCapacity.WritableReadCalls == 8 &&
-                changingTrace.ToString().Contains("ringSamples=8 ringChanges=2") &&
-                changingTrace.ToString().Contains("ringWriteSamples=5 ringWaitSamples=2") &&
+            check(changingResult && changingCapacity.WritableReadCalls == 16 &&
+                changingTrace.ToString().Contains("ringSamples=16 ringChanges=2") &&
+                changingTrace.ToString().Contains("ringWriteSamples=5 ringWaitSamples=10") &&
                 changingTrace.ToString().Contains("ringMin=0 ringMax=4096") &&
                 changingTrace.ToString().Contains("ringIncreases=1 ringDecreases=1") &&
                 changingTrace.ToString().Contains("ringWaitIncreases=1 ringWaitDecreases=1"),
@@ -380,7 +380,7 @@ internal static class AudioDirectProbeSmoke
                 partialTrace.ToString().Contains("partialWrites=12") &&
                 partialTrace.ToString().Contains("longestZeroStreak=0") &&
                 partialTrace.ToString().Contains("minPositiveWrite=16") &&
-                partialTrace.ToString().Contains("settleRequests=1"),
+                partialTrace.ToString().Contains("settleSlices=9 settleRequestedMs=86"),
                 "partial HDA writes count accepted bytes and actual calls");
 
             // A single zero-byte return is backpressure, not an accepted
@@ -420,7 +420,7 @@ internal static class AudioDirectProbeSmoke
                 stalledTrace.ToString().Contains("partialWrites=0") &&
                 stalledTrace.ToString().Contains("longestZeroStreak=1") &&
                 stalledTrace.ToString().Contains("waits=1") &&
-                stalledTrace.ToString().Contains("settleRequests=1"),
+                stalledTrace.ToString().Contains("settleSlices=9 settleRequestedMs=86"),
                 "one stalled HDA write reports backpressure without inflating queued PCM");
 
             // Two consecutive full-ring writes must be reported as one
