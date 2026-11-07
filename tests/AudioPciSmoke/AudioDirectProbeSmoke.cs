@@ -803,7 +803,7 @@ internal static class AudioDirectProbeSmoke
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
                 check((ms == 10 || ms == 6), "cleanup claim test settles once");
-                cleanupPhase = true;
+                if (ms == 6) cleanupPhase = true;
             };
             check(AudioProbeDirectPlayback.TryPlay(claimedDuringCleanupFormat, Pcm, 48000) &&
                 cleanupFormatReads == 2 && claimedDuringCleanupFormat.StopCalls == 0 &&
@@ -829,7 +829,7 @@ internal static class AudioDirectProbeSmoke
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
                 check((ms == 10 || ms == 6), "cleanup format reset test settles once");
-                resetCleanupPhase = true;
+                if (ms == 6) resetCleanupPhase = true;
             };
             check(AudioProbeDirectPlayback.TryPlay(resetDuringCleanupFormat, Pcm, 48000) &&
                 resetCleanupReads == 2 && resetDuringCleanupFormat.StopCalls == 0 &&
@@ -854,7 +854,7 @@ internal static class AudioDirectProbeSmoke
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
                 check((ms == 10 || ms == 6), "cleanup rate drift test settles once");
-                cleanupRatePhase = true;
+                if (ms == 6) cleanupRatePhase = true;
             };
             check(AudioProbeDirectPlayback.TryPlay(rateChangedDuringCleanup, Pcm, 48000) &&
                 cleanupRateReads == 2 && rateChangedDuringCleanup.StopCalls == 0 &&
