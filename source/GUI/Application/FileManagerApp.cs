@@ -2260,12 +2260,14 @@ namespace ZonderqOS.GUI.Apps
         public readonly string Name;
         public readonly string FullPath;
         public readonly bool IsDirectory;
+        public readonly IconType Icon;
 
         public FileEntry(string name, string fullPath, bool isDirectory)
         {
             Name = name;
             FullPath = fullPath;
             IsDirectory = isDirectory;
+            Icon = FileEntryIconResolver.Resolve(name, isDirectory);
         }
     }
 
@@ -2485,13 +2487,7 @@ namespace ZonderqOS.GUI.Apps
 
         private bool IsEntryActive(SidebarEntry entry)
         {
-            if (entry == null || string.IsNullOrEmpty(entry.Path))
-                return false;
-            if (entry.Path == "/")
-                return app.CurrentPath == "/";
-            if (app.CurrentPath == entry.Path)
-                return true;
-            return app.CurrentPath.StartsWith(entry.Path + "/", StringComparison.Ordinal);
+            return entry != null && FileManagerPathMatcher.IsActive(app.CurrentPath, entry.Path);
         }
 
         private void RenderFooter(Canvas canvas, int footerY)
@@ -2604,37 +2600,7 @@ namespace ZonderqOS.GUI.Apps
         {
             if (entry == null)
                 return IconType.File;
-            if (entry.IsDirectory)
-                return IconType.Folder;
-
-            string extension;
-            try
-            {
-                extension = Path.GetExtension(entry.Name ?? "").ToLowerInvariant();
-            }
-            catch
-            {
-                return IconType.File;
-            }
-
-            switch (extension)
-            {
-                case ".bmp": return IconType.FileBmp;
-                case ".doc": return IconType.FileDoc;
-                case ".docx": return IconType.FileDocx;
-                case ".jpg":
-                case ".jpeg": return IconType.FileJpg;
-                case ".pdf": return IconType.FilePdf;
-                case ".png": return IconType.FilePng;
-                case ".svg": return IconType.FileSvg;
-                case ".txt":
-                case ".log":
-                case ".md":
-                case ".cfg":
-                case ".conf":
-                case ".ini": return IconType.FileTxt;
-                default: return IconType.File;
-            }
+            return entry.Icon;
         }
 
         private void DrawWrappedName(Canvas canvas, string name, int x, int y, int width, int height, Color color)

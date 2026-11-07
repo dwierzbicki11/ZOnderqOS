@@ -6,6 +6,68 @@ namespace ZonderqOS.GUI
 {
     public static class SmallTextRenderer
     {
+        // Fixed 128 x 7 byte lookup: avoid parsing string glyph patterns and
+        // repeating the 64-way switch for every rendered character in each frame.
+        // Built once; non-ASCII characters still use the original fallback.
+        private static readonly byte[] CachedAsciiGlyphRows = BuildAsciiGlyphRows();
+
+        // Unsupported Unicode characters use Glyph's default 5x7 pattern.
+        // Cache those seven rows once rather than running the glyph switch,
+        // pattern lookup and bit decoding seven times per character/frame.
+        // Unicode characters uppercasing to ASCII retain their original glyph.
+        private static readonly byte[] CachedFallbackGlyphRows = BuildFallbackGlyphRows();
+        // A 5-pixel row has only 32 possible patterns. Precompute its one to
+        // three horizontal spans once, rather than scanning all five columns
+        // on every glyph draw. Packed as: 2-bit run count, then up to three
+        // (3-bit start, 3-bit length) pairs. Only 128 bytes of lookup storage.
+        private static readonly int[] CachedSpanRuns = BuildSpanRuns();
+
+        private static int[] BuildSpanRuns()
+        {
+            var table = new int[32];
+            for (int bits = 0; bits < table.Length; bits++)
+            {
+                int packed = 0;
+                int count = 0;
+                for (int col = 0; col < 5;)
+                {
+                    if ((bits & (1 << (4 - col))) == 0)
+                    {
+                        col++;
+                        continue;
+                    }
+                    int start = col++;
+                    while (col < 5 && (bits & (1 << (4 - col))) != 0)
+                        col++;
+                    packed |= (start | ((col - start) << 3)) << (2 + count * 6);
+                    count++;
+                }
+                table[bits] = packed | count;
+            }
+            return table;
+        }
+
+
+        private static byte[] BuildAsciiGlyphRows()
+        {
+            byte[] rows = new byte[128 * 7];
+            for (int ch = 0; ch < 128; ch++)
+            {
+                int offset = ch * 7;
+                for (int row = 0; row < 7; row++)
+                    rows[offset + row] = (byte)Glyph((char)ch, row);
+            }
+            return rows;
+        }
+
+        private static byte[] BuildFallbackGlyphRows()
+        {
+            byte[] rows = new byte[7];
+            for (int row = 0; row < rows.Length; row++)
+                rows[row] = (byte)Glyph('\uFFFF', row);
+            return rows;
+        }
+
         public static int Width(string text)
         {
             return string.IsNullOrEmpty(text) ? 0 : text.Length * 6 - 1;
@@ -32,17 +94,57 @@ namespace ZonderqOS.GUI
             if (string.IsNullOrEmpty(text))
                 return;
 
-            for (int i = 0; i < text.Length; i++)
-                DrawChar(canvas, text[i], x + i * 6, y, color);
+            // Use the same wide-coordinate, per-glyph visibility window as
+            // DrawRange. Partially scrolled labels previously decoded every
+            // hidden glyph (and could overflow x + i * 6 for long strings).
+            // No substring allocation or separate rasterization path.
+            DrawRange(canvas, text, 0, text.Length, x, y, color);
         }
 
         public static void DrawUInt(Canvas canvas, ulong value, int x, int y, Color color)
         {
             int digits = DigitCount(value);
-            ulong divisor = Pow10(digits - 1);
-            for (int i = 0; i < digits; i++)
+            // Numeric labels are drawn frequently by the task manager. Avoid
+            // digit division and glyph scans when the whole label is clipped.
+            // Wide bounds keep extreme window offsets from wrapping.
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
+                (long)x + (long)digits * 6 <= 0 || (long)y + 7 <= 0)
+                return;
+
+            // Avoid decoding invisible leading/trailing digits on partially
+            // scrolled numeric labels. Keep the fully visible fast path free
+            // of per-digit clipping checks.
+            int first = 0;
+            int last = digits;
+            bool partiallyClipped = x < -4 || (long)x + (long)digits * 6 > canvas.Width;
+            if (partiallyClipped)
             {
-                ulong digit = divisor == 0 ? 0 : value / divisor;
+                if (x < -4)
+                {
+                    long skip = (-(long)x + 1) / 6;
+                    if (skip >= digits)
+                        return;
+                    first = (int)skip;
+                }
+                long visibleEnd = ((long)canvas.Width - x + 5) / 6;
+                if (visibleEnd < last)
+                    last = (int)visibleEnd;
+            }
+
+            if (last <= first)
+                return;
+
+            // Jump over completely hidden leading digits without decoding
+            // them. When first > 0, digits - first <= 19, so Pow10 fits
+            // ulong even when rendering the full 20-digit ulong.MaxValue.
+            if (first > 0)
+                value %= Pow10(digits - first);
+            ulong divisor = Pow10(digits - first - 1);
+            // Stop at the last visible digit instead of dividing/modulo
+            // through the entire invisible tail of a clipped numeric label.
+            for (int i = first; i < last; i++)
+            {
+                ulong digit = value / divisor;
                 DrawChar(canvas, (char)('0' + (int)digit), x + i * 6, y, color);
                 if (divisor > 1)
                 {
@@ -64,26 +166,61 @@ namespace ZonderqOS.GUI
                 return;
             }
 
-            DrawChar(canvas, '-', x, y, color);
             ulong magnitude = value == long.MinValue
                 ? ((ulong)long.MaxValue + 1UL)
                 : (ulong)(-value);
-            DrawUInt(canvas, magnitude, x + 6, y, color);
+            // Negative task-manager values share the numeric clipping path.
+            // Check the entire label before drawing the minus sign and use
+            // wide arithmetic for the magnitude offset (x + 6 can overflow).
+            int characters = DigitCount(magnitude) + 1;
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
+                (long)x + (long)characters * 6 <= 0 || (long)y + 7 <= 0)
+                return;
+
+            if (x >= -4)
+                DrawChar(canvas, '-', x, y, color);
+            long magnitudeX = (long)x + 6;
+            if (magnitudeX < canvas.Width && magnitudeX <= int.MaxValue)
+                DrawUInt(canvas, magnitude, (int)magnitudeX, y, color);
         }
 
         public static void DrawPercent(Canvas canvas, int value, int x, int y, Color color)
         {
             if (value < 0) value = 0;
             if (value > 100) value = 100;
+            int digits = DigitCount((ulong)value);
+            // The task manager draws many percentages. If a row is entirely
+            // outside the framebuffer, avoid entering the numeric renderer
+            // and drawing the percent glyph into a clipped Canvas.
+            // Wide arithmetic also prevents overflow in the suffix position.
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
+                (long)x + digits * 6L + 6 <= 0 || (long)y + 7 <= 0)
+                return;
+
             DrawUInt(canvas, (ulong)value, x, y, color);
-            DrawChar(canvas, '%', x + WidthUInt((ulong)value) + 2, y, color);
+            long percentX = (long)x + digits * 6 + 1;
+            if (percentX >= -4 && percentX < canvas.Width && percentX <= int.MaxValue)
+                DrawChar(canvas, '%', (int)percentX, y, color);
         }
 
         public static void DrawUIntWithSuffix(Canvas canvas, ulong value, string suffix, int x, int y, Color color)
         {
+            int digits = DigitCount(value);
+            long suffixX = (long)x + digits * 6 + 5;
+            long right = string.IsNullOrEmpty(suffix)
+                ? (long)x + digits * 6
+                : suffixX + (long)suffix.Length * 6;
+            // Numeric status labels with units are often scrolled out with
+            // their parent panel. Skip both renderers before glyph work.
+            // Keep suffix coordinates wide until visibility is established.
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
+                right <= 0 || (long)y + 7 <= 0)
+                return;
+
             DrawUInt(canvas, value, x, y, color);
-            if (!string.IsNullOrEmpty(suffix))
-                Draw(canvas, suffix, x + WidthUInt(value) + 6, y, color);
+            if (!string.IsNullOrEmpty(suffix) && suffixX >= int.MinValue &&
+                suffixX <= int.MaxValue)
+                Draw(canvas, suffix, (int)suffixX, y, color);
         }
 
         public static void DrawClipped(Canvas canvas, string text, int x, int y, int maxWidth, Color color)
@@ -91,7 +228,15 @@ namespace ZonderqOS.GUI
             if (string.IsNullOrEmpty(text) || maxWidth < 5)
                 return;
 
-            int maxChars = Math.Max(1, (maxWidth + 1) / 6);
+            // Scrolled-out file names and menu labels need no clipping math,
+            // glyph scans or ellipsis. Use wide edges for extreme offsets.
+            if (canvas == null || x >= canvas.Width || y >= canvas.Height ||
+                (long)x + maxWidth <= 0 || (long)y + 7 <= 0)
+                return;
+
+            // maxWidth can be int.MaxValue in a caller's unconstrained
+            // viewport; avoid overflow in the character budget.
+            int maxChars = Math.Max(1, (int)(((long)maxWidth + 1) / 6));
             if (text.Length <= maxChars)
             {
                 Draw(canvas, text, x, y, color);
@@ -129,46 +274,145 @@ namespace ZonderqOS.GUI
             if (string.IsNullOrEmpty(text) || count <= 0 || start < 0 || start >= text.Length)
                 return;
 
-            int end = Math.Min(text.Length, start + count);
-            for (int i = start; i < end; i++)
-                DrawChar(canvas, text[i], x + (i - start) * 6, y, color);
+            // Saturate the range before adding: start + count can overflow.
+            int end = count >= text.Length - start ? text.Length : start + count;
+            int characters = end - start;
+            if (canvas == null || (long)x >= canvas.Width || (long)y >= canvas.Height ||
+                (long)x + (long)characters * 6 <= 0 || (long)y + 7 <= 0)
+                return;
+
+            // A horizontal scroll can leave only a handful of glyphs visible.
+            // Each glyph paints columns [x + 6*i, x + 6*i + 4], so skip
+            // complete offscreen glyphs before the expensive row/span loop.
+            int first = 0;
+            if (x < -4)
+            {
+                long skip = (-(long)x + 1) / 6;
+                if (skip >= characters)
+                    return;
+                first = (int)skip;
+            }
+            int last = characters;
+            long visibleEnd = ((long)canvas.Width - x + 5) / 6;
+            if (visibleEnd < last)
+                last = (int)visibleEnd;
+
+            for (int i = first; i < last; i++)
+                DrawChar(canvas, text[start + i], x + i * 6, y, color);
         }
 
+        // Keep this tiny wrapper inlineable for the very common 0..99
+        // counters. A large threshold tree in this method prevented the JIT
+        // from inlining WidthUInt's hot path and regressed small labels.
         private static int DigitCount(ulong value)
         {
-            int count = 1;
-            while (value >= 10)
-            {
-                value /= 10;
-                count++;
-            }
-            return count;
+            if (value < 10UL)
+                return 1;
+            if (value < 100UL)
+                return 2;
+            return DigitCountLarge(value);
         }
+
+        // Large 3..20 digit values avoid up to 19 sequential divisions.
+        private static int DigitCountLarge(ulong value)
+        {
+            if (value < 100000000UL)
+            {
+                if (value < 10000UL)
+                    return value < 1000UL ? 3 : 4;
+                if (value < 1000000UL)
+                    return value < 100000UL ? 5 : 6;
+                return value < 10000000UL ? 7 : 8;
+            }
+            if (value < 10000000000000000UL)
+            {
+                if (value < 1000000000000UL)
+                {
+                    if (value < 10000000000UL)
+                        return value < 1000000000UL ? 9 : 10;
+                    return value < 100000000000UL ? 11 : 12;
+                }
+                if (value < 100000000000000UL)
+                    return value < 10000000000000UL ? 13 : 14;
+                return value < 1000000000000000UL ? 15 : 16;
+            }
+            if (value < 1000000000000000000UL)
+                return value < 100000000000000000UL ? 17 : 18;
+            return value < 10000000000000000000UL ? 19 : 20;
+        }
+
+        // Fixed 160-byte table avoids repeated 64-bit multiplication while
+        // formatting visible numeric labels. Every caller uses 0..19 only.
+        private static readonly ulong[] CachedPowersOfTen =
+        {
+            1UL, 10UL, 100UL, 1000UL, 10000UL,
+            100000UL, 1000000UL, 10000000UL, 100000000UL,
+            1000000000UL, 10000000000UL, 100000000000UL,
+            1000000000000UL, 10000000000000UL, 100000000000000UL,
+            1000000000000000UL, 10000000000000000UL,
+            100000000000000000UL, 1000000000000000000UL,
+            10000000000000000000UL
+        };
 
         private static ulong Pow10(int exponent)
         {
-            ulong value = 1;
-            for (int i = 0; i < exponent; i++)
-                value *= 10;
-            return value;
+            return CachedPowersOfTen[exponent];
         }
 
         private static void DrawChar(Canvas canvas, char ch, int x, int y, Color color)
         {
             ch = NormalizeGlyph(ch);
-            for (int row = 0; row < 7; row++)
+            // Spaces (including normalized NBSP) have no lit pixels. They are
+            // common in labels and tables, so skip seven empty row scans.
+            if (ch == ' ')
+                return;
+            int glyphOffset = ch < 128 ? ch * 7 : -1;
+            if (glyphOffset < 0 && ch <= '\u017F')
             {
-                int bits = Glyph(ch, row);
-                for (int col = 0; col < 5; col++)
+                // Only the Latin-range Unicode exceptions can uppercase to
+                // ASCII. Skip Unicode casing for CJK, Cyrillic, symbols and
+                // surrogate code units; the exhaustive UTF-16 test verifies
+                // the boundary against the original Glyph implementation.
+                char upper = char.ToUpperInvariant(ch);
+                if (upper < 128)
+                    glyphOffset = upper * 7;
+            }
+            // A partially visible title/label should not send completely
+            // offscreen glyph rows to the software Canvas. The fully visible
+            // path still uses exactly seven rows and allocates nothing.
+            // Wide arithmetic keeps extreme signed Y coordinates safe.
+            int firstRow = y < 0 ? (int)Math.Min(7L, -(long)y) : 0;
+            int lastRow = (long)y + 7 > canvas.Height
+                ? (int)Math.Max(0L, Math.Min(7L, (long)canvas.Height - y)) : 7;
+            for (int row = firstRow; row < lastRow; row++)
+            {
+                int bits = glyphOffset >= 0
+                    ? CachedAsciiGlyphRows[glyphOffset + row]
+                    : CachedFallbackGlyphRows[row];
+                // Punctuation and sparse glyphs often have empty rows.
+                if (bits == 0)
+                    continue;
+                // The lookup encodes exactly the same contiguous spans as
+                // the original column scan. Preserve one Canvas call per run.
+                int packed = CachedSpanRuns[bits];
+                int runCount = packed & 3;
+                packed >>= 2;
+                for (int run = 0; run < runCount; run++)
                 {
-                    if ((bits & (1 << (4 - col))) != 0)
-                        canvas.DrawFilledRectangle(color, x + col, y + row, 1, 1);
+                    int runStart = packed & 7;
+                    int runLength = (packed >> 3) & 7;
+                    canvas.DrawFilledRectangle(color, x + runStart, y + row, runLength, 1);
+                    packed >>= 6;
                 }
             }
         }
 
         private static char NormalizeGlyph(char ch)
         {
+            // All printable ASCII glyphs are unchanged by normalization.
+            // Avoid the non-ASCII switch for the common file-name/UI path.
+            if (ch < 128)
+                return ch;
             switch (ch)
             {
                 case 'ą': case 'Ą': return 'A';
