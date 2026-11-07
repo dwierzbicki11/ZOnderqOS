@@ -793,10 +793,10 @@ internal static class AudioDirectProbeSmoke
             {
                 if (cleanupPhase)
                 {
-                    // The feeder performs one final readiness read after
-                    // the settle callback. Claim only on the subsequent
+                    // The responsive feeder performs two final readiness reads
+                    // after the last settle callback. Claim only on the subsequent
                     // cleanup getter so the test exercises guarded Stop().
-                    if (++cleanupFormatReads == 2)
+                    if (++cleanupFormatReads == 3)
                         claimedDuringCleanupFormat.Player = new object();
                 }
             };
@@ -806,7 +806,7 @@ internal static class AudioDirectProbeSmoke
                 if (ms == 6) cleanupPhase = true;
             };
             check(AudioProbeDirectPlayback.TryPlay(claimedDuringCleanupFormat, Pcm, 48000) &&
-                cleanupFormatReads == 2 && claimedDuringCleanupFormat.StopCalls == 0 &&
+                cleanupFormatReads == 3 && claimedDuringCleanupFormat.StopCalls == 0 &&
                 claimedDuringCleanupFormat.IsRunning,
                 "cleanup format getter claim skips Stop and reads format once");
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
@@ -815,7 +815,7 @@ internal static class AudioDirectProbeSmoke
                 waits++;
             };
 
-            // The final feeder readiness check reads Format once after settle.
+            // The responsive feeder reads Format twice after the final settle.
             // A reset on the following cleanup-only getter must not throw
             // or Stop an output whose configuration can no longer be verified.
             var resetDuringCleanupFormat = new Device();
@@ -823,7 +823,7 @@ internal static class AudioDirectProbeSmoke
             bool resetCleanupPhase = false;
             resetDuringCleanupFormat.OnFormatRead = () =>
             {
-                if (resetCleanupPhase && ++resetCleanupReads == 2)
+                if (resetCleanupPhase && ++resetCleanupReads == 3)
                     resetDuringCleanupFormat.ThrowOnFormatRead = true;
             };
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
@@ -832,7 +832,7 @@ internal static class AudioDirectProbeSmoke
                 if (ms == 6) resetCleanupPhase = true;
             };
             check(AudioProbeDirectPlayback.TryPlay(resetDuringCleanupFormat, Pcm, 48000) &&
-                resetCleanupReads == 2 && resetDuringCleanupFormat.StopCalls == 0 &&
+                resetCleanupReads == 3 && resetDuringCleanupFormat.StopCalls == 0 &&
                 resetDuringCleanupFormat.IsRunning,
                 "cleanup Format exception skips unsafe Stop without crashing");
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
@@ -848,7 +848,7 @@ internal static class AudioDirectProbeSmoke
             bool cleanupRatePhase = false;
             rateChangedDuringCleanup.OnFormatRead = () =>
             {
-                if (cleanupRatePhase && ++cleanupRateReads == 2)
+                if (cleanupRatePhase && ++cleanupRateReads == 3)
                     rateChangedDuringCleanup.SampleRate = 44100;
             };
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
@@ -857,7 +857,7 @@ internal static class AudioDirectProbeSmoke
                 if (ms == 6) cleanupRatePhase = true;
             };
             check(AudioProbeDirectPlayback.TryPlay(rateChangedDuringCleanup, Pcm, 48000) &&
-                cleanupRateReads == 2 && rateChangedDuringCleanup.StopCalls == 0 &&
+                cleanupRateReads == 3 && rateChangedDuringCleanup.StopCalls == 0 &&
                 rateChangedDuringCleanup.IsRunning,
                 "cleanup Format getter sample-rate drift skips unsafe Stop");
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
