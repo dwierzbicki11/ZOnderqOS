@@ -220,6 +220,12 @@ namespace ZonderqOS.GUI
                             continue;
                         }
 
+                        if (IsScreenshotShortcut(key))
+                        {
+                            ScreenshotService.CaptureAndSave(canvas);
+                            continue;
+                        }
+
                         if (HandleWindowShortcut(key))
                             continue;
 
@@ -751,6 +757,24 @@ namespace ZonderqOS.GUI
                 "Klasyczna ukladanka klockow Tetris",
                 AppCategory.Games, IconType.Play, () => LaunchTetris(180, 85),
                 StartMenuPlacement.Tool, 8, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Paint, "Paint", "Paint", "Paint",
+                "Program graficzny do rysowania i tworzenia obrazow",
+                AppCategory.Tools, IconType.Paint, () => LaunchPaint(165, 80),
+                StartMenuPlacement.Tool, 9, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Screenshot, "Zrzut ekranu", "Zrzut ekranu", "Zrzut ekranu",
+                "Narzedzie do przechwytywania ekranu pulpitu",
+                AppCategory.Tools, IconType.ImageViewer, () => LaunchScreenshot(175, 90),
+                StartMenuPlacement.Tool, 10, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.HexViewer, "Hex Viewer", "Hex Viewer", "Hex Viewer",
+                "Podglad plikow w formacie szesnastkowym i ASCII",
+                AppCategory.Tools, IconType.HexViewer, () => LaunchHexViewer(185, 85),
+                StartMenuPlacement.Tool, 11, -1, true));
         }
 
         private void PopulateStartMenu()
@@ -982,6 +1006,24 @@ namespace ZonderqOS.GUI
             return alt && !control;
         }
 
+        private static bool IsScreenshotShortcut(KeyEvent key)
+        {
+            if (key == null)
+                return false;
+
+            if (key.Key == ConsoleKeyEx.PrintScreen)
+                return true;
+
+            if (key.Key == ConsoleKeyEx.S)
+            {
+                bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+                bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+                return control && alt;
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Desktop shortcuts run before application key handlers. They must not
         /// leak into a text editor or a terminal, and must respect visible overlays.
@@ -1183,6 +1225,21 @@ namespace ZonderqOS.GUI
         private void LaunchTetris(int x, int y)
         {
             applicationManager.Launch(new TetrisApp(x, y, null));
+        }
+
+        private void LaunchPaint(int x, int y)
+        {
+            applicationManager.Launch(new PaintApp(x, y, null));
+        }
+
+        private void LaunchScreenshot(int x, int y)
+        {
+            applicationManager.Launch(new ScreenshotApp(x, y, () => canvas, path => LaunchImageViewer(155, 92, path), null));
+        }
+
+        private void LaunchHexViewer(int x, int y)
+        {
+            applicationManager.Launch(new HexViewerApp(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,

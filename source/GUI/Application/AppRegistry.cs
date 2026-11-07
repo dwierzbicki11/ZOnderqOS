@@ -38,6 +38,9 @@ namespace ZonderqOS.GUI.Apps
         public const string Minesweeper = "minesweeper";
         public const string Snake = "snake";
         public const string Tetris = "tetris";
+        public const string Paint = "paint";
+        public const string Screenshot = "screenshot";
+        public const string HexViewer = "hex-viewer";
     }
 
     public sealed class AppDescriptor

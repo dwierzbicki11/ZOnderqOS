@@ -399,8 +399,9 @@ namespace ZonderqOS.GUI
                 if (GetTrayWidth() == TrayWidth && global::ZonderqOS.SystemSettings.ShowTrayStatus)
                 {
                     bool networkReady = global::ZonderqOS.Network.IsReady;
-                    DrawTrayTile(canvas, trayX + 49, 58, IconType.Network, "NET", networkReady);
-                    DrawTrayTile(canvas, trayX + 113, 72, IconType.FileManager, cachedVolumeLabel, cachedVolumeCount > 0);
+                    DrawTrayTile(canvas, trayX + 47, 46, IconType.Network, "NET", networkReady);
+                    DrawTrayTile(canvas, trayX + 97, 46, IconType.FileManager, cachedVolumeLabel, cachedVolumeCount > 0);
+                    DrawBatteryTile(canvas, trayX + 147, 40);
                 }
             }
 
@@ -465,6 +466,30 @@ namespace ZonderqOS.GUI
             SmallTextRenderer.DrawClipped(canvas, label, x + 25, Y + 18,
                 System.Math.Max(8, width - 32), Color.FromArgb(207, 216, 224));
             canvas.DrawFilledRectangle(indicator, x + width - 7, Y + 10, 3, 3);
+        }
+
+        private void DrawBatteryTile(Canvas canvas, int x, int width)
+        {
+            Color background = Color.FromArgb(31, 48, 60);
+            Color border = SystemTheme.AccentBorder;
+            Color textCol = Color.FromArgb(207, 216, 224);
+
+            UiPainter.RoundedPanel(canvas, x, Y + 6, width, Height - 12,
+                UiMetrics.TileRadius, background, border);
+
+            // Battery body (11x7 px)
+            int bx = x + 5;
+            int by = Y + 17;
+            canvas.DrawFilledRectangle(Color.FromArgb(90, 105, 120), bx, by, 11, 7);
+            canvas.DrawFilledRectangle(Color.FromArgb(20, 25, 30), bx + 1, by + 1, 9, 5);
+            // Positive terminal (1x3 px)
+            canvas.DrawFilledRectangle(Color.FromArgb(90, 105, 120), bx + 11, by + 2, 1, 3);
+            // Green charge fill (7x3 px)
+            canvas.DrawFilledRectangle(Color.FromArgb(72, 173, 118), bx + 2, by + 2, 7, 3);
+
+            // Text "AC"
+            SmallTextRenderer.DrawClipped(canvas, "AC", x + 19, Y + 18,
+                System.Math.Max(8, width - 20), textCol);
         }
 
         public void UpdateInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked)
