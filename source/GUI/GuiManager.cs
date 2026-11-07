@@ -781,6 +781,18 @@ namespace ZonderqOS.GUI
                 "Odtwarzacz muzyki chiptune z wizualizatorem",
                 AppCategory.Tools, IconType.Play, () => LaunchMusicPlayer(160, 75),
                 StartMenuPlacement.Tool, 12, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Breakout, "Arkanoid", "Arkanoid", "Arkanoid",
+                "Klasyczna gra zrecznosciowa Arkanoid / Breakout",
+                AppCategory.Games, IconType.Play, () => LaunchBreakout(170, 65),
+                StartMenuPlacement.Tool, 13, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Game2048, "2048", "2048", "2048",
+                "Kultowa gra logiczna polegajaca na laczeniu liczb",
+                AppCategory.Games, IconType.Play, () => LaunchGame2048(180, 60),
+                StartMenuPlacement.Tool, 14, -1, true));
         }
 
         private void PopulateStartMenu()
@@ -1251,6 +1263,16 @@ namespace ZonderqOS.GUI
         private void LaunchMusicPlayer(int x, int y)
         {
             applicationManager.Launch(new MusicPlayerApp(x, y, null));
+        }
+
+        private void LaunchBreakout(int x, int y)
+        {
+            applicationManager.Launch(new BreakoutApp(x, y, null));
+        }
+
+        private void LaunchGame2048(int x, int y)
+        {
+            applicationManager.Launch(new Game2048App(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
