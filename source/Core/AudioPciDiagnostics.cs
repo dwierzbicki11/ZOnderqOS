@@ -26,6 +26,7 @@ namespace ZonderqOS.SystemCore
             int found = 0;
             int supportedInterfaceCandidates = 0;
             int unsupportedInterfaces = 0;
+            int recognizedQemuIdentities = 0;
             for (int i = 0; i < devices.Count; i++)
             {
                 DeviceDescriptor d = devices[i];
@@ -33,6 +34,8 @@ namespace ZonderqOS.SystemCore
                     continue;
 
                 found++;
+                if (IsKnownQemuIdentity(d.VendorId, d.DeviceId, d.ClassCode, d.Subclass, d.ProgrammingInterface))
+                    recognizedQemuIdentities++;
                 if (d.ProgrammingInterface == 0x00)
                     supportedInterfaceCandidates++;
                 else
@@ -50,6 +53,8 @@ namespace ZonderqOS.SystemCore
             Write("[AUDIO] Discovered PCI audio functions: " + found, shellOutput);
             Write("[AUDIO] Standard-interface candidates: " + supportedInterfaceCandidates +
                 "; unsupported programming interfaces: " + unsupportedInterfaces, shellOutput);
+            Write("[AUDIO] Known QEMU PCI identities: " + recognizedQemuIdentities +
+                "; all other audio identities remain unverified.", shellOutput);
             if (found == 0)
                 Write("[AUDIO] No PCI audio function discovered; USB/other audio is not excluded.", shellOutput);
             Write("[AUDIO] Inventory is not proof of a bound output or audible sound.", shellOutput);
@@ -92,6 +97,17 @@ namespace ZonderqOS.SystemCore
             if (vendorId == 0x8086 && deviceId == 0x2415 && subclass == 0x01 && programmingInterface == 0x00)
                 return "Intel ICH AC97 (QEMU AC97 candidate; no stock AC97 driver)";
             return "UNKNOWN_AUDIO_IDENTITY (class-only identification)";
+        }
+
+        /// <summary>
+        /// Identity-only match: never implies driver binding, DMA, IRQ or sound.
+        /// </summary>
+        public static bool IsKnownQemuIdentity(
+            ushort vendorId, ushort deviceId, byte classCode, byte subclass, byte programmingInterface)
+        {
+            return vendorId == 0x8086 && programmingInterface == 0x00 && classCode == 0x04 &&
+                ((deviceId == 0x2668 && subclass == 0x03) ||
+                 (deviceId == 0x2415 && subclass == 0x01));
         }
 
         private static void Write(string message, bool shellOutput)
