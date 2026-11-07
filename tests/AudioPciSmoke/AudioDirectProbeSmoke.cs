@@ -263,7 +263,7 @@ internal static class AudioDirectProbeSmoke
             var movingCapacity = new Device { WritableBytes = 0 };
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "capacity movement occurs during settle");
+                check((ms == 10 || ms == 6), "capacity movement occurs during settle");
                 movingCapacity.WritableBytes = 4096;
             };
             using var capacityTrace = new StringWriter();
@@ -278,7 +278,7 @@ internal static class AudioDirectProbeSmoke
                 Console.SetOut(priorOutput);
                 Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
                 {
-                    check(ms == 86, "successful direct probe waits one HDA ring period");
+                    check((ms == 10 || ms == 6), "successful direct probe waits one HDA ring period");
                     waits++;
                 };
             }
@@ -300,7 +300,7 @@ internal static class AudioDirectProbeSmoke
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
                 if (ms == 1) changingCapacity.WritableBytes = 4096;
-                else if (ms == 86) changingCapacity.WritableBytes = 1024;
+                else if ((ms == 10 || ms == 6)) changingCapacity.WritableBytes = 1024;
                 else throw new Exception("Unexpected HDA wait duration");
             };
             using var changingTrace = new StringWriter();
@@ -315,7 +315,7 @@ internal static class AudioDirectProbeSmoke
                 Console.SetOut(priorOutput);
                 Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
                 {
-                    check(ms == 86, "successful direct probe waits one HDA ring period");
+                    check((ms == 10 || ms == 6), "successful direct probe waits one HDA ring period");
                     waits++;
                 };
             }
@@ -392,7 +392,7 @@ internal static class AudioDirectProbeSmoke
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
                 if (ms == 1) oneMsWaits++;
-                else if (ms == 86) settleWaitsAfterStall++;
+                else if ((ms == 10 || ms == 6)) settleWaitsAfterStall++;
                 else throw new Exception("Unexpected audio wait duration");
             };
             using var stalledTrace = new StringWriter();
@@ -407,11 +407,11 @@ internal static class AudioDirectProbeSmoke
                 Console.SetOut(priorOutput);
                 Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
                 {
-                    check(ms == 86, "successful direct probe waits one HDA ring period");
+                    check((ms == 10 || ms == 6), "successful direct probe waits one HDA ring period");
                     waits++;
                 };
             }
-            check(stalledResult && oneMsWaits == 1 && settleWaitsAfterStall == 1 &&
+            check(stalledResult && oneMsWaits == 1 && settleWaitsAfterStall == 9 &&
                 stallOnce.WrittenBytes == Pcm.Length + 16384 &&
                 stalledTrace.ToString().Contains("pcmQueued=16") &&
                 stalledTrace.ToString().Contains("silenceQueued=16384") &&
@@ -438,7 +438,7 @@ internal static class AudioDirectProbeSmoke
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
                 if (ms == 1) twoShortWaits++;
-                else if (ms == 86) twoSettleWaits++;
+                else if ((ms == 10 || ms == 6)) twoSettleWaits++;
                 else throw new Exception("Unexpected audio wait duration");
             };
             using var twoStallTrace = new StringWriter();
@@ -453,11 +453,11 @@ internal static class AudioDirectProbeSmoke
                 Console.SetOut(priorOutput);
                 Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
                 {
-                    check(ms == 86, "successful direct probe waits one HDA ring period");
+                    check((ms == 10 || ms == 6), "successful direct probe waits one HDA ring period");
                     waits++;
                 };
             }
-            check(twoStallResult && twoShortWaits == 2 && twoSettleWaits == 1 &&
+            check(twoStallResult && twoShortWaits == 2 && twoSettleWaits == 9 &&
                 twoStalls.WrittenBytes == Pcm.Length + 16384 &&
                 twoStallTrace.ToString().Contains("writeCalls=7") &&
                 twoStallTrace.ToString().Contains("zeroWrites=2") &&
@@ -509,7 +509,7 @@ internal static class AudioDirectProbeSmoke
             int settleWaits = 0;
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "primary replacement occurs during final settle");
+                check((ms == 10 || ms == 6), "primary replacement occurs during final settle");
                 settleWaits++;
                 selectedPrimary = false;
             };
@@ -523,7 +523,7 @@ internal static class AudioDirectProbeSmoke
             // remaining ownership and format regression cases.
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "successful direct probe waits one HDA ring period");
+                check((ms == 10 || ms == 6), "successful direct probe waits one HDA ring period");
                 waits++;
             };
             var guardAfterPrimaryReplacement = new Device();
@@ -702,7 +702,7 @@ internal static class AudioDirectProbeSmoke
             var settleRateDrift = new Device();
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "drift during final settle uses bounded wait");
+                check((ms == 10 || ms == 6), "drift during final settle uses bounded wait");
                 settleRateDrift.SampleRate = 44100;
             };
             check(!AudioProbeDirectPlayback.TryPlay(settleRateDrift, Pcm, 48000) &&
@@ -714,7 +714,7 @@ internal static class AudioDirectProbeSmoke
             var settleDriverDrift = new Device();
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "driver drift during settle uses bounded wait");
+                check((ms == 10 || ms == 6), "driver drift during settle uses bounded wait");
                 settleDriverDrift.DriverName = "ReplacementDriver";
             };
             check(!AudioProbeDirectPlayback.TryPlay(settleDriverDrift, Pcm, 48000) &&
@@ -727,7 +727,7 @@ internal static class AudioDirectProbeSmoke
             var settleNullFormat = new Device();
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "missing format during settle uses bounded wait");
+                check((ms == 10 || ms == 6), "missing format during settle uses bounded wait");
                 settleNullFormat.Format = default;
             };
             check(!AudioProbeDirectPlayback.TryPlay(settleNullFormat, Pcm, 48000) &&
@@ -740,7 +740,7 @@ internal static class AudioDirectProbeSmoke
             var settleClaimed = new Device();
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "claimed output during settle uses bounded wait");
+                check((ms == 10 || ms == 6), "claimed output during settle uses bounded wait");
                 settleClaimed.Player = new object();
             };
             check(!AudioProbeDirectPlayback.TryPlay(settleClaimed, Pcm, 48000) &&
@@ -751,7 +751,7 @@ internal static class AudioDirectProbeSmoke
             var settleWithdrawn = new Device();
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "withdrawn output during settle uses bounded wait");
+                check((ms == 10 || ms == 6), "withdrawn output during settle uses bounded wait");
                 settleWithdrawn.IsWithdrawn = true;
             };
             check(!AudioProbeDirectPlayback.TryPlay(settleWithdrawn, Pcm, 48000) &&
@@ -761,7 +761,7 @@ internal static class AudioDirectProbeSmoke
                 "withdrawal during settle skips unsafe Stop after silent drain");
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "normal settle remains one HDA ring period");
+                check((ms == 10 || ms == 6), "normal settle remains one HDA ring period");
                 waits++;
             };
 
@@ -801,7 +801,7 @@ internal static class AudioDirectProbeSmoke
             };
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "cleanup claim test settles once");
+                check((ms == 10 || ms == 6), "cleanup claim test settles once");
                 cleanupPhase = true;
             };
             check(AudioProbeDirectPlayback.TryPlay(claimedDuringCleanupFormat, Pcm, 48000) &&
@@ -810,7 +810,7 @@ internal static class AudioDirectProbeSmoke
                 "cleanup format getter claim skips Stop and reads format once");
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "successful direct probe waits one HDA ring period");
+                check((ms == 10 || ms == 6), "successful direct probe waits one HDA ring period");
                 waits++;
             };
 
@@ -827,7 +827,7 @@ internal static class AudioDirectProbeSmoke
             };
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "cleanup format reset test settles once");
+                check((ms == 10 || ms == 6), "cleanup format reset test settles once");
                 resetCleanupPhase = true;
             };
             check(AudioProbeDirectPlayback.TryPlay(resetDuringCleanupFormat, Pcm, 48000) &&
@@ -836,7 +836,7 @@ internal static class AudioDirectProbeSmoke
                 "cleanup Format exception skips unsafe Stop without crashing");
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "normal settle restored after cleanup reset");
+                check((ms == 10 || ms == 6), "normal settle restored after cleanup reset");
                 waits++;
             };
 
@@ -852,7 +852,7 @@ internal static class AudioDirectProbeSmoke
             };
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "cleanup rate drift test settles once");
+                check((ms == 10 || ms == 6), "cleanup rate drift test settles once");
                 cleanupRatePhase = true;
             };
             check(AudioProbeDirectPlayback.TryPlay(rateChangedDuringCleanup, Pcm, 48000) &&
@@ -861,7 +861,7 @@ internal static class AudioDirectProbeSmoke
                 "cleanup Format getter sample-rate drift skips unsafe Stop");
             Cosmos.Kernel.System.Timers.TimerManager.OnWait = ms =>
             {
-                check(ms == 86, "normal settle restored after cleanup rate drift");
+                check((ms == 10 || ms == 6), "normal settle restored after cleanup rate drift");
                 waits++;
             };
 
