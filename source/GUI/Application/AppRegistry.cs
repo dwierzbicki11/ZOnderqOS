@@ -51,6 +51,8 @@ namespace ZonderqOS.GUI.Apps
         public const string BasicIde = "basic-ide";
         public const string SpaceInvaders = "space-invaders";
         public const string PassVault = "pass-vault";
+        public const string SysBenchmark = "sys-benchmark";
+        public const string SpriteStudio = "sprite-studio";
     }
 
     public sealed class AppDescriptor

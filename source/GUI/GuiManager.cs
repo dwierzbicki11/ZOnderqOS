@@ -841,6 +841,18 @@ namespace ZonderqOS.GUI
                 "Menedzer hasel, generator i bezpieczny sejf notatek z kodem PIN",
                 AppCategory.Tools, IconType.Settings, () => LaunchPassVault(160, 65),
                 StartMenuPlacement.Tool, 21, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.SysBenchmark, "Benchmark Systemu", "Benchmark Systemu", "Benchmark",
+                "Kompleksowy test wydajnosci CPU, RAM, grafiki VESA oraz specyfikacja sprzetu",
+                AppCategory.Tools, IconType.About, () => LaunchSysBenchmark(140, 55),
+                StartMenuPlacement.Tool, 22, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.SpriteStudio, "Studio Sprite'ow", "Studio Sprite'ow", "Sprite Studio",
+                "Edytor pixel-art 16x16 z paleta VGA i eksportem do C# oraz BASIC DATA",
+                AppCategory.Tools, IconType.Paint, () => LaunchSpriteStudio(150, 60),
+                StartMenuPlacement.Tool, 23, -1, true));
         }
 
         private void PopulateStartMenu()
@@ -1374,6 +1386,16 @@ namespace ZonderqOS.GUI
         private void LaunchPassVault(int x, int y)
         {
             applicationManager.Launch(new PassVaultApp(x, y, null));
+        }
+
+        private void LaunchSysBenchmark(int x, int y)
+        {
+            applicationManager.Launch(new SysBenchmarkApp(x, y, null));
+        }
+
+        private void LaunchSpriteStudio(int x, int y)
+        {
+            applicationManager.Launch(new SpriteStudioApp(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
