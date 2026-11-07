@@ -31,6 +31,11 @@ def validate(serial: str) -> str:
                 raise ValueError("multiple or late guest boot markers")
         if re.search(r"\[NET3095-[A-Z0-9-]+\]\[FAIL\]", line):
             raise ValueError("guest network failure in ISR evidence log")
+        # A rising counter is not a success if the guest subsequently faults.
+        # Inspect the entire serial stream, including lines after the final
+        # sample, rather than trusting the two counter markers in isolation.
+        if re.search(r"(?i)(?:kernel panic|unhandled exception|cpu exception|triple fault)", line):
+            raise ValueError("guest fault in ISR evidence log")
         if "[NET3095-ISR]" not in line:
             continue
         match = MARKER.fullmatch(line)
@@ -97,6 +102,10 @@ def self_test() -> None:
         good.splitlines()[0] + "\n[NET3095-N1] BOOT\n" + "\n".join(good.splitlines()[1:]) + "\n",
         good.replace("[NET3095-ISR] phase=before", "[NET3095-N1][FAIL] reset\n[NET3095-ISR] phase=before"),
         good + "[NET3095-N2][FAIL] DHCP timeout\n",
+        good + "KERNEL PANIC: IRQ handler failed\n",
+        good.replace("phase=after", "Unhandled Exception\n[NET3095-ISR] phase=after"),
+        good + "CPU EXCEPTION 14\n",
+        good + "Triple fault\n",
         good.replace("[NET3095-N1] BOOT\n", "[NET3095-N6][FAIL] TCP reset\n[NET3095-N1] BOOT\n"),
     )
     for item in bad:
