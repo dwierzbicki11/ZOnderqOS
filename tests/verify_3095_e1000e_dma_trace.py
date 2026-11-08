@@ -30,7 +30,7 @@ MAX_X86_PHYS_ADDR = (1 << 52) - 1  # Architectural x86-64 physical-address ceili
 # Conservative upper bound for a single E1000E RX buffer DMA trace event.
 # Reject fabricated multi-gigabyte writes without constraining normal jumbo frames.
 MAX_RX_BUFFER_WRITE = 65536
-TERMINATED = re.compile(r"^qemu-system-[^:]+: terminating on signal ")
+TERMINATED = re.compile(r"^" + PREFIX + r"qemu-system-[^:]+: terminating on signal ")
 
 
 def count_dma(stderr: str) -> tuple[int, int, int, int]:
@@ -204,6 +204,15 @@ def self_test() -> None:
             raise AssertionError("accepted missing/spoofed QEMU DMA evidence")
     # Do not count events after the emulator has terminated.
     assert count_dma(trace + "qemu-system-x86_64: terminating on signal 15\n" + trace) == (128, 1, 64, 1)
+    # QEMU -trace may timestamp the termination record; subsequent lines
+    # cannot count as DMA evidence from a running guest.
+    assert count_dma(tx * 128 + "7@100.126:qemu-system-x86_64: terminating on signal 15\n" + write + commit) == (128, 0, 0, 0)
+    try:
+        report(tx * 128 + "7@100.126:qemu-system-x86_64: terminating on signal 15\n" + write + commit)
+    except ValueError as exc:
+        assert "missing QEMU RX" in str(exc)
+    else:
+        raise AssertionError("accepted RX evidence after timestamped QEMU termination")
     assert count_dma("unrelated e1000e_tx_descr 0x1 : 1 1\n") == (0, 0, 0, 0)
     for min_tx, min_rx in ((0, 1), (128, 0), (128, -1)):
         try:
