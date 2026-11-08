@@ -29,6 +29,7 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color AccentColor = Color.FromArgb(40, 150, 240);
         private static readonly Color GreenColor = Color.FromArgb(50, 215, 105);
         private static readonly Color GoldColor = Color.FromArgb(245, 195, 45);
+        private static readonly Color RedColor = Color.FromArgb(235, 60, 60);
 
         private enum GamePhase
         {
