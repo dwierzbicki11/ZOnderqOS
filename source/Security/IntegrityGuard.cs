@@ -35,9 +35,8 @@ namespace ZonderqOS.Security
             "/etc/shadow",
             "/etc/acl.map",
             "/etc/hostname",
-            "/etc/resolv.conf",
             "/etc/firewall.cfg",
-            "/etc/settings.dat"
+            "/etc/zonderq/settings.conf"
         };
 
         private static readonly Dictionary<string, FileIntegrityRecord> records =
@@ -88,7 +87,7 @@ namespace ZonderqOS.Security
             for (int i = 0; i < MonitoredPaths.Length; i++)
             {
                 string path = MonitoredPaths[i];
-                int expectedPerms = (path == "/etc/shadow" || path == "/etc/acl.map") ? 600 : 644;
+                int expectedPerms = (path == "/etc/shadow" || path == "/etc/acl.map" || path == "/etc/firewall.cfg") ? 600 : 644;
                 string hash = string.Empty;
                 long size = 0;
 
@@ -156,7 +155,7 @@ namespace ZonderqOS.Security
                 string path = MonitoredPaths[i];
                 if (!records.ContainsKey(path))
                 {
-                    int perms = (path == "/etc/shadow" || path == "/etc/acl.map") ? 600 : 644;
+                    int perms = (path == "/etc/shadow" || path == "/etc/acl.map" || path == "/etc/firewall.cfg") ? 600 : 644;
                     records[path] = new FileIntegrityRecord
                     {
                         Path = path,

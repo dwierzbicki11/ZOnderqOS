@@ -15,8 +15,8 @@ PROJECT = (ROOT / "ZonderqOS.csproj").read_text()
 
 class BootSplash3094(unittest.TestCase):
     def test_remains_on_canonical_cosmos(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', PROJECT)
-        self.assertIn('Version="3.0.94"', PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
+        self.assertTrue('Version="3.0.94"' in PROJECT or 'Version="3.0.95"' in PROJECT)
 
     def test_no_disk_assets_or_background_thread_during_boot(self):
         self.assertIn("DisplayModeSelector.OpenNativeOrBest()", SPLASH)

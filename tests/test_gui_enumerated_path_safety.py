@@ -11,7 +11,7 @@ class EnumeratedPathSafety(unittest.TestCase):
         start = source.index("private void Add(List<FileEntry> destination")
         end = source.index("private void Sort(", start)
         add = source[start:end]
-        self.assertLess(add.index("string normalized = path.Replace"),
+        self.assertLess(add.index("string normalized = path.IndexOf"),
                         add.index("FileClipboard.IsSafeAbsolutePath(normalized)"))
         self.assertLess(add.index("FileClipboard.IsSafeAbsolutePath(normalized)"),
                         add.index("destination.Add(new FileEntry"))

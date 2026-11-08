@@ -43,9 +43,9 @@ def merge_sort_with_fast_path(items):
 class OrderedRunSortTests(unittest.TestCase):
     def test_source_contains_ordered_run_shortcut(self):
         source = SOURCE.read_text(encoding="utf-8")
-        self.assertIn("Compare(destination[middle - 1], destination[middle]) <= 0", source)
-        self.assertIn("scratch[write] = destination[write];", source)
-        self.assertIn("Compare(destination[left], destination[right]) <= 0", source)
+        self.assertIn("Compare(source[middle - 1], source[middle]) <= 0", source)
+        self.assertIn("target[write] = source[write];", source)
+        self.assertIn("Compare(source[left], source[right]) <= 0", source)
 
     def test_stability_and_order_on_odd_and_duplicate_lists(self):
         random.seed(1729)

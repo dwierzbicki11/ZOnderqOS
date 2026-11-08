@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../../source/Common/Crypto.cs" Link="Crypto.cs" />
+    <Compile Include="../../source/Core/KernelBuildInfo.cs" Link="KernelBuildInfo.cs" />
+    <Compile Include="../../source/Core/Updates/UpdateManifest.cs" Link="UpdateManifest.cs" />
+    <Compile Include="../../source/Core/Updates/BootSlotManager.cs" Link="BootSlotManager.cs" />
+    <Compile Include="../../source/Core/Updates/UpdateManager.cs" Link="UpdateManager.cs" />
+  </ItemGroup>
+</Project>

@@ -207,6 +207,47 @@ namespace ZonderqOS
             return ComputeSha256(ToAscii(text));
         }
 
+        public static string ComputeHmacSha256(byte[] key, byte[] data)
+        {
+            if (key == null || data == null)
+                return string.Empty;
+
+            byte[] keyBlock = new byte[64];
+            byte[] keyHash = new byte[32];
+            uint[] schedule = new uint[64];
+            byte[] innerBuffer = new byte[64 + data.Length];
+            byte[] outerBuffer = new byte[96];
+            byte[] innerHash = new byte[32];
+            byte[] output = new byte[32];
+
+            if (key.Length > 64)
+            {
+                Sha256Into(key, key.Length, keyHash, schedule);
+                CopyBytes(keyHash, 0, keyBlock, 0, keyHash.Length);
+            }
+            else
+            {
+                CopyBytes(key, 0, keyBlock, 0, key.Length);
+            }
+
+            for (int i = 0; i < 64; i++)
+            {
+                innerBuffer[i] = (byte)(keyBlock[i] ^ 0x36);
+                outerBuffer[i] = (byte)(keyBlock[i] ^ 0x5C);
+            }
+
+            HmacSha256Into(data, data.Length, output, innerHash, innerBuffer, outerBuffer, schedule);
+            return ToHex(output);
+        }
+
+        public static string ComputeHmacSha256(string keyAscii, string textAscii)
+        {
+            if (keyAscii == null || textAscii == null)
+                return string.Empty;
+
+            return ComputeHmacSha256(ToAscii(keyAscii), ToAscii(textAscii));
+        }
+
         private static void HmacSha256Into(byte[] data, int dataLength, byte[] output,
             byte[] innerHash, byte[] innerBuffer, byte[] outerBuffer, uint[] schedule)
         {

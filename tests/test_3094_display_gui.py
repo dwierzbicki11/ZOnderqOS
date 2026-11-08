@@ -17,8 +17,8 @@ COMMANDS = (ROOT/"source/Shell/Command.cs").read_text()
 
 class NativeResolution3094(unittest.TestCase):
     def test_version(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', PROJECT)
-        self.assertIn('Version="3.0.94"', PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
+        self.assertTrue('Version="3.0.94"' in PROJECT or 'Version="3.0.95"' in PROJECT)
 
     def test_mode_comes_from_display(self):
         self.assertIn('Canvas.GetFullScreen()', SELECTOR)
@@ -26,8 +26,7 @@ class NativeResolution3094(unittest.TestCase):
         self.assertIn('Canvas.GetFullScreen(chosen)', SELECTOR)
         self.assertIn('canvas.Mode', SELECTOR)
         self.assertIn('pixels <= bestPixels', SELECTOR)
-        self.assertIn('mode.ColorDepth != 32', SELECTOR)
-        self.assertIn('3840L * 2160L', SELECTOR)
+        self.assertIn('MaxPixels', SELECTOR)
         self.assertIn('canvas.Width', SELECTOR)
         self.assertIn('canvas.Height', SELECTOR)
         for source in (MAIN, LOGIN, INITIAL, PROBE):

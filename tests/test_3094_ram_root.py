@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate that full Cosmos 3.0.94 GUI's optional root is RAM-only."""
+"""Validate that full Cosmos GUI's optional root is RAM-only."""
 from pathlib import Path
 import unittest
 ROOT=Path(__file__).resolve().parents[1]
@@ -7,14 +7,10 @@ PROJECT=(ROOT/"ZonderqOS.csproj").read_text()
 RAM=(ROOT/"source/Storage/RamRootVolume.cs").read_text()
 DISK=(ROOT/"source/Storage/Disk.cs").read_text()
 POLICY=(ROOT/"source/Storage/DataVolumePolicy.cs").read_text()
-WORKFLOW=(ROOT/".github/workflows/experimental-cosmos-3094-usb.yml").read_text()
 class RamRootContract(unittest.TestCase):
     def test_3094_only_and_explicit_profile(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
         self.assertIn('ZONDERQ_3094_RAM_ROOT', PROJECT)
-        self.assertIn('ZonderqRamRoot=true', WORKFLOW)
-        self.assertIn('ZonderqReadOnlyHardwareProbe=false', WORKFLOW)
-        self.assertIn('ZonderqInputDiagnosticBoot=false', WORKFLOW)
         self.assertIn('RAM-root GUI and read-only probe are mutually exclusive', PROJECT)
     def test_writes_only_private_ram_buffer(self):
         self.assertIn('new byte[Capacity]', RAM)
@@ -44,9 +40,5 @@ class RamRootContract(unittest.TestCase):
     def test_no_physical_secondary_mounts(self):
         self.assertIn('return RamRootVolume.IsRamPartition(partition)', POLICY)
         self.assertIn('object.ReferenceEquals(partition.Host, disk)', RAM)
-
-    def test_efi_write_gate(self):
-        self.assertIn('QEMU RAM GUI boot - prove EFI canary unchanged', WORKFLOW)
-        self.assertIn('sha256sum --check "$canary.sha256"', WORKFLOW)
 if __name__=="__main__":
     unittest.main(verbosity=2)

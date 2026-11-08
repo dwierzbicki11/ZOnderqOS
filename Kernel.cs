@@ -47,6 +47,7 @@ namespace ZonderqOS
                     throw new InvalidOperationException(
                         "No approved ZONDERQDATA volume: refusing normal boot before any filesystem/user writes.");
                 BootSplash.Advance(27, "DYSK GOTOWY");
+                ZonderqOS.SystemCore.Updates.BootSlotManager.Initialize();
                 ZonderqOS.Platform.SpeakerInitializer.Initialize();
                 UserManager.Initialize();
                 Command.Initialize();
@@ -54,7 +55,6 @@ namespace ZonderqOS
                 EnvironmentManager.Initialize();
                 SecurityLogger.Initialize();
                 PermissionManager.Initialize();
-                ZonderqOS.Security.IntegrityGuard.Initialize();
                 ZonderqOS.Security.FirewallManager.Initialize();
                 ZonderqOS.SystemCore.Updates.UpdateManager.Initialize();
                 SystemLogger.Initialize();
@@ -71,11 +71,13 @@ namespace ZonderqOS
                     Console.WriteLine();
                 }
                 SystemIdentity.Initialize();
+                ZonderqOS.Security.IntegrityGuard.Initialize();
                 ServiceManager.Initialize();
                 BootSplash.Advance(90, "PRZYGOTOWYWANIE SESJI");
 
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
+                ZonderqOS.SystemCore.Updates.BootSlotManager.ConfirmSlotHealth();
                 // Guest-clock baseline: from BeforeRun/BootTelemetry.Initialize
                 // through disk, services and login preparation. This is NOT
                 // QEMU power-on-to-desktop time or a host wall-clock benchmark.

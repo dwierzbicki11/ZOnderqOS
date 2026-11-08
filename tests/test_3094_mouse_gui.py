@@ -13,7 +13,7 @@ PROJECT = (ROOT / "ZonderqOS.csproj").read_text()
 
 class MouseGui3094Contract(unittest.TestCase):
     def test_3094_and_readonly_only(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
         self.assertIn('CosmosEnableMouse>true', PROJECT)
         self.assertIn('CosmosEnableUsb>true', PROJECT)
         self.assertIn("#if ZONDERQ_READONLY_HARDWARE_PROBE && ZONDERQ_COSMOS_INPUT_API", GUI)

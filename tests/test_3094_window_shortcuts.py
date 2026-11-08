@@ -48,8 +48,8 @@ def cycle_model(order, minimized, reverse=False):
 
 class WindowShortcuts3094(unittest.TestCase):
     def test_exact_cosmos_sdk(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', PROJECT)
-        self.assertIn('Version="3.0.94"', PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
+        self.assertTrue('Version="3.0.94"' in PROJECT or 'Version="3.0.95"' in PROJECT)
 
     def test_modifiers_and_precedence(self):
         self.assertIn("if (HandleWindowShortcut(key))", GUI)
