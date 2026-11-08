@@ -111,6 +111,8 @@ def inspect_silent_tail(path: Path):
             raise ValueError("float tail capture must be stereo PCM16")
         if frames < rate * 3 // 10:
             raise ValueError("float tail capture ended before 300ms")
+        if frames > rate * 90:
+            raise ValueError("float tail capture longer than 90 s; isolate one probe per run")
         raw = wav.readframes(frames)
     samples = array.array("h")
     samples.frombytes(raw)
