@@ -1532,11 +1532,13 @@ namespace ZonderqOS.GUI.Apps
             DrawKey(canvas, left, stats + 40, 230, "THREADS/CORE", (ulong)Math.Max(1, app.CpuInfo.ThreadsPerCore), null);
             DrawKey(canvas, left, stats + 60, 230, "ONLINE CPU", app.OnlineCpuCount, null);
             DrawKeyText(canvas, left, stats + 80, 230, "BASE / MAX", app.BaseSpeedText + " / " + app.MaxSpeedText);
+            DrawKeyText(canvas, left, stats + 100, 230, "PLATFORM", "x86_64 Cosmos Native");
             DrawKey(canvas, right, stats, rightW, "SCHED THREADS", (ulong)Math.Max(0, app.SchedulerThreadCount), null);
             DrawKeyText(canvas, right, stats + 20, rightW, "SCHEDULER", app.SchedulerName);
             DrawKeyText(canvas, right, stats + 40, rightW, "VENDOR", app.CpuInfo.Vendor);
             DrawKeyText(canvas, right, stats + 60, rightW, "TOPOLOGY C/L/T", app.TopologyText);
             DrawKeyText(canvas, right, stats + 80, rightW, "CACHE L1/L2/L3", app.CacheText);
+            DrawKeyText(canvas, right, stats + 100, rightW, "HARDWARE", app.CpuInfo.HypervisorPresent ? "VIRTUAL (QEMU/VM)" : "FIZYCZNY (BARE-METAL)");
         }
 
         private void RenderLogicalCpu(Canvas canvas, int x, int y, int width)
@@ -1637,6 +1639,7 @@ namespace ZonderqOS.GUI.Apps
             DrawKey(canvas, x, row + 100, half, "ONLINE CPU", app.OnlineCpuCount, null);
             DrawKeyText(canvas, x, row + 120, half, "SCHEDULER", app.SchedulerName);
             DrawKey(canvas, x, row + 140, half, "SCHED TICK", app.SchedulerTickUs, "US");
+            DrawKeyText(canvas, x, row + 160, half, "RAM SPRZET", app.InstalledRamText + " / " + app.HeapPoolText);
 
             int right = x + width / 2 + 8;
             DrawKey(canvas, right, row, half, "RUNNING", (ulong)Math.Max(0, app.RunningThreadCount), null);
@@ -1647,6 +1650,7 @@ namespace ZonderqOS.GUI.Apps
             DrawKey(canvas, right, row + 100, half, "KERNEL PROCS", (ulong)Math.Max(0, app.KernelProcessCount), null);
             DrawKey(canvas, right, row + 120, half, "STORAGE", (ulong)Math.Max(0, app.StorageDeviceCount), null);
             DrawKeyText(canvas, right, row + 140, half, "NETWORK", app.NetworkReady ? "READY" : "OFFLINE");
+            DrawKeyText(canvas, right, row + 160, half, "RAM UZYTY", app.UsedMemoryText + " (" + app.MemoryUsageText + ")");
         }
 
         private void DrawSystemCard(Canvas canvas, int x, int y, int width, string title, ulong value, string detail)
@@ -1679,6 +1683,8 @@ namespace ZonderqOS.GUI.Apps
                     int px = x + (offset + i) * width / denom;
                     int py = y + height - value * height / 100;
                     canvas.DrawLine(line, previousX, previousY, px, py);
+                    if (previousY + 1 < y + height && py + 1 < y + height)
+                        canvas.DrawLine(line, previousX, previousY + 1, px, py + 1);
                     previousX = px;
                     previousY = py;
                 }
