@@ -617,6 +617,7 @@ namespace ZonderqOS.SystemCore.Updates
                 }
             }
             pkg.ExpectedSha256 = actualKernelSha;
+            progress?.Invoke(45, "Suma SHA-256 kernela prawidlowa.");
 
             // 2. Verify payload files
             if (pkg.Files != null && pkg.Files.Count > 0)

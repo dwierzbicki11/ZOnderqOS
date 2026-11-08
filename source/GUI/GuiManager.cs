@@ -13,6 +13,18 @@ namespace ZonderqOS.GUI
 {
     public class GuiManager
     {
+        public static GuiManager Instance { get; private set; }
+
+        public static void PumpFrame()
+        {
+            if (Instance != null && Instance.canvas != null && Instance.isRunning && !Instance.Failed)
+            {
+                int mx = (int)MouseManager.X;
+                int my = (int)MouseManager.Y;
+                Instance.RenderFrame(mx, my);
+            }
+        }
+
         public bool Failed { get; private set; }
 
         private Canvas canvas;
@@ -157,6 +169,7 @@ namespace ZonderqOS.GUI
                 int previousMouseX = -1;
                 int previousMouseY = -1;
 
+                Instance = this;
                 int firstMouseX = (int)MouseManager.X;
                 int firstMouseY = (int)MouseManager.Y;
                 ResetActivityTimer();
@@ -596,6 +609,10 @@ namespace ZonderqOS.GUI
             {
                 Failed = true;
                 WriteMessage.WriteError($"Błąd w pętli GUI: {ex.Message}", "GUI");
+            }
+            finally
+            {
+                Instance = null;
             }
         }
 

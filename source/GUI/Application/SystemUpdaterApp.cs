@@ -220,6 +220,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     currentProgress = pct;
                     currentStepText = txt;
+                    GuiManager.PumpFrame();
                 }, out err);
 
                 if (!stepResult)
@@ -246,6 +247,7 @@ namespace ZonderqOS.GUI.Apps
                 {
                     currentProgress = pct;
                     currentStepText = txt;
+                    GuiManager.PumpFrame();
                 }, out err);
 
                 if (!stepResult)

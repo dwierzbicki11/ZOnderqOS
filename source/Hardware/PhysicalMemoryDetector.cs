@@ -119,28 +119,29 @@ namespace ZonderqOS.Hardware
                 cachedTotalPhysicalBytes = heapBytes;
             }
 
-            // Estimate installed module capacity (standard DIMM / SO-DIMM powers of 2 or typical combinations)
-            cachedInstalledBytes = EstimateInstalledCapacity(cachedTotalPhysicalBytes, highestAddr);
+            // Estimate installed module capacity based strictly on detected physical RAM bytes
+            cachedInstalledBytes = EstimateInstalledCapacity(cachedTotalPhysicalBytes);
         }
 
-        private static ulong EstimateInstalledCapacity(ulong physicalBytes, ulong highestAddr)
+        private static ulong EstimateInstalledCapacity(ulong physicalBytes)
         {
-            ulong reference = highestAddr > physicalBytes ? highestAddr : physicalBytes;
-            if (reference == 0)
+            if (physicalBytes == 0)
                 return 0;
 
             const ulong GiB = 1024UL * 1024UL * 1024UL;
 
-            // Round up to standard installed sizes: 1, 2, 4, 6, 8, 12, 16, 24, 32, 64, 128 GB
-            if (reference <= 1UL * GiB) return 1UL * GiB;
-            if (reference <= 2UL * GiB) return 2UL * GiB;
-            if (reference <= 4UL * GiB) return 4UL * GiB;
-            if (reference <= 6UL * GiB + (512UL * 1024UL * 1024UL)) return 6UL * GiB;
-            if (reference <= 8UL * GiB + (1024UL * 1024UL * 1024UL)) return 8UL * GiB;
-            if (reference <= 12UL * GiB + (1024UL * 1024UL * 1024UL)) return 12UL * GiB;
-            if (reference <= 16UL * GiB + (1024UL * 1024UL * 1024UL)) return 16UL * GiB;
-            if (reference <= 32UL * GiB + (2048UL * 1024UL * 1024UL)) return 32UL * GiB;
-            if (reference <= 64UL * GiB + (4096UL * 1024UL * 1024UL)) return 64UL * GiB;
+            // Round detected physical usable RAM up to standard module sizes (1, 2, 4, 6, 8, 12, 16, 24, 32, 64, 128 GB)
+            if (physicalBytes <= 1UL * GiB) return 1UL * GiB;
+            if (physicalBytes <= 2UL * GiB) return 2UL * GiB;
+            if (physicalBytes <= 4UL * GiB) return 4UL * GiB;
+            if (physicalBytes <= 6UL * GiB) return 6UL * GiB;
+            if (physicalBytes <= 8UL * GiB) return 8UL * GiB;
+            if (physicalBytes <= 12UL * GiB) return 12UL * GiB;
+            if (physicalBytes <= 16UL * GiB) return 16UL * GiB;
+            if (physicalBytes <= 24UL * GiB) return 24UL * GiB;
+            if (physicalBytes <= 32UL * GiB) return 32UL * GiB;
+            if (physicalBytes <= 64UL * GiB) return 64UL * GiB;
+            if (physicalBytes <= 128UL * GiB) return 128UL * GiB;
 
             return physicalBytes;
         }

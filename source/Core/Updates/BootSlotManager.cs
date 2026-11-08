@@ -291,12 +291,30 @@ namespace ZonderqOS.SystemCore.Updates
                 if (!Directory.Exists(targetDir))
                     Directory.CreateDirectory(targetDir);
 
-                progress?.Invoke(25, $"Kopiowanie kernela do nieaktywnego slotu {targetSlot} ({targetPath})...");
+                progress?.Invoke(20, $"Inicjalizacja kopiowania do slotu {targetSlot}...");
 
-                // Copy binary
-                File.Copy(sourceKernelPath, targetPath, true);
+                long totalBytes = new FileInfo(sourceKernelPath).Length;
+                long copiedBytes = 0;
+                byte[] chunkBuffer = new byte[64 * 1024];
 
-                progress?.Invoke(50, "Weryfikacja sumy kontrolnej SHA-256 zapisanego pliku kernela na dysku...");
+                using (FileStream src = new FileStream(sourceKernelPath, FileMode.Open, FileAccess.Read))
+                using (FileStream dst = new FileStream(targetPath, FileMode.Create, FileAccess.Write))
+                {
+                    int read;
+                    while ((read = src.Read(chunkBuffer, 0, chunkBuffer.Length)) > 0)
+                    {
+                        dst.Write(chunkBuffer, 0, read);
+                        copiedBytes += read;
+
+                        int pct = 20 + (int)(copiedBytes * 45 / Math.Max(1, totalBytes));
+                        int mbCopied = (int)(copiedBytes / (1024 * 1024));
+                        int mbTotal = (int)(totalBytes / (1024 * 1024));
+                        progress?.Invoke(pct, $"Kopiowanie kernela do slotu {targetSlot} ({mbCopied}/{mbTotal} MB)...");
+                    }
+                    dst.Flush();
+                }
+
+                progress?.Invoke(68, "Weryfikacja sumy kontrolnej SHA-256 zapisanego pliku kernela na dysku...");
 
                 // Read back bytes directly from destination on disk
                 byte[] writtenBytes = File.ReadAllBytes(targetPath);
