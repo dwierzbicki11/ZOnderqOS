@@ -45,11 +45,11 @@ namespace ZonderqOS
                 try
                 {
                     if (!KernelBuildInfo.IsHealthyAndConfirmed &&
-                        !string.IsNullOrEmpty(Updates.BootSlotManager.PendingSlot))
+                        !string.IsNullOrEmpty(global::ZonderqOS.SystemCore.Updates.BootSlotManager.PendingSlot))
                     {
                         SystemLogger.Log(SystemLogLevel.Critical, "PANIC",
-                            $"Wykryto awarie rozruchu niezatwierdzonego slotu {Updates.BootSlotManager.PendingSlot}. Wycofywanie do slotu awaryjnego {Updates.BootSlotManager.FallbackSlot}...");
-                        Updates.BootSlotManager.ManualRollback(out _);
+                            $"Wykryto awarie rozruchu niezatwierdzonego slotu {global::ZonderqOS.SystemCore.Updates.BootSlotManager.PendingSlot}. Wycofywanie do slotu awaryjnego {global::ZonderqOS.SystemCore.Updates.BootSlotManager.FallbackSlot}...");
+                        global::ZonderqOS.SystemCore.Updates.BootSlotManager.ManualRollback(out _);
                     }
                 }
                 catch

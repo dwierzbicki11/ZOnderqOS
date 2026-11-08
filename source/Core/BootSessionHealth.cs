@@ -247,7 +247,7 @@ namespace ZonderqOS.SystemCore
     /// </summary>
     public static class SystemPower
     {
-        public static Action OnBeforeShutdown { get; set; }
+        public static Action? OnBeforeShutdown { get; set; }
 
         public static void Reboot(string reason = "reboot")
         {
@@ -315,7 +315,7 @@ namespace ZonderqOS.SystemCore
                 bool shouldReboot = false;
                 try
                 {
-                    if (Cosmos.Kernel.System.KeyboardManager.TryReadKey(out var k) && k != null)
+                    if (Cosmos.Kernel.System.Input.KeyboardManager.TryReadKey(out var k) && k != null)
                     {
                         if (k.Key == ConsoleKeyEx.R)
                             shouldReboot = true;
