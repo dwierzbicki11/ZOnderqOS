@@ -41,6 +41,22 @@ namespace ZonderqOS
 
             if (!allowContinue && string.Equals(safePhase, "BOOT", StringComparison.OrdinalIgnoreCase))
             {
+                // If boot fails during an unconfirmed update slot, trigger emergency rollback
+                try
+                {
+                    if (!KernelBuildInfo.IsHealthyAndConfirmed &&
+                        !string.IsNullOrEmpty(Updates.BootSlotManager.PendingSlot))
+                    {
+                        SystemLogger.Log(SystemLogLevel.Critical, "PANIC",
+                            $"Wykryto awarie rozruchu niezatwierdzonego slotu {Updates.BootSlotManager.PendingSlot}. Wycofywanie do slotu awaryjnego {Updates.BootSlotManager.FallbackSlot}...");
+                        Updates.BootSlotManager.ManualRollback(out _);
+                    }
+                }
+                catch
+                {
+                    // Fail-safe: ignore rollback exceptions during panic
+                }
+
                 try
                 {
                     RecoveryMode.Run("BOOT FAILURE", exception, false);
