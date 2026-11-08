@@ -29,7 +29,7 @@ def checked_irq_lines(stderr: str):
         # Do not normalize whitespace around evidence: indented or padded
         # lines are not exact QEMU trace events and must not satisfy a gate.
         line = raw
-        if re.match(r"^qemu-system-[^:]+: terminating on signal ", line):
+        if re.match(r"^(?:\[[^\]\r\n]+\] ?)?qemu-system-[^:\r\n]+: terminating on signal ", line):
             break
         # Reject disguised notifications, even with a corrupted prefix.
         # Unrelated E1000E tracepoints are not IRQ delivery evidence.
@@ -216,6 +216,9 @@ def self_test() -> None:
     before = "e1000e_irq_legacy_notify IRQ line state: 1\n"
     assert count_notifications(before + termination + before) == (1, 0, 0)
     assert count_notifications(termination + before) == (0, 0, 0)
+    stamped_termination = "[2026-11-08T15:34:10+01:00] " + termination
+    assert count_notifications(before + stamped_termination + before) == (1, 0, 0)
+    assert count_notifications(stamped_termination + before) == (0, 0, 0)
     assert count_legacy_cycles(
         "e1000e_irq_legacy_notify IRQ line state: 0\n" +
         before + termination +
