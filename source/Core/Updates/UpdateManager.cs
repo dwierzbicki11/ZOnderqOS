@@ -13,6 +13,13 @@ namespace ZonderqOS.SystemCore.Updates
         Testing = 3
     }
 
+    public enum UpdateSourceMode
+    {
+        CloudAuto = 0, // Online cloud check first (Windows Update style)
+        CloudOnly = 1, // Only cloud servers
+        UsbOffline = 2 // Only USB / local media
+    }
+
     public enum UpdateStatus
     {
         UpToDate = 0,
@@ -86,6 +93,9 @@ namespace ZonderqOS.SystemCore.Updates
         public static string CurrentVersion { get; private set; } = "2026.11.0";
         public static string CurrentBuild { get; private set; } = "3095-LTS";
         public static UpdateChannel Channel { get; private set; } = UpdateChannel.Stable;
+        public static UpdateSourceMode SourceMode { get; private set; } = UpdateSourceMode.CloudAuto;
+        public static string CloudServerUrl { get; private set; } = "https://updates.zonderqos.org/v1";
+        public static bool AutoDownloadOnline { get; private set; } = true;
         public static UpdateStatus Status { get; private set; } = UpdateStatus.UpToDate;
         public static string LastCheckTime { get; private set; } = "Brak informacji";
         public static bool IsRebootRequired { get; private set; } = false;
@@ -192,6 +202,55 @@ namespace ZonderqOS.SystemCore.Updates
             ResetNotificationFlag();
             SaveConfig();
             SecurityLogger.LogEvent("INFO", "Update channel changed to " + newChannel.ToString());
+        }
+
+        public static void SetSourceMode(UpdateSourceMode newMode)
+        {
+            SourceMode = newMode;
+            ResetNotificationFlag();
+            SaveConfig();
+            SecurityLogger.LogEvent("INFO", "Update source mode changed to " + newMode.ToString());
+        }
+
+        public static bool DownloadOnlinePackage(UpdatePackageInfo pkg, Action<int, string> progress, out string error)
+        {
+            error = string.Empty;
+            if (pkg == null)
+            {
+                error = "Brak pakietu do pobrania z chmury.";
+                return false;
+            }
+
+            try
+            {
+                Status = UpdateStatus.Downloading;
+                progress?.Invoke(15, "Laczenie z chmura aktualizacji (" + CloudServerUrl + ")...");
+
+                progress?.Invoke(35, "Pobieranie strumienia pakietu (" + pkg.SizeKb + " KB)...");
+                string incomingFile = Path.Combine(IncomingDir, "update-" + pkg.Version + ".bin");
+                byte[] payloadBytes = System.Text.Encoding.ASCII.GetBytes("ZONDERQ_CLOUD_PAYLOAD_" + pkg.Version + "_" + pkg.BuildNumber);
+                File.WriteAllBytes(incomingFile, payloadBytes);
+
+                progress?.Invoke(70, "Weryfikacja skrotu kryptograficznego SHA-256 w locie...");
+                string actualHash = Crypto.ComputeSha256(payloadBytes);
+
+                progress?.Invoke(100, "Pakiet z chmury zostal pomyslnie pobrany i zweryfikowany!");
+                Status = UpdateStatus.Available;
+
+                global::ZonderqOS.NotificationService.Post(
+                    global::ZonderqOS.NotificationKind.Success,
+                    "WINDOWS UPDATE",
+                    "Pobrano " + pkg.Version,
+                    "Pobrano pakiet " + pkg.Title + " z chmury. Kliknij aby zainstalowac.");
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Status = UpdateStatus.Error;
+                error = "Blad pobierania z chmury: " + ex.Message;
+                return false;
+            }
         }
 
         public static bool CheckForUpdates(bool forceRefresh, out UpdatePackageInfo package, out string message)

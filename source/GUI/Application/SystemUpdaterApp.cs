@@ -79,10 +79,17 @@ namespace ZonderqOS.GUI.Apps
                 int wx = Window.X;
                 int wy = Window.Y + HeaderHeight;
 
-                // 1. Channel Selector Pill (wx + 16, wy + 76, 120, 24)
-                if (Hit(mouseX, mouseY, wx + 16, wy + 76, 120, 24))
+                // 1. Channel Selector Pill (wx + 12, wy + 76, 105, 24)
+                if (Hit(mouseX, mouseY, wx + 12, wy + 76, 105, 24))
                 {
                     CycleChannel();
+                    return;
+                }
+
+                // 1b. Source Selector Pill (wx + 122, wy + 76, 115, 24)
+                if (Hit(mouseX, mouseY, wx + 122, wy + 76, 115, 24))
+                {
+                    CycleSourceMode();
                     return;
                 }
 
@@ -152,6 +159,21 @@ namespace ZonderqOS.GUI.Apps
 
             UpdateManager.SetChannel(next);
             statusMessage = "Przestawiono kanal na: " + next.ToString().ToUpperInvariant();
+            statusColor = AccentColor;
+        }
+
+        private void CycleSourceMode()
+        {
+            UpdateSourceMode cur = UpdateManager.SourceMode;
+            UpdateSourceMode next = cur switch
+            {
+                UpdateSourceMode.CloudAuto => UpdateSourceMode.UsbOffline,
+                UpdateSourceMode.UsbOffline => UpdateSourceMode.CloudOnly,
+                _ => UpdateSourceMode.CloudAuto
+            };
+
+            UpdateManager.SetSourceMode(next);
+            statusMessage = "Przestawiono zrodlo na: " + next.ToString().ToUpperInvariant();
             statusColor = AccentColor;
         }
 
@@ -308,11 +330,16 @@ namespace ZonderqOS.GUI.Apps
         {
             // Channel Pill Button
             string chText = "KANAL: " + UpdateManager.Channel.ToString().ToUpperInvariant();
-            DrawButton(canvas, chText, x + 4, y, 120, h, Panel, Border, AccentColor);
+            DrawButton(canvas, chText, x, y, 105, h, Panel, Border, AccentColor);
 
-            // Last Check Info
-            string checkInfo = "Ostatnie sprawdzenie: " + UpdateManager.LastCheckTime;
-            SmallTextRenderer.Draw(canvas, checkInfo, x + 134, y + 7, MutedColor);
+            // Source Mode Pill Button
+            string srcText = UpdateManager.SourceMode switch
+            {
+                UpdateSourceMode.CloudOnly => "CHMURA (OTA)",
+                UpdateSourceMode.UsbOffline => "USB (OFFLINE)",
+                _ => "AUTO (CHMURA/USB)"
+            };
+            DrawButton(canvas, srcText, x + 110, y, 115, h, Panel, Border, GoldColor);
 
             // [SPRAWDŹ TERAZ] Button
             DrawButton(canvas, "SPRAWDZ TERAZ", x + w - 245, y, 115, h, AccentColor, AccentColor, TextColor);

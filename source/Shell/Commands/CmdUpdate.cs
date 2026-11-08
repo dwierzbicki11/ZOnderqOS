@@ -65,6 +65,66 @@ namespace ZonderqOS.Commands
                 return;
             }
 
+            if (subcmd == "download")
+            {
+                UpdatePackageInfo pkg = UpdateManager.AvailablePackage;
+                if (pkg == null)
+                {
+                    string chkMsg;
+                    UpdateManager.CheckForUpdates(false, out pkg, out chkMsg);
+                }
+
+                if (pkg == null)
+                {
+                    WriteMessage.WriteInfo("Brak dostepnego pakietu do pobrania.", "UPDATE");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                CommandIO.WriteLine("Pobieranie pakietu " + pkg.Version + " z chmury OTA...");
+                string error;
+                bool ok = UpdateManager.DownloadOnlinePackage(pkg, (pct, status) =>
+                {
+                    CommandIO.WriteLine(string.Format("  [{0,3}%] {1}", pct, status));
+                }, out error);
+
+                if (ok)
+                {
+                    WriteMessage.WriteOK("Pobieranie zakonczone pomyslnie! Wpisz 'zupdate apply' aby zainstalowac.", "UPDATE");
+                    CommandIO.LastCommandSuccess = true;
+                }
+                else
+                {
+                    WriteMessage.WriteError("Blad pobierania: " + error, "UPDATE");
+                    CommandIO.LastCommandSuccess = false;
+                }
+                return;
+            }
+
+            if (subcmd == "source")
+            {
+                if (args.Length < 3)
+                {
+                    CommandIO.WriteLine("Aktualne zrodlo: " + UpdateManager.SourceMode.ToString().ToUpperInvariant());
+                    CommandIO.WriteLine("Dostepne tryby: auto, cloud, usb");
+                    CommandIO.LastCommandSuccess = true;
+                    return;
+                }
+
+                string mode = args[2].ToLowerInvariant();
+                UpdateSourceMode sm = mode switch
+                {
+                    "cloud" => UpdateSourceMode.CloudOnly,
+                    "usb" => UpdateSourceMode.UsbOffline,
+                    _ => UpdateSourceMode.CloudAuto
+                };
+
+                UpdateManager.SetSourceMode(sm);
+                WriteMessage.WriteOK("Ustawiono tryb zrodla aktualizacji: " + sm.ToString().ToUpperInvariant(), "UPDATE");
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
             if (subcmd == "apply" || subcmd == "install")
             {
                 if (SecurityContext.CurrentUser != "root")
@@ -282,6 +342,7 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("  Biezaca wersja:   " + UpdateManager.CurrentVersion);
             CommandIO.WriteLine("  Kompilacja:       " + UpdateManager.CurrentBuild);
             CommandIO.WriteLine("  Kanal wydań:      " + UpdateManager.Channel.ToString().ToUpperInvariant());
+            CommandIO.WriteLine("  Zrodlo wydań:     " + UpdateManager.SourceMode.ToString().ToUpperInvariant() + " (" + UpdateManager.CloudServerUrl + ")");
             CommandIO.WriteLine("  Ostatnie badanie: " + UpdateManager.LastCheckTime);
             CommandIO.WriteLine("  Stan systemu:     " + (UpdateManager.IsRebootRequired ? "WYMAGANY RESTART (Aktualizacja oczekuje)" : "Sprawny / Aktualny"));
             CommandIO.WriteLine("  Punkt przywrocenia: " + (UpdateManager.HasRollbackSnapshot() ? "Dostepny" : "Brak"));
@@ -293,9 +354,11 @@ namespace ZonderqOS.Commands
         {
             CommandIO.WriteLine("Dostepne polecenia zupdate:");
             CommandIO.WriteLine("  zupdate status                 - Podsumowanie stanu systemu i wersji");
-            CommandIO.WriteLine("  zupdate check [--force]        - Sprawdzenie dostepnosci nowych pakietow");
+            CommandIO.WriteLine("  zupdate check [--force]        - Sprawdzenie dostepnosci nowych pakietow w chmurze");
+            CommandIO.WriteLine("  zupdate download               - Pobranie pakietu z serwera OTA (Windows Update)");
             CommandIO.WriteLine("  zupdate apply                  - Instalacja dostepnej aktualizacji");
             CommandIO.WriteLine("  zupdate rollback               - Przywrocenie poprzedniej migawki");
+            CommandIO.WriteLine("  zupdate source [auto|cloud|usb]- Zmiana zrodla aktualizacji");
             CommandIO.WriteLine("  zupdate channel [stable|lts|beta] - Zmiana galezi dystrybucji");
             CommandIO.WriteLine("  zupdate history                - Podglad historii instalacji");
             CommandIO.WriteLine("  zupdate drives                 - Wykrywanie dyskow USB, partycji i katalogow");
