@@ -105,6 +105,30 @@ mkdir -p "$MOUNT_DIR/var/updates/installed"
 mkdir -p "$MOUNT_DIR/var/updates/backup"
 mkdir -p "$MOUNT_DIR/var/log"
 
+# Clean up legacy fake update configurations and mock files
+rm -f "$MOUNT_DIR/etc/update.cfg"
+rm -f "$MOUNT_DIR/etc/os-release"
+rm -f "$MOUNT_DIR/var/log/update.log"
+mkdir -p "$MOUNT_DIR/etc"
+
+cat > "$MOUNT_DIR/etc/update.cfg" <<EOF
+CHANNEL=stable
+LAST_CHECK=$(date +'%Y-%m-%d %H:%M')
+UPDATER_VERSION=3.0
+INSTALLED_VERSION=1.0.0-alpha
+INSTALLED_BUILD=3100
+LAST_NOTIFIED=
+EOF
+
+cat > "$MOUNT_DIR/etc/os-release" <<EOF
+NAME="ZonderqOS"
+ID=zonderqos
+VERSION_ID="1.0.0-alpha"
+BUILD_ID="3100"
+PRETTY_NAME="ZonderqOS 1.0.0-alpha (Cosmos 3.0.95 x64 Native Core)"
+UPDATE_DATE="$(date +'%Y-%m-%d %H:%M:%S')"
+EOF
+
 # Copy running kernel into slot A
 KERNEL_SRC="$ROOT/obj/Debug/net10.0/linux-x64/cosmos/iso_root/boot/ZonderqOS.elf"
 if [[ -f "$KERNEL_SRC" ]]; then
