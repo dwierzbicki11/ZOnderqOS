@@ -166,7 +166,74 @@ if __name__ == "__main__":
     log8, state8 = inspect_results(test_disk)
     assert "ZonderqOS kernel successfully booted" in log8, "Kernel boot failed with 8 vCPUs!"
     print("[PASS] 8 vCPU QEMU Boot SUCCESSFUL without crashes or panics!")
-    
+
+    # 3. Test A/B Slot Switching and Slot B Promotion
+    print("\n============================================================")
+    print("  TEST 3: A/B Slot Switching & Slot B Promotion in QEMU     ")
+    print("============================================================")
+    print("[QEMU-HARNESS] Staging simulated update 1.0.1 (build 3110) into Slot B...")
+    fs = PyFatFS(str(test_disk), offset=2048 * 512)
+    with open(KERNEL_ELF, "rb") as kf:
+        kernel_bytes = kf.read()
+    with fs.open("/boot/slot_b/ZonderqOS.elf", "wb") as out_kf:
+        out_kf.write(kernel_bytes)
+
+    stage_b_state = (
+        "# ZonderqOS A/B Bootloader State Configuration\n"
+        "ACTIVE_SLOT=B\n"
+        "FALLBACK_SLOT=A\n"
+        "PENDING_SLOT=B\n"
+        "BOOT_ATTEMPTS=0\n"
+        "MAX_BOOT_ATTEMPTS=3\n"
+        "SLOT_A_STATUS=HEALTHY\n"
+        "SLOT_A_VERSION=1.0.0-alpha\n"
+        "SLOT_A_BUILD=3100\n"
+        "SLOT_B_STATUS=PENDING\n"
+        "SLOT_B_VERSION=1.0.1\n"
+        "SLOT_B_BUILD=3110\n"
+    )
+    with fs.open("/boot/boot_state.cfg", "w") as bsf:
+        bsf.write(stage_b_state)
+
+    limine_cfg_b = (
+        "# Cosmos Gen3 / Limine v10 A/B dual-slot boot configuration.\n"
+        "timeout: 3\n"
+        "default_entry: 2\n\n"
+        "/ZonderqOS (Slot A)\n"
+        "    protocol: limine\n"
+        "    resolution: 1366x768x32\n"
+        "    path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf\n\n"
+        "/ZonderqOS (Slot B - Aktywny)\n"
+        "    protocol: limine\n"
+        "    resolution: 1366x768x32\n"
+        "    path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf\n\n"
+        "/ZonderqOS (Kopia zapasowa ISO / Ratunkowa)\n"
+        "    protocol: limine\n"
+        "    resolution: 1366x768x32\n"
+        "    path: boot():/boot/ZonderqOS.elf\n"
+    )
+    with fs.open("/boot/limine.conf", "w") as lcf:
+        lcf.write(limine_cfg_b)
+    with fs.open("/limine.conf", "w") as lcf:
+        lcf.write(limine_cfg_b)
+    with fs.open("/boot/limine/limine.conf", "w") as lcf:
+        lcf.write(limine_cfg_b)
+    fs.close()
+
+    print("[QEMU-HARNESS] Booting into Slot B via Limine entry 2...")
+    run_qemu(ISO, test_disk, smp=1, seconds=28)
+    log_b, state_b = inspect_results(test_disk)
+
+    print("\n--- /boot/boot_state.cfg after Slot B boot ---")
+    for line in state_b.splitlines()[:12]:
+        print("  " + line)
+
+    assert "ACTIVE_SLOT=B" in state_b, "Active slot is not B!"
+    assert "PENDING_SLOT=" in state_b and ("PENDING_SLOT=B" not in state_b), "Pending slot was not cleared!"
+    assert "SLOT_B_STATUS=Healthy" in state_b or "SLOT_B_STATUS=HEALTHY" in state_b, "Slot B was not marked Healthy!"
+    assert "Slot B pomyslnie zatwierdzony jako zdrowy" in log_b, "Confirmation message not in system.log!"
+    print("\n[PASS] QEMU Slot B Boot, Kernel Execution, and Promotion SUCCESSFUL!")
+
     # Cleanup
     shutil.rmtree(work_dir)
     print("\n============================================================")
