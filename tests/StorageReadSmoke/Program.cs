@@ -44,6 +44,17 @@ static class Program
             Run("physical output failure", file, () => Faults.Stage = "output", false, "");
             File.WriteAllText(file, new string('x', 16385));
             Run("overlong line", file, () => {}, false, "");
+            string boundary = new string('x', 16384);
+            File.WriteAllText(file, boundary + "\n");
+            Run("exact line limit LF", file, () => {}, true, boundary + "\n");
+            File.WriteAllText(file, boundary + "\r\n");
+            Run("exact line limit CRLF", file, () => {}, true, boundary + "\n");
+            File.WriteAllText(file, boundary + "\rX\n");
+            Run("CR followed by data still exceeds limit", file, () => {}, false, "");
+            File.WriteAllText(file, boundary + "x\r\n");
+            Run("overlong CRLF line", file, () => {}, false, "");
+            File.WriteAllText(file, boundary + "\r\r\n");
+            Run("extra CR cannot bypass limit", file, () => {}, false, "");
             File.WriteAllText(file, "");
             Run("empty file", file, () => {}, true, "");
             Console.WriteLine(passed + " storage read checks passed");

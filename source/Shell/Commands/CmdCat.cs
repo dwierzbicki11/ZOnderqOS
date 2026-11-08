@@ -92,7 +92,10 @@ namespace ZonderqOS.Commands
                             continue;
                         }
 
-                        if (line.Length >= MaxLineLength)
+                        // Reserve one character for CR in a CRLF terminator.
+                        // Any subsequent non-LF data still fails the line limit.
+                        if (line.Length >= MaxLineLength &&
+                            !(line.Length == MaxLineLength && ch == '\r'))
                             throw new InvalidOperationException("cat line limit reached (16 KiB)");
 
                         line.Append(ch);
