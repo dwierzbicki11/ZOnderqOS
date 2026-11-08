@@ -894,6 +894,12 @@ namespace ZonderqOS.GUI
                 "Syntezator audio 8-bit, pianino retro i kompozytor melodii PC Speaker",
                 AppCategory.Tools, IconType.Play, () => LaunchChiptune(150, 60),
                 StartMenuPlacement.Tool, 27, 13, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Battleship, "Statki", "Statki", "Statki",
+                "Klasyczna strategiczna gra w bitwe morska z taktycznym komputerowym AI",
+                AppCategory.Games, IconType.Play, () => LaunchBattleship(140, 50),
+                StartMenuPlacement.Tool, 28, 14, true));
         }
 
         private void PopulateStartMenu()
@@ -1457,6 +1463,11 @@ namespace ZonderqOS.GUI
         private void LaunchChiptune(int x, int y)
         {
             applicationManager.Launch(new ChiptuneApp(x, y, null));
+        }
+
+        private void LaunchBattleship(int x, int y)
+        {
+            applicationManager.Launch(new BattleshipApp(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,

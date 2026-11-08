@@ -35,35 +35,36 @@ namespace ZonderqOS.SystemCore.Updates
 
     public sealed class UpdatePackageInfo
     {
-        public string Version { get; set; } = "2026.11.2";
-        public int BuildNumber { get; set; } = 3096;
-        public string Title { get; set; } = "ZonderqOS Security & Stability Rollup 2";
+        public string Version { get; set; } = "2026.12.0";
+        public int BuildNumber { get; set; } = 3100;
+        public string Title { get; set; } = "ZOnderqOS 2026.12 Feature Drop: Bitwa Morska & Chmura OTA";
         public string ReleaseDate { get; set; } = "2026-11-08";
-        public string Severity { get; set; } = "Bezpieczenstwo (Zalecana)";
-        public int SizeKb { get; set; } = 1840;
+        public string Severity { get; set; } = "Wydanie Nowych Funkcji (Feature Drop)";
+        public int SizeKb { get; set; } = 1960;
         public string ExpectedSha256 { get; set; } = "a7f34c99e1208b5e91223fa87114bca03f88bcde1a4209930fef6a190035ab41";
         public int TargetTheme { get; set; } = 2; // Emerald Forest
         public int TargetWallpaper { get; set; } = 6; // Nordic Glacier
         public string TargetThemeName { get; set; } = "EMERALD FOREST";
         public string PayloadPath { get; set; } = "";
         public string KernelImagePath { get; set; } = "";
-        public string[] AppIds { get; set; } = new string[] { "quick-notes", "chiptune" };
+        public string[] AppIds { get; set; } = new string[] { "quick-notes", "chiptune", "battleship" };
         public string[] Changelog { get; set; } = new string[]
         {
+            "Nowa gra strategiczna: Bitwa Morska (Statki) z taktycznym komputerowym AI",
             "Nowa aplikacja: Chiptune Studio (Syntezator PC Speaker 8-bit & pianino retro)",
             "Nowa aplikacja: Szybkie Notatki (Sticky Notes z autozapisem)",
-            "Odswiezenie wizualne pulpitu: Nowy motyw i tapeta (Emerald & Nordic Glacier)",
+            "Odswiezenie wizualne pulpitu: Nowy motyw i tapeta (Nordic Glacier & Emerald)",
+            "Windows Update OTA: Pobieranie pakietow bezposrednio z chmury z weryfikacja SHA-256",
             "Wzmocnienie krypto PassVault: SHA-256 z soleniem, ochrona anty-bruteforce",
             "Pelny sprzetowy silnik benchmarkow rzeczywistych SYSBenchmark 3.0",
-            "Stanowy firewall sieciowy z regulami dynamicznymi i IntegrityGuard 2.4",
-            "Optymalizacja akceleracji VESA i menedzera okien dla Cosmos 3.0.95"
+            "Stanowy firewall sieciowy z regulami dynamicznymi i IntegrityGuard 2.4"
         };
         public string[] Components { get; set; } = new string[]
         {
             "Kernel: Cosmos 3.0.95 x64 Native Core",
-            "Security: IntegrityGuard 2.4 & FirewallManager 1.8",
+            "Games: Bitwa Morska (Statki), Saper, Snake, Tetris, Solitaire",
             "Apps: Chiptune Studio 1.0, QuickNotes 1.0, PassVault 2.0, SYSBenchmark 3.0",
-            "Shell: zupdate 2.0 (USB & Live Payload Engine) & zpkg package registry"
+            "Update Engine: Windows Update OTA Client 2.0 & USB Storage Gateway"
         };
     }
 

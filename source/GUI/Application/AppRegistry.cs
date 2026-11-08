@@ -57,6 +57,7 @@ namespace ZonderqOS.GUI.Apps
         public const string SystemUpdater = "system-updater";
         public const string QuickNotes = "quick-notes";
         public const string Chiptune = "chiptune";
+        public const string Battleship = "battleship";
     }
 
     public sealed class AppDescriptor
