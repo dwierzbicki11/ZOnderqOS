@@ -48,6 +48,7 @@ namespace ZonderqOS.GUI
         private int toolVisibleRows = 2;
         private bool scrollThumbHovered;
         private bool scrollTrackHovered;
+        public bool HasPendingUpdate { get; set; }
 
         private const int Padding = 14;
         private const int HeaderHeight = 66;
@@ -668,6 +669,14 @@ namespace ZonderqOS.GUI
                     button.X + (CompactLayout ? 30 : 36),
                     button.Y + (CompactLayout ? 10 : 17),
                     Math.Max(18, button.Width - (CompactLayout ? 37 : 43)), Text);
+
+                if (HasPendingUpdate && toolLabels[i] != null && toolLabels[i].IndexOf("Aktualizac", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    int dotX = button.X + button.Width - 14;
+                    int dotY = button.Y + 6;
+                    canvas.DrawFilledRectangle(Color.FromArgb(40, 160, 240), dotX, dotY, 7, 7);
+                }
+
                 visibleIndex++;
             }
         }

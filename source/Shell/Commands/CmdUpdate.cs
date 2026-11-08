@@ -211,6 +211,7 @@ namespace ZonderqOS.Commands
                                       "SHA256=a7f34c99e1208b5e91223fa87114bca03f88bcde1a4209930fef6a190035ab41\n" +
                                       "CHANGELOG=Pakiet aktualizacyjny utworzony lokalnie;Weryfikacja integralnosci;Optymalizacja\n";
                     System.IO.File.WriteAllText("/updates/update.manifest", manifest);
+                    UpdateManager.ResetNotificationFlag();
                     WriteMessage.WriteOK("Utworzono plik /updates/update.manifest dla wersji " + ver + "!", "UPDATE");
                     CommandIO.WriteLine("Wpisz 'zupdate check' lub uzyj aplikacji GUI aby system wykryl nowy pakiet.");
                     CommandIO.LastCommandSuccess = true;

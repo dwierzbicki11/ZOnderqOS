@@ -542,6 +542,13 @@ namespace ZonderqOS.GUI
                     if (heartbeatFrames < 1)
                         heartbeatFrames = 1;
                     bool heartbeat = frameCounter % heartbeatFrames == 0;
+                    if (heartbeat)
+                    {
+                        global::ZonderqOS.SystemCore.Updates.UpdateManager.PollBackground();
+                        bool pendingUpd = global::ZonderqOS.SystemCore.Updates.UpdateManager.Status == global::ZonderqOS.SystemCore.Updates.UpdateStatus.Available;
+                        if (startMenu != null) startMenu.HasPendingUpdate = pendingUpd;
+                        if (taskbar != null) taskbar.HasPendingUpdate = pendingUpd;
+                    }
 
                     // A few extra frames after actual UI interaction (roughly
                     // 30 FPS). Idle desktops keep their configurable heartbeat.

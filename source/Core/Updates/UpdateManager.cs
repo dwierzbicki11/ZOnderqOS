@@ -167,6 +167,7 @@ namespace ZonderqOS.SystemCore.Updates
         public static void SetChannel(UpdateChannel newChannel)
         {
             Channel = newChannel;
+            ResetNotificationFlag();
             SaveConfig();
             SecurityLogger.LogEvent("INFO", "Update channel changed to " + newChannel.ToString());
         }
@@ -240,6 +241,53 @@ namespace ZonderqOS.SystemCore.Updates
                 package = null;
                 message = "Blad podczas sprawdzania aktualizacji: " + ex.Message;
                 return false;
+            }
+        }
+
+        private static long lastAutoCheckTicks = 0;
+        private static bool updateNotificationSent = false;
+        private static string lastNotifiedVersion = "";
+
+        public static void ResetNotificationFlag()
+        {
+            updateNotificationSent = false;
+            lastNotifiedVersion = "";
+            lastAutoCheckTicks = 0;
+        }
+
+        public static void PollBackground()
+        {
+            Initialize();
+
+            if (IsRebootRequired || Status == UpdateStatus.Installing || Status == UpdateStatus.Verifying)
+                return;
+
+            long now = System.Diagnostics.Stopwatch.GetTimestamp();
+            long freq = System.Diagnostics.Stopwatch.Frequency > 0 ? System.Diagnostics.Stopwatch.Frequency : 1000000;
+            if (lastAutoCheckTicks > 0 && now - lastAutoCheckTicks < 10 * freq)
+                return;
+
+            lastAutoCheckTicks = now;
+
+            UpdatePackageInfo pkg;
+            string msg;
+            bool found = CheckForUpdates(false, out pkg, out msg);
+
+            if (found && pkg != null)
+            {
+                if (!updateNotificationSent || !string.Equals(lastNotifiedVersion, pkg.Version, StringComparison.OrdinalIgnoreCase))
+                {
+                    updateNotificationSent = true;
+                    lastNotifiedVersion = pkg.Version;
+
+                    bool fromDisk = TryLoadDiskManifest(out _);
+                    string src = fromDisk ? "nosniku USB" : "kanale " + Channel.ToString().ToUpperInvariant();
+                    global::ZonderqOS.NotificationService.Post(
+                        global::ZonderqOS.NotificationKind.Info,
+                        "AKTUALIZACJE",
+                        "Wykryto nowa wersje: " + pkg.Version,
+                        "Wykryto pakiet w " + src + " (" + pkg.Title + "). Otworz Aktualizacje aby zainstalowac.");
+                }
             }
         }
 
