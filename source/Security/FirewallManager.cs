@@ -320,6 +320,7 @@ namespace ZonderqOS.Security
                         sw.WriteLine(r.Port + "|" + r.Protocol + "|" + r.Direction + "|" + r.Action + "|" + r.Description);
                     }
                 }
+                PermissionManager.SetPermission(ConfigPath, "root", 600);
             }
             catch (Exception ex)
             {
