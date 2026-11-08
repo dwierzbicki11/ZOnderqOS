@@ -10,6 +10,7 @@ on:
       - 'source/Security/**'
       - 'tests/**'
       - 'tools/create-storage-test-image.py'
+      - 'tools/smoke-services-qemu.sh'
       - 'ZonderqOS.csproj'
       - 'global.json'
       - '.github/workflows/storage-gen3.yml'
@@ -57,5 +58,6 @@ jobs:
           test -n "$FSCK_FAT" && test -x "$FSCK_FAT"
           python3 tests/test_3094_storage_policy.py
           python3 tests/test_storage_test_image.py
+          python3 tests/test_storage_smoke_image.py
           python3 tests/test_storage_image_fsck.py
           # This is host validation, not a Cosmos driver or QEMU runtime test.
