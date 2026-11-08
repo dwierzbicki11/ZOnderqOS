@@ -99,6 +99,8 @@ namespace ZonderqOS.GUI.Apps
 
         private ulong totalPages;
         private ulong freePages;
+        private ulong physicalRamMb;
+        private ulong installedRamMb;
         private ulong gcHeapBytes;
         private ulong gcCommittedBytes;
         private int storageDeviceCount;
@@ -380,12 +382,11 @@ namespace ZonderqOS.GUI.Apps
         private void RenderMemory(Canvas canvas, int contentX, int contentWidth)
         {
             DrawNumericRow(canvas, contentX, contentWidth, 0, IconType.Settings,
-                "RAM FIZYCZNY", "Pamiec widoczna dla PageAllocator", PagesToMb(totalPages), " MB");
+                "RAM FIZYCZNY", "Calkowity fizyczny RAM (mapa Limine / BIOS)", physicalRamMb > 0 ? physicalRamMb : PagesToMb(totalPages), " MB");
             DrawNumericRow(canvas, contentX, contentWidth, 1, IconType.Settings,
                 "RAM WOLNY", "Aktualnie wolne strony fizyczne", PagesToMb(freePages), " MB");
             DrawNumericRow(canvas, contentX, contentWidth, 2, IconType.Settings,
-                "ORIONGC HEAP", "Rozmiar zakresu sterty raportowany przez GC",
-                gcHeapBytes / 1024UL / 1024UL, " MB");
+                "STERTA KERNELA", "Zakres sterty przydzielony dla PageAllocator", PagesToMb(totalPages), " MB");
             DrawNumericRow(canvas, contentX, contentWidth, 3, IconType.Settings,
                 "GC COMMITTED", "Pamiec zatwierdzona dla zarzadzanej sterty",
                 gcCommittedBytes / 1024UL / 1024UL, " MB");
@@ -453,7 +454,7 @@ namespace ZonderqOS.GUI.Apps
             DrawRow(canvas, contentX, contentWidth, 0, IconType.Start,
                 "SYSTEM", "Nazwa i generacja srodowiska", "ZONDERQOS GEN3", Accent);
             DrawRow(canvas, contentX, contentWidth, 1, IconType.About,
-                "COSMOS SDK", "Wersja pakietow kernel i kernel.system", "3.0.94", Good);
+                "COSMOS SDK", "Wersja pakietow kernel i kernel.system", "3.0.95", Good);
             DrawRow(canvas, contentX, contentWidth, 2, IconType.Settings,
                 "ARCHITEKTURA", "Architektura wykryta przez CPUID", cpuInfo.Architecture, Text);
             DrawRow(canvas, contentX, contentWidth, 3, IconType.Settings,
@@ -717,11 +718,17 @@ namespace ZonderqOS.GUI.Apps
             {
                 totalPages = PageAllocator.TotalPageCount;
                 freePages = PageAllocator.FreePageCount;
+                ulong physBytes = ZonderqOS.Hardware.PhysicalMemoryDetector.TotalPhysicalBytes;
+                physicalRamMb = physBytes > 0 ? physBytes / (1024UL * 1024UL) : PagesToMb(totalPages);
+                ulong instBytes = ZonderqOS.Hardware.PhysicalMemoryDetector.InstalledBytes;
+                installedRamMb = instBytes > 0 ? instBytes / (1024UL * 1024UL) : physicalRamMb;
             }
             catch
             {
                 totalPages = 0;
                 freePages = 0;
+                physicalRamMb = 0;
+                installedRamMb = 0;
             }
 
             try

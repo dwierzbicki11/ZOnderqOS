@@ -137,8 +137,8 @@ class StorageSafetyRegression(unittest.TestCase):
 
     def test_interactive_mounts_require_policy(self):
         mount = method(DISK, "public static void MountPartition(")
-        self.assertIn("Manual mounts disabled in Cosmos 3.0.94", mount)
-        self.assertIn("Manual mounts disabled in Cosmos 3.0.94", GUI)
+        self.assertIn("Manual mounts disabled in Cosmos 3.0.95", mount)
+        self.assertIn("Manual mounts disabled in Cosmos 3.0.95", GUI)
         self.assertNotIn('VfsManager.TryMount(', mount)
         self.assertNotIn('VfsManager.TryMount(', GUI)
         self.assertNotIn('mountedPartitions[0] = "/"', GUI)

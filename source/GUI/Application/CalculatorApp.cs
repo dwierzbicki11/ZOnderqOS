@@ -17,6 +17,11 @@ namespace ZonderqOS.GUI.Apps
         private const int SideMargin = 16;
         private const int ButtonGap = 7;
         private const int GridTopOffset = 236;
+        // Seven rows need enough physical pixels for readable keys. A user can
+        // resize a window down to 320x220, so a fixed 236px grid origin must
+        // not draw buttons over the taskbar or neighboring windows.
+        private const int MinGridHeight = GridTopOffset + 7 * 18 + 6 * ButtonGap + 12;
+        private bool HasButtonGrid => Window.Width >= 280 && Window.Height >= MinGridHeight;
 
         private static readonly string[] ButtonLabels =
         {
@@ -149,17 +154,48 @@ namespace ZonderqOS.GUI.Apps
 
             int contentX = Window.X + 12;
             int contentY = Window.Y + 43;
-            int contentWidth = System.Math.Max(320, Window.Width - 24);
-
+            // Never enlarge the client beyond the Window after a resolution
+            // change or a manual resize. The 320px minimum used to spill into
+            // the next window at very small framebuffer sizes.
+            if (Window.Width <= 24 || Window.Height <= 55)
+                return;
+            int contentWidth = System.Math.Max(1, Window.Width - 24);
             canvas.DrawFilledRectangle(Surface, contentX, contentY, contentWidth,
-                System.Math.Max(120, Window.Height - 55));
+                System.Math.Max(1, Window.Height - 55));
 
-            IconManager.DrawScaled(canvas, IconType.Calculator, contentX + 8, contentY + 8, 28, 28);
-            SmallTextRenderer.Draw(canvas, "KALKULATOR STANDARDOWY", contentX + 46, contentY + 12, Text);
-            SmallTextRenderer.Draw(canvas, "KLAWIATURA I MYSZ", contentX + 46, contentY + 28, Muted);
+            if (contentWidth >= 80)
+            {
+                IconManager.DrawScaled(canvas, IconType.Calculator, contentX + 8, contentY + 8, 28, 28);
+                SmallTextRenderer.DrawClipped(canvas, "KALKULATOR STANDARDOWY",
+                    contentX + 46, contentY + 12, System.Math.Max(1, contentWidth - 54), Text);
+                SmallTextRenderer.DrawClipped(canvas, "KLAWIATURA I MYSZ",
+                    contentX + 46, contentY + 28, System.Math.Max(1, contentWidth - 54), Muted);
+            }
+
+            // The full display ends 227px below the top of the window. Below
+            // that height show a compact, keyboard-operable readout instead of
+            // submitting out-of-framebuffer rectangles.
+            if (Window.Height < 245)
+            {
+                SmallTextRenderer.DrawClipped(canvas, errorState ? errorMessage : entry,
+                    contentX + 8, contentY + 65, System.Math.Max(1, contentWidth - 16), Text);
+                if (Window.Height >= 190)
+                    SmallTextRenderer.DrawClipped(canvas, "0-9  +-*/  ENTER",
+                        contentX + 8, contentY + 93, System.Math.Max(1, contentWidth - 16), Muted);
+                return;
+            }
 
             RenderHistory(canvas, contentX, contentY, contentWidth);
             RenderDisplay(canvas, contentX, contentY, contentWidth);
+            if (!HasButtonGrid)
+            {
+                // A 7-row grid cannot fit without obscuring the display.
+                // Keyboard shortcuts still perform every calculator action.
+                if (Window.Height >= 270)
+                    SmallTextRenderer.DrawClipped(canvas, "Zwieksz okno, aby pokazac przyciski",
+                        contentX + 8, contentY + 193, System.Math.Max(1, contentWidth - 16), Muted);
+                return;
+            }
             RenderButtons(canvas);
         }
 
@@ -254,19 +290,23 @@ namespace ZonderqOS.GUI.Apps
         {
             gridX = Window.X + SideMargin;
             gridY = Window.Y + GridTopOffset;
-            int availableWidth = System.Math.Max(300, Window.Width - SideMargin * 2 - ButtonGap * (Columns - 1));
-            buttonWidth = System.Math.Max(68, availableWidth / Columns);
+            int availableWidth = System.Math.Max(1, Window.Width - SideMargin * 2 - ButtonGap * (Columns - 1));
+            buttonWidth = System.Math.Max(1, availableWidth / Columns);
 
             // Small displays need compact keys, not a fixed minimum of 42px:
             // at 800x600 the previous seventh row was below the taskbar.
             int availableHeight = Window.Height - GridTopOffset - 16 -
                 ButtonGap * (Rows - 1);
-            buttonHeight = System.Math.Max(28, System.Math.Min(58,
+            buttonHeight = System.Math.Max(18, System.Math.Min(58,
                 availableHeight / Rows));
         }
 
         private int HitButton(int mouseX, int mouseY)
         {
+            // Invisible controls must never respond to clicks in another app
+            // or on the taskbar after the calculator was made too short.
+            if (!HasButtonGrid)
+                return -1;
             int gridX;
             int gridY;
             int buttonWidth;

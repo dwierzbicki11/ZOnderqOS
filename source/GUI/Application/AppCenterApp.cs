@@ -29,7 +29,7 @@ namespace ZonderqOS.GUI.Apps
         // AppCategory values intentionally map to these tab indexes.
         private static readonly string[] CategoryLabels =
         {
-            "WSZYSTKIE", "SYSTEM", "NARZEDZIA", "PLIKI"
+            "WSZYSTKIE", "SYSTEM", "NARZEDZIA", "PLIKI", "GRY"
         };
 
         private static readonly Color Surface = Color.FromArgb(19, 24, 30);

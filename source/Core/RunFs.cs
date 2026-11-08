@@ -453,9 +453,8 @@ namespace ZonderqOS.SystemCore
             string value = path.Replace('\\', '/').Trim();
             while (value.IndexOf("//", StringComparison.Ordinal) >= 0)
                 value = value.Replace("//", "/");
-            while (value.Length > 1 && value.EndsWith("/", StringComparison.Ordinal))
-                value = value.Substring(0, value.Length - 1);
-            return value;
+            value = value.TrimEnd('/');
+            return value.Length == 0 ? "/" : value;
         }
     }
 }

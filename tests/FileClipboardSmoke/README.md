@@ -28,8 +28,11 @@ changes: an injected copy boundary stops the recursion safely.
 On failure, the clipboard retains the selected destination path and reports it in
 the error. Destination data is never automatically removed: it may be complete,
 partial, the only surviving copy, or belong to another writer. The user must
-inspect it before retrying or removing it. A failed cut keeps its clipboard entry;
-if the source has disappeared, the normal subsequent existence check clears it.
+inspect it before retrying or removing it. A failed cut keeps its clipboard entry while the source exists; a committed
+rename followed by metadata failure clears the stale cut immediately.
+Relative paths are rejected; absolute aliases are normalized before ACL checks.
+The GUI companion suite also checks authentication, owner binding, directory and
+parent ACLs, and relative destination rejection.
 
 These are orchestration tests, not Cosmos FAT-driver, power-loss, GUI rendering or
 QEMU integration tests. Copy/delete fallback is not transactional; recursive

@@ -12,31 +12,41 @@ namespace ZonderqOS
         private const int MaxCommandTokens = 256;
         private const int MaxTokenLength = 4 * 1024;
         private static readonly List<ICommand> _commands = new List<ICommand>();
+        private static readonly Dictionary<string, ICommand> _commandLookup = new Dictionary<string, ICommand>(StringComparer.OrdinalIgnoreCase);
+
+        private static void Register(ICommand cmd)
+        {
+            _commands.Add(cmd);
+            if (!string.IsNullOrEmpty(cmd.Name))
+                _commandLookup[cmd.Name] = cmd;
+        }
 
         public static void Initialize()
         {
             _commands.Clear();
-            _commands.Add(new CmdPwd()); _commands.Add(new CmdCd()); _commands.Add(new CmdLs());
-            _commands.Add(new CmdLspci()); _commands.Add(new CmdNicDiag()); _commands.Add(new CmdDisplayInfo()); _commands.Add(new CmdInputScan()); _commands.Add(new CmdMkdir()); _commands.Add(new CmdRmdir());
-            _commands.Add(new CmdCat()); _commands.Add(new CmdWrite()); _commands.Add(new CmdTouch());
-            _commands.Add(new CmdAppend()); _commands.Add(new CmdCp()); _commands.Add(new CmdMv());
-            _commands.Add(new CmdRm()); _commands.Add(new CmdSpace()); _commands.Add(new CmdFormat());
-            _commands.Add(new CmdLsblk()); _commands.Add(new CmdMount()); _commands.Add(new CmdUmount());
-            _commands.Add(new CmdStat()); _commands.Add(new CmdHexdump()); _commands.Add(new CmdViewLog());
-            _commands.Add(new CmdDmesg()); _commands.Add(new CmdClear()); _commands.Add(new CmdSysInfo());
-            _commands.Add(new CmdLscpu()); _commands.Add(new CmdNproc()); _commands.Add(new CmdRecovery());
-            _commands.Add(new CmdGrep()); _commands.Add(new CmdHead()); _commands.Add(new CmdEcho());
-            _commands.Add(new CmdWhoami()); _commands.Add(new CmdTty()); _commands.Add(new CmdGui());
-            _commands.Add(new CmdBootMode()); _commands.Add(new CmdDf()); _commands.Add(new CmdHostname());
-            _commands.Add(new CmdService()); _commands.Add(new CmdSystemctl()); _commands.Add(new CmdHelp(_commands));
-            _commands.Add(new CmdMkpart()); _commands.Add(new CmdShutDown()); _commands.Add(new CmdReboot());
-            _commands.Add(new CmdUserAdd()); _commands.Add(new CmdSu()); _commands.Add(new CmdLogout());
-            _commands.Add(new CmdSh()); _commands.Add(new CmdAudit()); _commands.Add(new CmdNano());
-            _commands.Add(new CmdChmod()); _commands.Add(new CmdFree()); _commands.Add(new CmdUptime());
-            _commands.Add(new CmdUname()); _commands.Add(new CmdPs()); _commands.Add(new CmdPidof());
-            _commands.Add(new CmdPgrep()); _commands.Add(new CmdKillall()); _commands.Add(new CmdHtop());
-            _commands.Add(new CmdSmtCheck()); _commands.Add(new CmdSysmond()); _commands.Add(new CmdKill());
-            _commands.Add(new CmdEnv()); _commands.Add(new CmdExport());
+            _commandLookup.Clear();
+            Register(new CmdPwd()); Register(new CmdCd()); Register(new CmdLs());
+            Register(new CmdLspci()); Register(new CmdNicDiag()); Register(new CmdDisplayInfo()); Register(new CmdInputScan()); Register(new CmdMkdir()); Register(new CmdRmdir());
+            Register(new CmdCat()); Register(new CmdWrite()); Register(new CmdTouch());
+            Register(new CmdAppend()); Register(new CmdCp()); Register(new CmdMv());
+            Register(new CmdRm()); Register(new CmdSpace()); Register(new CmdFormat());
+            Register(new CmdLsblk()); Register(new CmdMount()); Register(new CmdUmount());
+            Register(new CmdStat()); Register(new CmdHexdump()); Register(new CmdViewLog());
+            Register(new CmdDmesg()); Register(new CmdClear()); Register(new CmdSysInfo());
+            Register(new CmdLscpu()); Register(new CmdNproc()); Register(new CmdRecovery());
+            Register(new CmdGrep()); Register(new CmdHead()); Register(new CmdEcho());
+            Register(new CmdWhoami()); Register(new CmdTty()); Register(new CmdGui());
+            Register(new CmdBootMode()); Register(new CmdDf()); Register(new CmdHostname());
+            Register(new CmdService()); Register(new CmdSystemctl()); Register(new CmdHelp(_commands));
+            Register(new CmdMkpart()); Register(new CmdShutDown()); Register(new CmdReboot());
+            Register(new CmdUserAdd()); Register(new CmdSu()); Register(new CmdLogout());
+            Register(new CmdSh()); Register(new CmdAudit()); Register(new CmdNano());
+            Register(new CmdChmod()); Register(new CmdFree()); Register(new CmdUptime());
+            Register(new CmdUname()); Register(new CmdPs()); Register(new CmdPidof());
+            Register(new CmdPgrep()); Register(new CmdKillall()); Register(new CmdHtop());
+            Register(new CmdSmtCheck()); Register(new CmdSysmond()); Register(new CmdKill());
+            Register(new CmdEnv()); Register(new CmdExport());
+            Register(new CmdNeofetch()); Register(new CmdMatrix());
         }
 
         internal static string[] GetCommandNames()
@@ -132,9 +142,7 @@ namespace ZonderqOS
             if (words.Length == 0) { CommandIO.LastCommandSuccess = false; return; }
 
             string cmdName = words[0].ToLower();
-            ICommand targetCmd = null;
-            for (int i = 0; i < _commands.Count; i++) if (_commands[i].Name == cmdName) { targetCmd = _commands[i]; break; }
-            if (targetCmd == null) { ReportError("Unknown command: " + cmdName); CommandIO.LastCommandSuccess = false; return; }
+            if (!_commandLookup.TryGetValue(cmdName, out ICommand targetCmd) || targetCmd == null) { ReportError("Unknown command: " + cmdName); CommandIO.LastCommandSuccess = false; return; }
 
             try
             {

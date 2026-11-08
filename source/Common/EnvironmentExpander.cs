@@ -9,6 +9,9 @@ namespace ZonderqOS
             if (string.IsNullOrEmpty(input))
                 return input;
 
+            if (input.IndexOf('~') < 0 && input.IndexOf('$') < 0)
+                return input;
+
             StringBuilder result = new StringBuilder(input.Length + 32);
 
             for (int i = 0; i < input.Length; i++)

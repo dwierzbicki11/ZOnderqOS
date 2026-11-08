@@ -37,6 +37,8 @@ namespace ZonderqOS.SystemCore
 
         public ulong TotalMemoryBytes { get; private set; }
         public ulong FreeMemoryBytes { get; private set; }
+        public ulong InstalledMemoryBytes { get; private set; }
+        public ulong HeapMemoryBytes { get; private set; }
         public ulong UsedMemoryBytes => TotalMemoryBytes >= FreeMemoryBytes
             ? TotalMemoryBytes - FreeMemoryBytes
             : 0;
@@ -102,13 +104,22 @@ namespace ZonderqOS.SystemCore
                 ulong freePages = Math.Min(PageAllocator.FreePageCount, totalPages);
                 ulong pageSize = PageAllocator.PageSize;
 
-                snapshot.TotalMemoryBytes = SaturatingMultiply(totalPages, pageSize);
-                snapshot.FreeMemoryBytes = SaturatingMultiply(freePages, pageSize);
+                ulong heapBytes = SaturatingMultiply(totalPages, pageSize);
+                ulong freeBytes = SaturatingMultiply(freePages, pageSize);
+                ulong physicalBytes = ZonderqOS.Hardware.PhysicalMemoryDetector.TotalPhysicalBytes;
+                ulong installedBytes = ZonderqOS.Hardware.PhysicalMemoryDetector.InstalledBytes;
+
+                snapshot.HeapMemoryBytes = heapBytes;
+                snapshot.InstalledMemoryBytes = installedBytes > 0 ? installedBytes : (physicalBytes > 0 ? physicalBytes : heapBytes);
+                snapshot.TotalMemoryBytes = physicalBytes > 0 ? physicalBytes : heapBytes;
+                snapshot.FreeMemoryBytes = freeBytes;
             }
             catch
             {
                 snapshot.TotalMemoryBytes = 0;
                 snapshot.FreeMemoryBytes = 0;
+                snapshot.InstalledMemoryBytes = 0;
+                snapshot.HeapMemoryBytes = 0;
             }
 
             return snapshot;

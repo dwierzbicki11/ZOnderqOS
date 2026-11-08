@@ -320,10 +320,8 @@ namespace ZonderqOS.SystemCore
             if (string.IsNullOrWhiteSpace(path))
                 return "/";
 
-            string value = path.Replace('\\', '/').Trim();
-            while (value.Length > 1 && value.EndsWith("/", StringComparison.Ordinal))
-                value = value.Substring(0, value.Length - 1);
-            return value;
+            string value = path.Replace('\\', '/').Trim().TrimEnd('/');
+            return value.Length == 0 ? "/" : value;
         }
     }
 }

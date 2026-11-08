@@ -19,7 +19,7 @@ namespace ZonderqOS.GUI
 
         public override void Render(Canvas canvas)
         {
-            if (!Visible) return;
+            if (!Visible || canvas == null || string.IsNullOrEmpty(Text)) return;
             canvas.DrawString(Text, Font, TextColor, X, Y);
         }
     }

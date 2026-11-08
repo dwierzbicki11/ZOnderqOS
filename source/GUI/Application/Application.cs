@@ -15,6 +15,8 @@ namespace ZonderqOS.GUI.Apps
 
         public virtual void Update() { }
 
+        public virtual bool NeedsContinuousRedraw => false;
+
         public virtual void HandleKeyboard(KeyEvent key) { }
 
         public virtual void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)

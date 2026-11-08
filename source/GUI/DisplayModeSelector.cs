@@ -4,7 +4,7 @@ using Cosmos.Kernel.System.Graphics;
 namespace ZonderqOS.GUI
 {
     /// <summary>
-    /// Cosmos 3.0.94 display mode negotiation.
+    /// Cosmos Gen3 stock 3.0.95 display mode negotiation.
     /// Prefer the highest 32-bit mode explicitly advertised by the display
     /// driver. For firmware-only displays (no mode switching), preserve
     /// the framebuffer mode supplied by UEFI/Limine. Never fake canvas sizes.
@@ -13,13 +13,36 @@ namespace ZonderqOS.GUI
     {
         // 4K limit prevents malformed/overly large modes from exhausting
         // memory on Broadwell, while still allowing common laptop and 4K panels.
-        private const long MaxPixels = 3840L * 2160L;
+        private const int MaxWidth = 3840;
+        private const int MaxHeight = 2160;
+        private const long MaxPixels = (long)MaxWidth * MaxHeight;
 
         internal static Canvas OpenNativeOrBest()
         {
             Canvas canvas = Canvas.GetFullScreen();
+#if ZONDERQ_GUI_TEST_NATIVE_FRAMEBUFFER
+            // Opt-in CI profile: keep the *physical* firmware mode requested
+            // by the disposable test ISO. Never fake Width/Height or resize
+            // the backing buffer. Production builds still negotiate best mode.
+            Console.WriteLine("[DISPLAY-TEST] Native framebuffer=" +
+                canvas.Width + "x" + canvas.Height);
+            return canvas;
+#endif
             Mode current = canvas.Mode;
-            Mode chosen = SelectBest(current, canvas.AvailableModes);
+            Mode chosen = current;
+            try
+            {
+                chosen = SelectBest(current, canvas.AvailableModes);
+            }
+            catch (NotSupportedException)
+            {
+                // Firmware-only displays may not expose a mode list at all.
+                // Preserve the real framebuffer instead of aborting the GUI.
+            }
+            catch (InvalidOperationException)
+            {
+                // A display driver may be initialized but unable to enumerate.
+            }
 
             if (chosen != current)
             {
@@ -37,6 +60,11 @@ namespace ZonderqOS.GUI
                 {
                     canvas = Canvas.GetFullScreen();
                 }
+                catch (NotSupportedException)
+                {
+                    // A mode may be advertised but not switchable by the driver.
+                    canvas = Canvas.GetFullScreen();
+                }
             }
 
             Console.WriteLine("[DISPLAY3094] " + canvas.Name +
@@ -51,7 +79,15 @@ namespace ZonderqOS.GUI
         internal static Mode SelectBest(Mode current, System.Collections.Generic.IReadOnlyList<Mode> advertised)
         {
             Mode best = current;
-            long bestPixels = (long)current.Width * current.Height;
+            // A firmware framebuffer may be 16/24-bit or outside our safe
+            // geometry limits. Do not let its pixel count outrank every
+            // valid 32-bit mode exposed by the driver.
+            long currentPixels = (long)current.Width * current.Height;
+            bool currentUsable = (int)current.ColorDepth == 32 &&
+                current.Width >= 640 && current.Height >= 480 &&
+                current.Width <= MaxWidth && current.Height <= MaxHeight &&
+                currentPixels <= MaxPixels;
+            long bestPixels = currentUsable ? currentPixels : -1;
             if (advertised == null)
                 return best;
 
@@ -59,8 +95,11 @@ namespace ZonderqOS.GUI
             {
                 Mode mode = advertised[i];
                 long pixels = (long)mode.Width * mode.Height;
+                // Pixel count alone is insufficient: 8000x1000 fits an 8M
+                // pixel budget but exceeds the advertised 4K axis limits.
                 if ((int)mode.ColorDepth != 32 || mode.Width < 640 ||
-                    mode.Height < 480 || pixels > MaxPixels || pixels <= bestPixels)
+                    mode.Height < 480 || mode.Width > MaxWidth ||
+                    mode.Height > MaxHeight || pixels > MaxPixels || pixels <= bestPixels)
                     continue;
                 bestPixels = pixels;
                 best = mode;

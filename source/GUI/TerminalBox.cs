@@ -17,6 +17,147 @@ namespace ZonderqOS.GUI
         private readonly ScrollBar scrollBar;
         private int scrollOffset;
         private bool userScrolled;
+        // Detect unchanged idle frames before computing scrollbar geometry.
+        // Widget layout is mutable, so track its raw coordinates and size;
+        // the scrollbar's ValueChanged callback always updates scrollOffset.
+        private bool scrollBarLayoutCached;
+        private int cachedBoxX, cachedBoxY, cachedBoxWidth, cachedBoxHeight;
+        private int cachedOutputCount, cachedScrollOffset;
+        private Font cachedScrollFont;
+
+        // A terminal line can become wider than the viewport after a resize.
+        // Cache only the prefixes actually drawn; otherwise Substring would
+        // allocate again on every frame of a narrow window. Entries are keyed
+        // by source string identity AND width, so external OutputLines edits
+        // and dynamic window resizing cannot display stale text.
+        private struct RenderClip
+        {
+            internal string Source;
+            internal string Visible;
+            internal int MaxChars;
+        }
+
+        private RenderClip[] renderClips;
+        private int lastRenderedClipRows;
+        // htop supplies immutable, often reused lines. Cache the clipped
+        // snapshot by visible row, source identity and terminal width instead
+        // of allocating Substring again on every one-second monitor update.
+        // This is separate from the per-frame render cache because ShowMonitor
+        // deliberately resets that cache whenever the snapshot is replaced.
+        private RenderClip[] monitorClips;
+        private int lastMonitorClipRows;
+        private RenderClip promptRenderClip;
+        private RenderClip inputRenderClip;
+
+        // Resizing a window can also clip a long prompt or a command entered
+        // at the old width. These otherwise allocate on every rendered frame.
+        private static string ClipText(ref RenderClip cache, string text, int maxChars)
+        {
+            if (text.Length <= maxChars)
+            {
+                cache = default;
+                return text;
+            }
+            if (!ReferenceEquals(cache.Source, text) || cache.MaxChars != maxChars)
+            {
+                cache.Source = text;
+                cache.MaxChars = maxChars;
+                cache.Visible = text.Substring(0, maxChars);
+            }
+            return cache.Visible;
+        }
+
+        internal string ClipPromptForRender(string prompt, int maxChars) =>
+            ClipText(ref promptRenderClip, prompt, maxChars);
+
+        internal string ClipInputForRender(string text, int maxChars) =>
+            ClipText(ref inputRenderClip, text, maxChars);
+
+        private void ClearMonitorClips()
+        {
+            if (monitorClips != null && lastMonitorClipRows > 0)
+                Array.Clear(monitorClips, 0, lastMonitorClipRows);
+            lastMonitorClipRows = 0;
+        }
+
+        private string ClipMonitorLine(string line, int visibleRow, int maxChars)
+        {
+            if (line.Length <= maxChars)
+            {
+                if (monitorClips != null && visibleRow < monitorClips.Length)
+                    monitorClips[visibleRow] = default;
+                return line;
+            }
+            // The terminal history is capped at 400 rows. An unusually tall
+            // monitor viewport can exceed that cap, but must not retain an
+            // unbounded array of old source strings.
+            if (visibleRow >= MaxOutputLines)
+                return line.Substring(0, maxChars);
+            if (monitorClips == null || visibleRow >= monitorClips.Length)
+            {
+                // Size for the visible viewport once. Growing one slot per
+                // clipped htop row created dozens of transient arrays on the
+                // first refresh of a narrow terminal window.
+                int capacity = Math.Min(MaxOutputLines,
+                    Math.Max(visibleRow + 1, Math.Max(1, GetVisibleLines() - 1)));
+                Array.Resize(ref monitorClips, capacity);
+            }
+            ref RenderClip cached = ref monitorClips[visibleRow];
+            if (!ReferenceEquals(cached.Source, line) || cached.MaxChars != maxChars)
+            {
+                cached.Source = line;
+                cached.MaxChars = maxChars;
+                cached.Visible = line.Substring(0, maxChars);
+            }
+            return cached.Visible;
+        }
+
+        private void ClearRenderClips()
+        {
+            if (renderClips != null)
+                Array.Clear(renderClips, 0, renderClips.Length);
+            lastRenderedClipRows = 0;
+        }
+
+        // Kept internal for host A/B tests of the actual production path.
+        internal string ClipLineForRender(string line, int visibleRow, int maxChars)
+        {
+            if (line.Length <= maxChars)
+            {
+                if (renderClips != null && (uint)visibleRow < (uint)renderClips.Length)
+                    renderClips[visibleRow] = default;
+                return line;
+            }
+
+            if (visibleRow < 0 || visibleRow >= MaxOutputLines)
+                return line.Substring(0, maxChars);
+
+            if (renderClips == null || visibleRow >= renderClips.Length)
+            {
+                // Allocate for the viewport, not for every history entry.
+                int size = Math.Min(MaxOutputLines, Math.Max(visibleRow + 1, GetVisibleLines()));
+                Array.Resize(ref renderClips, size);
+            }
+
+            ref RenderClip cached = ref renderClips[visibleRow];
+            if (!ReferenceEquals(cached.Source, line) || cached.MaxChars != maxChars)
+            {
+                cached.Source = line;
+                cached.MaxChars = maxChars;
+                cached.Visible = line.Substring(0, maxChars);
+            }
+            return cached.Visible;
+        }
+
+        private void FinishRenderClips(int visibleRows)
+        {
+            if (renderClips == null)
+                return;
+            int count = Math.Min(visibleRows, renderClips.Length);
+            if (count < lastRenderedClipRows)
+                Array.Clear(renderClips, count, lastRenderedClipRows - count);
+            lastRenderedClipRows = count;
+        }
 
         private static readonly Color Surface = Color.FromArgb(14, 18, 23);
         private static readonly Color Header = Color.FromArgb(25, 31, 38);
@@ -51,15 +192,31 @@ namespace ZonderqOS.GUI
 
         private void AddOutputLine(string line)
         {
+            AppendOutputLine(line);
+            FinishOutputUpdate();
+        }
+
+        // Batch terminal output without recalculating scrollbar geometry after
+        // each wrapped line. The final range is published once per PrintLine.
+        private void AppendOutputLine(string line)
+        {
+            // Switching from htop to command output must release references
+            // to its previous immutable snapshot.
+            if (lastMonitorClipRows > 0)
+                ClearMonitorClips();
             if (OutputLines.Count >= MaxOutputLines)
             {
                 int remove = Math.Min(TrimBatch, OutputLines.Count);
                 OutputLines.RemoveRange(0, remove);
+                ClearRenderClips();
                 scrollOffset = Math.Max(0, scrollOffset - remove);
             }
 
             OutputLines.Add(line ?? "");
+        }
 
+        private void FinishOutputUpdate()
+        {
             if (!userScrolled)
                 ScrollToBottom();
             else
@@ -68,23 +225,77 @@ namespace ZonderqOS.GUI
 
         public void PrintLine(string line)
         {
+            PrintLineInternal(line, false);
+        }
+
+        // During command output, the final scrollbar range is sufficient for
+        // auto-follow. Keep per-row updates when the user has scrolled up.
+        private void PrintLineInternal(string line, bool deferAutoFollow)
+        {
             if (line == null)
                 line = "";
+            PrintLineSlice(line, 0, line.Length, deferAutoFollow);
+        }
 
+        // Trim trailing whitespace directly in the source slice. The previous
+        // Substring(...).TrimEnd() created two strings when a wrapped row ended
+        // in whitespace. Char.IsWhiteSpace matches TrimEnd()'s Unicode rules;
+        // a fully blank slice can reuse String.Empty.
+#if ZONDERQ_PERF_HOST_TEST
+        // A/B switch restores the previous Unicode path without changing
+        // the production build or the old ASCII fast path.
+        internal static bool DisableUnicodeTrimFastPathForBenchmark;
+#endif
+        internal static string SliceTrimmedForOutput(string source, int start, int length)
+        {
+            // Most command output rows end in a printable ASCII character.
+            // Skip span construction and Unicode whitespace scanning when
+            // the last character cannot possibly be trimmed.
+            if (length > 0)
+            {
+                char last = source[start + length - 1];
+                if (last > ' ' && last <= '~')
+                    return source.Substring(start, length);
+                // Non-ASCII filenames and UTF-8-decoded command output often
+                // end in printable Unicode. TrimEnd().ToString() always
+                // copies even when nothing is trimmed; Substring can reuse
+                // the original string for a full-line slice.
+#if ZONDERQ_PERF_HOST_TEST
+                if (!DisableUnicodeTrimFastPathForBenchmark &&
+                    !char.IsWhiteSpace(last))
+#else
+                if (!char.IsWhiteSpace(last))
+#endif
+                    return source.Substring(start, length);
+            }
+
+            // Span.TrimEnd uses the runtime's whitespace scanner without
+            // first allocating the untrimmed intermediate substring.
+            ReadOnlySpan<char> visible = source.AsSpan(start, length).TrimEnd();
+            return visible.IsEmpty ? string.Empty : visible.ToString();
+        }
+
+        // Decode directly from the command output's original string. A
+        // Substring for each CR/LF-delimited line used to allocate a second
+        // string before the wrapped line was stored in OutputLines. Keep only
+        // the actual retained, trimmed display rows.
+        private void PrintLineSlice(string line, int start, int length, bool deferAutoFollow)
+        {
             int maxChars = GetMaxChars();
             if (maxChars <= 0)
                 return;
 
-            if (line.Length == 0)
+            if (length == 0)
             {
                 AddOutputLine("");
                 return;
             }
 
-            int position = 0;
-            while (position < line.Length)
+            int position = start;
+            int end = start + length;
+            while (position < end)
             {
-                int remaining = line.Length - position;
+                int remaining = end - position;
                 int take = Math.Min(maxChars, remaining);
 
                 if (take < remaining)
@@ -97,31 +308,133 @@ namespace ZonderqOS.GUI
                 if (take <= 0)
                     take = Math.Min(maxChars, remaining);
 
-                AddOutputLine(line.Substring(position, take).TrimEnd());
+                // A single PrintLine can wrap into dozens of display rows.
+                // Publish only after the final row, except when a history
+                // trim reduces the scrollbar maximum. The old per-row path
+                // clamps the scroll offset at that exact point; deferring
+                // this clamp would jump the user's scrolled viewport.
+                string wrapped = SliceTrimmedForOutput(line, position, take);
+                bool trimsHistory = OutputLines.Count >= MaxOutputLines;
+                AppendOutputLine(wrapped);
+                if (userScrolled && trimsHistory)
+                    UpdateScrollBar();
                 position += take;
-                while (position < line.Length && line[position] == ' ')
+                while (position < end && line[position] == ' ')
                     position++;
             }
+
+            if (!deferAutoFollow)
+                FinishOutputUpdate();
+        }
+
+        // Return the absolute next CR/LF index, or Length when none exists.
+        // Exposed to host smoke tests to compare against the original scalar
+        // scanner; the production parser still handles CRLF as one separator.
+        internal static int FindNextOutputBreak(string output, int start)
+        {
+            // A scalar prefix looked promising for short rows, but a full
+            // production C# A/B showed a 0.35x regression for 400 CRLF lines.
+            // Keep the compact span scanner: the runtime can vectorize it
+            // without adding a per-line scalar loop and branch.
+            int relative = output.AsSpan(start).IndexOfAny('\r', '\n');
+            return relative < 0 ? output.Length : start + relative;
+        }
+
+        /// <summary>
+        /// Stream command output directly into terminal lines. Avoid allocating
+        /// a normalized copy of the entire output and a Split() array, which
+        /// can be large for directory listings and diagnostics.
+        /// </summary>
+        public void PrintCommandOutput(string output)
+        {
+            if (string.IsNullOrEmpty(output))
+                return;
+
+            int start = 0;
+            bool deferredScrollUpdate = false;
+            while (start <= output.Length)
+            {
+                // IndexOfAny scans long non-delimiter runs in the runtime's
+                // optimized span implementation. Do not allocate Split arrays,
+                // normalized strings, or a per-line delimiter buffer.
+                int end = FindNextOutputBreak(output, start);
+                int length = end - start;
+                if (length > 0)
+                {
+                    // Compare the clear marker without allocating a line.
+                    if (length == 11 &&
+                        string.CompareOrdinal(output, start, "\u0001GUI_CLEAR\u0001", 0, length) == 0)
+                        ClearOutput();
+                    else
+                    {
+                        PrintLineSlice(output, start, length, true);
+                        deferredScrollUpdate = true;
+                    }
+                }
+
+                // The legacy Replace("\r\n", "\n").Replace("\r", "\n")
+                // treats CRLF as one separator, not two empty lines.
+                if (end == output.Length)
+                    break;
+                start = end + 1;
+                if (output[end] == '\r' && start < output.Length &&
+                    output[start] == '\n')
+                    start++;
+            }
+
+            // Publish the final scrollbar range once per command, including
+            // when the user is reading earlier output. A clear marker may
+            // switch back to auto-follow mid-command; FinishOutputUpdate
+            // observes the final userScrolled state.
+            if (deferredScrollUpdate)
+                FinishOutputUpdate();
         }
 
         public void ClearOutput()
         {
             OutputLines.Clear();
+            ClearRenderClips();
+            ClearMonitorClips();
             userScrolled = false;
             scrollOffset = 0;
             UpdateScrollBar();
         }
 
+        #if ZONDERQ_PERF_HOST_TEST
+        internal bool DisableMonitorClipCacheForBenchmark;
+        #endif
+
         internal void ShowMonitor(IReadOnlyList<string> lines, int firstLine)
         {
-            ClearOutput();
+            // Htop replaces the entire visible snapshot on each refresh.
+            // Avoid ClearOutput plus a redundant scrollbar update per row.
+            OutputLines.Clear();
+            ClearRenderClips();
+            userScrolled = false;
+            scrollOffset = 0;
             int width = GetMaxChars();
             int count = Math.Max(1, GetVisibleLines() - 1);
-            for (int index = Math.Max(0, firstLine); index < lines.Count && count > 0; index++, count--)
+            int visibleRow = 0;
+            for (int index = Math.Max(0, firstLine); index < lines.Count && count > 0; index++, count--, visibleRow++)
             {
                 string line = lines[index];
-                AddOutputLine(line.Length > width ? line.Substring(0, width) : line);
+#if ZONDERQ_PERF_HOST_TEST
+                // Exact previous production path, compiled only in host A/B.
+                OutputLines.Add(DisableMonitorClipCacheForBenchmark
+                    ? (line.Length > width ? line.Substring(0, width) : line)
+                    : ClipMonitorLine(line, visibleRow, width));
+#else
+                OutputLines.Add(ClipMonitorLine(line, visibleRow, width));
+#endif
             }
+            // A shorter snapshot must not pin the old rows or their strings.
+            if (monitorClips != null && visibleRow < lastMonitorClipRows)
+                Array.Clear(monitorClips, visibleRow, lastMonitorClipRows - visibleRow);
+            // Short (unclipped) rows need no cache slot; never clear beyond
+            // the portion of the array that was actually allocated.
+            lastMonitorClipRows = monitorClips == null ? 0 :
+                Math.Min(visibleRow, monitorClips.Length);
+            UpdateScrollBar();
         }
 
         private int GetCharWidth()
@@ -156,13 +469,34 @@ namespace ZonderqOS.GUI
 
         private void UpdateScrollBar()
         {
+            // This is called on every terminal render and mouse poll. The
+            // common unchanged-frame path must do less work than SetRange,
+            // including avoiding GetVisibleLines/GetMaxScroll calculations.
+            int count = OutputLines.Count;
+            if (scrollBarLayoutCached && cachedBoxX == X && cachedBoxY == Y &&
+                cachedBoxWidth == Width && cachedBoxHeight == Height &&
+                cachedOutputCount == count && cachedScrollOffset == scrollOffset &&
+                ReferenceEquals(cachedScrollFont, Font))
+                return;
+
             int visible = Math.Max(1, GetVisibleLines() - 1);
             scrollBar.X = X + Math.Max(1, Width - 12);
             scrollBar.Y = Y + HeaderHeight + 4;
             scrollBar.Width = 8;
             scrollBar.Height = Math.Max(20, Height - HeaderHeight - 8);
-            scrollBar.SetRange(OutputLines.Count + 1, visible);
+            scrollBar.SetRange(count + 1, visible);
             scrollBar.Value = Math.Max(0, Math.Min(scrollOffset, GetMaxScroll()));
+            cachedBoxX = X;
+            cachedBoxY = Y;
+            cachedBoxWidth = Width;
+            cachedBoxHeight = Height;
+            cachedOutputCount = count;
+            // Font is replaceable; a new glyph height changes visible rows
+            // even when the window bounds and output count stay unchanged.
+            cachedScrollFont = Font;
+            // SetRange/Value may clamp the offset through ValueChanged.
+            cachedScrollOffset = scrollOffset;
+            scrollBarLayoutCached = true;
         }
 
         private void ScrollToBottom()
@@ -223,20 +557,27 @@ namespace ZonderqOS.GUI
             if (key.Key == ConsoleKeyEx.Backspace)
             {
                 if (Text.Length > 0)
+                {
                     Text = Text.Substring(0, Text.Length - 1);
+                    inputRenderClip = default;
+                }
             }
             else if (key.KeyChar != '\0' && !char.IsControl(key.KeyChar))
             {
                 int maxChars = GetMaxChars();
                 int promptChars = Prompt == null ? 0 : Prompt.Length;
                 if (promptChars + Text.Length < maxChars)
+                {
                     Text += key.KeyChar;
+                    inputRenderClip = default;
+                }
             }
         }
 
         public void ClearInput()
         {
             Text = "";
+            inputRenderClip = default;
         }
 
         public void SetInput(string text)
@@ -246,6 +587,7 @@ namespace ZonderqOS.GUI
             int promptChars = Prompt == null ? 0 : Prompt.Length;
             int capacity = Math.Max(0, maxChars - promptChars);
             Text = value.Length <= capacity ? value : value.Substring(0, capacity);
+            inputRenderClip = default;
             ScrollToBottom();
         }
 
@@ -293,12 +635,17 @@ namespace ZonderqOS.GUI
             for (int i = startLine; i < endLine; i++)
             {
                 string line = OutputLines[i] ?? "";
-                if (line.Length <= maxChars)
-                    DrawTerminalString(canvas, line, X + ContentPadding, currentY, TextColor);
-                else
-                    DrawTerminalString(canvas, line.Substring(0, maxChars), X + ContentPadding, currentY, TextColor);
+                // The usual unresized history already fits: retain its old
+                // direct draw path with no cache lookup or helper call.
+                // Once a clip cache exists, short rows still clear stale refs.
+                string visibleLine = line;
+                if (line.Length > maxChars || renderClips != null)
+                    visibleLine = ClipLineForRender(line, i - startLine, maxChars);
+                DrawTerminalString(canvas, visibleLine,
+                    X + ContentPadding, currentY, TextColor);
                 currentY += lineHeight;
             }
+            FinishRenderClips(endLine - startLine);
 
             if (startLine >= maxScroll)
             {
@@ -307,18 +654,14 @@ namespace ZonderqOS.GUI
                 int promptChars = Math.Min(prompt.Length, maxChars);
                 int textChars = Math.Min(Text.Length, Math.Max(0, maxChars - promptChars));
 
-                if (promptChars == prompt.Length)
-                    DrawTerminalString(canvas, prompt, X + ContentPadding, currentY, PromptColor);
-                else
-                    DrawTerminalString(canvas, prompt.Substring(0, promptChars), X + ContentPadding, currentY, PromptColor);
+                DrawTerminalString(canvas, ClipPromptForRender(prompt, promptChars),
+                    X + ContentPadding, currentY, PromptColor);
 
                 if (textChars > 0)
-                {
-                    if (textChars == Text.Length)
-                        DrawTerminalString(canvas, Text, X + ContentPadding + promptChars * charWidth, currentY, TextColor);
-                    else
-                        DrawTerminalString(canvas, Text.Substring(0, textChars), X + ContentPadding + promptChars * charWidth, currentY, TextColor);
-                }
+                    DrawTerminalString(canvas, ClipInputForRender(Text, textChars),
+                        X + ContentPadding + promptChars * charWidth, currentY, TextColor);
+                else
+                    inputRenderClip = default;
 
                 if (IsFocused && promptChars + textChars < maxChars)
                 {

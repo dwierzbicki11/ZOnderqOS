@@ -149,7 +149,7 @@ namespace ZonderqOS.GUI
 }
 namespace ZonderqOS.SystemCore
 {
-    static class SecurityContext { public static string CurrentUser="root"; }
+    static class SecurityContext { public static string CurrentUser="root"; public static bool IsAuthenticated=true; }
     static class VirtualFs { public static string ReadOnlyRoot; public static bool IsReadOnlyPath(string p)=>ReadOnlyRoot != null && (p == ReadOnlyRoot || p.StartsWith(ReadOnlyRoot + "/")); }
     static class UserManager { public static string Home; public static string GetHomeDirectory(string u)=>Home ?? "/home/"+u; }
     static class SecurityLogger { public static void LogEvent(string l,string m) {} }

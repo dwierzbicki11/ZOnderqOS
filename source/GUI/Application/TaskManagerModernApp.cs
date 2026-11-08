@@ -27,7 +27,6 @@ namespace ZonderqOS.GUI.Apps
         internal const int CpuGraphTotal = 0;
         internal const int CpuGraphLogical = 1;
 
-        private const int RefreshIntervalFrames = 30;
         private const int HistoryLength = 120;
         private const int LogicalPerPage = 16;
         private const int InitialRowPool = 32;
@@ -67,7 +66,9 @@ namespace ZonderqOS.GUI.Apps
         private int logicalPage;
         private int selectedIndex = -1;
         private int scrollIndex;
-        private int refreshFrame;
+        private int previousVisibleRows = -1;
+        private long lastRefreshTicks = -1;
+        private bool samplingPaused;
         private string status = "Gotowy";
 
         private int guiAppCount;
@@ -138,14 +139,29 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Update()
         {
+            // ApplicationManager updates minimized apps too. Never poll hidden
+            // telemetry. On the first hidden update invalidate the CPU delta
+            // baseline so a long pause cannot dilute the next utilization sample.
+            if (!Window.Visible || Window.IsMinimized)
+            {
+                if (!samplingPaused)
+                {
+                    lastCpuTimestamp = 0;
+                    Array.Clear(previousThreadValid, 0, previousThreadValid.Length);
+                    samplingPaused = true;
+                }
+                lastRefreshTicks = -1;
+                return;
+            }
+
+            samplingPaused = false;
             UpdateLayout();
             UpdateClock();
-            refreshFrame++;
-            if (refreshFrame >= RefreshIntervalFrames)
-            {
-                refreshFrame = 0;
+            // The old 30-frame interval varied from 0.3s to 15s depending
+            // on GUI FPS. Snapshot cadence now uses monotonic elapsed time.
+            if (TaskManagerRefreshGate.ShouldRefresh(
+                Stopwatch.GetTimestamp(), lastRefreshTicks, Stopwatch.Frequency))
                 RefreshSnapshot();
-            }
         }
 
         private void UpdateLayout()
@@ -154,7 +170,18 @@ namespace ZonderqOS.GUI.Apps
             view.Y = Window.Y + 40;
             view.Width = Math.Max(1, Window.Width - 20);
             view.Height = Math.Max(1, Window.Height - 50);
-            ClampScroll();
+            int rows = view.VisibleRows;
+            // Preserve a selected row that was actually on screen before
+            // shrinking the window. Do not snap back to selections that the
+            // user intentionally scrolled away from.
+            bool selectionWasVisible = TaskManagerSelectionPolicy.IsVisible(
+                selectedIndex, scrollIndex, previousVisibleRows, visibleRows.Count);
+            if (rows > 0 && view.HasPaintedProcessRows &&
+                rows != previousVisibleRows && selectionWasVisible)
+                EnsureSelectionVisible();
+            else
+                ClampScroll();
+            previousVisibleRows = rows;
             ClampLogicalPage();
         }
 
@@ -190,8 +217,15 @@ namespace ZonderqOS.GUI.Apps
         public override void HandleMouse(int mouseX, int mouseY, bool left, bool oldLeft)
         {
             Window.HandleMouse(mouseX, mouseY, left, oldLeft);
-            if (!Window.Visible || !IsRunning)
+            if (!Window.Visible || Window.IsMinimized || !IsRunning)
                 return;
+            // A move, resize or display-mode change may occur in the same
+            // input frame, before Update(). Hit-test against the new client
+            // coordinates rather than the previous frame's row positions.
+            if (view.X != Window.X + 10 || view.Y != Window.Y + 40 ||
+                view.Width != Math.Max(1, Window.Width - 20) ||
+                view.Height != Math.Max(1, Window.Height - 50))
+                UpdateLayout();
             if (view.HandleScrollMouse(mouseX, mouseY, left, oldLeft))
                 return;
             if (!left || oldLeft)
@@ -263,6 +297,15 @@ namespace ZonderqOS.GUI.Apps
 
         public override void HandleKeyboard(KeyEvent key)
         {
+            // Keyboard can arrive before Update after a resolution switch.
+            // Refresh the window and visible-row geometry before PageUp/Down,
+            // selection and the potentially destructive Delete action.
+            Window.EnsureDesktopBounds();
+            UpdateLayout();
+            // A modified key belongs to the desktop/global shortcut layer.
+            // In particular Ctrl+Alt+Delete must never end the selected task.
+            if ((key.Modifiers & (ConsoleModifiers.Control | ConsoleModifiers.Alt)) != 0)
+                return;
             if (key.Key == ConsoleKeyEx.Escape)
             {
                 Close();
@@ -274,11 +317,69 @@ namespace ZonderqOS.GUI.Apps
                 status = "Odswiezono";
                 return;
             }
-            if (activePage == PagePerformance)
+            // The left/right arrows switch Task Manager pages without a mouse.
+            // Only plain arrows are accepted; modified keys stay reserved for
+            // global desktop shortcuts and never trigger process actions.
+            if (key.Modifiers == 0 && key.Key == ConsoleKeyEx.LeftArrow)
+            {
+                SetPage(activePage == PageProcesses ? PageServices : activePage - 1);
                 return;
+            }
+            if (key.Modifiers == 0 && key.Key == ConsoleKeyEx.RightArrow)
+            {
+                SetPage(activePage == PageServices ? PageProcesses : activePage + 1);
+                return;
+            }
+            if (activePage == PagePerformance)
+            {
+                // The performance dashboard used to be mouse-only. Keep
+                // global Ctrl/Alt and modified keys out of this navigation.
+                if (key.Modifiers != 0)
+                    return;
+
+                if (key.Key == ConsoleKeyEx.UpArrow || key.Key == ConsoleKeyEx.DownArrow)
+                {
+                    performanceResource = TaskManagerPerformanceNavigation.StepResource(
+                        performanceResource, key.Key == ConsoleKeyEx.UpArrow ? -1 : 1);
+                    status = performanceResource == PerfCpu ? "CPU" :
+                        performanceResource == PerfMemory ? "Pamiec" : "System";
+                    return;
+                }
+
+                if (performanceResource != PerfCpu)
+                    return;
+
+                // G switches the total/logical CPU graphs. PageUp/PageDown
+                // and Home/End navigate logical CPU pages without a mouse.
+                if (key.KeyChar == 'g' || key.KeyChar == 'G')
+                {
+                    cpuGraphMode = cpuGraphMode == CpuGraphTotal ? CpuGraphLogical : CpuGraphTotal;
+                    status = cpuGraphMode == CpuGraphTotal ? "CPU: lacznie" : "CPU: logiczne procesory";
+                    return;
+                }
+
+                if (cpuGraphMode != CpuGraphLogical)
+                    return;
+                if (key.Key == ConsoleKeyEx.PageUp)
+                    logicalPage = TaskManagerPerformanceNavigation.ClampLogicalPage(
+                        logicalPage - 1, LogicalPageCount);
+                else if (key.Key == ConsoleKeyEx.PageDown)
+                    logicalPage = TaskManagerPerformanceNavigation.ClampLogicalPage(
+                        logicalPage + 1, LogicalPageCount);
+                else if (key.Key == ConsoleKeyEx.Home)
+                    logicalPage = 0;
+                else if (key.Key == ConsoleKeyEx.End)
+                    logicalPage = TaskManagerPerformanceNavigation.ClampLogicalPage(
+                        int.MaxValue, LogicalPageCount);
+                return;
+            }
             if (key.Key == ConsoleKeyEx.UpArrow) Select(-1);
             else if (key.Key == ConsoleKeyEx.DownArrow) Select(1);
-            else if (key.Key == ConsoleKeyEx.Delete) EndSelectedTask();
+            else if (key.Key == ConsoleKeyEx.PageUp) Select(-view.VisibleRows);
+            else if (key.Key == ConsoleKeyEx.PageDown) Select(view.VisibleRows);
+            else if (key.Key == ConsoleKeyEx.Home) SelectAbsolute(0);
+            else if (key.Key == ConsoleKeyEx.End) SelectAbsolute(visibleRows.Count - 1);
+            else if (key.Key == ConsoleKeyEx.Delete && key.Modifiers == 0) EndSelectedTask();
         }
 
         private void SetPage(int page)
@@ -288,7 +389,7 @@ namespace ZonderqOS.GUI.Apps
             activePage = page;
             selectedIndex = -1;
             scrollIndex = 0;
-            RebuildVisibleRows(null, -1);
+            RebuildVisibleRows(null, -1, false);
             status = page == PageProcesses ? "Procesy" : page == PagePerformance ? "Wydajnosc" : page == PageDetails ? "Szczegoly" : "Uslugi";
         }
 
@@ -296,18 +397,35 @@ namespace ZonderqOS.GUI.Apps
         {
             if (visibleRows.Count == 0)
                 return;
-            selectedIndex = selectedIndex < 0
+            SelectAbsolute(selectedIndex < 0
                 ? (delta >= 0 ? 0 : visibleRows.Count - 1)
-                : Math.Max(0, Math.Min(visibleRows.Count - 1, selectedIndex + delta));
+                : selectedIndex + delta);
+        }
+
+        private void SelectAbsolute(int index)
+        {
+            if (visibleRows.Count == 0 || !view.HasPaintedProcessRows)
+                return;
+            selectedIndex = Math.Max(0, Math.Min(visibleRows.Count - 1, index));
             EnsureSelectionVisible();
             status = visibleRows[selectedIndex].Name;
         }
 
+        // A selected task may be scrolled out of view. Never terminate an
+        // invisible row: the user must see what the Delete/END TASK action targets.
+        internal bool CanEndSelectedTask => activePage != PagePerformance &&
+            view.HasPaintedProcessRows &&
+            TaskManagerSelectionPolicy.IsVisible(selectedIndex, scrollIndex,
+                view.VisibleRows, visibleRows.Count) &&
+            visibleRows[selectedIndex].CanEnd && visibleRows[selectedIndex].GuiApplication != this;
+
         private void EndSelectedTask()
         {
-            if (activePage == PagePerformance || selectedIndex < 0 || selectedIndex >= visibleRows.Count)
+            if (activePage == PagePerformance || !view.HasPaintedProcessRows ||
+                !TaskManagerSelectionPolicy.IsVisible(selectedIndex, scrollIndex,
+                    view.VisibleRows, visibleRows.Count))
             {
-                status = "Wybierz zadanie";
+                status = "Wybierz widoczne zadanie";
                 return;
             }
 
@@ -341,6 +459,13 @@ namespace ZonderqOS.GUI.Apps
 
         private void RefreshSnapshot()
         {
+            // A user may scroll away from the selected task while the 500ms
+            // telemetry timer keeps refreshing. Do not jump back to that old
+            // selection on every sample; keep it visible only if it was visible
+            // immediately before the refresh.
+            bool selectedWasVisible = view.HasPaintedProcessRows &&
+                TaskManagerSelectionPolicy.IsVisible(selectedIndex, scrollIndex,
+                    view.VisibleRows, visibleRows.Count);
             Application selectedApp = null;
             int selectedPid = -1;
             if (selectedIndex >= 0 && selectedIndex < visibleRows.Count)
@@ -353,7 +478,10 @@ namespace ZonderqOS.GUI.Apps
             UpdateMemorySnapshot();
             UpdateCpuSnapshot();
             UpdateSystemSnapshot();
-            RebuildVisibleRows(selectedApp, selectedPid);
+            RebuildVisibleRows(selectedApp, selectedPid, selectedWasVisible);
+            // Start the interval after expensive sampling completes, including
+            // F5 and toolbar refreshes, rather than immediately sampling again.
+            lastRefreshTicks = Stopwatch.GetTimestamp();
         }
 
         private ModernTaskRow AcquireRow(int index)
@@ -399,7 +527,7 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
-        private void RebuildVisibleRows(Application selectedApp, int selectedPid)
+        private void RebuildVisibleRows(Application selectedApp, int selectedPid, bool keepSelectedVisible)
         {
             visibleRows.Clear();
             if (activePage != PagePerformance)
@@ -424,7 +552,8 @@ namespace ZonderqOS.GUI.Apps
                 }
             }
             ClampScroll();
-            EnsureSelectionVisible();
+            if (keepSelectedVisible)
+                EnsureSelectionVisible();
         }
 
         private void UpdateMemorySnapshot()
@@ -671,7 +800,8 @@ namespace ZonderqOS.GUI.Apps
         {
             if (bytes == 0) return "N/A";
             if (bytes >= 1024UL * 1024UL) return (bytes / (1024UL * 1024UL)) + " MB";
-            return (bytes / 1024UL) + " KB";
+            if (bytes >= 1024UL) return (bytes / 1024UL) + " KB";
+            return bytes + " B";
         }
 
         private static string FormatMiBPrecise(ulong bytes)
@@ -685,7 +815,12 @@ namespace ZonderqOS.GUI.Apps
         private static string FormatPercentPrecise(ulong used, ulong total)
         {
             if (total == 0) return "0.00%";
-            ulong scaled = Math.Min(10000UL, used * 10000UL / total);
+            // Floating-point ratio avoids overflowing used * 10000 on large capacities.
+            // Saturate first to keep the displayed percentage in [0, 100].
+            if (used >= total) return "100.00%";
+            // Double rounds adjacent ulong values together near ulong.MaxValue.
+            // Keep a strictly partial usage below 100% even after rounding.
+            ulong scaled = Math.Min(9999UL, (ulong)((double)used / total * 10000.0));
             return (scaled / 100UL) + "." + D2((int)(scaled % 100UL)) + "%";
         }
 
@@ -829,11 +964,44 @@ namespace ZonderqOS.GUI.Apps
             scrollBar.ValueChanged = value => app.SetScrollIndex(value);
         }
 
-        public int VisibleRows => Math.Max(1, Math.Max(RowHeight, Height - ListTop - FooterHeight - 6) / RowHeight);
+        // A wide but short window needs the same compact layout as a narrow one.
+        // Otherwise the 146px table origin can overlap the footer or leave the client.
+        private bool CompactProcessLayout => Width < 550 ||
+            Height < ListTop + FooterHeight + RowHeight + 6;
+        // The 16-logical-CPU grid needs four 72px rows and three 8px gaps.
+        // Its top is 144px from the client origin; keep an 18px gap above
+        // the 28px footer (144 + 4 * 72 + 3 * 8 + 18 + 28 = 502).
+        // A full layout at 460-501px otherwise draws CPU cards over the footer.
+        private bool CompactPerformanceLayout => Width < 900 || Height < 502;
+        private int ListTopForView => CompactProcessLayout ? 64 : ListTop;
+        // No synthetic row may overlap the footer on a short firmware mode.
+        // A zero-row view is intentionally noninteractive, including Delete.
+        private int ListHeightForView => Math.Max(0, Height - ListTopForView - FooterHeight - 6);
+        private int TableRowWidthForView => Width - SidebarWidth - 12 - ScrollReserve;
+        public int VisibleRows => ListHeightForView / RowHeight;
+        // A complete row needs enough width for the Details page's
+        // 52px PID/name offset plus at least one clipped name glyph.
+        // Below 60px the old renderer painted outside the row while its
+        // invisible selection remained actionable by Delete.
+        internal bool HasPaintedProcessRows => VisibleRows > 0 &&
+            TableRowWidthForView >= 60;
 
         public int NavAt(int x, int y)
         {
-            if (x < 6 || x >= SidebarWidth - 6 || y < NavTop) return -1;
+            if (Width < SidebarWidth || x < 0 || x >= Width || y < 0 || y >= Height ||
+                x < 6 || x >= SidebarWidth - 6 || y < NavTop) return -1;
+            if (Height < 300)
+            {
+                // Same 2x2 navigation layout as DrawNav on short screens.
+                int relativeX = x - 6;
+                int relativeY = y - NavTop;
+                int column = relativeX / 80;
+                int row = relativeY / 36;
+                if (column > 1 || row > 1 || relativeX % 80 >= 76 ||
+                    relativeY % 36 >= 32 || NavTop + row * 36 + 32 > Height)
+                    return -1;
+                return row * 2 + column;
+            }
             int relative = y - NavTop;
             int page = relative / NavHeight;
             return page >= 0 && page <= 3 && relative < NavHeight * 4 ? page : -1;
@@ -841,29 +1009,51 @@ namespace ZonderqOS.GUI.Apps
 
         public int ToolbarActionAt(int x, int y)
         {
-            if (x < SidebarWidth || y < 8 || y >= 42) return 0;
+            // Match the painted 30px header buttons exactly (Y+10..Y+39).
+            // The old 8..41 hitbox could end a task on invisible pixels;
+            // a short client must not accept clicks when RenderHeader skips.
+            if (Width < SidebarWidth + 64 || Height < HeaderHeight + 2 ||
+                x < SidebarWidth || x >= Width || y < 10 || y >= 40) return 0;
+            if (Width < 550)
+                return x >= Width - 42 && x < Width - 10 ? 1 : 0;
             int refresh = Width - 210;
             int end = Width - 114;
             if (x >= refresh && x < refresh + 88) return 1;
-            if (x >= end && x < end + 100) return 2;
+            if (app.CanEndSelectedTask &&
+                x >= end && x < end + 100) return 2;
             return 0;
         }
 
         public int PerformanceResourceAt(int x, int y)
         {
-            if (app.ActivePage != TaskManagerModernApp.PagePerformance) return -1;
-            int left = SidebarWidth + 10;
+            if (app.ActivePage != TaskManagerModernApp.PagePerformance ||
+                Width < SidebarWidth + 96 || Height < 134) return -1;
+            if (CompactPerformanceLayout)
+            {
+                // Compact mode renders three horizontal resource buttons.
+                // Use exactly the same positions for mouse hit-testing.
+                int left = SidebarWidth + 8;
+                int available = Math.Max(1, Width - SidebarWidth - 16);
+                int buttonWidth = Math.Max(1, (available - 8) / 3);
+                if (y < 64 || y >= 106 || x < left) return -1;
+                int relative = x - left;
+                int index = relative / (buttonWidth + 4);
+                return index >= 0 && index < 3 &&
+                    relative % (buttonWidth + 4) < buttonWidth ? index : -1;
+            }
+
+            int cardLeft = SidebarWidth + 10;
             int top = 64;
-            int relative = y - top;
+            int relativeY = y - top;
             int stride = PerfCardHeight + PerfCardGap;
-            if (x < left || x >= left + 154 || relative < 0) return -1;
-            int index = relative / stride;
-            return index >= 0 && index <= 2 && relative % stride < PerfCardHeight ? index : -1;
+            if (x < cardLeft || x >= cardLeft + 154 || relativeY < 0) return -1;
+            int card = relativeY / stride;
+            return card >= 0 && card <= 2 && relativeY % stride < PerfCardHeight ? card : -1;
         }
 
         public int CpuGraphModeAt(int x, int y)
         {
-            if (app.ActivePage != TaskManagerModernApp.PagePerformance || app.PerformanceResource != TaskManagerModernApp.PerfCpu) return -1;
+            if (CompactPerformanceLayout || app.ActivePage != TaskManagerModernApp.PagePerformance || app.PerformanceResource != TaskManagerModernApp.PerfCpu) return -1;
             int panelX = SidebarWidth + 180;
             int top = 86;
             if (y < top || y >= top + 26) return -1;
@@ -874,9 +1064,15 @@ namespace ZonderqOS.GUI.Apps
 
         public int CpuLogicalPageActionAt(int x, int y)
         {
-            if (app.CpuGraphMode != TaskManagerModernApp.CpuGraphLogical || app.LogicalPageCount <= 1) return 0;
-            int top = 122;
-            int right = Width - 16;
+            if (app.ActivePage != TaskManagerModernApp.PagePerformance ||
+                app.PerformanceResource != TaskManagerModernApp.PerfCpu ||
+                CompactPerformanceLayout || app.CpuGraphMode != TaskManagerModernApp.CpuGraphLogical ||
+                app.LogicalPageCount <= 1) return 0;
+            // RenderCpu starts at y=64; RenderLogicalCpu at +58 and DrawArrow at -8.
+            // The arrow's actual top is 114, not the graph heading's 122.
+            int top = 114;
+            // RenderPerformance uses a 10px right inset for the graph panel.
+            int right = Width - 10;
             if (y < top || y >= top + 26) return 0;
             if (x >= right - 60 && x < right - 34) return -1;
             if (x >= right - 28 && x < right - 2) return 1;
@@ -885,26 +1081,34 @@ namespace ZonderqOS.GUI.Apps
 
         public int RowAt(int x, int y)
         {
-            if (app.ActivePage == TaskManagerModernApp.PagePerformance) return -1;
+            if (app.ActivePage == TaskManagerModernApp.PagePerformance || !HasPaintedProcessRows) return -1;
             int contentX = SidebarWidth + 8;
-            int listH = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
-            if (x < contentX || x >= Width - ScrollReserve || y < ListTop || y >= ListTop + listH) return -1;
-            int index = app.ScrollIndex + (y - ListTop) / RowHeight;
+            int listTop = ListTopForView;
+            int listH = ListHeightForView;
+            // Do not select a process in the 4px gap between painted rows and the scrollbar.
+            if (x < contentX || x >= contentX + TableRowWidthForView ||
+                y < listTop || y >= listTop + listH) return -1;
+            int rowOffset = (y - listTop) / RowHeight;
+            // RenderTable paints only VisibleRows complete rows. A click in
+            // the unused bottom strip must not select an invisible process.
+            if (rowOffset >= VisibleRows)
+                return -1;
+            int index = app.ScrollIndex + rowOffset;
             return index >= 0 && index < app.Rows.Count ? index : -1;
         }
 
         public bool HandleScrollMouse(int mouseX, int mouseY, bool left, bool oldLeft)
         {
-            if (app.ActivePage == TaskManagerModernApp.PagePerformance) return false;
+            if (app.ActivePage == TaskManagerModernApp.PagePerformance || !HasPaintedProcessRows) return false;
             UpdateScrollBar();
             return scrollBar.HandleMouse(mouseX, mouseY, left, oldLeft);
         }
 
         private void UpdateScrollBar()
         {
-            int listH = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
+            int listH = ListHeightForView;
             scrollBar.X = X + Width - 15;
-            scrollBar.Y = Y + ListTop + 2;
+            scrollBar.Y = Y + ListTopForView + 2;
             scrollBar.Width = 10;
             scrollBar.Height = Math.Max(24, listH - 4);
             scrollBar.SetRange(app.Rows.Count, VisibleRows);
@@ -925,14 +1129,21 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderSidebar(Canvas canvas)
         {
-            canvas.DrawFilledRectangle(Sidebar, X + 1, Y + 1, SidebarWidth - 1, Height - 2);
-            canvas.DrawLine(Color.FromArgb(52, 62, 72), X + SidebarWidth, Y + 1, X + SidebarWidth, Y + Height - 2);
+            if (Width < 2 || Height < 3)
+                return;
+            int paintedWidth = Math.Min(SidebarWidth, Width - 1);
+            canvas.DrawFilledRectangle(Sidebar, X + 1, Y + 1, paintedWidth - 1, Height - 2);
+            canvas.DrawLine(Color.FromArgb(52, 62, 72), X + paintedWidth, Y + 1, X + paintedWidth, Y + Height - 2);
+            if (Width < SidebarWidth || Height < 36)
+                return;
             IconManager.DrawScaled(canvas, IconType.Settings, X + 16, Y + 16, 20, 20);
             SmallTextRenderer.Draw(canvas, "TASK MANAGER", X + 46, Y + 23, Text);
             DrawNav(canvas, 0, "Procesy", IconType.FileManager);
             DrawNav(canvas, 1, "Wydajnosc", IconType.Settings);
             DrawNav(canvas, 2, "Szczegoly", IconType.File);
             DrawNav(canvas, 3, "Uslugi", IconType.Settings);
+            if (Height < 300)
+                return; // The clock must not overlap compact 2x2 navigation.
             int bottom = Y + Height - 62;
             canvas.DrawLine(Color.FromArgb(48, 58, 68), X + 10, bottom - 8, X + SidebarWidth - 10, bottom - 8);
             SmallTextRenderer.Draw(canvas, "SYSTEM CLOCK", X + 16, bottom + 2, Muted);
@@ -942,6 +1153,28 @@ namespace ZonderqOS.GUI.Apps
 
         private void DrawNav(Canvas canvas, int page, string label, IconType icon)
         {
+            if (Height < 300)
+            {
+                if (NavTop + (page / 2) * 36 + 32 > Height)
+                    return;
+                int compactX = X + 6 + (page % 2) * 80;
+                int compactY = Y + NavTop + (page / 2) * 36;
+                bool compactActive = app.ActivePage == page;
+                canvas.DrawFilledRectangle(compactActive ? Color.FromArgb(38, 55, 70) :
+                    Sidebar, compactX, compactY, 76, 32);
+                if (compactActive)
+                    canvas.DrawFilledRectangle(Accent, compactX, compactY + 4, 3, 24);
+                // Icons alone are ambiguous in the short, wide layout
+                // (especially at Full HD). Keep a short readable label inside
+                // the same 76x32 hitbox without spilling into the next tile.
+                IconManager.DrawScaled(canvas, icon, compactX + 7, compactY + 7, 18, 18);
+                string compactLabel = page == 0 ? "PROC" : page == 1 ? "CPU" :
+                    page == 2 ? "DET" : "USL";
+                SmallTextRenderer.DrawClipped(canvas, compactLabel,
+                    compactX + 29, compactY + 12, 42,
+                    compactActive ? Color.WhiteSmoke : Color.FromArgb(196, 205, 213));
+                return;
+            }
             int y = Y + NavTop + page * NavHeight;
             bool active = app.ActivePage == page;
             if (active)
@@ -955,16 +1188,34 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderHeader(Canvas canvas)
         {
+            if (Width < SidebarWidth + 64 || Height < HeaderHeight + 2)
+                return;
             int contentX = X + SidebarWidth + 8;
             string title = app.ActivePage == 0 ? "Procesy" : app.ActivePage == 1 ? "Wydajnosc" : app.ActivePage == 2 ? "Szczegoly" : "Uslugi";
+            if (Width < 550)
+            {
+                // Do not draw REFRESH, END TASK or the clock over the sidebar.
+                // The compact header retains a safe refresh-only button.
+                SmallTextRenderer.DrawClipped(canvas, title, contentX + 4, Y + 21,
+                    Math.Max(1, Width - SidebarWidth - 64), Color.WhiteSmoke);
+                DrawButton(canvas, X + Width - 42, Y + 10, 32, "", IconType.Refresh, false, true);
+                canvas.DrawLine(Color.FromArgb(52, 63, 74), contentX,
+                    Y + HeaderHeight, X + Width - 4, Y + HeaderHeight);
+                return;
+            }
             SmallTextRenderer.Draw(canvas, title, contentX + 4, Y + 21, Color.WhiteSmoke);
             int refresh = X + Width - 210;
             int end = X + Width - 114;
             int clock = Math.Max(contentX + 120, refresh - 154);
-            SmallTextRenderer.Draw(canvas, app.ClockText, clock, Y + 13, Color.WhiteSmoke);
-            SmallTextRenderer.Draw(canvas, app.DateText, clock, Y + 31, Muted);
+            // At 550-579px the fixed clock position overlaps REFRESH.
+            // Hide only the clock until a complete 72px slot fits before it.
+            if (refresh - clock >= 72)
+            {
+                SmallTextRenderer.Draw(canvas, app.ClockText, clock, Y + 13, Color.WhiteSmoke);
+                SmallTextRenderer.Draw(canvas, app.DateText, clock, Y + 31, Muted);
+            }
             DrawButton(canvas, refresh, Y + 10, 88, "REFRESH", IconType.Refresh, false, true);
-            DrawButton(canvas, end, Y + 10, 100, "END TASK", IconType.Close, true, app.ActivePage != 1);
+            DrawButton(canvas, end, Y + 10, 100, "END TASK", IconType.Close, true, app.CanEndSelectedTask);
             canvas.DrawLine(Color.FromArgb(52, 63, 74), contentX, Y + HeaderHeight, X + Width - 4, Y + HeaderHeight);
         }
 
@@ -974,6 +1225,12 @@ namespace ZonderqOS.GUI.Apps
             Color border = !enabled ? Color.FromArgb(54, 62, 70) : danger ? Color.FromArgb(111, 65, 73) : Color.FromArgb(80, 94, 108);
             canvas.DrawFilledRectangle(bg, x, y, width, 30);
             canvas.DrawRectangle(border, x, y, width, 30);
+            if (width < 40)
+            {
+                // Compact refresh-only header: avoid a negative text width.
+                IconManager.DrawScaled(canvas, icon, x + (width - 16) / 2, y + 7, 16, 16);
+                return;
+            }
             IconManager.DrawScaled(canvas, icon, x + 7, y + 7, 16, 16);
             SmallTextRenderer.DrawClipped(canvas, label, x + 29, y + 12, width - 34, enabled ? Color.WhiteSmoke : Muted);
         }
@@ -982,6 +1239,13 @@ namespace ZonderqOS.GUI.Apps
         {
             int x = X + SidebarWidth + 8;
             int width = Width - SidebarWidth - 12;
+            if (CompactProcessLayout)
+            {
+                // Summary cards also overlap the footer in short, wide windows.
+                // Use the available area for a compact, scrollable task list.
+                RenderTable(canvas, x, width);
+                return;
+            }
             int gap = 8;
             int cardW = Math.Max(86, (width - gap * 3) / 4);
             DrawSummary(canvas, x, cardW, "APPS", (ulong)app.GuiAppCount, "APPLICATIONS", false);
@@ -1014,16 +1278,37 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderTable(Canvas canvas, int x, int width)
         {
+            // The sidebar can occupy nearly the whole view in tiny modes.
+            // Never send negative table/scrollbar dimensions to Canvas.
+            if (!HasPaintedProcessRows)
+                return;
             int headerY = Y + TableHeaderTop;
-            canvas.DrawFilledRectangle(Color.FromArgb(33, 39, 46), x, headerY, width, TableHeaderHeight);
-            SmallTextRenderer.Draw(canvas, app.ActivePage == 2 ? "PID" : "NAME", x + 12, headerY + 11, Muted);
-            SmallTextRenderer.Draw(canvas, app.ActivePage == 2 ? "NAME" : "TYPE", x + 90, headerY + 11, Muted);
-            SmallTextRenderer.Draw(canvas, "STATUS", x + Math.Max(370, width - 240), headerY + 11, Muted);
-            SmallTextRenderer.Draw(canvas, "DETAIL", x + Math.Max(470, width - 120), headerY + 11, Muted);
+            if (!CompactProcessLayout)
+            {
+                canvas.DrawFilledRectangle(Color.FromArgb(33, 39, 46), x, headerY, width, TableHeaderHeight);
+            }
+            if (CompactProcessLayout)
+            {
+                // No header row in compact mode; the list starts at y=64.
+            }
+            else if (width < 520)
+            {
+                // Narrow windows cannot fit four columns. The compact rows
+                // show name and state without drawing beyond the client area.
+                SmallTextRenderer.Draw(canvas, app.ActivePage == 2 ? "PID / NAME" : "NAME",
+                    x + 12, headerY + 11, Muted);
+            }
+            else
+            {
+                SmallTextRenderer.Draw(canvas, app.ActivePage == 2 ? "PID" : "NAME", x + 12, headerY + 11, Muted);
+                SmallTextRenderer.Draw(canvas, app.ActivePage == 2 ? "NAME" : "TYPE", x + 90, headerY + 11, Muted);
+                SmallTextRenderer.Draw(canvas, "STATUS", x + Math.Max(370, width - 240), headerY + 11, Muted);
+                SmallTextRenderer.Draw(canvas, "DETAIL", x + Math.Max(470, width - 120), headerY + 11, Muted);
+            }
 
-            int listY = Y + ListTop;
-            int listH = Math.Max(RowHeight, Height - ListTop - FooterHeight - 6);
-            int rowW = width - ScrollReserve;
+            int listY = Y + ListTopForView;
+            int listH = ListHeightForView;
+            int rowW = TableRowWidthForView;
             canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), x, listY, width, listH);
             canvas.DrawRectangle(Color.FromArgb(50, 60, 70), x, listY, width, listH);
 
@@ -1045,6 +1330,32 @@ namespace ZonderqOS.GUI.Apps
 
         private void DrawRow(Canvas canvas, ModernTaskRow row, int x, int width, int y, bool selected)
         {
+            if (width < 520)
+            {
+                int nameOffset;
+                if (app.ActivePage == 2)
+                {
+                    if (row.KernelPid > 0)
+                        SmallTextRenderer.DrawUInt(canvas, (ulong)row.KernelPid, x + 8, y + 12, Muted);
+                    else
+                        SmallTextRenderer.Draw(canvas, "GUI", x + 8, y + 12, Muted);
+                    nameOffset = 52;
+                }
+                else
+                {
+                    IconManager.DrawScaled(canvas, row.IsKernel ? IconType.Settings : IconType.File,
+                        x + 8, y + 9, 18, 18);
+                    nameOffset = 34;
+                }
+
+                int textWidth = Math.Max(1, width - nameOffset - 4);
+                SmallTextRenderer.DrawClipped(canvas, row.Name, x + nameOffset, y + 10,
+                    textWidth, selected ? Color.WhiteSmoke : Text);
+                SmallTextRenderer.DrawClipped(canvas, row.State, x + nameOffset, y + 23,
+                    textWidth, row.State == "ACTIVE" ? Good : Muted);
+                return;
+            }
+
             if (app.ActivePage == 2)
             {
                 if (row.KernelPid > 0) SmallTextRenderer.DrawUInt(canvas, (ulong)row.KernelPid, x + 12, y + 14, Muted);
@@ -1065,6 +1376,41 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderPerformance(Canvas canvas)
         {
+            // At very short resolutions the selectors would overlap the footer.
+            if (Width < SidebarWidth + 96 || Height < 134)
+                return;
+            if (CompactPerformanceLayout)
+            {
+                // The normal graph needs both a wide and a tall client:
+                // 360px sidebar/resource offset + 540px = 900px view.
+                // Below that, use compact cards so 800x600 stays in bounds.
+                // Keep all three selectors usable, showing the selected
+                // telemetry without drawing an off-screen graph.
+                int left = X + SidebarWidth + 8;
+                int available = Math.Max(1, Width - SidebarWidth - 16);
+                int buttonWidth = Math.Max(1, (available - 8) / 3);
+                int top = Y + 64;
+                DrawCompactResource(canvas, left, top, buttonWidth, 0, "CPU",
+                    app.CpuUsagePercent.ToString() + "%");
+                DrawCompactResource(canvas, left + buttonWidth + 4, top,
+                    buttonWidth, 1, "MEM", app.MemoryUsageText);
+                DrawCompactResource(canvas, left + (buttonWidth + 4) * 2, top,
+                    buttonWidth, 2, "SYS", app.SchedulerThreadCount.ToString());
+
+                // Leave the 28px footer unobstructed on 320x240 desktops.
+                if (Height >= 180)
+                {
+                    string detail = app.PerformanceResource == 0
+                        ? "CPU " + app.CpuUsagePercent + "%"
+                        : app.PerformanceResource == 1
+                            ? "RAM " + app.MemoryUsageText
+                            : "Threads " + app.SchedulerThreadCount;
+                    SmallTextRenderer.DrawClipped(canvas, detail, left,
+                        Y + 122, available, Text);
+                }
+                return;
+            }
+
             int resourceX = X + SidebarWidth + 10;
             int resourceY = Y + 64;
             DrawResource(canvas, resourceX, resourceY, 0, "CPU", (ulong)app.CpuUsagePercent, "%");
@@ -1077,6 +1423,20 @@ namespace ZonderqOS.GUI.Apps
             if (app.PerformanceResource == 0) RenderCpu(canvas, x, y, width);
             else if (app.PerformanceResource == 1) RenderMemory(canvas, x, y, width);
             else RenderSystem(canvas, x, y, width);
+        }
+
+        private void DrawCompactResource(Canvas canvas, int x, int y, int width,
+            int resource, string title, string value)
+        {
+            bool active = app.PerformanceResource == resource;
+            canvas.DrawFilledRectangle(active ? Color.FromArgb(35, 55, 71) :
+                Color.FromArgb(26, 32, 38), x, y, width, 42);
+            canvas.DrawRectangle(active ? Color.FromArgb(65, 126, 169) :
+                Color.FromArgb(52, 63, 74), x, y, width, 42);
+            SmallTextRenderer.DrawClipped(canvas, title, x + 4, y + 10,
+                Math.Max(1, width - 8), active ? Color.WhiteSmoke : Text);
+            SmallTextRenderer.DrawClipped(canvas, value, x + 4, y + 25,
+                Math.Max(1, width - 8), active ? Color.FromArgb(126, 194, 238) : Muted);
         }
 
         private void DrawResource(Canvas canvas, int x, int y, int resource, string title, ulong value, string suffix)
@@ -1311,11 +1671,23 @@ namespace ZonderqOS.GUI.Apps
             int x = X + SidebarWidth + 8;
             int y = Y + Height - FooterHeight;
             int width = Width - SidebarWidth - 12;
+            if (width <= 0 || Height < FooterHeight)
+                return;
             canvas.DrawFilledRectangle(Color.FromArgb(24, 29, 35), x, y, width, FooterHeight - 4);
             canvas.DrawLine(Color.FromArgb(58, 69, 80), x, y, x + width, y);
-            SmallTextRenderer.DrawClipped(canvas, app.Status, x + 8, y + 9, Math.Max(20, width - 260), Text);
-            SmallTextRenderer.Draw(canvas, "F5 REFRESH   DEL END TASK", x + width - 244, y + 9, Muted);
-            SmallTextRenderer.Draw(canvas, app.ClockText, x + width - 72, y + 9, Text);
+            if (width < 520)
+            {
+                // At minimum window width, the fixed shortcut/clock columns
+                // would start inside the sidebar and overlap the status.
+                SmallTextRenderer.DrawClipped(canvas, app.Status, x + 8, y + 9,
+                    Math.Max(1, width - 16), Text);
+            }
+            else
+            {
+                SmallTextRenderer.DrawClipped(canvas, app.Status, x + 8, y + 9, Math.Max(20, width - 260), Text);
+                SmallTextRenderer.Draw(canvas, "F5 REFRESH   DEL END TASK", x + width - 244, y + 9, Muted);
+                SmallTextRenderer.Draw(canvas, app.ClockText, x + width - 72, y + 9, Text);
+            }
         }
     }
 }

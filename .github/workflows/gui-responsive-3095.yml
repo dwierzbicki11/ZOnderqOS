@@ -1,0 +1,86 @@
+name: ZonderqOS Gen3 responsive GUI contract (Cosmos 3.0.95)
+
+on:
+  pull_request:
+    paths:
+      - 'source/GUI/**'
+      - 'ZonderqOS.csproj'
+      - 'tests/test_3094_responsive_gui.py'
+      - 'tests/test_gui_compact_apps.py'
+      - 'tests/GuiScrollBarSmoke/**'
+      - 'tests/GuiFileClipboardSmoke/**'
+      - 'tests/GuiFileNamePolicySmoke/**'
+      - 'tests/GuiImageHeaderSmoke/**'
+      - 'tests/GuiWindowInputSmoke/**'
+      - 'tests/GuiApplicationManagerSmoke/**'
+      - 'tests/GuiStartMenuSmoke/**'
+      - 'tests/GuiTaskbarTelemetrySmoke/**'
+      - 'tests/GuiNotificationCenterSmoke/**'
+      - 'tests/GuiTaskManagerRefreshSmoke/**'
+      - 'tests/test_gui_modified_keys.py'
+      - 'tests/test_gui_filemanager_invisible_selection.py'
+      - 'tests/test_gui_filemanager_create_acl.py'
+      - 'tests/test_gui_taskmanager_tiny_view.py'
+      - 'tests/test_3094_storage_policy.py'
+      - 'tools/qmp-gui-login.py'
+      - 'tools/qmp-gui-filemanager.py'
+      - 'tools/qmp-gui-taskmanager.py'
+      - 'tests/test_qmp_gui_filemanager.py'
+      - 'tests/test_qmp_gui_taskmanager.py'
+      - 'tests/test_gui_resolution_build.py'
+      - 'tools/build-cosmos-3095-local.sh'
+      - 'tools/smoke-services-qemu.sh'
+      - '.github/workflows/gui-responsive-3095.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  responsive-gui-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Validate optional QMP GUI input probe syntax
+        run: |
+          python3 -m py_compile tools/qmp-gui-login.py tools/qmp-gui-filemanager.py tools/qmp-gui-taskmanager.py
+          bash -n tools/smoke-services-qemu.sh
+      - name: Validate 3.0.95 GUI layout and desktop bounds (source/math only)
+        run: |
+          python3 tests/test_3094_responsive_gui.py
+          python3 tests/test_gui_compact_apps.py
+          python3 tests/test_gui_modified_keys.py
+          python3 tests/test_gui_filemanager_invisible_selection.py
+          python3 tests/test_gui_filemanager_create_acl.py
+          python3 tests/test_gui_taskmanager_tiny_view.py
+      - name: Exercise QMP framebuffer diff parser with synthetic PPM images
+        run: |
+          python3 tests/test_qmp_gui_filemanager.py
+          python3 tests/test_qmp_gui_taskmanager.py
+          python3 tests/test_gui_resolution_build.py
+      - name: Preserve protected FAT32 storage policy
+        run: python3 tests/test_3094_storage_policy.py
+      - name: Exercise production clipboard copy/cut failure recovery in host C#
+        run: dotnet run --project tests/GuiFileClipboardSmoke/GuiFileClipboardSmoke.csproj --configuration Release
+      - name: Exercise production FAT32 filename policy in host C#
+        run: dotnet run --project tests/GuiFileNamePolicySmoke/GuiFileNamePolicySmoke.csproj --configuration Release
+      - name: Reject oversized PNG/BMP before Cosmos image decoder in host C#
+        run: dotnet run --project tests/GuiImageHeaderSmoke/GuiImageHeaderSmoke.csproj --configuration Release
+      - name: Exercise production scrollbar in host C#
+        run: dotnet run --project tests/GuiScrollBarSmoke/GuiScrollBarSmoke.csproj --configuration Release
+      - name: Exercise production Window mouse gestures in host C#
+        run: dotnet run --project tests/GuiWindowInputSmoke/GuiWindowInputSmoke.csproj --configuration Release
+      - name: Exercise production ApplicationManager teardown in host C#
+        run: dotnet run --project tests/GuiApplicationManagerSmoke/GuiApplicationManagerSmoke.csproj --configuration Release
+      - name: Exercise production Start menu interactions in host C#
+        run: dotnet run --project tests/GuiStartMenuSmoke/GuiStartMenuSmoke.csproj --configuration Release
+      - name: Exercise production taskbar telemetry gate in host C#
+        run: dotnet run --project tests/GuiTaskbarTelemetrySmoke/GuiTaskbarTelemetrySmoke.csproj --configuration Release
+      - name: Exercise production notification selection under incoming alerts in host C#
+        run: dotnet run --project tests/GuiNotificationCenterSmoke/GuiNotificationCenterSmoke.csproj --configuration Release
+      - name: Exercise Task Manager monotonic telemetry cadence in host C#
+        run: dotnet run --project tests/GuiTaskManagerRefreshSmoke/GuiTaskManagerRefreshSmoke.csproj --configuration Release

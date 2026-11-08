@@ -32,10 +32,16 @@ namespace ZonderqOS.GUI
         private long lastActivityTimestamp;
         private int selectedShortcut = -1;
         private int lastShortcutClick = -1;
-        private int lastShortcutClickFrame = -1000;
+        private long lastShortcutClickTimestamp;
+        private int lastShortcutClickX, lastShortcutClickY;
         private int frameCounter;
 
         private const int TaskbarHeight = 44;
+        // Bound input dispatch per GUI iteration. An autorepeating key or a
+        // constantly filled PS/2 queue must not starve pointer updates,
+        // window animations, session lock checks or the framebuffer.
+        // TryReadKey leaves the remaining events queued for the next frame.
+        private const int MaxKeyboardEventsPerFrame = 64;
 
         private const string WallpaperCacheDirectory = "/root/.zonderq-wallpapers";
         private const string WallpaperCachePath = WallpaperCacheDirectory + "/wallpaper.png";
@@ -60,6 +66,10 @@ namespace ZonderqOS.GUI
                 // Notifications are session-local so messages from one authenticated user
                 // never leak into the next login session.
                 global::ZonderqOS.NotificationService.ResetForSession();
+                // Clipboard paths may point to another user's private home
+                // or a removable volume from the previous desktop session.
+                // Never inherit a pending cut/copy across logins.
+                FileClipboard.Clear();
 
                 // Decode embedded PNG assets exactly once before the first GUI frame.
                 // Later renders only reuse persistent raw pixel buffers.
@@ -69,7 +79,10 @@ namespace ZonderqOS.GUI
                 Window.ConfigureDesktop((int)canvas.Width, desktopHeight);
                 applicationManager = new ApplicationManager();
                 InitializeAppRegistry();
-                commandPalette = new CommandPalette((int)canvas.Width, desktopHeight, appRegistry);
+                // CommandPalette expects the full framebuffer height and reserves
+                // the 44px taskbar itself. Passing desktopHeight deducted it twice,
+                // needlessly hiding a row of search results on compact displays.
+                commandPalette = new CommandPalette((int)canvas.Width, (int)canvas.Height, appRegistry);
                 LoadWallpaper((int)canvas.Width, desktopHeight);
                 InitializeDesktopShortcuts();
                 desktopContextMenu = new DesktopContextMenu(
@@ -110,7 +123,8 @@ namespace ZonderqOS.GUI
                     if (desktopContextMenu != null)
                         desktopContextMenu.Visible = false;
                     selectedShortcut = -1;
-                }, applicationManager, ToggleNotificationCenter);
+                    lastShortcutClickTimestamp = 0;
+                }, applicationManager, ToggleNotificationCenter, () => LaunchTimer(170, 75));
 
                 global::ZonderqOS.NotificationService.Post(
                     global::ZonderqOS.NotificationKind.Security,
@@ -120,6 +134,9 @@ namespace ZonderqOS.GUI
 
                 bool previousLeftButtonState = false;
                 bool previousRightButtonState = false;
+                // A modal may close on mouse-down. The rest of that physical
+                // hold still belongs to the modal, not the newly exposed app.
+                bool modalLeftGestureOwned = false;
                 int previousMouseX = -1;
                 int previousMouseY = -1;
 
@@ -137,6 +154,7 @@ namespace ZonderqOS.GUI
                     if (!SecurityContext.IsAuthenticated)
                     {
                         applicationManager.CloseAll();
+                        FileClipboard.Clear();
                         global::ZonderqOS.NotificationService.ResetForSession();
                         isRunning = false;
                         break;
@@ -144,7 +162,10 @@ namespace ZonderqOS.GUI
 
                     bool keyboardActivity = false;
 
-                    while (KeyboardManager.TryReadKey(out KeyEvent? key))
+                    for (int processedKeys = 0;
+                         processedKeys < MaxKeyboardEventsPerFrame &&
+                         KeyboardManager.TryReadKey(out KeyEvent? key);
+                         processedKeys++)
                     {
                         if (key == null)
                             continue;
@@ -199,6 +220,18 @@ namespace ZonderqOS.GUI
                             continue;
                         }
 
+                        if (IsScreenshotShortcut(key))
+                        {
+                            ScreenshotService.CaptureAndSave(canvas);
+                            continue;
+                        }
+
+                        if (IsShowDesktopShortcut(key))
+                        {
+                            applicationManager?.ToggleShowDesktop();
+                            continue;
+                        }
+
                         if (HandleWindowShortcut(key))
                             continue;
 
@@ -220,9 +253,11 @@ namespace ZonderqOS.GUI
                             continue;
                         }
 
-                        if (key.Key == ConsoleKeyEx.Escape && desktopContextMenu != null && desktopContextMenu.Visible)
+                        // The desktop context menu owns all keys while open.
+                        // Do not let Delete/Enter/letters reach a background app.
+                        if (desktopContextMenu != null && desktopContextMenu.Visible)
                         {
-                            desktopContextMenu.Visible = false;
+                            desktopContextMenu.HandleKeyboard(key);
                             continue;
                         }
 
@@ -257,6 +292,8 @@ namespace ZonderqOS.GUI
                     int mouseY = (int)MouseManager.Y;
                     bool currentLeftButtonState = MouseManager.LeftButton;
                     bool currentRightButtonState = MouseManager.RightButton;
+                    if (!currentLeftButtonState)
+                        modalLeftGestureOwned = false;
 
                     bool pointerMoved = mouseX != previousMouseX || mouseY != previousMouseY;
                     bool buttonChanged = currentLeftButtonState != previousLeftButtonState ||
@@ -287,19 +324,167 @@ namespace ZonderqOS.GUI
                         continue;
                     }
 
-                    bool paletteCaptured = commandPalette != null && commandPalette.Visible &&
-                        commandPalette.HandleMouse(mouseX, mouseY,
-                            currentLeftButtonState, previousLeftButtonState);
+                    // Right-click dismisses a modal overlay without passing the same
+                    // event to an underlying app (e.g. File Manager context menu).
+                    // Right-button chords never activate left-button controls.
+                    // Compare the previous left state against the CURRENT right
+                    // state: releasing right while left stays held must not
+                    // synthesize a new left click on Start, a window or a file.
+                    bool leftForUi = currentLeftButtonState && !currentRightButtonState;
+                    // If right is released in the same sample that left is
+                    // pressed, the previous right-owned gesture still owns
+                    // that left hold. Treat it as held, not a new Start/taskbar
+                    // or notification click on an exposed control.
+                    bool oldLeftForUi = (previousLeftButtonState ||
+                        (previousRightButtonState && currentLeftButtonState)) && !currentRightButtonState;
+                    bool rightPressed = currentRightButtonState && !previousRightButtonState;
+                    // A second button cannot start a desktop action during an
+                    // existing physical gesture. This also covers releasing
+                    // right and pressing left in the same input sample: the
+                    // sanitized left state otherwise looks like a fresh click.
+                    bool desktopChordPress = (previousLeftButtonState || previousRightButtonState) &&
+                        ((currentLeftButtonState && !previousLeftButtonState) || rightPressed);
+                    if (desktopChordPress)
+                    {
+                        lastShortcutClick = -1;
+                        lastShortcutClickTimestamp = 0;
+                    }
+                    bool paletteCaptured = false;
+                    if (commandPalette != null && commandPalette.Visible)
+                    {
+                        if (rightPressed)
+                        {
+                            commandPalette.Close();
+                            paletteCaptured = true;
+                        }
+                        else
+                        {
+                            paletteCaptured = commandPalette.HandleMouse(mouseX, mouseY,
+                                leftForUi, oldLeftForUi);
+                        }
+                    }
 
-                    bool notificationCaptured = !paletteCaptured && notificationCenter != null &&
-                        notificationCenter.UpdateInteractions(mouseX, mouseY,
-                            currentLeftButtonState, previousLeftButtonState);
+                    bool notificationCaptured = false;
+                    if (!paletteCaptured && notificationCenter != null)
+                    {
+                        if (notificationCenter.Visible && rightPressed)
+                        {
+                            notificationCenter.Close();
+                            notificationCaptured = true;
+                        }
+                        else
+                        {
+                            notificationCaptured = notificationCenter.UpdateInteractions(mouseX, mouseY,
+                                leftForUi, oldLeftForUi);
+                        }
+                    }
+
+                    if (currentLeftButtonState && (paletteCaptured || notificationCaptured))
+                        modalLeftGestureOwned = true;
 
                     if (!paletteCaptured && !notificationCaptured)
                     {
-                        applicationManager.HandleMouse(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
-                            currentRightButtonState, previousRightButtonState);
-                        startMenu.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
+                        // Overlay menus own clicks inside their bounds. Dispatching
+                        // to the application first would also click the obscured
+                        // window (including destructive File Manager actions).
+                        bool startMenuWasVisible = startMenu.Visible;
+                        bool startMenuInside = startMenuWasVisible &&
+                            mouseX >= startMenu.X && mouseX < startMenu.X + startMenu.Width &&
+                            mouseY >= startMenu.Y && mouseY < startMenu.Y + startMenu.Height;
+                        // Clicking outside Start dismisses it, but must not
+                        // click a window or desktop shortcut underneath.
+                        // Taskbar clicks still work, including Start toggling.
+                        bool startMenuOutsideClick = startMenuWasVisible && !startMenuInside &&
+                            ((currentLeftButtonState && !previousLeftButtonState && mouseY < taskbar.Y) ||
+                             rightPressed);
+                        bool startMenuCaptures = startMenuInside || startMenuOutsideClick;
+                        // An already-held gesture must not keep moving a window
+                        // behind Start. Only the desktop is modal: taskbar
+                        // controls still receive their normal click.
+                        if (startMenuWasVisible && mouseY < taskbar.Y &&
+                            (currentLeftButtonState || currentRightButtonState))
+                            startMenuCaptures = true;
+                        if (startMenuOutsideClick)
+                            startMenu.Visible = false;
+                        // Taskbar app and notification buttons should dismiss an
+                        // open Start menu, while the same click still reaches the
+                        // taskbar. The Start button itself must retain toggle
+                        // semantics; otherwise a second click would reopen it.
+                        bool startMenuTaskbarDismiss = startMenuWasVisible && !startMenuInside &&
+                            currentLeftButtonState && !previousLeftButtonState &&
+                            mouseX >= taskbar.X && mouseX < taskbar.X + taskbar.Width &&
+                            mouseY >= taskbar.Y && mouseY < taskbar.Y + taskbar.Height &&
+                            !taskbar.IsStartButtonHit(mouseX, mouseY);
+                        if (startMenuTaskbarDismiss)
+                            startMenu.Visible = false;
+                        // Handle the desktop menu before applications, regardless of
+                        // whether desktop shortcuts are enabled. A click outside an
+                        // open menu dismisses it without also activating a hidden
+                        // window or triggering a destructive action underneath.
+                        bool desktopMenuWasVisible = desktopContextMenu != null && desktopContextMenu.Visible;
+                        bool desktopMenuCaptures = desktopMenuWasVisible &&
+                            ((mouseX >= desktopContextMenu.X && mouseX < desktopContextMenu.X + desktopContextMenu.Width &&
+                              mouseY >= desktopContextMenu.Y && mouseY < desktopContextMenu.Y + desktopContextMenu.Height) ||
+                             // Capture an already-held press as well as its first
+                             // edge: a menu must not resume an underlying drag.
+                             currentLeftButtonState || currentRightButtonState);
+                        if (desktopMenuWasVisible)
+                        {
+                            if (rightPressed)
+                                desktopContextMenu.Visible = false;
+                            else
+                                desktopContextMenu.UpdateInteractions(mouseX, mouseY,
+                                    leftForUi, oldLeftForUi);
+                        }
+
+                        // Snapshot ownership before a title-bar action closes
+                        // or minimizes the window. Otherwise that same click
+                        // could hit a desktop shortcut exposed underneath it.
+                        bool windowCapturedClick =
+                            ((currentLeftButtonState && !previousLeftButtonState) ||
+                             (currentRightButtonState && !previousRightButtonState)) &&
+                            IsPointOverWindow(mouseX, mouseY);
+                        if (windowCapturedClick)
+                            lastShortcutClickTimestamp = 0;
+                        // An open File Manager menu is modal for the next mouse
+                        // press. Route it to its owner before window focus changes,
+                        // and do not replay it on the taskbar or desktop underneath.
+                        FileManagerApp activeFileManager = applicationManager.ActiveApplication as FileManagerApp;
+                        bool fileManagerMenuCaptures = !startMenuCaptures && !desktopMenuCaptures &&
+                            // A held gesture still belongs to the open context
+                            // menu, not to a window or taskbar behind it.
+                            (leftForUi || currentRightButtonState) &&
+                            activeFileManager != null && activeFileManager.ContextMenuVisible;
+                        if (currentLeftButtonState &&
+                            (startMenuCaptures || desktopMenuCaptures || fileManagerMenuCaptures))
+                            modalLeftGestureOwned = true;
+                        // Keep the original press for the modal itself, but
+                        // never replay its remaining held frames on an app.
+                        bool appLeftForUi = leftForUi && !modalLeftGestureOwned;
+                        bool appOldLeftForUi = oldLeftForUi && !modalLeftGestureOwned;
+                        if (fileManagerMenuCaptures)
+                        {
+                            // The modal menu must receive the same sanitized
+                            // left state as ordinary windows. Otherwise a left
+                            // press during right-release can execute a hidden
+                            // Copy/Cut/Paste item as a new click.
+                            activeFileManager.HandleMouse(mouseX, mouseY, leftForUi,
+                                oldLeftForUi, currentRightButtonState, previousRightButtonState);
+                        }
+                        else if (!startMenuCaptures && !desktopMenuCaptures)
+                        {
+                            // The left state is filtered while right is held to avoid
+                            // synthetic clicks. Pass physical previous-button ownership
+                            // separately so a second button cannot retarget a drag.
+                            applicationManager.HandleMouse(mouseX, mouseY, appLeftForUi, appOldLeftForUi,
+                                currentRightButtonState, previousRightButtonState,
+                                previousLeftButtonState || previousRightButtonState);
+                        }
+                        // A simultaneous right press or a File Manager menu
+                        // dismissal must never invoke an underlying Start action.
+                        if (!rightPressed && !fileManagerMenuCaptures)
+                            startMenu.UpdateInteractions(mouseX, mouseY,
+                                leftForUi, oldLeftForUi);
 
                         // A lock requested from Start must take over before the taskbar or desktop
                         // can process the same click. Open applications remain alive and untouched.
@@ -321,9 +506,15 @@ namespace ZonderqOS.GUI
                             continue;
                         }
 
-                        taskbar.UpdateInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState);
-                        UpdateDesktopInteractions(mouseX, mouseY, currentLeftButtonState, previousLeftButtonState,
-                            currentRightButtonState, previousRightButtonState);
+                        if (!desktopMenuCaptures && !fileManagerMenuCaptures)
+                            taskbar.UpdateInteractions(mouseX, mouseY, leftForUi, oldLeftForUi);
+                        // A Start-menu action may close the menu in this frame.
+                        // Use the pre-dispatch capture flags so that same click
+                        // cannot open a desktop shortcut beneath the old overlay.
+                        if (!startMenuCaptures && !desktopMenuCaptures && !fileManagerMenuCaptures &&
+                            !windowCapturedClick && !desktopChordPress)
+                            UpdateDesktopInteractions(mouseX, mouseY, appLeftForUi, appOldLeftForUi,
+                                currentRightButtonState, previousRightButtonState);
                     }
 
                     int priorMouseX = previousMouseX;
@@ -345,9 +536,10 @@ namespace ZonderqOS.GUI
                     // A few extra frames after actual UI interaction (roughly
                     // 30 FPS). Idle desktops keep their configurable heartbeat.
                     bool animationFrame = UiAnimator.NeedsRedraw && (frameCounter % 2 == 0);
+                    bool appContinuousRedraw = applicationManager.NeedsContinuousRedraw;
                     bool cursorOnly = pointerMoved && !keyboardActivity && !buttonChanged &&
                         !currentLeftButtonState && !currentRightButtonState &&
-                        !heartbeat && !UiAnimator.NeedsRedraw &&
+                        !heartbeat && !UiAnimator.NeedsRedraw && !appContinuousRedraw &&
                         CanMoveCursorWithoutSceneRedraw(priorMouseX, priorMouseY, mouseX, mouseY);
 
                     // A full frame remains mandatory for UI changes, interactions,
@@ -358,7 +550,7 @@ namespace ZonderqOS.GUI
                         // Only two 24x28 underlay rectangles were repainted
                         // in software; Canvas.Display still flushes full screen.
                     }
-                    else if (keyboardActivity || pointerMoved || buttonChanged || heartbeat || animationFrame)
+                    else if (keyboardActivity || pointerMoved || buttonChanged || heartbeat || animationFrame || appContinuousRedraw)
                         RenderFrame(mouseX, mouseY);
 
                     Thread.Sleep(15);
@@ -553,6 +745,114 @@ namespace ZonderqOS.GUI
                 "Katalog wbudowanych aplikacji ZOnderqOS",
                 AppCategory.System, IconType.AppCenter, () => LaunchAppCenter(145, 76),
                 StartMenuPlacement.Tool, 3, 10, false));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Minesweeper, "Saper", "Saper", "Saper",
+                "Klasyczna gra logiczna Saper",
+                AppCategory.Games, IconType.Play, () => LaunchMinesweeper(160, 90),
+                StartMenuPlacement.Tool, 6, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Snake, "Waz", "Waz", "Waz",
+                "Klasyczna gra zrecznosciowa Snake",
+                AppCategory.Games, IconType.Play, () => LaunchSnake(170, 95),
+                StartMenuPlacement.Tool, 7, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Tetris, "Tetris", "Tetris", "Tetris",
+                "Klasyczna ukladanka klockow Tetris",
+                AppCategory.Games, IconType.Play, () => LaunchTetris(180, 85),
+                StartMenuPlacement.Tool, 8, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Paint, "Paint", "Paint", "Paint",
+                "Program graficzny do rysowania i tworzenia obrazow",
+                AppCategory.Tools, IconType.Paint, () => LaunchPaint(165, 80),
+                StartMenuPlacement.Tool, 9, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Screenshot, "Zrzut ekranu", "Zrzut ekranu", "Zrzut ekranu",
+                "Narzedzie do przechwytywania ekranu pulpitu",
+                AppCategory.Tools, IconType.ImageViewer, () => LaunchScreenshot(175, 90),
+                StartMenuPlacement.Tool, 10, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.HexViewer, "Hex Viewer", "Hex Viewer", "Hex Viewer",
+                "Podglad plikow w formacie szesnastkowym i ASCII",
+                AppCategory.Tools, IconType.HexViewer, () => LaunchHexViewer(185, 85),
+                StartMenuPlacement.Tool, 11, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.MusicPlayer, "Muzyka", "Muzyka", "Muzyka",
+                "Odtwarzacz muzyki chiptune z wizualizatorem",
+                AppCategory.Tools, IconType.Play, () => LaunchMusicPlayer(160, 75),
+                StartMenuPlacement.Tool, 12, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Breakout, "Arkanoid", "Arkanoid", "Arkanoid",
+                "Klasyczna gra zrecznosciowa Arkanoid / Breakout",
+                AppCategory.Games, IconType.Play, () => LaunchBreakout(170, 65),
+                StartMenuPlacement.Tool, 13, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Game2048, "2048", "2048", "2048",
+                "Kultowa gra logiczna polegajaca na laczeniu liczb",
+                AppCategory.Games, IconType.Play, () => LaunchGame2048(180, 60),
+                StartMenuPlacement.Tool, 14, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.ThemeStudio, "Studio Motywow", "Studio Motywow", "Motywy",
+                "Personalizacja motywow kolorystycznych i tla pulpitu",
+                AppCategory.Tools, IconType.Settings, () => LaunchThemeStudio(150, 70),
+                StartMenuPlacement.Tool, 15, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Solitaire, "Pasjans", "Pasjans", "Pasjans",
+                "Klasyczna gra karciana Pasjans Klondike",
+                AppCategory.Games, IconType.Play, () => LaunchSolitaire(140, 50),
+                StartMenuPlacement.Tool, 16, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Demo3D, "Demoscena 3D", "Demoscena 3D", "Demoscena 3D",
+                "Programowy silnik i demonstracja grafiki trojwymiarowej",
+                AppCategory.Tools, IconType.Rotate, () => LaunchDemo3D(160, 55),
+                StartMenuPlacement.Tool, 17, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Timer, "Zegar i Czas", "Zegar i Czas", "Zegar",
+                "Zegar analogowy, stoper z okrazeniami i minutnik z alarmem",
+                AppCategory.Tools, IconType.Calendar, () => LaunchTimer(170, 75),
+                StartMenuPlacement.Tool, 18, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.BasicIde, "Zonderq BASIC", "Zonderq BASIC", "BASIC",
+                "Zintegrowane srodowisko programistyczne i interpreter BASIC",
+                AppCategory.Tools, IconType.Terminal, () => LaunchBasicIde(130, 60),
+                StartMenuPlacement.Tool, 19, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.SpaceInvaders, "Space Invaders", "Space Invaders", "Space Invaders",
+                "Retro zrecznosciowa gra kosmiczna z bunkrami i dzwiekami",
+                AppCategory.Games, IconType.Play, () => LaunchSpaceInvaders(150, 60),
+                StartMenuPlacement.Tool, 20, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.PassVault, "Sejf Hasel", "Sejf Hasel", "Sejf Hasel",
+                "Menedzer hasel, generator i bezpieczny sejf notatek z kodem PIN",
+                AppCategory.Tools, IconType.Settings, () => LaunchPassVault(160, 65),
+                StartMenuPlacement.Tool, 21, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.SysBenchmark, "Benchmark Systemu", "Benchmark Systemu", "Benchmark",
+                "Kompleksowy test wydajnosci CPU, RAM, grafiki VESA oraz specyfikacja sprzetu",
+                AppCategory.Tools, IconType.About, () => LaunchSysBenchmark(140, 55),
+                StartMenuPlacement.Tool, 22, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.SpriteStudio, "Studio Sprite'ow", "Studio Sprite'ow", "Sprite Studio",
+                "Edytor pixel-art 16x16 z paleta VGA i eksportem do C# oraz BASIC DATA",
+                AppCategory.Tools, IconType.Paint, () => LaunchSpriteStudio(150, 60),
+                StartMenuPlacement.Tool, 23, -1, true));
         }
 
         private void PopulateStartMenu()
@@ -609,11 +909,19 @@ namespace ZonderqOS.GUI
                     if (app == null || app.DesktopOrder != order)
                         continue;
 
-                    const int rowsPerColumn = 9;
+                    // Each shortcut is 92x86. The former fixed nine rows
+                    // placed icons below the taskbar at 800x600 and 1366x768.
+                    // Derive rows from the actual usable framebuffer height.
+                    const int shortcutTop = 22;
+                    const int shortcutHeight = 86;
+                    const int shortcutRowStride = 94;
+                    int usableHeight = System.Math.Max(1, (int)canvas.Height - TaskbarHeight);
+                    int rowsPerColumn = System.Math.Max(1,
+                        (usableHeight - shortcutTop - shortcutHeight) / shortcutRowStride + 1);
                     int column = target / rowsPerColumn;
                     int row = target % rowsPerColumn;
                     int x = 20 + column * 100;
-                    int y = 22 + row * 94;
+                    int y = shortcutTop + row * shortcutRowStride;
                     desktopShortcuts[target++] = new DesktopShortcut(
                         x, y, app.DesktopName, app.Icon, app.Launcher);
                 }
@@ -643,6 +951,7 @@ namespace ZonderqOS.GUI
             if (desktopContextMenu != null)
                 desktopContextMenu.Visible = false;
             selectedShortcut = -1;
+            lastShortcutClickTimestamp = 0;
             commandPalette.Show();
         }
 
@@ -650,7 +959,7 @@ namespace ZonderqOS.GUI
         {
             selectedShortcut = -1;
             lastShortcutClick = -1;
-            lastShortcutClickFrame = -1000;
+            lastShortcutClickTimestamp = 0;
 
             if (desktopContextMenu != null)
                 desktopContextMenu.Visible = false;
@@ -670,6 +979,7 @@ namespace ZonderqOS.GUI
                 if (desktopContextMenu != null)
                     desktopContextMenu.Visible = false;
                 selectedShortcut = -1;
+                lastShortcutClickTimestamp = 0;
             }
             notificationCenter.Toggle();
         }
@@ -688,7 +998,7 @@ namespace ZonderqOS.GUI
 
             selectedShortcut = -1;
             lastShortcutClick = -1;
-            lastShortcutClickFrame = -1000;
+            lastShortcutClickTimestamp = 0;
             lockRequested = true;
         }
 
@@ -774,6 +1084,42 @@ namespace ZonderqOS.GUI
             return alt && !control;
         }
 
+        private static bool IsScreenshotShortcut(KeyEvent key)
+        {
+            if (key == null)
+                return false;
+
+            if (key.Key == ConsoleKeyEx.PrintScreen)
+                return true;
+
+            if (key.Key == ConsoleKeyEx.S)
+            {
+                bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+                bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+                return control && alt;
+            }
+
+            return false;
+        }
+
+        private static bool IsShowDesktopShortcut(KeyEvent key)
+        {
+            if (key == null)
+                return false;
+
+            if (key.Key == ConsoleKeyEx.F12)
+                return true;
+
+            if (key.Key == ConsoleKeyEx.D)
+            {
+                bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+                bool alt = (key.Modifiers & ConsoleModifiers.Alt) == ConsoleModifiers.Alt;
+                return (control && alt) || (alt && !control);
+            }
+
+            return false;
+        }
+
         /// <summary>
         /// Desktop shortcuts run before application key handlers. They must not
         /// leak into a text editor or a terminal, and must respect visible overlays.
@@ -791,6 +1137,8 @@ namespace ZonderqOS.GUI
 
             if (key.Key == ConsoleKeyEx.Tab)
             {
+                // Keyboard focus changes invalidate pending desktop double-clicks.
+                lastShortcutClickTimestamp = 0;
                 // A window switch always returns to the desktop, including
                 // when Start, notifications, or the command palette were open.
                 commandPalette?.Close();
@@ -808,6 +1156,7 @@ namespace ZonderqOS.GUI
             if (key.Key != ConsoleKeyEx.F4)
                 return false;
 
+            lastShortcutClickTimestamp = 0;
             // Alt+F4 first dismisses whichever transient panel currently owns
             // keyboard focus. The underlying app must not close accidentally.
             if (commandPalette != null && commandPalette.Visible)
@@ -819,13 +1168,23 @@ namespace ZonderqOS.GUI
             else if (desktopContextMenu != null && desktopContextMenu.Visible)
                 desktopContextMenu.Visible = false;
             else
-                applicationManager?.RequestCloseActiveWindow();
+            {
+                // The File Manager owns its create-name dialog and context
+                // menu. Alt+F4 dismisses that transient UI first; only the
+                // next Alt+F4 requests the application's normal close action.
+                FileManagerApp fileManager = applicationManager?.ActiveApplication as FileManagerApp;
+                if (fileManager == null || !fileManager.DismissTransientUi())
+                    applicationManager?.RequestCloseActiveWindow();
+            }
 
             return true;
         }
 
         private void LogoutSession()
         {
+            // Also runs for already-expired sessions. Do not retain a stale
+            // cut operation that the next authenticated user could paste.
+            FileClipboard.Clear();
             commandPalette?.Close();
             if (!SecurityContext.IsAuthenticated)
             {
@@ -843,7 +1202,7 @@ namespace ZonderqOS.GUI
             lockRequested = false;
             selectedShortcut = -1;
             lastShortcutClick = -1;
-            lastShortcutClickFrame = -1000;
+            lastShortcutClickTimestamp = 0;
 
             if (applicationManager != null)
                 applicationManager.CloseAll();
@@ -949,6 +1308,96 @@ namespace ZonderqOS.GUI
             applicationManager.Launch(new AboutApp(x, y, null));
         }
 
+        private void LaunchMinesweeper(int x, int y)
+        {
+            applicationManager.Launch(new MinesweeperApp(x, y, null));
+        }
+
+        private void LaunchSnake(int x, int y)
+        {
+            applicationManager.Launch(new SnakeApp(x, y, null));
+        }
+
+        private void LaunchTetris(int x, int y)
+        {
+            applicationManager.Launch(new TetrisApp(x, y, null));
+        }
+
+        private void LaunchPaint(int x, int y)
+        {
+            applicationManager.Launch(new PaintApp(x, y, null));
+        }
+
+        private void LaunchScreenshot(int x, int y)
+        {
+            applicationManager.Launch(new ScreenshotApp(x, y, () => canvas, path => LaunchImageViewer(155, 92, path), null));
+        }
+
+        private void LaunchHexViewer(int x, int y)
+        {
+            applicationManager.Launch(new HexViewerApp(x, y, null));
+        }
+
+        private void LaunchMusicPlayer(int x, int y)
+        {
+            applicationManager.Launch(new MusicPlayerApp(x, y, null));
+        }
+
+        private void LaunchBreakout(int x, int y)
+        {
+            applicationManager.Launch(new BreakoutApp(x, y, null));
+        }
+
+        private void LaunchGame2048(int x, int y)
+        {
+            applicationManager.Launch(new Game2048App(x, y, null));
+        }
+
+        private void LaunchThemeStudio(int x, int y)
+        {
+            applicationManager.Launch(new ThemeStudioApp(x, y, null));
+        }
+
+        private void LaunchSolitaire(int x, int y)
+        {
+            applicationManager.Launch(new SolitaireApp(x, y, null));
+        }
+
+        private void LaunchDemo3D(int x, int y)
+        {
+            applicationManager.Launch(new Demo3DApp(x, y, null));
+        }
+
+        private void LaunchTimer(int x, int y)
+        {
+            applicationManager.Launch(new TimerApp(x, y, null));
+        }
+
+        private void LaunchBasicIde(int x, int y)
+        {
+            applicationManager.Launch(new BasicIdeApp(x, y, null));
+        }
+
+        private void LaunchSpaceInvaders(int x, int y)
+        {
+            applicationManager.Launch(new SpaceInvadersApp(x, y, null));
+        }
+
+        private void LaunchPassVault(int x, int y)
+        {
+            applicationManager.Launch(new PassVaultApp(x, y, null));
+        }
+
+        private void LaunchSysBenchmark(int x, int y)
+        {
+            applicationManager.Launch(new SysBenchmarkApp(x, y, null));
+        }
+
+        private void LaunchSpriteStudio(int x, int y)
+        {
+            applicationManager.Launch(new SpriteStudioApp(x, y, null));
+        }
+
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
             bool rightClicked, bool wasRightClicked)
         {
@@ -973,12 +1422,6 @@ namespace ZonderqOS.GUI
                 return;
             }
 
-            if (desktopContextMenu != null && desktopContextMenu.Visible)
-            {
-                if (desktopContextMenu.UpdateInteractions(mouseX, mouseY, isClicked, wasClicked))
-                    return;
-            }
-
             bool desktopAvailable = mouseY >= 0 && mouseY < (int)canvas.Height - TaskbarHeight &&
                                     !IsPointOverWindow(mouseX, mouseY) && !startMenu.Visible;
 
@@ -995,6 +1438,7 @@ namespace ZonderqOS.GUI
                 {
                     selectedShortcut = -1;
                     lastShortcutClick = -1;
+                    lastShortcutClickTimestamp = 0;
                     desktopContextMenu.ShowAt(mouseX, mouseY, (int)canvas.Width,
                         (int)canvas.Height - TaskbarHeight);
                 }
@@ -1014,7 +1458,10 @@ namespace ZonderqOS.GUI
             }
 
             if (!desktopAvailable)
+            {
+                lastShortcutClickTimestamp = 0;
                 return;
+            }
 
             int hitIndex = -1;
             for (int i = 0; i < desktopShortcuts.Length; i++)
@@ -1030,21 +1477,33 @@ namespace ZonderqOS.GUI
             {
                 selectedShortcut = -1;
                 lastShortcutClick = -1;
+                lastShortcutClickTimestamp = 0;
                 return;
             }
 
+            // Frame counts do not measure elapsed time during disk stalls.
+            // Two distant clicks on the same shortcut must not launch it.
+            long now = Stopwatch.GetTimestamp();
+            long elapsed = now - lastShortcutClickTimestamp;
             bool doubleClick = selectedShortcut == hitIndex && lastShortcutClick == hitIndex &&
-                               frameCounter - lastShortcutClickFrame <= 28;
+                lastShortcutClickTimestamp > 0 && elapsed >= 0 &&
+                elapsed <= Stopwatch.Frequency / 2 &&
+                System.Math.Abs(mouseX - lastShortcutClickX) <= 12 &&
+                System.Math.Abs(mouseY - lastShortcutClickY) <= 12;
 
             selectedShortcut = hitIndex;
             lastShortcutClick = hitIndex;
-            lastShortcutClickFrame = frameCounter;
+            lastShortcutClickTimestamp = now;
+            lastShortcutClickX = mouseX;
+            lastShortcutClickY = mouseY;
 
             if (doubleClick)
             {
-                desktopShortcuts[hitIndex].Open();
+                // Consume the pair before launching (which may perform IO).
                 selectedShortcut = -1;
                 lastShortcutClick = -1;
+                lastShortcutClickTimestamp = 0;
+                desktopShortcuts[hitIndex].Open();
             }
         }
 
@@ -1063,9 +1522,28 @@ namespace ZonderqOS.GUI
             return false;
         }
 
+        private bool IsDesktopOccluded()
+        {
+            if (applicationManager == null)
+                return false;
+
+            var apps = applicationManager.Applications;
+            for (int i = apps.Count - 1; i >= 0; i--)
+            {
+                Application app = apps[i];
+                if (app != null && app.IsRunning && app.Window != null &&
+                    app.Window.Visible && !app.Window.IsMinimized && app.Window.IsMaximized)
+                    return true;
+            }
+            return false;
+        }
+
         private void RenderDesktopShortcuts()
         {
             if (desktopShortcuts == null || !global::ZonderqOS.SystemSettings.ShowDesktopIcons)
+                return;
+
+            if (IsDesktopOccluded())
                 return;
 
             for (int i = 0; i < desktopShortcuts.Length; i++)
@@ -1111,6 +1589,9 @@ namespace ZonderqOS.GUI
 
         private void RenderDesktop()
         {
+            if (IsDesktopOccluded())
+                return;
+
             int mode = global::ZonderqOS.SystemSettings.DesktopBackgroundMode;
             if (mode == 0 && wallpaperCanvas != null)
             {
@@ -1118,10 +1599,16 @@ namespace ZonderqOS.GUI
                 return;
             }
 
-            Color background = mode == 1
-                ? Color.FromArgb(25, 30, 36)
-                : Color.FromArgb(17, 31, 47);
-            canvas.Clear(background);
+            Color background = mode switch
+            {
+                1 => Color.FromArgb(25, 30, 36),     // Grafit
+                2 => Color.FromArgb(17, 31, 47),     // Cosmos Navy
+                3 => Color.FromArgb(8, 10, 14),      // OLED Midnight
+                4 => Color.FromArgb(0, 128, 128),    // Retro 95 Teal
+                5 => Color.FromArgb(10, 26, 18),     // Cyber Matrix
+                6 => Color.FromArgb(22, 36, 48),     // Nordic Glacier
+                _ => Color.FromArgb(17, 31, 47)
+            };
             canvas.DrawFilledRectangle(background, 0, 0, (int)canvas.Width,
                 (int)canvas.Height - TaskbarHeight);
         }
