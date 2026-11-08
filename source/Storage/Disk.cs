@@ -158,6 +158,7 @@ namespace ZonderqOS
 
         public static void CreateFile(string path, string content)
         {
+            CommandIO.LastCommandSuccess = false;
             if (VirtualFs.IsVirtualPath(path))
             {
                 if (VirtualFs.TryWrite(path, content, false, out string virtualError))
@@ -187,6 +188,7 @@ namespace ZonderqOS
                 if (!PermissionManager.GetPermission(path).Owner.Equals(SecurityContext.CurrentUser))
                     PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
                 WriteMessage.WriteOK($"File saved: {path}", "FS");
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
@@ -196,6 +198,7 @@ namespace ZonderqOS
 
         public static void AppendFile(string path, string content)
         {
+            CommandIO.LastCommandSuccess = false;
             if (VirtualFs.IsVirtualPath(path))
             {
                 if (VirtualFs.TryWrite(path, content + "\n", true, out string virtualError))
@@ -223,6 +226,7 @@ namespace ZonderqOS
             {
                 File.AppendAllText(path, content + "\n");
                 WriteMessage.WriteOK($"Appended to file: {path}", "FS");
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
@@ -232,6 +236,7 @@ namespace ZonderqOS
 
         public static void CopyFile(string sourcePath, string destinationPath)
         {
+            CommandIO.LastCommandSuccess = false;
             if (VirtualFs.IsReadOnlyPath(sourcePath))
             {
                 WriteMessage.WriteError($"Virtual filesystem entries cannot be copied through the physical FAT backend: {sourcePath}", "FS");
@@ -258,8 +263,9 @@ namespace ZonderqOS
 
             try
             {
-                File.Copy(sourcePath, destinationPath);
+                File.Copy(sourcePath, destinationPath, true);
                 WriteMessage.WriteOK($"Copied file from {sourcePath} to {destinationPath}", "FS");
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
@@ -269,6 +275,7 @@ namespace ZonderqOS
 
         public static void MoveFile(string sourcePath, string destinationPath)
         {
+            CommandIO.LastCommandSuccess = false;
             if (RejectVirtualMutation(sourcePath, "move source") ||
                 RejectVirtualMutation(destinationPath, "move destination"))
                 return;
@@ -291,6 +298,7 @@ namespace ZonderqOS
             {
                 File.Move(sourcePath, destinationPath);
                 WriteMessage.WriteOK($"Moved file from {sourcePath} to {destinationPath}", "FS");
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
