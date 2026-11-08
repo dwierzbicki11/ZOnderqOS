@@ -63,7 +63,7 @@ class Stage2StabilizationTests(unittest.TestCase):
         close_body = BASIC_IDE.split("public override void Close()", 1)[1].split("}", 1)[0]
         self.assertIn("Speaker.Stop();", close_body)
         self.assertIn("sourceLines?.Clear();", close_body)
-        self.assertIn("outputLines?.Clear();", close_body)
+        self.assertIn("consoleLines?.Clear();", close_body)
         self.assertIn("base.Close();", close_body)
 
     def test_gui_manager_idle_dynamic_sleep(self):
