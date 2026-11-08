@@ -160,11 +160,11 @@ def self_test() -> None:
         assert "TX descriptor reads 0 < 128" in str(exc)
     else:
         raise AssertionError("accepted misaligned TX descriptor DMA address")
-    # A descriptor occupies 16 bytes: the entire DMA read must fit the
-    # physical address ceiling, not just its first byte.
-    boundary_tx = tx.replace("0x7f001000", "0xffffffffff000")
+    # A descriptor occupies 16 bytes. The final aligned descriptor at the
+    # x86-64 physical limit is valid; the next aligned slot is not.
+    boundary_tx = tx.replace("0x7f001000", "0xffffffffffff0")
     assert count_dma(boundary_tx * 128 + write + commit) == (128, 1, 64, 1)
-    overflow_tx = tx.replace("0x7f001000", "0xffffffffffff0")
+    overflow_tx = tx.replace("0x7f001000", "0x10000000000000")
     assert count_dma(overflow_tx * 128 + write + commit) == (0, 1, 64, 1)
     oversized_physical_tx = tx.replace("0x7f001000", "0x10000000000000")
     assert count_dma(oversized_physical_tx * 128 + write + commit) == (0, 1, 64, 1)
