@@ -91,8 +91,10 @@ namespace ZonderqOS.SystemCore.Updates
         private const string BackupDir = "/var/updates/backup";
         private const string OsReleasePath = "/etc/os-release";
 
-        public static string CurrentVersion { get; private set; } = "2026.11.0";
-        public static string CurrentBuild { get; private set; } = "3095-LTS";
+        public static string CurrentVersion { get; private set; } = "2026.12.0";
+        public static string CurrentBuild { get; private set; } = "3100";
+        public static string InstalledVersion { get; private set; } = "";
+        public static string InstalledBuild { get; private set; } = "";
         public static UpdateChannel Channel { get; private set; } = UpdateChannel.Stable;
         public static UpdateSourceMode SourceMode { get; private set; } = UpdateSourceMode.CloudAuto;
         public static string CloudServerUrl { get; private set; } = "https://updates.zonderqos.org/v1";
@@ -152,6 +154,27 @@ namespace ZonderqOS.SystemCore.Updates
                         {
                             LastCheckTime = line.Substring(11).Trim();
                         }
+                        else if (line.StartsWith("INSTALLED_VERSION=", StringComparison.OrdinalIgnoreCase))
+                        {
+                            InstalledVersion = line.Substring(18).Trim();
+                            if (!string.IsNullOrEmpty(InstalledVersion))
+                            {
+                                CurrentVersion = InstalledVersion;
+                            }
+                        }
+                        else if (line.StartsWith("INSTALLED_BUILD=", StringComparison.OrdinalIgnoreCase))
+                        {
+                            string bld = line.Substring(16).Trim();
+                            if (!string.IsNullOrEmpty(bld))
+                            {
+                                InstalledBuild = bld;
+                                CurrentBuild = bld;
+                            }
+                        }
+                        else if (line.StartsWith("LAST_NOTIFIED=", StringComparison.OrdinalIgnoreCase))
+                        {
+                            lastNotifiedVersion = line.Substring(14).Trim();
+                        }
                     }
                     return;
                 }
@@ -167,7 +190,10 @@ namespace ZonderqOS.SystemCore.Updates
             {
                 string content = "CHANNEL=" + Channel.ToString().ToLowerInvariant() + "\n" +
                                  "LAST_CHECK=" + LastCheckTime + "\n" +
-                                 "UPDATER_VERSION=2.0\n";
+                                 "UPDATER_VERSION=2.0\n" +
+                                 "INSTALLED_VERSION=" + CurrentVersion + "\n" +
+                                 "INSTALLED_BUILD=" + CurrentBuild + "\n" +
+                                 "LAST_NOTIFIED=" + lastNotifiedVersion + "\n";
                 File.WriteAllText(ConfigPath, content);
             }
             catch { }
@@ -254,6 +280,64 @@ namespace ZonderqOS.SystemCore.Updates
             }
         }
 
+        public static bool IsNewerVersion(string candidateVer, int candidateBuild, string currentVer, string currentBuild)
+        {
+            if (string.IsNullOrWhiteSpace(candidateVer)) return false;
+            if (string.IsNullOrWhiteSpace(currentVer)) return true;
+
+            int curBuildNum = 0;
+            int.TryParse(currentBuild, out curBuildNum);
+
+            int[] cand = ExtractVersionParts(candidateVer);
+            int[] curr = ExtractVersionParts(currentVer);
+
+            for (int i = 0; i < 3; i++)
+            {
+                if (cand[i] > curr[i]) return true;
+                if (cand[i] < curr[i]) return false;
+            }
+
+            return candidateBuild > curBuildNum;
+        }
+
+        private static int[] ExtractVersionParts(string ver)
+        {
+            int[] res = new int[3];
+            if (string.IsNullOrEmpty(ver)) return res;
+
+            int dash = ver.IndexOf('-');
+            string clean = dash >= 0 ? ver.Substring(0, dash) : ver;
+            string[] parts = clean.Split('.');
+            for (int i = 0; i < parts.Length && i < 3; i++)
+            {
+                int val;
+                if (int.TryParse(parts[i].Trim(), out val))
+                    res[i] = val;
+            }
+            return res;
+        }
+
+        public static string FindKernelSource(UpdatePackageInfo pkg)
+        {
+            if (pkg != null && !string.IsNullOrEmpty(pkg.KernelImagePath) && File.Exists(pkg.KernelImagePath))
+                return pkg.KernelImagePath;
+
+            string[] candidates = {
+                "/updates/ZonderqOS.elf",
+                "/updates/kernel.bin",
+                "/updates/boot.bin",
+                "/var/updates/incoming/ZonderqOS.elf",
+                "/var/updates/incoming/kernel.bin"
+            };
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                if (File.Exists(candidates[i]))
+                    return candidates[i];
+            }
+            return null;
+        }
+
         public static bool CheckForUpdates(bool forceRefresh, out UpdatePackageInfo package, out string message)
         {
             Initialize();
@@ -274,33 +358,39 @@ namespace ZonderqOS.SystemCore.Updates
                 }
                 else
                 {
-                    // Provide a high-grade security update package tailored to the channel
                     pkg = new UpdatePackageInfo();
                     if (Channel == UpdateChannel.Beta)
                     {
-                        pkg.Version = "2026.12.0-BETA";
-                        pkg.BuildNumber = 3105;
-                        pkg.Title = "ZonderqOS Gen3 2026.12 Beta Channel Preview";
+                        pkg.Version = "2026.12.1-BETA";
+                        pkg.BuildNumber = 3110;
+                        pkg.Title = "ZonderqOS Gen3 2026.12.1 Beta Feature Drop";
                         pkg.Severity = "Eksperymentalna";
                     }
                     else if (Channel == UpdateChannel.Lts)
                     {
-                        pkg.Version = "2026.11.1-LTS";
-                        pkg.BuildNumber = 3095;
-                        pkg.Title = "ZonderqOS Long Term Support Security Patch";
+                        pkg.Version = "2026.12.0-LTS";
+                        pkg.BuildNumber = 3100;
+                        pkg.Title = "ZonderqOS Long Term Support Core Patch";
                         pkg.Severity = "Wazna (LTS)";
+                    }
+                    else if (Channel == UpdateChannel.Testing)
+                    {
+                        pkg.Version = "2026.12.2-NIGHTLY";
+                        pkg.BuildNumber = 3120;
+                        pkg.Title = "ZonderqOS Nightly Core Preview";
+                        pkg.Severity = "Testowa";
                     }
                     else
                     {
-                        pkg.Version = "2026.11.2";
-                        pkg.BuildNumber = 3096;
-                        pkg.Title = "ZonderqOS Security & Stability Rollup 2";
-                        pkg.Severity = "Krytyczna (Zalecana)";
+                        pkg.Version = "2026.12.0";
+                        pkg.BuildNumber = 3100;
+                        pkg.Title = "ZonderqOS 2026.12 Feature Drop (Bitwa Morska & Chmura OTA)";
+                        pkg.Severity = "Zalecana";
                     }
                 }
 
                 // If currently running this version or higher, we are up to date
-                if (string.Equals(CurrentVersion, pkg.Version, StringComparison.OrdinalIgnoreCase) && !forceRefresh)
+                if (!IsNewerVersion(pkg.Version, pkg.BuildNumber, CurrentVersion, CurrentBuild) && !forceRefresh)
                 {
                     Status = UpdateStatus.UpToDate;
                     AvailablePackage = null;
@@ -664,10 +754,42 @@ namespace ZonderqOS.SystemCore.Updates
                                       "BUILD_ID=\"" + pkg.BuildNumber + "\"\n" +
                                       "PRETTY_NAME=\"ZonderqOS " + pkg.Version + " (" + pkg.Title + ")\"\n" +
                                       "UPDATE_DATE=\"" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\"\n";
+                try { if (File.Exists(OsReleasePath)) File.Delete(OsReleasePath); } catch { }
                 File.WriteAllText(OsReleasePath, newOsRelease);
 
                 // Update system identity motd / issue
+                try { if (File.Exists("/etc/issue")) File.Delete("/etc/issue"); } catch { }
                 File.WriteAllText("/etc/issue", "ZonderqOS " + pkg.Version + " (Build " + pkg.BuildNumber + ")\n");
+
+                // Deploy new kernel binary if packaged in update
+                string kernelSrc = FindKernelSource(pkg);
+                if (!string.IsNullOrEmpty(kernelSrc) && File.Exists(kernelSrc))
+                {
+                    progress?.Invoke(80, "Instalowanie nowego jadra systemu w /boot/ZonderqOS.elf...");
+                    try
+                    {
+                        if (!Directory.Exists("/boot")) Directory.CreateDirectory("/boot");
+                        File.Copy(kernelSrc, "/boot/ZonderqOS.elf", true);
+                    }
+                    catch { }
+                }
+
+                // Archive applied manifest so it never triggers a loop prompt
+                try
+                {
+                    if (File.Exists("/updates/update.manifest"))
+                    {
+                        string installedDir = "/var/updates/installed";
+                        if (!Directory.Exists(installedDir)) Directory.CreateDirectory(installedDir);
+                        File.Copy("/updates/update.manifest", Path.Combine(installedDir, "update-" + pkg.Version + ".manifest"), true);
+                        File.Delete("/updates/update.manifest");
+                    }
+                    if (File.Exists("/var/updates/incoming/update.manifest"))
+                    {
+                        File.Delete("/var/updates/incoming/update.manifest");
+                    }
+                }
+                catch { }
 
                 // Update integrity baseline for newly updated files
                 progress?.Invoke(85, "Odswiezanie bazy integralnosci IntegrityGuard...");
@@ -722,6 +844,9 @@ namespace ZonderqOS.SystemCore.Updates
                 progress?.Invoke(100, "Aktualizacja zakonczona sukcesem! Wymagany restart.");
                 CurrentVersion = pkg.Version;
                 CurrentBuild = pkg.BuildNumber.ToString();
+                InstalledVersion = pkg.Version;
+                InstalledBuild = pkg.BuildNumber.ToString();
+                SaveConfig();
                 IsRebootRequired = true;
                 Status = UpdateStatus.NeedsReboot;
                 AvailablePackage = null;
@@ -856,6 +981,8 @@ namespace ZonderqOS.SystemCore.Updates
 
                 progress?.Invoke(100, "Przywracanie zakonczone pomyslnie!");
                 CurrentVersion = prevVersion;
+                InstalledVersion = prevVersion;
+                SaveConfig();
                 IsRebootRequired = true;
                 Status = UpdateStatus.RolledBack;
 

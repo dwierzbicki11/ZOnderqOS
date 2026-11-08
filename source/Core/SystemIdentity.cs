@@ -33,8 +33,12 @@ namespace ZonderqOS.SystemCore
                 if (!File.Exists(MotdPath))
                     File.WriteAllText(MotdPath, "Welcome to ZonderqOS Gen 3. Type help for commands.\n");
                 if (!File.Exists(OsReleasePath))
+                {
                     File.WriteAllText(OsReleasePath,
-                        "NAME=\"ZonderqOS\"\nID=zonderqos\nVERSION_ID=\"3\"\nPRETTY_NAME=\"ZonderqOS Gen 3\"\n");
+                        "NAME=\"ZonderqOS\"\nID=zonderqos\nVERSION_ID=\"" + global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion +
+                        "\"\nBUILD_ID=\"" + global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild +
+                        "\"\nPRETTY_NAME=\"ZonderqOS Gen 3\"\n");
+                }
 
                 PermissionManager.SetPermission(HostnamePath, "root", 644);
                 PermissionManager.SetPermission(IssuePath, "root", 644);
