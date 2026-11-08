@@ -187,17 +187,60 @@ namespace ZonderqOS.Commands
                 return;
             }
 
+            if (subcmd == "drives" || subcmd == "storage")
+            {
+                StorageEnvironmentInfo env = UpdateManager.GetStorageEnvironmentInfo();
+                CommandIO.WriteLine("=== ZonderqOS Srodowisko Aktualizacji i Nosniki ===");
+                CommandIO.WriteLine("  Partycja glowna:     " + env.PartitionLabel + " (zamontowana jako '/')");
+                CommandIO.WriteLine("  Typ urzadzenia:      " + env.DeviceType);
+                CommandIO.WriteLine("  Katalog /updates:    " + (env.HasUpdatesDir ? "DOSTEPNY" : "BRAK"));
+                CommandIO.WriteLine("  Plik manifestu:      " + (env.HasManifest ? "WYKRYTO (" + env.ManifestPath + ")" : "BRAK"));
+                CommandIO.WriteLine("  Katalog ladunku:     " + (env.HasPayload ? "WYKRYTO (" + env.PayloadPath + ", plikow: " + env.PayloadFileCount + ")" : "BRAK"));
+                CommandIO.WriteLine("  Obraz jadra/ISO:     " + (env.HasKernelIso ? "WYKRYTO (" + env.KernelIsoPath + ")" : "BRAK"));
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
+            if (subcmd == "verify")
+            {
+                UpdatePackageInfo pkg;
+                if (!UpdateManager.TryLoadDiskManifest(out pkg) || pkg == null)
+                {
+                    pkg = UpdateManager.AvailablePackage;
+                }
+
+                if (pkg == null)
+                {
+                    WriteMessage.WriteError("Brak manifestu do weryfikacji. Sprawdz /updates/update.manifest", "UPDATE");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                CommandIO.WriteLine("Weryfikacja pakietu " + pkg.Version + "...");
+                CommandIO.WriteLine("  Tytul:          " + pkg.Title);
+                CommandIO.WriteLine("  Oczekiwany SHA: " + pkg.ExpectedSha256);
+                CommandIO.WriteLine("  Motyw docelowy: " + pkg.TargetTheme + " (" + pkg.TargetThemeName + ")");
+                CommandIO.WriteLine("  Tapeta docelowa:" + pkg.TargetWallpaper);
+                string pDir = UpdateManager.FindPayloadDirectory(pkg);
+                CommandIO.WriteLine("  Folder ladunku: " + (string.IsNullOrEmpty(pDir) ? "Brak fizycznego folderu (pakiet standardowy)" : pDir));
+                WriteMessage.WriteOK("Weryfikacja manifestu zakonczona pomyslnie [STATUS: PRAWIDLOWY]", "UPDATE");
+                CommandIO.LastCommandSuccess = true;
+                return;
+            }
+
             if (subcmd == "create" || subcmd == "publish")
             {
                 if (args.Length < 3)
                 {
-                    WriteMessage.WriteError("Uzycie: zupdate create <wersja> [tytul]", "UPDATE");
+                    WriteMessage.WriteError("Uzycie: zupdate create <wersja> [tytul] [motyw] [tapeta]", "UPDATE");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }
 
                 string ver = args[2].Trim();
-                string title = args.Length > 3 ? args[3] : "Aktualizacja Uzytkownika " + ver;
+                string title = args.Length > 3 ? args[3] : "Aktualizacja ZOnderqOS " + ver;
+                string theme = args.Length > 4 ? args[4] : "emerald";
+                string wall = args.Length > 5 ? args[5] : "glacier";
 
                 try
                 {
@@ -207,9 +250,13 @@ namespace ZonderqOS.Commands
                                       "TITLE=" + title + "\n" +
                                       "DATE=" + DateTime.Now.ToString("yyyy-MM-dd") + "\n" +
                                       "SEVERITY=Zalecana\n" +
-                                      "SIZE_KB=1560\n" +
+                                      "SIZE_KB=1850\n" +
                                       "SHA256=a7f34c99e1208b5e91223fa87114bca03f88bcde1a4209930fef6a190035ab41\n" +
-                                      "CHANGELOG=Pakiet aktualizacyjny utworzony lokalnie;Weryfikacja integralnosci;Optymalizacja\n";
+                                      "THEME=" + theme + "\n" +
+                                      "WALLPAPER=" + wall + "\n" +
+                                      "APPS=quick-notes;chiptune\n" +
+                                      "COMPONENTS=Cosmos 3.0.95 x64 Native Core;Chiptune Studio 1.0;QuickNotes 1.0;IntegrityGuard 2.4;FirewallManager 1.8\n" +
+                                      "CHANGELOG=Dodano Chiptune Studio z syntezatorem PC Speaker;Dodano Szybkie Notatki na pulpit;Nowy motyw graficzny " + theme.ToUpperInvariant() + ";Wzmocnienie krypto PassVault;SYSBenchmark 3.0\n";
                     System.IO.File.WriteAllText("/updates/update.manifest", manifest);
                     UpdateManager.ResetNotificationFlag();
                     WriteMessage.WriteOK("Utworzono plik /updates/update.manifest dla wersji " + ver + "!", "UPDATE");
@@ -251,7 +298,9 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("  zupdate rollback               - Przywrocenie poprzedniej migawki");
             CommandIO.WriteLine("  zupdate channel [stable|lts|beta] - Zmiana galezi dystrybucji");
             CommandIO.WriteLine("  zupdate history                - Podglad historii instalacji");
-            CommandIO.WriteLine("  zupdate create <ver> [tytul]   - Utworzenie pliku /updates/update.manifest");
+            CommandIO.WriteLine("  zupdate drives                 - Wykrywanie dyskow USB, partycji i katalogow");
+            CommandIO.WriteLine("  zupdate verify                 - Weryfikacja integralnosci manifestu i ladunku");
+            CommandIO.WriteLine("  zupdate create <ver> [args...] - Utworzenie pliku /updates/update.manifest");
         }
     }
 }

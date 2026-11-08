@@ -118,13 +118,13 @@ namespace ZonderqOS.GUI.Apps
                     }
                 }
 
-                // 5. Tabs (wy + 152, 3 tabs)
-                int tabY = wy + 152;
-                int tabW = 194;
+                // 5. Tabs (wy + 150, 4 tabs)
+                int tabY = wy + 150;
+                int tabW = (Window.Width - 24 - 18) / 4;
                 int tabH = 26;
-                for (int t = 0; t < 3; t++)
+                for (int t = 0; t < 4; t++)
                 {
-                    int tx = wx + 16 + t * (tabW + 6);
+                    int tx = wx + 12 + t * (tabW + 6);
                     if (Hit(mouseX, mouseY, tx, tabY, tabW, tabH))
                     {
                         activeTab = t;
@@ -366,10 +366,10 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderTabs(Canvas canvas, int x, int y, int w, int h)
         {
-            string[] tabs = new string[] { "DZIENNIK ZMIAN", "KOMPONENTY OS", "HISTORIA ZDARZEN" };
-            int tabW = (w - 12) / 3;
+            string[] tabs = new string[] { "DZIENNIK ZMIAN", "PLIKI I LADUNEK", "NOSNIKI I USB", "HISTORIA I MIGAWKI" };
+            int tabW = (w - 18) / 4;
 
-            for (int i = 0; i < 3; i++)
+            for (int i = 0; i < 4; i++)
             {
                 int tx = x + i * (tabW + 6);
                 bool isSel = (i == activeTab);
@@ -387,63 +387,103 @@ namespace ZonderqOS.GUI.Apps
 
             if (activeTab == 0)
             {
-                // Changelog
+                // Tab 0: Changelog
                 UpdatePackageInfo pkg = UpdateManager.AvailablePackage ?? new UpdatePackageInfo();
-                SmallTextRenderer.Draw(canvas, "Dziennik zmian dla wersji: " + pkg.Version + " (" + pkg.Title + ")", x + 14, y + 12, AccentColor);
-                SmallTextRenderer.Draw(canvas, "Data wydania: " + pkg.ReleaseDate + " | Poziom waznosci: " + pkg.Severity, x + 14, y + 30, MutedColor);
+                SmallTextRenderer.Draw(canvas, "Wydanie docelowe: " + pkg.Version + " - " + pkg.Title, x + 14, y + 10, AccentColor);
+                SmallTextRenderer.Draw(canvas, "Data wydania: " + pkg.ReleaseDate + " | Waznosc: " + pkg.Severity + " | Motyw: " + pkg.TargetThemeName, x + 14, y + 26, MutedColor);
 
-                canvas.DrawLine(Border, x + 14, y + 46, x + w - 14, y + 46);
+                canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
-                int lineY = y + 56;
+                int lineY = y + 50;
                 for (int i = 0; i < pkg.Changelog.Length && i < 6; i++)
                 {
                     canvas.DrawFilledRectangle(AccentColor, x + 16, lineY + 4, 6, 6);
                     SmallTextRenderer.Draw(canvas, pkg.Changelog[i], x + 30, lineY, TextColor);
-                    lineY += 24;
+                    lineY += 23;
                 }
 
-                SmallTextRenderer.Draw(canvas, "Suma SHA-256: " + pkg.ExpectedSha256, x + 14, y + h - 22, MutedColor);
+                SmallTextRenderer.Draw(canvas, "Suma kontrolna SHA-256: " + pkg.ExpectedSha256, x + 14, y + h - 20, MutedColor);
             }
             else if (activeTab == 1)
             {
-                // System Components
-                SmallTextRenderer.Draw(canvas, "Zainstalowane podsystemy i specyfikacja dystrybucji:", x + 14, y + 12, AccentColor);
-                canvas.DrawLine(Border, x + 14, y + 32, x + w - 14, y + 32);
+                // Tab 1: Components and Payload Files
+                UpdatePackageInfo pkg = UpdateManager.AvailablePackage ?? new UpdatePackageInfo();
+                string payloadDir = UpdateManager.FindPayloadDirectory(pkg);
+                string pDirText = string.IsNullOrEmpty(payloadDir) ? "Brak fizycznego katalogu (instalacja ze standardowej paczki)" : payloadDir;
 
-                string[] comps = new string[]
-                {
-                    "Jadro Systemu: Cosmos 3.0.95 x64 Native Single-vCPU (Release Pinned)",
-                    "Modul Bezpieczenstwa: IntegrityGuard 2.4 & FirewallManager 1.8 (Stateful)",
-                    "Baza Sum Kontrolnych: /etc/integrity.db (SHA-256 Anti-Tamper Baseline)",
-                    "Menedzer Hasel: PassVault 2.0 (Krypto SHA-256 + solenie + lockout)",
-                    "Aparat Testowy: SYSBenchmark 3.0 (Testy rzeczywiste CPU/RAM/VFS/VESA)",
-                    "Powłoka & Pakiety: Zonderq Shell Gen3 + zpkg 1.0 Isolated Store",
-                    "Punkt Przywrocenia: " + (UpdateManager.HasRollbackSnapshot() ? "Aktywna migawka /var/updates/backup" : "Brak migawki")
-                };
+                SmallTextRenderer.Draw(canvas, "Komponenty systemowe i ladunek aktualizacji:", x + 14, y + 10, AccentColor);
+                SmallTextRenderer.Draw(canvas, "Lokalizacja ladunku: " + pDirText, x + 14, y + 26, MutedColor);
+                canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
-                int lineY = y + 44;
-                for (int i = 0; i < comps.Length; i++)
+                int lineY = y + 50;
+                for (int i = 0; i < pkg.Components.Length && i < 5; i++)
                 {
                     canvas.DrawFilledRectangle(GreenColor, x + 16, lineY + 4, 6, 6);
-                    SmallTextRenderer.Draw(canvas, comps[i], x + 30, lineY, TextColor);
+                    SmallTextRenderer.Draw(canvas, pkg.Components[i], x + 30, lineY, TextColor);
                     lineY += 22;
                 }
+
+                lineY += 6;
+                canvas.DrawFilledRectangle(GoldColor, x + 16, lineY + 4, 6, 6);
+                SmallTextRenderer.Draw(canvas, "Aplikacje w wydaniu: Chiptune Studio, Szybkie Notatki, PassVault v2", x + 30, lineY, GoldColor);
+                lineY += 22;
+
+                canvas.DrawFilledRectangle(AccentColor, x + 16, lineY + 4, 6, 6);
+                SmallTextRenderer.Draw(canvas, "Konfiguracja wygladu: Automatyczny przelacznik motywu (Accent & Wallpaper)", x + 30, lineY, AccentColor);
             }
             else if (activeTab == 2)
             {
-                // History log
-                SmallTextRenderer.Draw(canvas, "Historia instalacji i wycofywania aktualizacji (/var/log/update.log):", x + 14, y + 12, AccentColor);
-                canvas.DrawLine(Border, x + 14, y + 32, x + w - 14, y + 32);
+                // Tab 2: Storage & USB Environment
+                StorageEnvironmentInfo env = UpdateManager.GetStorageEnvironmentInfo();
+                SmallTextRenderer.Draw(canvas, "Stan nosnikow i partycji ZonderqOS:", x + 14, y + 10, AccentColor);
+                SmallTextRenderer.Draw(canvas, "Partycja glowna: " + env.PartitionLabel + " (zamontowana jako '/') | Typ: " + env.DeviceType, x + 14, y + 26, MutedColor);
+                canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
+
+                int lineY = y + 50;
+
+                // Status 1: Updates directory
+                Color c1 = env.HasUpdatesDir ? GreenColor : MutedColor;
+                canvas.DrawFilledRectangle(c1, x + 16, lineY + 4, 6, 6);
+                SmallTextRenderer.Draw(canvas, "Katalog /updates na partycji USB: " + (env.HasUpdatesDir ? "DOSTEPNY" : "NIEWYKRYTY (utworz folder /updates)"), x + 30, lineY, TextColor);
+                lineY += 23;
+
+                // Status 2: Manifest file
+                Color c2 = env.HasManifest ? GreenColor : GoldColor;
+                canvas.DrawFilledRectangle(c2, x + 16, lineY + 4, 6, 6);
+                SmallTextRenderer.Draw(canvas, "Plik manifestu (update.manifest): " + (env.HasManifest ? "WYKRYTO (" + env.ManifestPath + ")" : "Brak (uzywany kanal online/offline)"), x + 30, lineY, TextColor);
+                lineY += 23;
+
+                // Status 3: Payload directory
+                Color c3 = env.HasPayload ? GreenColor : MutedColor;
+                canvas.DrawFilledRectangle(c3, x + 16, lineY + 4, 6, 6);
+                SmallTextRenderer.Draw(canvas, "Katalog plikow ladunku (/payload): " + (env.HasPayload ? "WYKRYTO (" + env.PayloadPath + ", " + env.PayloadFileCount + " plikow)" : "Brak oddzielnego katalogu"), x + 30, lineY, TextColor);
+                lineY += 23;
+
+                // Status 4: Kernel / ISO Image
+                Color c4 = env.HasKernelIso ? GreenColor : MutedColor;
+                canvas.DrawFilledRectangle(c4, x + 16, lineY + 4, 6, 6);
+                SmallTextRenderer.Draw(canvas, "Obraz rozruchowy jadra (update.iso): " + (env.HasKernelIso ? "WYKRYTO (" + env.KernelIsoPath + ")" : "Brak obrazu jądra (aktualizacja live)"), x + 30, lineY, TextColor);
+                lineY += 26;
+
+                // Info footer
+                SmallTextRenderer.Draw(canvas, "Wskazowka: Wrzucenie pliku update.manifest na USB automatycznie aktywuje instalacje.", x + 14, y + h - 20, AccentColor);
+            }
+            else if (activeTab == 3)
+            {
+                // Tab 3: History & Snapshots
+                SmallTextRenderer.Draw(canvas, "Historia instalacji i wycofywania aktualizacji (/var/log/update.log):", x + 14, y + 10, AccentColor);
+                SmallTextRenderer.Draw(canvas, "Punkt przywrocenia: " + (UpdateManager.HasRollbackSnapshot() ? "AKTYWNY (Zapisano migawke /var/updates/backup)" : "BRAK"), x + 14, y + 26, MutedColor);
+                canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
                 List<string> history = UpdateManager.GetHistory();
                 if (history.Count == 0)
                 {
-                    SmallTextRenderer.Draw(canvas, "Brak zarejestrowanych wpisow historii aktualizacji.", x + 16, y + 50, MutedColor);
+                    SmallTextRenderer.Draw(canvas, "Brak zarejestrowanych wpisow historii aktualizacji w systemie.", x + 16, y + 60, MutedColor);
                 }
                 else
                 {
-                    int lineY = y + 44;
-                    int start = Math.Max(0, history.Count - 7);
+                    int lineY = y + 50;
+                    int start = Math.Max(0, history.Count - 6);
                     for (int i = start; i < history.Count; i++)
                     {
                         Color lineCol = history[i].Contains("ROLLBACK") ? GoldColor : TextColor;

@@ -888,6 +888,12 @@ namespace ZonderqOS.GUI
                 "Podreczny notatnik i zolte karteczki na pulpicie z autozapisem",
                 AppCategory.Tools, IconType.FileDoc, () => LaunchQuickNotes(160, 90),
                 StartMenuPlacement.Tool, 26, 12, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Chiptune, "Chiptune Studio", "Chiptune Studio", "Chiptune",
+                "Syntezator audio 8-bit, pianino retro i kompozytor melodii PC Speaker",
+                AppCategory.Tools, IconType.Play, () => LaunchChiptune(150, 60),
+                StartMenuPlacement.Tool, 27, 13, true));
         }
 
         private void PopulateStartMenu()
@@ -1446,6 +1452,11 @@ namespace ZonderqOS.GUI
         private void LaunchQuickNotes(int x, int y)
         {
             applicationManager.Launch(new QuickNotesApp(x, y, null));
+        }
+
+        private void LaunchChiptune(int x, int y)
+        {
+            applicationManager.Launch(new ChiptuneApp(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,

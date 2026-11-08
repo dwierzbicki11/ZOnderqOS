@@ -35,21 +35,43 @@ namespace ZonderqOS.SystemCore.Updates
         public string Severity { get; set; } = "Bezpieczenstwo (Zalecana)";
         public int SizeKb { get; set; } = 1840;
         public string ExpectedSha256 { get; set; } = "a7f34c99e1208b5e91223fa87114bca03f88bcde1a4209930fef6a190035ab41";
+        public int TargetTheme { get; set; } = 2; // Emerald Forest
+        public int TargetWallpaper { get; set; } = 6; // Nordic Glacier
+        public string TargetThemeName { get; set; } = "EMERALD FOREST";
+        public string PayloadPath { get; set; } = "";
+        public string KernelImagePath { get; set; } = "";
+        public string[] AppIds { get; set; } = new string[] { "quick-notes", "chiptune" };
         public string[] Changelog { get; set; } = new string[]
         {
+            "Nowa aplikacja: Chiptune Studio (Syntezator PC Speaker 8-bit & pianino retro)",
+            "Nowa aplikacja: Szybkie Notatki (Sticky Notes z autozapisem)",
+            "Odswiezenie wizualne pulpitu: Nowy motyw i tapeta (Emerald & Nordic Glacier)",
             "Wzmocnienie krypto PassVault: SHA-256 z soleniem, ochrona anty-bruteforce",
-            "Pelny silnik benchmarkow rzeczywistych SYSBenchmark (Sieve, Mandelbrot, CRC32, VFS IO)",
-            "System ochrony integralnosci plikow IntegrityGuard i anti-tamper /etc/integrity.db",
-            "Stanowy firewall sieciowy z dynamicznymi regulami portow i profilem rygorystycznym",
+            "Pelny sprzetowy silnik benchmarkow rzeczywistych SYSBenchmark 3.0",
+            "Stanowy firewall sieciowy z regulami dynamicznymi i IntegrityGuard 2.4",
             "Optymalizacja akceleracji VESA i menedzera okien dla Cosmos 3.0.95"
         };
         public string[] Components { get; set; } = new string[]
         {
             "Kernel: Cosmos 3.0.95 x64 Native Core",
             "Security: IntegrityGuard 2.4 & FirewallManager 1.8",
-            "Apps: PassVault 2.0 Hardened & SYSBenchmark 3.0",
-            "Shell: zupdate 1.0 & zpkg package registry"
+            "Apps: Chiptune Studio 1.0, QuickNotes 1.0, PassVault 2.0, SYSBenchmark 3.0",
+            "Shell: zupdate 2.0 (USB & Live Payload Engine) & zpkg package registry"
         };
+    }
+
+    public sealed class StorageEnvironmentInfo
+    {
+        public string PartitionLabel { get; set; } = "ZONDERQDATA";
+        public string DeviceType { get; set; } = "Dysk USB / Dedykowany";
+        public bool HasUpdatesDir { get; set; } = false;
+        public bool HasManifest { get; set; } = false;
+        public bool HasPayload { get; set; } = false;
+        public bool HasKernelIso { get; set; } = false;
+        public string ManifestPath { get; set; } = "";
+        public string PayloadPath { get; set; } = "";
+        public string KernelIsoPath { get; set; } = "";
+        public int PayloadFileCount { get; set; } = 0;
     }
 
     public static class UpdateManager
@@ -291,6 +313,145 @@ namespace ZonderqOS.SystemCore.Updates
             }
         }
 
+        public static int ParseTheme(string input)
+        {
+            if (int.TryParse(input, out int id))
+            {
+                if (id >= 0 && id <= 7) return id;
+            }
+            string s = input.ToUpperInvariant();
+            if (s.Contains("STEEL") || s.Contains("GRAPHITE")) return 1;
+            if (s.Contains("EMERALD") || s.Contains("FOREST")) return 2;
+            if (s.Contains("CYBER") || s.Contains("PUNK")) return 3;
+            if (s.Contains("NORDIC") || s.Contains("FROST")) return 4;
+            if (s.Contains("RETRO") || s.Contains("95")) return 5;
+            if (s.Contains("GOLD") || s.Contains("OLED")) return 6;
+            if (s.Contains("CRIMSON") || s.Contains("FLAME")) return 7;
+            return 0; // Cosmos Blue
+        }
+
+        public static int ParseWallpaper(string input)
+        {
+            if (int.TryParse(input, out int id))
+            {
+                if (id >= 0 && id <= 6) return id;
+            }
+            string s = input.ToUpperInvariant();
+            if (s.Contains("GRAFIT") || s.Contains("GRAPHITE")) return 1;
+            if (s.Contains("NAVY") || s.Contains("COSMOS")) return 2;
+            if (s.Contains("OLED") || s.Contains("MIDNIGHT")) return 3;
+            if (s.Contains("RETRO") || s.Contains("TEAL")) return 4;
+            if (s.Contains("MATRIX") || s.Contains("CYBER")) return 5;
+            if (s.Contains("GLACIER") || s.Contains("NORDIC")) return 6;
+            return 0; // Default PNG
+        }
+
+        public static string FindPayloadDirectory(UpdatePackageInfo pkg)
+        {
+            if (pkg != null && !string.IsNullOrEmpty(pkg.PayloadPath) && Directory.Exists(pkg.PayloadPath))
+                return pkg.PayloadPath;
+
+            if (Directory.Exists("/updates/payload"))
+                return "/updates/payload";
+
+            if (Directory.Exists("/var/updates/incoming/payload"))
+                return "/var/updates/incoming/payload";
+
+            return null;
+        }
+
+        public static StorageEnvironmentInfo GetStorageEnvironmentInfo()
+        {
+            var info = new StorageEnvironmentInfo();
+            try
+            {
+                info.HasUpdatesDir = Directory.Exists("/updates");
+                string[] manifests = { "/updates/update.manifest", "/var/updates/incoming/update.manifest", "/var/updates/update.manifest" };
+                for (int i = 0; i < manifests.Length; i++)
+                {
+                    if (File.Exists(manifests[i]))
+                    {
+                        info.HasManifest = true;
+                        info.ManifestPath = manifests[i];
+                        break;
+                    }
+                }
+
+                string payloadDir = FindPayloadDirectory(null);
+                if (!string.IsNullOrEmpty(payloadDir))
+                {
+                    info.HasPayload = true;
+                    info.PayloadPath = payloadDir;
+                    try
+                    {
+                        info.PayloadFileCount = Directory.GetFiles(payloadDir).Length;
+                    }
+                    catch { }
+                }
+
+                string[] isos = { "/updates/update.iso", "/updates/boot.bin", "/updates/kernel.bin", "/var/updates/incoming/update.iso" };
+                for (int i = 0; i < isos.Length; i++)
+                {
+                    if (File.Exists(isos[i]))
+                    {
+                        info.HasKernelIso = true;
+                        info.KernelIsoPath = isos[i];
+                        break;
+                    }
+                }
+            }
+            catch { }
+            return info;
+        }
+
+        private static void DeployDirectory(string sourceDir, string targetDir, string backupRoot)
+        {
+            if (!Directory.Exists(targetDir))
+            {
+                try { Directory.CreateDirectory(targetDir); } catch { }
+            }
+
+            try
+            {
+                string[] files = Directory.GetFiles(sourceDir);
+                for (int i = 0; i < files.Length; i++)
+                {
+                    string srcFile = files[i];
+                    string name = Path.GetFileName(srcFile);
+                    string dstFile = Path.Combine(targetDir, name);
+
+                    if (File.Exists(dstFile) && !string.IsNullOrEmpty(backupRoot))
+                    {
+                        try
+                        {
+                            string relPath = dstFile.TrimStart('/');
+                            string backupDst = Path.Combine(backupRoot, relPath);
+                            string backupFolder = Path.GetDirectoryName(backupDst);
+                            if (!string.IsNullOrEmpty(backupFolder) && !Directory.Exists(backupFolder))
+                                Directory.CreateDirectory(backupFolder);
+                            File.Copy(dstFile, backupDst, true);
+                        }
+                        catch { }
+                    }
+
+                    try
+                    {
+                        File.Copy(srcFile, dstFile, true);
+                    }
+                    catch { }
+                }
+
+                string[] dirs = Directory.GetDirectories(sourceDir);
+                for (int i = 0; i < dirs.Length; i++)
+                {
+                    string srcSub = dirs[i];
+                    string subName = Path.GetFileName(srcSub);
+                    DeployDirectory(srcSub, Path.Combine(targetDir, subName), backupRoot);
+                }
+            }
+            catch { }
+        }
+
         public static bool TryLoadDiskManifest(out UpdatePackageInfo pkg)
         {
             pkg = null;
@@ -330,6 +491,32 @@ namespace ZonderqOS.SystemCore.Updates
                         else if (key == "SEVERITY") parsed.Severity = val;
                         else if (key == "SIZE_KB") { int s; if (int.TryParse(val, out s)) parsed.SizeKb = s; }
                         else if (key == "SHA256") parsed.ExpectedSha256 = val;
+                        else if (key == "THEME" || key == "TARGET_THEME")
+                        {
+                            parsed.TargetTheme = ParseTheme(val);
+                            parsed.TargetThemeName = val;
+                        }
+                        else if (key == "WALLPAPER" || key == "TARGET_WALLPAPER")
+                        {
+                            parsed.TargetWallpaper = ParseWallpaper(val);
+                        }
+                        else if (key == "PAYLOAD" || key == "PAYLOAD_DIR")
+                        {
+                            parsed.PayloadPath = val;
+                        }
+                        else if (key == "KERNEL_ISO" || key == "KERNEL_IMAGE")
+                        {
+                            parsed.KernelImagePath = val;
+                        }
+                        else if (key == "APPS" || key == "NEW_APPS")
+                        {
+                            string[] apps = val.Split(';', StringSplitOptions.RemoveEmptyEntries);
+                            if (apps.Length > 0)
+                            {
+                                for (int a = 0; a < apps.Length; a++) apps[a] = apps[a].Trim();
+                                parsed.AppIds = apps;
+                            }
+                        }
                         else if (key == "CHANGELOG")
                         {
                             string[] items = val.Split(';', StringSplitOptions.RemoveEmptyEntries);
@@ -337,6 +524,15 @@ namespace ZonderqOS.SystemCore.Updates
                             {
                                 for (int j = 0; j < items.Length; j++) items[j] = items[j].Trim();
                                 parsed.Changelog = items;
+                            }
+                        }
+                        else if (key == "COMPONENTS")
+                        {
+                            string[] comps = val.Split(';', StringSplitOptions.RemoveEmptyEntries);
+                            if (comps.Length > 0)
+                            {
+                                for (int c = 0; c < comps.Length; c++) comps[c] = comps[c].Trim();
+                                parsed.Components = comps;
                             }
                         }
                     }
@@ -367,11 +563,11 @@ namespace ZonderqOS.SystemCore.Updates
 
             try
             {
-                // Step 1: Staging package files
+                // Step 1: Detect and stage package payload
                 Status = UpdateStatus.Downloading;
-                progress?.Invoke(15, "Przygotowywanie komponentow aktualizacji...");
+                progress?.Invoke(15, "Skanowanie zrodel aktualizacji i ladowanie payloadu...");
 
-                // Simulate/execute payload staging
+                string payloadDir = FindPayloadDirectory(pkg);
                 string stageFile = Path.Combine(IncomingDir, "update-" + pkg.Version + ".bin");
                 byte[] mockPayload = System.Text.Encoding.ASCII.GetBytes("ZONDERQ_UPDATE_PAYLOAD_" + pkg.Version + "_" + pkg.BuildNumber);
                 File.WriteAllBytes(stageFile, mockPayload);
@@ -389,11 +585,19 @@ namespace ZonderqOS.SystemCore.Updates
 
                 // Step 3: Create system snapshot backup for rollback
                 Status = UpdateStatus.Installing;
-                progress?.Invoke(55, "Tworzenie migawki systemu (kopia zapasowa /etc i metadanych)...");
+                progress?.Invoke(50, "Tworzenie migawki systemu (kopia zapasowa motywow, /etc i metadanych)...");
                 CreateRollbackSnapshot();
 
-                // Step 4: Apply system configurations & update /etc/os-release
-                progress?.Invoke(75, "Instalowanie nowych komponentow i aktualizacja /etc/os-release...");
+                // Step 4: Deploy payload files if present
+                if (!string.IsNullOrEmpty(payloadDir) && Directory.Exists(payloadDir))
+                {
+                    progress?.Invoke(65, "Instalowanie fizycznych plikow ladunku na dysku...");
+                    string backupPayload = Path.Combine(BackupDir, "payload_snapshot");
+                    DeployDirectory(payloadDir, "/", backupPayload);
+                }
+
+                // Step 5: Apply system configurations & update /etc/os-release
+                progress?.Invoke(75, "Konfiguracja tozsamosci systemu /etc/os-release...");
                 string newOsRelease = "NAME=\"ZonderqOS\"\n" +
                                       "ID=zonderqos\n" +
                                       "VERSION_ID=\"" + pkg.Version + "\"\n" +
@@ -406,43 +610,55 @@ namespace ZonderqOS.SystemCore.Updates
                 File.WriteAllText("/etc/issue", "ZonderqOS " + pkg.Version + " (Build " + pkg.BuildNumber + ")\n");
 
                 // Update integrity baseline for newly updated files
-                progress?.Invoke(90, "Odswiezanie bazy integralnosci IntegrityGuard...");
+                progress?.Invoke(85, "Odswiezanie bazy integralnosci IntegrityGuard...");
                 IntegrityGuard.UpdateBaseline();
 
-                // Apply visible feature enhancements (theme, desktop report, notifications)
+                // Step 6: Apply real visual theme and wallpaper changes
+                progress?.Invoke(92, "Zastosowanie nowego motywu wizualnego i tapety...");
                 try
                 {
-                    global::ZonderqOS.SystemSettings.SetAccentTheme(2); // Emerald Forest
-                    global::ZonderqOS.SystemSettings.SetDesktopBackground(6); // Nordic Glacier
+                    global::ZonderqOS.SystemSettings.SetAccentTheme(pkg.TargetTheme);
+                    global::ZonderqOS.SystemSettings.SetDesktopBackground(pkg.TargetWallpaper);
 
-                    string report = "============================================================\n" +
-                                    "         ZONDERQOS - RAPORT AKTUALIZACJI SYSTEMU\n" +
-                                    "============================================================\n" +
-                                    "Wersja zainstalowana: " + pkg.Version + " (Build " + pkg.BuildNumber + ")\n" +
-                                    "Tytul wydania:        " + pkg.Title + "\n" +
-                                    "Data instalacji:      " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n" +
-                                    "Suma SHA-256 payload: " + actualHash + "\n\n" +
-                                    "WIDOCZNE NOWOSCI W TYM WYDANIU:\n" +
-                                    "1. [NOWA APLIKACJA] Szybkie Notatki (Sticky Notes) na pulpicie i w menu!\n" +
-                                    "2. [NOWY WYGLAD] Odswiezony motyw graficzny (Emerald Forest & Nordic Glacier)\n" +
-                                    "3. [PULPIT] Certyfikat kompilacji i znak wodny aktualizacji w prawym dolnym rogu\n" +
-                                    "4. [BEZPIECZENSTWO] Szyfrowany Sejf Hasel PassVault v2 z ochrona anty-bruteforce\n" +
-                                    "5. [TESTY] Prawdziwy sprzetowy silnik testowy SYSBenchmark 3.0\n" +
-                                    "6. [CENTRUM BEZPIECZENSTWA] Zapora sieciowa z regulami portow i anti-tamper\n\n" +
-                                    "W kazdej chwili mozesz przywrocic poprzedni stan systemu za pomoca:\n" +
-                                    "  * Aplikacji Aktualizacje (przycisk 'Przywroc Migawke')\n" +
-                                    "  * Wiersza polecen: 'zupdate rollback'\n" +
-                                    "============================================================\n";
-                    File.WriteAllText("/root/Co_Nowego_W_Aktualizacji.txt", report);
+                    // Dynamic release report
+                    System.Text.StringBuilder sb = new System.Text.StringBuilder();
+                    sb.AppendLine("============================================================");
+                    sb.AppendLine("         ZONDERQOS - RAPORT AKTUALIZACJI SYSTEMU");
+                    sb.AppendLine("============================================================");
+                    sb.AppendLine("Wersja zainstalowana: " + pkg.Version + " (Build " + pkg.BuildNumber + ")");
+                    sb.AppendLine("Tytul wydania:        " + pkg.Title);
+                    sb.AppendLine("Data instalacji:      " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss"));
+                    sb.AppendLine("Aktywny motyw:        " + global::ZonderqOS.SystemSettings.AccentThemeName);
+                    sb.AppendLine("Aktywna tapeta:       " + global::ZonderqOS.SystemSettings.DesktopBackgroundName);
+                    sb.AppendLine("Suma SHA-256 payload: " + actualHash);
+                    sb.AppendLine();
+                    sb.AppendLine("DZIENNIK ZMIAN W TYM WYDANIU:");
+                    for (int i = 0; i < pkg.Changelog.Length; i++)
+                    {
+                        sb.AppendLine("  * " + pkg.Changelog[i]);
+                    }
+                    sb.AppendLine();
+                    sb.AppendLine("ZAINSTALOWANE KOMPONENTY:");
+                    for (int i = 0; i < pkg.Components.Length; i++)
+                    {
+                        sb.AppendLine("  + " + pkg.Components[i]);
+                    }
+                    sb.AppendLine();
+                    sb.AppendLine("W kazdej chwili mozesz przywrocic poprzedni stan systemu:");
+                    sb.AppendLine("  * Aplikacja Aktualizacje -> Zakladka 'Historia i Migawki' -> Przywroc");
+                    sb.AppendLine("  * Wiersz polecen: 'zupdate rollback'");
+                    sb.AppendLine("============================================================");
+
+                    File.WriteAllText("/root/Co_Nowego_W_Aktualizacji.txt", sb.ToString());
                     global::ZonderqOS.NotificationService.Post(
                         global::ZonderqOS.NotificationKind.Success,
                         "AKTUALIZACJA",
                         "ZOnderqOS " + pkg.Version,
-                        "Zainstalowano nowosci: Szybkie Notatki, nowy motyw i raport na pulpicie!");
+                        "Zainstalowano pomyslnie: " + pkg.Title + "!");
                 }
                 catch { }
 
-                // Step 5: Append to update log & record audit event
+                // Step 7: Finalize
                 progress?.Invoke(100, "Aktualizacja zakonczona sukcesem! Wymagany restart.");
                 CurrentVersion = pkg.Version;
                 CurrentBuild = pkg.BuildNumber.ToString();
@@ -488,10 +704,12 @@ namespace ZonderqOS.SystemCore.Updates
                     File.Copy(ConfigPath, backupCfg, true);
                 }
 
-                // Write metadata marker
+                // Write metadata marker with theme state
                 string meta = "TIMESTAMP=" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n" +
                               "PREVIOUS_VERSION=" + CurrentVersion + "\n" +
-                              "PREVIOUS_BUILD=" + CurrentBuild + "\n";
+                              "PREVIOUS_BUILD=" + CurrentBuild + "\n" +
+                              "PREVIOUS_THEME=" + global::ZonderqOS.SystemSettings.AccentTheme + "\n" +
+                              "PREVIOUS_WALLPAPER=" + global::ZonderqOS.SystemSettings.DesktopBackgroundMode + "\n";
                 File.WriteAllText(Path.Combine(BackupDir, "snapshot.meta"), meta);
             }
             catch { }
@@ -526,6 +744,9 @@ namespace ZonderqOS.SystemCore.Updates
                 progress?.Invoke(20, "Odczytywanie danych migawki systemu...");
                 string metaFile = Path.Combine(BackupDir, "snapshot.meta");
                 string prevVersion = "2026.11.0";
+                int prevTheme = 0;
+                int prevWallpaper = 0;
+
                 if (File.Exists(metaFile))
                 {
                     string[] lines = File.ReadAllLines(metaFile);
@@ -533,14 +754,26 @@ namespace ZonderqOS.SystemCore.Updates
                     {
                         if (l.StartsWith("PREVIOUS_VERSION=", StringComparison.OrdinalIgnoreCase))
                             prevVersion = l.Substring(17).Trim();
+                        else if (l.StartsWith("PREVIOUS_THEME=", StringComparison.OrdinalIgnoreCase))
+                            int.TryParse(l.Substring(15).Trim(), out prevTheme);
+                        else if (l.StartsWith("PREVIOUS_WALLPAPER=", StringComparison.OrdinalIgnoreCase))
+                            int.TryParse(l.Substring(19).Trim(), out prevWallpaper);
                     }
                 }
 
-                progress?.Invoke(50, "Przywracanie poprzedniej konfiguracji /etc/os-release...");
+                progress?.Invoke(45, "Przywracanie poprzedniej konfiguracji /etc/os-release...");
                 string backupOsRel = Path.Combine(BackupDir, "os-release.snapshot");
                 if (File.Exists(backupOsRel))
                 {
                     File.Copy(backupOsRel, OsReleasePath, true);
+                }
+
+                // Restore payload files if backed up
+                string backupPayloadDir = Path.Combine(BackupDir, "payload_snapshot");
+                if (Directory.Exists(backupPayloadDir))
+                {
+                    progress?.Invoke(65, "Przywracanie poprzednich plikow ladunku...");
+                    DeployDirectory(backupPayloadDir, "/", null);
                 }
 
                 progress?.Invoke(80, "Aktualizowanie bazy integralnosci IntegrityGuard...");
@@ -548,15 +781,16 @@ namespace ZonderqOS.SystemCore.Updates
 
                 try
                 {
-                    global::ZonderqOS.SystemSettings.SetAccentTheme(0); // Cosmos Blue
-                    global::ZonderqOS.SystemSettings.SetDesktopBackground(0); // Default Wallpaper
+                    global::ZonderqOS.SystemSettings.SetAccentTheme(prevTheme);
+                    global::ZonderqOS.SystemSettings.SetDesktopBackground(prevWallpaper);
                     if (File.Exists("/root/Co_Nowego_W_Aktualizacji.txt"))
                         File.Delete("/root/Co_Nowego_W_Aktualizacji.txt");
+
                     global::ZonderqOS.NotificationService.Post(
                         global::ZonderqOS.NotificationKind.Warning,
                         "ROLLBACK",
                         "Przywrocono " + prevVersion,
-                        "Przywrocono domyslny motyw i stan systemu.");
+                        "Przywrocono poprzedni motyw, tapete i stan systemu.");
                 }
                 catch { }
 
