@@ -122,6 +122,32 @@ def inspect_silent_tail(path: Path):
     if (sum(abs(sample) >= 256 for sample in pre_tail[::2]) < rate // 10
             or sum(abs(sample) >= 256 for sample in pre_tail[1::2]) < rate // 10):
         raise ValueError("missing sustained float tone before silent tail")
+    # Require two separated pitch-bearing windows before the quiet tail.
+    # An arbitrary loud noise burst is not proof that the float tone played.
+    left = pre_tail[::2]
+    right = pre_tail[1::2]
+    window_frames = rate * 8 // 100
+    starts = []
+    for i in range(0, len(left) - window_frames + 1, max(1, rate // 200)):
+        chunk = left[i:i + window_frames]
+        if sum(abs(x) >= 256 for x in chunk) * 100 < len(chunk) * 95:
+            continue
+        if starts and i < starts[0] + window_frames:
+            continue
+        starts.append(i)
+        if len(starts) == 2:
+            break
+    if len(starts) != 2:
+        raise ValueError("missing two sustained float tone windows")
+    for start in starts:
+        for channel in (left, right):
+            chunk = channel[start:start + window_frames]
+            if sum(abs(x) >= 256 for x in chunk) * 100 < len(chunk) * 95:
+                raise ValueError("missing sustained float tone in stereo channel")
+            crossings = sum((a < 0) != (b < 0) for a, b in zip(chunk, chunk[1:]))
+            hz = crossings * rate / (2 * (len(chunk) - 1))
+            if not 2860 * 0.90 <= hz <= 2860 * 1.10:
+                raise ValueError(f"float tail wrong pitch: {hz:.1f}Hz")
     tail_frames = rate // 50  # 20ms
     tail = samples[-tail_frames * 2:]
     if len(tail) != tail_frames * 2:
