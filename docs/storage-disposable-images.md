@@ -86,3 +86,20 @@ both package pins; checks also run with Python optimization enabled. Existing
 host/EFI, unique-label, mount and disabled-format source contracts remain intact.
 This source-level gate does not resolve the invalid global.json or replace a
 kernel build and hardware/QEMU tests. No SDK/package version was changed.
+
+### Production allocation scanner against file images
+
+Run `python3 tests/test_storage_scanner_images.py` with .NET 10 on `PATH`
+(or set `DOTNET` to its executable). The test builds `Fat32FileImageSmoke`,
+which links the production `Fat32Allocation.cs`, and creates fresh disposable
+images in temporary directories. It checks normal/full allocation totals,
+stale FSInfo, mirror corruption, a free root cluster, truncated sectors, and
+closing the read handle between incremental steps. Failed scans must publish
+no statistics and must remain terminal; SHA-256 checks ensure reads do not
+change the images. Valid images must give identical synchronous and incremental
+results. Missing .NET fails the test instead of skipping it.
+
+This is file-backed host coverage, not a Cosmos block-driver or QEMU hot-unplug
+experiment. It does not verify FAT writes, full-disk write error propagation,
+or mounting policy. The storage CI host job runs this test alongside the existing
+behavior suites; independent fsck validation remains in the disposable FAT job.

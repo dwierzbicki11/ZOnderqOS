@@ -40,6 +40,9 @@ jobs:
             dotnet run --project "tests/$suite/$suite.csproj" --configuration Release
           done
 
+      - name: Scan disposable on-disk FAT bytes with production allocation code
+        run: python3 tests/test_storage_scanner_images.py
+
   disposable-fat:
     runs-on: ubuntu-latest
     timeout-minutes: 10
