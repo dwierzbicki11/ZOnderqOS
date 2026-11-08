@@ -41,7 +41,7 @@ namespace ZonderqOS
             Register(new CmdMkpart()); Register(new CmdShutDown()); Register(new CmdReboot());
             Register(new CmdUserAdd()); Register(new CmdSu()); Register(new CmdLogout());
             Register(new CmdSh()); Register(new CmdAudit()); Register(new CmdNano());
-            Register(new CmdIntegrity()); Register(new CmdFirewall());
+            Register(new CmdIntegrity()); Register(new CmdFirewall()); Register(new CmdUpdate());
             Register(new CmdChmod()); Register(new CmdFree()); Register(new CmdUptime());
             Register(new CmdUname()); Register(new CmdPs()); Register(new CmdPidof());
             Register(new CmdPgrep()); Register(new CmdKillall()); Register(new CmdHtop());

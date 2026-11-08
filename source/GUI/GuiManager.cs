@@ -859,6 +859,12 @@ namespace ZonderqOS.GUI
                 "Ochrona anty-tamper, integralnosc plikow, zapora sieciowa i audyt",
                 AppCategory.System, IconType.Settings, () => LaunchSecurityCenter(135, 50),
                 StartMenuPlacement.Tool, 24, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.SystemUpdater, "Aktualizacje Systemu", "Aktualizacje", "Aktualizacje",
+                "Menedzer aktualizacji OS, kanaly dystrybucji, weryfikacja SHA-256 i rollback",
+                AppCategory.System, IconType.Install, () => LaunchSystemUpdater(130, 45),
+                StartMenuPlacement.Tool, 25, 11, true));
         }
 
         private void PopulateStartMenu()
@@ -1407,6 +1413,11 @@ namespace ZonderqOS.GUI
         private void LaunchSecurityCenter(int x, int y)
         {
             applicationManager.Launch(new SecurityCenterApp(x, y, null));
+        }
+
+        private void LaunchSystemUpdater(int x, int y)
+        {
+            applicationManager.Launch(new SystemUpdaterApp(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
