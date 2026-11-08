@@ -235,7 +235,8 @@ class WavValidatorTests(unittest.TestCase):
         with self.path.open("wb") as capture:
             capture.write(header)
             capture.seek(44 + data_bytes - 1)
-            capture.write(b"\\x00")
+            capture.write(b"\x00")
+        self.assertEqual(self.path.stat().st_size, 44 + data_bytes)
         with self.assertRaisesRegex(ValueError, "longer than 90 s"):
             audio.inspect_silent_tail(self.path)
 
