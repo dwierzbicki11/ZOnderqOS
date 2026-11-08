@@ -1,0 +1,15 @@
+# ZonderqOS Verified Update Package Manifest
+VERSION=1.0.1
+BUILD=3110
+ARCH=x86_64
+TITLE=ZonderqOS Gen3 1.0.1 Kernel & System Update
+DATE=2026-11-08
+SEVERITY=Zalecana
+KERNEL_IMAGE=ZonderqOS.elf
+KERNEL_SHA256=bb00960034ff6d34cdabbb5302090599792383b55f3adffd7fa3681782e8a990
+PAYLOAD_DIR=payload
+SIGNATURE=9bab71f8ebf0325a8d3da308fb3ef60b027803a36754ccdb2e8c53c53e80b01d
+THEME=EMERALD FOREST
+WALLPAPER=6
+CHANGELOG=Nieresponsywnosc GUI podczas aktualizacji usunieta (wielokrokowa maszyna stanow);Prawidlowy ekran bezpiecznego wylaczenia na laptopach bare-metal;Rozszerzona telemetria RAM i CPU w Menedzerze Zadan ze sformatowanymi jednostkami
+COMPONENTS=Cosmos 3.0.95 x64 Native Core;ZonderqOS Kernel ELF;BootSlotManager A/B;TaskManager Telemetry;SystemPower BareMetal Screen
