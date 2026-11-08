@@ -326,6 +326,26 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "too short"):
             audio.inspect(self.path)
 
+    def test_rejects_truncated_pcm_payload(self):
+        # A valid WAV header can advertise more frames than exist on disk.
+        # Never certify playback from a partially written QEMU capture.
+        self.make_wave()
+        with wave.open(str(self.path), "rb") as wav:
+            frames = wav.getnframes()
+        with self.path.open("r+b") as capture:
+            capture.truncate(44 + frames * 4 - 16)
+        with self.assertRaisesRegex(ValueError, "truncated capture PCM payload"):
+            audio.inspect(self.path)
+
+    def test_float_tail_rejects_truncated_pcm_payload(self):
+        self.make_wave(frequency=2860, ms=330, silence_ms=0)
+        with wave.open(str(self.path), "rb") as wav:
+            frames = wav.getnframes()
+        with self.path.open("r+b") as capture:
+            capture.truncate(44 + frames * 4 - 16)
+        with self.assertRaisesRegex(ValueError, "truncated capture PCM payload"):
+            audio.inspect_silent_tail(self.path)
+
     def test_rejects_wrong_bit_depth(self):
         self.make_wave(width=1)
         with self.assertRaisesRegex(ValueError, "unsupported capture format"):
