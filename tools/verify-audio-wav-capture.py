@@ -32,6 +32,8 @@ def inspect(path: Path, expected_hz: int = 440):
         if frames > rate * 90:
             raise ValueError("capture longer than 90 s; isolate one tone per run")
         raw = wav.readframes(frames)
+        if len(raw) != frames * channels * width:
+            raise ValueError("truncated capture PCM payload")
 
     samples = array.array("h")
     samples.frombytes(raw)
@@ -114,6 +116,8 @@ def inspect_silent_tail(path: Path):
         if frames > rate * 90:
             raise ValueError("float tail capture longer than 90 s; isolate one probe per run")
         raw = wav.readframes(frames)
+        if len(raw) != frames * channels * width:
+            raise ValueError("truncated capture PCM payload")
     samples = array.array("h")
     samples.frombytes(raw)
     if sys.byteorder != "little":
