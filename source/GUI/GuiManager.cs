@@ -142,6 +142,11 @@ namespace ZonderqOS.GUI
                         "System jest zaktualizowany! Sprawdz nowe aplikacje i raport zmian.");
                 }
 
+                // Show Welcome App on desktop startup
+                int welcomeX = System.Math.Max(20, ((int)canvas.Width - 620) / 2);
+                int welcomeY = System.Math.Max(20, ((int)canvas.Height - 420) / 2);
+                LaunchWelcome(welcomeX, welcomeY);
+
                 bool previousLeftButtonState = false;
                 bool previousRightButtonState = false;
                 // A modal may close on mouse-down. The rest of that physical
@@ -900,6 +905,12 @@ namespace ZonderqOS.GUI
                 "Klasyczna strategiczna gra w bitwe morska z taktycznym komputerowym AI",
                 AppCategory.Games, IconType.Play, () => LaunchBattleship(140, 50),
                 StartMenuPlacement.Tool, 28, 14, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Welcome, "Witamy", "Witamy", "Witamy",
+                "Centrum powitalne i przewodnik po wydaniu ZOnderqOS 1.0 Alpha",
+                AppCategory.System, IconType.About, () => LaunchWelcome(120, 35),
+                StartMenuPlacement.Tool, 29, 15, true));
         }
 
         private void PopulateStartMenu()
@@ -1470,6 +1481,11 @@ namespace ZonderqOS.GUI
             applicationManager.Launch(new BattleshipApp(x, y, null));
         }
 
+        private void LaunchWelcome(int x, int y)
+        {
+            applicationManager.Launch(new WelcomeApp(x, y, null, (appId) => LaunchRegisteredApp(appId)));
+        }
+
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
             bool rightClicked, bool wasRightClicked)
         {
@@ -1691,15 +1707,8 @@ namespace ZonderqOS.GUI
             string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
             string curBuild = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild;
 
-            if (curVer != "2026.11.0" && curVer != "3")
-            {
-                SmallTextRenderer.Draw(canvas, "ZOnderqOS " + curVer + " [ZAKTUALIZOWANO \u2713]", deskW - 275, deskH - 34, Color.FromArgb(70, 225, 120));
-                SmallTextRenderer.Draw(canvas, "Build " + curBuild + " • Security & Feature Rollup", deskW - 275, deskH - 18, Color.FromArgb(170, 195, 220));
-            }
-            else
-            {
-                SmallTextRenderer.Draw(canvas, "ZOnderqOS " + curVer + " • Cosmos 3.0.95 x64", deskW - 225, deskH - 18, Color.FromArgb(100, 120, 145));
-            }
+            SmallTextRenderer.Draw(canvas, "ZOnderqOS 1.0 Alpha • Build " + curBuild + " [ALFA 1]", deskW - 275, deskH - 34, Color.FromArgb(70, 225, 120));
+            SmallTextRenderer.Draw(canvas, "Wersja " + curVer + " • Cosmos 3.0.95 x64 Native", deskW - 275, deskH - 18, Color.FromArgb(170, 195, 220));
         }
     }
 }

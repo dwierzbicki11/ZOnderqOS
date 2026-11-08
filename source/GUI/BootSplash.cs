@@ -165,7 +165,7 @@ namespace ZonderqOS.GUI
             canvas.DrawFilledRectangle(glyph, left, top + symbolSize - stroke,
                 symbolSize, stroke);
 
-            string name = "ZONDERQ OS";
+            string name = "ZONDERQOS 1.0 ALPHA";
             canvas.DrawString(name, PCScreenFont.DefaultFont, Text,
                 centerX - name.Length * 4, centerY + orbitRadius + 27);
 
@@ -179,8 +179,8 @@ namespace ZonderqOS.GUI
 
             canvas.DrawString(currentStep, PCScreenFont.DefaultFont, Muted,
                 centerX - currentStep.Length * 4, barY + 24);
-            canvas.DrawString("COSMOS GEN 3  /  3.0.94", PCScreenFont.DefaultFont,
-                Muted, centerX - 104, height - 36);
+            canvas.DrawString("COSMOS 3.0.95 X64  /  GEN 3", PCScreenFont.DefaultFont,
+                Muted, centerX - 110, height - 36);
 
             canvas.Display();
             frame++;

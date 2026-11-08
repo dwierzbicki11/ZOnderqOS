@@ -49,9 +49,9 @@ namespace ZonderqOS.GUI.Apps
             {
                 string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
                 IconManager.DrawScaled(canvas, IconType.Start, x + 18, y + 18, 42, 42);
-                UiTypography.Heading(canvas, "ZOnderqOS " + curVer, x + 78, y + 13,
+                UiTypography.Heading(canvas, "ZOnderqOS 1.0 Alpha", x + 78, y + 13,
                     System.Math.Max(1, width - 94), UiPalette.Text);
-                UiTypography.Caption(canvas, "COSMOS KERNEL GEN 3  /  SDK 3.0.95",
+                UiTypography.Caption(canvas, "WERSJA " + curVer + "  /  COSMOS SDK 3.0.95 X64",
                     x + 78, y + 43, System.Math.Max(1, width - 94));
             }
 
@@ -60,21 +60,16 @@ namespace ZonderqOS.GUI.Apps
             if (height >= 110)
             {
                 string curBuild = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild;
-                UiTypography.Caption(canvas, "KOMPILACJA: BUILD " + curBuild + " (X86_64 SINGLE-VCPU)",
+                UiTypography.Caption(canvas, "KOMPILACJA: BUILD " + curBuild + " (X86_64 SINGLE-VCPU NATIVE AOT)",
                     x + 18, y + 96, System.Math.Max(1, width - 36));
             }
             if (height >= 140)
             {
-                string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
-                if (curVer != "2026.11.0" && curVer != "3")
-                    UiTypography.Caption(canvas, "STAN: ZAKTUALIZOWANO DO NAJNOWSZEJ WERSJI [OK]",
-                        x + 18, y + 124, System.Math.Max(1, width - 36));
-                else
-                    UiTypography.Caption(canvas, "PULPIT  /  TERMINAL  /  APLIKACJE",
-                        x + 18, y + 124, System.Math.Max(1, width - 36));
+                UiTypography.Caption(canvas, "ZESTAW: 29 WBUDOWANYCH APLIKACJI, STATKI, CHIPTUNE, OTA UPDATER",
+                    x + 18, y + 124, System.Math.Max(1, width - 36));
             }
             if (height >= 168)
-                UiTypography.Caption(canvas, "WINDOWS, NATIVE GUI, COSMOS RUNTIME",
+                UiTypography.Caption(canvas, "AUTOR: ZONDERQ  /  ZONDERQOS GEN 3 DESKTOP ENVIRONMENT",
                     x + 18, y + 152, System.Math.Max(1, width - 36));
         }
     }
