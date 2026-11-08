@@ -112,7 +112,7 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("Packets Allowed: " + FirewallManager.AllowedPacketsCount);
             CommandIO.WriteLine("Packets Blocked: " + FirewallManager.BlockedPacketsCount);
             CommandIO.WriteLine("Last Block:      Port " + FirewallManager.LastBlockedPort + " (" + FirewallManager.LastBlockedProtocol + ") at " + FirewallManager.LastBlockedTime);
-            CommandIO.WriteLine();
+            CommandIO.WriteLine("");
             CommandIO.WriteLine(string.Format("{0,-4} {1,-8} {2,-8} {3,-10} {4,-8} {5}", "ID", "PORT", "PROTO", "DIR", "ACTION", "DESCRIPTION"));
             CommandIO.WriteLine(new string('-', 68));
 
