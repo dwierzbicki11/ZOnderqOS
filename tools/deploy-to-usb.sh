@@ -29,10 +29,19 @@ fi
 
 echo "-> Zamontowano w: $MOUNT_PATH"
 
-# 1. Update boot kernel in Slot A
+# 1. Update boot kernel in both slots and root
 mkdir -p "$MOUNT_PATH/boot/slot_a"
+mkdir -p "$MOUNT_PATH/boot/slot_b"
 echo "-> Kopiowanie nowego kernela do Slotu A ($MOUNT_PATH/boot/slot_a/ZonderqOS.elf)..."
 cp -f "$KERNEL_BIN" "$MOUNT_PATH/boot/slot_a/ZonderqOS.elf"
+echo "-> Kopiowanie nowego kernela do Slotu B ($MOUNT_PATH/boot/slot_b/ZonderqOS.elf)..."
+cp -f "$KERNEL_BIN" "$MOUNT_PATH/boot/slot_b/ZonderqOS.elf"
+echo "-> Kopiowanie nowego kernela do /boot/ZonderqOS.elf..."
+cp -f "$KERNEL_BIN" "$MOUNT_PATH/boot/ZonderqOS.elf"
+
+KERNEL_SHA="$(sha256sum "$KERNEL_BIN" | awk '{print $1}')"
+echo "$KERNEL_SHA" > "$MOUNT_PATH/boot/slot_a/kernel.sha256"
+echo "$KERNEL_SHA" > "$MOUNT_PATH/boot/slot_b/kernel.sha256"
 
 # 2. Update incoming packages in /updates
 mkdir -p "$MOUNT_PATH/updates"
