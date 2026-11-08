@@ -115,10 +115,10 @@ original = path.read_text()
 modified, count = re.subn(r"(?m)^([ \t]*resolution:[ \t]*)[0-9]+x[0-9]+x32[ \t]*$",
                           lambda match: match.group(1) + sys.argv[2] + "x32",
                           original)
-if count != 1:
-    raise SystemExit("[3095-BUILD][ERROR] Expected exactly one Limine resolution entry")
+if count < 1:
+    raise SystemExit("[3095-BUILD][ERROR] Expected at least one Limine resolution entry")
 path.write_text(modified)
-print("[3095-BUILD] Disposable test ISO requests " + sys.argv[2] + "x32")
+print("[3095-BUILD] Disposable test ISO requests " + sys.argv[2] + "x32 (updated " + str(count) + " entries)")
 PY
   GUI_TEST_NATIVE=true
 fi
