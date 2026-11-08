@@ -15,6 +15,18 @@ namespace ZonderqOS
     {
         public static bool IsAuthenticated = true;
     }
+
+    public enum SystemLogLevel { Warning }
+    public static class SystemLogger
+    {
+        public static void Log(SystemLogLevel level, string tag, string message) { }
+    }
+
+    public enum NotificationKind { Warning }
+    public static class NotificationService
+    {
+        public static void Post(NotificationKind kind, string title, string subtitle, string message) { }
+    }
 }
 
 namespace ZonderqOS.GUI
@@ -51,8 +63,10 @@ namespace ZonderqOS.GUI.Apps
 
     public class Application
     {
+        public string Name = "App";
         public bool IsRunning = true;
         public Window Window = new Window();
+        public virtual bool NeedsContinuousRedraw => false;
         public virtual void Close() { IsRunning = false; }
         public virtual void Update() { }
         public virtual void Render(Cosmos.Kernel.System.Graphics.Canvas canvas) { }

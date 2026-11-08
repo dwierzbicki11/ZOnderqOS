@@ -219,6 +219,12 @@ namespace ZonderqOS.GUI
                             break;
                         }
 
+                        if (IsTaskManagerShortcut(key))
+                        {
+                            LaunchTaskManager(165, 110);
+                            continue;
+                        }
+
                         if (IsLockShortcut(key))
                         {
                             RequestLockSession();
@@ -1117,6 +1123,16 @@ namespace ZonderqOS.GUI
             return control && alt;
         }
 
+        private static bool IsTaskManagerShortcut(KeyEvent key)
+        {
+            if (key == null || key.Key != ConsoleKeyEx.Escape)
+                return false;
+
+            bool control = (key.Modifiers & ConsoleModifiers.Control) == ConsoleModifiers.Control;
+            bool shift = (key.Modifiers & ConsoleModifiers.Shift) == ConsoleModifiers.Shift;
+            return control && shift;
+        }
+
         private static bool IsLockShortcut(KeyEvent key)
         {
             if (key == null || key.Key != ConsoleKeyEx.L)
@@ -1347,12 +1363,38 @@ namespace ZonderqOS.GUI
 
         private void LaunchTaskManager(int x, int y)
         {
-            applicationManager.Launch(new TaskManagerModernApp(x, y, applicationManager, null));
+            if (applicationManager != null)
+            {
+                for (int i = 0; i < applicationManager.Applications.Count; i++)
+                {
+                    if (applicationManager.Applications[i] is TaskManagerModernApp existing && existing.IsRunning)
+                    {
+                        if (existing.Window != null && existing.Window.IsMinimized)
+                            existing.Window.RestoreFromMinimized();
+                        applicationManager.Activate(existing);
+                        return;
+                    }
+                }
+                applicationManager.Launch(new TaskManagerModernApp(x, y, applicationManager, null));
+            }
         }
 
         private void LaunchSettings(int x, int y)
         {
-            applicationManager.Launch(new SettingsApp(x, y, applicationManager, null));
+            if (applicationManager != null)
+            {
+                for (int i = 0; i < applicationManager.Applications.Count; i++)
+                {
+                    if (applicationManager.Applications[i] is SettingsApp existing && existing.IsRunning)
+                    {
+                        if (existing.Window != null && existing.Window.IsMinimized)
+                            existing.Window.RestoreFromMinimized();
+                        applicationManager.Activate(existing);
+                        return;
+                    }
+                }
+                applicationManager.Launch(new SettingsApp(x, y, applicationManager, null));
+            }
         }
 
         private void LaunchConfigManager(int x, int y)

@@ -291,8 +291,15 @@ namespace ZonderqOS.GUI.Apps
             // A keyboard event can precede the next paint after a display
             // change. All applications must see current work-area bounds
             // before interpreting Enter, navigation or destructive shortcuts.
-            active.Window.EnsureDesktopBounds();
-            active.HandleKeyboard(key);
+            try
+            {
+                active.Window.EnsureDesktopBounds();
+                active.HandleKeyboard(key);
+            }
+            catch (System.Exception ex)
+            {
+                HandleApplicationFault(active, "Keyboard", ex);
+            }
         }
 
         public void HandleMouse(int mouseX, int mouseY, bool isClicked, bool wasClicked)
@@ -391,7 +398,15 @@ namespace ZonderqOS.GUI.Apps
                 return;
             }
 
-            target?.HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked, rightClicked, rightWasClicked);
+            try
+            {
+                target?.HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked, rightClicked, rightWasClicked);
+            }
+            catch (System.Exception ex)
+            {
+                if (target != null)
+                    HandleApplicationFault(target, "Mouse", ex);
+            }
             if (!isHeld)
                 mouseCapture = null;
         }
@@ -445,8 +460,15 @@ namespace ZonderqOS.GUI.Apps
                     // A display change can occur between input and Update.
                     // Reflow each live window before its application computes
                     // client geometry, even when no keyboard/mouse event occurs.
-                    application.Window.EnsureDesktopBounds();
-                    application.Update();
+                    try
+                    {
+                        application.Window.EnsureDesktopBounds();
+                        application.Update();
+                    }
+                    catch (System.Exception ex)
+                    {
+                        HandleApplicationFault(application, "Update", ex);
+                    }
                     if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
                     {
                         CloseAll();
@@ -510,8 +532,15 @@ namespace ZonderqOS.GUI.Apps
                     // A paint may be requested before the next Update.
                     // Keep the window bounds current before the app lays out
                     // its child widgets and paints the first frame.
-                    application.Window.EnsureDesktopBounds();
-                    application.Render(canvas);
+                    try
+                    {
+                        application.Window.EnsureDesktopBounds();
+                        application.Render(canvas);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        HandleApplicationFault(application, "Render", ex);
+                    }
                     if (!global::ZonderqOS.SecurityContext.IsAuthenticated)
                     {
                         CloseAll();
@@ -581,6 +610,43 @@ namespace ZonderqOS.GUI.Apps
                 {
                     Activate(applications[applications.Count - 1]);
                 }
+            }
+        }
+
+        private void HandleApplicationFault(Application application, string phase, System.Exception ex)
+        {
+            if (application == null)
+                return;
+
+            string appName = application.Name ?? "Aplikacja";
+            string errorMsg = ex != null ? ex.Message : "Nieznany blad";
+
+            try
+            {
+                global::ZonderqOS.SystemLogger.Log(
+                    global::ZonderqOS.SystemLogLevel.Warning,
+                    "APP",
+                    $"Aplikacja '{appName}' napotkala blad w fazie {phase}: {errorMsg}");
+
+                global::ZonderqOS.NotificationService.Post(
+                    global::ZonderqOS.NotificationKind.Warning,
+                    "AWARIA APLIKACJI",
+                    appName,
+                    $"Aplikacja zostala bezpiecznie zamknieta: {errorMsg}");
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                Close(application);
+            }
+            catch
+            {
+                int index = applications.IndexOf(application);
+                if (index >= 0)
+                    applications.RemoveAt(index);
             }
         }
     }
