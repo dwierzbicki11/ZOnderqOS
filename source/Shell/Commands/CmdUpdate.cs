@@ -187,6 +187,43 @@ namespace ZonderqOS.Commands
                 return;
             }
 
+            if (subcmd == "create" || subcmd == "publish")
+            {
+                if (args.Length < 3)
+                {
+                    WriteMessage.WriteError("Uzycie: zupdate create <wersja> [tytul]", "UPDATE");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+
+                string ver = args[2].Trim();
+                string title = args.Length > 3 ? args[3] : "Aktualizacja Uzytkownika " + ver;
+
+                try
+                {
+                    if (!System.IO.Directory.Exists("/updates")) System.IO.Directory.CreateDirectory("/updates");
+                    string manifest = "VERSION=" + ver + "\n" +
+                                      "BUILD=" + (DateTime.Now.Year * 100 + DateTime.Now.Day) + "\n" +
+                                      "TITLE=" + title + "\n" +
+                                      "DATE=" + DateTime.Now.ToString("yyyy-MM-dd") + "\n" +
+                                      "SEVERITY=Zalecana\n" +
+                                      "SIZE_KB=1560\n" +
+                                      "SHA256=a7f34c99e1208b5e91223fa87114bca03f88bcde1a4209930fef6a190035ab41\n" +
+                                      "CHANGELOG=Pakiet aktualizacyjny utworzony lokalnie;Weryfikacja integralnosci;Optymalizacja\n";
+                    System.IO.File.WriteAllText("/updates/update.manifest", manifest);
+                    WriteMessage.WriteOK("Utworzono plik /updates/update.manifest dla wersji " + ver + "!", "UPDATE");
+                    CommandIO.WriteLine("Wpisz 'zupdate check' lub uzyj aplikacji GUI aby system wykryl nowy pakiet.");
+                    CommandIO.LastCommandSuccess = true;
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    WriteMessage.WriteError("Blad tworzenia pakietu: " + ex.Message, "UPDATE");
+                    CommandIO.LastCommandSuccess = false;
+                    return;
+                }
+            }
+
             PrintHelp();
             CommandIO.LastCommandSuccess = false;
         }
@@ -213,6 +250,7 @@ namespace ZonderqOS.Commands
             CommandIO.WriteLine("  zupdate rollback               - Przywrocenie poprzedniej migawki");
             CommandIO.WriteLine("  zupdate channel [stable|lts|beta] - Zmiana galezi dystrybucji");
             CommandIO.WriteLine("  zupdate history                - Podglad historii instalacji");
+            CommandIO.WriteLine("  zupdate create <ver> [tytul]   - Utworzenie pliku /updates/update.manifest");
         }
     }
 }

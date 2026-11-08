@@ -182,28 +182,38 @@ namespace ZonderqOS.SystemCore.Updates
                 LastCheckTime = now.ToString("yyyy-MM-dd HH:mm");
                 SaveConfig();
 
-                // Provide a high-grade security update package tailored to the channel
-                UpdatePackageInfo pkg = new UpdatePackageInfo();
-                if (Channel == UpdateChannel.Beta)
+                UpdatePackageInfo pkg = null;
+                bool fromDisk = TryLoadDiskManifest(out UpdatePackageInfo diskPkg);
+
+                if (fromDisk && diskPkg != null)
                 {
-                    pkg.Version = "2026.12.0-BETA";
-                    pkg.BuildNumber = 3105;
-                    pkg.Title = "ZonderqOS Gen3 2026.12 Beta Channel Preview";
-                    pkg.Severity = "Eksperymentalna";
-                }
-                else if (Channel == UpdateChannel.Lts)
-                {
-                    pkg.Version = "2026.11.1-LTS";
-                    pkg.BuildNumber = 3095;
-                    pkg.Title = "ZonderqOS Long Term Support Security Patch";
-                    pkg.Severity = "Wazna (LTS)";
+                    pkg = diskPkg;
                 }
                 else
                 {
-                    pkg.Version = "2026.11.2";
-                    pkg.BuildNumber = 3096;
-                    pkg.Title = "ZonderqOS Security & Stability Rollup 2";
-                    pkg.Severity = "Krytyczna (Zalecana)";
+                    // Provide a high-grade security update package tailored to the channel
+                    pkg = new UpdatePackageInfo();
+                    if (Channel == UpdateChannel.Beta)
+                    {
+                        pkg.Version = "2026.12.0-BETA";
+                        pkg.BuildNumber = 3105;
+                        pkg.Title = "ZonderqOS Gen3 2026.12 Beta Channel Preview";
+                        pkg.Severity = "Eksperymentalna";
+                    }
+                    else if (Channel == UpdateChannel.Lts)
+                    {
+                        pkg.Version = "2026.11.1-LTS";
+                        pkg.BuildNumber = 3095;
+                        pkg.Title = "ZonderqOS Long Term Support Security Patch";
+                        pkg.Severity = "Wazna (LTS)";
+                    }
+                    else
+                    {
+                        pkg.Version = "2026.11.2";
+                        pkg.BuildNumber = 3096;
+                        pkg.Title = "ZonderqOS Security & Stability Rollup 2";
+                        pkg.Severity = "Krytyczna (Zalecana)";
+                    }
                 }
 
                 // If currently running this version or higher, we are up to date
@@ -219,8 +229,9 @@ namespace ZonderqOS.SystemCore.Updates
                 AvailablePackage = pkg;
                 package = pkg;
                 Status = UpdateStatus.Available;
-                message = "Znaleziono nowa wersje: " + pkg.Version + " (" + pkg.Title + ")";
-                SecurityLogger.LogEvent("INFO", "System update check found new package: " + pkg.Version);
+                string sourceLabel = fromDisk ? "Z dysku/USB: " : "W kanale " + Channel.ToString().ToUpperInvariant() + ": ";
+                message = "Znaleziono nowa wersje (" + sourceLabel + pkg.Version + " - " + pkg.Title + ")";
+                SecurityLogger.LogEvent("INFO", "System update check found package: " + pkg.Version + " (from disk: " + fromDisk + ")");
                 return true;
             }
             catch (Exception ex)
@@ -230,6 +241,68 @@ namespace ZonderqOS.SystemCore.Updates
                 message = "Blad podczas sprawdzania aktualizacji: " + ex.Message;
                 return false;
             }
+        }
+
+        public static bool TryLoadDiskManifest(out UpdatePackageInfo pkg)
+        {
+            pkg = null;
+            string[] candidatePaths = new string[]
+            {
+                "/var/updates/incoming/update.manifest",
+                "/updates/update.manifest",
+                "/var/updates/update.manifest"
+            };
+
+            for (int p = 0; p < candidatePaths.Length; p++)
+            {
+                string path = candidatePaths[p];
+                if (!File.Exists(path)) continue;
+
+                try
+                {
+                    string[] lines = File.ReadAllLines(path);
+                    UpdatePackageInfo parsed = new UpdatePackageInfo();
+                    bool hasVersion = false;
+
+                    for (int i = 0; i < lines.Length; i++)
+                    {
+                        string l = lines[i].Trim();
+                        if (string.IsNullOrEmpty(l) || l.StartsWith("#")) continue;
+
+                        int eq = l.IndexOf('=');
+                        if (eq <= 0) continue;
+
+                        string key = l.Substring(0, eq).Trim().ToUpperInvariant();
+                        string val = l.Substring(eq + 1).Trim();
+
+                        if (key == "VERSION") { parsed.Version = val; hasVersion = true; }
+                        else if (key == "BUILD") { int b; if (int.TryParse(val, out b)) parsed.BuildNumber = b; }
+                        else if (key == "TITLE") parsed.Title = val;
+                        else if (key == "DATE") parsed.ReleaseDate = val;
+                        else if (key == "SEVERITY") parsed.Severity = val;
+                        else if (key == "SIZE_KB") { int s; if (int.TryParse(val, out s)) parsed.SizeKb = s; }
+                        else if (key == "SHA256") parsed.ExpectedSha256 = val;
+                        else if (key == "CHANGELOG")
+                        {
+                            string[] items = val.Split(';', StringSplitOptions.RemoveEmptyEntries);
+                            if (items.Length > 0)
+                            {
+                                for (int j = 0; j < items.Length; j++) items[j] = items[j].Trim();
+                                parsed.Changelog = items;
+                            }
+                        }
+                    }
+
+                    if (hasVersion)
+                    {
+                        pkg = parsed;
+                        return true;
+                    }
+                }
+                catch { }
+            }
+
+            return false;
         }
 
         public static bool ApplyUpdate(UpdatePackageInfo pkg, Action<int, string> progress, out string error)
