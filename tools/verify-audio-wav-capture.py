@@ -148,6 +148,12 @@ def inspect_silent_tail(path: Path):
             hz = crossings * rate / (2 * (len(chunk) - 1))
             if not 2860 * 0.90 <= hz <= 2860 * 1.10:
                 raise ValueError(f"float tail wrong pitch: {hz:.1f}Hz")
+        # A barely audible right channel can share pitch and phase while
+        # indicating a broken stereo path. Check balance in each window.
+        left_peak = max(abs(x) for x in left[start:start + window_frames])
+        right_peak = max(abs(x) for x in right[start:start + window_frames])
+        if right_peak * 2 < left_peak or right_peak > left_peak * 2:
+            raise ValueError("float tail stereo channel imbalance")
         # Both channels must carry the same in-phase probe.
         left_chunk = left[start:start + window_frames]
         right_chunk = right[start:start + window_frames]
