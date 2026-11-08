@@ -330,6 +330,25 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "stereo channel imbalance in tone window"):
             audio.inspect(self.path)
 
+    def test_rejects_right_channel_phase_flip_in_second_window(self):
+        # An initially healthy stereo tone must not conceal a later
+        # polarity reversal in a separate sustained 80 ms window.
+        # This is a synthetic validator test, not a QEMU audio capture.
+        self.make_wave(ms=390, silence_ms=0)
+        with wave.open(str(self.path), "rb") as wav:
+            data = bytearray(wav.readframes(wav.getnframes()))
+        for frame in range(48000 * 100 // 1000, len(data) // 4):
+            offset = frame * 4 + 2
+            right = struct.unpack_from("<h", data, offset)[0]
+            struct.pack_into("<h", data, offset, -right)
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(48000)
+            wav.writeframes(data)
+        with self.assertRaisesRegex(ValueError, "stereo channels are not phase-aligned"):
+            audio.inspect(self.path)
+
     def test_rejects_inverted_right_channel(self):
         self.make_wave(invert_right=True)
         with self.assertRaisesRegex(ValueError, "not phase-aligned"):
