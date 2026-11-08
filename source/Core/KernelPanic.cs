@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using Cosmos.Kernel.Core.Memory;
 using ZonderqOS.SystemCore;
+using ZonderqOS.SystemCore.Updates;
 
 namespace ZonderqOS
 {
@@ -45,11 +46,11 @@ namespace ZonderqOS
                 try
                 {
                     if (!KernelBuildInfo.IsHealthyAndConfirmed &&
-                        !string.IsNullOrEmpty(global::ZonderqOS.SystemCore.Updates.BootSlotManager.PendingSlot))
+                        !string.IsNullOrEmpty(BootSlotManager.PendingSlot))
                     {
                         SystemLogger.Log(SystemLogLevel.Critical, "PANIC",
-                            $"Wykryto awarie rozruchu niezatwierdzonego slotu {global::ZonderqOS.SystemCore.Updates.BootSlotManager.PendingSlot}. Wycofywanie do slotu awaryjnego {global::ZonderqOS.SystemCore.Updates.BootSlotManager.FallbackSlot}...");
-                        global::ZonderqOS.SystemCore.Updates.BootSlotManager.ManualRollback(out _);
+                            $"Wykryto awarie rozruchu niezatwierdzonego slotu {BootSlotManager.PendingSlot}. Wycofywanie do slotu awaryjnego {BootSlotManager.FallbackSlot}...");
+                        BootSlotManager.ManualRollback(out _);
                     }
                 }
                 catch
