@@ -81,6 +81,13 @@ def inspect(path: Path, expected_hz: int = 440):
 
         if channels == 2:
             right_chunk = right[start:start + window_frames]
+            # A healthy peak elsewhere must not mask a weak channel in
+            # either of the two pitch-bearing windows.
+            left_window_peak = max(abs(x) for x in chunk)
+            right_window_peak = max(abs(x) for x in right_chunk)
+            if (right_window_peak * 2 < left_window_peak
+                    or right_window_peak > left_window_peak * 2):
+                raise ValueError("stereo channel imbalance in tone window")
             right_active = sum(abs(x) >= 256 for x in right_chunk)
             if right_active * 100 < len(right_chunk) * 95:
                 raise ValueError("stereo right channel has no sustained 80 ms tone")
