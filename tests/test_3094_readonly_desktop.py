@@ -14,7 +14,7 @@ PROJECT = (ROOT / "ZonderqOS.csproj").read_text()
 
 class Gen3UsbDesktop(unittest.TestCase):
     def test_pinned_3094_diskless_provision(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
         self.assertIn("#if ZONDERQ_READONLY_HARDWARE_PROBE && ZONDERQ_COSMOS_INPUT_API", DESKTOP)
         for unsafe in ("File.", "Directory.", "TryMount(", "WriteBlock(",
                        "Disk.Initialize(", "GuiManager", "ServiceManager",

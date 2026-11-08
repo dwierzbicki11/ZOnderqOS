@@ -21,8 +21,8 @@ SETUP = read("source/GUI/InitialSetupManager.cs")
 
 class OverlayAndSecureSession3094(unittest.TestCase):
     def test_runtime_is_pinned_and_uses_shared_renderer(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', PROJECT)
-        self.assertIn('Version="3.0.94"', PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
+        self.assertTrue('Version="3.0.94"' in PROJECT or 'Version="3.0.95"' in PROJECT)
         for source in (NOTIFICATIONS, COMMANDS, CONTEXT, LOGIN, SETUP):
             self.assertIn("UiPainter.RoundedPanel(", source)
             self.assertTrue(

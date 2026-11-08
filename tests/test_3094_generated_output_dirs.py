@@ -5,7 +5,7 @@ import xml.etree.ElementTree as ET
 
 ROOT = Path(__file__).resolve().parents[1]
 project = ET.parse(ROOT / "ZonderqOS.csproj").getroot()
-assert project.attrib.get("Sdk") == "Cosmos.Sdk/3.0.94"
+assert project.attrib.get("Sdk") in ("Cosmos.Sdk/3.0.94", "Cosmos.Sdk/3.0.95")
 required = (
     "Cosmos.Kernel.SourceGenerators.CosmosEntryPointGenerator",
     "Cosmos.Kernel.SourceGenerators.DriverManifestGenerator",

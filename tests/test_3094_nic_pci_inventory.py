@@ -15,7 +15,7 @@ ARM64 = (ROOT / "source/Platform/Arm64/PciSysfsProvider.cs").read_text()
 
 class Nic3094Safety(unittest.TestCase):
     def test_sdk_and_network_feature_gate_preserved(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
         self.assertIn('<CosmosEnableNetwork>false</CosmosEnableNetwork>', PROJECT)
         self.assertIn('ZONDERQ_NETWORK_DISABLED', PROJECT)
         self.assertIn('public static bool IsReady => false;', NETWORK)

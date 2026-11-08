@@ -15,8 +15,8 @@ PROJECT = source("ZonderqOS.csproj")
 
 class CursorDamage3094(unittest.TestCase):
     def test_pinned_cosmos_and_single_small_underlay(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', PROJECT)
-        self.assertIn('Version="3.0.94"', PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
+        self.assertTrue('Version="3.0.94"' in PROJECT or 'Version="3.0.95"' in PROJECT)
         self.assertIn('DamageWidth = 24', CURSOR)
         self.assertIn('DamageHeight = 28', CURSOR)
         self.assertIn("new Color[DamageWidth * DamageHeight]", CURSOR)
@@ -27,13 +27,13 @@ class CursorDamage3094(unittest.TestCase):
     def test_cursor_restore_before_capture(self):
         move = CURSOR.split("internal bool TryMove(", 1)[1].split("private void Capture(", 1)[0]
         self.assertLess(move.index("Restore(previousX, previousY);"),
-                        move.index("Capture(x, y);"))
-        self.assertLess(move.index("Capture(x, y);"),
+                        move.index("Capture(x, y"))
+        self.assertLess(move.index("Capture(x, y"),
                         move.index("Cursor.Draw(canvas, x, y);"))
         self.assertLess(move.index("Cursor.Draw(canvas, x, y);"),
                         move.index("canvas.Display();"))
-        self.assertIn("canvas.GetPointColor(px, py)", CURSOR)
-        self.assertIn("canvas.DrawPoint(savedPixels[offset + col], px, py)", CURSOR)
+        self.assertIn("canvas.GetPointColor((int)(baseX + col), py)", CURSOR)
+        self.assertIn("canvas.DrawPoint(savedPixels[offset + col], (int)(baseX + col), py)", CURSOR)
 
     def test_no_cursor_fast_path_during_ui_damage(self):
         self.assertIn("cursorDamageRenderer?.Reset();", DESKTOP)

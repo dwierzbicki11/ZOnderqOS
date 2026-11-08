@@ -26,11 +26,11 @@ class FileManagerMalformedEntries3095(unittest.TestCase):
         body = source[start:end]
         self.assertIn("string.IsNullOrWhiteSpace(path)", body)
         self.assertIn("try\n                {", body)
-        self.assertIn("Path.GetFileName(normalized.TrimEnd('/'))", body)
+        self.assertIn('string name = cleanPath.Substring(lastSlash + 1);', body)
         self.assertIn('name == "." || name == ".."', body)
         self.assertIn("catch (Exception)", body)
-        self.assertIn("destination.Add(new FileEntry(name, normalized, directory));", body)
-        self.assertLess(body.index("Path.GetFileName("), body.index("destination.Add("))
+        self.assertIn("destination.Add(new FileEntry(name, cleanPath, directory));", body)
+        self.assertLess(body.index("string name = cleanPath.Substring"), body.index("destination.Add("))
 
 
 if __name__ == "__main__":
