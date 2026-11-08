@@ -43,7 +43,37 @@ KERNEL_SHA="$(sha256sum "$KERNEL_BIN" | awk '{print $1}')"
 echo "$KERNEL_SHA" > "$MOUNT_PATH/boot/slot_a/kernel.sha256"
 echo "$KERNEL_SHA" > "$MOUNT_PATH/boot/slot_b/kernel.sha256"
 
-# 2. Update incoming packages in /updates
+# 2. Update /etc/os-release and /boot/boot_state.cfg to prevent kernel-disk mismatch
+mkdir -p "$MOUNT_PATH/etc"
+cat > "$MOUNT_PATH/etc/os-release" <<'EOF'
+NAME="ZOnderqOS"
+VERSION="1.0.1"
+ID=zonderqos
+ID_LIKE=cosmos
+VERSION_ID=1.0.1
+PRETTY_NAME="ZOnderqOS 1.0.1 (Cosmos 3.0.95)"
+BUILD_ID=3110
+VARIANT="Workstation"
+VARIANT_ID=workstation
+HOME_URL="https://github.com/zonderq/ZOnderqOS"
+SUPPORT_URL="https://github.com/zonderq/ZOnderqOS/issues"
+BUG_REPORT_URL="https://github.com/zonderq/ZOnderqOS/issues"
+EOF
+
+cat > "$MOUNT_PATH/boot/boot_state.cfg" <<'EOF'
+ACTIVE_SLOT=A
+FALLBACK_SLOT=B
+PENDING_SLOT=
+BOOT_ATTEMPTS=0
+SLOT_A_STATUS=Healthy
+SLOT_B_STATUS=Healthy
+SLOT_A_VERSION=1.0.1
+SLOT_A_BUILD=3110
+SLOT_B_VERSION=1.0.1
+SLOT_B_BUILD=3110
+EOF
+
+# 3. Update incoming packages in /updates
 mkdir -p "$MOUNT_PATH/updates"
 echo "-> Kopiowanie pakietu aktualizacji do $MOUNT_PATH/updates/..."
 cp -rf "$UPDATES_DIR"/* "$MOUNT_PATH/updates/"
