@@ -853,6 +853,12 @@ namespace ZonderqOS.GUI
                 "Edytor pixel-art 16x16 z paleta VGA i eksportem do C# oraz BASIC DATA",
                 AppCategory.Tools, IconType.Paint, () => LaunchSpriteStudio(150, 60),
                 StartMenuPlacement.Tool, 23, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.SecurityCenter, "Centrum Bezpieczenstwa", "Centrum Bezpieczenstwa", "Bezpieczenstwo",
+                "Ochrona anty-tamper, integralnosc plikow, zapora sieciowa i audyt",
+                AppCategory.System, IconType.Settings, () => LaunchSecurityCenter(135, 50),
+                StartMenuPlacement.Tool, 24, -1, true));
         }
 
         private void PopulateStartMenu()
@@ -1396,6 +1402,11 @@ namespace ZonderqOS.GUI
         private void LaunchSpriteStudio(int x, int y)
         {
             applicationManager.Launch(new SpriteStudioApp(x, y, null));
+        }
+
+        private void LaunchSecurityCenter(int x, int y)
+        {
+            applicationManager.Launch(new SecurityCenterApp(x, y, null));
         }
 
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,

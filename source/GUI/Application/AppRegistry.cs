@@ -53,6 +53,7 @@ namespace ZonderqOS.GUI.Apps
         public const string PassVault = "pass-vault";
         public const string SysBenchmark = "sys-benchmark";
         public const string SpriteStudio = "sprite-studio";
+        public const string SecurityCenter = "security-center";
     }
 
     public sealed class AppDescriptor

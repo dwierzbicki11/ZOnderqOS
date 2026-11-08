@@ -54,6 +54,8 @@ namespace ZonderqOS
                 EnvironmentManager.Initialize();
                 SecurityLogger.Initialize();
                 PermissionManager.Initialize();
+                ZonderqOS.Security.IntegrityGuard.Initialize();
+                ZonderqOS.Security.FirewallManager.Initialize();
                 SystemLogger.Initialize();
                 BootSplash.Advance(60, "LADOWANIE USLUG SYSTEMOWYCH");
                 BootSessionHealth.Initialize();
