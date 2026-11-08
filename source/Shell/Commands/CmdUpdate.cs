@@ -251,14 +251,14 @@ namespace ZonderqOS.Commands
             if (!string.Equals(KernelBuildInfo.KernelVersion, UpdateManager.CurrentVersion, StringComparison.OrdinalIgnoreCase))
             {
                 CommandIO.WriteLine("");
-                WriteMessage.WriteWarning("WYKRYTO ROZBIEZNOSC: Uruchomiony kernel (" + KernelBuildInfo.KernelVersion +
+                WriteMessage.WriteInfo("[OSTRZEZENIE] WYKRYTO ROZBIEZNOSC: Uruchomiony kernel (" + KernelBuildInfo.KernelVersion +
                     ") rozni sie od wersji na dysku (" + UpdateManager.CurrentVersion + ").", "UPDATE");
                 CommandIO.WriteLine("  Wymagany restart ('reboot') aby zainicjalizowac nowy kernel ze zaktualizowanego slotu.");
             }
 
             if (!string.IsNullOrEmpty(BootSlotManager.PendingSlot))
             {
-                WriteMessage.WriteWarning("Oczekujacy slot rozruchowy: Slot " + BootSlotManager.PendingSlot +
+                WriteMessage.WriteInfo("[OSTRZEZENIE] Oczekujacy slot rozruchowy: Slot " + BootSlotManager.PendingSlot +
                     " (Proby rozruchu: " + BootSlotManager.BootAttempts + "/" + BootSlotManager.MaxBootAttempts + ")", "BOOT");
             }
 
