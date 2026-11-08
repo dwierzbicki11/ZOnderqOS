@@ -223,6 +223,22 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "missing sustained float tone"):
             audio.inspect_silent_tail(self.path)
 
+    def test_float_hda_tail_rejects_oversized_capture_before_read(self):
+        # A sparse, well-formed 91-second WAV must be rejected before
+        # allocating/decoding its advertised PCM payload.
+        rate = 48000
+        data_bytes = rate * 91 * 4
+        header = struct.pack("<4sI4s4sIHHIIHH4sI",
+                             b"RIFF", 36 + data_bytes, b"WAVE",
+                             b"fmt ", 16, 1, 2, rate, rate * 4, 4, 16,
+                             b"data", data_bytes)
+        with self.path.open("wb") as capture:
+            capture.write(header)
+            capture.seek(44 + data_bytes - 1)
+            capture.write(b"\\x00")
+        with self.assertRaisesRegex(ValueError, "longer than 90 s"):
+            audio.inspect_silent_tail(self.path)
+
     def test_float_hda_tail_rejects_short_capture(self):
         self.make_wave(ms=250, silence_ms=0)
         with self.assertRaisesRegex(ValueError, "before 300ms"):
