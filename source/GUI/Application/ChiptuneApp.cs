@@ -320,12 +320,12 @@ namespace ZonderqOS.GUI.Apps
 
             // Top Bar: Octave Controls & Presets
             int topBarY = wy + 14;
-            canvas.DrawString("Oktawa:", Color.White, wx + 16, topBarY - 10);
+            SmallTextRenderer.Draw(canvas, "Oktawa:", wx + 16, topBarY - 10, Color.White);
             DrawPill(canvas, "Oktawa 3", wx + 16, topBarY + 4, 65, 24, currentOctave == 3);
             DrawPill(canvas, "Oktawa 4", wx + 86, topBarY + 4, 65, 24, currentOctave == 4);
             DrawPill(canvas, "Oktawa 5", wx + 156, topBarY + 4, 65, 24, currentOctave == 5);
 
-            canvas.DrawString("Melodie demo (8-bit):", Color.White, wx + 240, topBarY - 10);
+            SmallTextRenderer.Draw(canvas, "Melodie demo (8-bit):", wx + 240, topBarY - 10, Color.White);
             DrawPill(canvas, "Mario", wx + 240, topBarY + 4, 70, 24, isPlayingSong && currentSongIndex == 0);
             DrawPill(canvas, "Tetris", wx + 316, topBarY + 4, 70, 24, isPlayingSong && currentSongIndex == 1);
             DrawPill(canvas, "Imperial", wx + 392, topBarY + 4, 70, 24, isPlayingSong && currentSongIndex == 2);
@@ -339,9 +339,9 @@ namespace ZonderqOS.GUI.Apps
 
             // Status label & current note
             string modeText = isPlayingSong ? "ODTWARZANIE DEMO: " + GetSongName(currentSongIndex) : "TRYB SYNTEZATORA NA ZYWO (Steruj mysza lub klawiszami A-K)";
-            canvas.DrawString(modeText, CyanColor, wx + 28, dispY + 10);
-            canvas.DrawString("Biezacy dzwiek: " + lastPlayedNote, GoldColor, wx + 28, dispY + 28);
-            canvas.DrawString("Uklad klawiatury: [A=C] [W=C#] [S=D] [E=D#] [D=E] [F=F] [T=F#] [G=G] [Y=G#] [H=A] [U=A#] [J=B] [K=C+]", MutedColor, wx + 28, dispY + 46);
+            SmallTextRenderer.Draw(canvas, modeText, wx + 28, dispY + 10, CyanColor);
+            SmallTextRenderer.Draw(canvas, "Biezacy dzwiek: " + lastPlayedNote, wx + 28, dispY + 28, GoldColor);
+            SmallTextRenderer.Draw(canvas, "Uklad klawiatury: [A=C] [W=C#] [S=D] [E=D#] [D=E] [F=F] [T=F#] [G=G] [Y=G#] [H=A] [U=A#] [J=B] [K=C+]", wx + 28, dispY + 46, MutedColor);
 
             // Draw 8-bit Chiptune Square Waveform
             int waveY = dispY + 80;
@@ -378,7 +378,7 @@ namespace ZonderqOS.GUI.Apps
                 canvas.DrawRectangle(Color.FromArgb(100, 110, 125), kx, keyY, keyW, keyH);
 
                 string keyName = NoteNames[whiteNoteIndices[w]] + currentOctave;
-                canvas.DrawString(keyName, Color.FromArgb(40, 50, 60), kx + keyW / 2 - 10, keyY + keyH - 24);
+                SmallTextRenderer.Draw(canvas, keyName, kx + keyW / 2 - 10, keyY + keyH - 24, Color.FromArgb(40, 50, 60));
             }
 
             // Render black keys (over white keys)
@@ -396,7 +396,7 @@ namespace ZonderqOS.GUI.Apps
                 canvas.DrawRectangle(Color.FromArgb(15, 20, 26), bx, keyY, blackW, blackH);
 
                 string bName = NoteNames[blackNoteIndices[b]];
-                canvas.DrawString(bName, Color.White, bx + 6, keyY + blackH - 22);
+                SmallTextRenderer.Draw(canvas, bName, bx + 6, keyY + blackH - 22, Color.White);
             }
 
             // Reset active visual after render
@@ -412,7 +412,7 @@ namespace ZonderqOS.GUI.Apps
 
             canvas.DrawFilledRectangle(bg, x, y, w, h);
             canvas.DrawRectangle(border, x, y, w, h);
-            canvas.DrawString(text, textCol, x + 8, y + 4);
+            SmallTextRenderer.Draw(canvas, text, x + 8, y + 4, textCol);
         }
     }
 }
