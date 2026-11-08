@@ -148,6 +148,12 @@ def inspect_silent_tail(path: Path):
             hz = crossings * rate / (2 * (len(chunk) - 1))
             if not 2860 * 0.90 <= hz <= 2860 * 1.10:
                 raise ValueError(f"float tail wrong pitch: {hz:.1f}Hz")
+        # Both channels must carry the same in-phase probe.
+        left_chunk = left[start:start + window_frames]
+        right_chunk = right[start:start + window_frames]
+        aligned = sum((a < 0) == (b < 0) for a, b in zip(left_chunk, right_chunk))
+        if aligned * 100 < window_frames * 95:
+            raise ValueError("float tail stereo channels are not phase-aligned")
     tail_frames = rate // 50  # 20ms
     tail = samples[-tail_frames * 2:]
     if len(tail) != tail_frames * 2:
