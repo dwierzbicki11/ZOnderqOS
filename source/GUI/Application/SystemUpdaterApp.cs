@@ -456,7 +456,7 @@ namespace ZonderqOS.GUI.Apps
 
                 lineY += 6;
                 canvas.DrawFilledRectangle(GoldColor, x + 16, lineY + 4, 6, 6);
-                string signDesc = pkg.IsSigned ? (pkg.IsSignatureValid ? "Podpis cyfrowy HMAC-SHA256: PRAWIDLOWY (ZAUFANY)" : "Podpis cyfrowy: NIEPOPRAWNY!") : "Podpis cyfrowy: Brak (wydanie niepodpisane)";
+                string signDesc = pkg.IsSigned ? (pkg.IsSignatureValid ? "Podpis HMAC-SHA256: ZWERYFIKOWANY (DEV-KEY)" : "Podpis cyfrowy: NIEPOPRAWNY!") : "Podpis cyfrowy: Brak (wydanie niepodpisane)";
                 SmallTextRenderer.Draw(canvas, signDesc, x + 30, lineY, pkg.IsSigned && pkg.IsSignatureValid ? GreenColor : GoldColor);
                 lineY += 22;
 

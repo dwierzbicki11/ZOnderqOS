@@ -57,7 +57,7 @@ namespace ZonderqOS.Commands
                     CommandIO.WriteLine("  Architektura:  " + pkg.Architecture);
                     CommandIO.WriteLine("  Waznosc:       " + pkg.Severity);
                     CommandIO.WriteLine("  Data wydania:  " + pkg.ReleaseDate);
-                    CommandIO.WriteLine("  Podpis cyfrowy:" + (pkg.IsSigned ? (pkg.IsSignatureValid ? "ZAUFANY (HMAC-SHA256)" : "NIEPRAWIDLOWY!") : "BRAK"));
+                    CommandIO.WriteLine("  Podpis cyfrowy:" + (pkg.IsSigned ? (pkg.IsSignatureValid ? "ZAUFANY (HMAC-SHA256 DEV-KEY)" : "NIEPRAWIDLOWY!") : "BRAK"));
                     CommandIO.WriteLine("  Suma kernela:  " + (string.IsNullOrEmpty(pkg.KernelSha256) ? "Nieokreslona" : pkg.KernelSha256));
                     CommandIO.WriteLine("  Plik kernela:  " + (string.IsNullOrEmpty(pkg.KernelImagePath) ? "Brak w pakiecie" : pkg.KernelImagePath));
                     CommandIO.WriteLine("  Liczba plikow: " + (pkg.Files != null ? pkg.Files.Count.ToString() : "0"));
