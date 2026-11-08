@@ -10,6 +10,7 @@ using ZonderqOS.GUI.Icons;
 using ZonderqOS.SystemCore;
 using CosmosGc = Cosmos.Kernel.Core.Memory.GarbageCollector.GarbageCollector;
 using ZonderqOS.Platform;
+using ZonderqOS.Hardware;
 
 namespace ZonderqOS.GUI.Apps
 {
@@ -79,6 +80,8 @@ namespace ZonderqOS.GUI.Apps
         private ulong usedMemoryPercent;
         private ulong gcHeapBytes;
         private ulong gcCommittedBytes;
+        private ulong physicalInstalledBytes;
+        private ulong physicalUsableBytes;
         private int storageDeviceCount;
         private int storagePartitionCount;
         private bool networkReady;
@@ -573,6 +576,9 @@ namespace ZonderqOS.GUI.Apps
                     gcHeapBytes = CosmosGc.GetHeapSizeBytes();
                     gcCommittedBytes = CosmosGc.GetTotalCommittedBytes();
                 }
+
+                physicalInstalledBytes = PhysicalMemoryDetector.InstalledBytes;
+                physicalUsableBytes = PhysicalMemoryDetector.TotalPhysicalBytes;
             }
             catch
             {
@@ -581,6 +587,8 @@ namespace ZonderqOS.GUI.Apps
                 usedMemoryPercent = 0;
                 gcHeapBytes = 0;
                 gcCommittedBytes = 0;
+                physicalInstalledBytes = 0;
+                physicalUsableBytes = 0;
             }
             RecordHistory(memoryHistory, ref memoryHistoryCount, ref memoryHistoryWrite, (int)usedMemoryPercent);
         }
@@ -796,6 +804,34 @@ namespace ZonderqOS.GUI.Apps
             return mhz + " MHZ";
         }
 
+        private static string FormatBytesSmart(ulong bytes)
+        {
+            if (bytes == 0) return "0 B";
+            const ulong KiB = 1024UL;
+            const ulong MiB = 1024UL * 1024UL;
+            const ulong GiB = 1024UL * 1024UL * 1024UL;
+
+            if (bytes >= GiB)
+            {
+                ulong whole = bytes / GiB;
+                ulong hundredths = (bytes % GiB) * 100UL / GiB;
+                return whole + "." + D2((int)hundredths) + " GB";
+            }
+            if (bytes >= MiB)
+            {
+                ulong whole = bytes / MiB;
+                ulong hundredths = (bytes % MiB) * 100UL / MiB;
+                return whole + "." + D2((int)hundredths) + " MB";
+            }
+            if (bytes >= KiB)
+            {
+                ulong whole = bytes / KiB;
+                ulong tenths = (bytes % KiB) * 10UL / KiB;
+                return whole + "." + tenths + " KB";
+            }
+            return bytes + " B";
+        }
+
         private static string FormatBytes(ulong bytes)
         {
             if (bytes == 0) return "N/A";
@@ -856,6 +892,9 @@ namespace ZonderqOS.GUI.Apps
         internal string MemoryUsageText => FormatPercentPrecise(UsedPages, totalPages);
         internal string GcHeapText => FormatMiBPrecise(gcHeapBytes);
         internal string GcCommittedText => FormatMiBPrecise(gcCommittedBytes);
+        internal string InstalledRamText => FormatBytesSmart(physicalInstalledBytes);
+        internal string UsableRamText => FormatBytesSmart(physicalUsableBytes);
+        internal string HeapPoolText => FormatBytesSmart(totalPages * PageAllocator.PageSize);
         internal int StorageDeviceCount => storageDeviceCount;
         internal int StoragePartitionCount => storagePartitionCount;
         internal bool NetworkReady => networkReady;
@@ -1414,7 +1453,7 @@ namespace ZonderqOS.GUI.Apps
             int resourceX = X + SidebarWidth + 10;
             int resourceY = Y + 64;
             DrawResource(canvas, resourceX, resourceY, 0, "CPU", (ulong)app.CpuUsagePercent, "%");
-            DrawResourceText(canvas, resourceX, resourceY + 82, 1, "MEMORY", app.MemoryUsageText);
+            DrawResourceText(canvas, resourceX, resourceY + 82, 1, "MEMORY", app.UsedMemoryMb + " MB (" + app.MemoryUsageText + ")");
             DrawResource(canvas, resourceX, resourceY + 164, 2, "SYSTEM", (ulong)Math.Max(0, app.SchedulerThreadCount), "");
 
             int x = resourceX + 170;
@@ -1558,16 +1597,23 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderMemory(Canvas canvas, int x, int y, int width)
         {
-            SmallTextRenderer.Draw(canvas, "MEMORY / COSMOS HEAP", x, y + 4, Color.WhiteSmoke);
-            int graphH = Math.Max(150, Height - 360);
-            DrawGraph(canvas, x, y + 40, width, graphH, app.MemoryHistoryCount, app.GetMemoryHistory, -2, Color.FromArgb(116, 174, 219), true);
-            int stats = y + graphH + 80;
-            DrawKeyText(canvas, x, stats, width / 2, "HEAP USED", app.UsedMemoryText);
-            DrawKeyText(canvas, x, stats + 20, width / 2, "HEAP FREE", app.FreeMemoryText);
-            DrawKeyText(canvas, x, stats + 40, width / 2, "HEAP TOTAL", app.TotalMemoryText);
-            DrawKeyText(canvas, x + width / 2, stats, width / 2, "HEAP USAGE", app.MemoryUsageText);
-            DrawKeyText(canvas, x + width / 2, stats + 20, width / 2, "GC HEAP", app.GcHeapText);
-            DrawKeyText(canvas, x + width / 2, stats + 40, width / 2, "GC COMMITTED", app.GcCommittedText);
+            SmallTextRenderer.Draw(canvas, "MEMORY (RAM FIZYCZNY I ALOKATOR COSMOS)", x, y + 4, Color.WhiteSmoke);
+            int graphH = Math.Max(150, Height - 370);
+            DrawGraph(canvas, x, y + 36, width, graphH, app.MemoryHistoryCount, app.GetMemoryHistory, -2, Color.FromArgb(116, 174, 219), true);
+            int stats = y + graphH + 50;
+            int half = width / 2;
+
+            // Physical Hardware RAM
+            DrawKeyText(canvas, x, stats, half, "RAM ZAINSTALOWANY", app.InstalledRamText);
+            DrawKeyText(canvas, x, stats + 20, half, "RAM WYKRYTY (FIRMWARE)", app.UsableRamText);
+            DrawKeyText(canvas, x, stats + 40, half, "PULA HEAP COSMOS", app.HeapPoolText);
+            DrawKeyText(canvas, x, stats + 60, half, "STRONY PAMIECI", app.TotalPages + " (" + PageAllocator.PageSize + " B/strona)");
+
+            // Cosmos Heap Allocator & GC
+            DrawKeyText(canvas, x + half, stats, half, "HEAP UZYTY", app.UsedMemoryText + " (" + app.MemoryUsageText + ")");
+            DrawKeyText(canvas, x + half, stats + 20, half, "HEAP WOLNY", app.FreeMemoryText);
+            DrawKeyText(canvas, x + half, stats + 40, half, "GC ROZMIAR HEAP", app.GcHeapText);
+            DrawKeyText(canvas, x + half, stats + 60, half, "GC ZATWIERDZONE", app.GcCommittedText);
         }
 
         private void RenderSystem(Canvas canvas, int x, int y, int width)

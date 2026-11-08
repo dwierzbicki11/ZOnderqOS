@@ -30,6 +30,10 @@ namespace ZonderqOS.GUI.Apps
         private string statusMessage = "Gotowy do instalacji aktualizacji z nosnika USB.";
         private Color statusColor = MutedColor;
 
+        private enum UpdateOp { None, Checking, Installing, RollingBack }
+        private UpdateOp currentOp = UpdateOp.None;
+        private int currentOpStep = 0;
+
         private bool isBusy = false;
         private int currentProgress = 0;
         private string currentStepText = string.Empty;
@@ -178,19 +182,98 @@ namespace ZonderqOS.GUI.Apps
             statusColor = AccentColor;
         }
 
+        public override bool NeedsContinuousRedraw => isBusy;
+
+        public override void Update()
+        {
+            base.Update();
+
+            if (!isBusy || currentOp == UpdateOp.None)
+                return;
+
+            if (currentOp == UpdateOp.Checking)
+            {
+                UpdatePackageInfo pkg;
+                string msg;
+                bool found = UpdateManager.CheckForUpdates(true, out pkg, out msg);
+                isBusy = false;
+                currentOp = UpdateOp.None;
+                statusMessage = msg;
+                statusColor = found ? GreenColor : MutedColor;
+                return;
+            }
+
+            if (currentOp == UpdateOp.Installing)
+            {
+                UpdatePackageInfo pkg = UpdateManager.AvailablePackage;
+                if (pkg == null)
+                {
+                    isBusy = false;
+                    currentOp = UpdateOp.None;
+                    statusMessage = "Brak wybranego pakietu aktualizacji.";
+                    statusColor = RedColor;
+                    return;
+                }
+
+                string err;
+                bool stepResult = UpdateManager.ApplyUpdateStep(pkg, ref currentOpStep, (pct, txt) =>
+                {
+                    currentProgress = pct;
+                    currentStepText = txt;
+                }, out err);
+
+                if (!stepResult)
+                {
+                    isBusy = false;
+                    currentOp = UpdateOp.None;
+                    statusMessage = "Blad instalacji: " + err;
+                    statusColor = RedColor;
+                }
+                else if (currentOpStep == -1)
+                {
+                    isBusy = false;
+                    currentOp = UpdateOp.None;
+                    statusMessage = $"Zainstalowano pomyslnie do slotu {BootSlotManager.ActiveSlot}! Wymagany restart.";
+                    statusColor = GreenColor;
+                }
+                return;
+            }
+
+            if (currentOp == UpdateOp.RollingBack)
+            {
+                string err;
+                bool stepResult = UpdateManager.RollbackStep(ref currentOpStep, (pct, txt) =>
+                {
+                    currentProgress = pct;
+                    currentStepText = txt;
+                }, out err);
+
+                if (!stepResult)
+                {
+                    isBusy = false;
+                    currentOp = UpdateOp.None;
+                    statusMessage = "Blad wycofywania: " + err;
+                    statusColor = RedColor;
+                }
+                else if (currentOpStep == -1)
+                {
+                    isBusy = false;
+                    currentOp = UpdateOp.None;
+                    statusMessage = $"Przywrocono slot {BootSlotManager.ActiveSlot} i stan systemu. Wymagany restart.";
+                    statusColor = GoldColor;
+                }
+                return;
+            }
+        }
+
         private void CheckUpdatesNow(bool force)
         {
             isBusy = true;
+            currentOp = UpdateOp.Checking;
             currentProgress = 100;
             currentStepText = "Skanowanie nosnika USB w poszukiwaniu pakietu...";
-
-            UpdatePackageInfo pkg;
-            string msg;
-            bool found = UpdateManager.CheckForUpdates(force, out pkg, out msg);
-
-            isBusy = false;
-            statusMessage = msg;
-            statusColor = found ? GreenColor : MutedColor;
+            statusMessage = "Wyszukiwanie aktualizacji na USB...";
+            statusColor = AccentColor;
         }
 
         private void PerformInstall()
@@ -199,24 +282,12 @@ namespace ZonderqOS.GUI.Apps
             if (pkg == null) return;
 
             isBusy = true;
-            string error;
-            bool success = UpdateManager.ApplyUpdate(pkg, (pct, txt) =>
-            {
-                currentProgress = pct;
-                currentStepText = txt;
-            }, out error);
-
-            isBusy = false;
-            if (success)
-            {
-                statusMessage = $"Zainstalowano pomyslnie do slotu {BootSlotManager.ActiveSlot}! Wymagany restart.";
-                statusColor = GreenColor;
-            }
-            else
-            {
-                statusMessage = "Blad instalacji: " + error;
-                statusColor = RedColor;
-            }
+            currentOp = UpdateOp.Installing;
+            currentOpStep = 0;
+            currentProgress = 5;
+            currentStepText = "Inicjalizacja instalatora aktualizacji...";
+            statusMessage = "Trwa instalacja pakietu aktualizacji...";
+            statusColor = AccentColor;
         }
 
         private void PerformRollback()
@@ -229,24 +300,12 @@ namespace ZonderqOS.GUI.Apps
             }
 
             isBusy = true;
-            string error;
-            bool success = UpdateManager.Rollback((pct, txt) =>
-            {
-                currentProgress = pct;
-                currentStepText = txt;
-            }, out error);
-
-            isBusy = false;
-            if (success)
-            {
-                statusMessage = $"Przywrocono slot {BootSlotManager.ActiveSlot} i stan systemu. Wymagany restart.";
-                statusColor = GoldColor;
-            }
-            else
-            {
-                statusMessage = "Blad wycofywania: " + error;
-                statusColor = RedColor;
-            }
+            currentOp = UpdateOp.RollingBack;
+            currentOpStep = 0;
+            currentProgress = 10;
+            currentStepText = "Inicjalizacja wycofywania zmian (Rollback)...";
+            statusMessage = "Trwa przywracanie migawki systemu...";
+            statusColor = GoldColor;
         }
 
         private void PerformReboot()

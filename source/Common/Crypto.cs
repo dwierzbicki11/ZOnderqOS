@@ -273,13 +273,29 @@ namespace ZonderqOS
 
             for (int blockStart = 0; blockStart < totalLength; blockStart += 64)
             {
-                for (int i = 0; i < 16; i++)
+                if (blockStart + 64 <= length)
                 {
-                    int pos = blockStart + i * 4;
-                    schedule[i] = ((uint)GetPaddedByte(input, length, totalLength, bitLength, pos) << 24) |
-                                  ((uint)GetPaddedByte(input, length, totalLength, bitLength, pos + 1) << 16) |
-                                  ((uint)GetPaddedByte(input, length, totalLength, bitLength, pos + 2) << 8) |
-                                  GetPaddedByte(input, length, totalLength, bitLength, pos + 3);
+                    // Fast path: direct big-endian word extraction for non-padded full blocks
+                    for (int i = 0; i < 16; i++)
+                    {
+                        int pos = blockStart + i * 4;
+                        schedule[i] = ((uint)input[pos] << 24) |
+                                      ((uint)input[pos + 1] << 16) |
+                                      ((uint)input[pos + 2] << 8) |
+                                      input[pos + 3];
+                    }
+                }
+                else
+                {
+                    // Padded boundary block
+                    for (int i = 0; i < 16; i++)
+                    {
+                        int pos = blockStart + i * 4;
+                        schedule[i] = ((uint)GetPaddedByte(input, length, totalLength, bitLength, pos) << 24) |
+                                      ((uint)GetPaddedByte(input, length, totalLength, bitLength, pos + 1) << 16) |
+                                      ((uint)GetPaddedByte(input, length, totalLength, bitLength, pos + 2) << 8) |
+                                      GetPaddedByte(input, length, totalLength, bitLength, pos + 3);
+                    }
                 }
 
                 for (int i = 16; i < 64; i++)

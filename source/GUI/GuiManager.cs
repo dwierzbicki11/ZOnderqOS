@@ -102,6 +102,8 @@ namespace ZonderqOS.GUI
                 startMenu = new StartMenu(menuX, menuY, menuWidth, menuHeight);
                 PopulateStartMenu();
 
+                global::ZonderqOS.SystemCore.SystemPower.OnBeforeShutdown = RenderShutdownScreen;
+
                 startMenu.SetPowerActions(
                     () => global::ZonderqOS.SystemCore.SystemPower.Reboot("gui-reboot"),
                     () => global::ZonderqOS.SystemCore.SystemPower.Shutdown("gui-shutdown"),
@@ -1709,6 +1711,45 @@ namespace ZonderqOS.GUI
 
             SmallTextRenderer.Draw(canvas, "ZOnderqOS 1.0 Alpha • Build " + curBuild + " [ALFA 1]", deskW - 275, deskH - 34, Color.FromArgb(70, 225, 120));
             SmallTextRenderer.Draw(canvas, "Wersja " + curVer + " • Cosmos 3.0.95 x64 Native", deskW - 275, deskH - 18, Color.FromArgb(170, 195, 220));
+        }
+
+        private void RenderShutdownScreen()
+        {
+            try
+            {
+                if (canvas != null)
+                {
+                    int w = (int)canvas.Width;
+                    int h = (int)canvas.Height;
+                    canvas.Clear(Color.FromArgb(12, 16, 22));
+
+                    int boxW = System.Math.Min(600, w - 40);
+                    int boxH = 210;
+                    int boxX = (w - boxW) / 2;
+                    int boxY = (h - boxH) / 2;
+
+                    UiPainter.RoundedPanel(canvas, boxX, boxY, boxW, boxH, 8,
+                        Color.FromArgb(20, 26, 36), Color.FromArgb(45, 145, 235));
+
+                    SmallTextRenderer.DrawCentered(canvas, "SYSTEM ZONDERQOS ZOSTAL WYLACZONY",
+                        boxX, boxY + 28, boxW, Color.WhiteSmoke);
+
+                    SmallTextRenderer.DrawCentered(canvas, "Wszystkie dane zostaly bezpiecznie zapisane na nosniku USB.",
+                        boxX, boxY + 68, boxW, Color.FromArgb(135, 150, 168));
+
+                    SmallTextRenderer.DrawCentered(canvas, "Twoj komputer moze byc teraz bezpiecznie wylaczony.",
+                        boxX, boxY + 92, boxW, Color.FromArgb(135, 150, 168));
+
+                    SmallTextRenderer.DrawCentered(canvas, "Przytrzymaj przycisk ZASILANIA na laptopie, aby odciac prad.",
+                        boxX, boxY + 122, boxW, Color.FromArgb(55, 215, 105));
+
+                    SmallTextRenderer.DrawCentered(canvas, "[ R ]  Nacisnij klawisz R, aby zrestartowac komputer",
+                        boxX, boxY + 160, boxW, Color.FromArgb(245, 195, 45));
+
+                    canvas.Display();
+                }
+            }
+            catch { }
         }
     }
 }

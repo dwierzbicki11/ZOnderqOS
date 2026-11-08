@@ -656,7 +656,7 @@ namespace ZonderqOS.SystemCore.Updates
             return true;
         }
 
-        public static bool ApplyUpdate(UpdatePackageInfo pkg, Action<int, string> progress, out string error)
+        public static bool ApplyUpdateStep(UpdatePackageInfo pkg, ref int step, Action<int, string> progress, out string error)
         {
             Initialize();
             error = string.Empty;
@@ -670,111 +670,129 @@ namespace ZonderqOS.SystemCore.Updates
 
             try
             {
-                // Step 1: Pre-installation integrity verification
-                Status = UpdateStatus.Verifying;
-                progress?.Invoke(10, "Kryptograficzna weryfikacja sumy kontrolnej pakietu...");
-
-                if (!VerifyPackageIntegrity(pkg, progress, out error))
+                switch (step)
                 {
-                    Status = UpdateStatus.Error;
-                    SecurityLogger.LogEvent("SECURITY_ERROR", "Aktualizacja przerwana: niepowodzenie weryfikacji sumy kontrolnej: " + error);
-                    return false;
+                    case 0:
+                        // Step 1: Pre-installation integrity verification
+                        Status = UpdateStatus.Verifying;
+                        progress?.Invoke(15, "Weryfikacja sum kontrolnych pakietu aktualizacji...");
+                        if (!VerifyPackageIntegrity(pkg, progress, out error))
+                        {
+                            Status = UpdateStatus.Error;
+                            SecurityLogger.LogEvent("SECURITY_ERROR", "Aktualizacja przerwana: niepowodzenie weryfikacji sumy kontrolnej: " + error);
+                            return false;
+                        }
+                        step = 1;
+                        return true;
+
+                    case 1:
+                        // Step 2: Create full system rollback snapshot
+                        Status = UpdateStatus.Installing;
+                        progress?.Invoke(35, "Tworzenie bezpiecznej migawki systemu (/var/updates/backup)...");
+                        CreateRollbackSnapshot();
+                        step = 2;
+                        return true;
+
+                    case 2:
+                        // Step 3: Install kernel into inactive boot slot (A/B layout)
+                        string kernelSrc = FindKernelSource(pkg);
+                        string inactiveSlot = BootSlotManager.GetInactiveSlot();
+                        progress?.Invoke(55, $"Kopiowanie kernela do bezpiecznego slotu {inactiveSlot}...");
+
+                        if (!BootSlotManager.StageKernelToInactiveSlot(kernelSrc, pkg.KernelSha256, pkg.Version, pkg.BuildNumber, progress, out error))
+                        {
+                            Status = UpdateStatus.Error;
+                            return false;
+                        }
+                        step = 3;
+                        return true;
+
+                    case 3:
+                        // Step 4: Deploy payload files if present
+                        string payloadDir = FindPayloadDirectory(pkg);
+                        if (!string.IsNullOrEmpty(payloadDir) && Directory.Exists(payloadDir))
+                        {
+                            progress?.Invoke(70, "Instalowanie fizycznych plikow ladunku na dysku...");
+                            string backupPayload = Path.Combine(BackupDir, "payload_snapshot");
+                            DeployDirectory(payloadDir, "/", backupPayload);
+                        }
+                        step = 4;
+                        return true;
+
+                    case 4:
+                        // Step 5: Activate new boot slot in Limine
+                        string newActiveSlot = BootSlotManager.GetInactiveSlot();
+                        progress?.Invoke(85, $"Przelaczanie aktywnego slotu rozruchowego na slot {newActiveSlot}...");
+                        if (!BootSlotManager.ActivateSlot(newActiveSlot, out error))
+                        {
+                            Status = UpdateStatus.Error;
+                            return false;
+                        }
+                        step = 5;
+                        return true;
+
+                    case 5:
+                        // Step 6: Identity, reports, integrity baseline and themes
+                        progress?.Invoke(95, "Aktualizacja konfiguracji tozsamosci i bazy integralnosci...");
+                        string newOsRelease = "NAME=\"ZonderqOS\"\n" +
+                                              "ID=zonderqos\n" +
+                                              "VERSION_ID=\"" + pkg.Version + "\"\n" +
+                                              "BUILD_ID=\"" + pkg.BuildNumber + "\"\n" +
+                                              "PRETTY_NAME=\"ZonderqOS " + pkg.Version + " (" + pkg.Title + ")\"\n" +
+                                              "UPDATE_DATE=\"" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\"\n";
+                        try { if (File.Exists(OsReleasePath)) File.Delete(OsReleasePath); } catch { }
+                        File.WriteAllText(OsReleasePath, newOsRelease);
+
+                        try { if (File.Exists("/etc/issue")) File.Delete("/etc/issue"); } catch { }
+                        File.WriteAllText("/etc/issue", "ZonderqOS " + pkg.Version + " (Build " + pkg.BuildNumber + ")\n");
+
+                        // Archive applied manifest
+                        try
+                        {
+                            string installedDir = "/var/updates/installed";
+                            if (!Directory.Exists(installedDir)) Directory.CreateDirectory(installedDir);
+
+                            if (!string.IsNullOrEmpty(pkg.ManifestPath) && File.Exists(pkg.ManifestPath))
+                            {
+                                File.Copy(pkg.ManifestPath, Path.Combine(installedDir, "update-" + pkg.Version + ".manifest"), true);
+                                File.Delete(pkg.ManifestPath);
+                            }
+                        }
+                        catch { }
+
+                        IntegrityGuard.UpdateBaseline();
+
+                        try
+                        {
+                            global::ZonderqOS.SystemSettings.SetAccentTheme(pkg.TargetTheme);
+                            global::ZonderqOS.SystemSettings.SetDesktopBackground(pkg.TargetWallpaper);
+                        }
+                        catch { }
+
+                        WriteUpdateReport(pkg);
+
+                        progress?.Invoke(100, $"Aktualizacja do wersji {pkg.Version} zainstalowana w slocie {BootSlotManager.ActiveSlot}! Wymagany restart.");
+                        InstalledVersion = pkg.Version;
+                        InstalledBuild = pkg.BuildNumber.ToString();
+                        SaveConfig();
+                        IsRebootRequired = true;
+                        Status = UpdateStatus.NeedsReboot;
+                        AvailablePackage = null;
+
+                        string logEntry = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] ZAINSTALOWANO: " +
+                                          pkg.Version + " (Build " + pkg.BuildNumber + ") w slocie " + BootSlotManager.ActiveSlot +
+                                          " | SHA256: " + (pkg.ExpectedSha256.Length >= 16 ? pkg.ExpectedSha256.Substring(0, 16) : pkg.ExpectedSha256) + "...\n";
+                        File.AppendAllText(HistoryLogPath, logEntry);
+
+                        SecurityLogger.LogEvent("SECURITY", $"System zaktualizowany do {pkg.Version} w slocie {BootSlotManager.ActiveSlot}");
+                        SystemLogger.Log(SystemLogLevel.Info, "UPDATE", $"Zaktualizowano system do {pkg.Version} w slocie {BootSlotManager.ActiveSlot}");
+                        step = -1; // Done!
+                        return true;
+
+                    default:
+                        step = -1;
+                        return true;
                 }
-
-                // Step 2: Create full system rollback snapshot
-                Status = UpdateStatus.Installing;
-                progress?.Invoke(25, "Tworzenie migawki systemu (backup /etc, konfiguracji i plikow)...");
-                CreateRollbackSnapshot();
-
-                // Step 3: Install kernel into inactive boot slot (A/B layout)
-                string kernelSrc = FindKernelSource(pkg);
-                string inactiveSlot = BootSlotManager.GetInactiveSlot();
-                progress?.Invoke(40, $"Instalacja nowego kernela w bezpiecznym slocie {inactiveSlot}...");
-
-                if (!BootSlotManager.StageKernelToInactiveSlot(kernelSrc, pkg.KernelSha256, pkg.Version, pkg.BuildNumber, progress, out error))
-                {
-                    Status = UpdateStatus.Error;
-                    return false;
-                }
-
-                // Step 4: Deploy payload files if present
-                string payloadDir = FindPayloadDirectory(pkg);
-                if (!string.IsNullOrEmpty(payloadDir) && Directory.Exists(payloadDir))
-                {
-                    progress?.Invoke(60, "Instalowanie fizycznych plikow ladunku na dysku...");
-                    string backupPayload = Path.Combine(BackupDir, "payload_snapshot");
-                    DeployDirectory(payloadDir, "/", backupPayload);
-                }
-
-                // Step 5: Activate new boot slot in Limine
-                progress?.Invoke(75, $"Przelaczanie aktywnego slotu rozruchowego na slot {inactiveSlot}...");
-                if (!BootSlotManager.ActivateSlot(inactiveSlot, out error))
-                {
-                    Status = UpdateStatus.Error;
-                    return false;
-                }
-
-                // Step 6: Update /etc/os-release and identity
-                progress?.Invoke(85, "Aktualizacja konfiguracji tozsamosci /etc/os-release...");
-                string newOsRelease = "NAME=\"ZonderqOS\"\n" +
-                                      "ID=zonderqos\n" +
-                                      "VERSION_ID=\"" + pkg.Version + "\"\n" +
-                                      "BUILD_ID=\"" + pkg.BuildNumber + "\"\n" +
-                                      "PRETTY_NAME=\"ZonderqOS " + pkg.Version + " (" + pkg.Title + ")\"\n" +
-                                      "UPDATE_DATE=\"" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\"\n";
-                try { if (File.Exists(OsReleasePath)) File.Delete(OsReleasePath); } catch { }
-                File.WriteAllText(OsReleasePath, newOsRelease);
-
-                try { if (File.Exists("/etc/issue")) File.Delete("/etc/issue"); } catch { }
-                File.WriteAllText("/etc/issue", "ZonderqOS " + pkg.Version + " (Build " + pkg.BuildNumber + ")\n");
-
-                // Step 7: Archive applied manifest so it does not loop
-                try
-                {
-                    string installedDir = "/var/updates/installed";
-                    if (!Directory.Exists(installedDir)) Directory.CreateDirectory(installedDir);
-
-                    if (!string.IsNullOrEmpty(pkg.ManifestPath) && File.Exists(pkg.ManifestPath))
-                    {
-                        File.Copy(pkg.ManifestPath, Path.Combine(installedDir, "update-" + pkg.Version + ".manifest"), true);
-                        File.Delete(pkg.ManifestPath);
-                    }
-                }
-                catch { }
-
-                // Step 8: Update Integrity baseline
-                progress?.Invoke(90, "Odswiezanie bazy integralnosci IntegrityGuard...");
-                IntegrityGuard.UpdateBaseline();
-
-                // Step 9: Apply visual themes
-                progress?.Invoke(95, "Zastosowanie ustawien motywu wizualnego...");
-                try
-                {
-                    global::ZonderqOS.SystemSettings.SetAccentTheme(pkg.TargetTheme);
-                    global::ZonderqOS.SystemSettings.SetDesktopBackground(pkg.TargetWallpaper);
-                }
-                catch { }
-
-                // Write report
-                WriteUpdateReport(pkg);
-
-                // Step 10: Finalize
-                progress?.Invoke(100, $"Aktualizacja do wersji {pkg.Version} zainstalowana w slocie {inactiveSlot}! Wymagany restart.");
-                InstalledVersion = pkg.Version;
-                InstalledBuild = pkg.BuildNumber.ToString();
-                SaveConfig();
-                IsRebootRequired = true;
-                Status = UpdateStatus.NeedsReboot;
-                AvailablePackage = null;
-
-                string logEntry = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] ZAINSTALOWANO: " +
-                                  pkg.Version + " (Build " + pkg.BuildNumber + ") w slocie " + inactiveSlot +
-                                  " | SHA256: " + (pkg.ExpectedSha256.Length >= 16 ? pkg.ExpectedSha256.Substring(0, 16) : pkg.ExpectedSha256) + "...\n";
-                File.AppendAllText(HistoryLogPath, logEntry);
-
-                SecurityLogger.LogEvent("SECURITY", $"System zaktualizowany do {pkg.Version} w slocie {inactiveSlot}");
-                SystemLogger.Log(SystemLogLevel.Info, "UPDATE", $"Zaktualizowano system do {pkg.Version} w slocie {inactiveSlot}");
-                return true;
             }
             catch (Exception ex)
             {
@@ -783,6 +801,18 @@ namespace ZonderqOS.SystemCore.Updates
                 SecurityLogger.LogEvent("ERROR", "Update installation failed: " + ex.Message);
                 return false;
             }
+        }
+
+        public static bool ApplyUpdate(UpdatePackageInfo pkg, Action<int, string> progress, out string error)
+        {
+            int step = 0;
+            while (step != -1)
+            {
+                if (!ApplyUpdateStep(pkg, ref step, progress, out error))
+                    return false;
+            }
+            error = string.Empty;
+            return true;
         }
 
         private static void WriteUpdateReport(UpdatePackageInfo pkg)
@@ -902,7 +932,7 @@ namespace ZonderqOS.SystemCore.Updates
             }
         }
 
-        public static bool Rollback(Action<int, string> progress, out string error)
+        public static bool RollbackStep(ref int step, Action<int, string> progress, out string error)
         {
             Initialize();
             error = string.Empty;
@@ -915,72 +945,99 @@ namespace ZonderqOS.SystemCore.Updates
 
             try
             {
-                progress?.Invoke(20, "Odczytywanie danych migawki systemu...");
-                string metaFile = Path.Combine(BackupDir, "snapshot.meta");
-                string prevVersion = KernelBuildInfo.KernelVersion;
-                int prevTheme = 0;
-                int prevWallpaper = 0;
-
-                if (File.Exists(metaFile))
+                switch (step)
                 {
-                    string[] lines = File.ReadAllLines(metaFile);
-                    foreach (string l in lines)
-                    {
-                        if (l.StartsWith("PREVIOUS_VERSION=", StringComparison.OrdinalIgnoreCase))
-                            prevVersion = l.Substring(17).Trim();
-                        else if (l.StartsWith("PREVIOUS_THEME=", StringComparison.OrdinalIgnoreCase))
-                            int.TryParse(l.Substring(15).Trim(), out prevTheme);
-                        else if (l.StartsWith("PREVIOUS_WALLPAPER=", StringComparison.OrdinalIgnoreCase))
-                            int.TryParse(l.Substring(19).Trim(), out prevWallpaper);
-                    }
+                    case 0:
+                        progress?.Invoke(25, "Odczytywanie danych migawki systemu...");
+                        step = 1;
+                        return true;
+
+                    case 1:
+                        progress?.Invoke(50, "Wycofywanie aktywnego slotu rozruchowego (Rollback A/B)...");
+                        if (!BootSlotManager.ManualRollback(out error))
+                            return false;
+                        step = 2;
+                        return true;
+
+                    case 2:
+                        progress?.Invoke(75, "Przywracanie poprzedniej konfiguracji /etc/os-release...");
+                        string backupOsRel = Path.Combine(BackupDir, "os-release.snapshot");
+                        if (File.Exists(backupOsRel))
+                            File.Copy(backupOsRel, OsReleasePath, true);
+
+                        string backupPayloadDir = Path.Combine(BackupDir, "payload_snapshot");
+                        if (Directory.Exists(backupPayloadDir))
+                        {
+                            DeployDirectory(backupPayloadDir, "/", null);
+                        }
+                        IntegrityGuard.UpdateBaseline();
+                        step = 3;
+                        return true;
+
+                    case 3:
+                        progress?.Invoke(100, "Przywracanie zakonczone pomyslnie! Wymagany restart.");
+                        string metaFile = Path.Combine(BackupDir, "snapshot.meta");
+                        string prevVersion = KernelBuildInfo.KernelVersion;
+                        int prevTheme = 0;
+                        int prevWallpaper = 0;
+
+                        if (File.Exists(metaFile))
+                        {
+                            string[] lines = File.ReadAllLines(metaFile);
+                            foreach (string l in lines)
+                            {
+                                if (l.StartsWith("PREVIOUS_VERSION=", StringComparison.OrdinalIgnoreCase))
+                                    prevVersion = l.Substring(17).Trim();
+                                else if (l.StartsWith("PREVIOUS_THEME=", StringComparison.OrdinalIgnoreCase))
+                                    int.TryParse(l.Substring(15).Trim(), out prevTheme);
+                                else if (l.StartsWith("PREVIOUS_WALLPAPER=", StringComparison.OrdinalIgnoreCase))
+                                    int.TryParse(l.Substring(19).Trim(), out prevWallpaper);
+                            }
+                        }
+
+                        try
+                        {
+                            global::ZonderqOS.SystemSettings.SetAccentTheme(prevTheme);
+                            global::ZonderqOS.SystemSettings.SetDesktopBackground(prevWallpaper);
+                        }
+                        catch { }
+
+                        CurrentVersion = prevVersion;
+                        InstalledVersion = prevVersion;
+                        SaveConfig();
+                        IsRebootRequired = true;
+                        Status = UpdateStatus.RolledBack;
+
+                        string logEntry = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] ROLLBACK: Przywrocono wersje " + prevVersion +
+                                          " w slocie " + BootSlotManager.ActiveSlot + "\n";
+                        File.AppendAllText(HistoryLogPath, logEntry);
+
+                        SecurityLogger.LogEvent("WARN", "System rolled back to previous snapshot: " + prevVersion);
+                        step = -1; // Done!
+                        return true;
+
+                    default:
+                        step = -1;
+                        return true;
                 }
-
-                progress?.Invoke(40, "Wycofywanie aktywnego slotu rozruchowego (Rollback A/B)...");
-                if (!BootSlotManager.ManualRollback(out error))
-                {
-                    return false;
-                }
-
-                progress?.Invoke(60, "Przywracanie poprzedniej konfiguracji /etc/os-release...");
-                string backupOsRel = Path.Combine(BackupDir, "os-release.snapshot");
-                if (File.Exists(backupOsRel))
-                    File.Copy(backupOsRel, OsReleasePath, true);
-
-                string backupPayloadDir = Path.Combine(BackupDir, "payload_snapshot");
-                if (Directory.Exists(backupPayloadDir))
-                {
-                    progress?.Invoke(80, "Przywracanie poprzednich plikow ladunku...");
-                    DeployDirectory(backupPayloadDir, "/", null);
-                }
-
-                IntegrityGuard.UpdateBaseline();
-
-                try
-                {
-                    global::ZonderqOS.SystemSettings.SetAccentTheme(prevTheme);
-                    global::ZonderqOS.SystemSettings.SetDesktopBackground(prevWallpaper);
-                }
-                catch { }
-
-                progress?.Invoke(100, "Przywracanie zakonczone pomyslnie! Wymagany restart.");
-                CurrentVersion = prevVersion;
-                InstalledVersion = prevVersion;
-                SaveConfig();
-                IsRebootRequired = true;
-                Status = UpdateStatus.RolledBack;
-
-                string logEntry = "[" + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "] ROLLBACK: Przywrocono wersje " + prevVersion +
-                                  " w slocie " + BootSlotManager.ActiveSlot + "\n";
-                File.AppendAllText(HistoryLogPath, logEntry);
-
-                SecurityLogger.LogEvent("WARN", "System rolled back to previous snapshot: " + prevVersion);
-                return true;
             }
             catch (Exception ex)
             {
                 error = "Blad podczas rollbacku: " + ex.Message;
                 return false;
             }
+        }
+
+        public static bool Rollback(Action<int, string> progress, out string error)
+        {
+            int step = 0;
+            while (step != -1)
+            {
+                if (!RollbackStep(ref step, progress, out error))
+                    return false;
+            }
+            error = string.Empty;
+            return true;
         }
 
         public static List<string> GetHistory()

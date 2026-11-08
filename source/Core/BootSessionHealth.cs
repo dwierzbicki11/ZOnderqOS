@@ -247,6 +247,8 @@ namespace ZonderqOS.SystemCore
     /// </summary>
     public static class SystemPower
     {
+        public static Action OnBeforeShutdown { get; set; }
+
         public static void Reboot(string reason = "reboot")
         {
             BootSessionHealth.MarkCleanExit(reason);
@@ -258,7 +260,86 @@ namespace ZonderqOS.SystemCore
         {
             BootSessionHealth.MarkCleanExit(reason);
             SystemLogger.Log(SystemLogLevel.Warning, "POWER", "Controlled shutdown requested.");
-            Cosmos.Kernel.System.Power.Shutdown();
+
+            // 1. Notify graphical / UI layer to display shutdown screen
+            try
+            {
+                OnBeforeShutdown?.Invoke();
+            }
+            catch { }
+
+            // 2. Direct hardware port power-off signals (QEMU, Bochs, VirtualBox, and common ACPI PM1a)
+            try
+            {
+                // QEMU / KVM ACPI shutdown port
+                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x604, 0x2000);
+                // Bochs ACPI port
+                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0xB004, 0x2000);
+                // VirtualBox poweroff port
+                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x4004, 0x3400);
+                // Common Intel PCH ACPI PM1a control ports
+                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x1804, 0x3C00);
+                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x0404, 0x3400);
+                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x0804, 0x2000);
+            }
+            catch { }
+
+            // 3. Fallback text console screen if no GUI was registered
+            if (OnBeforeShutdown == null)
+            {
+                try
+                {
+                    Console.BackgroundColor = ConsoleColor.Black;
+                    Console.ForegroundColor = ConsoleColor.White;
+                    Console.Clear();
+                    Console.WriteLine();
+                    Console.WriteLine("============================================================");
+                    Console.WriteLine("              SYSTEM ZONDERQOS ZOSTAL WYLACZONY            ");
+                    Console.WriteLine("============================================================");
+                    Console.WriteLine();
+                    Console.WriteLine("  Wszystkie dane zostaly bezpiecznie zsynchronizowane na USB.");
+                    Console.WriteLine("  Twoj komputer moze byc teraz bezpiecznie wylaczony.");
+                    Console.WriteLine();
+                    Console.WriteLine("  * Nacisnij i przytrzymaj przycisk ZASILANIA na laptopie");
+                    Console.WriteLine("    lub");
+                    Console.WriteLine("  * Nacisnij klawisz [ R ] aby zrestartowac komputer.");
+                    Console.WriteLine();
+                    Console.WriteLine("============================================================");
+                }
+                catch { }
+            }
+
+            // 4. Safe halt loop with [R] key reboot capability
+            while (true)
+            {
+                bool shouldReboot = false;
+                try
+                {
+                    if (Cosmos.Kernel.System.KeyboardManager.TryReadKey(out var k) && k != null)
+                    {
+                        if (k.Key == ConsoleKeyEx.R)
+                            shouldReboot = true;
+                    }
+                }
+                catch { }
+
+                try
+                {
+                    if (!shouldReboot && Console.KeyAvailable)
+                    {
+                        if (Console.ReadKey(true).Key == ConsoleKey.R)
+                            shouldReboot = true;
+                    }
+                }
+                catch { }
+
+                if (shouldReboot)
+                {
+                    Cosmos.Kernel.System.Power.Reboot();
+                }
+
+                Cosmos.Kernel.System.Power.Halt();
+            }
         }
     }
 }
