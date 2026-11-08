@@ -22,6 +22,7 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color GreenColor = Color.FromArgb(55, 195, 95);
         private static readonly Color RedColor = Color.FromArgb(235, 75, 75);
         private static readonly Color YellowColor = Color.FromArgb(240, 195, 45);
+        private static readonly Color GoldColor = Color.FromArgb(245, 190, 35);
 
         private const string VaultPath = "/root/.zonderq-vault.enc";
         private const string DefaultSalt = "ZONDERQ_VAULT_SECURE_SALT_2026";
@@ -52,8 +53,6 @@ namespace ZonderqOS.GUI.Apps
 
         // PIN change mode
         private bool isChangingPin = false;
-        private int pinChangeStep = 0; // 0 = old PIN, 1 = new PIN
-        private string oldPinBuffer = "";
 
         // Display state
         private bool showPassword = false;
@@ -134,7 +133,6 @@ namespace ZonderqOS.GUI.Apps
             lastCopiedPassword = "";
             clipboardClearTicks = 0;
             isChangingPin = false;
-            pinChangeStep = 0;
             statusMessage = "Sejf zablokowany. Wpisz PIN glowny.";
             statusColor = MutedColor;
         }
@@ -428,7 +426,6 @@ namespace ZonderqOS.GUI.Apps
                 if (isChangingPin)
                 {
                     isChangingPin = false;
-                    pinChangeStep = 0;
                     statusMessage = "Anulowano zmiane PINu.";
                     return;
                 }
