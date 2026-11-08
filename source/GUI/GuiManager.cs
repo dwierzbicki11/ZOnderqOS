@@ -132,6 +132,16 @@ namespace ZonderqOS.GUI
                     "Witaj, " + SecurityContext.CurrentUser,
                     "Bezpieczna sesja ZOnderqOS zostala uruchomiona.");
 
+                string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
+                if (curVer != "2026.11.0" && curVer != "3")
+                {
+                    global::ZonderqOS.NotificationService.Post(
+                        global::ZonderqOS.NotificationKind.Success,
+                        "AKTUALIZACJA",
+                        "ZOnderqOS " + curVer,
+                        "System jest zaktualizowany! Sprawdz nowe aplikacje i raport zmian.");
+                }
+
                 bool previousLeftButtonState = false;
                 bool previousRightButtonState = false;
                 // A modal may close on mouse-down. The rest of that physical
@@ -865,6 +875,12 @@ namespace ZonderqOS.GUI
                 "Menedzer aktualizacji OS, kanaly dystrybucji, weryfikacja SHA-256 i rollback",
                 AppCategory.System, IconType.Install, () => LaunchSystemUpdater(130, 45),
                 StartMenuPlacement.Tool, 25, 11, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.QuickNotes, "Szybkie Notatki", "Szybkie Notatki", "Notatki",
+                "Podreczny notatnik i zolte karteczki na pulpicie z autozapisem",
+                AppCategory.Tools, IconType.FileDoc, () => LaunchQuickNotes(160, 90),
+                StartMenuPlacement.Tool, 26, 12, true));
         }
 
         private void PopulateStartMenu()
@@ -1420,6 +1436,11 @@ namespace ZonderqOS.GUI
             applicationManager.Launch(new SystemUpdaterApp(x, y, null));
         }
 
+        private void LaunchQuickNotes(int x, int y)
+        {
+            applicationManager.Launch(new QuickNotesApp(x, y, null));
+        }
+
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
             bool rightClicked, bool wasRightClicked)
         {
@@ -1614,25 +1635,42 @@ namespace ZonderqOS.GUI
             if (IsDesktopOccluded())
                 return;
 
+            int deskW = (int)canvas.Width;
+            int deskH = (int)canvas.Height - TaskbarHeight;
+
             int mode = global::ZonderqOS.SystemSettings.DesktopBackgroundMode;
             if (mode == 0 && wallpaperCanvas != null)
             {
                 canvas.DrawCanvas(wallpaperCanvas, 0, 0);
-                return;
+            }
+            else
+            {
+                Color background = mode switch
+                {
+                    1 => Color.FromArgb(25, 30, 36),     // Grafit
+                    2 => Color.FromArgb(17, 31, 47),     // Cosmos Navy
+                    3 => Color.FromArgb(8, 10, 14),      // OLED Midnight
+                    4 => Color.FromArgb(0, 128, 128),    // Retro 95 Teal
+                    5 => Color.FromArgb(10, 26, 18),     // Cyber Matrix
+                    6 => Color.FromArgb(22, 36, 48),     // Nordic Glacier
+                    _ => Color.FromArgb(17, 31, 47)
+                };
+                canvas.DrawFilledRectangle(background, 0, 0, deskW, deskH);
             }
 
-            Color background = mode switch
+            // Desktop Watermark & OS Build Status Badge
+            string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
+            string curBuild = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild;
+
+            if (curVer != "2026.11.0" && curVer != "3")
             {
-                1 => Color.FromArgb(25, 30, 36),     // Grafit
-                2 => Color.FromArgb(17, 31, 47),     // Cosmos Navy
-                3 => Color.FromArgb(8, 10, 14),      // OLED Midnight
-                4 => Color.FromArgb(0, 128, 128),    // Retro 95 Teal
-                5 => Color.FromArgb(10, 26, 18),     // Cyber Matrix
-                6 => Color.FromArgb(22, 36, 48),     // Nordic Glacier
-                _ => Color.FromArgb(17, 31, 47)
-            };
-            canvas.DrawFilledRectangle(background, 0, 0, (int)canvas.Width,
-                (int)canvas.Height - TaskbarHeight);
+                SmallTextRenderer.Draw(canvas, "ZOnderqOS " + curVer + " [ZAKTUALIZOWANO \u2713]", deskW - 275, deskH - 34, Color.FromArgb(70, 225, 120));
+                SmallTextRenderer.Draw(canvas, "Build " + curBuild + " • Security & Feature Rollup", deskW - 275, deskH - 18, Color.FromArgb(170, 195, 220));
+            }
+            else
+            {
+                SmallTextRenderer.Draw(canvas, "ZOnderqOS " + curVer + " • Cosmos 3.0.95 x64", deskW - 225, deskH - 18, Color.FromArgb(100, 120, 145));
+            }
         }
     }
 }

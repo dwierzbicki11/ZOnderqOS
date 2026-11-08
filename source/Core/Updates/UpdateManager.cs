@@ -361,6 +361,39 @@ namespace ZonderqOS.SystemCore.Updates
                 progress?.Invoke(90, "Odswiezanie bazy integralnosci IntegrityGuard...");
                 IntegrityGuard.UpdateBaseline();
 
+                // Apply visible feature enhancements (theme, desktop report, notifications)
+                try
+                {
+                    global::ZonderqOS.SystemSettings.SetAccentTheme(2); // Emerald Forest
+                    global::ZonderqOS.SystemSettings.SetDesktopBackground(6); // Nordic Glacier
+
+                    string report = "============================================================\n" +
+                                    "         ZONDERQOS - RAPORT AKTUALIZACJI SYSTEMU\n" +
+                                    "============================================================\n" +
+                                    "Wersja zainstalowana: " + pkg.Version + " (Build " + pkg.BuildNumber + ")\n" +
+                                    "Tytul wydania:        " + pkg.Title + "\n" +
+                                    "Data instalacji:      " + DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss") + "\n" +
+                                    "Suma SHA-256 payload: " + actualHash + "\n\n" +
+                                    "WIDOCZNE NOWOSCI W TYM WYDANIU:\n" +
+                                    "1. [NOWA APLIKACJA] Szybkie Notatki (Sticky Notes) na pulpicie i w menu!\n" +
+                                    "2. [NOWY WYGLAD] Odswiezony motyw graficzny (Emerald Forest & Nordic Glacier)\n" +
+                                    "3. [PULPIT] Certyfikat kompilacji i znak wodny aktualizacji w prawym dolnym rogu\n" +
+                                    "4. [BEZPIECZENSTWO] Szyfrowany Sejf Hasel PassVault v2 z ochrona anty-bruteforce\n" +
+                                    "5. [TESTY] Prawdziwy sprzetowy silnik testowy SYSBenchmark 3.0\n" +
+                                    "6. [CENTRUM BEZPIECZENSTWA] Zapora sieciowa z regulami portow i anti-tamper\n\n" +
+                                    "W kazdej chwili mozesz przywrocic poprzedni stan systemu za pomoca:\n" +
+                                    "  * Aplikacji Aktualizacje (przycisk 'Przywroc Migawke')\n" +
+                                    "  * Wiersza polecen: 'zupdate rollback'\n" +
+                                    "============================================================\n";
+                    File.WriteAllText("/root/Co_Nowego_W_Aktualizacji.txt", report);
+                    global::ZonderqOS.NotificationService.Post(
+                        global::ZonderqOS.NotificationKind.Success,
+                        "AKTUALIZACJA",
+                        "ZOnderqOS " + pkg.Version,
+                        "Zainstalowano nowosci: Szybkie Notatki, nowy motyw i raport na pulpicie!");
+                }
+                catch { }
+
                 // Step 5: Append to update log & record audit event
                 progress?.Invoke(100, "Aktualizacja zakonczona sukcesem! Wymagany restart.");
                 CurrentVersion = pkg.Version;
@@ -464,6 +497,20 @@ namespace ZonderqOS.SystemCore.Updates
 
                 progress?.Invoke(80, "Aktualizowanie bazy integralnosci IntegrityGuard...");
                 IntegrityGuard.UpdateBaseline();
+
+                try
+                {
+                    global::ZonderqOS.SystemSettings.SetAccentTheme(0); // Cosmos Blue
+                    global::ZonderqOS.SystemSettings.SetDesktopBackground(0); // Default Wallpaper
+                    if (File.Exists("/root/Co_Nowego_W_Aktualizacji.txt"))
+                        File.Delete("/root/Co_Nowego_W_Aktualizacji.txt");
+                    global::ZonderqOS.NotificationService.Post(
+                        global::ZonderqOS.NotificationKind.Warning,
+                        "ROLLBACK",
+                        "Przywrocono " + prevVersion,
+                        "Przywrocono domyslny motyw i stan systemu.");
+                }
+                catch { }
 
                 progress?.Invoke(100, "Przywracanie zakonczone pomyslnie!");
                 CurrentVersion = prevVersion;

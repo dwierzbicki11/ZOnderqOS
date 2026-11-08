@@ -55,6 +55,7 @@ namespace ZonderqOS.GUI.Apps
         public const string SpriteStudio = "sprite-studio";
         public const string SecurityCenter = "security-center";
         public const string SystemUpdater = "system-updater";
+        public const string QuickNotes = "quick-notes";
     }
 
     public sealed class AppDescriptor

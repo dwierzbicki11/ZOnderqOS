@@ -42,7 +42,7 @@ namespace ZonderqOS.Commands
             {
                 userStr,
                 separator,
-                "OS:       ZOnderqOS Gen 3 (x86_64)",
+                "OS:       ZOnderqOS " + global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion + " (Build " + global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild + ")",
                 "Kernel:   Cosmos v3.0.95-stock",
                 "Uptime:   " + uptimeStr,
                 "CPU:      " + info.CpuBrand,
