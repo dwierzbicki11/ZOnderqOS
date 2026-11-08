@@ -143,7 +143,7 @@ class WavValidatorTests(unittest.TestCase):
     def test_float_hda_tail_requires_actual_captured_silence(self):
         # Synthetic PCM fixture: 250ms tone followed by 80ms zero tail.
         # A single nonzero final frame must fail the strict tail check.
-        self.make_wave(ms=250, silence_ms=0)
+        self.make_wave(frequency=2860, ms=250, silence_ms=0)
         with wave.open(str(self.path), "rb") as wav:
             raw = wav.readframes(wav.getnframes())
         raw += bytes(48000 * 80 // 1000 * 4)
@@ -162,6 +162,18 @@ class WavValidatorTests(unittest.TestCase):
             wav.setframerate(48000)
             wav.writeframes(corrupt)
         with self.assertRaisesRegex(ValueError, "non-silent float WAV tail"):
+            audio.inspect_silent_tail(self.path)
+
+    def test_float_hda_tail_rejects_wrong_pitch(self):
+        self.make_wave(frequency=880, ms=330, silence_ms=0)
+        with wave.open(str(self.path), "rb") as wav:
+            raw = wav.readframes(wav.getnframes())
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(48000)
+            wav.writeframes(raw + bytes(48000 * 80 // 1000 * 4))
+        with self.assertRaisesRegex(ValueError, "float tail wrong pitch"):
             audio.inspect_silent_tail(self.path)
 
     def test_float_hda_tail_rejects_all_silence(self):
