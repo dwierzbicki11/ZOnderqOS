@@ -35,7 +35,6 @@ namespace ZonderqOS.Security
             "/etc/shadow",
             "/etc/acl.map",
             "/etc/hostname",
-            "/etc/resolv.conf",
             "/etc/firewall.cfg",
             "/etc/zonderq/settings.conf"
         };

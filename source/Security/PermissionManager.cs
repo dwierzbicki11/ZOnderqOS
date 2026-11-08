@@ -38,6 +38,10 @@ namespace ZonderqOS
                     string defaultAcl =
                         "/etc/shadow|root|600\n" +
                         "/etc/passwd|root|644\n" +
+                        "/etc/acl.map|root|600\n" +
+                        "/etc/firewall.cfg|root|600\n" +
+                        "/etc/hostname|root|644\n" +
+                        "/etc/zonderq/settings.conf|root|644\n" +
                         "/var/log/auth.log|root|600\n" +
                         "/etc/profile|root|644\n";
                     File.WriteAllText(AclPath, defaultAcl);
