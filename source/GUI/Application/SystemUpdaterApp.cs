@@ -49,18 +49,18 @@ namespace ZonderqOS.GUI.Apps
             closeCallback?.Invoke();
         }
 
-        public override void HandleKey(ConsoleKeyInfo? key)
+        public override void HandleKeyboard(KeyEvent key)
         {
-            base.HandleKey(key);
+            base.HandleKeyboard(key);
             if (key == null) return;
 
-            if (key.Value.Key == ConsoleKey.Escape)
+            if (key.Key == ConsoleKeyEx.Escape)
             {
                 Close();
                 return;
             }
 
-            if (key.Value.Key == ConsoleKey.F5)
+            if (key.Key == ConsoleKeyEx.F5)
             {
                 CheckUpdatesNow(true);
             }
