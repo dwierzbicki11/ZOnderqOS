@@ -220,7 +220,7 @@ namespace ZonderqOS.GUI.Apps
             int mandelTotalIters = RunMandelbrotFixedPoint(160, 100, 40);
             long mandelElapsed = Stopwatch.GetTimestamp() - mandelStart;
             if (mandelElapsed <= 0) mandelElapsed = 1;
-            mandelTimeMs = (int)((mandelElapsed * 1000) / freq);
+            mandelbrotTimeMs = (int)((mandelElapsed * 1000) / freq);
 
             // Algorithm C: Real CRC-32 on 1 MB data buffer (4 passes of 256KB)
             long crcStart = Stopwatch.GetTimestamp();
