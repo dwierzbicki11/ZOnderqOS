@@ -116,6 +116,12 @@ def inspect_silent_tail(path: Path):
     samples.frombytes(raw)
     if sys.byteorder != "little":
         samples.byteswap()
+    # A silent backend file is not proof that the preceding float probe played.
+    # Require substantial non-silent stereo PCM before the final quiet tail.
+    pre_tail = samples[:-((rate // 50) * 2)]
+    if (sum(abs(sample) >= 256 for sample in pre_tail[::2]) < rate // 10
+            or sum(abs(sample) >= 256 for sample in pre_tail[1::2]) < rate // 10):
+        raise ValueError("missing sustained float tone before silent tail")
     tail_frames = rate // 50  # 20ms
     tail = samples[-tail_frames * 2:]
     if len(tail) != tail_frames * 2:
