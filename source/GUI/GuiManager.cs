@@ -132,6 +132,21 @@ namespace ZonderqOS.GUI
                     "Witaj, " + SecurityContext.CurrentUser,
                     "Bezpieczna sesja ZOnderqOS zostala uruchomiona.");
 
+                string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
+                if (curVer != "2026.11.0" && curVer != "3")
+                {
+                    global::ZonderqOS.NotificationService.Post(
+                        global::ZonderqOS.NotificationKind.Success,
+                        "AKTUALIZACJA",
+                        "ZOnderqOS " + curVer,
+                        "System jest zaktualizowany! Sprawdz nowe aplikacje i raport zmian.");
+                }
+
+                // Show Welcome App on desktop startup
+                int welcomeX = System.Math.Max(20, ((int)canvas.Width - 620) / 2);
+                int welcomeY = System.Math.Max(20, ((int)canvas.Height - 420) / 2);
+                LaunchWelcome(welcomeX, welcomeY);
+
                 bool previousLeftButtonState = false;
                 bool previousRightButtonState = false;
                 // A modal may close on mouse-down. The rest of that physical
@@ -532,6 +547,13 @@ namespace ZonderqOS.GUI
                     if (heartbeatFrames < 1)
                         heartbeatFrames = 1;
                     bool heartbeat = frameCounter % heartbeatFrames == 0;
+                    if (heartbeat)
+                    {
+                        global::ZonderqOS.SystemCore.Updates.UpdateManager.PollBackground();
+                        bool pendingUpd = global::ZonderqOS.SystemCore.Updates.UpdateManager.Status == global::ZonderqOS.SystemCore.Updates.UpdateStatus.Available;
+                        if (startMenu != null) startMenu.HasPendingUpdate = pendingUpd;
+                        if (taskbar != null) taskbar.HasPendingUpdate = pendingUpd;
+                    }
 
                     // A few extra frames after actual UI interaction (roughly
                     // 30 FPS). Idle desktops keep their configurable heartbeat.
@@ -853,6 +875,42 @@ namespace ZonderqOS.GUI
                 "Edytor pixel-art 16x16 z paleta VGA i eksportem do C# oraz BASIC DATA",
                 AppCategory.Tools, IconType.Paint, () => LaunchSpriteStudio(150, 60),
                 StartMenuPlacement.Tool, 23, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.SecurityCenter, "Centrum Bezpieczenstwa", "Centrum Bezpieczenstwa", "Bezpieczenstwo",
+                "Ochrona anty-tamper, integralnosc plikow, zapora sieciowa i audyt",
+                AppCategory.System, IconType.Settings, () => LaunchSecurityCenter(135, 50),
+                StartMenuPlacement.Tool, 24, -1, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.SystemUpdater, "Aktualizacje Systemu", "Aktualizacje", "Aktualizacje",
+                "Menedzer aktualizacji OS, kanaly dystrybucji, weryfikacja SHA-256 i rollback",
+                AppCategory.System, IconType.Install, () => LaunchSystemUpdater(130, 45),
+                StartMenuPlacement.Tool, 25, 11, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.QuickNotes, "Szybkie Notatki", "Szybkie Notatki", "Notatki",
+                "Podreczny notatnik i zolte karteczki na pulpicie z autozapisem",
+                AppCategory.Tools, IconType.FileDoc, () => LaunchQuickNotes(160, 90),
+                StartMenuPlacement.Tool, 26, 12, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Chiptune, "Chiptune Studio", "Chiptune Studio", "Chiptune",
+                "Syntezator audio 8-bit, pianino retro i kompozytor melodii PC Speaker",
+                AppCategory.Tools, IconType.Play, () => LaunchChiptune(150, 60),
+                StartMenuPlacement.Tool, 27, 13, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Battleship, "Statki", "Statki", "Statki",
+                "Klasyczna strategiczna gra w bitwe morska z taktycznym komputerowym AI",
+                AppCategory.Games, IconType.Play, () => LaunchBattleship(140, 50),
+                StartMenuPlacement.Tool, 28, 14, true));
+
+            appRegistry.Register(new AppDescriptor(
+                AppIds.Welcome, "Witamy", "Witamy", "Witamy",
+                "Centrum powitalne i przewodnik po wydaniu ZOnderqOS 1.0 Alpha",
+                AppCategory.System, IconType.About, () => LaunchWelcome(120, 35),
+                StartMenuPlacement.Tool, 29, 15, true));
         }
 
         private void PopulateStartMenu()
@@ -1398,6 +1456,36 @@ namespace ZonderqOS.GUI
             applicationManager.Launch(new SpriteStudioApp(x, y, null));
         }
 
+        private void LaunchSecurityCenter(int x, int y)
+        {
+            applicationManager.Launch(new SecurityCenterApp(x, y, null));
+        }
+
+        private void LaunchSystemUpdater(int x, int y)
+        {
+            applicationManager.Launch(new SystemUpdaterApp(x, y, null));
+        }
+
+        private void LaunchQuickNotes(int x, int y)
+        {
+            applicationManager.Launch(new QuickNotesApp(x, y, null));
+        }
+
+        private void LaunchChiptune(int x, int y)
+        {
+            applicationManager.Launch(new ChiptuneApp(x, y, null));
+        }
+
+        private void LaunchBattleship(int x, int y)
+        {
+            applicationManager.Launch(new BattleshipApp(x, y, null));
+        }
+
+        private void LaunchWelcome(int x, int y)
+        {
+            applicationManager.Launch(new WelcomeApp(x, y, null, (appId) => LaunchRegisteredApp(appId)));
+        }
+
         private void UpdateDesktopInteractions(int mouseX, int mouseY, bool isClicked, bool wasClicked,
             bool rightClicked, bool wasRightClicked)
         {
@@ -1592,25 +1680,35 @@ namespace ZonderqOS.GUI
             if (IsDesktopOccluded())
                 return;
 
+            int deskW = (int)canvas.Width;
+            int deskH = (int)canvas.Height - TaskbarHeight;
+
             int mode = global::ZonderqOS.SystemSettings.DesktopBackgroundMode;
             if (mode == 0 && wallpaperCanvas != null)
             {
                 canvas.DrawCanvas(wallpaperCanvas, 0, 0);
-                return;
+            }
+            else
+            {
+                Color background = mode switch
+                {
+                    1 => Color.FromArgb(25, 30, 36),     // Grafit
+                    2 => Color.FromArgb(17, 31, 47),     // Cosmos Navy
+                    3 => Color.FromArgb(8, 10, 14),      // OLED Midnight
+                    4 => Color.FromArgb(0, 128, 128),    // Retro 95 Teal
+                    5 => Color.FromArgb(10, 26, 18),     // Cyber Matrix
+                    6 => Color.FromArgb(22, 36, 48),     // Nordic Glacier
+                    _ => Color.FromArgb(17, 31, 47)
+                };
+                canvas.DrawFilledRectangle(background, 0, 0, deskW, deskH);
             }
 
-            Color background = mode switch
-            {
-                1 => Color.FromArgb(25, 30, 36),     // Grafit
-                2 => Color.FromArgb(17, 31, 47),     // Cosmos Navy
-                3 => Color.FromArgb(8, 10, 14),      // OLED Midnight
-                4 => Color.FromArgb(0, 128, 128),    // Retro 95 Teal
-                5 => Color.FromArgb(10, 26, 18),     // Cyber Matrix
-                6 => Color.FromArgb(22, 36, 48),     // Nordic Glacier
-                _ => Color.FromArgb(17, 31, 47)
-            };
-            canvas.DrawFilledRectangle(background, 0, 0, (int)canvas.Width,
-                (int)canvas.Height - TaskbarHeight);
+            // Desktop Watermark & OS Build Status Badge
+            string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
+            string curBuild = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild;
+
+            SmallTextRenderer.Draw(canvas, "ZOnderqOS 1.0 Alpha • Build " + curBuild + " [ALFA 1]", deskW - 275, deskH - 34, Color.FromArgb(70, 225, 120));
+            SmallTextRenderer.Draw(canvas, "Wersja " + curVer + " • Cosmos 3.0.95 x64 Native", deskW - 275, deskH - 18, Color.FromArgb(170, 195, 220));
         }
     }
 }

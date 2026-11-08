@@ -47,23 +47,29 @@ namespace ZonderqOS.GUI.Apps
             // Do not paint rows beyond its client rectangle after a resize.
             if (width >= 110 && height >= 64)
             {
+                string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
                 IconManager.DrawScaled(canvas, IconType.Start, x + 18, y + 18, 42, 42);
-                UiTypography.Heading(canvas, "ZOnderqOS", x + 78, y + 13,
+                UiTypography.Heading(canvas, "ZOnderqOS 1.0 Alpha", x + 78, y + 13,
                     System.Math.Max(1, width - 94), UiPalette.Text);
-                UiTypography.Caption(canvas, "COSMOS KERNEL GEN 3  /  SDK 3.0.95",
+                UiTypography.Caption(canvas, "WERSJA " + curVer + "  /  COSMOS SDK 3.0.95 X64",
                     x + 78, y + 43, System.Math.Max(1, width - 94));
             }
 
             if (height >= 80 && width >= 40)
                 canvas.DrawLine(UiPalette.Border, x + 18, y + 78, x + width - 18, y + 78);
             if (height >= 110)
-                UiTypography.Caption(canvas, "NATYWNY SYSTEM OPERACYJNY X86_64",
+            {
+                string curBuild = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild;
+                UiTypography.Caption(canvas, "KOMPILACJA: BUILD " + curBuild + " (X86_64 SINGLE-VCPU NATIVE AOT)",
                     x + 18, y + 96, System.Math.Max(1, width - 36));
+            }
             if (height >= 140)
-                UiTypography.Caption(canvas, "PULPIT  /  TERMINAL  /  APLIKACJE",
+            {
+                UiTypography.Caption(canvas, "ZESTAW: 29 WBUDOWANYCH APLIKACJI, STATKI, CHIPTUNE, OTA UPDATER",
                     x + 18, y + 124, System.Math.Max(1, width - 36));
+            }
             if (height >= 168)
-                UiTypography.Caption(canvas, "WINDOWS, NATIVE GUI, COSMOS RUNTIME",
+                UiTypography.Caption(canvas, "AUTOR: ZONDERQ  /  ZONDERQOS GEN 3 DESKTOP ENVIRONMENT",
                     x + 18, y + 152, System.Math.Max(1, width - 36));
         }
     }

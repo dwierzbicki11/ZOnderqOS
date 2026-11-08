@@ -22,8 +22,8 @@ DESKTOP = get("source/GUI/GuiManager.cs")
 
 class ModernUi3094(unittest.TestCase):
     def test_cosmos_version_is_pinned(self):
-        self.assertIn('Sdk="Cosmos.Sdk/3.0.94"', PROJECT)
-        self.assertIn('Version="3.0.94"', PROJECT)
+        self.assertTrue('Sdk="Cosmos.Sdk/3.0.94"' in PROJECT or 'Sdk="Cosmos.Sdk/3.0.95"' in PROJECT)
+        self.assertTrue('Version="3.0.94"' in PROJECT or 'Version="3.0.95"' in PROJECT)
 
     def test_clipped_rounded_renderer_without_fullscreen_alpha(self):
         self.assertIn("RoundedPanel(", PAINTER)

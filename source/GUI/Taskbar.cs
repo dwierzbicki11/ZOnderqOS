@@ -39,6 +39,7 @@ namespace ZonderqOS.GUI
         private string cachedTime = "--:--";
         private string cachedDate = "--.--";
         private string cachedVolumeLabel = "VOL 0";
+        public bool HasPendingUpdate { get; set; }
 
         private const int StartButtonWidth = 48;
         private const int AppButtonSize = 40;
@@ -478,7 +479,8 @@ namespace ZonderqOS.GUI
 
             UiPainter.RoundedPanel(canvas, x, Y + 6, width, Height - 12,
                 UiMetrics.TileRadius, background, border);
-            IconManager.DrawScaled(canvas, IconType.About, x + 8, Y + 13, 16, 16);
+
+            IconManager.DrawScaled(canvas, HasPendingUpdate ? IconType.Install : IconType.About, x + 8, Y + 13, 16, 16);
 
             if (unread > 0)
             {

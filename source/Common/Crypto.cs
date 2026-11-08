@@ -188,6 +188,25 @@ namespace ZonderqOS
             return difference == 0;
         }
 
+        public static string ComputeSha256(byte[] data)
+        {
+            if (data == null)
+                return string.Empty;
+
+            byte[] output = new byte[32];
+            uint[] schedule = new uint[64];
+            Sha256Into(data, data.Length, output, schedule);
+            return ToHex(output);
+        }
+
+        public static string ComputeSha256(string text)
+        {
+            if (text == null)
+                return string.Empty;
+
+            return ComputeSha256(ToAscii(text));
+        }
+
         private static void HmacSha256Into(byte[] data, int dataLength, byte[] output,
             byte[] innerHash, byte[] innerBuffer, byte[] outerBuffer, uint[] schedule)
         {

@@ -29,12 +29,16 @@ namespace ZonderqOS.SystemCore
                     File.WriteAllText(HostnamePath, IsValidHostname(previous) ? previous + "\n" : "ZonderqOS\n");
                 }
                 if (!File.Exists(IssuePath))
-                    File.WriteAllText(IssuePath, "ZonderqOS Gen 3\n");
+                    File.WriteAllText(IssuePath, "ZOnderqOS 1.0 Alpha (Cosmos 3.0.95 x64 Native Core)\n");
                 if (!File.Exists(MotdPath))
-                    File.WriteAllText(MotdPath, "Welcome to ZonderqOS Gen 3. Type help for commands.\n");
+                    File.WriteAllText(MotdPath, "Witaj w ZOnderqOS 1.0 Alpha! Wpisz 'help' dla listy polecen, lub 'gui' aby uruchomic pulpit.\n");
                 if (!File.Exists(OsReleasePath))
+                {
                     File.WriteAllText(OsReleasePath,
-                        "NAME=\"ZonderqOS\"\nID=zonderqos\nVERSION_ID=\"3\"\nPRETTY_NAME=\"ZonderqOS Gen 3\"\n");
+                        "NAME=\"ZonderqOS\"\nID=zonderqos\nVERSION_ID=\"" + global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion +
+                        "\"\nBUILD_ID=\"" + global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild +
+                        "\"\nPRETTY_NAME=\"ZOnderqOS 1.0 Alpha (Gen3)\"\n");
+                }
 
                 PermissionManager.SetPermission(HostnamePath, "root", 644);
                 PermissionManager.SetPermission(IssuePath, "root", 644);

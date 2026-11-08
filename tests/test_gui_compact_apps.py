@@ -118,7 +118,10 @@ class CompactNotepadTests(unittest.TestCase):
 
 class CompactAboutTests(unittest.TestCase):
     def test_about_panel_rows_do_not_exceed_client_height(self):
-        self.assertIn("COSMOS KERNEL GEN 3  /  SDK 3.0.95", ABOUT)
+        self.assertIn('"WERSJA " + curVer + "  /  COSMOS SDK 3.0.95 X64"', ABOUT)
+        self.assertIn("curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion", ABOUT)
+        self.assertIn("curBuild = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild", ABOUT)
+        self.assertIn('"KOMPILACJA: BUILD " + curBuild', ABOUT)
         self.assertNotIn("SDK 3.0.94", ABOUT)
         for threshold in (64, 80, 110, 140, 168):
             self.assertIn(f"height >= {threshold}", ABOUT)
