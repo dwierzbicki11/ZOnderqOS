@@ -55,7 +55,9 @@ def count_dma(stderr: str) -> tuple[int, int, int, int]:
                                                for n, part in enumerate(match.groups()))
             # QEMU packet-split descriptor slots are 0..3; ignore zero-length
             # writes and null guest physical addresses.
-            if (index <= 3 and address != 0 and 0 < length <= MAX_RX_BUFFER_WRITE
+            if (index <= 3 and address != 0 and 0 <= offset <= MAX_RX_BUFFER_WRITE
+                    and 0 < length <= MAX_RX_BUFFER_WRITE
+                    and offset + length <= MAX_RX_BUFFER_WRITE
                     and address + offset + length - 1 <= MAX_X86_PHYS_ADDR):
                 writes += 1
                 pending_rx_writes += 1
@@ -166,6 +168,8 @@ def self_test() -> None:
         write.replace("offset: 0", "offset: 18446744073709551616"),
         write.replace("length: 64", "length: 18446744073709551616"),
         write.replace("length: 64", "length: 65537"),
+        write.replace("offset: 0", "offset: 65536"),
+        write.replace("offset: 0", "offset: 65500"),
     ):
         assert count_dma(tx * 128 + malformed + commit) == (128, 0, 0, 0)
         try:
