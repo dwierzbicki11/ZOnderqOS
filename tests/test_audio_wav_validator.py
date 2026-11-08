@@ -311,6 +311,25 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no sustained 200 ms"):
             audio.inspect(self.path)
 
+    def test_rejects_right_channel_loss_in_second_tone_window(self):
+        # The global stereo peaks are balanced, but the right channel
+        # loses 75% of its gain after 100ms. A global peak-only gate
+        # would miss this partial HDA/backend channel failure.
+        self.make_wave(ms=390, silence_ms=0)
+        with wave.open(str(self.path), "rb") as wav:
+            data = bytearray(wav.readframes(wav.getnframes()))
+        for frame in range(48000 * 100 // 1000, len(data) // 4):
+            offset = frame * 4 + 2
+            right = struct.unpack_from("<h", data, offset)[0]
+            struct.pack_into("<h", data, offset, right // 4)
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(48000)
+            wav.writeframes(data)
+        with self.assertRaisesRegex(ValueError, "stereo channel imbalance in tone window"):
+            audio.inspect(self.path)
+
     def test_rejects_inverted_right_channel(self):
         self.make_wave(invert_right=True)
         with self.assertRaisesRegex(ValueError, "not phase-aligned"):
