@@ -52,7 +52,7 @@ namespace ZonderqOS.GUI.Apps
             0xFF8B4513  // Brazowy
         };
 
-        private readonly uint[] canvasBuffer = new uint[CanvasWidth * CanvasHeight];
+        private uint[] canvasBuffer = new uint[CanvasWidth * CanvasHeight];
         private Tool activeTool = Tool.Pencil;
         private uint currentColor = 0xFF000000; // Black default
         private bool isDrawing;
@@ -74,12 +74,15 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            canvasBuffer = null;
             base.Close();
             closeCallback?.Invoke();
         }
 
         private void ClearCanvas()
         {
+            if (canvasBuffer == null)
+                return;
             for (int i = 0; i < canvasBuffer.Length; i++)
                 canvasBuffer[i] = 0xFFFFFFFF; // White
             statusMessage = "Wyczyszczono plotno";
@@ -89,6 +92,8 @@ namespace ZonderqOS.GUI.Apps
         {
             try
             {
+                if (canvasBuffer == null)
+                    return;
                 byte[] bmpBytes = BmpEncoder.Encode(CanvasWidth, CanvasHeight, canvasBuffer);
                 if (bmpBytes.Length == 0)
                 {
@@ -131,7 +136,7 @@ namespace ZonderqOS.GUI.Apps
         {
             base.HandleMouse(mouseX, mouseY, leftClicked, leftWasClicked, rightClicked, rightWasClicked);
 
-            if (!Window.Visible || Window.IsMinimized)
+            if (!Window.Visible || Window.IsMinimized || canvasBuffer == null)
                 return;
 
             int contentX = Window.X + 8;
@@ -291,7 +296,7 @@ namespace ZonderqOS.GUI.Apps
 
         private void SetPixel(int x, int y, uint color)
         {
-            if (x >= 0 && x < CanvasWidth && y >= 0 && y < CanvasHeight)
+            if (canvasBuffer != null && x >= 0 && x < CanvasWidth && y >= 0 && y < CanvasHeight)
                 canvasBuffer[y * CanvasWidth + x] = color;
         }
 
@@ -451,7 +456,7 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Render(Canvas canvas)
         {
-            if (!Window.Visible || Window.IsMinimized)
+            if (!Window.Visible || Window.IsMinimized || canvasBuffer == null)
                 return;
 
             base.Render(canvas);

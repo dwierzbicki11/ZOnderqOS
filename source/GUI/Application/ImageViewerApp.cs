@@ -73,6 +73,13 @@ namespace ZonderqOS.GUI.Apps
                 LoadImage(path, true);
         }
 
+        public override void Close()
+        {
+            sourcePixels = null;
+            previewBitmap = null;
+            base.Close();
+        }
+
         public override void Update()
         {
             // A taskbar switch or minimize can consume the mouse release.

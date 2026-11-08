@@ -193,6 +193,8 @@ namespace ZonderqOS.GUI.Apps
         {
             isRunning = false;
             ZonderqOS.Hardware.Speaker.Stop();
+            sourceLines?.Clear();
+            outputLines?.Clear();
             base.Close();
             closeCallback?.Invoke();
         }

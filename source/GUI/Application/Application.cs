@@ -43,7 +43,11 @@ namespace ZonderqOS.GUI.Apps
 
             IsRunning = false;
             if (Window != null)
+            {
                 Window.Visible = false;
+                Window.ClearChildren();
+                Window.CloseAction = null;
+            }
         }
     }
 }

@@ -58,6 +58,7 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            fileBytes = null;
             base.Close();
             closeCallback?.Invoke();
         }

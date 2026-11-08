@@ -143,6 +143,14 @@ namespace ZonderqOS.GUI.Apps
             Refresh();
         }
 
+        public override void Close()
+        {
+            entries.Clear();
+            cachedEntries.Clear();
+            sidebarEntries.Clear();
+            base.Close();
+        }
+
         // Alt+F4 dismisses the File Manager's own modal UI before closing
         // its window. Never lose a pending filename or activate a hidden
         // context-menu action as a side effect of the global shortcut.

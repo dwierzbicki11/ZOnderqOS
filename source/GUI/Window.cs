@@ -174,6 +174,18 @@ namespace ZonderqOS.GUI
             Children.Add(widget);
         }
 
+        public void ClearChildren()
+        {
+            for (int i = 0; i < Children.Count; i++)
+            {
+                if (Children[i] is Button btn)
+                {
+                    btn.OnClick = null;
+                }
+            }
+            Children.Clear();
+        }
+
         private void MoveTo(int newX, int newY)
         {
             int dx = newX - X;

@@ -577,7 +577,10 @@ namespace ZonderqOS.GUI
                     else if (keyboardActivity || pointerMoved || buttonChanged || heartbeat || animationFrame || appContinuousRedraw)
                         RenderFrame(mouseX, mouseY);
 
-                    Thread.Sleep(15);
+                    if (keyboardActivity || pointerMoved || buttonChanged || heartbeat || animationFrame || appContinuousRedraw)
+                        Thread.Sleep(15);
+                    else
+                        Thread.Sleep(25);
                 }
 
                 canvas.Clear(Color.Black);
