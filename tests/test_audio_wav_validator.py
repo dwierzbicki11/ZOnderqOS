@@ -190,6 +190,21 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "float tail stereo channels are not phase-aligned"):
             audio.inspect_silent_tail(self.path)
 
+    def test_float_hda_tail_rejects_quiet_right_channel(self):
+        # Both channels have correct pitch and polarity, but 1/8 gain
+        # on the right must not certify a healthy stereo output.
+        self.make_wave(frequency=2860, ms=250, silence_ms=0,
+                       right_amplitude=512)
+        with wave.open(str(self.path), "rb") as wav:
+            raw = wav.readframes(wav.getnframes())
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(48000)
+            wav.writeframes(raw + bytes(48000 * 80 // 1000 * 4))
+        with self.assertRaisesRegex(ValueError, "float tail stereo channel imbalance"):
+            audio.inspect_silent_tail(self.path)
+
     def test_float_hda_tail_rejects_all_silence(self):
         # Valid length and quiet tail alone must not certify playback.
         self.make_wave(ms=330, silence_ms=0, amplitude=0)
