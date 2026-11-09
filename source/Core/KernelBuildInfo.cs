@@ -9,8 +9,8 @@ namespace ZonderqOS.SystemCore
     /// </summary>
     public static class KernelBuildInfo
     {
-        public const string KernelVersion = "1.0.1";
-        public const int KernelBuild = 3110;
+        public const string KernelVersion = "1.0.2";
+        public const int KernelBuild = 3120;
         public const string Architecture = "x86_64";
         public const string CosmosVersion = "Cosmos 3.0.95 Native Core";
         public const string GitCommit = "3f48d33e";

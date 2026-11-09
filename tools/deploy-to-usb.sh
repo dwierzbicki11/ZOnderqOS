@@ -47,12 +47,12 @@ echo "$KERNEL_SHA" > "$MOUNT_PATH/boot/slot_b/kernel.sha256"
 mkdir -p "$MOUNT_PATH/etc"
 cat > "$MOUNT_PATH/etc/os-release" <<'EOF'
 NAME="ZOnderqOS"
-VERSION="1.0.1"
+VERSION="1.0.2"
 ID=zonderqos
 ID_LIKE=cosmos
-VERSION_ID=1.0.1
-PRETTY_NAME="ZOnderqOS 1.0.1 (Cosmos 3.0.95)"
-BUILD_ID=3110
+VERSION_ID=1.0.2
+PRETTY_NAME="ZOnderqOS 1.0.2 (Cosmos 3.0.95)"
+BUILD_ID=3120
 VARIANT="Workstation"
 VARIANT_ID=workstation
 HOME_URL="https://github.com/zonderq/ZOnderqOS"
@@ -60,17 +60,26 @@ SUPPORT_URL="https://github.com/zonderq/ZOnderqOS/issues"
 BUG_REPORT_URL="https://github.com/zonderq/ZOnderqOS/issues"
 EOF
 
+cat > "$MOUNT_PATH/etc/update.cfg" <<'EOF'
+CHANNEL=stable
+UPDATER_VERSION=3.0
+INSTALLED_VERSION=1.0.2
+INSTALLED_BUILD=3120
+LAST_NOTIFIED=
+EOF
+
 cat > "$MOUNT_PATH/boot/boot_state.cfg" <<'EOF'
 ACTIVE_SLOT=A
 FALLBACK_SLOT=B
 PENDING_SLOT=
 BOOT_ATTEMPTS=0
+MAX_BOOT_ATTEMPTS=3
 SLOT_A_STATUS=Healthy
 SLOT_B_STATUS=Healthy
-SLOT_A_VERSION=1.0.1
-SLOT_A_BUILD=3110
-SLOT_B_VERSION=1.0.1
-SLOT_B_BUILD=3110
+SLOT_A_VERSION=1.0.2
+SLOT_A_BUILD=3120
+SLOT_B_VERSION=1.0.2
+SLOT_B_BUILD=3120
 EOF
 
 # 2.5. Write autonomous Limine configuration pointing Entry 1 to active Slot A
