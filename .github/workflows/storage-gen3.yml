@@ -35,7 +35,7 @@ jobs:
         run: |
           set -euo pipefail
           for suite in Fat32AllocationSmoke StorageMountSmoke StorageInfoSmoke \
-            StorageCommandsSmoke StorageReadSmoke StorageWriteSmoke FileClipboardSmoke GuiFileClipboardSmoke \
+            StorageCommandsSmoke StorageReadSmoke StorageWriteSmoke StorageRemoveSmoke FileClipboardSmoke GuiFileClipboardSmoke \
             RamMoveSmoke RamWriteQuotaSmoke TmpFs.Tests RunFs.Tests; do
             dotnet run --project "tests/$suite/$suite.csproj" --configuration Release
           done
