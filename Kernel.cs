@@ -62,6 +62,7 @@ namespace ZonderqOS
                 BootSessionHealth.Initialize();
                 SystemGuardian.Initialize();
                 SystemSettings.Load();
+                ZonderqOS.Localization.LocalizationManager.Initialize();
                 BootSplash.Advance(72, "WCZYTYWANIE USTAWIEN");
                 if (DiagnosticConsoleBoot)
                 {

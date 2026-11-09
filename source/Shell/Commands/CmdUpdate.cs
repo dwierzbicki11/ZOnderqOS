@@ -172,7 +172,26 @@ namespace ZonderqOS.Commands
 
                 if (!UpdateManager.HasRollbackSnapshot())
                 {
-                    WriteMessage.WriteError("Brak zapisanej migawki systemu do przywrocenia.", "UPDATE");
+                    string fallbackKernel = BootSlotManager.GetSlotKernelPath(BootSlotManager.FallbackSlot);
+                    if (System.IO.File.Exists(fallbackKernel))
+                    {
+                        CommandIO.WriteLine("Brak migawki /var/updates/backup, ale wykryto alternatywny slot rozruchowy (" + BootSlotManager.FallbackSlot + ").");
+                        CommandIO.WriteLine("Wycofywanie aktywnego slotu rozruchowego (A/B Boot Rollback)...");
+                        if (BootSlotManager.ManualRollback(out string rbErr))
+                        {
+                            WriteMessage.WriteOK("Przelaczono aktywny slot rozruchowy na " + BootSlotManager.ActiveSlot + ". Wymagany restart.", "UPDATE");
+                            CommandIO.WriteLine("Wpisz 'reboot' aby uruchomic system z poprzedniego slotu.");
+                            CommandIO.LastCommandSuccess = true;
+                        }
+                        else
+                        {
+                            WriteMessage.WriteError("Niepowodzenie przelaczenia slotu: " + rbErr, "UPDATE");
+                            CommandIO.LastCommandSuccess = false;
+                        }
+                        return;
+                    }
+
+                    WriteMessage.WriteError("Brak zapisanej migawki systemu ani sprawnego slotu zapasowego do przywrocenia.", "UPDATE");
                     CommandIO.LastCommandSuccess = false;
                     return;
                 }

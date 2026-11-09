@@ -71,9 +71,22 @@ namespace ZonderqOS.SystemCore.Updates
                 // Check pending confirmation and watchdog boot attempts
                 CheckWatchdogFailover();
 
-                // Reflect running slot in KernelBuildInfo
-                KernelBuildInfo.RunningSlot = ActiveSlot;
-                KernelBuildInfo.RunningSlotPath = ActiveSlot == SlotB ? SlotBPath : SlotAPath;
+                // Reflect running slot in KernelBuildInfo based on real build identity
+                if (!string.IsNullOrEmpty(SlotBVersion) && SlotBBuild > 0 && KernelBuildInfo.KernelBuild == SlotBBuild && SlotBBuild != SlotABuild)
+                {
+                    KernelBuildInfo.RunningSlot = SlotB;
+                    KernelBuildInfo.RunningSlotPath = SlotBPath;
+                }
+                else if (!string.IsNullOrEmpty(SlotAVersion) && SlotABuild > 0 && KernelBuildInfo.KernelBuild == SlotABuild && SlotABuild != SlotBBuild)
+                {
+                    KernelBuildInfo.RunningSlot = SlotA;
+                    KernelBuildInfo.RunningSlotPath = SlotAPath;
+                }
+                else
+                {
+                    KernelBuildInfo.RunningSlot = ActiveSlot;
+                    KernelBuildInfo.RunningSlotPath = ActiveSlot == SlotB ? SlotBPath : SlotAPath;
+                }
 
                 isInitialized = true;
             }
@@ -201,6 +214,35 @@ namespace ZonderqOS.SystemCore.Updates
         {
             if (!string.IsNullOrEmpty(PendingSlot))
             {
+                // Layer 1 / Recovery Fallback Detection:
+                // If a pending slot was B, but the currently booted kernel build matches Slot A
+                // (or vice-versa), it means the system booted the alternate fallback slot (e.g. user selected
+                // Slot A from the Limine menu after Slot B failed in early boot, or watchdog booted alternate).
+                bool bootedFallback = false;
+                if (PendingSlot == SlotB && SlotABuild > 0 && KernelBuildInfo.KernelBuild == SlotABuild && SlotABuild != SlotBBuild)
+                    bootedFallback = true;
+                else if (PendingSlot == SlotA && SlotBBuild > 0 && KernelBuildInfo.KernelBuild == SlotBBuild && SlotBBuild != SlotABuild)
+                    bootedFallback = true;
+
+                if (bootedFallback)
+                {
+                    SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT",
+                        $"AWARYJNY POWROT: Wykryto start ze slotu rezerwowego podczas oczekiwania na zatwierdzenie slotu {PendingSlot}. Oznaczanie slotu {PendingSlot} jako FAILED i powrot Limine.");
+
+                    if (PendingSlot == SlotA)
+                        SlotAStatus = SlotHealth.Failed;
+                    else
+                        SlotBStatus = SlotHealth.Failed;
+
+                    ActiveSlot = FallbackSlot;
+                    PendingSlot = string.Empty;
+                    BootAttempts = 0;
+
+                    SyncLimineConfig();
+                    SaveBootState();
+                    return;
+                }
+
                 BootAttempts++;
                 SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT",
                     $"Proba uruchomienia slotu {PendingSlot}: {BootAttempts}/{MaxBootAttempts}");
@@ -285,6 +327,7 @@ namespace ZonderqOS.SystemCore.Updates
             string targetSlot = GetInactiveSlot();
             string targetPath = GetSlotKernelPath(targetSlot);
             string targetDir = Path.GetDirectoryName(targetPath);
+            string stagingTempPath = targetPath + ".part";
 
             try
             {
@@ -298,7 +341,7 @@ namespace ZonderqOS.SystemCore.Updates
                 byte[] chunkBuffer = new byte[64 * 1024];
 
                 using (FileStream src = new FileStream(sourceKernelPath, FileMode.Open, FileAccess.Read))
-                using (FileStream dst = new FileStream(targetPath, FileMode.Create, FileAccess.Write))
+                using (FileStream dst = new FileStream(stagingTempPath, FileMode.Create, FileAccess.Write))
                 {
                     int read;
                     while ((read = src.Read(chunkBuffer, 0, chunkBuffer.Length)) > 0)
@@ -316,19 +359,26 @@ namespace ZonderqOS.SystemCore.Updates
 
                 progress?.Invoke(68, "Weryfikacja sumy kontrolnej SHA-256 zapisanego pliku kernela na dysku...");
 
-                // Read back bytes directly from destination on disk
-                byte[] writtenBytes = File.ReadAllBytes(targetPath);
+                // Read back bytes directly from temporary destination on disk
+                byte[] writtenBytes = File.ReadAllBytes(stagingTempPath);
                 string writtenHash = Crypto.ComputeSha256(writtenBytes);
 
                 if (!string.IsNullOrEmpty(expectedSha256) &&
                     !Crypto.FixedTimeEquals(writtenHash.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
                 {
-                    // Checksum failure: delete corrupted target file immediately
-                    try { File.Delete(targetPath); } catch { }
+                    // Checksum failure: delete corrupted temporary file immediately
+                    try { File.Delete(stagingTempPath); } catch { }
                     error = $"Blad integralnosci zapisanego kernela w slocie {targetSlot}! Oczekiwano SHA256: {expectedSha256}, otrzymano: {writtenHash}";
                     SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", error);
                     return false;
                 }
+
+                // Move temporary verified kernel to final destination atomically
+                if (File.Exists(targetPath))
+                {
+                    try { File.Delete(targetPath); } catch { }
+                }
+                File.Move(stagingTempPath, targetPath);
 
                 // Write metadata files
                 File.WriteAllText(Path.Combine(targetDir, "kernel.sha256"), writtenHash + "\n");
@@ -353,6 +403,7 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
+                try { if (File.Exists(stagingTempPath)) File.Delete(stagingTempPath); } catch { }
                 error = "Wyjatek podczas instalacji kernela w slocie: " + ex.Message;
                 return false;
             }

@@ -320,20 +320,19 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderPersonalization(Canvas canvas, int contentX, int contentWidth)
         {
-            DrawRow(canvas, contentX, contentWidth, 0, IconType.Folder,
-                "IKONY PULPITU", "Pokazuj skroty aplikacji na pulpicie",
-                BoolLabel(global::ZonderqOS.SystemSettings.ShowDesktopIcons),
-                global::ZonderqOS.SystemSettings.ShowDesktopIcons ? Good : Muted);
+            DrawRow(canvas, contentX, contentWidth, 0, IconType.About,
+                "JEZYK SYSTEMU / LANGUAGE", "Przelacz miedzy polskim i angielskim interfejsem",
+                global::ZonderqOS.Localization.LocalizationManager.CurrentLanguageDisplayName, Accent);
             DrawRow(canvas, contentX, contentWidth, 1, IconType.Start,
                 "TLO PULPITU", "Tapeta PNG, czysty grafit lub ciemny Cosmos navy",
                 global::ZonderqOS.SystemSettings.DesktopBackgroundName, Accent);
             DrawRow(canvas, contentX, contentWidth, 2, IconType.Settings,
                 "MOTYW AKCENTU", "Kolor aktywnych okien, Start i powloki systemowej",
                 global::ZonderqOS.SystemSettings.AccentThemeName, Accent);
-            DrawRow(canvas, contentX, contentWidth, 3, IconType.Settings,
-                "SEKUNDY NA ZEGARZE", "Wlaczenie wymusza odswiezenie zegara mniej wiecej co sekunde",
-                BoolLabel(global::ZonderqOS.SystemSettings.ShowClockSeconds),
-                global::ZonderqOS.SystemSettings.ShowClockSeconds ? Warning : Muted);
+            DrawRow(canvas, contentX, contentWidth, 3, IconType.Folder,
+                "IKONY PULPITU", "Pokazuj skroty aplikacji na pulpicie",
+                BoolLabel(global::ZonderqOS.SystemSettings.ShowDesktopIcons),
+                global::ZonderqOS.SystemSettings.ShowDesktopIcons ? Good : Muted);
             DrawRow(canvas, contentX, contentWidth, 4, IconType.Settings,
                 "DATA NA PASKU", "Pokazuj dzien i miesiac pod zegarem",
                 BoolLabel(global::ZonderqOS.SystemSettings.ShowTaskbarDate),
@@ -591,13 +590,19 @@ namespace ZonderqOS.GUI.Apps
                     break;
 
                 case PagePersonalization:
-                    if (row == 0) global::ZonderqOS.SystemSettings.ToggleDesktopIcons();
-                    else if (row == 1) global::ZonderqOS.SystemSettings.CycleDesktopBackground();
-                    else if (row == 2) global::ZonderqOS.SystemSettings.CycleAccentTheme();
-                    else if (row == 3) global::ZonderqOS.SystemSettings.ToggleClockSeconds();
-                    else if (row == 4) global::ZonderqOS.SystemSettings.ToggleTaskbarDate();
-                    else if (row == 5) global::ZonderqOS.SystemSettings.ToggleTrayStatus();
-                    SetStatus("ZMIENIONO PERSONALIZACJE", Accent);
+                    if (row == 0)
+                    {
+                        if (global::ZonderqOS.Localization.LocalizationManager.CurrentLanguage == global::ZonderqOS.Localization.Language.Polish)
+                            global::ZonderqOS.Localization.LocalizationManager.SetLanguage(global::ZonderqOS.Localization.Language.English);
+                        else
+                            global::ZonderqOS.Localization.LocalizationManager.SetLanguage(global::ZonderqOS.Localization.Language.Polish);
+                        SetStatus("ZMIENIONO JEZYK / LANGUAGE CHANGED", Good);
+                    }
+                    else if (row == 1) { global::ZonderqOS.SystemSettings.CycleDesktopBackground(); SetStatus("ZMIENIONO TLO PULPITU", Accent); }
+                    else if (row == 2) { global::ZonderqOS.SystemSettings.CycleAccentTheme(); SetStatus("ZMIENIONO MOTYW AKCENTU", Accent); }
+                    else if (row == 3) { global::ZonderqOS.SystemSettings.ToggleDesktopIcons(); SetStatus("PRZELACZONO IKONY PULPITU", Accent); }
+                    else if (row == 4) { global::ZonderqOS.SystemSettings.ToggleTaskbarDate(); SetStatus("PRZELACZONO DATE NA PASKU", Accent); }
+                    else if (row == 5) { global::ZonderqOS.SystemSettings.ToggleTrayStatus(); SetStatus("PRZELACZONO STATUS W ZASOBNIKU", Accent); }
                     break;
 
                 case PageDisplay:

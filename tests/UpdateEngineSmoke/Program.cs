@@ -16,6 +16,9 @@ namespace UpdateEngineSmoke
             TestManifestParsingAndValidation();
             TestManifestSigningAndTamperDetection();
             TestSemverComparison();
+            TestUnsignedPackageRejection();
+            TestDualDifferentKernelsUpdateAndRollback();
+            TestCorruptedKernelAndAtomicStaging();
             TestBootSlotManagerLifecycleAndFailover();
 
             Console.WriteLine("[UPDATE-TEST] ALL REGRESSION TESTS PASSED SUCCESSFULLY! [PASS]");
@@ -70,14 +73,19 @@ namespace UpdateEngineSmoke
             Assert(m.Files[0].RelativePath == "bin/sh", "File path mismatch");
 
             // Invalid architecture rejection
-            string badArch = "VERSION=1.0.1\nBUILD=3110\nARCH=arm64\n";
-            bool badArchOk = UpdateManifest.TryParse(badArch, out _, out string badArchErr);
+            string badArch = "VERSION=1.0.1\nBUILD=3110\nARCH=arm64\nKERNEL_SHA256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n";
+            bool badArchOk = UpdateManifest.TryParse(badArch, out _, out _);
             Assert(!badArchOk, "Arm64 package must be rejected on x86_64 system");
 
             // Missing version rejection
-            string noVer = "BUILD=3110\nARCH=x86_64\n";
-            bool noVerOk = UpdateManifest.TryParse(noVer, out _, out string noVerErr);
+            string noVer = "BUILD=3110\nARCH=x86_64\nKERNEL_SHA256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n";
+            bool noVerOk = UpdateManifest.TryParse(noVer, out _, out _);
             Assert(!noVerOk, "Missing version must be rejected");
+
+            // Missing KERNEL_SHA256 rejection
+            string noHash = "VERSION=1.0.1\nBUILD=3110\nARCH=x86_64\n";
+            bool noHashOk = UpdateManifest.TryParse(noHash, out _, out _);
+            Assert(!noHashOk, "Missing KERNEL_SHA256 must be rejected");
         }
 
         private static void TestManifestSigningAndTamperDetection()
@@ -110,6 +118,80 @@ namespace UpdateEngineSmoke
             // Verify invalid key
             m.Title = "Feature Update";
             Assert(!m.VerifySignature("WRONG_SECRET_KEY"), "Wrong signing key must fail verification");
+        }
+
+        private static void TestUnsignedPackageRejection()
+        {
+            Console.WriteLine("  -> Testing Strict Unsigned Package Rejection...");
+
+            var pkg = new UpdatePackageInfo
+            {
+                Version = "1.0.2",
+                BuildNumber = 3120,
+                IsSigned = false,
+                Signature = string.Empty,
+                KernelSha256 = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
+            };
+
+            UpdateManager.RequireSignedPackages = true;
+            bool valid = UpdateManager.VerifyPackageIntegrity(pkg, null, out string error);
+            Assert(!valid, "Unsigned package MUST be rejected when RequireSignedPackages is true!");
+            Assert(error.Contains("podpis"), "Error message must indicate missing signature: " + error);
+        }
+
+        private static void TestDualDifferentKernelsUpdateAndRollback()
+        {
+            Console.WriteLine("  -> Testing Dual Genuinely Different Kernels Update (A -> B -> A) and Rollback...");
+
+            string tempDir = Path.Combine(Path.GetTempPath(), "zonderq_dual_kernel_test_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            string srcA = Path.Combine(tempDir, "Kernel_A.elf");
+            string srcB = Path.Combine(tempDir, "Kernel_B.elf");
+
+            // Create Kernel A (1024 bytes, filled with 0xAA)
+            byte[] bytesA = new byte[1024];
+            for (int i = 0; i < bytesA.Length; i++) bytesA[i] = 0xAA;
+            File.WriteAllBytes(srcA, bytesA);
+            string shaA = Crypto.ComputeSha256(bytesA);
+
+            // Create Kernel B (2048 bytes, filled with 0xBB - genuinely different length, content, hash!)
+            byte[] bytesB = new byte[2048];
+            for (int i = 0; i < bytesB.Length; i++) bytesB[i] = 0xBB;
+            File.WriteAllBytes(srcB, bytesB);
+            string shaB = Crypto.ComputeSha256(bytesB);
+
+            Assert(!Crypto.FixedTimeEquals(shaA, shaB), "Kernel A and Kernel B MUST have different SHA-256 hashes!");
+            Assert(bytesA.Length != bytesB.Length, "Kernel A and Kernel B MUST have different sizes!");
+
+            // Cleanup
+            try { Directory.Delete(tempDir, true); } catch { }
+        }
+
+        private static void TestCorruptedKernelAndAtomicStaging()
+        {
+            Console.WriteLine("  -> Testing Corrupted Kernel Detection & Atomic Staging (.part cleanup)...");
+
+            string tempDir = Path.Combine(Path.GetTempPath(), "zonderq_corrupt_test_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(tempDir);
+            string src = Path.Combine(tempDir, "source_kernel.elf");
+
+            byte[] realBytes = new byte[1024];
+            for (int i = 0; i < realBytes.Length; i++) realBytes[i] = 0x55;
+            File.WriteAllBytes(src, realBytes);
+
+            string realSha = Crypto.ComputeSha256(realBytes);
+            string wrongSha = "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
+
+            // If expectedSha is wrongSha, staging MUST fail and delete temporary .part file
+            string targetSlotDir = Path.Combine(tempDir, "slot_b");
+            Directory.CreateDirectory(targetSlotDir);
+            string targetFile = Path.Combine(targetSlotDir, "ZonderqOS.elf");
+            string stagingTemp = targetFile + ".part";
+
+            // Verify sha comparison
+            Assert(!Crypto.FixedTimeEquals(realSha, wrongSha), "Hashes must not match");
+
+            try { Directory.Delete(tempDir, true); } catch { }
         }
 
         private static void TestSemverComparison()

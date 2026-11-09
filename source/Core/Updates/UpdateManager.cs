@@ -95,6 +95,7 @@ namespace ZonderqOS.SystemCore.Updates
         public static string LastCheckTime { get; private set; } = "Brak informacji";
         public static bool IsRebootRequired { get; private set; } = false;
         public static UpdatePackageInfo AvailablePackage { get; private set; } = null;
+        public static bool RequireSignedPackages { get; set; } = true;
 
         private static readonly object _lock = new object();
         private static bool isInitialized = false;
@@ -594,9 +595,29 @@ namespace ZonderqOS.SystemCore.Updates
                 return false;
             }
 
-            progress?.Invoke(10, "Sprawdzanie obecnosci plikow pakietu...");
+            progress?.Invoke(10, "Weryfikacja autentycznosci i podpisu pakietu...");
 
-            // 1. Verify kernel binary
+            // 1. Verify digital signature upfront (Authentication boundary)
+            if (RequireSignedPackages)
+            {
+                if (!pkg.IsSigned || string.IsNullOrEmpty(pkg.Signature))
+                {
+                    error = "Odrzucono pakiet: pakiet nie posiada wymaganego cyfrowego podpisu wydania (brak podpisu HMAC).";
+                    return false;
+                }
+                if (!pkg.IsSignatureValid)
+                {
+                    error = "Odrzucono pakiet: niepoprawny cyfrowy podpis HMAC-SHA256 (pakiet uszkodzony lub zmodyfikowany).";
+                    return false;
+                }
+            }
+            else if (pkg.IsSigned && !pkg.IsSignatureValid)
+            {
+                error = "Odrzucono pakiet: niepoprawny cyfrowy podpis HMAC-SHA256 (pakiet mogl zostac zmodyfikowany).";
+                return false;
+            }
+
+            // 2. Verify kernel binary
             string kernelSrc = FindKernelSource(pkg);
             if (string.IsNullOrEmpty(kernelSrc) || !File.Exists(kernelSrc))
             {
@@ -608,18 +629,21 @@ namespace ZonderqOS.SystemCore.Updates
             byte[] kernelBytes = File.ReadAllBytes(kernelSrc);
             string actualKernelSha = Crypto.ComputeSha256(kernelBytes);
 
-            if (!string.IsNullOrEmpty(pkg.KernelSha256))
+            if (string.IsNullOrEmpty(pkg.KernelSha256))
             {
-                if (!Crypto.FixedTimeEquals(actualKernelSha.ToLowerInvariant(), pkg.KernelSha256.ToLowerInvariant()))
-                {
-                    error = $"Niezgodnosc sumy kontrolnej kernela! Oczekiwano: {pkg.KernelSha256}, rzeczywista: {actualKernelSha}";
-                    return false;
-                }
+                error = "Odrzucono pakiet: brak zdefiniowanej sumy SHA-256 kernela w manifeście.";
+                return false;
+            }
+
+            if (!Crypto.FixedTimeEquals(actualKernelSha.ToLowerInvariant(), pkg.KernelSha256.ToLowerInvariant()))
+            {
+                error = $"Niezgodnosc sumy kontrolnej kernela! Oczekiwano: {pkg.KernelSha256}, rzeczywista: {actualKernelSha}";
+                return false;
             }
             pkg.ExpectedSha256 = actualKernelSha;
             progress?.Invoke(45, "Suma SHA-256 kernela prawidlowa.");
 
-            // 2. Verify payload files
+            // 3. Verify payload files
             if (pkg.Files != null && pkg.Files.Count > 0)
             {
                 string payloadBase = FindPayloadDirectory(pkg);
@@ -644,13 +668,6 @@ namespace ZonderqOS.SystemCore.Updates
                         return false;
                     }
                 }
-            }
-
-            // 3. Verify digital signature if signed
-            if (pkg.IsSigned && !pkg.IsSignatureValid)
-            {
-                error = "Odrzucono pakiet: niepoprawny cyfrowy podpis HMAC-SHA256 (pakiet mogl zostac zmodyfikowany).";
-                return false;
             }
 
             progress?.Invoke(90, "Wszystkie sumy kontrolne SHA-256 i podpisy sa prawidlowe.");

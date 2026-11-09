@@ -12,11 +12,12 @@ namespace ZonderqOS.Commands
         public string Description => "Lists all available commands";
         public void Execute(string[] args, ref string currentPath)
         {
-            CommandIO.WriteLine("Available commands:");
+            CommandIO.WriteLine(ZonderqOS.Localization.LocalizationManager.T("shell.help.title"));
             foreach (var cmd in _commands)
             {
                 CommandIO.WriteLine($"  {cmd.Name,-12} - {cmd.Description}");
             }
+            CommandIO.WriteLine(ZonderqOS.Localization.LocalizationManager.T("shell.help.footer"));
             CommandIO.LastCommandSuccess = true;
         }
     }

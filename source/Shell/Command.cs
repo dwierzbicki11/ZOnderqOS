@@ -47,6 +47,7 @@ namespace ZonderqOS
             Register(new CmdPgrep()); Register(new CmdKillall()); Register(new CmdHtop());
             Register(new CmdSmtCheck()); Register(new CmdSysmond()); Register(new CmdKill());
             Register(new CmdEnv()); Register(new CmdExport());
+            Register(new CmdLocale());
             Register(new CmdNeofetch()); Register(new CmdMatrix());
         }
 

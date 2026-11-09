@@ -30,6 +30,17 @@ DEV_TYPE="$(lsblk -dn -o TYPE "$DEVICE" | xargs || true)"
 # Verify ISO file exists
 [[ -s "$ISO" ]] || fail "Brak skompilowanego ISO: $ISO. Wykonaj najpierw: ./run.sh --build"
 
+# Verify no foreign OS partitions exist on target device (Kali, Windows, Linux, BitLocker, ESP)
+while IFS= read -r part; do
+    [[ -n "$part" ]] || continue
+    fstype="$(lsblk -no FSTYPE "$part" 2>/dev/null || true)"
+    label="$(lsblk -no LABEL "$part" 2>/dev/null || true)"
+    parttype="$(lsblk -no PARTTYPE "$part" 2>/dev/null || true)"
+    if [[ "$fstype" == "ext4" || "$fstype" == "ntfs" || "$fstype" == "btrfs" || "$label" =~ (KALI|WINDOWS|EFI|RECOVERY) || "$parttype" == "c12a7328-f81f-11d2-ba4b-00a0c93ec93b" ]]; then
+        fail "Wykryto partycje obcego systemu ($part: typ=$fstype, etykieta=$label, parttype=$parttype). Operacja zablokowana ze wzgledow bezpieczenstwa!"
+    fi
+done < <(lsblk -lnpo NAME "$DEVICE" | tail -n +2)
+
 printf '\n============================================================\n'
 printf '      PRZYGOTOWANIE PENDRIVE SANDISK DLA ZONDERQOS GEN 3    \n'
 printf '============================================================\n'
@@ -83,6 +94,8 @@ if [[ "$CURRENT_LABEL" != "ZONDERQDATA" ]]; then
     printf 'Formatowanie %s jako FAT32 z etykieta ZONDERQDATA...\n' "$PART4"
     mkfs.vfat -F 32 -n "ZONDERQDATA" "$PART4"
     sync
+else
+    printf 'Wykryto istniejaca partycje ZONDERQDATA na %s. Formatowanie pominiete, zachowywanie istniejacych danych uzytkownika.\n' "$PART4"
 fi
 
 # Mount ZONDERQDATA to seed Slot A and Limine A/B config

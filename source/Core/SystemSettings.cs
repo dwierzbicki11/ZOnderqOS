@@ -34,6 +34,9 @@ namespace ZonderqOS
         // Shell accent: 0 = Cosmos blue, 1 = steel, 2 = emerald.
         public static int AccentTheme { get; private set; }
 
+        // System interface language: pl-PL (default) or en-US
+        public static string LanguageCode { get; private set; } = "pl-PL";
+
         // Automatic desktop lock after inactivity. 0 disables the watchdog.
         // Supported presets are 0, 1, 5, 15 and 30 minutes.
         public static int AutoLockMinutes { get; private set; } = 5;
@@ -215,6 +218,7 @@ namespace ZonderqOS
                     "timezone=" + TimeZoneOffsetHours + "\n" +
                     "desktop_background=" + DesktopBackgroundMode + "\n" +
                     "accent_theme=" + AccentTheme + "\n" +
+                    "language=" + LanguageCode + "\n" +
                     "auto_lock_minutes=" + AutoLockMinutes + "\n" +
                     "network_dhcp=" + BoolValue(NetworkUseDhcp) + "\n" +
                     "static_ip=" + StaticIpAddress + "\n" +
@@ -325,6 +329,16 @@ namespace ZonderqOS
             if (id < 0 || id > 7) id = 0;
             AccentTheme = id;
             Save();
+        }
+
+        public static bool SetLanguage(string code)
+        {
+            if (code == "en-US" || code == "pl-PL")
+            {
+                LanguageCode = code;
+                return Save();
+            }
+            return false;
         }
 
         public static void CycleDesktopBackground()
@@ -701,6 +715,7 @@ namespace ZonderqOS
             TimeZoneOffsetHours = 2;
             DesktopBackgroundMode = 0;
             AccentTheme = 0;
+            LanguageCode = "pl-PL";
             AutoLockMinutes = 5;
             NetworkUseDhcp = true;
             StaticIpAddress = "10.0.2.15";
@@ -748,6 +763,10 @@ namespace ZonderqOS
                 case "accent_theme":
                     if (int.TryParse(value, out number) && number >= 0 && number <= 7)
                         AccentTheme = number;
+                    break;
+                case "language":
+                    if (value == "en-US" || value == "pl-PL")
+                        LanguageCode = value;
                     break;
                 case "auto_lock_minutes":
                     if (int.TryParse(value, out number) && IsAutoLockPreset(number))

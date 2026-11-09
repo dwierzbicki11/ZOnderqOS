@@ -19,7 +19,7 @@ namespace ZonderqOS.GUI.Apps
         private static readonly Color GoldColor = Color.FromArgb(245, 195, 45);
 
         private const int HeaderHeight = 38;
-        private int activeTab = 0; // 0 = Przegląd, 1 = Nowości Alfa, 2 = Skróty, 3 = O Systemie
+        private int activeTab = 0; // 0 = Przegląd, 1 = Nowości Alfa, 2 = Skróty, 3 = Język/Lang, 4 = O Systemie
         private readonly Action closeCallback;
         private readonly Action<string> launchAppCallback;
 
@@ -51,11 +51,11 @@ namespace ZonderqOS.GUI.Apps
 
             if (key.Key == ConsoleKeyEx.Tab || key.Key == ConsoleKeyEx.RightArrow)
             {
-                activeTab = (activeTab + 1) % 4;
+                activeTab = (activeTab + 1) % 5;
             }
             else if (key.Key == ConsoleKeyEx.LeftArrow)
             {
-                activeTab = (activeTab + 3) % 4;
+                activeTab = (activeTab + 4) % 5;
             }
         }
 
@@ -72,12 +72,46 @@ namespace ZonderqOS.GUI.Apps
             // Tab bar clicks (Y: 34 to 62)
             if (relY >= 34 && relY <= 62)
             {
-                int tabWidth = 145;
-                if (relX >= 12 && relX < 12 + tabWidth) activeTab = 0;
-                else if (relX >= 12 + tabWidth && relX < 12 + tabWidth * 2) activeTab = 1;
-                else if (relX >= 12 + tabWidth * 2 && relX < 12 + tabWidth * 3) activeTab = 2;
-                else if (relX >= 12 + tabWidth * 3 && relX < 12 + tabWidth * 4) activeTab = 3;
+                int tabWidth = (Window.Width - 32) / 5;
+                for (int t = 0; t < 5; t++)
+                {
+                    if (relX >= 12 + t * tabWidth && relX < 12 + (t + 1) * tabWidth)
+                    {
+                        activeTab = t;
+                        return;
+                    }
+                }
                 return;
+            }
+
+            // Quick language buttons in Hero Banner (X: 470..525 and 535..590, Y: 75..105)
+            if (activeTab == 0 && relY >= 75 && relY <= 105)
+            {
+                if (relX >= 470 && relX <= 525)
+                {
+                    global::ZonderqOS.Localization.LocalizationManager.SetLanguage(global::ZonderqOS.Localization.Language.Polish);
+                    return;
+                }
+                else if (relX >= 535 && relX <= 590)
+                {
+                    global::ZonderqOS.Localization.LocalizationManager.SetLanguage(global::ZonderqOS.Localization.Language.English);
+                    return;
+                }
+            }
+
+            // Tab 3 Language Selection Cards (Y: 130..220)
+            if (activeTab == 3 && relY >= 130 && relY <= 220)
+            {
+                if (relX >= 30 && relX <= 280)
+                {
+                    global::ZonderqOS.Localization.LocalizationManager.SetLanguage(global::ZonderqOS.Localization.Language.Polish);
+                    return;
+                }
+                else if (relX >= 300 && relX <= 550)
+                {
+                    global::ZonderqOS.Localization.LocalizationManager.SetLanguage(global::ZonderqOS.Localization.Language.English);
+                    return;
+                }
             }
 
             // Tab 0 Quick Action cards
@@ -144,6 +178,9 @@ namespace ZonderqOS.GUI.Apps
                     RenderHotkeysTab(canvas, x + 8, contentY, w - 16, contentH);
                     break;
                 case 3:
+                    RenderLanguageTab(canvas, x + 8, contentY, w - 16, contentH);
+                    break;
+                case 4:
                     RenderAboutTab(canvas, x + 8, contentY, w - 16, contentH);
                     break;
             }
@@ -153,8 +190,8 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderTabBar(Canvas canvas, int x, int y, int w, int h)
         {
-            string[] tabs = { "1. PRZEGLAD", "2. NOWOSCI ALFA", "3. SKROTY", "4. O SYSTEMIE" };
-            int tabW = w / 4;
+            string[] tabs = { "1. PRZEGLAD", "2. NOWOSCI", "3. SKROTY", "4. JEZYK / LANG", "5. O SYSTEMIE" };
+            int tabW = w / 5;
 
             for (int i = 0; i < tabs.Length; i++)
             {
@@ -179,6 +216,14 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.Draw(canvas, "ZONDERQOS 1.0 ALPHA - OFICJALNE WYDANIE", x + 66, y + 14, AccentColor);
             SmallTextRenderer.Draw(canvas, "Niezalezny polski system operacyjny x86_64 oparty na Cosmos Native Core.", x + 66, y + 30, TextColor);
             SmallTextRenderer.Draw(canvas, "Wbudowane 29 aplikacji, stala pamiec FAT32 oraz samoczynne aktualizacje OTA.", x + 66, y + 46, MutedColor);
+
+            // Quick language selector pills in top-right of hero banner
+            bool isPl = global::ZonderqOS.Localization.LocalizationManager.CurrentLanguage == global::ZonderqOS.Localization.Language.Polish;
+            UiPainter.RoundedPanel(canvas, x + w - 105, y + 10, 48, 22, 3, isPl ? AccentColor : Surface, Border);
+            SmallTextRenderer.DrawCentered(canvas, "PL", x + w - 105, y + 14, 48, isPl ? Color.White : TextColor);
+
+            UiPainter.RoundedPanel(canvas, x + w - 52, y + 10, 48, 22, 3, !isPl ? AccentColor : Surface, Border);
+            SmallTextRenderer.DrawCentered(canvas, "EN", x + w - 52, y + 14, 48, !isPl ? Color.White : TextColor);
 
             // Subtitle
             SmallTextRenderer.Draw(canvas, "SZYBKI START - WYBIERZ APLIKACJE DO URUCHOMIENIA:", x + 4, y + 82, GoldColor);
@@ -278,6 +323,51 @@ namespace ZonderqOS.GUI.Apps
             UiPainter.RoundedPanel(canvas, x, y - 2, 160, 24, 3, Surface, Border);
             SmallTextRenderer.DrawCentered(canvas, key, x, y + 3, 160, AccentColor);
             SmallTextRenderer.Draw(canvas, desc, x + 175, y + 3, TextColor);
+        }
+
+        private void RenderLanguageTab(Canvas canvas, int x, int y, int w, int h)
+        {
+            UiPainter.RoundedPanel(canvas, x, y, w, h, 6, Panel, Border);
+
+            SmallTextRenderer.Draw(canvas, "WYBOR JEZYKA INTERFEJSU / SELECT SYSTEM LANGUAGE:", x + 16, y + 14, GoldColor);
+            SmallTextRenderer.Draw(canvas, "Wybierz preferowany jezyk dla calego srodowiska graficznego i powloki.", x + 16, y + 32, TextColor);
+
+            bool isPl = global::ZonderqOS.Localization.LocalizationManager.CurrentLanguage == global::ZonderqOS.Localization.Language.Polish;
+
+            // Card 1: Polski
+            int cardW = (w - 32) / 2;
+            int cardH = 90;
+            int cardY = y + 60;
+
+            Color plBorder = isPl ? AccentColor : Border;
+            Color plBg = isPl ? Color.FromArgb(32, 48, 64) : Surface;
+            UiPainter.RoundedPanel(canvas, x + 12, cardY, cardW, cardH, 6, plBg, plBorder);
+            canvas.DrawFilledRectangle(isPl ? GreenColor : MutedColor, x + 14, cardY + 6, 4, cardH - 12);
+            SmallTextRenderer.Draw(canvas, "JEZYK POLSKI (pl-PL)", x + 26, cardY + 12, isPl ? GoldColor : TextColor);
+            SmallTextRenderer.Draw(canvas, "Standardowy interfejs, pelne komunikaty,", x + 26, cardY + 32, TextColor);
+            SmallTextRenderer.Draw(canvas, "opisy aplikacji, pomoc powloki i dialogi.", x + 26, cardY + 48, MutedColor);
+            if (isPl)
+                SmallTextRenderer.Draw(canvas, "[V] AKTYWNY JEZYK SYSTEMU", x + 26, cardY + 68, GreenColor);
+            else
+                SmallTextRenderer.Draw(canvas, "[Kliknij aby wybrac Polski]", x + 26, cardY + 68, AccentColor);
+
+            // Card 2: English
+            int card2X = x + 20 + cardW;
+            Color enBorder = !isPl ? AccentColor : Border;
+            Color enBg = !isPl ? Color.FromArgb(32, 48, 64) : Surface;
+            UiPainter.RoundedPanel(canvas, card2X, cardY, cardW, cardH, 6, enBg, enBorder);
+            canvas.DrawFilledRectangle(!isPl ? GreenColor : MutedColor, card2X + 2, cardY + 6, 4, cardH - 12);
+            SmallTextRenderer.Draw(canvas, "ENGLISH (en-US)", card2X + 14, cardY + 12, !isPl ? GoldColor : TextColor);
+            SmallTextRenderer.Draw(canvas, "International desktop interface,", card2X + 14, cardY + 32, TextColor);
+            SmallTextRenderer.Draw(canvas, "system toolbars, notifications and help.", card2X + 14, cardY + 48, MutedColor);
+            if (!isPl)
+                SmallTextRenderer.Draw(canvas, "[V] ACTIVE SYSTEM LANGUAGE", card2X + 14, cardY + 68, GreenColor);
+            else
+                SmallTextRenderer.Draw(canvas, "[Click to select English]", card2X + 14, cardY + 68, AccentColor);
+
+            // Information note at bottom
+            SmallTextRenderer.Draw(canvas, "INFORMACJA: Wybor jest automatycznie zapisywany w /etc/zonderq/settings.conf.", x + 16, y + cardH + 75, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Zmiana obowiazuje we wszystkich oknach i jest zachowywana pomiedzy restartami.", x + 16, y + cardH + 92, MutedColor);
         }
 
         private void RenderAboutTab(Canvas canvas, int x, int y, int w, int h)

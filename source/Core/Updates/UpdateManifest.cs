@@ -19,6 +19,7 @@ namespace ZonderqOS.SystemCore.Updates
     {
         public const string ExpectedArchitecture = "x86_64";
         public const string DefaultSignerKey = "ZONDERQ_OFFICIAL_RELEASE_KEY_GEN3";
+        public const string FallbackReleaseKey = "ZONDERQ_OFFICIAL_RELEASE_KEY_GEN2";
 
         public string Version { get; set; } = "1.0.0";
         public int BuildNumber { get; set; } = 3100;
@@ -158,6 +159,12 @@ namespace ZonderqOS.SystemCore.Updates
                 return false;
             }
 
+            if (string.IsNullOrEmpty(parsed.KernelSha256))
+            {
+                error = "Manifest nie zawiera wymaganego pola 'KERNEL_SHA256'.";
+                return false;
+            }
+
             if (!string.Equals(parsed.Architecture, ExpectedArchitecture, StringComparison.OrdinalIgnoreCase))
             {
                 error = $"Niezgodna architektura pakietu: {parsed.Architecture} (wymagana: {ExpectedArchitecture}).";
@@ -176,13 +183,25 @@ namespace ZonderqOS.SystemCore.Updates
             return $"{Version}|{BuildNumber}|{Architecture}|{KernelImage}|{KernelSha256}|{Title}";
         }
 
-        public bool VerifySignature(string secretKey)
+        public bool VerifySignature(string secretKey = null)
         {
             if (string.IsNullOrEmpty(Signature))
                 return false;
 
-            string expected = Crypto.ComputeHmacSha256(secretKey, GetSignaturePayload());
-            return Crypto.FixedTimeEquals(Signature.ToLowerInvariant(), expected.ToLowerInvariant());
+            if (!string.IsNullOrEmpty(secretKey))
+            {
+                string expected = Crypto.ComputeHmacSha256(secretKey, GetSignaturePayload());
+                return Crypto.FixedTimeEquals(Signature.ToLowerInvariant(), expected.ToLowerInvariant());
+            }
+
+            // Check primary release key
+            string primary = Crypto.ComputeHmacSha256(DefaultSignerKey, GetSignaturePayload());
+            if (Crypto.FixedTimeEquals(Signature.ToLowerInvariant(), primary.ToLowerInvariant()))
+                return true;
+
+            // Check fallback/secondary release key
+            string secondary = Crypto.ComputeHmacSha256(FallbackReleaseKey, GetSignaturePayload());
+            return Crypto.FixedTimeEquals(Signature.ToLowerInvariant(), secondary.ToLowerInvariant());
         }
 
         public void Sign(string secretKey)
