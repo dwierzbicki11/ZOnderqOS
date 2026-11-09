@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import re
+import tempfile
 
 MARKER = re.compile(
     r"^\[NET3095-ISR\] phase=(before|after) "
@@ -18,12 +19,15 @@ MARKER = re.compile(
 
 
 def validate(serial: str) -> str:
+    # Preserve UART framing: a bare CR can overwrite a visible terminal line
+    # and must never conceal a guest fault or fabricate a counter sample.
+    if "\r" in serial.replace("\r\n", ""):
+        raise ValueError("unexpected bare carriage return in ISR UART evidence")
     samples = {}
     phases = []
     boot_count = 0
     terminated = False
-    for raw in serial.split("\n"):
-        line = raw.removesuffix("\r")
+    for line in serial.replace("\r\n", "\n").split("\n"):
         # Require a single boot in the complete evidence stream. Reject faults
         # even before the baseline or after the final sample.
         if line == "[NET3095-N1] BOOT":
@@ -86,6 +90,12 @@ def validate(serial: str) -> str:
             "(requires independently verified guest instrumentation)")
 
 
+def read_uart(path: Path) -> str:
+    # Path.read_text() silently translates CR and CRLF into LF.
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as stream:
+        return stream.read()
+
+
 def self_test() -> None:
     good = ("[NET3095-N1] BOOT\n"
             "[NET3095-ISR] phase=before interrupts=3 rx_frames=7 polling=no\n"
@@ -132,7 +142,20 @@ def self_test() -> None:
         except ValueError:
             continue
         raise AssertionError(f"accepted invalid ISR evidence: {item!r}")
-    print("[NET3095-ISR-CONTRACT] PASS synthetic parser tests only")
+    # Exercise the actual CLI read path; newline translation previously
+    # erased embedded CR from on-disk QEMU UART captures.
+    with tempfile.TemporaryDirectory() as tmp:
+        path = Path(tmp) / "guest.serial"
+        path.write_bytes((good + "Kernel panic\\rhidden\\n").encode("utf-8"))
+        try:
+            validate(read_uart(path))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("accepted on-disk UART evidence with bare CR")
+        path.write_bytes(good.replace("\\n", "\\r\\n").encode("utf-8"))
+        assert "VERIFIED_GUEST_COUNTER_DELTA" in validate(read_uart(path))
+    print("[NET3095-ISR-CONTRACT] PASS synthetic parser and raw UART file tests only")
 
 
 if __name__ == "__main__":
@@ -146,6 +169,6 @@ if __name__ == "__main__":
         parser.error("real guest serial log required")
     else:
         try:
-            print(validate(args.serial.read_text(errors="replace")))
+            print(validate(read_uart(args.serial)))
         except (OSError, ValueError) as exc:
             parser.exit(1, f"[NET3095-ISR][FAIL] {exc}\n")
