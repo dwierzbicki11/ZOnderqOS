@@ -275,7 +275,7 @@ def main():
                 # The old float fixture accidentally mapped zero PCM to
                 # +0.125f DC. Require the actual QEMU WAV backend to
                 # capture the corrected 16KiB silent drain.
-                print(capture.inspect_silent_tail(wav))
+                print(capture.inspect_silent_tail(wav, expected_hz=EXPECTED_TONE_HZ[args.command]))
             print(f"[AUDIO-QEMU] PASS command={args.command} volume={args.volume} balance={args.balance} fade_ms={args.fade_ms} real QEMU HDA WAV capture; no physical speaker proof")
             return 0
         except (OSError, ValueError, RuntimeError, subprocess.TimeoutExpired) as exc:
