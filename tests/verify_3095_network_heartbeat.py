@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 import re
+import tempfile
 
 MARKER = "[NET3095-N1] HEARTBEAT="
 VALUE = re.compile(r"\[NET3095-N1\] HEARTBEAT=([0-9]{1,12})$")
@@ -52,6 +53,12 @@ def validate(serial: str, before_count: int, min_new: int = 6) -> str:
     return f"[NET3095-N1-HEARTBEAT] PASS {advanced} advancing managed ticks after proof"
 
 
+def read_uart(path: Path) -> str:
+    # Disable universal newline translation: bare CR is invalid evidence.
+    with path.open("r", encoding="utf-8", errors="replace", newline="") as stream:
+        return stream.read()
+
+
 def self_test() -> None:
     def log(numbers: list[int]) -> str:
         return "\n".join(MARKER + str(n) for n in numbers) + "\n"
@@ -84,6 +91,18 @@ def self_test() -> None:
         except ValueError:
             continue
         raise AssertionError("accepted invalid guest heartbeat continuity")
+    # Exercise the CLI file-reading path; Path.read_text() translates CR.
+    with tempfile.TemporaryDirectory() as tmp:
+        sample = Path(tmp) / "guest.serial"
+        sample.write_bytes((log([1, 2]) + MARKER + "3\\r4\\n").encode("utf-8"))
+        try:
+            parse(read_uart(sample))
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("file reader normalized away bare UART CR")
+        sample.write_bytes((log([1, 2]) + MARKER + "3\\r\\n").encode("utf-8"))
+        assert parse(read_uart(sample)) == [1, 2, 3]
     print("[NET3095-N1-HEARTBEAT-CONTRACT] PASS synthetic monotonicity and negative cases only")
 
 
@@ -104,7 +123,7 @@ if __name__ == "__main__":
         if args.count == (args.after_count is not None):
             parser.error("choose exactly one of --count or --after-count")
         try:
-            serial = args.serial_log.read_text(errors="replace")
+            serial = read_uart(args.serial_log)
             if args.count:
                 print(len(parse(serial)))
             else:
