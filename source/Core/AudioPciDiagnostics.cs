@@ -24,7 +24,8 @@ namespace ZonderqOS.SystemCore
             }
 
             int found = 0;
-            int supportedInterfaceCandidates = 0;
+            int hdaCandidates = 0;
+            int legacyAudioFunctions = 0;
             int unsupportedInterfaces = 0;
             int recognizedQemuIdentities = 0;
             for (int i = 0; i < devices.Count; i++)
@@ -36,8 +37,10 @@ namespace ZonderqOS.SystemCore
                 found++;
                 if (IsKnownQemuIdentity(d.VendorId, d.DeviceId, d.ClassCode, d.Subclass, d.ProgrammingInterface))
                     recognizedQemuIdentities++;
-                if (d.ProgrammingInterface == 0x00)
-                    supportedInterfaceCandidates++;
+                if (d.Subclass == 0x03 && d.ProgrammingInterface == 0x00)
+                    hdaCandidates++;
+                else if (d.Subclass == 0x01 && d.ProgrammingInterface == 0x00)
+                    legacyAudioFunctions++;
                 else
                     unsupportedInterfaces++;
                 Write("[AUDIO] " + d.Id.Address + " [" +
@@ -51,7 +54,8 @@ namespace ZonderqOS.SystemCore
             }
 
             Write("[AUDIO] Discovered PCI audio functions: " + found, shellOutput);
-            Write("[AUDIO] Standard-interface candidates: " + supportedInterfaceCandidates +
+            Write("[AUDIO] HDA driver candidates: " + hdaCandidates +
+                "; legacy audio (no stock AC97 driver): " + legacyAudioFunctions +
                 "; unsupported programming interfaces: " + unsupportedInterfaces, shellOutput);
             Write("[AUDIO] Known QEMU PCI identities: " + recognizedQemuIdentities +
                 "; all other audio identities remain unverified.", shellOutput);
