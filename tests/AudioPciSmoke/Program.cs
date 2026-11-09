@@ -148,8 +148,8 @@ static class Test
         Expect(ok, "PCI enumeration success");
         Expect(report.Contains("Discovered PCI audio functions: 2"), "count only audio");
         Expect(report.Contains("Known QEMU PCI identities: 2"), "both QEMU PCI IDs recognized");
-        Expect(report.Contains("Standard-interface candidates: 2; unsupported programming interfaces: 0"),
-            "standard PCI interface inventory counts are independent of driver binding");
+        Expect(report.Contains("HDA driver candidates: 1; legacy audio (no stock AC97 driver): 1; unsupported programming interfaces: 0"),
+            "HDA candidate must be distinguished from legacy audio without a stock driver");
         Expect(report.Contains("00:01.0") && report.Contains("00:02.0"), "both audio functions");
         Expect(!report.Contains("00:03.0") && !report.Contains("00:04.0"), "exclude video and NIC");
         Expect(report.Contains("pci-identity=Intel ICH6 HDA"), "report identifies QEMU HDA candidate");
@@ -163,8 +163,8 @@ static class Test
             "unsupported programming interfaces remain visible in read-only inventory");
         Expect(report.Contains("Known QEMU PCI identities: 2"),
             "unsupported programming interfaces cannot increase known-QEMU count");
-        Expect(report.Contains("Standard-interface candidates: 2; unsupported programming interfaces: 2"),
-            "unsupported PCI interfaces are counted separately from standard candidates");
+        Expect(report.Contains("HDA driver candidates: 1; legacy audio (no stock AC97 driver): 1; unsupported programming interfaces: 2"),
+            "unsupported PCI interfaces are counted separately from HDA and legacy audio");
         Expect(report.Contains("00:05.0") && report.Contains("00:06.0"),
             "unsupported interfaces retain PCI addresses for safe diagnosis");
         Expect(report.Contains("UNKNOWN_AUDIO_IDENTITY"),
