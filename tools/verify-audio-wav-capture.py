@@ -63,7 +63,7 @@ def inspect(path: Path, expected_hz: int = 440):
         chunk = left[i:i + window_frames]
         active = sum(abs(x) >= 256 for x in chunk)
         if active * 100 >= len(chunk) * 95:
-            if not starts or i >= starts[0] + window_frames:
+            if not starts or i >= starts[0] + max(window_frames, rate // 8):
                 starts.append(i)
             if len(starts) == 2:
                 break
