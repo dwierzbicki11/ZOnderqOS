@@ -17,7 +17,7 @@ VALUE = re.compile(r"\[NET3095-N1\] HEARTBEAT=([0-9]{1,12})$")
 
 def parse(serial: str) -> list[int]:
     values: list[int] = []
-    for line in serial.replace("\r", "").splitlines():
+    # Normalize only real UART CRLF line endings. A stray CR embedded in a\n    # marker must not be silently deleted to manufacture a valid heartbeat.\n    if "\r" in serial.replace("\r\n", ""):\n        raise ValueError("unexpected bare carriage return in guest UART evidence")\n    for line in serial.replace("\r\n", "\n").splitlines():
         if MARKER not in line:
             continue
         if line.count(MARKER) != 1:
@@ -67,7 +67,7 @@ def self_test() -> None:
         (log([1, 2, 3, 4, 5, 6, 7, 8]) +
          MARKER + "9 " + MARKER + "9\n", 2),
         (log([1, 2, 3, 4, 5, 6, 7, 8]) + MARKER + "08\n", 2),
-        (log([1, 2, 3, 4, 5, 6, 7, 8]) + "host: " + MARKER + "9\n", 2),
+        (log([1, 2, 3, 4, 5, 6, 7, 8]) + "host: " + MARKER + "9\n", 2),\n        (log([1, 2, 3, 4, 5, 6, 7, 8]) + MARKER + "9\\r0\\n", 2),\n        (log([1, 2, 3, 4, 5, 6, 7, 8]) + "host\\r" + MARKER + "9\\n", 2),
         (log([1, 2, 3, 4, 5, 6, 7, 8]) + MARKER + "9 \n", 2),
         (log([1, 2, 3, 4, 5, 6, 7, 8]) + "\\x1b[0m" + MARKER + "9\n", 2),
         (log([1, 2, 3, 4, 5, 6, 7, 8]), -1),
