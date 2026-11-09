@@ -22,7 +22,9 @@ def parse(serial: str) -> list[int]:
             continue
         if line.count(MARKER) != 1:
             raise ValueError("duplicated guest heartbeat marker on one line")
-        match = VALUE.search(line.strip())
+        # UART evidence must be an exact guest line. A host prefix, terminal
+        # control sequence or trailing whitespace must not impersonate a tick.
+        match = VALUE.fullmatch(line)
         if match is None:
             raise ValueError("malformed guest heartbeat marker")
         value = int(match.group(1))
@@ -65,6 +67,9 @@ def self_test() -> None:
         (log([1, 2, 3, 4, 5, 6, 7, 8]) +
          MARKER + "9 " + MARKER + "9\n", 2),
         (log([1, 2, 3, 4, 5, 6, 7, 8]) + MARKER + "08\n", 2),
+        (log([1, 2, 3, 4, 5, 6, 7, 8]) + "host: " + MARKER + "9\n", 2),
+        (log([1, 2, 3, 4, 5, 6, 7, 8]) + MARKER + "9 \n", 2),
+        (log([1, 2, 3, 4, 5, 6, 7, 8]) + "\\x1b[0m" + MARKER + "9\n", 2),
         (log([1, 2, 3, 4, 5, 6, 7, 8]), -1),
     ]
     for serial, baseline in bad:
