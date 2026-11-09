@@ -63,17 +63,17 @@ def create_and_seed_disk(disk_path, kernel_elf_path):
         
     limine_cfg = (
         "# Cosmos Gen3 / Limine v10 A/B dual-slot boot configuration.\n"
-        "timeout: 3\n"
+        "timeout: 2\n"
         "default_entry: 1\n\n"
-        "/ZonderqOS (Slot A - Aktywny)\n"
+        "/ZOnderqOS\n"
         "    protocol: limine\n"
         "    resolution: 1366x768x32\n"
         "    path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf\n\n"
-        "/ZonderqOS (Slot B)\n"
+        "/ZOnderqOS (Poprzednia wersja / Slot B)\n"
         "    protocol: limine\n"
         "    resolution: 1366x768x32\n"
         "    path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf\n\n"
-        "/ZonderqOS (Kopia zapasowa ISO / Ratunkowa)\n"
+        "/ZOnderqOS (Kopia zapasowa ISO / Ratunkowa)\n"
         "    protocol: limine\n"
         "    resolution: 1366x768x32\n"
         "    path: boot():/boot/ZonderqOS.elf\n"
@@ -197,17 +197,17 @@ if __name__ == "__main__":
 
     limine_cfg_b = (
         "# Cosmos Gen3 / Limine v10 A/B dual-slot boot configuration.\n"
-        "timeout: 3\n"
-        "default_entry: 2\n\n"
-        "/ZonderqOS (Slot A)\n"
-        "    protocol: limine\n"
-        "    resolution: 1366x768x32\n"
-        "    path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf\n\n"
-        "/ZonderqOS (Slot B - Aktywny)\n"
+        "timeout: 2\n"
+        "default_entry: 1\n\n"
+        "/ZOnderqOS\n"
         "    protocol: limine\n"
         "    resolution: 1366x768x32\n"
         "    path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf\n\n"
-        "/ZonderqOS (Kopia zapasowa ISO / Ratunkowa)\n"
+        "/ZOnderqOS (Poprzednia wersja / Slot A)\n"
+        "    protocol: limine\n"
+        "    resolution: 1366x768x32\n"
+        "    path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf\n\n"
+        "/ZOnderqOS (Kopia zapasowa ISO / Ratunkowa)\n"
         "    protocol: limine\n"
         "    resolution: 1366x768x32\n"
         "    path: boot():/boot/ZonderqOS.elf\n"
@@ -220,7 +220,7 @@ if __name__ == "__main__":
         lcf.write(limine_cfg_b)
     fs.close()
 
-    print("[QEMU-HARNESS] Booting into Slot B via Limine entry 2...")
+    print("[QEMU-HARNESS] Booting autonomously into Slot B via Limine entry 1...")
     run_qemu(ISO, test_disk, smp=1, seconds=28)
     log_b, state_b = inspect_results(test_disk)
 

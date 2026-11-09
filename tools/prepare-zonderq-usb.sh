@@ -170,20 +170,20 @@ EOF
 # Write limine.conf on ZONDERQDATA
 cat > "$MOUNT_DIR/boot/limine.conf" <<EOF
 # Cosmos Gen3 / Limine v10 A/B dual-slot boot configuration.
-timeout: 5
+timeout: 2
 default_entry: 1
 
-/ZonderqOS (Slot A - Aktywny)
+/ZOnderqOS
     protocol: limine
     resolution: 1366x768x32
     path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf
 
-/ZonderqOS (Slot B)
+/ZOnderqOS (Poprzednia wersja / Slot B)
     protocol: limine
     resolution: 1366x768x32
     path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf
 
-/ZonderqOS (Kopia zapasowa ISO / Ratunkowa)
+/ZOnderqOS (Kopia zapasowa ISO / Ratunkowa)
     protocol: limine
     resolution: 1366x768x32
     path: boot():/boot/ZonderqOS.elf

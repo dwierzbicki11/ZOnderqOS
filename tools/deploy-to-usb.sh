@@ -73,6 +73,32 @@ SLOT_B_VERSION=1.0.1
 SLOT_B_BUILD=3110
 EOF
 
+# 2.5. Write autonomous Limine configuration pointing Entry 1 to active Slot A
+mkdir -p "$MOUNT_PATH/boot/limine"
+cat > "$MOUNT_PATH/boot/limine.conf" <<'EOF'
+# Cosmos Gen3 / Limine v10 A/B dual-slot boot configuration.
+timeout: 2
+default_entry: 1
+
+/ZOnderqOS
+    protocol: limine
+    resolution: 1366x768x32
+    path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf
+
+/ZOnderqOS (Poprzednia wersja / Slot B)
+    protocol: limine
+    resolution: 1366x768x32
+    path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf
+
+/ZOnderqOS (Kopia zapasowa ISO / Ratunkowa)
+    protocol: limine
+    resolution: 1366x768x32
+    path: boot():/boot/ZonderqOS.elf
+EOF
+
+cp -f "$MOUNT_PATH/boot/limine.conf" "$MOUNT_PATH/limine.conf"
+cp -f "$MOUNT_PATH/boot/limine.conf" "$MOUNT_PATH/boot/limine/limine.conf"
+
 # 3. Update incoming packages in /updates
 mkdir -p "$MOUNT_PATH/updates"
 echo "-> Kopiowanie pakietu aktualizacji do $MOUNT_PATH/updates/..."

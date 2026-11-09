@@ -44,10 +44,10 @@ with fs.open("/boot/boot_state.cfg", "w") as f:
     f.write("ACTIVE_SLOT=A\nFALLBACK_SLOT=B\nBOOT_ATTEMPTS=0\nMAX_BOOT_ATTEMPTS=3\nSLOT_A_STATUS=HEALTHY\nSLOT_A_VERSION=1.0.0-alpha\nSLOT_A_BUILD=3100\nSLOT_B_STATUS=EMPTY\n")
 
 limine_cfg = (
-    "timeout: 3\ndefault_entry: 1\n\n"
-    "/ZonderqOS (Slot A)\n    protocol: limine\n    resolution: 1366x768x32\n    path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf\n\n"
-    "/ZonderqOS (Slot B)\n    protocol: limine\n    resolution: 1366x768x32\n    path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf\n\n"
-    "/ZonderqOS (ISO)\n    protocol: limine\n    resolution: 1366x768x32\n    path: boot():/boot/ZonderqOS.elf\n"
+    "timeout: 2\ndefault_entry: 1\n\n"
+    "/ZOnderqOS\n    protocol: limine\n    resolution: 1366x768x32\n    path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf\n\n"
+    "/ZOnderqOS (Poprzednia wersja / Slot B)\n    protocol: limine\n    resolution: 1366x768x32\n    path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf\n\n"
+    "/ZOnderqOS (ISO)\n    protocol: limine\n    resolution: 1366x768x32\n    path: boot():/boot/ZonderqOS.elf\n"
 )
 with fs.open("/boot/limine.conf", "w") as f: f.write(limine_cfg)
 with fs.open("/limine.conf", "w") as f: f.write(limine_cfg)

@@ -442,6 +442,12 @@ namespace ZonderqOS.SystemCore.Updates
                 else
                     SlotBStatus = SlotHealth.PendingConfirmation;
 
+                try
+                {
+                    File.Copy(kernelPath, "/boot/ZonderqOS.elf", true);
+                }
+                catch { }
+
                 SaveBootState();
                 SyncLimineConfig();
 
@@ -479,6 +485,12 @@ namespace ZonderqOS.SystemCore.Updates
                 PendingSlot = string.Empty;
                 BootAttempts = 0;
 
+                try
+                {
+                    File.Copy(kernelPath, "/boot/ZonderqOS.elf", true);
+                }
+                catch { }
+
                 SyncLimineConfig();
                 SaveBootState();
 
@@ -493,31 +505,35 @@ namespace ZonderqOS.SystemCore.Updates
         }
 
         /// <summary>
-        /// Writes Limine configuration files pointing default_entry to the active slot.
-        /// Slot A = entry 1, Slot B = entry 2, Fallback ISO = entry 3.
+        /// Writes Limine configuration files pointing default_entry to the active slot autonomously.
+        /// Entry 1 is always the primary system pointing to whichever slot is active.
+        /// Entry 2 provides manual fallback to the inactive slot.
+        /// Entry 3 provides emergency boot from ISO.
         /// </summary>
         public static void SyncLimineConfig()
         {
             try
             {
-                int defaultEntry = (ActiveSlot == SlotB) ? 2 : 1;
+                string activeKernelPath = (ActiveSlot == SlotB) ? SlotBPath : SlotAPath;
+                string fallbackKernelPath = (ActiveSlot == SlotB) ? SlotAPath : SlotBPath;
+                string fallbackSlot = (ActiveSlot == SlotB) ? SlotA : SlotB;
 
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine("# Cosmos Gen3 / Limine v10 A/B dual-slot boot configuration.");
-                sb.AppendLine("timeout: 5");
-                sb.AppendLine("default_entry: " + defaultEntry);
+                sb.AppendLine("timeout: 2");
+                sb.AppendLine("default_entry: 1");
                 sb.AppendLine();
-                sb.AppendLine("/ZonderqOS (Slot A" + (ActiveSlot == SlotA ? " - Aktywny" : "") + ")");
+                sb.AppendLine("/ZOnderqOS");
                 sb.AppendLine("    protocol: limine");
                 sb.AppendLine("    resolution: 1366x768x32");
-                sb.AppendLine("    path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf");
+                sb.AppendLine("    path: fslabel(ZONDERQDATA):" + activeKernelPath);
                 sb.AppendLine();
-                sb.AppendLine("/ZonderqOS (Slot B" + (ActiveSlot == SlotB ? " - Aktywny" : "") + ")");
+                sb.AppendLine("/ZOnderqOS (Poprzednia wersja / Slot " + fallbackSlot + ")");
                 sb.AppendLine("    protocol: limine");
                 sb.AppendLine("    resolution: 1366x768x32");
-                sb.AppendLine("    path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf");
+                sb.AppendLine("    path: fslabel(ZONDERQDATA):" + fallbackKernelPath);
                 sb.AppendLine();
-                sb.AppendLine("/ZonderqOS (Kopia zapasowa ISO / Ratunkowa)");
+                sb.AppendLine("/ZOnderqOS (Kopia zapasowa ISO / Ratunkowa)");
                 sb.AppendLine("    protocol: limine");
                 sb.AppendLine("    resolution: 1366x768x32");
                 sb.AppendLine("    path: boot():/boot/ZonderqOS.elf");
