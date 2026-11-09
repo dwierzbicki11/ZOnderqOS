@@ -145,7 +145,7 @@ def inspect_silent_tail(path: Path):
         chunk = left[i:i + window_frames]
         if sum(abs(x) >= 256 for x in chunk) * 100 < len(chunk) * 95:
             continue
-        if starts and i < starts[0] + window_frames:
+        if starts and i < starts[0] + max(window_frames, rate // 8):
             continue
         starts.append(i)
         if len(starts) == 2:
