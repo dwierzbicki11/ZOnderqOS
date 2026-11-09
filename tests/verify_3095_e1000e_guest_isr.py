@@ -25,7 +25,7 @@ def validate(serial: str) -> str:
         raise ValueError("unexpected bare carriage return in ISR UART evidence")
     # Control bytes and terminal escape sequences can alter the displayed UART
     # evidence without altering the underlying parser input. Fail closed.
-    if any((ord(ch) < 32 and ch not in "\r\\n\\t") or ord(ch) == 127 for ch in serial):
+    if any((ord(ch) < 32 and ch not in "\r\n\t") or ord(ch) == 127 for ch in serial):
         raise ValueError("unexpected control character in ISR UART evidence")
     if "\x1b" in serial or "\ufffd" in serial:
         raise ValueError("terminal escape or undecodable UART evidence")
