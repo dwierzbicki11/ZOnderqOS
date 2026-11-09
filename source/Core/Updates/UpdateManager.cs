@@ -97,6 +97,15 @@ namespace ZonderqOS.SystemCore.Updates
         public static UpdatePackageInfo AvailablePackage { get; private set; } = null;
         public static bool RequireSignedPackages { get; set; } = true;
 
+        private static string cachedUpToDateMessage;
+        private static string cachedUpToDateVersionMessage;
+        private static readonly string[] CandidateManifestPaths = new string[]
+        {
+            "/updates/update.manifest",
+            "/var/updates/incoming/update.manifest",
+            "/var/updates/update.manifest"
+        };
+
         private static readonly object _lock = new object();
         private static bool isInitialized = false;
 
@@ -302,9 +311,12 @@ namespace ZonderqOS.SystemCore.Updates
 
             try
             {
-                DateTime now = DateTime.Now;
-                LastCheckTime = now.ToString("yyyy-MM-dd HH:mm");
-                SaveConfig();
+                if (forceRefresh)
+                {
+                    DateTime now = DateTime.Now;
+                    LastCheckTime = now.ToString("yyyy-MM-dd HH:mm");
+                    SaveConfig();
+                }
 
                 UpdatePackageInfo pkg = null;
                 bool fromDisk = TryLoadDiskManifest(out UpdatePackageInfo diskPkg);
@@ -326,7 +338,11 @@ namespace ZonderqOS.SystemCore.Updates
                     }
                     else
                     {
-                        message = "System ZonderqOS jest w najnowszej wersji (" + KernelBuildInfo.KernelVersion + ", build " + KernelBuildInfo.KernelBuild + "). Brak nowych pakietow na USB (/updates).";
+                        if (cachedUpToDateMessage == null)
+                        {
+                            cachedUpToDateMessage = "System ZonderqOS jest w najnowszej wersji (" + KernelBuildInfo.KernelVersion + ", build " + KernelBuildInfo.KernelBuild + "). Brak nowych pakietow na USB (/updates).";
+                        }
+                        message = cachedUpToDateMessage;
                     }
                     return false;
                 }
@@ -340,7 +356,11 @@ namespace ZonderqOS.SystemCore.Updates
                     Status = UpdateStatus.UpToDate;
                     AvailablePackage = null;
                     package = null;
-                    message = "System ZonderqOS jest w najnowszej wersji (" + KernelBuildInfo.KernelVersion + "). Pakiet " + pkg.Version + " nie jest nowszy.";
+                    if (cachedUpToDateVersionMessage == null || !cachedUpToDateVersionMessage.Contains(pkg.Version))
+                    {
+                        cachedUpToDateVersionMessage = "System ZonderqOS jest w najnowszej wersji (" + KernelBuildInfo.KernelVersion + "). Pakiet " + pkg.Version + " nie jest nowszy.";
+                    }
+                    message = cachedUpToDateVersionMessage;
                     return false;
                 }
 
@@ -383,7 +403,7 @@ namespace ZonderqOS.SystemCore.Updates
 
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             long freq = System.Diagnostics.Stopwatch.Frequency > 0 ? System.Diagnostics.Stopwatch.Frequency : 1000000;
-            if (lastAutoCheckTicks > 0 && now - lastAutoCheckTicks < 15 * freq)
+            if (lastAutoCheckTicks > 0 && now - lastAutoCheckTicks < 300 * freq)
                 return;
 
             lastAutoCheckTicks = now;
@@ -502,16 +522,9 @@ namespace ZonderqOS.SystemCore.Updates
         public static bool TryLoadDiskManifest(out UpdatePackageInfo pkg)
         {
             pkg = null;
-            string[] candidatePaths = new string[]
+            for (int p = 0; p < CandidateManifestPaths.Length; p++)
             {
-                "/updates/update.manifest",
-                "/var/updates/incoming/update.manifest",
-                "/var/updates/update.manifest"
-            };
-
-            for (int p = 0; p < candidatePaths.Length; p++)
-            {
-                string path = candidatePaths[p];
+                string path = CandidateManifestPaths[p];
                 if (!File.Exists(path)) continue;
 
                 try

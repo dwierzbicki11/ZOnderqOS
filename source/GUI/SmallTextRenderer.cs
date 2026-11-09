@@ -158,6 +158,32 @@ namespace ZonderqOS.GUI
             }
         }
 
+        public static void DrawUInt2(Canvas canvas, ulong val, int x, int y, Color color)
+        {
+            if (val < 10)
+            {
+                DrawChar(canvas, '0', x, y, color);
+                DrawChar(canvas, (char)('0' + (int)val), x + 6, y, color);
+            }
+            else
+            {
+                DrawUInt(canvas, val, x, y, color);
+            }
+        }
+
+        public static void DrawTime(Canvas canvas, int hour, int minute, int second, int x, int y, Color color)
+        {
+            hour = Math.Max(0, Math.Min(23, hour));
+            minute = Math.Max(0, Math.Min(59, minute));
+            second = Math.Max(0, Math.Min(59, second));
+
+            DrawUInt2(canvas, (ulong)hour, x, y, color);
+            DrawChar(canvas, ':', x + 12, y, color);
+            DrawUInt2(canvas, (ulong)minute, x + 18, y, color);
+            DrawChar(canvas, ':', x + 30, y, color);
+            DrawUInt2(canvas, (ulong)second, x + 36, y, color);
+        }
+
         public static void DrawInt(Canvas canvas, long value, int x, int y, Color color)
         {
             if (value >= 0)

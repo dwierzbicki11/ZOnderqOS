@@ -1,14 +1,14 @@
 # ZonderqOS Verified Update Package Manifest
-VERSION=1.0.3
-BUILD=3130
+VERSION=1.0.2
+BUILD=3120
 ARCH=x86_64
-TITLE=ZonderqOS Gen3 1.0.3 Kernel & System Update
+TITLE=ZonderqOS Gen3 1.0.2 Kernel & System Update
 DATE=2026-11-09
 SEVERITY=Zalecana
 KERNEL_IMAGE=ZonderqOS.elf
-KERNEL_SHA256=8dcc7f9beb71de67acd8837f3c148d8ce5ae16b8e83333f9cabce4f2cf625182
+KERNEL_SHA256=dd5903eef18f758c7f51ec6fe94fbddb50fd63215afba7e71b84f38d9d7981b3
 PAYLOAD_DIR=payload
-SIGNATURE=2c71df566ec8b9d73b11a3ae92f95402633fac8fa2ff8aac405968b13abb775f
+SIGNATURE=318afbaff6df8111180cbbb32e6615de0d853c3315fea77cc5233c34c17f8a16
 THEME=EMERALD FOREST
 WALLPAPER=6
 CHANGELOG=Aktualizacja jadra Cosmos 3.0.95 x64 Native Core;Obsluga bezpiecznego przelaczania slotow rozruchowych A/B;Automatyczny watchdog awaryjny po nieudanym starcie;Weryfikacja kryptograficzna SHA-256 i HMAC

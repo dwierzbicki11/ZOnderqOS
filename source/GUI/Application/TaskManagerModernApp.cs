@@ -100,7 +100,11 @@ namespace ZonderqOS.GUI.Apps
         private readonly long managerOpenedAt;
 
         private long clockSecond = -1;
+        private long lastFormattedClockSecond = -1;
         private int lastClockDay = -1;
+        private int clockHour;
+        private int clockMinute;
+        private int clockSecondInt;
         private string clockText = "--:--:--";
         private string dateText = "--.--.----";
 
@@ -229,7 +233,9 @@ namespace ZonderqOS.GUI.Apps
                 if (key == clockSecond)
                     return;
                 clockSecond = key;
-                clockText = D2(now.Hour) + ":" + D2(now.Minute) + ":" + D2(now.Second);
+                clockHour = now.Hour;
+                clockMinute = now.Minute;
+                clockSecondInt = now.Second;
                 if (now.Day != lastClockDay)
                 {
                     lastClockDay = now.Day;
@@ -238,7 +244,9 @@ namespace ZonderqOS.GUI.Apps
             }
             catch
             {
-                clockText = "--:--:--";
+                clockHour = 0;
+                clockMinute = 0;
+                clockSecondInt = 0;
                 dateText = "--.--.----";
             }
         }
@@ -418,6 +426,10 @@ namespace ZonderqOS.GUI.Apps
             activePage = page;
             selectedIndex = -1;
             scrollIndex = 0;
+            if (activePage != PagePerformance)
+            {
+                BuildRows();
+            }
             RebuildVisibleRows(null, -1, false);
             status = page == PageProcesses ? "Procesy" : page == PagePerformance ? "Wydajnosc" : page == PageDetails ? "Szczegoly" : "Uslugi";
         }
@@ -488,26 +500,30 @@ namespace ZonderqOS.GUI.Apps
 
         private void RefreshSnapshot()
         {
-            // A user may scroll away from the selected task while the 500ms
-            // telemetry timer keeps refreshing. Do not jump back to that old
-            // selection on every sample; keep it visible only if it was visible
-            // immediately before the refresh.
-            bool selectedWasVisible = view.HasPaintedProcessRows &&
-                TaskManagerSelectionPolicy.IsVisible(selectedIndex, scrollIndex,
-                    view.VisibleRows, visibleRows.Count);
-            Application selectedApp = null;
-            int selectedPid = -1;
-            if (selectedIndex >= 0 && selectedIndex < visibleRows.Count)
+            if (activePage != PagePerformance)
             {
-                selectedApp = visibleRows[selectedIndex].GuiApplication;
-                selectedPid = visibleRows[selectedIndex].KernelPid;
+                // A user may scroll away from the selected task while the 500ms
+                // telemetry timer keeps refreshing. Do not jump back to that old
+                // selection on every sample; keep it visible only if it was visible
+                // immediately before the refresh.
+                bool selectedWasVisible = view.HasPaintedProcessRows &&
+                    TaskManagerSelectionPolicy.IsVisible(selectedIndex, scrollIndex,
+                        view.VisibleRows, visibleRows.Count);
+                Application selectedApp = null;
+                int selectedPid = -1;
+                if (selectedIndex >= 0 && selectedIndex < visibleRows.Count)
+                {
+                    selectedApp = visibleRows[selectedIndex].GuiApplication;
+                    selectedPid = visibleRows[selectedIndex].KernelPid;
+                }
+
+                BuildRows();
+                RebuildVisibleRows(selectedApp, selectedPid, selectedWasVisible);
             }
 
-            BuildRows();
             UpdateMemorySnapshot();
             UpdateCpuSnapshot();
             UpdateSystemSnapshot();
-            RebuildVisibleRows(selectedApp, selectedPid, selectedWasVisible);
             // Start the interval after expensive sampling completes, including
             // F5 and toolbar refreshes, rather than immediately sampling again.
             lastRefreshTicks = Stopwatch.GetTimestamp();
@@ -911,7 +927,21 @@ namespace ZonderqOS.GUI.Apps
         internal int SelectedIndex => selectedIndex;
         internal int ScrollIndex => scrollIndex;
         internal string Status => status;
-        internal string ClockText => clockText;
+        internal int ClockHour => clockHour;
+        internal int ClockMinute => clockMinute;
+        internal int ClockSecondInt => clockSecondInt;
+        internal string ClockText
+        {
+            get
+            {
+                if (clockText == "--:--:--" || clockSecond != lastFormattedClockSecond)
+                {
+                    lastFormattedClockSecond = clockSecond;
+                    clockText = D2(clockHour) + ":" + D2(clockMinute) + ":" + D2(clockSecondInt);
+                }
+                return clockText;
+            }
+        }
         internal string DateText => dateText;
         internal int GuiAppCount => guiAppCount;
         internal int KernelProcessCount => kernelProcessCount;
@@ -1228,7 +1258,7 @@ namespace ZonderqOS.GUI.Apps
             int bottom = Y + Height - 62;
             canvas.DrawLine(Color.FromArgb(48, 58, 68), X + 10, bottom - 8, X + SidebarWidth - 10, bottom - 8);
             SmallTextRenderer.Draw(canvas, "SYSTEM CLOCK", X + 16, bottom + 2, Muted);
-            SmallTextRenderer.Draw(canvas, app.ClockText, X + 16, bottom + 20, Color.WhiteSmoke);
+            SmallTextRenderer.DrawTime(canvas, app.ClockHour, app.ClockMinute, app.ClockSecondInt, X + 16, bottom + 20, Color.WhiteSmoke);
             SmallTextRenderer.Draw(canvas, app.DateText, X + 82, bottom + 20, Muted);
         }
 
@@ -1292,7 +1322,7 @@ namespace ZonderqOS.GUI.Apps
             // Hide only the clock until a complete 72px slot fits before it.
             if (refresh - clock >= 72)
             {
-                SmallTextRenderer.Draw(canvas, app.ClockText, clock, Y + 13, Color.WhiteSmoke);
+                SmallTextRenderer.DrawTime(canvas, app.ClockHour, app.ClockMinute, app.ClockSecondInt, clock, Y + 13, Color.WhiteSmoke);
                 SmallTextRenderer.Draw(canvas, app.DateText, clock, Y + 31, Muted);
             }
             DrawButton(canvas, refresh, Y + 10, 88, "REFRESH", IconType.Refresh, false, true);
@@ -1701,7 +1731,7 @@ namespace ZonderqOS.GUI.Apps
 
             int row = cardY + 88;
             int half = width / 2 - 8;
-            DrawKeyText(canvas, x, row, half, "CLOCK", app.ClockText);
+            DrawKeyClock(canvas, x, row, half, "CLOCK", app.ClockHour, app.ClockMinute, app.ClockSecondInt);
             DrawKeyText(canvas, x, row + 20, half, "DATE", app.DateText);
             DrawKey(canvas, x, row + 40, half, "UPTIME", app.UptimeSeconds, "SEC");
             DrawKey(canvas, x, row + 60, half, "MANAGER OPEN", app.ManagerOpenSeconds, "SEC");
@@ -1791,6 +1821,13 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawClipped(canvas, value, x + keyW, y, Math.Max(20, width - keyW), Text);
         }
 
+        private void DrawKeyClock(Canvas canvas, int x, int y, int width, string key, int hour, int min, int sec)
+        {
+            int keyW = Math.Min(142, Math.Max(84, width / 2));
+            SmallTextRenderer.DrawClipped(canvas, key, x, y, keyW - 4, Muted);
+            SmallTextRenderer.DrawTime(canvas, hour, min, sec, x + keyW, y, Text);
+        }
+
         private void RenderFooter(Canvas canvas)
         {
             int x = X + SidebarWidth + 8;
@@ -1811,7 +1848,7 @@ namespace ZonderqOS.GUI.Apps
             {
                 SmallTextRenderer.DrawClipped(canvas, app.Status, x + 8, y + 9, Math.Max(20, width - 260), Text);
                 SmallTextRenderer.Draw(canvas, "F5 REFRESH   DEL END TASK", x + width - 244, y + 9, Muted);
-                SmallTextRenderer.Draw(canvas, app.ClockText, x + width - 72, y + 9, Text);
+                SmallTextRenderer.DrawTime(canvas, app.ClockHour, app.ClockMinute, app.ClockSecondInt, x + width - 72, y + 9, Text);
             }
         }
     }

@@ -283,8 +283,10 @@ class TinyTaskManagerViewTests(unittest.TestCase):
     def test_narrow_full_header_hides_overlapping_clock(self):
         header = section("private void RenderHeader(Canvas canvas)", "private void DrawButton(")
         self.assertIn("if (refresh - clock >= 72)", header)
-        self.assertLess(header.index("if (refresh - clock >= 72)"),
-                        header.index("SmallTextRenderer.Draw(canvas, app.ClockText"))
+        clock_draw_idx = (header.index("SmallTextRenderer.DrawTime(canvas, app.ClockHour")
+                          if "SmallTextRenderer.DrawTime(canvas, app.ClockHour" in header
+                          else header.index("SmallTextRenderer.Draw(canvas, app.ClockText"))
+        self.assertLess(header.index("if (refresh - clock >= 72)"), clock_draw_idx)
         for width in range(550, 1201):
             content_x = 170 + 8
             refresh = width - 210
