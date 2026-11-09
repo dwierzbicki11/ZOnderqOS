@@ -164,6 +164,23 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "non-silent float WAV tail"):
             audio.inspect_silent_tail(self.path)
 
+    def test_float_extensible_tail_accepts_3960_and_rejects_2860(self):
+        # Synthetic captured PCM only; real HDA output remains a QEMU gate.
+        self.make_wave(frequency=3960, ms=250, silence_ms=0)
+        with wave.open(str(self.path), "rb") as wav:
+            raw = wav.readframes(wav.getnframes())
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(48000)
+            wav.writeframes(raw + bytes(48000 * 80 // 1000 * 4))
+        self.assertIn("PASS captured 20ms zero PCM tail",
+                      audio.inspect_silent_tail(self.path, expected_hz=3960))
+        with self.assertRaisesRegex(ValueError, "float tail wrong pitch"):
+            audio.inspect_silent_tail(self.path, expected_hz=2860)
+        with self.assertRaisesRegex(ValueError, "unsupported float tail probe frequency"):
+            audio.inspect_silent_tail(self.path, expected_hz=440)
+
     def test_float_hda_tail_rejects_wrong_pitch(self):
         self.make_wave(frequency=880, ms=330, silence_ms=0)
         with wave.open(str(self.path), "rb") as wav:
