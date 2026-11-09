@@ -205,6 +205,25 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "float tail stereo channel imbalance"):
             audio.inspect_silent_tail(self.path)
 
+    def test_float_tail_rejects_late_right_channel_loss(self):
+        # The second pitch window must be late enough to expose a
+        # channel fault beginning at 100 ms, despite healthy early peaks.
+        self.make_wave(frequency=2860, ms=250, silence_ms=0)
+        with wave.open(str(self.path), "rb") as wav:
+            data = bytearray(wav.readframes(wav.getnframes()))
+        for frame in range(48000 * 100 // 1000, len(data) // 4):
+            offset = frame * 4 + 2
+            right = struct.unpack_from("<h", data, offset)[0]
+            struct.pack_into("<h", data, offset, right // 4)
+        data.extend(bytes(48000 * 80 // 1000 * 4))
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(48000)
+            wav.writeframes(data)
+        with self.assertRaisesRegex(ValueError, "float tail stereo channel imbalance"):
+            audio.inspect_silent_tail(self.path)
+
     def test_float_hda_tail_rejects_all_silence(self):
         # Valid length and quiet tail alone must not certify playback.
         self.make_wave(ms=330, silence_ms=0, amplitude=0)
