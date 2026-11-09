@@ -100,8 +100,31 @@ namespace ZonderqOS.GUI.Apps
         private readonly long managerOpenedAt;
 
         private long clockSecond = -1;
+        private int lastClockDay = -1;
         private string clockText = "--:--:--";
         private string dateText = "--.--.----";
+
+        private ulong lastSnapUsedPages = ulong.MaxValue;
+        private ulong lastSnapFreePages = ulong.MaxValue;
+        private ulong lastSnapTotalPages = ulong.MaxValue;
+        private ulong lastSnapGcHeapBytes = ulong.MaxValue;
+        private ulong lastSnapGcCommittedBytes = ulong.MaxValue;
+        private ulong lastSnapInstalledBytes = ulong.MaxValue;
+        private ulong lastSnapUsableBytes = ulong.MaxValue;
+
+        private string cachedUsedMemoryText = "0 MB";
+        private string cachedFreeMemoryText = "0 MB";
+        private string cachedTotalMemoryText = "0 MB";
+        private string cachedMemoryUsageText = "0.00%";
+        private string cachedGcHeapText = "0 MB";
+        private string cachedGcCommittedText = "0 MB";
+        private string cachedInstalledRamText = "0 B";
+        private string cachedUsableRamText = "0 B";
+        private string cachedHeapPoolText = "0 B";
+        private string cachedMemoryDetailText = "0 MB (0.00%)";
+        private string cachedMemoryPagesText = "0 (4096 B/strona)";
+        private string cachedHardwareRamText = "0 B / 0 B";
+        private readonly string baseMaxSpeedText;
 
         private readonly string baseSpeedText;
         private readonly string maxSpeedText;
@@ -119,6 +142,7 @@ namespace ZonderqOS.GUI.Apps
 
             baseSpeedText = FormatSpeed(cpuInfo.BaseMHz);
             maxSpeedText = FormatSpeed(cpuInfo.MaxMHz);
+            baseMaxSpeedText = baseSpeedText + " / " + maxSpeedText;
             topologyText = Math.Max(1, cpuInfo.PhysicalCores) + " / " +
                            Math.Max(1, cpuInfo.LogicalProcessors) + " / " +
                            Math.Max(1, cpuInfo.ThreadsPerCore);
@@ -188,6 +212,33 @@ namespace ZonderqOS.GUI.Apps
             ClampLogicalPage();
         }
 
+        private static readonly string[] Digits2 = PrecomputeDigits2();
+        private static string[] PrecomputeDigits2()
+        {
+            var arr = new string[100];
+            for (int i = 0; i < 100; i++)
+                arr[i] = i < 10 ? "0" + i : i.ToString();
+            return arr;
+        }
+
+        private static string D2(int value)
+        {
+            if ((uint)value < 100)
+                return Digits2[value];
+            return value.ToString();
+        }
+
+        private static string D4(int value)
+        {
+            value = Math.Max(0, value);
+            if (value >= 2000 && value < 2100)
+                return "20" + D2(value - 2000);
+            if (value < 10) return "000" + D2(value);
+            if (value < 100) return "00" + D2(value);
+            if (value < 1000) return "0" + value;
+            return value.ToString();
+        }
+
         private void UpdateClock()
         {
             try
@@ -198,23 +249,17 @@ namespace ZonderqOS.GUI.Apps
                     return;
                 clockSecond = key;
                 clockText = D2(now.Hour) + ":" + D2(now.Minute) + ":" + D2(now.Second);
-                dateText = D2(now.Day) + "." + D2(now.Month) + "." + D4(now.Year);
+                if (now.Day != lastClockDay)
+                {
+                    lastClockDay = now.Day;
+                    dateText = D2(now.Day) + "." + D2(now.Month) + "." + D4(now.Year);
+                }
             }
             catch
             {
                 clockText = "--:--:--";
                 dateText = "--.--.----";
             }
-        }
-
-        private static string D2(int value) => value < 10 ? "0" + Math.Max(0, value) : value.ToString();
-        private static string D4(int value)
-        {
-            value = Math.Max(0, value);
-            if (value < 10) return "000" + value;
-            if (value < 100) return "00" + value;
-            if (value < 1000) return "0" + value;
-            return value.ToString();
         }
 
         public override void HandleMouse(int mouseX, int mouseY, bool left, bool oldLeft)
@@ -579,6 +624,32 @@ namespace ZonderqOS.GUI.Apps
 
                 physicalInstalledBytes = PhysicalMemoryDetector.InstalledBytes;
                 physicalUsableBytes = PhysicalMemoryDetector.TotalPhysicalBytes;
+
+                if (usedPages != lastSnapUsedPages || freePages != lastSnapFreePages || totalPages != lastSnapTotalPages ||
+                    gcHeapBytes != lastSnapGcHeapBytes || gcCommittedBytes != lastSnapGcCommittedBytes ||
+                    physicalInstalledBytes != lastSnapInstalledBytes || physicalUsableBytes != lastSnapUsableBytes)
+                {
+                    lastSnapUsedPages = usedPages;
+                    lastSnapFreePages = freePages;
+                    lastSnapTotalPages = totalPages;
+                    lastSnapGcHeapBytes = gcHeapBytes;
+                    lastSnapGcCommittedBytes = gcCommittedBytes;
+                    lastSnapInstalledBytes = physicalInstalledBytes;
+                    lastSnapUsableBytes = physicalUsableBytes;
+
+                    cachedUsedMemoryText = FormatMiBPrecise(usedPages * PageAllocator.PageSize);
+                    cachedFreeMemoryText = FormatMiBPrecise(freePages * PageAllocator.PageSize);
+                    cachedTotalMemoryText = FormatMiBPrecise(totalPages * PageAllocator.PageSize);
+                    cachedMemoryUsageText = FormatPercentPrecise(usedPages, totalPages);
+                    cachedGcHeapText = FormatMiBPrecise(gcHeapBytes);
+                    cachedGcCommittedText = FormatMiBPrecise(gcCommittedBytes);
+                    cachedInstalledRamText = FormatBytesSmart(physicalInstalledBytes);
+                    cachedUsableRamText = FormatBytesSmart(physicalUsableBytes);
+                    cachedHeapPoolText = FormatBytesSmart(totalPages * PageAllocator.PageSize);
+                    cachedMemoryDetailText = cachedUsedMemoryText + " (" + cachedMemoryUsageText + ")";
+                    cachedMemoryPagesText = totalPages + " (" + PageAllocator.PageSize + " B/strona)";
+                    cachedHardwareRamText = cachedInstalledRamText + " / " + cachedHeapPoolText;
+                }
             }
             catch
             {
@@ -886,15 +957,19 @@ namespace ZonderqOS.GUI.Apps
         internal ulong TotalMemoryMb => totalPages * PageAllocator.PageSize / (1024UL * 1024UL);
         internal ulong GcHeapMb => gcHeapBytes / (1024UL * 1024UL);
         internal ulong GcCommittedMb => gcCommittedBytes / (1024UL * 1024UL);
-        internal string UsedMemoryText => FormatMiBPrecise(UsedPages * PageAllocator.PageSize);
-        internal string FreeMemoryText => FormatMiBPrecise(freePages * PageAllocator.PageSize);
-        internal string TotalMemoryText => FormatMiBPrecise(totalPages * PageAllocator.PageSize);
-        internal string MemoryUsageText => FormatPercentPrecise(UsedPages, totalPages);
-        internal string GcHeapText => FormatMiBPrecise(gcHeapBytes);
-        internal string GcCommittedText => FormatMiBPrecise(gcCommittedBytes);
-        internal string InstalledRamText => FormatBytesSmart(physicalInstalledBytes);
-        internal string UsableRamText => FormatBytesSmart(physicalUsableBytes);
-        internal string HeapPoolText => FormatBytesSmart(totalPages * PageAllocator.PageSize);
+        internal string UsedMemoryText => cachedUsedMemoryText;
+        internal string FreeMemoryText => cachedFreeMemoryText;
+        internal string TotalMemoryText => cachedTotalMemoryText;
+        internal string MemoryUsageText => cachedMemoryUsageText;
+        internal string GcHeapText => cachedGcHeapText;
+        internal string GcCommittedText => cachedGcCommittedText;
+        internal string InstalledRamText => cachedInstalledRamText;
+        internal string UsableRamText => cachedUsableRamText;
+        internal string HeapPoolText => cachedHeapPoolText;
+        internal string MemoryDetailText => cachedMemoryDetailText;
+        internal string MemoryPagesText => cachedMemoryPagesText;
+        internal string HardwareRamText => cachedHardwareRamText;
+        internal string BaseMaxSpeedText => baseMaxSpeedText;
         internal int StorageDeviceCount => storageDeviceCount;
         internal int StoragePartitionCount => storagePartitionCount;
         internal bool NetworkReady => networkReady;
@@ -1429,23 +1504,29 @@ namespace ZonderqOS.GUI.Apps
                 int available = Math.Max(1, Width - SidebarWidth - 16);
                 int buttonWidth = Math.Max(1, (available - 8) / 3);
                 int top = Y + 64;
-                DrawCompactResource(canvas, left, top, buttonWidth, 0, "CPU",
-                    app.CpuUsagePercent.ToString() + "%");
-                DrawCompactResource(canvas, left + buttonWidth + 4, top,
-                    buttonWidth, 1, "MEM", app.MemoryUsageText);
-                DrawCompactResource(canvas, left + (buttonWidth + 4) * 2, top,
-                    buttonWidth, 2, "SYS", app.SchedulerThreadCount.ToString());
+                DrawCompactResource(canvas, left, top, buttonWidth, 0, "CPU", (ulong)app.CpuUsagePercent, "%");
+                DrawCompactResource(canvas, left + buttonWidth + 4, top, buttonWidth, 1, "MEM", app.MemoryUsageText);
+                DrawCompactResource(canvas, left + (buttonWidth + 4) * 2, top, buttonWidth, 2, "SYS", (ulong)Math.Max(0, app.SchedulerThreadCount), null);
 
                 // Leave the 28px footer unobstructed on 320x240 desktops.
                 if (Height >= 180)
                 {
-                    string detail = app.PerformanceResource == 0
-                        ? "CPU " + app.CpuUsagePercent + "%"
-                        : app.PerformanceResource == 1
-                            ? "RAM " + app.MemoryUsageText
-                            : "Threads " + app.SchedulerThreadCount;
-                    SmallTextRenderer.DrawClipped(canvas, detail, left,
-                        Y + 122, available, Text);
+                    if (app.PerformanceResource == 0)
+                    {
+                        SmallTextRenderer.Draw(canvas, "CPU ", left, Y + 122, Text);
+                        SmallTextRenderer.DrawUInt(canvas, (ulong)app.CpuUsagePercent, left + 24, Y + 122, Text);
+                        SmallTextRenderer.Draw(canvas, "%", left + 24 + SmallTextRenderer.WidthUInt((ulong)app.CpuUsagePercent), Y + 122, Text);
+                    }
+                    else if (app.PerformanceResource == 1)
+                    {
+                        SmallTextRenderer.Draw(canvas, "RAM ", left, Y + 122, Text);
+                        SmallTextRenderer.DrawClipped(canvas, app.MemoryUsageText, left + 24, Y + 122, Math.Max(1, available - 24), Text);
+                    }
+                    else
+                    {
+                        SmallTextRenderer.Draw(canvas, "Threads ", left, Y + 122, Text);
+                        SmallTextRenderer.DrawUInt(canvas, (ulong)Math.Max(0, app.SchedulerThreadCount), left + 48, Y + 122, Text);
+                    }
                 }
                 return;
             }
@@ -1453,7 +1534,7 @@ namespace ZonderqOS.GUI.Apps
             int resourceX = X + SidebarWidth + 10;
             int resourceY = Y + 64;
             DrawResource(canvas, resourceX, resourceY, 0, "CPU", (ulong)app.CpuUsagePercent, "%");
-            DrawResourceText(canvas, resourceX, resourceY + 82, 1, "MEMORY", app.UsedMemoryMb + " MB (" + app.MemoryUsageText + ")");
+            DrawResourceText(canvas, resourceX, resourceY + 82, 1, "MEMORY", app.MemoryDetailText);
             DrawResource(canvas, resourceX, resourceY + 164, 2, "SYSTEM", (ulong)Math.Max(0, app.SchedulerThreadCount), "");
 
             int x = resourceX + 170;
@@ -1476,6 +1557,25 @@ namespace ZonderqOS.GUI.Apps
                 Math.Max(1, width - 8), active ? Color.WhiteSmoke : Text);
             SmallTextRenderer.DrawClipped(canvas, value, x + 4, y + 25,
                 Math.Max(1, width - 8), active ? Color.FromArgb(126, 194, 238) : Muted);
+        }
+
+        private void DrawCompactResource(Canvas canvas, int x, int y, int width,
+            int resource, string title, ulong value, string suffix)
+        {
+            bool active = app.PerformanceResource == resource;
+            canvas.DrawFilledRectangle(active ? Color.FromArgb(35, 55, 71) :
+                Color.FromArgb(26, 32, 38), x, y, width, 42);
+            canvas.DrawRectangle(active ? Color.FromArgb(65, 126, 169) :
+                Color.FromArgb(52, 63, 74), x, y, width, 42);
+            SmallTextRenderer.DrawClipped(canvas, title, x + 4, y + 10,
+                Math.Max(1, width - 8), active ? Color.WhiteSmoke : Text);
+            SmallTextRenderer.DrawUInt(canvas, value, x + 4, y + 25,
+                active ? Color.FromArgb(126, 194, 238) : Muted);
+            if (!string.IsNullOrEmpty(suffix))
+            {
+                SmallTextRenderer.Draw(canvas, suffix, x + 4 + SmallTextRenderer.WidthUInt(value), y + 25,
+                    active ? Color.FromArgb(126, 194, 238) : Muted);
+            }
         }
 
         private void DrawResource(Canvas canvas, int x, int y, int resource, string title, ulong value, string suffix)
@@ -1518,10 +1618,13 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawClipped(canvas, text, x + 9, y + 10, width - 18, active ? Color.WhiteSmoke : Muted);
         }
 
+        private const int GraphCpu = -1;
+        private const int GraphMemory = -2;
+
         private void RenderTotalCpu(Canvas canvas, int x, int y, int width)
         {
             int graphH = Math.Max(145, Height - 390);
-            DrawGraph(canvas, x, y + 16, width, graphH, app.CpuHistoryCount, app.GetCpuHistory, -1, Accent, true);
+            DrawGraph(canvas, x, y + 16, width, graphH, app.CpuHistoryCount, GraphCpu, Accent, true);
             int stats = y + graphH + 54;
             DrawPercent(canvas, app.CpuUsagePercent, x, stats);
             int left = x + 124;
@@ -1531,7 +1634,7 @@ namespace ZonderqOS.GUI.Apps
             DrawKey(canvas, left, stats + 20, 230, "LOGICAL CPU", (ulong)Math.Max(1, app.CpuInfo.LogicalProcessors), null);
             DrawKey(canvas, left, stats + 40, 230, "THREADS/CORE", (ulong)Math.Max(1, app.CpuInfo.ThreadsPerCore), null);
             DrawKey(canvas, left, stats + 60, 230, "ONLINE CPU", app.OnlineCpuCount, null);
-            DrawKeyText(canvas, left, stats + 80, 230, "BASE / MAX", app.BaseSpeedText + " / " + app.MaxSpeedText);
+            DrawKeyText(canvas, left, stats + 80, 230, "BASE / MAX", app.BaseMaxSpeedText);
             DrawKeyText(canvas, left, stats + 100, 230, "PLATFORM", "x86_64 Cosmos Native");
             DrawKey(canvas, right, stats, rightW, "SCHED THREADS", (ulong)Math.Max(0, app.SchedulerThreadCount), null);
             DrawKeyText(canvas, right, stats + 20, rightW, "SCHEDULER", app.SchedulerName);
@@ -1594,14 +1697,14 @@ namespace ZonderqOS.GUI.Apps
                 SmallTextRenderer.Draw(canvas, "%", x + width - 18, y + 8, Color.FromArgb(126, 194, 238));
             }
             else SmallTextRenderer.Draw(canvas, "OFF", x + width - 30, y + 8, Muted);
-            DrawGraph(canvas, x + 5, y + 24, width - 10, Math.Max(32, height - 30), app.GetLogicalHistoryCount(cpu), null, cpu, online ? Accent : Muted, false);
+            DrawGraph(canvas, x + 5, y + 24, width - 10, Math.Max(32, height - 30), app.GetLogicalHistoryCount(cpu), cpu, online ? Accent : Muted, false);
         }
 
         private void RenderMemory(Canvas canvas, int x, int y, int width)
         {
             SmallTextRenderer.Draw(canvas, "MEMORY (RAM FIZYCZNY I ALOKATOR COSMOS)", x, y + 4, Color.WhiteSmoke);
             int graphH = Math.Max(150, Height - 370);
-            DrawGraph(canvas, x, y + 36, width, graphH, app.MemoryHistoryCount, app.GetMemoryHistory, -2, Color.FromArgb(116, 174, 219), true);
+            DrawGraph(canvas, x, y + 36, width, graphH, app.MemoryHistoryCount, GraphMemory, Color.FromArgb(116, 174, 219), true);
             int stats = y + graphH + 50;
             int half = width / 2;
 
@@ -1609,10 +1712,10 @@ namespace ZonderqOS.GUI.Apps
             DrawKeyText(canvas, x, stats, half, "RAM ZAINSTALOWANY", app.InstalledRamText);
             DrawKeyText(canvas, x, stats + 20, half, "RAM WYKRYTY (FIRMWARE)", app.UsableRamText);
             DrawKeyText(canvas, x, stats + 40, half, "PULA HEAP COSMOS", app.HeapPoolText);
-            DrawKeyText(canvas, x, stats + 60, half, "STRONY PAMIECI", app.TotalPages + " (" + PageAllocator.PageSize + " B/strona)");
+            DrawKeyText(canvas, x, stats + 60, half, "STRONY PAMIECI", app.MemoryPagesText);
 
             // Cosmos Heap Allocator & GC
-            DrawKeyText(canvas, x + half, stats, half, "HEAP UZYTY", app.UsedMemoryText + " (" + app.MemoryUsageText + ")");
+            DrawKeyText(canvas, x + half, stats, half, "HEAP UZYTY", app.MemoryDetailText);
             DrawKeyText(canvas, x + half, stats + 20, half, "HEAP WOLNY", app.FreeMemoryText);
             DrawKeyText(canvas, x + half, stats + 40, half, "GC ROZMIAR HEAP", app.GcHeapText);
             DrawKeyText(canvas, x + half, stats + 60, half, "GC ZATWIERDZONE", app.GcCommittedText);
@@ -1639,7 +1742,7 @@ namespace ZonderqOS.GUI.Apps
             DrawKey(canvas, x, row + 100, half, "ONLINE CPU", app.OnlineCpuCount, null);
             DrawKeyText(canvas, x, row + 120, half, "SCHEDULER", app.SchedulerName);
             DrawKey(canvas, x, row + 140, half, "SCHED TICK", app.SchedulerTickUs, "US");
-            DrawKeyText(canvas, x, row + 160, half, "RAM SPRZET", app.InstalledRamText + " / " + app.HeapPoolText);
+            DrawKeyText(canvas, x, row + 160, half, "RAM SPRZET", app.HardwareRamText);
 
             int right = x + width / 2 + 8;
             DrawKey(canvas, right, row, half, "RUNNING", (ulong)Math.Max(0, app.RunningThreadCount), null);
@@ -1650,7 +1753,7 @@ namespace ZonderqOS.GUI.Apps
             DrawKey(canvas, right, row + 100, half, "KERNEL PROCS", (ulong)Math.Max(0, app.KernelProcessCount), null);
             DrawKey(canvas, right, row + 120, half, "STORAGE", (ulong)Math.Max(0, app.StorageDeviceCount), null);
             DrawKeyText(canvas, right, row + 140, half, "NETWORK", app.NetworkReady ? "READY" : "OFFLINE");
-            DrawKeyText(canvas, right, row + 160, half, "RAM UZYTY", app.UsedMemoryText + " (" + app.MemoryUsageText + ")");
+            DrawKeyText(canvas, right, row + 160, half, "RAM UZYTY", app.MemoryDetailText);
         }
 
         private void DrawSystemCard(Canvas canvas, int x, int y, int width, string title, ulong value, string detail)
@@ -1662,8 +1765,7 @@ namespace ZonderqOS.GUI.Apps
             SmallTextRenderer.DrawClipped(canvas, detail, x + 12, y + 49, width - 24, Muted);
         }
 
-        private delegate int HistoryGetter(int index);
-        private void DrawGraph(Canvas canvas, int x, int y, int width, int height, int count, HistoryGetter getter, int logicalCpu, Color line, bool labels)
+        private void DrawGraph(Canvas canvas, int x, int y, int width, int height, int count, int graphKind, Color line, bool labels)
         {
             canvas.DrawFilledRectangle(Color.FromArgb(23, 29, 35), x, y, width, height);
             canvas.DrawRectangle(Color.FromArgb(66, 111, 145), x, y, width, height);
@@ -1675,11 +1777,15 @@ namespace ZonderqOS.GUI.Apps
                 int denom = Math.Max(1, app.HistoryCapacity - 1);
                 int offset = app.HistoryCapacity - count;
                 int previousX = x + offset * width / denom;
-                int previousValue = logicalCpu >= 0 ? app.GetLogicalHistory(logicalCpu, 0) : getter != null ? getter(0) : 0;
+                int previousValue = graphKind == GraphCpu ? app.GetCpuHistory(0) :
+                                    graphKind == GraphMemory ? app.GetMemoryHistory(0) :
+                                    graphKind >= 0 ? app.GetLogicalHistory(graphKind, 0) : 0;
                 int previousY = y + height - previousValue * height / 100;
                 for (int i = 1; i < count; i++)
                 {
-                    int value = logicalCpu >= 0 ? app.GetLogicalHistory(logicalCpu, i) : getter != null ? getter(i) : 0;
+                    int value = graphKind == GraphCpu ? app.GetCpuHistory(i) :
+                                graphKind == GraphMemory ? app.GetMemoryHistory(i) :
+                                graphKind >= 0 ? app.GetLogicalHistory(graphKind, i) : 0;
                     int px = x + (offset + i) * width / denom;
                     int py = y + height - value * height / 100;
                     canvas.DrawLine(line, previousX, previousY, px, py);

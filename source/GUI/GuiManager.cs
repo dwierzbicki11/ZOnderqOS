@@ -47,6 +47,8 @@ namespace ZonderqOS.GUI
         private long lastShortcutClickTimestamp;
         private int lastShortcutClickX, lastShortcutClickY;
         private int frameCounter;
+        private static string cachedWatermarkBuild;
+        private static string cachedWatermarkVersion;
 
         private const int TaskbarHeight = 44;
         // Bound input dispatch per GUI iteration. An autorepeating key or a
@@ -652,8 +654,7 @@ namespace ZonderqOS.GUI
 
             if (startMenu.Visible || (desktopContextMenu != null && desktopContextMenu.Visible) ||
                 (notificationCenter != null && notificationCenter.Visible) ||
-                (commandPalette != null && commandPalette.Visible) ||
-                applicationManager.HasLiveTelemetryWindow)
+                (commandPalette != null && commandPalette.Visible))
                 return false;
 
             NotificationEntry toast;
@@ -1767,12 +1768,17 @@ namespace ZonderqOS.GUI
                 canvas.DrawFilledRectangle(background, 0, 0, deskW, deskH);
             }
 
-            // Desktop Watermark & OS Build Status Badge
-            string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
-            string curBuild = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild;
+            // Desktop Watermark & OS Build Status Badge (pre-cached to eliminate per-frame allocations)
+            if (cachedWatermarkBuild == null)
+            {
+                string curVer = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentVersion;
+                string curBuild = global::ZonderqOS.SystemCore.Updates.UpdateManager.CurrentBuild;
+                cachedWatermarkBuild = "ZOnderqOS 1.0 Alpha • Build " + curBuild + " [ALFA 1]";
+                cachedWatermarkVersion = "Wersja " + curVer + " • Cosmos 3.0.95 x64 Native";
+            }
 
-            SmallTextRenderer.Draw(canvas, "ZOnderqOS 1.0 Alpha • Build " + curBuild + " [ALFA 1]", deskW - 275, deskH - 34, Color.FromArgb(70, 225, 120));
-            SmallTextRenderer.Draw(canvas, "Wersja " + curVer + " • Cosmos 3.0.95 x64 Native", deskW - 275, deskH - 18, Color.FromArgb(170, 195, 220));
+            SmallTextRenderer.Draw(canvas, cachedWatermarkBuild, deskW - 275, deskH - 34, Color.FromArgb(70, 225, 120));
+            SmallTextRenderer.Draw(canvas, cachedWatermarkVersion, deskW - 275, deskH - 18, Color.FromArgb(170, 195, 220));
         }
 
         private void RenderShutdownScreen()

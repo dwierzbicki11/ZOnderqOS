@@ -168,9 +168,10 @@ namespace ZonderqOS.SystemCore
             lock (_registryLock)
             {
                 CleanupDeadProcessesLocked();
-                foreach (var process in _processes.Values)
+                foreach (var kvp in _processes)
                 {
-                    if (process.IsRunning && string.Equals(process.Name, name, StringComparison.OrdinalIgnoreCase))
+                    var process = kvp.Value;
+                    if (process != null && process.IsRunning && string.Equals(process.Name, name, StringComparison.OrdinalIgnoreCase))
                         return true;
                 }
 
@@ -193,8 +194,11 @@ namespace ZonderqOS.SystemCore
                 destination.Clear();
                 CleanupDeadProcessesLocked();
 
-                foreach (var process in _processes.Values)
-                    destination.Add(process);
+                foreach (var kvp in _processes)
+                {
+                    if (kvp.Value != null)
+                        destination.Add(kvp.Value);
+                }
 
                 return destination.Count;
             }
