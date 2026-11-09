@@ -99,10 +99,19 @@ EOF
 cp -f "$MOUNT_PATH/boot/limine.conf" "$MOUNT_PATH/limine.conf"
 cp -f "$MOUNT_PATH/boot/limine.conf" "$MOUNT_PATH/boot/limine/limine.conf"
 
-# 3. Update incoming packages in /updates
+# 3. Update incoming packages in /updates and /var/updates/incoming
 mkdir -p "$MOUNT_PATH/updates"
-echo "-> Kopiowanie pakietu aktualizacji do $MOUNT_PATH/updates/..."
+mkdir -p "$MOUNT_PATH/var/updates/incoming"
+echo "-> Kopiowanie pakietu aktualizacji do $MOUNT_PATH/updates/ i /var/updates/incoming/..."
 cp -rf "$UPDATES_DIR"/* "$MOUNT_PATH/updates/"
+cp -rf "$UPDATES_DIR"/* "$MOUNT_PATH/var/updates/incoming/"
+
+# Weryfikacja obecnosci plikow aktualizacji
+if [[ ! -f "$MOUNT_PATH/updates/update.manifest" || ! -f "$MOUNT_PATH/updates/ZonderqOS.elf" ]]; then
+    echo "[BLAD] Pliki aktualizacji nie zostaly poprawnie skopiowane do /updates!"
+    exit 1
+fi
+echo "-> Zweryfikowano: pakiet aktualizacji (wersja $(awk -F= '$1=="VERSION"{print $2}' "$MOUNT_PATH/updates/update.manifest")) jest gotowy w /updates."
 
 echo "-> Synchronizacja buforow USB (sync)..."
 sync

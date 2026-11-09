@@ -1,0 +1,10 @@
+=== ZOnderqOS Gen 3 - Aktualizacja 1.0.2 (Build 3120) ===
+Data wydania: 2026-11-09
+
+Glowne nowosci w tej aktualizacji:
+1. W pelni autonomiczny start systemu z aktywnego slotu rozruchowego (Limine v10).
+2. Automatyczny wybor slotu A/B bez koniecznosci recznego wyboru przez uzytkownika.
+3. Centralny LocalizationManager: obsluga jezykow pl-PL oraz en-US.
+4. Zaostrzona weryfikacja integralnosci cyfrowej HMAC-SHA256 pakietow i kernela.
+5. Zabezpieczenie przed uszkodzeniem obcych partycji (Kali Linux, Windows, EFI).
+6. Optymalizacja zuzycia pamieci RAM (ponizej 1 GB dla bazowego systemu).
