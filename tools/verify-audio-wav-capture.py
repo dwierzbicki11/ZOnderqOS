@@ -104,13 +104,15 @@ def inspect(path: Path, expected_hz: int = 440):
     return f"[AUDIO-WAV] PASS captured PCM: {rate}Hz {channels}ch, peak={peak}, tone={hz:.1f}Hz, frames={frames}"
 
 
-def inspect_silent_tail(path: Path):
+def inspect_silent_tail(path: Path, expected_hz: int = 2860):
     """Require captured zero PCM after a float probe's 250ms tone.
 
     The guest fixture appends 4096 zero frames (>=85ms). A backend WAV
     must contain at least 300ms total and finish with >=20ms of near-zero
     samples. This is a captured-PCM check, not a guest DMA/IRQ assertion.
     """
+    if expected_hz not in (2860, 3960):
+        raise ValueError("unsupported float tail probe frequency")
     with wave.open(str(path), "rb") as wav:
         channels = wav.getnchannels()
         rate = wav.getframerate()
@@ -159,7 +161,7 @@ def inspect_silent_tail(path: Path):
                 raise ValueError("missing sustained float tone in stereo channel")
             crossings = sum((a < 0) != (b < 0) for a, b in zip(chunk, chunk[1:]))
             hz = crossings * rate / (2 * (len(chunk) - 1))
-            if not 2860 * 0.90 <= hz <= 2860 * 1.10:
+            if not expected_hz * 0.90 <= hz <= expected_hz * 1.10:
                 raise ValueError(f"float tail wrong pitch: {hz:.1f}Hz")
         # A barely audible right channel can share pitch and phase while
         # indicating a broken stereo path. Check balance in each window.
