@@ -146,14 +146,14 @@ def self_test() -> None:
     # erased embedded CR from on-disk QEMU UART captures.
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / "guest.serial"
-        path.write_bytes((good + "Kernel panic\\rhidden\\n").encode("utf-8"))
+        path.write_bytes((good + "Kernel panic\rhidden\n").encode("utf-8"))
         try:
             validate(read_uart(path))
         except ValueError:
             pass
         else:
             raise AssertionError("accepted on-disk UART evidence with bare CR")
-        path.write_bytes(good.replace("\\n", "\\r\\n").encode("utf-8"))
+        path.write_bytes(good.replace("\n", "\r\n").encode("utf-8"))
         assert "VERIFIED_GUEST_COUNTER_DELTA" in validate(read_uart(path))
     print("[NET3095-ISR-CONTRACT] PASS synthetic parser and raw UART file tests only")
 
