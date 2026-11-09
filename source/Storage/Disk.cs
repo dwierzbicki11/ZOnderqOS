@@ -8,10 +8,38 @@ using ZonderqOS.SystemCore;
 
 namespace ZonderqOS
 {
-    public static class Disk
+    public static partial class Disk
     {
         private static FatFileSystemType fat;
         private static VfsMount _currentMount;
+
+        private sealed class RootSectorReader : IFatSectorReader
+        {
+            private readonly Partition partition;
+            public RootSectorReader(Partition value) { partition = value; }
+            public ulong SectorCount => partition.BlockCount;
+            public uint SectorSize => checked((uint)partition.BlockSize);
+            public void ReadSector(ulong sector, byte[] buffer)
+            {
+                if (sector >= partition.BlockCount)
+                    throw new ArgumentOutOfRangeException(nameof(sector));
+                partition.ReadBlock(sector, 1UL, buffer);
+            }
+        }
+
+        public static bool TryGetRootSpace(out Fat32Space space, out string error)
+        {
+            // Keep the approved object selected at mount time. A discovery-list
+            // reorder must not redirect diagnostics to a different device.
+            return Fat32Allocation.TryRead(_rootPartition == null ? null :
+                new RootSectorReader(_rootPartition), out space, out error);
+        }
+
+        public static bool TryBeginRootSpaceScan(out Fat32Allocation.Scan scan, out string error)
+        {
+            return Fat32Allocation.TryBegin(_rootPartition == null ? null :
+                new RootSectorReader(_rootPartition), out scan, out error);
+        }
 
         public static bool Initialize()
         {
@@ -76,6 +104,7 @@ namespace ZonderqOS
 #endif
 
                 _currentMount = mount;
+                _rootPartition = data;
 #if ZONDERQ_3094_RAM_ROOT
                 WriteMessage.WriteOK("Mounted ephemeral ZonderqOS FAT32 RAM root at '/' (no physical writes).", "VFS");
 #else
@@ -156,82 +185,9 @@ namespace ZonderqOS
             return true;
         }
 
-        public static void CreateFile(string path, string content)
-        {
-            if (VirtualFs.IsVirtualPath(path))
-            {
-                if (VirtualFs.TryWrite(path, content, false, out string virtualError))
-                {
-                    CommandIO.LastCommandSuccess = true;
-                    return;
-                }
-
-                string message = string.IsNullOrEmpty(virtualError)
-                    ? "virtual filesystem does not support writing this path"
-                    : virtualError;
-                WriteMessage.WriteError($"Write rejected for {path}: {message}", "FS");
-                CommandIO.LastCommandSuccess = false;
-                return;
-            }
-
-            if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
-            {
-                WriteMessage.WriteError($"Permission denied: Cannot modify {path}", "SEC");
-                SecurityLogger.LogEvent("WARN", $"Unauthorized write attempt on {path} by {SecurityContext.CurrentUser}");
-                return;
-            }
-
-            try
-            {
-                File.WriteAllText(path, content);
-                if (!PermissionManager.GetPermission(path).Owner.Equals(SecurityContext.CurrentUser))
-                    PermissionManager.SetPermission(path, SecurityContext.CurrentUser, 644);
-                WriteMessage.WriteOK($"File saved: {path}", "FS");
-            }
-            catch (Exception ex)
-            {
-                WriteMessage.WriteError($"Write error: {ex.Message}", "FS");
-            }
-        }
-
-        public static void AppendFile(string path, string content)
-        {
-            if (VirtualFs.IsVirtualPath(path))
-            {
-                if (VirtualFs.TryWrite(path, content + "\n", true, out string virtualError))
-                {
-                    CommandIO.LastCommandSuccess = true;
-                    return;
-                }
-
-                string message = string.IsNullOrEmpty(virtualError)
-                    ? "virtual filesystem does not support appending this path"
-                    : virtualError;
-                WriteMessage.WriteError($"Append rejected for {path}: {message}", "FS");
-                CommandIO.LastCommandSuccess = false;
-                return;
-            }
-
-            if (File.Exists(path) && !PermissionManager.CanWrite(path, SecurityContext.CurrentUser))
-            {
-                WriteMessage.WriteError($"Permission denied: Cannot modify {path}", "SEC");
-                SecurityLogger.LogEvent("WARN", $"Unauthorized append attempt on {path} by {SecurityContext.CurrentUser}");
-                return;
-            }
-
-            try
-            {
-                File.AppendAllText(path, content + "\n");
-                WriteMessage.WriteOK($"Appended to file: {path}", "FS");
-            }
-            catch (Exception ex)
-            {
-                WriteMessage.WriteError($"Append error: {ex.Message}", "FS");
-            }
-        }
-
         public static void CopyFile(string sourcePath, string destinationPath)
         {
+            CommandIO.LastCommandSuccess = false;
             if (VirtualFs.IsReadOnlyPath(sourcePath))
             {
                 WriteMessage.WriteError($"Virtual filesystem entries cannot be copied through the physical FAT backend: {sourcePath}", "FS");
@@ -260,6 +216,7 @@ namespace ZonderqOS
             {
                 File.Copy(sourcePath, destinationPath);
                 WriteMessage.WriteOK($"Copied file from {sourcePath} to {destinationPath}", "FS");
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
@@ -269,6 +226,7 @@ namespace ZonderqOS
 
         public static void MoveFile(string sourcePath, string destinationPath)
         {
+            CommandIO.LastCommandSuccess = false;
             if (RejectVirtualMutation(sourcePath, "move source") ||
                 RejectVirtualMutation(destinationPath, "move destination"))
                 return;
@@ -291,6 +249,7 @@ namespace ZonderqOS
             {
                 File.Move(sourcePath, destinationPath);
                 WriteMessage.WriteOK($"Moved file from {sourcePath} to {destinationPath}", "FS");
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
@@ -320,6 +279,7 @@ namespace ZonderqOS
 
         public static void DeleteFile(string path)
         {
+            CommandIO.LastCommandSuccess = false;
             if (RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path))
             {
                 if (VirtualFs.TryDeleteFile(path, out string virtualError))
@@ -347,6 +307,7 @@ namespace ZonderqOS
             {
                 File.Delete(path);
                 WriteMessage.WriteOK($"File deleted: {path}", "FS");
+                CommandIO.LastCommandSuccess = true;
             }
             catch (Exception ex)
             {
@@ -387,6 +348,7 @@ namespace ZonderqOS
 
         public static void DeleteDir(string path, bool recursive = true)
         {
+            CommandIO.LastCommandSuccess = false;
             if (RunFs.IsRunPath(path) || TmpFs.IsTmpPath(path))
             {
                 if (VirtualFs.TryDeleteDirectory(path, recursive, out string virtualError))
@@ -441,7 +403,8 @@ namespace ZonderqOS
             try
             {
                 var partitions = StorageManager.Partitions;
-                if (partitions == null || partitions.Count == 0)
+                int partitionCount = partitions == null ? 0 : partitions.Count;
+                if (partitionCount == 0 && _rootPartition == null)
                 {
                     CommandIO.WriteLine("No partitions found.");
                     CommandIO.LastCommandSuccess = true;
@@ -449,25 +412,25 @@ namespace ZonderqOS
                 }
 
                 CommandIO.WriteLine("=== Storage Space (All Partitions) ===");
-                for (int i = 0; i < partitions.Count; i++)
+                for (int i = 0; i < partitionCount; i++)
                 {
                     var partition = partitions[i];
                     ulong totalBytes = (ulong)partition.BlockCount * (ulong)partition.BlockSize;
-                    ulong usedBytes = 0;
-                    try
+                    // Partition discovery order does not identify VFS mounts.
+                    // File lengths also exclude FAT metadata and cluster slack,
+                    // so directory traversal cannot measure free filesystem space.
+                    CommandIO.WriteLine($"Partition [{i}]: Capacity: {FormatBytes(totalBytes)}; used/free: unavailable");
+                }
+                if (_rootPartition != null)
+                {
+                    if (!TryGetRootSpace(out Fat32Space space, out string error))
                     {
-                        string targetPath = (i == 0) ? "/" : "/mnt";
-                        long calculated = CalculateDirectorySize(targetPath, 0);
-                        usedBytes = calculated > 0 ? (ulong)calculated : 0;
+                        WriteMessage.WriteError($"Root FAT allocation unavailable: {error}", "FS");
+                        CommandIO.LastCommandSuccess = false;
+                        return;
                     }
-                    catch { }
-
-                    if (usedBytes > totalBytes) usedBytes = totalBytes;
-                    ulong freeBytes = totalBytes - usedBytes;
-                    double usagePercentage = totalBytes > 0 ? ((double)usedBytes / totalBytes) * 100 : 0;
-                    if (usagePercentage > 100) usagePercentage = 100;
-
-                    CommandIO.WriteLine($"Partition [{i}]: {FormatBytes(freeBytes)} / {FormatBytes(totalBytes)}  [Used: {FormatBytes(usedBytes)} - {usagePercentage:0.#}%]");
+                    CommandIO.WriteLine($"Root FAT32 on-disk scan: data {FormatBytes(space.DataBytes)}; allocated {FormatBytes(space.AllocatedBytes)}; free {FormatBytes(space.FreeBytes)}; bad {FormatBytes(space.BadBytes)}");
+                    CommandIO.WriteLine("Data clusters only (metadata excluded); non-atomic scan, concurrent writes may change values.");
                 }
                 CommandIO.LastCommandSuccess = true;
             }
@@ -501,7 +464,7 @@ namespace ZonderqOS
                 for (int i = 0; i < deviceCount; i++)
                 {
                     var device = Cosmos.Kernel.System.Storage.StorageManager.GetDevice(i);
-                    ulong sizeMB = (ulong)((device.BlockCount * device.BlockSize) / (1024 * 1024));
+                    ulong sizeMB = ((ulong)device.BlockCount * (ulong)device.BlockSize) / (1024 * 1024);
                     CommandIO.WriteLine($"Drive [{i}]: Capacity: {sizeMB} MB (Block Size: {device.BlockSize} B)");
                 }
 
@@ -516,8 +479,8 @@ namespace ZonderqOS
                     for (int p = 0; p < partitions.Count; p++)
                     {
                         var part = partitions[p];
-                        ulong partSizeMB = (ulong)((part.BlockCount * part.BlockSize) / (1024 * 1024));
-                        CommandIO.WriteLine($"  ├─ Partition [{p}]: {partSizeMB} MB (Mapped via VFS)");
+                        ulong partSizeMB = ((ulong)part.BlockCount * (ulong)part.BlockSize) / (1024 * 1024);
+                        CommandIO.WriteLine($"  ├─ Partition [{p}]: {partSizeMB} MB (discovered partition)");
                     }
                 }
             }
@@ -631,31 +594,5 @@ namespace ZonderqOS
             }
         }
 
-        private static long CalculateDirectorySize(string path, int depth)
-        {
-            if (depth > 64) return 0;
-
-            long size = 0;
-            try
-            {
-                string[] files = Directory.GetFiles(path);
-                foreach (string file in files)
-                {
-                    long fileSize = new FileInfo(file).Length;
-                    if (fileSize > 0 && size <= long.MaxValue - fileSize)
-                        size += fileSize;
-                }
-
-                string[] directories = Directory.GetDirectories(path);
-                foreach (string dir in directories)
-                {
-                    long childSize = CalculateDirectorySize(dir, depth + 1);
-                    if (childSize > 0 && size <= long.MaxValue - childSize)
-                        size += childSize;
-                }
-            }
-            catch { }
-            return size;
-        }
     }
 }

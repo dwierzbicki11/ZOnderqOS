@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../source/GUI/FileClipboard.cs" Link="FileClipboard.cs" />
+    <Compile Include="../../source/Storage/PathResolver.cs" Link="PathResolver.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>

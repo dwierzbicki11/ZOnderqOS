@@ -100,6 +100,23 @@ namespace ZonderqOS.GUI
                 return false;
             }
 
+            try
+            {
+                return TryPasteCore(destinationDirectory, out destinationPath, out error);
+            }
+            catch (Exception ex)
+            {
+                // Preflight (including permission storage and path handling) can
+                // fail before a destination is selected. Keep the clipboard intact.
+                error = "Paste preparation failed: " + ex.Message;
+                return false;
+            }
+        }
+
+        private static bool TryPasteCore(string destinationDirectory, out string destinationPath, out string error)
+        {
+            destinationPath = null;
+            error = null;
             string source = Normalize(sourcePath);
             string destinationRoot = Normalize(destinationDirectory);
             string user = SecurityContext.CurrentUser;
@@ -212,17 +229,11 @@ namespace ZonderqOS.GUI
                 return false;
             }
 
-            // A cross-volume cut may copy successfully and then fail while
-            // removing its source. Once removal begins, deleting the complete
-            // destination in the catch block would lose the user's files.
-            // A successful rename also commits the destination before
-            // permission metadata is updated.
-            bool preserveDestination = false;
             try
             {
                 if (cutMode)
                 {
-                    MoveItem(source, destinationPath, sourceIsDirectory, ref preserveDestination);
+                    MoveItem(source, destinationPath, sourceIsDirectory);
                     PermissionManager.MovePermissionsUnder(source, destinationPath);
                     Clear();
                 }
@@ -236,23 +247,13 @@ namespace ZonderqOS.GUI
             }
             catch (Exception ex)
             {
-                if (preserveDestination)
-                {
-                    // The source may be intact, partially removed, or already
-                    // renamed. Retain the complete destination in every case.
-                    // Keep the cut clipboard only if the source still exists.
-                    if (!Exists(source))
-                        Clear();
-                    error = "Move incomplete; destination retained: " + ex.Message;
-                }
-                else
-                {
-                    // A failed copy (or copy phase of a cross-volume move)
-                    // has not touched the source; discard its partial target.
-                    TryRemoveDestination(destinationPath, sourceIsDirectory);
-                    destinationPath = null;
-                    error = ex.Message;
-                }
+                // A move/delete may have changed the source before throwing, or
+                // the data operation may have succeeded before metadata failed.
+                // Never delete a destination whose ownership/completeness is now
+                // uncertain: it may be the only surviving copy (or another writer's).
+                if (cutMode && !Exists(source))
+                    Clear();
+                error = ex.Message + " destination retained for recovery (possibly partial): " + destinationPath;
                 return false;
             }
         }
@@ -323,8 +324,7 @@ namespace ZonderqOS.GUI
             CopyDirectory(source, destination);
         }
 
-        private static void MoveItem(string source, string destination, bool directory,
-            ref bool preserveDestination)
+        private static void MoveItem(string source, string destination, bool directory)
         {
             try
             {
@@ -332,21 +332,21 @@ namespace ZonderqOS.GUI
                     Directory.Move(source, destination);
                 else
                     File.Move(source, destination);
-                // A successful rename cannot be rolled back by deleting the
-                // target if the later permission metadata update fails.
-                preserveDestination = true;
                 return;
             }
             catch
             {
-                // Moving across mounted filesystems may not be supported directly.
-                // Fall back to copy + delete while keeping the source until copy succeeds.
+                // Retry only when the observable state still permits a fresh copy.
+                // A driver can throw after moving data; do not overwrite or delete
+                // an existing destination, or retry from a source that disappeared.
+                if (!Exists(source) || Exists(destination))
+                    throw;
             }
 
             CopyItem(source, destination, directory);
-            // The destination is now a complete recovery copy. Source deletion
-            // can fail partway through a directory; NEVER delete both copies.
-            preserveDestination = true;
+
+            // Recursive deletion is not atomic: an exception may mean some source
+            // files are already gone. Keep the completed destination on any failure.
             if (directory)
                 Directory.Delete(source, true);
             else
@@ -451,37 +451,14 @@ namespace ZonderqOS.GUI
             if (string.IsNullOrEmpty(path))
                 return path;
 
-            string normalized = path.Replace('\\', '/');
-            while (normalized.Length > 1 && normalized.EndsWith("/", StringComparison.Ordinal))
-                normalized = normalized.Substring(0, normalized.Length - 1);
-            return normalized;
+            // Use the same lexical POSIX normalization as the shell before
+            // checking home/read-only boundaries or folder ancestry. This also
+            // ensures permission keys and I/O refer to the same resolved path.
+            string absolute = path.Replace('\\', '/');
+            // Preserve relative input for the absolute-path guard to reject.
+            return absolute.StartsWith("/", StringComparison.Ordinal)
+                ? PathResolver.GetAbsolutePath("/", absolute) : absolute;
         }
 
-        private static void TryRemoveDestination(string destination, bool directory)
-        {
-            if (string.IsNullOrEmpty(destination))
-                return;
-
-            try
-            {
-                if (directory && Directory.Exists(destination))
-                    Directory.Delete(destination, true);
-                else if (!directory && File.Exists(destination))
-                    File.Delete(destination);
-            }
-            catch
-            {
-            }
-
-            // Cleanup of a failed copy must not throw a second exception
-            // that escapes the GUI paste handler and hides the original error.
-            try
-            {
-                PermissionManager.RemovePermissionsUnder(destination);
-            }
-            catch
-            {
-            }
-        }
     }
 }

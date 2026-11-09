@@ -52,6 +52,7 @@ namespace ZonderqOS.GUI.Apps
     public class Application
     {
         public bool IsRunning = true;
+        public virtual bool NeedsContinuousRedraw => false;
         public Window Window = new Window();
         public virtual void Close() { IsRunning = false; }
         public virtual void Update() { }
@@ -65,6 +66,8 @@ namespace ZonderqOS.GUI.Apps
 
 internal sealed class ClosingApp : Application
 {
+    public bool ContinuousRedraw;
+    public override bool NeedsContinuousRedraw => ContinuousRedraw;
     public int CloseCount;
     public int UpdateCount;
     public int RenderCount;
@@ -775,8 +778,39 @@ internal static class Program
         manager.CloseAll();
     }
 
+    private static void ContinuousRedrawRequiresLiveVisibleWindow()
+    {
+        ZonderqOS.SecurityContext.IsAuthenticated = true;
+        var manager = new ApplicationManager();
+        var app = new ClosingApp();
+        Check(!manager.NeedsContinuousRedraw, "empty desktop does not redraw continuously");
+        manager.Launch(app);
+        Check(!manager.NeedsContinuousRedraw, "ordinary app does not request redraw");
+        app.ContinuousRedraw = true;
+        Check(manager.NeedsContinuousRedraw, "visible running app requests redraw");
+        app.Window.Visible = false;
+        Check(!manager.NeedsContinuousRedraw, "hidden app cannot request redraw");
+        app.Window.Visible = true;
+        app.Window.IsMinimized = true;
+        Check(!manager.NeedsContinuousRedraw, "minimized visible app cannot request redraw");
+        app.Window.IsMinimized = false;
+        app.IsRunning = false;
+        Check(!manager.NeedsContinuousRedraw, "stopped app cannot request redraw");
+        app.IsRunning = true;
+        var window = app.Window;
+        app.Window = null!;
+        Check(!manager.NeedsContinuousRedraw, "windowless app cannot request redraw");
+        app.Window = window;
+        manager.Launch(new ClosingApp());
+        Check(manager.NeedsContinuousRedraw, "background visible app still requests redraw");
+        manager.Close(app);
+        Check(!manager.NeedsContinuousRedraw, "removed app cannot keep redraw active");
+        manager.CloseAll();
+    }
+
     public static int Main()
     {
+        ContinuousRedrawRequiresLiveVisibleWindow();
         ReflowPrecedesUpdateAndPaint();
         KeyboardBoundsSyncPrecedesAppInput();
         OrdinaryLogout();

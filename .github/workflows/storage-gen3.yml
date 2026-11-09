@@ -1,0 +1,66 @@
+name: Storage Gen3 behavior and disposable FAT images
+
+on:
+  pull_request:
+    paths:
+      - 'source/Storage/**'
+      - 'source/Core/**'
+      - 'source/Shell/**'
+      - 'source/GUI/**'
+      - 'source/Security/**'
+      - 'tests/**'
+      - 'tools/create-storage-test-image.py'
+      - 'tools/smoke-services-qemu.sh'
+      - 'ZonderqOS.csproj'
+      - 'global.json'
+      - '.github/workflows/storage-gen3.yml'
+  push:
+    branches: [feat/storage-gen3]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  host-behavior:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Exercise production storage code with disposable files and fault injection
+        shell: bash
+        run: |
+          set -euo pipefail
+          for suite in Fat32AllocationSmoke StorageMountSmoke StorageInfoSmoke \
+            StorageCommandsSmoke StorageReadSmoke StorageWriteSmoke StorageRemoveSmoke FileClipboardSmoke GuiFileClipboardSmoke \
+            RamMoveSmoke RamWriteQuotaSmoke TmpFs.Tests RunFs.Tests; do
+            dotnet run --project "tests/$suite/$suite.csproj" --configuration Release
+          done
+
+      - name: Scan disposable on-disk FAT bytes with production allocation code
+        run: python3 tests/test_storage_scanner_images.py
+
+  disposable-fat:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install independent read-only FAT checker
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes dosfstools
+      - name: Validate policy and disposable normal, full and EFI images
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Fail if the checker is absent; this CI job must never silently skip it.
+          export FSCK_FAT="$(command -v fsck.fat)"
+          test -n "$FSCK_FAT" && test -x "$FSCK_FAT"
+          python3 tests/test_3094_storage_policy.py
+          python3 tests/test_storage_test_image.py
+          python3 tests/test_storage_smoke_image.py
+          python3 tests/test_storage_image_fsck.py
+          # This is host validation, not a Cosmos driver or QEMU runtime test.

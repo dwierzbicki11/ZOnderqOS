@@ -146,7 +146,7 @@ internal static class Program
         });
     }
 
-    private static void CopyMetadataFailureCleansPartialDestination()
+    private static void CopyMetadataFailureRetainsDestination()
     {
         Case(root =>
         {
@@ -158,9 +158,9 @@ internal static class Program
             PermissionManager.FailCopy = true;
             PermissionManager.FailCleanup = true;
             bool ok = FileClipboard.TryPaste(destination, out string retained, out string error);
-            Check(!ok && retained == null, "copy failure has no retained destination");
+            Check(!ok && retained != null && File.ReadAllText(retained) == "safe", "copy metadata failure retains complete destination");
             Check(File.Exists(source), "copy failure preserves source");
-            Check(Directory.GetFiles(destination).Length == 0, "failed copy target removed");
+            Check(Directory.GetFiles(destination).Length == 1, "completed copy target retained");
             Check(FileClipboard.HasItem, "copy clipboard remains reusable");
             Check(error != null && error.Contains("simulated copy metadata"),
                 "original error survives cleanup metadata exception");
@@ -259,13 +259,14 @@ internal static class Program
             string escapedDestination = home + "/../outside";
             Check(!FileClipboard.TryPaste(escapedDestination, out string path, out string error),
                 "dot-dot destination denied before copying");
-            Check(path == null && error != null && error.Contains("Invalid clipboard path"),
+            Check(path == null && error != null && error.Contains("outside user home"),
                 "unsafe destination reports explicit error");
             Check(Directory.GetFiles(outside).Length == 0 && File.Exists(source),
                 "unsafe destination leaves source and outside directory unchanged");
 
             string externalSource = Path.Combine(outside, "secret.txt");
             File.WriteAllText(externalSource, "external");
+            PermissionManager.DenyReadPath = externalSource;
             FileClipboard.Set(home + "/../outside/secret.txt", false, false);
             Check(!FileClipboard.TryPaste(home, out path, out error),
                 "dot-dot clipboard source denied");
@@ -274,11 +275,13 @@ internal static class Program
             FileClipboard.Set("relative.txt", false, false);
             Check(!FileClipboard.TryPaste(home, out path, out error),
                 "relative clipboard source denied");
-            FileClipboard.Set(home + "/./private.txt", false, false);
-            Check(!FileClipboard.TryPaste(home, out path, out error),
-                "dot clipboard source denied");
+            Check(path == null && error != null && error.Contains("Invalid clipboard path"),
+                "relative clipboard source explicitly rejected");
+            FileClipboard.Set(home + "/./private.txt", false, true);
+            Check(!FileClipboard.TryPaste(home, out path, out error) && error.Contains("already in this location"),
+                "canonical same-location cut rejected");
             Check(File.Exists(source) && Directory.GetFiles(home).Length == 1,
-                "invalid clipboard paths leave user home unchanged");
+                "rejected clipboard paths leave user home unchanged");
         });
     }
 
@@ -406,6 +409,25 @@ internal static class Program
         });
     }
 
+    private static void RelativeDestinationCannotBecomeAbsolute()
+    {
+        Case(root =>
+        {
+            string source = Path.Combine(root, "source.txt");
+            string destination = Path.Combine(root, "target");
+            Directory.CreateDirectory(destination);
+            File.WriteAllText(source, "keep");
+            FileClipboard.Set(source, false, true);
+            Check(!FileClipboard.TryPaste(destination.TrimStart('/'), out string path, out string error),
+                "relative destination cannot become an absolute filesystem path");
+            Check(path == null && error != null && error.Contains("Invalid clipboard path"),
+                "relative destination reports validation failure");
+            Check(File.ReadAllText(source) == "keep" && Directory.GetFiles(destination).Length == 0,
+                "relative destination rejection preserves data");
+            Check(FileClipboard.HasItem, "rejected relative destination retains clipboard");
+        });
+    }
+
     private static void MissingSourceIsRejected()
     {
         Case(root =>
@@ -425,9 +447,10 @@ internal static class Program
     {
         RenameCommittedButMetadataFails();
         DirectoryRenameCommittedButMetadataFails();
-        CopyMetadataFailureCleansPartialDestination();
+        CopyMetadataFailureRetainsDestination();
         SuccessfulCopyAndCut();
         MissingSourceIsRejected();
+        RelativeDestinationCannotBecomeAbsolute();
         ReadOnlyAclDestinationIsRejected();
         ExpiredSessionCannotPasteAsRoot();
         TraversalPathsCannotEscapeHome();

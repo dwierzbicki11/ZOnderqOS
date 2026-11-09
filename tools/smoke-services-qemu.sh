@@ -38,7 +38,13 @@ DISK="$OUT/services-fat.img"
 
 # A real MBR partition matters here: ZonderqOS mounts VFS partition 0, not a
 # FAT filesystem placed directly on an otherwise unpartitioned block device.
-truncate -s 256M "$DISK"
+# Exclusive creation rejects existing files and all symlinks, including dangling
+# links missed by -e. Do not follow a target created between preflight and open.
+python3 - "$DISK" <<'PY_IMAGE'
+import sys
+with open(sys.argv[1], 'xb') as image:
+    image.truncate(256 * 1024 * 1024)
+PY_IMAGE
 printf 'label: dos\nunit: sectors\nstart=2048, type=c\n' | sfdisk "$DISK" > "$OUT/partition.log"
 # Exactly the dedicated FAT32 volume label required by DataVolumePolicy.
 mkfs.vfat -I -F 32 -n ZONDERQDATA -h 2048 --offset 2048 "$DISK" > "$OUT/mkfs.log"

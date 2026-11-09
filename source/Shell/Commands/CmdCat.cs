@@ -15,6 +15,20 @@ namespace ZonderqOS.Commands
 
         public void Execute(string[] args, ref string currentPath)
         {
+            CommandIO.LastCommandSuccess = false;
+            try
+            {
+                ExecuteCore(args, ref currentPath);
+            }
+            catch (Exception ex)
+            {
+                CommandIO.LastCommandSuccess = false;
+                WriteMessage.WriteError($"Could not read file: {ex.Message}", "CMD");
+            }
+        }
+
+        private static void ExecuteCore(string[] args, ref string currentPath)
+        {
             if (args.Length <= 1)
             {
                 WriteMessage.WriteError("Usage: cat <file>", "CMD");
@@ -78,7 +92,10 @@ namespace ZonderqOS.Commands
                             continue;
                         }
 
-                        if (line.Length >= MaxLineLength)
+                        // Reserve one character for CR in a CRLF terminator.
+                        // Any subsequent non-LF data still fails the line limit.
+                        if (line.Length >= MaxLineLength &&
+                            !(line.Length == MaxLineLength && ch == '\r'))
                             throw new InvalidOperationException("cat line limit reached (16 KiB)");
 
                         line.Append(ch);
