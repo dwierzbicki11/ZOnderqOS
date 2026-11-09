@@ -98,7 +98,7 @@ def validate(serial: str) -> str:
 
 def read_uart(path: Path) -> str:
     # Path.read_text() silently translates CR and CRLF into LF.
-    with path.open("r", encoding="utf-8", errors="replace", newline="") as stream:
+    with path.open("r", encoding="utf-8", errors="strict", newline="") as stream:
         return stream.read()
 
 
@@ -123,7 +123,7 @@ def self_test() -> None:
         good.replace("interrupts=5", "interrupts=18446744073709551616"),
         good.replace("rx_frames=9", "rx_frames=999999999999999999999999"),
         good.replace("phase=after", "phase=after\rspoof"),
-        good + "\x00hidden\\n",
+        good + "\x00hidden\n",
         good + "\x1b[2J",
         good + "\x7f",
         good + "\ufffd",
