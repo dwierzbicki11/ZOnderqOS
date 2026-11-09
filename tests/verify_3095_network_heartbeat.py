@@ -94,14 +94,14 @@ def self_test() -> None:
     # Exercise the CLI file-reading path; Path.read_text() translates CR.
     with tempfile.TemporaryDirectory() as tmp:
         sample = Path(tmp) / "guest.serial"
-        sample.write_bytes((log([1, 2]) + MARKER + "3\\r4\\n").encode("utf-8"))
+        sample.write_bytes((log([1, 2]) + MARKER + "3\r4\n").encode("utf-8"))
         try:
             parse(read_uart(sample))
         except ValueError:
             pass
         else:
             raise AssertionError("file reader normalized away bare UART CR")
-        sample.write_bytes((log([1, 2]) + MARKER + "3\\r\\n").encode("utf-8"))
+        sample.write_bytes((log([1, 2]) + MARKER + "3\r\n").encode("utf-8"))
         assert parse(read_uart(sample)) == [1, 2, 3]
     print("[NET3095-N1-HEARTBEAT-CONTRACT] PASS synthetic monotonicity and negative cases only")
 
