@@ -335,7 +335,7 @@ namespace ZonderqOS.SystemCore.Updates
                 bool isNewerThanRunning = IsNewerVersion(pkg.Version, pkg.BuildNumber, KernelBuildInfo.KernelVersion, KernelBuildInfo.KernelBuild.ToString());
                 bool isNewerThanInstalled = IsNewerVersion(pkg.Version, pkg.BuildNumber, CurrentVersion, CurrentBuild);
 
-                if (!isNewerThanRunning && !isNewerThanInstalled && !forceRefresh)
+                if (!isNewerThanRunning && !isNewerThanInstalled)
                 {
                     Status = UpdateStatus.UpToDate;
                     AvailablePackage = null;
@@ -764,16 +764,38 @@ namespace ZonderqOS.SystemCore.Updates
                         try { if (File.Exists("/etc/issue")) File.Delete("/etc/issue"); } catch { }
                         File.WriteAllText("/etc/issue", "ZonderqOS " + pkg.Version + " (Build " + pkg.BuildNumber + ")\n");
 
-                        // Archive applied manifest
+                        // Archive applied manifest and clean up all incoming manifest copies to prevent loop prompts
                         try
                         {
-                            string installedDir = "/var/updates/installed";
+                            string installedDir = Path.Combine(UpdatesDir, "installed");
                             if (!Directory.Exists(installedDir)) Directory.CreateDirectory(installedDir);
 
+                            string targetArchive = Path.Combine(installedDir, "update-" + pkg.Version + ".manifest");
                             if (!string.IsNullOrEmpty(pkg.ManifestPath) && File.Exists(pkg.ManifestPath))
                             {
-                                File.Copy(pkg.ManifestPath, Path.Combine(installedDir, "update-" + pkg.Version + ".manifest"), true);
-                                File.Delete(pkg.ManifestPath);
+                                File.Copy(pkg.ManifestPath, targetArchive, true);
+                            }
+
+                            string[] incomingManifests = new string[]
+                            {
+                                "/updates/update.manifest",
+                                "/var/updates/incoming/update.manifest",
+                                "/var/updates/update.manifest"
+                            };
+
+                            for (int m = 0; m < incomingManifests.Length; m++)
+                            {
+                                string mPath = incomingManifests[m];
+                                try
+                                {
+                                    if (File.Exists(mPath))
+                                    {
+                                        if (!File.Exists(targetArchive))
+                                            File.Copy(mPath, targetArchive, true);
+                                        File.Delete(mPath);
+                                    }
+                                }
+                                catch { }
                             }
                         }
                         catch { }

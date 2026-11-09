@@ -290,6 +290,20 @@ namespace ZonderqOS.SystemCore.Updates
                 BootAttempts = 0;
                 KernelBuildInfo.IsHealthyAndConfirmed = true;
 
+                try
+                {
+                    string activeKernel = GetSlotKernelPath(ActiveSlot);
+                    if (File.Exists(activeKernel))
+                    {
+                        File.Copy(activeKernel, "/boot/ZonderqOS.elf", true);
+                        if (ActiveSlot == SlotB)
+                        {
+                            File.Copy(activeKernel, SlotAPath, true);
+                        }
+                    }
+                }
+                catch { }
+
                 SaveBootState();
                 SystemLogger.Log(SystemLogLevel.Info, "BOOTSLOT", $"Slot {ActiveSlot} pomyslnie zatwierdzony jako zdrowy (HEALTHY).");
             }
@@ -445,6 +459,14 @@ namespace ZonderqOS.SystemCore.Updates
                 try
                 {
                     File.Copy(kernelPath, "/boot/ZonderqOS.elf", true);
+                    if (targetSlot == SlotB)
+                    {
+                        File.Copy(kernelPath, SlotAPath, true);
+                    }
+                    else if (targetSlot == SlotA)
+                    {
+                        File.Copy(kernelPath, SlotBPath, true);
+                    }
                 }
                 catch { }
 
@@ -488,6 +510,14 @@ namespace ZonderqOS.SystemCore.Updates
                 try
                 {
                     File.Copy(kernelPath, "/boot/ZonderqOS.elf", true);
+                    if (previousSlot == SlotA)
+                    {
+                        File.Copy(kernelPath, SlotAPath, true);
+                    }
+                    else if (previousSlot == SlotB)
+                    {
+                        File.Copy(kernelPath, SlotBPath, true);
+                    }
                 }
                 catch { }
 
