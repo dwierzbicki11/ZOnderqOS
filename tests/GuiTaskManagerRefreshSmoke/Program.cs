@@ -108,6 +108,81 @@ internal static class Program
                 "destructive selection visibility " + selected + "/" + scroll + "/" + rows + "/" + count);
         }
 
+        // =========================================================================
+        // TaskManagerMemoryCache Regression Contracts (Zadanie 2, 3, 4)
+        // =========================================================================
+        var cache = new TaskManagerMemoryCache();
+        const ulong totalPages = 131072; // 512 MB
+        ulong usedPages = 70838;         // 276.71 MB
+        ulong freePages = totalPages - usedPages; // 60234
+        const ulong installed = 4294967296UL;   // 4 GB
+        const ulong usable = 4294967296UL;      // 4 GB
+
+        // 1. Initial snapshot populates all fields, and GC metrics report N/A when unavailable (0 B)
+        cache.Update(usedPages, freePages, totalPages, 0, 0, installed, usable);
+        Check(cache.UsedMemoryText == "276.71 MB", "initial UsedMemoryText formatting: " + cache.UsedMemoryText);
+        Check(cache.TotalMemoryText == "512.00 MB", "initial TotalMemoryText formatting: " + cache.TotalMemoryText);
+        Check(cache.GcHeapText == "N/A", "GC heap reports N/A when unavailable (Zadanie 3 contract)");
+        Check(cache.GcCommittedText == "N/A", "GC committed reports N/A when unavailable (Zadanie 3 contract)");
+        Check(cache.MemoryDetailText.Contains("276.71 MB"), "MemoryDetailText contains used memory: " + cache.MemoryDetailText);
+
+        string refUsed = cache.UsedMemoryText;
+        string refFree = cache.FreeMemoryText;
+        string refTotal = cache.TotalMemoryText;
+        string refUsage = cache.MemoryUsageText;
+        string refDetail = cache.MemoryDetailText;
+        string refGcHeap = cache.GcHeapText;
+        string refGcComm = cache.GcCommittedText;
+        string refInstalled = cache.InstalledRamText;
+        string refUsable = cache.UsableRamText;
+        string refPool = cache.HeapPoolText;
+        string refPages = cache.MemoryPagesText;
+        string refHw = cache.HardwareRamText;
+        int initialLabelCount = cache.FormattedLabelCount;
+
+        // 2. Sub-precision page drift (+1 page = 4096 B): NO new string allocations or label re-creation
+        cache.Update(usedPages + 1, freePages - 1, totalPages, 0, 0, installed, usable);
+        Check(object.ReferenceEquals(cache.UsedMemoryText, refUsed), "no new label allocated when displayed RAM is identical");
+        Check(object.ReferenceEquals(cache.FreeMemoryText, refFree), "no new free label on sub-precision drift");
+        Check(object.ReferenceEquals(cache.TotalMemoryText, refTotal), "no new total label on sub-precision drift");
+        Check(object.ReferenceEquals(cache.MemoryUsageText, refUsage), "no new usage label on sub-precision drift");
+        Check(object.ReferenceEquals(cache.MemoryDetailText, refDetail), "no new detail label on sub-precision drift");
+        Check(object.ReferenceEquals(cache.GcHeapText, refGcHeap), "GC heap remains cached N/A instance");
+        Check(object.ReferenceEquals(cache.GcCommittedText, refGcComm), "GC committed remains cached N/A instance");
+        Check(object.ReferenceEquals(cache.InstalledRamText, refInstalled), "hardware installed RAM string untouched");
+        Check(object.ReferenceEquals(cache.UsableRamText, refUsable), "hardware usable RAM string untouched");
+        Check(object.ReferenceEquals(cache.HeapPoolText, refPool), "heap pool string untouched");
+        Check(object.ReferenceEquals(cache.MemoryPagesText, refPages), "memory pages string untouched");
+        Check(object.ReferenceEquals(cache.HardwareRamText, refHw), "hardware summary string untouched");
+        Check(cache.FormattedLabelCount == initialLabelCount, "zero formatting passes on sub-precision page drift");
+
+        // 3. Repeated idle ticks (100 cycles) must cause ZERO new allocations
+        for (int i = 0; i < 100; i++)
+        {
+            cache.Update(usedPages + 1, freePages - 1, totalPages, 0, 0, installed, usable);
+        }
+        Check(cache.FormattedLabelCount == initialLabelCount, "zero label allocations across 100 idle telemetry ticks");
+        Check(object.ReferenceEquals(cache.UsedMemoryText, refUsed), "UsedMemoryText preserved across 100 idle ticks");
+
+        // 4. Crossing displayed precision boundary (+5 pages = +20480 B -> 276.73 MB) updates ONLY changed labels
+        ulong newUsedPages = usedPages + 5;
+        cache.Update(newUsedPages, totalPages - newUsedPages, totalPages, 0, 0, installed, usable);
+        Check(!object.ReferenceEquals(cache.UsedMemoryText, refUsed), "new label allocated upon crossing displayed precision boundary");
+        Check(cache.UsedMemoryText == "276.73 MB", "correctly formatted updated value: " + cache.UsedMemoryText);
+        Check(!object.ReferenceEquals(cache.MemoryDetailText, refDetail), "detail text updated when used memory changed");
+        Check(object.ReferenceEquals(cache.InstalledRamText, refInstalled), "hardware strings untouched on memory boundary crossing");
+        Check(object.ReferenceEquals(cache.HeapPoolText, refPool), "heap pool string untouched on memory boundary crossing");
+        Check(object.ReferenceEquals(cache.GcHeapText, refGcHeap), "GC heap remains N/A on memory boundary crossing");
+
+        // 5. GC telemetry activation and return to N/A
+        cache.Update(newUsedPages, totalPages - newUsedPages, totalPages, 32UL * 1024UL * 1024UL, 40UL * 1024UL * 1024UL, installed, usable);
+        Check(cache.GcHeapText == "32.00 MB", "GC heap formatted when available: " + cache.GcHeapText);
+        Check(cache.GcCommittedText == "40.00 MB", "GC committed formatted when available: " + cache.GcCommittedText);
+
+        cache.Update(newUsedPages, totalPages - newUsedPages, totalPages, 0, 0, installed, usable);
+        Check(cache.GcHeapText == "N/A", "GC heap returns to N/A when unavailable");
+        Check(cache.GcCommittedText == "N/A", "GC committed returns to N/A when unavailable");
+
         Console.WriteLine("Task Manager refresh/navigation C# PASS: " + assertions + " assertions");
         return 0;
     }

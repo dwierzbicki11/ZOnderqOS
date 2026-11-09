@@ -9,6 +9,7 @@
     <Compile Include="../../source/GUI/Application/TaskManagerRefreshGate.cs" Link="TaskManagerRefreshGate.cs" />
     <Compile Include="../../source/GUI/Application/TaskManagerPerformanceNavigation.cs" Link="TaskManagerPerformanceNavigation.cs" />
     <Compile Include="../../source/GUI/Application/TaskManagerSelectionPolicy.cs" Link="TaskManagerSelectionPolicy.cs" />
+    <Compile Include="../../source/GUI/Application/TaskManagerMemoryCache.cs" Link="TaskManagerMemoryCache.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>

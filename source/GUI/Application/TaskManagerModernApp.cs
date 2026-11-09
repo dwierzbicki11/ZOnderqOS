@@ -104,26 +104,7 @@ namespace ZonderqOS.GUI.Apps
         private string clockText = "--:--:--";
         private string dateText = "--.--.----";
 
-        private ulong lastSnapUsedPages = ulong.MaxValue;
-        private ulong lastSnapFreePages = ulong.MaxValue;
-        private ulong lastSnapTotalPages = ulong.MaxValue;
-        private ulong lastSnapGcHeapBytes = ulong.MaxValue;
-        private ulong lastSnapGcCommittedBytes = ulong.MaxValue;
-        private ulong lastSnapInstalledBytes = ulong.MaxValue;
-        private ulong lastSnapUsableBytes = ulong.MaxValue;
-
-        private string cachedUsedMemoryText = "0 MB";
-        private string cachedFreeMemoryText = "0 MB";
-        private string cachedTotalMemoryText = "0 MB";
-        private string cachedMemoryUsageText = "0.00%";
-        private string cachedGcHeapText = "0 MB";
-        private string cachedGcCommittedText = "0 MB";
-        private string cachedInstalledRamText = "0 B";
-        private string cachedUsableRamText = "0 B";
-        private string cachedHeapPoolText = "0 B";
-        private string cachedMemoryDetailText = "0 MB (0.00%)";
-        private string cachedMemoryPagesText = "0 (4096 B/strona)";
-        private string cachedHardwareRamText = "0 B / 0 B";
+        private readonly TaskManagerMemoryCache memoryCache = new TaskManagerMemoryCache();
         private readonly string baseMaxSpeedText;
 
         private readonly string baseSpeedText;
@@ -625,31 +606,9 @@ namespace ZonderqOS.GUI.Apps
                 physicalInstalledBytes = PhysicalMemoryDetector.InstalledBytes;
                 physicalUsableBytes = PhysicalMemoryDetector.TotalPhysicalBytes;
 
-                if (usedPages != lastSnapUsedPages || freePages != lastSnapFreePages || totalPages != lastSnapTotalPages ||
-                    gcHeapBytes != lastSnapGcHeapBytes || gcCommittedBytes != lastSnapGcCommittedBytes ||
-                    physicalInstalledBytes != lastSnapInstalledBytes || physicalUsableBytes != lastSnapUsableBytes)
-                {
-                    lastSnapUsedPages = usedPages;
-                    lastSnapFreePages = freePages;
-                    lastSnapTotalPages = totalPages;
-                    lastSnapGcHeapBytes = gcHeapBytes;
-                    lastSnapGcCommittedBytes = gcCommittedBytes;
-                    lastSnapInstalledBytes = physicalInstalledBytes;
-                    lastSnapUsableBytes = physicalUsableBytes;
-
-                    cachedUsedMemoryText = FormatMiBPrecise(usedPages * PageAllocator.PageSize);
-                    cachedFreeMemoryText = FormatMiBPrecise(freePages * PageAllocator.PageSize);
-                    cachedTotalMemoryText = FormatMiBPrecise(totalPages * PageAllocator.PageSize);
-                    cachedMemoryUsageText = FormatPercentPrecise(usedPages, totalPages);
-                    cachedGcHeapText = FormatMiBPrecise(gcHeapBytes);
-                    cachedGcCommittedText = FormatMiBPrecise(gcCommittedBytes);
-                    cachedInstalledRamText = FormatBytesSmart(physicalInstalledBytes);
-                    cachedUsableRamText = FormatBytesSmart(physicalUsableBytes);
-                    cachedHeapPoolText = FormatBytesSmart(totalPages * PageAllocator.PageSize);
-                    cachedMemoryDetailText = cachedUsedMemoryText + " (" + cachedMemoryUsageText + ")";
-                    cachedMemoryPagesText = totalPages + " (" + PageAllocator.PageSize + " B/strona)";
-                    cachedHardwareRamText = cachedInstalledRamText + " / " + cachedHeapPoolText;
-                }
+                memoryCache.Update(usedPages, freePages, totalPages,
+                                   gcHeapBytes, gcCommittedBytes,
+                                   physicalInstalledBytes, physicalUsableBytes);
             }
             catch
             {
@@ -674,7 +633,11 @@ namespace ZonderqOS.GUI.Apps
                 cpuCount = SchedulerInfo.CpuCount;
                 slots = SchedulerInfo.ThreadSlotCount;
                 busyTotal = SchedulerInfo.BusyCpuTimeNs;
-                schedulerName = string.IsNullOrEmpty(SchedulerInfo.SchedulerName) ? "N/A" : SchedulerInfo.SchedulerName;
+                if (schedulerName == null || schedulerName == "N/A")
+                {
+                    string sName = SchedulerInfo.SchedulerName;
+                    schedulerName = string.IsNullOrEmpty(sName) ? "N/A" : sName;
+                }
                 schedulerTickNs = SchedulerInfo.TickPeriodNs;
             }
             catch
@@ -934,6 +897,10 @@ namespace ZonderqOS.GUI.Apps
         public override void Close()
         {
             base.Close();
+            rowPool.Clear();
+            allRows.Clear();
+            visibleRows.Clear();
+            processSnapshot.Clear();
             closeCallback?.Invoke();
         }
 
@@ -957,18 +924,18 @@ namespace ZonderqOS.GUI.Apps
         internal ulong TotalMemoryMb => totalPages * PageAllocator.PageSize / (1024UL * 1024UL);
         internal ulong GcHeapMb => gcHeapBytes / (1024UL * 1024UL);
         internal ulong GcCommittedMb => gcCommittedBytes / (1024UL * 1024UL);
-        internal string UsedMemoryText => cachedUsedMemoryText;
-        internal string FreeMemoryText => cachedFreeMemoryText;
-        internal string TotalMemoryText => cachedTotalMemoryText;
-        internal string MemoryUsageText => cachedMemoryUsageText;
-        internal string GcHeapText => cachedGcHeapText;
-        internal string GcCommittedText => cachedGcCommittedText;
-        internal string InstalledRamText => cachedInstalledRamText;
-        internal string UsableRamText => cachedUsableRamText;
-        internal string HeapPoolText => cachedHeapPoolText;
-        internal string MemoryDetailText => cachedMemoryDetailText;
-        internal string MemoryPagesText => cachedMemoryPagesText;
-        internal string HardwareRamText => cachedHardwareRamText;
+        internal string UsedMemoryText => memoryCache.UsedMemoryText;
+        internal string FreeMemoryText => memoryCache.FreeMemoryText;
+        internal string TotalMemoryText => memoryCache.TotalMemoryText;
+        internal string MemoryUsageText => memoryCache.MemoryUsageText;
+        internal string GcHeapText => memoryCache.GcHeapText;
+        internal string GcCommittedText => memoryCache.GcCommittedText;
+        internal string InstalledRamText => memoryCache.InstalledRamText;
+        internal string UsableRamText => memoryCache.UsableRamText;
+        internal string HeapPoolText => memoryCache.HeapPoolText;
+        internal string MemoryDetailText => memoryCache.MemoryDetailText;
+        internal string MemoryPagesText => memoryCache.MemoryPagesText;
+        internal string HardwareRamText => memoryCache.HardwareRamText;
         internal string BaseMaxSpeedText => baseMaxSpeedText;
         internal int StorageDeviceCount => storageDeviceCount;
         internal int StoragePartitionCount => storagePartitionCount;
