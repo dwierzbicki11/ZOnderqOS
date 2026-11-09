@@ -23,6 +23,12 @@ def validate(serial: str) -> str:
     # and must never conceal a guest fault or fabricate a counter sample.
     if "\r" in serial.replace("\r\n", ""):
         raise ValueError("unexpected bare carriage return in ISR UART evidence")
+    # Control bytes and terminal escape sequences can alter the displayed UART
+    # evidence without altering the underlying parser input. Fail closed.
+    if any((ord(ch) < 32 and ch not in "\r\\n\\t") or ord(ch) == 127 for ch in serial):
+        raise ValueError("unexpected control character in ISR UART evidence")
+    if "\x1b" in serial or "\ufffd" in serial:
+        raise ValueError("terminal escape or undecodable UART evidence")
     samples = {}
     phases = []
     boot_count = 0
@@ -117,6 +123,10 @@ def self_test() -> None:
         good.replace("interrupts=5", "interrupts=18446744073709551616"),
         good.replace("rx_frames=9", "rx_frames=999999999999999999999999"),
         good.replace("phase=after", "phase=after\rspoof"),
+        good + "\x00hidden\\n",
+        good + "\x1b[2J",
+        good + "\x7f",
+        good + "\ufffd",
         good.replace("[NET3095-N1] BOOT\n", ""),
         good + "[NET3095-N1] BOOT\n",
         good.splitlines()[0] + "\n[NET3095-N1] BOOT\n" + "\n".join(good.splitlines()[1:]) + "\n",
