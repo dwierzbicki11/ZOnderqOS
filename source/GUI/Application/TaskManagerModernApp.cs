@@ -625,31 +625,49 @@ namespace ZonderqOS.GUI.Apps
                 physicalInstalledBytes = PhysicalMemoryDetector.InstalledBytes;
                 physicalUsableBytes = PhysicalMemoryDetector.TotalPhysicalBytes;
 
-                if (usedPages != lastSnapUsedPages || freePages != lastSnapFreePages || totalPages != lastSnapTotalPages ||
-                    gcHeapBytes != lastSnapGcHeapBytes || gcCommittedBytes != lastSnapGcCommittedBytes ||
-                    physicalInstalledBytes != lastSnapInstalledBytes || physicalUsableBytes != lastSnapUsableBytes)
-                {
-                    lastSnapUsedPages = usedPages;
-                    lastSnapFreePages = freePages;
-                    lastSnapTotalPages = totalPages;
-                    lastSnapGcHeapBytes = gcHeapBytes;
-                    lastSnapGcCommittedBytes = gcCommittedBytes;
-                    lastSnapInstalledBytes = physicalInstalledBytes;
-                    lastSnapUsableBytes = physicalUsableBytes;
+                // Keep independent labels independent. Previously a single
+                // changed page caused all hardware/GC strings to be rebuilt.
+                bool usedChanged = usedPages != lastSnapUsedPages;
+                bool freeChanged = freePages != lastSnapFreePages;
+                bool totalChanged = totalPages != lastSnapTotalPages;
+                bool gcHeapChanged = gcHeapBytes != lastSnapGcHeapBytes;
+                bool gcCommittedChanged = gcCommittedBytes != lastSnapGcCommittedBytes;
+                bool installedChanged = physicalInstalledBytes != lastSnapInstalledBytes;
+                bool usableChanged = physicalUsableBytes != lastSnapUsableBytes;
 
+                if (usedChanged)
                     cachedUsedMemoryText = FormatMiBPrecise(usedPages * PageAllocator.PageSize);
+                if (freeChanged)
                     cachedFreeMemoryText = FormatMiBPrecise(freePages * PageAllocator.PageSize);
+                if (totalChanged)
+                {
                     cachedTotalMemoryText = FormatMiBPrecise(totalPages * PageAllocator.PageSize);
-                    cachedMemoryUsageText = FormatPercentPrecise(usedPages, totalPages);
-                    cachedGcHeapText = FormatMiBPrecise(gcHeapBytes);
-                    cachedGcCommittedText = FormatMiBPrecise(gcCommittedBytes);
-                    cachedInstalledRamText = FormatBytesSmart(physicalInstalledBytes);
-                    cachedUsableRamText = FormatBytesSmart(physicalUsableBytes);
                     cachedHeapPoolText = FormatBytesSmart(totalPages * PageAllocator.PageSize);
-                    cachedMemoryDetailText = cachedUsedMemoryText + " (" + cachedMemoryUsageText + ")";
                     cachedMemoryPagesText = totalPages + " (" + PageAllocator.PageSize + " B/strona)";
-                    cachedHardwareRamText = cachedInstalledRamText + " / " + cachedHeapPoolText;
                 }
+                if (usedChanged || totalChanged)
+                {
+                    cachedMemoryUsageText = FormatPercentPrecise(usedPages, totalPages);
+                    cachedMemoryDetailText = cachedUsedMemoryText + " (" + cachedMemoryUsageText + ")";
+                }
+                if (gcHeapChanged)
+                    cachedGcHeapText = FormatMiBPrecise(gcHeapBytes);
+                if (gcCommittedChanged)
+                    cachedGcCommittedText = FormatMiBPrecise(gcCommittedBytes);
+                if (installedChanged)
+                    cachedInstalledRamText = FormatBytesSmart(physicalInstalledBytes);
+                if (usableChanged)
+                    cachedUsableRamText = FormatBytesSmart(physicalUsableBytes);
+                if (installedChanged || totalChanged)
+                    cachedHardwareRamText = cachedInstalledRamText + " / " + cachedHeapPoolText;
+
+                lastSnapUsedPages = usedPages;
+                lastSnapFreePages = freePages;
+                lastSnapTotalPages = totalPages;
+                lastSnapGcHeapBytes = gcHeapBytes;
+                lastSnapGcCommittedBytes = gcCommittedBytes;
+                lastSnapInstalledBytes = physicalInstalledBytes;
+                lastSnapUsableBytes = physicalUsableBytes;
             }
             catch
             {
@@ -933,7 +951,28 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            if (!IsRunning)
+                return;
+
             base.Close();
+
+            // The Task Manager is often opened only for a quick RAM reading.
+            // Drop references to tracked apps/processes immediately when closed,
+            // rather than keeping them alive through a stale manager reference
+            // until the next managed collection.
+            processSnapshot.Clear();
+            allRows.Clear();
+            visibleRows.Clear();
+            for (int i = 0; i < rowPool.Count; i++)
+            {
+                ModernTaskRow row = rowPool[i];
+                row.GuiApplication = null;
+                row.Name = string.Empty;
+                row.State = string.Empty;
+                row.Detail = string.Empty;
+            }
+            rowPool.Clear();
+
             closeCallback?.Invoke();
         }
 
