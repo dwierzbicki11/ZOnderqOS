@@ -74,8 +74,7 @@ def inspect(path: Path, expected_hz: int = 440):
                     starts.append(i)
     if len(starts) < 2:
         raise ValueError("no two disjoint 80 ms PCM tone windows (may be noise/clicks)")
-    if len(starts) > 2:
-        starts = [starts[0], starts[len(starts) // 2], starts[-1]]
+    # Validate every sustained candidate window, including transient faults.
 
     measured = []
     for start in starts:
@@ -166,8 +165,7 @@ def inspect_silent_tail(path: Path, expected_hz: int = 2860):
             starts.append(i)
     if len(starts) < 2:
         raise ValueError("missing two sustained float tone windows")
-    if len(starts) > 2:
-        starts = [starts[0], starts[len(starts) // 2], starts[-1]]
+    # Validate all candidate windows; first/last alone miss transient faults.
     for start in starts:
         for channel in (left, right):
             chunk = channel[start:start + window_frames]
