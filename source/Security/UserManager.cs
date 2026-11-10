@@ -290,24 +290,44 @@ namespace ZonderqOS
                 if (string.IsNullOrEmpty(credential))
                     return false;
 
-                string oldPasswd = File.Exists(PasswdPath) ? File.ReadAllText(PasswdPath) : string.Empty;
-                string oldShadow = File.Exists(ShadowPath) ? File.ReadAllText(ShadowPath) : string.Empty;
                 string passwdEntry = username + ":x:" + uid + ":" + homeDir + "\n";
-                string shadowEntry = username + ":" + credential + "\n";
+                string shadowEntry = username + ":" + credential;
 
-                try
+                // The two account databases cannot be committed as one FAT32
+                // transaction. An interrupted creation may leave a passwd-only
+                // account, which is not usable for login without a shadow hash.
+                // Never truncate /etc/shadow to add that hash.
+                lock (ShadowMutationLock)
                 {
-                    File.WriteAllText(PasswdPath, AppendLine(oldPasswd, passwdEntry));
-                    File.WriteAllText(ShadowPath, AppendLine(oldShadow, shadowEntry));
-                }
-                catch
-                {
-                    // Best-effort rollback keeps the two account databases synchronized if
-                    // the second write fails. A sudden power loss still cannot be made fully
-                    // atomic on FAT, but normal IO failures no longer leave a half-account.
-                    try { File.WriteAllText(PasswdPath, oldPasswd); } catch { }
-                    try { File.WriteAllText(ShadowPath, oldShadow); } catch { }
-                    throw;
+                    if (UserExists(username) || !File.Exists(ShadowPath))
+                        return false;
+
+                    string oldPasswd = File.Exists(PasswdPath) ? File.ReadAllText(PasswdPath) : string.Empty;
+                    string[] oldShadowLines = File.ReadAllLines(ShadowPath);
+                    string[] updatedShadow = new string[oldShadowLines.Length + 1];
+                    Array.Copy(oldShadowLines, updatedShadow, oldShadowLines.Length);
+                    updatedShadow[oldShadowLines.Length] = shadowEntry;
+
+                    try
+                    {
+                        File.WriteAllText(PasswdPath, AppendLine(oldPasswd, passwdEntry));
+                        ShadowFileTransaction.Replace(ShadowPath, updatedShadow,
+                            path => PermissionManager.SetPermission(path, "root", 600));
+                        PermissionManager.SetPermission(ShadowPath, "root", 600);
+                    }
+                    catch
+                    {
+                        // Best-effort passwd rollback. The shadow transaction
+                        // preserves the original file on staging/rename errors.
+                        try { File.WriteAllText(PasswdPath, oldPasswd); } catch { }
+                        throw;
+                    }
+                    finally
+                    {
+                        PermissionManager.RemovePermission(ShadowPath + ".new");
+                        if (!File.Exists(ShadowPath + ".bak"))
+                            PermissionManager.RemovePermission(ShadowPath + ".bak");
+                    }
                 }
 
                 if (!Directory.Exists(homeDir))
