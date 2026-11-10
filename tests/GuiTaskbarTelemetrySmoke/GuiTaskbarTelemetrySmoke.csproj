@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../source/GUI/TaskbarTelemetryGate.cs" Link="TaskbarTelemetryGate.cs" />
+    <Compile Include="../../source/GUI/DesktopHeartbeatGate.cs" Link="DesktopHeartbeatGate.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>
