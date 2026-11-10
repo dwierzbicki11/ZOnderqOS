@@ -263,6 +263,27 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "float tail wrong pitch"):
             audio.inspect_silent_tail(self.path, expected_hz=2860)
 
+    def test_float_tail_rejects_corruption_after_180ms(self):
+        # The first two eligible 80ms windows may be clean while the
+        # final 70ms of the float tone is at the wrong frequency.
+        # This is synthetic host PCM, not a QEMU playback assertion.
+        rate = 48000
+        data = bytearray()
+        for frame in range(rate * 250 // 1000):
+            switch = rate * 180 // 1000
+            frequency = 2860 if frame < switch else 880
+            local = frame if frame < switch else frame - switch
+            sample = 4096 if ((local * frequency * 2 // rate) & 1) == 0 else -4096
+            data.extend(struct.pack("<hh", sample, sample))
+        data.extend(bytes(rate * 80 // 1000 * 4))
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(rate)
+            wav.writeframes(data)
+        with self.assertRaisesRegex(ValueError, "float tail wrong pitch"):
+            audio.inspect_silent_tail(self.path, expected_hz=2860)
+
     def test_float_hda_tail_rejects_all_silence(self):
         # Valid length and quiet tail alone must not certify playback.
         self.make_wave(ms=330, silence_ms=0, amplitude=0)
