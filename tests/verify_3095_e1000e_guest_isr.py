@@ -33,8 +33,10 @@ def validate(serial: str) -> str:
     # Reject every Unicode format character, not just the bidi ranges:
     # zero-width joiners and invisible directional marks can also make UART
     # evidence visually disagree with the exact bytes parsed by this gate.
-    if any(unicodedata.category(ch) == "Cf" for ch in serial):
-        raise ValueError("invisible Unicode format character in ISR UART evidence")
+    if any(unicodedata.category(ch) in ("Cf", "Zl", "Zp") or
+           (unicodedata.category(ch) == "Cc" and ch not in "\r\n\t")
+           for ch in serial):
+        raise ValueError("invisible Unicode format, separator or control character in ISR UART evidence")
     samples = {}
     phases = []
     boot_count = 0
@@ -137,6 +139,10 @@ def self_test() -> None:
         good + "\u200b",
         good.replace("phase=after", "phase=\u200dafter"),
         good + "\u061c",
+        good + "\u0085",  # C1 next-line control
+        good + "\u009b",  # C1 control sequence introducer
+        good + "\u2028",  # Unicode line separator
+        good + "\u2029",  # Unicode paragraph separator
         good.replace("phase=after", "\u2066phase=after\u2069"),
         good.replace("[NET3095-N1] BOOT\n", ""),
         good + "[NET3095-N1] BOOT\n",
