@@ -38,6 +38,21 @@ internal static class Program
             "empty record does not rotate");
         Check(!SystemLogStoragePolicy.ShouldRotate(0, null, limit),
             "null normalized record does not rotate");
+        Check(SystemLogStoragePolicy.BoundMessage(null) == "",
+            "null message becomes empty");
+        Check(SystemLogStoragePolicy.BoundMessage("first\nsecond\rthird") ==
+            "first second third", "newlines are sanitized");
+        Check(SystemLogStoragePolicy.BoundMessage("test") == "test",
+            "normal message is preserved");
+        string longMessage = new string('x', 7000);
+        string bounded = SystemLogStoragePolicy.BoundMessage(longMessage);
+        Check(bounded.Length == SystemLogStoragePolicy.MaxMessageChars,
+            "oversized message is bounded");
+        Check(bounded.EndsWith(" [truncated]", StringComparison.Ordinal),
+            "truncated messages remain recognizable");
+        Check(SystemLogStoragePolicy.BoundMessage(new string('a', 4096)).Length == 4096,
+            "exact cap is unchanged");
+
         Console.WriteLine("PASS: " + checks + " UTF-8 log rotation assertions");
         return 0;
     }
