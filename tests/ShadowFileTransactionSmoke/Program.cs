@@ -101,6 +101,7 @@ internal static class Program
             Check(File.ReadAllText(file) == "root:present\n",
                 "rejecting empty data leaves primary intact");
 
+            AccountFileTransactionSmoke.Run();
             Console.WriteLine("PASS: " + checks + " staged shadow file smoke assertions");
         }
         finally
