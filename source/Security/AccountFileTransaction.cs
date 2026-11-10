@@ -12,6 +12,16 @@ namespace ZonderqOS
     /// </summary>
     internal static class AccountFileTransaction
     {
+        // Only completely pristine account storage may receive factory
+        // credentials. A provisioned volume that loses both databases must
+        // not silently fall back to the published root/root password.
+        internal static bool IsFreshAccountStorage(bool hasPasswd, bool hasShadow,
+            bool hasProvisioningMarker, bool hasInterruptedWrite)
+        {
+            return !hasPasswd && !hasShadow &&
+                   !hasProvisioningMarker && !hasInterruptedWrite;
+        }
+
         internal static bool ContainsUser(string[] lines, string username)
         {
             if (lines == null || string.IsNullOrEmpty(username))
