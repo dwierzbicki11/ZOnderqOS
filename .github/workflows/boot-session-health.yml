@@ -5,6 +5,9 @@ on:
     paths:
       - 'Kernel.cs'
       - 'source/Core/BootSessionHealth.cs'
+      - 'source/Platform/X64/PlatformPower.cs'
+      - 'source/Platform/Arm64/PlatformPower.cs'
+      - 'tests/test_gen3_general_stability.py'
       - 'source/Shell/Commands/CmdBootStatus.cs'
       - 'source/Shell/Commands/CmdReboot.cs'
       - 'source/Shell/Commands/CmdShutDown.cs'
@@ -19,6 +22,9 @@ on:
     paths:
       - 'Kernel.cs'
       - 'source/Core/BootSessionHealth.cs'
+      - 'source/Platform/X64/PlatformPower.cs'
+      - 'source/Platform/Arm64/PlatformPower.cs'
+      - 'tests/test_gen3_general_stability.py'
       - 'source/Shell/Commands/CmdBootStatus.cs'
       - 'source/Shell/Commands/CmdReboot.cs'
       - 'source/Shell/Commands/CmdShutDown.cs'
@@ -42,6 +48,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      - name: Verify platform and boot-session stability contracts
+        run: python3 -m unittest discover -s tests -p 'test_gen3_general_stability.py' -v
 
       - name: Compile x64
         run: |
