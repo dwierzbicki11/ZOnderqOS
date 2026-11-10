@@ -1,6 +1,9 @@
 name: Cosmos 3.0.95 isolated E1000E link and raw TX PCAP proof
 
 on:
+  push:
+    branches:
+      - 'feat/3094-qemu-e1000e-link'
   pull_request:
     paths:
       - 'ZonderqOS.csproj'
