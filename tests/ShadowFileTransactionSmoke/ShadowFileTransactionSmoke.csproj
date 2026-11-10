@@ -8,6 +8,8 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../source/Security/ShadowFileTransaction.cs" Link="ShadowFileTransaction.cs" />
+    <Compile Include="../../source/Security/AccountFileTransaction.cs" Link="AccountFileTransaction.cs" />
+    <Compile Include="AccountFileTransactionSmoke.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>
