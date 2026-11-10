@@ -8,6 +8,7 @@ namespace ZonderqOS
         private const string CredentialVersion = "v2";
         private static readonly string PasswdPath = @"/etc/passwd";
         private static readonly string ShadowPath = @"/etc/shadow";
+        private static readonly object ShadowMutationLock = new object();
 
         public static void Initialize()
         {
@@ -16,13 +17,34 @@ namespace ZonderqOS
                 if (!Directory.Exists("/etc"))
                     Directory.CreateDirectory("/etc");
 
-                // Never overwrite an existing account database just because its companion
-                // file is missing. Each database is initialized independently.
-                if (!File.Exists(PasswdPath))
-                    File.WriteAllText(PasswdPath, "root:x:0:/root\n");
+                // Restore a previous complete shadow file if the OS was
+                // powered off between the .bak rename and the commit.
+                ShadowFileTransaction.RecoverMissingPrimary(ShadowPath);
 
-                if (!File.Exists(ShadowPath))
-                    File.WriteAllText(ShadowPath, "root:" + BuildCredential("root") + "\n");
+                bool hasPasswd = File.Exists(PasswdPath);
+                bool hasShadow = File.Exists(ShadowPath);
+                if (hasPasswd != hasShadow ||
+                    (!hasPasswd && (File.Exists(ShadowPath + ".new") ||
+                                    File.Exists(ShadowPath + ".bak"))))
+                {
+                    // Never turn an existing installation back into root/root
+                    // when an account database goes missing or a transaction
+                    // was interrupted. Recover from backup or fail closed.
+                    WriteMessage.WriteError(
+                        "Account database incomplete; refusing factory credential reset.", "AUTH");
+                    return;
+                }
+
+                if (!hasPasswd)
+                {
+                    // Factory provisioning is allowed only when both databases
+                    // and any interrupted shadow transaction are absent.
+                    string credential = BuildCredential("root");
+                    if (string.IsNullOrEmpty(credential))
+                        return;
+                    File.WriteAllText(PasswdPath, "root:x:0:/root\n");
+                    File.WriteAllText(ShadowPath, "root:" + credential + "\n");
+                }
             }
             catch (Exception ex)
             {
@@ -435,31 +457,47 @@ namespace ZonderqOS
 
         private static bool ReplaceShadowCredential(string username, string credential)
         {
-            if (!File.Exists(ShadowPath))
-                return false;
-
-            string[] lines = File.ReadAllLines(ShadowPath);
-            int entryIndex = -1;
-            for (int i = 0; i < lines.Length; i++)
+            lock (ShadowMutationLock)
             {
-                string line = lines[i];
-                int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
-                if (separator <= 0)
-                    continue;
+                if (!File.Exists(ShadowPath))
+                    return false;
 
-                if (line.Substring(0, separator) == username)
+                string[] lines = File.ReadAllLines(ShadowPath);
+                int entryIndex = -1;
+                for (int i = 0; i < lines.Length; i++)
                 {
-                    entryIndex = i;
-                    break;
+                    string line = lines[i];
+                    int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
+                    if (separator <= 0)
+                        continue;
+
+                    if (line.Substring(0, separator) == username)
+                    {
+                        entryIndex = i;
+                        break;
+                    }
+                }
+
+                if (entryIndex < 0)
+                    return false;
+
+                lines[entryIndex] = username + ":" + credential;
+                try
+                {
+                    ShadowFileTransaction.Replace(ShadowPath, lines,
+                        path => PermissionManager.SetPermission(path, "root", 600));
+                    PermissionManager.SetPermission(ShadowPath, "root", 600);
+                    return true;
+                }
+                finally
+                {
+                    // The committed /etc/shadow path keeps its root-only ACL.
+                    // Staging and backup ACL records must not accumulate.
+                    PermissionManager.RemovePermission(ShadowPath + ".new");
+                    if (!File.Exists(ShadowPath + ".bak"))
+                        PermissionManager.RemovePermission(ShadowPath + ".bak");
                 }
             }
-
-            if (entryIndex < 0)
-                return false;
-
-            lines[entryIndex] = username + ":" + credential;
-            File.WriteAllLines(ShadowPath, lines);
-            return true;
         }
 
         private static string AppendLine(string existing, string entry)
