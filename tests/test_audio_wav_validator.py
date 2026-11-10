@@ -405,6 +405,27 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no sustained 200 ms"):
             audio.inspect(self.path)
 
+    def test_rejects_pitch_corruption_after_first_two_valid_windows(self):
+        # A 390ms capture can have two healthy early windows followed by
+        # a sustained wrong-pitch segment. Verify the late window too.
+        # Synthetic host PCM only, not a QEMU playback assertion.
+        rate = 48000
+        self.make_wave(ms=390, silence_ms=0)
+        with wave.open(str(self.path), "rb") as wav:
+            data = bytearray(wav.readframes(wav.getnframes()))
+        switch = rate * 240 // 1000
+        for frame in range(switch, len(data) // 4):
+            local = frame - switch
+            sample = 4096 if ((local * 880 * 2 // rate) & 1) == 0 else -4096
+            struct.pack_into("<hh", data, frame * 4, sample, sample)
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(rate)
+            wav.writeframes(data)
+        with self.assertRaisesRegex(ValueError, "expected about 440Hz"):
+            audio.inspect(self.path)
+
     def test_rejects_right_channel_loss_in_second_tone_window(self):
         # The global stereo peaks are balanced, but the right channel
         # loses 75% of its gain after 100ms. A global peak-only gate
