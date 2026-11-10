@@ -32,6 +32,8 @@ def make_capture(path, fault=False, right_fault=None):
                 right = 0
             elif right_fault == 'inverted':
                 right = -sample
+            elif right_fault == 'wrong_pitch':
+                right = 2800 if math.sin(2 * math.pi * 880 * time) >= 0 else -2800
         pcm.extend(struct.pack('<hh', sample, right))
     with wave.open(str(path), 'wb') as output:
         output.setnchannels(2)
@@ -59,6 +61,13 @@ class TransientCaptureTests(unittest.TestCase):
             path = Path(directory) / 'right_dropout.wav'
             make_capture(path, right_fault='silent')
             with self.assertRaisesRegex(ValueError, 'stereo|right|channel'):
+                load_validator().inspect(path, expected_hz=440)
+
+    def test_mid_tone_right_channel_pitch_corruption_rejected(self):
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'right_wrong_pitch.wav'
+            make_capture(path, right_fault='wrong_pitch')
+            with self.assertRaisesRegex(ValueError, 'pitch|phase|stereo'):
                 load_validator().inspect(path, expected_hz=440)
 
     def test_mid_tone_right_channel_phase_inversion_rejected(self):
