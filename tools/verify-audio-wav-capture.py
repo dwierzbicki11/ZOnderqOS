@@ -149,9 +149,13 @@ def inspect_silent_tail(path: Path, expected_hz: int = 2860):
             continue
         if starts and i < starts[0] + max(window_frames, rate // 8):
             continue
-        starts.append(i)
-        if len(starts) == 2:
-            break
+        if len(starts) == 1:
+            starts.append(i)
+        else:
+            # Inspect the latest qualifying window as well as the first.
+            # Stopping at the earliest pair can miss corruption near the
+            # end of the 250 ms tone, just before the zero-filled tail.
+            starts[1] = i
     if len(starts) != 2:
         raise ValueError("missing two sustained float tone windows")
     for start in starts:
