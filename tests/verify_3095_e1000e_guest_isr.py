@@ -11,6 +11,7 @@ import argparse
 from pathlib import Path
 import re
 import tempfile
+import unicodedata
 
 MARKER = re.compile(
     r"^\[NET3095-ISR\] phase=(before|after) "
@@ -29,9 +30,11 @@ def validate(serial: str) -> str:
         raise ValueError("unexpected control character in ISR UART evidence")
     if "\x1b" in serial or "\ufffd" in serial:
         raise ValueError("terminal escape or undecodable UART evidence")
-    # Reject Unicode bidi controls that visually reorder ASCII UART markers.
-    if any(("\u202a" <= ch <= "\u202e") or ("\u2066" <= ch <= "\u2069") for ch in serial):
-        raise ValueError("bidirectional control in ISR UART evidence")
+    # Reject every Unicode format character, not just the bidi ranges:
+    # zero-width joiners and invisible directional marks can also make UART
+    # evidence visually disagree with the exact bytes parsed by this gate.
+    if any(unicodedata.category(ch) == "Cf" for ch in serial):
+        raise ValueError("invisible Unicode format character in ISR UART evidence")
     samples = {}
     phases = []
     boot_count = 0
@@ -131,6 +134,9 @@ def self_test() -> None:
         good + "\x7f",
         good + "\ufffd",
         good + "\u202e",
+        good + "\u200b",
+        good.replace("phase=after", "phase=\u200dafter"),
+        good + "\u061c",
         good.replace("phase=after", "\u2066phase=after\u2069"),
         good.replace("[NET3095-N1] BOOT\n", ""),
         good + "[NET3095-N1] BOOT\n",
