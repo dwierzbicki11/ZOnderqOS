@@ -149,7 +149,9 @@ def inspect_silent_tail(path: Path, expected_hz: int = 2860):
             continue
         if starts and i < starts[0] + max(window_frames, rate // 8):
             continue
-        if len(starts) == 1:
+        if not starts:
+            starts.append(i)
+        elif len(starts) == 1:
             starts.append(i)
         else:
             # Inspect the latest qualifying window as well as the first.
