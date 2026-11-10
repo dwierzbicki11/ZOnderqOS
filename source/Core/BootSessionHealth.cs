@@ -268,21 +268,10 @@ namespace ZonderqOS.SystemCore
             }
             catch { }
 
-            // 2. Direct hardware port power-off signals (QEMU, Bochs, VirtualBox, and common ACPI PM1a)
-            try
-            {
-                // QEMU / KVM ACPI shutdown port
-                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x604, 0x2000);
-                // Bochs ACPI port
-                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0xB004, 0x2000);
-                // VirtualBox poweroff port
-                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x4004, 0x3400);
-                // Common Intel PCH ACPI PM1a control ports
-                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x1804, 0x3C00);
-                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x0404, 0x3400);
-                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x0804, 0x2000);
-            }
-            catch { }
+            // 2. Architecture-specific firmware shutdown attempt. x86_64
+            // uses PC emulator / ACPI ports; ARM64 must never reference them.
+            // If unsupported, the existing safe halt loop remains active.
+            ZonderqOS.Platform.PlatformPower.TryShutdownViaFirmware();
 
             // 3. Fallback text console screen if no GUI was registered
             if (OnBeforeShutdown == null)
