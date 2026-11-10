@@ -140,6 +140,21 @@ class WavValidatorTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "expected about 2200Hz"):
             audio.inspect(self.path, expected_hz=2200)
 
+    def test_float_tail_accepts_two_valid_windows_without_index_error(self):
+        # Regression: the first eligible 80ms window must be appended
+        # before attempting to update the second window's index.
+        # Synthetic host PCM only; not evidence of QEMU playback.
+        self.make_wave(frequency=2860, ms=250, silence_ms=0)
+        with wave.open(str(self.path), "rb") as wav:
+            raw = wav.readframes(wav.getnframes())
+        with wave.open(str(self.path), "wb") as wav:
+            wav.setnchannels(2)
+            wav.setsampwidth(2)
+            wav.setframerate(48000)
+            wav.writeframes(raw + bytes(48000 * 80 // 1000 * 4))
+        self.assertIn("PASS captured 20ms zero PCM tail",
+                      audio.inspect_silent_tail(self.path, expected_hz=2860))
+
     def test_float_hda_tail_requires_actual_captured_silence(self):
         # Synthetic PCM fixture: 250ms tone followed by 80ms zero tail.
         # A single nonzero final frame must fail the strict tail check.
