@@ -8,6 +8,7 @@ namespace ZonderqOS
         private const string CredentialVersion = "v2";
         private static readonly string PasswdPath = @"/etc/passwd";
         private static readonly string ShadowPath = @"/etc/shadow";
+        private const string AccountProvisionedMarker = "/etc/.zonderq-accounts-initialized";
         private static readonly object ShadowMutationLock = new object();
 
         public static void Initialize()
@@ -24,30 +25,39 @@ namespace ZonderqOS
 
                 bool hasPasswd = File.Exists(PasswdPath);
                 bool hasShadow = File.Exists(ShadowPath);
+                bool interruptedWrite =
+                    File.Exists(PasswdPath + ".new") ||
+                    File.Exists(PasswdPath + ".bak") ||
+                    File.Exists(ShadowPath + ".new") ||
+                    File.Exists(ShadowPath + ".bak");
+                bool hasProvisioningMarker = File.Exists(AccountProvisionedMarker);
+
                 if (hasPasswd != hasShadow ||
-                    (!hasPasswd && (File.Exists(ShadowPath + ".new") ||
-                                    File.Exists(ShadowPath + ".bak") ||
-                                    File.Exists(PasswdPath + ".new") ||
-                                    File.Exists(PasswdPath + ".bak"))))
+                    (!hasPasswd &&
+                     !AccountFileTransaction.IsFreshAccountStorage(
+                         hasPasswd, hasShadow, hasProvisioningMarker, interruptedWrite)))
                 {
-                    // Never turn an existing installation back into root/root
-                    // when an account database goes missing or a transaction
-                    // was interrupted. Recover from backup or fail closed.
+                    // Keep accounts fail-closed if either database is missing.
+                    // Once provisioned, missing both files is never treated as
+                    // a brand-new install with a known factory root password.
                     WriteMessage.WriteError(
-                        "Account database incomplete; refusing factory credential reset.", "AUTH");
+                        "Account database missing; recover from backup instead of resetting root.", "AUTH");
                     return;
                 }
 
                 if (!hasPasswd)
                 {
-                    // Factory provisioning is allowed only when both databases
-                    // and any interrupted shadow transaction are absent.
                     string credential = BuildCredential("root");
                     if (string.IsNullOrEmpty(credential))
                         return;
                     File.WriteAllText(PasswdPath, "root:x:0:/root\n");
                     File.WriteAllText(ShadowPath, "root:" + credential + "\n");
                 }
+
+                // Existing installations are enrolled on their first boot
+                // with this build. Never rewrite the marker once present.
+                if (!File.Exists(AccountProvisionedMarker))
+                    File.WriteAllText(AccountProvisionedMarker, "initialized=1\n");
             }
             catch (Exception ex)
             {
@@ -142,8 +152,13 @@ namespace ZonderqOS
 
             try
             {
-                if (!File.Exists(ShadowPath))
-                    return false;
+                // Serialize authentication with credential replacement: a
+                // successful password change briefly moves shadow to .bak.
+                // Logins must not race that rename and report false failures.
+                lock (ShadowMutationLock)
+                {
+                    if (!File.Exists(ShadowPath))
+                        return false;
 
                 string[] lines = File.ReadAllLines(ShadowPath);
                 for (int i = 0; i < lines.Length; i++)
@@ -165,6 +180,7 @@ namespace ZonderqOS
                     if (legacy)
                         TryUpgradeLegacyCredential(username, password);
                     return true;
+                }
                 }
             }
             catch (Exception ex)
