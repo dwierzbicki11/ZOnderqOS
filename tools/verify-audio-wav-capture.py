@@ -63,16 +63,8 @@ def inspect(path: Path, expected_hz: int = 440):
         chunk = left[i:i + window_frames]
         active = sum(abs(x) >= 256 for x in chunk)
         if active * 100 >= len(chunk) * 95:
-            if not starts:
-                starts.append(i)
-            elif i >= starts[0] + max(window_frames, rate // 8):
-                if len(starts) == 1:
-                    starts.append(i)
-                else:
-                    # Keep the middle of the sustained signal too: checking
-                    # only the first and last windows misses mid-tone faults.
-                    starts.append(i)
-    if len(starts) < 2:
+            starts.append(i)
+    if len(starts) < 2 or starts[-1] - starts[0] < max(window_frames, rate // 8):
         raise ValueError("no two disjoint 80 ms PCM tone windows (may be noise/clicks)")
     # Validate every sustained candidate window, including transient faults.
 
@@ -153,17 +145,8 @@ def inspect_silent_tail(path: Path, expected_hz: int = 2860):
         chunk = left[i:i + window_frames]
         if sum(abs(x) >= 256 for x in chunk) * 100 < len(chunk) * 95:
             continue
-        if starts and i < starts[0] + max(window_frames, rate // 8):
-            continue
-        if not starts:
-            starts.append(i)
-        elif len(starts) == 1:
-            starts.append(i)
-        else:
-            # Also inspect a middle window: a transient pitch fault can
-            # escape checks limited to the first and final windows.
-            starts.append(i)
-    if len(starts) < 2:
+        starts.append(i)
+    if len(starts) < 2 or starts[-1] - starts[0] < max(window_frames, rate // 8):
         raise ValueError("missing two sustained float tone windows")
     # Validate all candidate windows; first/last alone miss transient faults.
     for start in starts:
