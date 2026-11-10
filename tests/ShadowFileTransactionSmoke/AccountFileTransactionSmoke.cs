@@ -22,6 +22,21 @@ internal static class AccountFileTransactionSmoke
 
         try
         {
+            Verify(AccountFileTransaction.IsFreshAccountStorage(false, false, false, false),
+                "brand-new account storage can be provisioned");
+            Verify(!AccountFileTransaction.IsFreshAccountStorage(false, false, true, false),
+                "provisioned marker blocks factory root reset when databases vanish");
+            Verify(!AccountFileTransaction.IsFreshAccountStorage(false, false, false, true),
+                "interrupted account transaction blocks factory provisioning");
+            Verify(!AccountFileTransaction.IsFreshAccountStorage(true, false, false, false),
+                "passwd-only database blocks default credentials");
+            Verify(!AccountFileTransaction.IsFreshAccountStorage(false, true, false, false),
+                "shadow-only database blocks default credentials");
+            Verify(!AccountFileTransaction.IsFreshAccountStorage(true, true, true, false),
+                "provisioned database cannot be reinitialized");
+            Verify(!AccountFileTransaction.ContainsUser(new[] { "alice2:hash" }, "alice"),
+                "account name comparison must match exactly");
+
             File.WriteAllLines(passwd, new[] { "root:x:0:/root" });
             File.WriteAllLines(shadow, new[] { "root:root-hash" });
             AccountFileTransaction.AppendAccount(passwd, shadow, "alice",
