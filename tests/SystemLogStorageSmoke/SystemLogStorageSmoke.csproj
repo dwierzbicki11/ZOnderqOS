@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../../source/Core/SystemLogStoragePolicy.cs" Link="SystemLogStoragePolicy.cs" />
+    <Compile Include="../../source/Security/SecurityAuditLogPolicy.cs" Link="SecurityAuditLogPolicy.cs" />
     <Compile Include="Program.cs" />
   </ItemGroup>
 </Project>
