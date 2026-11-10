@@ -297,6 +297,13 @@ namespace ZonderqOS.SystemCore.Updates
 
         public static bool CheckForUpdates(bool forceRefresh, out UpdatePackageInfo package, out string message)
         {
+            // Explicit checks retain their persisted last-check timestamp.
+            return CheckForUpdatesCore(forceRefresh, true, out package, out message);
+        }
+
+        private static bool CheckForUpdatesCore(bool forceRefresh, bool persistCheckTime,
+            out UpdatePackageInfo package, out string message)
+        {
             Initialize();
             Status = UpdateStatus.Checking;
 
@@ -304,7 +311,11 @@ namespace ZonderqOS.SystemCore.Updates
             {
                 DateTime now = DateTime.Now;
                 LastCheckTime = now.ToString("yyyy-MM-dd HH:mm");
-                SaveConfig();
+                // The desktop polls for USB updates in the background. Writing
+                // update.cfg on each poll needlessly allocates and wears FAT32.
+                // Only an explicit check persists the timestamp.
+                if (persistCheckTime)
+                    SaveConfig();
 
                 UpdatePackageInfo pkg = null;
                 bool fromDisk = TryLoadDiskManifest(out UpdatePackageInfo diskPkg);
@@ -363,6 +374,7 @@ namespace ZonderqOS.SystemCore.Updates
             }
         }
 
+        private const long AutoPollIntervalSeconds = 60;
         private static long lastAutoCheckTicks = 0;
         private static bool updateNotificationSent = false;
         private static string lastNotifiedVersion = string.Empty;
@@ -383,14 +395,16 @@ namespace ZonderqOS.SystemCore.Updates
 
             long now = System.Diagnostics.Stopwatch.GetTimestamp();
             long freq = System.Diagnostics.Stopwatch.Frequency > 0 ? System.Diagnostics.Stopwatch.Frequency : 1000000;
-            if (lastAutoCheckTicks > 0 && now - lastAutoCheckTicks < 15 * freq)
+            if (lastAutoCheckTicks > 0 && now >= lastAutoCheckTicks &&
+                now - lastAutoCheckTicks < AutoPollIntervalSeconds * freq)
                 return;
 
             lastAutoCheckTicks = now;
 
             UpdatePackageInfo pkg;
             string msg;
-            bool found = CheckForUpdates(false, out pkg, out msg);
+            // Keep auto-discovery read-only: manual checks persist LastCheckTime.
+            bool found = CheckForUpdatesCore(false, false, out pkg, out msg);
 
             if (found && pkg != null)
             {
