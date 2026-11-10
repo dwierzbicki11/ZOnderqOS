@@ -5,17 +5,24 @@ namespace ZonderqOS
 {
     public static class SecurityLogger
     {
-        private static string LogPath = @"/var/log/auth.log";
+        private static readonly string LogPath = @"/var/log/auth.log";
         private const long MaxLogSize = 256 * 1024;
+        private static readonly object Sync = new object();
 
         public static void Initialize()
         {
             try
             {
-                if (!Directory.Exists("/var/log")) Directory.CreateDirectory("/var/log");
+                lock (Sync)
+                {
+                    if (!Directory.Exists("/var/log"))
+                        Directory.CreateDirectory("/var/log");
 
-                if (!File.Exists(LogPath))
-                    File.WriteAllText(LogPath, $"[{GetTimestamp()}] [SYS] Security audit log initialized.\n");
+                    if (!File.Exists(LogPath))
+                        File.WriteAllText(LogPath,
+                            SecurityAuditLogPolicy.FormatLine(GetTimestamp(),
+                                "SYS", "root", "Security audit log initialized."));
+                }
             }
             catch (Exception ex)
             {
@@ -30,12 +37,25 @@ namespace ZonderqOS
             try
             {
                 string currentUser = SecurityContext.CurrentUser ?? "unknown";
-                string logEntry = $"[{GetTimestamp()}] [{severity}] [UID:{currentUser}] {message}\n";
+                string logEntry = SecurityAuditLogPolicy.FormatLine(
+                    GetTimestamp(), severity, currentUser, message);
 
-                if (File.Exists(LogPath) && new FileInfo(LogPath).Length + logEntry.Length > MaxLogSize)
-                    File.WriteAllText(LogPath, $"[{GetTimestamp()}] [SYS] Security audit log rotated.\n");
+                // Serialize rotation plus append for concurrently running
+                // managed processes. No log writer may truncate a record
+                // that another writer has just appended.
+                lock (Sync)
+                {
+                    if (File.Exists(LogPath) &&
+                        SystemLogStoragePolicy.ShouldRotate(
+                            new FileInfo(LogPath).Length, logEntry, MaxLogSize))
+                    {
+                        File.WriteAllText(LogPath,
+                            SecurityAuditLogPolicy.FormatLine(GetTimestamp(),
+                                "SYS", "root", "Security audit log rotated."));
+                    }
 
-                File.AppendAllText(LogPath, logEntry);
+                    File.AppendAllText(LogPath, logEntry);
+                }
             }
             catch
             {
