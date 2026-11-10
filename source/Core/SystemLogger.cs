@@ -219,10 +219,7 @@ namespace ZonderqOS
 
         private static string NormalizeMessage(string message)
         {
-            if (string.IsNullOrEmpty(message))
-                return string.Empty;
-
-            return message.Replace('\r', ' ').Replace('\n', ' ');
+            return SystemLogStoragePolicy.BoundMessage(message);
         }
 
         private static string LevelName(SystemLogLevel level)
