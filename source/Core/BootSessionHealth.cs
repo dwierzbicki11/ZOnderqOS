@@ -88,10 +88,15 @@ namespace ZonderqOS.SystemCore
             PreviousExitReason = "unknown";
             PreviousTimestamp = "unknown";
 
-            if (!File.Exists(StatePath))
+            // A power loss between moving the old marker to .bak and
+            // publishing the new marker can leave only the backup present.
+            // Read it before Initialize() overwrites the state as "running";
+            // otherwise an unclean previous boot is silently forgotten.
+            string previousMarkerPath = File.Exists(StatePath) ? StatePath : BackupPath;
+            if (!File.Exists(previousMarkerPath))
                 return;
 
-            FileInfo info = new FileInfo(StatePath);
+            FileInfo info = new FileInfo(previousMarkerPath);
             if (info.Length < 0 || info.Length > 4096)
                 throw new InvalidDataException("boot-session marker size is invalid");
 
@@ -99,7 +104,7 @@ namespace ZonderqOS.SystemCore
             string reason = null;
             string time = null;
 
-            using (StreamReader reader = new StreamReader(StatePath))
+            using (StreamReader reader = new StreamReader(previousMarkerPath))
             {
                 string line;
                 int lines = 0;
