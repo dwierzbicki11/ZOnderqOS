@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - 'source/Core/MemoryGuardian.cs'
+      - 'source/Core/SystemLogger.cs'
+      - 'source/Core/SystemLogStoragePolicy.cs'
+      - 'tests/SystemLogStorageSmoke/**'
       - 'source/Core/DiagnosticReportBuilder.cs'
       - 'source/Shell/Commands/CmdSysInfo.cs'
       - 'docs/system-guardian-observability.md'
@@ -14,6 +17,9 @@ on:
       - 'feature/system-guardian-observability'
     paths:
       - 'source/Core/MemoryGuardian.cs'
+      - 'source/Core/SystemLogger.cs'
+      - 'source/Core/SystemLogStoragePolicy.cs'
+      - 'tests/SystemLogStorageSmoke/**'
       - 'source/Core/DiagnosticReportBuilder.cs'
       - 'source/Shell/Commands/CmdSysInfo.cs'
       - 'docs/system-guardian-observability.md'
@@ -33,6 +39,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      - name: Validate UTF-8 log rotation in production helper
+        run: dotnet run --project tests/SystemLogStorageSmoke/SystemLogStorageSmoke.csproj --configuration Release
 
       - name: Compile x64
         run: |
