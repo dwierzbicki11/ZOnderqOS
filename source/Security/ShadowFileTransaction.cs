@@ -13,14 +13,21 @@ namespace ZonderqOS
     {
         internal static bool RecoverMissingPrimary(string path)
         {
-            if (File.Exists(path))
-                return true;
+            if (!File.Exists(path))
+            {
+                string backup = path + ".bak";
+                if (!File.Exists(backup))
+                    return false;
 
-            string backup = path + ".bak";
-            if (!File.Exists(backup))
-                return false;
+                File.Move(backup, path);
+            }
 
-            File.Move(backup, path);
+            // A .new file never wins over a committed primary/backup.
+            // It could contain sensitive credential hashes from a torn write.
+            string staged = path + ".new";
+            if (File.Exists(staged))
+                File.Delete(staged);
+
             return File.Exists(path);
         }
 
