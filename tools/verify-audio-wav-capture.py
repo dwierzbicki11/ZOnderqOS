@@ -69,11 +69,13 @@ def inspect(path: Path, expected_hz: int = 440):
                 if len(starts) == 1:
                     starts.append(i)
                 else:
-                    # Include the last sustained window, not just the
-                    # earliest pair: late pitch/channel failures must fail.
-                    starts[1] = i
-    if len(starts) != 2:
+                    # Keep the middle of the sustained signal too: checking
+                    # only the first and last windows misses mid-tone faults.
+                    starts.append(i)
+    if len(starts) < 2:
         raise ValueError("no two disjoint 80 ms PCM tone windows (may be noise/clicks)")
+    if len(starts) > 2:
+        starts = [starts[0], starts[len(starts) // 2], starts[-1]]
 
     measured = []
     for start in starts:
@@ -159,12 +161,13 @@ def inspect_silent_tail(path: Path, expected_hz: int = 2860):
         elif len(starts) == 1:
             starts.append(i)
         else:
-            # Inspect the latest qualifying window as well as the first.
-            # Stopping at the earliest pair can miss corruption near the
-            # end of the 250 ms tone, just before the zero-filled tail.
-            starts[1] = i
-    if len(starts) != 2:
+            # Also inspect a middle window: a transient pitch fault can
+            # escape checks limited to the first and final windows.
+            starts.append(i)
+    if len(starts) < 2:
         raise ValueError("missing two sustained float tone windows")
+    if len(starts) > 2:
+        starts = [starts[0], starts[len(starts) // 2], starts[-1]]
     for start in starts:
         for channel in (left, right):
             chunk = channel[start:start + window_frames]
