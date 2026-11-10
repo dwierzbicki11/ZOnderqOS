@@ -278,19 +278,11 @@ namespace ZonderqOS
 
             try
             {
-                if (UserExists(username))
-                    return false;
-
-                int uid = FindNextUid();
-                if (uid < 1000)
-                    return false;
-
                 string homeDir = "/home/" + username;
                 string credential = BuildCredential(password);
                 if (string.IsNullOrEmpty(credential))
                     return false;
 
-                string passwdEntry = username + ":x:" + uid + ":" + homeDir + "\n";
                 string shadowEntry = username + ":" + credential;
 
                 // The two account databases cannot be committed as one FAT32
@@ -302,6 +294,13 @@ namespace ZonderqOS
                     if (UserExists(username) || !File.Exists(ShadowPath))
                         return false;
 
+                    // Reserve the UID only while the account database is
+                    // locked, otherwise simultaneous creations can reuse it.
+                    int uid = FindNextUid();
+                    if (uid < 1000)
+                        return false;
+
+                    string passwdEntry = username + ":x:" + uid + ":" + homeDir + "\n";
                     string oldPasswd = File.Exists(PasswdPath) ? File.ReadAllText(PasswdPath) : string.Empty;
                     string[] oldShadowLines = File.ReadAllLines(ShadowPath);
                     string[] updatedShadow = new string[oldShadowLines.Length + 1];
