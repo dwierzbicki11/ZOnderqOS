@@ -29,6 +29,9 @@ def validate(serial: str) -> str:
         raise ValueError("unexpected control character in ISR UART evidence")
     if "\x1b" in serial or "\ufffd" in serial:
         raise ValueError("terminal escape or undecodable UART evidence")
+    # Reject Unicode bidi controls that visually reorder ASCII UART markers.
+    if any(("\u202a" <= ch <= "\u202e") or ("\u2066" <= ch <= "\u2069") for ch in serial):
+        raise ValueError("bidirectional control in ISR UART evidence")
     samples = {}
     phases = []
     boot_count = 0
@@ -127,6 +130,8 @@ def self_test() -> None:
         good + "\x1b[2J",
         good + "\x7f",
         good + "\ufffd",
+        good + "\u202e",
+        good.replace("phase=after", "\u2066phase=after\u2069"),
         good.replace("[NET3095-N1] BOOT\n", ""),
         good + "[NET3095-N1] BOOT\n",
         good.splitlines()[0] + "\n[NET3095-N1] BOOT\n" + "\n".join(good.splitlines()[1:]) + "\n",
