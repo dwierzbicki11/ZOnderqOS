@@ -36,10 +36,22 @@ class GeneralStabilityContracts(unittest.TestCase):
         self.assertIn("Cosmos.Kernel.System.Power.Halt();", BOOT)
 
     def test_interrupted_boot_marker_rotation_is_recovered(self):
-        self.assertIn("File.Exists(StatePath) ? StatePath : BackupPath", BOOT)
-        self.assertIn("new FileInfo(previousMarkerPath)", BOOT)
-        self.assertIn("new StreamReader(previousMarkerPath)", BOOT)
+        self.assertIn("if (TryReadPreviousStateFile(StatePath))", BOOT)
+        self.assertIn("if (hasBackup && TryReadPreviousStateFile(BackupPath))", BOOT)
+        self.assertIn("new FileInfo(path)", BOOT)
+        self.assertIn("new StreamReader(path)", BOOT)
+        self.assertIn('string.Equals(state, "running"', BOOT)
+        self.assertIn('string.Equals(state, "clean"', BOOT)
         self.assertLess(BOOT.index("ReadPreviousState();"), BOOT.index('TryWriteState("running"'))
+
+    def test_existing_backup_survives_when_primary_is_missing(self):
+        self.assertIn("if (File.Exists(StatePath))", BOOT)
+        # Do not delete .bak unless there is a valid primary to rotate.
+        begin = BOOT.index("// Preserve an existing backup")
+        end = BOOT.index("File.Move(TempPath, StatePath)", begin)
+        area = BOOT[begin:end]
+        self.assertRegex(area, r"if \(File.Exists\(StatePath\)\)\s*\{\s*if \(File.Exists\(BackupPath\)\)")
+        self.assertIn("File.Move(StatePath, BackupPath);", area)
 
     def test_host_gui_smoke_checks_detached_callbacks(self):
         self.assertIn("private static void ClosingWindowDetachesButtonCallbacks()", WINDOW_SMOKE)
