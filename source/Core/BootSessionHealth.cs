@@ -88,23 +88,46 @@ namespace ZonderqOS.SystemCore
             PreviousExitReason = "unknown";
             PreviousTimestamp = "unknown";
 
-            // A power loss between moving the old marker to .bak and
-            // publishing the new marker can leave only the backup present.
-            // Read it before Initialize() overwrites the state as "running";
-            // otherwise an unclean previous boot is silently forgotten.
-            string previousMarkerPath = File.Exists(StatePath) ? StatePath : BackupPath;
-            if (!File.Exists(previousMarkerPath))
+            bool hasPrimary = File.Exists(StatePath);
+            bool hasBackup = File.Exists(BackupPath);
+            if (!hasPrimary && !hasBackup)
                 return;
 
-            FileInfo info = new FileInfo(previousMarkerPath);
-            if (info.Length < 0 || info.Length > 4096)
-                throw new InvalidDataException("boot-session marker size is invalid");
+            // Crash recovery: a partial/invalid primary marker must not hide
+            // a valid backup left by the interrupted file rotation.
+            if (hasPrimary)
+            {
+                try
+                {
+                    if (TryReadPreviousStateFile(StatePath))
+                        return;
+                }
+                catch (Exception)
+                {
+                    if (!hasBackup)
+                        throw;
+                }
+            }
+
+            if (hasBackup && TryReadPreviousStateFile(BackupPath))
+                return;
+
+            // No valid marker was found. Keep this visible to the boot log
+            // instead of silently claiming there was no previous session.
+            throw new InvalidDataException("boot-session marker and backup are invalid");
+        }
+
+        private static bool TryReadPreviousStateFile(string path)
+        {
+            FileInfo info = new FileInfo(path);
+            if (info.Length <= 0 || info.Length > 4096)
+                return false;
 
             string state = null;
             string reason = null;
             string time = null;
 
-            using (StreamReader reader = new StreamReader(previousMarkerPath))
+            using (StreamReader reader = new StreamReader(path))
             {
                 string line;
                 int lines = 0;
@@ -127,13 +150,15 @@ namespace ZonderqOS.SystemCore
                 }
             }
 
-            if (string.IsNullOrEmpty(state))
-                return;
+            if (!string.Equals(state, "running", StringComparison.Ordinal) &&
+                !string.Equals(state, "clean", StringComparison.Ordinal))
+                return false;
 
             HasPreviousSession = true;
             PreviousSessionWasClean = string.Equals(state, "clean", StringComparison.Ordinal);
             PreviousExitReason = string.IsNullOrEmpty(reason) ? "unknown" : Safe(reason);
             PreviousTimestamp = string.IsNullOrEmpty(time) ? "unknown" : Safe(time);
+            return true;
         }
 
         private static bool TryWriteState(string state, string reason, string timestamp)
@@ -157,11 +182,15 @@ namespace ZonderqOS.SystemCore
                 File.WriteAllText(TempPath, content);
                 PermissionManager.SetPermission(TempPath, "root", 600);
 
-                if (File.Exists(BackupPath))
-                    File.Delete(BackupPath);
-
+                // Preserve an existing backup when the primary marker is
+                // absent (interrupted previous rename). Only replace it when
+                // a valid primary exists to rotate into its place.
                 if (File.Exists(StatePath))
+                {
+                    if (File.Exists(BackupPath))
+                        File.Delete(BackupPath);
                     File.Move(StatePath, BackupPath);
+                }
 
                 try
                 {
