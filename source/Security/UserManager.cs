@@ -19,13 +19,16 @@ namespace ZonderqOS
 
                 // Restore a previous complete shadow file if the OS was
                 // powered off between the .bak rename and the commit.
+                ShadowFileTransaction.RecoverMissingPrimary(PasswdPath);
                 ShadowFileTransaction.RecoverMissingPrimary(ShadowPath);
 
                 bool hasPasswd = File.Exists(PasswdPath);
                 bool hasShadow = File.Exists(ShadowPath);
                 if (hasPasswd != hasShadow ||
                     (!hasPasswd && (File.Exists(ShadowPath + ".new") ||
-                                    File.Exists(ShadowPath + ".bak"))))
+                                    File.Exists(ShadowPath + ".bak") ||
+                                    File.Exists(PasswdPath + ".new") ||
+                                    File.Exists(PasswdPath + ".bak"))))
                 {
                     // Never turn an existing installation back into root/root
                     // when an account database goes missing or a transaction
@@ -285,47 +288,38 @@ namespace ZonderqOS
 
                 string shadowEntry = username + ":" + credential;
 
-                // The two account databases cannot be committed as one FAT32
-                // transaction. An interrupted creation may leave a passwd-only
-                // account, which is not usable for login without a shadow hash.
-                // Never truncate /etc/shadow to add that hash.
+                // Serialize UID allocation and both database changes.
+                // Shadow is committed before passwd: after a power loss an
+                // unfinished account cannot start a login session.
                 lock (ShadowMutationLock)
                 {
-                    if (UserExists(username) || !File.Exists(ShadowPath))
+                    if (!File.Exists(PasswdPath) || !File.Exists(ShadowPath))
                         return false;
 
-                    // Reserve the UID only while the account database is
-                    // locked, otherwise simultaneous creations can reuse it.
                     int uid = FindNextUid();
                     if (uid < 1000)
                         return false;
 
-                    string passwdEntry = username + ":x:" + uid + ":" + homeDir + "\n";
-                    string oldPasswd = File.Exists(PasswdPath) ? File.ReadAllText(PasswdPath) : string.Empty;
-                    string[] oldShadowLines = File.ReadAllLines(ShadowPath);
-                    string[] updatedShadow = new string[oldShadowLines.Length + 1];
-                    Array.Copy(oldShadowLines, updatedShadow, oldShadowLines.Length);
-                    updatedShadow[oldShadowLines.Length] = shadowEntry;
-
+                    string passwdEntry = username + ":x:" + uid + ":" + homeDir;
                     try
                     {
-                        File.WriteAllText(PasswdPath, AppendLine(oldPasswd, passwdEntry));
-                        ShadowFileTransaction.Replace(ShadowPath, updatedShadow,
-                            path => PermissionManager.SetPermission(path, "root", 600));
+                        AccountFileTransaction.AppendAccount(
+                            PasswdPath, ShadowPath, username, passwdEntry, shadowEntry,
+                            (path, mode) => PermissionManager.SetPermission(path, "root", mode));
+
                         PermissionManager.SetPermission(ShadowPath, "root", 600);
-                    }
-                    catch
-                    {
-                        // Best-effort passwd rollback. The shadow transaction
-                        // preserves the original file on staging/rename errors.
-                        try { File.WriteAllText(PasswdPath, oldPasswd); } catch { }
-                        throw;
+                        PermissionManager.SetPermission(PasswdPath, "root", 644);
                     }
                     finally
                     {
+                        // Remove stale temporary ACL entries regardless of
+                        // whether the transaction succeeded or failed.
                         PermissionManager.RemovePermission(ShadowPath + ".new");
+                        PermissionManager.RemovePermission(PasswdPath + ".new");
                         if (!File.Exists(ShadowPath + ".bak"))
                             PermissionManager.RemovePermission(ShadowPath + ".bak");
+                        if (!File.Exists(PasswdPath + ".bak"))
+                            PermissionManager.RemovePermission(PasswdPath + ".bak");
                     }
                 }
 
