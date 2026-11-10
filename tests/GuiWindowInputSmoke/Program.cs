@@ -29,6 +29,18 @@ namespace ZonderqOS.GUI.Icons
 
 namespace ZonderqOS.GUI
 {
+    // Only the callback/Widget contract is relevant here; the production
+    // Button renderer needs the Cosmos font stack unavailable to host tests.
+    // The actual production Window.ClearChildren() is still compiled below.
+    public sealed class Button : Widget
+    {
+        public Action OnClick { get; set; }
+
+        public Button(int x, int y) : base(x, y, 40, 25) { }
+
+        public override void Render(Cosmos.Kernel.System.Graphics.Canvas canvas) { }
+    }
+
     internal static class UiAnimator
     {
         public static void RequestFrames() { }
@@ -212,8 +224,25 @@ internal static class Program
             "maximized reflow preserves child offsets");
     }
 
+    private static void ClosingWindowDetachesButtonCallbacks()
+    {
+        Window.ConfigureDesktop(800, 556);
+        var window = new Window(40, 40, 350, 200, "close callbacks");
+        int calls = 0;
+        var button = new Button(12, 40) { OnClick = () => calls++ };
+        window.AddChild(button);
+        Check(window.Children.Count == 1, "button is added to production window");
+        window.ClearChildren();
+        Check(window.Children.Count == 0, "closing releases child widgets");
+        Check(button.OnClick == null, "closing detaches callback captured by button");
+        window.ClearChildren();
+        Check(window.Children.Count == 0, "teardown is idempotent");
+        Check(calls == 0, "teardown does not invoke a click handler");
+    }
+
     public static int Main()
     {
+        ClosingWindowDetachesButtonCallbacks();
         KeyboardFirstResolutionReflow();
         InterruptedDrag();
         InterruptedResize();
