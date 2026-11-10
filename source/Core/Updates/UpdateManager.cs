@@ -295,7 +295,16 @@ namespace ZonderqOS.SystemCore.Updates
             return null;
         }
 
+        // Explicit GUI/CLI checks keep their persisted last-check timestamp.
         public static bool CheckForUpdates(bool forceRefresh, out UpdatePackageInfo package, out string message)
+        {
+            return CheckForUpdatesCore(forceRefresh, true, out package, out message);
+        }
+
+        // Background discovery must not rewrite FAT configuration every 15 seconds.
+        // The live LastCheckTime value still updates for the UI.
+        private static bool CheckForUpdatesCore(bool forceRefresh, bool persistCheckTime,
+            out UpdatePackageInfo package, out string message)
         {
             Initialize();
             Status = UpdateStatus.Checking;
@@ -304,7 +313,8 @@ namespace ZonderqOS.SystemCore.Updates
             {
                 DateTime now = DateTime.Now;
                 LastCheckTime = now.ToString("yyyy-MM-dd HH:mm");
-                SaveConfig();
+                if (persistCheckTime)
+                    SaveConfig();
 
                 UpdatePackageInfo pkg = null;
                 bool fromDisk = TryLoadDiskManifest(out UpdatePackageInfo diskPkg);
@@ -390,7 +400,7 @@ namespace ZonderqOS.SystemCore.Updates
 
             UpdatePackageInfo pkg;
             string msg;
-            bool found = CheckForUpdates(false, out pkg, out msg);
+            bool found = CheckForUpdatesCore(false, false, out pkg, out msg);
 
             if (found && pkg != null)
             {
@@ -499,19 +509,21 @@ namespace ZonderqOS.SystemCore.Updates
             return info;
         }
 
+        // Reused by the periodic background scanner: no path-array allocation per poll.
+        private static readonly string[] ManifestCandidatePaths =
+        {
+            "/updates/update.manifest",
+            "/var/updates/incoming/update.manifest",
+            "/var/updates/update.manifest"
+        };
+
         public static bool TryLoadDiskManifest(out UpdatePackageInfo pkg)
         {
             pkg = null;
-            string[] candidatePaths = new string[]
-            {
-                "/updates/update.manifest",
-                "/var/updates/incoming/update.manifest",
-                "/var/updates/update.manifest"
-            };
 
-            for (int p = 0; p < candidatePaths.Length; p++)
+            for (int p = 0; p < ManifestCandidatePaths.Length; p++)
             {
-                string path = candidatePaths[p];
+                string path = ManifestCandidatePaths[p];
                 if (!File.Exists(path)) continue;
 
                 try
