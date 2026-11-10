@@ -63,10 +63,15 @@ def inspect(path: Path, expected_hz: int = 440):
         chunk = left[i:i + window_frames]
         active = sum(abs(x) >= 256 for x in chunk)
         if active * 100 >= len(chunk) * 95:
-            if not starts or i >= starts[0] + max(window_frames, rate // 8):
+            if not starts:
                 starts.append(i)
-            if len(starts) == 2:
-                break
+            elif i >= starts[0] + max(window_frames, rate // 8):
+                if len(starts) == 1:
+                    starts.append(i)
+                else:
+                    # Include the last sustained window, not just the
+                    # earliest pair: late pitch/channel failures must fail.
+                    starts[1] = i
     if len(starts) != 2:
         raise ValueError("no two disjoint 80 ms PCM tone windows (may be noise/clicks)")
 
