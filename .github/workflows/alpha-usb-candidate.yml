@@ -11,10 +11,10 @@ on:
 permissions:
   contents: read
 
-# Do NOT cancel a multi-minute release build because another PR commit landed.
+# Cancel obsolete PR revisions while fixing CI; final tested SHA stays pinned.
 concurrency:
   group: zonderq-alpha-usb-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   build-boot-and-package:
