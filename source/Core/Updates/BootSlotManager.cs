@@ -184,7 +184,8 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT", "SaveBootState error: " + ex.Message);
+                SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", "SaveBootState error: " + ex.Message);
+                throw;
             }
         }
 
@@ -518,7 +519,8 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT", "SyncLimineConfig error: " + ex.Message);
+                SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", "SyncLimineConfig error: " + ex.Message);
+                throw;
             }
         }
     }
