@@ -69,6 +69,31 @@ class UpdateTrustGateTests(unittest.TestCase):
         self.assertIn('try { File.Delete(backupPath); }', stage)
         self.assertIn('Old inactive kernel backup retained:', stage)
 
+    def test_no_unrestricted_root_payload_deployment(self):
+        self.assertNotIn("private static void DeployDirectory(", SOURCE)
+        self.assertNotIn('DeployDirectory(payloadDir, "/",', SOURCE)
+        self.assertIn("DeployManifestFiles(pkg, payloadDir, backupPayload);", SOURCE)
+        self.assertIn("RestoreManifestFiles(backupPayloadDir);", SOURCE)
+
+    def test_deployment_is_allowlisted_and_manifest_bound(self):
+        self.assertIn('relativePath.StartsWith("system/"', SOURCE)
+        self.assertIn('relativePath.StartsWith("usr/"', SOURCE)
+        self.assertIn("UpdateManifest.IsSafeRelativePath(relativePath)", SOURCE)
+        self.assertIn("FileAttributes.ReparsePoint", SOURCE)
+        self.assertIn('Directory.GetFiles(payloadDir, "*", SearchOption.AllDirectories)', SOURCE)
+        self.assertIn("if (!declared.Contains(relative)", SOURCE)
+        self.assertIn("File.WriteAllText(createdRecord", SOURCE)
+        self.assertIn("string previousCreated = Path.Combine(BackupDir", SOURCE)
+
+    def test_package_never_falls_back_to_foreign_kernel(self):
+        kernel = SOURCE.split("public static string FindKernelSource(", 1)[1].split(
+            "public static bool CheckForUpdates(", 1)[0]
+        self.assertIn("if (pkg != null)", kernel)
+        self.assertLess(kernel.index("if (pkg != null)"), kernel.index("string[] candidates"))
+        payload = SOURCE.split("public static string FindPayloadDirectory(", 1)[1].split(
+            "public static StorageEnvironmentInfo", 1)[0]
+        self.assertIn("if (pkg != null)", payload)
+
     def test_explicit_trust_requirement(self):
         self.assertIn("podpis asymetryczny calego manifestu", SOURCE)
         self.assertIn("weryfikacja wszystkich plikow", SOURCE)
