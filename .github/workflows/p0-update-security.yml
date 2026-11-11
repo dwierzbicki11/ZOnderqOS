@@ -13,6 +13,12 @@ on:
       - 'tests/test_p0_update_trust_gate.py'
       - '.github/workflows/p0-update-security.yml'
 
+# Cancel only obsolete runs of THIS workflow for the same branch/PR.
+# Other independent safety gates continue to execute normally.
+concurrency:
+  group: p0-update-security-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   regression:
     runs-on: ubuntu-latest
@@ -26,3 +32,5 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Compile and execute UpdateEngineSmoke
         run: dotnet run --project tests/UpdateEngineSmoke/UpdateEngineSmoke.csproj --configuration Release
+      - name: Compile and exercise Window input smoke
+        run: dotnet run --project tests/GuiWindowInputSmoke/GuiWindowInputSmoke.csproj --configuration Release
