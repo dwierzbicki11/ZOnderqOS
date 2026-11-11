@@ -94,6 +94,22 @@ class UpdateTrustGateTests(unittest.TestCase):
             "public static StorageEnvironmentInfo", 1)[0]
         self.assertIn("if (pkg != null)", payload)
 
+    def test_forgeable_embedded_hmac_release_key_has_been_removed(self):
+        manifest = (ROOT / "source/Core/Updates/UpdateManifest.cs").read_text(encoding="utf-8")
+        self.assertNotIn("ZONDERQ_OFFICIAL_RELEASE_KEY_GEN3", manifest)
+        self.assertNotIn("DefaultSignerKey", manifest)
+        self.assertNotIn("GetSignaturePayload()", manifest)
+        self.assertNotIn("ComputeHmacSha256(secretKey", manifest)
+        self.assertNotIn("manifest.VerifySignature(", SOURCE)
+
+    def test_kernel_fallback_restores_shared_files_before_services(self):
+        boot = (ROOT / "source/Core/Updates/BootSlotManager.cs").read_text(encoding="utf-8")
+        kernel = (ROOT / "Kernel.cs").read_text(encoding="utf-8")
+        self.assertIn("UpdateManager.RestoreSharedFilesAfterBootFailure(FallbackSlot", boot)
+        self.assertIn("if (ZonderqOS.SystemCore.Updates.BootSlotManager.EmergencyRecoveryNeeded)", kernel)
+        self.assertIn("PREVIOUS_OS_RELEASE_PRESENT=", SOURCE)
+        self.assertIn("PREVIOUS_UPDATE_CONFIG_PRESENT=", SOURCE)
+
     def test_explicit_trust_requirement(self):
         self.assertIn("ReleaseSignatureVerifier.VerifyProductionManifest(bytes, signature)", SOURCE)
         self.assertIn("parsed.UpdateFormat != 2", SOURCE)
