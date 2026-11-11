@@ -62,7 +62,7 @@ def validate(serial: str) -> str:
         # Termination anywhere in the capture (including after the final
         # counter sample) invalidates the evidence; a stopped guest cannot
         # establish the required post-sample runtime stability.
-        if re.match(r"^(?:\[[^\]\r\n]+\] ?)?qemu-system-[^:\r\n]+: terminating on signal ", line):
+        if re.search(r"qemu-system-[A-Za-z0-9_.-]+: terminating on signal ", line):
             raise ValueError("QEMU termination in guest ISR evidence")
         if "[NET3095-ISR]" not in line:
             continue
@@ -163,6 +163,8 @@ def self_test() -> None:
         good.replace("[NET3095-ISR] phase=after", "[2026-11-08T15:34:10+01:00] qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n[NET3095-ISR] phase=after"),
         good.replace("[NET3095-N1] BOOT\n", "[NET3095-N6][FAIL] TCP reset\n[NET3095-N1] BOOT\n"),
         good + "qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n",
+        good + "runner: qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n",
+        good + "2026-11-11 10:29:56 qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n",
         good + "[2026-11-08T15:34:10+01:00] qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n",
     )
     for item in bad:
