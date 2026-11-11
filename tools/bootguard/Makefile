@@ -18,7 +18,7 @@ all: $(BUILD_DIR)/bootguard.efi
 $(BUILD_DIR):
 	mkdir -p $(BUILD_DIR)
 
-$(BUILD_DIR)/bootguard.o: bootguard_efi.c bootguard_policy.h | $(BUILD_DIR)
+$(BUILD_DIR)/bootguard.o: bootguard_efi.c bootguard_policy.h bootguard_elf.h | $(BUILD_DIR)
 	$(CC) $(CFLAGS) -c $< -o $@
 
 $(BUILD_DIR)/bootguard.so: $(BUILD_DIR)/bootguard.o
