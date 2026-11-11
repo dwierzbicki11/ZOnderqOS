@@ -88,6 +88,9 @@ jobs:
               raise SystemExit("STOP: ISO partition crosses LBA 65536")
           print("Hybrid ISO MBR/3-partition boundary PASS")'
 
+      - name: Verify actual ISO kernel path and safe Limine default
+        run: python3 tools/verify-alpha-iso-boot.py output-3095/ZonderqOS-3095-disk.iso
+
       - name: Real QEMU boots, filesystem persistence and GUI interactions
         env:
           SERVICE_QEMU_BOOT_SECONDS: '100'
