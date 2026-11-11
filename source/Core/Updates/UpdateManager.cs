@@ -841,13 +841,35 @@ namespace ZonderqOS.SystemCore.Updates
                     pkg.BuildNumber != parsed.BuildNumber ||
                     pkg.Architecture != parsed.Architecture ||
                     pkg.Title != parsed.Title ||
+                    pkg.ReleaseDate != parsed.ReleaseDate ||
+                    pkg.Severity != parsed.Severity ||
                     pkg.KernelSha256 != parsed.KernelSha256 ||
                     pkg.TargetTheme != parsed.TargetTheme ||
+                    pkg.TargetThemeName != parsed.TargetThemeName ||
                     pkg.TargetWallpaper != parsed.TargetWallpaper ||
-                    pkg.Files == null || pkg.Files.Count != parsed.Files.Count)
+                    !string.IsNullOrEmpty(pkg.Signature) ||
+                    pkg.Files == null || pkg.Files.Count != parsed.Files.Count ||
+                    pkg.Changelog == null || pkg.Changelog.Length != parsed.Changelog.Count ||
+                    pkg.Components == null || pkg.Components.Length != parsed.Components.Count)
                 {
                     error = "Dane pakietu nie sa identyczne z podpisanym manifestem.";
                     return false;
+                }
+                for (int i = 0; i < parsed.Changelog.Count; i++)
+                {
+                    if (pkg.Changelog[i] != parsed.Changelog[i])
+                    {
+                        error = "Zmieniono dziennik zmian z podpisanego manifestu.";
+                        return false;
+                    }
+                }
+                for (int i = 0; i < parsed.Components.Count; i++)
+                {
+                    if (pkg.Components[i] != parsed.Components[i])
+                    {
+                        error = "Zmieniono liste komponentow podpisanego manifestu.";
+                        return false;
+                    }
                 }
                 for (int i = 0; i < parsed.Files.Count; i++)
                 {
