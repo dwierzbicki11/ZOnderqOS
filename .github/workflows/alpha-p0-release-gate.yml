@@ -52,7 +52,7 @@ jobs:
           make -C tools/bootguard
           make -C tools/bootguard build/limine_stub.efi
           file tools/bootguard/build/bootguard.efi
-          file tools/bootguard/build/bootguard.efi | grep -E 'PE32\\+ executable .*EFI application'
+          file tools/bootguard/build/bootguard.efi | grep -E 'PE32\+ executable .*EFI application'
       - name: Exercise preboot policy on host
         run: |
           gcc -std=c11 -O2 -Wall -Wextra -Werror tests/test_bootguard_policy.c -o /tmp/zq-policy
