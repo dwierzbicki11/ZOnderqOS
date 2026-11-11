@@ -57,6 +57,42 @@ def managed_path(root: Path, *parts: str) -> Path:
     return current
 
 
+def validate_limine_configuration(esp: Path, data: Path):
+    # EFI Limine searches its own ESP before ZONDERQDATA. A shadowing config
+    # could ignore the guarded slot names and bypass the safe fallback default.
+    candidates = [
+        ("EFI", "BOOT", "limine.conf"),
+        ("boot", "limine", "limine.conf"),
+        ("boot", "limine.conf"),
+        ("limine", "limine.conf"),
+        ("limine.conf",),
+    ]
+    for parts in candidates:
+        if managed_path(esp, *parts).exists():
+            raise ValueError("ESP contains a higher-priority Limine configuration: " +
+                             "/".join(parts))
+    configs = []
+    for parts in candidates[1:]:
+        path = managed_path(data, *parts)
+        if path.is_file():
+            configs.append(path.read_text(encoding="utf-8"))
+    if not configs:
+        raise ValueError("Missing managed ZONDERQDATA Limine configuration")
+    if any(cfg != configs[0] for cfg in configs):
+        raise ValueError("Inconsistent ZONDERQDATA Limine configuration copies")
+    cfg = configs[0]
+    required = [
+        "/ZonderqOS Slot A", "/ZonderqOS Slot B",
+        "remember_last_entry: no",
+        "path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf",
+        "path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf",
+    ]
+    if any(tag not in cfg for tag in required):
+        raise ValueError("Limine configuration lacks stable BootGuard entries")
+    if not re.search(r"(?m)^default_entry: [12]$", cfg):
+        raise ValueError("Invalid fallback default_entry in Limine config")
+
+
 def read_state(path: Path) -> str:
     text = path.read_text(encoding="ascii")
     if not text.startswith(STATE_MAGIC + "\n"):
@@ -131,6 +167,7 @@ def main() -> int:
         if sha256(original) != expected:
             raise ValueError("Original Limine SHA-256 mismatch")
         state_text = read_state(state)
+        validate_limine_configuration(esp, data)
         if not args.apply:
             print("DRY RUN PASS: paths, PE files, hash, state; no writes")
             return 0
