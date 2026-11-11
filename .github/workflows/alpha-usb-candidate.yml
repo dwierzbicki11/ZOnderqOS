@@ -42,6 +42,9 @@ jobs:
           git status --porcelain
           bash run.sh --check
 
+      - name: Validate idle RAM background paths and forbid periodic FAT writes
+        run: python3 -m unittest discover -s tests -p 'test_idle_background_allocation_contracts.py' -v
+
       - name: Validate GUI memory cleanup and input regressions
         run: |
           python3 -m unittest discover -s tests -p 'test_gui_memory_lifecycle.py' -v
