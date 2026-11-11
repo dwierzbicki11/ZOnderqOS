@@ -987,6 +987,10 @@ namespace ZonderqOS.SystemCore.Updates
                         progress?.Invoke(85, $"Przelaczanie aktywnego slotu rozruchowego na slot {newActiveSlot}...");
                         if (!BootSlotManager.ActivateSlot(newActiveSlot, out error))
                         {
+                            string activationError = error;
+                            if (!RestoreSharedFilesAfterBootFailure(BootSlotManager.ActiveSlot,
+                                    out string restoreError))
+                                error = activationError + " KRYTYCZNE: nie udalo sie odtworzyc plikow: " + restoreError;
                             Status = UpdateStatus.Error;
                             return false;
                         }
@@ -1016,8 +1020,9 @@ namespace ZonderqOS.SystemCore.Updates
 
                             if (!string.IsNullOrEmpty(pkg.ManifestPath) && File.Exists(pkg.ManifestPath))
                             {
+                                // Preserve original manifest and .sig for diagnostics
+                                // and retry until the running slot is confirmed healthy.
                                 File.Copy(pkg.ManifestPath, Path.Combine(installedDir, "update-" + pkg.Version + ".manifest"), true);
-                                File.Delete(pkg.ManifestPath);
                             }
                         }
                         catch { }
@@ -1271,6 +1276,47 @@ namespace ZonderqOS.SystemCore.Updates
             catch (Exception ex)
             {
                 throw new IOException("Nie udalo sie utworzyc kopii rollback: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Called during EARLY boot after an EFI BootGuard selects the old
+        /// kernel, BEFORE application/service initialization. An A/B kernel
+        /// rollback must also restore shared /system and /usr payload data.
+        /// Do not update the integrity baseline here: startup does it later.
+        /// </summary>
+        internal static bool RestoreSharedFilesAfterBootFailure(string fallbackSlot, out string error)
+        {
+            error = string.Empty;
+            try
+            {
+                string metadataPath = Path.Combine(BackupDir, "snapshot.meta");
+                if (!File.Exists(metadataPath))
+                {
+                    error = "Brak snapshot.meta do odtworzenia wspolnych plikow systemowych.";
+                    return false;
+                }
+                string[] metadata = File.ReadAllLines(metadataPath);
+                bool matchesFallback = false;
+                for (int i = 0; i < metadata.Length; i++)
+                    if (metadata[i] == "PREVIOUS_SLOT=" + fallbackSlot)
+                        matchesFallback = true;
+                if (!matchesFallback)
+                {
+                    error = "Slot awaryjny nie zgadza sie z migawka poprzedniego systemu.";
+                    return false;
+                }
+                RestoreManifestFiles(Path.Combine(BackupDir, "payload_snapshot"));
+                string oldRelease = Path.Combine(BackupDir, "os-release.snapshot");
+                if (File.Exists(oldRelease)) File.Copy(oldRelease, OsReleasePath, true);
+                string oldConfig = Path.Combine(BackupDir, "update.cfg.snapshot");
+                if (File.Exists(oldConfig)) File.Copy(oldConfig, ConfigPath, true);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "Rollback plikow po nieudanym boot: " + ex.Message;
+                return false;
             }
         }
 
