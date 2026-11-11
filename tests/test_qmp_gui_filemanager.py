@@ -46,6 +46,19 @@ class FramebufferProbeTests(unittest.TestCase):
         self.assertGreater(changed, 1500)
         self.assertEqual(restored, 0)
 
+    def test_full_hd_fixed_palette_uses_pixel_count_without_disabling_gate(self):
+        gate = PROBE.minimum_palette_changed_samples
+        self.assertEqual(gate(30602), int(30602 * 0.12))
+        self.assertEqual(gate(61760), 5000)
+        # Real 1920x1080 OVMF/QEMU palette changed 6314/61760 samples.
+        self.assertGreater(6314, gate(61760))
+        # A missing palette, cursor movement and an unrelated small toast
+        # must still be rejected at Full HD resolution.
+        for changed in (0, 30, 500, 2000, 4999):
+            self.assertLess(changed, gate(61760))
+        with self.assertRaises(ValueError):
+            gate(0)
+
     def test_real_palette_shift_enter_does_not_launch_application(self):
         script = (ROOT / "tools/qmp-gui-filemanager.py").read_text()
         self.assertIn('send_keys(channel, "shift", "ret")', script)
