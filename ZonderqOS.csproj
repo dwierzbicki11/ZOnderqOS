@@ -71,6 +71,8 @@
          AP bootstrap, OrionGC patches or managed SMP scheduler. -->
     <PackageReference Include="Cosmos.Kernel" Version="3.0.95" />
     <PackageReference Include="Cosmos.Kernel.System" Version="3.0.95" />
+    <!-- Portable managed Ed25519 verification, no platform crypto native calls. -->
+    <PackageReference Include="BouncyCastle.Cryptography" Version="2.7.0" />
   </ItemGroup>
 
   <!-- Platform architecture boundary: Common is always compiled. Exactly one
