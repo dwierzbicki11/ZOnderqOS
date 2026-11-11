@@ -25,6 +25,7 @@ VALID_KEYS = {
     "VERSION", "BUILD", "ARCH", "TITLE", "DATE", "SEVERITY",
     "KERNEL_IMAGE", "KERNEL_SHA256", "PAYLOAD_DIR", "THEME",
     "WALLPAPER", "CHANGELOG", "COMPONENTS", "FILE",
+    "UPDATE_FORMAT", "SIGNATURE_ALG",
 }
 SINGLE_KEYS = VALID_KEYS - {"FILE"}
 
@@ -72,9 +73,11 @@ def parse_manifest(raw: bytes):
             files.append((path, fields[1].lower(), int(fields[2])))
             if len(files) > 1024:
                 raise ValueError("Too many FILE records")
-    for key in ("VERSION", "BUILD", "ARCH", "KERNEL_IMAGE", "KERNEL_SHA256", "PAYLOAD_DIR"):
+    for key in ("UPDATE_FORMAT", "SIGNATURE_ALG", "VERSION", "BUILD", "ARCH", "KERNEL_IMAGE", "KERNEL_SHA256", "PAYLOAD_DIR"):
         if not values.get(key):
             raise ValueError(f"Missing required field {key}")
+    if values["UPDATE_FORMAT"] != "2" or values["SIGNATURE_ALG"] != "ED25519":
+        raise ValueError("Signed package must be format 2 with ED25519")
     if values["ARCH"] != "x86_64":
         raise ValueError("Unsupported architecture")
     if not HEX64.fullmatch(values["KERNEL_SHA256"]):
