@@ -12,8 +12,45 @@ internal static class Program
             throw new InvalidOperationException("Taskbar telemetry regression: " + label);
     }
 
+    private static void TestDesktopHeartbeat()
+    {
+        // Monotonic clock with 1000 ticks per second.
+        Check(DesktopHeartbeatGate.ShouldRefresh(0, -1, 1000, false),
+            "initial desktop heartbeat");
+        Check(!DesktopHeartbeatGate.ShouldRefresh(59000, 0, 1000, false),
+            "minutes-only idle desktop does not redraw prematurely");
+        Check(DesktopHeartbeatGate.ShouldRefresh(60000, 0, 1000, false),
+            "minutes-only desktop redraws within one minute");
+        Check(!DesktopHeartbeatGate.ShouldRefresh(999, 0, 1000, true),
+            "seconds clock does not redraw too early");
+        Check(DesktopHeartbeatGate.ShouldRefresh(1000, 0, 1000, true),
+            "seconds clock redraws after one second");
+        Check(DesktopHeartbeatGate.ShouldRefresh(100, 1000, 1000, false),
+            "monotonic counter reset does not freeze clock");
+        Check(DesktopHeartbeatGate.ShouldRefresh(10, 10, 0, false),
+            "invalid frequency allows refresh");
+        Check(!DesktopHeartbeatGate.ShouldRefresh(long.MaxValue - 1,
+            long.MaxValue - 2, 1000, false), "high timestamps do not overflow");
+        Check(!DesktopHeartbeatGate.ShouldRefresh(1000, 0,
+            long.MaxValue, false), "huge frequencies saturate safely");
+        Check(!DesktopHeartbeatGate.ShouldRefresh(10, 10, 1000, true),
+            "same tick does not refresh");
+
+        long previous = -1;
+        int refreshes = 0;
+        for (long now = 0; now <= 180000; now += 10)
+        {
+            if (!DesktopHeartbeatGate.ShouldRefresh(now, previous, 1000, false))
+                continue;
+            previous = now;
+            refreshes++;
+        }
+        Check(refreshes == 4, "minutes-only desktop gets four refreshes in three minutes");
+    }
+
     private static void Main()
     {
+        TestDesktopHeartbeat();
         Check(TaskbarTelemetryGate.ShouldPoll(0, -1, 1000), "first sample");
         Check(TaskbarTelemetryGate.ShouldPoll(123, -1, 1000), "first nonzero sample");
         Check(!TaskbarTelemetryGate.ShouldPoll(1, 0, 1000), "no per-frame sample");

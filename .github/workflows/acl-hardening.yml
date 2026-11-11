@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - 'source/Security/PermissionManager.cs'
+      - 'source/Security/UserManager.cs'
+      - 'source/Security/ShadowFileTransaction.cs'
+      - 'tests/ShadowFileTransactionSmoke/**'
       - 'ZonderqOS.csproj'
       - '.github/workflows/acl-hardening.yml'
   push:
@@ -11,6 +14,9 @@ on:
       - 'feature/acl-hardening'
     paths:
       - 'source/Security/PermissionManager.cs'
+      - 'source/Security/UserManager.cs'
+      - 'source/Security/ShadowFileTransaction.cs'
+      - 'tests/ShadowFileTransactionSmoke/**'
       - 'ZonderqOS.csproj'
       - '.github/workflows/acl-hardening.yml'
 
@@ -26,6 +32,9 @@ jobs:
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+
+      - name: Exercise staged password database transaction and recovery
+        run: dotnet run --project tests/ShadowFileTransactionSmoke/ShadowFileTransactionSmoke.csproj --configuration Release
 
       - name: Compile x64
         run: |

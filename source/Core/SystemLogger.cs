@@ -73,7 +73,7 @@ namespace ZonderqOS
                     for (int i = 0; i < count; i++)
                     {
                         int index = (start + i) % Capacity;
-                        AppendPersistentLocked(Entries[index]);
+                        AppendPersistentLocked(Format(Entries[index]) + "\n");
                     }
 
                     initialized = true;
@@ -119,8 +119,11 @@ namespace ZonderqOS
 
                     if (initialized)
                     {
-                        RotateIfNeededLocked(entry);
-                        AppendPersistentLocked(entry);
+                        // Format only once per persistent record. This path
+                        // can run even with no user applications open.
+                        string persistedLine = Format(entry) + "\n";
+                        RotateIfNeededLocked(persistedLine);
+                        AppendPersistentLocked(persistedLine);
                     }
                 }
             }
@@ -182,44 +185,37 @@ namespace ZonderqOS
             return success;
         }
 
-        private static void RotateIfNeededLocked(SystemLogEntry nextEntry)
+        private static void RotateIfNeededLocked(string persistedLine)
         {
             try
             {
                 if (!File.Exists(LogPath))
                     return;
 
-                long estimated = new FileInfo(LogPath).Length + Format(nextEntry).Length + 1;
-                if (estimated > MaxLogBytes)
+                long existingBytes = new FileInfo(LogPath).Length;
+                if (SystemLogStoragePolicy.ShouldRotate(existingBytes, persistedLine, MaxLogBytes))
                     File.WriteAllText(LogPath, "[SYSTEM] Log rotated after reaching size limit.\n");
             }
             catch { }
         }
 
-        private static void AppendPersistentLocked(SystemLogEntry entry)
+        private static void AppendPersistentLocked(string persistedLine)
         {
             try
             {
-                File.AppendAllText(LogPath, Format(entry) + "\n");
+                File.AppendAllText(LogPath, persistedLine);
             }
             catch { }
         }
 
         private static string NormalizeSource(string source)
         {
-            if (string.IsNullOrWhiteSpace(source))
-                return "SYS";
-
-            source = source.Trim().ToUpperInvariant();
-            return source.Length <= 16 ? source : source.Substring(0, 16);
+            return SystemLogStoragePolicy.NormalizeSource(source);
         }
 
         private static string NormalizeMessage(string message)
         {
-            if (string.IsNullOrEmpty(message))
-                return string.Empty;
-
-            return message.Replace('\r', ' ').Replace('\n', ' ');
+            return SystemLogStoragePolicy.BoundMessage(message);
         }
 
         private static string LevelName(SystemLogLevel level)

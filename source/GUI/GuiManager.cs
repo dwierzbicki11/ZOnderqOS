@@ -47,6 +47,7 @@ namespace ZonderqOS.GUI
         private long lastShortcutClickTimestamp;
         private int lastShortcutClickX, lastShortcutClickY;
         private int frameCounter;
+        private long lastDesktopHeartbeatTicks = -1;
 
         private const int TaskbarHeight = 44;
         // Bound input dispatch per GUI iteration. An autorepeating key or a
@@ -567,9 +568,18 @@ namespace ZonderqOS.GUI
                         : global::ZonderqOS.SystemSettings.IdleHeartbeatFrames;
                     if (heartbeatFrames < 1)
                         heartbeatFrames = 1;
-                    bool heartbeat = frameCounter % heartbeatFrames == 0;
+
+                    // Bound idle clock staleness using monotonic time instead
+                    // of assuming a fixed GUI loop FPS. Existing performance
+                    // profiles may still request a more frequent redraw.
+                    long heartbeatNow = Stopwatch.GetTimestamp();
+                    bool clockDue = DesktopHeartbeatGate.ShouldRefresh(
+                        heartbeatNow, lastDesktopHeartbeatTicks, Stopwatch.Frequency,
+                        global::ZonderqOS.SystemSettings.ShowClockSeconds);
+                    bool heartbeat = frameCounter % heartbeatFrames == 0 || clockDue;
                     if (heartbeat)
                     {
+                        lastDesktopHeartbeatTicks = heartbeatNow;
                         global::ZonderqOS.SystemCore.Updates.UpdateManager.PollBackground();
                         bool pendingUpd = global::ZonderqOS.SystemCore.Updates.UpdateManager.Status == global::ZonderqOS.SystemCore.Updates.UpdateStatus.Available;
                         if (startMenu != null) startMenu.HasPendingUpdate = pendingUpd;

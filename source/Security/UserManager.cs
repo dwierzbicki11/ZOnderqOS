@@ -8,6 +8,8 @@ namespace ZonderqOS
         private const string CredentialVersion = "v2";
         private static readonly string PasswdPath = @"/etc/passwd";
         private static readonly string ShadowPath = @"/etc/shadow";
+        private const string AccountProvisionedMarker = "/etc/.zonderq-accounts-initialized";
+        private static readonly object ShadowMutationLock = new object();
 
         public static void Initialize()
         {
@@ -16,13 +18,46 @@ namespace ZonderqOS
                 if (!Directory.Exists("/etc"))
                     Directory.CreateDirectory("/etc");
 
-                // Never overwrite an existing account database just because its companion
-                // file is missing. Each database is initialized independently.
-                if (!File.Exists(PasswdPath))
-                    File.WriteAllText(PasswdPath, "root:x:0:/root\n");
+                // Restore a previous complete shadow file if the OS was
+                // powered off between the .bak rename and the commit.
+                ShadowFileTransaction.RecoverMissingPrimary(PasswdPath);
+                ShadowFileTransaction.RecoverMissingPrimary(ShadowPath);
 
-                if (!File.Exists(ShadowPath))
-                    File.WriteAllText(ShadowPath, "root:" + BuildCredential("root") + "\n");
+                bool hasPasswd = File.Exists(PasswdPath);
+                bool hasShadow = File.Exists(ShadowPath);
+                bool interruptedWrite =
+                    File.Exists(PasswdPath + ".new") ||
+                    File.Exists(PasswdPath + ".bak") ||
+                    File.Exists(ShadowPath + ".new") ||
+                    File.Exists(ShadowPath + ".bak");
+                bool hasProvisioningMarker = File.Exists(AccountProvisionedMarker);
+
+                if (hasPasswd != hasShadow ||
+                    (!hasPasswd &&
+                     !AccountFileTransaction.IsFreshAccountStorage(
+                         hasPasswd, hasShadow, hasProvisioningMarker, interruptedWrite)))
+                {
+                    // Keep accounts fail-closed if either database is missing.
+                    // Once provisioned, missing both files is never treated as
+                    // a brand-new install with a known factory root password.
+                    WriteMessage.WriteError(
+                        "Account database missing; recover from backup instead of resetting root.", "AUTH");
+                    return;
+                }
+
+                if (!hasPasswd)
+                {
+                    string credential = BuildCredential("root");
+                    if (string.IsNullOrEmpty(credential))
+                        return;
+                    File.WriteAllText(PasswdPath, "root:x:0:/root\n");
+                    File.WriteAllText(ShadowPath, "root:" + credential + "\n");
+                }
+
+                // Existing installations are enrolled on their first boot
+                // with this build. Never rewrite the marker once present.
+                if (!File.Exists(AccountProvisionedMarker))
+                    File.WriteAllText(AccountProvisionedMarker, "initialized=1\n");
             }
             catch (Exception ex)
             {
@@ -117,8 +152,13 @@ namespace ZonderqOS
 
             try
             {
-                if (!File.Exists(ShadowPath))
-                    return false;
+                // Serialize authentication with credential replacement: a
+                // successful password change briefly moves shadow to .bak.
+                // Logins must not race that rename and report false failures.
+                lock (ShadowMutationLock)
+                {
+                    if (!File.Exists(ShadowPath))
+                        return false;
 
                 string[] lines = File.ReadAllLines(ShadowPath);
                 for (int i = 0; i < lines.Length; i++)
@@ -140,6 +180,7 @@ namespace ZonderqOS
                     if (legacy)
                         TryUpgradeLegacyCredential(username, password);
                     return true;
+                }
                 }
             }
             catch (Exception ex)
@@ -256,36 +297,46 @@ namespace ZonderqOS
 
             try
             {
-                if (UserExists(username))
-                    return false;
-
-                int uid = FindNextUid();
-                if (uid < 1000)
-                    return false;
-
                 string homeDir = "/home/" + username;
                 string credential = BuildCredential(password);
                 if (string.IsNullOrEmpty(credential))
                     return false;
 
-                string oldPasswd = File.Exists(PasswdPath) ? File.ReadAllText(PasswdPath) : string.Empty;
-                string oldShadow = File.Exists(ShadowPath) ? File.ReadAllText(ShadowPath) : string.Empty;
-                string passwdEntry = username + ":x:" + uid + ":" + homeDir + "\n";
-                string shadowEntry = username + ":" + credential + "\n";
+                string shadowEntry = username + ":" + credential;
 
-                try
+                // Serialize UID allocation and both database changes.
+                // Shadow is committed before passwd: after a power loss an
+                // unfinished account cannot start a login session.
+                lock (ShadowMutationLock)
                 {
-                    File.WriteAllText(PasswdPath, AppendLine(oldPasswd, passwdEntry));
-                    File.WriteAllText(ShadowPath, AppendLine(oldShadow, shadowEntry));
-                }
-                catch
-                {
-                    // Best-effort rollback keeps the two account databases synchronized if
-                    // the second write fails. A sudden power loss still cannot be made fully
-                    // atomic on FAT, but normal IO failures no longer leave a half-account.
-                    try { File.WriteAllText(PasswdPath, oldPasswd); } catch { }
-                    try { File.WriteAllText(ShadowPath, oldShadow); } catch { }
-                    throw;
+                    if (!File.Exists(PasswdPath) || !File.Exists(ShadowPath))
+                        return false;
+
+                    int uid = FindNextUid();
+                    if (uid < 1000)
+                        return false;
+
+                    string passwdEntry = username + ":x:" + uid + ":" + homeDir;
+                    try
+                    {
+                        AccountFileTransaction.AppendAccount(
+                            PasswdPath, ShadowPath, username, passwdEntry, shadowEntry,
+                            (path, mode) => PermissionManager.SetPermission(path, "root", mode));
+
+                        PermissionManager.SetPermission(ShadowPath, "root", 600);
+                        PermissionManager.SetPermission(PasswdPath, "root", 644);
+                    }
+                    finally
+                    {
+                        // Remove stale temporary ACL entries regardless of
+                        // whether the transaction succeeded or failed.
+                        PermissionManager.RemovePermission(ShadowPath + ".new");
+                        PermissionManager.RemovePermission(PasswdPath + ".new");
+                        if (!File.Exists(ShadowPath + ".bak"))
+                            PermissionManager.RemovePermission(ShadowPath + ".bak");
+                        if (!File.Exists(PasswdPath + ".bak"))
+                            PermissionManager.RemovePermission(PasswdPath + ".bak");
+                    }
                 }
 
                 if (!Directory.Exists(homeDir))
@@ -435,31 +486,47 @@ namespace ZonderqOS
 
         private static bool ReplaceShadowCredential(string username, string credential)
         {
-            if (!File.Exists(ShadowPath))
-                return false;
-
-            string[] lines = File.ReadAllLines(ShadowPath);
-            int entryIndex = -1;
-            for (int i = 0; i < lines.Length; i++)
+            lock (ShadowMutationLock)
             {
-                string line = lines[i];
-                int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
-                if (separator <= 0)
-                    continue;
+                if (!File.Exists(ShadowPath))
+                    return false;
 
-                if (line.Substring(0, separator) == username)
+                string[] lines = File.ReadAllLines(ShadowPath);
+                int entryIndex = -1;
+                for (int i = 0; i < lines.Length; i++)
                 {
-                    entryIndex = i;
-                    break;
+                    string line = lines[i];
+                    int separator = string.IsNullOrEmpty(line) ? -1 : line.IndexOf(':');
+                    if (separator <= 0)
+                        continue;
+
+                    if (line.Substring(0, separator) == username)
+                    {
+                        entryIndex = i;
+                        break;
+                    }
+                }
+
+                if (entryIndex < 0)
+                    return false;
+
+                lines[entryIndex] = username + ":" + credential;
+                try
+                {
+                    ShadowFileTransaction.Replace(ShadowPath, lines,
+                        path => PermissionManager.SetPermission(path, "root", 600));
+                    PermissionManager.SetPermission(ShadowPath, "root", 600);
+                    return true;
+                }
+                finally
+                {
+                    // The committed /etc/shadow path keeps its root-only ACL.
+                    // Staging and backup ACL records must not accumulate.
+                    PermissionManager.RemovePermission(ShadowPath + ".new");
+                    if (!File.Exists(ShadowPath + ".bak"))
+                        PermissionManager.RemovePermission(ShadowPath + ".bak");
                 }
             }
-
-            if (entryIndex < 0)
-                return false;
-
-            lines[entryIndex] = username + ":" + credential;
-            File.WriteAllLines(ShadowPath, lines);
-            return true;
         }
 
         private static string AppendLine(string existing, string entry)

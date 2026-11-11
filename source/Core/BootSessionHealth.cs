@@ -88,18 +88,46 @@ namespace ZonderqOS.SystemCore
             PreviousExitReason = "unknown";
             PreviousTimestamp = "unknown";
 
-            if (!File.Exists(StatePath))
+            bool hasPrimary = File.Exists(StatePath);
+            bool hasBackup = File.Exists(BackupPath);
+            if (!hasPrimary && !hasBackup)
                 return;
 
-            FileInfo info = new FileInfo(StatePath);
-            if (info.Length < 0 || info.Length > 4096)
-                throw new InvalidDataException("boot-session marker size is invalid");
+            // Crash recovery: a partial/invalid primary marker must not hide
+            // a valid backup left by the interrupted file rotation.
+            if (hasPrimary)
+            {
+                try
+                {
+                    if (TryReadPreviousStateFile(StatePath))
+                        return;
+                }
+                catch (Exception)
+                {
+                    if (!hasBackup)
+                        throw;
+                }
+            }
+
+            if (hasBackup && TryReadPreviousStateFile(BackupPath))
+                return;
+
+            // No valid marker was found. Keep this visible to the boot log
+            // instead of silently claiming there was no previous session.
+            throw new InvalidDataException("boot-session marker and backup are invalid");
+        }
+
+        private static bool TryReadPreviousStateFile(string path)
+        {
+            FileInfo info = new FileInfo(path);
+            if (info.Length <= 0 || info.Length > 4096)
+                return false;
 
             string state = null;
             string reason = null;
             string time = null;
 
-            using (StreamReader reader = new StreamReader(StatePath))
+            using (StreamReader reader = new StreamReader(path))
             {
                 string line;
                 int lines = 0;
@@ -122,13 +150,15 @@ namespace ZonderqOS.SystemCore
                 }
             }
 
-            if (string.IsNullOrEmpty(state))
-                return;
+            if (!string.Equals(state, "running", StringComparison.Ordinal) &&
+                !string.Equals(state, "clean", StringComparison.Ordinal))
+                return false;
 
             HasPreviousSession = true;
             PreviousSessionWasClean = string.Equals(state, "clean", StringComparison.Ordinal);
             PreviousExitReason = string.IsNullOrEmpty(reason) ? "unknown" : Safe(reason);
             PreviousTimestamp = string.IsNullOrEmpty(time) ? "unknown" : Safe(time);
+            return true;
         }
 
         private static bool TryWriteState(string state, string reason, string timestamp)
@@ -152,11 +182,15 @@ namespace ZonderqOS.SystemCore
                 File.WriteAllText(TempPath, content);
                 PermissionManager.SetPermission(TempPath, "root", 600);
 
-                if (File.Exists(BackupPath))
-                    File.Delete(BackupPath);
-
+                // Preserve an existing backup when the primary marker is
+                // absent (interrupted previous rename). Only replace it when
+                // a valid primary exists to rotate into its place.
                 if (File.Exists(StatePath))
+                {
+                    if (File.Exists(BackupPath))
+                        File.Delete(BackupPath);
                     File.Move(StatePath, BackupPath);
+                }
 
                 try
                 {
@@ -268,21 +302,10 @@ namespace ZonderqOS.SystemCore
             }
             catch { }
 
-            // 2. Direct hardware port power-off signals (QEMU, Bochs, VirtualBox, and common ACPI PM1a)
-            try
-            {
-                // QEMU / KVM ACPI shutdown port
-                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x604, 0x2000);
-                // Bochs ACPI port
-                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0xB004, 0x2000);
-                // VirtualBox poweroff port
-                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x4004, 0x3400);
-                // Common Intel PCH ACPI PM1a control ports
-                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x1804, 0x3C00);
-                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x0404, 0x3400);
-                ZonderqOS.Platform.X64.X64PortIo.WriteWord(0x0804, 0x2000);
-            }
-            catch { }
+            // 2. Architecture-specific firmware shutdown attempt. x86_64
+            // uses PC emulator / ACPI ports; ARM64 must never reference them.
+            // If unsupported, the existing safe halt loop remains active.
+            ZonderqOS.Platform.PlatformPower.TryShutdownViaFirmware();
 
             // 3. Fallback text console screen if no GUI was registered
             if (OnBeforeShutdown == null)
