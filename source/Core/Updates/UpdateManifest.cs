@@ -32,6 +32,8 @@ namespace ZonderqOS.SystemCore.Updates
 
         public string PayloadDirectory { get; set; } = "payload";
         public string Signature { get; set; } = string.Empty;
+        public int UpdateFormat { get; set; } = 1;
+        public string SignatureAlgorithm { get; set; } = string.Empty;
 
         public int TargetTheme { get; set; } = 0;
         public string TargetThemeName { get; set; } = "COSMOS BLUE";
@@ -135,6 +137,17 @@ namespace ZonderqOS.SystemCore.Updates
 
                 switch (key)
                 {
+                    case "UPDATE_FORMAT":
+                        if (!int.TryParse(val, out int format) || format != 2)
+                        {
+                            error = "Nieobslugiwany format manifestu.";
+                            return false;
+                        }
+                        parsed.UpdateFormat = format;
+                        break;
+                    case "SIGNATURE_ALG":
+                        parsed.SignatureAlgorithm = val;
+                        break;
                     case "VERSION":
                         parsed.Version = val;
                         hasVersion = true;
@@ -234,6 +247,16 @@ namespace ZonderqOS.SystemCore.Updates
                 error = "Manifest nie zawiera wymaganego pola 'VERSION'.";
                 return false;
             }
+            // Detached signatures cover the EXACT original manifest bytes.
+            // HMAC fields are forbidden in the new asymmetric format.
+            if (parsed.UpdateFormat == 2 &&
+                (!string.Equals(parsed.SignatureAlgorithm, "ED25519", StringComparison.Ordinal) ||
+                 !string.IsNullOrEmpty(parsed.Signature)))
+            {
+                error = "Format 2 wymaga SIGNATURE_ALG=ED25519 i pliku .sig zamiast HMAC.";
+                return false;
+            }
+
 
             if (!IsSafeRelativePath(parsed.KernelImage) ||
                 !IsSafeRelativePath(parsed.PayloadDirectory) ||
@@ -279,6 +302,11 @@ namespace ZonderqOS.SystemCore.Updates
         {
             var sb = new System.Text.StringBuilder();
             sb.AppendLine("# ZonderqOS Verified Update Package Manifest");
+            if (UpdateFormat == 2)
+            {
+                sb.AppendLine("UPDATE_FORMAT=2");
+                sb.AppendLine("SIGNATURE_ALG=ED25519");
+            }
             sb.AppendLine("VERSION=" + Version);
             sb.AppendLine("BUILD=" + BuildNumber);
             sb.AppendLine("ARCH=" + Architecture);
