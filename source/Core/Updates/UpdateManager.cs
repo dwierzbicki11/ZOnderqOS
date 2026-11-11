@@ -900,6 +900,17 @@ namespace ZonderqOS.SystemCore.Updates
                 return false;
             }
 
+            // Never replace the only trusted recovery snapshot while an
+            // earlier new kernel is still awaiting boot-health confirmation.
+            // This runs before case 1 deletes any old backup directory.
+            if (step >= 0 && step <= 4 &&
+                !string.IsNullOrEmpty(BootSlotManager.PendingSlot))
+            {
+                error = "Poprzednia aktualizacja A/B nadal oczekuje na potwierdzenie rozruchu; migawka rollback jest chroniona.";
+                Status = UpdateStatus.Error;
+                return false;
+            }
+
             try
             {
                 switch (step)
