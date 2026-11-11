@@ -40,7 +40,6 @@ def validate(serial: str) -> str:
     samples = {}
     phases = []
     boot_count = 0
-    terminated = False
     for line in serial.replace("\r\n", "\n").split("\n"):
         # Require a single boot in the complete evidence stream. Reject faults
         # even before the baseline or after the final sample.
@@ -60,12 +59,10 @@ def validate(serial: str) -> str:
             line,
         ):
             raise ValueError("guest fault in ISR evidence log")
-        if re.match(r"^(?:\[[^\]\r\n]+\] ?)?qemu-system-[^:\r\n]+: terminating on signal ", line):
-            terminated = True
+        # Termination anywhere in the capture (including after the final\n        # counter sample) invalidates the evidence; a stopped guest cannot\n        # establish the required post-sample runtime stability.\n        if re.match(r"^(?:\[[^\]\r\n]+\] ?)?qemu-system-[^:\r\n]+: terminating on signal ", line):
+            raise ValueError("QEMU termination in guest ISR evidence")
         if "[NET3095-ISR]" not in line:
             continue
-        if terminated:
-            raise ValueError("guest ISR sample after QEMU termination")
         match = MARKER.fullmatch(line)
         if match is None:
             raise ValueError("malformed guest ISR sample")
@@ -162,6 +159,8 @@ def self_test() -> None:
         good.replace("[NET3095-ISR] phase=before", "qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n[NET3095-ISR] phase=before"),
         good.replace("[NET3095-ISR] phase=after", "[2026-11-08T15:34:10+01:00] qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n[NET3095-ISR] phase=after"),
         good.replace("[NET3095-N1] BOOT\n", "[NET3095-N6][FAIL] TCP reset\n[NET3095-N1] BOOT\n"),
+        good + "qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n",
+        good + "[2026-11-08T15:34:10+01:00] qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n",
     )
     for item in bad:
         try:
