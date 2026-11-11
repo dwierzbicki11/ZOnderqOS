@@ -22,7 +22,8 @@ concurrency:
 
 jobs:
   compile-and-policy:
-    runs-on: ubuntu-latest
+    # Pin binutils until Ubuntu 26.04 objcopy ELF regression is resolved.
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
