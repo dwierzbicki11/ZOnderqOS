@@ -1,12 +1,9 @@
 name: ZonderqOS Gen3 Alpha USB — verified candidate ISO
 
-# Branch-local, single candidate. The first commit introducing this workflow
-# triggers exactly one build. workflow_dispatch becomes usable from Actions
-# once this workflow exists on the repository default branch.
+# PR-local pinned candidate: only changes to this workflow start a build.
+# The workflow can also be dispatched manually once it exists on default.
 on:
-  push:
-    branches:
-      - fix/p0-update-trust-gate
+  pull_request:
     paths:
       - '.github/workflows/alpha-usb-candidate.yml'
   workflow_dispatch:
