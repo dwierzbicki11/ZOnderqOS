@@ -18,7 +18,6 @@ namespace ZonderqOS.SystemCore.Updates
     public sealed class UpdateManifest
     {
         public const string ExpectedArchitecture = "x86_64";
-        public const string DefaultSignerKey = "ZONDERQ_OFFICIAL_RELEASE_KEY_GEN3";
 
         public string Version { get; set; } = "1.0.0";
         public int BuildNumber { get; set; } = 3100;
@@ -276,27 +275,9 @@ namespace ZonderqOS.SystemCore.Updates
             return true;
         }
 
-        /// <summary>
-        /// Produces canonical data representation for cryptographic signature calculation.
-        /// </summary>
-        public string GetSignaturePayload()
-        {
-            return $"{Version}|{BuildNumber}|{Architecture}|{KernelImage}|{KernelSha256}|{Title}";
-        }
-
-        public bool VerifySignature(string secretKey)
-        {
-            if (string.IsNullOrEmpty(Signature))
-                return false;
-
-            string expected = Crypto.ComputeHmacSha256(secretKey, GetSignaturePayload());
-            return Crypto.FixedTimeEquals(Signature.ToLowerInvariant(), expected.ToLowerInvariant());
-        }
-
-        public void Sign(string secretKey)
-        {
-            Signature = Crypto.ComputeHmacSha256(secretKey, GetSignaturePayload());
-        }
+        // The previous public-in-binary HMAC release key and truncated
+        // signature payload have been removed. Format 2 authenticates the
+        // exact raw manifest bytes with a detached Ed25519 signature.
 
         public string Serialize()
         {
