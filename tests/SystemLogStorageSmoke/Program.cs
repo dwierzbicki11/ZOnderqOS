@@ -57,7 +57,7 @@ internal static class Program
             "null source uses a safe label");
         Check(SystemLogStoragePolicy.NormalizeSource("  gui  ") == "GUI",
             "ordinary source is normalized");
-        Check(SystemLogStoragePolicy.NormalizeSource("net]\\n[CRITICAL") == "NET__ _CRITICAL",
+        Check(SystemLogStoragePolicy.NormalizeSource("net]\\n[CRITICAL") == "NET___CRITICAL",
             "source cannot inject log delimiters or newlines");
         Check(SystemLogStoragePolicy.NormalizeSource("A\\tB\\rC") == "A_B_C",
             "source controls are sanitized");
