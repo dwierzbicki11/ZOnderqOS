@@ -161,8 +161,8 @@ static EFI_STATUS open_state(EFI_FILE_HANDLE *result, EFI_FILE_HANDLE *selected_
 static int slot_has_valid_elf(EFI_FILE_HANDLE root, char slot) {
     if (root == NULL || (slot != 'A' && slot != 'B')) return 0;
     CHAR16 *path = slot == 'A'
-        ? L"\\\\boot\\\\slot_a\\\\ZonderqOS.elf"
-        : L"\\\\boot\\\\slot_b\\\\ZonderqOS.elf";
+        ? L"\\boot\\slot_a\\ZonderqOS.elf"
+        : L"\\boot\\slot_b\\ZonderqOS.elf";
     EFI_FILE_HANDLE file = NULL;
     EFI_STATUS status = uefi_call_wrapper(root->Open, 5, root, &file,
                                           path, EFI_FILE_MODE_READ, 0);
