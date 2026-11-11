@@ -115,6 +115,7 @@ static EFI_STATUS open_state(EFI_FILE_HANDLE *result, EFI_FILE_HANDLE *selected_
     *result = NULL;
     *selected_root = NULL;
     UINTN found = 0;
+    UINTN labelled = 0;
     for (UINTN i = 0; i < count; i++) {
         EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *fs = NULL;
         EFI_FILE_HANDLE root = NULL, file = NULL;
@@ -124,6 +125,7 @@ static EFI_STATUS open_state(EFI_FILE_HANDLE *result, EFI_FILE_HANDLE *selected_
         status = uefi_call_wrapper(fs->OpenVolume, 2, fs, &root);
         if (EFI_ERROR(status) || root == NULL) continue;
         if (is_labelled_volume(root)) {
+            labelled++;
             status = uefi_call_wrapper(root->Open, 5, root, &file,
                     BOOT_STATE_PATH, EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE, 0);
             if (!EFI_ERROR(status) && file != NULL) {
@@ -141,7 +143,9 @@ static EFI_STATUS open_state(EFI_FILE_HANDLE *result, EFI_FILE_HANDLE *selected_
             uefi_call_wrapper(root->Close, 1, root);
     }
     uefi_call_wrapper(BS->FreePool, 1, volumes);
-    if (found != 1) {
+    // A duplicate FAT label is ambiguous even if only one copy has a
+    // boot_state.cfg. Limine fslabel() may choose the other volume.
+    if (found != 1 || labelled != 1) {
         if (*result != NULL) {
             uefi_call_wrapper((*result)->Close, 1, *result);
             *result = NULL;
@@ -150,7 +154,7 @@ static EFI_STATUS open_state(EFI_FILE_HANDLE *result, EFI_FILE_HANDLE *selected_
             uefi_call_wrapper((*selected_root)->Close, 1, *selected_root);
             *selected_root = NULL;
         }
-        return EFI_NOT_FOUND;
+        return labelled > 1 ? EFI_SECURITY_VIOLATION : EFI_NOT_FOUND;
     }
     return EFI_SUCCESS;
 }
@@ -295,8 +299,15 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *system_table) {
             Print(L"BootGuard: invalid state; Limine safe default\r\n");
         uefi_call_wrapper(file->Close, 1, file);
         uefi_call_wrapper(volume_root->Close, 1, volume_root);
-    } else
+    } else {
+        if (status == EFI_SECURITY_VIOLATION) {
+            // Never launch a bootloader that resolves fslabel(ZONDERQDATA)
+            // ambiguously. Return to the firmware's own recovery choices.
+            Print(L"BootGuard: duplicate ZONDERQDATA labels; refusing chainload\r\n");
+            return EFI_SECURITY_VIOLATION;
+        }
         Print(L"BootGuard: no unique armed ZONDERQDATA; Limine default\r\n");
+    }
 
     status = chainload_limine(image);
     Print(L"BootGuard: LIMINE.EFI exited, status=%r\r\n", status);
