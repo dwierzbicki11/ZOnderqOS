@@ -51,6 +51,24 @@ class UpdateTrustGateTests(unittest.TestCase):
         self.assertIn("HasValidX64ElfHeader(candidate)", activation)
         self.assertIn('Path.Combine(Path.GetDirectoryName(kernelPath), "kernel.sha256")', activation)
 
+    def test_slot_activation_restores_state_on_write_failure(self):
+        boot = (ROOT / "source/Core/Updates/BootSlotManager.cs").read_text(encoding="utf-8")
+        activate = boot.split("public static bool ActivateSlot(", 1)[1].split(
+            "public static bool ManualRollback(", 1)[0]
+        self.assertIn("string previousActive = ActiveSlot;", activate)
+        self.assertIn("string previousFallback = FallbackSlot;", activate)
+        self.assertIn("ActiveSlot = previousActive;", activate)
+        self.assertIn("FallbackSlot = previousFallback;", activate)
+        self.assertIn("SyncLimineConfig();\n                        SaveBootState();", activate)
+        self.assertIn("NIE UDALO SIE ODTWORZYC KONFIGURACJI ROZRUCHU", activate)
+
+    def test_backup_cleanup_does_not_rollback_committed_kernel(self):
+        boot = (ROOT / "source/Core/Updates/BootSlotManager.cs").read_text(encoding="utf-8")
+        stage = boot.split("public static bool StageKernelToInactiveSlot(", 1)[1].split(
+            "public static bool ActivateSlot(", 1)[0]
+        self.assertIn('try { File.Delete(backupPath); }', stage)
+        self.assertIn('Old inactive kernel backup retained:', stage)
+
     def test_explicit_trust_requirement(self):
         self.assertIn("podpis asymetryczny calego manifestu", SOURCE)
         self.assertIn("weryfikacja wszystkich plikow", SOURCE)
