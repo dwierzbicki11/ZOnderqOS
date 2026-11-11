@@ -18,6 +18,7 @@ namespace UpdateEngineSmoke
             TestSemverComparison();
             TestBootSlotManagerLifecycleAndFailover();
             TestElfStructureValidation();
+            TestPackageIntegrityRejectsUndeclaredPayload();
 
             Console.WriteLine("[UPDATE-TEST] ALL REGRESSION TESTS PASSED SUCCESSFULLY! [PASS]");
             return 0;
@@ -160,6 +161,60 @@ namespace UpdateEngineSmoke
             Assert(!UpdateManager.IsNewerVersion("1.0.0", 3100, "1.0.0", "3100"), "Same version and build should not be newer");
             Assert(!UpdateManager.IsNewerVersion("1.0.0", 3099, "1.0.0", "3100"), "Older build should not be newer");
             Assert(!UpdateManager.IsNewerVersion("0.9.9", 3200, "1.0.0", "3100"), "Older semver should not be newer regardless of build");
+        }
+
+        private static void TestPackageIntegrityRejectsUndeclaredPayload()
+        {
+            Console.WriteLine("  -> Testing complete payload inventory verification...");
+            string temp = Path.Combine(Path.GetTempPath(), "zonderq_payload_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(temp);
+                string kernel = Path.Combine(temp, "ZonderqOS.elf");
+                byte[] elf = { 1, 2, 3, 4, 5, 6 };
+                File.WriteAllBytes(kernel, elf);
+                string payload = Path.Combine(temp, "payload");
+                string appDir = Path.Combine(payload, "system", "bin");
+                Directory.CreateDirectory(appDir);
+                string app = Path.Combine(appDir, "hello");
+                byte[] data = { 10, 11, 12, 13 };
+                File.WriteAllBytes(app, data);
+                var package = new UpdatePackageInfo
+                {
+                    KernelImagePath = kernel,
+                    KernelSha256 = Crypto.ComputeSha256(elf),
+                    PayloadPath = payload
+                };
+                package.Files.Add(new UpdateFileEntry
+                {
+                    RelativePath = "system/bin/hello",
+                    ExpectedSha256 = Crypto.ComputeSha256(data),
+                    SizeBytes = data.Length
+                });
+                Assert(UpdateManager.VerifyPackageIntegrity(package, null, out string okError),
+                    "valid declared payload must pass integrity verification: " + okError);
+                string extra = Path.Combine(appDir, "extra");
+                File.WriteAllText(extra, "undeclared");
+                Assert(!UpdateManager.VerifyPackageIntegrity(package, null, out _),
+                    "undeclared file in payload must fail");
+                File.Delete(extra);
+
+                package.Files[0].RelativePath = "../escape";
+                Assert(!UpdateManager.VerifyPackageIntegrity(package, null, out _),
+                    "traversal path must fail");
+                package.Files[0].RelativePath = "system/bin/hello";
+                package.Files[0].SizeBytes = data.Length + 100;
+                Assert(!UpdateManager.VerifyPackageIntegrity(package, null, out _),
+                    "wrong payload size must fail");
+                package.Files[0].SizeBytes = data.Length;
+                package.KernelSha256 = string.Empty;
+                Assert(!UpdateManager.VerifyPackageIntegrity(package, null, out _),
+                    "kernel SHA must be present");
+            }
+            finally
+            {
+                if (Directory.Exists(temp)) Directory.Delete(temp, true);
+            }
         }
 
         private static void TestElfStructureValidation()
