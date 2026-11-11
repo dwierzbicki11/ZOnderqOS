@@ -22,6 +22,11 @@ OUTPUT = pathlib.Path(__file__).resolve().parents[1] / "source/Core/Updates/Trus
 
 
 def public_key_bytes(path: pathlib.Path) -> bytes:
+    # OpenSSL can derive a public key from some private-key inputs even with
+    # -pubin. Refuse private PEMs explicitly to prevent accidental exposure.
+    key_material = path.read_bytes()
+    if b"PRIVATE KEY" in key_material or b"BEGIN PUBLIC KEY" not in key_material:
+        raise ValueError("Only an Ed25519 PUBLIC KEY PEM file is accepted")
     proc = subprocess.run(
         ["openssl", "pkey", "-pubin", "-in", str(path), "-outform", "DER"],
         check=True, capture_output=True,
