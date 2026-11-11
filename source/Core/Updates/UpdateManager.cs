@@ -659,8 +659,20 @@ namespace ZonderqOS.SystemCore.Updates
 
         public static bool ApplyUpdateStep(UpdatePackageInfo pkg, ref int step, Action<int, string> progress, out string error)
         {
-            Initialize();
-            error = string.Empty;
+            // P0 SECURITY HOLD: legacy package signatures are HMAC with a key
+            // embedded in the system image and do not authenticate the full
+            // manifest. No update is trusted until asymmetric verification of
+            // the complete manifest and every payload file is implemented.
+            // Check at EVERY step: callers can resume with step > 0, and a
+            // one-time check in step 0 would leave a writable bypass.
+            error = "Instalacja aktualizacji zablokowana: obecny format HMAC nie zapewnia autentycznosci. Wymagany podpis asymetryczny calego manifestu i weryfikacja wszystkich plikow.";
+            Status = UpdateStatus.Error;
+            try
+            {
+                SecurityLogger.LogEvent("SECURITY_ERROR", "P0 updater trust gate: rejected legacy update installation.");
+            }
+            catch { }
+            return false;
 
             if (pkg == null)
             {
