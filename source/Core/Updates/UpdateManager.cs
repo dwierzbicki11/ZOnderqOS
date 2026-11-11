@@ -940,6 +940,96 @@ namespace ZonderqOS.SystemCore.Updates
             catch { }
         }
 
+        // Stage only explicitly declared, allowlisted payload files. Root-wide
+        // recursive copying is never valid for an untrusted update archive.
+        // Preserve snapshots of pre-existing files before any destination write.
+        private static void DeployManifestFiles(UpdatePackageInfo pkg, string payloadDir, string backupRoot)
+        {
+            if (pkg == null || pkg.Files == null)
+                throw new IOException("Brak listy plikow w manifeście.");
+            if (!Directory.Exists(payloadDir))
+                throw new IOException("Nie istnieje katalog payload.");
+
+            // Preflight the entire manifest before creating files.
+            var declared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < pkg.Files.Count; i++)
+            {
+                UpdateFileEntry entry = pkg.Files[i];
+                if (entry == null || !IsAllowedUpdatePayloadPath(entry.RelativePath) ||
+                    !declared.Add(entry.RelativePath) ||
+                    !IsSafeUpdateFilePath(payloadDir, entry.RelativePath) ||
+                    !IsSafeUpdateFilePath("/", entry.RelativePath))
+                    throw new IOException("Niebezpieczny lub powtorzony plik aktualizacji.");
+                string source = Path.Combine(payloadDir, entry.RelativePath);
+                if (!File.Exists(source))
+                    throw new IOException("Brak pliku payload: " + entry.RelativePath);
+                byte[] data = File.ReadAllBytes(source);
+                if (entry.SizeBytes > 0 && data.LongLength != entry.SizeBytes)
+                    throw new IOException("Niepoprawny rozmiar payload: " + entry.RelativePath);
+                if (!Crypto.FixedTimeEquals(
+                    Crypto.ComputeSha256(data).ToLowerInvariant(),
+                    entry.ExpectedSha256.ToLowerInvariant()))
+                    throw new IOException("Bledny hash payload: " + entry.RelativePath);
+            }
+
+            // A signed list must cover every real file on disk, including files
+            // in unexpected subdirectories.
+            string[] actualFiles = Directory.GetFiles(payloadDir, "*", SearchOption.AllDirectories);
+            for (int i = 0; i < actualFiles.Length; i++)
+            {
+                string relative = actualFiles[i].Substring(payloadDir.TrimEnd('/').Length).TrimStart('/', '\\');
+                relative = relative.Replace('\\', '/');
+                if (!declared.Contains(relative) || !IsSafeUpdateFilePath(payloadDir, relative))
+                    throw new IOException("Niezadeklarowany plik w payload: " + relative);
+            }
+
+            if (!Directory.Exists(backupRoot))
+                Directory.CreateDirectory(backupRoot);
+
+            // Keep a rollback record for files absent before this transaction.
+            // It is written before any install write; a failed record is fatal.
+            var created = new List<string>();
+            for (int i = 0; i < pkg.Files.Count; i++)
+            {
+                string relative = pkg.Files[i].RelativePath;
+                string destination = Path.Combine("/", relative);
+                string backup = Path.Combine(backupRoot, relative);
+                if (!File.Exists(destination))
+                    created.Add(relative);
+                else
+                {
+                    string backupParent = Path.GetDirectoryName(backup);
+                    if (!Directory.Exists(backupParent)) Directory.CreateDirectory(backupParent);
+                    File.Copy(destination, backup, true);
+                }
+            }
+
+            string createdRecord = Path.Combine(BackupDir, "payload_created.list");
+            File.WriteAllText(createdRecord, string.Join("\n", created));
+
+            // Apply one file at a time, verifying the exact bytes copied.
+            // Exception stops activation and is returned to the UI.
+            for (int i = 0; i < pkg.Files.Count; i++)
+            {
+                UpdateFileEntry entry = pkg.Files[i];
+                string source = Path.Combine(payloadDir, entry.RelativePath);
+                string dest = Path.Combine("/", entry.RelativePath);
+                string parent = Path.GetDirectoryName(dest);
+                if (!IsSafeUpdateFilePath("/", entry.RelativePath))
+                    throw new IOException("Zmiana sciezki docelowej podczas instalacji.");
+                if (!Directory.Exists(parent)) Directory.CreateDirectory(parent);
+                string temp = dest + ".update-part";
+                if (File.Exists(temp)) File.Delete(temp);
+                File.Copy(source, temp);
+                if (!Crypto.FixedTimeEquals(
+                    Crypto.ComputeSha256(File.ReadAllBytes(temp)).ToLowerInvariant(),
+                    entry.ExpectedSha256.ToLowerInvariant()))
+                    throw new IOException("Blad weryfikacji kopii: " + entry.RelativePath);
+                if (File.Exists(dest)) File.Delete(dest);
+                File.Move(temp, dest);
+            }
+        }
+
         private static void DeployDirectory(string sourceDir, string targetDir, string backupRoot)
         {
             if (!Directory.Exists(targetDir))
