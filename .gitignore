@@ -32,3 +32,6 @@ Thumbs.db
 source/Core/Updates/TrustedReleaseKey.Provisioned.g.cs
 *.key
 *.pem
+
+# UEFI BootGuard intermediate ELF, object and EFI artifacts
+tools/bootguard/build/
