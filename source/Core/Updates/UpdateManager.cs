@@ -1269,6 +1269,8 @@ namespace ZonderqOS.SystemCore.Updates
                               "PREVIOUS_VERSION=" + CurrentVersion + "\n" +
                               "PREVIOUS_BUILD=" + CurrentBuild + "\n" +
                               "PREVIOUS_SLOT=" + BootSlotManager.ActiveSlot + "\n" +
+                              "PREVIOUS_OS_RELEASE_PRESENT=" + (File.Exists(OsReleasePath) ? "1" : "0") + "\n" +
+                              "PREVIOUS_UPDATE_CONFIG_PRESENT=" + (File.Exists(ConfigPath) ? "1" : "0") + "\n" +
                               "PREVIOUS_THEME=" + global::ZonderqOS.SystemSettings.AccentTheme + "\n" +
                               "PREVIOUS_WALLPAPER=" + global::ZonderqOS.SystemSettings.DesktopBackgroundMode + "\n";
                 File.WriteAllText(Path.Combine(BackupDir, "snapshot.meta"), meta);
@@ -1298,9 +1300,26 @@ namespace ZonderqOS.SystemCore.Updates
                 }
                 string[] metadata = File.ReadAllLines(metadataPath);
                 bool matchesFallback = false;
+                bool haveOsPresence = false, haveConfigPresence = false;
+                bool osExisted = false, configExisted = false;
                 for (int i = 0; i < metadata.Length; i++)
+                {
                     if (metadata[i] == "PREVIOUS_SLOT=" + fallbackSlot)
                         matchesFallback = true;
+                    if (metadata[i] == "PREVIOUS_OS_RELEASE_PRESENT=1")
+                    { haveOsPresence = true; osExisted = true; }
+                    else if (metadata[i] == "PREVIOUS_OS_RELEASE_PRESENT=0")
+                        haveOsPresence = true;
+                    if (metadata[i] == "PREVIOUS_UPDATE_CONFIG_PRESENT=1")
+                    { haveConfigPresence = true; configExisted = true; }
+                    else if (metadata[i] == "PREVIOUS_UPDATE_CONFIG_PRESENT=0")
+                        haveConfigPresence = true;
+                }
+                if (!haveOsPresence || !haveConfigPresence)
+                {
+                    error = "Migawka nie zapisala informacji o obecnosci plikow konfiguracyjnych.";
+                    return false;
+                }
                 if (!matchesFallback)
                 {
                     error = "Slot awaryjny nie zgadza sie z migawka poprzedniego systemu.";
@@ -1308,9 +1327,14 @@ namespace ZonderqOS.SystemCore.Updates
                 }
                 RestoreManifestFiles(Path.Combine(BackupDir, "payload_snapshot"));
                 string oldRelease = Path.Combine(BackupDir, "os-release.snapshot");
-                if (File.Exists(oldRelease)) File.Copy(oldRelease, OsReleasePath, true);
                 string oldConfig = Path.Combine(BackupDir, "update.cfg.snapshot");
-                if (File.Exists(oldConfig)) File.Copy(oldConfig, ConfigPath, true);
+                if ((osExisted && !File.Exists(oldRelease)) ||
+                    (configExisted && !File.Exists(oldConfig)))
+                    throw new IOException("Brak wymaganej kopii pierwotnego pliku w snapshot.");
+                if (osExisted) File.Copy(oldRelease, OsReleasePath, true);
+                else if (File.Exists(OsReleasePath)) File.Delete(OsReleasePath);
+                if (configExisted) File.Copy(oldConfig, ConfigPath, true);
+                else if (File.Exists(ConfigPath)) File.Delete(ConfigPath);
                 return true;
             }
             catch (Exception ex)
@@ -1361,12 +1385,12 @@ namespace ZonderqOS.SystemCore.Updates
 
                     case 2:
                         progress?.Invoke(75, "Przywracanie poprzedniej konfiguracji /etc/os-release...");
-                        string backupOsRel = Path.Combine(BackupDir, "os-release.snapshot");
-                        if (File.Exists(backupOsRel))
-                            File.Copy(backupOsRel, OsReleasePath, true);
-
-                        string backupPayloadDir = Path.Combine(BackupDir, "payload_snapshot");
-                        RestoreManifestFiles(backupPayloadDir);
+                        if (!RestoreSharedFilesAfterBootFailure(BootSlotManager.ActiveSlot,
+                                out error))
+                        {
+                            Status = UpdateStatus.Error;
+                            return false;
+                        }
                         IntegrityGuard.UpdateBaseline();
                         step = 3;
                         return true;
