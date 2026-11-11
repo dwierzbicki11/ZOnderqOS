@@ -53,6 +53,17 @@ internal static class Program
         Check(SystemLogStoragePolicy.BoundMessage(new string('a', 4096)).Length == 4096,
             "exact cap is unchanged");
 
+        Check(SystemLogStoragePolicy.NormalizeSource(null) == "SYS",
+            "null source uses a safe label");
+        Check(SystemLogStoragePolicy.NormalizeSource("  gui  ") == "GUI",
+            "ordinary source is normalized");
+        Check(SystemLogStoragePolicy.NormalizeSource("net]\\n[CRITICAL") == "NET__ _CRITICAL",
+            "source cannot inject log delimiters or newlines");
+        Check(SystemLogStoragePolicy.NormalizeSource("A\\tB\\rC") == "A_B_C",
+            "source controls are sanitized");
+        Check(SystemLogStoragePolicy.NormalizeSource(new string('x', 40)).Length == 16,
+            "source token is capped at sixteen characters");
+
         string audit = SecurityAuditLogPolicy.FormatLine(
             "2026-11-10 23:30:00", "WARN]\n[CRITICAL", "root]\nadmin",
             "one\ntwo\rthree");
