@@ -34,6 +34,9 @@ namespace ZonderqOS.SystemCore.Updates
         public static string FallbackSlot { get; private set; } = SlotB;
         public static string PendingSlot { get; private set; } = string.Empty;
         public static int BootAttempts { get; private set; } = 0;
+        // Enabled only after an independent EFI BootGuard has been installed
+        // and armed on the dedicated ZONDERQDATA volume.
+        public static bool PrebootGuardEnabled { get; private set; } = false;
 
         public static SlotHealth SlotAStatus { get; private set; } = SlotHealth.Healthy;
         public static SlotHealth SlotBStatus { get; private set; } = SlotHealth.Empty;
@@ -89,6 +92,7 @@ namespace ZonderqOS.SystemCore.Updates
             FallbackSlot = SlotB;
             PendingSlot = string.Empty;
             BootAttempts = 0;
+            PrebootGuardEnabled = false;
             SlotAStatus = SlotHealth.Healthy;
             SlotBStatus = SlotHealth.Empty;
             SlotAVersion = KernelBuildInfo.KernelVersion;
@@ -132,6 +136,9 @@ namespace ZonderqOS.SystemCore.Updates
                             int.TryParse(val, out int att);
                             BootAttempts = att;
                             break;
+                        case "BOOTGUARD_PREBOOT":
+                            PrebootGuardEnabled = val == "1";
+                            break;
                         case "SLOT_A_STATUS":
                             SlotAStatus = ParseHealth(val);
                             break;
@@ -171,6 +178,7 @@ namespace ZonderqOS.SystemCore.Updates
                 sb.AppendLine("FALLBACK_SLOT=" + FallbackSlot);
                 sb.AppendLine("PENDING_SLOT=" + PendingSlot);
                 sb.AppendLine("BOOT_ATTEMPTS=" + BootAttempts);
+                sb.AppendLine("BOOTGUARD_PREBOOT=" + (PrebootGuardEnabled ? "1" : "0"));
                 sb.AppendLine("MAX_BOOT_ATTEMPTS=" + MaxBootAttempts);
                 sb.AppendLine("SLOT_A_STATUS=" + SlotAStatus);
                 sb.AppendLine("SLOT_A_VERSION=" + SlotAVersion);
@@ -202,7 +210,12 @@ namespace ZonderqOS.SystemCore.Updates
         {
             if (!string.IsNullOrEmpty(PendingSlot))
             {
-                BootAttempts++;
+                // With EFI BootGuard the counter is incremented BEFORE Limine
+                // attempts to load the ELF. Do not increment it again here.
+                // Without BootGuard, retain the legacy in-kernel counter for
+                // diagnostic purposes, but disallow new slot activations.
+                if (!PrebootGuardEnabled)
+                    BootAttempts++;
                 SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT",
                     $"Proba uruchomienia slotu {PendingSlot}: {BootAttempts}/{MaxBootAttempts}");
 
@@ -458,6 +471,11 @@ namespace ZonderqOS.SystemCore.Updates
                 error = "Nie mozna ponownie aktywowac aktywnego slotu ani zmienic niepotwierdzonej aktualizacji.";
                 return false;
             }
+            if (!PrebootGuardEnabled)
+            {
+                error = "Nie ma aktywnego niezaleznego EFI BootGuard. Nie wolno wlaczyc nowego slotu.";
+                return false;
+            }
 
             // Keep a snapshot of the in-memory state. If writing Limine or
             // boot_state fails, restore values and attempt best-effort disk
@@ -583,24 +601,30 @@ namespace ZonderqOS.SystemCore.Updates
         {
             try
             {
-                int defaultEntry = (ActiveSlot == SlotB) ? 2 : 1;
+                // During probation the firmware fallback MUST remain the
+                // default, even if BootGuard or an EFI variable is lost.
+                // BootGuard requests the pending slot via one-shot UEFI variable.
+                string safeSlot = (PrebootGuardEnabled && !string.IsNullOrEmpty(PendingSlot))
+                    ? FallbackSlot : ActiveSlot;
+                int defaultEntry = safeSlot == SlotB ? 2 : 1;
 
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine("# Cosmos Gen3 / Limine v10 A/B dual-slot boot configuration.");
                 sb.AppendLine("timeout: 5");
                 sb.AppendLine("default_entry: " + defaultEntry);
+                sb.AppendLine("remember_last_entry: no");
                 sb.AppendLine();
-                sb.AppendLine("/ZonderqOS (Slot A" + (ActiveSlot == SlotA ? " - Aktywny" : "") + ")");
+                sb.AppendLine("/ZonderqOS Slot A");
                 sb.AppendLine("    protocol: limine");
                 sb.AppendLine("    resolution: 1366x768x32");
                 sb.AppendLine("    path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf");
                 sb.AppendLine();
-                sb.AppendLine("/ZonderqOS (Slot B" + (ActiveSlot == SlotB ? " - Aktywny" : "") + ")");
+                sb.AppendLine("/ZonderqOS Slot B");
                 sb.AppendLine("    protocol: limine");
                 sb.AppendLine("    resolution: 1366x768x32");
                 sb.AppendLine("    path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf");
                 sb.AppendLine();
-                sb.AppendLine("/ZonderqOS (Kopia zapasowa ISO / Ratunkowa)");
+                sb.AppendLine("/ZonderqOS Recovery ISO");
                 sb.AppendLine("    protocol: limine");
                 sb.AppendLine("    resolution: 1366x768x32");
                 sb.AppendLine("    path: boot():/boot/ZonderqOS.elf");
