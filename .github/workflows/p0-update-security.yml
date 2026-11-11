@@ -34,5 +34,7 @@ jobs:
           dotnet-version: '10.0.x'
       - name: Compile and execute UpdateEngineSmoke
         run: dotnet run --project tests/UpdateEngineSmoke/UpdateEngineSmoke.csproj --configuration Release
+      - name: Sign and verify an ephemeral Ed25519 release fixture
+        run: python3 -m unittest discover -s tests -p 'test_p0_release_signing.py' -v
       - name: Compile and exercise Window input smoke
         run: dotnet run --project tests/GuiWindowInputSmoke/GuiWindowInputSmoke.csproj --configuration Release
