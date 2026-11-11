@@ -324,6 +324,14 @@ namespace ZonderqOS.SystemCore.Updates
                 }
             }
 
+            // An unconfirmed boot must retain its fallback image. Never stage
+            // another update while A/B recovery is still pending.
+            if (!string.IsNullOrEmpty(PendingSlot))
+            {
+                error = "Nie mozna nadpisac rezerwowego slotu przed potwierdzeniem rozruchu: " + PendingSlot;
+                return false;
+            }
+
             string targetSlot = GetInactiveSlot();
             string targetPath = GetSlotKernelPath(targetSlot);
             string tempPath = targetPath + ".part";
@@ -434,6 +442,11 @@ namespace ZonderqOS.SystemCore.Updates
                 error = "Nieprawidlowy slot docelowy: " + targetSlot;
                 return false;
             }
+            if (targetSlot == ActiveSlot || !string.IsNullOrEmpty(PendingSlot))
+            {
+                error = "Nie mozna ponownie aktywowac aktywnego slotu ani zmienic niepotwierdzonej aktualizacji.";
+                return false;
+            }
 
             try
             {
@@ -441,6 +454,22 @@ namespace ZonderqOS.SystemCore.Updates
                 if (!File.Exists(kernelPath))
                 {
                     error = $"Nie mozna aktywowac slotu {targetSlot}: brak pliku kernela {kernelPath}!";
+                    return false;
+                }
+                // Activation must not proceed with a malformed, unverified slot.
+                string hashPath = Path.Combine(Path.GetDirectoryName(kernelPath), "kernel.sha256");
+                if (!File.Exists(hashPath))
+                {
+                    error = "Brak zapisanego SHA-256 docelowego slotu.";
+                    return false;
+                }
+                string expectedHash = File.ReadAllText(hashPath).Trim();
+                byte[] candidate = File.ReadAllBytes(kernelPath);
+                if (!HasValidX64ElfHeader(candidate) ||
+                    expectedHash.Length != 64 ||
+                    !Crypto.FixedTimeEquals(Crypto.ComputeSha256(candidate).ToLowerInvariant(), expectedHash.ToLowerInvariant()))
+                {
+                    error = "Niepoprawny obraz ELF lub SHA-256 docelowego slotu.";
                     return false;
                 }
 
