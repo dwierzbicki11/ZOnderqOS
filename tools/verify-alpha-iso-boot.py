@@ -74,21 +74,42 @@ def main():
     if not args.iso.is_file():
         ap.error("ISO missing")
     try:
-        paths = iso_paths(args.iso)
-        if "/boot/ZonderqOS.elf" not in paths:
-            raise ValueError("ISO is missing /boot/ZonderqOS.elf")
+        # Do not infer file existence from xorriso -find textual formatting:
+        # the ISO tool quotes names differently across versions. Extract the
+        # exact path the bootloader will consume and validate the bytes.
         locations = (
             "/boot/limine/limine.conf", "/boot/limine.conf", "/limine/limine.conf",
             "/limine.conf", "/EFI/BOOT/limine.conf"
         )
-        config = next((p for p in locations if p in paths), None)
-        if config is None:
-            raise ValueError("No Limine config in ISO")
         with tempfile.TemporaryDirectory() as directory:
-            dest = Path(directory) / "limine.conf"
-            extract(args.iso, config, dest)
+            root = Path(directory)
+            kernel = root / "candidate.elf"
+            try:
+                extract(args.iso, "/boot/ZonderqOS.elf", kernel)
+            except subprocess.CalledProcessError as exc:
+                raise ValueError(
+                    "ISO does not contain boot():/boot/ZonderqOS.elf; "
+                    "Cosmos SDK output path and Limine config must match"
+                ) from exc
+            image = kernel.read_bytes()
+            if len(image) < 64 or image[:4] != b"\\x7fELF" or image[4] != 2 or image[5] != 1:
+                raise ValueError("ISO kernel is not a nontruncated little-endian ELF64")
+            if int.from_bytes(image[18:20], "little") != 62:
+                raise ValueError("ISO kernel is not an x86_64 ELF")
+            config = None
+            for path in locations:
+                dest = root / "limine.conf"
+                try:
+                    extract(args.iso, path, dest)
+                    config = path
+                    break
+                except subprocess.CalledProcessError:
+                    if dest.exists():
+                        dest.unlink()
+            if config is None:
+                raise ValueError("No recognized Limine config in ISO")
             validate_config(dest.read_text(encoding="utf-8"))
-        print("ISO BOOT CONFIG PASS: recovery entry 3 points to embedded kernel, A/B preserved")
+        print("ISO BOOT CONFIG PASS: embedded ELF64 x86_64, entry 3 recovery, A/B preserved")
         return 0
     except (OSError, ValueError, subprocess.CalledProcessError) as exc:
         print("ISO BOOT CONFIG FAIL:", exc, file=sys.stderr)
