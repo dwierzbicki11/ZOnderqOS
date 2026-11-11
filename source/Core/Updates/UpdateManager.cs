@@ -636,17 +636,29 @@ namespace ZonderqOS.SystemCore.Updates
             pkg.ExpectedSha256 = actualKernelSha;
             progress?.Invoke(45, "Suma SHA-256 kernela prawidlowa.");
 
-            // 2. Verify payload files
+            // 2. Verify payload files and reject all undeclared additions.
+            var declaredPayloadFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string payloadBase = FindPayloadDirectory(pkg);
             if (pkg.Files != null && pkg.Files.Count > 0)
             {
-                string payloadBase = FindPayloadDirectory(pkg);
+                if (string.IsNullOrEmpty(payloadBase))
+                {
+                    error = "Brak wymaganego katalogu payload.";
+                    return false;
+                }
                 for (int i = 0; i < pkg.Files.Count; i++)
                 {
                     var fileEntry = pkg.Files[i];
+                    if (fileEntry == null)
+                    {
+                        error = "Pusty wpis FILE w pakiecie.";
+                        return false;
+                    }
                     int pct = 30 + (int)((i + 1) * 50.0 / pkg.Files.Count);
                     progress?.Invoke(pct, "Weryfikacja sumy pliku: " + fileEntry.RelativePath + "...");
 
-                    if (fileEntry == null || !UpdateManifest.IsSafeRelativePath(fileEntry.RelativePath) ||
+                    if (!declaredPayloadFiles.Add(fileEntry.RelativePath) ||
+                        !UpdateManifest.IsSafeRelativePath(fileEntry.RelativePath) ||
                         !IsAllowedUpdatePayloadPath(fileEntry.RelativePath))
                     {
                         error = "Niedozwolona lub niepoprawna sciezka w pakiecie.";
@@ -675,6 +687,22 @@ namespace ZonderqOS.SystemCore.Updates
                     if (!Crypto.FixedTimeEquals(actualFHash.ToLowerInvariant(), fileEntry.ExpectedSha256.ToLowerInvariant()))
                     {
                         error = $"Blad sumy SHA-256 dla {fileEntry.RelativePath}! Oczekiwano: {fileEntry.ExpectedSha256}, otrzymano: {actualFHash}";
+                        return false;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrEmpty(payloadBase) && Directory.Exists(payloadBase))
+            {
+                string[] physicalFiles = Directory.GetFiles(payloadBase, "*", SearchOption.AllDirectories);
+                for (int i = 0; i < physicalFiles.Length; i++)
+                {
+                    string relative = physicalFiles[i].Substring(payloadBase.TrimEnd('/').Length).TrimStart('/', '\\');
+                    relative = relative.Replace('\\', '/');
+                    if (!declaredPayloadFiles.Contains(relative) ||
+                        !IsSafeUpdateFilePath(payloadBase, relative))
+                    {
+                        error = "Pakiet zawiera niezadeklarowany lub niebezpieczny plik payload: " + relative;
                         return false;
                     }
                 }
