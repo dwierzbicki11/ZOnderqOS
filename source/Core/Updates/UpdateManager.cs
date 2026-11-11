@@ -299,6 +299,14 @@ namespace ZonderqOS.SystemCore.Updates
 
         public static bool CheckForUpdates(bool forceRefresh, out UpdatePackageInfo package, out string message)
         {
+            return CheckForUpdatesCore(forceRefresh, true, out package, out message);
+        }
+
+        // The periodic GUI background poll must never rewrite FAT32 settings.
+        // An explicit user-requested check retains the previous persistence behavior.
+        private static bool CheckForUpdatesCore(bool forceRefresh, bool persistCheckTime,
+            out UpdatePackageInfo package, out string message)
+        {
             Initialize();
             Status = UpdateStatus.Checking;
 
@@ -306,7 +314,8 @@ namespace ZonderqOS.SystemCore.Updates
             {
                 DateTime now = DateTime.Now;
                 LastCheckTime = now.ToString("yyyy-MM-dd HH:mm");
-                SaveConfig();
+                if (persistCheckTime)
+                    SaveConfig();
 
                 UpdatePackageInfo pkg = null;
                 bool fromDisk = TryLoadDiskManifest(out UpdatePackageInfo diskPkg);
@@ -405,7 +414,7 @@ namespace ZonderqOS.SystemCore.Updates
 
             UpdatePackageInfo pkg;
             string msg;
-            bool found = CheckForUpdates(false, out pkg, out msg);
+            bool found = CheckForUpdatesCore(false, false, out pkg, out msg);
 
             if (found && pkg != null)
             {
@@ -515,19 +524,21 @@ namespace ZonderqOS.SystemCore.Updates
             return info;
         }
 
+        // Reuse candidate paths across repeated background checks instead of
+        // allocating a fresh array on each scan.
+        private static readonly string[] ManifestCandidatePaths = new string[]
+        {
+            "/updates/update.manifest",
+            "/var/updates/incoming/update.manifest",
+            "/var/updates/update.manifest"
+        };
+
         public static bool TryLoadDiskManifest(out UpdatePackageInfo pkg)
         {
             pkg = null;
-            string[] candidatePaths = new string[]
+            for (int p = 0; p < ManifestCandidatePaths.Length; p++)
             {
-                "/updates/update.manifest",
-                "/var/updates/incoming/update.manifest",
-                "/var/updates/update.manifest"
-            };
-
-            for (int p = 0; p < candidatePaths.Length; p++)
-            {
-                string path = candidatePaths[p];
+                string path = ManifestCandidatePaths[p];
                 if (!File.Exists(path)) continue;
 
                 try
