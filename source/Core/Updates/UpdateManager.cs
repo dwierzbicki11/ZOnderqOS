@@ -569,12 +569,9 @@ namespace ZonderqOS.SystemCore.Updates
                             }
                             catch { }
                         }
-                        else
-                        {
-                            string altKernel = FindKernelSource(null);
-                            if (!string.IsNullOrEmpty(altKernel))
-                                info.KernelImagePath = altKernel;
-                        }
+                        // Never substitute a kernel from another USB location:
+                        // the manifest and all binaries must come from the same
+                        // update package. Missing file is a verification error.
 
                         // Determine payload directory
                         if (!string.IsNullOrEmpty(manifest.PayloadDirectory))
@@ -620,7 +617,11 @@ namespace ZonderqOS.SystemCore.Updates
             byte[] kernelBytes = File.ReadAllBytes(kernelSrc);
             string actualKernelSha = Crypto.ComputeSha256(kernelBytes);
 
-            if (!string.IsNullOrEmpty(pkg.KernelSha256))
+            if (string.IsNullOrEmpty(pkg.KernelSha256))
+            {
+                error = "Odrzucono pakiet: brak SHA-256 kernela.";
+                return false;
+            }
             {
                 if (!Crypto.FixedTimeEquals(actualKernelSha.ToLowerInvariant(), pkg.KernelSha256.ToLowerInvariant()))
                 {
@@ -648,6 +649,12 @@ namespace ZonderqOS.SystemCore.Updates
                         return false;
                     }
 
+                    long actualSize = new FileInfo(fullPath).Length;
+                    if (fileEntry.SizeBytes > 0 && actualSize != fileEntry.SizeBytes)
+                    {
+                        error = "Niezgodny rozmiar pliku payload: " + fileEntry.RelativePath;
+                        return false;
+                    }
                     byte[] fBytes = File.ReadAllBytes(fullPath);
                     string actualFHash = Crypto.ComputeSha256(fBytes);
                     if (!Crypto.FixedTimeEquals(actualFHash.ToLowerInvariant(), fileEntry.ExpectedSha256.ToLowerInvariant()))
