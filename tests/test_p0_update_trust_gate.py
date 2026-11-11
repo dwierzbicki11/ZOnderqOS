@@ -38,6 +38,19 @@ class UpdateTrustGateTests(unittest.TestCase):
         apply = SOURCE.split("public static bool ApplyUpdate(", 1)[1]
         self.assertIn("ApplyUpdateStep(", apply)
 
+    def test_pending_ab_update_cannot_overwrite_fallback(self):
+        boot = (ROOT / "source/Core/Updates/BootSlotManager.cs").read_text(encoding="utf-8")
+        staging = boot.split("public static bool StageKernelToInactiveSlot(", 1)[1].split(
+            "public static bool ActivateSlot(", 1)[0]
+        stage_guard = staging.index("if (!string.IsNullOrEmpty(PendingSlot))")
+        target_selection = staging.index("string targetSlot = GetInactiveSlot();")
+        self.assertLess(stage_guard, target_selection)
+        activation = boot.split("public static bool ActivateSlot(", 1)[1].split(
+            "public static bool ManualRollback(", 1)[0]
+        self.assertIn("targetSlot == ActiveSlot || !string.IsNullOrEmpty(PendingSlot)", activation)
+        self.assertIn("HasValidX64ElfHeader(candidate)", activation)
+        self.assertIn('Path.Combine(Path.GetDirectoryName(kernelPath), "kernel.sha256")', activation)
+
     def test_explicit_trust_requirement(self):
         self.assertIn("podpis asymetryczny calego manifestu", SOURCE)
         self.assertIn("weryfikacja wszystkich plikow", SOURCE)
