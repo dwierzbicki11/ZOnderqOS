@@ -92,7 +92,7 @@ def main():
                     "Cosmos SDK output path and Limine config must match"
                 ) from exc
             image = kernel.read_bytes()
-            if len(image) < 64 or image[:4] != b"\\x7fELF" or image[4] != 2 or image[5] != 1:
+            if len(image) < 64 or image[:4] != bytes((0x7f, 69, 76, 70)) or image[4] != 2 or image[5] != 1:
                 raise ValueError("ISO kernel is not a nontruncated little-endian ELF64")
             if int.from_bytes(image[18:20], "little") != 62:
                 raise ValueError("ISO kernel is not an x86_64 ELF")
