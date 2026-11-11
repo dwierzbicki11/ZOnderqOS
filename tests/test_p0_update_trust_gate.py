@@ -113,6 +113,22 @@ class UpdateTrustGateTests(unittest.TestCase):
         self.assertIn("PREVIOUS_OS_RELEASE_PRESENT=", SOURCE)
         self.assertIn("PREVIOUS_UPDATE_CONFIG_PRESENT=", SOURCE)
 
+    def test_unconfirmed_boot_blocks_snapshot_deletion(self):
+        update = SOURCE.split("public static bool ApplyUpdateStep(", 1)[1].split(
+            "public static bool ApplyUpdate(", 1)[0]
+        guard = update.index("if (step >= 0 && step <= 4 &&")
+        snapshot = update.index("CreateRollbackSnapshot();")
+        self.assertLess(guard, snapshot)
+        self.assertIn("!string.IsNullOrEmpty(BootSlotManager.PendingSlot)", update[guard:snapshot])
+
+    def test_complete_manifest_metadata_is_bound(self):
+        verifier = SOURCE.split("private static bool TryVerifyTrustedPackage(", 1)[1].split(
+            "public static bool ApplyUpdateStep(", 1)[0]
+        for metadata in ("ReleaseDate", "Severity", "TargetThemeName",
+                         "Changelog", "Components"):
+            self.assertIn("pkg." + metadata, verifier)
+        self.assertIn("ReleaseSignatureVerifier.VerifyProductionManifest(bytes, signature)", verifier)
+
     def test_explicit_trust_requirement(self):
         self.assertIn("ReleaseSignatureVerifier.VerifyProductionManifest(bytes, signature)", SOURCE)
         self.assertIn("parsed.UpdateFormat != 2", SOURCE)
