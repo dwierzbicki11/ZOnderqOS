@@ -17,6 +17,7 @@ namespace UpdateEngineSmoke
             TestManifestSigningAndTamperDetection();
             TestSemverComparison();
             TestBootSlotManagerLifecycleAndFailover();
+            TestElfStructureValidation();
 
             Console.WriteLine("[UPDATE-TEST] ALL REGRESSION TESTS PASSED SUCCESSFULLY! [PASS]");
             return 0;
@@ -159,6 +160,31 @@ namespace UpdateEngineSmoke
             Assert(!UpdateManager.IsNewerVersion("1.0.0", 3100, "1.0.0", "3100"), "Same version and build should not be newer");
             Assert(!UpdateManager.IsNewerVersion("1.0.0", 3099, "1.0.0", "3100"), "Older build should not be newer");
             Assert(!UpdateManager.IsNewerVersion("0.9.9", 3200, "1.0.0", "3100"), "Older semver should not be newer regardless of build");
+        }
+
+        private static void TestElfStructureValidation()
+        {
+            Console.WriteLine("  -> Testing ELF64 x86_64 header and truncated image rejection...");
+            byte[] elf = new byte[128];
+            elf[0] = 0x7f; elf[1] = (byte)'E'; elf[2] = (byte)'L'; elf[3] = (byte)'F';
+            elf[4] = 2; elf[5] = 1; elf[6] = 1;
+            elf[16] = 2; // ET_EXEC
+            elf[18] = 62; // EM_X86_64
+            elf[32] = 64; // program header offset
+            elf[54] = 56; // program header entry size
+            elf[56] = 1; // one entry
+            Assert(BootSlotManager.HasValidX64ElfHeader(elf), "valid ELF header should be accepted");
+            byte[] altered = (byte[])elf.Clone();
+            altered[0] = 0;
+            Assert(!BootSlotManager.HasValidX64ElfHeader(altered), "ELF magic required");
+            altered = (byte[])elf.Clone(); altered[4] = 1;
+            Assert(!BootSlotManager.HasValidX64ElfHeader(altered), "ELF32 must be rejected");
+            altered = (byte[])elf.Clone(); altered[18] = 183;
+            Assert(!BootSlotManager.HasValidX64ElfHeader(altered), "ARM64 ELF must be rejected");
+            altered = (byte[])elf.Clone(); altered[32] = 120;
+            Assert(!BootSlotManager.HasValidX64ElfHeader(altered), "out of range program table rejected");
+            Assert(!BootSlotManager.HasValidX64ElfHeader(new byte[] { 0x7f, 69, 76, 70 }),
+                "truncated ELF header rejected");
         }
 
         private static void TestBootSlotManagerLifecycleAndFailover()
