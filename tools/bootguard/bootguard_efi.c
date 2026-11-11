@@ -14,6 +14,7 @@
 #include <efi.h>
 #include <efilib.h>
 #include "bootguard_policy.h"
+#include "bootguard_elf.h"
 
 #define BOOT_STATE_PATH L"\\boot\\boot_state.cfg"
 #define LIMINE_EFI_PATH L"\\EFI\\BOOT\\LIMINE.EFI"
@@ -100,7 +101,10 @@ static int is_labelled_volume(EFI_FILE_HANDLE root) {
     return StrCmp(fs->VolumeLabel, L"ZONDERQDATA") == 0;
 }
 
-static EFI_STATUS open_state(EFI_FILE_HANDLE *result) {
+/* Keep the selected volume root open for on-disk ELF verification.
+ * Refuse ambiguous ZONDERQDATA state volumes (never pick a random disk).
+ */
+static EFI_STATUS open_state(EFI_FILE_HANDLE *result, EFI_FILE_HANDLE *selected_root) {
     EFI_HANDLE *volumes = NULL;
     UINTN count = 0;
     EFI_STATUS status = uefi_call_wrapper(
@@ -109,6 +113,7 @@ static EFI_STATUS open_state(EFI_FILE_HANDLE *result) {
     if (EFI_ERROR(status)) return status;
 
     *result = NULL;
+    *selected_root = NULL;
     UINTN found = 0;
     for (UINTN i = 0; i < count; i++) {
         EFI_SIMPLE_FILE_SYSTEM_PROTOCOL *fs = NULL;
@@ -123,11 +128,17 @@ static EFI_STATUS open_state(EFI_FILE_HANDLE *result) {
                     BOOT_STATE_PATH, EFI_FILE_MODE_READ|EFI_FILE_MODE_WRITE, 0);
             if (!EFI_ERROR(status) && file != NULL) {
                 found++;
-                if (found == 1) *result = file;
-                else uefi_call_wrapper(file->Close, 1, file);
+                if (found == 1) {
+                    *result = file;
+                    *selected_root = root;
+                    root = NULL; /* retained by caller */
+                } else {
+                    uefi_call_wrapper(file->Close, 1, file);
+                }
             }
         }
-        uefi_call_wrapper(root->Close, 1, root);
+        if (root != NULL)
+            uefi_call_wrapper(root->Close, 1, root);
     }
     uefi_call_wrapper(BS->FreePool, 1, volumes);
     if (found != 1) {
@@ -135,9 +146,45 @@ static EFI_STATUS open_state(EFI_FILE_HANDLE *result) {
             uefi_call_wrapper((*result)->Close, 1, *result);
             *result = NULL;
         }
+        if (*selected_root != NULL) {
+            uefi_call_wrapper((*selected_root)->Close, 1, *selected_root);
+            *selected_root = NULL;
+        }
         return EFI_NOT_FOUND;
     }
     return EFI_SUCCESS;
+}
+
+/* Read the real image from the unique managed volume, not a host-supplied
+ * test byte array or the merely configured Limine path.
+ */
+static int slot_has_valid_elf(EFI_FILE_HANDLE root, char slot) {
+    if (root == NULL || (slot != 'A' && slot != 'B')) return 0;
+    CHAR16 *path = slot == 'A'
+        ? L"\\\\boot\\\\slot_a\\\\ZonderqOS.elf"
+        : L"\\\\boot\\\\slot_b\\\\ZonderqOS.elf";
+    EFI_FILE_HANDLE file = NULL;
+    EFI_STATUS status = uefi_call_wrapper(root->Open, 5, root, &file,
+                                          path, EFI_FILE_MODE_READ, 0);
+    if (EFI_ERROR(status) || file == NULL) return 0;
+
+    UINT64 buffer[128];
+    UINTN info_length = sizeof(buffer);
+    status = uefi_call_wrapper(file->GetInfo, 4, file,
+                               &gEfiFileInfoGuid, &info_length, (VOID*)buffer);
+    int valid = 0;
+    if (!EFI_ERROR(status)) {
+        EFI_FILE_INFO *info = (EFI_FILE_INFO *)buffer;
+        if (info->FileSize >= 120u && info->FileSize <= (UINT64)512*1024*1024) {
+            UINT8 header[64];
+            UINTN length = sizeof(header);
+            status = uefi_call_wrapper(file->Read, 3, file, &length, header);
+            if (!EFI_ERROR(status) && length == sizeof(header))
+                valid = zq_elf64_x64_header_valid(header, info->FileSize);
+        }
+    }
+    uefi_call_wrapper(file->Close, 1, file);
+    return valid;
 }
 
 static int write_digit(EFI_FILE_HANDLE file, const CHAR8 *data, UINTN length,
@@ -185,18 +232,47 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *system_table) {
     InitializeLib(image, system_table);
     Print(L"ZonderqOS EFI BootGuard: pre-kernel A/B selector\r\n");
 
-    EFI_FILE_HANDLE file = NULL;
-    EFI_STATUS status = open_state(&file);
-    if (!EFI_ERROR(status) && file != NULL) {
+    EFI_FILE_HANDLE file = NULL, volume_root = NULL;
+    EFI_STATUS status = open_state(&file, &volume_root);
+    if (!EFI_ERROR(status) && file != NULL && volume_root != NULL) {
         CHAR8 data[STATE_LIMIT];
         UINTN length = sizeof(data);
         status = uefi_call_wrapper(file->Read, 3, file, &length, data);
         zq_boot_state state = {0,0,0,0,0,0};
         char chosen = 0;
         int dirty = 0;
-        if (!EFI_ERROR(status) && length < STATE_LIMIT &&
-            read_state(data,length,&state) &&
-            zq_boot_decide(&state,&chosen,&dirty)) {
+        int valid = !EFI_ERROR(status) && length < STATE_LIMIT &&
+            read_state(data,length,&state);
+        if (valid) {
+            /*
+             * Candidate may be corrupt before any C# code starts. Only select
+             * a slot after inspecting its real on-disk ELF structure.
+             *
+             * When pending is broken, force the normal policy into fallback
+             * mode without consuming three unnecessary boot attempts.
+             * Write BOOTGUARD_FALLBACK=1 so the previous kernel restores the
+             * matching shared /system and /usr payload at early boot.
+             */
+            if (state.pending) {
+                if (!slot_has_valid_elf(volume_root, state.fallback)) {
+                    Print(L"BootGuard: fallback image invalid or missing; refusing chainload\r\n");
+                    uefi_call_wrapper(file->Close, 1, file);
+                    uefi_call_wrapper(volume_root->Close, 1, volume_root);
+                    return EFI_LOAD_ERROR;
+                }
+                if (!slot_has_valid_elf(volume_root, state.pending)) {
+                    Print(L"BootGuard: corrupt pending ELF; switching directly to fallback\r\n");
+                    state.attempts = 3;
+                }
+            } else if (!slot_has_valid_elf(volume_root, state.active)) {
+                Print(L"BootGuard: active image invalid; refusing chainload\r\n");
+                uefi_call_wrapper(file->Close, 1, file);
+                uefi_call_wrapper(volume_root->Close, 1, volume_root);
+                return EFI_LOAD_ERROR;
+            }
+        }
+
+        if (valid && zq_boot_decide(&state,&chosen,&dirty)) {
             int durable = 1;
             if (dirty) {
                 if (state.recovery_requested)
@@ -218,6 +294,7 @@ EFI_STATUS efi_main(EFI_HANDLE image, EFI_SYSTEM_TABLE *system_table) {
         } else
             Print(L"BootGuard: invalid state; Limine safe default\r\n");
         uefi_call_wrapper(file->Close, 1, file);
+        uefi_call_wrapper(volume_root->Close, 1, volume_root);
     } else
         Print(L"BootGuard: no unique armed ZONDERQDATA; Limine default\r\n");
 
