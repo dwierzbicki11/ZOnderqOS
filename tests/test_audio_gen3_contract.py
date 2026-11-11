@@ -623,8 +623,8 @@ class AudioGen3Contract(unittest.TestCase):
         self.assertIn("--command wavextfloat", workflow)
         self.assertIn("audio-qemu-extensible-float32-out/*.wav", workflow)
         self.assertIn('args.command in ("wavfloat", "wavextfloat")', harness)
-        self.assertIn("capture.inspect_silent_tail(wav)", harness)
-        self.assertIn("def inspect_silent_tail(path: Path):",
+        self.assertIn("capture.inspect_silent_tail(wav, expected_hz=EXPECTED_TONE_HZ[args.command])", harness)
+        self.assertIn("def inspect_silent_tail(path: Path, expected_hz: int = 2860):",
             read("tools/verify-audio-wav-capture.py"))
         self.assertIn("reject non-finite extensible float32", host)
         self.assertIn("reject damaged extensible float GUID tail", host)
