@@ -38,6 +38,7 @@ namespace ZonderqOS.SystemCore.Updates
         // and armed on the dedicated ZONDERQDATA volume.
         public static bool PrebootGuardEnabled { get; private set; } = false;
         public static bool PrebootFallbackRequested { get; private set; } = false;
+        public static bool EmergencyRecoveryNeeded { get; private set; } = false;
 
         public static SlotHealth SlotAStatus { get; private set; } = SlotHealth.Healthy;
         public static SlotHealth SlotBStatus { get; private set; } = SlotHealth.Empty;
@@ -83,7 +84,9 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT", "Blad inicjalizacji BootSlotManager: " + ex.Message);
+                EmergencyRecoveryNeeded = true;
+                SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT",
+                    "Blad inicjalizacji BootSlotManager: " + ex.Message);
             }
         }
 
@@ -235,6 +238,19 @@ namespace ZonderqOS.SystemCore.Updates
 
                 if (BootAttempts >= MaxBootAttempts)
                 {
+                    // Pre-kernel fallback selected the previous ELF. Restore
+                    // the matching shared system payload BEFORE services/GUI
+                    // are initialized, otherwise the old kernel could execute
+                    // new incompatible files and corrupt shared user data.
+                    if (PrebootGuardEnabled && PrebootFallbackRequested &&
+                        !UpdateManager.RestoreSharedFilesAfterBootFailure(FallbackSlot,
+                            out string rollbackError))
+                    {
+                        EmergencyRecoveryNeeded = true;
+                        SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT",
+                            "KRYTYCZNE: rollback shared payload failed: " + rollbackError);
+                        return;
+                    }
                     // Automatic failover to fallback slot!
                     SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT",
                         $"AWARYJNY ROLLBACK: Slot {PendingSlot} nie osiagnal stabilnego stanu po {BootAttempts} probach. Przepiecie na slot {FallbackSlot}!");
