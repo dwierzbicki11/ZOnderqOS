@@ -25,6 +25,14 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+      - name: Compile and exercise independent BootGuard decision core
+        run: |
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -I tools/efi-bootguard \
+            tools/efi-bootguard/boot_policy.c \
+            tests/BootGuardPolicySmoke/boot_policy_test.c \
+            -o /tmp/zonderq-boot-policy-smoke
+          /tmp/zonderq-boot-policy-smoke
       - name: Run hard-stop contract tests
         run: python3 -m unittest discover -s tests -p 'test_p0_update_trust_gate.py' -v
       - name: Validate architecture-specific source contracts
