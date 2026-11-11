@@ -27,3 +27,8 @@ __pycache__/
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Release signing material: never commit a generated trust anchor or secrets
+source/Core/Updates/TrustedReleaseKey.Provisioned.g.cs
+*.key
+*.pem
