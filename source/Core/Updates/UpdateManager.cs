@@ -657,6 +657,14 @@ namespace ZonderqOS.SystemCore.Updates
             return true;
         }
 
+        // Deliberately NOT a configurable flag. A malicious or malformed USB
+        // package cannot enable this. Replace only with real verification that
+        // authenticates the complete manifest using an embedded public key.
+        private static bool HasVerifiedAsymmetricUpdateTrust()
+        {
+            return false;
+        }
+
         public static bool ApplyUpdateStep(UpdatePackageInfo pkg, ref int step, Action<int, string> progress, out string error)
         {
             // P0 SECURITY HOLD: legacy package signatures are HMAC with a key
@@ -665,15 +673,20 @@ namespace ZonderqOS.SystemCore.Updates
             // the complete manifest and every payload file is implemented.
             // Check at EVERY step: callers can resume with step > 0, and a
             // one-time check in step 0 would leave a writable bypass.
-            error = "Instalacja aktualizacji zablokowana: obecny format HMAC nie zapewnia autentycznosci. Wymagany podpis asymetryczny calego manifestu i weryfikacja wszystkich plikow.";
-            Status = UpdateStatus.Error;
-            try
+            if (!HasVerifiedAsymmetricUpdateTrust())
             {
-                SecurityLogger.LogEvent("SECURITY_ERROR", "P0 updater trust gate: rejected legacy update installation.");
+                error = "Instalacja aktualizacji zablokowana: obecny format HMAC nie zapewnia autentycznosci. Wymagany podpis asymetryczny calego manifestu i weryfikacja wszystkich plikow.";
+                Status = UpdateStatus.Error;
+                try
+                {
+                    SecurityLogger.LogEvent("SECURITY_ERROR", "P0 updater trust gate: rejected legacy update installation.");
+                }
+                catch { }
+                return false;
             }
-            catch { }
-            return false;
 
+            Initialize();
+            error = string.Empty;
             if (pkg == null)
             {
                 error = "Brak wybranego pakietu aktualizacji.";
