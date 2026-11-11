@@ -26,6 +26,34 @@ namespace ZonderqOS
             return message.Replace('\r', ' ').Replace('\n', ' ');
         }
 
+        // A source field is enclosed in [brackets] in the persistent log.
+        // Reject line breaks, control characters and closing brackets so a
+        // malformed app name cannot forge another log entry.
+        internal static string NormalizeSource(string source)
+        {
+            if (string.IsNullOrWhiteSpace(source))
+                return "SYS";
+
+            string token = source.Trim();
+            if (token.Length == 0)
+                return "SYS";
+            if (token.Length > 16)
+                token = token.Substring(0, 16);
+
+            char[] safe = null;
+            for (int i = 0; i < token.Length; i++)
+            {
+                char c = token[i];
+                if (char.IsControl(c) || c == '[' || c == ']')
+                {
+                    if (safe == null)
+                        safe = token.ToCharArray();
+                    safe[i] = '_';
+                }
+            }
+            return (safe == null ? token : new string(safe)).ToUpperInvariant();
+        }
+
         internal static bool ShouldRotate(long currentBytes, string nextLine, long maxBytes)
         {
             if (currentBytes < 0 || maxBytes <= 0)
