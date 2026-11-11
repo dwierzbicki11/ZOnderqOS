@@ -210,11 +210,7 @@ namespace ZonderqOS
 
         private static string NormalizeSource(string source)
         {
-            if (string.IsNullOrWhiteSpace(source))
-                return "SYS";
-
-            source = source.Trim().ToUpperInvariant();
-            return source.Length <= 16 ? source : source.Substring(0, 16);
+            return SystemLogStoragePolicy.NormalizeSource(source);
         }
 
         private static string NormalizeMessage(string message)
