@@ -1,0 +1,84 @@
+name: ZonderqOS Alpha P0 — pinned release verification
+
+# Manual, one-SHA release check: no push trigger, no cancel-in-progress.
+# Execute from the intended PR branch. Do not publish or flash media on PASS.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  manifest-and-kernel-contract:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Show exact tested revision
+        run: |
+          echo "Release gate SHA: $(git rev-parse HEAD)"
+          echo "### Update verification" >> "$GITHUB_STEP_SUMMARY"
+          echo "Commit: \`$(git rev-parse HEAD)\`" >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Run updater trust and source boundary tests
+        run: |
+          python3 -m unittest discover -s tests -p 'test_p0_update_trust_gate.py' -v
+          python3 -m unittest discover -s tests -p 'test_p0_platform_compile_contract.py' -v
+          python3 -m unittest discover -s tests -p 'test_p0_release_signing.py' -v
+      - name: Execute production linked update engine smoke
+        run: dotnet run --project tests/UpdateEngineSmoke/UpdateEngineSmoke.csproj -c Release
+      - name: Execute GUI window input smoke
+        run: dotnet run --project tests/GuiWindowInputSmoke/GuiWindowInputSmoke.csproj -c Release
+
+  preboot-efi-recovery:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Record revision
+        run: echo "Testing BootGuard at $(git rev-parse HEAD)"
+      - name: Install isolated EFI and QEMU toolchain
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y gnu-efi binutils qemu-system-x86 ovmf mtools dosfstools
+      - name: Build EFI first stage and disposable Limine test stub
+        run: |
+          make -C tools/bootguard
+          make -C tools/bootguard build/limine_stub.efi
+          file tools/bootguard/build/bootguard.efi
+          file tools/bootguard/build/bootguard.efi | grep -E 'PE32\\+ executable .*EFI application'
+      - name: Exercise preboot policy on host
+        run: |
+          gcc -std=c11 -O2 -Wall -Wextra -Werror tests/test_bootguard_policy.c -o /tmp/zq-policy
+          /tmp/zq-policy
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -I tools/efi-bootguard tools/efi-bootguard/boot_policy.c \
+            tests/BootGuardPolicySmoke/boot_policy_test.c -o /tmp/zq-policy-core
+          /tmp/zq-policy-core
+      - name: Verify installer never touches real host disks
+        run: python3 -m unittest discover -s tests -p 'test_bootguard_installer.py' -v
+      - name: Four firmware boot selections and FAT32 persistence
+        run: bash tests/test_bootguard_ovmf.sh
+
+  gate-summary:
+    if: always()
+    needs: [manifest-and-kernel-contract, preboot-efi-recovery]
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Gate report
+        env:
+          MANIFEST: ${{ needs.manifest-and-kernel-contract.result }}
+          PREBOOT: ${{ needs.preboot-efi-recovery.result }}
+        run: |
+          echo "### ZonderqOS Alpha P0 gate" >> "$GITHUB_STEP_SUMMARY"
+          echo "Revision: \`$GITHUB_SHA\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "Signed manifest/kernel tests: $MANIFEST" >> "$GITHUB_STEP_SUMMARY"
+          echo "EFI/OVMF recovery test: $PREBOOT" >> "$GITHUB_STEP_SUMMARY"
+          echo "This gate DOES NOT verify physical hardware, actual Limine->Cosmos boot, Secure Boot, or power-cut-safe FAT32 transactions." >> "$GITHUB_STEP_SUMMARY"
+          test "$MANIFEST" = success && test "$PREBOOT" = success
