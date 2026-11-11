@@ -14,7 +14,7 @@ namespace UpdateEngineSmoke
 
             TestCryptoHashAndHmac();
             TestManifestParsingAndValidation();
-            TestManifestSigningAndTamperDetection();
+            TestManifestV2RejectsLegacyHmac();
             TestSemverComparison();
             TestBootSlotManagerLifecycleAndFailover();
             TestElfStructureValidation();
@@ -118,12 +118,13 @@ namespace UpdateEngineSmoke
             Assert(!noVerOk, "Missing version must be rejected");
         }
 
-        private static void TestManifestSigningAndTamperDetection()
+        private static void TestManifestV2RejectsLegacyHmac()
         {
-            Console.WriteLine("  -> Testing Manifest Signing and Tampering Detection...");
-
+            Console.WriteLine("  -> Testing signed manifest v2 and legacy HMAC rejection...");
             var m = new UpdateManifest
             {
+                UpdateFormat = 2,
+                SignatureAlgorithm = "ED25519",
                 Version = "1.0.2",
                 BuildNumber = 3120,
                 Architecture = "x86_64",
@@ -131,23 +132,22 @@ namespace UpdateEngineSmoke
                 KernelImage = "ZonderqOS.elf",
                 KernelSha256 = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
             };
-
-            m.Sign(UpdateManifest.DefaultSignerKey);
-            Assert(!string.IsNullOrEmpty(m.Signature), "Signature should not be empty");
-            Assert(m.VerifySignature(UpdateManifest.DefaultSignerKey), "Signature must verify successfully");
-
-            // Tamper test: modify version without updating signature
-            m.Version = "2.0.0-TAMPERED";
-            Assert(!m.VerifySignature(UpdateManifest.DefaultSignerKey), "Tampered manifest must fail signature verification!");
-
-            // Restore version, tamper title
-            m.Version = "1.0.2";
-            m.Title = "Tampered Title";
-            Assert(!m.VerifySignature(UpdateManifest.DefaultSignerKey), "Tampered title must fail signature verification!");
-
-            // Verify invalid key
-            m.Title = "Feature Update";
-            Assert(!m.VerifySignature("WRONG_SECRET_KEY"), "Wrong signing key must fail verification");
+            string signedContent = m.Serialize();
+            Assert(UpdateManifest.TryParse(signedContent, out UpdateManifest parsed, out string error),
+                "signed manifest structure must parse: " + error);
+            Assert(parsed.UpdateFormat == 2 && parsed.SignatureAlgorithm == "ED25519",
+                "detached Ed25519 fields must survive roundtrip");
+            Assert(!UpdateManifest.TryParse(
+                signedContent + "HMAC=000000\n", out _, out _),
+                "v2 manifest with embedded HMAC must be rejected");
+            Assert(!UpdateManifest.TryParse(
+                signedContent.Replace("SIGNATURE_ALG=ED25519", "SIGNATURE_ALG=HMAC"),
+                out _, out _),
+                "v2 HMAC signature algorithm must be rejected");
+            Assert(!UpdateManifest.TryParse(
+                signedContent.Replace("UPDATE_FORMAT=2", "UPDATE_FORMAT=3"),
+                out _, out _),
+                "unsupported signed manifest version must be rejected");
         }
 
         private static void TestSemverComparison()
