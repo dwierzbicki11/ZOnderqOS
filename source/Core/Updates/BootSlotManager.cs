@@ -48,6 +48,16 @@ namespace ZonderqOS.SystemCore.Updates
         public static string SlotBVersion { get; private set; } = string.Empty;
         public static int SlotBBuild { get; private set; } = 0;
 
+        // A writable BOOTGUARD_PREBOOT flag does not prove that firmware will
+        // execute an independent recovery loader. Until an actual EFI guard is
+        // installed and verified end-to-end, refuse activating a new slot.
+        // Replace this fail-closed method only with firmware/boot-chain
+        // attestation backed by a real pre-kernel watchdog and QEMU tests.
+        private static bool HasVerifiedIndependentPrebootRecovery()
+        {
+            return false;
+        }
+
         private static bool isInitialized = false;
 
         public static void Initialize()
@@ -142,6 +152,8 @@ namespace ZonderqOS.SystemCore.Updates
                             BootAttempts = att;
                             break;
                         case "BOOTGUARD_PREBOOT":
+                            // This only records the requested configuration.
+                            // It is not evidence of preboot recovery.
                             PrebootGuardEnabled = val == "1";
                             break;
                         case "BOOTGUARD_FALLBACK":
@@ -172,7 +184,9 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT", "LoadBootState error: " + ex.Message);
+                EmergencyRecoveryNeeded = true;
+                SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", "LoadBootState error: " + ex.Message);
+                throw;
             }
         }
 
@@ -503,9 +517,9 @@ namespace ZonderqOS.SystemCore.Updates
                 error = "Nie mozna ponownie aktywowac aktywnego slotu ani zmienic niepotwierdzonej aktualizacji.";
                 return false;
             }
-            if (!PrebootGuardEnabled)
+            if (!PrebootGuardEnabled || !HasVerifiedIndependentPrebootRecovery())
             {
-                error = "Nie ma aktywnego niezaleznego EFI BootGuard. Nie wolno wlaczyc nowego slotu.";
+                error = "Nie potwierdzono niezaleznego EFI BootGuard w lancuchu rozruchu. Sama flaga w boot_state.cfg nie wystarcza do aktywacji nowego slotu.";
                 return false;
             }
 
