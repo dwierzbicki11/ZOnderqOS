@@ -43,6 +43,7 @@ on:
       - 'tests/verify_3095_network_heartbeat.py'
       - 'tests/verify_3095_e1000e_irq_trace.py'
       - 'tests/verify_3095_e1000e_guest_isr.py'
+      - 'tests/test_3095_isr_provenance_contract.py'
       - 'tests/verify_3095_e1000e_dma_trace.py'
       - 'tests/verify_3095_e1000e_irq_binding.py'
       - 'tests/measure_3095_e1000e_pcap.py'
@@ -94,6 +95,7 @@ jobs:
           python3 zonderq/tests/verify_3095_network_heartbeat.py --self-test
           python3 zonderq/tests/verify_3095_e1000e_irq_trace.py --self-test
           python3 zonderq/tests/verify_3095_e1000e_guest_isr.py --self-test
+          python3 zonderq/tests/test_3095_isr_provenance_contract.py
           python3 zonderq/tests/verify_3095_e1000e_dma_trace.py --self-test
           python3 zonderq/tests/verify_3095_e1000e_irq_binding.py --self-test
           python3 zonderq/tests/measure_3095_e1000e_pcap.py --self-test
