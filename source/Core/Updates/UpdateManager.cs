@@ -812,7 +812,28 @@ namespace ZonderqOS.SystemCore.Updates
                             }
                             progress?.Invoke(70, "Instalowanie tylko plikow zadeklarowanych w manifeście...");
                             string backupPayload = Path.Combine(BackupDir, "payload_snapshot");
-                            DeployManifestFiles(pkg, payloadDir, backupPayload);
+                            try
+                            {
+                                DeployManifestFiles(pkg, payloadDir, backupPayload);
+                            }
+                            catch (Exception deployError)
+                            {
+                                // No slot activation occurred yet. Undo all
+                                // payload writes before reporting failure.
+                                try
+                                {
+                                    RestoreManifestFiles(backupPayload);
+                                    error = "Instalacja payload przerwana i wycofana: " + deployError.Message;
+                                }
+                                catch (Exception restoreError)
+                                {
+                                    error = "KRYTYCZNE: instalacja payload nieudana: " +
+                                        deployError.Message + "; rollback tez nieudany: " +
+                                        restoreError.Message;
+                                }
+                                Status = UpdateStatus.Error;
+                                return false;
+                            }
                         }
                         step = 4;
                         return true;
