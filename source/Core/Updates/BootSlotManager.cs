@@ -407,7 +407,18 @@ namespace ZonderqOS.SystemCore.Updates
                     SlotBStatus = SlotHealth.PendingConfirmation;
                 }
                 SaveBootState();
-                if (movedOldKernel) File.Delete(backupPath);
+                // Once the staged slot is committed, a backup cleanup failure
+                // must NOT undo the successful new image while leaving its
+                // persisted metadata committed.
+                if (movedOldKernel)
+                {
+                    try { File.Delete(backupPath); }
+                    catch (Exception cleanupEx)
+                    {
+                        SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT",
+                            "Old inactive kernel backup retained: " + cleanupEx.Message);
+                    }
+                }
                 progress?.Invoke(70, "Kernel zweryfikowany w nieaktywnym slocie " + targetSlot);
                 return true;
             }
@@ -448,6 +459,16 @@ namespace ZonderqOS.SystemCore.Updates
                 return false;
             }
 
+            // Keep a snapshot of the in-memory state. If writing Limine or
+            // boot_state fails, restore values and attempt best-effort disk
+            // recovery; report a recovery failure rather than hiding it.
+            string previousActive = ActiveSlot;
+            string previousFallback = FallbackSlot;
+            string previousPending = PendingSlot;
+            int previousAttempts = BootAttempts;
+            SlotHealth previousAStatus = SlotAStatus;
+            SlotHealth previousBStatus = SlotBStatus;
+            bool stateWasMutated = false;
             try
             {
                 string kernelPath = GetSlotKernelPath(targetSlot);
@@ -483,8 +504,9 @@ namespace ZonderqOS.SystemCore.Updates
                 else
                     SlotBStatus = SlotHealth.PendingConfirmation;
 
-                SaveBootState();
+                stateWasMutated = true;
                 SyncLimineConfig();
+                SaveBootState();
 
                 SystemLogger.Log(SystemLogLevel.Info, "BOOTSLOT",
                     $"Aktywowano slot {targetSlot}. Limine default_entry zaktualizowany. Wymagany restart.");
@@ -493,6 +515,26 @@ namespace ZonderqOS.SystemCore.Updates
             catch (Exception ex)
             {
                 error = "Blad podczas aktywacji slotu: " + ex.Message;
+                if (stateWasMutated)
+                {
+                    ActiveSlot = previousActive;
+                    FallbackSlot = previousFallback;
+                    PendingSlot = previousPending;
+                    BootAttempts = previousAttempts;
+                    SlotAStatus = previousAStatus;
+                    SlotBStatus = previousBStatus;
+                    try
+                    {
+                        SyncLimineConfig();
+                        SaveBootState();
+                    }
+                    catch (Exception recoveryEx)
+                    {
+                        error += " UWAGA: NIE UDALO SIE ODTWORZYC KONFIGURACJI ROZRUCHU: " +
+                            recoveryEx.Message;
+                    }
+                }
+                SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", error);
                 return false;
             }
         }
