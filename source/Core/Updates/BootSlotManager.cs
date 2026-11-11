@@ -275,65 +275,86 @@ namespace ZonderqOS.SystemCore.Updates
         {
             Initialize();
             error = string.Empty;
-
             if (string.IsNullOrEmpty(sourceKernelPath) || !File.Exists(sourceKernelPath))
             {
-                error = "Plik zrodlowy nowego kernela nie istnieje: " + sourceKernelPath;
+                error = "Brak pliku zrodlowego kernela.";
                 return false;
+            }
+            if (string.IsNullOrEmpty(expectedSha256) || expectedSha256.Length != 64)
+            {
+                error = "Brak poprawnego SHA-256 kernela; instalacja zabroniona.";
+                return false;
+            }
+            for (int i = 0; i < expectedSha256.Length; i++)
+            {
+                char ch = expectedSha256[i];
+                if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') ||
+                      (ch >= 'A' && ch <= 'F')))
+                {
+                    error = "Niepoprawny format SHA-256 kernela.";
+                    return false;
+                }
             }
 
             string targetSlot = GetInactiveSlot();
             string targetPath = GetSlotKernelPath(targetSlot);
+            string tempPath = targetPath + ".part";
+            string backupPath = targetPath + ".previous";
             string targetDir = Path.GetDirectoryName(targetPath);
-
+            bool movedOldKernel = false;
+            bool promotedNewKernel = false;
             try
             {
                 if (!Directory.Exists(targetDir))
                     Directory.CreateDirectory(targetDir);
-
-                progress?.Invoke(20, $"Inicjalizacja kopiowania do slotu {targetSlot}...");
-
+                // Previous interrupted attempts must not be treated as valid.
+                if (File.Exists(tempPath)) File.Delete(tempPath);
+                if (File.Exists(backupPath))
+                    throw new IOException("Nieusunieta kopia .previous; wymagana diagnostyka slotu.");
                 long totalBytes = new FileInfo(sourceKernelPath).Length;
+                if (totalBytes < 4)
+                    throw new IOException("Obraz kernela jest zbyt krotki.");
                 long copiedBytes = 0;
-                byte[] chunkBuffer = new byte[64 * 1024];
+                byte[] buffer = new byte[64 * 1024];
 
                 using (FileStream src = new FileStream(sourceKernelPath, FileMode.Open, FileAccess.Read))
-                using (FileStream dst = new FileStream(targetPath, FileMode.Create, FileAccess.Write))
+                using (FileStream dst = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write))
                 {
                     int read;
-                    while ((read = src.Read(chunkBuffer, 0, chunkBuffer.Length)) > 0)
+                    while ((read = src.Read(buffer, 0, buffer.Length)) > 0)
                     {
-                        dst.Write(chunkBuffer, 0, read);
+                        dst.Write(buffer, 0, read);
                         copiedBytes += read;
-
-                        int pct = 20 + (int)(copiedBytes * 45 / Math.Max(1, totalBytes));
-                        int mbCopied = (int)(copiedBytes / (1024 * 1024));
-                        int mbTotal = (int)(totalBytes / (1024 * 1024));
-                        progress?.Invoke(pct, $"Kopiowanie kernela do slotu {targetSlot} ({mbCopied}/{mbTotal} MB)...");
+                        int pct = 20 + (int)(copiedBytes * 40 / Math.Max(1, totalBytes));
+                        progress?.Invoke(pct, "Zapis obrazu do nieaktywnego slotu " + targetSlot);
                     }
                     dst.Flush();
                 }
+                if (copiedBytes != totalBytes)
+                    throw new IOException("Rozmiar pliku zmienil sie podczas kopiowania.");
 
-                progress?.Invoke(68, "Weryfikacja sumy kontrolnej SHA-256 zapisanego pliku kernela na dysku...");
+                string actualHash = Crypto.ComputeSha256(File.ReadAllBytes(tempPath));
+                if (!Crypto.FixedTimeEquals(actualHash.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
+                    throw new IOException("Blad SHA-256 tymczasowego obrazu kernela.");
 
-                // Read back bytes directly from destination on disk
-                byte[] writtenBytes = File.ReadAllBytes(targetPath);
-                string writtenHash = Crypto.ComputeSha256(writtenBytes);
-
-                if (!string.IsNullOrEmpty(expectedSha256) &&
-                    !Crypto.FixedTimeEquals(writtenHash.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
+                // Preserve the former inactive image until the replacement has
+                // passed readback. Never touch the running/fallback slot.
+                if (File.Exists(targetPath))
                 {
-                    // Checksum failure: delete corrupted target file immediately
-                    try { File.Delete(targetPath); } catch { }
-                    error = $"Blad integralnosci zapisanego kernela w slocie {targetSlot}! Oczekiwano SHA256: {expectedSha256}, otrzymano: {writtenHash}";
-                    SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", error);
-                    return false;
+                    File.Move(targetPath, backupPath);
+                    movedOldKernel = true;
                 }
+                File.Move(tempPath, targetPath);
+                promotedNewKernel = true;
 
-                // Write metadata files
-                File.WriteAllText(Path.Combine(targetDir, "kernel.sha256"), writtenHash + "\n");
-                File.WriteAllText(Path.Combine(targetDir, "version.info"), $"VERSION={version}\nBUILD={build}\nDATE={DateTime.Now:yyyy-MM-dd HH:mm:ss}\n");
+                string readback = Crypto.ComputeSha256(File.ReadAllBytes(targetPath));
+                if (!Crypto.FixedTimeEquals(readback.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
+                    throw new IOException("Blad SHA-256 po przeniesieniu do slotu.");
 
+                // Metadata must be written before changing in-memory status.
+                File.WriteAllText(Path.Combine(targetDir, "kernel.sha256"), readback + "\n");
+                File.WriteAllText(Path.Combine(targetDir, "version.info"),
+                    "VERSION=" + version + "\nBUILD=" + build + "\n");
                 if (targetSlot == SlotA)
                 {
                     SlotAVersion = version;
@@ -346,14 +367,25 @@ namespace ZonderqOS.SystemCore.Updates
                     SlotBBuild = build;
                     SlotBStatus = SlotHealth.PendingConfirmation;
                 }
-
-                progress?.Invoke(70, $"Kernel pomyslnie zainstalowany w slocie {targetSlot} [SHA256: {writtenHash.Substring(0, 16)}...]");
                 SaveBootState();
+                if (movedOldKernel) File.Delete(backupPath);
+                progress?.Invoke(70, "Kernel zweryfikowany w nieaktywnym slocie " + targetSlot);
                 return true;
             }
             catch (Exception ex)
             {
-                error = "Wyjatek podczas instalacji kernela w slocie: " + ex.Message;
+                error = "Blad bezpiecznego stagingu slotu " + targetSlot + ": " + ex.Message;
+                try
+                {
+                    if (promotedNewKernel && File.Exists(targetPath)) File.Delete(targetPath);
+                    if (movedOldKernel && File.Exists(backupPath)) File.Move(backupPath, targetPath);
+                    if (File.Exists(tempPath)) File.Delete(tempPath);
+                }
+                catch (Exception restoreEx)
+                {
+                    error += " ODTWORZENIE NIEUDANE: " + restoreEx.Message;
+                }
+                SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", error);
                 return false;
             }
         }
