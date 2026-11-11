@@ -12,6 +12,34 @@ SCRIPT = ROOT / "tools/verify-release-bundle.py"
 
 
 class ReleaseSigningSmoke(unittest.TestCase):
+    def test_public_key_provisioning_never_copies_private_key(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            private = root / "private.key"
+            public = root / "public.pub"
+            output = root / "TrustedReleaseKey.Provisioned.g.cs"
+            subprocess.run(["openssl", "genpkey", "-algorithm", "ED25519",
+                            "-out", str(private)], check=True, capture_output=True)
+            subprocess.run(["openssl", "pkey", "-in", str(private), "-pubout",
+                            "-out", str(public)], check=True, capture_output=True)
+            tool = ROOT / "tools/provision-release-public-key.py"
+            result = subprocess.run(
+                [sys.executable, str(tool), "--public-key", str(public),
+                 "--output", str(output)], capture_output=True, text=True)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            data = output.read_text()
+            self.assertIn("SupplyPublicKey(ref string publicKeyHex)", data)
+            self.assertNotIn("PRIVATE KEY", data)
+            self.assertNotIn(private.read_text(), data)
+            from_der = subprocess.run(
+                ["openssl", "pkey", "-pubin", "-in", str(public),
+                 "-outform", "DER"], check=True, capture_output=True).stdout
+            self.assertIn(from_der[-32:].hex(), data)
+            self.assertNotEqual(
+                subprocess.run([sys.executable, str(tool), "--public-key",
+                                str(private), "--output", str(output)],
+                               capture_output=True).returncode, 0)
+
     def test_sign_verify_and_detect_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
