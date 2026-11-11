@@ -6,6 +6,7 @@ on:
       - 'source/GUI/**'
       - 'ZonderqOS.csproj'
       - 'tests/test_3094_responsive_gui.py'
+      - 'tests/test_gui_memory_lifecycle.py'
       - 'tests/test_gui_compact_apps.py'
       - 'tests/GuiScrollBarSmoke/**'
       - 'tests/GuiFileClipboardSmoke/**'
@@ -57,6 +58,8 @@ jobs:
           python3 tests/test_gui_filemanager_invisible_selection.py
           python3 tests/test_gui_filemanager_create_acl.py
           python3 tests/test_gui_taskmanager_tiny_view.py
+      - name: Check desktop session memory ownership and telemetry caching
+        run: python3 -m unittest discover -s tests -p 'test_gui_memory_lifecycle.py' -v
       - name: Exercise QMP framebuffer diff parser with synthetic PPM images
         run: |
           python3 tests/test_qmp_gui_filemanager.py

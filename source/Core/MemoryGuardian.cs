@@ -23,7 +23,9 @@ namespace ZonderqOS.SystemCore
         private static long logTruncationCount;
         private static long faultCount;
         private static string lastFault = string.Empty;
-        private static string lastCheckTime = "never";
+        // Avoid creating a timestamp string every 4 seconds on idle desktops.
+        // Format lazily when a diagnostics UI explicitly requests it.
+        private static DateTime lastCheckTimeUtc = DateTime.MinValue;
 
         public static long CycleCount { get { lock (StatusLock) return cycleCount; } }
         public static ulong LastFreePercent { get { lock (StatusLock) return lastFreePercent; } }
@@ -32,7 +34,16 @@ namespace ZonderqOS.SystemCore
         public static long LogTruncationCount { get { lock (StatusLock) return logTruncationCount; } }
         public static long FaultCount { get { lock (StatusLock) return faultCount; } }
         public static string LastFault { get { lock (StatusLock) return lastFault; } }
-        public static string LastCheckTime { get { lock (StatusLock) return lastCheckTime; } }
+        public static string LastCheckTime
+        {
+            get
+            {
+                DateTime checkedAt;
+                lock (StatusLock)
+                    checkedAt = lastCheckTimeUtc;
+                return checkedAt == DateTime.MinValue ? "never" : FormatTime(checkedAt);
+            }
+        }
         public static bool IsRunning => ProcessManager.IsRunning("sys_guardian");
 
         public static void Initialize()
@@ -68,7 +79,7 @@ namespace ZonderqOS.SystemCore
                         {
                             cycleCount++;
                             lastFreePercent = freePercent;
-                            lastCheckTime = FormatTime(now);
+                            lastCheckTimeUtc = now;
                         }
 
                         if (totalPages == 0)

@@ -1,0 +1,51 @@
+name: P0 Update Security Gate
+
+on:
+  push:
+    branches:
+      - fix/p0-update-trust-gate
+  pull_request:
+    paths:
+      - 'source/Core/Updates/**'
+      - 'source/GUI/GuiManager.cs'
+      - 'Kernel.cs'
+      - 'tests/UpdateEngineSmoke/**'
+      - 'tests/test_p0_update_trust_gate.py'
+      - '.github/workflows/p0-update-security.yml'
+
+# Cancel only obsolete runs of THIS workflow for the same branch/PR.
+# Other independent safety gates continue to execute normally.
+concurrency:
+  group: p0-update-security-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile and exercise independent BootGuard decision core
+        run: |
+          cc -std=c11 -O2 -Wall -Wextra -Werror -pedantic \
+            -I tools/efi-bootguard \
+            tools/efi-bootguard/boot_policy.c \
+            tests/BootGuardPolicySmoke/boot_policy_test.c \
+            -o /tmp/zonderq-boot-policy-smoke
+          /tmp/zonderq-boot-policy-smoke
+      - name: Validate idle background allocation contracts
+        run: python3 -m unittest discover -s tests -p 'test_idle_background_allocation_contracts.py' -v
+
+      - name: Run hard-stop contract tests
+        run: python3 -m unittest discover -s tests -p 'test_p0_update_trust_gate.py' -v
+      - name: Validate architecture-specific source contracts
+        run: python3 -m unittest discover -s tests -p 'test_p0_platform_compile_contract.py' -v
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Compile and execute UpdateEngineSmoke
+        run: dotnet run --project tests/UpdateEngineSmoke/UpdateEngineSmoke.csproj --configuration Release
+      - name: Sign and verify an ephemeral Ed25519 release fixture
+        run: python3 -m unittest discover -s tests -p 'test_p0_release_signing.py' -v
+      - name: Compile and exercise Window input smoke
+        run: dotnet run --project tests/GuiWindowInputSmoke/GuiWindowInputSmoke.csproj --configuration Release

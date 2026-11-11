@@ -27,3 +27,11 @@ __pycache__/
 # OS junk
 .DS_Store
 Thumbs.db
+
+# Release signing material: never commit a generated trust anchor or secrets
+source/Core/Updates/TrustedReleaseKey.Provisioned.g.cs
+*.key
+*.pem
+
+# UEFI BootGuard intermediate ELF, object and EFI artifacts
+tools/bootguard/build/

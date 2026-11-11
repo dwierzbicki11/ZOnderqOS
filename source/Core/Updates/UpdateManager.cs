@@ -276,8 +276,11 @@ namespace ZonderqOS.SystemCore.Updates
 
         public static string FindKernelSource(UpdatePackageInfo pkg)
         {
-            if (pkg != null && !string.IsNullOrEmpty(pkg.KernelImagePath) && File.Exists(pkg.KernelImagePath))
-                return pkg.KernelImagePath;
+            // Never fall back to a different package's kernel when the caller
+            // provided a concrete package. Discovery-only fallback is separate.
+            if (pkg != null)
+                return !string.IsNullOrEmpty(pkg.KernelImagePath) && File.Exists(pkg.KernelImagePath)
+                    ? pkg.KernelImagePath : null;
 
             string[] candidates = {
                 "/updates/ZonderqOS.elf",
@@ -296,6 +299,14 @@ namespace ZonderqOS.SystemCore.Updates
 
         public static bool CheckForUpdates(bool forceRefresh, out UpdatePackageInfo package, out string message)
         {
+            return CheckForUpdatesCore(forceRefresh, true, out package, out message);
+        }
+
+        // The periodic GUI background poll must never rewrite FAT32 settings.
+        // An explicit user-requested check retains the previous persistence behavior.
+        private static bool CheckForUpdatesCore(bool forceRefresh, bool persistCheckTime,
+            out UpdatePackageInfo package, out string message)
+        {
             Initialize();
             Status = UpdateStatus.Checking;
 
@@ -303,7 +314,8 @@ namespace ZonderqOS.SystemCore.Updates
             {
                 DateTime now = DateTime.Now;
                 LastCheckTime = now.ToString("yyyy-MM-dd HH:mm");
-                SaveConfig();
+                if (persistCheckTime)
+                    SaveConfig();
 
                 UpdatePackageInfo pkg = null;
                 bool fromDisk = TryLoadDiskManifest(out UpdatePackageInfo diskPkg);
@@ -342,6 +354,19 @@ namespace ZonderqOS.SystemCore.Updates
                     message = "System ZonderqOS jest w najnowszej wersji (" + KernelBuildInfo.KernelVersion + "). Pakiet " + pkg.Version + " nie jest nowszy.";
                     return false;
                 }
+
+                // Discovery is not verification. Never advertise a legacy HMAC
+                // package as available/trusted while the P0 gate is active.
+                if (!TryVerifyTrustedPackage(pkg, out string verificationError))
+                {
+                    AvailablePackage = null;
+                    package = null;
+                    Status = UpdateStatus.Error;
+                    message = "Pakiet USB odrzucony: " + verificationError;
+                    return false;
+                }
+                pkg.IsSigned = true;
+                pkg.IsSignatureValid = true;
 
                 AvailablePackage = pkg;
                 package = pkg;
@@ -389,7 +414,7 @@ namespace ZonderqOS.SystemCore.Updates
 
             UpdatePackageInfo pkg;
             string msg;
-            bool found = CheckForUpdates(false, out pkg, out msg);
+            bool found = CheckForUpdatesCore(false, false, out pkg, out msg);
 
             if (found && pkg != null)
             {
@@ -442,8 +467,9 @@ namespace ZonderqOS.SystemCore.Updates
 
         public static string FindPayloadDirectory(UpdatePackageInfo pkg)
         {
-            if (pkg != null && !string.IsNullOrEmpty(pkg.PayloadPath) && Directory.Exists(pkg.PayloadPath))
-                return pkg.PayloadPath;
+            if (pkg != null)
+                return !string.IsNullOrEmpty(pkg.PayloadPath) && Directory.Exists(pkg.PayloadPath)
+                    ? pkg.PayloadPath : null;
 
             if (Directory.Exists("/updates/payload"))
                 return "/updates/payload";
@@ -498,19 +524,21 @@ namespace ZonderqOS.SystemCore.Updates
             return info;
         }
 
+        // Reuse candidate paths across repeated background checks instead of
+        // allocating a fresh array on each scan.
+        private static readonly string[] ManifestCandidatePaths = new string[]
+        {
+            "/updates/update.manifest",
+            "/var/updates/incoming/update.manifest",
+            "/var/updates/update.manifest"
+        };
+
         public static bool TryLoadDiskManifest(out UpdatePackageInfo pkg)
         {
             pkg = null;
-            string[] candidatePaths = new string[]
+            for (int p = 0; p < ManifestCandidatePaths.Length; p++)
             {
-                "/updates/update.manifest",
-                "/var/updates/incoming/update.manifest",
-                "/var/updates/update.manifest"
-            };
-
-            for (int p = 0; p < candidatePaths.Length; p++)
-            {
-                string path = candidatePaths[p];
+                string path = ManifestCandidatePaths[p];
                 if (!File.Exists(path)) continue;
 
                 try
@@ -537,12 +565,11 @@ namespace ZonderqOS.SystemCore.Updates
                             Components = manifest.Components.ToArray()
                         };
 
-                        // Check digital signature
-                        if (!string.IsNullOrEmpty(manifest.Signature))
-                        {
-                            info.IsSigned = true;
-                            info.IsSignatureValid = manifest.VerifySignature(UpdateManifest.DefaultSignerKey);
-                        }
+                        // Parsing is not authentication. Detached Ed25519
+                        // verification happens in TryVerifyTrustedPackage
+                        // before the package can be advertised or installed.
+                        info.IsSigned = false;
+                        info.IsSignatureValid = false;
 
                         // Determine kernel image location
                         string baseDir = Path.GetDirectoryName(path);
@@ -557,12 +584,9 @@ namespace ZonderqOS.SystemCore.Updates
                             }
                             catch { }
                         }
-                        else
-                        {
-                            string altKernel = FindKernelSource(null);
-                            if (!string.IsNullOrEmpty(altKernel))
-                                info.KernelImagePath = altKernel;
-                        }
+                        // Never substitute a kernel from another USB location:
+                        // the manifest and all binaries must come from the same
+                        // update package. Missing file is a verification error.
 
                         // Determine payload directory
                         if (!string.IsNullOrEmpty(manifest.PayloadDirectory))
@@ -608,7 +632,11 @@ namespace ZonderqOS.SystemCore.Updates
             byte[] kernelBytes = File.ReadAllBytes(kernelSrc);
             string actualKernelSha = Crypto.ComputeSha256(kernelBytes);
 
-            if (!string.IsNullOrEmpty(pkg.KernelSha256))
+            if (string.IsNullOrEmpty(pkg.KernelSha256))
+            {
+                error = "Odrzucono pakiet: brak SHA-256 kernela.";
+                return false;
+            }
             {
                 if (!Crypto.FixedTimeEquals(actualKernelSha.ToLowerInvariant(), pkg.KernelSha256.ToLowerInvariant()))
                 {
@@ -619,23 +647,52 @@ namespace ZonderqOS.SystemCore.Updates
             pkg.ExpectedSha256 = actualKernelSha;
             progress?.Invoke(45, "Suma SHA-256 kernela prawidlowa.");
 
-            // 2. Verify payload files
+            // 2. Verify payload files and reject all undeclared additions.
+            var declaredPayloadFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string payloadBase = FindPayloadDirectory(pkg);
             if (pkg.Files != null && pkg.Files.Count > 0)
             {
-                string payloadBase = FindPayloadDirectory(pkg);
+                if (string.IsNullOrEmpty(payloadBase))
+                {
+                    error = "Brak wymaganego katalogu payload.";
+                    return false;
+                }
                 for (int i = 0; i < pkg.Files.Count; i++)
                 {
                     var fileEntry = pkg.Files[i];
+                    if (fileEntry == null)
+                    {
+                        error = "Pusty wpis FILE w pakiecie.";
+                        return false;
+                    }
                     int pct = 30 + (int)((i + 1) * 50.0 / pkg.Files.Count);
                     progress?.Invoke(pct, "Weryfikacja sumy pliku: " + fileEntry.RelativePath + "...");
 
+                    if (!declaredPayloadFiles.Add(fileEntry.RelativePath) ||
+                        !UpdateManifest.IsSafeRelativePath(fileEntry.RelativePath) ||
+                        !IsAllowedUpdatePayloadPath(fileEntry.RelativePath))
+                    {
+                        error = "Niedozwolona lub niepoprawna sciezka w pakiecie.";
+                        return false;
+                    }
                     string fullPath = string.IsNullOrEmpty(payloadBase) ? null : Path.Combine(payloadBase, fileEntry.RelativePath);
+                    if (fullPath != null && !IsSafeUpdateFilePath(payloadBase, fileEntry.RelativePath))
+                    {
+                        error = "Niedozwolony dowiazany symbolicznie plik lub katalog payload: " + fileEntry.RelativePath;
+                        return false;
+                    }
                     if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
                     {
                         error = "Brak pliku w payload: " + fileEntry.RelativePath;
                         return false;
                     }
 
+                    long actualSize = new FileInfo(fullPath).Length;
+                    if (fileEntry.SizeBytes > 0 && actualSize != fileEntry.SizeBytes)
+                    {
+                        error = "Niezgodny rozmiar pliku payload: " + fileEntry.RelativePath;
+                        return false;
+                    }
                     byte[] fBytes = File.ReadAllBytes(fullPath);
                     string actualFHash = Crypto.ComputeSha256(fBytes);
                     if (!Crypto.FixedTimeEquals(actualFHash.ToLowerInvariant(), fileEntry.ExpectedSha256.ToLowerInvariant()))
@@ -646,25 +703,243 @@ namespace ZonderqOS.SystemCore.Updates
                 }
             }
 
-            // 3. Verify digital signature if signed
-            if (pkg.IsSigned && !pkg.IsSignatureValid)
+            if (!string.IsNullOrEmpty(payloadBase) && Directory.Exists(payloadBase))
             {
-                error = "Odrzucono pakiet: niepoprawny cyfrowy podpis HMAC-SHA256 (pakiet mogl zostac zmodyfikowany).";
-                return false;
+                string[] physicalFiles = Directory.GetFiles(payloadBase, "*", SearchOption.AllDirectories);
+                for (int i = 0; i < physicalFiles.Length; i++)
+                {
+                    string relative = physicalFiles[i].Substring(payloadBase.TrimEnd('/').Length).TrimStart('/', '\\');
+                    relative = relative.Replace('\\', '/');
+                    if (!declaredPayloadFiles.Contains(relative) ||
+                        !IsSafeUpdateFilePath(payloadBase, relative))
+                    {
+                        error = "Pakiet zawiera niezadeklarowany lub niebezpieczny plik payload: " + relative;
+                        return false;
+                    }
+                }
             }
 
-            progress?.Invoke(90, "Wszystkie sumy kontrolne SHA-256 i podpisy sa prawidlowe.");
+            // 3. Integrity is distinct from authenticity. This method
+            // checks SHA-256 only; ApplyUpdateStep additionally requires a
+            // valid Ed25519 signature over every byte of the manifest.
+            progress?.Invoke(90, "Wszystkie zadeklarowane sumy SHA-256 sa prawidlowe.");
             return true;
+        }
+
+        // Early allowlist: do not install arbitrary packages into /boot,
+        // /etc, /var, /root or foreign partitions. Installed system payloads
+        // must live under these two explicitly managed roots.
+        private static bool IsAllowedUpdatePayloadPath(string relativePath)
+        {
+            return UpdateManifest.IsSafeRelativePath(relativePath) &&
+                (relativePath.StartsWith("system/", StringComparison.OrdinalIgnoreCase) ||
+                 relativePath.StartsWith("usr/", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsSafeUpdateFilePath(string root, string relativePath)
+        {
+            if (string.IsNullOrEmpty(root) || !UpdateManifest.IsSafeRelativePath(relativePath))
+                return false;
+            try
+            {
+                if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
+                    return false;
+                string current = root;
+                string[] parts = relativePath.Split('/');
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    current = Path.Combine(current, parts[i]);
+                    if ((File.Exists(current) || Directory.Exists(current)) &&
+                        (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                        return false;
+                }
+                return true;
+            }
+            catch { return false; }
+        }
+
+        // This gate requires a build-provisioned immutable PUBLIC key.
+        // It can never be enabled by data found on USB.
+        private static bool HasVerifiedAsymmetricUpdateTrust()
+        {
+            return ReleaseSignatureVerifier.HasProductionKey();
+        }
+
+        /// <summary>
+        /// Authenticate exact original manifest bytes and ensure every mutable
+        /// UpdatePackageInfo field still corresponds to the signed manifest.
+        /// Re-run this check before every installer step to prevent resuming an
+        /// untrusted partially-completed update.
+        /// </summary>
+        private static bool TryVerifyTrustedPackage(UpdatePackageInfo pkg, out string error)
+        {
+            error = string.Empty;
+            if (!HasVerifiedAsymmetricUpdateTrust())
+            {
+                error = "Brak zaufanego klucza publicznego Ed25519 w obrazie kernela.";
+                return false;
+            }
+            if (pkg == null || string.IsNullOrEmpty(pkg.ManifestPath))
+            {
+                error = "Brak manifestu aktualizacji.";
+                return false;
+            }
+            try
+            {
+                // Only explicit, managed update locations are valid sources.
+                string manifestPath = pkg.ManifestPath;
+                if (manifestPath != "/updates/update.manifest" &&
+                    manifestPath != "/var/updates/incoming/update.manifest" &&
+                    manifestPath != "/var/updates/update.manifest")
+                {
+                    error = "Niezatwierdzona lokalizacja manifestu: " + manifestPath;
+                    return false;
+                }
+                string baseDir = Path.GetDirectoryName(manifestPath);
+                if (!IsSafeUpdateFilePath(baseDir, "update.manifest") ||
+                    !IsSafeUpdateFilePath(baseDir, "update.manifest.sig"))
+                {
+                    error = "Niedozwolony symlink manifestu lub podpisu.";
+                    return false;
+                }
+
+                byte[] bytes = File.ReadAllBytes(manifestPath);
+                if (bytes.Length == 0 || bytes.Length > 1024 * 1024)
+                {
+                    error = "Niepoprawny rozmiar podpisanego manifestu.";
+                    return false;
+                }
+                string sigPath = manifestPath + ".sig";
+                if (!File.Exists(sigPath) || new FileInfo(sigPath).Length != 64)
+                {
+                    error = "Brak 64-bajtowego podpisu Ed25519.";
+                    return false;
+                }
+                byte[] signature = File.ReadAllBytes(sigPath);
+                if (!ReleaseSignatureVerifier.VerifyProductionManifest(bytes, signature))
+                {
+                    error = "Podpis Ed25519 manifestu jest niepoprawny.";
+                    return false;
+                }
+                pkg.IsSigned = true;
+                pkg.IsSignatureValid = true;
+                // Parse only after verifying the raw detached signature.
+                string text = System.Text.Encoding.UTF8.GetString(bytes);
+                if (!UpdateManifest.TryParse(text, out UpdateManifest parsed, out error))
+                    return false;
+                if (parsed.UpdateFormat != 2 || parsed.SignatureAlgorithm != "ED25519")
+                {
+                    error = "Odrzucono niepodpisany format legacy HMAC.";
+                    return false;
+                }
+
+                string kernelRelative = parsed.KernelImage;
+                string payloadRelative = parsed.PayloadDirectory;
+                if (!UpdateManifest.IsSafeRelativePath(kernelRelative) ||
+                    !UpdateManifest.IsSafeRelativePath(payloadRelative) ||
+                    !IsSafeUpdateFilePath(baseDir, kernelRelative) ||
+                    !IsSafeUpdateFilePath(baseDir, payloadRelative))
+                {
+                    error = "Niebezpieczna sciezka kernela/payload.";
+                    return false;
+                }
+                string expectedKernel = Path.Combine(baseDir, kernelRelative);
+                string expectedPayload = Path.Combine(baseDir, payloadRelative);
+                if (pkg.KernelImagePath != expectedKernel ||
+                    (pkg.PayloadPath != expectedPayload &&
+                     !(string.IsNullOrEmpty(pkg.PayloadPath) && parsed.Files.Count == 0)) ||
+                    pkg.Version != parsed.Version ||
+                    pkg.BuildNumber != parsed.BuildNumber ||
+                    pkg.Architecture != parsed.Architecture ||
+                    pkg.Title != parsed.Title ||
+                    pkg.ReleaseDate != parsed.ReleaseDate ||
+                    pkg.Severity != parsed.Severity ||
+                    pkg.KernelSha256 != parsed.KernelSha256 ||
+                    pkg.TargetTheme != parsed.TargetTheme ||
+                    pkg.TargetThemeName != parsed.TargetThemeName ||
+                    pkg.TargetWallpaper != parsed.TargetWallpaper ||
+                    !string.IsNullOrEmpty(pkg.Signature) ||
+                    pkg.Files == null || pkg.Files.Count != parsed.Files.Count ||
+                    pkg.Changelog == null || pkg.Changelog.Length != parsed.Changelog.Count ||
+                    pkg.Components == null || pkg.Components.Length != parsed.Components.Count)
+                {
+                    error = "Dane pakietu nie sa identyczne z podpisanym manifestem.";
+                    return false;
+                }
+                for (int i = 0; i < parsed.Changelog.Count; i++)
+                {
+                    if (pkg.Changelog[i] != parsed.Changelog[i])
+                    {
+                        error = "Zmieniono dziennik zmian z podpisanego manifestu.";
+                        return false;
+                    }
+                }
+                for (int i = 0; i < parsed.Components.Count; i++)
+                {
+                    if (pkg.Components[i] != parsed.Components[i])
+                    {
+                        error = "Zmieniono liste komponentow podpisanego manifestu.";
+                        return false;
+                    }
+                }
+                for (int i = 0; i < parsed.Files.Count; i++)
+                {
+                    UpdateFileEntry given = pkg.Files[i], signed = parsed.Files[i];
+                    if (given == null || given.RelativePath != signed.RelativePath ||
+                        !string.Equals(given.ExpectedSha256, signed.ExpectedSha256,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        given.SizeBytes != signed.SizeBytes)
+                    {
+                        error = "Zmieniono liste plikow po weryfikacji podpisu.";
+                        return false;
+                    }
+                }
+
+                // Re-hash all declared files on every installer stage, not just
+                // once at step 0. Staging writes are separately read back.
+                if (!VerifyPackageIntegrity(pkg, null, out error))
+                    return false;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "Nie mozna zweryfikowac podpisanego pakietu: " + ex.Message;
+                return false;
+            }
         }
 
         public static bool ApplyUpdateStep(UpdatePackageInfo pkg, ref int step, Action<int, string> progress, out string error)
         {
+            // Authenticate the entire exact manifest and every declared file
+            // before EACH step, including resumed step > 0 calls.
+            if (!TryVerifyTrustedPackage(pkg, out error))
+            {
+                Status = UpdateStatus.Error;
+                try
+                {
+                    SecurityLogger.LogEvent("SECURITY_ERROR",
+                        "Updater rejected unverified Ed25519 package: " + error);
+                }
+                catch { }
+                return false;
+            }
+
             Initialize();
             error = string.Empty;
-
             if (pkg == null)
             {
                 error = "Brak wybranego pakietu aktualizacji.";
+                Status = UpdateStatus.Error;
+                return false;
+            }
+
+            // Never replace the only trusted recovery snapshot while an
+            // earlier new kernel is still awaiting boot-health confirmation.
+            // This runs before case 1 deletes any old backup directory.
+            if (step >= 0 && step <= 4 &&
+                !string.IsNullOrEmpty(BootSlotManager.PendingSlot))
+            {
+                error = "Poprzednia aktualizacja A/B nadal oczekuje na potwierdzenie rozruchu; migawka rollback jest chroniona.";
                 Status = UpdateStatus.Error;
                 return false;
             }
@@ -711,11 +986,38 @@ namespace ZonderqOS.SystemCore.Updates
                     case 3:
                         // Step 4: Deploy payload files if present
                         string payloadDir = FindPayloadDirectory(pkg);
-                        if (!string.IsNullOrEmpty(payloadDir) && Directory.Exists(payloadDir))
+                        if (pkg.Files != null && pkg.Files.Count > 0)
                         {
-                            progress?.Invoke(70, "Instalowanie fizycznych plikow ladunku na dysku...");
+                            if (string.IsNullOrEmpty(payloadDir) || !Directory.Exists(payloadDir))
+                            {
+                                Status = UpdateStatus.Error;
+                                error = "Brak wymaganego katalogu payload; instalacja przerwana.";
+                                return false;
+                            }
+                            progress?.Invoke(70, "Instalowanie tylko plikow zadeklarowanych w manifeście...");
                             string backupPayload = Path.Combine(BackupDir, "payload_snapshot");
-                            DeployDirectory(payloadDir, "/", backupPayload);
+                            try
+                            {
+                                DeployManifestFiles(pkg, payloadDir, backupPayload);
+                            }
+                            catch (Exception deployError)
+                            {
+                                // No slot activation occurred yet. Undo all
+                                // payload writes before reporting failure.
+                                try
+                                {
+                                    RestoreManifestFiles(backupPayload);
+                                    error = "Instalacja payload przerwana i wycofana: " + deployError.Message;
+                                }
+                                catch (Exception restoreError)
+                                {
+                                    error = "KRYTYCZNE: instalacja payload nieudana: " +
+                                        deployError.Message + "; rollback tez nieudany: " +
+                                        restoreError.Message;
+                                }
+                                Status = UpdateStatus.Error;
+                                return false;
+                            }
                         }
                         step = 4;
                         return true;
@@ -726,6 +1028,10 @@ namespace ZonderqOS.SystemCore.Updates
                         progress?.Invoke(85, $"Przelaczanie aktywnego slotu rozruchowego na slot {newActiveSlot}...");
                         if (!BootSlotManager.ActivateSlot(newActiveSlot, out error))
                         {
+                            string activationError = error;
+                            if (!RestoreSharedFilesAfterBootFailure(BootSlotManager.ActiveSlot,
+                                    out string restoreError))
+                                error = activationError + " KRYTYCZNE: nie udalo sie odtworzyc plikow: " + restoreError;
                             Status = UpdateStatus.Error;
                             return false;
                         }
@@ -755,8 +1061,9 @@ namespace ZonderqOS.SystemCore.Updates
 
                             if (!string.IsNullOrEmpty(pkg.ManifestPath) && File.Exists(pkg.ManifestPath))
                             {
+                                // Preserve original manifest and .sig for diagnostics
+                                // and retry until the running slot is confirmed healthy.
                                 File.Copy(pkg.ManifestPath, Path.Combine(installedDir, "update-" + pkg.Version + ".manifest"), true);
-                                File.Delete(pkg.ManifestPath);
                             }
                         }
                         catch { }
@@ -849,52 +1156,133 @@ namespace ZonderqOS.SystemCore.Updates
             catch { }
         }
 
-        private static void DeployDirectory(string sourceDir, string targetDir, string backupRoot)
+        // Stage only explicitly declared, allowlisted payload files. Root-wide
+        // recursive copying is never valid for an untrusted update archive.
+        // Preserve snapshots of pre-existing files before any destination write.
+        private static void DeployManifestFiles(UpdatePackageInfo pkg, string payloadDir, string backupRoot)
         {
-            if (!Directory.Exists(targetDir))
+            if (pkg == null || pkg.Files == null)
+                throw new IOException("Brak listy plikow w manifeście.");
+            if (!Directory.Exists(payloadDir))
+                throw new IOException("Nie istnieje katalog payload.");
+
+            // Preflight the entire manifest before creating files.
+            var declared = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < pkg.Files.Count; i++)
             {
-                try { Directory.CreateDirectory(targetDir); } catch { }
+                UpdateFileEntry entry = pkg.Files[i];
+                if (entry == null || !IsAllowedUpdatePayloadPath(entry.RelativePath) ||
+                    !declared.Add(entry.RelativePath) ||
+                    !IsSafeUpdateFilePath(payloadDir, entry.RelativePath) ||
+                    !IsSafeUpdateFilePath("/", entry.RelativePath))
+                    throw new IOException("Niebezpieczny lub powtorzony plik aktualizacji.");
+                string source = Path.Combine(payloadDir, entry.RelativePath);
+                if (!File.Exists(source))
+                    throw new IOException("Brak pliku payload: " + entry.RelativePath);
+                byte[] data = File.ReadAllBytes(source);
+                if (entry.SizeBytes > 0 && data.LongLength != entry.SizeBytes)
+                    throw new IOException("Niepoprawny rozmiar payload: " + entry.RelativePath);
+                if (!Crypto.FixedTimeEquals(
+                    Crypto.ComputeSha256(data).ToLowerInvariant(),
+                    entry.ExpectedSha256.ToLowerInvariant()))
+                    throw new IOException("Bledny hash payload: " + entry.RelativePath);
             }
 
-            try
+            // A signed list must cover every real file on disk, including files
+            // in unexpected subdirectories.
+            string[] actualFiles = Directory.GetFiles(payloadDir, "*", SearchOption.AllDirectories);
+            for (int i = 0; i < actualFiles.Length; i++)
             {
-                string[] files = Directory.GetFiles(sourceDir);
+                string relative = actualFiles[i].Substring(payloadDir.TrimEnd('/').Length).TrimStart('/', '\\');
+                relative = relative.Replace('\\', '/');
+                if (!declared.Contains(relative) || !IsSafeUpdateFilePath(payloadDir, relative))
+                    throw new IOException("Niezadeklarowany plik w payload: " + relative);
+            }
+
+            if (!Directory.Exists(backupRoot))
+                Directory.CreateDirectory(backupRoot);
+
+            // Keep a rollback record for files absent before this transaction.
+            // It is written before any install write; a failed record is fatal.
+            var created = new List<string>();
+            for (int i = 0; i < pkg.Files.Count; i++)
+            {
+                string relative = pkg.Files[i].RelativePath;
+                string destination = Path.Combine("/", relative);
+                string backup = Path.Combine(backupRoot, relative);
+                if (!File.Exists(destination))
+                    created.Add(relative);
+                else
+                {
+                    string backupParent = Path.GetDirectoryName(backup);
+                    if (!Directory.Exists(backupParent)) Directory.CreateDirectory(backupParent);
+                    File.Copy(destination, backup, true);
+                }
+            }
+
+            string createdRecord = Path.Combine(BackupDir, "payload_created.list");
+            File.WriteAllText(createdRecord, string.Join("\n", created));
+
+            // Apply one file at a time, verifying the exact bytes copied.
+            // Exception stops activation and is returned to the UI.
+            for (int i = 0; i < pkg.Files.Count; i++)
+            {
+                UpdateFileEntry entry = pkg.Files[i];
+                string source = Path.Combine(payloadDir, entry.RelativePath);
+                string dest = Path.Combine("/", entry.RelativePath);
+                string parent = Path.GetDirectoryName(dest);
+                if (!IsSafeUpdateFilePath("/", entry.RelativePath))
+                    throw new IOException("Zmiana sciezki docelowej podczas instalacji.");
+                if (!Directory.Exists(parent)) Directory.CreateDirectory(parent);
+                string temp = dest + ".update-part";
+                if (File.Exists(temp)) File.Delete(temp);
+                File.Copy(source, temp);
+                if (!Crypto.FixedTimeEquals(
+                    Crypto.ComputeSha256(File.ReadAllBytes(temp)).ToLowerInvariant(),
+                    entry.ExpectedSha256.ToLowerInvariant()))
+                    throw new IOException("Blad weryfikacji kopii: " + entry.RelativePath);
+                if (File.Exists(dest)) File.Delete(dest);
+                File.Move(temp, dest);
+            }
+        }
+
+        private static void RestoreManifestFiles(string backupRoot)
+        {
+            // Only restore system-managed destinations; do not recursively
+            // trust arbitrary backup paths under a writable disk directory.
+            if (Directory.Exists(backupRoot))
+            {
+                string[] files = Directory.GetFiles(backupRoot, "*", SearchOption.AllDirectories);
                 for (int i = 0; i < files.Length; i++)
                 {
-                    string srcFile = files[i];
-                    string name = Path.GetFileName(srcFile);
-                    string dstFile = Path.Combine(targetDir, name);
-
-                    if (File.Exists(dstFile) && !string.IsNullOrEmpty(backupRoot))
-                    {
-                        try
-                        {
-                            string relPath = dstFile.TrimStart('/');
-                            string backupDst = Path.Combine(backupRoot, relPath);
-                            string backupFolder = Path.GetDirectoryName(backupDst);
-                            if (!string.IsNullOrEmpty(backupFolder) && !Directory.Exists(backupFolder))
-                                Directory.CreateDirectory(backupFolder);
-                            File.Copy(dstFile, backupDst, true);
-                        }
-                        catch { }
-                    }
-
-                    try
-                    {
-                        File.Copy(srcFile, dstFile, true);
-                    }
-                    catch { }
-                }
-
-                string[] dirs = Directory.GetDirectories(sourceDir);
-                for (int i = 0; i < dirs.Length; i++)
-                {
-                    string srcSub = dirs[i];
-                    string subName = Path.GetFileName(srcSub);
-                    DeployDirectory(srcSub, Path.Combine(targetDir, subName), backupRoot);
+                    string relative = files[i].Substring(backupRoot.TrimEnd('/').Length).TrimStart('/', '\\');
+                    relative = relative.Replace('\\', '/');
+                    if (!IsAllowedUpdatePayloadPath(relative) ||
+                        !IsSafeUpdateFilePath(backupRoot, relative) ||
+                        !IsSafeUpdateFilePath("/", relative))
+                        throw new IOException("Niebezpieczny plik w kopii rollback: " + relative);
+                    string dst = Path.Combine("/", relative);
+                    string parent = Path.GetDirectoryName(dst);
+                    if (!Directory.Exists(parent)) Directory.CreateDirectory(parent);
+                    File.Copy(files[i], dst, true);
                 }
             }
-            catch { }
+
+            string createdRecord = Path.Combine(BackupDir, "payload_created.list");
+            if (File.Exists(createdRecord))
+            {
+                string[] created = File.ReadAllLines(createdRecord);
+                for (int i = 0; i < created.Length; i++)
+                {
+                    string relative = created[i].Trim();
+                    if (relative.Length == 0) continue;
+                    if (!IsAllowedUpdatePayloadPath(relative) ||
+                        !IsSafeUpdateFilePath("/", relative))
+                        throw new IOException("Niebezpieczna sciezka usuwania w rollback: " + relative);
+                    string destination = Path.Combine("/", relative);
+                    if (File.Exists(destination)) File.Delete(destination);
+                }
+            }
         }
 
         private static void CreateRollbackSnapshot()
@@ -903,6 +1291,14 @@ namespace ZonderqOS.SystemCore.Updates
             {
                 if (!Directory.Exists(BackupDir))
                     Directory.CreateDirectory(BackupDir);
+                // A new transaction must not inherit files or a deletion list
+                // from an older update, or rollback could restore stale data.
+                string previousPayload = Path.Combine(BackupDir, "payload_snapshot");
+                if (Directory.Exists(previousPayload))
+                    Directory.Delete(previousPayload, true);
+                string previousCreated = Path.Combine(BackupDir, "payload_created.list");
+                if (File.Exists(previousCreated))
+                    File.Delete(previousCreated);
 
                 if (File.Exists(OsReleasePath))
                     File.Copy(OsReleasePath, Path.Combine(BackupDir, "os-release.snapshot"), true);
@@ -914,11 +1310,79 @@ namespace ZonderqOS.SystemCore.Updates
                               "PREVIOUS_VERSION=" + CurrentVersion + "\n" +
                               "PREVIOUS_BUILD=" + CurrentBuild + "\n" +
                               "PREVIOUS_SLOT=" + BootSlotManager.ActiveSlot + "\n" +
+                              "PREVIOUS_OS_RELEASE_PRESENT=" + (File.Exists(OsReleasePath) ? "1" : "0") + "\n" +
+                              "PREVIOUS_UPDATE_CONFIG_PRESENT=" + (File.Exists(ConfigPath) ? "1" : "0") + "\n" +
                               "PREVIOUS_THEME=" + global::ZonderqOS.SystemSettings.AccentTheme + "\n" +
                               "PREVIOUS_WALLPAPER=" + global::ZonderqOS.SystemSettings.DesktopBackgroundMode + "\n";
                 File.WriteAllText(Path.Combine(BackupDir, "snapshot.meta"), meta);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                throw new IOException("Nie udalo sie utworzyc kopii rollback: " + ex.Message);
+            }
+        }
+
+        /// <summary>
+        /// Called during EARLY boot after an EFI BootGuard selects the old
+        /// kernel, BEFORE application/service initialization. An A/B kernel
+        /// rollback must also restore shared /system and /usr payload data.
+        /// Do not update the integrity baseline here: startup does it later.
+        /// </summary>
+        internal static bool RestoreSharedFilesAfterBootFailure(string fallbackSlot, out string error)
+        {
+            error = string.Empty;
+            try
+            {
+                string metadataPath = Path.Combine(BackupDir, "snapshot.meta");
+                if (!File.Exists(metadataPath))
+                {
+                    error = "Brak snapshot.meta do odtworzenia wspolnych plikow systemowych.";
+                    return false;
+                }
+                string[] metadata = File.ReadAllLines(metadataPath);
+                bool matchesFallback = false;
+                bool haveOsPresence = false, haveConfigPresence = false;
+                bool osExisted = false, configExisted = false;
+                for (int i = 0; i < metadata.Length; i++)
+                {
+                    if (metadata[i] == "PREVIOUS_SLOT=" + fallbackSlot)
+                        matchesFallback = true;
+                    if (metadata[i] == "PREVIOUS_OS_RELEASE_PRESENT=1")
+                    { haveOsPresence = true; osExisted = true; }
+                    else if (metadata[i] == "PREVIOUS_OS_RELEASE_PRESENT=0")
+                        haveOsPresence = true;
+                    if (metadata[i] == "PREVIOUS_UPDATE_CONFIG_PRESENT=1")
+                    { haveConfigPresence = true; configExisted = true; }
+                    else if (metadata[i] == "PREVIOUS_UPDATE_CONFIG_PRESENT=0")
+                        haveConfigPresence = true;
+                }
+                if (!haveOsPresence || !haveConfigPresence)
+                {
+                    error = "Migawka nie zapisala informacji o obecnosci plikow konfiguracyjnych.";
+                    return false;
+                }
+                if (!matchesFallback)
+                {
+                    error = "Slot awaryjny nie zgadza sie z migawka poprzedniego systemu.";
+                    return false;
+                }
+                RestoreManifestFiles(Path.Combine(BackupDir, "payload_snapshot"));
+                string oldRelease = Path.Combine(BackupDir, "os-release.snapshot");
+                string oldConfig = Path.Combine(BackupDir, "update.cfg.snapshot");
+                if ((osExisted && !File.Exists(oldRelease)) ||
+                    (configExisted && !File.Exists(oldConfig)))
+                    throw new IOException("Brak wymaganej kopii pierwotnego pliku w snapshot.");
+                if (osExisted) File.Copy(oldRelease, OsReleasePath, true);
+                else if (File.Exists(OsReleasePath)) File.Delete(OsReleasePath);
+                if (configExisted) File.Copy(oldConfig, ConfigPath, true);
+                else if (File.Exists(ConfigPath)) File.Delete(ConfigPath);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "Rollback plikow po nieudanym boot: " + ex.Message;
+                return false;
+            }
         }
 
         public static bool HasRollbackSnapshot()
@@ -962,14 +1426,11 @@ namespace ZonderqOS.SystemCore.Updates
 
                     case 2:
                         progress?.Invoke(75, "Przywracanie poprzedniej konfiguracji /etc/os-release...");
-                        string backupOsRel = Path.Combine(BackupDir, "os-release.snapshot");
-                        if (File.Exists(backupOsRel))
-                            File.Copy(backupOsRel, OsReleasePath, true);
-
-                        string backupPayloadDir = Path.Combine(BackupDir, "payload_snapshot");
-                        if (Directory.Exists(backupPayloadDir))
+                        if (!RestoreSharedFilesAfterBootFailure(BootSlotManager.ActiveSlot,
+                                out error))
                         {
-                            DeployDirectory(backupPayloadDir, "/", null);
+                            Status = UpdateStatus.Error;
+                            return false;
                         }
                         IntegrityGuard.UpdateBaseline();
                         step = 3;

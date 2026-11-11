@@ -14,9 +14,12 @@ namespace UpdateEngineSmoke
 
             TestCryptoHashAndHmac();
             TestManifestParsingAndValidation();
-            TestManifestSigningAndTamperDetection();
+            TestManifestV2RejectsLegacyHmac();
             TestSemverComparison();
             TestBootSlotManagerLifecycleAndFailover();
+            TestElfStructureValidation();
+            TestRealEd25519SignatureVectors();
+            TestPackageIntegrityRejectsUndeclaredPayload();
 
             Console.WriteLine("[UPDATE-TEST] ALL REGRESSION TESTS PASSED SUCCESSFULLY! [PASS]");
             return 0;
@@ -69,6 +72,41 @@ namespace UpdateEngineSmoke
             Assert(m.Files.Count == 1, "File count mismatch");
             Assert(m.Files[0].RelativePath == "bin/sh", "File path mismatch");
 
+            // P0: Manifest parser must reject paths capable of escaping the
+            // package root and ambiguous entries before any disk write.
+            string[] invalidPaths = {
+                "../etc/passwd", "/etc/passwd", "bin/../etc",
+                "bin//sh", "C:/Windows/system32", "bin\\\\sh",
+                "bin/./sh", "bin/sh.", "bin/sh "
+            };
+            for (int i = 0; i < invalidPaths.Length; i++)
+                Assert(!UpdateManifest.IsSafeRelativePath(invalidPaths[i]),
+                    "Unsafe path accepted: " + invalidPaths[i]);
+            Assert(UpdateManifest.IsSafeRelativePath("bin/sh"), "Safe nested path rejected");
+
+            string baseManifest = "VERSION=1.0.1\nARCH=x86_64\n" +
+                "KERNEL_IMAGE=ZonderqOS.elf\nKERNEL_SHA256=" +
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\n";
+            string sha = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+            string[] invalidManifests = {
+                baseManifest + "FILE=../etc/passwd:" + sha + ":4\n",
+                baseManifest + "FILE=bin/sh:not-a-sha:4\n",
+                baseManifest + "FILE=bin/sh:" + sha + ":-1\n",
+                baseManifest + "FILE=bin/sh:" + sha + ":abc\n",
+                baseManifest + "FILE=bin/sh:" + sha + ":2:extra\n",
+                baseManifest + "FILE=bin/sh:" + sha + ":4\nFILE=bin/sh:" + sha + ":4\n",
+                baseManifest + "VERSION=2.0.0\n",
+                baseManifest + "UNKNOWN=1\n",
+                baseManifest.Replace("KERNEL_SHA256=" + sha, "KERNEL_SHA256=bad"),
+                baseManifest.Replace("KERNEL_IMAGE=ZonderqOS.elf", "KERNEL_IMAGE=../evil.elf")
+            };
+            for (int i = 0; i < invalidManifests.Length; i++)
+            {
+                bool accepted = UpdateManifest.TryParse(invalidManifests[i], out _, out string rejection);
+                Assert(!accepted, "Malformed manifest accepted at case " + i);
+                Assert(!string.IsNullOrEmpty(rejection), "Missing rejection reason at case " + i);
+            }
+
             // Invalid architecture rejection
             string badArch = "VERSION=1.0.1\nBUILD=3110\nARCH=arm64\n";
             bool badArchOk = UpdateManifest.TryParse(badArch, out _, out string badArchErr);
@@ -80,12 +118,13 @@ namespace UpdateEngineSmoke
             Assert(!noVerOk, "Missing version must be rejected");
         }
 
-        private static void TestManifestSigningAndTamperDetection()
+        private static void TestManifestV2RejectsLegacyHmac()
         {
-            Console.WriteLine("  -> Testing Manifest Signing and Tampering Detection...");
-
+            Console.WriteLine("  -> Testing signed manifest v2 and legacy HMAC rejection...");
             var m = new UpdateManifest
             {
+                UpdateFormat = 2,
+                SignatureAlgorithm = "ED25519",
                 Version = "1.0.2",
                 BuildNumber = 3120,
                 Architecture = "x86_64",
@@ -93,23 +132,22 @@ namespace UpdateEngineSmoke
                 KernelImage = "ZonderqOS.elf",
                 KernelSha256 = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef"
             };
-
-            m.Sign(UpdateManifest.DefaultSignerKey);
-            Assert(!string.IsNullOrEmpty(m.Signature), "Signature should not be empty");
-            Assert(m.VerifySignature(UpdateManifest.DefaultSignerKey), "Signature must verify successfully");
-
-            // Tamper test: modify version without updating signature
-            m.Version = "2.0.0-TAMPERED";
-            Assert(!m.VerifySignature(UpdateManifest.DefaultSignerKey), "Tampered manifest must fail signature verification!");
-
-            // Restore version, tamper title
-            m.Version = "1.0.2";
-            m.Title = "Tampered Title";
-            Assert(!m.VerifySignature(UpdateManifest.DefaultSignerKey), "Tampered title must fail signature verification!");
-
-            // Verify invalid key
-            m.Title = "Feature Update";
-            Assert(!m.VerifySignature("WRONG_SECRET_KEY"), "Wrong signing key must fail verification");
+            string signedContent = m.Serialize();
+            Assert(UpdateManifest.TryParse(signedContent, out UpdateManifest parsed, out string error),
+                "signed manifest structure must parse: " + error);
+            Assert(parsed.UpdateFormat == 2 && parsed.SignatureAlgorithm == "ED25519",
+                "detached Ed25519 fields must survive roundtrip");
+            Assert(!UpdateManifest.TryParse(
+                signedContent + "HMAC=000000\n", out _, out _),
+                "v2 manifest with embedded HMAC must be rejected");
+            Assert(!UpdateManifest.TryParse(
+                signedContent.Replace("SIGNATURE_ALG=ED25519", "SIGNATURE_ALG=HMAC"),
+                out _, out _),
+                "v2 HMAC signature algorithm must be rejected");
+            Assert(!UpdateManifest.TryParse(
+                signedContent.Replace("UPDATE_FORMAT=2", "UPDATE_FORMAT=3"),
+                out _, out _),
+                "unsupported signed manifest version must be rejected");
         }
 
         private static void TestSemverComparison()
@@ -124,6 +162,115 @@ namespace UpdateEngineSmoke
             Assert(!UpdateManager.IsNewerVersion("1.0.0", 3100, "1.0.0", "3100"), "Same version and build should not be newer");
             Assert(!UpdateManager.IsNewerVersion("1.0.0", 3099, "1.0.0", "3100"), "Older build should not be newer");
             Assert(!UpdateManager.IsNewerVersion("0.9.9", 3200, "1.0.0", "3100"), "Older semver should not be newer regardless of build");
+        }
+
+        private static void TestPackageIntegrityRejectsUndeclaredPayload()
+        {
+            Console.WriteLine("  -> Testing complete payload inventory verification...");
+            string temp = Path.Combine(Path.GetTempPath(), "zonderq_payload_" + Guid.NewGuid().ToString("N"));
+            try
+            {
+                Directory.CreateDirectory(temp);
+                string kernel = Path.Combine(temp, "ZonderqOS.elf");
+                byte[] elf = { 1, 2, 3, 4, 5, 6 };
+                File.WriteAllBytes(kernel, elf);
+                string payload = Path.Combine(temp, "payload");
+                string appDir = Path.Combine(payload, "system", "bin");
+                Directory.CreateDirectory(appDir);
+                string app = Path.Combine(appDir, "hello");
+                byte[] data = { 10, 11, 12, 13 };
+                File.WriteAllBytes(app, data);
+                var package = new UpdatePackageInfo
+                {
+                    KernelImagePath = kernel,
+                    KernelSha256 = Crypto.ComputeSha256(elf),
+                    PayloadPath = payload
+                };
+                package.Files.Add(new UpdateFileEntry
+                {
+                    RelativePath = "system/bin/hello",
+                    ExpectedSha256 = Crypto.ComputeSha256(data),
+                    SizeBytes = data.Length
+                });
+                Assert(UpdateManager.VerifyPackageIntegrity(package, null, out string okError),
+                    "valid declared payload must pass integrity verification: " + okError);
+                string extra = Path.Combine(appDir, "extra");
+                File.WriteAllText(extra, "undeclared");
+                Assert(!UpdateManager.VerifyPackageIntegrity(package, null, out _),
+                    "undeclared file in payload must fail");
+                File.Delete(extra);
+
+                package.Files[0].RelativePath = "../escape";
+                Assert(!UpdateManager.VerifyPackageIntegrity(package, null, out _),
+                    "traversal path must fail");
+                package.Files[0].RelativePath = "system/bin/hello";
+                package.Files[0].SizeBytes = data.Length + 100;
+                Assert(!UpdateManager.VerifyPackageIntegrity(package, null, out _),
+                    "wrong payload size must fail");
+                package.Files[0].SizeBytes = data.Length;
+                package.KernelSha256 = string.Empty;
+                Assert(!UpdateManager.VerifyPackageIntegrity(package, null, out _),
+                    "kernel SHA must be present");
+            }
+            finally
+            {
+                if (Directory.Exists(temp)) Directory.Delete(temp, true);
+            }
+        }
+
+        private static void TestRealEd25519SignatureVectors()
+        {
+            Console.WriteLine("  -> Testing standard RFC 8032 Ed25519 signature vectors...");
+            byte[] publicKey = Convert.FromHexString(
+                "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+            byte[] signedEmptyMessage = Convert.FromHexString(
+                "e5564300c360ac729086e2cc806e828a" +
+                "84877f1eb8e5d974d873e06522490155" +
+                "5fb8821590a33bacc61e39701cf9b46b" +
+                "d25bf5f0595bbe24655141438e7a100b");
+            byte[] emptyMessage = Array.Empty<byte>();
+            Assert(ReleaseSignatureVerifier.VerifyEd25519(
+                publicKey, emptyMessage, signedEmptyMessage),
+                "RFC 8032 Ed25519 test vector should verify");
+            byte[] badSig = (byte[])signedEmptyMessage.Clone();
+            badSig[27] ^= 0x01;
+            Assert(!ReleaseSignatureVerifier.VerifyEd25519(
+                publicKey, emptyMessage, badSig),
+                "tampered Ed25519 signature must not verify");
+            Assert(!ReleaseSignatureVerifier.VerifyEd25519(
+                publicKey, new byte[] { 0 }, signedEmptyMessage),
+                "different message must not verify");
+            Assert(!ReleaseSignatureVerifier.VerifyEd25519(
+                new byte[32], emptyMessage, signedEmptyMessage),
+                "invalid public key must not verify");
+            Assert(!ReleaseSignatureVerifier.VerifyEd25519(
+                publicKey, emptyMessage, new byte[32]),
+                "truncated signature must not verify");
+        }
+
+        private static void TestElfStructureValidation()
+        {
+            Console.WriteLine("  -> Testing ELF64 x86_64 header and truncated image rejection...");
+            byte[] elf = new byte[128];
+            elf[0] = 0x7f; elf[1] = (byte)'E'; elf[2] = (byte)'L'; elf[3] = (byte)'F';
+            elf[4] = 2; elf[5] = 1; elf[6] = 1;
+            elf[16] = 2; // ET_EXEC
+            elf[18] = 62; // EM_X86_64
+            elf[32] = 64; // program header offset
+            elf[54] = 56; // program header entry size
+            elf[56] = 1; // one entry
+            Assert(BootSlotManager.HasValidX64ElfHeader(elf), "valid ELF header should be accepted");
+            byte[] altered = (byte[])elf.Clone();
+            altered[0] = 0;
+            Assert(!BootSlotManager.HasValidX64ElfHeader(altered), "ELF magic required");
+            altered = (byte[])elf.Clone(); altered[4] = 1;
+            Assert(!BootSlotManager.HasValidX64ElfHeader(altered), "ELF32 must be rejected");
+            altered = (byte[])elf.Clone(); altered[18] = 183;
+            Assert(!BootSlotManager.HasValidX64ElfHeader(altered), "ARM64 ELF must be rejected");
+            altered = (byte[])elf.Clone(); altered[32] = 120;
+            Assert(!BootSlotManager.HasValidX64ElfHeader(altered), "out of range program table rejected");
+            Assert(!BootSlotManager.HasValidX64ElfHeader(new byte[] { 0x7f, 69, 76, 70 }),
+                "truncated ELF header rejected");
         }
 
         private static void TestBootSlotManagerLifecycleAndFailover()

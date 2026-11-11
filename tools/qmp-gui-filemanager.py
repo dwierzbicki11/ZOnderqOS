@@ -151,6 +151,19 @@ def read_ppm(path):
     return width, height, bytes(unpacked)
 
 
+def minimum_palette_changed_samples(sample_count):
+    """Fixed-size launcher must remain detectable on Full HD and higher.
+
+    Pure percentages unfairly demand that the same fixed-width palette grow
+    with the entire framebuffer. Keep the 12% gate on compact modes, capped
+    at 5000 changed sampled pixels for large screens. An unchanged image or
+    small cursor/toast still fails by a wide margin.
+    """
+    if sample_count < 1:
+        raise ValueError("empty framebuffer sample")
+    return max(1, min(int(sample_count * 0.12), 5000))
+
+
 def difference(first, second, upper_only=False):
     """Sample GUI changes; optionally ignore transient lower-screen toasts.
 
@@ -435,8 +448,11 @@ def main():
         changed, samples = difference(first, second)
         fraction = changed / max(1, samples)
         print(f"[GUI-QMP] {label}: changed {changed}/{samples} sampled pixels ({fraction:.1%})")
-        if fraction < 0.12:
-            raise RuntimeError(label + ": insufficient framebuffer change; inspect PPMs")
+        required = minimum_palette_changed_samples(samples) if label == "palette-open" \
+            else max(1, int(samples * 0.12))
+        if changed < required:
+            raise RuntimeError(label + ": insufficient framebuffer change; inspect PPMs " +
+                               f"({changed} changed, {required} required)")
     # Require separate changes at the cursor's old and new positions.
     # The previous 4px sampling grid saw only 6 pixels at 800x600 even
     # though real QEMU frames changed 113 pixels in EACH cursor rectangle.

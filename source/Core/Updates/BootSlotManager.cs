@@ -34,6 +34,11 @@ namespace ZonderqOS.SystemCore.Updates
         public static string FallbackSlot { get; private set; } = SlotB;
         public static string PendingSlot { get; private set; } = string.Empty;
         public static int BootAttempts { get; private set; } = 0;
+        // Enabled only after an independent EFI BootGuard has been installed
+        // and armed on the dedicated ZONDERQDATA volume.
+        public static bool PrebootGuardEnabled { get; private set; } = false;
+        public static bool PrebootFallbackRequested { get; private set; } = false;
+        public static bool EmergencyRecoveryNeeded { get; private set; } = false;
 
         public static SlotHealth SlotAStatus { get; private set; } = SlotHealth.Healthy;
         public static SlotHealth SlotBStatus { get; private set; } = SlotHealth.Empty;
@@ -42,6 +47,16 @@ namespace ZonderqOS.SystemCore.Updates
         public static int SlotABuild { get; private set; } = KernelBuildInfo.KernelBuild;
         public static string SlotBVersion { get; private set; } = string.Empty;
         public static int SlotBBuild { get; private set; } = 0;
+
+        // A writable BOOTGUARD_PREBOOT flag does not prove that firmware will
+        // execute an independent recovery loader. Until an actual EFI guard is
+        // installed and verified end-to-end, refuse activating a new slot.
+        // Replace this fail-closed method only with firmware/boot-chain
+        // attestation backed by a real pre-kernel watchdog and QEMU tests.
+        private static bool HasVerifiedIndependentPrebootRecovery()
+        {
+            return false;
+        }
 
         private static bool isInitialized = false;
 
@@ -79,7 +94,9 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT", "Blad inicjalizacji BootSlotManager: " + ex.Message);
+                EmergencyRecoveryNeeded = true;
+                SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT",
+                    "Blad inicjalizacji BootSlotManager: " + ex.Message);
             }
         }
 
@@ -89,6 +106,8 @@ namespace ZonderqOS.SystemCore.Updates
             FallbackSlot = SlotB;
             PendingSlot = string.Empty;
             BootAttempts = 0;
+            PrebootGuardEnabled = false;
+            PrebootFallbackRequested = false;
             SlotAStatus = SlotHealth.Healthy;
             SlotBStatus = SlotHealth.Empty;
             SlotAVersion = KernelBuildInfo.KernelVersion;
@@ -132,6 +151,14 @@ namespace ZonderqOS.SystemCore.Updates
                             int.TryParse(val, out int att);
                             BootAttempts = att;
                             break;
+                        case "BOOTGUARD_PREBOOT":
+                            // This only records the requested configuration.
+                            // It is not evidence of preboot recovery.
+                            PrebootGuardEnabled = val == "1";
+                            break;
+                        case "BOOTGUARD_FALLBACK":
+                            PrebootFallbackRequested = val == "1";
+                            break;
                         case "SLOT_A_STATUS":
                             SlotAStatus = ParseHealth(val);
                             break;
@@ -157,7 +184,9 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT", "LoadBootState error: " + ex.Message);
+                EmergencyRecoveryNeeded = true;
+                SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", "LoadBootState error: " + ex.Message);
+                throw;
             }
         }
 
@@ -171,6 +200,8 @@ namespace ZonderqOS.SystemCore.Updates
                 sb.AppendLine("FALLBACK_SLOT=" + FallbackSlot);
                 sb.AppendLine("PENDING_SLOT=" + PendingSlot);
                 sb.AppendLine("BOOT_ATTEMPTS=" + BootAttempts);
+                sb.AppendLine("BOOTGUARD_PREBOOT=" + (PrebootGuardEnabled ? "1" : "0"));
+                sb.AppendLine("BOOTGUARD_FALLBACK=" + (PrebootFallbackRequested ? "1" : "0"));
                 sb.AppendLine("MAX_BOOT_ATTEMPTS=" + MaxBootAttempts);
                 sb.AppendLine("SLOT_A_STATUS=" + SlotAStatus);
                 sb.AppendLine("SLOT_A_VERSION=" + SlotAVersion);
@@ -184,7 +215,8 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT", "SaveBootState error: " + ex.Message);
+                SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", "SaveBootState error: " + ex.Message);
+                throw;
             }
         }
 
@@ -201,12 +233,43 @@ namespace ZonderqOS.SystemCore.Updates
         {
             if (!string.IsNullOrEmpty(PendingSlot))
             {
-                BootAttempts++;
+                // With EFI BootGuard the counter is incremented BEFORE Limine
+                // attempts to load the ELF. Do not increment it again here.
+                // Without BootGuard, retain the legacy in-kernel counter for
+                // diagnostic purposes, but disallow new slot activations.
+                if (PrebootGuardEnabled)
+                {
+                    // Attempt #3 must still be allowed to boot and confirm.
+                    // Only the EFI preboot selector may set this flag after
+                    // *three unsuccessful* boots and select the fallback.
+                    if (!PrebootFallbackRequested)
+                        return;
+                }
+                else
+                    BootAttempts++;
                 SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT",
                     $"Proba uruchomienia slotu {PendingSlot}: {BootAttempts}/{MaxBootAttempts}");
 
-                if (BootAttempts >= MaxBootAttempts)
+                // A malformed pending ELF is rejected immediately by EFI.
+                // In that case BOOTGUARD_FALLBACK=1 can be durable even when
+                // the attempt counter is still 0. Never run fallback with
+                // newer incompatible /system files in that scenario.
+                if (BootAttempts >= MaxBootAttempts ||
+                    (PrebootGuardEnabled && PrebootFallbackRequested))
                 {
+                    // Pre-kernel fallback selected the previous ELF. Restore
+                    // the matching shared system payload BEFORE services/GUI
+                    // are initialized, otherwise the old kernel could execute
+                    // new incompatible files and corrupt shared user data.
+                    if (PrebootGuardEnabled && PrebootFallbackRequested &&
+                        !UpdateManager.RestoreSharedFilesAfterBootFailure(FallbackSlot,
+                            out string rollbackError))
+                    {
+                        EmergencyRecoveryNeeded = true;
+                        SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT",
+                            "KRYTYCZNE: rollback shared payload failed: " + rollbackError);
+                        return;
+                    }
                     // Automatic failover to fallback slot!
                     SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT",
                         $"AWARYJNY ROLLBACK: Slot {PendingSlot} nie osiagnal stabilnego stanu po {BootAttempts} probach. Przepiecie na slot {FallbackSlot}!");
@@ -219,6 +282,7 @@ namespace ZonderqOS.SystemCore.Updates
                     ActiveSlot = FallbackSlot;
                     PendingSlot = string.Empty;
                     BootAttempts = 0;
+                    PrebootFallbackRequested = false;
 
                     SyncLimineConfig();
                     SaveBootState();
@@ -246,6 +310,7 @@ namespace ZonderqOS.SystemCore.Updates
 
                 PendingSlot = string.Empty;
                 BootAttempts = 0;
+                PrebootFallbackRequested = false;
                 KernelBuildInfo.IsHealthyAndConfirmed = true;
 
                 SaveBootState();
@@ -267,6 +332,33 @@ namespace ZonderqOS.SystemCore.Updates
             return slot == SlotB ? SlotBPath : SlotAPath;
         }
 
+        // Structural ELF64 x86_64 check. This is not cryptographic proof or
+        // complete ELF validation; it prevents replacing a valid slot with an
+        // obviously invalid/truncated image even when its hash matches.
+        internal static bool HasValidX64ElfHeader(byte[] image)
+        {
+            if (image == null || image.Length < 64 ||
+                image[0] != 0x7f || image[1] != (byte)'E' ||
+                image[2] != (byte)'L' || image[3] != (byte)'F' ||
+                image[4] != 2 || image[5] != 1 || image[6] != 1)
+                return false;
+            int type = image[16] | (image[17] << 8);
+            int machine = image[18] | (image[19] << 8);
+            if ((type != 2 && type != 3) || machine != 62)
+                return false;
+            // Program header offset (ELF64 LE), reject out-of-file offsets.
+            ulong offset = 0;
+            for (int i = 0; i < 8; i++)
+                offset |= ((ulong)image[32 + i]) << (8 * i);
+            int headerSize = image[54] | (image[55] << 8);
+            int headerCount = image[56] | (image[57] << 8);
+            if (headerCount == 0 || headerSize < 56 || offset < 64)
+                return false;
+            ulong length = (ulong)image.Length;
+            return offset <= length &&
+                (ulong)headerCount <= (length - offset) / (ulong)headerSize;
+        }
+
         /// <summary>
         /// Stages a new kernel into the inactive slot and verifies its SHA-256 hash directly on disk.
         /// </summary>
@@ -275,65 +367,97 @@ namespace ZonderqOS.SystemCore.Updates
         {
             Initialize();
             error = string.Empty;
-
             if (string.IsNullOrEmpty(sourceKernelPath) || !File.Exists(sourceKernelPath))
             {
-                error = "Plik zrodlowy nowego kernela nie istnieje: " + sourceKernelPath;
+                error = "Brak pliku zrodlowego kernela.";
+                return false;
+            }
+            if (string.IsNullOrEmpty(expectedSha256) || expectedSha256.Length != 64)
+            {
+                error = "Brak poprawnego SHA-256 kernela; instalacja zabroniona.";
+                return false;
+            }
+            for (int i = 0; i < expectedSha256.Length; i++)
+            {
+                char ch = expectedSha256[i];
+                if (!((ch >= '0' && ch <= '9') || (ch >= 'a' && ch <= 'f') ||
+                      (ch >= 'A' && ch <= 'F')))
+                {
+                    error = "Niepoprawny format SHA-256 kernela.";
+                    return false;
+                }
+            }
+
+            // An unconfirmed boot must retain its fallback image. Never stage
+            // another update while A/B recovery is still pending.
+            if (!string.IsNullOrEmpty(PendingSlot))
+            {
+                error = "Nie mozna nadpisac rezerwowego slotu przed potwierdzeniem rozruchu: " + PendingSlot;
                 return false;
             }
 
             string targetSlot = GetInactiveSlot();
             string targetPath = GetSlotKernelPath(targetSlot);
+            string tempPath = targetPath + ".part";
+            string backupPath = targetPath + ".previous";
             string targetDir = Path.GetDirectoryName(targetPath);
-
+            bool movedOldKernel = false;
+            bool promotedNewKernel = false;
             try
             {
                 if (!Directory.Exists(targetDir))
                     Directory.CreateDirectory(targetDir);
-
-                progress?.Invoke(20, $"Inicjalizacja kopiowania do slotu {targetSlot}...");
-
+                // Previous interrupted attempts must not be treated as valid.
+                if (File.Exists(tempPath)) File.Delete(tempPath);
+                if (File.Exists(backupPath))
+                    throw new IOException("Nieusunieta kopia .previous; wymagana diagnostyka slotu.");
                 long totalBytes = new FileInfo(sourceKernelPath).Length;
+                if (totalBytes < 4)
+                    throw new IOException("Obraz kernela jest zbyt krotki.");
                 long copiedBytes = 0;
-                byte[] chunkBuffer = new byte[64 * 1024];
+                byte[] buffer = new byte[64 * 1024];
 
                 using (FileStream src = new FileStream(sourceKernelPath, FileMode.Open, FileAccess.Read))
-                using (FileStream dst = new FileStream(targetPath, FileMode.Create, FileAccess.Write))
+                using (FileStream dst = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write))
                 {
                     int read;
-                    while ((read = src.Read(chunkBuffer, 0, chunkBuffer.Length)) > 0)
+                    while ((read = src.Read(buffer, 0, buffer.Length)) > 0)
                     {
-                        dst.Write(chunkBuffer, 0, read);
+                        dst.Write(buffer, 0, read);
                         copiedBytes += read;
-
-                        int pct = 20 + (int)(copiedBytes * 45 / Math.Max(1, totalBytes));
-                        int mbCopied = (int)(copiedBytes / (1024 * 1024));
-                        int mbTotal = (int)(totalBytes / (1024 * 1024));
-                        progress?.Invoke(pct, $"Kopiowanie kernela do slotu {targetSlot} ({mbCopied}/{mbTotal} MB)...");
+                        int pct = 20 + (int)(copiedBytes * 40 / Math.Max(1, totalBytes));
+                        progress?.Invoke(pct, "Zapis obrazu do nieaktywnego slotu " + targetSlot);
                     }
                     dst.Flush();
                 }
+                if (copiedBytes != totalBytes)
+                    throw new IOException("Rozmiar pliku zmienil sie podczas kopiowania.");
 
-                progress?.Invoke(68, "Weryfikacja sumy kontrolnej SHA-256 zapisanego pliku kernela na dysku...");
+                byte[] stagedImage = File.ReadAllBytes(tempPath);
+                if (!HasValidX64ElfHeader(stagedImage))
+                    throw new IOException("Obraz nie jest poprawnym ELF64 x86_64 z tablica program headers.");
+                string actualHash = Crypto.ComputeSha256(stagedImage);
+                if (!Crypto.FixedTimeEquals(actualHash.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
+                    throw new IOException("Blad SHA-256 tymczasowego obrazu kernela.");
 
-                // Read back bytes directly from destination on disk
-                byte[] writtenBytes = File.ReadAllBytes(targetPath);
-                string writtenHash = Crypto.ComputeSha256(writtenBytes);
-
-                if (!string.IsNullOrEmpty(expectedSha256) &&
-                    !Crypto.FixedTimeEquals(writtenHash.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
+                // Preserve the former inactive image until the replacement has
+                // passed readback. Never touch the running/fallback slot.
+                if (File.Exists(targetPath))
                 {
-                    // Checksum failure: delete corrupted target file immediately
-                    try { File.Delete(targetPath); } catch { }
-                    error = $"Blad integralnosci zapisanego kernela w slocie {targetSlot}! Oczekiwano SHA256: {expectedSha256}, otrzymano: {writtenHash}";
-                    SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", error);
-                    return false;
+                    File.Move(targetPath, backupPath);
+                    movedOldKernel = true;
                 }
+                File.Move(tempPath, targetPath);
+                promotedNewKernel = true;
 
-                // Write metadata files
-                File.WriteAllText(Path.Combine(targetDir, "kernel.sha256"), writtenHash + "\n");
-                File.WriteAllText(Path.Combine(targetDir, "version.info"), $"VERSION={version}\nBUILD={build}\nDATE={DateTime.Now:yyyy-MM-dd HH:mm:ss}\n");
+                string readback = Crypto.ComputeSha256(File.ReadAllBytes(targetPath));
+                if (!Crypto.FixedTimeEquals(readback.ToLowerInvariant(), expectedSha256.ToLowerInvariant()))
+                    throw new IOException("Blad SHA-256 po przeniesieniu do slotu.");
 
+                // Metadata must be written before changing in-memory status.
+                File.WriteAllText(Path.Combine(targetDir, "kernel.sha256"), readback + "\n");
+                File.WriteAllText(Path.Combine(targetDir, "version.info"),
+                    "VERSION=" + version + "\nBUILD=" + build + "\n");
                 if (targetSlot == SlotA)
                 {
                     SlotAVersion = version;
@@ -346,14 +470,36 @@ namespace ZonderqOS.SystemCore.Updates
                     SlotBBuild = build;
                     SlotBStatus = SlotHealth.PendingConfirmation;
                 }
-
-                progress?.Invoke(70, $"Kernel pomyslnie zainstalowany w slocie {targetSlot} [SHA256: {writtenHash.Substring(0, 16)}...]");
                 SaveBootState();
+                // Once the staged slot is committed, a backup cleanup failure
+                // must NOT undo the successful new image while leaving its
+                // persisted metadata committed.
+                if (movedOldKernel)
+                {
+                    try { File.Delete(backupPath); }
+                    catch (Exception cleanupEx)
+                    {
+                        SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT",
+                            "Old inactive kernel backup retained: " + cleanupEx.Message);
+                    }
+                }
+                progress?.Invoke(70, "Kernel zweryfikowany w nieaktywnym slocie " + targetSlot);
                 return true;
             }
             catch (Exception ex)
             {
-                error = "Wyjatek podczas instalacji kernela w slocie: " + ex.Message;
+                error = "Blad bezpiecznego stagingu slotu " + targetSlot + ": " + ex.Message;
+                try
+                {
+                    if (promotedNewKernel && File.Exists(targetPath)) File.Delete(targetPath);
+                    if (movedOldKernel && File.Exists(backupPath)) File.Move(backupPath, targetPath);
+                    if (File.Exists(tempPath)) File.Delete(tempPath);
+                }
+                catch (Exception restoreEx)
+                {
+                    error += " ODTWORZENIE NIEUDANE: " + restoreEx.Message;
+                }
+                SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", error);
                 return false;
             }
         }
@@ -371,7 +517,27 @@ namespace ZonderqOS.SystemCore.Updates
                 error = "Nieprawidlowy slot docelowy: " + targetSlot;
                 return false;
             }
+            if (targetSlot == ActiveSlot || !string.IsNullOrEmpty(PendingSlot))
+            {
+                error = "Nie mozna ponownie aktywowac aktywnego slotu ani zmienic niepotwierdzonej aktualizacji.";
+                return false;
+            }
+            if (!PrebootGuardEnabled || !HasVerifiedIndependentPrebootRecovery())
+            {
+                error = "Nie potwierdzono niezaleznego EFI BootGuard w lancuchu rozruchu. Sama flaga w boot_state.cfg nie wystarcza do aktywacji nowego slotu.";
+                return false;
+            }
 
+            // Keep a snapshot of the in-memory state. If writing Limine or
+            // boot_state fails, restore values and attempt best-effort disk
+            // recovery; report a recovery failure rather than hiding it.
+            string previousActive = ActiveSlot;
+            string previousFallback = FallbackSlot;
+            string previousPending = PendingSlot;
+            int previousAttempts = BootAttempts;
+            SlotHealth previousAStatus = SlotAStatus;
+            SlotHealth previousBStatus = SlotBStatus;
+            bool stateWasMutated = false;
             try
             {
                 string kernelPath = GetSlotKernelPath(targetSlot);
@@ -380,19 +546,37 @@ namespace ZonderqOS.SystemCore.Updates
                     error = $"Nie mozna aktywowac slotu {targetSlot}: brak pliku kernela {kernelPath}!";
                     return false;
                 }
+                // Activation must not proceed with a malformed, unverified slot.
+                string hashPath = Path.Combine(Path.GetDirectoryName(kernelPath), "kernel.sha256");
+                if (!File.Exists(hashPath))
+                {
+                    error = "Brak zapisanego SHA-256 docelowego slotu.";
+                    return false;
+                }
+                string expectedHash = File.ReadAllText(hashPath).Trim();
+                byte[] candidate = File.ReadAllBytes(kernelPath);
+                if (!HasValidX64ElfHeader(candidate) ||
+                    expectedHash.Length != 64 ||
+                    !Crypto.FixedTimeEquals(Crypto.ComputeSha256(candidate).ToLowerInvariant(), expectedHash.ToLowerInvariant()))
+                {
+                    error = "Niepoprawny obraz ELF lub SHA-256 docelowego slotu.";
+                    return false;
+                }
 
                 FallbackSlot = ActiveSlot;
                 ActiveSlot = targetSlot;
                 PendingSlot = targetSlot;
                 BootAttempts = 0;
+                PrebootFallbackRequested = false;
 
                 if (targetSlot == SlotA)
                     SlotAStatus = SlotHealth.PendingConfirmation;
                 else
                     SlotBStatus = SlotHealth.PendingConfirmation;
 
-                SaveBootState();
+                stateWasMutated = true;
                 SyncLimineConfig();
+                SaveBootState();
 
                 SystemLogger.Log(SystemLogLevel.Info, "BOOTSLOT",
                     $"Aktywowano slot {targetSlot}. Limine default_entry zaktualizowany. Wymagany restart.");
@@ -401,6 +585,26 @@ namespace ZonderqOS.SystemCore.Updates
             catch (Exception ex)
             {
                 error = "Blad podczas aktywacji slotu: " + ex.Message;
+                if (stateWasMutated)
+                {
+                    ActiveSlot = previousActive;
+                    FallbackSlot = previousFallback;
+                    PendingSlot = previousPending;
+                    BootAttempts = previousAttempts;
+                    SlotAStatus = previousAStatus;
+                    SlotBStatus = previousBStatus;
+                    try
+                    {
+                        SyncLimineConfig();
+                        SaveBootState();
+                    }
+                    catch (Exception recoveryEx)
+                    {
+                        error += " UWAGA: NIE UDALO SIE ODTWORZYC KONFIGURACJI ROZRUCHU: " +
+                            recoveryEx.Message;
+                    }
+                }
+                SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", error);
                 return false;
             }
         }
@@ -427,6 +631,7 @@ namespace ZonderqOS.SystemCore.Updates
                 ActiveSlot = previousSlot;
                 PendingSlot = string.Empty;
                 BootAttempts = 0;
+                PrebootFallbackRequested = false;
 
                 SyncLimineConfig();
                 SaveBootState();
@@ -449,24 +654,30 @@ namespace ZonderqOS.SystemCore.Updates
         {
             try
             {
-                int defaultEntry = (ActiveSlot == SlotB) ? 2 : 1;
+                // During probation the firmware fallback MUST remain the
+                // default, even if BootGuard or an EFI variable is lost.
+                // BootGuard requests the pending slot via one-shot UEFI variable.
+                string safeSlot = (PrebootGuardEnabled && !string.IsNullOrEmpty(PendingSlot))
+                    ? FallbackSlot : ActiveSlot;
+                int defaultEntry = safeSlot == SlotB ? 2 : 1;
 
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine("# Cosmos Gen3 / Limine v10 A/B dual-slot boot configuration.");
                 sb.AppendLine("timeout: 5");
                 sb.AppendLine("default_entry: " + defaultEntry);
+                sb.AppendLine("remember_last_entry: no");
                 sb.AppendLine();
-                sb.AppendLine("/ZonderqOS (Slot A" + (ActiveSlot == SlotA ? " - Aktywny" : "") + ")");
+                sb.AppendLine("/ZonderqOS Slot A");
                 sb.AppendLine("    protocol: limine");
                 sb.AppendLine("    resolution: 1366x768x32");
                 sb.AppendLine("    path: fslabel(ZONDERQDATA):/boot/slot_a/ZonderqOS.elf");
                 sb.AppendLine();
-                sb.AppendLine("/ZonderqOS (Slot B" + (ActiveSlot == SlotB ? " - Aktywny" : "") + ")");
+                sb.AppendLine("/ZonderqOS Slot B");
                 sb.AppendLine("    protocol: limine");
                 sb.AppendLine("    resolution: 1366x768x32");
                 sb.AppendLine("    path: fslabel(ZONDERQDATA):/boot/slot_b/ZonderqOS.elf");
                 sb.AppendLine();
-                sb.AppendLine("/ZonderqOS (Kopia zapasowa ISO / Ratunkowa)");
+                sb.AppendLine("/ZonderqOS Recovery ISO");
                 sb.AppendLine("    protocol: limine");
                 sb.AppendLine("    resolution: 1366x768x32");
                 sb.AppendLine("    path: boot():/boot/ZonderqOS.elf");
@@ -486,7 +697,8 @@ namespace ZonderqOS.SystemCore.Updates
             }
             catch (Exception ex)
             {
-                SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT", "SyncLimineConfig error: " + ex.Message);
+                SystemLogger.Log(SystemLogLevel.Error, "BOOTSLOT", "SyncLimineConfig error: " + ex.Message);
+                throw;
             }
         }
     }

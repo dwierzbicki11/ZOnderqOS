@@ -48,6 +48,9 @@ namespace ZonderqOS
                         "No approved ZONDERQDATA volume: refusing normal boot before any filesystem/user writes.");
                 BootSplash.Advance(27, "DYSK GOTOWY");
                 ZonderqOS.SystemCore.Updates.BootSlotManager.Initialize();
+                if (ZonderqOS.SystemCore.Updates.BootSlotManager.EmergencyRecoveryNeeded)
+                    throw new InvalidOperationException(
+                        "KRYTYCZNE: nieudana naprawa A/B lub payload. Uruchom ratunkowy obraz i przywroc snapshot.");
                 ZonderqOS.Platform.SpeakerInitializer.Initialize();
                 UserManager.Initialize();
                 Command.Initialize();
@@ -77,7 +80,8 @@ namespace ZonderqOS
 
                 UserManager.PrepareLogin();
                 WriteMessage.WriteOK("ZonderqOS kernel successfully booted.", "SYS");
-                ZonderqOS.SystemCore.Updates.BootSlotManager.ConfirmSlotHealth();
+                // A prepared login is NOT proof that the configured desktop/console works.
+                // Confirm only after the intended runtime mode is usable.
                 // Guest-clock baseline: from BeforeRun/BootTelemetry.Initialize
                 // through disk, services and login preparation. This is NOT
                 // QEMU power-on-to-desktop time or a host wall-clock benchmark.
@@ -467,6 +471,8 @@ namespace ZonderqOS
                 string motd = SystemIdentity.ReadMotd();
                 if (!string.IsNullOrEmpty(motd))
                     Console.Write(motd);
+                if (DiagnosticConsoleBoot)
+                    ZonderqOS.SystemCore.Updates.BootSlotManager.ConfirmSlotHealth();
                 Console.WriteLine(DiagnosticConsoleBoot
                     ? "Diagnostic console active. GUI auto-start disabled for this build."
                     : "Recovery console active. Type 'gui' to retry the graphical desktop manually.");

@@ -1,0 +1,140 @@
+name: ZonderqOS Gen3 Alpha USB — verified candidate ISO
+
+# PR-local pinned candidate: only changes to this workflow start a build.
+# The workflow can also be dispatched manually once it exists on default.
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/alpha-usb-candidate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Cancel obsolete PR revisions while fixing CI; final tested SHA stays pinned.
+concurrency:
+  group: zonderq-alpha-usb-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-boot-and-package:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 110
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install pinned Cosmos and QEMU prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y git python3 tar clang lld nasm xorriso binutils \
+            qemu-system-x86 fdisk dosfstools mtools
+
+      - name: Record immutable source revision
+        run: |
+          set -euo pipefail
+          git rev-parse HEAD | tee alpha-usb-source-sha.txt
+          git status --porcelain
+          bash run.sh --check
+
+      - name: Validate idle RAM background paths and forbid periodic FAT writes
+        run: python3 -m unittest discover -s tests -p 'test_idle_background_allocation_contracts.py' -v
+
+      - name: Validate GUI memory cleanup and input regressions
+        run: |
+          python3 -m unittest discover -s tests -p 'test_gui_memory_lifecycle.py' -v
+          python3 tests/test_3094_responsive_gui.py
+          python3 tests/test_gui_resolution_build.py
+          python3 tests/test_qmp_gui_taskmanager.py
+          dotnet run --project tests/GuiApplicationManagerSmoke/GuiApplicationManagerSmoke.csproj -c Release
+          dotnet run --project tests/GuiTaskManagerRefreshSmoke/GuiTaskManagerRefreshSmoke.csproj -c Release
+          dotnet run --project tests/GuiWindowInputSmoke/GuiWindowInputSmoke.csproj -c Release
+
+      - name: Verify signed-update security gate (no test signing key in ISO)
+        run: |
+          python3 -m unittest discover -s tests -p 'test_p0_update_trust_gate.py' -v
+          python3 -m unittest discover -s tests -p 'test_p0_release_signing.py' -v
+          dotnet run --project tests/UpdateEngineSmoke/UpdateEngineSmoke.csproj -c Release
+
+      - name: Build full disk-backed GUI ISO from exact Cosmos 3.0.95 upstream tag
+        env:
+          ZONDERQ_3095_WORK_DIR: ${{ runner.temp }}/zonderqos-cosmos-3095
+        run: |
+          set -euo pipefail
+          bash tools/build-cosmos-3095-local.sh disk
+          test -s output-3095/ZonderqOS-3095-disk.iso
+
+      - name: Check hybrid ISO and protected ZONDERQDATA partition boundary
+        run: |
+          set -euo pipefail
+          ISO=output-3095/ZonderqOS-3095-disk.iso
+          python3 - "$ISO" <<'PY'
+          import os
+          import sys
+          size = os.path.getsize(sys.argv[1])
+          if not (512 < size < 65536 * 512):
+              raise SystemExit("STOP: ISO overlaps the existing data partition at LBA 65536")
+          print(f"Preservation boundary PASS: ISO {size:,} bytes, within first 32 MiB")
+          PY
+          sfdisk --json "$ISO" | python3 -c '
+          import json, sys
+          table = json.load(sys.stdin)["partitiontable"]
+          parts = table.get("partitions", [])
+          if table.get("label") != "dos" or len(parts) != 3:
+              raise SystemExit("STOP: ISO layout not compatible with preserving sdb4")
+          if any(p["start"] + p["size"] > 65536 for p in parts):
+              raise SystemExit("STOP: ISO partition crosses LBA 65536")
+          print("Hybrid ISO MBR/3-partition boundary PASS")'
+
+      - name: Verify actual ISO kernel path and safe Limine default
+        run: python3 tools/verify-alpha-iso-boot.py output-3095/ZonderqOS-3095-disk.iso
+
+      - name: Real QEMU boots, filesystem persistence and GUI interactions
+        env:
+          SERVICE_QEMU_BOOT_SECONDS: '100'
+          SERVICE_QEMU_CAPTURE_SCREEN: '1'
+          SERVICE_QEMU_AUTOMATE_GUI_LOGIN: '1'
+          SERVICE_QEMU_PROBE_FILE_MANAGER: '1'
+          SERVICE_QEMU_PROBE_TASK_MANAGER: '1'
+        run: |
+          set -euo pipefail
+          bash tools/smoke-services-qemu.sh \
+            output-3095/ZonderqOS-3095-disk.iso alpha-usb-qemu-output \
+            2>&1 | tee alpha-usb-qemu.log
+
+      - name: Create checksums for the exact tested ISO
+        run: |
+          set -euo pipefail
+          cd output-3095
+          sha256sum ZonderqOS-3095-disk.iso > ZonderqOS-3095-disk.iso.sha256
+
+      - name: Upload flashable ISO only after every gate succeeded
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZonderqOS-3095-Alpha-USB-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          compression-level: 0
+          path: |
+            output-3095/ZonderqOS-3095-disk.iso
+            output-3095/ZonderqOS-3095-disk.iso.sha256
+            alpha-usb-source-sha.txt
+
+      - name: Upload QEMU diagnostics even after failure
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZonderqOS-Alpha-USB-QEMU-logs-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: ignore
+          path: |
+            alpha-usb-source-sha.txt
+            alpha-usb-qemu.log
+            alpha-usb-qemu-output/*.log
+            alpha-usb-qemu-output/*.conf
+            alpha-usb-qemu-output/*.ppm
