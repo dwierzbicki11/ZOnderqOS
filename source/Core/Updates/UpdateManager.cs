@@ -554,12 +554,11 @@ namespace ZonderqOS.SystemCore.Updates
                             Components = manifest.Components.ToArray()
                         };
 
-                        // Check digital signature
-                        if (!string.IsNullOrEmpty(manifest.Signature))
-                        {
-                            info.IsSigned = true;
-                            info.IsSignatureValid = manifest.VerifySignature(UpdateManifest.DefaultSignerKey);
-                        }
+                        // Parsing is not authentication. Detached Ed25519
+                        // verification happens in TryVerifyTrustedPackage
+                        // before the package can be advertised or installed.
+                        info.IsSigned = false;
+                        info.IsSignatureValid = false;
 
                         // Determine kernel image location
                         string baseDir = Path.GetDirectoryName(path);
@@ -709,14 +708,10 @@ namespace ZonderqOS.SystemCore.Updates
                 }
             }
 
-            // 3. Verify digital signature if signed
-            if (pkg.IsSigned && !pkg.IsSignatureValid)
-            {
-                error = "Odrzucono pakiet: niepoprawny cyfrowy podpis HMAC-SHA256 (pakiet mogl zostac zmodyfikowany).";
-                return false;
-            }
-
-            progress?.Invoke(90, "Wszystkie sumy kontrolne SHA-256 i podpisy sa prawidlowe.");
+            // 3. Integrity is distinct from authenticity. This method
+            // checks SHA-256 only; ApplyUpdateStep additionally requires a
+            // valid Ed25519 signature over every byte of the manifest.
+            progress?.Invoke(90, "Wszystkie zadeklarowane sumy SHA-256 sa prawidlowe.");
             return true;
         }
 
@@ -815,6 +810,8 @@ namespace ZonderqOS.SystemCore.Updates
                     error = "Podpis Ed25519 manifestu jest niepoprawny.";
                     return false;
                 }
+                pkg.IsSigned = true;
+                pkg.IsSignatureValid = true;
                 // Parse only after verifying the raw detached signature.
                 string text = System.Text.Encoding.UTF8.GetString(bytes);
                 if (!UpdateManifest.TryParse(text, out UpdateManifest parsed, out error))
