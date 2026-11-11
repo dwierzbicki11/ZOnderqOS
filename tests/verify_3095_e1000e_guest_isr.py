@@ -59,7 +59,10 @@ def validate(serial: str) -> str:
             line,
         ):
             raise ValueError("guest fault in ISR evidence log")
-        # Termination anywhere in the capture (including after the final\n        # counter sample) invalidates the evidence; a stopped guest cannot\n        # establish the required post-sample runtime stability.\n        if re.match(r"^(?:\[[^\]\r\n]+\] ?)?qemu-system-[^:\r\n]+: terminating on signal ", line):
+        # Termination anywhere in the capture (including after the final
+        # counter sample) invalidates the evidence; a stopped guest cannot
+        # establish the required post-sample runtime stability.
+        if re.match(r"^(?:\[[^\]\r\n]+\] ?)?qemu-system-[^:\r\n]+: terminating on signal ", line):
             raise ValueError("QEMU termination in guest ISR evidence")
         if "[NET3095-ISR]" not in line:
             continue
