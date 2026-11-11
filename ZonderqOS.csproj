@@ -59,6 +59,7 @@
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(CosmosArch)' == 'arm64'">
+    <DefineConstants>$(DefineConstants);ZONDERQ_ARCH_ARM64</DefineConstants>
     <!-- QEMU virt ARM64: GICv3 + PL011 + ACPI/ECAM PCI + NVMe/VirtIO devices. -->
     <CosmosEnableInterrupts>true</CosmosEnableInterrupts>
     <CosmosEnablePCI>true</CosmosEnablePCI>
