@@ -30,7 +30,7 @@ class ReleaseSigningSmoke(unittest.TestCase):
             data = b"release file"
             (payload / "hello.txt").write_bytes(data)
             original = (
-                "VERSION=1.0.1\nBUILD=3110\nARCH=x86_64\n"
+                "UPDATE_FORMAT=2\nSIGNATURE_ALG=ED25519\nVERSION=1.0.1\nBUILD=3110\nARCH=x86_64\n"
                 "KERNEL_IMAGE=ZonderqOS.elf\nKERNEL_SHA256=" +
                 hashlib.sha256(kernel).hexdigest() + "\nPAYLOAD_DIR=payload\n" +
                 "FILE=bin/hello.txt:" + hashlib.sha256(data).hexdigest() +
