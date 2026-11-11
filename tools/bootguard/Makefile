@@ -27,5 +27,15 @@ $(BUILD_DIR)/bootguard.so: $(BUILD_DIR)/bootguard.o
 $(BUILD_DIR)/bootguard.efi: $(BUILD_DIR)/bootguard.so
 	$(OBJCOPY) -j .text -j .sdata -j .data -j .rodata -j .dynamic -j .dynsym -j .rel -j .rela -j .rel.* -j .rela.* -j .reloc --target=efi-app-x86_64 --subsystem=10 $< $@
 
+# Test-only EFI program for a disposable QEMU/OVMF image.
+$(BUILD_DIR)/limine_stub.o: ../../tests/bootguard_limine_stub.c | $(BUILD_DIR)
+	$(CC) $(CFLAGS) -c $< -o $@
+
+$(BUILD_DIR)/limine_stub.so: $(BUILD_DIR)/limine_stub.o
+	$(LD) -nostdlib -znocombreloc -T $(EFI_LIBDIR)/elf_x86_64_efi.lds -shared -Bsymbolic $(EFI_LIBDIR)/crt0-efi-x86_64.o $< -L$(EFI_LIBDIR) -lgnuefi -lefi -o $@
+
+$(BUILD_DIR)/limine_stub.efi: $(BUILD_DIR)/limine_stub.so
+	$(OBJCOPY) -j .text -j .sdata -j .data -j .rodata -j .dynamic -j .dynsym -j .rel -j .rela -j .rel.* -j .rela.* -j .reloc --target=efi-app-x86_64 --subsystem=10 $< $@
+
 clean:
 	rm -rf $(BUILD_DIR)
