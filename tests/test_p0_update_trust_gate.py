@@ -15,14 +15,14 @@ SOURCE = (ROOT / "source/Core/Updates/UpdateManager.cs").read_text(encoding="utf
 
 class UpdateTrustGateTests(unittest.TestCase):
     def test_unconfigurable_gate_stays_disabled(self):
-        self.assertRegex(
-            SOURCE,
-            r"private static bool HasVerifiedAsymmetricUpdateTrust\(\)\s*\{\s*return false;\s*\}",
-        )
+        self.assertIn("return ReleaseSignatureVerifier.HasProductionKey();", SOURCE)
+        key = (ROOT / "source/Core/Updates/TrustedReleaseKey.cs").read_text(encoding="utf-8")
+        self.assertIn("string result = string.Empty;", key)
+        self.assertIn("SupplyPublicKey(ref result);", key)
 
     def test_gate_precedes_all_update_install_steps(self):
         method = SOURCE.split("public static bool ApplyUpdateStep(", 1)[1]
-        guard = method.index("if (!HasVerifiedAsymmetricUpdateTrust())")
+        guard = method.index("if (!TryVerifyTrustedPackage(pkg, out error))")
         first_install_step = method.index("switch (step)")
         self.assertLess(guard, first_install_step)
         guarded_branch = method[guard:first_install_step]
@@ -95,8 +95,9 @@ class UpdateTrustGateTests(unittest.TestCase):
         self.assertIn("if (pkg != null)", payload)
 
     def test_explicit_trust_requirement(self):
-        self.assertIn("podpis asymetryczny calego manifestu", SOURCE)
-        self.assertIn("weryfikacja wszystkich plikow", SOURCE)
+        self.assertIn("ReleaseSignatureVerifier.VerifyProductionManifest(bytes, signature)", SOURCE)
+        self.assertIn("parsed.UpdateFormat != 2", SOURCE)
+        self.assertIn("if (!VerifyPackageIntegrity(pkg, null, out error))", SOURCE)
 
 
 if __name__ == "__main__":
