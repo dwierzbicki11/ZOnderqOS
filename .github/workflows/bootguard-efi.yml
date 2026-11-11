@@ -31,6 +31,10 @@ jobs:
         run: |
           gcc -std=c11 -O2 -Wall -Wextra -Werror tests/test_bootguard_policy.c -o /tmp/test_bootguard_policy
           /tmp/test_bootguard_policy
+      - name: Reject malformed ELF64 images in EFI boot policy
+        run: |
+          gcc -std=c11 -O2 -Wall -Wextra -Werror -pedantic tests/test_bootguard_elf.c -o /tmp/test_bootguard_elf
+          /tmp/test_bootguard_elf
       - name: Validate BootGuard installation on isolated fake ESP and data volume
         run: python3 -m unittest discover -s tests -p 'test_bootguard_installer.py' -v
       - name: Install GNU-EFI toolchain
