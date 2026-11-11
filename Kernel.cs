@@ -48,6 +48,9 @@ namespace ZonderqOS
                         "No approved ZONDERQDATA volume: refusing normal boot before any filesystem/user writes.");
                 BootSplash.Advance(27, "DYSK GOTOWY");
                 ZonderqOS.SystemCore.Updates.BootSlotManager.Initialize();
+                if (ZonderqOS.SystemCore.Updates.BootSlotManager.EmergencyRecoveryNeeded)
+                    throw new InvalidOperationException(
+                        "KRYTYCZNE: nieudana naprawa A/B lub payload. Uruchom ratunkowy obraz i przywroc snapshot.");
                 ZonderqOS.Platform.SpeakerInitializer.Initialize();
                 UserManager.Initialize();
                 Command.Initialize();
