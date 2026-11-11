@@ -13,7 +13,7 @@ import tempfile
 
 
 def iso_paths(iso):
-    command = ["xorriso", "-indev", str(iso), "-find", "/", "-type", "f", "-print"]
+    command = ["xorriso", "-indev", str(iso), "-find", "/", "-type", "f", "-exec", "echo", "--"]
     output = subprocess.run(command, check=True, capture_output=True, text=True).stdout
     return {line.strip() for line in output.splitlines() if line.strip().startswith("/")}
 
