@@ -18,6 +18,7 @@ namespace UpdateEngineSmoke
             TestSemverComparison();
             TestBootSlotManagerLifecycleAndFailover();
             TestElfStructureValidation();
+            TestRealEd25519SignatureVectors();
             TestPackageIntegrityRejectsUndeclaredPayload();
 
             Console.WriteLine("[UPDATE-TEST] ALL REGRESSION TESTS PASSED SUCCESSFULLY! [PASS]");
@@ -215,6 +216,34 @@ namespace UpdateEngineSmoke
             {
                 if (Directory.Exists(temp)) Directory.Delete(temp, true);
             }
+        }
+
+        private static void TestRealEd25519SignatureVectors()
+        {
+            Console.WriteLine("  -> Testing standard RFC 8032 Ed25519 signature vectors...");
+            byte[] publicKey = Convert.FromHexString(
+                "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a");
+            byte[] signedEmptyMessage = Convert.FromHexString(
+                "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e065224901" +
+                "55fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b");
+            byte[] emptyMessage = Array.Empty<byte>();
+            Assert(ReleaseSignatureVerifier.VerifyEd25519(
+                publicKey, emptyMessage, signedEmptyMessage),
+                "RFC 8032 Ed25519 test vector should verify");
+            byte[] badSig = (byte[])signedEmptyMessage.Clone();
+            badSig[27] ^= 0x01;
+            Assert(!ReleaseSignatureVerifier.VerifyEd25519(
+                publicKey, emptyMessage, badSig),
+                "tampered Ed25519 signature must not verify");
+            Assert(!ReleaseSignatureVerifier.VerifyEd25519(
+                publicKey, new byte[] { 0 }, signedEmptyMessage),
+                "different message must not verify");
+            Assert(!ReleaseSignatureVerifier.VerifyEd25519(
+                new byte[32], emptyMessage, signedEmptyMessage),
+                "invalid public key must not verify");
+            Assert(!ReleaseSignatureVerifier.VerifyEd25519(
+                publicKey, emptyMessage, new byte[32]),
+                "truncated signature must not verify");
         }
 
         private static void TestElfStructureValidation()
