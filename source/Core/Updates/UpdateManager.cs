@@ -348,15 +348,16 @@ namespace ZonderqOS.SystemCore.Updates
 
                 // Discovery is not verification. Never advertise a legacy HMAC
                 // package as available/trusted while the P0 gate is active.
-                if (!HasVerifiedAsymmetricUpdateTrust())
+                if (!TryVerifyTrustedPackage(pkg, out string verificationError))
                 {
                     AvailablePackage = null;
                     package = null;
                     Status = UpdateStatus.Error;
-                    message = "Wykryto pakiet USB " + pkg.Version +
-                        ", ale instalacja jest zablokowana: brak zaufanej weryfikacji podpisu asymetrycznego calego manifestu.";
+                    message = "Pakiet USB odrzucony: " + verificationError;
                     return false;
                 }
+                pkg.IsSigned = true;
+                pkg.IsSignatureValid = true;
 
                 AvailablePackage = pkg;
                 package = pkg;
@@ -751,29 +752,143 @@ namespace ZonderqOS.SystemCore.Updates
             catch { return false; }
         }
 
-        // Deliberately NOT a configurable flag. A malicious or malformed USB
-        // package cannot enable this. Replace only with real verification that
-        // authenticates the complete manifest using an embedded public key.
+        // This gate requires a build-provisioned immutable PUBLIC key.
+        // It can never be enabled by data found on USB.
         private static bool HasVerifiedAsymmetricUpdateTrust()
         {
-            return false;
+            return ReleaseSignatureVerifier.HasProductionKey();
+        }
+
+        /// <summary>
+        /// Authenticate exact original manifest bytes and ensure every mutable
+        /// UpdatePackageInfo field still corresponds to the signed manifest.
+        /// Re-run this check before every installer step to prevent resuming an
+        /// untrusted partially-completed update.
+        /// </summary>
+        private static bool TryVerifyTrustedPackage(UpdatePackageInfo pkg, out string error)
+        {
+            error = string.Empty;
+            if (!HasVerifiedAsymmetricUpdateTrust())
+            {
+                error = "Brak zaufanego klucza publicznego Ed25519 w obrazie kernela.";
+                return false;
+            }
+            if (pkg == null || string.IsNullOrEmpty(pkg.ManifestPath))
+            {
+                error = "Brak manifestu aktualizacji.";
+                return false;
+            }
+            try
+            {
+                // Only explicit, managed update locations are valid sources.
+                string manifestPath = pkg.ManifestPath;
+                if (manifestPath != "/updates/update.manifest" &&
+                    manifestPath != "/var/updates/incoming/update.manifest" &&
+                    manifestPath != "/var/updates/update.manifest")
+                {
+                    error = "Niezatwierdzona lokalizacja manifestu: " + manifestPath;
+                    return false;
+                }
+                string baseDir = Path.GetDirectoryName(manifestPath);
+                if (!IsSafeUpdateFilePath(baseDir, "update.manifest") ||
+                    !IsSafeUpdateFilePath(baseDir, "update.manifest.sig"))
+                {
+                    error = "Niedozwolony symlink manifestu lub podpisu.";
+                    return false;
+                }
+
+                byte[] bytes = File.ReadAllBytes(manifestPath);
+                if (bytes.Length == 0 || bytes.Length > 1024 * 1024)
+                {
+                    error = "Niepoprawny rozmiar podpisanego manifestu.";
+                    return false;
+                }
+                string sigPath = manifestPath + ".sig";
+                if (!File.Exists(sigPath) || new FileInfo(sigPath).Length != 64)
+                {
+                    error = "Brak 64-bajtowego podpisu Ed25519.";
+                    return false;
+                }
+                byte[] signature = File.ReadAllBytes(sigPath);
+                if (!ReleaseSignatureVerifier.VerifyProductionManifest(bytes, signature))
+                {
+                    error = "Podpis Ed25519 manifestu jest niepoprawny.";
+                    return false;
+                }
+                // Parse only after verifying the raw detached signature.
+                string text = System.Text.Encoding.UTF8.GetString(bytes);
+                if (!UpdateManifest.TryParse(text, out UpdateManifest parsed, out error))
+                    return false;
+                if (parsed.UpdateFormat != 2 || parsed.SignatureAlgorithm != "ED25519")
+                {
+                    error = "Odrzucono niepodpisany format legacy HMAC.";
+                    return false;
+                }
+
+                string kernelRelative = parsed.KernelImage;
+                string payloadRelative = parsed.PayloadDirectory;
+                if (!UpdateManifest.IsSafeRelativePath(kernelRelative) ||
+                    !UpdateManifest.IsSafeRelativePath(payloadRelative) ||
+                    !IsSafeUpdateFilePath(baseDir, kernelRelative) ||
+                    !IsSafeUpdateFilePath(baseDir, payloadRelative))
+                {
+                    error = "Niebezpieczna sciezka kernela/payload.";
+                    return false;
+                }
+                string expectedKernel = Path.Combine(baseDir, kernelRelative);
+                string expectedPayload = Path.Combine(baseDir, payloadRelative);
+                if (pkg.KernelImagePath != expectedKernel ||
+                    (pkg.PayloadPath != expectedPayload &&
+                     !(string.IsNullOrEmpty(pkg.PayloadPath) && parsed.Files.Count == 0)) ||
+                    pkg.Version != parsed.Version ||
+                    pkg.BuildNumber != parsed.BuildNumber ||
+                    pkg.Architecture != parsed.Architecture ||
+                    pkg.Title != parsed.Title ||
+                    pkg.KernelSha256 != parsed.KernelSha256 ||
+                    pkg.TargetTheme != parsed.TargetTheme ||
+                    pkg.TargetWallpaper != parsed.TargetWallpaper ||
+                    pkg.Files == null || pkg.Files.Count != parsed.Files.Count)
+                {
+                    error = "Dane pakietu nie sa identyczne z podpisanym manifestem.";
+                    return false;
+                }
+                for (int i = 0; i < parsed.Files.Count; i++)
+                {
+                    UpdateFileEntry given = pkg.Files[i], signed = parsed.Files[i];
+                    if (given == null || given.RelativePath != signed.RelativePath ||
+                        !string.Equals(given.ExpectedSha256, signed.ExpectedSha256,
+                            StringComparison.OrdinalIgnoreCase) ||
+                        given.SizeBytes != signed.SizeBytes)
+                    {
+                        error = "Zmieniono liste plikow po weryfikacji podpisu.";
+                        return false;
+                    }
+                }
+
+                // Re-hash all declared files on every installer stage, not just
+                // once at step 0. Staging writes are separately read back.
+                if (!VerifyPackageIntegrity(pkg, null, out error))
+                    return false;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                error = "Nie mozna zweryfikowac podpisanego pakietu: " + ex.Message;
+                return false;
+            }
         }
 
         public static bool ApplyUpdateStep(UpdatePackageInfo pkg, ref int step, Action<int, string> progress, out string error)
         {
-            // P0 SECURITY HOLD: legacy package signatures are HMAC with a key
-            // embedded in the system image and do not authenticate the full
-            // manifest. No update is trusted until asymmetric verification of
-            // the complete manifest and every payload file is implemented.
-            // Check at EVERY step: callers can resume with step > 0, and a
-            // one-time check in step 0 would leave a writable bypass.
-            if (!HasVerifiedAsymmetricUpdateTrust())
+            // Authenticate the entire exact manifest and every declared file
+            // before EACH step, including resumed step > 0 calls.
+            if (!TryVerifyTrustedPackage(pkg, out error))
             {
-                error = "Instalacja aktualizacji zablokowana: obecny format HMAC nie zapewnia autentycznosci. Wymagany podpis asymetryczny calego manifestu i weryfikacja wszystkich plikow.";
                 Status = UpdateStatus.Error;
                 try
                 {
-                    SecurityLogger.LogEvent("SECURITY_ERROR", "P0 updater trust gate: rejected legacy update installation.");
+                    SecurityLogger.LogEvent("SECURITY_ERROR",
+                        "Updater rejected unverified Ed25519 package: " + error);
                 }
                 catch { }
                 return false;
