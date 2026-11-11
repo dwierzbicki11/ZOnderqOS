@@ -17,11 +17,11 @@ def check(kernel: str, validator: str) -> None:
     if 'DRIVER_BOUND=PASS' not in kernel:
         raise ValueError('driver binding diagnostic missing')
     # DriverKit node InterruptCount inventories IRQ registrations, not ISR calls.
-    if not re.search(r'irq_sources=\\s*"\\s*\\+\\s*\\w+\\.InterruptCount', kernel):
+    if not re.search(r'irq_sources=\s*"\s*\+\s*\w+\.InterruptCount', kernel):
         raise ValueError('IRQ source inventory label removed')
     if 'not E1000EState.InterruptCount' not in kernel:
         raise ValueError('IRQ source versus ISR execution distinction removed')
-    if re.search(r'isr_executions=(?!unknown\\b)[A-Za-z0-9_]+', kernel):
+    if re.search(r'isr_executions=(?!unknown\b)[A-Za-z0-9_]+', kernel):
         raise ValueError('unsupported ISR execution claim')
     # Adding UART counters requires an independent driver-provenance review.
     if '[NET3095-ISR] phase=' in kernel:
