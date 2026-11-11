@@ -23,7 +23,7 @@ class ReleaseSigningSmoke(unittest.TestCase):
                             "-out", str(key)], check=True, capture_output=True)
             subprocess.run(["openssl", "pkey", "-in", str(key), "-pubout",
                             "-out", str(public)], check=True, capture_output=True)
-            payload = bundle / "payload" / "bin"
+            payload = bundle / "payload" / "system" / "bin"
             payload.mkdir(parents=True)
             kernel = b"ELF test fixture"
             (bundle / "ZonderqOS.elf").write_bytes(kernel)
@@ -33,7 +33,7 @@ class ReleaseSigningSmoke(unittest.TestCase):
                 "UPDATE_FORMAT=2\nSIGNATURE_ALG=ED25519\nVERSION=1.0.1\nBUILD=3110\nARCH=x86_64\n"
                 "KERNEL_IMAGE=ZonderqOS.elf\nKERNEL_SHA256=" +
                 hashlib.sha256(kernel).hexdigest() + "\nPAYLOAD_DIR=payload\n" +
-                "FILE=bin/hello.txt:" + hashlib.sha256(data).hexdigest() +
+                "FILE=system/bin/hello.txt:" + hashlib.sha256(data).hexdigest() +
                 ":" + str(len(data)) + "\nTITLE=Example release\n"
             )
             manifest = bundle / "update.manifest"
