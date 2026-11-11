@@ -15,6 +15,7 @@ on:
       - 'source/Shell/Commands/CmdAudioDiag.cs'
       - 'tests/test_audio_gen3_contract.py'
       - 'tests/test_audio_wav_validator.py'
+      - 'tests/test_audio_float_tail_transient.py'
       - 'tests/test_audio_stereo_validator.py'
       - 'tools/verify-audio-stereo-capture.py'
       - 'tests/test_audio_delay_validator.py'
@@ -51,6 +52,7 @@ on:
       - 'source/Shell/Commands/CmdAudioDiag.cs'
       - 'tests/test_audio_gen3_contract.py'
       - 'tests/test_audio_wav_validator.py'
+      - 'tests/test_audio_float_tail_transient.py'
       - 'tests/test_audio_stereo_validator.py'
       - 'tools/verify-audio-stereo-capture.py'
       - 'tests/test_audio_delay_validator.py'
@@ -95,6 +97,7 @@ jobs:
         run: |
           python3 tests/test_audio_gen3_contract.py
           python3 tests/test_audio_wav_validator.py
+          python3 tests/test_audio_float_tail_transient.py
           python3 tests/test_audio_stereo_validator.py
           python3 tests/test_audio_delay_validator.py
           python3 tests/test_audio_queue_validator.py
