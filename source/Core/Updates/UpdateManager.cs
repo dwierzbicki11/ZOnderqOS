@@ -802,9 +802,15 @@ namespace ZonderqOS.SystemCore.Updates
                     case 3:
                         // Step 4: Deploy payload files if present
                         string payloadDir = FindPayloadDirectory(pkg);
-                        if (!string.IsNullOrEmpty(payloadDir) && Directory.Exists(payloadDir))
+                        if (pkg.Files != null && pkg.Files.Count > 0)
                         {
-                            progress?.Invoke(70, "Instalowanie fizycznych plikow ladunku na dysku...");
+                            if (string.IsNullOrEmpty(payloadDir) || !Directory.Exists(payloadDir))
+                            {
+                                Status = UpdateStatus.Error;
+                                error = "Brak wymaganego katalogu payload; instalacja przerwana.";
+                                return false;
+                            }
+                            progress?.Invoke(70, "Instalowanie tylko plikow zadeklarowanych w manifeście...");
                             string backupPayload = Path.Combine(BackupDir, "payload_snapshot");
                             DeployManifestFiles(pkg, payloadDir, backupPayload);
                         }
@@ -1078,12 +1084,59 @@ namespace ZonderqOS.SystemCore.Updates
             catch { }
         }
 
+        private static void RestoreManifestFiles(string backupRoot)
+        {
+            // Only restore system-managed destinations; do not recursively
+            // trust arbitrary backup paths under a writable disk directory.
+            if (Directory.Exists(backupRoot))
+            {
+                string[] files = Directory.GetFiles(backupRoot, "*", SearchOption.AllDirectories);
+                for (int i = 0; i < files.Length; i++)
+                {
+                    string relative = files[i].Substring(backupRoot.TrimEnd('/').Length).TrimStart('/', '\\');
+                    relative = relative.Replace('\\', '/');
+                    if (!IsAllowedUpdatePayloadPath(relative) ||
+                        !IsSafeUpdateFilePath(backupRoot, relative) ||
+                        !IsSafeUpdateFilePath("/", relative))
+                        throw new IOException("Niebezpieczny plik w kopii rollback: " + relative);
+                    string dst = Path.Combine("/", relative);
+                    string parent = Path.GetDirectoryName(dst);
+                    if (!Directory.Exists(parent)) Directory.CreateDirectory(parent);
+                    File.Copy(files[i], dst, true);
+                }
+            }
+
+            string createdRecord = Path.Combine(BackupDir, "payload_created.list");
+            if (File.Exists(createdRecord))
+            {
+                string[] created = File.ReadAllLines(createdRecord);
+                for (int i = 0; i < created.Length; i++)
+                {
+                    string relative = created[i].Trim();
+                    if (relative.Length == 0) continue;
+                    if (!IsAllowedUpdatePayloadPath(relative) ||
+                        !IsSafeUpdateFilePath("/", relative))
+                        throw new IOException("Niebezpieczna sciezka usuwania w rollback: " + relative);
+                    string destination = Path.Combine("/", relative);
+                    if (File.Exists(destination)) File.Delete(destination);
+                }
+            }
+        }
+
         private static void CreateRollbackSnapshot()
         {
             try
             {
                 if (!Directory.Exists(BackupDir))
                     Directory.CreateDirectory(BackupDir);
+                // A new transaction must not inherit files or a deletion list
+                // from an older update, or rollback could restore stale data.
+                string previousPayload = Path.Combine(BackupDir, "payload_snapshot");
+                if (Directory.Exists(previousPayload))
+                    Directory.Delete(previousPayload, true);
+                string previousCreated = Path.Combine(BackupDir, "payload_created.list");
+                if (File.Exists(previousCreated))
+                    File.Delete(previousCreated);
 
                 if (File.Exists(OsReleasePath))
                     File.Copy(OsReleasePath, Path.Combine(BackupDir, "os-release.snapshot"), true);
@@ -1151,10 +1204,7 @@ namespace ZonderqOS.SystemCore.Updates
                             File.Copy(backupOsRel, OsReleasePath, true);
 
                         string backupPayloadDir = Path.Combine(BackupDir, "payload_snapshot");
-                        if (Directory.Exists(backupPayloadDir))
-                        {
-                            DeployDirectory(backupPayloadDir, "/", null);
-                        }
+                        RestoreManifestFiles(backupPayloadDir);
                         IntegrityGuard.UpdateBaseline();
                         step = 3;
                         return true;
