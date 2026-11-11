@@ -41,3 +41,9 @@ jobs:
         run: |
           file tools/bootguard/build/bootguard.efi
           file tools/bootguard/build/bootguard.efi | grep -E 'PE32\+ executable .*EFI application'
+      - name: Build EFI chainload stub and provision disposable OVMF guest
+        run: |
+          sudo apt-get install -y qemu-system-x86 ovmf mtools dosfstools
+          make -C tools/bootguard build/limine_stub.efi
+      - name: Four real pre-kernel recovery boots on one FAT32 disk
+        run: bash tests/test_bootguard_ovmf.sh
