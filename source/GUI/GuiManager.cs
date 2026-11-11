@@ -615,7 +615,37 @@ namespace ZonderqOS.GUI
             }
             finally
             {
-                Instance = null;
+                // The static shutdown callback is an instance method. If left
+                // installed after logout it roots the entire old desktop,
+                // including large Canvas/wallpaper buffers, across relogins.
+                // Never unregister a callback installed by a newer session.
+                if (object.ReferenceEquals(
+                    global::ZonderqOS.SystemCore.SystemPower.OnBeforeShutdown?.Target, this))
+                    global::ZonderqOS.SystemCore.SystemPower.OnBeforeShutdown = null;
+
+                // Session teardown must also happen if a GUI callback threw.
+                // A single broken app must not prevent releasing the rest.
+                try { applicationManager?.CloseAll(); }
+                catch (Exception closeError)
+                {
+                    Console.WriteLine("[GUI] Session cleanup warning: " + closeError.Message);
+                }
+
+                if (object.ReferenceEquals(Instance, this))
+                    Instance = null;
+
+                isRunning = false;
+                cursorDamageRenderer = null;
+                wallpaperCanvas = null;
+                canvas = null;
+                desktopShortcuts = null;
+                desktopContextMenu = null;
+                notificationCenter = null;
+                commandPalette = null;
+                startMenu = null;
+                taskbar = null;
+                appRegistry = null;
+                applicationManager = null;
             }
         }
 
