@@ -250,7 +250,12 @@ namespace ZonderqOS.SystemCore.Updates
                 SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT",
                     $"Proba uruchomienia slotu {PendingSlot}: {BootAttempts}/{MaxBootAttempts}");
 
-                if (BootAttempts >= MaxBootAttempts)
+                // A malformed pending ELF is rejected immediately by EFI.
+                // In that case BOOTGUARD_FALLBACK=1 can be durable even when
+                // the attempt counter is still 0. Never run fallback with
+                // newer incompatible /system files in that scenario.
+                if (BootAttempts >= MaxBootAttempts ||
+                    (PrebootGuardEnabled && PrebootFallbackRequested))
                 {
                     // Pre-kernel fallback selected the previous ELF. Restore
                     // the matching shared system payload BEFORE services/GUI
