@@ -37,6 +37,7 @@ namespace ZonderqOS.SystemCore.Updates
         // Enabled only after an independent EFI BootGuard has been installed
         // and armed on the dedicated ZONDERQDATA volume.
         public static bool PrebootGuardEnabled { get; private set; } = false;
+        public static bool PrebootFallbackRequested { get; private set; } = false;
 
         public static SlotHealth SlotAStatus { get; private set; } = SlotHealth.Healthy;
         public static SlotHealth SlotBStatus { get; private set; } = SlotHealth.Empty;
@@ -93,6 +94,7 @@ namespace ZonderqOS.SystemCore.Updates
             PendingSlot = string.Empty;
             BootAttempts = 0;
             PrebootGuardEnabled = false;
+            PrebootFallbackRequested = false;
             SlotAStatus = SlotHealth.Healthy;
             SlotBStatus = SlotHealth.Empty;
             SlotAVersion = KernelBuildInfo.KernelVersion;
@@ -139,6 +141,9 @@ namespace ZonderqOS.SystemCore.Updates
                         case "BOOTGUARD_PREBOOT":
                             PrebootGuardEnabled = val == "1";
                             break;
+                        case "BOOTGUARD_FALLBACK":
+                            PrebootFallbackRequested = val == "1";
+                            break;
                         case "SLOT_A_STATUS":
                             SlotAStatus = ParseHealth(val);
                             break;
@@ -179,6 +184,7 @@ namespace ZonderqOS.SystemCore.Updates
                 sb.AppendLine("PENDING_SLOT=" + PendingSlot);
                 sb.AppendLine("BOOT_ATTEMPTS=" + BootAttempts);
                 sb.AppendLine("BOOTGUARD_PREBOOT=" + (PrebootGuardEnabled ? "1" : "0"));
+                sb.AppendLine("BOOTGUARD_FALLBACK=" + (PrebootFallbackRequested ? "1" : "0"));
                 sb.AppendLine("MAX_BOOT_ATTEMPTS=" + MaxBootAttempts);
                 sb.AppendLine("SLOT_A_STATUS=" + SlotAStatus);
                 sb.AppendLine("SLOT_A_VERSION=" + SlotAVersion);
@@ -214,7 +220,15 @@ namespace ZonderqOS.SystemCore.Updates
                 // attempts to load the ELF. Do not increment it again here.
                 // Without BootGuard, retain the legacy in-kernel counter for
                 // diagnostic purposes, but disallow new slot activations.
-                if (!PrebootGuardEnabled)
+                if (PrebootGuardEnabled)
+                {
+                    // Attempt #3 must still be allowed to boot and confirm.
+                    // Only the EFI preboot selector may set this flag after
+                    // *three unsuccessful* boots and select the fallback.
+                    if (!PrebootFallbackRequested)
+                        return;
+                }
+                else
                     BootAttempts++;
                 SystemLogger.Log(SystemLogLevel.Warning, "BOOTSLOT",
                     $"Proba uruchomienia slotu {PendingSlot}: {BootAttempts}/{MaxBootAttempts}");
@@ -233,6 +247,7 @@ namespace ZonderqOS.SystemCore.Updates
                     ActiveSlot = FallbackSlot;
                     PendingSlot = string.Empty;
                     BootAttempts = 0;
+                    PrebootFallbackRequested = false;
 
                     SyncLimineConfig();
                     SaveBootState();
@@ -260,6 +275,7 @@ namespace ZonderqOS.SystemCore.Updates
 
                 PendingSlot = string.Empty;
                 BootAttempts = 0;
+                PrebootFallbackRequested = false;
                 KernelBuildInfo.IsHealthyAndConfirmed = true;
 
                 SaveBootState();
@@ -516,6 +532,7 @@ namespace ZonderqOS.SystemCore.Updates
                 ActiveSlot = targetSlot;
                 PendingSlot = targetSlot;
                 BootAttempts = 0;
+                PrebootFallbackRequested = false;
 
                 if (targetSlot == SlotA)
                     SlotAStatus = SlotHealth.PendingConfirmation;
@@ -579,6 +596,7 @@ namespace ZonderqOS.SystemCore.Updates
                 ActiveSlot = previousSlot;
                 PendingSlot = string.Empty;
                 BootAttempts = 0;
+                PrebootFallbackRequested = false;
 
                 SyncLimineConfig();
                 SaveBootState();
