@@ -1036,54 +1036,6 @@ namespace ZonderqOS.SystemCore.Updates
             }
         }
 
-        private static void DeployDirectory(string sourceDir, string targetDir, string backupRoot)
-        {
-            if (!Directory.Exists(targetDir))
-            {
-                try { Directory.CreateDirectory(targetDir); } catch { }
-            }
-
-            try
-            {
-                string[] files = Directory.GetFiles(sourceDir);
-                for (int i = 0; i < files.Length; i++)
-                {
-                    string srcFile = files[i];
-                    string name = Path.GetFileName(srcFile);
-                    string dstFile = Path.Combine(targetDir, name);
-
-                    if (File.Exists(dstFile) && !string.IsNullOrEmpty(backupRoot))
-                    {
-                        try
-                        {
-                            string relPath = dstFile.TrimStart('/');
-                            string backupDst = Path.Combine(backupRoot, relPath);
-                            string backupFolder = Path.GetDirectoryName(backupDst);
-                            if (!string.IsNullOrEmpty(backupFolder) && !Directory.Exists(backupFolder))
-                                Directory.CreateDirectory(backupFolder);
-                            File.Copy(dstFile, backupDst, true);
-                        }
-                        catch { }
-                    }
-
-                    try
-                    {
-                        File.Copy(srcFile, dstFile, true);
-                    }
-                    catch { }
-                }
-
-                string[] dirs = Directory.GetDirectories(sourceDir);
-                for (int i = 0; i < dirs.Length; i++)
-                {
-                    string srcSub = dirs[i];
-                    string subName = Path.GetFileName(srcSub);
-                    DeployDirectory(srcSub, Path.Combine(targetDir, subName), backupRoot);
-                }
-            }
-            catch { }
-        }
-
         private static void RestoreManifestFiles(string backupRoot)
         {
             // Only restore system-managed destinations; do not recursively
