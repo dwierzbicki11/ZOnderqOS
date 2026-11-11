@@ -174,6 +174,9 @@ namespace ZonderqOS.GUI
                 int firstMouseY = (int)MouseManager.Y;
                 ResetActivityTimer();
                 RenderFrame(firstMouseX, firstMouseY);
+                // Only after a successfully rendered authenticated desktop can
+                // this GUI boot confirm the pending A/B slot.
+                global::ZonderqOS.SystemCore.Updates.BootSlotManager.ConfirmSlotHealth();
 
                 while (isRunning)
                 {
