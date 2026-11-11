@@ -276,8 +276,11 @@ namespace ZonderqOS.SystemCore.Updates
 
         public static string FindKernelSource(UpdatePackageInfo pkg)
         {
-            if (pkg != null && !string.IsNullOrEmpty(pkg.KernelImagePath) && File.Exists(pkg.KernelImagePath))
-                return pkg.KernelImagePath;
+            // Never fall back to a different package's kernel when the caller
+            // provided a concrete package. Discovery-only fallback is separate.
+            if (pkg != null)
+                return !string.IsNullOrEmpty(pkg.KernelImagePath) && File.Exists(pkg.KernelImagePath)
+                    ? pkg.KernelImagePath : null;
 
             string[] candidates = {
                 "/updates/ZonderqOS.elf",
@@ -454,8 +457,9 @@ namespace ZonderqOS.SystemCore.Updates
 
         public static string FindPayloadDirectory(UpdatePackageInfo pkg)
         {
-            if (pkg != null && !string.IsNullOrEmpty(pkg.PayloadPath) && Directory.Exists(pkg.PayloadPath))
-                return pkg.PayloadPath;
+            if (pkg != null)
+                return !string.IsNullOrEmpty(pkg.PayloadPath) && Directory.Exists(pkg.PayloadPath)
+                    ? pkg.PayloadPath : null;
 
             if (Directory.Exists("/updates/payload"))
                 return "/updates/payload";
@@ -642,7 +646,18 @@ namespace ZonderqOS.SystemCore.Updates
                     int pct = 30 + (int)((i + 1) * 50.0 / pkg.Files.Count);
                     progress?.Invoke(pct, "Weryfikacja sumy pliku: " + fileEntry.RelativePath + "...");
 
+                    if (fileEntry == null || !UpdateManifest.IsSafeRelativePath(fileEntry.RelativePath) ||
+                        !IsAllowedUpdatePayloadPath(fileEntry.RelativePath))
+                    {
+                        error = "Niedozwolona lub niepoprawna sciezka w pakiecie.";
+                        return false;
+                    }
                     string fullPath = string.IsNullOrEmpty(payloadBase) ? null : Path.Combine(payloadBase, fileEntry.RelativePath);
+                    if (fullPath != null && !IsSafeUpdateFilePath(payloadBase, fileEntry.RelativePath))
+                    {
+                        error = "Niedozwolony dowiazany symbolicznie plik lub katalog payload: " + fileEntry.RelativePath;
+                        return false;
+                    }
                     if (string.IsNullOrEmpty(fullPath) || !File.Exists(fullPath))
                     {
                         error = "Brak pliku w payload: " + fileEntry.RelativePath;
@@ -674,6 +689,38 @@ namespace ZonderqOS.SystemCore.Updates
 
             progress?.Invoke(90, "Wszystkie sumy kontrolne SHA-256 i podpisy sa prawidlowe.");
             return true;
+        }
+
+        // Early allowlist: do not install arbitrary packages into /boot,
+        // /etc, /var, /root or foreign partitions. Installed system payloads
+        // must live under these two explicitly managed roots.
+        private static bool IsAllowedUpdatePayloadPath(string relativePath)
+        {
+            return UpdateManifest.IsSafeRelativePath(relativePath) &&
+                (relativePath.StartsWith("system/", StringComparison.OrdinalIgnoreCase) ||
+                 relativePath.StartsWith("usr/", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsSafeUpdateFilePath(string root, string relativePath)
+        {
+            if (string.IsNullOrEmpty(root) || !UpdateManifest.IsSafeRelativePath(relativePath))
+                return false;
+            try
+            {
+                if ((File.GetAttributes(root) & FileAttributes.ReparsePoint) != 0)
+                    return false;
+                string current = root;
+                string[] parts = relativePath.Split('/');
+                for (int i = 0; i < parts.Length; i++)
+                {
+                    current = Path.Combine(current, parts[i]);
+                    if ((File.Exists(current) || Directory.Exists(current)) &&
+                        (File.GetAttributes(current) & FileAttributes.ReparsePoint) != 0)
+                        return false;
+                }
+                return true;
+            }
+            catch { return false; }
         }
 
         // Deliberately NOT a configurable flag. A malicious or malformed USB
@@ -759,7 +806,7 @@ namespace ZonderqOS.SystemCore.Updates
                         {
                             progress?.Invoke(70, "Instalowanie fizycznych plikow ladunku na dysku...");
                             string backupPayload = Path.Combine(BackupDir, "payload_snapshot");
-                            DeployDirectory(payloadDir, "/", backupPayload);
+                            DeployManifestFiles(pkg, payloadDir, backupPayload);
                         }
                         step = 4;
                         return true;
@@ -962,7 +1009,10 @@ namespace ZonderqOS.SystemCore.Updates
                               "PREVIOUS_WALLPAPER=" + global::ZonderqOS.SystemSettings.DesktopBackgroundMode + "\n";
                 File.WriteAllText(Path.Combine(BackupDir, "snapshot.meta"), meta);
             }
-            catch { }
+            catch (Exception ex)
+            {
+                throw new IOException("Nie udalo sie utworzyc kopii rollback: " + ex.Message);
+            }
         }
 
         public static bool HasRollbackSnapshot()
