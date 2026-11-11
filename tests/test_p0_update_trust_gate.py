@@ -73,7 +73,10 @@ class UpdateTrustGateTests(unittest.TestCase):
         self.assertNotIn("private static void DeployDirectory(", SOURCE)
         self.assertNotIn('DeployDirectory(payloadDir, "/",', SOURCE)
         self.assertIn("DeployManifestFiles(pkg, payloadDir, backupPayload);", SOURCE)
-        self.assertIn("RestoreManifestFiles(backupPayloadDir);", SOURCE)
+        # Rollback now goes through a stricter shared-file restore routine,
+        # which also verifies the previous slot and restores old config.
+        self.assertIn("RestoreSharedFilesAfterBootFailure(BootSlotManager.ActiveSlot,", SOURCE)
+        self.assertIn("RestoreManifestFiles(Path.Combine(BackupDir, \"payload_snapshot\"));", SOURCE)
 
     def test_deployment_is_allowlisted_and_manifest_bound(self):
         self.assertIn('relativePath.StartsWith("system/"', SOURCE)
