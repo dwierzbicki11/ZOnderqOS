@@ -343,6 +343,18 @@ namespace ZonderqOS.SystemCore.Updates
                     return false;
                 }
 
+                // Discovery is not verification. Never advertise a legacy HMAC
+                // package as available/trusted while the P0 gate is active.
+                if (!HasVerifiedAsymmetricUpdateTrust())
+                {
+                    AvailablePackage = null;
+                    package = null;
+                    Status = UpdateStatus.Error;
+                    message = "Wykryto pakiet USB " + pkg.Version +
+                        ", ale instalacja jest zablokowana: brak zaufanej weryfikacji podpisu asymetrycznego calego manifestu.";
+                    return false;
+                }
+
                 AvailablePackage = pkg;
                 package = pkg;
                 Status = UpdateStatus.Available;
