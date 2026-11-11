@@ -33,6 +33,9 @@ jobs:
             tests/BootGuardPolicySmoke/boot_policy_test.c \
             -o /tmp/zonderq-boot-policy-smoke
           /tmp/zonderq-boot-policy-smoke
+      - name: Validate idle background allocation contracts
+        run: python3 -m unittest discover -s tests -p 'test_idle_background_allocation_contracts.py' -v
+
       - name: Run hard-stop contract tests
         run: python3 -m unittest discover -s tests -p 'test_p0_update_trust_gate.py' -v
       - name: Validate architecture-specific source contracts
