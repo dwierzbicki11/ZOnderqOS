@@ -69,6 +69,41 @@ namespace UpdateEngineSmoke
             Assert(m.Files.Count == 1, "File count mismatch");
             Assert(m.Files[0].RelativePath == "bin/sh", "File path mismatch");
 
+            // P0: Manifest parser must reject paths capable of escaping the
+            // package root and ambiguous entries before any disk write.
+            string[] invalidPaths = {
+                "../etc/passwd", "/etc/passwd", "bin/../etc",
+                "bin//sh", "C:/Windows/system32", "bin\\\\sh",
+                "bin/./sh", "bin/sh.", "bin/sh "
+            };
+            for (int i = 0; i < invalidPaths.Length; i++)
+                Assert(!UpdateManifest.IsSafeRelativePath(invalidPaths[i]),
+                    "Unsafe path accepted: " + invalidPaths[i]);
+            Assert(UpdateManifest.IsSafeRelativePath("bin/sh"), "Safe nested path rejected");
+
+            string baseManifest = "VERSION=1.0.1\\nARCH=x86_64\\n" +
+                "KERNEL_IMAGE=ZonderqOS.elf\\nKERNEL_SHA256=" +
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855\\n";
+            string sha = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+            string[] invalidManifests = {
+                baseManifest + "FILE=../etc/passwd:" + sha + ":4\\n",
+                baseManifest + "FILE=bin/sh:not-a-sha:4\\n",
+                baseManifest + "FILE=bin/sh:" + sha + ":-1\\n",
+                baseManifest + "FILE=bin/sh:" + sha + ":abc\\n",
+                baseManifest + "FILE=bin/sh:" + sha + ":2:extra\\n",
+                baseManifest + "FILE=bin/sh:" + sha + ":4\\nFILE=bin/sh:" + sha + ":4\\n",
+                baseManifest + "VERSION=2.0.0\\n",
+                baseManifest + "UNKNOWN=1\\n",
+                baseManifest.Replace("KERNEL_SHA256=" + sha, "KERNEL_SHA256=bad"),
+                baseManifest.Replace("KERNEL_IMAGE=ZonderqOS.elf", "KERNEL_IMAGE=../evil.elf")
+            };
+            for (int i = 0; i < invalidManifests.Length; i++)
+            {
+                bool accepted = UpdateManifest.TryParse(invalidManifests[i], out _, out string rejection);
+                Assert(!accepted, "Malformed manifest accepted at case " + i);
+                Assert(!string.IsNullOrEmpty(rejection), "Missing rejection reason at case " + i);
+            }
+
             // Invalid architecture rejection
             string badArch = "VERSION=1.0.1\nBUILD=3110\nARCH=arm64\n";
             bool badArchOk = UpdateManifest.TryParse(badArch, out _, out string badArchErr);
