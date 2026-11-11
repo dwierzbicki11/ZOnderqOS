@@ -33,6 +33,7 @@ namespace ZonderqOS.GUI
     // this host-only smoke test intentionally stubs rendering dependencies.
     internal sealed class Button : Widget
     {
+        public System.Action OnClick { get; set; }
         public Button() : base(0, 0, 20, 20) { }
         public override void Render(Cosmos.Kernel.System.Graphics.Canvas canvas) { }
     }
