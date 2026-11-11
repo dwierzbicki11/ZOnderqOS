@@ -5,6 +5,7 @@ This gate cannot prove that IRQs executed. It prevents the isolated kernel
 from claiming that they did before real driver counters are wired in.
 """
 from pathlib import Path
+import re
 import sys
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,25 +16,37 @@ def check(kernel: str, validator: str) -> None:
         raise ValueError('unverified ISR execution disclaimer removed')
     if 'DRIVER_BOUND=PASS' not in kernel:
         raise ValueError('driver binding diagnostic missing')
+    # DriverKit node InterruptCount inventories IRQ registrations, not ISR calls.
+    if not re.search(r'irq_sources=\\s*"\\s*\\+\\s*\\w+\\.InterruptCount', kernel):
+        raise ValueError('IRQ source inventory label removed')
+    if 'not E1000EState.InterruptCount' not in kernel:
+        raise ValueError('IRQ source versus ISR execution distinction removed')
+    if re.search(r'isr_executions=(?!unknown\\b)[A-Za-z0-9_]+', kernel):
+        raise ValueError('unsupported ISR execution claim')
+    # Adding UART counters requires an independent driver-provenance review.
     if '[NET3095-ISR] phase=' in kernel:
-        if not all(token in kernel for token in ('InterruptCount', 'FramesReceived')):
-            raise ValueError('ISR UART markers without both driver counters')
-        if 'polling=no' not in kernel:
-            raise ValueError('ISR UART markers without polling-disabled evidence')
+        raise ValueError('unreviewed ISR UART markers: driver counters not proven')
     for required in ('after[0] <= before[0]', 'after[1] <= before[1]',
-                     'polling enabled: IRQ RX not proven', 'missing unique guest boot marker'):
+                     'polling enabled: IRQ RX not proven', 'missing unique guest boot marker',
+                     'requires independently verified guest instrumentation'):
         if required not in validator:
             raise ValueError('guest ISR validator weakened: ' + required)
 
 
 def self_test() -> None:
-    kernel = 'DRIVER_BOUND=PASS isr_executions=unknown'
+    kernel = ('DRIVER_BOUND=PASS isr_executions=unknown '
+              '\" irq_sources=\" + node.InterruptCount; '
+              '// not E1000EState.InterruptCount')
     validator = ' '.join(('after[0] <= before[0]', 'after[1] <= before[1]',
-                          'polling enabled: IRQ RX not proven', 'missing unique guest boot marker'))
+                          'polling enabled: IRQ RX not proven', 'missing unique guest boot marker',
+                          'requires independently verified guest instrumentation'))
     check(kernel, validator)
     for changed in (kernel.replace('unknown', '1'),
                     kernel + ' [NET3095-ISR] phase=before',
-                    kernel + ' [NET3095-ISR] phase=before InterruptCount FramesReceived'):
+                    kernel + ' [NET3095-ISR] phase=before InterruptCount FramesReceived',
+                    kernel.replace('irq_sources', 'isr_executions'),
+                    kernel.replace('not E1000EState.InterruptCount', 'driver active'),
+                    kernel + ' isr_executions=PASS'):
         try:
             check(changed, validator)
         except ValueError:
