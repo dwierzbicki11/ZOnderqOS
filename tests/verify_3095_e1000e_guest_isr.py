@@ -15,7 +15,7 @@ import unicodedata
 
 BINDING = re.compile(
     r"^\[NET3095-N1\] DRIVER_BOUND=PASS node=pci/[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7] "
-    r"resources=(0|[1-9][0-9]*) irq_sources=(0|[1-9][0-9]*) "
+    r"resources=([1-9][0-9]*) irq_sources=([1-9][0-9]*) "
     r"handler_faults=0 isr_executions=unknown$"
 )
 
@@ -140,6 +140,8 @@ def self_test() -> None:
         good.replace("irq_sources=1", "irq_registered=1"),
         good.replace("irq_sources=1", "irq_sources=bogus"),
         good.replace("irq_sources=1", "irq_sources=01"),
+        good.replace("irq_sources=1", "irq_sources=0"),
+        good.replace("resources=2", "resources=0"),
         good.replace("handler_faults=0", "handler_faults=1"),
         good.replace("resources=2", "resources=-1"),
         good.replace("node=pci/00:02.0", "node=pci/00:02.8"),
