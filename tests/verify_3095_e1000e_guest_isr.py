@@ -52,8 +52,16 @@ def validate(serial: str) -> str:
         # even before the baseline or after the final sample.
         if line == "[NET3095-N1] BOOT":
             boot_count += 1
-            if boot_count != 1 or samples:
+            if boot_count != 1 or bound_count or samples:
                 raise ValueError("multiple or late guest boot markers")
+        # A malformed or replayed boot/binding line must not be silently
+        # ignored. Otherwise counter samples could belong to another boot.
+        elif "[NET3095-N1] BOOT" in line:
+            raise ValueError("malformed guest boot marker")
+        if "[NET3095-N1] DRIVER_BOUND=" in line and not line.startswith(
+            "[NET3095-N1] DRIVER_BOUND=PASS "
+        ):
+            raise ValueError("invalid driver binding marker")
         if re.search(r"\[NET3095-[A-Z0-9-]+\]\[FAIL\]", line):
             raise ValueError("guest network failure in ISR evidence log")
         # A rising counter is not a success if the guest subsequently faults.
@@ -175,6 +183,10 @@ def self_test() -> None:
         good.replace("phase=after", "\u2066phase=after\u2069"),
         good.replace("[NET3095-N1] BOOT\n", ""),
         good + "[NET3095-N1] BOOT\n",
+        good.replace("[NET3095-N1] BOOT\n", " [NET3095-N1] BOOT\n"),
+        good + " [NET3095-N1] BOOT\n",
+        good.replace("DRIVER_BOUND=PASS", "DRIVER_BOUND=PENDING"),
+        good.replace("[NET3095-N1] DRIVER_BOUND=PASS", " [NET3095-N1] DRIVER_BOUND=PASS"),
         good.splitlines()[0] + "\n[NET3095-N1] BOOT\n" + "\n".join(good.splitlines()[1:]) + "\n",
         good.replace("[NET3095-ISR] phase=before", "[NET3095-N1][FAIL] reset\n[NET3095-ISR] phase=before"),
         good + "[NET3095-N2][FAIL] DHCP timeout\n",
