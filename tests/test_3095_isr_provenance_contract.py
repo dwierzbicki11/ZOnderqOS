@@ -28,7 +28,9 @@ def check(kernel: str, validator: str) -> None:
         raise ValueError('unreviewed ISR UART markers: driver counters not proven')
     for required in ('after[0] <= before[0]', 'after[1] <= before[1]',
                      'polling enabled: IRQ RX not proven', 'missing unique guest boot marker',
-                     'requires independently verified guest instrumentation'):
+                     'requires independently verified guest instrumentation',
+                     'missing unique driver binding evidence',
+                     'ISR sample before unique driver binding evidence'):
         if required not in validator:
             raise ValueError('guest ISR validator weakened: ' + required)
 
@@ -39,7 +41,9 @@ def self_test() -> None:
               '// not E1000EState.InterruptCount')
     validator = ' '.join(('after[0] <= before[0]', 'after[1] <= before[1]',
                           'polling enabled: IRQ RX not proven', 'missing unique guest boot marker',
-                          'requires independently verified guest instrumentation'))
+                          'requires independently verified guest instrumentation',
+                          'missing unique driver binding evidence',
+                          'ISR sample before unique driver binding evidence'))
     check(kernel, validator)
     for changed in (kernel.replace('unknown', '1'),
                     kernel + ' [NET3095-ISR] phase=before',
