@@ -40,6 +40,7 @@ def validate(serial: str) -> str:
     samples = {}
     phases = []
     boot_count = 0
+    bound_count = 0
     for line in serial.replace("\r\n", "\n").split("\n"):
         # Require a single boot in the complete evidence stream. Reject faults
         # even before the baseline or after the final sample.
@@ -64,13 +65,19 @@ def validate(serial: str) -> str:
         # establish the required post-sample runtime stability.
         if re.search(r"qemu-system-[A-Za-z0-9_.-]+: terminating on signal ", line):
             raise ValueError("QEMU termination in guest ISR evidence")
+        if line.startswith("[NET3095-N1] DRIVER_BOUND=PASS "):
+            if boot_count != 1 or bound_count or samples:
+                raise ValueError("duplicate or misplaced driver binding evidence")
+            if "isr_executions=unknown" not in line or "irq_sources=" not in line:
+                raise ValueError("invalid driver binding diagnostic provenance")
+            bound_count += 1
         if "[NET3095-ISR]" not in line:
             continue
         match = MARKER.fullmatch(line)
         if match is None:
             raise ValueError("malformed guest ISR sample")
-        if boot_count != 1:
-            raise ValueError("ISR sample before guest boot")
+        if boot_count != 1 or bound_count != 1:
+            raise ValueError("ISR sample before unique driver binding evidence")
         phase, irq, rx, polling = match.groups()
         # Reject noncanonical/overflowing counters rather than treating
         # arbitrary decimal strings as trustworthy guest driver samples.
@@ -87,6 +94,8 @@ def validate(serial: str) -> str:
         phases.append(phase)
     if boot_count != 1:
         raise ValueError("missing unique guest boot marker")
+    if bound_count != 1:
+        raise ValueError("missing unique driver binding evidence")
     if set(samples) != {"before", "after"}:
         raise ValueError("missing guest ISR before/after samples")
     if phases != ["before", "after"]:
@@ -112,12 +121,18 @@ def read_uart(path: Path) -> str:
 
 def self_test() -> None:
     good = ("[NET3095-N1] BOOT\n"
+            "[NET3095-N1] DRIVER_BOUND=PASS node=pci/00:02.0 resources=2 irq_sources=1 handler_faults=0 isr_executions=unknown\n"
             "[NET3095-ISR] phase=before interrupts=3 rx_frames=7 polling=no\n"
             "[NET3095-ISR] phase=after interrupts=5 rx_frames=9 polling=no\n")
     assert "VERIFIED_GUEST_COUNTER_DELTA" in validate(good)
     bad = (
         "",
-        good.splitlines()[1],
+        good.splitlines()[2],
+        good.replace("[NET3095-N1] DRIVER_BOUND=PASS node=pci/00:02.0 resources=2 irq_sources=1 handler_faults=0 isr_executions=unknown\n", ""),
+        good.replace("DRIVER_BOUND=PASS", "DRIVER_BOUND=FAIL"),
+        good.replace("isr_executions=unknown", "isr_executions=1"),
+        good.replace("irq_sources=1", "irq_registered=1"),
+        good.replace("phase=after", "[NET3095-N1] DRIVER_BOUND=PASS node=pci/00:02.0 resources=2 irq_sources=1 handler_faults=0 isr_executions=unknown\n[NET3095-ISR] phase=after"),
         good + good.splitlines()[2] + "\n",
         good.replace("interrupts=5", "interrupts=3"),
         good.replace("rx_frames=9", "rx_frames=7"),
