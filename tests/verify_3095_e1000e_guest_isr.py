@@ -13,6 +13,12 @@ import re
 import tempfile
 import unicodedata
 
+BINDING = re.compile(
+    r"^\[NET3095-N1\] DRIVER_BOUND=PASS node=pci/[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7] "
+    r"resources=(0|[1-9][0-9]*) irq_sources=(0|[1-9][0-9]*) "
+    r"handler_faults=0 isr_executions=unknown$"
+)
+
 MARKER = re.compile(
     r"^\[NET3095-ISR\] phase=(before|after) "
     r"interrupts=([0-9]+) rx_frames=([0-9]+) polling=(yes|no)$"
@@ -68,7 +74,7 @@ def validate(serial: str) -> str:
         if line.startswith("[NET3095-N1] DRIVER_BOUND=PASS "):
             if boot_count != 1 or bound_count or samples:
                 raise ValueError("duplicate or misplaced driver binding evidence")
-            if "isr_executions=unknown" not in line or "irq_sources=" not in line:
+            if BINDING.fullmatch(line) is None:
                 raise ValueError("invalid driver binding diagnostic provenance")
             bound_count += 1
         if "[NET3095-ISR]" not in line:
@@ -132,6 +138,12 @@ def self_test() -> None:
         good.replace("DRIVER_BOUND=PASS", "DRIVER_BOUND=FAIL"),
         good.replace("isr_executions=unknown", "isr_executions=1"),
         good.replace("irq_sources=1", "irq_registered=1"),
+        good.replace("irq_sources=1", "irq_sources=bogus"),
+        good.replace("irq_sources=1", "irq_sources=01"),
+        good.replace("handler_faults=0", "handler_faults=1"),
+        good.replace("resources=2", "resources=-1"),
+        good.replace("node=pci/00:02.0", "node=pci/00:02.8"),
+        good.replace("isr_executions=unknown", "isr_executions=unknown spoof=1"),
         good.replace("phase=after", "[NET3095-N1] DRIVER_BOUND=PASS node=pci/00:02.0 resources=2 irq_sources=1 handler_faults=0 isr_executions=unknown\n[NET3095-ISR] phase=after"),
         good + good.splitlines()[2] + "\n",
         good.replace("interrupts=5", "interrupts=3"),
