@@ -81,7 +81,7 @@ def validate(serial: str) -> str:
         # Termination anywhere in the capture (including after the final
         # counter sample) invalidates the evidence; a stopped guest cannot
         # establish the required post-sample runtime stability.
-        if re.search(r"qemu-system-[A-Za-z0-9_.-]+: terminating on signal ", line):
+        if re.search(r"qemu-system-[A-Za-z0-9_.-]+:\s+terminating\s+on\s+signal\b", line, re.IGNORECASE):
             raise ValueError("QEMU termination in guest ISR evidence")
         if line.startswith("[NET3095-N1] DRIVER_BOUND=PASS "):
             if boot_count != 1 or bound_count or samples:
@@ -218,6 +218,8 @@ def self_test() -> None:
         good.replace("[NET3095-N1] BOOT\n", "[NET3095-N6][FAIL] TCP reset\n[NET3095-N1] BOOT\n"),
         good + "qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n",
         good + "runner: qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n",
+        good + "QEMU-SYSTEM-X86_64: TERMINATING ON SIGNAL 15 from pid 1\n",
+        good + "qemu-system-x86_64:  terminating  on  signal 15 from pid 1\n",
         good + "2026-11-11 10:29:56 qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n",
         good + "[2026-11-08T15:34:10+01:00] qemu-system-x86_64: terminating on signal 15 from pid 1 (bash)\n",
     )
