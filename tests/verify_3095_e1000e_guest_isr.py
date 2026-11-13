@@ -43,6 +43,10 @@ def validate(serial: str) -> str:
            (unicodedata.category(ch) == "Cc" and ch not in "\r\n\t")
            for ch in serial):
         raise ValueError("invisible Unicode format, separator or control character in ISR UART evidence")
+    # Driver UART evidence is ASCII by contract. Reject confusable Unicode
+    # letters, full-width digits and BOM rather than normalizing untrusted logs.
+    if any(ord(ch) > 127 for ch in serial):
+        raise ValueError("non-ASCII character in ISR UART evidence")
     samples = {}
     phases = []
     boot_count = 0
@@ -180,6 +184,9 @@ def self_test() -> None:
         good + "\u009b",  # C1 control sequence introducer
         good + "\u2028",  # Unicode line separator
         good + "\u2029",  # Unicode paragraph separator
+        good + "\ufeff",  # UTF-8 BOM inserted into UART stream
+        good.replace("interrupts=5", "interrupts=５"),  # full-width digit
+        good.replace("phase=after", "phase=аfter"),  # Cyrillic confusable
         good.replace("phase=after", "\u2066phase=after\u2069"),
         good.replace("[NET3095-N1] BOOT\n", ""),
         good + "[NET3095-N1] BOOT\n",
