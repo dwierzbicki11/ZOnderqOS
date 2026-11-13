@@ -73,7 +73,7 @@ def validate(serial: str) -> str:
         # sample, rather than trusting the two counter markers in isolation.
         if re.search(
             r"(?i)(?:kernel panic|unhandled exception|cpu exception|triple fault"
-            r"|page fault|general protection fault|stack overflow"
+            r"|page fault|general protection fault|stack overflow|#pf\\b|cr2\\s*="
             r"|exception\s+(?:0x)?0*[0-9a-f]+\b|system\.[a-z0-9_.]*exception\b)",
             line,
         ):
@@ -202,6 +202,8 @@ def self_test() -> None:
         good + "CPU EXCEPTION 14\n",
         good + "Triple fault\n",
         good + "Page fault at CR2=0xC\n",
+        good + "CR2=0xC\n",
+        good + "#PF at 0xC\n",
         good + "General protection fault\n",
         good + "Stack overflow\n",
         good + "Exception 14 CR2=0xC\n",
