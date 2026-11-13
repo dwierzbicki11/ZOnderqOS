@@ -234,6 +234,15 @@ def self_test() -> None:
             raise AssertionError("accepted on-disk UART evidence with bare CR")
         path.write_bytes(good.replace("\n", "\r\n").encode("utf-8"))
         assert "VERIFIED_GUEST_COUNTER_DELTA" in validate(read_uart(path))
+        # Invalid UTF-8 in a captured UART stream is a validation failure,
+        # not an uncaught traceback or permission to replace corrupt bytes.
+        path.write_bytes(good.encode("ascii") + b"\xff\n")
+        try:
+            read_uart(path)
+        except UnicodeError:
+            pass
+        else:
+            raise AssertionError("accepted non-UTF-8 UART capture")
     print("[NET3095-ISR-CONTRACT] PASS synthetic parser and raw UART file tests only")
 
 
@@ -249,5 +258,5 @@ if __name__ == "__main__":
     else:
         try:
             print(validate(read_uart(args.serial)))
-        except (OSError, ValueError) as exc:
+        except (OSError, UnicodeError, ValueError) as exc:
             parser.exit(1, f"[NET3095-ISR][FAIL] {exc}\n")
