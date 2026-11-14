@@ -218,15 +218,28 @@ namespace ZonderqOS.GUI.Apps
 
             Track cur = player.CurrentTrack;
             string curTitle = cur != null ? cur.Title : "Brak utworu";
-            string curAuthor = cur != null ? ("Kompozytor: " + cur.Author) : "";
             SmallTextRenderer.Draw(canvas, curTitle, rightX + 14, cardY + 12, TextColor);
-            SmallTextRenderer.Draw(canvas, curAuthor, rightX + 14, cardY + 28, MutedColor);
+            if (cur != null)
+            {
+                SmallTextRenderer.Draw(canvas, "Kompozytor: ", rightX + 14, cardY + 28, MutedColor);
+                SmallTextRenderer.Draw(canvas, cur.Author, rightX + 86, cardY + 28, MutedColor);
+            }
 
             int freq = player.CurrentFrequency;
-            string freqStr = freq > 0 ? (freq + " Hz") : (player.IsPlaying ? "Pauza" : "Zatrzymany");
-            Color freqColor = freq > 0 ? AccentColor : MutedColor;
-            int fw = SmallTextRenderer.Width(freqStr);
-            SmallTextRenderer.Draw(canvas, freqStr, rightX + rightWidth - fw - 14, cardY + 18, freqColor);
+            if (freq > 0)
+            {
+                int digits = freq >= 1000 ? 4 : (freq >= 100 ? 3 : (freq >= 10 ? 2 : 1));
+                int fw = (digits + 3) * 6;
+                int fx = rightX + rightWidth - fw - 14;
+                SmallTextRenderer.DrawUInt(canvas, (ulong)freq, fx, cardY + 18, AccentColor);
+                SmallTextRenderer.Draw(canvas, " Hz", fx + digits * 6, cardY + 18, AccentColor);
+            }
+            else
+            {
+                string freqStr = player.IsPlaying ? "Pauza" : "Zatrzymany";
+                int fw = SmallTextRenderer.Width(freqStr);
+                SmallTextRenderer.Draw(canvas, freqStr, rightX + rightWidth - fw - 14, cardY + 18, MutedColor);
+            }
 
             // Animated Spectrum Visualizer (8 bars)
             int eqX = rightX + (rightWidth - 260) / 2;
@@ -269,21 +282,25 @@ namespace ZonderqOS.GUI.Apps
             DrawCtrlButton(canvas, rightX + 248, ctrlY, 68, 28, muteText, hoveredBtn == 4, muteColor);
         }
 
+        private static readonly int[] WhiteFreqs =
+        {
+            262, 294, 330, 349, 392, 440, 494, // C4..B4
+            523, 587, 659, 698, 784, 880, 988  // C5..B5
+        };
+
+        private static readonly int[] BlackOffsets = { 13, 33, 73, 93, 113, 153, 173, 213, 233, 253 };
+        private static readonly int[] BlackFreqs = { 277, 311, 370, 415, 466, 554, 622, 740, 831, 932 };
+
         private static void DrawPianoKeys(Canvas canvas, int x, int y, int activeFreq)
         {
             // 14 White keys
             int kw = 20;
             int kh = 48;
-            int[] whiteFreqs = new int[]
-            {
-                262, 294, 330, 349, 392, 440, 494, // C4..B4
-                523, 587, 659, 698, 784, 880, 988  // C5..B5
-            };
 
             for (int i = 0; i < 14; i++)
             {
                 int kx = x + i * kw;
-                bool isKeyActive = (activeFreq >= whiteFreqs[i] - 10 && activeFreq <= whiteFreqs[i] + 10);
+                bool isKeyActive = (activeFreq >= WhiteFreqs[i] - 10 && activeFreq <= WhiteFreqs[i] + 10);
                 Color keyColor = isKeyActive ? AccentColor : Color.FromArgb(240, 244, 248);
 
                 canvas.DrawFilledRectangle(keyColor, kx, y, kw - 1, kh);
@@ -294,13 +311,10 @@ namespace ZonderqOS.GUI.Apps
             }
 
             // Black keys: positions in octaves
-            int[] blackOffsets = new int[] { 13, 33, 73, 93, 113, 153, 173, 213, 233, 253 };
-            int[] blackFreqs = new int[] { 277, 311, 370, 415, 466, 554, 622, 740, 831, 932 };
-
-            for (int b = 0; b < blackOffsets.Length; b++)
+            for (int b = 0; b < BlackOffsets.Length; b++)
             {
-                int bx = x + blackOffsets[b];
-                bool isKeyActive = (activeFreq >= blackFreqs[b] - 10 && activeFreq <= blackFreqs[b] + 10);
+                int bx = x + BlackOffsets[b];
+                bool isKeyActive = (activeFreq >= BlackFreqs[b] - 10 && activeFreq <= BlackFreqs[b] + 10);
                 Color bCol = isKeyActive ? Color.FromArgb(73, 163, 224) : Color.FromArgb(20, 25, 30);
 
                 canvas.DrawFilledRectangle(bCol, bx, y, 12, 28);

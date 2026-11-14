@@ -75,6 +75,7 @@ namespace ZonderqOS.GUI.Apps
         public override void Close()
         {
             canvasBuffer = null;
+            floodQueue = null;
             base.Close();
             closeCallback?.Invoke();
         }
@@ -406,6 +407,9 @@ namespace ZonderqOS.GUI.Apps
             }
         }
 
+        private static readonly string[] ToolLabels = { "OLW", "PED", "GUM", "LIN", "REC", "WPR", "WIA" };
+        private int[] floodQueue;
+
         private void FloodFill(int startX, int startY, uint targetColor)
         {
             if (startX < 0 || startX >= CanvasWidth || startY < 0 || startY >= CanvasHeight)
@@ -415,41 +419,42 @@ namespace ZonderqOS.GUI.Apps
             if (sourceColor == targetColor)
                 return;
 
-            // Simple queue BFS flood-fill
-            Queue<int> queue = new Queue<int>(256);
-            queue.Enqueue(startY * CanvasWidth + startX);
-            canvasBuffer[startY * CanvasWidth + startX] = targetColor;
+            int maxPixels = CanvasWidth * CanvasHeight;
+            if (floodQueue == null)
+                floodQueue = new int[maxPixels];
 
-            int iterations = 0;
-            int maxIterations = CanvasWidth * CanvasHeight;
+            int head = 0;
+            int tail = 0;
+            int startIdx = startY * CanvasWidth + startX;
+            floodQueue[tail++] = startIdx;
+            canvasBuffer[startIdx] = targetColor;
 
-            while (queue.Count > 0 && iterations < maxIterations)
+            while (head < tail)
             {
-                int curr = queue.Dequeue();
+                int curr = floodQueue[head++];
                 int cx = curr % CanvasWidth;
                 int cy = curr / CanvasWidth;
-                iterations++;
 
                 // 4-way neighbors
                 if (cx > 0 && canvasBuffer[curr - 1] == sourceColor)
                 {
                     canvasBuffer[curr - 1] = targetColor;
-                    queue.Enqueue(curr - 1);
+                    floodQueue[tail++] = curr - 1;
                 }
                 if (cx < CanvasWidth - 1 && canvasBuffer[curr + 1] == sourceColor)
                 {
                     canvasBuffer[curr + 1] = targetColor;
-                    queue.Enqueue(curr + 1);
+                    floodQueue[tail++] = curr + 1;
                 }
                 if (cy > 0 && canvasBuffer[curr - CanvasWidth] == sourceColor)
                 {
                     canvasBuffer[curr - CanvasWidth] = targetColor;
-                    queue.Enqueue(curr - CanvasWidth);
+                    floodQueue[tail++] = curr - CanvasWidth;
                 }
                 if (cy < CanvasHeight - 1 && canvasBuffer[curr + CanvasWidth] == sourceColor)
                 {
                     canvasBuffer[curr + CanvasWidth] = targetColor;
-                    queue.Enqueue(curr + CanvasWidth);
+                    floodQueue[tail++] = curr + CanvasWidth;
                 }
             }
         }
@@ -475,7 +480,6 @@ namespace ZonderqOS.GUI.Apps
             canvas.DrawFilledRectangle(Border, contentX + 4, tbY + 27, contentWidth - 8, 1);
 
             int curX = contentX + 6;
-            string[] toolLabels = new string[] { "OLW", "PED", "GUM", "LIN", "REC", "WPR", "WIA" };
             for (int t = 0; t <= 6; t++)
             {
                 Color btnBg = (activeTool == (Tool)t) ? ButtonActive : ButtonNormal;
@@ -486,7 +490,7 @@ namespace ZonderqOS.GUI.Apps
                 canvas.DrawFilledRectangle(Border, curX + 27, tbY + 2, 1, 24);
 
                 Color textColor = (activeTool == (Tool)t) ? AccentColor : TextColor;
-                SmallTextRenderer.DrawCentered(canvas, toolLabels[t], curX, tbY + 9, 28, textColor);
+                SmallTextRenderer.DrawCentered(canvas, ToolLabels[t], curX, tbY + 9, 28, textColor);
                 curX += 32;
             }
 
@@ -535,16 +539,25 @@ namespace ZonderqOS.GUI.Apps
 
             canvas.DrawFilledRectangle(Border, canvasOriginX - 1, canvasOriginY - 1, CanvasWidth + 2, CanvasHeight + 2);
 
-            // Blit canvas buffer to screen
+            // Blit canvas buffer to screen using horizontal run coalescing
             for (int y = 0; y < CanvasHeight; y++)
             {
                 int rowOffset = y * CanvasWidth;
                 int screenY = canvasOriginY + y;
-                for (int x = 0; x < CanvasWidth; x++)
+                int x = 0;
+                while (x < CanvasWidth)
                 {
                     uint argb = canvasBuffer[rowOffset + x];
+                    int runStart = x++;
+                    while (x < CanvasWidth && canvasBuffer[rowOffset + x] == argb)
+                        x++;
+
+                    int runLength = x - runStart;
                     Color c = Color.FromArgb((int)argb);
-                    canvas.DrawPoint(c, canvasOriginX + x, screenY);
+                    if (runLength == 1)
+                        canvas.DrawPoint(c, canvasOriginX + runStart, screenY);
+                    else
+                        canvas.DrawFilledRectangle(c, canvasOriginX + runStart, screenY, runLength, 1);
                 }
             }
 

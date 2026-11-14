@@ -90,6 +90,12 @@ namespace ZonderqOS.GUI.Apps
             "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B", "C+"
         };
 
+        private static readonly int[] WhiteNoteIndices = { 0, 2, 4, 5, 7, 9, 11, 12 };
+        private static readonly int[] BlackNoteIndices = { 1, 3, 6, 8, 10 };
+        private static readonly int[] BlackKeyPositions = { 0, 1, 3, 4, 5 };
+
+        public override bool NeedsContinuousRedraw => isPlayingSong;
+
         public ChiptuneApp(int x, int y, Action onClose) : base("Chiptune Studio")
         {
             closeCallback = onClose;
@@ -211,7 +217,6 @@ namespace ZonderqOS.GUI.Apps
 
                 // 4. White piano keys (8 keys: C, D, E, F, G, A, B, C+)
                 // Keys are positioned at wy + 210, width 58, height 130
-                int[] whiteNoteIndices = new int[] { 0, 2, 4, 5, 7, 9, 11, 12 };
                 int keyY = wy + 210;
                 int keyW = 62;
                 int keyH = 135;
@@ -220,25 +225,23 @@ namespace ZonderqOS.GUI.Apps
                 // Black keys: C# (1), D# (3), F# (6), G# (8), A# (10)
                 int blackW = 38;
                 int blackH = 82;
-                int[] blackNoteIndices = new int[] { 1, 3, 6, 8, 10 };
-                int[] blackKeyPositions = new int[] { 0, 1, 3, 4, 5 }; // After which white key
 
-                for (int b = 0; b < blackNoteIndices.Length; b++)
+                for (int b = 0; b < BlackNoteIndices.Length; b++)
                 {
-                    int bx = wx + 20 + blackKeyPositions[b] * (keyW + 4) + (keyW - blackW / 2);
+                    int bx = wx + 20 + BlackKeyPositions[b] * (keyW + 4) + (keyW - blackW / 2);
                     if (Hit(mouseX, mouseY, bx, keyY, blackW, blackH))
                     {
-                        PlayNoteIndex(blackNoteIndices[b]);
+                        PlayNoteIndex(BlackNoteIndices[b]);
                         return;
                     }
                 }
 
-                for (int w = 0; w < whiteNoteIndices.Length; w++)
+                for (int w = 0; w < WhiteNoteIndices.Length; w++)
                 {
                     int kx = wx + 20 + w * (keyW + 4);
                     if (Hit(mouseX, mouseY, kx, keyY, keyW, keyH))
                     {
-                        PlayNoteIndex(whiteNoteIndices[w]);
+                        PlayNoteIndex(WhiteNoteIndices[w]);
                         return;
                     }
                 }
@@ -280,22 +283,10 @@ namespace ZonderqOS.GUI.Apps
             };
         }
 
-        public override void Render(Canvas canvas)
+        public override void Update()
         {
-            if (!Window.Visible || Window.IsMinimized)
-                return;
+            base.Update();
 
-            int wx = Window.X;
-            int wy = Window.Y + HeaderHeight;
-            int ww = Window.Width;
-            int wh = Window.Height - HeaderHeight;
-
-            Window.Render(canvas);
-
-            // Background
-            canvas.DrawFilledRectangle(Surface, wx, wy, ww, wh);
-
-            // Demo player step tick
             if (isPlayingSong)
             {
                 songTimerTicks++;
@@ -317,6 +308,22 @@ namespace ZonderqOS.GUI.Apps
                     StopAudio();
                 }
             }
+        }
+
+        public override void Render(Canvas canvas)
+        {
+            if (!Window.Visible || Window.IsMinimized)
+                return;
+
+            int wx = Window.X;
+            int wy = Window.Y + HeaderHeight;
+            int ww = Window.Width;
+            int wh = Window.Height - HeaderHeight;
+
+            Window.Render(canvas);
+
+            // Background
+            canvas.DrawFilledRectangle(Surface, wx, wy, ww, wh);
 
             // Top Bar: Octave Controls & Presets
             int topBarY = wy + 14;
@@ -366,36 +373,33 @@ namespace ZonderqOS.GUI.Apps
             int keyY = wy + 205;
             int keyW = 62;
             int keyH = 145;
-            int[] whiteNoteIndices = new int[] { 0, 2, 4, 5, 7, 9, 11, 12 };
 
             // Render white keys
-            for (int w = 0; w < whiteNoteIndices.Length; w++)
+            for (int w = 0; w < WhiteNoteIndices.Length; w++)
             {
                 int kx = wx + 20 + w * (keyW + 4);
-                bool isActive = activeKeyVisual == whiteNoteIndices[w];
+                bool isActive = activeKeyVisual == WhiteNoteIndices[w];
                 Color keyCol = isActive ? Color.FromArgb(200, 230, 255) : Color.FromArgb(245, 245, 250);
                 canvas.DrawFilledRectangle(keyCol, kx, keyY, keyW, keyH);
                 canvas.DrawRectangle(Color.FromArgb(100, 110, 125), kx, keyY, keyW, keyH);
 
-                string keyName = NoteNames[whiteNoteIndices[w]] + currentOctave;
+                string keyName = NoteNames[WhiteNoteIndices[w]] + currentOctave;
                 SmallTextRenderer.Draw(canvas, keyName, kx + keyW / 2 - 10, keyY + keyH - 24, Color.FromArgb(40, 50, 60));
             }
 
             // Render black keys (over white keys)
             int blackW = 38;
             int blackH = 88;
-            int[] blackNoteIndices = new int[] { 1, 3, 6, 8, 10 };
-            int[] blackKeyPositions = new int[] { 0, 1, 3, 4, 5 };
 
-            for (int b = 0; b < blackNoteIndices.Length; b++)
+            for (int b = 0; b < BlackNoteIndices.Length; b++)
             {
-                int bx = wx + 20 + blackKeyPositions[b] * (keyW + 4) + (keyW - blackW / 2);
-                bool isActive = activeKeyVisual == blackNoteIndices[b];
+                int bx = wx + 20 + BlackKeyPositions[b] * (keyW + 4) + (keyW - blackW / 2);
+                bool isActive = activeKeyVisual == BlackNoteIndices[b];
                 Color keyCol = isActive ? AccentColor : Color.FromArgb(30, 36, 44);
                 canvas.DrawFilledRectangle(keyCol, bx, keyY, blackW, blackH);
                 canvas.DrawRectangle(Color.FromArgb(15, 20, 26), bx, keyY, blackW, blackH);
 
-                string bName = NoteNames[blackNoteIndices[b]];
+                string bName = NoteNames[BlackNoteIndices[b]];
                 SmallTextRenderer.Draw(canvas, bName, bx + 6, keyY + blackH - 22, Color.White);
             }
 

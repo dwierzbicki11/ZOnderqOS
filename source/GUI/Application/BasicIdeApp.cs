@@ -350,6 +350,11 @@ namespace ZonderqOS.GUI.Apps
             string stmt = current.Statement.Trim();
             pc++;
 
+            ExecuteStatement(stmt);
+        }
+
+        private void ExecuteStatement(string stmt)
+        {
             if (string.IsNullOrEmpty(stmt) || stmt.StartsWith("REM", StringComparison.OrdinalIgnoreCase))
             {
                 return;
@@ -629,14 +634,8 @@ namespace ZonderqOS.GUI.Apps
                 }
                 else
                 {
-                    // Execute statement inside THEN
-                    ParsedLine temp;
-                    temp.LineNum = 0;
-                    temp.Statement = thenPart;
-                    temp.SourceIndex = -1;
-
-                    // Temporarily replace or jump
-                    program.Insert(pc, temp);
+                    // Execute statement inside THEN directly without mutating program list
+                    ExecuteStatement(thenPart);
                 }
             }
         }

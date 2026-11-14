@@ -35,6 +35,10 @@ namespace ZonderqOS.GUI.Apps
         private string openDirectory = "/root";
         private int openSelectedIndex = -1;
         private int openScrollIndex;
+        private int lastWindowX = int.MinValue;
+        private int lastWindowY = int.MinValue;
+        private int lastWindowWidth = -1;
+        private int lastWindowHeight = -1;
 
         public NotepadApp(int x, int y, string path, Action onClose) : base("Notatnik")
         {
@@ -57,11 +61,19 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Update()
         {
-            UpdateLayout();
+            if (Window.X != lastWindowX || Window.Y != lastWindowY ||
+                Window.Width != lastWindowWidth || Window.Height != lastWindowHeight)
+            {
+                UpdateLayout();
+            }
         }
 
         private void UpdateLayout()
         {
+            lastWindowX = Window.X;
+            lastWindowY = Window.Y;
+            lastWindowWidth = Window.Width;
+            lastWindowHeight = Window.Height;
             view.X = Window.X + 10;
             view.Y = Window.Y + 40;
             // The client must never exceed its parent after manual resize or
@@ -249,7 +261,10 @@ namespace ZonderqOS.GUI.Apps
         private void InsertCharacter(char value)
         {
             string line = lines[cursorY] ?? "";
-            lines[cursorY] = line.Insert(cursorX, value.ToString());
+            if (cursorX >= line.Length)
+                lines[cursorY] = line + value;
+            else
+                lines[cursorY] = line.Insert(cursorX, value.ToString());
             cursorX++;
         }
 

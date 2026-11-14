@@ -14,9 +14,8 @@ namespace ZonderqOS.GUI.Icons
         private const int MaxReplacementArea = 128 * 128;
         private const string CacheDirectory = "/root/.zonderq-icons";
 
-        // Source PNGs are decoded once during GUI startup and held strongly for the
-        // whole GUI session. Raw pixel buffers are used by the hot render path.
-        private static readonly Png[] sourceImages = new Png[IconCount];
+        // Source PNGs are decoded once during GUI startup and their raw pixel buffers
+        // are held strongly for the whole GUI session by the hot render path.
         private static readonly int[][] sourcePixels = new int[IconCount][];
         private static readonly int[] sourceWidths = new int[IconCount];
         private static readonly int[] sourceHeights = new int[IconCount];
@@ -148,7 +147,6 @@ namespace ZonderqOS.GUI.Icons
                 if (width <= 0 || height <= 0 || pixels == null || pixels.Length < width * height)
                     return false;
 
-                sourceImages[index] = decoded;
                 sourceWidths[index] = width;
                 sourceHeights[index] = height;
                 sourcePixels[index] = pixels;

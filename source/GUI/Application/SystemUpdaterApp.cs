@@ -38,6 +38,14 @@ namespace ZonderqOS.GUI.Apps
         private int currentProgress = 0;
         private string currentStepText = string.Empty;
 
+        private static readonly string[] TabLabels = { "DZIENNIK ZMIAN", "PLIKI I LADUNEK", "SLOTY A/B I USB", "HISTORIA I MIGAWKI" };
+        private static readonly UpdatePackageInfo EmptyPackage = new UpdatePackageInfo();
+
+        private StorageEnvironmentInfo cachedEnvInfo = new StorageEnvironmentInfo();
+        private List<string> cachedHistory = new List<string>();
+        private bool cachedHasRollback = false;
+        private string cachedPayloadDir = string.Empty;
+
         public SystemUpdaterApp(int x, int y, Action onClose) : base("Aktualizacje Systemu")
         {
             closeCallback = onClose;
@@ -46,6 +54,16 @@ namespace ZonderqOS.GUI.Apps
 
             UpdateManager.Initialize();
             BootSlotManager.Initialize();
+            RefreshCachedState();
+        }
+
+        private void RefreshCachedState()
+        {
+            UpdatePackageInfo pkg = UpdateManager.AvailablePackage ?? EmptyPackage;
+            cachedPayloadDir = UpdateManager.FindPayloadDirectory(pkg);
+            cachedEnvInfo = UpdateManager.GetStorageEnvironmentInfo();
+            cachedHistory = UpdateManager.GetHistory();
+            cachedHasRollback = UpdateManager.HasRollbackSnapshot();
         }
 
         public override void Close()
@@ -200,6 +218,7 @@ namespace ZonderqOS.GUI.Apps
                 currentOp = UpdateOp.None;
                 statusMessage = msg;
                 statusColor = found ? GreenColor : MutedColor;
+                RefreshCachedState();
                 return;
             }
 
@@ -229,6 +248,7 @@ namespace ZonderqOS.GUI.Apps
                     currentOp = UpdateOp.None;
                     statusMessage = "Blad instalacji: " + err;
                     statusColor = RedColor;
+                    RefreshCachedState();
                 }
                 else if (currentOpStep == -1)
                 {
@@ -236,6 +256,7 @@ namespace ZonderqOS.GUI.Apps
                     currentOp = UpdateOp.None;
                     statusMessage = $"Zainstalowano pomyslnie do slotu {BootSlotManager.ActiveSlot}! Wymagany restart.";
                     statusColor = GreenColor;
+                    RefreshCachedState();
                 }
                 return;
             }
@@ -256,6 +277,7 @@ namespace ZonderqOS.GUI.Apps
                     currentOp = UpdateOp.None;
                     statusMessage = "Blad wycofywania: " + err;
                     statusColor = RedColor;
+                    RefreshCachedState();
                 }
                 else if (currentOpStep == -1)
                 {
@@ -263,6 +285,7 @@ namespace ZonderqOS.GUI.Apps
                     currentOp = UpdateOp.None;
                     statusMessage = $"Przywrocono slot {BootSlotManager.ActiveSlot} i stan systemu. Wymagany restart.";
                     statusColor = GoldColor;
+                    RefreshCachedState();
                 }
                 return;
             }
@@ -410,7 +433,7 @@ namespace ZonderqOS.GUI.Apps
 
             DrawButton(canvas, "SPRAWDZ USB", x + w - 245, y, 115, h, AccentColor, AccentColor, TextColor);
 
-            bool hasBackup = UpdateManager.HasRollbackSnapshot();
+            bool hasBackup = cachedHasRollback;
             DrawButton(canvas, "PRZYWROC MIGAWE", x + w - 124, y, 120, h, hasBackup ? RedColor : Panel, Border, hasBackup ? TextColor : MutedColor);
         }
 
@@ -457,7 +480,6 @@ namespace ZonderqOS.GUI.Apps
 
         private void RenderTabs(Canvas canvas, int x, int y, int w, int h)
         {
-            string[] tabs = new string[] { "DZIENNIK ZMIAN", "PLIKI I LADUNEK", "SLOTY A/B I USB", "HISTORIA I MIGAWKI" };
             int tabW = (w - 18) / 4;
 
             for (int i = 0; i < 4; i++)
@@ -468,7 +490,7 @@ namespace ZonderqOS.GUI.Apps
                 Color txt = isSel ? TextColor : MutedColor;
 
                 UiPainter.RoundedPanel(canvas, tx, y, tabW, h, 4, fill, Border);
-                SmallTextRenderer.DrawCentered(canvas, tabs[i], tx, y + 7, tabW, txt);
+                SmallTextRenderer.DrawCentered(canvas, TabLabels[i], tx, y + 7, tabW, txt);
             }
         }
 
@@ -479,7 +501,7 @@ namespace ZonderqOS.GUI.Apps
             if (activeTab == 0)
             {
                 // Tab 0: Changelog
-                UpdatePackageInfo pkg = UpdateManager.AvailablePackage ?? new UpdatePackageInfo();
+                UpdatePackageInfo pkg = UpdateManager.AvailablePackage ?? EmptyPackage;
                 SmallTextRenderer.Draw(canvas, "Wydanie pakietu: " + pkg.Version + " - " + pkg.Title, x + 14, y + 10, AccentColor);
                 SmallTextRenderer.Draw(canvas, "Data wydania: " + pkg.ReleaseDate + " | Waznosc: " + pkg.Severity + " | Motyw: " + pkg.TargetThemeName, x + 14, y + 26, MutedColor);
 
@@ -499,8 +521,8 @@ namespace ZonderqOS.GUI.Apps
             else if (activeTab == 1)
             {
                 // Tab 1: Components and Payload Files
-                UpdatePackageInfo pkg = UpdateManager.AvailablePackage ?? new UpdatePackageInfo();
-                string payloadDir = UpdateManager.FindPayloadDirectory(pkg);
+                UpdatePackageInfo pkg = UpdateManager.AvailablePackage ?? EmptyPackage;
+                string payloadDir = cachedPayloadDir;
                 string pDirText = string.IsNullOrEmpty(payloadDir) ? "Brak fizycznego katalogu payload" : payloadDir;
 
                 SmallTextRenderer.Draw(canvas, "Komponenty systemowe i ladunek aktualizacji:", x + 14, y + 10, AccentColor);
@@ -551,7 +573,7 @@ namespace ZonderqOS.GUI.Apps
                 lineY += 23;
 
                 // Storage environment
-                StorageEnvironmentInfo env = UpdateManager.GetStorageEnvironmentInfo();
+                StorageEnvironmentInfo env = cachedEnvInfo;
                 Color c4 = env.HasUpdatesDir ? GreenColor : GoldColor;
                 canvas.DrawFilledRectangle(c4, x + 16, lineY + 4, 6, 6);
                 SmallTextRenderer.Draw(canvas, $"Folder /updates na USB: {(env.HasUpdatesDir ? "DOSTEPNY" : "BRAK")} | Manifest: {(env.HasManifest ? "WYKRYTO" : "BRAK")} | Kernel: {(env.HasKernelBinary ? "WYKRYTO" : "BRAK")}", x + 30, lineY, TextColor);
@@ -563,10 +585,10 @@ namespace ZonderqOS.GUI.Apps
             {
                 // Tab 3: History & Snapshots
                 SmallTextRenderer.Draw(canvas, "Historia instalacji i wycofywania aktualizacji (/var/log/update.log):", x + 14, y + 10, AccentColor);
-                SmallTextRenderer.Draw(canvas, "Punkt przywrocenia: " + (UpdateManager.HasRollbackSnapshot() ? "AKTYWNY (Zapisano migawke /var/updates/backup)" : "BRAK"), x + 14, y + 26, MutedColor);
+                SmallTextRenderer.Draw(canvas, "Punkt przywrocenia: " + (cachedHasRollback ? "AKTYWNY (Zapisano migawke /var/updates/backup)" : "BRAK"), x + 14, y + 26, MutedColor);
                 canvas.DrawLine(Border, x + 14, y + 42, x + w - 14, y + 42);
 
-                List<string> history = UpdateManager.GetHistory();
+                List<string> history = cachedHistory;
                 if (history.Count == 0)
                 {
                     SmallTextRenderer.Draw(canvas, "Brak zarejestrowanych wpisow historii aktualizacji w systemie.", x + 16, y + 60, MutedColor);

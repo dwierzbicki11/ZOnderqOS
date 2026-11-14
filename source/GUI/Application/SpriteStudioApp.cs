@@ -200,6 +200,9 @@ namespace ZonderqOS.GUI.Apps
             return mx >= x && mx < x + w && my >= y && my < y + h;
         }
 
+        private static readonly int[] NeighborDx = { -1, 1, 0, 0 };
+        private static readonly int[] NeighborDy = { 0, 0, -1, 1 };
+
         private void FloodFill(int startRow, int startCol, byte newColor)
         {
             byte targetColor = pixels[startRow, startCol];
@@ -221,14 +224,10 @@ namespace ZonderqOS.GUI.Apps
                 int cy = fillQueueY[head];
                 head++;
 
-                // 4 neighbors
-                int[] dx = { -1, 1, 0, 0 };
-                int[] dy = { 0, 0, -1, 1 };
-
                 for (int d = 0; d < 4; d++)
                 {
-                    int nx = cx + dx[d];
-                    int ny = cy + dy[d];
+                    int nx = cx + NeighborDx[d];
+                    int ny = cy + NeighborDy[d];
 
                     if (nx >= 0 && nx < GridSize && ny >= 0 && ny < GridSize)
                     {

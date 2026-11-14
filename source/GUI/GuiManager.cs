@@ -29,6 +29,7 @@ namespace ZonderqOS.GUI
 
         private Canvas canvas;
         private Canvas wallpaperCanvas;
+        private bool wallpaperLoadAttempted;
         private CursorDamageRenderer cursorDamageRenderer;
         private bool sceneHasToast;
         private Taskbar taskbar;
@@ -97,7 +98,8 @@ namespace ZonderqOS.GUI
                 // the 44px taskbar itself. Passing desktopHeight deducted it twice,
                 // needlessly hiding a row of search results on compact displays.
                 commandPalette = new CommandPalette((int)canvas.Width, (int)canvas.Height, appRegistry);
-                LoadWallpaper((int)canvas.Width, desktopHeight);
+                if (global::ZonderqOS.SystemSettings.DesktopBackgroundMode == 0)
+                    LoadWallpaper((int)canvas.Width, desktopHeight);
                 InitializeDesktopShortcuts();
                 desktopContextMenu = new DesktopContextMenu(
                     () => LaunchRegisteredApp(AppIds.Terminal),
@@ -1712,6 +1714,10 @@ namespace ZonderqOS.GUI
 
         private void LoadWallpaper(int width, int height)
         {
+            if (wallpaperLoadAttempted)
+                return;
+
+            wallpaperLoadAttempted = true;
             try
             {
                 Assembly assembly = typeof(GuiManager).Assembly;
@@ -1753,6 +1759,9 @@ namespace ZonderqOS.GUI
             int deskH = (int)canvas.Height - TaskbarHeight;
 
             int mode = global::ZonderqOS.SystemSettings.DesktopBackgroundMode;
+            if (mode == 0 && wallpaperCanvas == null && !wallpaperLoadAttempted)
+                LoadWallpaper(deskW, deskH);
+
             if (mode == 0 && wallpaperCanvas != null)
             {
                 canvas.DrawCanvas(wallpaperCanvas, 0, 0);

@@ -56,6 +56,8 @@ namespace ZonderqOS.GUI.Apps
         private Vec3[] vertices;
         private Face[] faces;
         private Edge[] edges;
+        private int[] screenXBuffer = new int[16];
+        private int[] screenYBuffer = new int[16];
 
         public Demo3DApp(int x, int y, Action onClose) : base("Demoscena 3D")
         {
@@ -369,9 +371,14 @@ namespace ZonderqOS.GUI.Apps
             float cameraDist = 3.6f;
 
             int count = vertices.Length;
-            int[] screenX = new int[count];
-            int[] screenY = new int[count];
-            float[] depthZ = new float[count];
+            if (screenXBuffer.Length < count)
+            {
+                screenXBuffer = new int[count];
+                screenYBuffer = new int[count];
+            }
+
+            int[] screenX = screenXBuffer;
+            int[] screenY = screenYBuffer;
 
             for (int i = 0; i < count; i++)
             {
@@ -389,8 +396,8 @@ namespace ZonderqOS.GUI.Apps
                 float x3 = x1 * cosZ - y2 * sinZ;
                 float y3 = x1 * sinZ + y2 * cosZ;
 
-                depthZ[i] = z2 + cameraDist;
-                float invZ = 1.0f / Math.Max(0.5f, depthZ[i]);
+                float depthZ = z2 + cameraDist;
+                float invZ = 1.0f / Math.Max(0.5f, depthZ);
 
                 screenX[i] = centerX + (int)(x3 * fov * invZ);
                 screenY[i] = centerY - (int)(y3 * fov * invZ);
@@ -442,7 +449,10 @@ namespace ZonderqOS.GUI.Apps
 
             // Overlay Info (Top Left of Viewport)
             SmallTextRenderer.Draw(canvas, "3D SOFTWARE ENGINE", vpX + 10, vpY + 10, SystemTheme.Accent);
-            SmallTextRenderer.Draw(canvas, "FPS: " + currentFps + "  Wierzcholki: " + count, vpX + 10, vpY + 24, MutedColor);
+            SmallTextRenderer.Draw(canvas, "FPS: ", vpX + 10, vpY + 24, MutedColor);
+            SmallTextRenderer.DrawUInt(canvas, (ulong)Math.Max(0, currentFps), vpX + 40, vpY + 24, MutedColor);
+            SmallTextRenderer.Draw(canvas, "Wierzcholki: ", vpX + 72, vpY + 24, MutedColor);
+            SmallTextRenderer.DrawUInt(canvas, (ulong)count, vpX + 150, vpY + 24, MutedColor);
 
             // Controls Bar
             int btnY = contentY + 330;

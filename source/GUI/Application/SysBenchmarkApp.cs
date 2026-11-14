@@ -61,13 +61,13 @@ namespace ZonderqOS.GUI.Apps
         private int totalZScore = 0;
         private string testStatus = "Gotowy do uruchomienia realnego testu wydajnosci.";
 
-        // Preallocated memory buffers
+        // Lazy-allocated memory buffers (allocated on test run, released on Close)
         // 1. Prime sieve buffer for primes up to 100,000 (100,001 bytes)
-        private readonly byte[] primeSieve = new byte[100001];
+        private byte[] primeSieve;
 
         // 2. RAM benchmark buffer: 256 KB
         private const int RamBufferSize = 262144;
-        private readonly byte[] testRamBuffer = new byte[RamBufferSize];
+        private byte[] testRamBuffer;
 
         // CRC32 IEEE 802.3 table
         private static readonly uint[] Crc32Table = GenerateCrc32Table();
@@ -88,8 +88,18 @@ namespace ZonderqOS.GUI.Apps
 
         public override void Close()
         {
+            primeSieve = null;
+            testRamBuffer = null;
             base.Close();
             closeCallback?.Invoke();
+        }
+
+        private void EnsureBuffersAllocated()
+        {
+            if (primeSieve == null)
+                primeSieve = new byte[100001];
+            if (testRamBuffer == null)
+                testRamBuffer = new byte[RamBufferSize];
         }
 
         private static uint[] GenerateCrc32Table()
@@ -186,6 +196,7 @@ namespace ZonderqOS.GUI.Apps
         // =========================================================================
         private void RunRealCpuBenchmark()
         {
+            EnsureBuffersAllocated();
             long freq = Stopwatch.Frequency > 0 ? Stopwatch.Frequency : 1000000;
 
             // Algorithm A: Sieve of Eratosthenes up to 100,000
@@ -293,6 +304,7 @@ namespace ZonderqOS.GUI.Apps
         // =========================================================================
         private void RunRealRamBenchmark()
         {
+            EnsureBuffersAllocated();
             long freq = Stopwatch.Frequency > 0 ? Stopwatch.Frequency : 1000000;
             const int passes = 40; // 40 passes of 256 KB = 10.24 MB
             int bufLen = testRamBuffer.Length;
@@ -421,13 +433,15 @@ namespace ZonderqOS.GUI.Apps
         // =========================================================================
         private void RunRealVfsBenchmark()
         {
+            EnsureBuffersAllocated();
             long freq = Stopwatch.Frequency > 0 ? Stopwatch.Frequency : 1000000;
             string testPath = "/root/benchmark_io.tmp";
             vfsTestPerformed = true;
 
-            // Prepare a real 64 KB pattern block
-            byte[] testBlock = new byte[65536];
-            for (int i = 0; i < testBlock.Length; i++)
+            // Reuse first 64 KB of testRamBuffer instead of allocating a new 64 KB array
+            const int blockLength = 65536;
+            byte[] testBlock = testRamBuffer;
+            for (int i = 0; i < blockLength; i++)
             {
                 testBlock[i] = (byte)((i * 31 + 17) & 0xFF);
             }
@@ -443,8 +457,8 @@ namespace ZonderqOS.GUI.Apps
                 {
                     for (int b = 0; b < 4; b++)
                     {
-                        fs.Write(testBlock, 0, testBlock.Length);
-                        totalWritten += testBlock.Length;
+                        fs.Write(testBlock, 0, blockLength);
+                        totalWritten += blockLength;
                     }
                     fs.Flush();
                 }
@@ -454,8 +468,12 @@ namespace ZonderqOS.GUI.Apps
             {
                 try
                 {
-                    File.WriteAllBytes(testPath, testBlock);
-                    totalWritten = testBlock.Length;
+                    using (var fs = new FileStream(testPath, FileMode.Create, FileAccess.Write))
+                    {
+                        fs.Write(testBlock, 0, blockLength);
+                        fs.Flush();
+                    }
+                    totalWritten = blockLength;
                     writeOk = true;
                 }
                 catch
@@ -467,7 +485,7 @@ namespace ZonderqOS.GUI.Apps
             long writeElapsed = Stopwatch.GetTimestamp() - writeStart;
             if (writeElapsed <= 0) writeElapsed = 1;
 
-            // Real Read Test & Data Verification
+            // Real Read Test & Data Verification (into second 64 KB slice of testRamBuffer)
             long readStart = Stopwatch.GetTimestamp();
             int totalRead = 0;
             bool integrityOk = false;
@@ -476,15 +494,20 @@ namespace ZonderqOS.GUI.Apps
             {
                 try
                 {
-                    byte[] readBack = File.ReadAllBytes(testPath);
-                    totalRead = readBack.Length;
-
-                    // Verify data integrity byte-by-byte for first block
-                    integrityOk = true;
-                    int checkLen = Math.Min(testBlock.Length, readBack.Length);
-                    for (int i = 0; i < checkLen; i += 64)
+                    using (var fs = new FileStream(testPath, FileMode.Open, FileAccess.Read))
                     {
-                        if (readBack[i] != testBlock[i])
+                        int bytesRead;
+                        while ((bytesRead = fs.Read(testBlock, blockLength, blockLength)) > 0)
+                        {
+                            totalRead += bytesRead;
+                        }
+                    }
+
+                    // Verify data integrity byte-by-byte for the last read block
+                    integrityOk = totalRead >= blockLength;
+                    for (int i = 0; i < blockLength; i += 64)
+                    {
+                        if (testBlock[blockLength + i] != testBlock[i])
                         {
                             integrityOk = false;
                             break;
