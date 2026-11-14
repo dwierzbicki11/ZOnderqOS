@@ -192,7 +192,27 @@ namespace ZonderqOS
             }
             try
             {
+                // Record the actual guest-side DHCP call duration. Host-side
+                // QEMU startup and PCAP polling time are not DHCP latency.
+                // In particular, a missing END marker means the call never
+                // returned, rather than merely a slow host-side validator.
+                long dhcpStarted = Stopwatch.GetTimestamp();
+                long dhcpFrequency = Stopwatch.Frequency;
+                Log("[NET3095-N2] DHCP_CALL=START");
                 int elapsed = new DhcpClient().SendDiscoverPacket();
+                long dhcpFinished = Stopwatch.GetTimestamp();
+                long dhcpTicks = dhcpFinished - dhcpStarted;
+                if (dhcpFrequency > 0 && dhcpTicks >= 0)
+                {
+                    long dhcpMs = (dhcpTicks / dhcpFrequency) * 1000L +
+                        ((dhcpTicks % dhcpFrequency) * 1000L) / dhcpFrequency;
+                    Log("[NET3095-N2] DHCP_CALL=END duration_ms=" + dhcpMs +
+                        " api_elapsed=" + elapsed);
+                }
+                else
+                {
+                    Log("[NET3095-N2] DHCP_CALL=END clock=unavailable api_elapsed=" + elapsed);
+                }
                 NetworkAdapter leasedAdapter = NetworkManager.Primary;
                 IPConfig? config = leasedAdapter.IPConfig;
                 if (elapsed < 0 || config == null ||
