@@ -42,6 +42,8 @@ def main() -> None:
     # writing through it could mutate a file outside the disposable tree.
     if args.output.is_symlink():
         ap.error('symlink output forbidden')
+    if args.output.exists():
+        ap.error('output already exists; refusing to overwrite an unreviewed file')
     if args.output.resolve() in (args.input.resolve(), args.state.resolve()):
         ap.error('overwriting reviewed SDK input forbidden')
     original = args.input.read_bytes()
@@ -55,7 +57,10 @@ def main() -> None:
             ap.error('state handler provenance missing: ' + marker)
     changed = patch(original.decode('utf-8'))
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(changed, encoding='utf-8')
+    # Exclusive creation closes the check/write race for an existing output.
+    # Never truncate a file introduced by another process after validation.
+    with args.output.open('x', encoding='utf-8') as destination:
+        destination.write(changed)
     print('Prepared test-only IRQ patch:', args.output)
     print('NOT BUILT; NOT QEMU-VERIFIED; NOT FOR PRODUCTION')
 
