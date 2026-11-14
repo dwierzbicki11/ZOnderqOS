@@ -20,7 +20,7 @@ class EvidenceSafety(unittest.TestCase):
         cases = (
             "serial", "stderr", "tcp_host", "http_host", "pcap",
             "serial_symlink", "pcap_symlink", "alias_stderr",
-            "alias_http_host", "alias_serial",
+            "alias_http_host", "alias_serial", "qmp_symlink", "alias_qmp",
         )
         for case in cases:
             with self.subTest(case=case), tempfile.TemporaryDirectory() as root:
@@ -58,13 +58,19 @@ class EvidenceSafety(unittest.TestCase):
                     pcap = targets["http_host"]
                 elif case == "alias_serial":
                     pcap = log
+                elif case == "qmp_symlink":
+                    Path(str(log) + ".qmp").symlink_to(protected)
+                elif case == "alias_qmp":
+                    pcap = Path(str(log) + ".qmp")
                 else:
                     raise AssertionError("unknown case")
                 env = dict(os.environ)
                 env["PATH"] = str(fake_bin) + os.pathsep + env.get("PATH", "")
                 env["NET3095_N1_PCAP"] = str(pcap)
+                if case in ("qmp_symlink", "alias_qmp"):
+                    env["NET3095_LINK_CYCLE"] = "1"
                 run = subprocess.run(
-                    ["bash", str(SMOKE), str(iso), str(log), "n1"],
+                    ["bash", str(SMOKE), str(iso), str(log), "n6" if case in ("qmp_symlink", "alias_qmp") else "n1"],
                     cwd=directory, env=env, capture_output=True, text=True,
                     timeout=10, check=False,
                 )
@@ -87,7 +93,7 @@ class EvidenceSafety(unittest.TestCase):
                 fake_bin.mkdir()
                 called = directory / "qemu-called"
                 fake_qemu = fake_bin / "qemu-system-x86_64"
-                fake_qemu.write_text("#!/bin/sh\\ntouch '" + str(called) + "'\\nexit 99\\n")
+                fake_qemu.write_text("#!/bin/sh\ntouch '" + str(called) + "'\nexit 99\n")
                 fake_qemu.chmod(0o755)
                 iso = directory / "test.iso"
                 iso.write_bytes(b"isolated dummy ISO")
