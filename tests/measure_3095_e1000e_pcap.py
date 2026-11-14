@@ -128,7 +128,9 @@ def unique_contiguous_tcp_bytes(segments: list[tuple[float, int, int]]) -> int:
 
 
 def valid_read_stats(reads: int, max_chunk: int, total: int) -> bool:
-    return reads > 0 and 1 <= max_chunk <= total and reads * max_chunk >= total
+    return (reads > 0 and 1 <= max_chunk <= total and
+            reads <= total - max_chunk + 1 and
+            reads * max_chunk >= total)
 
 
 def measure(pcap: bytes, serial: str):
@@ -165,6 +167,8 @@ def measure(pcap: bytes, serial: str):
         reads, max_chunk, guest_bytes = map(int, m.group(2, 3, 4))
         if int(m.group(1)) != attempt or guest_bytes != 4202:
             raise ValueError('guest RX statistics do not match PCAP flow count')
+        # Every read contributes at least one byte, and one read must reach
+        # max_chunk. Reject counts that cannot add up to the reported total.
         # A zero-read report or an impossible maximum read size must not be
         # accepted as evidence of successful guest-side socket reception.
         if not valid_read_stats(reads, max_chunk, guest_bytes):
@@ -237,8 +241,11 @@ def self_test():
     # Guest telemetry is a separate evidence source; reject impossible
     # read counters rather than printing them as if they corroborated PCAP.
     assert valid_read_stats(5, 1024, 4202)
+    assert valid_read_stats(1, 4202, 4202)
+    assert valid_read_stats(4202, 1, 4202)
     for invalid in ((0, 4202, 4202), (1, 0, 4202),
-                    (2, 1024, 4202), (1, 5000, 4202)):
+                    (2, 1024, 4202), (1, 5000, 4202),
+                    (4203, 1, 4202), (4202, 4202, 4202)):
         assert not valid_read_stats(*invalid)
     # Synthetic PCAP with 5ms spacing. This is a parser test, not guest data.
     prefix = bytes((255,)) * 6 + bytes((0x52, 0x54, 0, 0x12, 0x34, 0x56, 0x88, 0xB5))
