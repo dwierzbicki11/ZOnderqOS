@@ -127,6 +127,10 @@ def unique_contiguous_tcp_bytes(segments: list[tuple[float, int, int]]) -> int:
     return offset
 
 
+def valid_read_stats(reads: int, max_chunk: int, total: int) -> bool:
+    return reads > 0 and 1 <= max_chunk <= total and reads * max_chunk >= total
+
+
 def measure(pcap: bytes, serial: str):
     http = defaultdict(list)
     icmp_requests = {}
@@ -158,13 +162,18 @@ def measure(pcap: bytes, serial: str):
             raise ValueError(f'HTTP response {attempt} has incomplete/duplicate payload')
         span_ms = round((max(t for t, _, _ in segments)-min(t for t, _, _ in segments))*1000, 2)
         m = stats[attempt-1]
-        if int(m.group(1)) != attempt or int(m.group(4)) != 4202:
+        reads, max_chunk, guest_bytes = map(int, m.group(2, 3, 4))
+        if int(m.group(1)) != attempt or guest_bytes != 4202:
             raise ValueError('guest RX statistics do not match PCAP flow count')
+        # A zero-read report or an impossible maximum read size must not be
+        # accepted as evidence of successful guest-side socket reception.
+        if not valid_read_stats(reads, max_chunk, guest_bytes):
+            raise ValueError('guest RX read statistics are internally inconsistent')
         guest = ''
         if timings:
             t = timings[attempt-1]
-            if int(t.group(1)) != attempt:
-                raise ValueError('guest RX timing attempt order invalid')
+            if int(t.group(1)) != attempt or int(t.group(3)) < int(t.group(2)):
+                raise ValueError('guest RX timing attempt order or duration invalid')
             guest = f' guest_first_read_ms={t.group(2)} guest_total_read_ms={t.group(3)}'
         print(f'[NET3095-E1000E-METRICS] HTTP attempt={attempt} port={port} '
               f'wire_response_span_ms={span_ms} unique_segments={len(unique)} '
@@ -225,6 +234,12 @@ def self_test():
         except ValueError:
             continue
         raise AssertionError('accepted gapped or overlapping TCP response')
+    # Guest telemetry is a separate evidence source; reject impossible
+    # read counters rather than printing them as if they corroborated PCAP.
+    assert valid_read_stats(5, 1024, 4202)
+    for invalid in ((0, 4202, 4202), (1, 0, 4202),
+                    (2, 1024, 4202), (1, 5000, 4202)):
+        assert not valid_read_stats(*invalid)
     # Synthetic PCAP with 5ms spacing. This is a parser test, not guest data.
     prefix = bytes((255,)) * 6 + bytes((0x52, 0x54, 0, 0x12, 0x34, 0x56, 0x88, 0xB5))
     tag = b'ZONDERQ3095-BURST-'
