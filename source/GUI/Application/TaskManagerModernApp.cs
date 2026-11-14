@@ -82,6 +82,16 @@ namespace ZonderqOS.GUI.Apps
         private ulong gcCommittedBytes;
         private ulong physicalInstalledBytes;
         private ulong physicalUsableBytes;
+        private ulong previousUsedPagesSnapshot;
+        private bool hasPreviousMemorySnapshot;
+        private string cachedMemoryDetailText = "0.00 MB (0.00%)";
+        private string cachedGcCommittedText = "N/A";
+        private string cachedUsableRamText = "0 B";
+        private int lastLayoutW = -1;
+        private int lastLayoutH = -1;
+        private int lastLayoutX = int.MinValue;
+        private int lastLayoutY = int.MinValue;
+        private int lastLayoutTab = -1;
         private int storageDeviceCount;
         private int storagePartitionCount;
         private bool networkReady;
@@ -178,6 +188,17 @@ namespace ZonderqOS.GUI.Apps
 
         private void UpdateLayout()
         {
+            if (Window.X == lastLayoutX && Window.Y == lastLayoutY &&
+                Window.Width == lastLayoutW && Window.Height == lastLayoutH &&
+                activePage == lastLayoutTab)
+                return;
+
+            lastLayoutX = Window.X;
+            lastLayoutY = Window.Y;
+            lastLayoutW = Window.Width;
+            lastLayoutH = Window.Height;
+            lastLayoutTab = activePage;
+
             view.X = Window.X + 10;
             view.Y = Window.Y + 40;
             view.Width = Math.Max(1, Window.Width - 20);
@@ -484,7 +505,12 @@ namespace ZonderqOS.GUI.Apps
                     status = "Manager zamknij przyciskiem X";
                     return;
                 }
-                row.GuiApplication.Close();
+                if (row.GuiApplication.Window?.CloseAction != null)
+                    row.GuiApplication.Window.CloseAction();
+                else if (applicationManager != null)
+                    applicationManager.Close(row.GuiApplication);
+                else
+                    row.GuiApplication.Close();
                 status = "Zakonczono aplikacje";
                 RefreshSnapshot();
                 return;
@@ -613,11 +639,35 @@ namespace ZonderqOS.GUI.Apps
 
                 gcHeapBytes = 0;
                 gcCommittedBytes = 0;
-                if (CosmosGc.IsEnabled)
+                ulong gcFragmentedBytes = 0;
+                int gcCollectionIndex = 0;
+                int gcObjectsFreed = 0;
+                bool gcEnabled = CosmosGc.IsEnabled;
+                if (gcEnabled)
                 {
                     gcHeapBytes = CosmosGc.GetHeapSizeBytes();
                     gcCommittedBytes = CosmosGc.GetTotalCommittedBytes();
+                    gcFragmentedBytes = CosmosGc.GetFragmentedBytes();
+                    gcCollectionIndex = CosmosGc.GetCollectionIndex();
+                    gcObjectsFreed = CosmosGc.GetTotalObjectsFreed();
                 }
+
+                ulong pEmpty = 0, pGcHeap = 0, pSmall = 0, pMed = 0, pLarge = 0;
+                ulong pUnmanaged = 0, pPageDir = 0, pPageAlloc = 0, pSmt = 0, pExt = 0, pUnknown = 0;
+                try
+                {
+                    PageAllocator.GetPageCountsByType(
+                        out pEmpty, out pGcHeap, out pSmall, out pMed, out pLarge,
+                        out pUnmanaged, out pPageDir, out pPageAlloc, out pSmt, out pExt, out pUnknown);
+                }
+                catch { }
+                ulong ratHeapPages = pSmall + pMed + pLarge;
+                ulong sysPages = pUnmanaged + pPageDir + pPageAlloc + pSmt + pExt + pUnknown;
+
+                ulong gfxBufferBytes = GuiManager.Instance != null ? GuiManager.Instance.EstimatedGraphicsBufferBytes : 0;
+                long deltaPages = hasPreviousMemorySnapshot ? (long)usedPages - (long)previousUsedPagesSnapshot : 0;
+                previousUsedPagesSnapshot = usedPages;
+                hasPreviousMemorySnapshot = true;
 
                 physicalInstalledBytes = PhysicalMemoryDetector.InstalledBytes;
                 physicalUsableBytes = PhysicalMemoryDetector.TotalPhysicalBytes;
@@ -625,6 +675,12 @@ namespace ZonderqOS.GUI.Apps
                 memoryCache.Update(usedPages, freePages, totalPages,
                                    gcHeapBytes, gcCommittedBytes,
                                    physicalInstalledBytes, physicalUsableBytes);
+                memoryCache.UpdateExtended(pGcHeap, ratHeapPages, sysPages,
+                                           gcFragmentedBytes, gcCollectionIndex, gcObjectsFreed, gcEnabled,
+                                           gfxBufferBytes, deltaPages);
+                cachedMemoryDetailText = memoryCache.MemoryDetailText;
+                cachedGcCommittedText = memoryCache.GcCommittedText;
+                cachedUsableRamText = memoryCache.UsableRamText;
             }
             catch
             {
@@ -960,6 +1016,11 @@ namespace ZonderqOS.GUI.Apps
         internal string MemoryUsageText => memoryCache.MemoryUsageText;
         internal string GcHeapText => memoryCache.GcHeapText;
         internal string GcCommittedText => memoryCache.GcCommittedText;
+        internal string GcFragmentationText => memoryCache.GcFragmentationText;
+        internal string GcCollectionsText => memoryCache.GcCollectionsText;
+        internal string PageBreakdownText => memoryCache.PageBreakdownText;
+        internal string GraphicsBuffersText => memoryCache.GraphicsBuffersText;
+        internal string MemoryDeltaText => memoryCache.MemoryDeltaText;
         internal string InstalledRamText => memoryCache.InstalledRamText;
         internal string UsableRamText => memoryCache.UsableRamText;
         internal string HeapPoolText => memoryCache.HeapPoolText;
@@ -1700,22 +1761,27 @@ namespace ZonderqOS.GUI.Apps
         private void RenderMemory(Canvas canvas, int x, int y, int width)
         {
             SmallTextRenderer.Draw(canvas, "MEMORY (RAM FIZYCZNY I ALOKATOR COSMOS)", x, y + 4, Color.WhiteSmoke);
-            int graphH = Math.Max(150, Height - 370);
+            int graphH = Math.Max(120, Height - 430);
             DrawGraph(canvas, x, y + 36, width, graphH, app.MemoryHistoryCount, GraphMemory, Color.FromArgb(116, 174, 219), true);
             int stats = y + graphH + 50;
             int half = width / 2;
 
-            // Physical Hardware RAM
+            // Physical Hardware RAM & PageAllocator Breakdown
             DrawKeyText(canvas, x, stats, half, "RAM ZAINSTALOWANY", app.InstalledRamText);
             DrawKeyText(canvas, x, stats + 20, half, "RAM WYKRYTY (FIRMWARE)", app.UsableRamText);
             DrawKeyText(canvas, x, stats + 40, half, "PULA HEAP COSMOS", app.HeapPoolText);
             DrawKeyText(canvas, x, stats + 60, half, "STRONY PAMIECI", app.MemoryPagesText);
+            DrawKeyText(canvas, x, stats + 80, half, "STRONY GC/RAT/SYS", app.PageBreakdownText);
+            DrawKeyText(canvas, x, stats + 100, half, "BUFORY GRAFICZNE", app.GraphicsBuffersText);
+            DrawKeyText(canvas, x, stats + 120, half, "DELTA PAMIECI", app.MemoryDeltaText);
 
-            // Cosmos Heap Allocator & GC
+            // Cosmos Heap Allocator & GC Diagnostics
             DrawKeyText(canvas, x + half, stats, half, "HEAP UZYTY", app.MemoryDetailText);
             DrawKeyText(canvas, x + half, stats + 20, half, "HEAP WOLNY", app.FreeMemoryText);
             DrawKeyText(canvas, x + half, stats + 40, half, "GC ROZMIAR HEAP", app.GcHeapText);
             DrawKeyText(canvas, x + half, stats + 60, half, "GC ZATWIERDZONE", app.GcCommittedText);
+            DrawKeyText(canvas, x + half, stats + 80, half, "GC FRAGMENTACJA", app.GcFragmentationText);
+            DrawKeyText(canvas, x + half, stats + 100, half, "GC KOLEKCJE / ZWOL.", app.GcCollectionsText);
         }
 
         private void RenderSystem(Canvas canvas, int x, int y, int width)

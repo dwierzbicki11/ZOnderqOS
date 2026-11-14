@@ -318,33 +318,51 @@ namespace ZonderqOS.SystemCore.Services
         private static void RunService(ServiceDefinition definition, CancellationToken token)
         {
             string log = LogRoot + "/" + definition.Name + ".log";
+#if !ZSRV_HOST_TESTS
+            bool wroteInitialHeartbeat = false;
+#endif
             while (!token.IsCancellationRequested)
             {
                 try
                 {
-                    string value = definition.Type == "memory"
-                        ? "free_pages=" + PageAllocator.FreePageCount
-                        : "heartbeat";
-                    // Reuse the append handle for the length check instead of
-                    // reopening FAT metadata through FileInfo after every write.
-                    // The length is read after Flush, so partial/failed writes do
-                    // not advance a separate cached counter.
-                    bool rotate;
-                    using (var stream = new FileStream(log, FileMode.Append, FileAccess.Write))
+                    bool skipDiskAppend = false;
+#if !ZSRV_HOST_TESTS
+                    // During idle desktop operation, writing "heartbeat" to FAT32 every 60s
+                    // allocates FileStream/StreamWriter/DateTime.ToString objects continuously.
+                    // Record initial startup heartbeat once and skip redundant disk writes unless
+                    // the service actively samples memory telemetry ("type=memory").
+                    if (definition.Type != "memory" && wroteInitialHeartbeat)
+                        skipDiskAppend = true;
+#endif
+                    if (!skipDiskAppend)
                     {
-                        using (var writer = new StreamWriter(stream))
+                        string value = definition.Type == "memory"
+                            ? "free_pages=" + PageAllocator.FreePageCount
+                            : "heartbeat";
+                        // Reuse the append handle for the length check instead of
+                        // reopening FAT metadata through FileInfo after every write.
+                        // The length is read after Flush, so partial/failed writes do
+                        // not advance a separate cached counter.
+                        bool rotate;
+                        using (var stream = new FileStream(log, FileMode.Append, FileAccess.Write))
                         {
-                            writer.Write(DateTime.UtcNow.ToString("u"));
-                            writer.Write(" ");
-                            writer.Write(value);
-                            writer.Write("\n");
-                            writer.Flush();
-                            rotate = stream.Length > 64 * 1024;
+                            using (var writer = new StreamWriter(stream))
+                            {
+                                writer.Write(DateTime.UtcNow.ToString("u"));
+                                writer.Write(" ");
+                                writer.Write(value);
+                                writer.Write("\n");
+                                writer.Flush();
+                                rotate = stream.Length > 64 * 1024;
+                            }
                         }
+                        // Close the append handle before truncating the log.
+                        if (rotate)
+                            File.WriteAllText(log, "service log rotated\n");
+#if !ZSRV_HOST_TESTS
+                        wroteInitialHeartbeat = true;
+#endif
                     }
-                    // Close the append handle before truncating the log.
-                    if (rotate)
-                        File.WriteAllText(log, "service log rotated\n");
                 }
                 catch (Exception ex)
                 {

@@ -23,7 +23,10 @@ namespace ZonderqOS.SystemCore
         private static long logTruncationCount;
         private static long faultCount;
         private static string lastFault = string.Empty;
+        private static DateTime lastCheckTimeUtc = DateTime.MinValue;
+        private static long formattedCheckTimeTicks = -1;
         private static string lastCheckTime = "never";
+        private static bool logWrittenThisSession = false;
 
         public static long CycleCount { get { lock (StatusLock) return cycleCount; } }
         public static ulong LastFreePercent { get { lock (StatusLock) return lastFreePercent; } }
@@ -32,7 +35,24 @@ namespace ZonderqOS.SystemCore
         public static long LogTruncationCount { get { lock (StatusLock) return logTruncationCount; } }
         public static long FaultCount { get { lock (StatusLock) return faultCount; } }
         public static string LastFault { get { lock (StatusLock) return lastFault; } }
-        public static string LastCheckTime { get { lock (StatusLock) return lastCheckTime; } }
+        public static string LastCheckTime
+        {
+            get
+            {
+                DateTime checkedAt;
+                lock (StatusLock)
+                {
+                    checkedAt = lastCheckTimeUtc;
+                    if (checkedAt == DateTime.MinValue)
+                        return "never";
+                    if (checkedAt.Ticks == formattedCheckTimeTicks)
+                        return lastCheckTime;
+                    lastCheckTime = FormatTime(checkedAt);
+                    formattedCheckTimeTicks = checkedAt.Ticks;
+                    return lastCheckTime;
+                }
+            }
+        }
         public static bool IsRunning => ProcessManager.IsRunning("sys_guardian");
 
         public static void Initialize()
@@ -68,7 +88,7 @@ namespace ZonderqOS.SystemCore
                         {
                             cycleCount++;
                             lastFreePercent = freePercent;
-                            lastCheckTime = FormatTime(now);
+                            lastCheckTimeUtc = now;
                         }
 
                         if (totalPages == 0)
@@ -81,6 +101,7 @@ namespace ZonderqOS.SystemCore
                             string message = "Critical memory pressure: free=" + freePercent + "% (" +
                                              freePages + "/" + totalPages + " pages)";
                             SystemLogger.Log(SystemLogLevel.Critical, "RAM", message);
+                            logWrittenThisSession = true;
                             Disk.AppendFile("/sysmon.log", "[CRITICAL][RAM] " + message + "\n");
                             lock (StatusLock)
                                 criticalCount++;
@@ -92,6 +113,7 @@ namespace ZonderqOS.SystemCore
                             string message = "Memory pressure warning: free=" + freePercent + "% (" +
                                              freePages + "/" + totalPages + " pages)";
                             SystemLogger.Log(SystemLogLevel.Warning, "RAM", message);
+                            logWrittenThisSession = true;
                             Disk.AppendFile("/sysmon.log", "[WARN][RAM] " + message + "\n");
                             lock (StatusLock)
                                 warningCount++;
@@ -109,7 +131,7 @@ namespace ZonderqOS.SystemCore
                         {
                             logMaintenanceCounter = 0;
                             const string logPath = "/sysmon.log";
-                            if (File.Exists(logPath))
+                            if (logWrittenThisSession && File.Exists(logPath))
                             {
                                 try
                                 {

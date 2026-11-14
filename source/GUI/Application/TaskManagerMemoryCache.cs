@@ -32,12 +32,31 @@ namespace ZonderqOS.GUI.Apps
         private ulong lastSnapUsableBytes = ulong.MaxValue;
         private ulong lastSnapTotalPages = ulong.MaxValue;
 
+        private ulong lastExtendedGcFragBytes = ulong.MaxValue;
+        private ulong lastExtendedGcFragMiB = ulong.MaxValue;
+        private ulong lastExtendedGcFragHundredths = ulong.MaxValue;
+        private int lastCollectionIndex = int.MinValue;
+        private int lastObjectsFreed = int.MinValue;
+        private ulong lastGcHeapPages = ulong.MaxValue;
+        private ulong lastRatHeapPages = ulong.MaxValue;
+        private ulong lastSysPages = ulong.MaxValue;
+        private ulong lastGfxBufferBytes = ulong.MaxValue;
+        private bool hasBaselineDelta = false;
+        private long lastDeltaPages = long.MinValue;
+
+        private const string ZeroDeltaLabel = "0 B (0 stron)";
+
         public string UsedMemoryText { get; private set; } = "0.00 MB";
         public string FreeMemoryText { get; private set; } = "0.00 MB";
         public string TotalMemoryText { get; private set; } = "0.00 MB";
         public string MemoryUsageText { get; private set; } = "0.00%";
         public string GcHeapText { get; private set; } = "N/A";
         public string GcCommittedText { get; private set; } = "N/A";
+        public string GcFragmentationText { get; private set; } = "N/A";
+        public string GcCollectionsText { get; private set; } = "N/A";
+        public string PageBreakdownText { get; private set; } = "N/A";
+        public string GraphicsBuffersText { get; private set; } = "0 B";
+        public string MemoryDeltaText { get; private set; } = ZeroDeltaLabel;
         public string InstalledRamText { get; private set; } = "0 B";
         public string UsableRamText { get; private set; } = "0 B";
         public string HeapPoolText { get; private set; } = "0 B";
@@ -162,6 +181,94 @@ namespace ZonderqOS.GUI.Apps
                 MemoryPagesText = totalPages + " (" + PageSize + " B/strona)";
                 HardwareRamText = InstalledRamText + " / " + HeapPoolText;
                 FormattedLabelCount += 5;
+            }
+        }
+
+        public void UpdateExtended(ulong gcHeapPages, ulong ratHeapPages, ulong sysPages,
+                                   ulong gcFragmentedBytes, int gcCollectionIndex, int gcObjectsFreed, bool gcEnabled,
+                                   ulong gfxBufferBytes, long deltaPagesSincePrev)
+        {
+
+            if (!gcEnabled)
+            {
+                if (lastExtendedGcFragBytes != 0)
+                {
+                    lastExtendedGcFragBytes = 0;
+                    GcFragmentationText = "N/A";
+                }
+                if (lastCollectionIndex != -1 || lastObjectsFreed != -1)
+                {
+                    lastCollectionIndex = -1;
+                    lastObjectsFreed = -1;
+                    GcCollectionsText = "N/A";
+                }
+            }
+            else
+            {
+                if (gcFragmentedBytes == 0)
+                {
+                    if (lastExtendedGcFragBytes != 0)
+                    {
+                        lastExtendedGcFragBytes = 0;
+                        GcFragmentationText = "0.00 MB";
+                    }
+                }
+                else
+                {
+                    ulong fragMiB = gcFragmentedBytes / MiB;
+                    ulong fragHundredths = (gcFragmentedBytes % MiB) * 100UL / MiB;
+                    if (lastExtendedGcFragBytes == 0 || lastExtendedGcFragBytes == ulong.MaxValue ||
+                        fragMiB != lastExtendedGcFragMiB || fragHundredths != lastExtendedGcFragHundredths)
+                    {
+                        lastExtendedGcFragBytes = gcFragmentedBytes;
+                        lastExtendedGcFragMiB = fragMiB;
+                        lastExtendedGcFragHundredths = fragHundredths;
+                        GcFragmentationText = FormatMiBPrecise(gcFragmentedBytes);
+                        FormattedLabelCount++;
+                    }
+                }
+
+                if (gcCollectionIndex != lastCollectionIndex || gcObjectsFreed != lastObjectsFreed)
+                {
+                    lastCollectionIndex = gcCollectionIndex;
+                    lastObjectsFreed = gcObjectsFreed;
+                    GcCollectionsText = gcCollectionIndex + " (" + gcObjectsFreed + " obj)";
+                    FormattedLabelCount++;
+                }
+            }
+
+            if (gcHeapPages != lastGcHeapPages || ratHeapPages != lastRatHeapPages || sysPages != lastSysPages)
+            {
+                lastGcHeapPages = gcHeapPages;
+                lastRatHeapPages = ratHeapPages;
+                lastSysPages = sysPages;
+                PageBreakdownText = gcHeapPages + " / " + ratHeapPages + " / " + sysPages;
+                FormattedLabelCount++;
+            }
+
+            if (gfxBufferBytes != lastGfxBufferBytes)
+            {
+                lastGfxBufferBytes = gfxBufferBytes;
+                GraphicsBuffersText = FormatBytesSmart(gfxBufferBytes);
+                FormattedLabelCount++;
+            }
+
+            if (!hasBaselineDelta || deltaPagesSincePrev != lastDeltaPages)
+            {
+                hasBaselineDelta = true;
+                lastDeltaPages = deltaPagesSincePrev;
+                if (deltaPagesSincePrev == 0)
+                {
+                    MemoryDeltaText = ZeroDeltaLabel;
+                }
+                else
+                {
+                    bool negative = deltaPagesSincePrev < 0;
+                    ulong absPages = negative ? (ulong)(-deltaPagesSincePrev) : (ulong)deltaPagesSincePrev;
+                    string prefix = negative ? "-" : "+";
+                    MemoryDeltaText = prefix + FormatBytesSmart(absPages * PageSize) + " (" + prefix + absPages + " p)";
+                    FormattedLabelCount++;
+                }
             }
         }
 

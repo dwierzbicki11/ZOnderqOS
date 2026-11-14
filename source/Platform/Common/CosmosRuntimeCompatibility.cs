@@ -1,4 +1,5 @@
 using System;
+using System.Runtime.CompilerServices;
 #if ZONDERQ_COSMOS_INPUT_API
 using RuntimeMemoryInfo = Cosmos.Kernel.System.Diagnostics.MemoryDiagnostics;
 #else
@@ -35,6 +36,48 @@ namespace Cosmos.Kernel.Core.Memory
         {
             get { try { return RuntimeMemoryInfo.RamSizeBytes; } catch { return 0UL; } }
         }
+
+#if ZONDERQ_COSMOS_INPUT_API
+        [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "GetPageCountsByType")]
+        private static extern void NativeGetPageCountsByType(
+            [UnsafeAccessorType("Cosmos.Kernel.Core.Memory.PageAllocator, Cosmos.Kernel.Core")] object _,
+            out ulong empty, out ulong gcHeap, out ulong heapSmall, out ulong heapMedium, out ulong heapLarge,
+            out ulong unmanaged, out ulong pageDirectory, out ulong pageAllocator, out ulong smt, out ulong extension, out ulong unknown);
+#endif
+
+        public static void GetPageCountsByType(
+            out ulong empty, out ulong gcHeap, out ulong heapSmall, out ulong heapMedium, out ulong heapLarge,
+            out ulong unmanaged, out ulong pageDirectory, out ulong pageAllocator, out ulong smt, out ulong extension, out ulong unknown)
+        {
+            empty = gcHeap = heapSmall = heapMedium = heapLarge = 0UL;
+            unmanaged = pageDirectory = pageAllocator = smt = extension = unknown = 0UL;
+#if ZONDERQ_COSMOS_INPUT_API
+            try
+            {
+                NativeGetPageCountsByType(
+                    null!,
+                    out empty, out gcHeap, out heapSmall, out heapMedium, out heapLarge,
+                    out unmanaged, out pageDirectory, out pageAllocator, out smt, out extension, out unknown);
+
+                // PageAllocator.AllocPages marks only page 0 of multi-page runs with the caller's
+                // PageType and marks continuation pages as PageType.Extension; fold GC segment
+                // continuation pages back into gcHeap so GC vs system page accounting is accurate.
+                ulong pageSize = PageSize;
+                ulong committedGcPages = pageSize > 0UL
+                    ? global::Cosmos.Kernel.Core.Memory.GarbageCollector.GarbageCollector.GetTotalCommittedBytes() / pageSize
+                    : 0UL;
+                if (gcHeap > 0UL && extension > 0UL && committedGcPages > gcHeap)
+                {
+                    ulong gcExt = Math.Min(extension, committedGcPages - gcHeap);
+                    gcHeap += gcExt;
+                    extension -= gcExt;
+                }
+            }
+            catch
+            {
+            }
+#endif
+        }
     }
 }
 
@@ -44,14 +87,32 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
     {
         public static bool IsEnabled => true;
 
+#if ZONDERQ_COSMOS_INPUT_API
+        [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "GetHeapSizeBytes")]
+        private static extern ulong NativeGetHeapSizeBytes(
+            [UnsafeAccessorType("Cosmos.Kernel.Core.Memory.GarbageCollector.GarbageCollector, Cosmos.Kernel.Core")] object _);
+
+        [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "GetTotalCommittedBytes")]
+        private static extern ulong NativeGetTotalCommittedBytes(
+            [UnsafeAccessorType("Cosmos.Kernel.Core.Memory.GarbageCollector.GarbageCollector, Cosmos.Kernel.Core")] object _);
+
+        [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "GetCommittedGcSegmentsBytes")]
+        private static extern ulong NativeGetCommittedGcSegmentsBytes(
+            [UnsafeAccessorType("Cosmos.Kernel.Core.Memory.GarbageCollector.GarbageCollector, Cosmos.Kernel.Core")] object _);
+
+        [UnsafeAccessor(UnsafeAccessorKind.StaticMethod, Name = "GetFragmentedBytes")]
+        private static extern ulong NativeGetFragmentedBytes(
+            [UnsafeAccessorType("Cosmos.Kernel.Core.Memory.GarbageCollector.GarbageCollector, Cosmos.Kernel.Core")] object _);
+#endif
+
         private static ulong ReadLiveHeapBytes()
         {
             try
             {
 #if ZONDERQ_COSMOS_INPUT_API
-                // Stock v3.0.94 does not export RhWaitForPendingFinalizers,
-                // which GC.GetTotalMemory() would reference at NativeAOT link.
-                // Use a real (possibly last-GC) BCL heap snapshot instead.
+                ulong liveNative = NativeGetHeapSizeBytes(null!);
+                if (liveNative > 0UL)
+                    return liveNative;
                 long live = GC.GetGCMemoryInfo().HeapSizeBytes;
 #else
                 long live = GC.GetTotalMemory(forceFullCollection: false);
@@ -80,6 +141,31 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
 
         public static ulong GetTotalCommittedBytes()
         {
+#if ZONDERQ_COSMOS_INPUT_API
+            try
+            {
+                ulong liveCommitted = NativeGetTotalCommittedBytes(null!);
+                ulong maxPoolBytes = PageAllocator.TotalPageCount * PageAllocator.PageSize;
+                bool validNative = liveCommitted > 0UL &&
+                    (maxPoolBytes > 0UL ? liveCommitted <= maxPoolBytes : liveCommitted < 0xFFFF000000000000UL);
+                if (validNative)
+                    return liveCommitted;
+
+                // Cosmos 3.0.95 UpdateFrozenSegment stores the raw HHDM end pointer (0xFFFF8000...)
+                // into FrozenSegmentInfo.CommitSize, causing NativeGetTotalCommittedBytes to overflow.
+                // Fall back to committed GC segment bytes plus pinned-segment delta rounded to 64 KB.
+                ulong segCommitted = NativeGetCommittedGcSegmentsBytes(null!);
+                ulong liveHeap = ReadLiveHeapBytes();
+                if (liveHeap > segCommitted)
+                {
+                    ulong diff = liveHeap - segCommitted;
+                    segCommitted += (diff + 65535UL) & ~65535UL;
+                }
+                if (segCommitted > 0UL)
+                    return segCommitted;
+            }
+            catch { }
+#endif
             try
             {
                 GCMemoryInfo info = GC.GetGCMemoryInfo();
@@ -91,6 +177,15 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
 
         public static ulong GetFragmentedBytes()
         {
+#if ZONDERQ_COSMOS_INPUT_API
+            try
+            {
+                ulong liveFrag = NativeGetFragmentedBytes(null!);
+                if (liveFrag > 0UL)
+                    return liveFrag;
+            }
+            catch { }
+#endif
             try
             {
                 long value = GC.GetGCMemoryInfo().FragmentedBytes;
@@ -113,6 +208,26 @@ namespace Cosmos.Kernel.Core.Memory.GarbageCollector
         {
             try { return RuntimeMemoryInfo.TotalCollections; }
             catch { return 0; }
+        }
+
+        public static int GetTotalObjectsFreed()
+        {
+#if ZONDERQ_COSMOS_INPUT_API
+            try { return RuntimeMemoryInfo.TotalObjectsFreed; }
+            catch { return 0; }
+#else
+            return 0;
+#endif
+        }
+
+        public static int GetLastGCPercentTimeInGC()
+        {
+#if ZONDERQ_COSMOS_INPUT_API
+            try { return RuntimeMemoryInfo.GcTimePercent; }
+            catch { return 0; }
+#else
+            return 0;
+#endif
         }
     }
 }

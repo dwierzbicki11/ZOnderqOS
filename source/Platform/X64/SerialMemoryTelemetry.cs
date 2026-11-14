@@ -1,5 +1,6 @@
 using System;
 using Cosmos.Kernel.Core.Memory;
+using CosmosGc = Cosmos.Kernel.Core.Memory.GarbageCollector.GarbageCollector;
 
 namespace ZonderqOS.Platform.X64
 {
@@ -12,6 +13,8 @@ namespace ZonderqOS.Platform.X64
         private const ushort Com1Data = 0x3F8;
         private const ushort Com1LineStatus = 0x3FD;
         private static long lastSampleTicks = -1;
+        private static ulong prevUsedPages = 0;
+        private static bool hasPrevSample = false;
 
         public static void WriteChar(char c)
         {
@@ -29,6 +32,20 @@ namespace ZonderqOS.Platform.X64
             if (s == null) return;
             for (int i = 0; i < s.Length; i++)
                 WriteChar(s[i]);
+        }
+
+        public static void WriteInt(long value)
+        {
+            if (value < 0)
+            {
+                WriteChar('-');
+                WriteUInt((ulong)(-value));
+            }
+            else
+            {
+                if (value > 0) WriteChar('+');
+                WriteUInt((ulong)value);
+            }
         }
 
         public static void WriteUInt(ulong value)
@@ -72,6 +89,39 @@ namespace ZonderqOS.Platform.X64
                 ulong usedHundredths = (usedBytes % (1024UL * 1024UL)) * 100UL / (1024UL * 1024UL);
                 ulong uptimeSec = (ulong)(nowTicks / frequency);
 
+                long deltaPages = hasPrevSample ? (long)usedPages - (long)prevUsedPages : 0;
+                prevUsedPages = usedPages;
+                hasPrevSample = true;
+
+                ulong gcHeapKb = 0, gcCommKb = 0, gcFragKb = 0;
+                ulong gcGen = 0, gcFreed = 0;
+                try
+                {
+                    if (CosmosGc.IsEnabled)
+                    {
+                        gcHeapKb = CosmosGc.GetHeapSizeBytes() / 1024UL;
+                        gcCommKb = CosmosGc.GetTotalCommittedBytes() / 1024UL;
+                        gcFragKb = CosmosGc.GetFragmentedBytes() / 1024UL;
+                        int g = CosmosGc.GetCollectionIndex();
+                        gcGen = g > 0 ? (ulong)g : 0;
+                        int f = CosmosGc.GetTotalObjectsFreed();
+                        gcFreed = f > 0 ? (ulong)f : 0;
+                    }
+                }
+                catch { }
+
+                ulong pGc = 0, pRat = 0, pSys = 0;
+                try
+                {
+                    ulong pEmpty, pSmall, pMed, pLarge, pUnman, pDir, pAlloc, pSmt, pExt, pUnk;
+                    PageAllocator.GetPageCountsByType(
+                        out pEmpty, out pGc, out pSmall, out pMed, out pLarge,
+                        out pUnman, out pDir, out pAlloc, out pSmt, out pExt, out pUnk);
+                    pRat = pSmall + pMed + pLarge;
+                    pSys = pUnman + pDir + pAlloc + pSmt + pExt + pUnk;
+                }
+                catch { }
+
                 WriteAscii("[MEM_SAMPLE] sec=");
                 WriteUInt(uptimeSec);
                 WriteAscii(" total_p=");
@@ -87,6 +137,24 @@ namespace ZonderqOS.Platform.X64
                 WriteUInt(usedHundredths);
                 WriteAscii(" pool_mb=");
                 WriteUInt(totalPages * PageAllocator.PageSize / (1024UL * 1024UL));
+                WriteAscii(" gc_heap_kb=");
+                WriteUInt(gcHeapKb);
+                WriteAscii(" gc_comm_kb=");
+                WriteUInt(gcCommKb);
+                WriteAscii(" gc_frag_kb=");
+                WriteUInt(gcFragKb);
+                WriteAscii(" gc_gen=");
+                WriteUInt(gcGen);
+                WriteAscii(" gc_freed=");
+                WriteUInt(gcFreed);
+                WriteAscii(" p_gc=");
+                WriteUInt(pGc);
+                WriteAscii(" p_rat=");
+                WriteUInt(pRat);
+                WriteAscii(" p_sys=");
+                WriteUInt(pSys);
+                WriteAscii(" delta_p=");
+                WriteInt(deltaPages);
                 WriteChar('\n');
             }
             catch { }
