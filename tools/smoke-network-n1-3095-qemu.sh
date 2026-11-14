@@ -224,7 +224,7 @@ while (( SECONDS - started < TIMEOUT )); do
         # Preserve the serial evidence and fail immediately instead of
         # misclassifying this as slow QEMU startup.
         if grep -Fq '[NET3095-N1] HEARTBEAT=' "$LOG" &&
-           ! grep -Fq '[NET3095-N2] DHCP_LEASE=' "$LOG"; then
+           ! grep -Fq '[NET3095-N2] DHCP=PASS ip=' "$LOG"; then
           echo '[NET3095-N2][FAIL] Guest entered Run() without a DHCP lease; BeforeRun already returned' >&2
           grep -E '\[NET3095-N[12]\]' "$LOG" | tail -n 100 >&2 || true
           python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP" || true
