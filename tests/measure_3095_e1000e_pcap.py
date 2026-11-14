@@ -60,6 +60,12 @@ def decode(time: float, frame: bytes):
     length = struct.unpack_from('!H', frame, 16)[0]
     if length < ihl or 14+length > len(frame):
         return None
+    # Fragmented IPv4 packets cannot be parsed as complete TCP/ICMP records.
+    # In particular, non-initial fragments may contain arbitrary payload bytes
+    # that resemble a transport header. Fail closed for timing telemetry.
+    fragment_field = struct.unpack_from('!H', frame, 20)[0]
+    if fragment_field & 0x3fff:
+        return None
     proto = frame[23]
     start = 14+ihl
     src, dst = frame[26:30], frame[30:34]
@@ -192,6 +198,12 @@ def self_test():
     rec = struct.pack('<IIII', 1, 1000, len(packet), len(packet)) + packet
     assert list(records(header+rec))[0][1] == packet
     assert decode(1.001, packet)[-1] == 20
+    # Neither first (MF=1) nor later (offset>0) IPv4 fragments may be
+    # mistaken for complete TCP segments in the PCAP timing report.
+    for fragment_bits in (0x2000, 0x0001, 0x2001):
+        fragmented = bytearray(packet)
+        struct.pack_into('!H', fragmented, 20, fragment_bits)
+        assert decode(1.001, bytes(fragmented)) is None
     for bad in (b'', header+rec[:-1], header+rec+b'\x00', header[:4]+b'\x00'*20+rec):
         try:
             list(records(bad))
