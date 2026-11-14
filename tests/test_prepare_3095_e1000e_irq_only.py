@@ -40,7 +40,8 @@ class IsolatedIrqPatchTests(unittest.TestCase):
             output.write_text('previous build artifact must survive')
             command = [sys.executable, str(script), '--input', str(source),
                        '--output', str(output), '--state', str(state),
-                       '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest()]
+                       '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest(),
+                       '--expected-state-sha256', hashlib.sha256(state.read_bytes()).hexdigest()]
             result = subprocess.run(command, capture_output=True)
             self.assertNotEqual(result.returncode, 0)
             self.assertEqual(output.read_text(), 'previous build artifact must survive')
@@ -56,23 +57,27 @@ class IsolatedIrqPatchTests(unittest.TestCase):
             source.write_text(FIXTURE)
             state.write_text(STATE)
             base = [sys.executable, str(script), '--input', str(source),
-                    '--output', str(output), '--state', str(state)]
+                    '--output', str(output), '--state', str(state),
+                    '--expected-state-sha256', hashlib.sha256(state.read_bytes()).hexdigest()]
             bad = subprocess.run(base + ['--expected-sha256', '0'*64], capture_output=True)
             self.assertNotEqual(bad.returncode, 0)
             self.assertFalse(output.exists())
-            good = subprocess.run(base + ['--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest()], capture_output=True)
+            good = subprocess.run(base + ['--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest(),
+                       '--expected-state-sha256', hashlib.sha256(state.read_bytes()).hexdigest()], capture_output=True)
             self.assertEqual(good.returncode, 0, good.stderr.decode())
             self.assertEqual(output.read_text(), patch(FIXTURE))
             self.assertEqual(source.read_text(), FIXTURE)
             inplace = subprocess.run([sys.executable, str(script), '--input', str(source),
                                       '--output', str(source), '--state', str(state),
-                                      '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest()], capture_output=True)
+                                      '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest(),
+                       '--expected-state-sha256', hashlib.sha256(state.read_bytes()).hexdigest()], capture_output=True)
             self.assertNotEqual(inplace.returncode, 0)
             # The state source is a reviewed upstream input too.
             state_before = state.read_bytes()
             overwrite_state = subprocess.run([sys.executable, str(script), '--input', str(source),
                 '--output', str(state), '--state', str(state),
-                '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest()], capture_output=True)
+                '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest(),
+                       '--expected-state-sha256', hashlib.sha256(state.read_bytes()).hexdigest()], capture_output=True)
             self.assertNotEqual(overwrite_state.returncode, 0)
             self.assertEqual(state.read_bytes(), state_before)
             # Never follow an existing output symlink, even when its target
@@ -83,7 +88,8 @@ class IsolatedIrqPatchTests(unittest.TestCase):
             link.symlink_to(target)
             through_link = subprocess.run([sys.executable, str(script), '--input', str(source),
                 '--output', str(link), '--state', str(state),
-                '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest()], capture_output=True)
+                '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest(),
+                       '--expected-state-sha256', hashlib.sha256(state.read_bytes()).hexdigest()], capture_output=True)
             self.assertNotEqual(through_link.returncode, 0)
             self.assertEqual(target.read_text(), 'must stay unchanged')
 
