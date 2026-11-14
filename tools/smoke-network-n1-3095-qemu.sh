@@ -223,10 +223,20 @@ while (( SECONDS - started < TIMEOUT )); do
           # diagnostics in the CI log before exiting. In particular, a
           # missing DHCP lease marker may mean a stalled guest rather than
           # malformed DHCP packets; the validator alone cannot distinguish.
-          echo "[NET3095-N2] DHCP proof timeout; recent guest serial:" >&2
+          echo "[NET3095-N2] DHCP proof timeout after $((SECONDS - dhcp_start))s; recent guest serial:" >&2
           tail -n 100 "$LOG" >&2 || true
-          echo "[NET3095-N2] Capture bytes: $(wc -c < "$PCAP")" >&2
-          python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP"
+          if [[ -f "$PCAP" ]]; then
+            stat -c '[NET3095-N2] Capture bytes=%s' -- "$PCAP" >&2 || true
+          else
+            echo "[NET3095-N2] PCAP missing" >&2
+          fi
+          echo "[NET3095-N2] Host TCP listener diagnostics:" >&2
+          if [[ -f "$LOG.tcp-host" ]]; then tail -n 30 "$LOG.tcp-host" >&2 || true; fi
+          echo "[NET3095-N2] QEMU stderr:" >&2
+          if [[ -f "$LOG.stderr" ]]; then tail -n 40 "$LOG.stderr" >&2 || true; fi
+          # Diagnostic verifier may fail under set -e. Preserve the final
+          # explicit timeout marker regardless of its exit status.
+          python3 "$ROOT/tests/verify_3095_network_n2.py" "$LOG" "$PCAP" || true
           echo "[NET3095-N2][FAIL] No correlated DHCP RX/TX capture" >&2
           exit 1
         fi
