@@ -62,6 +62,10 @@ class IsolatedIrqPatchTests(unittest.TestCase):
             bad = subprocess.run(base + ['--expected-sha256', '0'*64], capture_output=True)
             self.assertNotEqual(bad.returncode, 0)
             self.assertFalse(output.exists())
+            bad_state = subprocess.run(base + ['--expected-state-sha256', '0'*64,
+                '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest()], capture_output=True)
+            self.assertNotEqual(bad_state.returncode, 0)
+            self.assertFalse(output.exists())
             good = subprocess.run(base + ['--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest(),
                        '--expected-state-sha256', hashlib.sha256(state.read_bytes()).hexdigest()], capture_output=True)
             self.assertEqual(good.returncode, 0, good.stderr.decode())
