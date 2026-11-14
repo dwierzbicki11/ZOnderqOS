@@ -74,18 +74,23 @@ def burst_capture_stats(pcap: bytes) -> tuple[int, float]:
     """QEMU PCAP paced TX telemetry; not a peak NIC throughput benchmark."""
     tag = b'ZONDERQ3095-BURST-'
     lengths = (60, 128, 512, 1024, 1514)
-    observed = [(stamp, len(frame)) for stamp, frame in records(pcap)
+    observed = [(stamp, frame) for stamp, frame in records(pcap)
                 if frame[12:14] == bytes((0x88, 0xB5)) and
                 frame[14:14 + len(tag)] == tag]
     if len(observed) != 128:
         raise ValueError(f'expected 128 raw TX frames, found {len(observed)}')
-    for sequence, (_, size) in enumerate(observed):
-        if size != lengths[sequence % len(lengths)]:
+    for sequence, (_, frame) in enumerate(observed):
+        # Require the on-wire sequence, not just a plausible length. Otherwise
+        # reordered/duplicated frames of the same size can appear valid.
+        expected_prefix = tag + f'{sequence:03d}'.encode('ascii')
+        if frame[14:14 + len(expected_prefix)] != expected_prefix:
+            raise ValueError(f'raw TX sequence mismatch at {sequence}')
+        if len(frame) != lengths[sequence % len(lengths)]:
             raise ValueError(f'raw TX frame length mismatch at {sequence}')
     span_ms = (observed[-1][0] - observed[0][0]) * 1000
     if span_ms <= 0:
         raise ValueError('raw TX PCAP timestamps not increasing')
-    return sum(size for _, size in observed), round(span_ms, 3)
+    return sum(len(frame) for _, frame in observed), round(span_ms, 3)
 
 
 def measure(pcap: bytes, serial: str):
@@ -181,7 +186,9 @@ def self_test():
     assert total == 81650 and span == 635.0
     for broken in (capture(range(127)), capture(range(129)),
                    capture(range(128), step_us=0),
-                   capture([0, 2, 1] + list(range(3, 128)))):
+                   capture([0, 2, 1] + list(range(3, 128))),
+                   capture([5, 1, 2, 3, 4, 0] + list(range(6, 128))),
+                   capture([0, 1, 2, 3, 4, 0] + list(range(6, 128)))):
         try:
             burst_capture_stats(broken)
         except ValueError:
