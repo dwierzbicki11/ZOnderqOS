@@ -51,6 +51,24 @@ class IsolatedIrqPatchTests(unittest.TestCase):
                                       '--output', str(source), '--state', str(state),
                                       '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest()], capture_output=True)
             self.assertNotEqual(inplace.returncode, 0)
+            # The state source is a reviewed upstream input too.
+            state_before = state.read_bytes()
+            overwrite_state = subprocess.run([sys.executable, str(script), '--input', str(source),
+                '--output', str(state), '--state', str(state),
+                '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest()], capture_output=True)
+            self.assertNotEqual(overwrite_state.returncode, 0)
+            self.assertEqual(state.read_bytes(), state_before)
+            # Never follow an existing output symlink, even when its target
+            # is a third file rather than one of the two SDK inputs.
+            target = d / 'unrelated.cs'
+            target.write_text('must stay unchanged')
+            link = d / 'linked-output.cs'
+            link.symlink_to(target)
+            through_link = subprocess.run([sys.executable, str(script), '--input', str(source),
+                '--output', str(link), '--state', str(state),
+                '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest()], capture_output=True)
+            self.assertNotEqual(through_link.returncode, 0)
+            self.assertEqual(target.read_text(), 'must stay unchanged')
 
 if __name__ == '__main__':
     unittest.main()
