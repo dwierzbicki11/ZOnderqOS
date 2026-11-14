@@ -29,6 +29,23 @@ class IsolatedIrqPatchTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             patch(FIXTURE.replace('state.OnInterrupt', 'no-handler'))
 
+
+    def test_existing_output_is_not_overwritten(self):
+        script = Path(__file__).resolve().parents[1] / 'tools' / 'prepare_3095_e1000e_irq_only.py'
+        with tempfile.TemporaryDirectory() as tmp:
+            d = Path(tmp)
+            source, state, output = (d / name for name in ('E1000EDriver.cs', 'E1000EState.cs', 'patched.cs'))
+            source.write_text(FIXTURE)
+            state.write_text(STATE)
+            output.write_text('previous build artifact must survive')
+            command = [sys.executable, str(script), '--input', str(source),
+                       '--output', str(output), '--state', str(state),
+                       '--expected-sha256', hashlib.sha256(source.read_bytes()).hexdigest()]
+            result = subprocess.run(command, capture_output=True)
+            self.assertNotEqual(result.returncode, 0)
+            self.assertEqual(output.read_text(), 'previous build artifact must survive')
+            self.assertEqual(source.read_text(), FIXTURE)
+
     def test_cli_guard_and_copy(self):
         script = Path(__file__).resolve().parents[1] / 'tools' / 'prepare_3095_e1000e_irq_only.py'
         with tempfile.TemporaryDirectory() as tmp:
