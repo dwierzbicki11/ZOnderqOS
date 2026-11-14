@@ -201,5 +201,24 @@ class EvidenceSafety(unittest.TestCase):
                 self.assertFalse(called.exists(), "fake QEMU was invoked")
 
 
+    def test_timeout_diagnostics_preserve_explicit_failure_markers(self):
+        # A failing verifier inside a timeout branch must not trigger set -e
+        # before the host prints its phase-specific [FAIL] marker.
+        import re
+        source = SMOKE.read_text()
+        gates = (
+            "n1", "n2", "n3", "n4", "n5", "n6",
+            "n6_burst", "n6_post_http", "n6_final_icmp",
+        )
+        for gate in gates:
+            with self.subTest(gate=gate):
+                pattern = (
+                    r'if \\(\\( SECONDS - [a-z_]+ >= .*?\\)\\); then\\n'
+                    r'\\s+(?:#.*\\n\\s+)*'
+                    + re.escape('python3 "$ROOT/tests/verify_3095_network_' + gate + '.py" "$LOG" "$PCAP"')
+                    + r' \\|\\| true'
+                )
+                self.assertRegex(source, pattern)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
