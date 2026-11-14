@@ -54,9 +54,13 @@ namespace ZonderqOS.Commands
                 Disk.DeleteFile(path);
                 // Disappearance alone cannot override a backend failure (for
                 // example, an I/O error after deletion or loss of the device).
-                if (!CommandIO.LastCommandSuccess || File.Exists(path))
+                if (!CommandIO.LastCommandSuccess)
+                    return;
+
+                if (File.Exists(path))
                 {
                     CommandIO.LastCommandSuccess = false;
+                    WriteMessage.WriteError($"Deletion was not confirmed; file still exists: {path}", "FS");
                     return;
                 }
 

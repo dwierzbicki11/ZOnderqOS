@@ -14,7 +14,7 @@ static class Program
         string file = Path.Combine(folder, "file");
         try
         {
-            foreach (string fault in new[] { "path", "dispatch", "permission", "denied", "backend", "deleted-failure", "metadata", "" })
+            foreach (string fault in new[] { "path", "dispatch", "permission", "denied", "backend", "retained-success", "deleted-failure", "metadata", "" })
             {
                 File.WriteAllText(file, "preserve");
                 Faults.Stage = fault; Faults.MetadataCalls = 0;
@@ -52,7 +52,7 @@ namespace ZonderqOS
         {
             CommandIO.LastCommandSuccess = false;
             Faults.At("backend");
-            if (path != "/ram") File.Delete(path);
+            if (path != "/ram" && Faults.Stage != "retained-success") File.Delete(path);
             if (Faults.Stage == "deleted-failure" || path == "/ram")
             { WriteMessage.WriteError("Backend reported deletion failure", "FS"); return; }
             CommandIO.LastCommandSuccess = true;
