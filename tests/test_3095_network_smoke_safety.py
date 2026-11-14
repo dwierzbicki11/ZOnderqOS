@@ -220,10 +220,10 @@ class EvidenceSafety(unittest.TestCase):
         for gate in gates:
             with self.subTest(gate=gate):
                 pattern = (
-                    r'if \\(\\( SECONDS - [a-z_]+ >= .*?\\)\\); then\\n'
-                    r'\\s+(?:#.*\\n\\s+)*'
+                    r'if \(\( SECONDS - [a-z_]+ >= .*?\)\); then\n'
+                    r'\s+(?:#.*\n\s+)*'
                     + re.escape('python3 "$ROOT/tests/verify_3095_network_' + gate + '.py" "$LOG" "$PCAP"')
-                    + r' \\|\\| true'
+                    + r' \|\| true'
                 )
                 self.assertRegex(source, pattern)
 
