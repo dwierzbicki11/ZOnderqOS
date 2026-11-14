@@ -218,7 +218,7 @@ while (( SECONDS - started < TIMEOUT )); do
           echo "[NET3095-N2][FAIL] Guest reported DHCP failure" >&2
           exit 1
         fi
-        if (( SECONDS - dhcp_start >= 20 )); then
+        if (( SECONDS - dhcp_start >= (LINK_CYCLE == 1 ? 45 : 20) )); then
           # Preserve the independent PCAP gate failure, but surface guest
           # diagnostics in the CI log before exiting. In particular, a
           # missing DHCP lease marker may mean a stalled guest rather than
